@@ -41,6 +41,15 @@ class Env:
     REDIS_PASSWORD = "REDIS_PASSWORD"
     REDIS_SENTINEL_MODE = "REDIS_SENTINEL_MODE"
     REDIS_SENTINEL_MASTER_NAME = "REDIS_SENTINEL_MASTER_NAME"
+    # UN-4123. Same allowlist trap as LOG_TRANSPORT below: the sidecar publishes tool
+    # logs through LogPublisher and builds its own Redis client, so without these it
+    # would keep connecting in PLAINTEXT to db 0 while every other process moved to
+    # TLS — a connection failure at best, and tool logs silently absent at worst.
+    REDIS_DB = "REDIS_DB"
+    REDIS_SSL = "REDIS_SSL"
+    REDIS_SSL_CERT_REQS = "REDIS_SSL_CERT_REQS"
+    REDIS_SSL_CA_CERTS = "REDIS_SSL_CA_CERTS"
+    REDIS_URL = "REDIS_URL"
     CELERY_BROKER_BASE_URL = "CELERY_BROKER_BASE_URL"
     CELERY_BROKER_USER = "CELERY_BROKER_USER"
     CELERY_BROKER_PASS = "CELERY_BROKER_PASS"

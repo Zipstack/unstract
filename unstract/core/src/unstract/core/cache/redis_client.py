@@ -5,6 +5,12 @@ Dual-mode Redis configuration:
 - Sentinel mode: Sentinel.master_for() when REDIS_SENTINEL_MODE=True
 
 Mode is detected from {prefix}SENTINEL_MODE env var (LLMW pattern).
+
+A full URL in {prefix}URL (falling back to REDIS_URL) overrides the discrete
+host/port/credential vars, and `rediss://` turns on TLS by itself — the scheme is
+the switch, so there is no separate "use TLS" flag to forget. Discrete vars remain
+the default and primary path: they need no URL-encoding of passwords, and they are
+what the Helm chart and every sample.env configure.
 In Sentinel mode, REDIS_HOST/REDIS_PORT point to the K8s Sentinel service endpoint.
 Master name defaults to "mymaster" (configurable via REDIS_SENTINEL_MASTER_NAME env var).
 REDIS_PASSWORD is reused for Sentinel auth.
@@ -17,6 +23,7 @@ import os
 import random
 import time
 from typing import Any
+from urllib.parse import urlsplit, urlunsplit
 
 import redis
 from redis.sentinel import Sentinel
@@ -31,6 +38,45 @@ _SENTINEL_BACKOFF_MULTIPLIER = 1.5
 _SENTINEL_JITTER_MIN = 0.8
 _SENTINEL_JITTER_MAX = 1.2
 _DEFAULT_SENTINEL_MASTER_NAME = os.getenv("REDIS_SENTINEL_MASTER_NAME", "mymaster")
+
+# redis-py sends a PING before reusing a connection idle for longer than this, so a
+# connection killed while parked (managed-Redis failover, an idle-connection reaper —
+# Azure Cache closes at 10 minutes) is discovered and replaced by the health check
+# rather than by the next real command failing. 30s is redis-py's own documented
+# recommendation. 0 disables it, which is what every client except the two worker
+# caches used before UN-4123.
+_DEFAULT_HEALTH_CHECK_INTERVAL = 30
+
+
+def _resolve_health_check_interval(env_prefix: str, explicit: int) -> int:
+    """Explicit argument wins; otherwise env, otherwise the default above."""
+    if explicit:
+        return explicit
+    raw = os.getenv(
+        f"{env_prefix}HEALTH_CHECK_INTERVAL",
+        os.getenv("REDIS_HEALTH_CHECK_INTERVAL", str(_DEFAULT_HEALTH_CHECK_INTERVAL)),
+    )
+    try:
+        return max(int(raw), 0)
+    except ValueError:
+        logger.warning(
+            "Invalid %sHEALTH_CHECK_INTERVAL=%r; using %s",
+            env_prefix,
+            raw,
+            _DEFAULT_HEALTH_CHECK_INTERVAL,
+        )
+        return _DEFAULT_HEALTH_CHECK_INTERVAL
+
+
+def _strip_url_db_path(url: str) -> str:
+    """Drop the /<db> path from a Redis URL.
+
+    redis-py resolves the db from the URL path and IGNORES a `db=` kwarg, so a
+    caller that asks for a specific db (sdk1 metrics uses db=1) would silently get
+    the URL's db instead. Stripping the path lets the explicit argument apply.
+    """
+    parts = urlsplit(url)
+    return urlunsplit((parts.scheme, parts.netloc, "", parts.query, parts.fragment))
 
 
 def _is_sentinel_mode(env_prefix: str) -> bool:
@@ -59,8 +105,11 @@ def create_redis_client(
         socket_connect_timeout: Connection timeout in seconds.
         socket_timeout: Socket timeout in seconds.
         max_connections: Optional max connections for ConnectionPool.
-        health_check_interval: Proactive health check interval in seconds (0=disabled).
-        db: Optional DB index override.
+        health_check_interval: Proactive health check interval in seconds. 0 means
+            "unset" and falls back to {env_prefix}HEALTH_CHECK_INTERVAL, then
+            REDIS_HEALTH_CHECK_INTERVAL, then 30s; set that env to 0 to disable.
+        db: Optional DB index override. Applied even when a URL carries its own
+            db path, which redis-py would otherwise silently prefer.
 
     Returns:
         Configured redis.Redis client (standalone or Sentinel-backed).
@@ -68,6 +117,9 @@ def create_redis_client(
     Raises:
         RedisSentinelConnectionError: After exhausting retries in Sentinel mode.
     """
+    health_check_interval = _resolve_health_check_interval(
+        env_prefix, health_check_interval
+    )
     if _is_sentinel_mode(env_prefix):
         return _create_sentinel_client(
             env_prefix=env_prefix,
@@ -106,7 +158,14 @@ def _resolve_redis_env(
         if db_override is not None
         else int(os.getenv(f"{env_prefix}DB", os.getenv("REDIS_DB", "0")))
     )
-    ssl = os.getenv(f"{env_prefix}SSL", "false").strip().lower() == "true"
+    # Falls back to REDIS_SSL: before UN-4123 each prefix needed its own *_SSL, so
+    # turning TLS on platform-wide meant remembering CACHE_REDIS_SSL and
+    # MANUAL_REVIEW_REDIS_SSL too — and a missed one fails as a plaintext client
+    # talking to a TLS port, not as a config error.
+    ssl = (
+        os.getenv(f"{env_prefix}SSL", os.getenv("REDIS_SSL", "false")).strip().lower()
+        == "true"
+    )
     result: dict[str, Any] = {
         "host": host,
         "port": port,
@@ -114,9 +173,21 @@ def _resolve_redis_env(
         "username": username,
         "db": db,
         "ssl": ssl,
+        # A full URL, when given, is authoritative for host/port/credentials/db and
+        # carries TLS in its scheme (rediss://). Everything above stays the default
+        # path, so an unset URL changes nothing.
+        "url": os.getenv(f"{env_prefix}URL", os.getenv("REDIS_URL", "")).strip(),
     }
     if ssl:
         result["ssl_cert_reqs"] = os.getenv(f"{env_prefix}SSL_CERT_REQS", "required")
+        # Needed where the server's CA is not in the system trust store — notably
+        # Memorystore, whose CA is Google-managed. ElastiCache and Azure chain to
+        # public CAs and need nothing here.
+        ca_certs = os.getenv(
+            f"{env_prefix}SSL_CA_CERTS", os.getenv("REDIS_SSL_CA_CERTS", "")
+        ).strip()
+        if ca_certs:
+            result["ssl_ca_certs"] = ca_certs
     return result
 
 
@@ -162,6 +233,8 @@ def _build_connection_kwargs(
     if env.get("ssl"):
         kwargs["ssl"] = True
         kwargs["ssl_cert_reqs"] = env.get("ssl_cert_reqs", "required")
+        if env.get("ssl_ca_certs"):
+            kwargs["ssl_ca_certs"] = env["ssl_ca_certs"]
     return kwargs
 
 
@@ -175,6 +248,18 @@ def _create_standalone_client(
     db_override: int | None = None,
 ) -> redis.Redis:
     env = _resolve_redis_env(env_prefix, default_port="6379", db_override=db_override)
+
+    if env["url"]:
+        return _create_client_from_url(
+            url=env["url"],
+            decode_responses=decode_responses,
+            socket_connect_timeout=socket_connect_timeout,
+            socket_timeout=socket_timeout,
+            max_connections=max_connections,
+            health_check_interval=health_check_interval,
+            db_override=db_override,
+            ssl_ca_certs=env.get("ssl_ca_certs"),
+        )
 
     logger.info(
         "Redis standalone mode enabled. Connecting to %s:%s", env["host"], env["port"]
@@ -191,10 +276,60 @@ def _create_standalone_client(
     kwargs["port"] = env["port"]
 
     if max_connections is not None:
-        pool = redis.ConnectionPool(max_connections=max_connections, **kwargs)
+        pool_kwargs = dict(kwargs)
+        # ConnectionPool hands its kwargs to the connection class, and the plain
+        # Connection has no `ssl` parameter — passing it raises TypeError. TLS on a
+        # POOLED client (platform-service sets max_connections) therefore has to be
+        # selected by connection class, not by a flag.
+        if pool_kwargs.pop("ssl", False):
+            pool_kwargs["connection_class"] = redis.SSLConnection
+        pool = redis.ConnectionPool(max_connections=max_connections, **pool_kwargs)
         return redis.Redis(connection_pool=pool)
 
     return redis.Redis(**kwargs)
+
+
+def _create_client_from_url(
+    url: str,
+    decode_responses: bool,
+    socket_connect_timeout: int,
+    socket_timeout: int,
+    max_connections: int | None,
+    health_check_interval: int,
+    db_override: int | None,
+    ssl_ca_certs: str | None,
+) -> redis.Redis:
+    """Build a client from a full Redis URL.
+
+    `rediss://` selects TLS on its own — redis-py picks SSLConnection from the
+    scheme — so TLS needs no separate switch, and `redis://` behaves exactly as the
+    discrete host/port path does. TLS verification is tuned in the URL itself, e.g.
+    `?ssl_cert_reqs=required`.
+    """
+    kwargs: dict[str, Any] = {
+        "decode_responses": decode_responses,
+        "socket_connect_timeout": socket_connect_timeout,
+        "socket_timeout": socket_timeout,
+    }
+    if health_check_interval:
+        kwargs["health_check_interval"] = health_check_interval
+    if max_connections is not None:
+        kwargs["max_connections"] = max_connections
+    if ssl_ca_certs and url.startswith("rediss://"):
+        kwargs["ssl_ca_certs"] = ssl_ca_certs
+    if db_override is not None:
+        # The URL path wins over a db kwarg in redis-py, so it has to go.
+        url = _strip_url_db_path(url)
+        kwargs["db"] = db_override
+
+    parts = urlsplit(url)
+    logger.info(
+        "Redis URL mode enabled. Connecting to %s:%s (tls=%s)",
+        parts.hostname,
+        parts.port,
+        parts.scheme == "rediss",
+    )
+    return redis.Redis.from_url(url, **kwargs)
 
 
 def _create_sentinel_client(
