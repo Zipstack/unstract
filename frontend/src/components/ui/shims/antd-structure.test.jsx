@@ -6,7 +6,13 @@ import {
   within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { createRef, forwardRef, useEffect, useImperativeHandle } from "react";
+import {
+  createRef,
+  forwardRef,
+  useEffect,
+  useImperativeHandle,
+  useState,
+} from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -1734,5 +1740,66 @@ describe("antd-compatible structural shims (P4)", () => {
       expect(screen.getAllByRole("button")).toHaveLength(1);
       expect(screen.getByRole("button", { name: /One/ })).toBeInTheDocument();
     });
+  });
+});
+
+/*
+ * HITL's review editor drives expansion from a button inside the cell, not
+ * from antd's toggle column, so it passes `showExpandColumn: false` and a
+ * controlled `expandedRowKeys` of row indices. The shim dropped `expandable`
+ * entirely, so the panel never rendered: a customer reviewing a MARS
+ * certificate saw `{"vendor":"Frut…` with an expand button that did nothing,
+ * and no way to read the nested values in Table view (UN-4124).
+ */
+describe("Table expandable (UN-4124)", () => {
+  const row = {
+    key: 0,
+    headerInfo: { vendor: "Fruta" },
+    sap_mapping: [{ hitl_flag: false }],
+    testResults: [{ result: "230" }],
+  };
+  const columns = ["headerInfo", "sap_mapping", "testResults"].map((c) => ({
+    title: c,
+    dataIndex: c,
+    key: c,
+    render: (v) => JSON.stringify(v).slice(0, 12),
+  }));
+
+  function Harness() {
+    const [expanded, setExpanded] = useState({});
+    return (
+      <Table
+        dataSource={[row]}
+        columns={columns}
+        rowKey="key"
+        pagination={false}
+        expandable={{
+          showExpandColumn: false,
+          expandedRowKeys: Object.keys(expanded)
+            .filter((k) => expanded[k])
+            .map(Number),
+          rowExpandable: (record) => Boolean(expanded[record.key]),
+          expandedRowRender: (record) => (
+            <div>expanded {JSON.stringify(record.sap_mapping)}</div>
+          ),
+        }}
+        onRow={(record) => ({
+          onClick: () => setExpanded({ [record.key]: true }),
+        })}
+      />
+    );
+  }
+
+  it("opens the nested panel when the call-site sets its own expanded keys", async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+    expect(screen.queryByText(/^expanded /)).not.toBeInTheDocument();
+
+    await user.click(screen.getByText('{"vendor":"F'));
+    await waitFor(() =>
+      expect(
+        screen.getByText('expanded [{"hitl_flag":false}]'),
+      ).toBeInTheDocument(),
+    );
   });
 });

@@ -1646,3 +1646,154 @@ describe("DataTable nested dataIndex", () => {
     expect(screen.getByText("plan: LLM Whisperer Free")).toBeInTheDocument();
   });
 });
+
+/*
+ * `expandable` was the widest of the silently dropped antd props: the whole
+ * object fell into `...props` and onto the wrapper <div>, so `expandedRowRender`
+ * was never called. HITL's review editor shows a truncated JSON blob plus an
+ * expand button for an array or object inside a table cell, and clicking that
+ * button did nothing whatsoever — nested values were unreadable in Table view
+ * (UN-4124).
+ */
+describe("DataTable expandable", () => {
+  const detail = (record) => <div>detail for {record.name}</div>;
+
+  it("renders the expanded row for a controlled expandedRowKeys", () => {
+    render(
+      <DataTable
+        columns={columns}
+        dataSource={rowsFor(2)}
+        rowKey="id"
+        expandable={{ expandedRowRender: detail, expandedRowKeys: [2] }}
+      />,
+    );
+    expect(screen.getByText("detail for Row 2")).toBeInTheDocument();
+    expect(screen.queryByText("detail for Row 1")).not.toBeInTheDocument();
+  });
+
+  it("matches numeric keys against the string row ids TanStack produces", () => {
+    // A call-site numbering its rows `key: index` passes numbers, and
+    // `[0].includes("0")` is false — the mismatch that hid every expansion.
+    render(
+      <DataTable
+        columns={columns}
+        dataSource={[{ key: 0, name: "Row 1" }]}
+        rowKey="key"
+        expandable={{ expandedRowRender: detail, expandedRowKeys: [0] }}
+      />,
+    );
+    expect(screen.getByText("detail for Row 1")).toBeInTheDocument();
+  });
+
+  it("spans every column so the panel is full width", () => {
+    render(
+      <DataTable
+        columns={[
+          { key: "name", dataIndex: "name", title: "Name" },
+          { key: "id", dataIndex: "id", title: "Id" },
+        ]}
+        dataSource={rowsFor(1)}
+        rowKey="id"
+        expandable={{ expandedRowRender: detail, expandedRowKeys: [1] }}
+      />,
+    );
+    const panel = screen.getByText("detail for Row 1").closest("td");
+    // Two data columns plus the toggle column the shim adds.
+    expect(panel).toHaveAttribute("colspan", "3");
+  });
+
+  it("honours rowExpandable", () => {
+    render(
+      <DataTable
+        columns={columns}
+        dataSource={rowsFor(2)}
+        rowKey="id"
+        expandable={{
+          expandedRowRender: detail,
+          expandedRowKeys: [1, 2],
+          rowExpandable: (record) => record.id === 1,
+        }}
+      />,
+    );
+    expect(screen.getByText("detail for Row 1")).toBeInTheDocument();
+    expect(screen.queryByText("detail for Row 2")).not.toBeInTheDocument();
+  });
+
+  it("toggles from its own column when the keys are uncontrolled", async () => {
+    const user = userEvent.setup();
+    const onExpand = vi.fn();
+    render(
+      <DataTable
+        columns={columns}
+        dataSource={rowsFor(1)}
+        rowKey="id"
+        expandable={{ expandedRowRender: detail, onExpand }}
+      />,
+    );
+    expect(screen.queryByText("detail for Row 1")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Expand row" }));
+    expect(screen.getByText("detail for Row 1")).toBeInTheDocument();
+    expect(onExpand).toHaveBeenCalledWith(
+      true,
+      expect.objectContaining({ id: 1 }),
+    );
+
+    await user.click(screen.getByRole("button", { name: "Collapse row" }));
+    await waitFor(() =>
+      expect(screen.queryByText("detail for Row 1")).not.toBeInTheDocument(),
+    );
+  });
+
+  it("leaves the toggle column out for showExpandColumn: false", () => {
+    render(
+      <DataTable
+        columns={columns}
+        dataSource={rowsFor(1)}
+        rowKey="id"
+        expandable={{
+          expandedRowRender: detail,
+          expandedRowKeys: [1],
+          showExpandColumn: false,
+        }}
+      />,
+    );
+    expect(screen.getByText("detail for Row 1")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /row$/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("reports a controlled toggle without moving on its own", async () => {
+    const user = userEvent.setup();
+    const onExpandedRowsChange = vi.fn();
+    render(
+      <DataTable
+        columns={columns}
+        dataSource={rowsFor(1)}
+        rowKey="id"
+        expandable={{
+          expandedRowRender: detail,
+          expandedRowKeys: [],
+          onExpandedRowsChange,
+        }}
+      />,
+    );
+    await user.click(screen.getByRole("button", { name: "Expand row" }));
+    expect(onExpandedRowsChange).toHaveBeenCalledWith(["1"]);
+    // The parent did not move its keys, so neither did the table.
+    expect(screen.queryByText("detail for Row 1")).not.toBeInTheDocument();
+  });
+
+  it("leaves the prop off the DOM", () => {
+    const { container } = render(
+      <DataTable
+        columns={columns}
+        dataSource={rowsFor(1)}
+        rowKey="id"
+        expandable={{ expandedRowRender: detail }}
+      />,
+    );
+    expect(container.querySelector("[expandable]")).toBeNull();
+  });
+});
