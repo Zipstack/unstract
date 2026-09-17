@@ -6,7 +6,7 @@ import {
   within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { useEffect } from "react";
+import { createRef, forwardRef, useEffect, useImperativeHandle } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -120,10 +120,7 @@ describe("antd-compatible structural shims (P4)", () => {
     expect(screen.getByText("second")).toBeInTheDocument();
   });
 
-  /*
-   * A counter shared by the mounting tests below. Returns the pane component
-   * plus a read of how many copies are currently mounted.
-   */
+  // A pane plus a live count of how many copies are mounted.
   const mountProbe = (text) => {
     const state = { mounts: 0 };
     function Pane() {
@@ -138,12 +135,8 @@ describe("antd-compatible structural shims (P4)", () => {
     return [Pane, state];
   };
 
-  /*
-   * Radix unmounts the pane behind an inactive tab; antd keeps it. The
-   * connector modal's one Save flushes both panes through a ref, so an
-   * unmounted HITL pane lost its edits AND its ref -- and the save skipped
-   * it and still reported success.
-   */
+  // Radix drops the pane behind an inactive tab; antd keeps it. The connector
+  // modal saves both panes through a ref, so a dropped pane loses both.
   it("Tabs keep an opened keepMounted pane across a switch", () => {
     const [Pane, probe] = mountProbe("hitl-pane");
     const items = [
@@ -161,19 +154,40 @@ describe("antd-compatible structural shims (P4)", () => {
     expect(probe.mounts).toBe(1);
     rerender(<Tabs activeKey="1" items={items} />);
     expect(probe.mounts).toBe(1);
-    // Mounted is not shown. Radix leaves a force-mounted pane WITHOUT its
-    // `hidden` attribute, so without this class both panes render at once.
-    // jsdom loads no Tailwind, so the class is what is assertable here.
+    // Mounted is not shown, and jsdom has no Tailwind -- assert the class.
     const pane = screen.getByText("hitl-pane").closest(".ant-tabs-tabpane");
     expect(pane).toHaveAttribute("data-state", "inactive");
     expect(pane).toHaveClass("data-[state=inactive]:hidden");
   });
 
-  /*
-   * Held from first open, not from render. The HITL pane loads on mount and
-   * alerts when that fails, so mounting it up front would raise an error for
-   * a tab the user never opened.
-   */
+  // The failure this fixes is a ref, not a mount count: the modal saves the
+  // pane through one, and a dropped pane nulls it, so the save is skipped.
+  it("Tabs keep a ref into a kept pane usable after a switch", () => {
+    const ref = createRef();
+    const Pane = forwardRef((_props, r) => {
+      useImperativeHandle(r, () => ({ save: () => "saved" }));
+      return <div>hitl-pane</div>;
+    });
+    Pane.displayName = "Pane";
+    const items = [
+      { key: "1", label: "Settings", children: <div>settings-pane</div> },
+      {
+        key: "MANUALREVIEW",
+        label: "Manual Review",
+        keepMounted: true,
+        children: <Pane ref={ref} />,
+      },
+    ];
+    const { rerender } = render(
+      <Tabs activeKey="MANUALREVIEW" items={items} />,
+    );
+    expect(ref.current?.save()).toBe("saved");
+    rerender(<Tabs activeKey="1" items={items} />);
+    expect(ref.current?.save()).toBe("saved");
+  });
+
+  // Held from first open, not from render: a pane that loads on mount would
+  // otherwise alert for a tab nobody opened.
   it("Tabs do not mount a keepMounted pane before it is opened", () => {
     const [Pane, probe] = mountProbe("unopened-pane");
     render(
@@ -193,10 +207,7 @@ describe("antd-compatible structural shims (P4)", () => {
     expect(probe.mounts).toBe(0);
   });
 
-  /*
-   * The opt-in is per pane on purpose. Panes that fetch on mount rely on the
-   * unmount to refresh, so the default has to stay as it was.
-   */
+  // Per pane on purpose: panes that refetch on remount keep today's default.
   it("Tabs still unmount a pane that did not ask to be kept", () => {
     const [Pane, probe] = mountProbe("plain-pane");
     const items = [

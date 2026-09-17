@@ -105,11 +105,7 @@ interface CardProps
 
 interface TabsProps
   extends Omit<React.HTMLAttributes<HTMLDivElement>, "onChange"> {
-  /**
-   * `keepMounted` holds a pane in the DOM once it has been opened, as antd
-   * does. Radix unmounts the pane behind an inactive tab, so a pane carrying
-   * unsaved edits loses them -- and any ref to it -- on a tab switch.
-   */
+  /** `keepMounted` holds an opened pane, as antd does; Radix drops it. */
   items?: Array<
     KeyedItem & { children?: React.ReactNode; keepMounted?: boolean }
   >;
@@ -560,12 +556,8 @@ const TabsBase = React.forwardRef<HTMLDivElement, TabsProps>(function Tabs(
 
   const first = panes[0]?.key;
 
-  /*
-   * Only a pane the user has actually opened is held. Mounting every
-   * `keepMounted` pane up front would run its loaders behind a tab nobody
-   * looked at -- the HITL pane alerts on a failed load, so that surfaces as
-   * an error for a tab the user never opened.
-   */
+  // Held from first open: mounting up front runs a pane's loaders, and its
+  // failure alert, behind a tab nobody looked at.
   const shownKey = String(activeKey ?? defaultActiveKey ?? first ?? "");
   const [openedKeys, setOpenedKeys] = React.useState<ReadonlySet<string>>(
     () => new Set(shownKey ? [shownKey] : []),
@@ -573,7 +565,7 @@ const TabsBase = React.forwardRef<HTMLDivElement, TabsProps>(function Tabs(
   const noteOpened = React.useCallback((key: string) => {
     setOpenedKeys((prev) => (prev.has(key) ? prev : new Set(prev).add(key)));
   }, []);
-  // Covers the controlled case; the uncontrolled one comes through onChange.
+  // Controlled; the uncontrolled case arrives via onValueChange.
   React.useEffect(() => {
     if (shownKey) {
       noteOpened(shownKey);
@@ -668,8 +660,7 @@ const TabsBase = React.forwardRef<HTMLDivElement, TabsProps>(function Tabs(
         <TabsContent
           key={String(p.key)}
           value={String(p.key)}
-          // A force-mounted pane counts as present, so Radix renders it
-          // without `hidden` -- both panes would show. Hide it on the state.
+          // Radix leaves `hidden` off a force-mounted pane, so hide on state.
           forceMount={
             p.keepMounted && openedKeys.has(String(p.key)) ? true : undefined
           }

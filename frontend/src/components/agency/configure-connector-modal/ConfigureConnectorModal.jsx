@@ -700,10 +700,8 @@ function ConfigureConnectorModal({
                     key: item.key,
                     label: item.label,
                     disabled: item.disabled,
-                    // One Save writes both panes, so leaving a pane must not
-                    // discard it. Unmounting the HITL pane dropped its edits
-                    // and its ref, and the save then skipped it and still
-                    // reported success.
+                    // One Save writes both panes, so leaving one must not
+                    // discard the edits it holds.
                     keepMounted: true,
                     children: (
                       <div className={roClass}>
