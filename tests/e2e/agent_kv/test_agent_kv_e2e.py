@@ -61,6 +61,8 @@ from tests.e2e.agent_kv.conftest import (
     INVOICE_FIELDS,
     INVOICE_PDF,
     INVOICE_XLSX,
+    RENT_ROLL_PDF,
+    RENT_ROLL_TABLE,
     AgentKVAuth,
     cancel,
     delete,
@@ -72,6 +74,9 @@ from tests.e2e.agent_kv.conftest import (
     result,
     submit,
     submit_raw,
+    table_keys,
+    table_result_body,
+    table_stages,
 )
 
 if not (os.environ.get("UNSTRACT_BACKEND_URL") and os.environ.get("AGENT_KV_E2E") == "1"):
@@ -85,6 +90,7 @@ if not (os.environ.get("UNSTRACT_BACKEND_URL") and os.environ.get("AGENT_KV_E2E"
 pytestmark = [pytest.mark.e2e]
 
 _INVOICE_BYTES = INVOICE_PDF.read_bytes()
+_RENT_ROLL_BYTES = RENT_ROLL_PDF.read_bytes()
 
 # Bounded wait for the org's concurrency slots to free up again. Used by the
 # cancel scenario (a cancelled job must not leak its slot) and by the
@@ -274,6 +280,98 @@ def test_happy_path_extraction(agent_kv_key: AgentKVAuth, require_llm: None) -> 
     assert kv_result_body(again) == body, (
         "result must be byte-for-byte stable on re-read"
     )
+
+
+# ---------------------------------------------------------------------------
+# The table extractor (spec §5 step 3)
+# ---------------------------------------------------------------------------
+
+
+def test_table_extractor_happy_path(
+    agent_kv_key: AgentKVAuth, require_llm: None
+) -> None:
+    """A `table` entry runs the table engine and files its result under `table`.
+
+    Before the job row recorded its extractor, every response keyed by the
+    hardcoded `kv` name -- a table job's output would have been filed under the
+    wrong extractor, which no unit test on either side would have caught.
+    """
+    job_id, status_url = submit(
+        agent_kv_key,
+        _RENT_ROLL_BYTES,
+        "rent_roll.pdf",
+        table_keys(),
+        extractor="table",
+    )
+    assert status_url.endswith(job_id), status_url
+
+    status_doc = poll(agent_kv_key, job_id, timeout_s=600)
+    assert status_doc["status"] == "completed", status_doc
+    # Keyed by the extractor that ran, and by that one only.
+    assert set(status_doc["extractors"]) == {"table"}, status_doc
+
+    # R7: the stage is recorded AND visible. StageReportView persists whatever
+    # name the executor sends, so a KV-only stage-name filter would leave this
+    # list empty while the job still completed.
+    stages = {s["name"]: s for s in table_stages(status_doc)}
+    assert "table_extraction" in stages, table_stages(status_doc)
+    assert stages["table_extraction"]["status"] == "done", stages
+
+    resp = result(agent_kv_key, job_id)
+    assert resp.status_code == 200, resp.text
+    payload = resp.json()
+    assert payload["success"] is True, payload
+    assert payload["status"] == "completed", payload
+
+    body = table_result_body(resp)
+    # Structure, not values: this lane runs under a mock LLM as well as a real
+    # key, so field values are not assertable (see the module docstring).
+    assert isinstance(body["tables"], list), body
+    assert "page_count" in body, body
+    assert "row_count" in body, body
+
+    assert set(payload["usage_summary"]["by_extractor"]) == {"table"}, payload
+
+    # Re-readable until TTL (D11), same contract as the kv path.
+    again = result(agent_kv_key, job_id)
+    assert again.status_code == 200, again.text
+    assert again.json() == payload, "result must be stable on re-read"
+
+
+def test_table_entry_without_a_target_table_is_400(agent_kv_key: AgentKVAuth) -> None:
+    """Rejected at submit, before any paid work -- `target_table` is the
+    engine's one required extraction parameter."""
+    resp = submit_raw(
+        agent_kv_key, _RENT_ROLL_BYTES, "rent_roll.pdf", {}, extractor="table"
+    )
+    assert resp.status_code == 400, resp.text
+    assert "target_table" in resp.text, resp.text
+
+
+def test_a_kv_option_on_a_table_entry_is_400(agent_kv_key: AgentKVAuth) -> None:
+    """Per-extractor options exist so an option aimed at the wrong extractor
+    cannot be silently dropped and change what the caller is billed for."""
+    resp = submit_raw(
+        agent_kv_key,
+        _RENT_ROLL_BYTES,
+        "rent_roll.pdf",
+        table_keys(),
+        extractor="table",
+        qa=True,
+    )
+    assert resp.status_code == 400, resp.text
+    assert "qa" in resp.text, resp.text
+
+
+def test_an_unknown_extractor_is_400(agent_kv_key: AgentKVAuth) -> None:
+    resp = submit_raw(
+        agent_kv_key,
+        _RENT_ROLL_BYTES,
+        "rent_roll.pdf",
+        table_keys(),
+        extractor="nonexistent",
+    )
+    assert resp.status_code == 400, resp.text
 
 
 # ---------------------------------------------------------------------------

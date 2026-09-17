@@ -37,6 +37,38 @@ INVOICE_PDF = FIXTURES_DIR / "invoice.pdf"
 # post-OCR virtual-page cap instead.
 INVOICE_XLSX = FIXTURES_DIR / "invoice.xlsx"
 
+# A real, OCR-able 2-page rent roll, generated for this lane with reportlab the
+# same way invoice.pdf was, and checked in as a static binary (the e2e venv
+# does not depend on reportlab to regenerate it at test time). The invoice
+# fixture cannot stand in: it has no tabular region, so a table extraction
+# against it would legitimately return no tables and the scenario would assert
+# nothing.
+RENT_ROLL_PDF = FIXTURES_DIR / "rent_roll.pdf"
+
+#: The table the rent-roll fixture contains, named the way the engine expects
+#: (`target_table` is its one required extraction parameter).
+RENT_ROLL_TABLE = "Rent roll"
+
+
+def table_keys(target_table: str = RENT_ROLL_TABLE) -> dict:
+    """The `table` extractor's `keys` member.
+
+    Every extractor entry carries `keys`; for the table extractor the thing
+    being asked for is a table, named by `target_table`.
+    """
+    return {"target_table": target_table}
+
+
+def table_result_body(resp: requests.Response) -> dict:
+    """The `table` extractor's own result out of an extractor-keyed payload."""
+    return resp.json()["extractors"]["table"]
+
+
+def table_stages(status_doc: dict) -> list[dict]:
+    """The `table` extractor's stage list out of an extractor-keyed status doc."""
+    return status_doc["extractors"]["table"]["stages"]
+
+
 # The 3 leaves the happy-path schema asks for; also used to build the schema.
 INVOICE_FIELDS = ("invoice_number", "vendor_name", "total_amount")
 
@@ -122,6 +154,8 @@ def submit_raw(
     file_bytes: bytes,
     filename: str,
     keys: dict | None,
+    *,
+    extractor: str = "kv",
     **fields: object,
 ) -> requests.Response:
     """POST a submit request and return the raw response -- no assertions.
@@ -151,7 +185,7 @@ def submit_raw(
         )
     else:
         data["extractors"] = json.dumps(
-            [{"name": "kv", "keys": keys, "options": options}]
+            [{"name": extractor, "keys": keys, "options": options}]
         )
     return requests.post(
         auth.exec_url,
@@ -167,6 +201,8 @@ def submit(
     file_bytes: bytes,
     filename: str,
     keys: dict,
+    *,
+    extractor: str = "kv",
     **fields: object,
 ) -> tuple[str, str]:
     """POST a submit request expected to succeed; return (job_id, status_url).
@@ -176,7 +212,7 @@ def submit(
     cloud ``agentic_kv`` executor plugin isn't installed on this deployment
     -- this whole lane requires it (docs §11).
     """
-    resp = submit_raw(auth, file_bytes, filename, keys, **fields)
+    resp = submit_raw(auth, file_bytes, filename, keys, extractor=extractor, **fields)
     assert resp.status_code == 202, (
         f"submit: HTTP {resp.status_code} (expected 202; a 501 means the "
         f"agent-kv engine plugin isn't installed on this deployment): {resp.text}"

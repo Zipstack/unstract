@@ -40,6 +40,14 @@ AGENT_KV_QUEUE = "celery_executor_agentic_kv"
 # the concurrency slot and fires the webhook.
 AGENT_KV_CALLBACK_QUEUE = "agent_kv_callback"
 
+# The queue the backend dispatches Agent-KV TABLE extraction onto. Same queue
+# the IDE table path already uses -- ExecutionContext(executor_name=
+# "agentic_table") -> celery_executor_agentic_table -- which is exactly why the
+# API path reuses that executor name rather than introducing one of its own.
+# It was already wired for the IDE; these assertions keep it wired now that a
+# second, paid entry point depends on it.
+AGENT_TABLE_QUEUE = "celery_executor_agentic_table"
+
 # The env var the live PG consumer reads. Named here so a future rename has to
 # touch this constant rather than silently bypassing every assertion below.
 PG_QUEUE_VAR = "WORKER_PG_QUEUE_CONSUMER_QUEUE"
@@ -115,6 +123,36 @@ def test_run_worker_pg_executor_role_lists_the_agent_kv_queue():
     assert AGENT_KV_QUEUE in _queues(match.group(1)), (
         f"run-worker.sh's pg-executor role omits {AGENT_KV_QUEUE}; a host-run "
         f"fleet would accept Agent-KV work and never drain it."
+    )
+
+
+@pytest.mark.parametrize(
+    ("compose_path", "label"),
+    [(DEV_COMPOSE, "dev compose"), (TEST_COMPOSE, "e2e test compose")],
+)
+def test_pg_executor_consumes_the_agent_table_queue(compose_path, label):
+    """Agent-KV table jobs ride the IDE table executor's queue (spec R1)."""
+    env = _service_env(compose_path, "worker-pg-executor")
+    raw = env.get(PG_QUEUE_VAR)
+    assert raw is not None, (
+        f"{label}: worker-pg-executor sets no {PG_QUEUE_VAR}; the running "
+        f"pg-queue-consumer would fall back to a default that omits "
+        f"{AGENT_TABLE_QUEUE}"
+    )
+    assert AGENT_TABLE_QUEUE in _queues(raw), (
+        f"{label}: {AGENT_TABLE_QUEUE} has no consumer -- both IDE table "
+        f"prompts and Agent-KV table jobs will sit in DISPATCHED forever with "
+        f"no error at the producer. Add it to {PG_QUEUE_VAR}."
+    )
+
+
+def test_run_worker_pg_executor_role_lists_the_agent_table_queue():
+    text = RUN_WORKER.read_text()
+    match = re.search(r'\["\$PG_ROLE_EXECUTOR"\]="executor;([^"]+)"', text)
+    assert match, "could not find the PG_ROLE_EXECUTOR entry in run-worker.sh"
+    assert AGENT_TABLE_QUEUE in _queues(match.group(1)), (
+        f"run-worker.sh's pg-executor role omits {AGENT_TABLE_QUEUE}; a "
+        f"host-run fleet would accept table work and never drain it."
     )
 
 
