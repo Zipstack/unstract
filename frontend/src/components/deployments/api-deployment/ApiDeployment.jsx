@@ -85,6 +85,7 @@ function ApiDeployment() {
     fetchRef,
     handlePaginationChange,
     handleSearch,
+    handleListRefresh,
   } = usePaginatedList();
 
   const { scrollRestoreId, activateScrollRestore, clearPendingScroll } =
@@ -360,6 +361,7 @@ function ApiDeployment() {
           openCodeModal={setOpenCodeModal}
           setSelectedRow={setSelectedRow}
           workflowEndpointList={workflowEndpointList}
+          refreshList={handleListRefresh}
         />
       )}
       <ManageKeys

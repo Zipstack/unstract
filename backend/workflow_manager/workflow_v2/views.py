@@ -10,7 +10,6 @@ from django.views.decorators.csrf import csrf_exempt
 from permissions.membership_views import OwnerManagementMixin
 from permissions.permission import IsOwner, IsOwnerOrSharedUserOrSharedToOrg
 from permissions.resource_share_views import ResourceShareManagementMixin
-from permissions.roles import ResourceRole
 from pipeline_v2.models import Pipeline
 from pipeline_v2.pipeline_processor import PipelineProcessor
 from plugins import get_plugin
@@ -162,9 +161,7 @@ class WorkflowViewSet(
         )
         # ``created_by`` is audit-only; the creator's access flows through an
         # OWNER membership row (UN-2202 co-owners).
-        workflow.memberships.get_or_create(
-            user_id=self.request.user.id, defaults={"role": ResourceRole.OWNER}
-        )
+        workflow.grant_owner(self.request.user)
         try:
             # Create empty WorkflowEndpoints for UI compatibility
             # ConnectorInstances will be created when users actually configure connectors

@@ -331,6 +331,8 @@ class IsFrictionLessAdapterDelete(permissions.BasePermission):
     ) -> bool:
         if obj.is_friction_less:
             return True
+        if _is_service_account(request):
+            return True
         if _is_resource_owner(request.user, obj):
             return True
         return _is_organization_admin(request)

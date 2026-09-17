@@ -47,7 +47,9 @@ class IsWorkflowOwnerOrShared(BasePermission):
         user = request.user
 
         has_access = (
-            _is_resource_owner(user, workflow)
+            # Trusted across its own org; ownership no longer names it (UN-3853).
+            getattr(user, "is_service_account", False)
+            or _is_resource_owner(user, workflow)
             or _is_resource_viewer(user, workflow)
             or has_group_access(user, workflow)
             or (workflow.shared_to_org and workflow.organization == user.organization)

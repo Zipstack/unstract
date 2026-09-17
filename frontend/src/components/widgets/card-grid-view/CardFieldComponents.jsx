@@ -29,6 +29,7 @@ import {
 } from "../../../helpers/GetStaticData";
 import { canEditResource } from "../../../helpers/resourceAccess";
 import { useSessionStore } from "../../../store/session-store";
+import { resolveOwnerDisplay } from "../owner-display";
 
 /**
  * Reusable action box with Edit, Share, Delete icons and kebab menu
@@ -155,15 +156,8 @@ CardActionBox.propTypes = {
  * Reusable owner field row
  * @return {JSX.Element} Rendered owner field row
  */
-function OwnerFieldRow({ item, onManageCoOwners }) {
-  // Ownership, not editability: an org admin may edit a resource that is not
-  // theirs. Every list serializer sends is_owner, and the old created_by
-  // fallback could not see co-owners.
-  const isOwner = Boolean(item?.is_owner);
-  const email = item.created_by_email;
-  const name = isOwner ? "Me" : email?.split("@")[0] || "Unknown";
-  const extra =
-    item?.co_owners_count > 1 ? ` +${item.co_owners_count - 1}` : "";
+function OwnerFieldRow({ item, sessionDetails, onManageCoOwners }) {
+  const { email, name, extra } = resolveOwnerDisplay(item, sessionDetails);
   const ownerDisplay = `${name}${extra}`;
 
   const ownerContent = (
@@ -202,6 +196,7 @@ function OwnerFieldRow({ item, onManageCoOwners }) {
 
 OwnerFieldRow.propTypes = {
   item: PropTypes.object.isRequired,
+  sessionDetails: PropTypes.object,
   onManageCoOwners: PropTypes.func,
 };
 

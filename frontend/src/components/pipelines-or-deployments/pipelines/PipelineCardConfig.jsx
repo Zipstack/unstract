@@ -379,6 +379,7 @@ function createPipelineCardConfig({
             />
             <OwnerFieldRow
               item={pipeline}
+              sessionDetails={sessionDetails}
               onManageCoOwners={() => onManageCoOwners?.(pipeline)}
             />
             <LastRunFieldRow lastRunTime={pipeline.last_run_time} />
