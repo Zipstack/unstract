@@ -173,8 +173,8 @@ The request is **extractor-scoped**: a per-extractor schema and its knobs live i
 
 | Field | Required | Notes |
 |---|---|---|
-| `name` | yes | Which extractor. **Currently `kv` only**; anything else ⇒ 400. More than one entry ⇒ 400 — the format is in place for multi-extractor jobs, the execution is not built yet. |
-| `keys` | yes | This extractor's `keys.json` (see [§2](#2-the-extraction-schema-keys-field)). |
+| `name` | yes | Which extractor: `kv` or `table`; anything else ⇒ 400. More than one entry ⇒ 400 — the format is in place for multi-extractor jobs, the execution is not built yet. |
+| `keys` | yes | This extractor's own schema. For `kv`, its `keys.json` (see [§2](#2-the-extraction-schema-keys-field)); for `table`, `{"target_table": "<the table to extract>"}` — the engine's one required extraction parameter. |
 | `options` | no | This extractor's own knobs (below). An unrecognised option ⇒ 400, so a knob aimed at the wrong extractor fails loudly instead of being silently dropped. |
 
 **`kv` options:**
@@ -188,6 +188,19 @@ The request is **extractor-scoped**: a per-extractor schema and its knobs live i
 | `calculations` | Post-processing instructions; opt-in codegen. Disabled by default; enabled per deployment via `AGENT_KV_CALCULATIONS_ENABLED`. |
 | `document_class` | Free-text hint (as CLI). |
 | `key_notes` | Free-text notes appended to the prompt (as CLI). |
+
+**`table` options:**
+
+| Option | Notes |
+|---|---|
+| `instructions` | Free-text extraction guidance handed to the engine. |
+| `json_structure` | Free-text description of the row structure to return. |
+| `enable_header_mapping` | Default **off**. **Changes the result shape** — see [§5](#5-result--get-agent-kvjob_idresult). |
+| `correct_number_separators` | Default **off**. Re-reads thousands/decimal separators in numeric cells. |
+| `number_format` | `US` (default) \| `EU`. Which convention `correct_number_separators` assumes. |
+
+Not exposed for `table` (they are meaningless on a blind API): `output_path`,
+`enable_highlight`, and the IDE callback hints `prompt_key`/`doc_name`.
 
 > **No backward compatibility with the pre-`extractors` flat shape.** `keys`, `qa`,
 > `challenge`, `extraction_mode`, `structured_output`, `calculations`,
@@ -265,9 +278,18 @@ curl -X POST https://api.unstract.example/agent-kv/ \
 ## 4. Status — `GET /agent-kv/{job_id}`
 
 Verbose, agent-centric, stage-level (`backend/agent_kv/execution_views.py::_status_document`).
-Stage list (superset; only stages that actually ran for this job appear, in a fixed
-order): `document_processing, extraction, qa, challenge, normalize, constraints,
-codegen, code_execution`.
+**Stage names are per-extractor.** They are wire format, and `qa`/`challenge`/`codegen`
+mean nothing to the table extractor, so a job's recorded stages are filtered through the
+list for the extractor that actually ran
+(`backend/agent_kv/constants.py::STAGE_NAMES_BY_EXTRACTOR`).
+
+- `kv` (superset; only stages that actually ran for this job appear, in a fixed
+  order): `document_processing, extraction, qa, challenge, normalize, constraints,
+  codegen, code_execution`.
+- `table`: `table_extraction` — a single stage. The table engine exposes no node-level
+  progress hooks, so finer stage names would describe progress the executor cannot
+  actually report. It re-reports `table_extraction` as `running` while the engine works,
+  carrying a `steps` counter that increases as the engine passes its own progress points.
 
 ```json
 {
@@ -419,6 +441,46 @@ entry carries more than the example above shows — this one is verbatim from a 
 (The exact result shape beyond `success` is the cloud engine's contract — spec §4 — not
 re-specified or validated by this repo.)
 
+**The `table` extractor's result** is the table engine's extraction output, filed
+under `extractors.table`:
+
+```json
+{
+  "success": true,
+  "status": "completed",
+  "extractors": {
+    "table": {
+      "tables": [{"unit": "A1", "rent": 1200}],
+      "page_count": 3,
+      "table_pages": [1, 2],
+      "headers": ["unit", "rent"],
+      "row_count": 1,
+      "timing": {"document_processing": 6.2, "total": 41.7}
+    }
+  },
+  "usage_summary": {
+    "total": {"pages": 3, "input_tokens": 3120, "output_tokens": 480, "total_cost": 0.0},
+    "by_extractor": {
+      "table": {"pages": 3, "input_tokens": 3120, "output_tokens": 480, "total_cost": 0.0}
+    }
+  }
+}
+```
+
+`tables` carries one object per extracted row; `headers` is the canonical column list
+the engine settled on; `table_pages` are the 1-based pages the rows came from; and
+`row_count` is the number of rows extracted. `timing` rides inside the extractor block,
+and `parse_failures` appears only when some page failed to parse. There is **no
+`cost_summary`** on this extractor — the table engine has no per-agent cost tracker — so
+`usage_summary` is the only billing figure, as it is for `kv`.
+
+> **`enable_header_mapping` changes the type of `tables`.** With it **off** (the
+> default), `tables` is a flat list of row objects, exactly as above. With it **on**,
+> the engine wraps them and `tables` becomes
+> `{"header_mapping": {...}, "rows": [...]}`. That is a breaking shape change between
+> two settings of one option: a client that sets the flag must read `tables.rows`
+> instead of iterating `tables`.
+
 ## 6. Validate — `POST /agent-kv/validate`
 
 Compile-only check; **free of charge but not free of auth** — authenticated (valid key)
@@ -454,9 +516,16 @@ Defined precisely per spec §7.4: no task-revocation machinery exists anywhere i
 platform, so cancel flips the job row to `CANCELLED` via the same guarded
 `mark_terminal` write gate every other terminalization path uses
 (`backend/agent_kv/models.py::AgentKVJob.mark_terminal`) — later callbacks/stage
-reports become no-ops; a job not yet picked up is dropped at pickup; a job **already
-running continues to completion in the worker** (its LLM spend is still incurred and
-metered), its result is simply discarded on arrival. No mid-run abort.
+reports become no-ops; a job not yet picked up is dropped at pickup.
+
+A job **already running is stopped cooperatively**, not revoked. Cancellation is
+detected opportunistically: the executor only learns of it on its next stage report,
+which the internal endpoint answers as a no-op once the row is terminal. Both extractors
+check at their engine's progress points — `kv` at every graph-node boundary, `table` at
+the engine's own progress points (rate-limited, so detection can lag by a few seconds) —
+and the job then terminates as `cancelled`. Work already done is still billed and
+metered; work not yet started is not. A job that finishes before the cancel is noticed
+simply has its result discarded on arrival.
 
 - Won the race (job was non-terminal): `200` `{"status": "cancelled"}`.
 - Already terminal: `409` `{"status": "<job.status>"}` — **note this one is the raw

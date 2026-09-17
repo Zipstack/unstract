@@ -225,3 +225,28 @@ def test_the_extractor_column_defaults_to_kv():
     this column existed the API accepted exactly one extractor, always `kv`.
     """
     assert AgentKVJob().extractor == V1_EXTRACTOR_NAME
+
+
+def test_a_job_whose_extractor_has_no_stage_list_reports_no_stages(caplog):
+    """A retired extractor name with surviving rows must not 500 `GET status`.
+
+    `_status_document` used to subscript `STAGE_NAMES_BY_EXTRACTOR`, so such a
+    row raised `KeyError` on status while `GET result` kept working -- the
+    result payload keys by `job.extractor` without consulting that table. An
+    empty stage array is the honest answer for an extractor this build no
+    longer knows how to describe.
+    """
+    from agent_kv.execution_views import _status_document
+
+    job = _job(
+        extractor="retired_extractor",
+        stage="something",
+        stages={"something": {"status": "done"}},
+    )
+
+    with caplog.at_level("WARNING", logger="agent_kv.execution_views"):
+        doc = _status_document(job)
+
+    assert doc["extractors"]["retired_extractor"]["stages"] == []
+    assert doc["status"] == job.status.lower()
+    assert "retired_extractor" in caplog.text

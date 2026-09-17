@@ -40,7 +40,22 @@ def _get_job(agent_kv_key, job_id):
 def _status_document(job) -> dict:
     """Build the status document per spec §7.2."""
     stages_json = job.stages or {}
-    stage_names = STAGE_NAMES_BY_EXTRACTOR[job.extractor]
+    # `.get`, not a subscript. No row can hold an out-of-dict value today (the
+    # sole creation site is serializer-validated and the migration backfills
+    # "kv"), but a RETIRED extractor name with surviving rows would 500 every
+    # `GET status` for those jobs while `GET result` kept working -- the result
+    # payload keys by `job.extractor` without consulting this table at all. An
+    # empty stage list degrades to "no stages reported", which is honest for an
+    # extractor this build no longer knows how to describe.
+    stage_names = STAGE_NAMES_BY_EXTRACTOR.get(job.extractor)
+    if stage_names is None:
+        logger.warning(
+            "agent-kv job %s ran extractor %r, which has no stage list in "
+            "STAGE_NAMES_BY_EXTRACTOR; reporting an empty stage array",
+            job.id,
+            job.extractor,
+        )
+        stage_names = []
     doc = {
         "job_id": str(job.id),
         # The JOB's state, not an extractor's: a job is not complete until every
