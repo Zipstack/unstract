@@ -233,7 +233,7 @@ function ApiDeployment() {
     updateItemStatus(record.id, newStatus);
 
     apiDeploymentsApiService
-      .updateApiDeployment({ ...record, is_active: newStatus })
+      .setApiDeploymentActive(record.id, newStatus)
       .catch((err) => {
         updateItemStatus(record.id, !newStatus);
         setAlertDetails(handleException(err));

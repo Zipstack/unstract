@@ -10,7 +10,11 @@ from django.db import IntegrityError, transaction
 from django.db.models import F, QuerySet
 from django.http import HttpResponse
 from permissions.membership_views import OwnerManagementMixin
-from permissions.permission import IsOwner, IsOwnerOrSharedUserOrSharedToOrg
+from permissions.permission import (
+    IsOwner,
+    IsOwnerOrSharedUserOrSharedToOrg,
+    is_activation_only_patch,
+)
 from permissions.resource_share_views import ResourceShareManagementMixin
 from plugins import get_plugin
 from rest_framework import serializers, status, viewsets
@@ -65,6 +69,12 @@ class PipelineViewSet(
         return None
 
     def get_permissions(self) -> list[Any]:
+        # Enabling or disabling is use, not configuration, so it follows
+        # sharing. ``pipeline_id`` is echoed by the client and changes nothing.
+        if self.action == "partial_update" and is_activation_only_patch(
+            self.request, flag="active", ignore=("pipeline_id",)
+        ):
+            return [IsOwnerOrSharedUserOrSharedToOrg()]
         if self.action in [
             "destroy",
             "partial_update",
