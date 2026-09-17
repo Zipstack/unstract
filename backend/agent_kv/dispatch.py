@@ -8,7 +8,7 @@ from django.conf import settings
 from django.utils import timezone
 from unstract.sdk1.execution.context import ExecutionContext
 
-from agent_kv.constants import EXECUTION_SOURCE, EXECUTOR_NAME, OPERATION_KV_EXTRACT
+from agent_kv.constants import EXECUTION_SOURCE, EXTRACTOR_ROUTES
 from agent_kv.models import AgentKVJob, JobStatus
 
 logger = logging.getLogger(__name__)
@@ -51,7 +51,8 @@ def _platform_api_key(job) -> str:
     return str(platform_key.key)
 
 
-def dispatch_job(job, *, schema: dict, options: dict) -> None:
+def dispatch_job(job, *, extractor: str, schema: dict, options: dict) -> None:
+    executor_name, operation = EXTRACTOR_ROUTES[extractor]
     org_id = str(job.organization_id)
     # Everything that can fail — platform-key lookup, context construction,
     # and the enqueue call itself — lives inside this try so no internal
@@ -61,8 +62,8 @@ def dispatch_job(job, *, schema: dict, options: dict) -> None:
     try:
         job.task_id = uuid.uuid4()
         context = ExecutionContext(
-            executor_name=EXECUTOR_NAME,
-            operation=OPERATION_KV_EXTRACT,
+            executor_name=executor_name,
+            operation=operation,
             run_id=str(job.id),
             execution_source=EXECUTION_SOURCE,
             organization_id=org_id,

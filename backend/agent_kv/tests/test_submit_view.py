@@ -197,7 +197,7 @@ def test_happy_path_returns_202_with_job_id_status_and_status_url(
     m_limiter.check_and_acquire.return_value = True
     m_save.side_effect = _stamp_created_at
 
-    def _side_effect(job, *, schema, options):
+    def _side_effect(job, *, extractor, schema, options):
         job.status = JobStatus.DISPATCHED
         job.dispatched_at = timezone.now()
 

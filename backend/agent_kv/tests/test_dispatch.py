@@ -13,6 +13,7 @@ import pytest  # noqa: E402
 from django.conf import settings  # noqa: E402
 
 from agent_kv import dispatch  # noqa: E402
+from agent_kv.constants import V1_EXTRACTOR_NAME  # noqa: E402
 from agent_kv.models import AgentKVJob, JobStatus  # noqa: E402
 
 
@@ -34,7 +35,12 @@ def _job():
 @mock.patch.object(AgentKVJob, "objects")
 def test_dispatch_success_stamps_job(m_objects, m_disp, m_key):
     job = _job()
-    dispatch.dispatch_job(job, schema={"a": {"description": "d"}}, options={"qa": True})
+    dispatch.dispatch_job(
+        job,
+        extractor=V1_EXTRACTOR_NAME,
+        schema={"a": {"description": "d"}},
+        options={"qa": True},
+    )
 
     ctx = m_disp.return_value.dispatch_with_callback.call_args.args[0]
     assert ctx.executor_name == "agentic_kv"
@@ -96,7 +102,7 @@ def test_dispatch_guarded_update_cannot_overwrite_a_terminal_row(
 
     # Must not raise -- dispatch_job doesn't (and can't meaningfully) act on
     # the update's row count; it already told the caller it dispatched.
-    dispatch.dispatch_job(job, schema={}, options={})
+    dispatch.dispatch_job(job, extractor=V1_EXTRACTOR_NAME, schema={}, options={})
 
     filter_kwargs = m_objects.filter.call_args.kwargs
     assert filter_kwargs == {"id": job.id, "status": JobStatus.PENDING}
@@ -107,7 +113,7 @@ def test_dispatch_guarded_update_cannot_overwrite_a_terminal_row(
 def test_enqueue_failure_raises_dispatch_error(m_disp, m_key):
     m_disp.return_value.dispatch_with_callback.side_effect = RuntimeError("broker down")
     with pytest.raises(dispatch.DispatchError):
-        dispatch.dispatch_job(_job(), schema={}, options={})
+        dispatch.dispatch_job(_job(), extractor=V1_EXTRACTOR_NAME, schema={}, options={})
 
 
 @mock.patch.object(dispatch, "_dispatcher")
@@ -123,7 +129,7 @@ def test_dispatch_job_uses_platform_api_key_lookup(m_disp):
     ):
         job = _job()
         with mock.patch.object(AgentKVJob, "objects"):
-            dispatch.dispatch_job(job, schema={}, options={})
+            dispatch.dispatch_job(job, extractor=V1_EXTRACTOR_NAME, schema={}, options={})
         ctx = m_disp.return_value.dispatch_with_callback.call_args.args[0]
         assert ctx.executor_params["platform_api_key"] == "the-real-key"
         # The lookup takes the org's public slug, never the row PK (13b F6).
@@ -159,7 +165,7 @@ def test_raw_exception_from_platform_key_lookup_is_wrapped_as_dispatch_error(
     m_key.side_effect = RuntimeError("platform db down")
 
     with pytest.raises(dispatch.DispatchError):
-        dispatch.dispatch_job(_job(), schema={}, options={})
+        dispatch.dispatch_job(_job(), extractor=V1_EXTRACTOR_NAME, schema={}, options={})
 
     # Never got far enough to enqueue.
     assert not m_disp.return_value.dispatch_with_callback.called

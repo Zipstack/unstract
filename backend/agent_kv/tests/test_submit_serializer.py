@@ -186,8 +186,10 @@ def test_empty_calculations_and_false_structured_output_pass_when_disabled():
 # request quietly run as something other than what they asked for.
 # ---------------------------------------------------------------------------
 def test_unknown_extractor_name_rejected():
+    # "table" is now a supported extractor (Task 4); use a name that remains
+    # unsupported so this still exercises the unknown-extractor rejection.
     s = SubmitSerializer(data=_data(extractors=json.dumps(
-        [{"name": "table", "keys": VALID_KEYS}]
+        [{"name": "bogus", "keys": VALID_KEYS}]
     )))
     assert not s.is_valid()
     assert "unknown extractor" in _errs(s)

@@ -7,7 +7,7 @@ from django.conf import settings
 from rest_framework import serializers
 from unstract.agent_kv_schema import SchemaError, compile_schema
 
-from agent_kv.constants import V1_EXTRACTOR_NAME
+from agent_kv.constants import EXTRACTOR_ROUTES, TABLE_EXTRACTOR_NAME, V1_EXTRACTOR_NAME
 
 ALLOWED_EXTENSIONS = {".pdf", ".xlsx", ".xls", ".png", ".jpg", ".jpeg", ".tiff"}
 PDF_LIKE = {".pdf"}
@@ -16,9 +16,9 @@ EXTRACTION_MODES = ("whole-doc", "per-page")
 
 
 # Derived, not repeated: the result and status documents key their payloads by
-# V1_EXTRACTOR_NAME, so a second literal here would let the serializer accept a
-# name the responses file under something else.
-SUPPORTED_EXTRACTORS = (V1_EXTRACTOR_NAME,)
+# these names, so a literal here that no route/stage list knows about would let
+# the serializer accept a name the responses file under something else.
+SUPPORTED_EXTRACTORS = tuple(EXTRACTOR_ROUTES)
 
 
 class KVOptionsSerializer(serializers.Serializer):
@@ -74,6 +74,75 @@ class KVOptionsSerializer(serializers.Serializer):
         return data
 
 
+class TableOptionsSerializer(serializers.Serializer):
+    """The `table` extractor's own knobs (spec §7.1).
+
+    Deliberately a subset of what the IDE path accepts: `output_path` and the
+    IDE callback hints (`prompt_key`, `doc_name`) are meaningless on the blind
+    API, and `enable_highlight` has no consumer there.
+
+    **`enable_header_mapping` changes the result shape.** With it off, the
+    engine returns `output.tables` as a flat list of row dicts. With it on, the
+    engine wraps them as `{"header_mapping": ..., "rows": [...]}`
+    (`runner.py:1712`; the executor's own enrichment path unwraps the same
+    shape at `executor.py:577`). The API returns whichever the caller asked
+    for, unchanged -- so a client that sets this flag must read `.rows`.
+    """
+
+    instructions = serializers.CharField(
+        required=False, allow_blank=True, default="", max_length=10_000
+    )
+    json_structure = serializers.CharField(
+        required=False, allow_blank=True, default="", max_length=100_000
+    )
+    enable_header_mapping = serializers.BooleanField(required=False, default=False)
+    correct_number_separators = serializers.BooleanField(required=False, default=False)
+    number_format = serializers.ChoiceField(
+        required=False, choices=("US", "EU"), default="US"
+    )
+
+    def validate(self, data):
+        # Same reason KVOptionsSerializer rejects unknowns: DRF drops them
+        # silently, so an option aimed at the wrong extractor would be
+        # discarded and the job would run with a configuration the caller
+        # never asked for.
+        unknown = set(self.initial_data) - set(self.fields)
+        if unknown:
+            raise serializers.ValidationError(
+                f"unknown options for extractor '{TABLE_EXTRACTOR_NAME}': "
+                f"{sorted(unknown)}"
+            )
+        return data
+
+
+class TableKeysSerializer(serializers.Serializer):
+    """The `table` extractor's `keys`.
+
+    The wire format gives every extractor a `keys` member; for the table
+    extractor the thing being asked for is a table, named by `target_table`
+    (the engine's one required extraction parameter).
+    """
+
+    target_table = serializers.CharField(max_length=256)
+
+    def validate(self, data):
+        unknown = set(self.initial_data) - set(self.fields)
+        if unknown:
+            raise serializers.ValidationError(
+                f"unknown keys for extractor '{TABLE_EXTRACTOR_NAME}': {sorted(unknown)}"
+            )
+        return data
+
+
+# Each extractor's own validators. Keyed by the same names as EXTRACTOR_ROUTES;
+# `test_every_supported_extractor_has_a_route_and_a_stage_list` plus the
+# lookup below keep the three tables in step.
+_OPTIONS_SERIALIZERS = {
+    V1_EXTRACTOR_NAME: KVOptionsSerializer,
+    TABLE_EXTRACTOR_NAME: TableOptionsSerializer,
+}
+
+
 class ExtractorSerializer(serializers.Serializer):
     """One entry of the submit's `extractors` array (spec §7.0/§7.1)."""
 
@@ -91,14 +160,16 @@ class ExtractorSerializer(serializers.Serializer):
         return v
 
     def validate_keys(self, spec):
-        # Size is capped on the SERIALIZED form: the cap exists to bound parse
-        # and compile cost, and `keys` arrives here already parsed out of the
-        # `extractors` JSON.
+        name = (self.initial_data or {}).get("name")
+        if name == TABLE_EXTRACTOR_NAME:
+            keys = TableKeysSerializer(data=spec if isinstance(spec, dict) else {})
+            keys.is_valid(raise_exception=True)
+            return keys.validated_data
+        # kv: size is capped on the SERIALIZED form -- the cap exists to bound
+        # parse and compile cost, and `keys` arrives here already parsed out of
+        # the `extractors` JSON.
         # ensure_ascii=False so this measures the SAME bytes the outer
-        # `extractors` cap measured. With the default, non-ASCII schema text is
-        # counted as \uXXXX escapes (6 bytes/char) rather than its UTF-8 length
-        # (2-3), so a CJK- or accent-heavy schema could clear the outer cap and
-        # then be rejected here as "too large" for no reason the caller can see.
+        # `extractors` cap measured.
         serialized = json.dumps(spec, ensure_ascii=False).encode("utf-8")
         if len(serialized) > settings.AGENT_KV_MAX_SCHEMA_BYTES:
             raise serializers.ValidationError("keys schema too large")
@@ -119,7 +190,8 @@ class ExtractorSerializer(serializers.Serializer):
             raise serializers.ValidationError(
                 f"unknown keys on extractor entry: {sorted(unknown)}"
             )
-        opts = KVOptionsSerializer(data=data.get("options") or {})
+        opts_cls = _OPTIONS_SERIALIZERS[data["name"]]
+        opts = opts_cls(data=data.get("options") or {})
         opts.is_valid(raise_exception=True)
         data["options"] = opts.validated_data
         return data

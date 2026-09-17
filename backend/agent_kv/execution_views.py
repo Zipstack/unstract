@@ -9,7 +9,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from unstract.agent_kv_schema.compile import SchemaError, compile_schema
 
-from agent_kv.constants import STAGE_NAMES, V1_EXTRACTOR_NAME
+from agent_kv.constants import STAGE_NAMES_BY_EXTRACTOR
 from agent_kv.dispatch import DispatchError, dispatch_job
 from agent_kv.exceptions import EngineUnavailable, JobNotFound, RateLimited
 from agent_kv.execution_serializers import SubmitSerializer
@@ -40,20 +40,21 @@ def _get_job(agent_kv_key, job_id):
 def _status_document(job) -> dict:
     """Build the status document per spec §7.2."""
     stages_json = job.stages or {}
+    stage_names = STAGE_NAMES_BY_EXTRACTOR[job.extractor]
     doc = {
         "job_id": str(job.id),
         # The JOB's state, not an extractor's: a job is not complete until every
         # extractor is, so this stays top level (spec §7.2).
         "status": job.status.lower(),
         # Stage names are extractor-specific (`qa`/`challenge`/`codegen` mean
-        # nothing to a Table Extractor) and they ARE returned to clients, so
+        # nothing to the table extractor) and they ARE returned to clients, so
         # they are wire format and namespaced with everything else.
         "extractors": {
-            V1_EXTRACTOR_NAME: {
+            job.extractor: {
                 "stage": job.stage,
                 "stages": [
                     {"name": name, **stages_json[name]}
-                    for name in STAGE_NAMES
+                    for name in stage_names
                     if name in stages_json
                 ],
             }
@@ -138,6 +139,7 @@ class SubmitView(APIView):
         job = AgentKVJob(
             api_key=agent_kv_key,
             organization_id=agent_kv_key.organization_id,
+            extractor=v["extractors"][0]["name"],
             pages_total=serializer.pages_total,
             tags=v["tags"],
             custom_data=v["custom_data"],
@@ -172,7 +174,9 @@ class SubmitView(APIView):
         options["page_start"] = v["page_start"]
         options["page_end"] = v["page_end"]
         try:
-            dispatch_job(job, schema=entry["keys"], options=options)
+            dispatch_job(
+                job, extractor=entry["name"], schema=entry["keys"], options=options
+            )
         except DispatchError:
             logger.error("agent-kv dispatch failed for job %s", job.id, exc_info=True)
             return _fail_job_response(

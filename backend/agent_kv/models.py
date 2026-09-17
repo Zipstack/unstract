@@ -6,6 +6,8 @@ from django.utils import timezone
 from utils.models.base_model import BaseModel
 from utils.models.organization_mixin import DefaultOrganizationMixin
 
+from agent_kv.constants import V1_EXTRACTOR_NAME
+
 
 class AgentKVKey(DefaultOrganizationMixin, BaseModel):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -59,6 +61,10 @@ class AgentKVJob(DefaultOrganizationMixin, BaseModel):
         related_name="jobs",
     )
     task_id = models.UUIDField(null=True, blank=True)
+    # Which extractor this job ran. v1 dispatches exactly one per job, but
+    # WHICH one is now a choice, and status/result key their payloads by it --
+    # without this column a table job's output would be filed under `kv`.
+    extractor = models.CharField(max_length=32, default=V1_EXTRACTOR_NAME)
     status = models.CharField(
         max_length=16,
         choices=JobStatus.choices,

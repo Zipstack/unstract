@@ -15,7 +15,6 @@ status at ``SubmitView``'s wait loop) -- and the expired/blank-``result_ref``
 building the right body once "terminal" is already a given.
 """
 
-from agent_kv.constants import V1_EXTRACTOR_NAME
 from agent_kv.models import JobStatus
 from agent_kv.storage import read_result
 
@@ -46,13 +45,13 @@ def result_payload(job) -> dict:
             # `success` inside its own block.
             "success": True,
             "status": JobStatus.COMPLETED.lower(),
-            "extractors": {V1_EXTRACTOR_NAME: read_result(job.result_ref)},
+            "extractors": {job.extractor: read_result(job.result_ref)},
             # `total` stays the authoritative billing figure; `by_extractor`
             # exists so a multi-extractor job can be attributed. With one
             # extractor they are necessarily the same numbers.
             "usage_summary": {
                 "total": usage,
-                "by_extractor": {V1_EXTRACTOR_NAME: usage},
+                "by_extractor": {job.extractor: usage},
             },
         }
     if job.status == JobStatus.FAILED:
