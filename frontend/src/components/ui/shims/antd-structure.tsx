@@ -656,22 +656,23 @@ const TabsBase = React.forwardRef<HTMLDivElement, TabsProps>(function Tabs(
         </TabsList>
         {tabBarExtraContent}
       </div>
-      {panes.map((p) => (
-        <TabsContent
-          key={String(p.key)}
-          value={String(p.key)}
-          // Radix leaves `hidden` off a force-mounted pane, so hide on state.
-          forceMount={
-            p.keepMounted && openedKeys.has(String(p.key)) ? true : undefined
-          }
-          className={cn(
-            "ant-tabs-content ant-tabs-tabpane",
-            p.keepMounted && "data-[state=inactive]:hidden",
-          )}
-        >
-          {p.children}
-        </TabsContent>
-      ))}
+      {panes.map((p) => {
+        const held = Boolean(p.keepMounted && openedKeys.has(String(p.key)));
+        return (
+          <TabsContent
+            key={String(p.key)}
+            value={String(p.key)}
+            // Radix leaves `hidden` off a force-mounted pane, so hide on state.
+            forceMount={held || undefined}
+            className={cn(
+              "ant-tabs-content ant-tabs-tabpane",
+              held && "data-[state=inactive]:hidden",
+            )}
+          >
+            {p.children}
+          </TabsContent>
+        );
+      })}
     </ShadcnTabs>
   );
 });
