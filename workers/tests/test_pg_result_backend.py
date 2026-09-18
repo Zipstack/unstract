@@ -15,9 +15,11 @@ import uuid
 from unittest.mock import MagicMock
 
 import psycopg2
+import psycopg2.errors
 import pytest
 from queue_backend.pg_queue.connection import create_pg_connection
 from queue_backend.pg_queue.result_backend import (
+    _SIGNAL_REDIS,
     _STORE_RETRY_BACKOFF_SECONDS,
     STATUS_COMPLETED,
     STATUS_FAILED,
@@ -260,6 +262,81 @@ class _CursorCtx:
 
     def __exit__(self, *_):
         return False
+
+
+class TestStoreResultNeverStrands:
+    """UN-4126 strand-prevention, asserted WITHOUT Postgres.
+
+    These live here rather than beside their DB-backed siblings on purpose: the
+    real-Postgres tests carry the `integration` marker and route to
+    `integration-workers`, which is `optional: true` and cannot turn CI red. The
+    contract these assert — a finished task never leaves the caller waiting out
+    EXECUTOR_RESULT_TIMEOUT — is the whole point of the fix, so it belongs in the
+    gating `unit-workers` lane.
+    """
+
+    @staticmethod
+    def _conn(*, execute_side_effect=None):
+        cur = MagicMock()
+        if execute_side_effect is not None:
+            cur.execute.side_effect = execute_side_effect
+        conn = MagicMock()
+        conn.closed = 0
+        conn.cursor.return_value = _CursorCtx(cur)
+        return conn, cur
+
+    def test_oversized_result_still_records_a_failed_row(self, monkeypatch):
+        # ProgramLimitExceeded ("string too long", SQLSTATE 54) subclasses
+        # OperationalError, NOT DataError — so a `except psycopg2.DataError`
+        # net misses it, the reconnect-retry misreads it as a dead connection,
+        # and the caller strands. The degraded row must still land.
+        monkeypatch.setattr(
+            "queue_backend.pg_queue.result_backend.time.sleep", MagicMock()
+        )
+        attempts: list[str] = []
+
+        def execute(sql, params):
+            attempts.append(params[1])  # status
+            if params[1] == STATUS_COMPLETED:
+                raise psycopg2.errors.ProgramLimitExceeded("string too long")
+
+        conn, _ = self._conn(execute_side_effect=execute)
+        PgResultBackend(conn=conn).store_result("k", result={"big": "x"})
+        assert STATUS_FAILED in attempts, "no degraded row written — caller strands"
+
+    def test_unencodable_result_still_records_a_failed_row(self):
+        # A circular reference now surfaces as ValueError (see unstract.core.jsonb);
+        # RecursionError would slip past the encode seam and strand the caller.
+        cycle: dict = {}
+        cycle["self"] = cycle
+        statuses: list[str] = []
+        conn, _ = self._conn(
+            execute_side_effect=lambda sql, params: statuses.append(params[1])
+        )
+        PgResultBackend(conn=conn).store_result("k", result=cycle)
+        assert statuses == [STATUS_FAILED]
+
+    def test_waiter_is_signalled_even_when_every_write_fails(self, monkeypatch):
+        # Last-resort guarantee: if not even the degraded row can be written, the
+        # waiter must still be woken rather than silently left for the full
+        # timeout. Signalling is in a `finally` for exactly this case.
+        monkeypatch.setattr(
+            "queue_backend.pg_queue.result_backend.time.sleep", MagicMock()
+        )
+        monkeypatch.setattr(
+            "queue_backend.pg_queue.result_backend._signal_backend",
+            lambda: _SIGNAL_REDIS,
+        )
+        signalled: list[str] = []
+        monkeypatch.setattr(
+            "queue_backend.pg_queue.result_backend._signal_ready",
+            lambda key: signalled.append(key),
+        )
+        conn, _ = self._conn(
+            execute_side_effect=psycopg2.errors.ProgramLimitExceeded("too long")
+        )
+        PgResultBackend(conn=conn).store_result("k", result={"a": 1})
+        assert signalled == ["k"]
 
 
 class TestStoreResultReconnectRetry:

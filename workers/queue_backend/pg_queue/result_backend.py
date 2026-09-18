@@ -12,6 +12,13 @@ A row appears ONLY when the task finishes — ``status="completed"`` carrying th
 text if the task raised. Absence of a row means "not done yet"; there is
 deliberately no ``pending`` state to maintain.
 
+``failed`` has a **third** meaning, and recovery logic must account for it: the
+task *completed* but its result could not be stored, recorded with
+:data:`PAYLOAD_UNSTORABLE_ERROR`. Retrying such a reply key re-runs an executor
+task that already finished — a second full LLM spend, the very thing the
+consumer's ack discipline avoids. Distinguish on the error text before retrying
+anything. (Mirrored on ``PgTaskResult`` in ``backend/pg_queue/models.py``.)
+
 Once the blocking caller consumes the reply, :meth:`PgResultBackend.forget` nulls
 the payload in place — a third legal shape: ``completed``/``failed`` with
 ``result`` and ``error`` cleared (a tombstone the reaper deletes at
@@ -59,6 +66,7 @@ from collections.abc import Callable, Iterator
 from typing import TYPE_CHECKING, Any, Final, Self
 
 import psycopg2
+import psycopg2.errors
 import redis
 
 from unstract.core.cache.redis_client import create_redis_client
@@ -84,6 +92,18 @@ logger = logging.getLogger(__name__)
 # it. Defaults to the executor caller-timeout default so a result always
 # outlives any caller still waiting on it.
 DEFAULT_RETENTION_SECONDS = 3600
+
+# Rejections caused by the PAYLOAD, as opposed to the connection. Retrying these
+# can never succeed, so they degrade to a failed row instead of escaping.
+# ``ProgramLimitExceeded`` (SQLSTATE 54 — "string too long" / "index row size
+# exceeds maximum") is the trap: it subclasses ``OperationalError``, so it is
+# absent from ``DataError`` and present in ``CONN_DEAD_ERRORS``. Everything not
+# listed here — a genuinely dead connection, a logic error — still propagates,
+# so a database outage is never mislabelled as bad content.
+_PAYLOAD_REJECTED_ERRORS: Final = (
+    psycopg2.DataError,
+    psycopg2.errors.ProgramLimitExceeded,
+)
 
 # Recorded as the ``failed`` row's error text when a finished task's result
 # cannot be stored (see :meth:`PgResultBackend.store_result`). The caller reads
@@ -380,7 +400,8 @@ class PgResultBackend:
         poll still delivers). A redelivery re-signals harmlessly — a stale token
         just expires.
 
-        **A row is always written.** The payload is encoded with
+        **A row is written for every outcome the database will accept, and the
+        waiter is signalled unconditionally.** The payload is encoded with
         :func:`~unstract.core.jsonb.dumps_for_jsonb`, which repairs the strings a
         ``jsonb`` cast would refuse (a NUL from ``native_text`` extraction, a lone
         surrogate) so a completed task still delivers its result. If it is
@@ -391,6 +412,24 @@ class PgResultBackend:
         ``EXECUTOR_RESULT_TIMEOUT`` (UN-4126): the consumer logs and acks, so a
         write that never lands is a reply that never comes.
         """
+        try:
+            self._write_outcome(task_id, result, error, retention_seconds)
+        finally:
+            # Signal in a ``finally``: a missed wake-up costs the caller its
+            # entire EXECUTOR_RESULT_TIMEOUT, which is the failure this method
+            # exists to prevent, so it must not be skipped by any escape above.
+            # Harmless when no row landed — the waiter re-checks and keeps
+            # waiting; and a no-op in poll mode.
+            self._signal_stored(task_id)
+
+    def _write_outcome(
+        self,
+        task_id: str,
+        result: dict[str, Any] | None,
+        error: str | None,
+        retention_seconds: int,
+    ) -> None:
+        """Write the outcome row, degrading to ``failed`` rather than escaping."""
         if result is None:
             # ``error`` lands in a ``text`` column, which rejects a NUL just as
             # ``jsonb`` does — and an extraction error can embed document content.
@@ -401,7 +440,6 @@ class PgResultBackend:
                 sanitize_for_jsonb(error or ""),
                 retention_seconds,
             )
-            self._signal_stored(task_id)
             return
 
         try:
@@ -413,31 +451,57 @@ class PgResultBackend:
                 "instead of waiting out its RPC timeout.",
                 task_id,
             )
-            self._insert_outcome(
-                task_id, STATUS_FAILED, None, PAYLOAD_UNSTORABLE_ERROR, retention_seconds
-            )
-            self._signal_stored(task_id)
+            self._insert_degraded(task_id, retention_seconds)
             return
 
         try:
             self._insert_outcome(
                 task_id, STATUS_COMPLETED, result_json, "", retention_seconds
             )
-        except psycopg2.DataError:
-            # The encoder models every rejection we know of, so reaching here
-            # means a new one — record it, then degrade rather than strand.
-            # ``_cursor`` has already rolled back, so the connection is reusable
-            # and no row exists for this key yet (the INSERT never landed).
+        except _PAYLOAD_REJECTED_ERRORS:
+            # Wider than `DataError` alone, but deliberately NOT `Exception`.
+            # `ProgramLimitExceeded` ("string too long" / "index row size exceeds
+            # maximum", SQLSTATE 54) subclasses OperationalError, so a
+            # DataError-only net misses it: it is first misread as a dead
+            # connection by `_store_with_reconnect`, pointlessly retried, then
+            # escapes — no row, caller strands for the full timeout.
+            #
+            # Catching bare `Exception` would fix that too, but at a worse cost:
+            # a genuine connection failure would be recorded as "payload
+            # unstorable", hiding a database outage behind a content error and
+            # breaking the deliberate contract that infrastructure errors
+            # propagate (see TestStoreResultReconnectRetry). Content rejections
+            # are a knowable, closed family — enumerate them.
+            # `_cursor` has already rolled back, so the connection is reusable
+            # and no row exists for this key yet.
             logger.exception(
-                "PgResultBackend: jsonb rejected the result for reply_key=%s "
-                "even after sanitisation; recording a failed outcome. This is a "
-                "gap in unstract.core.jsonb — capture the payload and extend it.",
+                "PgResultBackend: the database rejected the result for "
+                "reply_key=%s even after sanitisation; recording a failed "
+                "outcome. If this is a content rejection it is a gap in "
+                "unstract.core.jsonb — capture the payload and extend it.",
                 task_id,
             )
+            self._insert_degraded(task_id, retention_seconds)
+
+    def _insert_degraded(self, task_id: str, retention_seconds: int) -> None:
+        """Record the completed-but-undeliverable outcome. Never raises.
+
+        Last line of defence: the real payload is already lost, so a failure here
+        must not propagate and cost the caller its timeout as well. If even this
+        cannot be written (the database is genuinely unreachable) the caller does
+        still time out — nothing in this process can prevent that — but it is
+        logged as such rather than silently swallowed.
+        """
+        try:
             self._insert_outcome(
                 task_id, STATUS_FAILED, None, PAYLOAD_UNSTORABLE_ERROR, retention_seconds
             )
-        self._signal_stored(task_id)
+        except Exception:
+            logger.exception(
+                "PgResultBackend: could not record even the degraded failed row "
+                "for reply_key=%s — the caller will wait out its full timeout.",
+                task_id,
+            )
 
     def _insert_outcome(
         self,

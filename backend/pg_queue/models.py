@@ -483,7 +483,11 @@ class PgTaskResult(models.Model):
     # caller waits on it, the consumer stores the result under it.
     task_id = models.TextField(primary_key=True)
     # "completed" = task returned (``result`` holds ExecutionResult.to_dict());
-    # "failed" = task raised (``error`` holds the message).
+    # "failed" = task raised (``error`` holds the message), OR the task completed
+    # but its result could not be stored (``error`` holds the writer's
+    # "could not be stored" text). Recovery logic must tell the two apart before
+    # retrying a reply key: the second already ran to completion, so a retry is a
+    # second full LLM spend. See PgResultBackend's module docstring.
     status = models.TextField()
     result = models.JSONField(null=True, blank=True)
     # No-NULL text convention: "" on a completed row (no error), the message on a

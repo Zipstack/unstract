@@ -89,18 +89,39 @@ def dumps_for_jsonb(value: Any, *, default: Any = None) -> str:
     the writer, with the caller's own error handling in reach — instead of
     surfacing later as a ``DataError`` from the database.
 
+    A supplied *default* hook is **wrapped**, not passed through. The pre-walk
+    above runs before ``json.dumps``, so a string the hook manufactures at encode
+    time would never be inspected — and the obvious hook, ``str``, is exactly how
+    an exception carrying document-derived text reaches the payload. Without the
+    wrapper the guarantee below is false at every call site that passes one.
+
     Args:
         value: The object to encode.
         default: Optional ``json.dumps`` fallback for objects it cannot encode
-            (e.g. ``str`` to coerce ``UUID``/``datetime``).
+            (e.g. ``str`` to coerce ``UUID``/``datetime``). Its output is
+            sanitised too.
 
     Returns:
         JSON text safe to cast to ``jsonb``.
 
     Raises:
-        ValueError: The value contains ``NaN``/``Infinity`` (or, without a
-            *default*, is not JSON-serialisable).
+        ValueError: The value contains ``NaN``/``Infinity``, is not
+            JSON-serialisable without a *default*, or is too deeply nested /
+            self-referential to walk (see below).
         TypeError: The value is not JSON-serialisable and *default* did not
             handle it.
     """
-    return json.dumps(sanitize_for_jsonb(value), default=default, allow_nan=False)
+    hook = (lambda obj: sanitize_for_jsonb(default(obj))) if default is not None else None
+    try:
+        return json.dumps(sanitize_for_jsonb(value), default=hook, allow_nan=False)
+    except RecursionError as exc:
+        # The pre-walk is plain Python recursion in front of a C encoder that has
+        # its own cycle check, so it changes the exception a caller sees: a
+        # circular reference raised ValueError before this module existed, and
+        # RecursionError subclasses RuntimeError — which every `except
+        # (TypeError, ValueError)` degradation seam downstream would miss,
+        # re-creating the strand this module exists to prevent. Re-raise as the
+        # documented class so those seams keep working.
+        raise ValueError(
+            "Value is too deeply nested or self-referential to encode for jsonb"
+        ) from exc

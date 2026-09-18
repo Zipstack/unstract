@@ -92,6 +92,36 @@ class TestDumpsForJsonb:
         with pytest.raises(ValueError):
             dumps_for_jsonb({"confidence": bad})
 
+    def test_default_hook_output_is_sanitised_too(self):
+        # The pre-walk runs before json.dumps, so a string the hook manufactures
+        # at encode time would otherwise never be inspected — and `str` on an
+        # exception carrying document text is exactly how a NUL gets there.
+        class Carrier:
+            def __str__(self):
+                return "extracted" + NUL + "text"
+
+        out = dumps_for_jsonb({"e": Carrier()}, default=str)
+        assert "\\u0000" not in out
+        assert json.loads(out) == {"e": "extractedtext"}
+
+    def test_circular_reference_raises_valueerror_not_recursionerror(self):
+        # RecursionError subclasses RuntimeError, which every downstream
+        # `except (TypeError, ValueError)` degradation seam would miss — turning
+        # a bad payload back into the caller strand this module prevents.
+        cycle: dict = {}
+        cycle["self"] = cycle
+        with pytest.raises(ValueError):
+            dumps_for_jsonb(cycle)
+
+    def test_excessive_nesting_raises_valueerror(self):
+        deep: dict = {}
+        cur = deep
+        for _ in range(1500):
+            cur["n"] = {}
+            cur = cur["n"]
+        with pytest.raises(ValueError):
+            dumps_for_jsonb(deep)
+
     def test_default_hook_coerces_unserialisable(self):
         from uuid import UUID
 
