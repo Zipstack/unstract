@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import json
 from types import SimpleNamespace
+from unittest import mock
 from unittest.mock import MagicMock
 
 import pytest
@@ -767,13 +768,17 @@ class TestRealConsumerTolerance:
         assert aggregated["batches_processed"] == 2
 
 
-class TestProcessFileBatchTransportRouting:
-    """9e PR 2c: ``_process_file_batch_core`` routes by ``barrier_context`` —
-    Celery chord path runs the stages directly (the chord ``.link`` decrements);
-    the PG path wraps them in ``run_batch_with_barrier`` (in-body claim + decrement).
+class TestProcessFileBatchBarrierRouting:
+    """``_process_file_batch_core`` routes by ``barrier_context``.
+
+    With one present (every real fan-out injects it) the stages are wrapped in
+    ``run_batch_with_barrier`` for the in-body claim + decrement. With it absent
+    — now only reachable via a malformed payload, since the Celery ``.link``
+    path that legitimately produced ``None`` is gone — the stages still run, but
+    nothing decrements a barrier, so the call is expected to log loudly.
     """
 
-    def test_celery_path_runs_stages_directly(self, monkeypatch):
+    def test_missing_barrier_context_runs_stages_and_logs(self, monkeypatch):
         from file_processing import tasks as tasks_mod
 
         stages_kwargs = {}
@@ -789,12 +794,15 @@ class TestProcessFileBatchTransportRouting:
             "run_batch_with_barrier",
             lambda *a, **k: barrier_calls.append(1),
         )
-        out = tasks_mod._process_file_batch_core(MagicMock(), {"fb": 1}, None)
+        with mock.patch.object(tasks_mod.logger, "error") as log_error:
+            out = tasks_mod._process_file_batch_core(MagicMock(), {"fb": 1}, None)
         assert out == {"r": "celery"}
-        assert barrier_calls == []  # barrier path NOT taken on the celery transport
-        assert stages_kwargs.get("is_pg") is False  # UN-3662 guard OFF on Celery
+        assert barrier_calls == []  # no barrier to wrap
+        # The batch still runs, but the operator must be told the callback will
+        # never fire — a silent run here would strand the execution to the reaper.
+        log_error.assert_called_once()
 
-    def test_pg_path_routes_through_barrier(self, monkeypatch):
+    def test_barrier_context_routes_through_barrier(self, monkeypatch):
         from file_processing import tasks as tasks_mod
 
         stages_kwargs = {}
@@ -818,7 +826,6 @@ class TestProcessFileBatchTransportRouting:
         assert captured["ctx"] is ctx
         assert out["via"] == "barrier"
         assert out["work"] == {"r": "work"}  # work_fn runs the real stages
-        assert stages_kwargs.get("is_pg") is True  # UN-3662 guard ON on PG
 
 
 if __name__ == "__main__":

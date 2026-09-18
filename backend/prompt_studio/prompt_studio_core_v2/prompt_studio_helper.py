@@ -17,7 +17,6 @@ from permissions.permission import (
     _is_resource_viewer,
     has_group_access,
 )
-from permissions.roles import ResourceRole
 from plugins import get_plugin
 from rest_framework.exceptions import APIException
 from rest_framework.request import Request
@@ -3039,7 +3038,7 @@ class PromptStudioHelper:
 
         # created_by is audit-only; grant the creator an OWNER membership row so
         # access/ownership flows through it (UN-2202), as the viewset create does.
-        tool.memberships.get_or_create(user=user, defaults={"role": ResourceRole.OWNER})
+        tool.grant_owner(user)
 
         return tool
 

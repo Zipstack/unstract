@@ -257,12 +257,11 @@ class PgBatchDedup(models.Model):
 
 
 class PgBarrierState(models.Model):
-    """Per-execution fan-in barrier state for ``PgBarrier`` (the Postgres
-    ``WORKER_BARRIER_BACKEND``).
+    """Per-execution fan-in barrier state for ``PgBarrier``.
 
-    One row per in-flight barrier (keyed by ``execution_id``). The worker-side
-    ``barrier_pg_decr_and_check`` link task atomically decrements ``remaining``
-    and appends to ``results`` in a single ``UPDATE … RETURNING``; the task that
+    One row per in-flight barrier (keyed by ``execution_id``). Each header task
+    atomically decrements ``remaining`` in-body and appends to ``results`` in a
+    single ``UPDATE … RETURNING``; the task that
     drives ``remaining`` to 0 dispatches the aggregating callback and deletes the
     row. A header-task failure aborts the barrier by deleting the row outright
     (``DELETE … RETURNING`` — atomic claim+teardown), so the callback can never
@@ -541,8 +540,7 @@ class PgOrchestrationClaim(models.Model):
     ``organization_id`` is stamped below — the reaper needs it for the org-scoped
     status/mark API, exactly like ``pg_barrier_state``.
 
-    Only written on the PG transport (``is_pg_transport``) — the Celery path never
-    touches it. Managed=True / generated migration, extension-free — same posture
+    Managed=True / generated migration, extension-free — same posture
     as the siblings.
     """
 
