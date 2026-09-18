@@ -239,10 +239,6 @@
             "maximum": 300,
             "minimum": -1,
             "type": "integer"
-          },
-          "use_file_history": {
-            "default": false,
-            "type": "boolean"
           }
         },
         "type": "object"
