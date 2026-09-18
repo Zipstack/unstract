@@ -4,6 +4,7 @@ class X2TextConstants:
     X2TEXT_PORT = "X2TEXT_PORT"
     ENABLE_HIGHLIGHT = "enable_highlight"
     TAGS = "tags"
+    FILE_NAME = "file_name"
     EXTRACTED_TEXT = "extracted_text"
     WHISPER_HASH = "whisper-hash"
     WHISPER_HASH_V2 = "whisper_hash"
