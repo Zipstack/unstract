@@ -1201,19 +1201,21 @@ class SourceConnector(BaseConnector):
         return os.path.basename(input_file_path), file_stream
 
     @classmethod
-    def _detect_uploaded_file_mime_type(cls, file: UploadedFile) -> str:
+    def _detect_uploaded_file_mime_type(cls, file: UploadedFile) -> str | None:
         """Detect an uploaded file's MIME type from its own bytes.
 
         The multipart Content-Type is supplied by the caller and never verified,
         so it cannot be used to decide what is allowed into API storage.
+
+        Returns None for an empty upload, which has no type to judge.
         """
         sample = file.read(cls.MIME_DETECT_CHUNK_SIZE)
         file.seek(0)
         if not sample:
-            # libmagic reports "application/x-empty" here, which would reject the
-            # file as an unsupported type. An empty upload is a distinct failure
-            # and is reported as such once staging hands off, so let it pass.
-            return AllowedFileTypes.OCTET_STREAM.value
+            # libmagic reports "application/x-empty", which is in no allow-list and
+            # would surface as an unsupported-type error. An empty upload is a
+            # distinct failure, reported as such once staging hands off.
+            return None
 
         mime_type = magic.from_buffer(sample, mime=True)
         if mime_type not in cls.CONTAINER_MIME_TYPES:
@@ -1300,7 +1302,7 @@ class SourceConnector(BaseConnector):
 
             logger.info(f"Detected MIME type: {mime_type} for file {file_name}")
 
-            if not AllowedFileTypes.is_allowed(mime_type):
+            if mime_type is not None and not AllowedFileTypes.is_allowed(mime_type):
                 log_message = (
                     f"Rejecting file '{file_name}' with unsupported MIME type "
                     f"'{mime_type}'"

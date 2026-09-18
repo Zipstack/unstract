@@ -22,9 +22,12 @@ from workflow_manager.endpoint_v2.constants import ApiDeploymentResultStatus
 from workflow_manager.endpoint_v2.source import SourceConnector
 
 # Bytes chosen from what libmagic actually reports (verified against the pinned
-# python-magic): a PDF header sniffs application/pdf, an HTML document sniffs
-# text/html, which is absent from AllowedFileTypes.
+# python-magic). A WAV header is the unsupported case: audio/x-wav is neither
+# text/* nor a listed type, and RIFF classifies stably on every libmagic build.
+# HTML is the opposite case - it looks like something to reject, but it reaches
+# the extractor as text/*, so the gate has to let it through.
 PDF_BYTES = b"%PDF-1.7\n1 0 obj\n<< /Type /Catalog >>\nendobj\n"
+WAV_BYTES = b"RIFF\x24\x08\x00\x00WAVEfmt \x10\x00\x00\x00\x01\x00\x02\x00"
 HTML_BYTES = b"<!DOCTYPE html><html><body>hello</body></html>"
 
 
@@ -91,10 +94,10 @@ def test_unsupported_bytes_rejected_despite_supported_declared_type(
 ) -> None:
     """The declared Content-Type must not decide what reaches the bucket.
 
-    An HTML file announced as application/pdf satisfies any header-based check,
+    A WAV file announced as application/pdf satisfies any header-based check,
     so only sniffing the bytes keeps it out.
     """
-    result = _stage([_upload("evil.pdf", HTML_BYTES, "application/pdf")])
+    result = _stage([_upload("evil.pdf", WAV_BYTES, "application/pdf")])
 
     # Never dispatched...
     assert result == {}
@@ -104,7 +107,7 @@ def test_unsupported_bytes_rejected_despite_supported_declared_type(
 
 def test_rejection_is_reported_to_the_caller(collaborators) -> None:
     """A rejected file gets its own failed entry in the API response."""
-    _stage([_upload("evil.pdf", HTML_BYTES, "application/pdf")])
+    _stage([_upload("evil.pdf", WAV_BYTES, "application/pdf")])
 
     collaborators["ResultCacheUtils"].update_api_results.assert_called_once()
     api_result = collaborators["ResultCacheUtils"].update_api_results.call_args.kwargs[
@@ -112,7 +115,7 @@ def test_rejection_is_reported_to_the_caller(collaborators) -> None:
     ]
     assert api_result.file == "evil.pdf"
     # The message has to name the offending type, not a downstream symptom.
-    assert "text/html" in api_result.error
+    assert "audio/x-wav" in api_result.error
     assert api_result.status == ApiDeploymentResultStatus.FAILED
 
 
@@ -132,7 +135,7 @@ def test_supported_files_survive_a_rejected_sibling(collaborators) -> None:
     result = _stage(
         [
             _upload("good.pdf", PDF_BYTES, "application/pdf"),
-            _upload("evil.pdf", HTML_BYTES, "application/pdf"),
+            _upload("evil.pdf", WAV_BYTES, "application/pdf"),
         ]
     )
 
@@ -239,5 +242,42 @@ def test_empty_upload_is_staged_rather_than_called_unsupported(collaborators) ->
     result = _stage([_upload("empty.pdf", b"", "application/pdf")])
 
     assert set(result) == {"empty.pdf"}
-    assert result["empty.pdf"].mime_type == "application/octet-stream"
+    # No bytes means no type to judge, so the gate is skipped rather than passed.
+    assert result["empty.pdf"].mime_type is None
     collaborators["ResultCacheUtils"].update_api_results.assert_not_called()
+
+
+def test_types_llmwhisperer_supports_are_accepted(collaborators) -> None:
+    """The allow-list mirrors what LLMWhisperer can extract.
+
+    HTML and XML look like things to reject and were rejected until the two sets
+    were reconciled, but LLMWhisperer extracts both - so rejecting them loses a
+    file that would have worked. Accepting what it cannot read and rejecting what
+    it can are the same bug in opposite directions.
+    """
+    result = _stage(
+        [
+            _upload("page.html", HTML_BYTES, "text/html"),
+            _upload("data.xml", b'<?xml version="1.0"?><root><a>1</a></root>', "text/xml"),
+        ]
+    )
+
+    assert set(result) == {"page.html", "data.xml"}
+    assert result["page.html"].mime_type == "text/html"
+    collaborators["ResultCacheUtils"].update_api_results.assert_not_called()
+
+
+def test_unidentifiable_binary_is_rejected(collaborators) -> None:
+    """octet-stream is no longer a free pass.
+
+    Anything libmagic cannot name is something LLMWhisperer cannot extract; it
+    used to be allow-listed, which is how a zip renamed .pdf reached the
+    extractor and came back as a 415.
+    """
+    with mock.patch.object(
+        src_mod.magic, "from_buffer", return_value="application/octet-stream"
+    ):
+        result = _stage([_upload("mystery.pdf", b"\x00\x01\x02\x03" * 64, "application/pdf")])
+
+    assert result == {}
+    collaborators["storage"].write.assert_not_called()
