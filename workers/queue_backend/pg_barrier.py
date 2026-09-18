@@ -1031,23 +1031,20 @@ def _barrier_pg_decrement(
         # signal a BatchExecutionResult.to_dict() typed-boundary regression).
         # dumps_for_jsonb additionally repairs the strings a jsonb cast refuses
         # (NUL, lone surrogate) so a stray control byte in a header result no
-        # longer costs the whole barrier — the teardown below stays as the net
-        # for what it cannot repair (NaN, or a rejection it does not yet model).
+        # longer costs the whole barrier. What it cannot repair (NaN, or a
+        # rejection it does not model) propagates to the caller, which owns
+        # teardown — see the note on the raise below.
         result_json = dumps_for_jsonb(result)
     except (TypeError, ValueError):
-        # Tear down here too, not only below. ``allow_nan=False`` moves NaN /
-        # Infinity from the DataError path to this one, and that class used to
-        # reach the teardown — without this it would instead leave the barrier
-        # to hang to expires_at (~6h), which is the outcome this whole seam
-        # exists to prevent.
+        # Log and re-raise; do NOT tear the barrier down here. ``allow_nan=False``
+        # moves NaN/Infinity onto this branch, so this is the encode-side twin of
+        # the rejection branch below and must follow the same rule.
         logger.exception(
             f"[exec:{execution_id}] Header task result cannot be encoded for "
-            f"jsonb (not JSON-serialisable, or a non-finite number) — tearing "
-            f"down the barrier so the execution fails fast rather than hanging "
-            f"until expiry."
+            f"jsonb (not JSON-serialisable, or a non-finite number) — "
+            f"propagating so the caller can mark the execution terminal before "
+            f"the barrier row is released."
         )
-        with contextlib.suppress(Exception):
-            _delete_barrier(execution_id)
         raise
 
     # jsonb_build_array(...) appends exactly one element regardless of the
@@ -1056,25 +1053,32 @@ def _barrier_pg_decrement(
         row = _apply_decrement(execution_id, result_json, reused=conn_was_cached)
     except _PAYLOAD_REJECTED_ERRORS:
         # Reached for a rejection dumps_for_jsonb does not model. The decrement
-        # never lands, and the barrier would hang to expires_at (~6h). Tear it
-        # down so the execution fails fast and visibly.
+        # never lands, so this batch can never complete the barrier.
         #
-        # Must be the same closed family the result backend uses, not
-        # ``DataError`` alone: ``ProgramLimitExceeded`` ("string too long",
-        # SQLSTATE 54) subclasses ``OperationalError``, so a DataError-only net
-        # lets an oversized header result through — ``_apply_decrement`` first
-        # misclassifies it as a dead connection and re-sends the same oversized
-        # UPDATE, then it escapes here and the barrier hangs to expiry with no
-        # actionable log. Same trap, same fix as ``PgResultBackend``.
+        # Catch the closed family the result backend uses, not ``DataError``
+        # alone: ``ProgramLimitExceeded`` ("string too long", SQLSTATE 54)
+        # subclasses ``OperationalError``, so a DataError-only net lets an
+        # oversized header result through without this specific, actionable log.
+        #
+        # Deliberately does NOT call ``_delete_barrier``. Teardown belongs to
+        # ``run_batch_with_barrier``, which marks the execution ERROR *first* and
+        # releases the row only once that mark is confirmed — because the row is
+        # the reaper's only recovery handle. Deleting it here pre-empts that
+        # ordering: when the mark cannot be confirmed (backend unreachable, or no
+        # organization_id on the descriptor) the caller's ``else`` branch
+        # deliberately preserves the row, logs "leaving the barrier row intact
+        # for the reaper" — and finds it already gone. The execution then sits
+        # non-terminal forever with nothing for the reaper's sweep to find, which
+        # is a permanent strand: strictly worse than the ~6h hang-to-expiry this
+        # teardown was trying to avoid, and the exact class UN-4126 exists to
+        # eliminate.
         logger.exception(
             f"[exec:{execution_id}] Header result rejected by the database even "
-            f"after sanitisation — tearing down the barrier so the execution "
-            f"fails fast rather than hanging until expiry. If this is a content "
-            f"rejection it is a gap in unstract.core.jsonb — capture the payload "
-            f"and extend it."
+            f"after sanitisation — propagating so the caller can mark the "
+            f"execution terminal before the barrier row is released. If this is "
+            f"a content rejection it is a gap in unstract.core.jsonb — capture "
+            f"the payload and extend it."
         )
-        with contextlib.suppress(Exception):
-            _delete_barrier(execution_id)
         raise
 
     if row is None:
