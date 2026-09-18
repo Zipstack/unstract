@@ -104,6 +104,12 @@ REDIS_PASSWORD = os.environ.get("REDIS_PASSWORD", "")
 REDIS_HOST = os.environ.get("REDIS_HOST", "localhost")
 REDIS_PORT = os.environ.get("REDIS_PORT", "6379")
 REDIS_DB = os.environ.get("REDIS_DB", "")
+# TLS to Redis (UN-4123). Off by default, so the in-cluster/local server is
+# untouched. `rediss://` is what actually selects TLS for both django-redis and
+# kombu; this flag only decides which scheme gets built.
+REDIS_SSL = os.environ.get("REDIS_SSL", "false").strip().lower() == "true"
+REDIS_SSL_CERT_REQS = os.environ.get("REDIS_SSL_CERT_REQS", "required")
+REDIS_SSL_CA_CERTS = os.environ.get("REDIS_SSL_CA_CERTS", "").strip()
 SESSION_EXPIRATION_TIME_IN_SECOND = os.environ.get(
     "SESSION_EXPIRATION_TIME_IN_SECOND", 3600
 )
@@ -565,20 +571,45 @@ else:
         _cred_prefix = f"{quote(REDIS_USER, safe='')}:{quote(REDIS_PASSWORD, safe='')}@"
     elif REDIS_PASSWORD:
         _cred_prefix = f":{quote(REDIS_PASSWORD, safe='')}@"
-    SOCKET_IO_MANAGER_URL = f"redis://{_cred_prefix}{REDIS_HOST}:{REDIS_PORT}"
+    _scheme = "rediss" if REDIS_SSL else "redis"
+    _cache_db = int(REDIS_DB) if REDIS_DB else 0
+
+    # kombu reads TLS off the scheme, but defaults ssl_cert_reqs to CERT_NONE —
+    # encrypted while accepting ANY certificate, which is not what "TLS" is meant
+    # to buy. The query parameter is the only way to say otherwise here, since
+    # KombuManager takes a URL rather than connection kwargs.
+    _socketio_tls_query = f"?ssl_cert_reqs={REDIS_SSL_CERT_REQS}" if REDIS_SSL else ""
+    SOCKET_IO_MANAGER_URL = (
+        f"{_scheme}://{_cred_prefix}{REDIS_HOST}:{REDIS_PORT}{_socketio_tls_query}"
+    )
     SOCKET_IO_TRANSPORT_OPTIONS = {}
+
+    # django-redis 5.4.0 reads only PASSWORD (plus timeouts) out of OPTIONS — its
+    # ConnectionFactory.make_connection_params ignores USERNAME and DB entirely.
+    # So the db has to travel in the URL path, or this cache silently sits on db 0
+    # while every other service honours REDIS_DB: workers would RPUSH
+    # log_history_queue to db N and the backend would LPOP an empty db 0.
+    # USERNAME is deliberately NOT restored: auth is password-only as the built-in
+    # `default` user (what managed AUTH strings are), and sending a username turns
+    # AUTH into its two-argument ACL form.
+    _cache_options = {
+        "CLIENT_CLASS": "django_redis.client.DefaultClient",
+        "SERIALIZER": "django_redis.serializers.json.JSONSerializer",
+        "DB": _cache_db,
+        "USERNAME": REDIS_USER,
+        "PASSWORD": REDIS_PASSWORD,
+    }
+    if REDIS_SSL:
+        _pool_kwargs = {"ssl_cert_reqs": REDIS_SSL_CERT_REQS}
+        if REDIS_SSL_CA_CERTS:
+            _pool_kwargs["ssl_ca_certs"] = REDIS_SSL_CA_CERTS
+        _cache_options["CONNECTION_POOL_KWARGS"] = _pool_kwargs
 
     CACHES = {
         "default": {
             "BACKEND": "django_redis.cache.RedisCache",
-            "LOCATION": f"redis://{REDIS_HOST}:{REDIS_PORT}",
-            "OPTIONS": {
-                "CLIENT_CLASS": "django_redis.client.DefaultClient",
-                "SERIALIZER": "django_redis.serializers.json.JSONSerializer",
-                "DB": int(REDIS_DB) if REDIS_DB else 0,
-                "USERNAME": REDIS_USER,
-                "PASSWORD": REDIS_PASSWORD,
-            },
+            "LOCATION": f"{_scheme}://{REDIS_HOST}:{REDIS_PORT}/{_cache_db}",
+            "OPTIONS": _cache_options,
             "KEY_FUNCTION": "utils.redis_cache.custom_key_function",
         }
     }

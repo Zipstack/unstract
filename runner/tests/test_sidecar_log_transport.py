@@ -82,3 +82,68 @@ class TestSidecarLogTransport:
         # Flag-off must stay intact: the sidecar still publishes over AMQP.
         envs = sidecar_env(CELERY_BROKER_BASE_URL="amqp://x")
         assert envs["CELERY_BROKER_BASE_URL"] == "amqp://x"
+
+
+class TestSidecarRedisTls:
+    """TLS settings must reach the sidecar too (UN-4123).
+
+    Same allowlist trap as ``LOG_TRANSPORT`` above, one layer deeper: the sidecar
+    builds its OWN Redis client, so when the platform moves to a TLS endpoint a
+    sidecar that never learned about it keeps dialling plaintext. The failure is a
+    connection error at best; at worst it reaches a different db and tool logs go
+    missing with everything else looking healthy.
+    """
+
+    def test_tls_settings_are_forwarded(self, sidecar_env):
+        envs = sidecar_env(
+            REDIS_SSL="true",
+            REDIS_SSL_CERT_REQS="required",
+            REDIS_SSL_CA_CERTS="/etc/ssl/redis-ca.pem",
+        )
+        assert envs[Env.REDIS_SSL] == "true"
+        assert envs[Env.REDIS_SSL_CERT_REQS] == "required"
+        assert envs[Env.REDIS_SSL_CA_CERTS] == "/etc/ssl/redis-ca.pem"
+
+    def test_db_is_forwarded(self, sidecar_env):
+        """Without this the sidecar sits on db 0 while everyone else honours REDIS_DB.
+
+        Nothing errors: it simply publishes into a keyspace no consumer drains.
+        """
+        envs = sidecar_env(REDIS_DB="3")
+        assert envs[Env.REDIS_DB] == "3"
+
+    def test_url_is_forwarded(self, sidecar_env):
+        envs = sidecar_env(REDIS_URL="rediss://cache.example:6380/2")
+        assert envs[Env.REDIS_URL] == "rediss://cache.example:6380/2"
+
+    def test_unset_values_are_omitted_entirely(self, sidecar_env, monkeypatch):
+        """An empty string is NOT the same as absent.
+
+        ``os.getenv(key, fallback)`` returns "" for a key that exists but is empty,
+        which suppresses the fallback — so forwarding blanks would turn "inherit the
+        default" into "explicitly configured as nothing".
+        """
+        for key in (
+            Env.REDIS_SSL,
+            Env.REDIS_SSL_CERT_REQS,
+            Env.REDIS_SSL_CA_CERTS,
+            Env.REDIS_DB,
+            Env.REDIS_URL,
+        ):
+            monkeypatch.delenv(key, raising=False)
+        envs = sidecar_env()
+        for key in (
+            Env.REDIS_SSL,
+            Env.REDIS_SSL_CERT_REQS,
+            Env.REDIS_SSL_CA_CERTS,
+            Env.REDIS_DB,
+            Env.REDIS_URL,
+        ):
+            assert key not in envs
+
+    def test_plaintext_deployment_is_unchanged(self, sidecar_env, monkeypatch):
+        """The whole point: no TLS configured means the sidecar env is as it was."""
+        monkeypatch.delenv(Env.REDIS_SSL, raising=False)
+        envs = sidecar_env(REDIS_HOST="r", REDIS_PORT="6379")
+        assert envs["REDIS_HOST"] == "r"
+        assert Env.REDIS_SSL not in envs

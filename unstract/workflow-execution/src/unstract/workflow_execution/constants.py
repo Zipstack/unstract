@@ -28,6 +28,13 @@ class ToolRuntimeVariable:
     REDIS_PASSWORD = "REDIS_PASSWORD"
     REDIS_SENTINEL_MODE = "REDIS_SENTINEL_MODE"
     REDIS_SENTINEL_MASTER_NAME = "REDIS_SENTINEL_MASTER_NAME"
+    # UN-4123 — TLS settings for tool containers, which build their own Redis
+    # client (sdk1 metrics). Same allowlist trap as the sidecar's.
+    REDIS_DB = "REDIS_DB"
+    REDIS_SSL = "REDIS_SSL"
+    REDIS_SSL_CERT_REQS = "REDIS_SSL_CERT_REQS"
+    REDIS_SSL_CA_CERTS = "REDIS_SSL_CA_CERTS"
+    REDIS_URL = "REDIS_URL"
 
 
 class WorkflowFileType:
