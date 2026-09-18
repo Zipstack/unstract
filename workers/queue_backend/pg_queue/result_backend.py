@@ -419,14 +419,25 @@ class PgResultBackend:
         """Write the outcome row, degrading to ``failed`` rather than escaping."""
         if result is None:
             # ``error`` lands in a ``text`` column, which rejects a NUL just as
-            # ``jsonb`` does — and an extraction error can embed document content.
-            self._insert_outcome(
-                task_id,
-                STATUS_FAILED,
-                None,
-                sanitize_for_jsonb(error or ""),
-                retention_seconds,
-            )
+            # ``jsonb`` does — and an extraction error can embed document content,
+            # so it can also be long enough to hit SQLSTATE 54. Same net as the
+            # completed branch below: without it a rejection here escapes with no
+            # row, which is the UN-4126 strand reached from the failure channel.
+            try:
+                self._insert_outcome(
+                    task_id,
+                    STATUS_FAILED,
+                    None,
+                    sanitize_for_jsonb(error or ""),
+                    retention_seconds,
+                )
+            except _PAYLOAD_REJECTED_ERRORS:
+                logger.exception(
+                    "PgResultBackend: the database rejected the error text for "
+                    "reply_key=%s; recording a degraded failed row instead.",
+                    task_id,
+                )
+                self._insert_degraded(task_id, retention_seconds)
             return
 
         try:

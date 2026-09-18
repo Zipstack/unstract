@@ -375,7 +375,8 @@ class PgTaskStatus(str, Enum):
     # apart before retrying anything:
     #   1. the task raised — ``error`` holds the task's own message;
     #   2. the task COMPLETED but its result could not be stored — ``error`` holds
-    #      ``PgResultBackend.PAYLOAD_UNSTORABLE_ERROR`` (UN-4126).
+    #      ``queue_backend.pg_queue.result_backend.PAYLOAD_UNSTORABLE_ERROR``
+    #      (a module-level constant, UN-4126).
     # Case 2 already ran to completion, so retrying its reply key re-executes a
     # finished task: a second full LLM spend, the exact waste the consumer's ack
     # discipline exists to avoid. There is deliberately no third status value —

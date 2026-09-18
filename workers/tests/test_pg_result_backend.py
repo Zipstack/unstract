@@ -96,16 +96,19 @@ class TestStoreGet:
         assert row["result"]["data"]["output"]["invoice_number"] == "POZFBBOK"
 
     def test_valid_surrogate_pair_survives_the_round_trip(self, result_backend):
-        # Guards the sanitiser against over-reach: an emoji reaches Python as a
-        # high+low surrogate pair, which jsonb ACCEPTS (it combines them). A
-        # naive [high-low] strip would delete both halves and silently lose the
-        # character from a completed result.
+        # Guards the sanitiser against over-reach. The value must be built as an
+        # actual high+low PAIR: a CPython str holds an astral character as ONE
+        # code point (chr(0x1F600)), which a naive [high-low] class does not
+        # match at all — so writing the emoji directly makes this test pass under
+        # the very bug it claims to catch. A pair does reach Python from
+        # surrogatepass decoding, jsonb ACCEPTS it (Postgres combines the halves),
+        # and the naive class would delete both.
         k = _key()
-        emoji = chr(0x1F600)
-        result_backend.store_result(k, result={"note": f"done {emoji}"})
+        pair = chr(0xD83D) + chr(0xDE00)  # U+1F600 as its two surrogate halves
+        result_backend.store_result(k, result={"note": f"done {pair}"})
         row = result_backend.get_result(k)
         assert row["status"] == STATUS_COMPLETED
-        assert row["result"]["note"] == f"done {emoji}"
+        assert row["result"]["note"] == f"done {chr(0x1F600)}"  # combined by PG
 
     def test_nul_in_error_text_still_writes_a_failed_row(self, result_backend):
         # The `error` column is `text`, which rejects a NUL exactly as jsonb
@@ -284,6 +287,50 @@ class TestStoreResultNeverStrands:
         conn.closed = 0
         conn.cursor.return_value = _CursorCtx(cur)
         return conn, cur
+
+    def test_result_payload_is_sanitised_before_the_jsonb_cast(self):
+        # Gating cover for the ENCODER at this sink. The DB round-trip that
+        # proves repair lives in `integration-workers`, which is `optional: true`
+        # and cannot turn CI red — so reverting `dumps_for_jsonb` to `json.dumps`
+        # here would regress the UN-4126 hang with a green build. Assert the
+        # parameter handed to the driver instead, which needs no Postgres.
+        conn, cur = self._conn()
+        PgResultBackend(conn=conn).store_result(
+            "k", result={"output": {"invoice_number": "POZF\x00BBOK"}}
+        )
+        result_param = cur.execute.call_args.args[1][2]
+        assert "\\u0000" not in result_param
+        assert "POZFBBOK" in result_param
+
+    def test_error_text_is_sanitised_before_the_insert(self):
+        # Same, for the failure channel: `error` is a `text` column, which
+        # rejects a NUL exactly as jsonb does, and extraction error messages can
+        # embed document content.
+        conn, cur = self._conn()
+        PgResultBackend(conn=conn).store_result("k", error="failed on \x00 byte")
+        error_param = cur.execute.call_args.args[1][3]
+        assert "\x00" not in error_param
+        assert error_param == "failed on  byte"
+
+    def test_rejected_error_text_also_degrades_to_a_row(self, monkeypatch):
+        # The failure branch must carry the same net as the success branch: a
+        # payload rejection on the `error` column previously escaped with no row
+        # written, which is the UN-4126 strand reached from the failure channel.
+        monkeypatch.setattr(
+            "queue_backend.pg_queue.result_backend.time.sleep", MagicMock()
+        )
+        statuses: list[str] = []
+        calls = {"n": 0}
+
+        def execute(sql, params):
+            statuses.append(params[1])
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise psycopg2.errors.ProgramLimitExceeded("error text too long")
+
+        conn, _ = self._conn(execute_side_effect=execute)
+        PgResultBackend(conn=conn).store_result("k", error="x" * 10)
+        assert statuses == [STATUS_FAILED, STATUS_FAILED], "no degraded row written"
 
     def test_oversized_result_still_records_a_failed_row(self, monkeypatch):
         # ProgramLimitExceeded ("string too long", SQLSTATE 54) subclasses
