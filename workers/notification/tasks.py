@@ -6,6 +6,7 @@ while maintaining backward compatibility.
 """
 
 import os
+import time
 from typing import Any
 
 import httpx
@@ -504,6 +505,166 @@ def priority_notification(notification_type: str, **kwargs: Any) -> dict[str, An
 
     # Set priority flag and delegate to main processor
     return process_notification(notification_type, priority=True, **kwargs)
+
+
+# Retries for a transient backend problem (restart, 5xx). Kept inside the task
+# so a brief blip is absorbed here rather than costing a full lease-expiry
+# redelivery (minutes) plus one of the consumer's bounded attempts.
+_GROUP_NOTIFICATION_ATTEMPTS = 3
+_GROUP_NOTIFICATION_RETRY_DELAY = 2.0
+# Per-phase, because httpx has NO whole-request timeout: a scalar one is applied
+# to connect, write and read separately. The loop below is the only retry --
+# transport-level retries would stack their own timeouts underneath these.
+# Sum x _GROUP_NOTIFICATION_ATTEMPTS is the task's bound, and must stay under
+# WORKER_PG_QUEUE_CONSUMER_HEALTH_STALE_SECONDS (the heartbeat is frozen for the
+# task's duration) and VT_SECONDS. Excludes DNS, which connect does not cover.
+_GROUP_NOTIFICATION_TIMEOUT = httpx.Timeout(connect=5.0, write=10.0, read=30.0, pool=5.0)
+
+
+def _build_group_notification_request(
+    endpoint: str, organization_id: str
+) -> tuple[str, dict[str, str]]:
+    """URL and headers for one group-notification POST."""
+    base_url = os.getenv("INTERNAL_API_BASE_URL")
+    api_key = os.getenv("INTERNAL_SERVICE_API_KEY")
+    if not base_url or not api_key:
+        raise RuntimeError(
+            "INTERNAL_API_BASE_URL / INTERNAL_SERVICE_API_KEY not set; "
+            "cannot send group notification"
+        )
+    url = f"{base_url.rstrip('/')}/v1/group-notification/{endpoint}/"
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        # The backend resolves the tenant from this header; without it every
+        # org-scoped query comes back empty.
+        "X-Organization-ID": organization_id,
+    }
+    return url, headers
+
+
+def _post_group_notification_once(
+    url: str, headers: dict[str, str], payload: dict
+) -> tuple[bool, bool, str]:
+    """One POST attempt. Returns ``(succeeded, retryable, error)``.
+
+    A response lost after the backend already received it is treated like a
+    sub-500 (not retryable): the backend does not stop when we disconnect and
+    mails group by group with no checkpoint, so re-posting would re-mail every
+    group that already succeeded.
+    """
+    try:
+        with httpx.Client() as client:
+            response = client.post(
+                url, headers=headers, json=payload, timeout=_GROUP_NOTIFICATION_TIMEOUT
+            )
+    except (
+        httpx.ReadTimeout,
+        httpx.WriteTimeout,
+        httpx.ReadError,
+        httpx.WriteError,
+        httpx.RemoteProtocolError,
+    ) as e:
+        return False, False, f"timeout_after_send={e!r}"
+    except Exception as e:  # noqa: BLE001
+        return False, True, f"exception={e!r}"
+    if response.status_code == 200:
+        return True, False, ""
+    error = f"http_{response.status_code} body={response.text[:200]}"
+    return False, response.status_code >= 500, error
+
+
+def _fail_group_notification(endpoint: str, organization_id: str, error: str) -> None:
+    """Log and raise once the attempt budget is exhausted.
+
+    A duplicate email from the resulting redelivery is the only effect, since
+    the send path writes nothing.
+    """
+    logger.error(
+        "metric=group_notification_post_failed_total endpoint=%s org_id=%s error=%s",
+        endpoint,
+        organization_id,
+        error,
+    )
+    raise RuntimeError(f"Group notification {endpoint} failed: {error}")
+
+
+def _post_group_notification(endpoint: str, organization_id: str, payload: dict) -> None:
+    """POST a group-notification job to the backend and insist it succeeded.
+
+    Deliberately raises on failure -- nothing tracks an unsent group email, so
+    a swallowed error would be a silent drop. The raise leaves the message on
+    the queue for redelivery, bounded by the consumer's attempt cap.
+    """
+    url, headers = _build_group_notification_request(endpoint, organization_id)
+    last_error = ""
+    for attempt in range(1, _GROUP_NOTIFICATION_ATTEMPTS + 1):
+        succeeded, retryable, last_error = _post_group_notification_once(
+            url, headers, payload
+        )
+        if succeeded:
+            return
+        if not retryable:
+            break
+        if attempt < _GROUP_NOTIFICATION_ATTEMPTS:
+            logger.warning(
+                "Group notification %s attempt %d/%d failed (%s); retrying",
+                endpoint,
+                attempt,
+                _GROUP_NOTIFICATION_ATTEMPTS,
+                last_error,
+            )
+            time.sleep(_GROUP_NOTIFICATION_RETRY_DELAY)
+    _fail_group_notification(endpoint, organization_id, last_error)
+
+
+@worker_task(name="notify_resource_shared_with_group")
+def notify_resource_shared_with_group(
+    group_ids: list[int],
+    actor_id: int,
+    resource_kind: str,
+    resource_id: str,
+    organization_id: str,
+    share_action: str,
+    revoked_at: str | None = None,
+) -> None:
+    """Email every current member of the groups whose access just changed.
+
+    ``revoked_at`` is set on a revoke only; the backend uses it to skip members
+    who joined the group after the access was taken away.
+    """
+    _post_group_notification(
+        "resource-shared",
+        organization_id,
+        {
+            "group_ids": group_ids,
+            "actor_id": actor_id,
+            "resource_kind": resource_kind,
+            "resource_id": resource_id,
+            "share_action": share_action,
+            "revoked_at": revoked_at,
+        },
+    )
+
+
+@worker_task(name="notify_group_membership_changed")
+def notify_group_membership_changed(
+    group_id: int,
+    actor_id: int,
+    membership_action: str,
+    user_ids: list[int],
+    organization_id: str,
+) -> None:
+    """Email the users whose membership of a group just changed."""
+    _post_group_notification(
+        "membership-changed",
+        organization_id,
+        {
+            "group_id": group_id,
+            "actor_id": actor_id,
+            "membership_action": membership_action,
+            "user_ids": user_ids,
+        },
+    )
 
 
 @worker_task(name="notification_health_check")

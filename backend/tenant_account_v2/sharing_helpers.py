@@ -269,6 +269,36 @@ def serialize_owner_refs(resource_obj: Any) -> list[dict[str, Any]]:
     return [{"id": user.pk, "email": user.email} for user in resource_obj.owners()]
 
 
+def access_survives_share_changes(resource_obj: Any) -> bool:
+    """True when access to ``resource_obj`` does not depend on shares at all.
+
+    Revoking a share removes nothing in that case, so nobody should be told it
+    did. ``shared_to_org`` covers every org member; ``is_friction_less`` is the
+    adapter equivalent -- ``AdapterInstance.for_user`` admits it unconditionally.
+    """
+    return bool(getattr(resource_obj, "shared_to_org", False)) or bool(
+        getattr(resource_obj, "is_friction_less", False)
+    )
+
+
+def org_admin_user_ids(organization: Any) -> set[int]:
+    """Users who reach every resource in ``organization`` as admins.
+
+    ``for_user`` returns the whole queryset for an org admin, so a revoke never
+    takes their access away and they must not be mailed about losing it. The
+    role STRING is plugin-dependent (it differs between the OSS and auth0
+    plugins), so this goes through the auth controller rather than comparing to
+    a literal.
+    """
+    from account_v2.authentication_controller import AuthenticationController
+
+    controller = AuthenticationController()
+    rows = OrganizationMember.objects.filter(organization=organization).values_list(
+        "user_id", "role"
+    )
+    return {uid for uid, role in rows if controller.is_admin_by_role(role)}
+
+
 def compute_effective_members(resource_obj: Any) -> list[dict[str, Any]]:
     """Compute effective members of a shareable resource.
 
@@ -319,6 +349,30 @@ def compute_effective_members(resource_obj: Any) -> list[dict[str, Any]]:
     _add_org_members(seen, resource_obj)
 
     return list(seen.values())
+
+
+def retained_user_ids(resource_obj: Any, organization: Any = None) -> set[int] | None:
+    """Every user id who still reaches ``resource_obj`` after a revoke.
+
+    ``None`` means access never depended on shares at all (see
+    ``access_survives_share_changes``) -- the caller's cue that nobody lost
+    anything and no notification is owed. Shared by the direct-share and
+    group-share revoke paths so they can't independently drift on what counts
+    as "still has access".
+    """
+    if access_survives_share_changes(resource_obj):
+        return None
+    retained = {member["user_id"] for member in compute_effective_members(resource_obj)}
+    # compute_effective_members deliberately excludes owners (they hold the
+    # resource, they aren't "shared with" it); a revoke never touches them.
+    retained |= {owner.pk for owner in resource_obj.owners()}
+    org = (
+        organization
+        if organization is not None
+        else getattr(resource_obj, "organization", None)
+    )
+    retained |= org_admin_user_ids(org)
+    return retained
 
 
 def _add_org_members(seen: dict[int, dict[str, Any]], resource_obj: Any) -> None:
