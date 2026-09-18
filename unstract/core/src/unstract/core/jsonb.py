@@ -30,6 +30,17 @@ extracted result over one stray control byte is the worse outcome. Numbers are *
 repaired — ``NaN`` has no correct ``jsonb`` spelling, and silently turning it
 into ``null`` or ``0`` would corrupt a value rather than clean it, so
 ``allow_nan=False`` is enforced and the caller decides what a broken number means.
+
+Cost, measured rather than assumed: the walk rebuilds every container and string,
+so encoding is ~11x a plain ``json.dumps`` on a 165 KiB result (0.38 ms -> 4.2 ms)
+and ~16x on 2 MB (3.1 ms -> 49 ms). Accepted, not optimised. An encode happens once
+per stored result against a task that took seconds, and the platform's measured
+ceiling is ~4-6 executions/s spread across the executor fleet, so the absolute
+figure never approaches a bottleneck. A fast path that encodes first and walks only
+when the *output* shows an offending escape was built and rejected: it makes a
+deeply nested payload succeed or fail depending on whether it also contains a NUL
+(the walk is recursive, the C encoder is not), and trading a consistent contract
+for milliseconds nobody is waiting on is the wrong way round.
 """
 
 from __future__ import annotations
