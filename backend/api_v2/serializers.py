@@ -7,7 +7,7 @@ from urllib.parse import urlparse
 from django.apps import apps
 from django.core.validators import RegexValidator
 from drf_spectacular.types import OpenApiTypes
-from drf_spectacular.utils import extend_schema_field
+from drf_spectacular.utils import extend_schema_field, extend_schema_serializer
 from permissions.permission import mutable_workflows_for
 from pipeline_v2.models import Pipeline
 from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
@@ -271,6 +271,7 @@ class UploadField(FileField):
     """
 
 
+@extend_schema_serializer(exclude_fields=["use_file_history"])
 class ExecutionRequestSerializer(TagParamsSerializer):
     """Execution request serializer.
 
