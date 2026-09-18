@@ -412,10 +412,6 @@ def test_documents_are_uploaded_as_binary_not_as_urls() -> None:
 
 
 def test_the_internal_execute_option_is_withdrawn_but_still_accepted() -> None:
-    """Everything generated from the spec -- clients, the CLI's flags -- would
-    otherwise offer an option that is not for callers. The server keeps
-    accepting it.
-    """
     assert "use_file_history" not in _schema("ExecuteRequest")["properties"]
 
     request = ExecutionRequestSerializer(

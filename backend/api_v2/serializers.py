@@ -271,8 +271,6 @@ class UploadField(FileField):
     """
 
 
-# `use_file_history` is internal: accepted, but withdrawn from the published
-# spec so no generated client or CLI offers it.
 @extend_schema_serializer(exclude_fields=["use_file_history"])
 class ExecutionRequestSerializer(TagParamsSerializer):
     """Execution request serializer.
