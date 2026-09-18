@@ -28,6 +28,12 @@ class ProfileManagerSerializer(AuditSerializer):
         # Dropped so a duplicate create surfaces the view's DuplicateData.
         validators = []
 
+    def validate_prompt_studio_tool(self, value):
+        """Refuse reparenting: the gate authorises against the stored parent."""
+        if self.instance and value != self.instance.prompt_studio_tool:
+            raise ValidationError("A profile cannot be moved to another project.")
+        return value
+
     def validate(self, attrs: dict[str, Any]) -> dict[str, Any]:
         """Reject a change to an adapter the requester cannot access.
 

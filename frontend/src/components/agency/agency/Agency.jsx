@@ -15,6 +15,7 @@ import useClearFileHistory from "../../../hooks/useClearFileHistory";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import usePostHogEvents from "../../../hooks/usePostHogEvents.js";
 import useRequestUrl from "../../../hooks/useRequestUrl";
+import { useWorkflowCanEdit } from "../../../hooks/useWorkflowCanEdit";
 import { IslandLayout } from "../../../layouts/island-layout/IslandLayout.jsx";
 import { useAlertStore } from "../../../store/alert-store";
 import { useSessionStore } from "../../../store/session-store";
@@ -56,6 +57,7 @@ function Agency() {
   } = workflowStore;
   const { sessionDetails } = useSessionStore();
   const { orgName } = sessionDetails;
+  const canEdit = useWorkflowCanEdit();
   const { getUrl } = useRequestUrl();
   const axiosPrivate = useAxiosPrivate();
   const { setAlertDetails } = useAlertStore();
@@ -1146,14 +1148,22 @@ function Agency() {
                       {selectedTool ? (
                         <div className="selected-tool-info">
                           <span className="selected-tool-name">
+                            {/* exportedTools holds only the viewer's own
+                                projects, so a shared workflow misses; the
+                                tool instance carries the name either way. */}
                             {exportedTools.find(
                               (t) => t.function_name === selectedTool,
-                            )?.name || selectedTool}
+                            )?.name ||
+                              details?.tool_instances?.find(
+                                (ti) => ti.tool_id === selectedTool,
+                              )?.name ||
+                              selectedTool}
                           </span>
                           <Button
                             type="link"
                             onClick={() => setShowToolSelectionSidebar(true)}
                             size="small"
+                            disabled={!canEdit}
                           >
                             Change Prompt Studio project
                           </Button>
@@ -1163,6 +1173,7 @@ function Agency() {
                           type="default"
                           onClick={() => setShowToolSelectionSidebar(true)}
                           className="select-tool-btn"
+                          disabled={!canEdit}
                         >
                           Select Prompt Studio project
                         </Button>

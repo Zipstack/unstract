@@ -3,6 +3,7 @@ from typing import Any
 
 from adapter_processor_v2.models import AdapterInstance
 from rest_framework import permissions
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.request import Request
 from rest_framework.views import APIView
 from tenant_account_v2.organization_member_service import OrganizationMemberService
@@ -79,9 +80,9 @@ def _is_resource_owner(user: Any, obj: Any) -> bool:
     memberships = getattr(obj, "memberships", None)
     if memberships is None:
         return obj.created_by == user
-    from permissions.roles import ResourceRole
-
-    return memberships.filter(user=user, role=ResourceRole.OWNER).exists()
+    # ``is_owner`` walks ``memberships.all()``, so a caller that prefetched
+    # them pays nothing per row. Same rule as filtering for an OWNER row.
+    return obj.is_owner(user)
 
 
 def _is_resource_viewer(user: Any, obj: Any) -> bool:
@@ -135,6 +136,44 @@ def is_workflow_mutator(request: Request, workflow: Any) -> bool:
     return _is_organization_admin(request)
 
 
+def is_activation_only_patch(
+    request: Request, *, flag: str, ignore: tuple[str, ...] = ()
+) -> bool:
+    """Whether this PATCH changes nothing but the enable/disable flag.
+
+    Sharing grants run and watch, and starting or stopping a shared pipeline
+    or deployment is part of that. Editing its settings is not -- so the
+    relaxation holds only when no other field rides along.
+    """
+    if request.method != "PATCH":
+        return False
+    keys = set(request.data)
+    return flag in keys and not (keys - {flag} - set(ignore))
+
+
+def mutable_workflows_for(request: Request) -> Any:
+    """Workflows ``request.user`` may mutate or build on.
+
+    Queryset counterpart of :func:`is_workflow_mutator`, for scoping writable
+    ``workflow`` fields. A shared workflow grants read and run, so it is not
+    here: deploying one is an owner act, not a use of it.
+    """
+    from tenant_account_v2.sharing_helpers import resources_visible_via_memberships
+    from workflow_manager.workflow_v2.models.workflow import Workflow
+
+    from permissions.roles import ResourceRole
+
+    # ``Workflow.objects`` is org-scoped by its manager, so this needs no
+    # organization filter of its own. The subquery casts the membership
+    # table's varchar ``object_id``; a direct join does not compare.
+    if _is_service_account(request) or _is_organization_admin(request):
+        return Workflow.objects.all()
+    owned = resources_visible_via_memberships(
+        Workflow, request.user, role=ResourceRole.OWNER
+    )
+    return Workflow.objects.filter(pk__in=owned)
+
+
 class IsParentWorkflowOwner(permissions.BasePermission):
     """Mutation gate for nested workflow sub-resources.
 
@@ -148,24 +187,34 @@ class IsParentWorkflowOwner(permissions.BasePermission):
         return is_workflow_mutator(request, obj.workflow)
 
 
-class IsParentToolOwner(permissions.BasePermission):
-    """Mutation gate for Prompt Studio sub-resources owned via the parent tool.
+class WorkflowOwnerMutationMixin:
+    """Viewset mixin gating mutation of a workflow sub-resource.
 
-    A ``ProfileManager`` is not a membership resource, so its access is
-    inherited from the parent ``CustomTool``. Admits the tool's owner (creator +
-    co-owners), org admin, or service account -- mirrors ``IsParentWorkflowOwner``
-    (UN-2202). Falls back to the object's own owner when it has no parent tool
-    (``prompt_studio_tool`` is nullable) to preserve legacy behaviour for
-    orphan rows.
+    Shared access to the parent workflow -- direct, via group, or org-wide --
+    grants read only. Admits owners, co-owners, org admins and service
+    accounts, via :func:`is_workflow_mutator`. Requires the resource to carry
+    a ``workflow`` FK.
+
+    ``create`` is handled separately from the rest: it is collection-level, so
+    DRF never calls ``get_object()`` and ``IsParentWorkflowOwner`` cannot run.
     """
 
-    def has_object_permission(self, request: Request, view: APIView, obj: Any) -> bool:
-        if _is_service_account(request):
-            return True
-        owner_resource = obj.prompt_studio_tool or obj
-        if _is_resource_owner(request.user, owner_resource):
-            return True
-        return _is_organization_admin(request)
+    mutation_denied_message = (
+        "Only the workflow owner or an organization admin can change this."
+    )
+
+    def get_permissions(self) -> list[Any]:
+        if self.action in ("update", "partial_update", "destroy"):
+            return [IsParentWorkflowOwner()]
+        return list(super().get_permissions())
+
+    def perform_create(self, serializer: Any) -> None:
+        # Fails closed: this mixin only guards resources that carry a parent
+        # workflow, so a payload without one cannot be authorised at all.
+        workflow = serializer.validated_data.get("workflow")
+        if not workflow or not is_workflow_mutator(self.request, workflow):
+            raise PermissionDenied(self.mutation_denied_message)
+        serializer.save()
 
 
 class IsParentDeploymentOwner(permissions.BasePermission):
@@ -174,7 +223,7 @@ class IsParentDeploymentOwner(permissions.BasePermission):
     An ``APIKey`` is not a membership resource, so its access is inherited
     from the parent ``APIDeployment`` or ``Pipeline`` (both nullable — exactly
     one is set). Admits the parent's owner (creator + co-owners), org admin,
-    or service account -- mirrors ``IsParentToolOwner`` (UN-2202). Falls back
+    or service account -- mirrors ``IsParentWorkflowOwner`` (UN-2202). Falls back
     to the key's own ``created_by`` when both parents are null.
 
     ``obj`` may also be the parent itself. ``create`` is a collection-level
@@ -281,6 +330,8 @@ class IsFrictionLessAdapterDelete(permissions.BasePermission):
         self, request: Request, view: APIView, obj: AdapterInstance
     ) -> bool:
         if obj.is_friction_less:
+            return True
+        if _is_service_account(request):
             return True
         if _is_resource_owner(request.user, obj):
             return True

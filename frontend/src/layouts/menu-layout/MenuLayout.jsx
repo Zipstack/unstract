@@ -11,6 +11,7 @@ import { Modal } from "@/components/ui/shims/antd-overlays";
 import { ToolNavBar } from "../../components/navigations/tool-nav-bar/ToolNavBar";
 import { workflowService } from "../../components/workflows/workflow/workflow-service";
 import { useExceptionHandler } from "../../hooks/useExceptionHandler";
+import { useWorkflowCanEdit } from "../../hooks/useWorkflowCanEdit";
 import { useAlertStore } from "../../store/alert-store";
 import { useSessionStore } from "../../store/session-store";
 import { useWorkflowStore } from "../../store/workflow-store";
@@ -25,6 +26,7 @@ function MenuLayout({ children }) {
   const { projectName, projectId, details } = useWorkflowStore();
   const { setAlertDetails } = useAlertStore();
   const handleException = useExceptionHandler();
+  const canEdit = useWorkflowCanEdit();
   const wfService = workflowService();
 
   const [editModalOpen, setEditModalOpen] = useState(false);
@@ -120,6 +122,7 @@ function MenuLayout({ children }) {
         subtitle={details?.description}
         onNavigateBack={handleNavigateBack}
         onEditTitle={projectId ? handleOpenEditModal : undefined}
+        editTitleDisabled={!canEdit}
         customButtons={rightButtons}
       />
       <Modal
