@@ -1796,10 +1796,8 @@ describe("Table expandable (UN-4124)", () => {
     expect(screen.queryByText(/^expanded /)).not.toBeInTheDocument();
 
     await user.click(screen.getByText('{"vendor":"F'));
-    await waitFor(() =>
-      expect(
-        screen.getByText('expanded [{"hitl_flag":false}]'),
-      ).toBeInTheDocument(),
-    );
+    expect(
+      await screen.findByText('expanded [{"hitl_flag":false}]'),
+    ).toBeInTheDocument();
   });
 });

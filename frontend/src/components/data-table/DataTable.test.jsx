@@ -1780,9 +1780,36 @@ describe("DataTable expandable", () => {
       />,
     );
     await user.click(screen.getByRole("button", { name: "Expand row" }));
-    expect(onExpandedRowsChange).toHaveBeenCalledWith(["1"]);
+    /*
+     * The caller's own key type, not the string TanStack normalizes it to:
+     * these rows key on a numeric `id`, and a parent testing `includes(1)`
+     * against a reported `["1"]` would never match.
+     */
+    expect(onExpandedRowsChange).toHaveBeenCalledWith([1]);
     // The parent did not move its keys, so neither did the table.
     expect(screen.queryByText("detail for Row 1")).not.toBeInTheDocument();
+  });
+
+  it("keeps the caller's key types when collapsing too", async () => {
+    const user = userEvent.setup();
+    const onExpandedRowsChange = vi.fn();
+    render(
+      <DataTable
+        columns={columns}
+        dataSource={rowsFor(2)}
+        rowKey="id"
+        expandable={{
+          expandedRowRender: detail,
+          expandedRowKeys: [1, 2],
+          onExpandedRowsChange,
+        }}
+      />,
+    );
+    await user.click(
+      screen.getAllByRole("button", { name: "Collapse row" })[0],
+    );
+    // The surviving key keeps its number type rather than being stringified.
+    expect(onExpandedRowsChange).toHaveBeenCalledWith([2]);
   });
 
   it("leaves the prop off the DOM", () => {

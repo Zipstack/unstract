@@ -446,8 +446,8 @@ function DataTable({
   const expandedRowRender = expandable?.expandedRowRender;
   const canExpand = typeof expandedRowRender === "function";
   const controlledExpandedKeys = expandable?.expandedRowKeys;
-  const [ownExpandedKeys, setOwnExpandedKeys] = React.useState(() =>
-    (expandable?.defaultExpandedRowKeys ?? []).map(String),
+  const [ownExpandedKeys, setOwnExpandedKeys] = React.useState(
+    () => expandable?.defaultExpandedRowKeys ?? [],
   );
   const expandedKeys = React.useMemo(
     () => new Set((controlledExpandedKeys ?? ownExpandedKeys).map(String)),
@@ -466,11 +466,18 @@ function DataTable({
   const onExpandCb = expandable?.onExpand;
   const onExpandedRowsChange = expandable?.onExpandedRowsChange;
   const toggleExpanded = React.useCallback(
-    (key, record) => {
+    (key, record, originalKey) => {
       const willExpand = !expandedKeys.has(key);
+      /*
+       * Report the caller's own key values, never the normalized strings:
+       * normalization exists to match TanStack's `row.id` and must not leak
+       * out. A controlled caller that passed `[1]` and then tests
+       * `next.includes(1)` would never match `["1"]`.
+       */
+      const source = controlledExpandedKeys ?? ownExpandedKeys;
       const next = willExpand
-        ? [...expandedKeys, key]
-        : [...expandedKeys].filter((k) => k !== key);
+        ? [...source, originalKey]
+        : source.filter((k) => String(k) !== key);
       // A controlled `expandedRowKeys` belongs to the parent: report, never set.
       if (controlledExpandedKeys === undefined) {
         setOwnExpandedKeys(next);
@@ -478,7 +485,28 @@ function DataTable({
       onExpandCb?.(willExpand, record);
       onExpandedRowsChange?.(next);
     },
-    [expandedKeys, controlledExpandedKeys, onExpandCb, onExpandedRowsChange],
+    [
+      expandedKeys,
+      controlledExpandedKeys,
+      ownExpandedKeys,
+      onExpandCb,
+      onExpandedRowsChange,
+    ],
+  );
+
+  /*
+   * The untouched key behind `row.id`. `getRowId` stringifies whatever `rowKey`
+   * resolves to, so this is the only way back to the value the call-site
+   * actually holds — falling back to the row index, which is what `getRowId`
+   * itself uses when the record carries no key.
+   */
+  const originalRowKey = React.useCallback(
+    (record, index) => {
+      const raw =
+        typeof rowKey === "function" ? rowKey(record) : record?.[rowKey];
+      return raw === undefined || raw === null ? index : raw;
+    },
+    [rowKey],
   );
 
   /*
@@ -508,7 +536,7 @@ function DataTable({
           const onExpand = (event) => {
             // The row itself may carry an onRow click handler.
             event?.stopPropagation?.();
-            toggleExpanded(row.id, record);
+            toggleExpanded(row.id, record, originalRowKey(record, row.index));
           };
           if (typeof expandIcon === "function") {
             return expandIcon({
@@ -544,6 +572,7 @@ function DataTable({
     expandedKeys,
     isRowExpandable,
     toggleExpanded,
+    originalRowKey,
   ]);
   const leaves = React.useMemo(() => leafColumns(columns), [columns]);
 
