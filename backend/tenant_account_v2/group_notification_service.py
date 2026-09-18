@@ -47,7 +47,7 @@ _STATIC_RESOURCE_TYPES = {
     "connector_instance": "connector",
     "custom_tool": "text_extractor",
     "agentic_project": "agentic_project",
-    "lookup_definition": "lookup",
+    "lookup": "lookup",
 }
 _ADAPTER_RESOURCE_TYPES = {
     "LLM": "llm",

@@ -8,7 +8,7 @@ import { Input, Select } from "@/components/ui/shims/antd-inputs";
 import { Space } from "@/components/ui/shims/antd-layout";
 import { Modal } from "@/components/ui/shims/antd-overlays";
 import { Typography } from "@/components/ui/shims/antd-typography";
-
+import { canEditResource } from "../../../helpers/resourceAccess.js";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate.js";
 import { useAlertStore } from "../../../store/alert-store";
 import { usePromptStudioStore } from "../../../store/prompt-studio-store";
@@ -88,7 +88,11 @@ const EtlTaskDeploy = ({
     workflowApiService
       .getWorkflowList()
       .then((workflows) => {
-        setWorkflowList(workflows);
+        // Deploying is an owner act, and the serializer refuses the rest.
+        // Offering them anyway produces an unexplained rejection on save.
+        setWorkflowList(
+          workflows?.filter((wf) => canEditResource(wf, sessionDetails)) || [],
+        );
       })
       .catch(() => {
         console.error("Unable to get workflow list");

@@ -8,6 +8,7 @@ from django.apps import apps
 from django.core.validators import RegexValidator
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema_field
+from permissions.permission import mutable_workflows_for
 from pipeline_v2.models import Pipeline
 from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
 from rest_framework import serializers
@@ -34,6 +35,7 @@ from utils.serializer.integrity_error_mixin import IntegrityErrorMixin
 from workflow_manager.endpoint_v2.models import WorkflowEndpoint
 from workflow_manager.workflow_v2.exceptions import ExecutionDoesNotExistError
 from workflow_manager.workflow_v2.models.execution import WorkflowExecution
+from workflow_manager.workflow_v2.models.workflow import Workflow
 
 from api_v2.constants import ApiExecution
 from api_v2.models import APIDeployment, APIKey
@@ -45,6 +47,9 @@ class APIDeploymentSerializer(IntegrityErrorMixin, AuditSerializer):
     # explicitly so ``fields = "__all__"`` continues to expose it. Share
     # mutations go through ``POST /api/<id>/share/`` (UN-2977 plan §B).
     shared_groups = serializers.PrimaryKeyRelatedField(many=True, read_only=True)
+    # Also on the list serializer; a detail response without it reads as
+    # editable to the UI.
+    is_owner = serializers.SerializerMethodField()
 
     class Meta:
         model = APIDeployment
@@ -55,6 +60,10 @@ class APIDeploymentSerializer(IntegrityErrorMixin, AuditSerializer):
         extra_kwargs = {
             "shared_to_org": {"read_only": True},
         }
+
+    def get_is_owner(self, obj) -> bool:
+        request = self.context.get("request")
+        return obj.is_owner(request.user) if request else False
 
     unique_error_message_map: dict[str, dict[str, str]] = {
         "unique_api_name": {
@@ -84,8 +93,36 @@ class APIDeploymentSerializer(IntegrityErrorMixin, AuditSerializer):
     def validate_display_name(self, value: str) -> str:
         return validate_name_field(value, field_name="Display name")
 
+    def get_fields(self) -> dict[str, Any]:
+        """Scope ``workflow`` to the requester, as the endpoint serializer does.
+
+        The default manager is only org-scoped, so an unscoped field lets any
+        member deploy a colleague's workflow -- executing it with its
+        connectors and adapters, at the owner's cost. Deploying is an owner
+        act: a deployment is a persistent execution surface its creator then
+        owns and can share onward.
+        """
+        fields = super().get_fields()
+        request = self.context.get("request")
+        queryset = mutable_workflows_for(request) if request else Workflow.objects.none()
+        # An update resends the bound workflow unchanged, so keep it
+        # selectable: a co-owner of this resource need not own the workflow.
+        # ``validate_workflow`` still refuses an actual change.
+        if self.instance is not None:
+            queryset = queryset | Workflow.objects.filter(pk=self.instance.workflow_id)
+        fields["workflow"].queryset = queryset
+        # Same code, readable text: the default names a pk the user never
+        # typed. Tests discriminate on the code, which is unchanged.
+        fields["workflow"].error_messages["does_not_exist"] = (
+            "You can only deploy a workflow you own. Ask its owner to add "
+            "you as a co-owner."
+        )
+        return fields
+
     def validate_workflow(self, workflow):
-        """Validate that the workflow has properly configured source and destination endpoints."""
+        """Refuse reparenting, then validate the endpoint configuration."""
+        if self.instance and workflow != self.instance.workflow:
+            raise ValidationError("A deployment cannot be moved to another workflow.")
         # Get all endpoints for this workflow with related data
         endpoints = WorkflowEndpoint.objects.filter(workflow=workflow).select_related(
             "connector_instance"
@@ -171,6 +208,18 @@ class APIDeploymentSerializer(IntegrityErrorMixin, AuditSerializer):
 
 
 class APIKeySerializer(AuditSerializer):
+    def validate_api(self, value):
+        """Refuse reparenting: the gate authorises against the stored parent."""
+        if self.instance and value != self.instance.api:
+            raise ValidationError("A key cannot be moved to another deployment.")
+        return value
+
+    def validate_pipeline(self, value):
+        """Refuse reparenting: the gate authorises against the stored parent."""
+        if self.instance and value != self.instance.pipeline:
+            raise ValidationError("A key cannot be moved to another pipeline.")
+        return value
+
     class Meta:
         model = APIKey
         fields = "__all__"
@@ -510,6 +559,7 @@ class APIDeploymentListSerializer(ModelSerializer):
     last_run_time = SerializerMethodField()
     is_owner = SerializerMethodField()
     co_owners_count = SerializerMethodField()
+    owner_emails = SerializerMethodField()
 
     class Meta:
         model = APIDeployment
@@ -529,6 +579,7 @@ class APIDeploymentListSerializer(ModelSerializer):
             "last_run_time",
             "is_owner",
             "co_owners_count",
+            "owner_emails",
         ]
 
     def get_created_by_email(self, obj) -> str | None:
@@ -541,6 +592,12 @@ class APIDeploymentListSerializer(ModelSerializer):
 
     def get_co_owners_count(self, obj) -> int:
         return obj.co_owners_count()
+
+    def get_owner_emails(self, obj) -> list[str]:
+        """Email of each owner, earliest first. Empty if none is a person."""
+        # Published field: APIDeploymentSummary inherits it, so it also
+        # reaches platform-key callers.
+        return obj.owner_emails()
 
     # Both read the list view's annotations when they are there, and fall back
     # to a query for the callers that serialize a plain queryset. A deployment

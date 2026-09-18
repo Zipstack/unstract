@@ -6,9 +6,9 @@ counter reconciliation, and the guarantee that **neither a UI-logging hiccup nor
 a status-update failure may disturb the caller's original exception/flow** (it
 must never raise, so the handler's own re-raise / error-response always runs).
 
-The Celery path is byte-identical by construction: this recorder is only invoked
-on the ``is_pg_transport`` branch, so a Celery failure never reaches it (and so
-never sends file aggregates).
+It used to be reached only on the ``is_pg_transport`` branch, with the Celery
+path keeping a bare status update; with the transport gone (UN-4078) it is the
+single failure-recording path for both workers.
 """
 
 from __future__ import annotations

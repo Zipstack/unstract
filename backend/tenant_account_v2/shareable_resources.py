@@ -23,8 +23,8 @@ class ShareableResource:
     id_field: str  # primary-key field name
 
 
-# ``agentic_studio_v1`` is cloud-only; consumers resolve it lazily and skip it
-# when the app is not installed.
+# ``agentic_studio_v1`` and ``lookups`` are cloud-only; consumers resolve them
+# lazily and skip them when the app is not installed.
 SHAREABLE_RESOURCES: tuple[ShareableResource, ...] = (
     ShareableResource("workflow_v2", "Workflow", "workflow", "workflow_name", "id"),
     ShareableResource("pipeline_v2", "Pipeline", "pipeline", "pipeline_name", "id"),
@@ -49,14 +49,7 @@ SHAREABLE_RESOURCES: tuple[ShareableResource, ...] = (
         "name",
         "id",
     ),
-    # ``lookups`` is cloud-only, same as ``agentic_studio_v1`` above.
-    ShareableResource(
-        "lookups",
-        "LookupDefinition",
-        "lookup_definition",
-        "name",
-        "lookup_id",
-    ),
+    ShareableResource("lookups", "LookupDefinition", "lookup", "name", "lookup_id"),
 )
 
 

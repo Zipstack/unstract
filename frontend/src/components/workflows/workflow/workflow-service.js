@@ -60,7 +60,7 @@ function workflowService() {
     clearFileMarkers: (id) => {
       options = {
         url: `${path}/workflow/${id}/clear-file-marker/`,
-        method: "GET",
+        method: "POST",
         headers: {
           "X-CSRFToken": csrfToken,
         },

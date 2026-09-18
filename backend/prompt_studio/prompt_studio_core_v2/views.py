@@ -19,7 +19,6 @@ from file_management.exceptions import FileNotFound
 from permissions.membership_views import OwnerManagementMixin
 from permissions.permission import IsOwner, IsOwnerOrSharedUserOrSharedToOrg
 from permissions.resource_share_views import ResourceShareManagementMixin
-from permissions.roles import ResourceRole
 from plugins import get_plugin
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -152,6 +151,10 @@ class PromptStudioCoreView(
         return CustomToolSerializer
 
     def get_permissions(self) -> list[Any]:
+        # Settings are collaborative (UN-2868); only the project's existence
+        # and who it is shared with stay with the owner. Renaming is blocked
+        # per-field in the serializer, since it shares an endpoint with
+        # every settings write.
         if self.action in ["destroy", "add_co_owner", "remove_co_owner"]:
             return [IsOwner()]
 
@@ -211,9 +214,7 @@ class PromptStudioCoreView(
             )
         # ``created_by`` is audit-only; the creator's access flows through an
         # OWNER membership row (UN-2202 co-owners).
-        serializer.instance.memberships.get_or_create(
-            user_id=request.user.id, defaults={"role": ResourceRole.OWNER}
-        )
+        serializer.instance.grant_owner(request.user)
         PromptStudioHelper.create_default_profile_manager(
             request.user, serializer.data["tool_id"]
         )
@@ -884,9 +885,15 @@ class PromptStudioCoreView(
 
     @action(detail=True, methods=["post"])
     def create_prompt(self, request: HttpRequest, pk: Any = None) -> Response:
+        # A custom @action, so DRF never calls get_object() on its own even
+        # though the route carries a pk -- the object gate would not run.
+        # Resolve the parent from the URL and pin it, so the payload cannot
+        # name a project the caller cannot reach.
+        prompt_studio_tool = self.get_object()
         context = super().get_serializer_context()
         serializer = ToolStudioPromptSerializer(data=request.data, context=context)
         serializer.is_valid(raise_exception=True)
+        serializer.validated_data[ToolStudioPromptKeys.TOOL_ID] = prompt_studio_tool
         try:
             # serializer.save()
             self.perform_create(serializer)
@@ -903,18 +910,15 @@ class PromptStudioCoreView(
         context = super().get_serializer_context()
         serializer = ProfileManagerSerializer(data=request.data, context=context)
         serializer.is_valid(raise_exception=True)
-        # Check for the maximum number of profiles constraint
-        prompt_studio_tool = serializer.validated_data.get(
-            ProfileManagerKeys.PROMPT_STUDIO_TOOL
+        # The URL is authoritative for the parent: resolving it here is what
+        # runs the object gate, and pinning it stops the payload naming another
+        # project. Also keeps perform_create() from persisting NULL and
+        # orphaning the profile from every ``filter(prompt_studio_tool=...)``.
+        prompt_studio_tool = self.get_object()
+        serializer.validated_data[ProfileManagerKeys.PROMPT_STUDIO_TOOL] = (
+            prompt_studio_tool
         )
-        if not prompt_studio_tool:
-            # Write back into validated_data so perform_create() doesn't
-            # persist NULL and orphan the profile from every
-            # ``filter(prompt_studio_tool=...)`` query.
-            prompt_studio_tool = self.get_object()
-            serializer.validated_data[ProfileManagerKeys.PROMPT_STUDIO_TOOL] = (
-                prompt_studio_tool
-            )
+        # Check for the maximum number of profiles constraint
         profile_count = ProfileManager.objects.filter(
             prompt_studio_tool=prompt_studio_tool
         ).count()
