@@ -26,7 +26,7 @@ class TestEnqueueTask:
                 task_name="async_execute_bin",
                 queue="celery_api_deployments",
                 args=["org", "wf", "exec"],
-                kwargs={"transport": "pg_queue"},
+                kwargs={"use_file_history": True},
                 org_id="org",
                 priority=5,
                 fairness={
@@ -44,7 +44,7 @@ class TestEnqueueTask:
         assert msg["task_name"] == "async_execute_bin"
         assert msg["queue"] == "celery_api_deployments"
         assert msg["args"] == ["org", "wf", "exec"]
-        assert msg["kwargs"] == {"transport": "pg_queue"}
+        assert msg["kwargs"] == {"use_file_history": True}
         assert msg["fairness"]["workload_type"] == "api"
 
     def test_uuid_args_kwargs_are_json_coerced(self):

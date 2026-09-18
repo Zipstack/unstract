@@ -9,9 +9,32 @@
   }
 }
 
+/*
+ * The full-page loader must fill the viewport to centre in it.
+ *
+ * `.center` (index.css) sizes itself with `width/height: inherit`, which does
+ * not give it the viewport: it collapsed to the height of its own content
+ * (24px), so the logo and "Please wait…" text sat wherever that box landed
+ * rather than in the middle of the screen. LazyOutlet.css already patches
+ * `.center` for its own fallback, for the same reason.
+ *
+ * Scoped to the loader so the other `.center` consumer (FileSystem's inline
+ * empty state) keeps sizing to its container.
+ */
+.generic-loader.center {
+  width: 100%;
+  min-height: 100dvh;
+  place-content: center;
+  place-items: center;
+}
+
 /* PULSE BUBBLES */
 .spinner-box {
   text-align: center;
+  /* The logo, pulse dots and text share one centred column. */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
 .pulse-container {
   width: 60px;

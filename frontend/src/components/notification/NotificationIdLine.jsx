@@ -1,5 +1,5 @@
-import { Typography } from "antd";
 import PropTypes from "prop-types";
+import { Typography } from "@/components/ui/shims/antd-typography";
 
 function NotificationIdLine({ label, value, stacked = false }) {
   if (!value) {

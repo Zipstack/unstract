@@ -200,64 +200,28 @@ class SourceConnectionType(str, Enum):
     API = "API"
 
 
-class WorkflowTransport(str, Enum):
-    """Transport a single workflow execution rides end-to-end.
-
-    The migration unit is the *execution*, not the task: every stage of a
-    coupled pipeline (async_execute → file-batch fan-out → callback) must run
-    on one transport, decided once at execution creation and carried in the
-    task payload (see ``9e-design.md``). ``CELERY`` is the legacy default;
-    ``PG_QUEUE`` is the bespoke Postgres queue.
-    """
-
-    CELERY = "celery"
-    PG_QUEUE = "pg_queue"
-
-
-# Default transport when none is resolved/carried — keeps every pre-existing
-# payload and caller on the legacy path until a transport is explicitly chosen.
-DEFAULT_WORKFLOW_TRANSPORT = WorkflowTransport.CELERY.value
-
-
-def normalize_transport(value: object, *, logger: Any = None, context: str = "") -> str:
-    """Coerce an inbound transport value to a known ``WorkflowTransport`` value.
-
-    The transport crosses untrusted boundaries — a task payload, PG JSONB, an
-    older backend that omits the field — so a missing/garbage value must never
-    route an execution onto an unknown substrate. This **fails closed**: an
-    unrecognized value (``None``, ``"celary"``, ``""``) logs a warning (when a
-    ``logger`` is given) and falls back to :data:`DEFAULT_WORKFLOW_TRANSPORT`
-    (Celery). A recognized value passes through as its canonical string.
-
-    Coerce-not-raise is deliberate, and differs from how
-    ``WorkflowContextData.workflow_type`` is validated: ``transport`` has an
-    explicit safe default by design (the whole point of the seam is reversible
-    fallback to Celery), so a bad value should degrade to Celery, not crash the
-    execution. ``context`` is an optional suffix for the log line (e.g. an
-    ``exec:<id>`` tag) to make a version-skew warning traceable.
-    """
-    try:
-        return WorkflowTransport(value).value
-    except ValueError:
-        if logger is not None:
-            logger.warning(
-                "Unrecognized workflow transport %r%s; falling back to %r",
-                value,
-                context,
-                DEFAULT_WORKFLOW_TRANSPORT,
-            )
-        return DEFAULT_WORKFLOW_TRANSPORT
-
-
-def is_pg_transport(transport: str | None) -> bool:
-    """True if ``transport`` is the Postgres-queue transport.
-
-    Single source for "what counts as PG transport" — centralises the
-    ``== WorkflowTransport.PG_QUEUE.value`` comparison scattered across the
-    worker fan-out / barrier code, and the seam to extend if a second
-    PG-family transport is ever added.
-    """
-    return transport == WorkflowTransport.PG_QUEUE.value
+# Rolling-deploy shim (UN-4078). Nothing BRANCHES on this key any more, but it is
+# still written for one release, and one site still matches it by name (the
+# EXECUTION_EXCLUDED_PARAMS entry below). A pre-UN-4078 worker treats an absent
+# ``transport`` as "celery" and publishes the fan-out / callback to RabbitMQ, which
+# has no consumers, so during the rollout window an old pod receiving a new
+# producer's payload would strand the execution.
+#
+# REMOVAL CHECKLIST for the release after UN-4078, once no pre-UN-4078 worker can
+# still be running (`grep -rn LEGACY_TRANSPORT_ ` finds every item but the last):
+#   1. the four writes — backend ``WorkflowHelper`` dispatch payload, backend
+#      ``create_workflow_execution`` response, ``workers/scheduler/tasks.py``
+#      dispatch kwargs, ``PgBarrier`` callback descriptor
+#   2. ``CallbackDescriptor.transport`` — workers/queue_backend/barrier.py
+#   3. the ``LEGACY_TRANSPORT_KEY`` entry in ``EXECUTION_EXCLUDED_PARAMS`` —
+#      backend/workflow_manager/workflow_v2/workflow_helper.py
+#   4. these two constants
+#   5. the gating tests — workers/tests/test_legacy_transport_shim.py,
+#      workers/tests/test_pg_barrier.py, the shim cases in
+#      workers/tests/test_dispatch_sites_characterisation.py, and
+#      backend/workflow_manager/workflow_v2/tests/test_legacy_transport_shim.py
+LEGACY_TRANSPORT_KEY = "transport"
+LEGACY_TRANSPORT_VALUE = "pg_queue"
 
 
 class WorkloadType(StrEnum):

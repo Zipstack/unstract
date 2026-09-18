@@ -619,10 +619,12 @@ class LegacyExecutor(BaseExecutor):
         )
         step = 1
 
+        extraction_metrics: dict = {}
         try:
             # ---- Step 1: Extract ----
             if not skip_extraction:
                 step += 1
+                extraction_start = time.monotonic()
                 extract_ctx = ExecutionContext(
                     executor_name=context.executor_name,
                     operation=Operation.EXTRACT.value,
@@ -640,6 +642,15 @@ class LegacyExecutor(BaseExecutor):
                     return _failure(extract_result)
                 _absorb(extract_result)
                 extracted_text = extract_result.data.get(IKeys.EXTRACTED_TEXT, "")
+                extraction_time = time.monotonic() - extraction_start
+                # Nest under a reserved "_file" namespace so the metric never
+                # collides with a user-defined output named "text_extraction"
+                # during the top-level metrics merge (see _merge_pipeline_metrics).
+                extraction_metrics = {
+                    PSKeys.FILE: {
+                        PSKeys.TEXT_EXTRACTION: {PSKeys.TIME_TAKEN: extraction_time}
+                    }
+                }
 
             # ---- Step 2: Summarize (if enabled) ----
             if is_summarization:
@@ -700,6 +711,7 @@ class LegacyExecutor(BaseExecutor):
             source_file_name=source_file_name,
             extracted_text=extracted_text,
             index_metrics=index_metrics,
+            extraction_metrics=extraction_metrics,
         )
 
         output_map = structured_output.get(PSKeys.OUTPUT, {}) or {}
@@ -800,17 +812,29 @@ class LegacyExecutor(BaseExecutor):
         source_file_name: str,
         extracted_text: str,
         index_metrics: dict,
+        extraction_metrics: dict[str, dict] | None = None,
     ) -> None:
-        """Populate metadata/metrics in structured_output after pipeline completion."""
+        """Populate metadata/metrics in structured_output after pipeline completion.
+
+        Args:
+            extraction_metrics: File-level text extraction timing, shaped as
+                ``{"_file": {"text_extraction": {"time_taken(s)": float}}}``.
+                Nested under the reserved ``_file`` namespace to avoid
+                colliding with user-defined output names during the merge.
+                ``None``/empty when extraction is skipped.
+        """
         if "metadata" not in structured_output:
             structured_output["metadata"] = {}
         structured_output["metadata"]["file_name"] = source_file_name
         if extracted_text:
             structured_output["metadata"]["extracted_text"] = extracted_text
-        if index_metrics:
+        new_metrics = self._merge_pipeline_metrics(
+            index_metrics or {}, extraction_metrics or {}
+        )
+        if new_metrics:
             existing_metrics = structured_output.get("metrics", {})
             structured_output["metrics"] = self._merge_pipeline_metrics(
-                existing_metrics, index_metrics
+                existing_metrics, new_metrics
             )
 
     def _run_pipeline_summarize(
@@ -955,8 +979,6 @@ class LegacyExecutor(BaseExecutor):
         index_records: list[dict],
     ) -> None:
         """Index a single structure-pipeline output entry in-place."""
-        import datetime
-
         chunk_size = output.get("chunk-size", 0)
         if chunk_size == 0:
             return
@@ -977,7 +999,7 @@ class LegacyExecutor(BaseExecutor):
             return
         seen_params.add(param_key)
 
-        indexing_start = datetime.datetime.now()
+        indexing_start = time.monotonic()
         logger.info(
             "Pipeline indexing: chunk_size=%s chunk_overlap=%s vector_db=%s",
             chunk_size,
@@ -1029,9 +1051,9 @@ class LegacyExecutor(BaseExecutor):
         if child_records:
             index_records.extend(child_records)
 
-        elapsed = (datetime.datetime.now() - indexing_start).total_seconds()
+        elapsed = time.monotonic() - indexing_start
         output_name = output.get("name", "")
-        index_metrics[output_name] = {"indexing": {"time_taken(s)": elapsed}}
+        index_metrics[output_name] = {"indexing": {PSKeys.TIME_TAKEN: elapsed}}
 
     @staticmethod
     def _merge_pipeline_metrics(metrics1: dict, metrics2: dict) -> dict:

@@ -1,13 +1,11 @@
-import {
-  CheckCircleFilled,
-  CloseCircleFilled,
-  InfoCircleFilled,
-} from "@ant-design/icons";
-import { Button, Modal, Table, Tabs, Tooltip, Typography } from "antd";
-import TabPane from "antd/es/tabs/TabPane";
+import { CircleCheck, CircleX, Info } from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { Button } from "@/components/ui/shims/antd-button";
+import { Modal, Tooltip } from "@/components/ui/shims/antd-overlays";
+import { Table, Tabs } from "@/components/ui/shims/antd-structure";
+import { Typography } from "@/components/ui/shims/antd-typography";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { useSessionStore } from "../../../store/session-store";
@@ -266,13 +264,13 @@ function OutputForDocModal({
               <Typography.Text>
                 <span style={{ marginRight: "8px" }}>
                   {status === outputStatus.yet_to_process && (
-                    <InfoCircleFilled style={{ color: "#F0AD4E" }} />
+                    <Info style={{ color: "#F0AD4E" }} />
                   )}
                   {status === outputStatus.fail && (
-                    <CloseCircleFilled style={{ color: "#FF4D4F" }} />
+                    <CircleX style={{ color: "#FF4D4F" }} />
                   )}
                   {status === outputStatus.success && (
-                    <CheckCircleFilled style={{ color: "#52C41A" }} />
+                    <CircleCheck style={{ color: "#52C41A" }} />
                   )}
                 </span>{" "}
                 {message}
@@ -333,9 +331,9 @@ function OutputForDocModal({
         <div className="output-doc-gap" />
         <div className="lmm-profile-outputs">
           <Tabs defaultActiveKey="0" onChange={handleTabChange}>
-            <TabPane tab={<span>Default</span>} key={"0"}></TabPane>
+            <Tabs.TabPane tab={<span>Default</span>} key={"0"}></Tabs.TabPane>
             {adapterData?.map((adapter, index) => (
-              <TabPane
+              <Tabs.TabPane
                 tab={
                   <Tooltip title={adapter?.llm_model || adapter?.profile_name}>
                     <span>
@@ -346,7 +344,7 @@ function OutputForDocModal({
                   </Tooltip>
                 }
                 key={(index + 1)?.toString()}
-              ></TabPane>
+              ></Tabs.TabPane>
             ))}
           </Tabs>{" "}
           <ProfileInfoBar profileId={selectedProfile} profiles={llmProfiles} />

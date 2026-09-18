@@ -1,19 +1,16 @@
-import {
-  Button,
-  Col,
-  Image,
-  Row,
-  Select,
-  Space,
-  Tooltip,
-  Typography,
-} from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
+import { Button } from "@/components/ui/shims/antd-button";
+import { Select } from "@/components/ui/shims/antd-inputs";
+import { Col, Row, Space } from "@/components/ui/shims/antd-layout";
+import { Image } from "@/components/ui/shims/antd-leaves";
+import { Tooltip } from "@/components/ui/shims/antd-overlays";
+import { Typography } from "@/components/ui/shims/antd-typography";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import useRequestUrl from "../../../hooks/useRequestUrl";
+import { useWorkflowCanEdit } from "../../../hooks/useWorkflowCanEdit";
 import { useAlertStore } from "../../../store/alert-store";
 import { useSessionStore } from "../../../store/session-store";
 import { useWorkflowStore } from "../../../store/workflow-store";
@@ -24,6 +21,7 @@ import "./DsSettingsCard.css";
 function DsSettingsCard({ connType, endpointDetails, message }) {
   const workflowStore = useWorkflowStore();
   const { source, destination, allowChangeEndpoint, details } = workflowStore;
+  const canEdit = useWorkflowCanEdit();
   const [options, setOptions] = useState([]);
   const [openModal, setOpenModal] = useState(false);
 
@@ -235,8 +233,9 @@ function DsSettingsCard({ connType, endpointDetails, message }) {
             <Space>
               <Tooltip
                 title={
-                  !allowChangeEndpoint &&
-                  "Workflow used in API/Task/ETL deployment"
+                  (!canEdit && "Only the owner can change this") ||
+                  (!allowChangeEndpoint &&
+                    "Workflow used in API/Task/ETL deployment")
                 }
               >
                 <Select
@@ -244,7 +243,7 @@ function DsSettingsCard({ connType, endpointDetails, message }) {
                   options={options}
                   placeholder="Select Connector Type"
                   value={endpointDetails?.connection_type || undefined}
-                  disabled={!allowChangeEndpoint}
+                  disabled={!allowChangeEndpoint || !canEdit}
                   onChange={(value) => {
                     handleEndpointUpdate({
                       connection_type: value,

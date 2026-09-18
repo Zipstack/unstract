@@ -1,22 +1,12 @@
-import {
-  BugOutlined,
-  HistoryOutlined,
-  LoadingOutlined,
-  PlayCircleOutlined,
-  SettingOutlined,
-} from "@ant-design/icons";
-import {
-  Alert,
-  Button,
-  Col,
-  Dropdown,
-  Progress,
-  Row,
-  Select,
-  Typography,
-} from "antd";
+import { Bug, CirclePlay, History, LoaderCircle, Settings } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { Button } from "@/components/ui/shims/antd-button";
+import { Select } from "@/components/ui/shims/antd-inputs";
+import { Col, Row } from "@/components/ui/shims/antd-layout";
+import { Alert, Progress } from "@/components/ui/shims/antd-leaves";
+import { Dropdown } from "@/components/ui/shims/antd-overlays";
+import { Typography } from "@/components/ui/shims/antd-typography";
 
 import "./Agency.css";
 import { sourceTypes, wfExecutionTypes } from "../../../helpers/GetStaticData";
@@ -25,6 +15,7 @@ import useClearFileHistory from "../../../hooks/useClearFileHistory";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import usePostHogEvents from "../../../hooks/usePostHogEvents.js";
 import useRequestUrl from "../../../hooks/useRequestUrl";
+import { useWorkflowCanEdit } from "../../../hooks/useWorkflowCanEdit";
 import { IslandLayout } from "../../../layouts/island-layout/IslandLayout.jsx";
 import { useAlertStore } from "../../../store/alert-store";
 import { useSessionStore } from "../../../store/session-store";
@@ -66,6 +57,7 @@ function Agency() {
   } = workflowStore;
   const { sessionDetails } = useSessionStore();
   const { orgName } = sessionDetails;
+  const canEdit = useWorkflowCanEdit();
   const { getUrl } = useRequestUrl();
   const axiosPrivate = useAxiosPrivate();
   const { setAlertDetails } = useAlertStore();
@@ -1033,19 +1025,19 @@ function Agency() {
     {
       key: "run-workflow",
       label: "Run Workflow",
-      icon: <PlayCircleOutlined />,
+      icon: <CirclePlay />,
       disabled: isClearingFileHistory || loadingType === "EXECUTE",
     },
     {
       key: "view-file-history",
       label: "View File History",
-      icon: <HistoryOutlined />,
+      icon: <History />,
       disabled: isClearingFileHistory || loadingType === "EXECUTE",
     },
     {
       key: "clear-history",
       label: "Clear Processed File History",
-      icon: isClearingFileHistory ? <LoadingOutlined /> : <HistoryOutlined />,
+      icon: isClearingFileHistory ? <LoaderCircle /> : <History />,
       disabled: isClearingFileHistory || loadingType === "EXECUTE",
     },
   ];
@@ -1082,14 +1074,21 @@ function Agency() {
               strokeColor={workflowProgress === 100 ? "#52c41a" : "#1890ff"}
             />
           </div>
+          {/*
+           * The entries are portalled and built from `actionsMenuItems`, so
+           * they derive their ids from this one: `workflow-actions-item-
+           * run-workflow`, and so on for the other two.
+           */}
           <Dropdown
             menu={{ items: actionsMenuItems, onClick: handleMenuClick }}
             placement="bottomRight"
             trigger={["click"]}
+            data-testid="workflow-actions"
           >
             <Button
               type="primary"
-              icon={<SettingOutlined />}
+              icon={<Settings />}
+              data-testid="workflow-actions-btn"
               loading={loadingType === "EXECUTE" || isClearingFileHistory}
               disabled={loadingType === "EXECUTE" || isClearingFileHistory}
             >
@@ -1149,14 +1148,22 @@ function Agency() {
                       {selectedTool ? (
                         <div className="selected-tool-info">
                           <span className="selected-tool-name">
+                            {/* exportedTools holds only the viewer's own
+                                projects, so a shared workflow misses; the
+                                tool instance carries the name either way. */}
                             {exportedTools.find(
                               (t) => t.function_name === selectedTool,
-                            )?.name || selectedTool}
+                            )?.name ||
+                              details?.tool_instances?.find(
+                                (ti) => ti.tool_id === selectedTool,
+                              )?.name ||
+                              selectedTool}
                           </span>
                           <Button
                             type="link"
                             onClick={() => setShowToolSelectionSidebar(true)}
                             size="small"
+                            disabled={!canEdit}
                           >
                             Change Prompt Studio project
                           </Button>
@@ -1166,6 +1173,7 @@ function Agency() {
                           type="default"
                           onClick={() => setShowToolSelectionSidebar(true)}
                           className="select-tool-btn"
+                          disabled={!canEdit}
                         >
                           Select Prompt Studio project
                         </Button>
@@ -1251,7 +1259,7 @@ function Agency() {
         <div className="debug-panel">
           <div className="debug-panel-header">
             <div className="debug-panel-title">
-              <BugOutlined />
+              <Bug />
               <Typography.Text>Debug Panel</Typography.Text>
             </div>
             <Button

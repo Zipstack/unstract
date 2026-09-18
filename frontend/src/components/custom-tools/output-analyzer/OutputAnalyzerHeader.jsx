@@ -1,14 +1,17 @@
 import {
-  ArrowLeftOutlined,
-  FilePdfOutlined,
-  FilterOutlined,
-  LeftOutlined,
-  RightOutlined,
-} from "@ant-design/icons";
-import { Button, Drawer, Menu, Space, Typography } from "antd";
+  ArrowLeft,
+  ChevronLeft,
+  ChevronRight,
+  FileText,
+  Filter,
+} from "lucide-react";
 import PropTypes from "prop-types";
 import { useCallback, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { Button } from "@/components/ui/shims/antd-button";
+import { Space } from "@/components/ui/shims/antd-layout";
+import { Drawer, Menu } from "@/components/ui/shims/antd-structure";
+import { Typography } from "@/components/ui/shims/antd-typography";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { useSessionStore } from "../../../store/session-store";
 
@@ -87,7 +90,7 @@ function OutputAnalyzerHeader({
         <div>
           <Space>
             <Button size="small" type="text" onClick={handleNavigate}>
-              <ArrowLeftOutlined />
+              <ArrowLeft />
             </Button>
             <Typography.Text className="font-size-16" strong>
               Output Analyzer
@@ -98,26 +101,26 @@ function OutputAnalyzerHeader({
           <Space>
             <Button
               type="text"
-              icon={<FilterOutlined />}
+              icon={<Filter />}
               onClick={openFilterDrawer}
             >{`${selectedPromptFields} of ${
               Object.keys(selectedPrompts).length
             } fields selected`}</Button>
             <Button
               type="primary"
-              icon={<FilePdfOutlined />}
+              icon={<FileText />}
               onClick={() => setOpenDocListDrawer(true)}
             />
             <div>
               <Button
                 type="text"
-                icon={<LeftOutlined />}
+                icon={<ChevronLeft />}
                 onClick={() => handlePagination(PAGINATION_ACTIONS.PREV)}
                 disabled={currentDocIndex === 0}
               />
               <Button
                 type="text"
-                icon={<RightOutlined />}
+                icon={<ChevronRight />}
                 onClick={() => handlePagination(PAGINATION_ACTIONS.NEXT)}
                 disabled={currentDocIndex === docsLength - 1}
               />

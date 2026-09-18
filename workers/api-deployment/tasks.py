@@ -27,12 +27,9 @@ from shared.workflow.execution.tool_validation import validate_workflow_tool_ins
 from worker import app
 
 from unstract.core.data_models import (
-    DEFAULT_WORKFLOW_TRANSPORT,
     ExecutionStatus,
     FileHashData,
     WorkerFileData,
-    is_pg_transport,
-    normalize_transport,
 )
 from unstract.core.worker_models import ApiDeploymentResultStatus
 
@@ -454,15 +451,6 @@ def _run_workflow_api(
     WorkflowHelper.process_input_files() methods.
     """
     total_files = len(hash_values_of_files)
-    # Resolve transport ONCE, up front from the authoritative kwargs source, so
-    # the failure handler can rely on it even if orchestration fails before the
-    # fan-out (the PR-1 seam; the fan-out honours it → PG path = PgBarrier).
-    # Fail-closed to celery on any unrecognised value.
-    transport = normalize_transport(
-        kwargs.get("transport", DEFAULT_WORKFLOW_TRANSPORT),
-        logger=logger,
-        context=f" [exec:{execution_id}]",
-    )
 
     # TOOL VALIDATION: Validate tool instances before API workflow orchestration
     # Get workflow execution context to retrieve tool instances
@@ -718,20 +706,15 @@ def _run_workflow_api(
         file_processing_callback_queue = _get_callback_queue_name_api()
 
         # Route through ``WorkflowOrchestrationUtils.create_chord_execution``
-        # (which delegates to ``CeleryChordBarrier`` under the hood) instead of
-        # calling ``chord(...)`` directly. Same Celery semantics, but the
-        # ``Barrier`` abstraction lets a future Phase 6b swap to
-        # ``RedisDecrBarrier`` behind a flag without touching this call site.
-        # The header tasks + callback now carry the fairness slot for
-        # downstream PG Queue routing — closes the chord-fairness gap noted
-        # in Phase 5.1.
-        # Hoist FairnessKey to a local so the chord path and the
+        # rather than reaching for a barrier directly, so both fan-out call
+        # sites share one dispatch point. The header tasks + callback carry the
+        # fairness slot for downstream routing.
+        # Hoist FairnessKey to a local so the fan-out path and the
         # zero-batch fallback can't drift apart on the slot's shape.
         api_fairness = FairnessKey(
             org_id=str(schema_name),
             workload_type=WorkloadType.API,
         )
-        # transport was resolved up front (see top of _run_workflow_api).
         result = WorkflowOrchestrationUtils.create_chord_execution(
             batch_tasks=batch_tasks,
             callback_task_name="process_batch_callback_api",
@@ -743,7 +726,6 @@ def _run_workflow_api(
             callback_queue=file_processing_callback_queue,
             app_instance=app,
             fairness=api_fairness,
-            transport=transport,
         )
 
         if result is None:
@@ -842,36 +824,27 @@ def _run_workflow_api(
 
     except Exception as e:
         error_message = f"Error while processing files: {str(e)}"
-        # On PG, surface the error to the UI + reconcile file counters so a failed
-        # run reads "N failed" not "N in progress"; the wrapped update inside the
+        # Surface the error to the UI + reconcile file counters so a failed run
+        # reads "N failed" not "N in progress"; the wrapped update inside the
         # helper guarantees a status-update failure can't mask `e` or skip the
-        # re-raise below (see record_pg_orchestration_failure). The Celery branch
-        # is the original bare update, untouched.
-        if is_pg_transport(transport):
-            error_logger = None
-            try:
-                error_logger = WorkerWorkflowLogger.create_for_api_workflow(
-                    execution_id=str(execution_id),
-                    organization_id=str(schema_name),
-                    pipeline_id=str(pipeline_id) if pipeline_id else None,
-                )
-            except Exception as log_error:
-                logger.warning(f"Failed to build UI logger: {log_error}")
-            WorkflowOrchestrationUtils.record_pg_orchestration_failure(
-                api_client=api_client,
-                execution_id=execution_id,
-                total_files=total_files,
-                error_message=error_message,
-                logger=logger,
-                workflow_logger=error_logger,
+        # re-raise below (see record_pg_orchestration_failure).
+        error_logger = None
+        try:
+            error_logger = WorkerWorkflowLogger.create_for_api_workflow(
+                execution_id=str(execution_id),
+                organization_id=str(schema_name),
+                pipeline_id=str(pipeline_id) if pipeline_id else None,
             )
-        else:
-            # Update execution to ERROR status matching Django pattern
-            api_client.update_workflow_execution_status(
-                execution_id=execution_id,
-                status=ExecutionStatus.ERROR.value,
-                error_message=error_message,
-            )
+        except Exception as log_error:
+            logger.warning(f"Failed to build UI logger: {log_error}")
+        WorkflowOrchestrationUtils.record_pg_orchestration_failure(
+            api_client=api_client,
+            execution_id=execution_id,
+            total_files=total_files,
+            error_message=error_message,
+            logger=logger,
+            workflow_logger=error_logger,
+        )
         logger.error(f"Execution {execution_id} failed: {str(e)}", exc_info=True)
         raise
 
