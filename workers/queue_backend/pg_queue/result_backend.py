@@ -12,12 +12,19 @@ A row appears ONLY when the task finishes — ``status="completed"`` carrying th
 text if the task raised. Absence of a row means "not done yet"; there is
 deliberately no ``pending`` state to maintain.
 
-``failed`` has a **third** meaning, and recovery logic must account for it: the
-task *completed* but its result could not be stored, recorded with
-:data:`PAYLOAD_UNSTORABLE_ERROR`. Retrying such a reply key re-runs an executor
-task that already finished — a second full LLM spend, the very thing the
-consumer's ack discipline avoids. Distinguish on the error text before retrying
-anything. (Mirrored on ``PgTaskResult`` in ``backend/pg_queue/models.py``.)
+``failed`` has a **third** meaning, and recovery logic must account for it: a
+payload could not be stored. Two constants distinguish the cases, and they point
+in OPPOSITE directions for a retry:
+
+- :data:`PAYLOAD_UNSTORABLE_ERROR` — the task *completed*; only its result was
+  unstorable. Retrying this reply key re-runs an executor task that already
+  finished, a second full LLM spend — the very thing the consumer's ack
+  discipline avoids. **Do not retry.**
+- :data:`ERROR_TEXT_UNSTORABLE` — the task *raised*, and its own error message was
+  unstorable. The work never happened. **Retrying is correct.**
+
+Seeing ``failed`` is therefore not enough; match the error text before deciding.
+(Mirrored on ``PgTaskResult`` in ``backend/pg_queue/models.py``.)
 
 Once the blocking caller consumes the reply, :meth:`PgResultBackend.forget` nulls
 the payload in place — a third legal shape: ``completed``/``failed`` with
@@ -100,6 +107,17 @@ PAYLOAD_UNSTORABLE_ERROR: Final[str] = (
     "Executor task finished, but its result could not be stored: the payload is "
     "not representable in a jsonb column. The work completed; only the reply was "
     "lost. See the worker-pg-executor logs for this reply key."
+)
+
+# The twin for the failure channel, and the two must never be interchanged. A
+# task that RAISED has not done the work, so recording it with the text above
+# would tell a reader the opposite of the truth and suppress a retry that is not
+# merely safe but correct. Kept as two constants rather than one parametrised
+# string so the difference is visible at both call sites.
+ERROR_TEXT_UNSTORABLE: Final[str] = (
+    "Executor task failed, and its error message could not be stored: the text is "
+    "not representable in the error column. The task did NOT complete — this reply "
+    "key is safe to retry. See the worker-pg-executor logs for this reply key."
 )
 
 
@@ -443,7 +461,9 @@ class PgResultBackend:
                     "reply_key=%s; recording a degraded failed row instead.",
                     task_id,
                 )
-                self._insert_degraded(task_id, retention_seconds)
+                self._insert_degraded(
+                    task_id, retention_seconds, message=ERROR_TEXT_UNSTORABLE
+                )
             return
 
         try:
@@ -487,8 +507,20 @@ class PgResultBackend:
             )
             self._insert_degraded(task_id, retention_seconds)
 
-    def _insert_degraded(self, task_id: str, retention_seconds: int) -> None:
-        """Record the completed-but-undeliverable outcome. Never raises.
+    def _insert_degraded(
+        self,
+        task_id: str,
+        retention_seconds: int,
+        *,
+        message: str = PAYLOAD_UNSTORABLE_ERROR,
+    ) -> None:
+        """Record an outcome whose real payload could not be stored. Never raises.
+
+        *message* says WHICH of the two cases this is, and it is load-bearing:
+        :data:`PAYLOAD_UNSTORABLE_ERROR` means the task completed, so a retry is a
+        second full LLM spend; :data:`ERROR_TEXT_UNSTORABLE` means it raised, so
+        retrying is correct. The default serves the completed branch, which is the
+        common one; the failure branch passes the twin explicitly.
 
         Last line of defence: the real payload is already lost, so a failure here
         must not propagate and cost the caller its timeout as well. If even this
@@ -497,9 +529,7 @@ class PgResultBackend:
         logged as such rather than silently swallowed.
         """
         try:
-            self._insert_outcome(
-                task_id, STATUS_FAILED, None, PAYLOAD_UNSTORABLE_ERROR, retention_seconds
-            )
+            self._insert_outcome(task_id, STATUS_FAILED, None, message, retention_seconds)
         except Exception:
             logger.exception(
                 "PgResultBackend: could not record even the degraded failed row "

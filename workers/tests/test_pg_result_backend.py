@@ -22,6 +22,7 @@ from queue_backend.pg_queue.connection import is_connection_dead
 from queue_backend.pg_queue.result_backend import (
     _SIGNAL_REDIS,
     _STORE_RETRY_BACKOFF_SECONDS,
+    ERROR_TEXT_UNSTORABLE,
     PAYLOAD_UNSTORABLE_ERROR,
     STATUS_COMPLETED,
     STATUS_FAILED,
@@ -314,6 +315,29 @@ class TestStoreResultNeverStrands:
         assert "\x00" not in error_param
         assert error_param == "failed on  byte"
 
+    def test_a_rejected_result_degrades_with_the_completed_discriminator(
+        self, monkeypatch
+    ):
+        # The other half of the pair. A task that finished must NOT be recorded
+        # with the retry-is-safe text, or a recovery pass would re-run an
+        # executor task that already cost a full LLM spend.
+        monkeypatch.setattr(
+            "queue_backend.pg_queue.result_backend.time.sleep", MagicMock()
+        )
+        calls = {"n": 0}
+
+        def execute(sql, params):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise psycopg2.errors.ProgramLimitExceeded("result too long")
+
+        conn, cur = self._conn(execute_side_effect=execute)
+        PgResultBackend(conn=conn).store_result("k", result={"output": "x" * 10})
+
+        degraded_text = cur.execute.call_args.args[1][3]
+        assert degraded_text == PAYLOAD_UNSTORABLE_ERROR
+        assert degraded_text != ERROR_TEXT_UNSTORABLE
+
     def test_rejected_error_text_also_degrades_to_a_row(self, monkeypatch):
         # The failure branch must carry the same net as the success branch: a
         # payload rejection on the `error` column previously escaped with no row
@@ -330,9 +354,16 @@ class TestStoreResultNeverStrands:
             if calls["n"] == 1:
                 raise psycopg2.errors.ProgramLimitExceeded("error text too long")
 
-        conn, _ = self._conn(execute_side_effect=execute)
+        conn, cur = self._conn(execute_side_effect=execute)
         PgResultBackend(conn=conn).store_result("k", error="x" * 10)
         assert statuses == [STATUS_FAILED, STATUS_FAILED], "no degraded row written"
+        # ...and it must say the task FAILED, not that it completed. The two
+        # texts are the retry discriminator and they point opposite ways, so
+        # writing the completed one here would tell recovery logic the work was
+        # already paid for and suppress a retry that is correct.
+        degraded_text = cur.execute.call_args.args[1][3]
+        assert degraded_text == ERROR_TEXT_UNSTORABLE
+        assert degraded_text != PAYLOAD_UNSTORABLE_ERROR
 
     def test_oversized_result_still_records_a_failed_row(self, monkeypatch):
         # ProgramLimitExceeded ("string too long", SQLSTATE 54) subclasses
