@@ -93,6 +93,18 @@ class TestStoreGet:
         assert row["status"] == STATUS_COMPLETED
         assert row["result"]["data"]["output"]["invoice_number"] == "POZFBBOK"
 
+    def test_valid_surrogate_pair_survives_the_round_trip(self, result_backend):
+        # Guards the sanitiser against over-reach: an emoji reaches Python as a
+        # high+low surrogate pair, which jsonb ACCEPTS (it combines them). A
+        # naive [high-low] strip would delete both halves and silently lose the
+        # character from a completed result.
+        k = _key()
+        emoji = chr(0x1F600)
+        result_backend.store_result(k, result={"note": f"done {emoji}"})
+        row = result_backend.get_result(k)
+        assert row["status"] == STATUS_COMPLETED
+        assert row["result"]["note"] == f"done {emoji}"
+
     def test_nul_in_error_text_still_writes_a_failed_row(self, result_backend):
         # The `error` column is `text`, which rejects a NUL exactly as jsonb
         # does — and an extraction error can embed document content.

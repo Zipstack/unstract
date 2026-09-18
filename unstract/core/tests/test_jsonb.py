@@ -26,9 +26,25 @@ class TestSanitizeForJsonb:
     def test_strips_lone_surrogate(self):
         assert sanitize_for_jsonb(f"a{LONE_SURROGATE}b") == "ab"
 
+    def test_strips_lone_low_surrogate(self):
+        assert sanitize_for_jsonb("a" + chr(0xDC00) + "b") == "ab"
+
+    def test_preserves_a_valid_surrogate_pair(self):
+        # A well-formed high+low pair IS storable: Postgres combines it into the
+        # astral character it encodes (verified against a live server). A plain
+        # [high-low] character class matches BOTH halves and would silently drop
+        # an emoji from an extracted result.
+        pair = chr(0xD83D) + chr(0xDE00)  # U+1F600 GRINNING FACE
+        assert sanitize_for_jsonb(f"a{pair}b") == f"a{pair}b"
+
+    def test_strips_only_the_unpaired_half(self):
+        # Lone high followed by a valid pair: the loner goes, the pair stays.
+        pair = chr(0xD83D) + chr(0xDE00)
+        assert sanitize_for_jsonb(chr(0xD800) + pair) == pair
+
     def test_keeps_other_control_characters(self):
-        # Only NUL and surrogates are rejected by jsonb; \x01 round-trips fine
-        # and stripping it would silently alter data for no reason.
+        # Only NUL and unpaired surrogates are rejected by jsonb; \x01 round-trips
+        # fine and stripping it would silently alter data for no reason.
         assert sanitize_for_jsonb("a\x01b") == "a\x01b"
 
     def test_cleans_nested_values_and_keys(self):
@@ -59,6 +75,13 @@ class TestDumpsForJsonb:
     def test_emits_no_surrogate_escape(self):
         out = dumps_for_jsonb({"a": LONE_SURROGATE})
         assert "\\ud800" not in out.lower()
+
+    def test_keeps_a_valid_pair_in_the_encoded_output(self):
+        pair = chr(0xD83D) + chr(0xDE00)
+        out = dumps_for_jsonb({"a": pair})
+        # json.dumps emits the pair as two escapes; Postgres accepts and combines
+        # them, so they must still be there.
+        assert out.lower() == '{"a": "\\ud83d\\ude00"}'
 
     @pytest.mark.parametrize(
         "bad", [math.nan, math.inf, -math.inf], ids=["nan", "inf", "-inf"]

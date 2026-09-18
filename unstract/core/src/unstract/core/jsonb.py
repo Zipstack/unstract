@@ -9,8 +9,9 @@ insert time, because ``jsonb`` *parses* what it is given and stores strings as
   NUL). Real documents carry these: LLMWhisperer's ``native_text`` mode returns
   a PDF's embedded text layer verbatim, NUL bytes included, and the value then
   travels through the prompt into the extracted output.
-- a **lone surrogate** (``U+D800``-``U+DFFF``) — encoded as ``\udXXX``, refused
-  the same way.
+- an **unpaired surrogate** (``U+D800``-``U+DFFF`` with no partner) — encoded as
+  ``\udXXX``, refused the same way. A *well-formed* high+low pair is fine and is
+  preserved: Postgres combines it into the astral character it encodes.
 - **NaN / Infinity / -Infinity** — Python's lenient default emits these as bare
   tokens, which are not JSON at all and which ``jsonb`` refuses.
 
@@ -23,9 +24,9 @@ result backend) and they previously carried three different, partial defences.
 It has no Django / psycopg / SDK dependency, so it lives in ``unstract.core``
 where both trees import it — the same arrangement as :mod:`unstract.core.polling`.
 
-Strings are *repaired* (the offending code points are dropped): a NUL or a lone
-surrogate carries no meaning a caller wants, and discarding a whole extracted
-result over one stray control byte is the worse outcome. Numbers are *not*
+Strings are *repaired* (the offending code points are dropped): a NUL or an
+unpaired surrogate carries no meaning a caller wants, and discarding a whole
+extracted result over one stray control byte is the worse outcome. Numbers are *not*
 repaired — ``NaN`` has no correct ``jsonb`` spelling, and silently turning it
 into ``null`` or ``0`` would corrupt a value rather than clean it, so
 ``allow_nan=False`` is enforced and the caller decides what a broken number means.
@@ -39,10 +40,23 @@ from typing import Any
 
 __all__ = ["JSONB_UNSAFE_RE", "dumps_for_jsonb", "sanitize_for_jsonb"]
 
-# NUL plus the surrogate range: exactly the code points `jsonb` will not store in
-# a text value. Other C0 controls (\x01-\x1f) are legal in jsonb and are
-# deliberately left alone — they are escaped on the way in and round-trip fine.
-JSONB_UNSAFE_RE = re.compile("[\x00\ud800-\udfff]")
+# Exactly what `jsonb` will not store in a text value: a NUL, and any UNPAIRED
+# surrogate.
+#
+# A *well-formed* high+low pair must be preserved — Postgres accepts it and
+# combines it into the astral character it encodes (verified against a live
+# server: '{"a": "😀"}'::jsonb -> {"a": "😀"}). A plain
+# [\ud800-\udfff] class would match both halves of that pair and delete an emoji
+# from an extracted result, which is the silent corruption this module exists to
+# avoid. Only the halves that cannot pair are unsafe.
+#
+# Other C0 controls (\x01-\x1f) are legal in jsonb and are deliberately left
+# alone — they are escaped on the way in and round-trip fine.
+JSONB_UNSAFE_RE = re.compile(
+    "\x00"
+    "|[\ud800-\udbff](?![\udc00-\udfff])"  # high surrogate, no low following it
+    "|(?<![\ud800-\udbff])[\udc00-\udfff]"  # low surrogate, no high preceding it
+)
 
 
 def sanitize_for_jsonb(value: Any) -> Any:
