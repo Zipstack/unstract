@@ -42,7 +42,7 @@ from unstract.core.jsonb import dumps_for_jsonb
 
 from ..fairness import DEFAULT_PRIORITY, MAX_PRIORITY, MIN_PRIORITY
 from .connection import CONN_DEAD_ERRORS as _CONN_DEAD_ERRORS
-from .connection import create_pg_connection
+from .connection import create_pg_connection, is_connection_dead
 from .schema import qualified
 
 if TYPE_CHECKING:
@@ -227,7 +227,7 @@ class PgQueueClient:
             # failed-rollback branch below, which drops the handle) but is
             # intentionally NOT retried by ``send()`` — it's left to the next
             # call's reconnect.
-            conn_dead = isinstance(exc, _CONN_DEAD_ERRORS)
+            conn_dead = is_connection_dead(exc)
             try:
                 conn.rollback()
             except Exception:
@@ -301,7 +301,10 @@ class PgQueueClient:
                 queue_name, message, org_id=org_id, priority=priority
             )
         except _CONN_DEAD_ERRORS as exc:
-            if not reused:
+            # A payload the server refused is not a stale connection — see
+            # is_connection_dead. Re-sending it would repeat a large write that
+            # can never land.
+            if not reused or not is_connection_dead(exc):
                 raise
             # Describe what we observed, not a verdict: a connection-level error
             # on a reused conn is usually a stale idle reap, but a real DB
@@ -438,7 +441,7 @@ class PgQueueClient:
         try:
             return self._delete_row(msg_id)
         except _CONN_DEAD_ERRORS as exc:
-            if not reused:
+            if not reused or not is_connection_dead(exc):
                 raise
             logger.warning(
                 "PG-queue: delete(msg_id=%s) failed with a connection-level error "

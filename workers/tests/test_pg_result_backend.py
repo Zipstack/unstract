@@ -18,9 +18,11 @@ import psycopg2
 import psycopg2.errors
 import pytest
 from queue_backend.pg_queue.connection import create_pg_connection
+from queue_backend.pg_queue.connection import is_connection_dead
 from queue_backend.pg_queue.result_backend import (
     _SIGNAL_REDIS,
     _STORE_RETRY_BACKOFF_SECONDS,
+    PAYLOAD_UNSTORABLE_ERROR,
     STATUS_COMPLETED,
     STATUS_FAILED,
     PgResultBackend,
@@ -410,6 +412,59 @@ class TestStoreResultNeverStrands:
         )
         PgResultBackend(conn=conn).store_result("k", result={"a": 1})
         assert signalled == ["k"]
+
+
+
+class TestPayloadRejectionIsNotAConnectionDeath:
+    """``ProgramLimitExceeded`` ("string too long", SQLSTATE 54) subclasses
+    ``OperationalError``, so it is a member of BOTH ``CONN_DEAD_ERRORS`` and
+    ``PAYLOAD_REJECTED_ERRORS``. Classified by ``isinstance`` alone it reads as a
+    dead connection: the handle is discarded, a reconnect happens, and a write
+    that can never land is re-sent — a second pass over a payload that is, by the
+    nature of this error, very large. ``is_connection_dead`` tests the payload
+    family first; these pin that.
+    """
+
+    def test_an_oversized_payload_is_not_read_as_a_dead_connection(self):
+        oversized = psycopg2.errors.ProgramLimitExceeded("too long")
+        assert isinstance(oversized, psycopg2.OperationalError)  # the trap itself
+        assert is_connection_dead(oversized) is False
+
+    def test_a_real_connection_error_still_reads_as_dead(self):
+        assert is_connection_dead(psycopg2.OperationalError("server closed")) is True
+        assert is_connection_dead(psycopg2.InterfaceError("closed")) is True
+
+    def test_a_plain_data_error_is_not_read_as_a_dead_connection(self):
+        assert is_connection_dead(psycopg2.DataError("bad jsonb")) is False
+
+    def test_an_oversized_result_is_written_once_not_re_sent(self, monkeypatch):
+        # The behavioural half: one INSERT attempt, no reconnect, and the row
+        # still degrades so the caller is not stranded.
+        cur = MagicMock()
+        cur.execute.side_effect = psycopg2.errors.ProgramLimitExceeded("too long")
+        conn = MagicMock()
+        conn.closed = 0
+        conn.cursor.return_value = _CursorCtx(cur)
+        factory = MagicMock()
+        monkeypatch.setattr(
+            "queue_backend.pg_queue.result_backend.create_pg_connection", factory
+        )
+        monkeypatch.setattr(
+            "queue_backend.pg_queue.result_backend.time.sleep", MagicMock()
+        )
+        rb = PgResultBackend()
+        rb._conn = conn  # a cached, owned connection — retry-eligible if dead
+
+        rb.store_result("k", result={"output": "x" * 10})
+
+        factory.assert_not_called()  # no pointless reconnect
+        conn.close.assert_not_called()  # the connection was never condemned
+        # One rejected INSERT, then the degraded row — not two rejected INSERTs.
+        assert cur.execute.call_count == 2
+        degraded = cur.execute.call_args.args[1]
+        assert degraded[1] == "failed"
+        assert degraded[3] == PAYLOAD_UNSTORABLE_ERROR
+
 
 
 class TestStoreResultReconnectRetry:

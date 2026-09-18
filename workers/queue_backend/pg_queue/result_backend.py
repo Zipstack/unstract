@@ -74,7 +74,7 @@ from unstract.core.polling import poll_for_row
 
 from .connection import CONN_DEAD_ERRORS as _CONN_DEAD_ERRORS
 from .connection import PAYLOAD_REJECTED_ERRORS as _PAYLOAD_REJECTED_ERRORS
-from .connection import create_pg_connection
+from .connection import create_pg_connection, is_connection_dead
 from .schema import qualified
 
 if TYPE_CHECKING:
@@ -298,7 +298,7 @@ class PgResultBackend:
                 yield cur
             conn.commit()
         except Exception as exc:
-            conn_dead = isinstance(exc, _CONN_DEAD_ERRORS)
+            conn_dead = is_connection_dead(exc)
             try:
                 conn.rollback()
             except Exception:
@@ -350,7 +350,13 @@ class PgResultBackend:
                 with self._cursor() as cur:
                     operation(cur)
                 return
-            except _CONN_DEAD_ERRORS:
+            except _CONN_DEAD_ERRORS as exc:
+                # A payload rejection also lands here (ProgramLimitExceeded
+                # subclasses OperationalError). Re-sending it can only fail
+                # again, so hand it straight to store_result's degradation
+                # rather than paying a reconnect and a second large write.
+                if not is_connection_dead(exc):
+                    raise
                 # Last attempt, or an injected (non-owned) conn _cursor won't
                 # have dropped — retrying can't reconnect, so re-raise.
                 if attempt >= _STORE_RETRY_ATTEMPTS or not self._owns_conn:

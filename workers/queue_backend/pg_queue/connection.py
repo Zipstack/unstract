@@ -50,9 +50,10 @@ CONN_DEAD_ERRORS: tuple[type[Exception], ...] = (
 # ``ProgramLimitExceeded`` (SQLSTATE 54 — "string too long" / "index row size
 # exceeds maximum") is the trap this pairing exists to document: it subclasses
 # OperationalError, so it is absent from ``DataError`` AND present in
-# CONN_DEAD_ERRORS above — an oversized payload is first misread as a dead
-# connection and pointlessly re-sent. Order matters at the call sites: test for
-# a payload rejection BEFORE treating an error as a connection death.
+# CONN_DEAD_ERRORS above. Classifying on membership alone therefore misreads an
+# oversized payload as a dead connection and pointlessly re-sends it, so the
+# order is not left to each call site: :func:`is_connection_dead` below is the
+# one place that decides, and every retry site asks it.
 #
 # Deliberately not ``Exception``: a genuine outage recorded as "payload
 # unstorable" is a false diagnosis that sends the next investigator after
@@ -61,6 +62,25 @@ PAYLOAD_REJECTED_ERRORS: tuple[type[Exception], ...] = (
     psycopg2.DataError,
     psycopg2.errors.ProgramLimitExceeded,
 )
+
+
+def is_connection_dead(exc: BaseException) -> bool:
+    """Whether *exc* means the CONNECTION is gone, rather than the payload bad.
+
+    ``isinstance(exc, CONN_DEAD_ERRORS)`` on its own is not that question, and
+    the gap is not hypothetical: ``ProgramLimitExceeded`` subclasses
+    ``OperationalError``, so an oversized payload answers "dead connection",
+    gets its handle discarded, reconnects and re-sends a write that can never
+    succeed — a second pass over a payload that is by definition very large,
+    before the caller's payload-rejection handler finally sees it.
+
+    Payload rejections are therefore tested FIRST. A rejected payload leaves the
+    connection perfectly usable; only the write was refused.
+    """
+    if isinstance(exc, PAYLOAD_REJECTED_ERRORS):
+        return False
+    return isinstance(exc, CONN_DEAD_ERRORS)
+
 
 # Bounded retry for *transient* connect failures (DB restart, PgBouncer pool
 # wait, brief network partition, "too many clients" spikes) — the common cloud

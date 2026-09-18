@@ -92,7 +92,7 @@ from .fairness import (
 from .handle import BarrierHandle
 from .pg_queue.connection import CONN_DEAD_ERRORS as _CONN_DEAD_ERRORS
 from .pg_queue.connection import PAYLOAD_REJECTED_ERRORS as _PAYLOAD_REJECTED_ERRORS
-from .pg_queue.connection import create_pg_connection
+from .pg_queue.connection import create_pg_connection, is_connection_dead
 from .pg_queue.schema import qualified
 
 if TYPE_CHECKING:
@@ -133,7 +133,7 @@ def _recover_after_error(conn: PgConnection, exc: BaseException) -> bool:
     ``_cursor`` because it must distinguish execute-phase from commit-phase
     failures) share one definition of "recover a connection after an error".
     """
-    conn_dead = isinstance(exc, _CONN_DEAD_ERRORS)
+    conn_dead = is_connection_dead(exc)
     try:
         conn.rollback()
     except Exception:
@@ -233,6 +233,11 @@ def _run_idempotent_pre_dispatch_write(
                 operation(cur)
             return
         except _CONN_DEAD_ERRORS as exc:
+            # A payload rejection also reaches this clause (ProgramLimitExceeded
+            # subclasses OperationalError). It is permanent, so let it through to
+            # _barrier_pg_decrement's handler instead of re-sending it.
+            if not is_connection_dead(exc):
+                raise
             # _cursor already dropped the dead thread-local conn → the next
             # _get_conn() reconnects. Retry once; re-raise if it still fails
             # (a genuinely-down DB surfaces as ERROR, as before). Name the real
