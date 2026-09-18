@@ -39,6 +39,14 @@ class TestWorkflowFieldScopingSurvivesAList:
 
         assert "workflow" in fields
 
+    def test_many_true_construction_does_not_crash(self) -> None:
+        """The public ``PipelineSerializer(queryset, many=True)`` entry point."""
+        with patch(MUTABLE_WORKFLOWS_PATH, return_value=Workflow.objects.none()):
+            serializer = PipelineSerializer([MagicMock(spec=Pipeline)], many=True)
+            fields = serializer.child.fields  # must not raise AttributeError
+
+        assert "workflow" in fields
+
     def test_single_instance_still_scopes_to_its_own_workflow(self) -> None:
         """A detail/update request keeps the co-owner carve-out for its own workflow."""
         pipeline = MagicMock(spec=Pipeline, workflow_id=uuid.uuid4())
