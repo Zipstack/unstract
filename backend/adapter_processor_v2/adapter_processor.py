@@ -10,8 +10,14 @@ from platform_settings_v2.platform_auth_service import PlatformAuthenticationSer
 from tenant_account_v2.organization_member_service import OrganizationMemberService
 
 from adapter_processor_v2.constants import AdapterKeys, AllowedDomains
+from adapter_processor_v2.deprecated_adapters import (
+    get_deprecation_message,
+    is_adapter_deprecated,
+    is_adapter_selectable,
+)
 from adapter_processor_v2.exceptions import (
     AdapterNotFound,
+    DeprecatedAdapter,
     InternalServiceError,
     InValidAdapterId,
     TestAdapterError,
@@ -39,6 +45,8 @@ class AdapterProcessor:
     def get_json_schema(adapter_id: str) -> dict[str, Any]:
         """Function to return JSON Schema for Adapters."""
         schema_details: dict[str, Any] = {}
+        if is_adapter_deprecated(adapter_id):
+            raise DeprecatedAdapter(get_deprecation_message(adapter_id))
         updated_adapters = AdapterProcessor.__fetch_adapters_by_key_value(
             AdapterKeys.ID, adapter_id
         )
@@ -66,6 +74,8 @@ class AdapterProcessor:
         for each_adapter in updated_adapters:
             adapter_id = each_adapter.get(AdapterKeys.ID)
             if not is_special_user and adapter_id.startswith("noOp"):
+                continue
+            if is_adapter_deprecated(adapter_id):
                 continue
 
             supported_adapters.append(
@@ -112,7 +122,7 @@ class AdapterProcessor:
     @staticmethod
     def get_icon(adapter: AdapterInstance) -> str:
         """Registry icon for an adapter, or the warning icon if unresolvable."""
-        if not adapter.is_available:
+        if not adapter.is_available or is_adapter_deprecated(adapter.adapter_id):
             return AdapterKeys.UNAVAILABLE_ICON
         try:
             adapter_class = Adapterkit().get_adapter_class_by_adapter_id(
@@ -202,6 +212,22 @@ class AdapterProcessor:
         return [iterate for iterate in adapters if iterate[key] == value]
 
     @staticmethod
+    def _resolve_selectable_adapter(adapter_pk: str) -> AdapterInstance:
+        """Adapter for ``adapter_pk``, refusing one that can no longer be chosen."""
+        adapter = AdapterInstance.objects.get(pk=adapter_pk)
+        if not is_adapter_selectable(adapter):
+            raise DeprecatedAdapter(get_deprecation_message(adapter.adapter_id))
+        return adapter
+
+    # Payload key -> UserDefaultAdapter field backing that default.
+    _DEFAULT_TRIAD_FIELDS = (
+        (AdapterKeys.LLM_DEFAULT, "default_llm_adapter"),
+        (AdapterKeys.EMBEDDING_DEFAULT, "default_embedding_adapter"),
+        (AdapterKeys.VECTOR_DB_DEFAULT, "default_vector_db_adapter"),
+        (AdapterKeys.X2TEXT_DEFAULT, "default_x2text_adapter"),
+    )
+
+    @staticmethod
     def set_default_triad(default_triad: dict[str, str], user: User) -> None:
         try:
             organization_member = OrganizationMemberService.get_user_by_id(user.id)
@@ -212,27 +238,20 @@ class AdapterProcessor:
                 organization_member=organization_member
             )
 
-            if default_triad.get(AdapterKeys.LLM_DEFAULT, None):
-                user_default_adapter.default_llm_adapter = AdapterInstance.objects.get(
-                    pk=default_triad[AdapterKeys.LLM_DEFAULT]
-                )
-            if default_triad.get(AdapterKeys.EMBEDDING_DEFAULT, None):
-                user_default_adapter.default_embedding_adapter = (
-                    AdapterInstance.objects.get(
-                        pk=default_triad[AdapterKeys.EMBEDDING_DEFAULT]
-                    )
-                )
-
-            if default_triad.get(AdapterKeys.VECTOR_DB_DEFAULT, None):
-                user_default_adapter.default_vector_db_adapter = (
-                    AdapterInstance.objects.get(
-                        pk=default_triad[AdapterKeys.VECTOR_DB_DEFAULT]
-                    )
-                )
-
-            if default_triad.get(AdapterKeys.X2TEXT_DEFAULT, None):
-                user_default_adapter.default_x2text_adapter = AdapterInstance.objects.get(
-                    pk=default_triad[AdapterKeys.X2TEXT_DEFAULT]
+            for payload_key, field in AdapterProcessor._DEFAULT_TRIAD_FIELDS:
+                adapter_pk = default_triad.get(payload_key)
+                # The UI submits all four defaults on every save, so an
+                # unchanged value must not be re-validated -- otherwise a user
+                # whose stored default was deprecated under them could never
+                # change any of the other three.
+                if not adapter_pk or str(adapter_pk) == str(
+                    getattr(user_default_adapter, f"{field}_id", None)
+                ):
+                    continue
+                setattr(
+                    user_default_adapter,
+                    field,
+                    AdapterProcessor._resolve_selectable_adapter(adapter_pk),
                 )
 
             user_default_adapter.save()
@@ -240,7 +259,7 @@ class AdapterProcessor:
             logger.info("Changed defaults successfully")
         except Exception as e:
             logger.error(f"Unable to save defaults because: {e}")
-            if isinstance(e, InValidAdapterId):
+            if isinstance(e, (InValidAdapterId, DeprecatedAdapter)):
                 raise e
             else:
                 raise InternalServiceError()

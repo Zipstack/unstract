@@ -380,6 +380,11 @@ const displayPromptResult = (
   return String(parsedData);
 };
 
+// Deprecated adapters stay listed so users can see what to migrate off, but
+// they cannot be selected or counted as configured.
+const usableAdapters = (adapters) =>
+  (adapters || []).filter((adapter) => !adapter?.is_deprecated);
+
 const onboardCompleted = (adaptersList) => {
   if (!Array.isArray(adaptersList)) {
     return false;
@@ -808,6 +813,7 @@ export {
   titleCase,
   toolIdeOutput,
   UNSTRACT_ADMIN,
+  usableAdapters,
   wfExecutionTypes,
   workflowStatus,
 };
