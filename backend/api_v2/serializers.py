@@ -264,6 +264,13 @@ class APIKeySerializer(AuditSerializer):
         return representation
 
 
+@extend_schema_field({"type": "boolean", "x-internal": True})
+class InternalBooleanField(BooleanField):
+    """Accepted by the server, but not part of the documented surface: the
+    published clients keep the parameter, the CLI does not expose it.
+    """
+
+
 @extend_schema_field(OpenApiTypes.BINARY)
 class UploadField(FileField):
     """A bare ``FileField`` maps to ``format: uri`` -- correct on output, wrong
@@ -305,7 +312,7 @@ class ExecutionRequestSerializer(TagParamsSerializer):
     include_metadata = BooleanField(default=False)
     include_metrics = BooleanField(default=False)
     include_extracted_text = BooleanField(default=False)
-    use_file_history = BooleanField(default=False)
+    use_file_history = InternalBooleanField(default=False)
 
     presigned_urls = ListField(child=URLField(), required=False)
     llm_profile_id = CharField(required=False, allow_null=True, allow_blank=True)

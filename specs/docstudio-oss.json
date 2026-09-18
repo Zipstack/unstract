@@ -242,7 +242,8 @@
           },
           "use_file_history": {
             "default": false,
-            "type": "boolean"
+            "type": "boolean",
+            "x-internal": true
           }
         },
         "type": "object"

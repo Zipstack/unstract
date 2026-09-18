@@ -408,6 +408,15 @@ def test_documents_are_uploaded_as_binary_not_as_urls() -> None:
     assert files["items"] == {"type": "string", "format": "binary"}
 
 
+def test_the_undocumented_execute_option_is_marked_not_dropped() -> None:
+    """Dropping a parameter breaks the clients generated from it; the marker
+    lets a client that reads it hide the option while the rest keep it.
+    """
+    option = _schema("ExecuteRequest")["properties"]["use_file_history"]
+
+    assert option == {"type": "boolean", "default": False, "x-internal": True}
+
+
 def test_the_result_a_pending_execution_omits_is_documented_nullable() -> None:
     """Both endpoints send `result: null` until the execution finishes, and a
     generated deserialiser iterates that field.
