@@ -135,17 +135,17 @@ class TestInvalidationFailureClearsMarker:
     freshly written text file and never re-runs invalidation.
     """
 
-    def test_hook_failure_marks_extraction_failed_and_reraises(
-        self,
-        monkeypatch,  # noqa: ANN001
-    ) -> None:
+    @staticmethod
+    def _run_with_failing_hook(monkeypatch, write_result):  # noqa: ANN001, ANN205
         index_helper = MagicMock(name="PromptStudioIndexHelper")
         index_helper.check_extraction_status.return_value = False
-        index_helper.mark_extraction_status.return_value = (
-            _psh_mod.ExtractionStatusResult.OK
-        )
+        index_helper.mark_extraction_status.return_value = write_result
         monkeypatch.setattr(_psh_mod, "PromptStudioIndexHelper", index_helper)
         monkeypatch.setattr(_psh_mod, "StateStore", MagicMock())
+        storage = MagicMock(name="storage")
+        monkeypatch.setattr(
+            _psh_mod.EnvHelper, "get_storage", MagicMock(return_value=storage)
+        )
         monkeypatch.setattr(
             PromptStudioHelper, "_get_platform_api_key", MagicMock(return_value="k")
         )
@@ -161,7 +161,6 @@ class TestInvalidationFailureClearsMarker:
             "invalidate_vlm_answers_on_reextraction",
             MagicMock(side_effect=RuntimeError("boom")),
         )
-
         with pytest.raises(RuntimeError, match="boom"):
             PromptStudioHelper.dynamic_extractor(
                 file_path="/data/statement.pdf",
@@ -171,8 +170,28 @@ class TestInvalidationFailureClearsMarker:
                 profile_manager=_profile({"output_mode": "image"}),
                 document_id="doc1",
             )
+        return index_helper, storage
 
+    def test_hook_failure_marks_extraction_failed_and_reraises(
+        self,
+        monkeypatch,  # noqa: ANN001
+    ) -> None:
+        index_helper, storage = self._run_with_failing_hook(
+            monkeypatch, _psh_mod.ExtractionStatusResult.OK
+        )
         index_helper.mark_extraction_status.assert_called_once()
         kwargs = index_helper.mark_extraction_status.call_args.kwargs
         assert kwargs["extracted"] is False
         assert "boom" in kwargs["error_message"]
+        storage.rm.assert_not_called()
+
+    def test_failed_marker_write_removes_extracted_text(
+        self,
+        monkeypatch,  # noqa: ANN001
+    ) -> None:
+        # The stale success marker survives the failed write, so the fresh
+        # text must go: a cache hit then falls through to re-extraction.
+        _, storage = self._run_with_failing_hook(
+            monkeypatch, _psh_mod.ExtractionStatusResult.WRITE_FAILED
+        )
+        storage.rm.assert_called_once_with("/data/extract/statement.txt", recursive=False)

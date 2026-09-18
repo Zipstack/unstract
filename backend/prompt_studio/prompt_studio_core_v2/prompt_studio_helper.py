@@ -2721,10 +2721,23 @@ class PromptStudioHelper:
                 error_message=f"VLM answer invalidation failed: {e}",
             )
             if status_result is not ExtractionStatusResult.OK:
+                # The stale success marker survived. Remove the freshly
+                # written text so a cache hit on that marker falls through
+                # the file-missing path and re-extracts anyway.
                 logger.warning(
                     f"Failed to mark extraction failure for document {document_id} "
-                    f"after VLM answer invalidation failed; a retry may cache-hit."
+                    f"after VLM answer invalidation failed; removing extracted text."
                 )
+                try:
+                    EnvHelper.get_storage(
+                        storage_type=StorageType.PERMANENT,
+                        env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,
+                    ).rm(extract_file_path, recursive=False)
+                except Exception:
+                    logger.exception(
+                        f"Failed to remove {extract_file_path}; a retry may "
+                        f"cache-hit past VLM answer invalidation."
+                    )
             raise
 
         # Distinct name: ``result`` is the dispatcher's ExecutionResult and is
