@@ -35,7 +35,10 @@ from api_v2.management.commands.generate_docstudio_spec import (
     SpecGenerationFailed,
     render_spec,
 )
-from api_v2.serializers import APIExecutionResponseSerializer
+from api_v2.serializers import (
+    APIExecutionResponseSerializer,
+    ExecutionRequestSerializer,
+)
 
 #: Keys under a path item that are operations. The rest -- `parameters`,
 #: `summary`, vendor extensions -- describe the path, not a call.
@@ -408,13 +411,21 @@ def test_documents_are_uploaded_as_binary_not_as_urls() -> None:
     assert files["items"] == {"type": "string", "format": "binary"}
 
 
-def test_the_undocumented_execute_option_is_marked_not_dropped() -> None:
-    """Dropping a parameter breaks the clients generated from it; the marker
-    lets a client that reads it hide the option while the rest keep it.
+def test_the_internal_execute_option_is_withdrawn_but_still_accepted() -> None:
+    """Everything generated from the spec -- clients, the CLI's flags -- would
+    otherwise offer an option that is not for callers. The server keeps
+    accepting it.
     """
-    option = _schema("ExecuteRequest")["properties"]["use_file_history"]
+    assert "use_file_history" not in _schema("ExecuteRequest")["properties"]
 
-    assert option == {"type": "boolean", "default": False, "x-internal": True}
+    request = ExecutionRequestSerializer(
+        data={
+            "use_file_history": True,
+            "presigned_urls": ["https://bucket.s3.amazonaws.com/doc.pdf"],
+        }
+    )
+    assert request.is_valid(), request.errors
+    assert request.validated_data["use_file_history"] is True
 
 
 def test_the_result_a_pending_execution_omits_is_documented_nullable() -> None:
