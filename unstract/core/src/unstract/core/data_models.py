@@ -371,7 +371,17 @@ class PgTaskStatus(str, Enum):
     """
 
     COMPLETED = "completed"  # task returned; ``result`` holds ExecutionResult dict
-    FAILED = "failed"  # task raised; ``error`` holds the message
+    # ``failed`` carries TWO distinct outcomes, and recovery logic must tell them
+    # apart before retrying anything:
+    #   1. the task raised — ``error`` holds the task's own message;
+    #   2. the task COMPLETED but its result could not be stored — ``error`` holds
+    #      ``PgResultBackend.PAYLOAD_UNSTORABLE_ERROR`` (UN-4126).
+    # Case 2 already ran to completion, so retrying its reply key re-executes a
+    # finished task: a second full LLM spend, the exact waste the consumer's ack
+    # discipline exists to avoid. There is deliberately no third status value —
+    # adding one would break every reader matching on these two — so the
+    # discriminator is the error text, and writers must use that shared constant.
+    FAILED = "failed"
 
 
 class FileListingResult:

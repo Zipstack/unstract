@@ -105,11 +105,12 @@ def dumps_for_jsonb(value: Any, *, default: Any = None) -> str:
         JSON text safe to cast to ``jsonb``.
 
     Raises:
-        ValueError: The value contains ``NaN``/``Infinity``, is not
-            JSON-serialisable without a *default*, or is too deeply nested /
-            self-referential to walk (see below).
-        TypeError: The value is not JSON-serialisable and *default* did not
-            handle it.
+        ValueError: The value contains ``NaN``/``Infinity``, or is too deeply
+            nested / self-referential to walk (see below).
+        TypeError: The value contains something JSON cannot represent and no
+            *default* handled it. This is the only class raised for an
+            unserialisable type — ``json.dumps`` raises ``TypeError``, with or
+            without a *default*.
     """
     hook = (lambda obj: sanitize_for_jsonb(default(obj))) if default is not None else None
     try:

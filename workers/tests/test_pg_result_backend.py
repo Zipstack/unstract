@@ -316,10 +316,36 @@ class TestStoreResultNeverStrands:
         PgResultBackend(conn=conn).store_result("k", result=cycle)
         assert statuses == [STATUS_FAILED]
 
-    def test_waiter_is_signalled_even_when_every_write_fails(self, monkeypatch):
-        # Last-resort guarantee: if not even the degraded row can be written, the
-        # waiter must still be woken rather than silently left for the full
-        # timeout. Signalling is in a `finally` for exactly this case.
+    def test_waiter_is_signalled_even_when_store_raises(self, monkeypatch):
+        # Pins the `finally`, and ONLY the `finally`: the injected error must be
+        # one `_write_outcome` does NOT catch, so it propagates out of the try
+        # and the signal can only fire from the `finally`. (An error inside
+        # _PAYLOAD_REJECTED_ERRORS would be swallowed into a degraded row and
+        # `_write_outcome` would return normally — then a plain trailing
+        # statement would signal too, and this test would assert nothing.)
+        monkeypatch.setattr(
+            "queue_backend.pg_queue.result_backend.time.sleep", MagicMock()
+        )
+        monkeypatch.setattr(
+            "queue_backend.pg_queue.result_backend._signal_backend",
+            lambda: _SIGNAL_REDIS,
+        )
+        signalled: list[str] = []
+        monkeypatch.setattr(
+            "queue_backend.pg_queue.result_backend._signal_ready",
+            lambda key: signalled.append(key),
+        )
+        conn, _ = self._conn(
+            execute_side_effect=psycopg2.OperationalError("database is down")
+        )
+        rb = PgResultBackend(conn=conn)  # injected -> no reconnect retry
+        with pytest.raises(psycopg2.OperationalError):
+            rb.store_result("k", result={"a": 1})
+        assert signalled == ["k"], "signal did not fire on the raising path"
+
+    def test_waiter_is_signalled_when_even_the_degraded_row_fails(self, monkeypatch):
+        # The swallowing path: every write fails but nothing propagates, so the
+        # caller must still be woken rather than left for its full timeout.
         monkeypatch.setattr(
             "queue_backend.pg_queue.result_backend.time.sleep", MagicMock()
         )

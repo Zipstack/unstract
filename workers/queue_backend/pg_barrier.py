@@ -91,6 +91,7 @@ from .fairness import (
 )
 from .handle import BarrierHandle
 from .pg_queue.connection import CONN_DEAD_ERRORS as _CONN_DEAD_ERRORS
+from .pg_queue.connection import PAYLOAD_REJECTED_ERRORS as _PAYLOAD_REJECTED_ERRORS
 from .pg_queue.connection import create_pg_connection
 from .pg_queue.schema import qualified
 
@@ -1053,15 +1054,24 @@ def _barrier_pg_decrement(
     # result's shape (``||`` would concatenate if the result were itself a list).
     try:
         row = _apply_decrement(execution_id, result_json, reused=conn_was_cached)
-    except psycopg2.DataError:
-        # Reached only for a rejection dumps_for_jsonb does not model. The cast
-        # raises, the decrement never lands, and the barrier would hang to
-        # expires_at (~6h). Tear it down so the execution fails fast and visibly.
+    except _PAYLOAD_REJECTED_ERRORS:
+        # Reached for a rejection dumps_for_jsonb does not model. The decrement
+        # never lands, and the barrier would hang to expires_at (~6h). Tear it
+        # down so the execution fails fast and visibly.
+        #
+        # Must be the same closed family the result backend uses, not
+        # ``DataError`` alone: ``ProgramLimitExceeded`` ("string too long",
+        # SQLSTATE 54) subclasses ``OperationalError``, so a DataError-only net
+        # lets an oversized header result through — ``_apply_decrement`` first
+        # misclassifies it as a dead connection and re-sends the same oversized
+        # UPDATE, then it escapes here and the barrier hangs to expiry with no
+        # actionable log. Same trap, same fix as ``PgResultBackend``.
         logger.exception(
-            f"[exec:{execution_id}] Header result rejected by jsonb even after "
-            f"sanitisation — tearing down the barrier so the execution fails "
-            f"fast rather than hanging until expiry. This is a gap in "
-            f"unstract.core.jsonb — capture the payload and extend it."
+            f"[exec:{execution_id}] Header result rejected by the database even "
+            f"after sanitisation — tearing down the barrier so the execution "
+            f"fails fast rather than hanging until expiry. If this is a content "
+            f"rejection it is a gap in unstract.core.jsonb — capture the payload "
+            f"and extend it."
         )
         with contextlib.suppress(Exception):
             _delete_barrier(execution_id)

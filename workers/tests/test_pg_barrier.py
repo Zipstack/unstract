@@ -458,6 +458,33 @@ class TestDecrementPhaseSplitRetry:
         assert len(creates) == 1  # the guard created one; NO retry reconnect
         assert sleeps == []  # a fresh-conn death is not retried → no backoff
 
+    def test_oversized_result_tears_down_the_barrier(self, _clean_local, monkeypatch):
+        # UN-4126, gating-lane cover for the barrier sink. `ProgramLimitExceeded`
+        # ("index row size exceeds maximum", SQLSTATE 54) subclasses
+        # OperationalError, so a `DataError`-only net lets it through: the
+        # decrement never lands and the barrier hangs to expires_at (~6h). It
+        # must be classified as a payload rejection and torn down instead. The
+        # DB-backed siblings live in `integration-workers`, which is
+        # `optional: true` and cannot turn CI red.
+        err = psycopg2.errors.ProgramLimitExceeded("index row size exceeds maximum")
+        monkeypatch.setattr(
+            pg_barrier,
+            "create_pg_connection",
+            lambda **_k: _FakeConn(execute_error=err),
+        )
+        deleted: list[str] = []
+        monkeypatch.setattr(
+            pg_barrier, "_delete_barrier", lambda eid: deleted.append(eid)
+        )
+        pg_barrier._local.conn = None
+
+        with pytest.raises(psycopg2.errors.ProgramLimitExceeded):
+            _barrier_pg_decrement(
+                {"f": "x" * 10}, execution_id="exec-BIG", callback_descriptor=_CALLBACK
+            )
+
+        assert deleted == ["exec-BIG"], "not torn down — the barrier would hang to expiry"
+
 
 @pytest.mark.integration
 def test_create_pg_connection_is_non_autocommit():

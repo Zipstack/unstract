@@ -65,8 +65,6 @@ import time
 from collections.abc import Callable, Iterator
 from typing import TYPE_CHECKING, Any, Final, Self
 
-import psycopg2
-import psycopg2.errors
 import redis
 
 from unstract.core.cache.redis_client import create_redis_client
@@ -75,6 +73,7 @@ from unstract.core.jsonb import dumps_for_jsonb, sanitize_for_jsonb
 from unstract.core.polling import poll_for_row
 
 from .connection import CONN_DEAD_ERRORS as _CONN_DEAD_ERRORS
+from .connection import PAYLOAD_REJECTED_ERRORS as _PAYLOAD_REJECTED_ERRORS
 from .connection import create_pg_connection
 from .schema import qualified
 
@@ -92,18 +91,6 @@ logger = logging.getLogger(__name__)
 # it. Defaults to the executor caller-timeout default so a result always
 # outlives any caller still waiting on it.
 DEFAULT_RETENTION_SECONDS = 3600
-
-# Rejections caused by the PAYLOAD, as opposed to the connection. Retrying these
-# can never succeed, so they degrade to a failed row instead of escaping.
-# ``ProgramLimitExceeded`` (SQLSTATE 54 — "string too long" / "index row size
-# exceeds maximum") is the trap: it subclasses ``OperationalError``, so it is
-# absent from ``DataError`` and present in ``CONN_DEAD_ERRORS``. Everything not
-# listed here — a genuinely dead connection, a logic error — still propagates,
-# so a database outage is never mislabelled as bad content.
-_PAYLOAD_REJECTED_ERRORS: Final = (
-    psycopg2.DataError,
-    psycopg2.errors.ProgramLimitExceeded,
-)
 
 # Recorded as the ``failed`` row's error text when a finished task's result
 # cannot be stored (see :meth:`PgResultBackend.store_result`). The caller reads

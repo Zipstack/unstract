@@ -21,6 +21,7 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 import psycopg2
+import psycopg2.errors
 
 if TYPE_CHECKING:
     from psycopg2.extensions import connection as PgConnection
@@ -38,6 +39,27 @@ logger = logging.getLogger(__name__)
 CONN_DEAD_ERRORS: tuple[type[Exception], ...] = (
     psycopg2.OperationalError,
     psycopg2.InterfaceError,
+)
+
+# The counterpart: rejections caused by the PAYLOAD rather than the connection.
+# Retrying these can never succeed, so a writer degrades instead of escaping (a
+# write that never lands is a reply that never comes — UN-4126). Hoisted beside
+# CONN_DEAD_ERRORS, and for the same reason: the result backend and the barrier
+# both classify on it and must not drift.
+#
+# ``ProgramLimitExceeded`` (SQLSTATE 54 — "string too long" / "index row size
+# exceeds maximum") is the trap this pairing exists to document: it subclasses
+# OperationalError, so it is absent from ``DataError`` AND present in
+# CONN_DEAD_ERRORS above — an oversized payload is first misread as a dead
+# connection and pointlessly re-sent. Order matters at the call sites: test for
+# a payload rejection BEFORE treating an error as a connection death.
+#
+# Deliberately not ``Exception``: a genuine outage recorded as "payload
+# unstorable" is a false diagnosis that sends the next investigator after
+# content while the database is down.
+PAYLOAD_REJECTED_ERRORS: tuple[type[Exception], ...] = (
+    psycopg2.DataError,
+    psycopg2.errors.ProgramLimitExceeded,
 )
 
 # Bounded retry for *transient* connect failures (DB restart, PgBouncer pool

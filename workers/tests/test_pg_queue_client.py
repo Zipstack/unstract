@@ -68,6 +68,19 @@ class TestPgQueueClientUnit:
         assert '"a": 1' in params[1]  # message JSON-serialised
         conn.commit.assert_called_once()
 
+    def test_send_sanitises_the_message_before_the_jsonb_cast(self):
+        # Gating-lane cover for the enqueue sink (UN-4126). The DB round-trip
+        # lives in `integration-workers`, which is `optional: true` and cannot
+        # turn CI red — so assert the encoder contract here, where it can:
+        # a NUL that reaches `%s::jsonb` fails the INSERT, and on the
+        # self-chained callback path that failure is swallowed and the user is
+        # told their completed extraction failed.
+        conn, cur = _mock_conn(fetchone=(1,))
+        PgQueueClient(conn=conn).send("q1", {"args": [{"n": "POZF\x00BBOK"}]})
+        _, params = cur.execute.call_args.args
+        assert "\\u0000" not in params[1]
+        assert "POZFBBOK" in params[1]
+
     def test_send_coerces_missing_org_to_empty_string(self):
         # org_id column is non-null (Django S6553) — None must become "".
         conn, cur = _mock_conn(fetchone=(1,))
