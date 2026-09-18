@@ -1110,17 +1110,36 @@ class TestDecrAndCheck:
         assert remaining == 1
         assert results == [[1, 2]]  # one element that is the list, not [1, 2]
 
-    def test_nul_byte_result_tears_down_barrier(self, barrier_db):
-        # A NUL byte survives json.dumps but jsonb rejects it. The barrier must
-        # be torn down (fail fast) rather than hang to expiry.
-        _seed(barrier_db, "exec-NB", 1)
-        with pytest.raises(psycopg2.DataError):
+    def test_nul_byte_result_is_repaired_and_decrements(self, barrier_db):
+        # UN-4126: a NUL survives json.dumps but jsonb rejects it. It is now
+        # stripped by dumps_for_jsonb rather than costing the barrier — a stray
+        # control byte from native_text extraction is not a reason to fail an
+        # execution. Seeded at 2 so this asserts the decrement, not the callback.
+        _seed(barrier_db, "exec-NB", 2)
+        out = _barrier_pg_decrement(
+            {"f": "bad\x00value"},
+            execution_id="exec-NB",
+            callback_descriptor=_CALLBACK,
+        )
+        assert out["status"] == "pending"
+        remaining, results = _row(barrier_db, "exec-NB")
+        assert remaining == 1
+        assert results == [{"f": "badvalue"}]  # NUL gone, everything else intact
+
+    def test_unencodable_result_tears_down_barrier(self, barrier_db):
+        # NaN is deliberately NOT repaired (null/0 would corrupt the value), so
+        # it now fails at the encoder instead of at the jsonb cast. The barrier
+        # must still be torn down (fail fast) rather than left to hang to expiry
+        # — allow_nan=False moved this class from the DataError path to the
+        # encode path, and the teardown had to follow it.
+        _seed(barrier_db, "exec-NaN", 1)
+        with pytest.raises(ValueError):
             _barrier_pg_decrement(
-                {"f": "bad\x00value"},
-                execution_id="exec-NB",
+                {"f": float("nan")},
+                execution_id="exec-NaN",
                 callback_descriptor=_CALLBACK,
             )
-        assert _row(barrier_db, "exec-NB") is None  # torn down, not left hanging
+        assert _row(barrier_db, "exec-NaN") is None  # torn down, not left hanging
 
     def test_decrement_after_abort_does_not_fire(self, barrier_db):
         # The new failure-masking model: an aborted barrier is GONE (abort

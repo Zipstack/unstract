@@ -77,6 +77,42 @@ class TestStoreGet:
         assert row["status"] == STATUS_COMPLETED
         assert row["result"] == {}
 
+    def test_nul_in_result_still_delivers_the_result(self, result_backend):
+        # UN-4126: LLMWhisperer `native_text` returns the PDF's embedded text
+        # layer verbatim, so a NUL reaches the extracted output. json.dumps
+        # encodes it \x00, which jsonb refuses -> store_result raised, the
+        # consumer logged-and-acked, and the caller waited out its full 3600s
+        # RPC timeout on work that had already succeeded. The row must land, and
+        # land as COMPLETED: the work is done, and a NUL carries no meaning
+        # worth failing an execution over.
+        k = _key()
+        result_backend.store_result(
+            k, result={"success": True, "data": {"output": {"invoice_number": "POZF\x00BBOK"}}}
+        )
+        row = result_backend.get_result(k)
+        assert row["status"] == STATUS_COMPLETED
+        assert row["result"]["data"]["output"]["invoice_number"] == "POZFBBOK"
+
+    def test_nul_in_error_text_still_writes_a_failed_row(self, result_backend):
+        # The `error` column is `text`, which rejects a NUL exactly as jsonb
+        # does — and an extraction error can embed document content.
+        k = _key()
+        result_backend.store_result(k, error="failed on \x00 byte")
+        row = result_backend.get_result(k)
+        assert row["status"] == STATUS_FAILED
+        assert row["error"] == "failed on  byte"
+
+    def test_unstorable_result_degrades_to_failed_not_a_hang(self, result_backend):
+        # NaN is deliberately NOT repaired (null/0 would corrupt the value), so
+        # this is the fallback path: a row must still appear, so the caller gets
+        # an error in seconds instead of waiting out EXECUTOR_RESULT_TIMEOUT.
+        k = _key()
+        result_backend.store_result(k, result={"confidence": float("nan")})
+        row = result_backend.get_result(k)
+        assert row["status"] == STATUS_FAILED
+        assert row["result"] is None
+        assert "could not be stored" in row["error"]
+
     def test_absent_returns_none(self, result_backend):
         assert result_backend.get_result(_key()) is None
 

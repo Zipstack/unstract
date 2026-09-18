@@ -62,7 +62,6 @@ rather than stranding the execution; the post-dispatch delete is best-effort
 from __future__ import annotations
 
 import contextlib
-import json
 import logging
 import threading
 import time
@@ -75,6 +74,7 @@ import psycopg2.errors
 import psycopg2.extensions
 
 from unstract.core.data_models import LEGACY_TRANSPORT_KEY, LEGACY_TRANSPORT_VALUE
+from unstract.core.jsonb import dumps_for_jsonb
 
 from .barrier import (
     BarrierContext,
@@ -1028,12 +1028,25 @@ def _barrier_pg_decrement(
     try:
         # No default=str — a non-JSON-safe leaf must fail loudly here (it would
         # signal a BatchExecutionResult.to_dict() typed-boundary regression).
-        result_json = json.dumps(result)
+        # dumps_for_jsonb additionally repairs the strings a jsonb cast refuses
+        # (NUL, lone surrogate) so a stray control byte in a header result no
+        # longer costs the whole barrier — the teardown below stays as the net
+        # for what it cannot repair (NaN, or a rejection it does not yet model).
+        result_json = dumps_for_jsonb(result)
     except (TypeError, ValueError):
+        # Tear down here too, not only below. ``allow_nan=False`` moves NaN /
+        # Infinity from the DataError path to this one, and that class used to
+        # reach the teardown — without this it would instead leave the barrier
+        # to hang to expires_at (~6h), which is the outcome this whole seam
+        # exists to prevent.
         logger.exception(
-            f"[exec:{execution_id}] Header task result is not JSON-serialisable "
-            f"— barrier aggregation cannot proceed (typed-boundary regression)."
+            f"[exec:{execution_id}] Header task result cannot be encoded for "
+            f"jsonb (not JSON-serialisable, or a non-finite number) — tearing "
+            f"down the barrier so the execution fails fast rather than hanging "
+            f"until expiry."
         )
+        with contextlib.suppress(Exception):
+            _delete_barrier(execution_id)
         raise
 
     # jsonb_build_array(...) appends exactly one element regardless of the
@@ -1041,14 +1054,14 @@ def _barrier_pg_decrement(
     try:
         row = _apply_decrement(execution_id, result_json, reused=conn_was_cached)
     except psycopg2.DataError:
-        # json.dumps accepts a few bytes jsonb rejects — notably a NUL (0x00)
-        # in a string. The cast above then raises, the decrement never lands, and
-        # the barrier would hang to expires_at (~6h). Tear it down so the
-        # execution fails fast and visibly instead.
+        # Reached only for a rejection dumps_for_jsonb does not model. The cast
+        # raises, the decrement never lands, and the barrier would hang to
+        # expires_at (~6h). Tear it down so the execution fails fast and visibly.
         logger.exception(
-            f"[exec:{execution_id}] Header result rejected by jsonb (e.g. a NUL "
-            f"byte) — tearing down the barrier so the execution fails fast "
-            f"rather than hanging until expiry."
+            f"[exec:{execution_id}] Header result rejected by jsonb even after "
+            f"sanitisation — tearing down the barrier so the execution fails "
+            f"fast rather than hanging until expiry. This is a gap in "
+            f"unstract.core.jsonb — capture the payload and extend it."
         )
         with contextlib.suppress(Exception):
             _delete_barrier(execution_id)

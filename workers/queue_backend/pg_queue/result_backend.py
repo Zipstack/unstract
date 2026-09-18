@@ -52,17 +52,18 @@ result is still written (and the blocking caller unblocked) rather than dropped
 from __future__ import annotations
 
 import contextlib
-import json
 import logging
 import os
 import time
 from collections.abc import Callable, Iterator
 from typing import TYPE_CHECKING, Any, Final, Self
 
+import psycopg2
 import redis
 
 from unstract.core.cache.redis_client import create_redis_client
 from unstract.core.data_models import PgTaskStatus
+from unstract.core.jsonb import dumps_for_jsonb, sanitize_for_jsonb
 from unstract.core.polling import poll_for_row
 
 from .connection import CONN_DEAD_ERRORS as _CONN_DEAD_ERRORS
@@ -83,6 +84,16 @@ logger = logging.getLogger(__name__)
 # it. Defaults to the executor caller-timeout default so a result always
 # outlives any caller still waiting on it.
 DEFAULT_RETENTION_SECONDS = 3600
+
+# Recorded as the ``failed`` row's error text when a finished task's result
+# cannot be stored (see :meth:`PgResultBackend.store_result`). The caller reads
+# this instead of waiting out its full RPC timeout, so it has to say enough to
+# diagnose from the caller's side alone.
+PAYLOAD_UNSTORABLE_ERROR: Final[str] = (
+    "Executor task finished, but its result could not be stored: the payload is "
+    "not representable in a jsonb column. The work completed; only the reply was "
+    "lost. See the worker-pg-executor logs for this reply key."
+)
 
 
 # First write wins — an at-least-once redelivery of the executor message must
@@ -368,18 +379,84 @@ class PgResultBackend:
         polling. Best-effort: a signal failure only slows the waiter (its fallback
         poll still delivers). A redelivery re-signals harmlessly — a stale token
         just expires.
+
+        **A row is always written.** The payload is encoded with
+        :func:`~unstract.core.jsonb.dumps_for_jsonb`, which repairs the strings a
+        ``jsonb`` cast would refuse (a NUL from ``native_text`` extraction, a lone
+        surrogate) so a completed task still delivers its result. If it is
+        *still* unstorable — an unrepairable value such as ``NaN``, or a column
+        rejection this encoder does not model — the outcome degrades to a
+        ``failed`` row carrying :data:`PAYLOAD_UNSTORABLE_ERROR` rather than
+        escaping. Letting it escape is what stranded callers for the full
+        ``EXECUTOR_RESULT_TIMEOUT`` (UN-4126): the consumer logs and acks, so a
+        write that never lands is a reply that never comes.
         """
-        if result is not None:
-            status, result_json, error_text = STATUS_COMPLETED, json.dumps(result), ""
-        else:
-            status, result_json, error_text = STATUS_FAILED, None, error or ""
+        if result is None:
+            # ``error`` lands in a ``text`` column, which rejects a NUL just as
+            # ``jsonb`` does — and an extraction error can embed document content.
+            self._insert_outcome(
+                task_id,
+                STATUS_FAILED,
+                None,
+                sanitize_for_jsonb(error or ""),
+                retention_seconds,
+            )
+            self._signal_stored(task_id)
+            return
+
+        try:
+            result_json = dumps_for_jsonb(result)
+        except (TypeError, ValueError):
+            logger.exception(
+                "PgResultBackend: result for reply_key=%s is not encodable for "
+                "jsonb; recording a failed outcome so the caller fails fast "
+                "instead of waiting out its RPC timeout.",
+                task_id,
+            )
+            self._insert_outcome(
+                task_id, STATUS_FAILED, None, PAYLOAD_UNSTORABLE_ERROR, retention_seconds
+            )
+            self._signal_stored(task_id)
+            return
+
+        try:
+            self._insert_outcome(
+                task_id, STATUS_COMPLETED, result_json, "", retention_seconds
+            )
+        except psycopg2.DataError:
+            # The encoder models every rejection we know of, so reaching here
+            # means a new one — record it, then degrade rather than strand.
+            # ``_cursor`` has already rolled back, so the connection is reusable
+            # and no row exists for this key yet (the INSERT never landed).
+            logger.exception(
+                "PgResultBackend: jsonb rejected the result for reply_key=%s "
+                "even after sanitisation; recording a failed outcome. This is a "
+                "gap in unstract.core.jsonb — capture the payload and extend it.",
+                task_id,
+            )
+            self._insert_outcome(
+                task_id, STATUS_FAILED, None, PAYLOAD_UNSTORABLE_ERROR, retention_seconds
+            )
+        self._signal_stored(task_id)
+
+    def _insert_outcome(
+        self,
+        task_id: str,
+        status: str,
+        result_json: str | None,
+        error_text: str,
+        retention_seconds: int,
+    ) -> None:
+        """Insert one outcome row (first write wins), with the reconnect retry."""
         self._store_with_reconnect(
             lambda cur: cur.execute(
                 _store_sql(),
                 (str(task_id), status, result_json, error_text, retention_seconds),
             )
         )
-        # Row is committed above → wake any blocking waiter (redis mode only).
+
+    def _signal_stored(self, task_id: str) -> None:
+        """Wake any blocking waiter once a row is committed (redis mode only)."""
         if _signal_backend() == _SIGNAL_REDIS:
             _signal_ready(str(task_id))
 

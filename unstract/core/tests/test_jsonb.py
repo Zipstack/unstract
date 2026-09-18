@@ -1,0 +1,84 @@
+"""Tests for the shared ``jsonb`` encoder.
+
+The property under test is the one that cost UN-4126 an hour-long hang per
+affected execution: whatever :func:`dumps_for_jsonb` returns must survive a
+``%s::jsonb`` cast. These assert the encoder's half of that (the escapes are
+gone from the emitted text); the DB half is asserted against a real Postgres in
+``workers/tests/test_pg_result_backend.py``.
+"""
+
+import json
+import math
+
+import pytest
+
+from unstract.core.jsonb import dumps_for_jsonb, sanitize_for_jsonb
+
+# The two escapes Postgres refuses to convert to text.
+NUL = "\x00"
+LONE_SURROGATE = "\ud800"
+
+
+class TestSanitizeForJsonb:
+    def test_strips_nul_from_string(self):
+        assert sanitize_for_jsonb(f"POZFBBOK{NUL}") == "POZFBBOK"
+
+    def test_strips_lone_surrogate(self):
+        assert sanitize_for_jsonb(f"a{LONE_SURROGATE}b") == "ab"
+
+    def test_keeps_other_control_characters(self):
+        # Only NUL and surrogates are rejected by jsonb; \x01 round-trips fine
+        # and stripping it would silently alter data for no reason.
+        assert sanitize_for_jsonb("a\x01b") == "a\x01b"
+
+    def test_cleans_nested_values_and_keys(self):
+        dirty = {f"k{NUL}": [{"inner": f"v{NUL}"}, (f"t{NUL}",)]}
+        assert sanitize_for_jsonb(dirty) == {"k": [{"inner": "v"}, ["t"]]}
+
+    def test_leaves_non_strings_untouched(self):
+        value = {"n": 1, "f": 1.5, "b": True, "none": None}
+        assert sanitize_for_jsonb(value) == value
+
+    def test_does_not_mutate_input(self):
+        original = {"a": [f"x{NUL}"]}
+        sanitize_for_jsonb(original)
+        assert original == {"a": [f"x{NUL}"]}
+
+    def test_clean_payload_is_unchanged(self):
+        value = {"output": {"invoice_number": "POZFBBOK", "amount": 42}}
+        assert sanitize_for_jsonb(value) == value
+
+
+class TestDumpsForJsonb:
+    def test_emits_no_nul_escape(self):
+        # The exact production payload shape from UN-4126.
+        out = dumps_for_jsonb({"output": {"invoice_number": f"POZFBBOK{NUL}"}})
+        assert "\\u0000" not in out
+        assert json.loads(out) == {"output": {"invoice_number": "POZFBBOK"}}
+
+    def test_emits_no_surrogate_escape(self):
+        out = dumps_for_jsonb({"a": LONE_SURROGATE})
+        assert "\\ud800" not in out.lower()
+
+    @pytest.mark.parametrize(
+        "bad", [math.nan, math.inf, -math.inf], ids=["nan", "inf", "-inf"]
+    )
+    def test_rejects_non_finite_numbers(self, bad):
+        # Not repairable: null/0 would corrupt a value rather than clean it, so
+        # the writer is told instead of the database finding out.
+        with pytest.raises(ValueError):
+            dumps_for_jsonb({"confidence": bad})
+
+    def test_default_hook_coerces_unserialisable(self):
+        from uuid import UUID
+
+        uid = UUID("00000000-0000-0000-0000-00000000dead")
+        assert json.loads(dumps_for_jsonb({"id": uid}, default=str)) == {"id": str(uid)}
+
+    def test_raises_without_default_for_unserialisable(self):
+        with pytest.raises(TypeError):
+            dumps_for_jsonb({"o": object()})
+
+    def test_round_trips_a_clean_payload(self):
+        value = {"success": True, "data": {"output": {"n": 1}}, "error": None}
+        assert json.loads(dumps_for_jsonb(value)) == value
