@@ -524,6 +524,24 @@ class TestPgQueueClientIntegration:
         assert client.delete(msg_id) is True
         assert client.read(queue_name, vt_seconds=30, qty=10) == []  # gone
 
+    def test_send_repairs_a_nul_instead_of_failing_the_enqueue(
+        self, pg_conn, queue_name
+    ):
+        # UN-4126: a self-chained continuation prepends the EXECUTOR RESULT as
+        # the callback's first arg, so the payload that carried a NUL in the
+        # blocking-RPC path also travels through send(). jsonb refuses it, and
+        # _chain_continuation never raises — so the enqueue used to fail
+        # silently, losing the callback and falling back to on_error, i.e.
+        # reporting a failure for work that had succeeded. The message must
+        # land, with the NUL gone.
+        client = PgQueueClient(conn=pg_conn)
+        msg_id = client.send(
+            queue_name, {"args": [{"output": {"invoice_number": "POZF\x00BBOK"}}]}
+        )
+        msgs = client.read(queue_name, vt_seconds=30, qty=10)
+        assert [m.msg_id for m in msgs] == [msg_id]
+        assert msgs[0].message["args"][0]["output"]["invoice_number"] == "POZFBBOK"
+
     def test_read_hides_message_for_vt(self, pg_conn, queue_name):
         client = PgQueueClient(conn=pg_conn)
         client.send(queue_name, {"n": 1})

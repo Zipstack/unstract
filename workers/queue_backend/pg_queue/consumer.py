@@ -37,6 +37,7 @@ from typing import TYPE_CHECKING, Any, TypeVar
 from celery import current_app
 
 from unstract.core.data_models import ContinuationSpec, TaskPayload
+from unstract.core.jsonb import dumps_for_jsonb
 
 from ..barrier import callback_recovery_identity
 from ..fairness import FAIRNESS_HEADER_NAME
@@ -109,13 +110,20 @@ def _json_safe(value: object) -> object:
     """Round-trip through JSON with ``default=str`` so non-JSON-native values
     (UUID / datetime) survive a self-chained enqueue.
 
-    ``PgQueueClient.send`` serialises with a plain ``json.dumps`` (no
-    ``default=``), so a self-chained continuation whose prepended argument is an
-    executor result dict containing a UUID/datetime would raise ``TypeError`` —
-    swallowed by ``_chain_continuation`` and the callback (plus its user-facing
-    event) lost. Coercing here mirrors the backend producer's ``_json_safe``.
+    ``PgQueueClient.send`` serialises without a ``default=``, so a self-chained
+    continuation whose prepended argument is an executor result dict containing
+    a UUID/datetime would raise ``TypeError`` — swallowed by
+    ``_chain_continuation`` and the callback (plus its user-facing event) lost.
+    Coercing here mirrors the backend producer's ``_json_safe``.
+
+    Uses ``dumps_for_jsonb`` so the same pass also strips the strings the
+    ``::jsonb`` cast refuses. The prepended value is the executor result — the
+    payload that carried a NUL in UN-4126 — and on this branch an unencodable
+    message does not hang the caller: the enqueue fails, ``_chain_continuation``
+    swallows it, and the run falls back to ``on_error``, reporting a *failure*
+    for work that succeeded and was already paid for.
     """
-    return json.loads(json.dumps(value, default=str))
+    return json.loads(dumps_for_jsonb(value, default=str))
 
 
 class _PoisonMarkOutcome(Enum):

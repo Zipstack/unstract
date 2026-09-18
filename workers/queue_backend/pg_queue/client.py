@@ -31,7 +31,6 @@ permanently wedge the consumer.
 from __future__ import annotations
 
 import contextlib
-import json
 import logging
 import time
 from collections.abc import Iterator
@@ -39,6 +38,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Final, Self
 
 from unstract.core.data_models import QueueMessageState
+from unstract.core.jsonb import dumps_for_jsonb
 
 from ..fairness import DEFAULT_PRIORITY, MAX_PRIORITY, MIN_PRIORITY
 from .connection import CONN_DEAD_ERRORS as _CONN_DEAD_ERRORS
@@ -338,7 +338,15 @@ class PgQueueClient:
         org_id: str | None,
         priority: int,
     ) -> int:
-        """One INSERT of a queue row, returning its ``msg_id`` (see :meth:`send`)."""
+        """One INSERT of a queue row, returning its ``msg_id`` (see :meth:`send`).
+
+        Encoded with ``dumps_for_jsonb`` (no ``default=``, preserving the
+        TypeError-on-UUID contract the consumer's ``_json_safe`` compensates for)
+        so a string the ``::jsonb`` cast would refuse cannot reach the INSERT.
+        A self-chained continuation prepends the *executor result* — the same
+        payload that carried a NUL in UN-4126 — and ``_chain_continuation`` never
+        raises, so an unencodable message here is a silently lost callback.
+        """
         with self._cursor() as cur:
             cur.execute(
                 insert_message_sql() + " RETURNING msg_id",
@@ -346,7 +354,7 @@ class PgQueueClient:
                 # (string fields shouldn't have two empty values; Django S6553).
                 (
                     queue_name,
-                    json.dumps(message),
+                    dumps_for_jsonb(message),
                     org_id if org_id is not None else "",
                     priority,
                 ),
