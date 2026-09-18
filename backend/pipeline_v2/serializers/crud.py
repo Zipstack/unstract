@@ -63,7 +63,8 @@ class PipelineSerializer(IntegrityErrorMixin, AuditSerializer):
         # An update resends the bound workflow unchanged, so keep it
         # selectable: a co-owner of this resource need not own the workflow.
         # ``validate_workflow`` still refuses an actual change.
-        if self.instance is not None:
+        if isinstance(self.instance, Pipeline):
+            # On a list request, ``self.instance`` is the whole queryset, not one row.
             queryset = queryset | Workflow.objects.filter(pk=self.instance.workflow_id)
         fields["workflow"].queryset = queryset
         # Same code, readable text: the default names a pk the user never
