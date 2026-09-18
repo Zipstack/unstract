@@ -20,13 +20,18 @@ from executor.executors.dto import (
     InstanceIdentifiers,
     ProcessingOptions,
 )
-from executor.executors.exceptions import ExtractionError, LegacyExecutorError
+from executor.executors.exceptions import (
+    ExecutionCancelled,
+    ExtractionError,
+    LegacyExecutorError,
+)
 from executor.executors.file_utils import FileUtils
 from executor.executors.lookup_enrichment import (
     run_lookup_enrichment,
     run_webhook_postprocessing,
 )
 
+from unstract.core.prompt_run_cancellation import is_cancelled
 from unstract.sdk1.adapters.exceptions import AdapterError
 from unstract.sdk1.adapters.x2text.constants import X2TextConstants
 from unstract.sdk1.adapters.x2text.llm_whisperer.src import LLMWhisperer
@@ -36,6 +41,7 @@ from unstract.sdk1.execution.context import ExecutionContext, Operation
 from unstract.sdk1.execution.executor import BaseExecutor
 from unstract.sdk1.execution.registry import ExecutorRegistry
 from unstract.sdk1.execution.result import ExecutionResult
+from unstract.sdk1.utils.aborting import AbortCheck, AbortedError, abort_scope
 from unstract.sdk1.utils.tool import ToolUtils
 from unstract.sdk1.x2txt import TextExtractionResult, X2Text
 
@@ -121,7 +127,15 @@ class LegacyExecutor(BaseExecutor):
         )
         start = time.monotonic()
         try:
-            result = handler(context)
+            # Everything the handler calls — extraction, embedding, the model
+            # itself — can now be abandoned rather than waited out.
+            try:
+                with abort_scope(self._abort_check(context)):
+                    result = handler(context)
+            except AbortedError as exc:
+                # Normalise to the executor's own signal so the handling
+                # below, and every layer past it, stays unchanged.
+                raise ExecutionCancelled() from exc
             elapsed = time.monotonic() - start
             logger.info(
                 "Handler %s completed in %.2fs (run_id=%s success=%s)",
@@ -133,21 +147,34 @@ class LegacyExecutor(BaseExecutor):
             return result
         except LegacyExecutorError as exc:
             elapsed = time.monotonic() - start
-            logger.warning(
-                "Handler %s failed after %.2fs: %s: %s",
-                handler_name,
-                elapsed,
-                type(exc).__name__,
-                exc.message,
-                exc_info=True,
-            )
-            # Stream error to FE so the user sees the failure in real-time
+            if isinstance(exc, ExecutionCancelled):
+                logger.info(
+                    "Handler %s stopped by user after %.2fs (run_id=%s)",
+                    handler_name,
+                    elapsed,
+                    context.run_id,
+                )
+            else:
+                logger.warning(
+                    "Handler %s failed after %.2fs: %s: %s",
+                    handler_name,
+                    elapsed,
+                    type(exc).__name__,
+                    exc.message,
+                    exc_info=True,
+                )
+            # Stream error to FE so the user sees the failure in real-time.
+            # A user-requested stop is reported as such, at INFO — labelling it
+            # "Error" would read as a bug in the run the user just cancelled.
             if self._log_events_id:
                 try:
                     shim = self._build_shim()
+                    cancelled = isinstance(exc, ExecutionCancelled)
                     shim.stream_log(
-                        f"Error: {exc.message or type(exc).__name__}",
-                        level=LogLevel.ERROR,
+                        "Stopped by user"
+                        if cancelled
+                        else f"Error: {exc.message or type(exc).__name__}",
+                        level=LogLevel.INFO if cancelled else LogLevel.ERROR,
                     )
                 except Exception:
                     # Don't mask the original error; log the secondary at DEBUG.
@@ -161,6 +188,89 @@ class LegacyExecutor(BaseExecutor):
             if exc.partial_usage_records:
                 failure_metadata["usage_records"] = list(exc.partial_usage_records)
             return ExecutionResult.failure(error=exc.message, metadata=failure_metadata)
+
+    @staticmethod
+    def _is_run_cancelled(context: ExecutionContext) -> bool:
+        """Whether the WHOLE run was stopped, as opposed to one prompt in it.
+
+        Decides whether the prompt loop breaks or skips: a per-prompt Stop must
+        leave the rest of a bulk run running.
+        """
+        if context.execution_source != ExecutionSource.IDE.value:
+            return False
+        return is_cancelled(str(context.organization_id or ""), str(context.run_id))
+
+    @staticmethod
+    def _abort_check(
+        context: ExecutionContext, prompt_id: str | None = None
+    ) -> AbortCheck | None:
+        """A predicate the SDK can poll while a call is in flight (UN-1031).
+
+        ``_check_cancelled`` below handles the boundaries *between* stages,
+        which is cheap and covers most of a run. This covers the rest: the
+        minutes a single call can occupy, where there is no boundary to reach.
+
+        Returns ``None`` for anything but an IDE run, so the workflow and API
+        deployment paths keep the synchronous, un-polled code path and never
+        touch the signal store.
+
+        Negative answers are memoized briefly. The SDK polls twice a second
+        while it waits, and a fifteen-minute extraction would otherwise mean
+        eighteen hundred round trips to Redis for one prompt.
+        """
+        if context.execution_source != ExecutionSource.IDE.value:
+            return None
+
+        org_id = str(context.organization_id or "")
+        run_id = str(context.run_id)
+        state: dict[str, float | bool] = {"until": 0.0, "answer": False}
+
+        def _check() -> bool:
+            # A True answer is permanent — a stop is never rescinded — so only
+            # the negative is worth caching.
+            if state["answer"]:
+                return True
+            now = time.monotonic()
+            if now < state["until"]:
+                return False
+            state["answer"] = is_cancelled(org_id, run_id, prompt_id)
+            state["until"] = now + 1.0
+            return bool(state["answer"])
+
+        return _check
+
+    @staticmethod
+    def _check_cancelled(context: ExecutionContext, prompt_id: str | None = None) -> None:
+        """Stop here if the user has cancelled this run (UN-1031).
+
+        Nothing can interrupt this task from the outside — the consumer runs it
+        eagerly, in-process, with no revoke and no time limit — so the pipeline
+        stops only where it asks to. Call this at stage boundaries, immediately
+        before work that costs money (an LLM call, an OCR call, an embedding
+        pass) and never in the middle of one: the aim is to avoid the *next*
+        charge, not to abandon one already incurred.
+
+        Only IDE runs are checked. The workflow path has no user-facing Stop,
+        and would otherwise pay a signal-store lookup per prompt for nothing.
+        ``run_id`` needs no guard: ``ExecutionContext`` rejects an empty one at
+        construction.
+
+        Raises:
+            ExecutionCancelled: If this run, or this prompt within it, was
+                stopped. Carries the shared sentinel message so the consumer,
+                the callbacks and the UI can tell it apart from a failure.
+        """
+        if context.execution_source != ExecutionSource.IDE.value:
+            return
+        if is_cancelled(
+            str(context.organization_id or ""), str(context.run_id), prompt_id
+        ):
+            logger.info(
+                "Execution cancelled by user: run_id=%s prompt_id=%s",
+                context.run_id,
+                prompt_id or "<whole run>",
+            )
+            raise ExecutionCancelled()
 
     def _build_shim(
         self,
@@ -220,6 +330,12 @@ class LegacyExecutor(BaseExecutor):
         execution_source: str = context.execution_source
         tool_exec_metadata: dict[str, Any] = params.get(IKeys.TOOL_EXECUTION_METATADA, {})
         execution_data_dir: str | None = params.get(IKeys.EXECUTION_DATA_DIR)
+
+        # Checked before the adapter and filesystem are even built: the whole
+        # remainder of this handler exists to make the billable OCR call, and
+        # the adapter can then block for ADAPTER_LLMW_WAIT_TIMEOUT (900s) with
+        # no way back out.
+        self._check_cancelled(context)
 
         # Build adapter shim and X2Text
         shim = self._build_shim(platform_api_key=platform_api_key)
@@ -496,6 +612,10 @@ class LegacyExecutor(BaseExecutor):
                 _absorb(extract_result)
                 extracted_text = extract_result.data.get(IKeys.EXTRACTED_TEXT, "")
 
+            # Between compound steps: extraction is done and billed, so stop
+            # before paying for the summarize/index legs as well.
+            self._check_cancelled(context)
+
             # Step 2: Optional summarize
             summarize_params = params.get("summarize_params")
             summarize_file_path = ""
@@ -505,6 +625,8 @@ class LegacyExecutor(BaseExecutor):
                 if not summarize_result.success:
                     return _failure(summarize_result)
                 _absorb(summarize_result)
+
+            self._check_cancelled(context)
 
             # Step 3: Index — inject extracted text
             index_params[IKeys.EXTRACTED_TEXT] = extracted_text
@@ -1191,10 +1313,22 @@ class LegacyExecutor(BaseExecutor):
             f"Configured chunking: size={chunk_size}, overlap={chunk_overlap}"
         )
 
+        # Before the embedding pass — the billable half of indexing. The
+        # chunk_size==0 short-circuit above writes nothing, so there is nothing
+        # to guard ahead of it.
+        self._check_cancelled(context)
+
         index_cls, embedding_compat, vector_db_cls = self._get_indexing_deps()
 
         vector_db = None
         embedding = None
+        index = None
+        doc_id = ""
+        # Whether THIS run has begun writing nodes. The existence probe below
+        # embeds a query, which is itself abortable, so a stop can land while
+        # `doc_id` already names a document a PREVIOUS run indexed completely.
+        # Cleaning up on that path would delete good vectors we never wrote.
+        wrote_nodes = False
         try:
             index = index_cls(
                 tool=shim,
@@ -1246,6 +1380,7 @@ class LegacyExecutor(BaseExecutor):
             shim.stream_log(
                 "Re-indexing document" if doc_id_found else "Indexing document"
             )
+            wrote_nodes = True
             index.perform_indexing(
                 vector_db=vector_db,
                 doc_id=doc_id,
@@ -1263,6 +1398,36 @@ class LegacyExecutor(BaseExecutor):
                 data={IKeys.DOC_ID: doc_id},
                 metadata={"usage_records": embedding.flush_pending_usage()},
             )
+        except (AbortedError, ExecutionCancelled) as e:
+            # Stopped part-way through indexing. llama-index writes node
+            # batches as it goes, so the vector store may hold a fragment of
+            # this document — and `is_document_indexed` would later report it
+            # as indexed, leaving every future prompt to search half a
+            # document. Remove what was written.
+            if wrote_nodes and vector_db is not None and index is not None and doc_id:
+                try:
+                    index.delete_nodes(vector_db, doc_id)
+                    logger.info(
+                        "Removed partially indexed nodes after a stop: doc_id=%s",
+                        doc_id,
+                    )
+                except Exception:
+                    logger.warning(
+                        "Could not remove partially indexed nodes for doc_id=%s; "
+                        "it may later look indexed when it is not",
+                        doc_id,
+                        exc_info=True,
+                    )
+            partial = []
+            if embedding is not None:
+                try:
+                    partial = list(embedding.flush_pending_usage())
+                except Exception:
+                    logger.warning(
+                        "Failed to flush embedding usage on the stop path",
+                        exc_info=True,
+                    )
+            raise ExecutionCancelled(partial_usage_records=partial) from e
         except Exception as e:
             logger.error(
                 "Indexing failed: file=%s error=%s",
@@ -1477,36 +1642,100 @@ class LegacyExecutor(BaseExecutor):
             vector_db_cls,
         )
         usage_records: list[dict[str, Any]] = []
+        # Prompts the user stopped (UN-1031). A bulk run is ONE task looping
+        # over many prompts, so a stop must not discard the answers already
+        # paid for — we drop out of the loop and return what completed, and the
+        # callback persists exactly those.
+        #
+        # Entries are prompt ids, falling back to the prompt key only for a
+        # payload built before ids were carried (a rolling deploy). A key here
+        # would not match the callback's id filter, but it cannot cause a bad
+        # write either: the backend persists a stopped run by looking at which
+        # answers are actually present, not at this list.
+        cancelled_prompt_ids: list[str] = []
+        stopped_whole_run = False
         try:
             for output in prompts:
-                usage_records.extend(
-                    self._execute_single_prompt(
-                        output=output,
-                        context=context,
-                        structured_output=structured_output,
-                        metadata=metadata,
-                        metrics=metrics,
-                        variable_names=variable_names,
-                        context_retrieval_metrics=context_retrieval_metrics,
-                        deps=_deps,
-                        tool_settings=tool_settings,
-                        process_text_fn=process_text_fn,
-                    )
-                )
+                prompt_id = output.get(PSKeys.PROMPT_ID)
+                try:
+                    # Between prompts: the previous answer is banked and the
+                    # next one has cost nothing yet — the cheapest boundary in
+                    # the loop.
+                    self._check_cancelled(context, prompt_id)
+                except ExecutionCancelled:
+                    cancelled_prompt_ids.append(str(prompt_id or output[PSKeys.NAME]))
+                    if self._is_run_cancelled(context):
+                        stopped_whole_run = True
+                        break
+                    continue
+                try:
+                    # Narrow the scope to this prompt, so a Stop aimed at one
+                    # prompt abandons only its call and leaves the rest of the
+                    # batch running.
+                    with abort_scope(self._abort_check(context, prompt_id)):
+                        usage_records.extend(
+                            self._execute_single_prompt(
+                                output=output,
+                                context=context,
+                                structured_output=structured_output,
+                                metadata=metadata,
+                                metrics=metrics,
+                                variable_names=variable_names,
+                                context_retrieval_metrics=context_retrieval_metrics,
+                                deps=_deps,
+                                tool_settings=tool_settings,
+                                process_text_fn=process_text_fn,
+                            )
+                        )
+                except ExecutionCancelled as e:
+                    # Stopped part-way through this prompt: keep the tokens it
+                    # already spent on the bill, drop its (incomplete) answer.
+                    usage_records.extend(e.partial_usage_records)
+                    structured_output.pop(output[PSKeys.NAME], None)
+                    cancelled_prompt_ids.append(str(prompt_id or output[PSKeys.NAME]))
+                    if self._is_run_cancelled(context):
+                        stopped_whole_run = True
+                        break
         except LegacyExecutorError as e:
             e.partial_usage_records = usage_records + e.partial_usage_records
             raise
 
-        pipeline_shim.stream_log(f"All {len(prompts)} prompts processed successfully")
-        logger.info(
-            "All prompts processed: tool_id=%s prompt_count=%d file=%s",
-            tool_id,
-            len(prompts),
-            doc_name,
-        )
+        if cancelled_prompt_ids:
+            # Count what actually answered. A whole-run stop breaks out of the
+            # loop, so prompts it never reached are absent from BOTH lists —
+            # subtracting would report them as done (UN-1031).
+            done = len(structured_output)
+            pipeline_shim.stream_log(
+                f"Stopped by user after {done} of {len(prompts)} prompts"
+            )
+            logger.info(
+                "answer_prompt stopped by user: tool_id=%s completed=%d cancelled=%d "
+                "whole_run=%s run_id=%s",
+                tool_id,
+                done,
+                len(cancelled_prompt_ids),
+                stopped_whole_run,
+                run_id,
+            )
+        else:
+            pipeline_shim.stream_log(f"All {len(prompts)} prompts processed successfully")
+            logger.info(
+                "All prompts processed: tool_id=%s prompt_count=%d file=%s",
+                tool_id,
+                len(prompts),
+                doc_name,
+            )
 
         # ---- Sanitize null values ------------------------------------------
         structured_output = self._sanitize_null_values(structured_output)
+
+        # A stopped run is still a SUCCESS: it carries real answers for every
+        # prompt that finished. Reporting failure would send the callback down
+        # the error path and throw that work away.
+        result_metadata: dict[str, Any] = {"usage_records": usage_records}
+        if cancelled_prompt_ids:
+            result_metadata["cancelled"] = True
+            result_metadata["cancelled_prompt_ids"] = cancelled_prompt_ids
 
         return ExecutionResult(
             success=True,
@@ -1515,7 +1744,7 @@ class LegacyExecutor(BaseExecutor):
                 PSKeys.METADATA: metadata,
                 PSKeys.METRICS: metrics,
             },
-            metadata={"usage_records": usage_records},
+            metadata=result_metadata,
         )
 
     @staticmethod
@@ -1691,6 +1920,8 @@ class LegacyExecutor(BaseExecutor):
         prompt_name = output[PSKeys.NAME]
         prompt_text = output[PSKeys.PROMPT]
         chunk_size = output[PSKeys.CHUNK_SIZE]
+        # Checked before each billable stage below (UN-1031).
+        prompt_id = output.get(PSKeys.PROMPT_ID)
 
         logger.debug(
             "Prompt config: name=%s chunk_size=%d type=%s",
@@ -1790,6 +2021,7 @@ class LegacyExecutor(BaseExecutor):
         context_list: list[str] = []
         records: list[dict[str, Any]] = []
         try:
+            self._check_cancelled(context, prompt_id)
             answer = "NA"
             retrieval_strategy = output.get(PSKeys.RETRIEVAL_STRATEGY)
             valid_strategies = {s.value for s in RetrievalStrategy}
@@ -1829,6 +2061,7 @@ class LegacyExecutor(BaseExecutor):
                     len(context_list),
                     prompt_name,
                 )
+                self._check_cancelled(context, prompt_id)
                 shim.stream_log(f"Running LLM completion for: `{prompt_name}`")
                 answer = answer_prompt_svc.construct_and_run_prompt(
                     tool_settings=tool_settings,
@@ -1863,6 +2096,10 @@ class LegacyExecutor(BaseExecutor):
             )
             shim.stream_log(f"Applied type conversion for: `{prompt_name}`")
 
+            # Lookup enrichment is another billable LLM call, and the webhook
+            # right after it is an outbound call to someone else's system that
+            # no later stop can take back. Check before both.
+            self._check_cancelled(context, prompt_id)
             records.extend(
                 run_lookup_enrichment(
                     output=output,
@@ -1881,6 +2118,7 @@ class LegacyExecutor(BaseExecutor):
                 shim=shim,
             )
 
+            self._check_cancelled(context, prompt_id)
             records.extend(
                 self._run_challenge_if_enabled(
                     tool_settings=tool_settings,
@@ -1897,6 +2135,7 @@ class LegacyExecutor(BaseExecutor):
                     prompt_name=prompt_name,
                 )
             )
+            self._check_cancelled(context, prompt_id)
             self._run_evaluation_if_enabled(
                 output=output,
                 context_list=context_list,
@@ -1910,8 +2149,15 @@ class LegacyExecutor(BaseExecutor):
             val = structured_output.get(prompt_name)
             if isinstance(val, str):
                 structured_output[prompt_name] = val.rstrip("\n")
-        except LegacyExecutorError as e:
-            # Flush before bubbling so partial rows survive.
+        except (LegacyExecutorError, AbortedError) as e:
+            # An SDK abort means the caller stopped waiting mid-call. It
+            # becomes the same ExecutionCancelled a checkpoint raises, so
+            # everything downstream — the loop, the callback, the socket
+            # event, the UI — needs no knowledge of the SDK's exception.
+            if isinstance(e, AbortedError):
+                e = ExecutionCancelled()
+            # Flush before bubbling so partial rows survive. Tokens spent
+            # before the stop are still billed.
             flushed = self._flush_per_prompt_metrics(
                 metrics=metrics,
                 context_retrieval_metrics=context_retrieval_metrics,
@@ -1922,7 +2168,7 @@ class LegacyExecutor(BaseExecutor):
                 chunk_size=chunk_size,
             )
             e.partial_usage_records = records + flushed + e.partial_usage_records
-            raise
+            raise e from None
         records.extend(
             self._flush_per_prompt_metrics(
                 metrics=metrics,
@@ -2316,6 +2562,11 @@ class LegacyExecutor(BaseExecutor):
 
                 {"output": dict, "metadata": dict, "metrics": dict}
         """
+        # One combined LLM call over the whole document — all of the cost is
+        # on the other side of this line, and the cloud plugin has no
+        # checkpoints of its own yet.
+        self._check_cancelled(context)
+
         try:
             from unstract.sdk1.execution.registry import ExecutorRegistry
 
@@ -2370,6 +2621,9 @@ class LegacyExecutor(BaseExecutor):
         if not doc_context:
             return ExecutionResult.failure(error="Missing required param: context")
 
+        # One LLM call over the whole document; stop before paying for it.
+        self._check_cancelled(context)
+
         logger.info(
             "Starting summarization: prompt_keys=%s run_id=%s",
             prompt_keys,
@@ -2417,9 +2671,22 @@ class LegacyExecutor(BaseExecutor):
                 data={"data": summary},
                 metadata={"usage_records": records},
             )
+        except (AbortedError, ExecutionCancelled) as e:
+            # A stop during the summarize call is not a summarization failure,
+            # and must not be reported as one: the broad handler below would
+            # turn it into a LegacyExecutorError and the run would surface as
+            # errored rather than cancelled.
+            partial: list[dict] = []
+            if llm is not None:
+                try:
+                    partial = list(llm.flush_pending_usage())
+                except Exception:
+                    logger.debug("flush_pending_usage failed during the stop path")
+            logger.info("Summarization stopped by the user: run_id=%s", context.run_id)
+            raise ExecutionCancelled(partial_usage_records=partial) from e
         except Exception as e:
             # Flush before re-raising so partial rows survive.
-            partial: list[dict] = []
+            partial = []
             if llm is not None:
                 try:
                     partial = list(llm.flush_pending_usage())

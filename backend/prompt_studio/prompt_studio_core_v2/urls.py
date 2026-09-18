@@ -69,6 +69,8 @@ prompt_studio_deployment_usage = PromptStudioCoreView.as_view(
 
 prompt_studio_task_status = PromptStudioCoreView.as_view({"get": "task_status"})
 
+prompt_studio_cancel_runs = PromptStudioCoreView.as_view({"post": "cancel_runs"})
+
 prompt_studio_lookup_validation = PromptStudioCoreView.as_view(
     {"get": "lookup_validation"}
 )
@@ -186,6 +188,11 @@ urlpatterns = format_suffix_patterns(
             "prompt-studio/<uuid:pk>/task-status/<str:task_id>",
             prompt_studio_task_status,
             name="prompt-studio-task-status",
+        ),
+        path(
+            "prompt-studio/<uuid:pk>/cancel/",
+            prompt_studio_cancel_runs,
+            name="prompt-studio-cancel-runs",
         ),
         path(
             "prompt-studio/<uuid:pk>/lookup-validation/",

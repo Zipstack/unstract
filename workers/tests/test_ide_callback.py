@@ -394,6 +394,9 @@ class TestIdePromptComplete:
             metadata={},
             profile_manager_id="profile-1",
             organization_id="org-1",
+            # A run that finished normally is not a stopped one, so the backend
+            # persists every prompt it was asked to (UN-1031).
+            cancelled=False,
         )
 
         mock_emit_ws.assert_called_once()

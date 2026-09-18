@@ -10,9 +10,11 @@ import logging
 from typing import Any
 
 from executor.executors.constants import PromptServiceConstants as PSKeys
+from executor.executors.exceptions import ExecutionCancelled
 from executor.executors.plugins import ExecutorPluginLoader
 
 from unstract.sdk1.constants import LogLevel
+from unstract.sdk1.utils.aborting import AbortedError
 
 logger = logging.getLogger(__name__)
 
@@ -104,6 +106,13 @@ def run_lookup_enrichment(
             reference_texts=reference_texts,
         )
         metrics.setdefault(prompt_name, {})[lookup_cls.METRICS_KEY] = outcome.llm_metrics
+    except (AbortedError, ExecutionCancelled):
+        # A stop is not a lookup failure. Letting the handler below swallow it
+        # would report "lookup failed" for a run the user ended themselves —
+        # and, worse, let the pipeline carry on to the webhook, firing an
+        # outbound call to another system for a run that is already over
+        # (UN-1031).
+        raise
     except Exception:
         # Degrade gracefully on plugin contract drift.
         lookup_name = lookup_config.get("lookup_name") or "lookup"

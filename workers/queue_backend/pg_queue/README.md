@@ -162,6 +162,54 @@ dropped without affecting the Celery path.
 
 ---
 
+## 4. Cancellation (UN-1031)
+
+The transport has **no cancel primitive**: `PgQueueClient` is `send` / `read` /
+`set_vt` / `delete`, there is no archive or dead-letter, and a claimed task runs
+eagerly in a forked child with no revoke and no time limit. Prompt Studio's Stop
+is therefore **cooperative**, and lives outside the queue:
+
+| Where | Key | Effect |
+|---|---|---|
+| Redis, written by the backend | `ps:cancel:{org_id}:{run_id}` — a SET of prompt ids, or `*` for the whole run; TTL 7260s (> the executor VT) | The intent. Ids only; never payloads |
+| `consumer._handle` | reads the key before running an IDE `execute_extraction` | Drops the message, ACKs it, and fires `on_error` with the sentinel so the UI still gets a terminal event. **Deleting the row instead would strand the caller**: the continuations live in the payload and die with it |
+| Executor stage boundaries | same key, per prompt | Stops before the next billable call; already-spent usage rows are still flushed |
+
+The shared vocabulary (key builder, `is_cancelled`, and the
+`PROMPT_RUN_CANCELLED_ERROR` sentinel every layer matches on) is in
+`unstract.core.prompt_run_cancellation`. Reads are best effort: an unreachable
+Redis means "not cancelled", so a cache outage can never kill a healthy run.
+
+### 4.1 Abandoning the call already in flight
+
+Stage boundaries stop the *next* call. They cannot help when the stop lands
+inside one — a wedged provider can hold a single call for `timeout` ×
+`max_retries + 1` seconds (900 × 5 with the usual adapter defaults), and the
+user would watch a spinner for the whole of it. A second layer beneath the
+checkpoints closes that window:
+
+| Where | Mechanism |
+|---|---|
+| `legacy_executor._abort_check` | Builds a `() -> bool` predicate over the same Redis key, **only for IDE runs** — workflow and API-deployment runs get `None` and keep the untouched synchronous path. Negative answers are memoized for a second, since the SDK polls twice per second |
+| `abort_scope(...)` in `execute()` and the prompt loop | Publishes the predicate as a `ContextVar` the SDK reads at call time, narrowed per prompt so a Stop aimed at one prompt abandons only its call |
+| `sdk1.llm` | With a predicate present, runs `litellm.acompletion` on a shared background loop and cancels the task — which closes the HTTP request. Without one, the byte-for-byte synchronous path. `UNSTRACT_LLM_ABORT_INFLIGHT=false` forces the synchronous path back |
+| `sdk1.embedding` | Raises at each batch boundary; llama-index calls the leaf once per batch |
+| `sdk1` LLMWhisperer v1/v2 | Drives the status polling itself (`wait_for_completion=False`) instead of blocking inside the vendored client's uninterruptible loop |
+| `sdk1.utils.retry_utils` | Checks before each attempt and sleeps the backoff in slices, so a stop is not swallowed by up to a minute of exponential delay |
+
+An `AbortedError` from the SDK is translated to the executor's existing
+`ExecutionCancelled` at the same two catch points a checkpoint uses, so the
+consumer, callbacks, sentinel, socket event and UI are unchanged.
+
+**What this does not promise.** Closing our end of a request does not stop the
+provider from processing it, and does not reliably avoid being billed for it.
+LLMWhisperer has no cancel endpoint at all, so an abandoned extraction runs to
+completion on their side. And an aborted LLM call returns no response, so its
+`usage` is never read and that spend does not reach the usage rows. What a stop
+buys is the worker and the user not waiting.
+
+---
+
 *Defaults here reflect the code constants at time of writing; the code
 (`consumer.py` / `supervisor.py` / `reaper.py`) and the chart `values.yaml` are the
 source of truth.*

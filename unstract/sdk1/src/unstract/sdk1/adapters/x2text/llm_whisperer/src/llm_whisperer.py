@@ -1,7 +1,6 @@
 import json
 import logging
 import os
-import time
 from pathlib import Path
 from typing import Any
 
@@ -28,6 +27,7 @@ from unstract.sdk1.adapters.x2text.llm_whisperer.src.constants import (
 from unstract.sdk1.adapters.x2text.x2text_adapter import X2TextAdapter
 from unstract.sdk1.constants import MimeType
 from unstract.sdk1.file_storage import FileStorage, FileStorageProvider
+from unstract.sdk1.utils.aborting import sliced_sleep
 
 logger = logging.getLogger(__name__)
 
@@ -264,7 +264,10 @@ class LLMWhisperer(X2TextAdapter):
                 raise ExtractorError(
                     f"Unable to extract text after attempting {request_count} times"
                 )
-            time.sleep(poll_interval)
+            # Sliced so a caller who stops waiting is noticed within a
+            # fraction of a second, rather than at the end of the interval
+            # (UN-1031).
+            sliced_sleep(poll_interval)
 
         return status
 

@@ -127,6 +127,31 @@
   color: rgba(0, 0, 0, 0.25);
 }
 
+/* Stop control (UN-1031).
+ *
+ * Red glyph on a faint red wash, matching the destructive icon in the resource
+ * table (#ff4d4f, hover #cf1322) — the app's established red for an icon-only
+ * destructive action. A translucent wash rather than an opaque pale fill, so
+ * the same rule reads correctly on both the light card and a dark one.
+ *
+ * The colour has to be set on the SVG, not the button: .prompt-card-actions-head
+ * above puts `color` directly on the glyph, which beats anything the button
+ * merely passes down by inheritance. */
+.prompt-card-stop-button {
+  background-color: rgba(255, 77, 79, 0.1);
+  border-color: rgba(255, 77, 79, 0.35);
+}
+
+.prompt-card-stop-button:hover:not(:disabled) {
+  background-color: rgba(255, 77, 79, 0.18);
+  border-color: rgba(255, 77, 79, 0.5);
+}
+
+.prompt-card-stop-button .prompt-card-actions-head,
+.prompt-card-stop-button:hover:not(:disabled) .prompt-card-actions-head {
+  color: #ff4d4f;
+}
+
 .tag-max-width {
   max-width: 150px;
 }
