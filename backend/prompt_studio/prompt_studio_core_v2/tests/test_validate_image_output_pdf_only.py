@@ -124,3 +124,55 @@ class TestGuardIsWiredIntoDynamicExtractor:
                 profile_manager=profile,
                 document_id="doc1",
             )
+
+
+class TestInvalidationFailureClearsMarker:
+    """A failing VLM invalidation hook must mark the hash failed.
+
+    A success marker for the hash can pre-exist (the cache-hit path falls
+    through to re-extraction when the text file is missing). If the hook
+    raises and that marker survives, the retry cache-hits against the
+    freshly written text file and never re-runs invalidation.
+    """
+
+    def test_hook_failure_marks_extraction_failed_and_reraises(
+        self,
+        monkeypatch,  # noqa: ANN001
+    ) -> None:
+        index_helper = MagicMock(name="PromptStudioIndexHelper")
+        index_helper.check_extraction_status.return_value = False
+        index_helper.mark_extraction_status.return_value = (
+            _psh_mod.ExtractionStatusResult.OK
+        )
+        monkeypatch.setattr(_psh_mod, "PromptStudioIndexHelper", index_helper)
+        monkeypatch.setattr(_psh_mod, "StateStore", MagicMock())
+        monkeypatch.setattr(
+            PromptStudioHelper, "_get_platform_api_key", MagicMock(return_value="k")
+        )
+        dispatcher = MagicMock()
+        dispatcher.dispatch.return_value = MagicMock(
+            success=True, data={"extracted_text": "new pages"}
+        )
+        monkeypatch.setattr(
+            PromptStudioHelper, "_get_dispatcher", MagicMock(return_value=dispatcher)
+        )
+        monkeypatch.setattr(
+            _psh_mod,
+            "invalidate_vlm_answers_on_reextraction",
+            MagicMock(side_effect=RuntimeError("boom")),
+        )
+
+        with pytest.raises(RuntimeError, match="boom"):
+            PromptStudioHelper.dynamic_extractor(
+                file_path="/data/statement.pdf",
+                enable_highlight=False,
+                run_id="r1",
+                org_id="org1",
+                profile_manager=_profile({"output_mode": "image"}),
+                document_id="doc1",
+            )
+
+        index_helper.mark_extraction_status.assert_called_once()
+        kwargs = index_helper.mark_extraction_status.call_args.kwargs
+        assert kwargs["extracted"] is False
+        assert "boom" in kwargs["error_message"]

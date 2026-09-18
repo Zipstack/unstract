@@ -2699,14 +2699,33 @@ class PromptStudioHelper:
 
         # A fresh (non-cache-hit) extraction rewrote any persisted page
         # images — notify the VLM answer-invalidation hook (no-op in OSS)
-        # BEFORE committing the extraction-success marker: if a hook ever
-        # fails, the marker stays unset and a retry re-runs extraction and
-        # invalidation, instead of cache-hitting past a stale-answer state.
-        invalidate_vlm_answers_on_reextraction(
-            document_id=str(document_id),
-            profile_manager=profile_manager,
-            extract_file_path=extract_file_path,
-        )
+        # BEFORE committing the extraction-success marker. A success marker
+        # for this hash can already exist (the cache-hit path falls through
+        # here when the extracted text file was missing), so on a hook
+        # failure it is explicitly marked failed: a retry then re-runs
+        # extraction and invalidation instead of cache-hitting past a
+        # stale-answer state.
+        try:
+            invalidate_vlm_answers_on_reextraction(
+                document_id=str(document_id),
+                profile_manager=profile_manager,
+                extract_file_path=extract_file_path,
+            )
+        except Exception as e:
+            status_result = PromptStudioIndexHelper.mark_extraction_status(
+                document_id=document_id,
+                profile_manager=profile_manager,
+                x2text_config_hash=x2text_config_hash,
+                enable_highlight=enable_highlight,
+                extracted=False,
+                error_message=f"VLM answer invalidation failed: {e}",
+            )
+            if status_result is not ExtractionStatusResult.OK:
+                logger.warning(
+                    f"Failed to mark extraction failure for document {document_id} "
+                    f"after VLM answer invalidation failed; a retry may cache-hit."
+                )
+            raise
 
         # Distinct name: ``result`` is the dispatcher's ExecutionResult and is
         # still read above. Rebinding it to an ExtractionStatusResult made
