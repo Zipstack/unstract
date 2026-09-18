@@ -1,44 +1,41 @@
-"""PG fan-in barrier — Postgres substrate for the ``Barrier`` Protocol.
+"""PG fan-in barrier — the ``Barrier`` implementation.
 
-Third ``WORKER_BARRIER_BACKEND`` option (``pg``) alongside ``chord`` and
-``redis``. Mirrors :class:`~queue_backend.redis_barrier.RedisDecrBarrier`
-exactly — same ``enqueue`` signature, same ``BarrierHandle | None`` contract,
-same fairness plumbing, same Celery-dispatched header tasks with
-``.link``/``.link_error`` — but moves the **aggregation** ("wait for N tasks,
-then fire the callback with their results") from a Redis ``DECR`` counter to a
-Postgres row. Selected at runtime by ``queue_backend.get_barrier``; default
-stays ``chord``.
+Coordinates "wait for N header tasks, then fire the callback with their
+results" on a Postgres row (``pg_barrier_state``) rather than a Celery chord or
+a Redis ``DECR`` counter. Both of those substrates were deleted with the Celery
+transport (UN-4078); this is the only barrier.
 
-**Why a Postgres substrate.** It lets an execution coordinate in the *same*
-Postgres that holds the PG queue — no Redis (or RabbitMQ chord backend) needed
-for the fan-in. The transport for the header tasks themselves is unchanged
-(still Celery); only the coordination moves.
+**Why a Postgres substrate.** An execution coordinates in the *same* Postgres
+that holds the PG queue, so the fan-in needs no second datastore — and, unlike a
+broker-side or TTL'd-counter barrier, its state is a directly queryable row the
+reaper can recover.
 
 **Wire model.**
 
 1. ``enqueue``: UPSERT one ``pg_barrier_state`` row (``remaining = N``,
    ``results = []``, ``expires_at = now() + ttl``, ``last_progress_at = now()``)
-   — the UPSERT clears any stale
-   state from a prior run reusing the same ``execution_id``. Each header task is
-   dispatched with
-   ``.link(barrier_pg_decr_and_check)`` (success) and
-   ``.link_error(barrier_pg_abort)`` (failure).
-2. Per-task success: ``barrier_pg_decr_and_check`` runs ONE atomic statement —
+   — the UPSERT clears any stale state from a prior run reusing the same
+   ``execution_id``. Each header task is then dispatched onto the PG queue with a
+   ``_barrier_context`` kwarg carrying ``execution_id`` / ``batch_index`` /
+   ``callback_descriptor``.
+2. Per-task success: a PG-consumed task fires no Celery ``.link``, so it claims
+   its batch and runs the decrement **in-body** (:func:`run_batch_with_barrier` →
+   :func:`_barrier_pg_decrement`) — ONE atomic statement,
    ``UPDATE … SET remaining = remaining - 1, results = results ||
    jsonb_build_array(result) … RETURNING remaining, results``. The row lock
    serialises concurrent decrements, so exactly one task observes ``remaining =
-   0``; that task dispatches the callback with the aggregated results, then
-   deletes the row. (No Lua — a single ``UPDATE … RETURNING`` is atomic in
+   0``; that task self-chains the callback onto PG with the aggregated results,
+   then deletes the row. (No Lua — a single ``UPDATE … RETURNING`` is atomic in
    Postgres. The guarantee relies on each decrement committing in its own
    transaction — do NOT batch decrements into a shared transaction, or the row
    lock would hold and the serialisation that makes exactly one see 0 breaks.)
-3. Per-task failure: ``barrier_pg_abort`` runs as a ``link_error``. It tears the
-   barrier down with ONE atomic statement (``DELETE … RETURNING`` in a single
+3. Per-task failure: :func:`barrier_pg_abort`, called in-body, tears the barrier
+   down with ONE atomic statement (``DELETE … RETURNING`` in a single
    transaction): the row's existence is the dedup token, so N concurrent
    failures collapse to a single cleanup, and a crash mid-abort rolls back
    (leaving the row for a sibling to retry) — there is no claimed-but-not-deleted
-   window. Mirrors chord's default error semantic (callback not invoked on
-   header failure).
+   window. Preserves chord's old error semantic (callback not invoked on header
+   failure).
 4. Stuck bound: ``last_progress_at`` is re-stamped to ``now()`` on enqueue AND on
    every decrement, tracking when a batch last completed. The
    :mod:`~queue_backend.pg_queue.reaper` marks the stranded execution ERROR once
@@ -57,9 +54,9 @@ succeeded. A failed task runs the abort (which deletes the row) instead of a
 decrement, so the count never reaches 0 and a late in-flight decrement finds no
 row → abandons. A decrement that drives ``remaining`` negative (expiry/replay)
 also cleans up without firing. The callback is dispatched BEFORE the row is
-deleted, so a callback ``apply_async`` failure leaves the row (and its expiry)
-in place rather than stranding the execution; the post-dispatch delete is
-best-effort (logged, not raised) since the callback has already fired.
+deleted, so a callback dispatch failure leaves the row (and its expiry) in place
+rather than stranding the execution; the post-dispatch delete is best-effort
+(logged, not raised) since the callback has already fired.
 """
 
 from __future__ import annotations
@@ -77,11 +74,7 @@ import psycopg2
 import psycopg2.errors
 import psycopg2.extensions
 
-from unstract.core.data_models import (
-    DEFAULT_WORKFLOW_TRANSPORT,
-    WorkflowTransport,
-    is_pg_transport,
-)
+from unstract.core.data_models import LEGACY_TRANSPORT_KEY, LEGACY_TRANSPORT_VALUE
 
 from .barrier import (
     BarrierContext,
@@ -550,11 +543,35 @@ class _PgBarrierHandle:
     id: str
 
 
+def build_callback_descriptor(
+    *,
+    task_name: str,
+    kwargs: dict[str, Any],
+    queue: str,
+    fairness_headers: dict[str, Any] | None,
+) -> CallbackDescriptor:
+    """Build the descriptor carried to the consumer that fires the callback.
+
+    A function rather than an inline literal so the rolling-deploy shim it stamps
+    (:data:`~unstract.core.data_models.LEGACY_TRANSPORT_KEY`) is pinned by a test
+    that needs no Postgres — the enqueue path's own tests are skipped wherever a
+    database is unavailable, which would let the shim be dropped against a green
+    required build. See ``tests/test_legacy_transport_shim.py``.
+    """
+    return {
+        "task_name": task_name,
+        "kwargs": kwargs,
+        "queue": queue,
+        "fairness_headers": fairness_headers,
+        # Rolling-deploy shim: see LEGACY_TRANSPORT_KEY.
+        LEGACY_TRANSPORT_KEY: LEGACY_TRANSPORT_VALUE,
+    }
+
+
 class PgBarrier:
     """``Barrier`` implementation via a Postgres ``pg_barrier_state`` row.
 
-    Drop-in for ``CeleryChordBarrier`` / ``RedisDecrBarrier`` from the call
-    sites' perspective. See the module docstring for the wire model and the
+    The only implementation. See the module docstring for the wire model and the
     failure-masking guards.
     """
 
@@ -567,7 +584,6 @@ class PgBarrier:
         callback_queue: str,
         app_instance: Any,
         fairness: FairnessKey | None = None,
-        transport: str = DEFAULT_WORKFLOW_TRANSPORT,
     ) -> BarrierHandle | None:
         """See :class:`queue_backend.barrier.Barrier.enqueue`.
 
@@ -575,16 +591,11 @@ class PgBarrier:
         any substrate failure raises. ``app_instance`` is accepted for Protocol
         parity but unused.
 
-        ``transport`` selects the fan-out mode:
-
-        - ``celery`` (default, the ``WORKER_BARRIER_BACKEND=pg`` legacy path):
-          header tasks are Celery-dispatched with ``.link(barrier_pg_decr_and_check)``
-          / ``.link_error(barrier_pg_abort)``; the link drives the decrement.
-        - ``pg_queue`` (the fire-and-forget path): header tasks are dispatched onto
-          the PG queue (``dispatch(backend=PG)``) with a ``_barrier_context`` kwarg
-          carrying ``execution_id`` / ``batch_index`` / ``callback_descriptor`` —
-          a PG-consumed task fires no ``.link``, so it claims its batch and runs
-          the decrement in-body, self-chaining the callback at ``remaining`` → 0.
+        Header tasks are dispatched onto the PG queue (``dispatch(backend=PG)``)
+        with a ``_barrier_context`` kwarg carrying ``execution_id`` /
+        ``batch_index`` / ``callback_descriptor``. A PG-consumed task fires no
+        Celery ``.link``, so it claims its batch and runs the decrement in-body,
+        self-chaining the callback at ``remaining`` → 0.
         """
         del app_instance  # Protocol parity; callback dispatched by the decrement.
         if not header_tasks:
@@ -604,19 +615,14 @@ class PgBarrier:
             )
         execution_id = str(execution_id)
 
-        is_pg = is_pg_transport(transport)
         try:
             fairness_headers = fairness.as_header() if fairness else None
-            callback_descriptor: CallbackDescriptor = {
-                "task_name": callback_task_name,
-                "kwargs": callback_kwargs,
-                "queue": callback_queue,
-                "fairness_headers": fairness_headers,
-            }
-            if is_pg:
-                # The decrement (run in-body on the PG path) reads this to
-                # self-chain the callback onto PG rather than Celery.
-                callback_descriptor["transport"] = WorkflowTransport.PG_QUEUE.value
+            callback_descriptor = build_callback_descriptor(
+                task_name=callback_task_name,
+                kwargs=callback_kwargs,
+                queue=callback_queue,
+                fairness_headers=fairness_headers,
+            )
             # expires_at = absolute orphan cap (6h). last_progress_at = now() (the
             # reaper's fast stuck signal, re-stamped on every decrement).
             ttl_seconds = barrier_ttl_seconds()
@@ -676,15 +682,13 @@ class PgBarrier:
 
             self._dispatch_headers(
                 header_tasks,
-                is_pg=is_pg,
                 execution_id=execution_id,
                 callback_descriptor=callback_descriptor,
                 fairness=fairness,
-                fairness_headers=fairness_headers,
             )
 
             logger.info(
-                f"Barrier enqueued via PgBarrier ({transport}) — "
+                f"Barrier enqueued via PgBarrier — "
                 f"exec_id={execution_id}, header_tasks={len(header_tasks)}, "
                 f"callback={callback_task_name}, queue={callback_queue}"
             )
@@ -704,45 +708,28 @@ class PgBarrier:
         self,
         header_tasks: list[Signature],
         *,
-        is_pg: bool,
         execution_id: str,
         callback_descriptor: CallbackDescriptor,
         fairness: FairnessKey | None,
-        fairness_headers: dict[str, Any] | None,
     ) -> None:
-        """Dispatch the N header tasks, one transport or the other.
+        """Dispatch the N header tasks fire-and-forget onto the PG queue.
 
-        PG path (``is_pg``) → fire-and-forget onto the PG queue via
-        :meth:`_dispatch_header_pg` (no ``.link``). Celery path → ``.link`` /
-        ``.link_error`` chord-style. On any mid-loop dispatch failure, ``i`` of N
-        never reached the queue so the counter can't reach 0 — delete the barrier
-        row (and, on the PG path, reclaim dedup markers an earlier header may have
-        committed, since the in-flight ``barrier_pg_abort`` is a no-op once the row
-        is gone) so an in-flight decrement finds nothing, then re-raise.
+        On any mid-loop dispatch failure, ``i`` of N never reached the queue so
+        the counter can't reach 0 — delete the barrier row and reclaim the dedup
+        markers an earlier header may have committed (the in-flight
+        ``barrier_pg_abort`` is a no-op once the row is gone) so an in-flight
+        decrement finds nothing, then re-raise.
         """
-        link_signature = barrier_pg_decr_and_check.s(
-            execution_id=execution_id, callback_descriptor=callback_descriptor
-        )
-        link_error_signature = barrier_pg_abort.s(execution_id=execution_id)
         for i, task in enumerate(header_tasks):
             try:
-                if is_pg:
-                    self._dispatch_header_pg(
-                        task, i, execution_id, callback_descriptor, fairness
-                    )
-                else:
-                    cloned = task.clone()
-                    if fairness_headers:
-                        cloned.set(headers=fairness_headers)
-                    cloned.link(link_signature)
-                    cloned.link_error(link_error_signature)
-                    cloned.apply_async()
+                self._dispatch_header_pg(
+                    task, i, execution_id, callback_descriptor, fairness
+                )
             except Exception:
                 with contextlib.suppress(Exception):
                     _delete_barrier(execution_id)
-                if is_pg:
-                    with contextlib.suppress(Exception):
-                        clear_execution_batches(execution_id)
+                with contextlib.suppress(Exception):
+                    clear_execution_batches(execution_id)
                 logger.exception(
                     f"[exec:{execution_id}] header dispatch failed at task "
                     f"{i}/{len(header_tasks)}; barrier row deleted to prevent "
@@ -820,53 +807,28 @@ def _fire_barrier_callback(
 ) -> str:
     """Dispatch the aggregating callback when the barrier completes; return its id.
 
-    Two transports, selected by the descriptor's ``transport`` marker:
+    Self-chains the callback onto the PG queue via :func:`_dispatch_pg`, carrying
+    the producer's fairness (reconstructed from the stored headers) so the
+    callback rides the same org/priority as its header tasks did.
 
-    - ``"pg_queue"`` (fire-and-forget PG path): self-chain the callback onto
-      the PG queue via :func:`_dispatch_pg`, carrying the producer's fairness
-      (reconstructed from the stored headers) so the callback rides the same
-      org/priority as the Celery path — no Celery, so the whole execution stays
-      off the broker.
-    - absent / anything else (legacy ``.link`` path): dispatch via
-      ``current_app.signature(...).apply_async()`` — byte-identical to the legacy path,
-      preserving the ``fairness_headers`` the producer attached.
-
-    On the PG path the callback kwargs carry :data:`PG_TRANSPORT_CALLBACK_KWARG`
-    so the aggregating callback can PG-gate its at-least-once duplicate guard (the
-    callback is unguarded against the redelivery its own dispatch admits; the
-    Celery ``.link`` path never injects it, so the guard is a no-op there).
+    The callback kwargs carry :data:`PG_TRANSPORT_CALLBACK_KWARG` so the
+    aggregating callback can gate its at-least-once duplicate guard — it is
+    otherwise unguarded against the redelivery its own dispatch admits.
     """
-    if is_pg_transport(callback_descriptor.get("transport")):
-        # Copy (don't mutate the shared descriptor) + tag the PG transport so the
-        # callback can gate its duplicate guard on it.
-        pg_kwargs = {
-            **callback_descriptor["kwargs"],
-            PG_TRANSPORT_CALLBACK_KWARG: True,
-        }
-        handle = _dispatch_pg(
-            callback_descriptor["task_name"],
-            args=[all_results],
-            kwargs=pg_kwargs,
-            queue=callback_descriptor["queue"],
-            fairness=_fairness_from_headers(callback_descriptor.get("fairness_headers")),
-        )
-        return str(handle.id)
-
-    from celery import current_app
-
-    # Build the callback-signature kwargs explicitly (headers only when truthy) —
-    # matching CeleryChordBarrier's idiom, no spurious headers=None.
-    signature_kwargs: dict[str, Any] = {
-        "args": [all_results],
-        "kwargs": callback_descriptor["kwargs"],
-        "queue": callback_descriptor["queue"],
+    # Copy (don't mutate the shared descriptor) + tag the transport so the
+    # callback can gate its duplicate guard on it.
+    pg_kwargs = {
+        **callback_descriptor["kwargs"],
+        PG_TRANSPORT_CALLBACK_KWARG: True,
     }
-    if callback_descriptor.get("fairness_headers"):
-        signature_kwargs["headers"] = callback_descriptor["fairness_headers"]
-    callback_signature = current_app.signature(
-        callback_descriptor["task_name"], **signature_kwargs
+    handle = _dispatch_pg(
+        callback_descriptor["task_name"],
+        args=[all_results],
+        kwargs=pg_kwargs,
+        queue=callback_descriptor["queue"],
+        fairness=_fairness_from_headers(callback_descriptor.get("fairness_headers")),
     )
-    return str(callback_signature.apply_async().id)
+    return str(handle.id)
 
 
 class _DecrementRow(NamedTuple):
@@ -907,12 +869,11 @@ def _apply_decrement(
       that default at its source.)
     - **COMMIT phase** — ``conn.commit()``. A failure here is AMBIGUOUS: the
       server may have applied the commit before the socket dropped. Re-applying
-      could double-count, so it is NEVER retried — it propagates. On the in-body
-      PG path (:func:`run_batch_with_barrier`) the caller then tears the barrier
-      down so the execution fails fast; on the Celery ``.link`` path
-      (:func:`barrier_pg_decr_and_check`, ``max_retries=0``) it is not retried and
-      the barrier is reclaimed at ``expires_at`` by the reaper. Either way the
-      counter is never corrupted.
+      could double-count, so it is NEVER retried — it propagates. The in-body
+      caller (:func:`run_batch_with_barrier`) then tears the barrier down so the
+      execution fails fast, and a barrier left behind by a hard crash is
+      reclaimed at ``expires_at`` by the reaper. Either way the counter is never
+      corrupted.
 
     Any non-connection error (e.g. the NUL-byte ``psycopg2.DataError`` from the
     jsonb cast) also propagates unchanged — only the idle-reap self-heals. This is
@@ -1013,22 +974,22 @@ def _barrier_pg_decrement(
 
     Appends this task's result and decrements ``remaining`` in one atomic
     statement; the single caller that drives ``remaining`` to 0 dispatches the
-    aggregating callback (then deletes the row). This is the plain, in-body-
-    callable core shared by two entry points:
-
-    - the Celery ``link`` callback :func:`barrier_pg_decr_and_check` (today's
-      only caller, behaviour unchanged); and
-    - the PG-consumed pipeline path, which will call this directly in
-      the header task's body — a PG-consumed task fires no ``.link``, so the
-      decrement must run in-body.
+    aggregating callback (then deletes the row). Called directly from the header
+    task's body by :func:`run_batch_with_barrier` — a PG-consumed task fires no
+    Celery ``.link``, so the decrement must run in-body. (It used to have a
+    second entry point, a ``@worker_task`` link wrapper, deleted with the Celery
+    transport in UN-4078.)
 
     Callers MUST run each decrement in its own committed transaction and MUST NOT
     replay a *committed* decrement: re-applying one that already landed corrupts
     the count (fires the callback early with incomplete results, or skips past 0
     and strands the barrier). This is enforced loudly, not just in prose — entry
     raises if the shared connection is already mid-transaction (see the guard
-    below), and the Celery wrapper pins ``max_retries=0`` so a task-level replay
-    can't re-drive it; an orphaned barrier is bounded by ``expires_at`` instead.
+    below). The task-level replay guard that used to back this up — the Celery
+    wrapper's ``max_retries=0`` — went with ``barrier_pg_decr_and_check`` in
+    UN-4078; the decrement now runs in-body, so a replay would be a redelivery of
+    the batch itself, which ``claim_batch`` already makes idempotent. An orphaned
+    barrier is bounded by ``expires_at``.
 
     The decrement DOES self-heal one narrow, provably-safe case via
     :func:`_apply_decrement`: an execute-phase failure on a cached connection that
@@ -1161,25 +1122,6 @@ def _barrier_pg_decrement(
         "callback_task_id": callback_id,
         "aggregated_count": len(all_results),
     }
-
-
-@worker_task(name="barrier_pg_decr_and_check", max_retries=0)
-def barrier_pg_decr_and_check(
-    result: Any,
-    *,
-    execution_id: str,
-    callback_descriptor: CallbackDescriptor,
-) -> dict[str, Any]:
-    """Per-task ``link`` callback for :class:`PgBarrier` (Celery entry point).
-
-    Thin ``@worker_task`` wrapper around :func:`_barrier_pg_decrement` so the
-    decrement logic stays callable in-body (no ``.link``) on the PG-consumed
-    pipeline path. ``max_retries=0`` — a Celery retry would replay
-    the decrement and corrupt the count (see the core's contract).
-    """
-    return _barrier_pg_decrement(
-        result, execution_id=execution_id, callback_descriptor=callback_descriptor
-    )
 
 
 @worker_task(name="barrier_pg_abort", max_retries=0)

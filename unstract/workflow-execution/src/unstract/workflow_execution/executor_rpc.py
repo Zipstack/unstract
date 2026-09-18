@@ -49,6 +49,18 @@ EXECUTE_TASK = "execute_extraction"
 # Mirror the SDK's queue-per-executor convention so the PG executor queue name
 # matches the Celery one (the worker-pg-executor consumer subscribes to these).
 QUEUE_PREFIX = "celery_executor_"
+
+
+def queue_for_executor(executor_name: str) -> str:
+    """The queue an executor's dispatches land on.
+
+    One definition for the three dispatch sites below (and for the tests, which
+    import this rather than re-deriving the rule) so the wire contract
+    ``worker-pg-executor`` subscribes to cannot drift between them.
+    """
+    return f"{QUEUE_PREFIX}{executor_name}"
+
+
 # Caller-side wait default — mirrors the SDK dispatcher (EXECUTOR_RESULT_TIMEOUT env,
 # else 3600s) so a PG-routed caller waits exactly as long as a Celery one.
 DEFAULT_TIMEOUT_ENV = "EXECUTOR_RESULT_TIMEOUT"
@@ -152,7 +164,7 @@ class PgExecutionDispatcher:
         """
         timeout = _resolve_timeout(timeout)
         reply_key = str(uuid.uuid4())
-        queue = f"{QUEUE_PREFIX}{context.executor_name}"
+        queue = queue_for_executor(context.executor_name)
         org = str(getattr(context, "organization_id", "") or "")
         try:
             self._transport.enqueue(
@@ -249,7 +261,7 @@ class PgExecutionDispatcher:
         failure is observable even if the caller swallows it.
         """
         task_id = str(uuid.uuid4())
-        queue = f"{QUEUE_PREFIX}{context.executor_name}"
+        queue = queue_for_executor(context.executor_name)
         org = str(getattr(context, "organization_id", "") or "")
         try:
             self._transport.enqueue(
@@ -294,7 +306,7 @@ class PgExecutionDispatcher:
         prompt-studio views do, in their own try/except).
         """
         task_id = task_id or str(uuid.uuid4())
-        queue = f"{QUEUE_PREFIX}{context.executor_name}"
+        queue = queue_for_executor(context.executor_name)
         org = str(getattr(context, "organization_id", "") or "")
         success_spec = signature_to_continuation(on_success)
         error_spec = signature_to_continuation(on_error)
