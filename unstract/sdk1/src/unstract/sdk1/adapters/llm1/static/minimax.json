@@ -73,7 +73,7 @@
     "enable_thinking": {
       "type": "boolean",
       "title": "Enable Thinking",
-      "description": "Override the protocol default for MiniMax-M3: OpenAI-compatible requests default to adaptive thinking, while Anthropic-compatible requests default to disabled thinking. MiniMax-M2.x models always keep thinking enabled. See [MiniMax API docs](https://platform.minimax.io/docs/api-reference/text-openai-api)."
+      "description": "Override the protocol default for MiniMax-M3: OpenAI-compatible requests default to adaptive thinking, while Anthropic-compatible requests default to disabled thinking. MiniMax-M2.x models use always-on thinking and only accept this setting as true. See [MiniMax API docs](https://platform.minimax.io/docs/api-reference/text-openai-api)."
     }
   }
 }
