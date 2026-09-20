@@ -597,9 +597,7 @@ class AtlasCloudLLMParameters(OpenAICompatibleLLMParameters):
 
     @staticmethod
     def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
-        return _validate_branded_openai_compatible(
-            adapter_metadata, _ATLASCLOUD_API_BASE
-        )
+        return _validate_branded_openai_compatible(adapter_metadata, _ATLASCLOUD_API_BASE)
 
 
 class MiniMaxLLMParameters(BaseChatCompletionParameters):
