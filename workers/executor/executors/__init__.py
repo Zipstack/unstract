@@ -7,11 +7,11 @@ nothing but ``enum`` — dragged in ``LegacyExecutor`` and the entire adapter
 stack behind it. That cost ~9s, and the file_processing worker paid it once per
 forked child just to read a few string constants (UN-4136).
 
-``executor/tasks.py`` is the production registration site: ``workers/worker.py``
-exec-loads that file by path for both the Celery and PG executor roles.
-``executor/worker.py`` calls it too, for the separate Celery app it builds,
-which today only the tests use. The call is idempotent and re-entrant, so the
-order they run in does not matter.
+``executor/tasks.py`` is the only caller: ``workers/worker.py`` exec-loads that
+file by path for both the Celery and PG executor roles. ``executor/worker.py``
+reaches it transitively, by importing ``executor.tasks`` — that import is
+load-bearing despite its ``noqa: F401``, and removing it would leave the app it
+builds with an empty registry.
 """
 
 from typing import TYPE_CHECKING
@@ -33,45 +33,49 @@ def register_all() -> list[str]:
     populates ``ExecutorRegistry`` **in a fresh process**, and cannot repopulate
     it if something empties it afterwards, because the second import is a
     ``sys.modules`` hit and the decorator does not run again. Production never
-    clears the registry; tests that do re-register explicitly (see
-    ``tests/test_legacy_executor_scaffold.py``).
+    clears the registry. Several test modules do, and most of them do not put it
+    back — ``tests/test_legacy_executor_scaffold.py`` is the one that restores
+    what it cleared, and is the pattern to copy.
 
     Idempotent, and safe to re-enter: a cloud plugin whose own import graph
     reaches this function during ``ep.load()`` will not restart discovery.
 
     Returns:
-        The cloud executor entry point names, on every call rather than only the
-        first — a fresh copy each time, so a caller cannot mutate the latched
-        state. An empty list has **two** meanings and does not distinguish them:
-        no cloud plugins are installed (the OSS case), or every one of them
-        failed to import. ``ExecutorPluginLoader.discover_executors`` catches
-        per-entry-point failures and logs a warning, so a broken plugin wheel
-        boots clean here and surfaces later as "No executor registered with
-        name 'table'" on each dispatch. Making that aggregate loud is worth
-        doing and is deliberately out of scope for UN-4136, which is a
-        performance change — see the ticket.
+        The cloud executor entry point names, as a fresh copy each time so a
+        caller cannot mutate the latched state.
+
+        An empty list does not distinguish its causes: no cloud plugins are
+        installed (the OSS case); every one of them failed to import, because
+        ``ExecutorPluginLoader.discover_executors`` catches per-entry-point
+        failures and only logs a warning — so a broken plugin wheel boots clean
+        and surfaces later as "No executor registered with name 'table'" on each
+        dispatch (tracked on UN-4136); or the caller is *inside* discovery,
+        having re-entered while the latch is still the empty placeholder.
     """
     global _cloud_executors
 
     from executor.executors.legacy_executor import LegacyExecutor  # noqa: F401
 
     if _cloud_executors is None:
+        from executor.executors.plugins.loader import ExecutorPluginLoader
+
         # Latch BEFORE discovering. ``ep.load()`` executes third-party code, and
         # a plugin that reaches back into this function would otherwise find the
         # latch still unset and restart the entry point loop, nesting once per
         # level. The import-side-effect version this replaced got that safety
         # free from ``sys.modules``.
+        #
+        # A failure here leaves the latch at ``[]``. That is deliberate: the one
+        # caller runs at ``executor/tasks.py`` module scope, so the exception
+        # kills the boot and the process restarts with clean module state.
+        # Retrying in-process would be worse than useless — a plugin whose
+        # ``@ExecutorRegistry.register`` fired before it raised is evicted from
+        # ``sys.modules`` but left in the registry, so re-importing it raises a
+        # duplicate-name ``ValueError`` that ``discover_executors`` swallows into
+        # a warning, and that executor is then silently absent for the life of
+        # the process. Do not add a retry without fixing that first.
         _cloud_executors = []
-        from executor.executors.plugins.loader import ExecutorPluginLoader
-
-        try:
-            _cloud_executors = ExecutorPluginLoader.discover_executors()
-        except BaseException:
-            # Leave discovery un-run rather than latched-but-empty, so a caller
-            # that survives the failure retries instead of silently getting a
-            # permanently empty list.
-            _cloud_executors = None
-            raise
+        _cloud_executors = ExecutorPluginLoader.discover_executors()
 
     return list(_cloud_executors)
 

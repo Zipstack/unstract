@@ -299,15 +299,19 @@ class TestProtocols:
 class TestExecutorsInit:
     """``register_all()``'s guarantees, each pinned against its own failure.
 
-    ``ExecutorRegistry`` is a process-global singleton, so these snapshot and
-    restore it rather than clearing it — the hazard `test_legacy_executor_scaffold`
-    documents: a bare ``clear()`` on teardown wipes registrations every later
-    test in the suite depends on. Without the snapshot these cases also *read*
-    global state other modules wrote (`test_log_streaming` assigns
-    ``_registry["legacy"]`` directly and never cleans up), which made an earlier
-    version of them pass on suite ordering rather than on the code under test —
-    and CI shards with xdist's default per-test scheduler, so that ordering is
-    not even stable.
+    These cases *write* process-global state — ``register_all()`` registers into
+    the ``ExecutorRegistry`` singleton, and they stamp on the module's
+    ``_cloud_executors`` latch — so the fixture restores both afterwards. It
+    restores additively rather than clearing first: when this class is what
+    causes ``legacy_executor`` to be imported, the registration happens *during*
+    the test and so is absent from the snapshot, and a clear-then-restore would
+    delete it with no way to put it back (registration rides on module import,
+    which is a ``sys.modules`` hit the second time).
+
+    Registration itself is asserted in a subprocess rather than here, because
+    in-process it would pass on whatever an earlier module left behind — the
+    repo's test rig runs these under xdist with the default per-test scheduler
+    (``tests/rig/cli.py``), so collection order is not something to rely on.
     """
 
     @pytest.fixture(autouse=True)
@@ -319,7 +323,10 @@ class TestExecutorsInit:
         saved = dict(ExecutorRegistry._registry)
         saved_cloud = mod._cloud_executors
         yield
-        ExecutorRegistry._registry.clear()
+        # Additive restore — see the class docstring. These cases register no
+        # fakes (they patch discovery, which only returns names), so there is
+        # nothing to remove, and clearing would drop a registration this class
+        # caused.
         ExecutorRegistry._registry.update(saved)
         mod._cloud_executors = saved_cloud
 
@@ -336,10 +343,12 @@ class TestExecutorsInit:
         code = (
             "from executor.executors import register_all\n"
             "from unstract.sdk1.execution.registry import ExecutorRegistry\n"
-            "assert not ExecutorRegistry.list_executors(), 'registry pre-populated'\n"
+            "if ExecutorRegistry.list_executors():\n"
+            "    raise SystemExit('registry pre-populated')\n"
             "register_all()\n"
             "names = ExecutorRegistry.list_executors()\n"
-            "assert names.count('legacy') == 1, f'expected one legacy: {names}'\n"
+            "if names.count('legacy') != 1:\n"
+            "    raise SystemExit(f'expected one legacy: {names}')\n"
             "print('OK')\n"
         )
         result = subprocess.run(
@@ -420,36 +429,29 @@ class TestExecutorsInit:
 
         assert len(loads) == 1, f"discovery re-entered {len(loads)} times"
 
-    @pytest.mark.parametrize("exc", [RuntimeError, KeyboardInterrupt])
-    def test_failed_discovery_does_not_latch(self, exc):
-        """A discovery that raises must leave the next call free to retry.
+    def test_register_all_tolerates_legacy_executor_already_imported(self):
+        """A prior import of ``legacy_executor`` must not make register_all raise.
 
-        Latching on failure would pin an empty list for the life of the process,
-        so a transient entry-point failure would silently mean "no cloud
-        executors" forever.
+        ``ExecutorRegistry.register`` raises ``ValueError`` on a name already
+        present, and this ordering is real rather than hypothetical: a cloud
+        plugin imports ``LegacyExecutor`` at module scope and is loaded by
+        ``ep.load()`` *inside* ``discover_executors()``, so the class can already
+        be registered when the call reaches it. Registration rides on module
+        import rather than an explicit ``register(...)``, so ``sys.modules``
+        caching is what keeps the decorator from firing twice — this pins that.
 
-        ``KeyboardInterrupt`` is here to pin the handler's *breadth*: it is a
-        ``BaseException``, not an ``Exception``, so narrowing the catch would
-        keep a ``RuntimeError``-only test green while reopening the window for
-        the class of failure the broad catch exists for — ``ep.load()`` runs
-        third-party code, and a Ctrl-C landing inside it is exactly the case.
+        The subprocess case above deliberately covers the opposite ordering (a
+        fresh process, no prior import), so it cannot stand in for this one.
         """
         import executor.executors as mod
-        from executor.executors.plugins.loader import ExecutorPluginLoader
+        from executor.executors.legacy_executor import LegacyExecutor  # noqa: F401
 
-        mod._reset_discovery_for_tests()
-        with patch.object(
-            ExecutorPluginLoader, "discover_executors", side_effect=exc("boom")
-        ):
-            with pytest.raises(exc):
-                mod.register_all()
+        from unstract.sdk1.execution.registry import ExecutorRegistry
 
-        assert mod._cloud_executors is None, "discovery latched despite failing"
+        mod.register_all()  # must not raise
 
-        with patch.object(
-            ExecutorPluginLoader, "discover_executors", return_value=["after_retry"]
-        ):
-            assert mod.register_all() == ["after_retry"]
+        names = ExecutorRegistry.list_executors()
+        assert names.count("legacy") == 1, f"expected exactly one 'legacy': {names}"
 
     def test_register_all_returns_a_copy_callers_cannot_corrupt(self):
         """The latched list is module state; callers must not be able to edit it."""

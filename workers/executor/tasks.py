@@ -38,8 +38,8 @@ logger = WorkerLogger.get_logger(__name__)
 # populated wherever the task is registered — in particular the PG executor
 # consumer, which bootstraps via the root-worker import that loads
 # ``executor/tasks.py`` (this module) but NOT ``executor/worker.py``; without it
-# the consumer hits "No executor registered". ``register_all()`` is idempotent,
-# so the Celery entrypoint calling it again is harmless.
+# the consumer hits "No executor registered". This is the only call site;
+# ``executor/worker.py`` reaches it by importing this module.
 register_all()
 
 _LLM_BEARING_OPS = frozenset(
