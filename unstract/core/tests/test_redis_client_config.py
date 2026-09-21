@@ -176,6 +176,23 @@ class TestUrlMode:
             == "cache.example"
         )
 
+    def test_ca_certs_apply_in_url_mode(self, monkeypatch):
+        """Found by a live run against a TLS Redis, not by reading the code.
+
+        URL mode carries TLS in the scheme and never sets REDIS_SSL, so while the
+        CA was read only inside that flag's branch, `rediss://` verified against
+        the system trust store alone — and failed for precisely the servers a CA
+        is needed for (Memorystore's CA is not publicly trusted).
+        """
+        monkeypatch.setenv("REDIS_URL", "rediss://cache.example:6380/0")
+        monkeypatch.setenv("REDIS_SSL_CA_CERTS", "/etc/ssl/redis-ca.pem")
+        assert _kwargs(create_redis_client())["ssl_ca_certs"] == "/etc/ssl/redis-ca.pem"
+
+    def test_ca_certs_ignored_for_a_plaintext_url(self, monkeypatch):
+        monkeypatch.setenv("REDIS_URL", "redis://cache.example:6379/0")
+        monkeypatch.setenv("REDIS_SSL_CA_CERTS", "/etc/ssl/redis-ca.pem")
+        assert "ssl_ca_certs" not in _kwargs(create_redis_client())
+
     def test_pool_size_survives_url_mode(self, monkeypatch):
         monkeypatch.setenv("REDIS_URL", "rediss://cache.example:6380")
         client = create_redis_client(max_connections=10)

@@ -178,16 +178,20 @@ def _resolve_redis_env(
         # path, so an unset URL changes nothing.
         "url": os.getenv(f"{env_prefix}URL", os.getenv("REDIS_URL", "")).strip(),
     }
+    # Read OUTSIDE the `if ssl` below: URL mode carries TLS in the scheme and never
+    # sets {prefix}SSL, so gating the CA on that flag left `rediss://` verifying
+    # against the system trust store alone — which fails for exactly the servers
+    # that need a CA. Consumers decide whether it applies.
+    #
+    # Needed where the server's CA is not publicly trusted — notably Memorystore,
+    # whose CA is Google-managed. ElastiCache and Azure chain to public CAs.
+    ca_certs = os.getenv(
+        f"{env_prefix}SSL_CA_CERTS", os.getenv("REDIS_SSL_CA_CERTS", "")
+    ).strip()
+    if ca_certs:
+        result["ssl_ca_certs"] = ca_certs
     if ssl:
         result["ssl_cert_reqs"] = os.getenv(f"{env_prefix}SSL_CERT_REQS", "required")
-        # Needed where the server's CA is not in the system trust store — notably
-        # Memorystore, whose CA is Google-managed. ElastiCache and Azure chain to
-        # public CAs and need nothing here.
-        ca_certs = os.getenv(
-            f"{env_prefix}SSL_CA_CERTS", os.getenv("REDIS_SSL_CA_CERTS", "")
-        ).strip()
-        if ca_certs:
-            result["ssl_ca_certs"] = ca_certs
     return result
 
 
