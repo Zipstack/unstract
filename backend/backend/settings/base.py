@@ -110,6 +110,13 @@ REDIS_DB = os.environ.get("REDIS_DB", "")
 REDIS_SSL = os.environ.get("REDIS_SSL", "false").strip().lower() == "true"
 REDIS_SSL_CERT_REQS = os.environ.get("REDIS_SSL_CERT_REQS", "required")
 REDIS_SSL_CA_CERTS = os.environ.get("REDIS_SSL_CA_CERTS", "").strip()
+# A full URL overrides the discrete vars above, exactly as it does in
+# unstract.core's create_redis_client — otherwise the workers would follow the URL
+# while this process stayed on REDIS_HOST, and the two would silently sit on
+# DIFFERENT servers. That split is invisible until something written by one side
+# is read by the other: an API deployment returns `result: null` because the
+# execution's cached result was written to the URL's Redis and looked up here.
+REDIS_URL = os.environ.get("REDIS_URL", "").strip()
 SESSION_EXPIRATION_TIME_IN_SECOND = os.environ.get(
     "SESSION_EXPIRATION_TIME_IN_SECOND", 3600
 )
@@ -574,12 +581,26 @@ else:
     _scheme = "rediss" if REDIS_SSL else "redis"
     _cache_db = int(REDIS_DB) if REDIS_DB else 0
 
+    # Both django-redis (via redis-py) and kombu read TLS settings out of the URL's
+    # query string, so one string configures both — verified against the pinned
+    # versions. The CA is appended rather than required in the URL, since it is a
+    # local path rather than part of the endpoint's identity.
+    _redis_url = REDIS_URL
+    if (
+        _redis_url
+        and REDIS_SSL_CA_CERTS
+        and _redis_url.startswith("rediss://")
+        and "ssl_ca_certs=" not in _redis_url
+    ):
+        _sep = "&" if "?" in _redis_url else "?"
+        _redis_url = f"{_redis_url}{_sep}ssl_ca_certs={quote(REDIS_SSL_CA_CERTS, safe='/')}"
+
     # kombu reads TLS off the scheme, but defaults ssl_cert_reqs to CERT_NONE —
     # encrypted while accepting ANY certificate, which is not what "TLS" is meant
     # to buy. The query parameter is the only way to say otherwise here, since
     # KombuManager takes a URL rather than connection kwargs.
     _socketio_tls_query = f"?ssl_cert_reqs={REDIS_SSL_CERT_REQS}" if REDIS_SSL else ""
-    SOCKET_IO_MANAGER_URL = (
+    SOCKET_IO_MANAGER_URL = _redis_url or (
         f"{_scheme}://{_cred_prefix}{REDIS_HOST}:{REDIS_PORT}{_socketio_tls_query}"
     )
     SOCKET_IO_TRANSPORT_OPTIONS = {}
@@ -595,10 +616,13 @@ else:
     _cache_options = {
         "CLIENT_CLASS": "django_redis.client.DefaultClient",
         "SERIALIZER": "django_redis.serializers.json.JSONSerializer",
-        "DB": _cache_db,
-        "USERNAME": REDIS_USER,
-        "PASSWORD": REDIS_PASSWORD,
     }
+    if not _redis_url:
+        # Credentials and db travel IN the URL in URL mode; passing them again
+        # through OPTIONS risks one of them winning over the other.
+        _cache_options["DB"] = _cache_db
+        _cache_options["USERNAME"] = REDIS_USER
+        _cache_options["PASSWORD"] = REDIS_PASSWORD
     if REDIS_SSL:
         _pool_kwargs = {"ssl_cert_reqs": REDIS_SSL_CERT_REQS}
         if REDIS_SSL_CA_CERTS:
@@ -608,7 +632,8 @@ else:
     CACHES = {
         "default": {
             "BACKEND": "django_redis.cache.RedisCache",
-            "LOCATION": f"{_scheme}://{REDIS_HOST}:{REDIS_PORT}/{_cache_db}",
+            "LOCATION": _redis_url
+            or f"{_scheme}://{REDIS_HOST}:{REDIS_PORT}/{_cache_db}",
             "OPTIONS": _cache_options,
             "KEY_FUNCTION": "utils.redis_cache.custom_key_function",
         }
