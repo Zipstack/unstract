@@ -2,6 +2,7 @@ import fnmatch
 import logging
 import os
 import shutil
+import tempfile
 from collections.abc import Collection
 from hashlib import sha256
 from io import BytesIO
@@ -30,7 +31,9 @@ from workflow_manager.endpoint_v2.dto import (
     SourceConfig,
 )
 from workflow_manager.endpoint_v2.enums import (
+    INCONCLUSIVE_MIME_TYPES,
     AllowedFileTypes,
+    identify_zip_container,
     resolve_inconclusive_mime_type,
 )
 from workflow_manager.endpoint_v2.exceptions import (
@@ -79,12 +82,11 @@ class SourceConnector(BaseConnector):
     # Most formats are identifiable from their leading bytes, so a small sample
     # keeps the common path cheap.
     MIME_DETECT_CHUNK_SIZE = 8192
-    # These two carry the real format in a structure libmagic can only reach by
-    # reading the whole file: the OLE2 directory sector and the zip central
-    # directory both sit at the end. A sample of any size reports the container
-    # rather than the .doc/.xls/.ppt or .docx/.xlsx/.pptx inside it, so these
-    # must never be resolved from the sample alone.
-    CONTAINER_MIME_TYPES = frozenset({"application/x-ole-storage", "application/zip"})
+    # A wrapper-only answer from the sample is never the verdict: OLE2 keeps its
+    # directory sector at the end of the file, and a zip container reads as
+    # octet-stream from any buffer. One shared set, so the API and connector
+    # paths cannot disagree about what counts as undecided.
+    CONTAINER_MIME_TYPES = INCONCLUSIVE_MIME_TYPES
 
     def __init__(
         self,
@@ -1229,21 +1231,31 @@ class SourceConnector(BaseConnector):
 
     @classmethod
     def _detect_container_mime_type(cls, file: UploadedFile, fallback: str) -> str:
-        """Resolve a container format by classifying the file in full.
+        """Resolve a wrapper by classifying the file from a path.
 
-        Django spills uploads over FILE_UPLOAD_MAX_MEMORY_SIZE to disk, so this
-        hands libmagic the path when there is one and only buffers the whole
-        upload for the in-memory case, where that ceiling already bounds it.
+        Always a path, never a buffer: libmagic cannot name a zip container from
+        `from_buffer` even when handed every byte, so an in-memory upload is
+        spilled to a temporary file rather than classified in place. Django's
+        own ceiling bounds how large that copy can be.
         """
         temporary_file_path = getattr(file, "temporary_file_path", None)
         if temporary_file_path is not None:
-            return magic.from_file(temporary_file_path(), mime=True)
+            return cls._classify_file_path(temporary_file_path(), fallback)
 
-        content = file.read()
-        file.seek(0)
-        if not content:
-            return fallback
-        return magic.from_buffer(content, mime=True)
+        with tempfile.NamedTemporaryFile(suffix=".upload") as spill:
+            for chunk in file.chunks(chunk_size=cls.READ_CHUNK_SIZE):
+                spill.write(chunk)
+            spill.flush()
+            file.seek(0)
+            return cls._classify_file_path(spill.name, fallback)
+
+    @classmethod
+    def _classify_file_path(cls, path: str, fallback: str) -> str:
+        """Classify a staged path, looking inside a zip when that is all we get."""
+        mime_type = magic.from_file(path, mime=True)
+        if mime_type == "application/zip":
+            return identify_zip_container(path) or mime_type
+        return mime_type or fallback
 
     @classmethod
     def _report_rejected_file(

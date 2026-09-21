@@ -1,4 +1,5 @@
 import re
+import zipfile
 from enum import Enum
 
 import magic
@@ -54,9 +55,49 @@ class AllowedFileTypes(Enum):
         return mime_type in cls._value2member_map_
 
 
-# libmagic yields these when it recognises a wrapper but not the content, so they
-# are not a verdict on their own.
-INCONCLUSIVE_MIME_TYPES = frozenset({"application/octet-stream", "application/zip"})
+# libmagic yields these when it recognises a wrapper but not the content, so
+# they are never a verdict on their own. `octet-stream` belongs here as much as
+# the named wrappers: measured on libmagic 5.46, `from_buffer` never returns
+# `application/zip` at any sample size - a zip container reads as octet-stream
+# from a buffer and only `from_file` names it. Leaving octet-stream out means
+# zip-based documents get no second look at all.
+INCONCLUSIVE_MIME_TYPES = frozenset(
+    {"application/octet-stream", "application/zip", "application/x-ole-storage"}
+)
+
+# What a zip-based document keeps inside itself. libmagic's own msooxml rule
+# looks for these; reading them back is how a repackaged .docx - whose first
+# member is not [Content_Types].xml, so libmagic only ever calls it a zip - is
+# recognised without taking on an ML classifier for the job.
+OOXML_DIRECTORY_TYPES = (
+    ("word/", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
+    ("xl/", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
+    ("ppt/", "application/vnd.openxmlformats-officedocument.presentationml.presentation"),
+)
+
+
+def identify_zip_container(path: str) -> str | None:
+    """Name the document inside a zip, or None if it is just a zip.
+
+    Returns only types the allow-list already accepts, so this can widen what is
+    recognised but never what is permitted.
+    """
+    try:
+        with zipfile.ZipFile(path) as archive:
+            names = archive.namelist()
+            if "mimetype" in names:
+                # ODF stores its type verbatim in a member of that name.
+                declared = archive.read("mimetype").decode("ascii", "ignore").strip()
+                if AllowedFileTypes.is_allowed(declared):
+                    return declared
+            if "[Content_Types].xml" in names:
+                for prefix, mime_type in OOXML_DIRECTORY_TYPES:
+                    if any(name.startswith(prefix) for name in names):
+                        return mime_type
+    except (zipfile.BadZipFile, OSError, KeyError, ValueError):
+        return None
+    return None
+
 
 # libmagic's PDF rule only matches at offset 0, but extractors tolerate leading
 # bytes before the header, so a stream-wrapped PDF sniffs as octet-stream. Eight

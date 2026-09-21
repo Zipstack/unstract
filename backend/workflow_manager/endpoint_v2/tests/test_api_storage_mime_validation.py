@@ -11,6 +11,8 @@ detection itself is deliberately *not* patched — sniffing the bytes with
 libmagic is the behaviour under test.
 """
 
+import io
+import zipfile
 from unittest import mock
 from unittest.mock import MagicMock
 
@@ -154,6 +156,61 @@ def _ole2_like(total_size: int) -> bytes:
     return header + b"\x00" * (total_size - len(header))
 
 
+def _docx_bytes(pad_first_member: bool) -> bytes:
+    """A minimal but genuine OOXML package.
+
+    With `pad_first_member`, `[Content_Types].xml` is no longer the first entry
+    — what re-zipping or a streaming writer produces. libmagic then declines to
+    name it beyond `application/zip`, which is the shape that has to be resolved
+    by looking inside rather than by asking libmagic again.
+    """
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as archive:
+        if pad_first_member:
+            archive.writestr("junk.bin", bytes(range(256)) * 4)
+        archive.writestr("[Content_Types].xml", '<?xml version="1.0"?><Types/>')
+        archive.writestr("word/document.xml", '<?xml version="1.0"?><document/>')
+    return buf.getvalue()
+
+
+@pytest.mark.parametrize("repackaged", [False, True], ids=["normal", "repackaged"])
+def test_real_ooxml_bytes_are_accepted(collaborators, repackaged: bool) -> None:
+    """Real container bytes, with libmagic unmocked.
+
+    Every other container test scripts libmagic's answers, so none of them would
+    notice the detector asking a question libmagic cannot answer. A repackaged
+    OOXML package reads as a bare zip however many bytes it is given, so it is
+    the case that proves the resolution works rather than the mocks agreeing
+    with each other.
+    """
+    data = _docx_bytes(pad_first_member=repackaged)
+
+    result = _stage([_upload("report.docx", data, "application/pdf")])
+
+    assert set(result) == {"report.docx"}
+    assert result["report.docx"].mime_type == (
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    )
+    # Detection copies the upload to classify it; staging must still see it all.
+    written = b"".join(
+        call.kwargs["data"] for call in collaborators["storage"].write.call_args_list
+    )
+    assert written == data
+
+
+def test_a_plain_zip_stays_rejected(collaborators) -> None:
+    """Looking inside a zip widens recognition, not the allow-list."""
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("notes.txt", "just a zip of files")
+        archive.writestr("data.bin", bytes(range(256)) * 8)
+
+    result = _stage([_upload("archive.pdf", buf.getvalue(), "application/pdf")])
+
+    assert result == {}
+    collaborators["storage"].write.assert_not_called()
+
+
 def test_container_prefix_triggers_a_full_file_sniff(collaborators) -> None:
     """A container type seen in the sample must not decide the verdict alone.
 
@@ -166,15 +223,20 @@ def test_container_prefix_triggers_a_full_file_sniff(collaborators) -> None:
     escalated to the full file instead of being treated as a verdict.
     """
     ole_bytes = _ole2_like(SourceConnector.MIME_DETECT_CHUNK_SIZE * 4)
-    sniffs = ["application/x-ole-storage", "application/msword"]
 
-    with mock.patch.object(src_mod.magic, "from_buffer", side_effect=sniffs) as sniff:
+    with mock.patch.object(
+        src_mod.magic, "from_buffer", return_value="application/x-ole-storage"
+    ) as sniff, mock.patch.object(
+        src_mod.magic, "from_file", return_value="application/msword"
+    ) as sniff_path:
         result = _stage([_upload("legacy.doc", ole_bytes, "application/msword")])
 
-    # The sample verdict was inconclusive, so the whole file was classified...
-    assert sniff.call_count == 2
+    # Only the cheap sample came from a buffer...
+    assert sniff.call_count == 1
     assert len(sniff.call_args_list[0].args[0]) == SourceConnector.MIME_DETECT_CHUNK_SIZE
-    assert len(sniff.call_args_list[1].args[0]) == len(ole_bytes)
+    # ...and the verdict came from a path, which is the only way libmagic will
+    # name a container.
+    assert sniff_path.call_count == 1
     # ...and the answer from the full file is what decides.
     assert set(result) == {"legacy.doc"}
     assert result["legacy.doc"].mime_type == "application/msword"
@@ -185,9 +247,11 @@ def test_container_still_rejected_when_the_full_file_is_unsupported(
 ) -> None:
     """The full-file re-sniff widens the evidence, not the allow-list."""
     ole_bytes = _ole2_like(SourceConnector.MIME_DETECT_CHUNK_SIZE * 4)
-    sniffs = ["application/x-ole-storage", "application/x-dosexec"]
-
-    with mock.patch.object(src_mod.magic, "from_buffer", side_effect=sniffs):
+    with mock.patch.object(
+        src_mod.magic, "from_buffer", return_value="application/x-ole-storage"
+    ), mock.patch.object(
+        src_mod.magic, "from_file", return_value="application/x-dosexec"
+    ):
         result = _stage([_upload("legacy.doc", ole_bytes, "application/msword")])
 
     assert result == {}
@@ -197,9 +261,11 @@ def test_container_still_rejected_when_the_full_file_is_unsupported(
 def test_container_upload_is_not_consumed_by_detection(collaborators) -> None:
     """Reading the whole file to classify it must still leave it stageable."""
     ole_bytes = _ole2_like(SourceConnector.MIME_DETECT_CHUNK_SIZE * 4)
-    sniffs = ["application/x-ole-storage", "application/msword"]
-
-    with mock.patch.object(src_mod.magic, "from_buffer", side_effect=sniffs):
+    with mock.patch.object(
+        src_mod.magic, "from_buffer", return_value="application/x-ole-storage"
+    ), mock.patch.object(
+        src_mod.magic, "from_file", return_value="application/msword"
+    ):
         _stage([_upload("legacy.doc", ole_bytes, "application/msword")])
 
     written = b"".join(
