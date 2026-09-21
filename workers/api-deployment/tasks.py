@@ -247,7 +247,10 @@ def _unified_api_execution(
                 return {
                     "execution_id": execution_id,
                     "status": "ERROR",
-                    "message": error_message,
+                    # "error", matching this function's other ERROR returns; a
+                    # consumer reading .get("error") to learn why gets None if
+                    # this one names it something else.
+                    "error": error_message,
                     "files_processed": 0,
                 }
 
@@ -258,6 +261,11 @@ def _unified_api_execution(
                 execution_id=execution_id,
                 status=ExecutionStatus.COMPLETED.value,
                 total_files=0,
+                # Written explicitly: a terminal row whose counters are NULL
+                # reads as a clean success, which is the shape update_execution_
+                # completed exists to avoid. Nothing ran, so both are zero.
+                successful_files=0,
+                failed_files=0,
             )
             if pipeline_id:
                 api_client.update_pipeline_status(

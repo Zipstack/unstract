@@ -409,8 +409,13 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
             execution.total_files = total_files
             execution.successful_files = 0
             execution.failed_files = failed_files
-            # Field-scoped, matching update_execution, so this cannot clobber the
-            # status write or anything a concurrent writer touched.
+            # Field-scoped, so the status column and anything a concurrent writer
+            # touched are left alone. Note this is scoped to the DB row only:
+            # WorkflowExecution.save() re-runs _handle_execution_cache() whatever
+            # update_fields says, republishing this object's in-memory status to
+            # the Redis cache — see the fuller account in
+            # update_execution_queue_message_id. Harmless here because the row is
+            # freshly created and undispatched, so no worker can have moved it on.
             execution.save(
                 update_fields=[
                     "total_files",

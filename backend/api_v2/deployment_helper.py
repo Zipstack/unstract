@@ -322,14 +322,19 @@ class DeploymentHelper(BaseAPIKeyValidator):
             # Isolate the DB write the way the staging-failure path above does, so
             # the rate limit slot and staging dir are released even if it raises.
             execution = None
+            terminalise_error: str | None = None
             try:
                 execution = WorkflowExecutionServiceHelper.update_execution_completed(
                     str(execution_id),
                     total_files=len(file_objs),
                     failed_files=len(file_objs),
                 )
-            except Exception:
+            except Exception as error:
                 logger.exception(f"Failed to mark execution {execution_id} as COMPLETED")
+                # Kept for the response: the sibling staging-failure path reports
+                # str(error), and without it the caller gets a bare 422 while the
+                # row is still PENDING, so a follow-up GET /status contradicts it.
+                terminalise_error = str(error)
 
             APIDeploymentRateLimiter.release_slot(
                 str(api.organization.organization_id), str(execution_id)
@@ -377,6 +382,7 @@ class DeploymentHelper(BaseAPIKeyValidator):
                     execution_status=(
                         execution.status if execution else ExecutionStatus.ERROR.value
                     ),
+                    error=terminalise_error,
                     result=api_results,
                 )
             ).data
