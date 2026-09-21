@@ -143,6 +143,19 @@ class TestEnqueueTask:
         assert "notifications" in caplog.text
         assert "org-1" in caplog.text
 
+    def test_json_safe_strips_nul_instead_of_failing_the_enqueue(self):
+        # UN-4126: a NUL survives json.dumps but jsonb refuses it at insert, so
+        # this site used to enqueue a message the DB would reject. Unlike a
+        # non-finite float it IS repairable, so the task must still be enqueued
+        # — with the NUL gone — rather than raising at the seam.
+        with patch(_MODEL) as model:
+            model.objects.create.return_value = MagicMock(msg_id=1)
+            producer.enqueue_task(
+                task_name="t", queue="celery", kwargs={"text": "POZF\x00BBOK"}
+            )
+        message = model.objects.create.call_args.kwargs["message"]
+        assert message["kwargs"]["text"] == "POZFBBOK"
+
     def test_enqueue_failure_logs_and_propagates(self):
         with patch(_MODEL) as model:
             model.objects.create.side_effect = RuntimeError("db down")

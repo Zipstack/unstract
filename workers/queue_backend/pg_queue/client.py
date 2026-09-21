@@ -31,7 +31,6 @@ permanently wedge the consumer.
 from __future__ import annotations
 
 import contextlib
-import json
 import logging
 import time
 from collections.abc import Iterator
@@ -39,10 +38,11 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Final, Self
 
 from unstract.core.data_models import QueueMessageState
+from unstract.core.jsonb import dumps_for_jsonb
 
 from ..fairness import DEFAULT_PRIORITY, MAX_PRIORITY, MIN_PRIORITY
 from .connection import CONN_DEAD_ERRORS as _CONN_DEAD_ERRORS
-from .connection import create_pg_connection
+from .connection import create_pg_connection, is_connection_dead
 from .schema import qualified
 
 if TYPE_CHECKING:
@@ -227,7 +227,7 @@ class PgQueueClient:
             # failed-rollback branch below, which drops the handle) but is
             # intentionally NOT retried by ``send()`` — it's left to the next
             # call's reconnect.
-            conn_dead = isinstance(exc, _CONN_DEAD_ERRORS)
+            conn_dead = is_connection_dead(exc)
             try:
                 conn.rollback()
             except Exception:
@@ -301,7 +301,10 @@ class PgQueueClient:
                 queue_name, message, org_id=org_id, priority=priority
             )
         except _CONN_DEAD_ERRORS as exc:
-            if not reused:
+            # A payload the server refused is not a stale connection — see
+            # is_connection_dead. Re-sending it would repeat a large write that
+            # can never land.
+            if not reused or not is_connection_dead(exc):
                 raise
             # Describe what we observed, not a verdict: a connection-level error
             # on a reused conn is usually a stale idle reap, but a real DB
@@ -338,7 +341,15 @@ class PgQueueClient:
         org_id: str | None,
         priority: int,
     ) -> int:
-        """One INSERT of a queue row, returning its ``msg_id`` (see :meth:`send`)."""
+        """One INSERT of a queue row, returning its ``msg_id`` (see :meth:`send`).
+
+        Encoded with ``dumps_for_jsonb`` (no ``default=``, preserving the
+        TypeError-on-UUID contract the consumer's ``_json_safe`` compensates for)
+        so a string the ``::jsonb`` cast would refuse cannot reach the INSERT.
+        A self-chained continuation prepends the *executor result* — the same
+        payload that carried a NUL in UN-4126 — and ``_chain_continuation`` never
+        raises, so an unencodable message here is a silently lost callback.
+        """
         with self._cursor() as cur:
             cur.execute(
                 insert_message_sql() + " RETURNING msg_id",
@@ -346,7 +357,7 @@ class PgQueueClient:
                 # (string fields shouldn't have two empty values; Django S6553).
                 (
                     queue_name,
-                    json.dumps(message),
+                    dumps_for_jsonb(message),
                     org_id if org_id is not None else "",
                     priority,
                 ),
@@ -430,7 +441,7 @@ class PgQueueClient:
         try:
             return self._delete_row(msg_id)
         except _CONN_DEAD_ERRORS as exc:
-            if not reused:
+            if not reused or not is_connection_dead(exc):
                 raise
             logger.warning(
                 "PG-queue: delete(msg_id=%s) failed with a connection-level error "
