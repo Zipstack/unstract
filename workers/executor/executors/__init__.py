@@ -40,9 +40,16 @@ def register_all() -> list[str]:
     reaches this function during ``ep.load()`` will not restart discovery.
 
     Returns:
-        The cloud executor entry point names — the same list on every call, not
-        just the first. An empty list means no cloud plugins are installed,
-        which is the OSS case.
+        The cloud executor entry point names, on every call rather than only the
+        first — a fresh copy each time, so a caller cannot mutate the latched
+        state. An empty list has **two** meanings and does not distinguish them:
+        no cloud plugins are installed (the OSS case), or every one of them
+        failed to import. ``ExecutorPluginLoader.discover_executors`` catches
+        per-entry-point failures and logs a warning, so a broken plugin wheel
+        boots clean here and surfaces later as "No executor registered with
+        name 'table'" on each dispatch. Making that aggregate loud is worth
+        doing and is deliberately out of scope for UN-4136, which is a
+        performance change — see the ticket.
     """
     global _cloud_executors
 
@@ -66,7 +73,7 @@ def register_all() -> list[str]:
             _cloud_executors = None
             raise
 
-    return _cloud_executors
+    return list(_cloud_executors)
 
 
 def __getattr__(name: str) -> object:
@@ -86,9 +93,10 @@ def __getattr__(name: str) -> object:
 def _reset_discovery_for_tests() -> None:
     """Re-arm entry point discovery so a test can observe it running again.
 
-    Only discovery: the bundled executor is re-registered by
-    :func:`register_all` itself whenever the registry has lost it, so this does
-    not need to — and cannot — evict it from ``sys.modules``.
+    Discovery only. This does **not** restore the bundled executor: that is
+    registered by module import, which cannot be made to happen twice in one
+    process. A test that clears ``ExecutorRegistry`` must re-register
+    explicitly, as ``tests/test_legacy_executor_scaffold.py`` does.
     """
     global _cloud_executors
     _cloud_executors = None

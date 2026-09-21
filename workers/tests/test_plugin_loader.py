@@ -355,6 +355,23 @@ class TestExecutorsInit:
         )
         assert "OK" in result.stdout
 
+    def test_legacy_executor_resolves_through_the_package_namespace(self):
+        """``from executor.executors import LegacyExecutor`` must keep working.
+
+        The class used to be a real module attribute; it is now resolved by
+        ``__getattr__``. No caller in this repo or the cloud plugins uses this
+        spelling today — they import the submodule directly — so nothing else
+        would catch a typo in the name comparison or the inner import path, and
+        the attribute it replaced could not fail this way.
+        """
+        import executor.executors as mod
+        from executor.executors.legacy_executor import LegacyExecutor
+
+        assert mod.LegacyExecutor is LegacyExecutor
+
+        with pytest.raises(AttributeError):
+            mod.NoSuchExecutor
+
     def test_register_all_discovers_entry_points_only_once(self):
         """Idempotency, asserted on the work done rather than the value returned.
 
@@ -403,21 +420,28 @@ class TestExecutorsInit:
 
         assert len(loads) == 1, f"discovery re-entered {len(loads)} times"
 
-    def test_failed_discovery_does_not_latch(self):
+    @pytest.mark.parametrize("exc", [RuntimeError, KeyboardInterrupt])
+    def test_failed_discovery_does_not_latch(self, exc):
         """A discovery that raises must leave the next call free to retry.
 
         Latching on failure would pin an empty list for the life of the process,
         so a transient entry-point failure would silently mean "no cloud
         executors" forever.
+
+        ``KeyboardInterrupt`` is here to pin the handler's *breadth*: it is a
+        ``BaseException``, not an ``Exception``, so narrowing the catch would
+        keep a ``RuntimeError``-only test green while reopening the window for
+        the class of failure the broad catch exists for — ``ep.load()`` runs
+        third-party code, and a Ctrl-C landing inside it is exactly the case.
         """
         import executor.executors as mod
         from executor.executors.plugins.loader import ExecutorPluginLoader
 
         mod._reset_discovery_for_tests()
         with patch.object(
-            ExecutorPluginLoader, "discover_executors", side_effect=RuntimeError("boom")
+            ExecutorPluginLoader, "discover_executors", side_effect=exc("boom")
         ):
-            with pytest.raises(RuntimeError):
+            with pytest.raises(exc):
                 mod.register_all()
 
         assert mod._cloud_executors is None, "discovery latched despite failing"
@@ -426,3 +450,17 @@ class TestExecutorsInit:
             ExecutorPluginLoader, "discover_executors", return_value=["after_retry"]
         ):
             assert mod.register_all() == ["after_retry"]
+
+    def test_register_all_returns_a_copy_callers_cannot_corrupt(self):
+        """The latched list is module state; callers must not be able to edit it."""
+        import executor.executors as mod
+        from executor.executors.plugins.loader import ExecutorPluginLoader
+
+        mod._reset_discovery_for_tests()
+        with patch.object(
+            ExecutorPluginLoader, "discover_executors", return_value=["table"]
+        ):
+            first = mod.register_all()
+
+        first.append("MUTATED-BY-CALLER")
+        assert mod.register_all() == ["table"]

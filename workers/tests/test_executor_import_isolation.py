@@ -37,6 +37,10 @@ _MUST_NOT_LOAD = (
 _WORKERS_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
+# Child snippets use ``raise SystemExit``, never a bare ``assert``: the child
+# inherits the parent's environment, and under ``PYTHONOPTIMIZE``/``-O`` every
+# assert is stripped — the snippet would print OK, exit 0, and the guard would
+# pass having checked nothing.
 def _run(snippet: str) -> subprocess.CompletedProcess:
     return subprocess.run(
         [sys.executable, "-c", snippet],
@@ -54,7 +58,7 @@ def test_file_processing_imports_do_not_load_the_executor_stack():
             "import sys",
             *_FILE_PROCESSING_IMPORTS,
             f"loaded = [m for m in {_MUST_NOT_LOAD!r} if m in sys.modules]",
-            "assert not loaded, f'eagerly imported: {loaded}'",
+            "if loaded: raise SystemExit(f'eagerly imported: {loaded}')",
             "print('OK')",
         ]
     )
@@ -87,9 +91,11 @@ def test_loading_executor_tasks_suppresses_celery_result_logging():
             "import logging, sys",
             "import executor.tasks",  # exactly what the deployed executor loads
             "lvl = logging.getLogger('celery.app.trace').level",
-            "assert lvl == logging.WARNING, f'trace logger not suppressed: {lvl}'",
+            "if lvl != logging.WARNING:",
+            "    raise SystemExit(f'trace logger not suppressed: {lvl}')",
             # The suppression must not come back via the expensive import.
-            "assert 'executor.worker' not in sys.modules, 'pulled in executor.worker'",
+            "if 'executor.worker' in sys.modules:",
+            "    raise SystemExit('pulled in executor.worker')",
             "print('OK')",
         ]
     )
@@ -116,9 +122,12 @@ def test_importing_the_executor_package_does_not_build_the_celery_app():
     code = "\n".join(
         [
             "import sys, executor",
-            "assert 'executor.worker' not in sys.modules, 'executor/__init__ built the app'",
-            "assert executor.celery_app is not None, 'celery_app no longer resolves'",
-            "assert 'executor.worker' in sys.modules, 'attribute access did not load it'",
+            "if 'executor.worker' in sys.modules:",
+            "    raise SystemExit('executor/__init__ built the app')",
+            "if executor.celery_app is None:",
+            "    raise SystemExit('celery_app no longer resolves')",
+            "if 'executor.worker' not in sys.modules:",
+            "    raise SystemExit('attribute access did not load it')",
             "print('OK')",
         ]
     )
