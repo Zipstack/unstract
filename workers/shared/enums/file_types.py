@@ -4,6 +4,7 @@ This module defines allowed MIME types for file processing, matching the backend
 validation rules from workflow_manager/endpoint_v2/enums.py.
 """
 
+import re
 from enum import Enum
 from typing import Any
 
@@ -78,6 +79,10 @@ INCONCLUSIVE_MIME_TYPES = frozenset({"application/octet-stream", "application/zi
 # for the same reason (Util.is_valid_file_type_from_path).
 PDF_HEADER_SCAN_BYTES = 1024
 
+# `%PDF-` alone appears in plenty of content that is not a PDF; a real header
+# carries a version, so require one before promoting anything on its strength.
+PDF_HEADER_PATTERN = re.compile(rb"%PDF-\d\.\d")
+
 
 def resolve_inconclusive_mime_type(mime_type: str, head: bytes) -> str:
     """Give a wrapper-only classification a second chance from the leading bytes.
@@ -95,10 +100,13 @@ def resolve_inconclusive_mime_type(mime_type: str, head: bytes) -> str:
         return mime_type
     if mime_type == "application/zip":
         return mime_type
-    offset = head[:PDF_HEADER_SCAN_BYTES].find(b"%PDF-")
-    if offset == -1:
+    match = PDF_HEADER_PATTERN.search(head[:PDF_HEADER_SCAN_BYTES])
+    if match is None:
         return mime_type
-    return magic.from_buffer(head[offset:], mime=True)
+    # Re-classify from the header's own offset. libmagic's PDF rule is just the
+    # magic bytes, so this alone would still accept a stray "%PDF-" - the version
+    # pattern above is what makes the marker evidence rather than a coincidence.
+    return magic.from_buffer(head[match.start() :], mime=True)
 
 
 class FileProcessingOrder(str, Enum):

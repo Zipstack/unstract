@@ -363,7 +363,10 @@ def test_pdf_marker_inside_other_content_does_not_smuggle_a_file_through(
     this check exists for. Re-classifying from the marker's own offset is what
     keeps the rescue narrow.
     """
-    blob = b"\x00\x01\x02" * 40 + b"%PDF- but this is not a pdf" + b"\xff" * 400
+    # These bytes must actually sniff as application/octet-stream, or the test
+    # would pass without ever reaching the rescue it is meant to constrain.
+    blob = b"\x00\x01\x02\x03" * 30 + b"%PDF- not really a pdf" + b"\x00\x01\x02\x03" * 100
+    assert src_mod.magic.from_buffer(blob, mime=True) == "application/octet-stream"
 
     result = _stage([_upload("smuggled.pdf", blob, "application/pdf")])
 
