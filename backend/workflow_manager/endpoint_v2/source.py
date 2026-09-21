@@ -1246,6 +1246,34 @@ class SourceConnector(BaseConnector):
         return magic.from_buffer(content, mime=True)
 
     @classmethod
+    def _report_rejected_file(
+        cls,
+        workflow_log: WorkflowLog,
+        workflow_id: str,
+        execution_id: str,
+        file_name: str,
+        log_message: str,
+    ) -> None:
+        """Record a rejection for the caller without risking the whole request.
+
+        This runs inside the staging loop, and the cache write behind it does an
+        unguarded pipeline execute. Letting a transient Redis fault escape would
+        fail the entire execution over one bad file - and discard the good files
+        already staged alongside it.
+        """
+        workflow_log.log_error(logger=logger, message=log_message)
+        try:
+            ResultCacheUtils.update_api_results(
+                workflow_id=workflow_id,
+                execution_id=execution_id,
+                api_result=FileExecutionResult(file=file_name, error=log_message),
+            )
+        except Exception:
+            logger.exception(
+                f"Could not record the rejection of '{file_name}' for the caller"
+            )
+
+    @classmethod
     def add_input_file_to_api_storage(
         cls,
         pipeline_id: str,
@@ -1288,20 +1316,18 @@ class SourceConnector(BaseConnector):
 
             try:
                 mime_type = cls._detect_uploaded_file_mime_type(file)
-            except Exception:
-                # Detection reads the upload, so a broken stream raises here. Fail
-                # this one file instead of the whole request, and say that detection
-                # failed rather than blaming the file's type - an I/O fault and an
-                # unsupported format need different follow-ups.
+            except (OSError, ValueError, magic.MagicException):
+                # Narrow on purpose: these are faults in THIS upload's bytes, so
+                # failing the one file is right. A broken libmagic database or an
+                # unreadable temp dir hits every file in every request, and
+                # swallowing that would tell each caller their files are invalid
+                # while the platform is down - it must propagate and fail loudly.
                 log_message = (
                     f"Rejecting file '{file_name}': could not determine its type"
                 )
                 logger.exception(log_message)
-                workflow_log.log_error(logger=logger, message=log_message)
-                ResultCacheUtils.update_api_results(
-                    workflow_id=workflow_id,
-                    execution_id=execution_id,
-                    api_result=FileExecutionResult(file=file_name, error=log_message),
+                cls._report_rejected_file(
+                    workflow_log, workflow_id, execution_id, file_name, log_message
                 )
                 continue
 
@@ -1312,16 +1338,10 @@ class SourceConnector(BaseConnector):
                     f"Rejecting file '{file_name}' with unsupported MIME type "
                     f"'{mime_type}'"
                 )
-                workflow_log.log_error(logger=logger, message=log_message)
                 # Rejected files are never dispatched, so nothing downstream will
                 # report on them - surface the failure in the API response here.
-                ResultCacheUtils.update_api_results(
-                    workflow_id=workflow_id,
-                    execution_id=execution_id,
-                    api_result=FileExecutionResult(
-                        file=file_name,
-                        error=log_message,
-                    ),
+                cls._report_rejected_file(
+                    workflow_log, workflow_id, execution_id, file_name, log_message
                 )
                 continue
 

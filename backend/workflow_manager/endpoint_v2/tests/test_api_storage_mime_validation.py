@@ -15,7 +15,7 @@ from unittest import mock
 from unittest.mock import MagicMock
 
 import pytest
-from django.core.files.uploadedfile import SimpleUploadedFile
+from django.core.files.uploadedfile import SimpleUploadedFile, TemporaryUploadedFile
 
 import workflow_manager.endpoint_v2.source as src_mod
 from workflow_manager.endpoint_v2.constants import ApiDeploymentResultStatus
@@ -232,6 +232,74 @@ def test_undetectable_file_fails_alone(collaborators) -> None:
     assert "could not determine its type" in api_result.error
 
 
+def test_disk_backed_upload_is_classified_from_its_temp_file(collaborators) -> None:
+    """The branch real legacy-Office uploads actually take must be exercised.
+
+    Django spills anything over FILE_UPLOAD_MAX_MEMORY_SIZE to a
+    TemporaryUploadedFile, and .doc/.xls/.ppt are usually over it. Every other
+    test here builds a SimpleUploadedFile, which has no temporary_file_path, so
+    the in-memory branch is the only one they reach.
+    """
+    ole_bytes = _ole2_like(SourceConnector.MIME_DETECT_CHUNK_SIZE * 4)
+    upload = TemporaryUploadedFile(
+        "legacy.doc", "application/msword", len(ole_bytes), None
+    )
+    upload.write(ole_bytes)
+    upload.seek(0)
+    assert upload.temporary_file_path()  # the branch under test
+
+    with mock.patch.object(
+        src_mod.magic, "from_buffer", return_value="application/x-ole-storage"
+    ), mock.patch.object(
+        src_mod.magic, "from_file", return_value="application/msword"
+    ) as from_file:
+        result = _stage([upload])
+
+    # Classified from the path, so a large upload is never buffered whole...
+    from_file.assert_called_once_with(upload.temporary_file_path(), mime=True)
+    # ...and it is staged with the type the full file resolved to.
+    assert set(result) == {"legacy.doc"}
+    assert result["legacy.doc"].mime_type == "application/msword"
+
+
+def test_one_bad_file_survives_a_failing_result_cache(collaborators) -> None:
+    """A cache fault while reporting a rejection must not fail the request.
+
+    update_api_results runs inside the staging loop and its pipeline execute is
+    unguarded, so letting it escape would mark the whole execution ERROR and
+    discard the good files already written.
+    """
+    collaborators["ResultCacheUtils"].update_api_results.side_effect = Exception(
+        "redis is down"
+    )
+
+    result = _stage(
+        [
+            _upload("good.pdf", PDF_BYTES, "application/pdf"),
+            _upload("evil.pdf", WAV_BYTES, "application/pdf"),
+        ]
+    )
+
+    assert set(result) == {"good.pdf"}
+    assert _staged_names(collaborators["storage"]) == {"good.pdf"}
+
+
+def test_systemic_detection_failure_is_not_reported_as_bad_files(
+    collaborators,
+) -> None:
+    """A fault that is not about this file's bytes must fail the request loudly.
+
+    A broken libmagic database or an unreadable temp dir hits every file in
+    every request. Swallowing it per-file would answer 200 COMPLETED with every
+    file marked invalid, hiding a platform outage behind a clean success.
+    """
+    with mock.patch.object(
+        src_mod.magic, "from_buffer", side_effect=RuntimeError("magic db is broken")
+    ):
+        with pytest.raises(RuntimeError):
+            _stage([_upload("doc.pdf", PDF_BYTES, "application/pdf")])
+
+
 def test_empty_upload_is_staged_rather_than_called_unsupported(collaborators) -> None:
     """An empty file must reach the downstream empty-file error, not a type error.
 
@@ -283,6 +351,38 @@ def test_pdf_behind_leading_bytes_is_accepted(collaborators) -> None:
     assert set(result) == {"wrapped.pdf"}
     assert result["wrapped.pdf"].mime_type == "application/pdf"
     collaborators["ResultCacheUtils"].update_api_results.assert_not_called()
+
+
+def test_pdf_marker_inside_other_content_does_not_smuggle_a_file_through(
+    collaborators,
+) -> None:
+    """The `%PDF-` rescue must not become a way past the gate.
+
+    Promoting on a bare substring would let any unidentifiable blob carrying
+    that text near its start be staged as a PDF, which is the opposite of what
+    this check exists for. Re-classifying from the marker's own offset is what
+    keeps the rescue narrow.
+    """
+    blob = b"\x00\x01\x02" * 40 + b"%PDF- but this is not a pdf" + b"\xff" * 400
+
+    result = _stage([_upload("smuggled.pdf", blob, "application/pdf")])
+
+    assert result == {}
+    collaborators["storage"].write.assert_not_called()
+
+
+def test_a_recognised_zip_is_never_promoted_to_pdf(collaborators) -> None:
+    """A zip is a zip, whatever its entries happen to contain."""
+    with mock.patch.object(
+        src_mod.magic, "from_buffer", return_value="application/zip"
+    ), mock.patch.object(
+        src_mod.magic, "from_file", return_value="application/zip"
+    ):
+        result = _stage(
+            [_upload("archive.pdf", b"PK\x03\x04" + b"%PDF-1.7" * 8, "application/pdf")]
+        )
+
+    assert result == {}
 
 
 def test_unidentifiable_binary_is_rejected(collaborators) -> None:

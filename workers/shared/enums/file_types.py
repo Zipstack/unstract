@@ -7,6 +7,8 @@ validation rules from workflow_manager/endpoint_v2/enums.py.
 from enum import Enum
 from typing import Any
 
+import magic
+
 
 class AllowedFileTypes(Enum):
     """Allowed MIME types for file processing.
@@ -82,12 +84,21 @@ def resolve_inconclusive_mime_type(mime_type: str, head: bytes) -> str:
 
     LLMWhisperer resolves these with Magika and then a `%PDF-` scan; without
     Magika this covers the PDF case, which is the one that reaches us.
+
+    Deliberately stricter than that scan in two ways, because this promotes a
+    file *into* the allow-list: a recognised zip is left alone however its
+    entries happen to read, and the marker is re-classified from its own offset
+    rather than trusted as a substring, so a stray "%PDF-" sitting inside other
+    content cannot smuggle a file through the gate.
     """
     if mime_type not in INCONCLUSIVE_MIME_TYPES:
         return mime_type
-    if b"%PDF-" in head[:PDF_HEADER_SCAN_BYTES]:
-        return AllowedFileTypes.PDF.value
-    return mime_type
+    if mime_type == "application/zip":
+        return mime_type
+    offset = head[:PDF_HEADER_SCAN_BYTES].find(b"%PDF-")
+    if offset == -1:
+        return mime_type
+    return magic.from_buffer(head[offset:], mime=True)
 
 
 class FileProcessingOrder(str, Enum):
