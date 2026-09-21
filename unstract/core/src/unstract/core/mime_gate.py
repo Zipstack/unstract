@@ -35,6 +35,11 @@ PDF_HEADER_SCAN_BYTES = 1024
 # carries a version, so require one before promoting anything on its strength.
 PDF_HEADER_PATTERN = re.compile(rb"%PDF-\d\.\d")
 
+# An ODF `mimetype` member holds one media type string and nothing else, so
+# anything larger is not the thing we are looking for. Bounding the read keeps a
+# hostile archive from turning a type check into a decompression bomb.
+MIMETYPE_MEMBER_LIMIT = 256
+
 # What a zip-based document keeps inside itself. libmagic's own msooxml rule
 # looks for these; reading them back is how a repackaged .docx - whose first
 # member is not [Content_Types].xml, so libmagic only ever calls it a zip - is
@@ -62,10 +67,18 @@ def identify_zip_container(path: str, is_allowed) -> str | None:
         with zipfile.ZipFile(path) as archive:
             names = archive.namelist()
             if "mimetype" in names:
-                # ODF stores its type verbatim in a member of that name.
-                declared = archive.read("mimetype").decode("ascii", "ignore").strip()
-                if is_allowed(declared):
-                    return declared
+                # ODF stores its type verbatim in a member of that name. Check the
+                # declared size and read a bounded amount: this archive is an
+                # unvalidated upload, and read() would otherwise decompress
+                # whatever a zip bomb declares straight into memory, failing the
+                # whole request before anything is dispatched.
+                info = archive.getinfo("mimetype")
+                if info.file_size <= MIMETYPE_MEMBER_LIMIT:
+                    with archive.open("mimetype") as member:
+                        raw = member.read(MIMETYPE_MEMBER_LIMIT)
+                    declared = raw.decode("ascii", "ignore").strip()
+                    if is_allowed(declared):
+                        return declared
             if "[Content_Types].xml" in names:
                 for prefix, mime_type in OOXML_DIRECTORY_TYPES:
                     if any(name.startswith(prefix) for name in names):

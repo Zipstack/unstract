@@ -198,6 +198,27 @@ def test_real_ooxml_bytes_are_accepted(collaborators, repackaged: bool) -> None:
     assert written == data
 
 
+def test_an_oversized_mimetype_member_is_not_decompressed(collaborators) -> None:
+    """A hostile archive must not turn the type check into a decompression bomb.
+
+    `mimetype` holds one media type string, so a member declaring megabytes is
+    not the thing being looked for. Reading it unbounded would materialise
+    whatever the archive declares, during synchronous staging, failing the whole
+    request before anything is dispatched.
+    """
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as archive:
+        # Highly compressible, so the archive stays small while the member does not.
+        archive.writestr("mimetype", "a" * (8 * 1024 * 1024))
+    payload = buf.getvalue()
+    assert len(payload) < 100_000  # small on the wire, large on the way out
+
+    result = _stage([_upload("bomb.pdf", payload, "application/pdf")])
+
+    # Not recognised, and never expanded to find that out.
+    assert result == {}
+
+
 def test_a_plain_zip_stays_rejected(collaborators) -> None:
     """Looking inside a zip widens recognition, not the allow-list."""
     buf = io.BytesIO()
