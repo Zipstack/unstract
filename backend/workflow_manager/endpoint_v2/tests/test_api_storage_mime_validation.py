@@ -269,6 +269,35 @@ def test_a_mimetype_member_cannot_nominate_a_format(
     assert result == {}, f"accepted an archive whose mimetype member {why}"
 
 
+@pytest.mark.parametrize(
+    "stored", [True, False], ids=["stored-entry", "deflated-entry"]
+)
+def test_a_zip_carrying_a_pdf_marker_is_still_a_zip(collaborators, stored: bool) -> None:
+    """A zip whose contents mention a PDF header must not be staged as a PDF.
+
+    An entry stored uncompressed puts `%PDF-1.7` in the archive's literal leading
+    bytes, so a scan of the head sees it exactly as it would in a real document.
+    Resolving the wrapper before the marker is consulted is what keeps that from
+    becoming a way past the gate.
+    """
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as archive:
+        archive.writestr(
+            zipfile.ZipInfo("a.txt"),
+            "%PDF-1.7 pretending to be a pdf",
+            compress_type=zipfile.ZIP_STORED if stored else zipfile.ZIP_DEFLATED,
+        )
+        archive.writestr("b.bin", bytes(range(256)) * 4)
+    data = buf.getvalue()
+    if stored:
+        assert b"%PDF-1.7" in data[:1024], "fixture must put the marker in the head"
+
+    result = _stage([_upload("archive.pdf", data, "application/pdf")])
+
+    assert result == {}
+    collaborators["storage"].write.assert_not_called()
+
+
 def test_a_plain_zip_stays_rejected(collaborators) -> None:
     """Looking inside a zip widens recognition, not the allow-list."""
     buf = io.BytesIO()
