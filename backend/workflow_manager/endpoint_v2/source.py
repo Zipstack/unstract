@@ -1264,7 +1264,9 @@ class SourceConnector(BaseConnector):
         workflow_log: WorkflowLog,
         workflow_id: str,
         execution_id: str,
+        file: UploadedFile,
         file_name: str,
+        mime_type: str | None,
         log_message: str,
     ) -> None:
         """Record a rejection for the caller without risking the whole request.
@@ -1285,6 +1287,62 @@ class SourceConnector(BaseConnector):
             logger.exception(
                 f"Could not record the rejection of '{file_name}' for the caller"
             )
+
+        try:
+            cls._persist_rejected_file_execution(
+                execution_id=execution_id,
+                file=file,
+                file_name=file_name,
+                mime_type=mime_type,
+                log_message=log_message,
+            )
+        except Exception:
+            logger.exception(
+                f"Could not persist a file execution row for rejected '{file_name}'"
+            )
+
+    @classmethod
+    def _persist_rejected_file_execution(
+        cls,
+        execution_id: str,
+        file: UploadedFile,
+        file_name: str,
+        mime_type: str | None,
+        log_message: str,
+    ) -> None:
+        """Record a rejected file as a terminal ERROR file execution.
+
+        The cache entry above is deleted on the first status poll and expires
+        with the result TTL, so without a row there is nothing left to answer
+        "why was my file not processed?". It also keeps the rejection countable:
+        the execution serializer derives successful/failed from these rows, so a
+        run with a rejected file stops reading as a clean success.
+        """
+        workflow_execution = WorkflowExecution.objects.get(pk=execution_id)
+
+        # A real content hash, because the row's identity depends on it - two
+        # files rejected in one request would otherwise collide onto one row,
+        # the API path having no file_path to tell them apart.
+        digest = sha256()
+        for chunk in file.chunks(chunk_size=cls.READ_CHUNK_SIZE):
+            digest.update(chunk)
+        file.seek(0)
+
+        file_execution = WorkflowFileExecution.objects.get_or_create_file_execution(
+            workflow_execution=workflow_execution,
+            file_hash=FileHash(
+                file_path=None,
+                source_connection_type=WorkflowEndpoint.ConnectionType.API,
+                file_name=file_name,
+                file_hash=digest.hexdigest(),
+                file_size=file.size,
+                mime_type=mime_type,
+            ),
+            is_api=True,
+        )
+        file_execution.update_status(
+            status=ExecutionStatus.ERROR, execution_error=log_message
+        )
 
     @classmethod
     def add_input_file_to_api_storage(
@@ -1340,7 +1398,13 @@ class SourceConnector(BaseConnector):
                 )
                 logger.exception(log_message)
                 cls._report_rejected_file(
-                    workflow_log, workflow_id, execution_id, file_name, log_message
+                    workflow_log,
+                    workflow_id,
+                    execution_id,
+                    file,
+                    file_name,
+                    None,
+                    log_message,
                 )
                 continue
 
@@ -1354,7 +1418,13 @@ class SourceConnector(BaseConnector):
                 # Rejected files are never dispatched, so nothing downstream will
                 # report on them - surface the failure in the API response here.
                 cls._report_rejected_file(
-                    workflow_log, workflow_id, execution_id, file_name, log_message
+                    workflow_log,
+                    workflow_id,
+                    execution_id,
+                    file,
+                    file_name,
+                    mime_type,
+                    log_message,
                 )
                 continue
 

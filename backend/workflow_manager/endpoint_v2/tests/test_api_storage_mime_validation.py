@@ -48,6 +48,8 @@ def collaborators():
             FileSystem=mock.DEFAULT,
             FileHistoryHelper=mock.DEFAULT,
             ResultCacheUtils=mock.DEFAULT,
+            WorkflowExecution=mock.DEFAULT,
+            WorkflowFileExecution=mock.DEFAULT,
         ) as mocks,
         mock.patch.object(
             SourceConnector,
@@ -119,6 +121,74 @@ def test_rejection_is_reported_to_the_caller(collaborators) -> None:
     # The message has to name the offending type, not a downstream symptom.
     assert "audio/x-wav" in api_result.error
     assert api_result.status == ApiDeploymentResultStatus.FAILED
+
+
+def test_rejection_is_persisted_as_a_failed_file_execution(collaborators) -> None:
+    """A rejection has to outlive the result cache.
+
+    The cache entry is deleted on the first status poll and expires with the
+    result TTL, so without a row nothing can answer "why was my file not
+    processed?" afterwards. The row is also what makes the rejection countable:
+    the execution serializer derives successful/failed by counting these, so a
+    partially-rejected run stops reading as a clean success.
+    """
+    _stage(
+        [
+            _upload("good.pdf", PDF_BYTES, "application/pdf"),
+            _upload("evil.pdf", WAV_BYTES, "application/pdf"),
+        ]
+    )
+
+    manager = collaborators["WorkflowFileExecution"].objects
+    manager.get_or_create_file_execution.assert_called_once()
+    kwargs = manager.get_or_create_file_execution.call_args.kwargs
+    assert kwargs["is_api"] is True
+    recorded = kwargs["file_hash"]
+    assert recorded.file_name == "evil.pdf"
+    # The real type is what a support question needs, not the declared one.
+    assert recorded.mime_type == "audio/x-wav"
+    # A real content hash, so two rejects in one request cannot collide onto one
+    # row — the API path has no file_path to tell them apart.
+    assert recorded.file_hash and recorded.file_hash != "evil.pdf"
+
+    created = manager.get_or_create_file_execution.return_value
+    created.update_status.assert_called_once()
+    status_kwargs = created.update_status.call_args.kwargs
+    assert status_kwargs["status"] is src_mod.ExecutionStatus.ERROR
+    assert "audio/x-wav" in status_kwargs["execution_error"]
+
+
+def test_two_rejected_files_get_two_rows(collaborators) -> None:
+    """Distinct content must not collapse into one row."""
+    _stage(
+        [
+            _upload("a.pdf", WAV_BYTES, "application/pdf"),
+            _upload("b.pdf", WAV_BYTES + b"different tail", "application/pdf"),
+        ]
+    )
+
+    manager = collaborators["WorkflowFileExecution"].objects
+    hashes = {
+        call.kwargs["file_hash"].file_hash
+        for call in manager.get_or_create_file_execution.call_args_list
+    }
+    assert len(hashes) == 2
+
+
+def test_a_failed_row_write_does_not_fail_the_request(collaborators) -> None:
+    """Bookkeeping must not cost the caller their good files."""
+    collaborators[
+        "WorkflowFileExecution"
+    ].objects.get_or_create_file_execution.side_effect = Exception("db is down")
+
+    result = _stage(
+        [
+            _upload("good.pdf", PDF_BYTES, "application/pdf"),
+            _upload("evil.pdf", WAV_BYTES, "application/pdf"),
+        ]
+    )
+
+    assert set(result) == {"good.pdf"}
 
 
 def test_missing_declared_type_falls_back_to_sniffed_type(collaborators) -> None:
