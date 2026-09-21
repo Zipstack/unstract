@@ -298,8 +298,13 @@ def collect_with_retry[T](
     for attempt in range(max_retries + 1):
         items: list[T] = []
         has_content = False
-        gen = fn()
+        gen: Iterable[T] | None = None
         try:
+            # ``fn()`` itself can fail: litellm's streaming ``completion()``
+            # sends the request when called, so a 429/5xx/connection error
+            # is raised here, before any chunk is yielded. That is a failed
+            # request and must retry like the non-streaming path.
+            gen = fn()
             for item in gen:
                 items.append(item)
                 has_content = has_content or is_content(item)

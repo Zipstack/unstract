@@ -61,6 +61,43 @@ def test_retries_when_failure_precedes_content() -> None:
     assert len(calls) == 2
 
 
+def test_retries_when_stream_creation_itself_raises() -> None:
+    """``fn()`` failing before returning an iterable is a failed request.
+
+    litellm's streaming ``completion()`` sends the HTTP request when called,
+    so a 429/5xx/connection error surfaces from ``fn()`` itself rather than
+    from iteration.
+    """
+    calls: list[int] = []
+
+    def fn() -> Iterator[str]:
+        calls.append(1)
+        if len(calls) == 1:
+            raise TimeoutError("request failed before any chunk")
+        return iter(["meta", "c1"])
+
+    with patch.object(retry_utils.time, "sleep"):
+        result = collect_with_retry(
+            fn, max_retries=2, retry_predicate=lambda _: True, is_content=_is_content
+        )
+    assert result == ["meta", "c1"]
+    assert len(calls) == 2
+
+
+def test_stream_creation_failure_that_is_not_retryable_is_raised() -> None:
+    calls: list[int] = []
+
+    def fn() -> Iterator[str]:
+        calls.append(1)
+        raise ValueError("bad request")
+
+    with pytest.raises(ValueError):
+        collect_with_retry(
+            fn, max_retries=2, retry_predicate=lambda _: False, is_content=_is_content
+        )
+    assert len(calls) == 1
+
+
 def test_does_not_retry_once_content_was_received() -> None:
     fn, calls = _stream_factory([["meta", "c1", TimeoutError()], ["meta", "c1"]])
     with pytest.raises(TimeoutError):

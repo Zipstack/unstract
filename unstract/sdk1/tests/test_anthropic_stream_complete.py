@@ -206,6 +206,39 @@ def test_stream_failure_before_any_content_is_retried(no_cost: None) -> None:
     fake_sleep.assert_called_once()
 
 
+def test_request_failure_before_stream_exists_is_retried(no_cost: None) -> None:
+    """Litellm raises from ``completion()`` itself on request errors.
+
+    A rate limit or connection error happens before a stream object exists,
+    so it must be retried like a non-streaming call, not escape on the first
+    attempt.
+    """
+    llm_module = _load_llm_module()
+    llm = _make_llm(ANTHROPIC_ADAPTER_ID, "claude-sonnet-4-6", max_retries=2)
+    chunks = _mock_chunks("anthropic/claude-sonnet-4-6")
+    calls: list[int] = []
+
+    def fake(**_: object) -> Iterator[object]:
+        calls.append(1)
+        if len(calls) == 1:
+            raise litellm.RateLimitError(
+                message="rate limited",
+                model="claude-sonnet-4-6",
+                llm_provider="anthropic",
+            )
+        return iter(chunks)
+
+    with (
+        patch.object(llm_module.litellm, "completion", fake),
+        patch.object(retry_utils.time, "sleep") as fake_sleep,
+    ):
+        result = llm.complete("hi")
+
+    assert len(calls) == 2
+    assert result["response"].text == MOCK_TEXT
+    fake_sleep.assert_called_once()
+
+
 def test_stream_failure_after_content_is_not_replayed(no_cost: None) -> None:
     """A drop after content started surfaces immediately.
 
