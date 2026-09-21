@@ -86,8 +86,9 @@ def register_all() -> list[str]:
             # tests reach it.
             #
             # ``BaseException`` rather than ``Exception``: see
-            # ``test_failed_discovery_un_arms_the_latch``, which is parametrised
-            # over both classes that reach here and pins them executably.
+            # ``tests/test_plugin_loader.py::test_failed_discovery_un_arms_the_latch``,
+            # parametrised over every class that reaches here and pinning them
+            # executably.
             #
             # A re-run is not free. The plugin whose module was mid-import when
             # the exception escaped is evicted from ``sys.modules`` but stays in

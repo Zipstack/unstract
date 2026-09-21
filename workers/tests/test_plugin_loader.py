@@ -464,7 +464,7 @@ class TestExecutorsInit:
 
         assert "legacy" in ExecutorRegistry.list_executors()
 
-    @pytest.mark.parametrize("exc", [RuntimeError, KeyboardInterrupt])
+    @pytest.mark.parametrize("exc", [RuntimeError, KeyboardInterrupt, SystemExit])
     def test_failed_discovery_un_arms_the_latch(self, exc):
         """A discovery that raises must not leave ``[]`` latched.
 
@@ -472,11 +472,12 @@ class TestExecutorsInit:
         as though discovery had succeeded, which is indistinguishable from the
         OSS case.
 
-        Both classes that reach the handler are exercised independently: an
-        ordinary ``Exception`` out of ``entry_points()``, which runs before any
-        per-entry-point ``try``, and a ``KeyboardInterrupt``/``SystemExit`` out
-        of third-party ``ep.load()``. Parametrised rather than looped so one
-        failing arm cannot stop the other from running.
+        Every class that reaches the handler is exercised: an ordinary
+        ``Exception``, which escapes ``entry_points()`` because that call runs
+        before any per-entry-point ``try``, and the ``BaseException``-not-
+        ``Exception`` classes, which are the only ones that escape
+        ``ep.load()``. Parametrised rather than looped so one failing arm cannot
+        stop the others from running.
         """
         import executor.executors as mod
         from executor.executors.plugins.loader import ExecutorPluginLoader
