@@ -178,6 +178,15 @@ def _resolve_redis_env(
         # path, so an unset URL changes nothing.
         "url": os.getenv(f"{env_prefix}URL", os.getenv("REDIS_URL", "")).strip(),
     }
+    # A prefix that INHERITS the generic REDIS_URL must still honour its own
+    # {prefix}DB. The Helm chart sets CACHE_REDIS_DB=1 while configuring one
+    # REDIS_URL for the platform; without this the worker cache would silently
+    # follow the URL's db instead, landing on db 0 beside everything else. An
+    # explicit {prefix}URL is left alone — it names its own db deliberately.
+    own_url = os.getenv(f"{env_prefix}URL", "").strip()
+    own_db = os.getenv(f"{env_prefix}DB", "").strip()
+    if result["url"] and not own_url and own_db and db_override is None:
+        result["db_from_prefix_env"] = int(own_db)
     # Read OUTSIDE the `if ssl` below: URL mode carries TLS in the scheme and never
     # sets {prefix}SSL, so gating the CA on that flag left `rediss://` verifying
     # against the system trust store alone — which fails for exactly the servers
@@ -261,7 +270,11 @@ def _create_standalone_client(
             socket_timeout=socket_timeout,
             max_connections=max_connections,
             health_check_interval=health_check_interval,
-            db_override=db_override,
+            db_override=(
+                db_override
+                if db_override is not None
+                else env.get("db_from_prefix_env")
+            ),
             ssl_ca_certs=env.get("ssl_ca_certs"),
         )
 

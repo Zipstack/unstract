@@ -193,6 +193,30 @@ class TestUrlMode:
         monkeypatch.setenv("REDIS_SSL_CA_CERTS", "/etc/ssl/redis-ca.pem")
         assert "ssl_ca_certs" not in _kwargs(create_redis_client())
 
+    def test_prefix_db_wins_over_an_inherited_url(self, monkeypatch):
+        """The Helm chart's shape: one REDIS_URL, plus CACHE_REDIS_DB=1.
+
+        The cache prefix inherits the generic URL for its endpoint, but its own
+        db must still apply — otherwise the worker cache silently moves to the
+        URL's db and lands beside everything else on db 0.
+        """
+        monkeypatch.setenv("REDIS_URL", "rediss://cache.example:6380/0")
+        monkeypatch.setenv("CACHE_REDIS_DB", "1")
+        assert _kwargs(create_redis_client(env_prefix="CACHE_REDIS_"))["db"] == 1
+        assert _kwargs(create_redis_client())["db"] == 0
+
+    def test_an_explicit_prefix_url_keeps_its_own_db(self, monkeypatch):
+        """A URL written FOR this prefix names its db deliberately."""
+        monkeypatch.setenv("REDIS_URL", "rediss://cache.example:6380/0")
+        monkeypatch.setenv("CACHE_REDIS_URL", "rediss://cache.example:6380/3")
+        monkeypatch.setenv("CACHE_REDIS_DB", "1")
+        assert _kwargs(create_redis_client(env_prefix="CACHE_REDIS_"))["db"] == 3
+
+    def test_explicit_argument_still_wins(self, monkeypatch):
+        monkeypatch.setenv("REDIS_URL", "rediss://cache.example:6380/0")
+        monkeypatch.setenv("CACHE_REDIS_DB", "1")
+        assert _kwargs(create_redis_client(env_prefix="CACHE_REDIS_", db=7))["db"] == 7
+
     def test_pool_size_survives_url_mode(self, monkeypatch):
         monkeypatch.setenv("REDIS_URL", "rediss://cache.example:6380")
         client = create_redis_client(max_connections=10)
