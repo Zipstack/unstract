@@ -86,9 +86,10 @@ def register_all() -> list[str]:
             # tests reach it.
             #
             # ``BaseException`` because ``discover_executors`` already catches
-            # ``Exception`` per entry point: what escapes is a failure of
-            # ``entry_points()`` itself, or anything at all out of third-party
-            # ``ep.load()``.
+            # ``Exception`` per entry point. An ordinary exception from a plugin
+            # therefore never reaches here — it is logged and skipped there, and
+            # that per-entry-point handler is what keeps one broken wheel from
+            # aborting discovery.
             #
             # A re-run is not free. The plugin whose module was mid-import when
             # the exception escaped is evicted from ``sys.modules`` but stays in
