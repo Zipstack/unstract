@@ -593,7 +593,9 @@ else:
         and "ssl_ca_certs=" not in _redis_url
     ):
         _sep = "&" if "?" in _redis_url else "?"
-        _redis_url = f"{_redis_url}{_sep}ssl_ca_certs={quote(REDIS_SSL_CA_CERTS, safe='/')}"
+        _redis_url = (
+            f"{_redis_url}{_sep}ssl_ca_certs={quote(REDIS_SSL_CA_CERTS, safe='/')}"
+        )
 
     # kombu reads TLS off the scheme, but defaults ssl_cert_reqs to CERT_NONE —
     # encrypted while accepting ANY certificate, which is not what "TLS" is meant
