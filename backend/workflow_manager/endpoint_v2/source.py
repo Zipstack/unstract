@@ -1254,7 +1254,7 @@ class SourceConnector(BaseConnector):
         """Classify a staged path, looking inside a zip when that is all we get."""
         mime_type = magic.from_file(path, mime=True)
         if mime_type == "application/zip":
-            inside = identify_zip_container(path, AllowedFileTypes.is_allowed)
+            inside = identify_zip_container(path)
             return inside or mime_type
         return mime_type or fallback
 

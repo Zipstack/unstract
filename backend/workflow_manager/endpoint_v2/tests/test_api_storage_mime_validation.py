@@ -219,6 +219,56 @@ def test_an_oversized_mimetype_member_is_not_decompressed(collaborators) -> None
     assert result == {}
 
 
+def _odf_bytes(declared: str, *, stored: bool = True, first: bool = True) -> bytes:
+    """An ODF-shaped archive declaring `declared` in its mimetype member."""
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as archive:
+        if not first:
+            archive.writestr("junk.bin", "x" * 64)
+        archive.writestr(
+            zipfile.ZipInfo("mimetype"),
+            declared,
+            compress_type=zipfile.ZIP_STORED if stored else zipfile.ZIP_DEFLATED,
+        )
+        archive.writestr("content.xml", "<office/>")
+    return buf.getvalue()
+
+
+def test_a_genuine_odf_document_is_recognised(collaborators) -> None:
+    """The mimetype member identifies which ODF document this is."""
+    data = _odf_bytes("application/vnd.oasis.opendocument.text")
+
+    result = _stage([_upload("notes.pdf", data, "application/pdf")])
+
+    assert set(result) == {"notes.pdf"}
+    assert result["notes.pdf"].mime_type == "application/vnd.oasis.opendocument.text"
+
+
+@pytest.mark.parametrize(
+    "declared, stored, first, why",
+    [
+        ("application/pdf", True, True, "names an unrelated format"),
+        ("text/plain", True, True, "names a format it cannot vouch for"),
+        ("application/vnd.oasis.opendocument.text", False, True, "is compressed"),
+        ("application/vnd.oasis.opendocument.text", True, False, "is not first"),
+    ],
+)
+def test_a_mimetype_member_cannot_nominate_a_format(
+    collaborators, declared: str, stored: bool, first: bool, why: str
+) -> None:
+    """The member is archive-controlled, so it may identify but never choose.
+
+    Without this an arbitrary zip declaring an allow-listed type would be waved
+    straight through — recreating the deferred extraction failure the whole gate
+    exists to prevent. The spec's own conditions are what make it evidence.
+    """
+    data = _odf_bytes(declared, stored=stored, first=first)
+
+    result = _stage([_upload("spoof.pdf", data, "application/pdf")])
+
+    assert result == {}, f"accepted an archive whose mimetype member {why}"
+
+
 def test_a_plain_zip_stays_rejected(collaborators) -> None:
     """Looking inside a zip widens recognition, not the allow-list."""
     buf = io.BytesIO()

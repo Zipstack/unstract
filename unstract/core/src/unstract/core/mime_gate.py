@@ -40,6 +40,18 @@ PDF_HEADER_PATTERN = re.compile(rb"%PDF-\d\.\d")
 # hostile archive from turning a type check into a decompression bomb.
 MIMETYPE_MEMBER_LIMIT = 256
 
+# The only types an ODF `mimetype` member is allowed to declare. The member is
+# archive-controlled, so it can name a format but never choose one: without this
+# an archive declaring `application/pdf` would be waved through as a PDF, which
+# is the deferred extraction failure this gate exists to prevent.
+ODF_MIME_TYPES = frozenset(
+    {
+        "application/vnd.oasis.opendocument.text",
+        "application/vnd.oasis.opendocument.spreadsheet",
+        "application/vnd.oasis.opendocument.presentation",
+    }
+)
+
 # What a zip-based document keeps inside itself. libmagic's own msooxml rule
 # looks for these; reading them back is how a repackaged .docx - whose first
 # member is not [Content_Types].xml, so libmagic only ever calls it a zip - is
@@ -57,28 +69,34 @@ OOXML_DIRECTORY_TYPES = (
 )
 
 
-def identify_zip_container(path: str, is_allowed) -> str | None:
+def identify_zip_container(path: str) -> str | None:
     """Name the document inside a zip, or None if it is just a zip.
 
-    Returns only types `is_allowed` already accepts, so this can widen what is
-    recognised but never what is permitted.
+    Every value returned is a fixed constant from this module that the
+    allow-list already accepts, never a string taken from the archive, so
+    this can widen what is recognised but never what is permitted.
     """
     try:
         with zipfile.ZipFile(path) as archive:
             names = archive.namelist()
-            if "mimetype" in names:
-                # ODF stores its type verbatim in a member of that name. Check the
-                # declared size and read a bounded amount: this archive is an
-                # unvalidated upload, and read() would otherwise decompress
-                # whatever a zip bomb declares straight into memory, failing the
-                # whole request before anything is dispatched.
-                info = archive.getinfo("mimetype")
-                if info.file_size <= MIMETYPE_MEMBER_LIMIT:
-                    with archive.open("mimetype") as member:
-                        raw = member.read(MIMETYPE_MEMBER_LIMIT)
-                    declared = raw.decode("ascii", "ignore").strip()
-                    if is_allowed(declared):
-                        return declared
+            # ODF names itself in a `mimetype` member which the spec requires to
+            # be the archive's first entry, stored uncompressed. Holding it to
+            # all three conditions is what makes the declaration evidence: a
+            # member bolted onto an arbitrary zip meets none of them.
+            info = archive.infolist()[0] if names else None
+            if (
+                info is not None
+                and info.filename == "mimetype"
+                and info.compress_type == zipfile.ZIP_STORED
+                and info.file_size <= MIMETYPE_MEMBER_LIMIT
+            ):
+                with archive.open(info) as member:
+                    raw = member.read(MIMETYPE_MEMBER_LIMIT)
+                declared = raw.decode("ascii", "ignore").strip()
+                # Only ODF types: the member may identify which ODF document
+                # this is, never nominate some unrelated format.
+                if declared in ODF_MIME_TYPES:
+                    return declared
             if "[Content_Types].xml" in names:
                 for prefix, mime_type in OOXML_DIRECTORY_TYPES:
                     if any(name.startswith(prefix) for name in names):
