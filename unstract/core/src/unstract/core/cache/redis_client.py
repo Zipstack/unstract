@@ -271,9 +271,7 @@ def _create_standalone_client(
             max_connections=max_connections,
             health_check_interval=health_check_interval,
             db_override=(
-                db_override
-                if db_override is not None
-                else env.get("db_from_prefix_env")
+                db_override if db_override is not None else env.get("db_from_prefix_env")
             ),
             ssl_ca_certs=env.get("ssl_ca_certs"),
         )
