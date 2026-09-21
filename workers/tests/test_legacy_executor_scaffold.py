@@ -41,9 +41,17 @@ def _clean_registry():
 
 def _register_legacy():
     """Import executor.executors to trigger LegacyExecutor registration."""
-    from executor.executors.legacy_executor import LegacyExecutor  # noqa: F401
+    # Guarded because the import below may be the FIRST in the process, in which
+    # case ``@ExecutorRegistry.register`` fires on it and registering again would
+    # raise a duplicate-name ValueError. It used to be unguarded safely only by
+    # accident: ``executor.executors`` registered at package-import time, so the
+    # class was always already in ``sys.modules`` before any fixture cleared the
+    # registry. UN-4136 made that import lazy, which moved the first import
+    # inside the test.
+    from executor.executors.legacy_executor import LegacyExecutor
 
-    ExecutorRegistry.register(LegacyExecutor)
+    if "legacy" not in ExecutorRegistry.list_executors():
+        ExecutorRegistry.register(LegacyExecutor)
 
 
 def _make_context(**overrides):
@@ -153,26 +161,26 @@ class TestDispatchTableCoverage:
 
         # Operations handled by cloud executors, not LegacyExecutor
         cloud_executor_operations = {
-            "table_extract",                    # TableExtractorExecutor
-            "smart_table_extract",              # SmartTableExtractorExecutor
-            "sps_answer_prompt",                # SimplePromptStudioExecutor
-            "sps_index",                        # SimplePromptStudioExecutor
-            "agentic_extract",                  # AgenticPromptStudioExecutor
-            "agentic_summarize",                # AgenticPromptStudioExecutor
-            "agentic_uniformize",               # AgenticPromptStudioExecutor
-            "agentic_finalize",                 # AgenticPromptStudioExecutor
-            "agentic_generate_prompt",          # AgenticPromptStudioExecutor
-            "agentic_generate_prompt_pipeline", # AgenticPromptStudioExecutor
-            "agentic_compare",                  # AgenticPromptStudioExecutor
-            "agentic_tune_field",               # AgenticPromptStudioExecutor
+            "table_extract",  # TableExtractorExecutor
+            "smart_table_extract",  # SmartTableExtractorExecutor
+            "sps_answer_prompt",  # SimplePromptStudioExecutor
+            "sps_index",  # SimplePromptStudioExecutor
+            "agentic_extract",  # AgenticPromptStudioExecutor
+            "agentic_summarize",  # AgenticPromptStudioExecutor
+            "agentic_uniformize",  # AgenticPromptStudioExecutor
+            "agentic_finalize",  # AgenticPromptStudioExecutor
+            "agentic_generate_prompt",  # AgenticPromptStudioExecutor
+            "agentic_generate_prompt_pipeline",  # AgenticPromptStudioExecutor
+            "agentic_compare",  # AgenticPromptStudioExecutor
+            "agentic_tune_field",  # AgenticPromptStudioExecutor
         }
 
         for op in Operation:
             if op.value in cloud_executor_operations:
                 continue
-            assert op.value in LegacyExecutor._OPERATION_MAP, (
-                f"Operation {op.value} missing from _OPERATION_MAP"
-            )
+            assert (
+                op.value in LegacyExecutor._OPERATION_MAP
+            ), f"Operation {op.value} missing from _OPERATION_MAP"
 
 
 # --- 8. Constants importable ---
@@ -263,9 +271,7 @@ class TestExceptions:
     def test_custom_data_error_signature(self):
         from executor.executors.exceptions import CustomDataError
 
-        err = CustomDataError(
-            variable="invoice_num", reason="not found", is_ide=True
-        )
+        err = CustomDataError(variable="invoice_num", reason="not found", is_ide=True)
         assert "invoice_num" in err.message
         assert "not found" in err.message
         assert "Prompt Studio" in err.message
@@ -273,9 +279,7 @@ class TestExceptions:
     def test_custom_data_error_tool_mode(self):
         from executor.executors.exceptions import CustomDataError
 
-        err = CustomDataError(
-            variable="order_id", reason="missing", is_ide=False
-        )
+        err = CustomDataError(variable="order_id", reason="missing", is_ide=False)
         assert "API request" in err.message
 
     def test_missing_field_error(self):

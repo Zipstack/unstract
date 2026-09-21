@@ -301,8 +301,9 @@ class TestExecutorsInit:
 
     These cases *write* process-global state — ``register_all()`` registers into
     the ``ExecutorRegistry`` singleton, and they stamp on the module's
-    ``_cloud_executors`` latch — so the fixture snapshots and restores both,
-    leaving the process as it found it.
+    ``_cloud_executors`` latch — so the fixture snapshots and restores both.
+    The ``sys.modules`` entry for ``legacy_executor`` is not restorable and is
+    deliberately left; the guards in the sibling modules assume that.
 
     No case here asserts registry *contents* off an inherited state. Registration
     is asserted in a subprocess, and the one case that needs ``legacy`` already
@@ -462,29 +463,33 @@ class TestExecutorsInit:
 
         assert "legacy" in ExecutorRegistry.list_executors()
 
-    def test_failed_discovery_un_arms_the_latch(self):
+    @pytest.mark.parametrize("exc", [RuntimeError, KeyboardInterrupt])
+    def test_failed_discovery_un_arms_the_latch(self, exc):
         """A discovery that raises must not leave ``[]`` latched.
 
         Otherwise every later call in the process reports "no cloud executors"
         as though discovery had succeeded, which is indistinguishable from the
-        OSS case. Parametrised breadth matters: ``discover_executors`` already
-        catches ``Exception`` per entry point, so the class that actually
-        reaches this handler is ``BaseException``.
+        OSS case.
+
+        Both classes that reach the handler are exercised independently: an
+        ordinary ``Exception`` out of ``entry_points()``, which runs before any
+        per-entry-point ``try``, and a ``KeyboardInterrupt``/``SystemExit`` out
+        of third-party ``ep.load()``. Parametrised rather than looped so one
+        failing arm cannot stop the other from running.
         """
         import executor.executors as mod
         from executor.executors.plugins.loader import ExecutorPluginLoader
 
-        for exc in (RuntimeError, KeyboardInterrupt):
-            mod._reset_discovery_for_tests()
-            with patch.object(
-                ExecutorPluginLoader, "discover_executors", side_effect=exc("boom")
-            ):
-                with pytest.raises(exc):
-                    mod.register_all()
+        mod._reset_discovery_for_tests()
+        with patch.object(
+            ExecutorPluginLoader, "discover_executors", side_effect=exc("boom")
+        ):
+            with pytest.raises(exc):
+                mod.register_all()
 
-            assert (
-                mod._cloud_executors is None
-            ), f"{exc.__name__} left the latch armed: {mod._cloud_executors!r}"
+        assert (
+            mod._cloud_executors is None
+        ), f"{exc.__name__} left the latch armed: {mod._cloud_executors!r}"
 
     def test_register_all_returns_a_copy_callers_cannot_corrupt(self):
         """The latched list is module state; callers must not be able to edit it."""

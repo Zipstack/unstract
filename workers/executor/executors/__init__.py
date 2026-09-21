@@ -21,8 +21,8 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from executor.executors.legacy_executor import LegacyExecutor  # noqa: TCH004
 
-#: Cloud entry point names, or None until discovery has run. Doubles as the
-#: re-entrancy latch — see the comment in :func:`register_all`.
+#: Cloud entry point names; None when discovery has not run, or ran and
+#: raised. Doubles as the re-entrancy latch — see :func:`register_all`.
 _cloud_executors: list[str] | None = None
 
 
@@ -36,8 +36,10 @@ def register_all() -> list[str]:
     it if something empties it afterwards, because the second import is a
     ``sys.modules`` hit and the decorator does not run again. Production never
     clears the registry. Several test modules do, and most of them do not put it
-    back — ``tests/test_legacy_executor_scaffold.py`` is the one that restores
-    what it cleared, and is the pattern to copy.
+    back; ``tests/test_legacy_executor_scaffold.py`` restores what it cleared.
+    A module that re-registers must guard on ``"legacy" not in
+    ExecutorRegistry.list_executors()``, because the import that would register
+    it may already have happened.
 
     Idempotent, and safe to re-enter: a cloud plugin whose own import graph
     reaches this function during ``ep.load()`` will not restart discovery.
@@ -53,6 +55,11 @@ def register_all() -> list[str]:
         (a follow-up to make that aggregate loud is recorded on UN-4136); or the
         caller is *inside* discovery, having re-entered while the latch is still
         the empty placeholder.
+
+        A non-empty list can also under-report: if a first discovery failed part
+        way and a surviving caller re-ran it, a plugin that registered before it
+        raised is live in ``ExecutorRegistry`` but missing here. See the handler
+        below.
     """
     global _cloud_executors
 
@@ -67,29 +74,35 @@ def register_all() -> list[str]:
         # level. The import-side-effect version this replaced got that safety
         # free from ``sys.modules``.
         #
-        _cloud_executors = []
         try:
+            _cloud_executors = []
             _cloud_executors = ExecutorPluginLoader.discover_executors()
         except BaseException:
-            # Un-arm rather than leave ``[]`` latched. This does not retry — it
-            # re-raises unchanged; it only stops a later call reporting "no cloud
-            # executors" as though discovery had succeeded. It also preserves the
-            # behaviour this function replaced: discovery used to run as a side
-            # effect of importing this package, and a module that raises
-            # mid-import is evicted from ``sys.modules``, so the next import
-            # re-ran it.
+            # Re-raise unchanged, and put the latch back to its un-armed value so
+            # the next call re-runs discovery rather than reporting "no cloud
+            # executors" as though this one had succeeded. Say that plainly: this
+            # DOES re-arm a retry, just not in this call. It is the behaviour the
+            # function replaced — discovery used to run as a side effect of
+            # importing this package, and a module that raises mid-import is
+            # evicted from ``sys.modules``, so the next import re-ran it.
             #
-            # ``BaseException`` is deliberate. ``discover_executors`` already
-            # catches ``Exception`` per entry point, so what reaches here is
-            # either a failure of ``entry_points()`` itself — which leaves
-            # nothing half-registered — or a ``SystemExit``/``KeyboardInterrupt``
-            # out of third-party ``ep.load()``. In the latter case a plugin whose
+            # ``BaseException`` is deliberate: ``discover_executors`` catches
+            # ``Exception`` per entry point, so what escapes is either a failure
+            # of ``entry_points()`` itself — before any ``ep.load()``, nothing
+            # half-registered — or a ``SystemExit``/``KeyboardInterrupt`` out of
+            # third-party plugin code.
+            #
+            # The re-run is not free in that second case. A plugin whose
             # ``@ExecutorRegistry.register`` already fired is evicted from
-            # ``sys.modules`` but left in the registry, so a re-run raises a
-            # duplicate-name ``ValueError`` that ``discover_executors`` swallows.
-            # That hazard predates this function — it applied equally to the
-            # import-side-effect version — and is not a reason to let the latch
-            # lie about the common case.
+            # ``sys.modules`` but left in the registry, so re-importing it raises
+            # a duplicate-name ``ValueError`` that ``discover_executors`` swallows
+            # into a warning — leaving that executor live in the registry but
+            # absent from the returned list. That is inherent to re-running
+            # discovery at all, so it applied equally to the import-side-effect
+            # version; it is not a reason to let the latch lie about the common
+            # case. No production caller survives the re-raise to make that second
+            # call (see the module docstring), so today it is reachable only from
+            # tests.
             _cloud_executors = None
             raise
 
