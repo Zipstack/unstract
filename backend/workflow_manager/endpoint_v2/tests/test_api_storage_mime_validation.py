@@ -147,8 +147,8 @@ def test_rejection_is_persisted_as_a_failed_file_execution(collaborators) -> Non
     assert recorded.file_name == "evil.pdf"
     # The real type is what a support question needs, not the declared one.
     assert recorded.mime_type == "audio/x-wav"
-    # A real content hash, so two rejects in one request cannot collide onto one
-    # row — the API path has no file_path to tell them apart.
+    # An opaque identity, not the raw name: the API path has no file_path, so
+    # this value is the only thing keeping two rejections apart.
     assert recorded.file_hash and recorded.file_hash != "evil.pdf"
 
     created = manager.get_or_create_file_execution.return_value
@@ -159,11 +159,17 @@ def test_rejection_is_persisted_as_a_failed_file_execution(collaborators) -> Non
 
 
 def test_two_rejected_files_get_two_rows(collaborators) -> None:
-    """Distinct content must not collapse into one row."""
+    """Two rejections must never fold into one row.
+
+    Identical bytes under different names is the case that breaks a
+    content-only identity: the second upload would reuse the first row, whose
+    name was set at creation, so one rejection would be recorded instead of two
+    and the counts would be short by one.
+    """
     _stage(
         [
             _upload("a.pdf", WAV_BYTES, "application/pdf"),
-            _upload("b.pdf", WAV_BYTES + b"different tail", "application/pdf"),
+            _upload("b.pdf", WAV_BYTES, "application/pdf"),
         ]
     )
 

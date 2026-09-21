@@ -1320,13 +1320,18 @@ class SourceConnector(BaseConnector):
         """
         workflow_execution = WorkflowExecution.objects.get(pk=execution_id)
 
-        # A real content hash, because the row's identity depends on it - two
-        # files rejected in one request would otherwise collide onto one row,
-        # the API path having no file_path to tell them apart.
+        # The row's identity rests entirely on this value: the API path has no
+        # file_path, so get_or_create would fold two rejected uploads into one
+        # row and under-count them. Content alone is not enough - the same bytes
+        # sent twice under different names are two rejections the caller needs
+        # told about separately - so the name is folded in. Deliberately not a
+        # plain content hash: a rejected file was never processed, and should
+        # not look to file history as though it had been.
         digest = sha256()
         for chunk in file.chunks(chunk_size=cls.READ_CHUNK_SIZE):
             digest.update(chunk)
         file.seek(0)
+        row_identity = sha256(digest.digest() + file_name.encode("utf-8")).hexdigest()
 
         file_execution = WorkflowFileExecution.objects.get_or_create_file_execution(
             workflow_execution=workflow_execution,
@@ -1334,7 +1339,7 @@ class SourceConnector(BaseConnector):
                 file_path=None,
                 source_connection_type=WorkflowEndpoint.ConnectionType.API,
                 file_name=file_name,
-                file_hash=digest.hexdigest(),
+                file_hash=row_identity,
                 file_size=file.size,
                 mime_type=mime_type,
             ),
