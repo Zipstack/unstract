@@ -46,10 +46,14 @@ standby. A standby tries to acquire each cycle. The cycle interval MUST be
 shorter than the lease window, or the leader would lose the lease between
 renews — enforced in :meth:`PgReaper.__init__`.
 
-**Ships dark.** Launched explicitly (``python -m queue_backend.pg_queue.reaper``
-or, later, ``run-worker.sh``); never part of the default worker set. With
-``WORKER_BARRIER_BACKEND`` left at ``chord`` (default) there are no
-``pg_barrier_state`` rows, so the sweep is a no-op until the PG barrier is used.
+**A hard dependency, not an optional sweep.** This used to ship dark: the PG
+barrier was one of three selectable substrates, so with ``WORKER_BARRIER_BACKEND``
+at its ``chord`` default there were no ``pg_barrier_state`` rows and nothing to
+reap. That is no longer true. PG is the only transport and the only barrier, and
+this process additionally owns queue re-arm (crash redelivery) and scheduled
+promotion (delayed delivery) — if it is not running, crashed work is never
+redelivered and delayed messages never fire. Deployed as ``worker-pg-reaper``;
+alert on its liveness.
 """
 
 from __future__ import annotations

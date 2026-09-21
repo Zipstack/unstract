@@ -200,92 +200,28 @@ class SourceConnectionType(str, Enum):
     API = "API"
 
 
-class WorkflowTransport(str, Enum):
-    """Transport a single workflow execution rides end-to-end.
-
-    The migration unit is the *execution*, not the task: every stage of a
-    coupled pipeline (async_execute → file-batch fan-out → callback) must run
-    on one transport, decided once at execution creation and carried in the
-    task payload (see ``9e-design.md``). ``CELERY`` is the legacy default;
-    ``PG_QUEUE`` is the bespoke Postgres queue.
-    """
-
-    CELERY = "celery"
-    PG_QUEUE = "pg_queue"
-
-
-# Default transport when none is carried on the payload.
+# Rolling-deploy shim (UN-4078). Nothing BRANCHES on this key any more, but it is
+# still written for one release, and one site still matches it by name (the
+# EXECUTION_EXCLUDED_PARAMS entry below). A pre-UN-4078 worker treats an absent
+# ``transport`` as "celery" and publishes the fan-out / callback to RabbitMQ, which
+# has no consumers, so during the rollout window an old pod receiving a new
+# producer's payload would strand the execution.
 #
-# ⚠️ KNOWN HAZARD, DELIBERATELY NOT FIXED HERE — the safe direction has inverted.
-#
-# CELERY was the safe fallback while Celery had consumers: a payload that lost the
-# field degraded onto a working substrate. With the Celery fleet at zero that is no
-# longer true. A payload defaulting to "celery" now selects CeleryChordBarrier in
-# `_barrier_for_transport`, skips the PG orchestration-claim and terminal-redelivery
-# guards, and publishes the fan-out to a broker nothing drains — and because no PG
-# rows are written, neither the reaper nor the undispatched sweep can see the
-# stranded execution. Reachable on a rolling deploy, where a not-yet-upgraded
-# backend still emits `transport: "celery"`.
-#
-# Flipping this constant to PG_QUEUE is the right fix and it is a one-line change,
-# but it is NOT a one-line consequence: it breaks 19 tests across 6 files
-# (test_pg_barrier, test_chord_sites_characterisation, test_barrier,
-# test_dispatch_with_callback, test_dispatch_sites_characterisation,
-# test_workflow_context_transport), every one of which relies on the implicit
-# Celery default — most of them characterising PgBarrier's Celery-link branch,
-# which is deferred-deletion code. Rewriting those to state their transport
-# explicitly is correct, but it is a behaviour change that deserves its own review
-# rather than riding along in a documentation sweep.
-#
-# Until then the mitigation is that every producer sets the field explicitly
-# (workflow_helper.py and internal_api_views.py both hardcode PG_QUEUE), so the
-# default is only reachable via version skew.
-DEFAULT_WORKFLOW_TRANSPORT = WorkflowTransport.CELERY.value
-
-
-def normalize_transport(value: object, *, logger: Any = None, context: str = "") -> str:
-    """Coerce an inbound transport value to a known ``WorkflowTransport`` value.
-
-    The transport crosses untrusted boundaries — a task payload, PG JSONB, an
-    older backend that omits the field — so a missing/garbage value must never
-    route an execution onto an unknown substrate. This **fails closed**: an
-    unrecognized value (``None``, ``"celary"``, ``""``) logs a warning (when a
-    ``logger`` is given) and falls back to :data:`DEFAULT_WORKFLOW_TRANSPORT`
-    — see the hazard note on that constant. A recognized value passes through as
-    its canonical string.
-
-    Coerce-not-raise is deliberate, and differs from how
-    ``WorkflowContextData.workflow_type`` is validated: ``transport`` has an
-    explicit safe default by design, so a bad value should degrade rather than
-    crash the execution. What changed with UN-4046 is WHICH default is safe — see
-    the note on the constant. A rolling deploy where an older backend still emits
-    ``"celery"`` is the live case: that value is recognized, so it passes through
-    here untouched and the guards keyed on it are skipped. This function only
-    protects the missing/garbage case. ``context`` is an optional suffix for the
-    log line (e.g. an ``exec:<id>`` tag) to make a version-skew warning traceable.
-    """
-    try:
-        return WorkflowTransport(value).value
-    except ValueError:
-        if logger is not None:
-            logger.warning(
-                "Unrecognized workflow transport %r%s; falling back to %r",
-                value,
-                context,
-                DEFAULT_WORKFLOW_TRANSPORT,
-            )
-        return DEFAULT_WORKFLOW_TRANSPORT
-
-
-def is_pg_transport(transport: str | None) -> bool:
-    """True if ``transport`` is the Postgres-queue transport.
-
-    Single source for "what counts as PG transport" — centralises the
-    ``== WorkflowTransport.PG_QUEUE.value`` comparison scattered across the
-    worker fan-out / barrier code, and the seam to extend if a second
-    PG-family transport is ever added.
-    """
-    return transport == WorkflowTransport.PG_QUEUE.value
+# REMOVAL CHECKLIST for the release after UN-4078, once no pre-UN-4078 worker can
+# still be running (`grep -rn LEGACY_TRANSPORT_ ` finds every item but the last):
+#   1. the four writes — backend ``WorkflowHelper`` dispatch payload, backend
+#      ``create_workflow_execution`` response, ``workers/scheduler/tasks.py``
+#      dispatch kwargs, ``PgBarrier`` callback descriptor
+#   2. ``CallbackDescriptor.transport`` — workers/queue_backend/barrier.py
+#   3. the ``LEGACY_TRANSPORT_KEY`` entry in ``EXECUTION_EXCLUDED_PARAMS`` —
+#      backend/workflow_manager/workflow_v2/workflow_helper.py
+#   4. these two constants
+#   5. the gating tests — workers/tests/test_legacy_transport_shim.py,
+#      workers/tests/test_pg_barrier.py, the shim cases in
+#      workers/tests/test_dispatch_sites_characterisation.py, and
+#      backend/workflow_manager/workflow_v2/tests/test_legacy_transport_shim.py
+LEGACY_TRANSPORT_KEY = "transport"
+LEGACY_TRANSPORT_VALUE = "pg_queue"
 
 
 class WorkloadType(StrEnum):
@@ -435,7 +371,18 @@ class PgTaskStatus(str, Enum):
     """
 
     COMPLETED = "completed"  # task returned; ``result`` holds ExecutionResult dict
-    FAILED = "failed"  # task raised; ``error`` holds the message
+    # ``failed`` carries TWO distinct outcomes, and recovery logic must tell them
+    # apart before retrying anything:
+    #   1. the task raised — ``error`` holds the task's own message;
+    #   2. the task COMPLETED but its result could not be stored — ``error`` holds
+    #      ``queue_backend.pg_queue.result_backend.PAYLOAD_UNSTORABLE_ERROR``
+    #      (a module-level constant, UN-4126).
+    # Case 2 already ran to completion, so retrying its reply key re-executes a
+    # finished task: a second full LLM spend, the exact waste the consumer's ack
+    # discipline exists to avoid. There is deliberately no third status value —
+    # adding one would break every reader matching on these two — so the
+    # discriminator is the error text, and writers must use that shared constant.
+    FAILED = "failed"
 
 
 class FileListingResult:

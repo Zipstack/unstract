@@ -700,6 +700,9 @@ function ConfigureConnectorModal({
                     key: item.key,
                     label: item.label,
                     disabled: item.disabled,
+                    // One Save writes both panes, so leaving one must not
+                    // discard the edits it holds.
+                    keepMounted: true,
                     children: (
                       <div className={roClass}>
                         {item.key === "1" && (

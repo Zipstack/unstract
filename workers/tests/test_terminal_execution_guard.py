@@ -38,38 +38,36 @@ ACTIVE = [ExecutionStatus.PENDING.value, ExecutionStatus.EXECUTING.value]
 
 
 @pytest.mark.parametrize("status", TERMINAL)
-def test_guard_raises_for_terminal_on_pg(status):
+def test_guard_raises_for_terminal(status):
     with pytest.raises(_TerminalExecutionSkip) as exc:
-        _raise_if_execution_terminal({"status": status}, "exec-1", is_pg=True)
+        _raise_if_execution_terminal({"status": status}, "exec-1")
     assert exc.value.execution_id == "exec-1"
     assert exc.value.status == status
 
 
 @pytest.mark.parametrize("status", ACTIVE)
-def test_guard_passes_for_active_on_pg(status):
+def test_guard_passes_for_active(status):
     # Must NOT raise for PENDING/EXECUTING.
-    _raise_if_execution_terminal({"status": status}, "exec-1", is_pg=True)
+    _raise_if_execution_terminal({"status": status}, "exec-1")
 
 
-@pytest.mark.parametrize("status", TERMINAL)
-def test_guard_is_noop_on_celery_path(status):
-    # is_pg=False (Celery) → NEVER raises, even for terminal statuses. This is
-    # what keeps the Celery flow behaviorally unchanged.
-    _raise_if_execution_terminal({"status": status}, "exec-1", is_pg=False)
+# ``test_guard_is_noop_on_celery_path`` is gone with the transport: the guard
+# used to be is_pg-gated so the Celery flow never raised. It is unconditional
+# now — the parametrised raise/pass tests above are the whole behaviour.
 
 
-def test_missing_status_on_pg_warns_and_proceeds():
+def test_missing_status_warns_and_proceeds():
     # A missing status is fail-open (no raise) but surfaced as a warning, since
     # it signals a degraded execution-fetch response rather than an active run.
     with mock.patch("file_processing.tasks.logger") as log:
-        _raise_if_execution_terminal({}, "exec-1", is_pg=True)
+        _raise_if_execution_terminal({}, "exec-1")
     log.warning.assert_called_once()
 
 
 def test_guard_fires_at_real_call_site_before_status_write():
-    """Exercises the real wiring the mocked-setup tests skip: the is_pg forward
-    chain and the guard's placement in _setup_execution_context — after the
-    execution fetch, before the EXECUTING status write."""
+    """Exercises the real wiring the mocked-setup tests skip: the guard's
+    placement in _setup_execution_context — after the execution fetch, before
+    the EXECUTING status write."""
     api_client = mock.Mock()
     api_client.get_workflow_execution.return_value = types.SimpleNamespace(
         success=True, data={"execution": {"status": ExecutionStatus.ERROR.value}}
@@ -85,7 +83,7 @@ def test_guard_fires_at_real_call_site_before_status_write():
         mock.patch("file_processing.tasks.create_organization_context"),
         pytest.raises(_TerminalExecutionSkip),
     ):
-        _setup_execution_context(batch_data, "task-1", is_pg=True)
+        _setup_execution_context(batch_data, "task-1")
 
     # The guard fired BEFORE the EXECUTING status write.
     api_client.update_workflow_execution_status.assert_not_called()
@@ -127,7 +125,7 @@ def test_run_batch_stages_skips_terminal_without_processing():
             "file_processing.tasks._process_individual_files"
         ) as process_files,
     ):
-        result = _run_batch_stages({"any": "payload"}, "task-1", is_pg=True)
+        result = _run_batch_stages({"any": "payload"}, "task-1")
 
     pre_create.assert_not_called()
     process_files.assert_not_called()
@@ -197,7 +195,7 @@ def test_run_batch_stages_proceeds_when_not_terminal():
             return_value={"total_files": 1, "successful_files": 1, "failed_files": 0},
         ),
     ):
-        result = _run_batch_stages({"any": "payload"}, "task-1", is_pg=False)
+        result = _run_batch_stages({"any": "payload"}, "task-1")
 
     pre_create.assert_called_once()
     process_files.assert_called_once()
