@@ -327,3 +327,26 @@ def test_streaming_flag_never_reaches_litellm(no_cost: None) -> None:
     with patch.object(llm_module.litellm, "completion", spy):
         llm.complete("hi")
     assert "enable_streaming" not in spy.calls[0]
+
+
+def test_mocked_completion_keeps_non_streaming_path(
+    no_cost: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The e2e rig counts LLM calls via litellm's fixed mock usage (10/20/30).
+
+    That usage is only reported on the non-streaming mock path, and a mock
+    never touches the network, so an injected mock response must bypass
+    streaming even when the adapter streams.
+    """
+    llm_module = _load_llm_module()
+    monkeypatch.setenv(llm_module._MOCK_RESPONSE_ENV, "canned answer")
+    llm = _make_llm(ANTHROPIC_ADAPTER_ID, "claude-sonnet-4-6")
+    spy = _Spy()
+
+    with patch.object(llm_module.litellm, "completion", spy):
+        result = llm.complete("hi")
+
+    assert spy.calls[0]["mock_response"] == "canned answer"
+    assert not spy.calls[0].get("stream")
+    assert result["response"].raw["usage"]["prompt_tokens"] == 10
+    assert result["response"].raw["usage"]["completion_tokens"] == 20

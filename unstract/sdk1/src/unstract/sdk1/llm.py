@@ -628,8 +628,13 @@ class LLM:
             max_retries = pop_litellm_retry_kwargs(
                 completion_kwargs, self._get_adapter_info()
             )
+            # A mocked completion (UNSTRACT_LLM_MOCK_RESPONSE, used by the e2e
+            # rig) never touches the network, so streaming buys nothing there,
+            # and litellm's mock reports fixed usage (10/20/30) only on the
+            # non-streaming path. The rig counts calls with that contract.
+            mocked = "mock_response" in completion_kwargs
             response: dict[str, object]
-            if self._streams_under_the_hood():
+            if self._streams_under_the_hood() and not mocked:
                 response = self._complete_via_stream(
                     messages, completion_kwargs, max_retries
                 )
