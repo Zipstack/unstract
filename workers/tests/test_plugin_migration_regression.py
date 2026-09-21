@@ -49,12 +49,8 @@ def eager_app():
 
 def _register_legacy():
     # Guarded because the import below may be the FIRST in the process, in which
-    # case ``@ExecutorRegistry.register`` fires on it and registering again would
-    # raise a duplicate-name ValueError. It used to be unguarded safely only by
-    # accident: ``executor.executors`` registered at package-import time, so the
-    # class was always already in ``sys.modules`` before any fixture cleared the
-    # registry. UN-4136 made that import lazy, which moved the first import
-    # inside the test.
+    # case ``@ExecutorRegistry.register`` fires on it and registering again
+    # raises a duplicate-name ValueError.
     from executor.executors.legacy_executor import LegacyExecutor
 
     if "legacy" not in ExecutorRegistry.list_executors():
@@ -167,17 +163,17 @@ class TestOperationEnumCoverage:
     def test_every_operation_is_mapped(self):
         """Every Operation enum value has an assigned executor."""
         for op in Operation:
-            assert (
-                op.value in OPERATION_TO_EXECUTOR
-            ), f"Operation {op.value} not mapped to any executor"
+            assert op.value in OPERATION_TO_EXECUTOR, (
+                f"Operation {op.value} not mapped to any executor"
+            )
 
     def test_no_extra_mappings(self):
         """No stale mappings for removed operations."""
         valid_ops = {op.value for op in Operation}
         for mapped_op in OPERATION_TO_EXECUTOR:
-            assert (
-                mapped_op in valid_ops
-            ), f"Mapped operation '{mapped_op}' not in Operation enum"
+            assert mapped_op in valid_ops, (
+                f"Mapped operation '{mapped_op}' not in Operation enum"
+            )
 
     def test_operation_count(self):
         """Verify total operation count matches expectations."""
@@ -189,9 +185,9 @@ class TestOperationEnumCoverage:
 
         for op_value, executor_name in OPERATION_TO_EXECUTOR.items():
             if executor_name == "legacy":
-                assert (
-                    op_value in LegacyExecutor._OPERATION_MAP
-                ), f"Legacy operation {op_value} missing from _OPERATION_MAP"
+                assert op_value in LegacyExecutor._OPERATION_MAP, (
+                    f"Legacy operation {op_value} missing from _OPERATION_MAP"
+                )
 
     def test_cloud_operations_not_in_legacy_map(self):
         """Cloud operations are NOT in LegacyExecutor._OPERATION_MAP."""
@@ -199,9 +195,9 @@ class TestOperationEnumCoverage:
 
         for op_value, executor_name in OPERATION_TO_EXECUTOR.items():
             if executor_name != "legacy":
-                assert (
-                    op_value not in LegacyExecutor._OPERATION_MAP
-                ), f"Cloud operation {op_value} should NOT be in legacy map"
+                assert op_value not in LegacyExecutor._OPERATION_MAP, (
+                    f"Cloud operation {op_value} should NOT be in legacy map"
+                )
 
 
 # ---------------------------------------------------------------------------
