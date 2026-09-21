@@ -85,11 +85,9 @@ def register_all() -> list[str]:
             # re-raise to make one (see the module docstring), so today only
             # tests reach it.
             #
-            # ``BaseException`` because ``discover_executors`` already catches
-            # ``Exception`` per entry point. An ordinary exception from a plugin
-            # therefore never reaches here — it is logged and skipped there, and
-            # that per-entry-point handler is what keeps one broken wheel from
-            # aborting discovery.
+            # ``BaseException`` rather than ``Exception``: see
+            # ``test_failed_discovery_un_arms_the_latch``, which is parametrised
+            # over both classes that reach here and pins them executably.
             #
             # A re-run is not free. The plugin whose module was mid-import when
             # the exception escaped is evicted from ``sys.modules`` but stays in
