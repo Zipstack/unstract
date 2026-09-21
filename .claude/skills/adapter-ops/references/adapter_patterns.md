@@ -253,7 +253,8 @@ def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
 
     # Exclude control fields before validation
     validation_metadata = {
-        k: v for k, v in adapter_metadata.items()
+        k: v
+        for k, v in adapter_metadata.items()
         if k not in ("enable_reasoning", "reasoning_effort")
     }
 
@@ -327,8 +328,7 @@ def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
 
     # Check if thinking was previously enabled
     has_thinking_config = (
-        "thinking" in adapter_metadata
-        and adapter_metadata.get("thinking") is not None
+        "thinking" in adapter_metadata and adapter_metadata.get("thinking") is not None
     )
     if not enable_thinking and has_thinking_config:
         enable_thinking = True
@@ -348,7 +348,8 @@ def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
 
     # Exclude control fields from validation
     validation_metadata = {
-        k: v for k, v in result_metadata.items()
+        k: v
+        for k, v in result_metadata.items()
         if k not in ("enable_thinking", "budget_tokens", "thinking")
     }
 
@@ -570,10 +571,12 @@ adapter_class = kit.get_adapter_class_by_adapter_id(
 )
 
 # Validate metadata
-validated = adapter_class.validate({
-    "model": "my-model",
-    "api_key": "sk-xxx",
-})
+validated = adapter_class.validate(
+    {
+        "model": "my-model",
+        "api_key": "sk-xxx",
+    }
+)
 print(validated)
 
 # Get JSON schema
@@ -645,9 +648,11 @@ unconditionally prepends `custom_openai/`, and **no** LiteLLM cost-map key uses 
 class MiniMaxLLMParameters(OpenAICompatibleLLMParameters):
     api_base: str = "https://api.minimax.io/v1"
 
+
 # CORRECT - emits "minimax/MiniMax-M3", priced at $0.30 / $1.20 per 1M tokens
-class MiniMaxLLMParameters(BaseChatCompletionParameters):
-    ...  # follow OpenRouterLLMParameters
+class MiniMaxLLMParameters(
+    BaseChatCompletionParameters
+): ...  # follow OpenRouterLLMParameters
 ```
 
 Note that `get_provider()` returns `"minimax"` in *both* cases and matches `litellm_provider`

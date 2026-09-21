@@ -62,8 +62,7 @@ def print_release_notes(current_version, target_version, release_notes):
                 f"{colour('WARNING', Colour.YELLOW)}: " if release_note["warning"] else ""
             )
             message += (
-                f"[from {colour(note_version, Colour.BLUE)}]\n"
-                f"{release_note['message']}"
+                f"[from {colour(note_version, Colour.BLUE)}]\n{release_note['message']}"
             )
             messages_to_print.append(message)
 

@@ -12,9 +12,8 @@ from rest_framework.exceptions import APIException, ValidationError
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from utils.user_context import UserContext
-
 from unstract.core.data_models import UsageResponseData
+from utils.user_context import UserContext
 
 from .helper import UsageHelper
 from .hooks import run_post_write_hooks

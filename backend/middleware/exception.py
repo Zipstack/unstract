@@ -8,7 +8,6 @@ from django.http import HttpRequest, HttpResponse
 from drf_standardized_errors.handler import exception_handler
 from rest_framework.request import Request
 from rest_framework.response import Response
-
 from unstract.sdk1.exceptions import SdkError
 
 logger = logging.getLogger(__name__)
