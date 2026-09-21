@@ -80,6 +80,11 @@ def healthcheck(self):
 
 
 # Import tasks so shared_task definitions bind to this app.
-# Import executors to trigger @ExecutorRegistry.register at import time.
-import executor.executors  # noqa: E402, F401
 import executor.tasks  # noqa: E402, F401
+from executor.executors import register_all  # noqa: E402
+
+# Populate ExecutorRegistry. Explicit because importing the package no longer
+# registers as a side effect — that made every consumer of any submodule pay
+# for the whole adapter stack. Idempotent, so executor/tasks.py calling it too
+# is harmless.
+register_all()

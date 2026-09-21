@@ -289,14 +289,57 @@ class TestProtocols:
         assert isinstance(FakeChallenge(), ChallengeProtocol)
 
 
-# ── 7. executors/__init__.py triggers discovery ─────────────────────
+# ── 7. executors.register_all() triggers discovery ──────────────────
 
 
 class TestExecutorsInit:
-    def test_cloud_executors_list_exists(self):
-        """executors.__init__ populates _cloud_executors (empty in OSS)."""
+    def test_register_all_returns_cloud_executor_names(self):
+        """register_all() discovers cloud executors (none in OSS) and registers
+        the bundled ones.
+
+        Discovery is explicit rather than an import side effect of
+        ``executor.executors``, so this calls it directly. The latch makes a
+        repeat call a no-op, which is why it is reset first.
+        """
         import executor.executors as mod
 
-        assert hasattr(mod, "_cloud_executors")
-        # In pure OSS, no cloud executors are installed
-        assert isinstance(mod._cloud_executors, list)
+        from unstract.sdk1.execution.registry import ExecutorRegistry
+
+        mod._reset_for_tests()
+        discovered = mod.register_all()
+
+        # In pure OSS, no cloud executors are installed.
+        assert isinstance(discovered, list)
+        assert "legacy" in ExecutorRegistry.list_executors()
+
+    def test_register_all_is_idempotent(self):
+        """A second call is a no-op — both entrypoints call it."""
+        import executor.executors as mod
+
+        mod._reset_for_tests()
+        mod.register_all()
+        assert mod.register_all() == []
+
+    def test_register_all_tolerates_legacy_executor_already_imported(self):
+        """A prior import of ``legacy_executor`` must not make register_all raise.
+
+        ``ExecutorRegistry.register`` raises ValueError on a name that is
+        already present, and every cloud plugin imports ``LegacyExecutor``
+        (e.g. ``lookup_enrichment/src/base.py``) — so a plugin pulled in ahead
+        of ``register_all()`` fires that decorator first. Registration is
+        driven by module import rather than an explicit ``register(...)`` call,
+        so ``sys.modules`` caching keeps the decorator from running twice; this
+        pins that, because the failure mode is the executor worker dying at
+        startup and every extraction then failing with "No executor
+        registered".
+        """
+        import executor.executors as mod
+        from executor.executors.legacy_executor import LegacyExecutor  # noqa: F401
+
+        from unstract.sdk1.execution.registry import ExecutorRegistry
+
+        mod._reset_for_tests()
+        mod.register_all()  # must not raise
+
+        names = ExecutorRegistry.list_executors()
+        assert names.count("legacy") == 1, f"duplicate registration: {names}"
