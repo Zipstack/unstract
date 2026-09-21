@@ -66,6 +66,30 @@ class AllowedFileTypes(Enum):
         return mime_type in cls._value2member_map_
 
 
+# libmagic yields these when it recognises a wrapper but not the content, so they
+# are not a verdict on their own.
+INCONCLUSIVE_MIME_TYPES = frozenset({"application/octet-stream", "application/zip"})
+
+# libmagic's PDF rule only matches at offset 0, but extractors tolerate leading
+# bytes before the header, so a stream-wrapped PDF sniffs as octet-stream. Eight
+# bytes of padding is enough to trigger it. LLMWhisperer scans this same window
+# for the same reason (Util.is_valid_file_type_from_path).
+PDF_HEADER_SCAN_BYTES = 1024
+
+
+def resolve_inconclusive_mime_type(mime_type: str, head: bytes) -> str:
+    """Give a wrapper-only classification a second chance from the leading bytes.
+
+    LLMWhisperer resolves these with Magika and then a `%PDF-` scan; without
+    Magika this covers the PDF case, which is the one that reaches us.
+    """
+    if mime_type not in INCONCLUSIVE_MIME_TYPES:
+        return mime_type
+    if b"%PDF-" in head[:PDF_HEADER_SCAN_BYTES]:
+        return AllowedFileTypes.PDF.value
+    return mime_type
+
+
 class FileProcessingOrder(str, Enum):
     """File processing order for SourceKey.FILE_PROCESSING_ORDER.
 

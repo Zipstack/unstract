@@ -29,7 +29,10 @@ from workflow_manager.endpoint_v2.dto import (
     FileHash,
     SourceConfig,
 )
-from workflow_manager.endpoint_v2.enums import AllowedFileTypes
+from workflow_manager.endpoint_v2.enums import (
+    AllowedFileTypes,
+    resolve_inconclusive_mime_type,
+)
 from workflow_manager.endpoint_v2.exceptions import (
     InvalidInputDirectory,
     InvalidSourceConnectionType,
@@ -1013,7 +1016,9 @@ class SourceConnector(BaseConnector):
                 file_content_hash.update(chunk)
                 if first_iteration:
                     # Detect MIME type using first chunk
-                    mime_type = magic.from_buffer(chunk, mime=True)
+                    mime_type = resolve_inconclusive_mime_type(
+                        magic.from_buffer(chunk, mime=True), chunk
+                    )
                     logger.info(
                         f"Detected MIME type: {mime_type} for file {input_file_path}"
                     )
@@ -1218,9 +1223,9 @@ class SourceConnector(BaseConnector):
             return None
 
         mime_type = magic.from_buffer(sample, mime=True)
-        if mime_type not in cls.CONTAINER_MIME_TYPES:
-            return mime_type
-        return cls._detect_container_mime_type(file, fallback=mime_type)
+        if mime_type in cls.CONTAINER_MIME_TYPES:
+            mime_type = cls._detect_container_mime_type(file, fallback=mime_type)
+        return resolve_inconclusive_mime_type(mime_type, sample)
 
     @classmethod
     def _detect_container_mime_type(cls, file: UploadedFile, fallback: str) -> str:

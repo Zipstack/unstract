@@ -236,6 +236,14 @@ def _unified_api_execution(
                     successful_files=0,
                     failed_files=len(hash_values_of_files),
                 )
+                # The sibling empty-files branch notifies too; a status write
+                # alone leaves the pipeline's last run stale and tells no
+                # subscriber that the run failed.
+                if pipeline_id:
+                    api_client.update_pipeline_status(
+                        pipeline_id=pipeline_id,
+                        status=PipelineStatus.FAILURE.value,
+                    )
                 return {
                     "execution_id": execution_id,
                     "status": "ERROR",
@@ -251,6 +259,11 @@ def _unified_api_execution(
                 status=ExecutionStatus.COMPLETED.value,
                 total_files=0,
             )
+            if pipeline_id:
+                api_client.update_pipeline_status(
+                    pipeline_id=pipeline_id,
+                    status=PipelineStatus.SUCCESS.value,
+                )
             return {
                 "execution_id": execution_id,
                 "status": "COMPLETED",

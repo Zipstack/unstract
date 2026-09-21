@@ -267,6 +267,24 @@ def test_types_llmwhisperer_supports_are_accepted(collaborators) -> None:
     collaborators["ResultCacheUtils"].update_api_results.assert_not_called()
 
 
+def test_pdf_behind_leading_bytes_is_accepted(collaborators) -> None:
+    """A PDF that does not start at offset 0 must still be recognised.
+
+    libmagic's PDF rule only matches at offset 0, so eight bytes of padding are
+    enough to make a real PDF sniff as application/octet-stream. Extractors
+    tolerate the prefix, and LLMWhisperer scans the same window for exactly this
+    reason, so rejecting it here would fail a file that works everywhere else -
+    including in ETL runs, which share this allow-list.
+    """
+    wrapped = b"\x00" * 8 + PDF_BYTES
+
+    result = _stage([_upload("wrapped.pdf", wrapped, "application/pdf")])
+
+    assert set(result) == {"wrapped.pdf"}
+    assert result["wrapped.pdf"].mime_type == "application/pdf"
+    collaborators["ResultCacheUtils"].update_api_results.assert_not_called()
+
+
 def test_unidentifiable_binary_is_rejected(collaborators) -> None:
     """octet-stream is no longer a free pass.
 
