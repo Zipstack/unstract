@@ -430,11 +430,15 @@ def test_systemic_detection_failure_is_not_reported_as_bad_files(
     every request. Swallowing it per-file would answer 200 COMPLETED with every
     file marked invalid, hiding a platform outage behind a clean success.
     """
+    # Built outside the raises block so only _stage can satisfy it: otherwise
+    # the test would still pass if the upload itself were what raised.
+    uploads = [_upload("doc.pdf", PDF_BYTES, "application/pdf")]
+
     with mock.patch.object(
         src_mod.magic, "from_buffer", side_effect=RuntimeError("magic db is broken")
     ):
-        with pytest.raises(RuntimeError):
-            _stage([_upload("doc.pdf", PDF_BYTES, "application/pdf")])
+        with pytest.raises(RuntimeError, match="magic db is broken"):
+            _stage(uploads)
 
 
 def test_empty_upload_is_staged_rather_than_called_unsupported(collaborators) -> None:
