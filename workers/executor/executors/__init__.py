@@ -39,7 +39,10 @@ def register_all() -> list[str]:
     back; ``tests/test_legacy_executor_scaffold.py`` restores what it cleared.
     A module that re-registers must not call ``ExecutorRegistry.register`` while
     the name is already present — either clear immediately before, or guard on
-    ``"legacy" not in ExecutorRegistry.list_executors()``.
+    ``"legacy" not in ExecutorRegistry.list_executors()``. That rule is
+    currently hand-copied across ~23 sites in ``workers/tests/`` in three
+    spellings, which is why it keeps being forgotten; folding it into a shared
+    test helper is tracked on UN-4136 and is deliberately not done here.
 
     Idempotent, and safe to re-enter: a cloud plugin whose own import graph
     reaches this function during ``ep.load()`` will not restart discovery.

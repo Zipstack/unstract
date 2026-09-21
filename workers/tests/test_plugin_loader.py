@@ -303,7 +303,9 @@ class TestExecutorsInit:
     the ``ExecutorRegistry`` singleton, and they stamp on the module's
     ``_cloud_executors`` latch — so the fixture snapshots and restores both.
     The ``sys.modules`` entry for ``legacy_executor`` is not restorable and is
-    deliberately left; the guards in the sibling modules assume that.
+    deliberately left. The sibling modules' guards are correct either way — they
+    are inert when the entry is present and load-bearing when it is not — so
+    leaving it is harmless.
 
     No case here asserts registry *contents* off an inherited state. Registration
     is asserted in a subprocess, and the one case that needs ``legacy`` already
