@@ -1,8 +1,7 @@
 from rest_framework import serializers
+from unstract.core.network.ssrf import is_safe_webhook_url
 from utils.input_sanitizer import validate_name_field
 from utils.serializer import ModelSerializer
-
-from unstract.core.network.ssrf import is_safe_webhook_url
 
 from .enums import AuthorizationType, NotificationType, PlatformType
 from .models import Notification

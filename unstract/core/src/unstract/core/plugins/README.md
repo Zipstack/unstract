@@ -40,7 +40,6 @@ metadata = {
     # Required
     "name": "my_plugin",
     "version": "1.0.0",
-
     # Optional
     "description": "Description of what this plugin does",
     "is_active": True,
