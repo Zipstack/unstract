@@ -1,44 +1,72 @@
 """Executor implementations package.
 
-Registration is **explicit**: call :func:`register_all` to import the bundled
-executors and discover cloud ones via entry points. It used to run as a side
-effect of importing this package, which meant that importing *any* submodule —
-including ``executor.executors.constants``, which itself imports nothing but
-``enum`` — dragged in ``LegacyExecutor`` and the entire adapter stack behind it.
+Registration is **explicit**: call :func:`register_all`. It used to run as a
+side effect of importing this package, which meant that importing *any*
+submodule — including ``executor.executors.constants``, which itself imports
+nothing but ``enum`` — dragged in ``LegacyExecutor`` and the entire adapter
+stack behind it. That cost ~9s, and the file_processing worker paid it once per
+forked child just to read a few string constants (UN-4136).
 
-That cost ~9s, and the file_processing worker paid it once per forked child just
-to read a few string constants (UN-4136). Keeping registration in a function
-lets a consumer import the cheap submodules without booting the executor.
-
-The two entrypoints that need a populated registry — ``executor/worker.py``
-(Celery) and ``executor/tasks.py`` (the PG executor consumer) — call this
-directly. It is idempotent, so both calling it is harmless.
+``executor/tasks.py`` is the production registration site: ``workers/worker.py``
+exec-loads that file by path for both the Celery and PG executor roles.
+``executor/worker.py`` calls it too, for the separate Celery app it builds,
+which today only the tests use. The call is idempotent and re-entrant, so the
+order they run in does not matter.
 """
 
-_registered = False
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from executor.executors.legacy_executor import LegacyExecutor  # noqa: TCH004
+
+#: Cloud entry point names, or None until discovery has run. Doubles as the
+#: re-entrancy latch — see the comment in :func:`register_all`.
+_cloud_executors: list[str] | None = None
 
 
 def register_all() -> list[str]:
-    """Populate ``ExecutorRegistry`` with the bundled and cloud executors.
+    """Import the executor modules once per process, registering each of them.
 
-    Importing ``LegacyExecutor`` runs its ``@ExecutorRegistry.register``
-    decorator; ``discover_executors()`` does the same for each cloud executor
-    installed under the ``unstract.executor.executors`` entry point group.
+    ``LegacyExecutor`` and every cloud executor carry
+    ``@ExecutorRegistry.register``, which fires when their module is first
+    imported. That is the whole mechanism, and it bounds the guarantee: this
+    populates ``ExecutorRegistry`` **in a fresh process**, and cannot repopulate
+    it if something empties it afterwards, because the second import is a
+    ``sys.modules`` hit and the decorator does not run again. Production never
+    clears the registry; tests that do re-register explicitly (see
+    ``tests/test_legacy_executor_scaffold.py``).
+
+    Idempotent, and safe to re-enter: a cloud plugin whose own import graph
+    reaches this function during ``ep.load()`` will not restart discovery.
 
     Returns:
-        The cloud executor entry point names discovered on this call, and on a
-        repeat call the empty list (the registry is already populated).
+        The cloud executor entry point names — the same list on every call, not
+        just the first. An empty list means no cloud plugins are installed,
+        which is the OSS case.
     """
-    global _registered
-    if _registered:
-        return []
-    from executor.executors.legacy_executor import LegacyExecutor  # noqa: F401
-    from executor.executors.plugins.loader import ExecutorPluginLoader
+    global _cloud_executors
 
-    # If no cloud plugins are installed this returns an empty list.
-    cloud_executors = ExecutorPluginLoader.discover_executors()
-    _registered = True
-    return cloud_executors
+    from executor.executors.legacy_executor import LegacyExecutor  # noqa: F401
+
+    if _cloud_executors is None:
+        # Latch BEFORE discovering. ``ep.load()`` executes third-party code, and
+        # a plugin that reaches back into this function would otherwise find the
+        # latch still unset and restart the entry point loop, nesting once per
+        # level. The import-side-effect version this replaced got that safety
+        # free from ``sys.modules``.
+        _cloud_executors = []
+        from executor.executors.plugins.loader import ExecutorPluginLoader
+
+        try:
+            _cloud_executors = ExecutorPluginLoader.discover_executors()
+        except BaseException:
+            # Leave discovery un-run rather than latched-but-empty, so a caller
+            # that survives the failure retries instead of silently getting a
+            # permanently empty list.
+            _cloud_executors = None
+            raise
+
+    return _cloud_executors
 
 
 def __getattr__(name: str) -> object:
@@ -55,10 +83,15 @@ def __getattr__(name: str) -> object:
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
-def _reset_for_tests() -> None:
-    """Clear the idempotency latch so a test can re-run discovery."""
-    global _registered
-    _registered = False
+def _reset_discovery_for_tests() -> None:
+    """Re-arm entry point discovery so a test can observe it running again.
+
+    Only discovery: the bundled executor is re-registered by
+    :func:`register_all` itself whenever the registry has lost it, so this does
+    not need to — and cannot — evict it from ``sys.modules``.
+    """
+    global _cloud_executors
+    _cloud_executors = None
 
 
 __all__ = ["LegacyExecutor", "register_all"]

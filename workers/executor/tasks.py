@@ -5,6 +5,8 @@ ExecutionContext dict, runs the appropriate executor via
 ExecutionOrchestrator, and returns an ExecutionResult dict.
 """
 
+import logging
+
 from executor.executors import register_all
 from queue_backend import worker_task
 from shared.clients import UsageAPIClient
@@ -15,6 +17,18 @@ from shared.infrastructure.logging import WorkerLogger
 from unstract.sdk1.execution.context import ExecutionContext
 from unstract.sdk1.execution.orchestrator import ExecutionOrchestrator
 from unstract.sdk1.execution.result import ExecutionResult
+
+# Suppress Celery trace logging of task return values.
+# The trace logger prints the full result dict on task success, which can
+# contain sensitive customer data (extracted text, summaries, etc.).
+#
+# This lives here, not in ``executor/worker.py``, because that module is not on
+# any deployed path: ``workers/worker.py`` exec-loads THIS file by path for both
+# the Celery and PG executor roles, and no launcher runs ``celery -A executor``.
+# It used to be reached only because ``executor/__init__.py`` eagerly imported
+# ``.worker``; making that lazy (UN-4136) would otherwise have silently
+# re-enabled result logging on every extraction.
+logging.getLogger("celery.app.trace").setLevel(logging.WARNING)
 
 logger = WorkerLogger.get_logger(__name__)
 

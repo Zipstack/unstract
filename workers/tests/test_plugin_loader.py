@@ -9,14 +9,18 @@ Verifies:
 6. text_processor.add_hex_line_numbers()
 7. Queue-per-executor naming convention (QUEUE_PREFIX)
 8. Protocol classes importable and runtime-checkable
-9. executors/__init__.py triggers discover_executors()
+9. executors.register_all() triggers discover_executors()
 """
 
+import os
+import subprocess
+import sys
 from unittest.mock import MagicMock, patch
 
 import pytest
 from executor.executors.plugins.loader import ExecutorPluginLoader
 from executor.executors.plugins.text_processor import add_hex_line_numbers
+
 from unstract.workflow_execution.executor_rpc import QUEUE_PREFIX
 
 
@@ -293,53 +297,132 @@ class TestProtocols:
 
 
 class TestExecutorsInit:
-    def test_register_all_returns_cloud_executor_names(self):
-        """register_all() discovers cloud executors (none in OSS) and registers
-        the bundled ones.
+    """``register_all()``'s guarantees, each pinned against its own failure.
 
-        Discovery is explicit rather than an import side effect of
-        ``executor.executors``, so this calls it directly. The latch makes a
-        repeat call a no-op, which is why it is reset first.
-        """
+    ``ExecutorRegistry`` is a process-global singleton, so these snapshot and
+    restore it rather than clearing it — the hazard `test_legacy_executor_scaffold`
+    documents: a bare ``clear()`` on teardown wipes registrations every later
+    test in the suite depends on. Without the snapshot these cases also *read*
+    global state other modules wrote (`test_log_streaming` assigns
+    ``_registry["legacy"]`` directly and never cleans up), which made an earlier
+    version of them pass on suite ordering rather than on the code under test —
+    and CI shards with xdist's default per-test scheduler, so that ordering is
+    not even stable.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _isolate_global_state(self):
         import executor.executors as mod
 
         from unstract.sdk1.execution.registry import ExecutorRegistry
 
-        mod._reset_for_tests()
-        discovered = mod.register_all()
+        saved = dict(ExecutorRegistry._registry)
+        saved_cloud = mod._cloud_executors
+        yield
+        ExecutorRegistry._registry.clear()
+        ExecutorRegistry._registry.update(saved)
+        mod._cloud_executors = saved_cloud
 
-        # In pure OSS, no cloud executors are installed.
-        assert isinstance(discovered, list)
-        assert "legacy" in ExecutorRegistry.list_executors()
+    def test_register_all_registers_the_bundled_executor(self):
+        """In a fresh process, register_all() populates the registry.
 
-    def test_register_all_is_idempotent(self):
-        """A second call is a no-op — both entrypoints call it."""
-        import executor.executors as mod
+        A fresh interpreter is the only honest way to assert this: registration
+        rides on importing ``legacy_executor``, so in-process the decorator has
+        already fired and the assertion would pass on whatever an earlier module
+        left behind rather than on the call under test. Subprocess isolation is
+        the same technique ``test_executor_registration.py`` uses, and for the
+        same reason.
+        """
+        code = (
+            "from executor.executors import register_all\n"
+            "from unstract.sdk1.execution.registry import ExecutorRegistry\n"
+            "assert not ExecutorRegistry.list_executors(), 'registry pre-populated'\n"
+            "register_all()\n"
+            "names = ExecutorRegistry.list_executors()\n"
+            "assert names.count('legacy') == 1, f'expected one legacy: {names}'\n"
+            "print('OK')\n"
+        )
+        result = subprocess.run(
+            [sys.executable, "-c", code],
+            capture_output=True,
+            text=True,
+            env={**os.environ, "WORKER_TYPE": "executor"},
+            cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        )
+        assert result.returncode == 0, (
+            f"register_all() did not register in a fresh process.\n"
+            f"stdout: {result.stdout}\nstderr: {result.stderr}"
+        )
+        assert "OK" in result.stdout
 
-        mod._reset_for_tests()
-        mod.register_all()
-        assert mod.register_all() == []
+    def test_register_all_discovers_entry_points_only_once(self):
+        """Idempotency, asserted on the work done rather than the value returned.
 
-    def test_register_all_tolerates_legacy_executor_already_imported(self):
-        """A prior import of ``legacy_executor`` must not make register_all raise.
-
-        ``ExecutorRegistry.register`` raises ValueError on a name that is
-        already present, and every cloud plugin imports ``LegacyExecutor``
-        (e.g. ``lookup_enrichment/src/base.py``) — so a plugin pulled in ahead
-        of ``register_all()`` fires that decorator first. Registration is
-        driven by module import rather than an explicit ``register(...)`` call,
-        so ``sys.modules`` caching keeps the decorator from running twice; this
-        pins that, because the failure mode is the executor worker dying at
-        startup and every extraction then failing with "No executor
-        registered".
+        In OSS no cloud plugins are installed, so ``register_all()`` returns
+        ``[]`` on the first call as well as later ones — asserting on the return
+        value cannot tell a working latch from no latch at all.
         """
         import executor.executors as mod
-        from executor.executors.legacy_executor import LegacyExecutor  # noqa: F401
+        from executor.executors.plugins.loader import ExecutorPluginLoader
 
-        from unstract.sdk1.execution.registry import ExecutorRegistry
+        mod._reset_discovery_for_tests()
+        with patch.object(
+            ExecutorPluginLoader, "discover_executors", return_value=["fake_cloud"]
+        ) as spy:
+            first = mod.register_all()
+            second = mod.register_all()
 
-        mod._reset_for_tests()
-        mod.register_all()  # must not raise
+        assert spy.call_count == 1, f"discovery re-ran: {spy.call_count} calls"
+        assert first == ["fake_cloud"]
+        assert second == ["fake_cloud"], "the names must survive the latched call"
 
-        names = ExecutorRegistry.list_executors()
-        assert names.count("legacy") == 1, f"duplicate registration: {names}"
+    def test_register_all_is_reentrant(self):
+        """A plugin that calls back into ``register_all()`` must not restart discovery.
+
+        ``ep.load()`` executes third-party code. If the latch were set only
+        after discovery, a plugin whose import graph reaches this function would
+        re-enter with discovery un-latched and loop the entry points again, once
+        per level.
+        """
+        import executor.executors as mod
+        from executor.executors.plugins.loader import ExecutorPluginLoader
+
+        mod._reset_discovery_for_tests()
+        loads = []
+
+        def _reentrant_discovery():
+            loads.append(1)
+            if len(loads) < 5:
+                mod.register_all()  # what a re-entrant ep.load() would do
+            return ["reentrant"]
+
+        with patch.object(
+            ExecutorPluginLoader, "discover_executors", _reentrant_discovery
+        ):
+            mod.register_all()
+
+        assert len(loads) == 1, f"discovery re-entered {len(loads)} times"
+
+    def test_failed_discovery_does_not_latch(self):
+        """A discovery that raises must leave the next call free to retry.
+
+        Latching on failure would pin an empty list for the life of the process,
+        so a transient entry-point failure would silently mean "no cloud
+        executors" forever.
+        """
+        import executor.executors as mod
+        from executor.executors.plugins.loader import ExecutorPluginLoader
+
+        mod._reset_discovery_for_tests()
+        with patch.object(
+            ExecutorPluginLoader, "discover_executors", side_effect=RuntimeError("boom")
+        ):
+            with pytest.raises(RuntimeError):
+                mod.register_all()
+
+        assert mod._cloud_executors is None, "discovery latched despite failing"
+
+        with patch.object(
+            ExecutorPluginLoader, "discover_executors", return_value=["after_retry"]
+        ):
+            assert mod.register_all() == ["after_retry"]
