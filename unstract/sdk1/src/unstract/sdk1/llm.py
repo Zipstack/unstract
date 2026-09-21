@@ -25,6 +25,7 @@ from unstract.sdk1.utils.common import (
 from unstract.sdk1.utils.retry_utils import (
     acall_with_retry,
     call_with_retry,
+    collect_with_retry,
     is_retryable_litellm_error,
     iter_with_retry,
     pop_litellm_retry_kwargs,
@@ -302,6 +303,12 @@ class LLM:
                 or enable_prompt_caching
                 or is_prompt_caching_enabled()
             )
+            # Per-adapter streaming switch. Read from the raw metadata because
+            # the provider validators drop keys they do not model, so it never
+            # reaches litellm as a completion param.
+            self._enable_streaming = self._resolve_enable_streaming(
+                self._adapter_metadata
+            )
 
             # REF: https://docs.litellm.ai/docs/completion/input#translated-openai-params
             # supported = get_supported_openai_params(model=self.kwargs["model"],
@@ -496,6 +503,86 @@ class LLM:
             {"role": "user", "content": user_content},
         ]
 
+    # Streaming under the hood is on by default and a per-adapter choice
+    # (``enable_streaming`` in the adapter metadata, surfaced as "Enable
+    # Streaming" in every LLM adapter form). Adapters stored before the field
+    # existed carry no value and stream too; the switch exists to opt an
+    # endpoint out when it cannot stream.
+    #
+    # Why streaming: a non-streaming endpoint keeps the socket silent until the
+    # last token, so a reply that takes longer than the read timeout, or than
+    # an intermediary tolerates on an idle connection, never arrives (observed
+    # on Anthropic as ``litellm.Timeout`` after 900 s and 1800 s on generations
+    # the Anthropic console finishes in 16 minutes; Anthropic's own SDK refuses
+    # non-streaming requests that may exceed 10 minutes). With streaming,
+    # ``complete()`` collects the chunks and rebuilds the full response, so
+    # callers see the same shape as before.
+    _STREAM_BY_DEFAULT = True
+
+    @classmethod
+    def _resolve_enable_streaming(cls, adapter_metadata: Mapping[str, object]) -> bool:
+        """Adapter flag if stored, else the platform default (on)."""
+        flag = adapter_metadata.get("enable_streaming")
+        if flag is None:
+            return cls._STREAM_BY_DEFAULT
+        return bool(flag)
+
+    def _streams_under_the_hood(self) -> bool:
+        return self._enable_streaming
+
+    @staticmethod
+    def _chunk_has_content(chunk: object) -> bool:
+        """Whether a stream chunk carries generated text or reasoning.
+
+        Bookkeeping chunks (``message_start``, usage-only tails) do not count:
+        a failure before the first content chunk is still a failed request.
+        """
+        get = getattr(chunk, "get", None)
+        if not callable(get):
+            return False
+        choices = get("choices")
+        if not choices:
+            return False
+        delta = choices[0].get("delta") or {}
+        return bool(delta.get("content") or delta.get("reasoning_content"))
+
+    def _complete_via_stream(
+        self,
+        messages: list[dict[str, object]],
+        completion_kwargs: dict[str, object],
+        max_retries: int,
+    ) -> dict[str, object]:
+        """Run a streamed completion and rebuild the non-streaming response.
+
+        Retries follow ``collect_with_retry``: a failure before the first
+        content chunk is retried like a non-streaming call; a failure after
+        content started is raised as-is so a long generation is never
+        replayed. ``litellm.stream_chunk_builder`` reassembles content,
+        thinking blocks, ``finish_reason``, usage (including cache tokens)
+        and the provider response headers.
+        """
+        chunks = collect_with_retry(
+            lambda: litellm.completion(
+                messages=messages,
+                stream=True,
+                stream_options={"include_usage": True},
+                **completion_kwargs,
+            ),
+            max_retries=max_retries,
+            retry_predicate=is_retryable_litellm_error,
+            is_content=self._chunk_has_content,
+            description=self._get_adapter_info(),
+        )
+        response = litellm.stream_chunk_builder(chunks, messages=messages)
+        if response is None:
+            raise LLMError(
+                message=(
+                    f"Error from LLM adapter '{self._get_adapter_info()}': "
+                    "provider returned an empty stream"
+                )
+            )
+        return cast("dict[str, object]", response)
+
     @capture_metrics
     def complete(
         self,
@@ -541,12 +628,18 @@ class LLM:
             max_retries = pop_litellm_retry_kwargs(
                 completion_kwargs, self._get_adapter_info()
             )
-            response: dict[str, object] = call_with_retry(
-                lambda: litellm.completion(messages=messages, **completion_kwargs),
-                max_retries=max_retries,
-                retry_predicate=is_retryable_litellm_error,
-                description=self._get_adapter_info(),
-            )
+            response: dict[str, object]
+            if self._streams_under_the_hood():
+                response = self._complete_via_stream(
+                    messages, completion_kwargs, max_retries
+                )
+            else:
+                response = call_with_retry(
+                    lambda: litellm.completion(messages=messages, **completion_kwargs),
+                    max_retries=max_retries,
+                    retry_predicate=is_retryable_litellm_error,
+                    description=self._get_adapter_info(),
+                )
 
             response_text = response["choices"][0]["message"]["content"]
             finish_reason = response["choices"][0].get("finish_reason")
