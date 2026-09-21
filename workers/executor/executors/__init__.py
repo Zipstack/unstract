@@ -7,11 +7,13 @@ nothing but ``enum`` — dragged in ``LegacyExecutor`` and the entire adapter
 stack behind it. That cost ~9s, and the file_processing worker paid it once per
 forked child just to read a few string constants (UN-4136).
 
-``executor/tasks.py`` is the only caller: ``workers/worker.py`` exec-loads that
-file by path for both the Celery and PG executor roles. ``executor/worker.py``
-reaches it transitively, by importing ``executor.tasks`` — that import is
-load-bearing despite its ``noqa: F401``, and removing it would leave the app it
-builds with an empty registry.
+``executor/tasks.py`` is the only *production* caller: ``workers/worker.py``
+exec-loads that file by path for both the Celery and PG executor roles.
+``executor/worker.py`` reaches it transitively, by importing ``executor.tasks``
+— that import binds the task definitions to its app and populates the registry,
+so it is load-bearing despite its ``noqa: F401``. The app it builds is not on
+any deployed path; today only the tests use it. The test suite calls
+:func:`register_all` directly.
 """
 
 from typing import TYPE_CHECKING
@@ -47,10 +49,10 @@ def register_all() -> list[str]:
         An empty list does not distinguish its causes: no cloud plugins are
         installed (the OSS case); every one of them failed to import, because
         ``ExecutorPluginLoader.discover_executors`` catches per-entry-point
-        failures and only logs a warning — so a broken plugin wheel boots clean
-        and surfaces later as "No executor registered with name 'table'" on each
-        dispatch (tracked on UN-4136); or the caller is *inside* discovery,
-        having re-entered while the latch is still the empty placeholder.
+        failures and only logs a warning, so a broken plugin wheel boots clean
+        (a follow-up to make that aggregate loud is recorded on UN-4136); or the
+        caller is *inside* discovery, having re-entered while the latch is still
+        the empty placeholder.
     """
     global _cloud_executors
 
@@ -65,17 +67,31 @@ def register_all() -> list[str]:
         # level. The import-side-effect version this replaced got that safety
         # free from ``sys.modules``.
         #
-        # A failure here leaves the latch at ``[]``. That is deliberate: the one
-        # caller runs at ``executor/tasks.py`` module scope, so the exception
-        # kills the boot and the process restarts with clean module state.
-        # Retrying in-process would be worse than useless — a plugin whose
-        # ``@ExecutorRegistry.register`` fired before it raised is evicted from
-        # ``sys.modules`` but left in the registry, so re-importing it raises a
-        # duplicate-name ``ValueError`` that ``discover_executors`` swallows into
-        # a warning, and that executor is then silently absent for the life of
-        # the process. Do not add a retry without fixing that first.
         _cloud_executors = []
-        _cloud_executors = ExecutorPluginLoader.discover_executors()
+        try:
+            _cloud_executors = ExecutorPluginLoader.discover_executors()
+        except BaseException:
+            # Un-arm rather than leave ``[]`` latched. This does not retry — it
+            # re-raises unchanged; it only stops a later call reporting "no cloud
+            # executors" as though discovery had succeeded. It also preserves the
+            # behaviour this function replaced: discovery used to run as a side
+            # effect of importing this package, and a module that raises
+            # mid-import is evicted from ``sys.modules``, so the next import
+            # re-ran it.
+            #
+            # ``BaseException`` is deliberate. ``discover_executors`` already
+            # catches ``Exception`` per entry point, so what reaches here is
+            # either a failure of ``entry_points()`` itself — which leaves
+            # nothing half-registered — or a ``SystemExit``/``KeyboardInterrupt``
+            # out of third-party ``ep.load()``. In the latter case a plugin whose
+            # ``@ExecutorRegistry.register`` already fired is evicted from
+            # ``sys.modules`` but left in the registry, so a re-run raises a
+            # duplicate-name ``ValueError`` that ``discover_executors`` swallows.
+            # That hazard predates this function — it applied equally to the
+            # import-side-effect version — and is not a reason to let the latch
+            # lie about the common case.
+            _cloud_executors = None
+            raise
 
     return list(_cloud_executors)
 

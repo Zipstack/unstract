@@ -44,9 +44,17 @@ def _clean_registry():
 
 
 def _register_legacy():
-    from executor.executors.legacy_executor import LegacyExecutor  # noqa: F401
+    # Guarded because the import below may be the FIRST in the process, in which
+    # case ``@ExecutorRegistry.register`` fires on it and registering again would
+    # raise a duplicate-name ValueError. It used to be unguarded safely only by
+    # accident: ``executor.executors`` registered at package-import time, so the
+    # class was always already in ``sys.modules`` before any fixture cleared the
+    # registry. UN-4136 made that import lazy, which moved the first import
+    # inside the test. Matches the guard the sibling modules already use.
+    from executor.executors.legacy_executor import LegacyExecutor
 
-    ExecutorRegistry.register(LegacyExecutor)
+    if "legacy" not in ExecutorRegistry.list_executors():
+        ExecutorRegistry.register(LegacyExecutor)
 
 
 def _make_context(**overrides):
