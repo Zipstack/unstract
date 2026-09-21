@@ -4,11 +4,13 @@ This module defines allowed MIME types for file processing, matching the backend
 validation rules from workflow_manager/endpoint_v2/enums.py.
 """
 
-import re
 from enum import Enum
 from typing import Any
 
-import magic
+from unstract.core.mime_gate import (  # noqa: F401  re-exported
+    INCONCLUSIVE_MIME_TYPES,
+    resolve_inconclusive_mime_type,
+)
 
 
 class AllowedFileTypes(Enum):
@@ -67,46 +69,6 @@ class AllowedFileTypes(Enum):
         if mime_type.startswith("text/"):
             return True
         return mime_type in cls._value2member_map_
-
-
-# libmagic yields these when it recognises a wrapper but not the content, so they
-# are not a verdict on their own.
-INCONCLUSIVE_MIME_TYPES = frozenset({"application/octet-stream", "application/zip"})
-
-# libmagic's PDF rule only matches at offset 0, but extractors tolerate leading
-# bytes before the header, so a stream-wrapped PDF sniffs as octet-stream. Eight
-# bytes of padding is enough to trigger it. LLMWhisperer scans this same window
-# for the same reason (Util.is_valid_file_type_from_path).
-PDF_HEADER_SCAN_BYTES = 1024
-
-# `%PDF-` alone appears in plenty of content that is not a PDF; a real header
-# carries a version, so require one before promoting anything on its strength.
-PDF_HEADER_PATTERN = re.compile(rb"%PDF-\d\.\d")
-
-
-def resolve_inconclusive_mime_type(mime_type: str, head: bytes) -> str:
-    """Give a wrapper-only classification a second chance from the leading bytes.
-
-    LLMWhisperer resolves these with Magika and then a `%PDF-` scan; without
-    Magika this covers the PDF case, which is the one that reaches us.
-
-    Deliberately stricter than that scan in two ways, because this promotes a
-    file *into* the allow-list: a recognised zip is left alone however its
-    entries happen to read, and the marker is re-classified from its own offset
-    rather than trusted as a substring, so a stray "%PDF-" sitting inside other
-    content cannot smuggle a file through the gate.
-    """
-    if mime_type not in INCONCLUSIVE_MIME_TYPES:
-        return mime_type
-    if mime_type == "application/zip":
-        return mime_type
-    match = PDF_HEADER_PATTERN.search(head[:PDF_HEADER_SCAN_BYTES])
-    if match is None:
-        return mime_type
-    # Re-classify from the header's own offset. libmagic's PDF rule is just the
-    # magic bytes, so this alone would still accept a stray "%PDF-" - the version
-    # pattern above is what makes the marker evidence rather than a coincidence.
-    return magic.from_buffer(head[match.start() :], mime=True)
 
 
 class FileProcessingOrder(str, Enum):

@@ -33,7 +33,6 @@ from workflow_manager.endpoint_v2.dto import (
 from workflow_manager.endpoint_v2.enums import (
     INCONCLUSIVE_MIME_TYPES,
     AllowedFileTypes,
-    identify_zip_container,
     resolve_inconclusive_mime_type,
 )
 from workflow_manager.endpoint_v2.exceptions import (
@@ -56,6 +55,7 @@ from workflow_manager.workflow_v2.models.file_history import FileHistory
 from workflow_manager.workflow_v2.models.workflow import Workflow
 
 from unstract.connectors.filesystems.unstract_file_system import UnstractFileSystem
+from unstract.core.mime_gate import identify_zip_container
 from unstract.filesystem import FileStorageType, FileSystem
 from unstract.sdk1.file_storage import FileStorage
 from unstract.workflow_execution.enums import LogLevel, LogStage, LogState
@@ -1254,7 +1254,8 @@ class SourceConnector(BaseConnector):
         """Classify a staged path, looking inside a zip when that is all we get."""
         mime_type = magic.from_file(path, mime=True)
         if mime_type == "application/zip":
-            return identify_zip_container(path) or mime_type
+            inside = identify_zip_container(path, AllowedFileTypes.is_allowed)
+            return inside or mime_type
         return mime_type or fallback
 
     @classmethod
