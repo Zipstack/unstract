@@ -458,6 +458,63 @@ class TestDecrementPhaseSplitRetry:
         assert len(creates) == 1  # the guard created one; NO retry reconnect
         assert sleeps == []  # a fresh-conn death is not retried → no backoff
 
+    def test_oversized_result_propagates_without_releasing_the_handle(
+        self, _clean_local, monkeypatch
+    ):
+        # UN-4126, gating-lane cover for the barrier sink. Two properties:
+        #
+        # 1. `ProgramLimitExceeded` ("index row size exceeds maximum", SQLSTATE
+        #    54) subclasses OperationalError, so a `DataError`-only net would let
+        #    it through without the specific, actionable log.
+        # 2. The decrement must NOT delete the barrier row itself. That row is
+        #    the reaper's only recovery handle, and `run_batch_with_barrier`
+        #    releases it only after confirming the execution is terminal. A
+        #    teardown here pre-empts that ordering and, when the mark cannot be
+        #    confirmed, strands the execution permanently — strictly worse than
+        #    the hang-to-expiry it would be avoiding.
+        err = psycopg2.errors.ProgramLimitExceeded("index row size exceeds maximum")
+        monkeypatch.setattr(
+            pg_barrier,
+            "create_pg_connection",
+            lambda **_k: _FakeConn(execute_error=err),
+        )
+        deleted: list[str] = []
+        monkeypatch.setattr(
+            pg_barrier, "_delete_barrier", lambda eid: deleted.append(eid)
+        )
+        pg_barrier._local.conn = None
+
+        with pytest.raises(psycopg2.errors.ProgramLimitExceeded):
+            _barrier_pg_decrement(
+                {"f": "x" * 10}, execution_id="exec-BIG", callback_descriptor=_CALLBACK
+            )
+
+        assert deleted == [], "released the reaper's handle before the caller could mark"
+
+    def test_unencodable_result_propagates_without_releasing_the_handle(
+        self, _clean_local, monkeypatch
+    ):
+        # The encode-side twin of the test above: allow_nan=False puts NaN on the
+        # encode branch, which must follow the same rule — log, propagate, and
+        # leave teardown to the caller's mark-then-release ordering.
+        monkeypatch.setattr(
+            pg_barrier, "create_pg_connection", lambda **_k: _FakeConn()
+        )
+        deleted: list[str] = []
+        monkeypatch.setattr(
+            pg_barrier, "_delete_barrier", lambda eid: deleted.append(eid)
+        )
+        pg_barrier._local.conn = None
+
+        with pytest.raises(ValueError):
+            _barrier_pg_decrement(
+                {"f": float("nan")},
+                execution_id="exec-NaN",
+                callback_descriptor=_CALLBACK,
+            )
+
+        assert deleted == [], "released the reaper's handle before the caller could mark"
+
 
 @pytest.mark.integration
 def test_create_pg_connection_is_non_autocommit():
@@ -1110,17 +1167,39 @@ class TestDecrAndCheck:
         assert remaining == 1
         assert results == [[1, 2]]  # one element that is the list, not [1, 2]
 
-    def test_nul_byte_result_tears_down_barrier(self, barrier_db):
-        # A NUL byte survives json.dumps but jsonb rejects it. The barrier must
-        # be torn down (fail fast) rather than hang to expiry.
-        _seed(barrier_db, "exec-NB", 1)
-        with pytest.raises(psycopg2.DataError):
+    def test_nul_byte_result_is_repaired_and_decrements(self, barrier_db):
+        # UN-4126: a NUL survives json.dumps but jsonb rejects it. It is now
+        # stripped by dumps_for_jsonb rather than costing the barrier — a stray
+        # control byte from native_text extraction is not a reason to fail an
+        # execution. Seeded at 2 so this asserts the decrement, not the callback.
+        _seed(barrier_db, "exec-NB", 2)
+        out = _barrier_pg_decrement(
+            {"f": "bad\x00value"},
+            execution_id="exec-NB",
+            callback_descriptor=_CALLBACK,
+        )
+        assert out["status"] == "pending"
+        remaining, results = _row(barrier_db, "exec-NB")
+        assert remaining == 1
+        assert results == [{"f": "badvalue"}]  # NUL gone, everything else intact
+
+    def test_unencodable_result_raises_and_leaves_the_row_for_the_caller(
+        self, barrier_db
+    ):
+        # NaN is deliberately NOT repaired (null/0 would corrupt the value), so it
+        # fails at the encoder rather than at the jsonb cast. The decrement must
+        # propagate WITHOUT releasing the barrier row: that row is the reaper's
+        # only recovery handle, and run_batch_with_barrier releases it only after
+        # confirming the execution is terminal. Tearing down here would strand the
+        # execution permanently whenever that confirmation fails.
+        _seed(barrier_db, "exec-NaN", 1)
+        with pytest.raises(ValueError):
             _barrier_pg_decrement(
-                {"f": "bad\x00value"},
-                execution_id="exec-NB",
+                {"f": float("nan")},
+                execution_id="exec-NaN",
                 callback_descriptor=_CALLBACK,
             )
-        assert _row(barrier_db, "exec-NB") is None  # torn down, not left hanging
+        assert _row(barrier_db, "exec-NaN") == (1, [])  # intact for the caller
 
     def test_decrement_after_abort_does_not_fire(self, barrier_db):
         # The new failure-masking model: an aborted barrier is GONE (abort

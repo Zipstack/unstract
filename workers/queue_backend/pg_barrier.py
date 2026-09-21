@@ -62,7 +62,6 @@ rather than stranding the execution; the post-dispatch delete is best-effort
 from __future__ import annotations
 
 import contextlib
-import json
 import logging
 import threading
 import time
@@ -75,6 +74,7 @@ import psycopg2.errors
 import psycopg2.extensions
 
 from unstract.core.data_models import LEGACY_TRANSPORT_KEY, LEGACY_TRANSPORT_VALUE
+from unstract.core.jsonb import dumps_for_jsonb
 
 from .barrier import (
     BarrierContext,
@@ -91,7 +91,8 @@ from .fairness import (
 )
 from .handle import BarrierHandle
 from .pg_queue.connection import CONN_DEAD_ERRORS as _CONN_DEAD_ERRORS
-from .pg_queue.connection import create_pg_connection
+from .pg_queue.connection import PAYLOAD_REJECTED_ERRORS as _PAYLOAD_REJECTED_ERRORS
+from .pg_queue.connection import create_pg_connection, is_connection_dead
 from .pg_queue.schema import qualified
 
 if TYPE_CHECKING:
@@ -132,7 +133,7 @@ def _recover_after_error(conn: PgConnection, exc: BaseException) -> bool:
     ``_cursor`` because it must distinguish execute-phase from commit-phase
     failures) share one definition of "recover a connection after an error".
     """
-    conn_dead = isinstance(exc, _CONN_DEAD_ERRORS)
+    conn_dead = is_connection_dead(exc)
     try:
         conn.rollback()
     except Exception:
@@ -232,6 +233,11 @@ def _run_idempotent_pre_dispatch_write(
                 operation(cur)
             return
         except _CONN_DEAD_ERRORS as exc:
+            # A payload rejection also reaches this clause (ProgramLimitExceeded
+            # subclasses OperationalError). It is permanent, so let it through to
+            # _barrier_pg_decrement's handler instead of re-sending it.
+            if not is_connection_dead(exc):
+                raise
             # _cursor already dropped the dead thread-local conn → the next
             # _get_conn() reconnects. Retry once; re-raise if it still fails
             # (a genuinely-down DB surfaces as ERROR, as before). Name the real
@@ -1028,11 +1034,21 @@ def _barrier_pg_decrement(
     try:
         # No default=str — a non-JSON-safe leaf must fail loudly here (it would
         # signal a BatchExecutionResult.to_dict() typed-boundary regression).
-        result_json = json.dumps(result)
+        # dumps_for_jsonb additionally repairs the strings a jsonb cast refuses
+        # (NUL, lone surrogate) so a stray control byte in a header result no
+        # longer costs the whole barrier. What it cannot repair (NaN, or a
+        # rejection it does not model) propagates to the caller, which owns
+        # teardown — see the note on the raise below.
+        result_json = dumps_for_jsonb(result)
     except (TypeError, ValueError):
+        # Log and re-raise; do NOT tear the barrier down here. ``allow_nan=False``
+        # moves NaN/Infinity onto this branch, so this is the encode-side twin of
+        # the rejection branch below and must follow the same rule.
         logger.exception(
-            f"[exec:{execution_id}] Header task result is not JSON-serialisable "
-            f"— barrier aggregation cannot proceed (typed-boundary regression)."
+            f"[exec:{execution_id}] Header task result cannot be encoded for "
+            f"jsonb (not JSON-serialisable, or a non-finite number) — "
+            f"propagating so the caller can mark the execution terminal before "
+            f"the barrier row is released."
         )
         raise
 
@@ -1040,18 +1056,34 @@ def _barrier_pg_decrement(
     # result's shape (``||`` would concatenate if the result were itself a list).
     try:
         row = _apply_decrement(execution_id, result_json, reused=conn_was_cached)
-    except psycopg2.DataError:
-        # json.dumps accepts a few bytes jsonb rejects — notably a NUL (0x00)
-        # in a string. The cast above then raises, the decrement never lands, and
-        # the barrier would hang to expires_at (~6h). Tear it down so the
-        # execution fails fast and visibly instead.
+    except _PAYLOAD_REJECTED_ERRORS:
+        # Reached for a rejection dumps_for_jsonb does not model. The decrement
+        # never lands, so this batch can never complete the barrier.
+        #
+        # Catch the closed family the result backend uses, not ``DataError``
+        # alone: ``ProgramLimitExceeded`` ("string too long", SQLSTATE 54)
+        # subclasses ``OperationalError``, so a DataError-only net lets an
+        # oversized header result through without this specific, actionable log.
+        #
+        # Deliberately does NOT call ``_delete_barrier``. Teardown belongs to
+        # ``run_batch_with_barrier``, which marks the execution ERROR *first* and
+        # releases the row only once that mark is confirmed — because the row is
+        # the reaper's only recovery handle. Deleting it here pre-empts that
+        # ordering: when the mark cannot be confirmed (backend unreachable, or no
+        # organization_id on the descriptor) the caller's ``else`` branch
+        # deliberately preserves the row, logs "leaving the barrier row intact
+        # for the reaper" — and finds it already gone. The execution then sits
+        # non-terminal forever with nothing for the reaper's sweep to find, which
+        # is a permanent strand: strictly worse than the ~6h hang-to-expiry this
+        # teardown was trying to avoid, and the exact class UN-4126 exists to
+        # eliminate.
         logger.exception(
-            f"[exec:{execution_id}] Header result rejected by jsonb (e.g. a NUL "
-            f"byte) — tearing down the barrier so the execution fails fast "
-            f"rather than hanging until expiry."
+            f"[exec:{execution_id}] Header result rejected by the database even "
+            f"after sanitisation — propagating so the caller can mark the "
+            f"execution terminal before the barrier row is released. If this is "
+            f"a content rejection it is a gap in unstract.core.jsonb — capture "
+            f"the payload and extend it."
         )
-        with contextlib.suppress(Exception):
-            _delete_barrier(execution_id)
         raise
 
     if row is None:
