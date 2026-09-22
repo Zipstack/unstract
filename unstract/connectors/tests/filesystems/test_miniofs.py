@@ -277,6 +277,34 @@ class TestMinioFSBucketRestriction(unittest.TestCase):
         self.assertEqual(scoped.path, "team-a-data")
         self.assertIs(scoped.fs, fs.s3)
 
+    def test_walk_results_are_relative_to_the_bucket(self) -> None:
+        # `DirFileSystem.walk()` relpaths the directory string it yields,
+        # but not the `name` field inside each entry's own metadata dict —
+        # those still carry the wrapped fs's raw, bucket-prefixed key. This
+        # is what workflow-execution file discovery reads (it walks, the
+        # UI browser lists) — a name still carrying the bucket here is what
+        # doubles the prefix at the point a discovered file gets opened.
+        fs = MinioFS({"bucket": "unstract", "key": "k", "secret": "s"})
+
+        def fake_walk(path: str, detail: bool = True, **kwargs: object):
+            yield (
+                "unstract/e2e-in",
+                {},
+                {
+                    "unstract/e2e-in/probe.txt": {
+                        "name": "unstract/e2e-in/probe.txt",
+                        "type": "file",
+                        "size": 10,
+                    }
+                },
+            )
+
+        with patch.object(fs.s3, "walk", side_effect=fake_walk):
+            root, dirs, files = next(fs.get_fsspec_fs().walk("e2e-in"))
+        self.assertEqual(root, "e2e-in")
+        self.assertEqual(list(files.keys()), ["e2e-in/probe.txt"])
+        self.assertEqual(files["e2e-in/probe.txt"]["name"], "e2e-in/probe.txt")
+
     def test_scoped_root_listing_never_reaches_lsbuckets(self) -> None:
         # The security-relevant assertion: ls("") on a bucket-scoped
         # connector must resolve to listing that one bucket's contents,
