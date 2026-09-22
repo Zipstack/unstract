@@ -274,7 +274,9 @@ def access_survives_share_changes(resource_obj: Any) -> bool:
 
     Revoking a share removes nothing in that case, so nobody should be told it
     did. ``shared_to_org`` covers every org member; ``is_friction_less`` is the
-    adapter equivalent -- ``AdapterInstance.for_user`` admits it unconditionally.
+    adapter equivalent -- ``AdapterInstance.for_user`` admits it to any regular
+    user unconditionally (service accounts are the one exception, explicitly
+    excluded from frictionless adapters).
     """
     return bool(getattr(resource_obj, "shared_to_org", False)) or bool(
         getattr(resource_obj, "is_friction_less", False)

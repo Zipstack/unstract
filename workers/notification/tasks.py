@@ -515,9 +515,12 @@ _GROUP_NOTIFICATION_RETRY_DELAY = 2.0
 # Per-phase, because httpx has NO whole-request timeout: a scalar one is applied
 # to connect, write and read separately. The loop below is the only retry --
 # transport-level retries would stack their own timeouts underneath these.
-# Sum x _GROUP_NOTIFICATION_ATTEMPTS is the task's bound, and must stay under
-# WORKER_PG_QUEUE_CONSUMER_HEALTH_STALE_SECONDS (the heartbeat is frozen for the
-# task's duration) and VT_SECONDS. Excludes DNS, which connect does not cover.
+# Worst case per attempt is connect+write+read+pool = 50s. Across
+# _GROUP_NOTIFICATION_ATTEMPTS attempts plus the sleep between each retry, the
+# task's real bound is 3*50 + 2*_GROUP_NOTIFICATION_RETRY_DELAY = 154s, and
+# must stay under WORKER_PG_QUEUE_CONSUMER_HEALTH_STALE_SECONDS (the heartbeat
+# is frozen for the task's duration) and VT_SECONDS. Excludes DNS, which
+# connect does not cover.
 _GROUP_NOTIFICATION_TIMEOUT = httpx.Timeout(connect=5.0, write=10.0, read=30.0, pool=5.0)
 
 
@@ -574,10 +577,11 @@ def _post_group_notification_once(
 
 
 def _fail_group_notification(endpoint: str, organization_id: str, error: str) -> None:
-    """Log and raise once the attempt budget is exhausted.
+    """Log and raise once a retryable failure exhausts its in-process attempts.
 
-    A duplicate email from the resulting redelivery is the only effect, since
-    the send path writes nothing.
+    The raise leaves the message on the queue for redelivery -- correct here
+    because the failure is transient (5xx / connection-level), so a later
+    attempt has a real chance of succeeding.
     """
     logger.error(
         "metric=group_notification_post_failed_total endpoint=%s org_id=%s error=%s",
@@ -588,15 +592,34 @@ def _fail_group_notification(endpoint: str, organization_id: str, error: str) ->
     raise RuntimeError(f"Group notification {endpoint} failed: {error}")
 
 
+def _drop_group_notification(endpoint: str, organization_id: str, error: str) -> None:
+    """Log a permanent failure without raising.
+
+    A non-retryable failure (a definitive 4xx, or a response lost after the
+    backend already sent the group's emails) will not succeed on redelivery --
+    and since one send call mails a whole group with no per-recipient
+    checkpoint, redelivering it re-mails everyone who already got it. Raising
+    here would trade a dropped notification for a duplicated one.
+    """
+    logger.error(
+        "metric=group_notification_dropped_total endpoint=%s org_id=%s error=%s",
+        endpoint,
+        organization_id,
+        error,
+    )
+
+
 def _post_group_notification(endpoint: str, organization_id: str, payload: dict) -> None:
     """POST a group-notification job to the backend and insist it succeeded.
 
-    Deliberately raises on failure -- nothing tracks an unsent group email, so
-    a swallowed error would be a silent drop. The raise leaves the message on
-    the queue for redelivery, bounded by the consumer's attempt cap.
+    Raises only on a retryable failure -- nothing tracks an unsent group
+    email, so a swallowed transient error would be a silent drop, and the
+    queue's own redelivery is the backstop for that. A non-retryable failure
+    is dropped instead of raised: see :func:`_drop_group_notification`.
     """
     url, headers = _build_group_notification_request(endpoint, organization_id)
     last_error = ""
+    retryable = True
     for attempt in range(1, _GROUP_NOTIFICATION_ATTEMPTS + 1):
         succeeded, retryable, last_error = _post_group_notification_once(
             url, headers, payload
@@ -614,7 +637,10 @@ def _post_group_notification(endpoint: str, organization_id: str, payload: dict)
                 last_error,
             )
             time.sleep(_GROUP_NOTIFICATION_RETRY_DELAY)
-    _fail_group_notification(endpoint, organization_id, last_error)
+    if retryable:
+        _fail_group_notification(endpoint, organization_id, last_error)
+    else:
+        _drop_group_notification(endpoint, organization_id, last_error)
 
 
 @worker_task(name="notify_resource_shared_with_group")

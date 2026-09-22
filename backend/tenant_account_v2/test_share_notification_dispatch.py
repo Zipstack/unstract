@@ -2,8 +2,9 @@
 
 ``share_notifications`` runs inside the user's share request: it builds the task
 payload and hands it to the transport. Nothing here touches the ORM or sends
-mail, so the module is patched at its two seams — ``kind_for_instance`` and
-``_dispatch`` — and these run in the rig's unit tier with no Postgres. The transport itself is covered by ``pg_queue.tests``; the
+mail, so the module is patched at its three seams — ``kind_for_instance``,
+``get_plugin`` and ``_dispatch`` — and these run in the rig's unit tier with no
+Postgres. The transport itself is covered by ``pg_queue.tests``; the
 delivery side by ``ResourceShareNotificationTests`` in ``tenant_account_v2.tests``.
 """
 
@@ -28,9 +29,10 @@ def _group(pk: int) -> SimpleNamespace:
 
 @contextmanager
 def _seams(*, dispatch_raises: Exception | None = None):
-    """Patch the module's two outbound seams; yield the dispatch mock."""
+    """Patch the module's three outbound seams; yield the dispatch mock."""
     with (
         patch.object(sn, "kind_for_instance", return_value="workflow"),
+        patch.object(sn, "get_plugin", return_value={"service_class": object()}),
         patch.object(sn, "_dispatch", side_effect=dispatch_raises) as dispatch,
     ):
         yield dispatch
@@ -87,6 +89,7 @@ class TestNotifyResourceGroupShareChanged:
     def test_unknown_resource_kind_skips_dispatch(self):
         with (
             patch.object(sn, "kind_for_instance", return_value=None),
+            patch.object(sn, "get_plugin", return_value={"service_class": object()}),
             patch.object(sn, "_dispatch") as dispatch,
         ):
             sn.notify_resource_group_share_changed(
@@ -99,6 +102,18 @@ class TestNotifyResourceGroupShareChanged:
         with _seams() as dispatch:
             sn.notify_resource_group_share_changed(
                 resource=orphan, added=[_group(1)], removed=[], actor=_ACTOR
+            )
+        dispatch.assert_not_called()
+
+    def test_plugin_absent_skips_dispatch(self):
+        # Pure OSS: nothing would ever consume this row, so don't write it.
+        with (
+            patch.object(sn, "kind_for_instance", return_value="workflow"),
+            patch.object(sn, "get_plugin", return_value=None),
+            patch.object(sn, "_dispatch") as dispatch,
+        ):
+            sn.notify_resource_group_share_changed(
+                resource=_RESOURCE, added=[_group(1)], removed=[], actor=_ACTOR
             )
         dispatch.assert_not_called()
 

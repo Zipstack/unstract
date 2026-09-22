@@ -26,6 +26,7 @@ import httpx
 import pytest
 from notification.tasks import (
     _GROUP_NOTIFICATION_ATTEMPTS,
+    _GROUP_NOTIFICATION_RETRY_DELAY,
     _GROUP_NOTIFICATION_TIMEOUT,
     _post_group_notification,
     notify_group_membership_changed,
@@ -94,10 +95,12 @@ class TestRetryClassification:
         assert len(client.calls) == _GROUP_NOTIFICATION_ATTEMPTS
         assert sleep.call_count == _GROUP_NOTIFICATION_ATTEMPTS - 1
 
-    def test_client_error_is_terminal_after_one_post(self):
-        # A rejected payload will be rejected again; retrying only burns budget.
+    def test_client_error_is_dropped_without_raising(self):
+        # A rejected payload will be rejected again; retrying only burns
+        # budget, and raising would trigger queue redelivery of a message
+        # that can never succeed.
         client, raised, sleep = _run([_response(400)])
-        assert isinstance(raised, RuntimeError)
+        assert raised is None
         assert len(client.calls) == 1
         assert sleep.call_count == 0
 
@@ -115,10 +118,12 @@ class TestRetryClassification:
         """Each of these means the backend already has the request.
 
         Re-posting would re-mail every group that already succeeded, so the
-        in-process attempts must end after one post.
+        in-process attempts must end after one post -- and the task must not
+        raise either, or queue redelivery does the exact re-post this guards
+        against.
         """
         client, raised, sleep = _run([exc])
-        assert isinstance(raised, RuntimeError)
+        assert raised is None
         assert len(client.calls) == 1, f"{type(exc).__name__} was re-posted"
         assert sleep.call_count == 0
 
@@ -182,10 +187,14 @@ class TestRequestShape:
 
         VT is 300s for this worker in both deployments; the heartbeat is frozen
         for the task's duration, so health-stale (360s) is the other ceiling.
+        Includes the sleep between retries -- a per-post-only sum undercounts
+        the real wall time by (attempts - 1) * retry delay.
         """
         t = _GROUP_NOTIFICATION_TIMEOUT
         per_post = t.connect + t.write + t.read + t.pool
-        worst = per_post * _GROUP_NOTIFICATION_ATTEMPTS
+        sleeps = (_GROUP_NOTIFICATION_ATTEMPTS - 1) * _GROUP_NOTIFICATION_RETRY_DELAY
+        worst = per_post * _GROUP_NOTIFICATION_ATTEMPTS + sleeps
+        assert worst == 154
         assert worst < 300, f"worst case {worst}s exceeds the 300s visibility timeout"
 
 

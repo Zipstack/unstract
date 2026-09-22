@@ -178,7 +178,7 @@ class OrganizationGroupViewSet(viewsets.ModelViewSet):
                 actor=request.user,
             )
         return Response(
-            {"added_user_ids": user_ids_to_add},
+            {"added_user_ids": newly_added_ids},
             status=status.HTTP_201_CREATED,
         )
 

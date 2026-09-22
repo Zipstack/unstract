@@ -1,9 +1,10 @@
 """Shared share-management surface for resource ViewSets.
 
-The mixin reads the sharing "axes" named in ``_SUPPORTED_SHARE_AXES``.
-``shared_users`` is the direct-viewer axis, backed by VIEWER membership rows,
-while ``shared_groups`` is stored polymorphically in ``ResourceGroupShare``
-(not an M2M) and routed through the sharing helpers.
+The write side accepts exactly the three axes named in
+``_SUPPORTED_SHARE_AXES``; the read side (``_read_axis``) only knows the two
+per-recipient ones by name. ``shared_users`` is the direct-viewer axis, backed
+by VIEWER membership rows, while ``shared_groups`` is stored polymorphically in
+``ResourceGroupShare`` (not an M2M) and routed through the sharing helpers.
 """
 
 import logging
@@ -152,9 +153,9 @@ class ResourceShareManagementMixin:
         ShareAuthorizationService.authorize_and_commit(
             actor=request.user, resource=resource, desired=desired
         )
-        # ``_commit`` is the only atomic block on this path, so it has already
-        # committed — the diffs read persisted state and can never announce a
-        # share that rolled back.
+        # ``authorize_and_commit`` has already committed here: ``ATOMIC_REQUESTS``
+        # is off, so this view isn't itself wrapped in a transaction, and the
+        # diffs below read persisted state rather than one that could roll back.
         resource.refresh_from_db()
         # Only the two per-recipient axes notify. ``shared_to_org`` is left out
         # deliberately: a toggle has no recipient list short of the whole org,

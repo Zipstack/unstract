@@ -76,11 +76,16 @@ class ResourceSharedWithGroupView(_GroupNotificationView):
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
         try:
-            send_resource_shared(organization=self._organization(), **data)
+            sent = send_resource_shared(organization=self._organization(), **data)
         except ResourceNotFoundError as exc:
             # Deleted between the share and the send — a retry cannot help.
             logger.info("group-notification: dropping resource share (%s)", exc)
             return Response({"status": "skipped"}, status=status.HTTP_200_OK)
+        if not sent:
+            # A group had real recipients and the plugin failed to send --
+            # non-2xx so the worker's retry loop (and PG redelivery once that's
+            # exhausted) actually fires, instead of a lost email reporting green.
+            return Response({"status": "failed"}, status=status.HTTP_502_BAD_GATEWAY)
         return Response({"status": "success"}, status=status.HTTP_200_OK)
 
 
@@ -90,7 +95,9 @@ class GroupMembershipChangedView(_GroupNotificationView):
     def post(self, request: Request) -> Response:
         serializer = GroupMembershipChangedSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        send_membership_changed(
+        sent = send_membership_changed(
             organization=self._organization(), **serializer.validated_data
         )
+        if not sent:
+            return Response({"status": "failed"}, status=status.HTTP_502_BAD_GATEWAY)
         return Response({"status": "success"}, status=status.HTTP_200_OK)

@@ -9,10 +9,11 @@ task is a thin HTTP shim back to :mod:`tenant_account_v2.internal_views`; the
 backend does the ORM and plugin work. Transport is the PG queue, the only
 one there is — the ``notifications`` queue the notification consumer polls.
 
-A missing org or any dispatch error means no notification, never a broken
-share. Like the direct-user mail in ``ResourceShareManagementMixin`` and the
-co-owner mail it reuses, sending is bounded only by the cloud
-``ENABLE_EMAIL_NOTIFICATIONS`` setting.
+A missing org, an absent notification plugin, or any dispatch error means no
+notification, never a broken share. Sending is also bounded by the cloud
+``ENABLE_EMAIL_NOTIFICATIONS`` setting and by each event's own template ID
+being configured -- either being unset silently skips, same as the
+direct-user mail this reuses.
 """
 
 from __future__ import annotations
@@ -23,6 +24,7 @@ from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
 from django.utils import timezone
+from plugins import get_plugin
 
 from tenant_account_v2.shareable_resources import kind_for_instance
 
@@ -108,8 +110,7 @@ def _notify_group_share(
         # viewset, so an unregistered kind means a group share landed on a
         # resource this feature cannot mail about.
         logger.warning(
-            "group-notification: skipping %s share for %s %s "
-            "(organization=%s kind=%s)",
+            "group-notification: skipping %s share for %s %s (organization=%s kind=%s)",
             share_action,
             type(resource).__name__,
             resource.pk,
@@ -122,7 +123,7 @@ def _notify_group_share(
         "actor_id": actor.pk,
         "resource_kind": kind,
         "resource_id": str(resource.pk),
-        "share_action": str(share_action),
+        "share_action": share_action.value,
         "organization_id": organization_id,
     }
     if revoked_at is not None:
@@ -163,7 +164,7 @@ def notify_group_membership_changed(
         kwargs={
             "group_id": group.pk,
             "actor_id": actor.pk,
-            "membership_action": str(action),
+            "membership_action": action.value,
             "user_ids": recipients,
             "organization_id": organization_id,
         },
@@ -191,7 +192,18 @@ def _dispatch_quietly(
 
     The share or membership change has already been committed by the time this
     runs — losing its email is not a reason to fail the request the user made.
+
+    Skips the enqueue entirely when the notification plugin isn't loaded (pure
+    OSS): the worker would just claim the row and no-op, so there is no point
+    writing a queue row nobody can act on.
     """
+    if not get_plugin("notification"):
+        logger.debug(
+            "group-notification: notification plugin unavailable, skipping "
+            "enqueue for %s",
+            task_name,
+        )
+        return
     try:
         _dispatch(
             task_name=task_name,

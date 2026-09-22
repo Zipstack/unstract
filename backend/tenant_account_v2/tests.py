@@ -379,6 +379,23 @@ class GroupViewSetServiceAccountTests(GroupSharingTestBase):
             GroupMembership.objects.filter(group=self.group, user=self.outsider).exists()
         )
 
+    def test_add_members_response_only_lists_newly_added(self) -> None:
+        # self.member is already in self.group (see GroupSharingTestBase);
+        # only self.outsider is new. The response, and the notification it
+        # feeds, must both narrow to the actual insert, not the request.
+        response = self._call(
+            {"post": "members"},
+            "post",
+            self.svc,
+            data={"user_ids": [self.member.id, self.outsider.id]},
+            pk=str(self.group.pk),
+        )
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.data["added_user_ids"], [self.outsider.id])
+        self.assertEqual(
+            GroupMembership.objects.filter(group=self.group, user=self.member).count(), 1
+        )
+
     def test_service_account_can_remove_member(self) -> None:
         response = self._call(
             {"delete": "remove_member"},
@@ -557,6 +574,33 @@ class ResourceShareNotificationTests(GroupSharingTestBase):
         self.assertEqual(kwargs["share_action"], "revoked")
         self.assertEqual(kwargs["resource_type"], "workflow")
         self.assertEqual(kwargs["resource_name"], "wf-1")
+
+    def test_multi_group_fan_out_keeps_each_group_and_its_own_members_separate(
+        self,
+    ) -> None:
+        # ``self.member`` is in both groups (overlapping); ``self.outsider`` is
+        # only in the second (disjoint). A naive union across groups would
+        # either merge them into one mail or mislabel which group a recipient
+        # actually belongs to -- both are exactly what one email per group
+        # exists to prevent.
+        other_group = OrganizationGroup.objects.create(
+            organization=self.org, name="Ops", created_by=self.owner
+        )
+        GroupMembership.objects.create(group=other_group, user=self.member)
+        GroupMembership.objects.create(group=other_group, user=self.outsider)
+        set_resource_share_groups(self.workflow, [self.group.id, other_group.id])
+
+        self._send(group_ids=[self.group.id, other_group.id])
+
+        self.assertEqual(
+            sorted(self._mailed()),
+            sorted(
+                [
+                    ("Team", ["member@example.com"]),
+                    ("Ops", ["member@example.com", "outsider@example.com"]),
+                ]
+            ),
+        )
 
     def test_group_from_another_org_is_never_mailed(self) -> None:
         """The foreign group's member is deliberately also an org-A member.

@@ -82,35 +82,53 @@ def send_resource_shared(
     resource_id: str,
     share_action: str,
     revoked_at: datetime | None = None,
-) -> None:
+) -> bool:
     """Mail every current member of each group whose resource access changed.
 
     One email per group, so ``group_name`` in the template is always the group
     the recipient actually belongs to. ``share_action`` picks the wording, and
     on a revoke ``revoked_at`` bounds who counts as "current".
+
+    Returns:
+        ``False`` only when a group with real recipients was actually attempted
+        and the plugin reported a send failure -- the caller's cue to ask for
+        redelivery. Every other outcome (nothing to send, plugin absent,
+        misconfigured) is ``True``: there is nothing a retry would fix.
     """
     service = _service()
     if service is None:
-        return
+        return True
     actor = _get_user(organization, actor_id)
     shared = _load_resource(organization, resource_kind, resource_id)
-    if actor is None or shared.type is None:
+    if actor is None:
+        # Actor left the org between the share and the send -- routine race,
+        # not a bug.
         logger.info(
-            "group-notification: skipping resource share for %s/%s "
-            "(actor_found=%s resource_type=%s)",
+            "metric=group_notification_actor_left_org_total group-notification: "
+            "skipping resource share for %s/%s (actor no longer in org)",
             resource_kind,
             resource_id,
-            actor is not None,
-            shared.type,
         )
-        return
+        return True
+    if shared.type is None:
+        # A registered resource kind with no notification-plugin type mapping
+        # -- a real gap worth an operator's attention, unlike the actor case.
+        logger.warning(
+            "metric=group_notification_unresolved_resource_type_total "
+            "group-notification: skipping resource share for %s/%s "
+            "(resource type not registered)",
+            resource_kind,
+            resource_id,
+        )
+        return True
     retained = _retained_user_ids(organization, shared.instance, share_action)
     if retained is None:
-        return
+        return True
     groups = list(_groups_to_mail(organization, group_ids, shared.instance, share_action))
     recipients_by_group = _group_recipients_batch(
         organization, groups, retained, revoked_at
     )
+    all_sent = True
     for group in groups:
         recipients = recipients_by_group.get(group.pk, [])
         logger.info(
@@ -121,7 +139,9 @@ def send_resource_shared(
             len(recipients),
         )
         if recipients:
-            _mail_group(service, group, recipients, shared, actor, share_action)
+            sent = _mail_group(service, group, recipients, shared, actor, share_action)
+            all_sent = all_sent and sent
+    return all_sent
 
 
 def send_membership_changed(
@@ -131,17 +151,21 @@ def send_membership_changed(
     actor_id: int,
     membership_action: str,
     user_ids: Iterable[int],
-) -> None:
+) -> bool:
     """Mail the users whose membership of ``group_id`` just changed.
 
     Recipients are re-validated against ``OrganizationMember`` — this is where
     the offboarding race closes, for removals as well as additions: leaving a
     group does not remove someone from the org, so both directions validate the
     same way.
+
+    Returns:
+        ``False`` only when there were real recipients and the plugin reported
+        a send failure. See :func:`send_resource_shared` for the full contract.
     """
     service = _service()
     if service is None:
-        return
+        return True
     actor = _get_user(organization, actor_id)
     group = _groups_in_org(organization, [group_id]).first()
     if actor is None or group is None:
@@ -152,7 +176,7 @@ def send_membership_changed(
             actor is not None,
             group is not None,
         )
-        return
+        return True
     recipients = _live_member_users(organization, user_ids)
     logger.info(
         "group-notification: task=%s group_id=%s action=%s recipient_count=%d",
@@ -162,8 +186,8 @@ def send_membership_changed(
         len(recipients),
     )
     if not recipients:
-        return
-    service.send_group_membership_notification(
+        return True
+    return service.send_group_membership_notification(
         group_name=group.name,
         membership_action=MembershipAction(membership_action).value,
         recipients=recipients,
@@ -270,9 +294,10 @@ def _group_recipients_batch(
 ) -> dict[int, list[User]]:
     """Live members of each of ``groups`` who did not keep access via ``retained``.
 
-    One query across every group in the fan-out rather than one per group --
-    a resource shared with N groups issued N ``OrganizationMember`` queries
-    before this, since ``joined_before`` (a revoke's timestamp) is the same
+    Two queries total (one ``GroupMembership`` scan, one ``OrganizationMember``
+    validation) across every group in the fan-out, rather than one pair per
+    group -- a resource shared with N groups issued N pairs of queries before
+    this, since ``joined_before`` (a revoke's timestamp) is the same
     cutoff for every group being mailed in one call, so the membership lookup
     batches cleanly.
 
@@ -310,9 +335,9 @@ def _mail_group(
     shared: _SharedResource,
     actor: User,
     share_action: str,
-) -> None:
+) -> bool:
     """Send one group's copy of the resource-share email."""
-    service.send_group_resource_shared_notification(
+    return service.send_group_resource_shared_notification(
         resource_type=shared.type,
         resource_name=shared.name,
         resource_id=str(shared.instance.pk),
