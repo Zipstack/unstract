@@ -1,4 +1,5 @@
 import logging
+import os
 import time
 import uuid
 from typing import Any
@@ -6,6 +7,28 @@ from typing import Any
 from unstract.core.cache.redis_client import create_redis_client
 
 logger = logging.getLogger(__name__)
+
+
+def _metrics_redis_db() -> int:
+    """Which logical database the `metrics:*` keys live on (UN-4123).
+
+    Default 1 is the database this has always used, so an unset var leaves every
+    existing deployment exactly as it was. It exists so a SINGLE-DATABASE endpoint
+    can be supported: Azure Managed Redis, Redis Enterprise and every cluster-mode
+    service expose db 0 only, and this was the last place in the codebase where a
+    database was chosen in code rather than in configuration.
+
+    Set it alongside CACHE_REDIS_DB and FILE_ACTIVE_CACHE_REDIS_DB — those three
+    are the whole of Unstract's on-prem database map.
+
+    An explicit db argument beats a REDIS_URL's /<db> path — create_redis_client
+    strips the path for exactly this caller — so this works in URL mode too.
+
+    Read per instance rather than once at import: a malformed value then raises
+    inside __init__'s existing try/except, costing the metric, instead of killing
+    the process at import time.
+    """
+    return int(os.getenv("METRICS_REDIS_DB", "1"))
 
 
 class MetricsMixin:
@@ -21,7 +44,7 @@ class MetricsMixin:
         self.op_id = str(uuid.uuid4())  # Unique identifier for this instance
         self.redis_client = None
         try:
-            self.redis_client = create_redis_client(db=1)
+            self.redis_client = create_redis_client(db=_metrics_redis_db())
         except Exception as e:
             logger.error(f"Failed to initialize Redis client for run_id={run_id}: {e}")
 

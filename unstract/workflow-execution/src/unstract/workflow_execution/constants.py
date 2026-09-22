@@ -35,6 +35,9 @@ class ToolRuntimeVariable:
     REDIS_SSL_CERT_REQS = "REDIS_SSL_CERT_REQS"
     REDIS_SSL_CA_CERTS = "REDIS_SSL_CA_CERTS"
     REDIS_URL = "REDIS_URL"
+    # Single-database deployments move the sdk1 metrics keys off db 1; the tool
+    # builds its own client, so the choice has to reach it through this allowlist.
+    METRICS_REDIS_DB = "METRICS_REDIS_DB"
 
 
 class WorkflowFileType:
