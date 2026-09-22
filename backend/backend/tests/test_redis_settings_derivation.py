@@ -88,8 +88,25 @@ class TestDiscreteVars:
         assert cache["LOCATION"].startswith("rediss://")
         assert cache["OPTIONS"]["CONNECTION_POOL_KWARGS"] == {
             "ssl_cert_reqs": "required",
+            "ssl_check_hostname": True,
             "ssl_ca_certs": "/ca.pem",
         }
+
+    def test_hostname_verification_is_on_by_default(self):
+        """redis-py defaults it to False and overrides ssl's safe default with it.
+
+        A chain verified against a public CA proves nothing about WHICH server
+        answered, which is the ElastiCache/Azure case this work targets.
+        """
+        derived = _derive(REDIS_HOST="h", REDIS_SSL="true")
+        pool = derived["CACHES"]["default"]["OPTIONS"]["CONNECTION_POOL_KWARGS"]
+        assert pool["ssl_check_hostname"] is True
+
+    def test_hostname_verification_is_forced_off_when_verification_is_off(self):
+        """Python's ssl raises if check_hostname is True while verify_mode is NONE."""
+        derived = _derive(REDIS_HOST="h", REDIS_SSL="true", REDIS_SSL_CERT_REQS="none")
+        pool = derived["CACHES"]["default"]["OPTIONS"]["CONNECTION_POOL_KWARGS"]
+        assert "ssl_check_hostname" not in pool
 
 
 

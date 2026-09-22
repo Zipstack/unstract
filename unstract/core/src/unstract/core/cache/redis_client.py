@@ -189,6 +189,10 @@ def build_socketio_redis_url(env_prefix: str = "REDIS_") -> str:
     extra = {}
     if "ssl_cert_reqs=" not in url:
         extra["ssl_cert_reqs"] = cert_reqs
+    if "ssl_check_hostname=" not in url and cert_reqs != "none":
+        # Same reasoning as ssl_cert_reqs: a chain verified against a public CA
+        # says nothing about WHICH server answered unless the hostname is checked.
+        extra["ssl_check_hostname"] = str(env.get("ssl_check_hostname", True)).lower()
     if ca_certs and "ssl_ca_certs=" not in url:
         extra["ssl_ca_certs"] = ca_certs
     if extra:
@@ -254,8 +258,40 @@ def _resolve_redis_env(
     ).strip()
     if ca_certs:
         result["ssl_ca_certs"] = ca_certs
-    if ssl:
-        result["ssl_cert_reqs"] = os.getenv(f"{env_prefix}SSL_CERT_REQS", "required")
+    # Resolved OUTSIDE the ssl gate and WITH the generic fallback, for the same
+    # reason as ssl_ca_certs above. Two bugs came from the old placement: URL mode
+    # never set it at all (so `rediss://` silently took redis-py's default while
+    # the Socket.IO URL beside it carried the operator's value — one process,
+    # two verification policies), and a prefixed client ignored REDIS_SSL_CERT_REQS
+    # (so CACHE_REDIS_ stayed on "required" while REDIS_ honoured "none", and the
+    # worker cache alone failed verification and degraded to no-cache with only a
+    # warning).
+    result["ssl_cert_reqs"] = os.getenv(
+        f"{env_prefix}SSL_CERT_REQS", os.getenv("REDIS_SSL_CERT_REQS", "required")
+    )
+    # Hostname verification. redis-py defaults ssl_check_hostname to FALSE and
+    # overrides ssl.create_default_context()'s safe default with it, so a verified
+    # chain still proves nothing about WHICH server answered: against a publicly
+    # trusted CA — the ElastiCache/Azure case — any valid certificate for any
+    # domain is accepted, and an on-path attacker can terminate the connection.
+    # Encryption without server authentication is not what enabling TLS is
+    # understood to buy, which is the same argument this module already makes for
+    # kombu's CERT_NONE default.
+    #
+    # Forced off when verification itself is off: Python's ssl module raises if
+    # check_hostname is True while verify_mode is CERT_NONE.
+    if result["ssl_cert_reqs"] == "none":
+        result["ssl_check_hostname"] = False
+    else:
+        result["ssl_check_hostname"] = (
+            os.getenv(
+                f"{env_prefix}SSL_CHECK_HOSTNAME",
+                os.getenv("REDIS_SSL_CHECK_HOSTNAME", "true"),
+            )
+            .strip()
+            .lower()
+            == "true"
+        )
     return result
 
 
@@ -301,6 +337,7 @@ def _build_connection_kwargs(
     if env.get("ssl"):
         kwargs["ssl"] = True
         kwargs["ssl_cert_reqs"] = env.get("ssl_cert_reqs", "required")
+        kwargs["ssl_check_hostname"] = env.get("ssl_check_hostname", True)
         if env.get("ssl_ca_certs"):
             kwargs["ssl_ca_certs"] = env["ssl_ca_certs"]
     return kwargs
@@ -329,6 +366,8 @@ def _create_standalone_client(
                 db_override if db_override is not None else env.get("db_from_prefix_env")
             ),
             ssl_ca_certs=env.get("ssl_ca_certs"),
+            ssl_cert_reqs=env.get("ssl_cert_reqs"),
+            ssl_check_hostname=env.get("ssl_check_hostname"),
         )
 
     logger.info(
@@ -368,6 +407,8 @@ def _create_client_from_url(
     health_check_interval: int,
     db_override: int | None,
     ssl_ca_certs: str | None,
+    ssl_cert_reqs: str | None = None,
+    ssl_check_hostname: bool | None = None,
 ) -> redis.Redis:
     """Build a client from a full Redis URL.
 
@@ -385,8 +426,17 @@ def _create_client_from_url(
         kwargs["health_check_interval"] = health_check_interval
     if max_connections is not None:
         kwargs["max_connections"] = max_connections
-    if ssl_ca_certs and url.startswith("rediss://"):
-        kwargs["ssl_ca_certs"] = ssl_ca_certs
+    if url.startswith("rediss://"):
+        # URL mode used to set NEITHER of these, so `rediss://` took redis-py's
+        # defaults — verification policy silently diverging from the discrete
+        # path, and hostname checking off. A setting already in the URL's query
+        # string wins; these only fill the gap.
+        if ssl_ca_certs:
+            kwargs["ssl_ca_certs"] = ssl_ca_certs
+        if "ssl_cert_reqs=" not in url and ssl_cert_reqs:
+            kwargs["ssl_cert_reqs"] = ssl_cert_reqs
+        if "ssl_check_hostname=" not in url and ssl_check_hostname is not None:
+            kwargs["ssl_check_hostname"] = ssl_check_hostname
     if db_override is not None:
         # The URL path wins over a db kwarg in redis-py, so it has to go.
         url = _strip_url_db_path(url)

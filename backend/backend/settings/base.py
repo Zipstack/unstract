@@ -624,6 +624,15 @@ else:
         _cache_options["PASSWORD"] = REDIS_PASSWORD
     if REDIS_SSL:
         _pool_kwargs = {"ssl_cert_reqs": REDIS_SSL_CERT_REQS}
+        # redis-py defaults ssl_check_hostname to False and overrides
+        # create_default_context()'s safe default with it, so a chain verified
+        # against a public CA still does not prove WHICH server answered. Forced
+        # off when verification itself is off, or Python's ssl module raises.
+        if REDIS_SSL_CERT_REQS != "none":
+            _pool_kwargs["ssl_check_hostname"] = (
+                os.environ.get("REDIS_SSL_CHECK_HOSTNAME", "true").strip().lower()
+                == "true"
+            )
         if REDIS_SSL_CA_CERTS:
             _pool_kwargs["ssl_ca_certs"] = REDIS_SSL_CA_CERTS
         _cache_options["CONNECTION_POOL_KWARGS"] = _pool_kwargs

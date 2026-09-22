@@ -329,3 +329,61 @@ class TestSocketIoUrl:
         monkeypatch.setenv("REDIS_URL", "redis://h:6379/0")
         monkeypatch.setenv("REDIS_SSL_CA_CERTS", "/ca.pem")
         assert build_socketio_redis_url() == "redis://h:6379/0"
+
+
+class TestCertReqsAndHostname:
+    """ssl_cert_reqs used to be resolved three different ways in one module.
+
+    URL mode never read it, and a prefixed client had no fallback to the generic
+    REDIS_SSL_CERT_REQS — so one process could hold two verification policies.
+    """
+
+    def test_prefix_inherits_the_generic_cert_reqs(self, monkeypatch):
+        monkeypatch.setenv("REDIS_HOST", "h")
+        monkeypatch.setenv("REDIS_SSL", "true")
+        monkeypatch.setenv("REDIS_SSL_CERT_REQS", "none")
+        for prefix in ("REDIS_", "CACHE_REDIS_", "MANUAL_REVIEW_REDIS_"):
+            assert _kwargs(create_redis_client(env_prefix=prefix))["ssl_cert_reqs"] == (
+                "none"
+            ), prefix
+
+    def test_url_mode_carries_cert_reqs(self, monkeypatch):
+        """`rediss://` with no query used to take redis-py's default silently."""
+        monkeypatch.setenv("REDIS_URL", "rediss://h:6380/0")
+        monkeypatch.setenv("REDIS_SSL_CERT_REQS", "none")
+        assert _kwargs(create_redis_client())["ssl_cert_reqs"] == "none"
+
+    def test_a_cert_reqs_in_the_url_still_wins(self, monkeypatch):
+        monkeypatch.setenv("REDIS_URL", "rediss://h:6380/0?ssl_cert_reqs=required")
+        monkeypatch.setenv("REDIS_SSL_CERT_REQS", "none")
+        assert _kwargs(create_redis_client())["ssl_cert_reqs"] == "required"
+
+    def test_hostname_verification_is_on_by_default(self, monkeypatch):
+        """redis-py defaults this to False, which leaves TLS unauthenticated."""
+        monkeypatch.setenv("REDIS_HOST", "h")
+        monkeypatch.setenv("REDIS_SSL", "true")
+        assert _kwargs(create_redis_client())["ssl_check_hostname"] is True
+
+    def test_hostname_verification_is_on_in_url_mode_too(self, monkeypatch):
+        monkeypatch.setenv("REDIS_URL", "rediss://h:6380/0")
+        assert _kwargs(create_redis_client())["ssl_check_hostname"] is True
+
+    def test_hostname_verification_is_forced_off_without_verification(self, monkeypatch):
+        """ssl raises if check_hostname is True while verify_mode is CERT_NONE."""
+        monkeypatch.setenv("REDIS_HOST", "h")
+        monkeypatch.setenv("REDIS_SSL", "true")
+        monkeypatch.setenv("REDIS_SSL_CERT_REQS", "none")
+        assert _kwargs(create_redis_client())["ssl_check_hostname"] is False
+
+    def test_hostname_verification_can_be_turned_off(self, monkeypatch):
+        monkeypatch.setenv("REDIS_HOST", "h")
+        monkeypatch.setenv("REDIS_SSL", "true")
+        monkeypatch.setenv("REDIS_SSL_CHECK_HOSTNAME", "false")
+        assert _kwargs(create_redis_client())["ssl_check_hostname"] is False
+
+    def test_socketio_url_carries_both(self, monkeypatch):
+        monkeypatch.setenv("REDIS_HOST", "h")
+        monkeypatch.setenv("REDIS_SSL", "true")
+        url = build_socketio_redis_url()
+        assert "ssl_cert_reqs=required" in url
+        assert "ssl_check_hostname=true" in url
