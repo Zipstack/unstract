@@ -790,6 +790,17 @@ class ResourceShareNotificationTests(GroupSharingTestBase):
         # Nothing was lost — a direct VIEWER row still reaches the resource.
         self.service.send_group_resource_shared_notification.assert_not_called()
 
+    def test_revoke_skips_members_who_keep_access_via_another_group(self) -> None:
+        # ``self.member`` is in both groups; only ``self.group`` is revoked.
+        other_group = OrganizationGroup.objects.create(
+            organization=self.org, name="Ops", created_by=self.owner
+        )
+        GroupMembership.objects.create(group=other_group, user=self.member)
+        set_resource_share_groups(self.workflow, [other_group.id])
+        self._send(group_ids=[self.group.id], share_action=ShareAction.REVOKED.value)
+        # Still reaches the resource through "Ops" -- nothing was lost.
+        self.service.send_group_resource_shared_notification.assert_not_called()
+
     def test_membership_change_mails_only_the_changed_users(self) -> None:
         send_membership_changed(
             organization=self.org,
