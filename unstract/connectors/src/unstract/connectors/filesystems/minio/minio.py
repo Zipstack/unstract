@@ -32,9 +32,16 @@ class _BucketScopedFileSystem(DirFileSystem):
     (which walks) and browsing (which lists) agree (UN-3487).
     """
 
-    def _relpath_entries(self, entries: dict[str, Any]) -> dict[str, Any]:
+    def _relpath_entries(
+        self, entries: dict[str, Any] | list[str]
+    ) -> dict[str, Any] | list[str]:
+        # detail=False (fsspec's own default) yields bare basenames with
+        # nothing to fix. detail=True yields a dict already keyed by bare
+        # basename — only each entry's own `name` field is bucket-qualified.
+        if not isinstance(entries, dict):
+            return entries
         return {
-            self._relpath(name): {**info, "name": self._relpath(info["name"])}
+            name: {**info, "name": self._relpath(info["name"])}
             for name, info in entries.items()
         }
 

@@ -284,26 +284,38 @@ class TestMinioFSBucketRestriction(unittest.TestCase):
         # is what workflow-execution file discovery reads (it walks, the
         # UI browser lists) — a name still carrying the bucket here is what
         # doubles the prefix at the point a discovered file gets opened.
+        #
+        # Matches fsspec's real shape (verified against AbstractFileSystem.
+        # walk): the dict is keyed by bare basename already; only each
+        # entry's own `name` field carries the full, bucket-qualified path.
         fs = MinioFS({"bucket": "unstract", "key": "k", "secret": "s"})
 
         def fake_walk(path: str, detail: bool = True, **kwargs: object):
             yield (
                 "unstract/e2e-in",
                 {},
-                {
-                    "unstract/e2e-in/probe.txt": {
-                        "name": "unstract/e2e-in/probe.txt",
-                        "type": "file",
-                        "size": 10,
-                    }
-                },
+                {"probe.txt": {"name": "unstract/e2e-in/probe.txt", "type": "file"}},
             )
+
+        with patch.object(fs.s3, "walk", side_effect=fake_walk):
+            root, dirs, files = next(fs.get_fsspec_fs().walk("e2e-in", detail=True))
+        self.assertEqual(root, "e2e-in")
+        self.assertEqual(list(files.keys()), ["probe.txt"])
+        self.assertEqual(files["probe.txt"]["name"], "e2e-in/probe.txt")
+
+    def test_walk_default_detail_false_is_untouched(self) -> None:
+        # fsspec's own default is detail=False, which yields bare basename
+        # lists, not dicts. The relpath fix must not assume dict shape, or
+        # any caller using the plain walk() contract gets an AttributeError.
+        fs = MinioFS({"bucket": "unstract", "key": "k", "secret": "s"})
+
+        def fake_walk(path: str, **kwargs: object):
+            yield ("unstract/e2e-in", [], ["probe.txt"])
 
         with patch.object(fs.s3, "walk", side_effect=fake_walk):
             root, dirs, files = next(fs.get_fsspec_fs().walk("e2e-in"))
         self.assertEqual(root, "e2e-in")
-        self.assertEqual(list(files.keys()), ["e2e-in/probe.txt"])
-        self.assertEqual(files["e2e-in/probe.txt"]["name"], "e2e-in/probe.txt")
+        self.assertEqual(files, ["probe.txt"])
 
     def test_scoped_root_listing_never_reaches_lsbuckets(self) -> None:
         # The security-relevant assertion: ls("") on a bucket-scoped
