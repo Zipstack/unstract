@@ -9,7 +9,8 @@ DRF's request factory, so a gate that exists only in the queryset — and
 never reaches the route — is still caught.
 """
 
-from unittest.mock import patch
+import unittest
+from unittest.mock import mock_open, patch
 
 from connector_v2.models import ConnectorInstance
 from django.test import TestCase
@@ -19,7 +20,9 @@ from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.test import APIRequestFactory, force_authenticate
 
+from file_management.file_management_helper import FileManagerHelper
 from file_management.views import FileManagementViewSet
+from unstract.connectors.filesystems.minio.minio import MinioFS
 
 
 class FileManagementAccessScopeTest(CoOwnerOrgTestMixin, TestCase):
@@ -68,3 +71,31 @@ class FileManagementAccessScopeTest(CoOwnerOrgTestMixin, TestCase):
 
     def test_non_org_member_cannot_list_the_connector(self) -> None:
         self.assertEqual(self._list(self.stranger).status_code, status.HTTP_404_NOT_FOUND)
+
+
+class BucketScopedRootPathTest(unittest.TestCase):
+    """Regression for a Greptile finding on this PR: a bucket-scoped
+    connector's own `DirFileSystem.path` is its wrapped bucket prefix, not a
+    connector-level default root. Treating it as one double-prefixes every
+    root-level operation (`<bucket>/<bucket>/...`) instead of resolving
+    within the bucket.
+    """
+
+    def _minio_fs(self) -> MinioFS:
+        return MinioFS({"bucket": "team-a-data", "key": "k", "secret": "s"})
+
+    def test_list_files_at_root_is_not_double_prefixed(self) -> None:
+        minio_fs = self._minio_fs()
+        with patch.object(minio_fs.s3, "ls", return_value=[]) as mock_ls:
+            FileManagerHelper.list_files(minio_fs, "/")
+        mock_ls.assert_called_once_with("team-a-data/", detail=True)
+
+    def test_upload_file_at_root_is_not_double_prefixed(self) -> None:
+        minio_fs = self._minio_fs()
+        with patch.object(minio_fs.s3, "open", mock_open()) as mock_open_call:
+            FileManagerHelper.upload_file(minio_fs, "/", b"data", "report.pdf")
+        (called_path,), kwargs = mock_open_call.call_args
+        self.assertEqual(kwargs, {"mode": "wb"})
+        self.assertNotIn("team-a-data/team-a-data", called_path)
+        self.assertTrue(called_path.startswith("team-a-data/"))
+        self.assertTrue(called_path.endswith("report.pdf"))
