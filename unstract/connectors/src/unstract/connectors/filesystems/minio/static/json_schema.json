@@ -5,13 +5,19 @@
   "required": [
     "connectorName",
     "endpoint_url",
-    "region_name"
+    "region_name",
+    "bucket"
   ],
   "properties": {
     "connectorName": {
       "type": "string",
       "title": "Name of the connector",
       "default": "Unstract's S3/Minio"
+    },
+    "bucket": {
+      "type": "string",
+      "title": "Bucket Name",
+      "description": "Name of the bucket to be restricted to."
     },
     "key": {
       "type": "string",

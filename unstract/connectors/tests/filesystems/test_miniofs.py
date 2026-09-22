@@ -5,8 +5,10 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 from botocore.exceptions import ClientError
+from fsspec.implementations.dirfs import DirFileSystem
 from s3fs.core import S3FileSystem
 from s3fs.errors import translate_boto_error
+from unstract.connectors.exceptions import ConnectorError
 from unstract.connectors.filesystems.minio.exceptions import s3_error_code
 from unstract.connectors.filesystems.minio.minio import (
     MinioFS,
@@ -201,8 +203,7 @@ class TestAccessFilteredS3FileSystem(unittest.TestCase):
 
         with (
             patch(
-                "unstract.connectors.filesystems.minio.minio."
-                "S3FileSystem._lsbuckets",
+                "unstract.connectors.filesystems.minio.minio.S3FileSystem._lsbuckets",
                 new=AsyncMock(return_value=parent_buckets),
             ),
             patch.object(fs, "_call_s3", new=AsyncMock(side_effect=fake_call)),
@@ -239,6 +240,51 @@ class TestAccessFilteredS3FileSystem(unittest.TestCase):
                 raise OSError("translated")  # noqa: B904
         except OSError as outer:
             self.assertEqual(s3_error_code(outer), "AccessDenied")
+
+
+class TestMinioFSBucketRestriction(unittest.TestCase):
+    """Unit tests for UN-3487: `bucket` is required and enforced on MinioFS.
+
+    All tests construct `MinioFS`/`UnstractCloudStorage` directly — no
+    network calls happen until an actual fsspec method is invoked.
+    """
+
+    def test_missing_bucket_raises(self) -> None:
+        with self.assertRaises(ConnectorError):
+            MinioFS({"key": "k", "secret": "s", "endpoint_url": "http://x"})
+
+    def test_blank_bucket_raises(self) -> None:
+        with self.assertRaises(ConnectorError):
+            MinioFS({"bucket": "   ", "key": "k", "secret": "s"})
+
+    def test_bucket_is_stored(self) -> None:
+        fs = MinioFS({"bucket": "team-a-data", "key": "k", "secret": "s"})
+        self.assertEqual(fs.bucket, "team-a-data")
+
+    def test_get_fsspec_fs_scopes_to_bucket(self) -> None:
+        fs = MinioFS({"bucket": "team-a-data", "key": "k", "secret": "s"})
+        scoped = fs.get_fsspec_fs()
+        self.assertIsInstance(scoped, DirFileSystem)
+        self.assertEqual(scoped.path, "team-a-data")
+        self.assertIs(scoped.fs, fs.s3)
+
+    def test_scoped_root_listing_never_reaches_lsbuckets(self) -> None:
+        # The security-relevant assertion: ls("") on a bucket-scoped
+        # connector must resolve to listing that one bucket's contents,
+        # never the account-wide bucket enumeration `_lsbuckets` performs.
+        fs = MinioFS({"bucket": "team-a-data", "key": "k", "secret": "s"})
+        with patch.object(fs.s3, "ls", return_value=[]) as mock_ls:
+            fs.get_fsspec_fs().ls("")
+        mock_ls.assert_called_once_with("team-a-data", detail=True)
+
+    def test_ucs_does_not_require_bucket(self) -> None:
+        # UCS restricts access via its own `path` setting instead.
+        ucs = UnstractCloudStorage({"key": "k", "secret": "s", "path": "some/path"})
+        self.assertEqual(ucs.bucket, "")
+
+    def test_ucs_get_fsspec_fs_is_unscoped(self) -> None:
+        ucs = UnstractCloudStorage({"key": "k", "secret": "s", "path": "some/path"})
+        self.assertIs(ucs.get_fsspec_fs(), ucs.s3)
 
 
 if __name__ == "__main__":

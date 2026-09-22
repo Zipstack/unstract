@@ -7,8 +7,11 @@ from email.utils import parsedate_to_datetime
 from typing import Any
 
 from botocore.exceptions import ClientError
+from fsspec import AbstractFileSystem
+from fsspec.implementations.dirfs import DirFileSystem
 from s3fs.core import S3FileSystem
 
+from unstract.connectors.exceptions import ConnectorError
 from unstract.connectors.filesystems.unstract_file_system import UnstractFileSystem
 
 from .exceptions import (
@@ -138,12 +141,21 @@ class MinioFS(UnstractFileSystem):
     # known to have full access to every bucket they list, so the per-bucket
     # access probe in _AccessFilteredS3FileSystem can be skipped.
     _FS_CLASS: type[S3FileSystem] = _AccessFilteredS3FileSystem
+    # Override to False in a subclass whose settings restrict access some
+    # other way (e.g. UCS, which uses its own `path` setting instead).
+    _REQUIRES_BUCKET: bool = True
 
     def __init__(self, settings: dict[str, Any]):
         super().__init__("MinioFS/S3")
         key = (settings.get("key") or "").strip()
         secret = (settings.get("secret") or "").strip()
         endpoint_url = (settings.get("endpoint_url") or "").strip()
+        self.bucket = (settings.get("bucket") or "").strip()
+        if self._REQUIRES_BUCKET and not self.bucket:
+            raise ConnectorError(
+                "A bucket must be configured for this connector.",
+                treat_as_user_message=True,
+            )
         client_kwargs = {}
         if "region_name" in settings and settings["region_name"] != "":
             client_kwargs = {"region_name": settings["region_name"]}
@@ -324,7 +336,15 @@ class MinioFS(UnstractFileSystem):
         )
         return None
 
-    def get_fsspec_fs(self) -> S3FileSystem:
+    def get_fsspec_fs(self) -> AbstractFileSystem:
+        """Return the filesystem scoped to this connector's bucket.
+
+        When a bucket is configured, every operation (list, read, write,
+        `test_credentials`) is confined to it via `DirFileSystem` — the
+        underlying credentials may see more, but this connector never will.
+        """
+        if self.bucket:
+            return DirFileSystem(path=self.bucket, fs=self.s3)
         return self.s3
 
     def test_credentials(self) -> bool:
