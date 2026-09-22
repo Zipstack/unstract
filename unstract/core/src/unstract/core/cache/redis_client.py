@@ -142,6 +142,24 @@ def create_redis_client(
         )
 
 
+def _compose_redis_url(env: dict[str, Any]) -> str:
+    """Assemble a URL from the discrete vars, percent-encoding the credentials.
+
+    Split out of build_socketio_redis_url so that function stays about the TLS
+    query string rather than also being a URL builder.
+    """
+    credentials = ""
+    if env.get("username") and env.get("password"):
+        credentials = (
+            f"{quote(str(env['username']), safe='')}:"
+            f"{quote(str(env['password']), safe='')}@"
+        )
+    elif env.get("password"):
+        credentials = f":{quote(str(env['password']), safe='')}@"
+    scheme = "rediss" if env.get("ssl") else "redis"
+    return f"{scheme}://{credentials}{env['host']}:{env['port']}"
+
+
 def build_socketio_redis_url(env_prefix: str = "REDIS_") -> str:
     """Redis URL for a Socket.IO/kombu client, TLS settings included (UN-4123).
 
@@ -170,19 +188,7 @@ def build_socketio_redis_url(env_prefix: str = "REDIS_") -> str:
     )
     ca_certs = env.get("ssl_ca_certs")
 
-    url = env["url"]
-    if not url:
-        credentials = ""
-        if env.get("username") and env.get("password"):
-            credentials = (
-                f"{quote(str(env['username']), safe='')}:"
-                f"{quote(str(env['password']), safe='')}@"
-            )
-        elif env.get("password"):
-            credentials = f":{quote(str(env['password']), safe='')}@"
-        scheme = "rediss" if env.get("ssl") else "redis"
-        url = f"{scheme}://{credentials}{env['host']}:{env['port']}"
-
+    url = env["url"] or _compose_redis_url(env)
     if not url.startswith("rediss://"):
         return url
 
