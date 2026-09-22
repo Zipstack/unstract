@@ -15,6 +15,8 @@ import re
 from pathlib import Path
 from urllib.parse import quote
 
+from unstract.core.cache.redis_client import build_socketio_redis_url
+
 import httpx
 from django.core.validators import URLValidator
 from dotenv import find_dotenv, load_dotenv
@@ -572,12 +574,8 @@ if REDIS_SENTINEL_MODE:
         }
     }
 else:
-    # SocketIO connection manager (standalone)
-    _cred_prefix = ""
-    if REDIS_USER and REDIS_PASSWORD:
-        _cred_prefix = f"{quote(REDIS_USER, safe='')}:{quote(REDIS_PASSWORD, safe='')}@"
-    elif REDIS_PASSWORD:
-        _cred_prefix = f":{quote(REDIS_PASSWORD, safe='')}@"
+    # Credentials for the Socket.IO URL are assembled inside
+    # build_socketio_redis_url(); only the cache LOCATION is built here.
     _scheme = "rediss" if REDIS_SSL else "redis"
     _cache_db = int(REDIS_DB) if REDIS_DB else 0
 
@@ -597,14 +595,13 @@ else:
             f"{_redis_url}{_sep}ssl_ca_certs={quote(REDIS_SSL_CA_CERTS, safe='/')}"
         )
 
-    # kombu reads TLS off the scheme, but defaults ssl_cert_reqs to CERT_NONE —
-    # encrypted while accepting ANY certificate, which is not what "TLS" is meant
-    # to buy. The query parameter is the only way to say otherwise here, since
-    # KombuManager takes a URL rather than connection kwargs.
-    _socketio_tls_query = f"?ssl_cert_reqs={REDIS_SSL_CERT_REQS}" if REDIS_SSL else ""
-    SOCKET_IO_MANAGER_URL = _redis_url or (
-        f"{_scheme}://{_cred_prefix}{REDIS_HOST}:{REDIS_PORT}{_socketio_tls_query}"
-    )
+    # Built by unstract.core, which the log-consumer worker's publisher also uses.
+    # Both used to assemble this by hand and drifted — the worker stayed on a
+    # hardcoded redis:// after this side learned TLS, so with a TLS-only endpoint
+    # its events never reached subscribers. The helper also pins ssl_cert_reqs
+    # (kombu defaults rediss:// to CERT_NONE) and carries ssl_ca_certs, neither of
+    # which this expression did for the discrete-vars path.
+    SOCKET_IO_MANAGER_URL = build_socketio_redis_url()
     SOCKET_IO_TRANSPORT_OPTIONS = {}
 
     # django-redis 5.4.0 reads only PASSWORD (plus timeouts) out of OPTIONS — its

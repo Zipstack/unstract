@@ -14,7 +14,10 @@ None of those raise at import, so they are asserted here instead.
 import pytest
 import redis
 
-from unstract.core.cache.redis_client import create_redis_client
+from unstract.core.cache.redis_client import (
+    build_socketio_redis_url,
+    create_redis_client,
+)
 
 _REDIS_ENV_MARKERS = ("REDIS_", "CACHE_REDIS_", "MANUAL_REVIEW_REDIS_")
 
@@ -256,3 +259,73 @@ class TestAuth:
         monkeypatch.setenv("CACHE_REDIS_PASSWORD", "")
         kwargs = _kwargs(create_redis_client(env_prefix="CACHE_REDIS_"))
         assert kwargs.get("password") is None
+
+
+class TestSocketIoUrl:
+    """The URL kombu gets for Socket.IO (UN-4123).
+
+    kombu takes a URL and nothing else, so every TLS setting has to survive in the
+    query string. The backend and the log-consumer worker both publish through it;
+    they each built this by hand until they drifted, so these cases pin what the
+    shared builder must produce.
+    """
+
+    def test_plaintext_default(self, monkeypatch):
+        monkeypatch.setenv("REDIS_HOST", "unstract-redis")
+        assert build_socketio_redis_url() == "redis://unstract-redis:6379"
+
+    def test_password_only_is_url_encoded(self, monkeypatch):
+        monkeypatch.setenv("REDIS_HOST", "h")
+        monkeypatch.setenv("REDIS_PASSWORD", "p@ss/word")
+        assert build_socketio_redis_url() == "redis://:p%40ss%2Fword@h:6379"
+
+    def test_tls_switches_scheme_and_pins_verification(self, monkeypatch):
+        """kombu defaults rediss:// to CERT_NONE — encrypted but unauthenticated.
+
+        Without ssl_cert_reqs in the query, enabling TLS would buy encryption
+        against an unverified server, which is not what operators understand it
+        to mean.
+        """
+        monkeypatch.setenv("REDIS_HOST", "h")
+        monkeypatch.setenv("REDIS_SSL", "true")
+        url = build_socketio_redis_url()
+        assert url.startswith("rediss://")
+        assert "ssl_cert_reqs=required" in url
+
+    def test_ca_certs_travel_in_the_query(self, monkeypatch):
+        """The Django cache gets the CA through pool kwargs; kombu has only this.
+
+        Without it, cache access succeeds while the Socket.IO connection cannot
+        verify the same server — so WebSocket delivery dies on its own.
+        """
+        monkeypatch.setenv("REDIS_HOST", "h")
+        monkeypatch.setenv("REDIS_SSL", "true")
+        monkeypatch.setenv("REDIS_SSL_CA_CERTS", "/etc/ssl/redis-ca.pem")
+        assert "ssl_ca_certs=%2Fetc%2Fssl%2Fredis-ca.pem" in build_socketio_redis_url()
+
+    def test_url_mode_is_used_as_given(self, monkeypatch):
+        monkeypatch.setenv("REDIS_HOST", "in-cluster")
+        monkeypatch.setenv("REDIS_URL", "redis://managed.example:6379/0")
+        assert build_socketio_redis_url() == "redis://managed.example:6379/0"
+
+    def test_a_tls_url_without_cert_reqs_gets_them(self, monkeypatch):
+        """A rediss:// URL alone would leave kombu on CERT_NONE."""
+        monkeypatch.setenv("REDIS_URL", "rediss://:pw@managed.example:6380/0")
+        url = build_socketio_redis_url()
+        assert "ssl_cert_reqs=required" in url
+
+    def test_an_explicit_cert_reqs_in_the_url_is_respected(self, monkeypatch):
+        monkeypatch.setenv("REDIS_URL", "rediss://h:6380/0?ssl_cert_reqs=none")
+        url = build_socketio_redis_url()
+        assert "ssl_cert_reqs=none" in url
+        assert url.count("ssl_cert_reqs") == 1
+
+    def test_ca_is_added_to_a_tls_url(self, monkeypatch):
+        monkeypatch.setenv("REDIS_URL", "rediss://h:6380/0?ssl_cert_reqs=required")
+        monkeypatch.setenv("REDIS_SSL_CA_CERTS", "/ca.pem")
+        assert "ssl_ca_certs=%2Fca.pem" in build_socketio_redis_url()
+
+    def test_a_plaintext_url_gains_no_tls_query(self, monkeypatch):
+        monkeypatch.setenv("REDIS_URL", "redis://h:6379/0")
+        monkeypatch.setenv("REDIS_SSL_CA_CERTS", "/ca.pem")
+        assert build_socketio_redis_url() == "redis://h:6379/0"

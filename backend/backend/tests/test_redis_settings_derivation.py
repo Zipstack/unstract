@@ -32,6 +32,10 @@ def _derive(**env: str) -> dict:
     prelude = (
         "import os\n"
         "from urllib.parse import quote\n"
+        # The Socket.IO URL is built by unstract.core so the backend and the
+        # log-consumer worker cannot drift; its own cases live in
+        # unstract/core/tests/test_redis_client_config.py::TestSocketIoUrl.
+        "from unstract.core.cache.redis_client import build_socketio_redis_url\n"
         "REDIS_USER = os.environ.get('REDIS_USER', 'default')\n"
         "REDIS_PASSWORD = os.environ.get('REDIS_PASSWORD', '')\n"
         "REDIS_HOST = os.environ.get('REDIS_HOST', 'localhost')\n"
@@ -66,7 +70,6 @@ def plain() -> dict:
 class TestDiscreteVars:
     def test_plaintext_is_unchanged(self, plain):
         assert plain["CACHES"]["default"]["LOCATION"] == "redis://unstract-redis:6379/0"
-        assert plain["SOCKET_IO_MANAGER_URL"] == "redis://unstract-redis:6379"
         assert "CONNECTION_POOL_KWARGS" not in plain["CACHES"]["default"]["OPTIONS"]
 
     def test_db_travels_in_the_location(self):
@@ -88,19 +91,14 @@ class TestDiscreteVars:
             "ssl_ca_certs": "/ca.pem",
         }
 
-    def test_socketio_pins_certificate_verification(self):
-        """kombu defaults rediss:// to CERT_NONE — encrypted, but unauthenticated."""
-        derived = _derive(REDIS_HOST="h", REDIS_SSL="true")
-        assert "ssl_cert_reqs=required" in derived["SOCKET_IO_MANAGER_URL"]
 
 
 class TestUrlMode:
-    def test_url_drives_both_cache_and_socketio(self):
-        """The regression: these two used to ignore REDIS_URL entirely."""
+    def test_url_drives_the_cache(self):
+        """The regression: this used to ignore REDIS_URL entirely."""
         url = "rediss://:pw@managed.example:6380/0?ssl_cert_reqs=required"
         derived = _derive(REDIS_HOST="in-cluster", REDIS_URL=url)
         assert derived["CACHES"]["default"]["LOCATION"].startswith(url)
-        assert derived["SOCKET_IO_MANAGER_URL"].startswith(url)
         assert "in-cluster" not in derived["CACHES"]["default"]["LOCATION"]
 
     def test_credentials_are_not_passed_twice(self):

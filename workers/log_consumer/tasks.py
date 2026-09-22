@@ -15,6 +15,7 @@ from shared.infrastructure.logging import WorkerLogger
 from shared.utils.api_client_singleton import get_singleton_api_client
 
 from unstract.core.cache.redis_queue_client import RedisQueueClient
+from unstract.core.cache.redis_client import build_socketio_redis_url
 from unstract.core.constants import LogEventArgument, LogProcessingTask
 from unstract.core.log_utils import store_execution_log
 
@@ -51,7 +52,11 @@ if _sentinel_mode:
     _sentinel_master_name = os.getenv("REDIS_SENTINEL_MASTER_NAME", "mymaster")
     _transport_options = {"master_name": _sentinel_master_name}
 else:
-    socket_io_manager_url = f"redis://{_cred_prefix}{_redis_host}:{_redis_port}"
+    # UN-4123: built by unstract.core so this cannot drift from the backend again.
+    # It previously hardcoded redis://, so with platform TLS on, this publisher
+    # could not reach a TLS-only endpoint and execution logs stopped arriving in
+    # the UI — the backend's own manager having moved to rediss:// without it.
+    socket_io_manager_url = build_socketio_redis_url()
 
 sio = socketio.Server(
     async_mode="threading",

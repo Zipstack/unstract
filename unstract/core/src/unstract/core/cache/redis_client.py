@@ -23,7 +23,7 @@ import os
 import random
 import time
 from typing import Any
-from urllib.parse import urlsplit, urlunsplit
+from urllib.parse import quote, urlencode, urlsplit, urlunsplit
 
 import redis
 from redis.sentinel import Sentinel
@@ -140,6 +140,61 @@ def create_redis_client(
             health_check_interval=health_check_interval,
             db_override=db,
         )
+
+
+def build_socketio_redis_url(env_prefix: str = "REDIS_") -> str:
+    """Redis URL for a Socket.IO/kombu client, TLS settings included (UN-4123).
+
+    The backend and the log-consumer worker both publish Socket.IO events through
+    kombu, and each used to build this URL by hand. They drifted: the backend
+    learned TLS while the worker kept a hardcoded ``redis://``, so against a
+    TLS-only endpoint the worker could not publish and execution logs stopped
+    reaching the UI — with nothing failing loudly. One function now serves both.
+
+    kombu reads TLS out of the URL and NOTHING ELSE: ``KombuManager`` takes a URL,
+    not connection kwargs. Two consequences are handled here rather than left to
+    each caller:
+
+    * ``ssl_cert_reqs`` must be in the query string. Kombu defaults a ``rediss://``
+      URL to ``CERT_NONE`` — encrypted, but the server is never authenticated,
+      which is not what enabling TLS is understood to buy.
+    * ``ssl_ca_certs`` must be there too, or a privately-signed server (Memorystore)
+      fails verification even though the Django cache beside it succeeds.
+
+    Sentinel is deliberately out of scope: it is the self-hosted HA path, its URL
+    has a different shape, and a managed endpoint is a single primary.
+    """
+    env = _resolve_redis_env(env_prefix)
+    cert_reqs = env.get("ssl_cert_reqs") or os.getenv(
+        f"{env_prefix}SSL_CERT_REQS", os.getenv("REDIS_SSL_CERT_REQS", "required")
+    )
+    ca_certs = env.get("ssl_ca_certs")
+
+    url = env["url"]
+    if not url:
+        credentials = ""
+        if env.get("username") and env.get("password"):
+            credentials = (
+                f"{quote(str(env['username']), safe='')}:"
+                f"{quote(str(env['password']), safe='')}@"
+            )
+        elif env.get("password"):
+            credentials = f":{quote(str(env['password']), safe='')}@"
+        scheme = "rediss" if env.get("ssl") else "redis"
+        url = f"{scheme}://{credentials}{env['host']}:{env['port']}"
+
+    if not url.startswith("rediss://"):
+        return url
+
+    extra = {}
+    if "ssl_cert_reqs=" not in url:
+        extra["ssl_cert_reqs"] = cert_reqs
+    if ca_certs and "ssl_ca_certs=" not in url:
+        extra["ssl_ca_certs"] = ca_certs
+    if extra:
+        separator = "&" if "?" in url else "?"
+        url = url + separator + urlencode(extra, quote_via=quote)
+    return url
 
 
 def _resolve_redis_env(
