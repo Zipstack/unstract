@@ -39,6 +39,11 @@ _SENTINEL_JITTER_MIN = 0.8
 _SENTINEL_JITTER_MAX = 1.2
 _DEFAULT_SENTINEL_MASTER_NAME = os.getenv("REDIS_SENTINEL_MASTER_NAME", "mymaster")
 
+# The scheme IS the TLS switch: redis-py, kombu and django-redis all select an
+# SSL connection from it, which is why nothing here has a separate "use TLS" flag
+# for URL mode.
+_TLS_SCHEME = "rediss://"
+
 # redis-py sends a PING before reusing a connection idle for longer than this, so a
 # connection killed while parked (managed-Redis failover, an idle-connection reaper —
 # Azure Cache closes at 10 minutes) is discovered and replaced by the health check
@@ -189,7 +194,7 @@ def build_socketio_redis_url(env_prefix: str = "REDIS_") -> str:
     ca_certs = env.get("ssl_ca_certs")
 
     url = env["url"] or _compose_redis_url(env)
-    if not url.startswith("rediss://"):
+    if not url.startswith(_TLS_SCHEME):
         return url
 
     extra = {}
@@ -247,7 +252,7 @@ def _resolve_redis_env(
     # so out loud: an operator who turns REDIS_SSL on while an older plaintext
     # REDIS_URL is still set gets cleartext on the wire believing TLS is on. The
     # mismatch is never deliberate — a URL that means TLS says rediss://.
-    if result["url"] and ssl and not result["url"].startswith("rediss://"):
+    if result["url"] and ssl and not result["url"].startswith(_TLS_SCHEME):
         logger.error(
             "%sSSL is true but %sURL uses a plaintext scheme; the URL wins, so this "
             "connection will NOT be encrypted. Use rediss:// in the URL, or clear it "
@@ -444,7 +449,7 @@ def _create_client_from_url(
         kwargs["health_check_interval"] = health_check_interval
     if max_connections is not None:
         kwargs["max_connections"] = max_connections
-    if url.startswith("rediss://"):
+    if url.startswith(_TLS_SCHEME):
         # URL mode used to set NEITHER of these, so `rediss://` took redis-py's
         # defaults — verification policy silently diverging from the discrete
         # path, and hostname checking off. A setting already in the URL's query
