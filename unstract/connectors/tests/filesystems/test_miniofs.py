@@ -28,21 +28,30 @@ class TestMinoFS(unittest.TestCase):
         # Endpoint from the rig's testcontainers MinIO via MINIO_ENDPOINT_URL;
         # falls back to the local platform MinIO for manual runs.
         self.assertEqual(MinioFS.requires_oauth(), False)
+        endpoint_url = os.environ.get("MINIO_ENDPOINT_URL", "http://localhost:9000")
+        bucket = "rig-minio-test"
+
+        # UN-3487: bucket is now required, so the connector can no longer
+        # discover it via a root bucket listing — bootstrap it directly.
+        bootstrap_fs = S3FileSystem(
+            key=os.environ["MINIO_ACCESS_KEY_ID"],
+            secret=os.environ["MINIO_SECRET_ACCESS_KEY"],
+            client_kwargs={"endpoint_url": endpoint_url},
+        )
+        if not bootstrap_fs.exists(bucket):
+            bootstrap_fs.mkdir(bucket)
+
         fs = MinioFS(
             {
                 "key": os.environ["MINIO_ACCESS_KEY_ID"],
                 "secret": os.environ["MINIO_SECRET_ACCESS_KEY"],
-                "endpoint_url": os.environ.get(
-                    "MINIO_ENDPOINT_URL", "http://localhost:9000"
-                ),
-                "path": "/",
+                "endpoint_url": endpoint_url,
+                "bucket": bucket,
             }
         ).get_fsspec_fs()
-        bucket = "rig-minio-test"
-        if not fs.exists(bucket):
-            fs.mkdir(bucket)
-        listed = [b.rstrip("/").split("/")[-1] for b in fs.ls("")]
-        self.assertIn(bucket, listed)
+        # A live connection to the bucket-scoped root must succeed, without
+        # needing (or being able) to see any other bucket.
+        fs.ls("")
 
 
 def _translated_error(code: str) -> BaseException:
