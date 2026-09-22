@@ -15,6 +15,8 @@ import pytest
 import redis
 
 from unstract.core.cache.redis_client import (
+    _build_connection_kwargs,
+    _resolve_redis_env,
     build_socketio_redis_url,
     create_redis_client,
 )
@@ -387,3 +389,53 @@ class TestCertReqsAndHostname:
         url = build_socketio_redis_url()
         assert "ssl_cert_reqs=required" in url
         assert "ssl_check_hostname=true" in url
+
+
+class TestSentinelTls:
+    """Sentinel's DISCOVERY connections used to stay plaintext under REDIS_SSL.
+
+    redis-py builds the Sentinel clients from sentinel_kwargs alone, so the master
+    connection was encrypted while the Sentinel password went out in clear — one
+    switch, two answers.
+    """
+
+    def _clients(self, monkeypatch):
+        from redis.sentinel import Sentinel
+
+        monkeypatch.setenv("REDIS_HOST", "sentinel-svc")
+        monkeypatch.setenv("REDIS_PORT", "26379")
+        monkeypatch.setenv("REDIS_PASSWORD", "pw")
+        env = _resolve_redis_env("REDIS_", default_port="26379")
+        sentinel = Sentinel(
+            [("sentinel-svc", 26379)],
+            sentinel_kwargs=_build_connection_kwargs(
+                env, True, 5, 5, include_auth_only=True
+            ),
+        )
+        master = sentinel.master_for(
+            "mymaster", **_build_connection_kwargs(env, True, 5, 5)
+        )
+        return sentinel, master
+
+    def test_tls_reaches_both_planes(self, monkeypatch):
+        monkeypatch.setenv("REDIS_SSL", "true")
+        sentinel, master = self._clients(monkeypatch)
+        assert (
+            sentinel.sentinels[0].connection_pool.connection_class.__name__
+            == "SSLConnection"
+        )
+        assert (
+            master.connection_pool.connection_class.__name__
+            == "SentinelManagedSSLConnection"
+        )
+
+    def test_plaintext_sentinel_is_unchanged(self, monkeypatch):
+        sentinel, master = self._clients(monkeypatch)
+        assert (
+            sentinel.sentinels[0].connection_pool.connection_class.__name__
+            == "Connection"
+        )
+        assert (
+            master.connection_pool.connection_class.__name__
+            == "SentinelManagedConnection"
+        )

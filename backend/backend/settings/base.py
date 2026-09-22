@@ -642,6 +642,23 @@ else:
             _pool_kwargs["ssl_ca_certs"] = REDIS_SSL_CA_CERTS
         _cache_options["CONNECTION_POOL_KWARGS"] = _pool_kwargs
 
+    if _cache_db and not _redis_url:
+        # Visible in the field, because this is a one-way RELOCATION of the whole
+        # CACHES["default"] keyspace. django-redis 5.4.0 ignores OPTIONS["DB"], so
+        # this cache has always sat on db 0 no matter what REDIS_DB said; carrying
+        # the db in the LOCATION path is the fix, but it MOVES live data. What
+        # moves is not only cache — CacheService wraps
+        # get_redis_connection("default"), so log_history_queue, the rate-limit
+        # counters and the dashboard caches go with it, and during a rolling
+        # deploy old pods read db 0 while new pods read db N. Drain
+        # log_history_queue before cutting over.
+        logging.getLogger(__name__).warning(
+            "Django cache is moving to Redis db %s (REDIS_DB). It previously sat on "
+            "db 0 regardless, because django-redis ignores OPTIONS['DB']. Anything "
+            "already in db 0 — including log_history_queue — stays there.",
+            _cache_db,
+        )
+
     CACHES = {
         "default": {
             "BACKEND": "django_redis.cache.RedisCache",

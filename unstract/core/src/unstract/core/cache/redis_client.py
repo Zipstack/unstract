@@ -184,8 +184,10 @@ def build_socketio_redis_url(env_prefix: str = "REDIS_") -> str:
     * ``ssl_ca_certs`` must be there too, or a privately-signed server (Memorystore)
       fails verification even though the Django cache beside it succeeds.
 
-    Sentinel is deliberately out of scope: it is the self-hosted HA path, its URL
-    has a different shape, and a managed endpoint is a single primary.
+    Sentinel is deliberately out of scope HERE: it is the self-hosted HA path, its
+    URL has a different shape, and a managed endpoint is a single primary. (The
+    Sentinel CLIENT does get TLS, on both the discovery and master connections —
+    see _build_connection_kwargs; it is only this URL builder that does not.)
     """
     env = _resolve_redis_env(env_prefix)
     cert_reqs = env.get("ssl_cert_reqs") or os.getenv(
@@ -341,6 +343,23 @@ def _build_connection_kwargs(
             kwargs["password"] = env["password"]
         if env.get("username"):
             kwargs["username"] = env["username"]
+        # TLS belongs on the DISCOVERY connections too. redis-py builds the
+        # Sentinel clients from these kwargs alone, so omitting it left the
+        # Sentinel password going out in clear against a Sentinel that still
+        # accepted plaintext, while the master connection beside it was encrypted
+        # and the operator believed one switch had turned TLS on everywhere.
+        # Against a TLS-only Sentinel it failed instead, after the full
+        # ten-attempt backoff.
+        #
+        # Sentinel and master share a cert in every deployment that enables TLS —
+        # a Sentinel node IS a redis-server and takes the same tls-port config —
+        # so this follows {prefix}SSL rather than adding a switch of its own.
+        if env.get("ssl"):
+            kwargs["ssl"] = True
+            kwargs["ssl_cert_reqs"] = env.get("ssl_cert_reqs", "required")
+            kwargs["ssl_check_hostname"] = env.get("ssl_check_hostname", True)
+            if env.get("ssl_ca_certs"):
+                kwargs["ssl_ca_certs"] = env["ssl_ca_certs"]
         return kwargs
 
     kwargs = {

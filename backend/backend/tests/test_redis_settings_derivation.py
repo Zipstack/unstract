@@ -38,6 +38,7 @@ def _derive(**env: str) -> dict:
 
     ns: dict = {}
     prelude = (
+        "import logging\n"
         "import os\n"
         "from urllib.parse import quote\n"
         # The Socket.IO URL is built by unstract.core so the backend and the
