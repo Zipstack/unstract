@@ -82,7 +82,14 @@ def _users_left_without_access(instance: Model, users: set[Any]) -> list[Any]:
 def _send_share_notification(
     instance: Model, context: tuple[str, str], users: set[Any], actor: Any
 ) -> None:
-    """Email users newly granted direct access. Best-effort."""
+    """Email users newly granted direct access. Best-effort.
+
+    Sent inline, matching every other direct-share call site in the codebase
+    (pipelines, API deployments, connectors, ...). Group shares, by contrast,
+    dispatch through PGMQ (see ``share_notifications.notify_resource_group_share_changed``)
+    because a group's member count -- and so its send time -- is unbounded in
+    a way a handful of direct users is not.
+    """
     resource_type, resource_name = context
     try:
         notification_plugin["service_class"]().send_sharing_notification(

@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import logging
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -27,6 +28,10 @@ from tenant_account_v2.models import (
     OrganizationGroup,
     OrganizationMember,
 )
+from tenant_account_v2.notification_resource_types import (
+    adapter_notification_type,
+    pipeline_notification_type,
+)
 from tenant_account_v2.share_notifications import MembershipAction, ShareAction
 from tenant_account_v2.shareable_resources import ShareableResource, descriptor_for_kind
 
@@ -38,9 +43,16 @@ logger = logging.getLogger(__name__)
 
 notification_plugin = get_plugin("notification")
 
+# Ceiling on concurrent per-group sends, mirroring the email plugin's own
+# ``MAX_CONCURRENT_CHUNK_SENDS`` -- a resource shared with many groups would
+# otherwise serialize one blocking SendGrid call per group.
+_MAX_CONCURRENT_GROUP_SENDS = 10
+
 # OSS ``ShareableResource.kind`` → the email plugin's ``ResourceType`` value.
 # Deliberately plain strings: OSS must not import a cloud-only enum. Not a 1:1
-# rename — pipelines and adapters resolve from the instance below.
+# rename — pipelines and adapters resolve via the shared helpers below instead,
+# the same ones the direct-share viewsets use, so a new adapter/pipeline type
+# only needs registering once.
 _STATIC_RESOURCE_TYPES = {
     "workflow": "workflow",
     "api_deployment": "api",
@@ -49,15 +61,6 @@ _STATIC_RESOURCE_TYPES = {
     "agentic_project": "agentic_project",
     "lookup": "lookup",
 }
-_ADAPTER_RESOURCE_TYPES = {
-    "LLM": "llm",
-    "EMBEDDING": "embedding",
-    "VECTOR_DB": "vector_db",
-    "X2TEXT": "x2text",
-}
-# Only ETL/TASK pipelines map to a notification resource type; the plugin
-# compares against these exact (uppercase) values.
-_PIPELINE_RESOURCE_TYPES = frozenset({"ETL", "TASK"})
 
 
 class ResourceNotFoundError(Exception):
@@ -98,6 +101,26 @@ def send_resource_shared(
     service = _service()
     if service is None:
         return True
+    resolved = _resolve_share(organization, actor_id, resource_kind, resource_id)
+    if resolved is None:
+        return True
+    actor, shared = resolved
+    retained = _retained_user_ids(organization, shared.instance, share_action)
+    if retained is None:
+        return True
+    groups = list(_groups_to_mail(organization, group_ids, shared.instance, share_action))
+    recipients_by_group = _group_recipients_batch(
+        organization, groups, retained, revoked_at
+    )
+    return _mail_all_groups(
+        service, groups, recipients_by_group, shared, actor, share_action
+    )
+
+
+def _resolve_share(
+    organization: Organization, actor_id: int, resource_kind: str, resource_id: str
+) -> tuple[User, _SharedResource] | None:
+    """The actor and resolved resource, or ``None`` to skip (already logged)."""
     actor = _get_user(organization, actor_id)
     shared = _load_resource(organization, resource_kind, resource_id)
     if actor is None:
@@ -109,7 +132,7 @@ def send_resource_shared(
             resource_kind,
             resource_id,
         )
-        return True
+        return None
     if shared.type is None:
         # A registered resource kind with no notification-plugin type mapping
         # -- a real gap worth an operator's attention, unlike the actor case.
@@ -120,28 +143,39 @@ def send_resource_shared(
             resource_kind,
             resource_id,
         )
-        return True
-    retained = _retained_user_ids(organization, shared.instance, share_action)
-    if retained is None:
-        return True
-    groups = list(_groups_to_mail(organization, group_ids, shared.instance, share_action))
-    recipients_by_group = _group_recipients_batch(
-        organization, groups, retained, revoked_at
-    )
-    all_sent = True
+        return None
+    return actor, shared
+
+
+def _mail_all_groups(
+    service: Any,
+    groups: list[OrganizationGroup],
+    recipients_by_group: dict[int, list[User]],
+    shared: _SharedResource,
+    actor: User,
+    share_action: str,
+) -> bool:
+    """Send each group's copy concurrently; ``False`` if any real send failed."""
+    to_mail = [g for g in groups if recipients_by_group.get(g.pk)]
     for group in groups:
-        recipients = recipients_by_group.get(group.pk, [])
         logger.info(
             "group-notification: task=notify_resource_shared_with_group "
             "group_id=%s action=%s recipient_count=%d",
             group.pk,
             share_action,
-            len(recipients),
+            len(recipients_by_group.get(group.pk, [])),
         )
-        if recipients:
-            sent = _mail_group(service, group, recipients, shared, actor, share_action)
-            all_sent = all_sent and sent
-    return all_sent
+    if not to_mail:
+        return True
+
+    def _send(group: OrganizationGroup) -> bool:
+        return _mail_group(
+            service, group, recipients_by_group[group.pk], shared, actor, share_action
+        )
+
+    workers = min(len(to_mail), _MAX_CONCURRENT_GROUP_SENDS)
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        return all(pool.map(_send, to_mail))
 
 
 def send_membership_changed(
@@ -417,11 +451,7 @@ def _resource_type_for(descriptor: ShareableResource, resource: Any) -> str | No
     that is neither ETL nor TASK) — the caller skips rather than guessing.
     """
     if descriptor.kind == "pipeline":
-        pipeline_type = getattr(resource, "pipeline_type", None)
-        return pipeline_type if pipeline_type in _PIPELINE_RESOURCE_TYPES else None
+        return pipeline_notification_type(getattr(resource, "pipeline_type", None))
     if descriptor.kind == "adapter_instance":
-        # Unknown adapter types fall back to ``llm``, matching the co-owner
-        # path's override — an OCR adapter shared with a group should not
-        # silently send nothing when sharing it with a co-owner mails fine.
-        return _ADAPTER_RESOURCE_TYPES.get(str(resource.adapter_type or ""), "llm")
+        return adapter_notification_type(str(resource.adapter_type or ""))
     return _STATIC_RESOURCE_TYPES.get(descriptor.kind)

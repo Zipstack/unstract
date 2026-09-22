@@ -42,8 +42,6 @@ from pipeline_v2.serializers.execute import (
 from pipeline_v2.serializers.sharing import SharedUserListSerializer
 
 notification_plugin = get_plugin("notification")
-if notification_plugin:
-    from plugins.notification.constants import ResourceType
 
 logger = logging.getLogger(__name__)
 
@@ -61,12 +59,13 @@ class PipelineViewSet(
     notification_resource_name_field = "pipeline_name"
 
     def get_notification_resource_type(self, resource: Any) -> str | None:
-        # Only ETL/TASK pipelines map to a notification ResourceType.
         if not notification_plugin:
             return None
-        if resource.pipeline_type in (ResourceType.ETL.value, ResourceType.TASK.value):
-            return resource.pipeline_type
-        return None
+        from tenant_account_v2.notification_resource_types import (
+            pipeline_notification_type,
+        )
+
+        return pipeline_notification_type(resource.pipeline_type)
 
     def get_permissions(self) -> list[Any]:
         # Enabling or disabling is use, not configuration, so it follows

@@ -53,8 +53,6 @@ from .constants import AdapterKeys as constant
 from .models import AdapterInstance, UserDefaultAdapter
 
 notification_plugin = get_plugin("notification")
-if notification_plugin:
-    from plugins.notification.constants import ResourceType
 
 logger = logging.getLogger(__name__)
 
@@ -155,12 +153,11 @@ class AdapterInstanceViewSet(
     def get_notification_resource_type(self, resource: Any) -> str | None:
         if not notification_plugin:
             return None
-        return {
-            "LLM": ResourceType.LLM.value,
-            "EMBEDDING": ResourceType.EMBEDDING.value,
-            "VECTOR_DB": ResourceType.VECTOR_DB.value,
-            "X2TEXT": ResourceType.X2TEXT.value,
-        }.get(resource.adapter_type, ResourceType.LLM.value)
+        from tenant_account_v2.notification_resource_types import (
+            adapter_notification_type,
+        )
+
+        return adapter_notification_type(resource.adapter_type)
 
     def get_permissions(self) -> list[Any]:
         # Frictionless adapters: hidden from non-owners (update/retrieve),
