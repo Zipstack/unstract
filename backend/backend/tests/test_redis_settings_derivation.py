@@ -25,6 +25,14 @@ _SETTINGS = pathlib.Path(__file__).resolve().parents[1] / "settings" / "base.py"
 def _derive(**env: str) -> dict:
     """Execute the standalone Redis block with the given env."""
     source = _SETTINGS.read_text()
+    # TWO slices of the shipping file, no hand-written copies. The variable
+    # DEFINITIONS (REDIS_USER … REDIS_URL) live ~400 lines above the derivation
+    # block, and they used to be duplicated in the prelude below — so the four
+    # variables this work introduced never executed, and a mutation to any of
+    # them (a flipped REDIS_SSL default, a typo'd REDIS_URI) left the suite green
+    # while the copy under test stayed correct. Both ranges now come from source.
+    defs_start = source.index('REDIS_USER = os.environ.get("REDIS_USER"')
+    defs_end = source.index("\n", source.index('REDIS_URL = os.environ.get("REDIS_URL"')) + 1
     start = source.index("REDIS_SENTINEL_MODE = (")
     end = source.index("SESSION_ENGINE =")
 
@@ -36,16 +44,7 @@ def _derive(**env: str) -> dict:
         # log-consumer worker cannot drift; its own cases live in
         # unstract/core/tests/test_redis_client_config.py::TestSocketIoUrl.
         "from unstract.core.cache.redis_client import build_socketio_redis_url\n"
-        "REDIS_USER = os.environ.get('REDIS_USER', 'default')\n"
-        "REDIS_PASSWORD = os.environ.get('REDIS_PASSWORD', '')\n"
-        "REDIS_HOST = os.environ.get('REDIS_HOST', 'localhost')\n"
-        "REDIS_PORT = os.environ.get('REDIS_PORT', '6379')\n"
-        "REDIS_DB = os.environ.get('REDIS_DB', '')\n"
-        "REDIS_SSL = os.environ.get('REDIS_SSL', 'false').strip().lower() == 'true'\n"
-        "REDIS_SSL_CERT_REQS = os.environ.get('REDIS_SSL_CERT_REQS', 'required')\n"
-        "REDIS_SSL_CA_CERTS = os.environ.get('REDIS_SSL_CA_CERTS', '').strip()\n"
-        "REDIS_URL = os.environ.get('REDIS_URL', '').strip()\n"
-    )
+    ) + source[defs_start:defs_end]
     import os as _os
 
     saved = {k: _os.environ.get(k) for k in list(_os.environ) if "REDIS" in k}
@@ -71,6 +70,42 @@ class TestDiscreteVars:
     def test_plaintext_is_unchanged(self, plain):
         assert plain["CACHES"]["default"]["LOCATION"] == "redis://unstract-redis:6379/0"
         assert "CONNECTION_POOL_KWARGS" not in plain["CACHES"]["default"]["OPTIONS"]
+
+    def test_the_password_reaches_the_cache(self):
+        """Discrete mode is the ONLY path where the password travels in OPTIONS.
+
+        In URL mode it rides inside the URL. Dropping this assignment left the
+        whole suite green while the Django cache authenticated as nobody against
+        a password-protected Redis — every read and write failing at runtime,
+        nothing failing at import. This block is now built conditionally, so the
+        credentials are newly reachable-or-not depending on a branch.
+        """
+        derived = _derive(REDIS_HOST="h", REDIS_PASSWORD="s3cret")
+        assert derived["CACHES"]["default"]["OPTIONS"]["PASSWORD"] == "s3cret"
+
+    def test_db_and_username_are_passed_through_options(self):
+        """Pins the stated invariant so a django-redis bump is visible.
+
+        The comment beside this code says USERNAME is deliberately not honoured —
+        django-redis 5.4.0 discards it, so auth stays password-only as the
+        built-in `default` user. That holds by accident of the pinned version:
+        these assertions pin what the settings SEND, so if a bump starts reading
+        USERNAME the change is a deliberate one rather than a surprise.
+        """
+        options = _derive(REDIS_HOST="h", REDIS_DB="3", REDIS_USER="alice")["CACHES"][
+            "default"
+        ]["OPTIONS"]
+        assert options["DB"] == 3
+        assert options["USERNAME"] == "alice"
+
+    def test_url_mode_does_not_duplicate_credentials_into_options(self):
+        """They travel in the URL; passing both risks one winning over the other."""
+        options = _derive(REDIS_URL="redis://:pw@h:6379/2")["CACHES"]["default"][
+            "OPTIONS"
+        ]
+        assert "PASSWORD" not in options
+        assert "USERNAME" not in options
+        assert "DB" not in options
 
     def test_db_travels_in_the_location(self):
         """django-redis 5.4.0 ignores OPTIONS['DB'], so the path is the only route.

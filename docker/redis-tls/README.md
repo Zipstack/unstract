@@ -74,7 +74,19 @@ REDIS_SSL_CERT_REQS=none
 The runner forwards these to each **tool sidecar** it spawns, and sidecars get no
 CA mount — the runner builds their environment as an allowlist and mounts only the
 shared log dir. `none` keeps the connection encrypted while skipping verification,
-which still exercises the forwarding fix and the TLS handshake. Against a real
+which still exercises the forwarding fix and the TLS handshake.
+
+`REDIS_SSL_CERT_REQS` is honoured **alongside** a URL: the setting is resolved
+once, with the generic fallback, and applied to `rediss://` URLs that carry no
+`ssl_cert_reqs=` of their own. (It did not used to be, which made this recipe
+silently fall back to `required` and fail the handshake against the self-signed
+dev cert.) Putting it in the URL works too and wins if both are set:
+`rediss://:devpassword@unstract-redis-managed:6380/0?ssl_cert_reqs=none`.
+
+Hostname verification follows the same setting — it is forced off when
+verification is off, and on otherwise. The dev certificate carries SANs for
+`unstract-redis-managed`, `localhost` and `127.0.0.1`, so `required` works from
+containers and from the host without further configuration. Against a real
 managed endpoint this does not arise: ElastiCache and Azure chain to public CAs, and
 for Memorystore you would mount its CA into the sidecar image.
 
