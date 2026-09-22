@@ -320,6 +320,32 @@ def _resolve_redis_env(
     return result
 
 
+def _tls_kwargs(env: dict[str, Any]) -> dict[str, Any]:
+    """TLS connection kwargs, empty when TLS is off.
+
+    Shared by BOTH branches of _build_connection_kwargs on purpose. The auth-only
+    branch builds Sentinel's DISCOVERY connections, and it used to return before
+    the TLS block below — so the master connection was encrypted while the
+    Sentinel password went out in clear against a Sentinel that still accepted
+    plaintext, and a TLS-only Sentinel failed through the full ten-attempt backoff
+    instead. One helper means the two cannot drift again.
+
+    Sentinel and master share a certificate in every deployment that enables TLS —
+    a Sentinel node IS a redis-server and takes the same tls-port configuration —
+    so this follows {prefix}SSL rather than adding a switch of its own.
+    """
+    if not env.get("ssl"):
+        return {}
+    kwargs: dict[str, Any] = {
+        "ssl": True,
+        "ssl_cert_reqs": env.get("ssl_cert_reqs", "required"),
+        "ssl_check_hostname": env.get("ssl_check_hostname", True),
+    }
+    if env.get("ssl_ca_certs"):
+        kwargs["ssl_ca_certs"] = env["ssl_ca_certs"]
+    return kwargs
+
+
 def _build_connection_kwargs(
     env: dict[str, Any],
     decode_responses: bool,
@@ -343,23 +369,8 @@ def _build_connection_kwargs(
             kwargs["password"] = env["password"]
         if env.get("username"):
             kwargs["username"] = env["username"]
-        # TLS belongs on the DISCOVERY connections too. redis-py builds the
-        # Sentinel clients from these kwargs alone, so omitting it left the
-        # Sentinel password going out in clear against a Sentinel that still
-        # accepted plaintext, while the master connection beside it was encrypted
-        # and the operator believed one switch had turned TLS on everywhere.
-        # Against a TLS-only Sentinel it failed instead, after the full
-        # ten-attempt backoff.
-        #
-        # Sentinel and master share a cert in every deployment that enables TLS —
-        # a Sentinel node IS a redis-server and takes the same tls-port config —
-        # so this follows {prefix}SSL rather than adding a switch of its own.
-        if env.get("ssl"):
-            kwargs["ssl"] = True
-            kwargs["ssl_cert_reqs"] = env.get("ssl_cert_reqs", "required")
-            kwargs["ssl_check_hostname"] = env.get("ssl_check_hostname", True)
-            if env.get("ssl_ca_certs"):
-                kwargs["ssl_ca_certs"] = env["ssl_ca_certs"]
+        # The DISCOVERY connections get TLS too — see _tls_kwargs.
+        kwargs.update(_tls_kwargs(env))
         return kwargs
 
     kwargs = {
@@ -376,12 +387,7 @@ def _build_connection_kwargs(
         kwargs["password"] = env["password"]
     if env.get("username"):
         kwargs["username"] = env["username"]
-    if env.get("ssl"):
-        kwargs["ssl"] = True
-        kwargs["ssl_cert_reqs"] = env.get("ssl_cert_reqs", "required")
-        kwargs["ssl_check_hostname"] = env.get("ssl_check_hostname", True)
-        if env.get("ssl_ca_certs"):
-            kwargs["ssl_ca_certs"] = env["ssl_ca_certs"]
+    kwargs.update(_tls_kwargs(env))
     return kwargs
 
 
