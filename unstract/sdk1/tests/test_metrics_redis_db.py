@@ -19,20 +19,29 @@ class TestMetricsRedisDb:
         monkeypatch.setenv("METRICS_REDIS_DB", "0")
         assert _metrics_redis_db() == 0
 
-    @pytest.mark.parametrize("raw", ["", "zero", "1.5"])
-    def test_malformed_value_costs_the_metric_not_the_process(
-        self, monkeypatch: pytest.MonkeyPatch, raw: str
-    ) -> None:
-        """A bad value must not kill a tool run.
+    @pytest.mark.parametrize("raw", ["", "   "])
+    def test_blank_means_unset(self, monkeypatch: pytest.MonkeyPatch, raw: str) -> None:
+        """A declared-but-empty variable is this repo's convention for "default".
 
-        The read is per instance, inside __init__'s existing try/except, so the
-        client is simply left unset and collect_metrics() reports None — the same
-        degradation as an unreachable Redis.
+        int("") used to raise inside __init__'s try/except, so every LLM timing
+        metric went silently missing platform-wide — once per instrumented call,
+        behind a log line that named Redis rather than this variable.
         """
         monkeypatch.setenv("METRICS_REDIS_DB", raw)
-        with pytest.raises(ValueError):
-            _metrics_redis_db()
+        assert _metrics_redis_db() == 1
 
+    @pytest.mark.parametrize("raw", ["zero", "1.5"])
+    def test_unparseable_falls_back_rather_than_losing_every_metric(
+        self, monkeypatch: pytest.MonkeyPatch, raw: str, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """And the warning names the variable, so it is not read as a Redis outage."""
+        monkeypatch.setenv("METRICS_REDIS_DB", raw)
+        assert _metrics_redis_db() == 1
+        assert "METRICS_REDIS_DB" in caplog.text
+
+    def test_metrics_stay_enabled_through_a_bad_value(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("METRICS_REDIS_DB", "zero")
         metrics = MetricsMixin(run_id="run-1")
-        assert metrics.redis_client is None
-        assert metrics.collect_metrics() == {MetricsMixin.TIME_TAKEN_KEY: None}
+        assert metrics.redis_key.startswith("metrics:run-1:")

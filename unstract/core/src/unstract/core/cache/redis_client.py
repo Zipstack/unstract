@@ -243,6 +243,18 @@ def _resolve_redis_env(
         # path, so an unset URL changes nothing.
         "url": os.getenv(f"{env_prefix}URL", os.getenv("REDIS_URL", "")).strip(),
     }
+    # A URL's scheme is authoritative and silently wins over {prefix}SSL, so say
+    # so out loud: an operator who turns REDIS_SSL on while an older plaintext
+    # REDIS_URL is still set gets cleartext on the wire believing TLS is on. The
+    # mismatch is never deliberate — a URL that means TLS says rediss://.
+    if result["url"] and ssl and not result["url"].startswith("rediss://"):
+        logger.error(
+            "%sSSL is true but %sURL uses a plaintext scheme; the URL wins, so this "
+            "connection will NOT be encrypted. Use rediss:// in the URL, or clear it "
+            "to use the discrete host/port vars.",
+            env_prefix,
+            env_prefix,
+        )
     # A prefix that INHERITS the generic REDIS_URL must still honour its own
     # {prefix}DB. The Helm chart sets CACHE_REDIS_DB=1 while configuring one
     # REDIS_URL for the platform; without this the worker cache would silently

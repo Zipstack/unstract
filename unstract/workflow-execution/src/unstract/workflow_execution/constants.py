@@ -35,6 +35,10 @@ class ToolRuntimeVariable:
     REDIS_SSL_CERT_REQS = "REDIS_SSL_CERT_REQS"
     REDIS_SSL_CA_CERTS = "REDIS_SSL_CA_CERTS"
     REDIS_URL = "REDIS_URL"
+    # Read by _resolve_health_check_interval in this same client, so the
+    # documented "set it to 0 to restore the old behaviour" lever has to reach
+    # here too — otherwise these processes silently keep the 30s default.
+    REDIS_HEALTH_CHECK_INTERVAL = "REDIS_HEALTH_CHECK_INTERVAL"
     # Single-database deployments move the sdk1 metrics keys off db 1; the tool
     # builds its own client, so the choice has to reach it through this allowlist.
     METRICS_REDIS_DB = "METRICS_REDIS_DB"

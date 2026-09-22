@@ -8,6 +8,8 @@ from unstract.core.cache.redis_client import create_redis_client
 
 logger = logging.getLogger(__name__)
 
+_DEFAULT_DB = 1
+
 
 def _metrics_redis_db() -> int:
     """Which logical database the `metrics:*` keys live on (UN-4123).
@@ -24,11 +26,24 @@ def _metrics_redis_db() -> int:
     An explicit db argument beats a REDIS_URL's /<db> path — create_redis_client
     strips the path for exactly this caller — so this works in URL mode too.
 
-    Read per instance rather than once at import: a malformed value then raises
-    inside __init__'s existing try/except, costing the metric, instead of killing
-    the process at import time.
+    A blank value means UNSET, not malformed: a declared-but-empty variable is this
+    repo's own convention for "leave the default" (CACHE_REDIS_PASSWORD=,
+    REDIS_SSL_CA_CERTS=), and every other variable in this work treats it that way.
+    Without that, int("") raised inside __init__'s try/except and every LLM timing
+    metric went silently missing platform-wide, once per instrumented call, behind
+    a log line that named Redis rather than this variable.
+
+    A genuinely unparseable value falls back to the default and says so, for the
+    same reason: losing every metric is a bad trade for a typo.
     """
-    return int(os.getenv("METRICS_REDIS_DB", "1"))
+    raw = os.getenv("METRICS_REDIS_DB", "").strip() or "1"
+    try:
+        return int(raw)
+    except ValueError:
+        logger.warning(
+            "Invalid METRICS_REDIS_DB=%r; falling back to db %s", raw, _DEFAULT_DB
+        )
+        return _DEFAULT_DB
 
 
 class MetricsMixin:

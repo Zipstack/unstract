@@ -622,7 +622,12 @@ else:
         _cache_options["DB"] = _cache_db
         _cache_options["USERNAME"] = REDIS_USER
         _cache_options["PASSWORD"] = REDIS_PASSWORD
-    if REDIS_SSL:
+    # Gated on the EFFECTIVE scheme, not the flag. In URL mode TLS is carried by
+    # the URL (and its query string), so a plaintext REDIS_URL left behind while
+    # REDIS_SSL=true would otherwise hand ssl_cert_reqs to a plain
+    # redis.Connection — TypeError on the first cache read in a request, not at
+    # startup. Same trap the pooled standalone client hits, inverted.
+    if REDIS_SSL and not _redis_url:
         _pool_kwargs = {"ssl_cert_reqs": REDIS_SSL_CERT_REQS}
         # redis-py defaults ssl_check_hostname to False and overrides
         # create_default_context()'s safe default with it, so a chain verified

@@ -50,6 +50,10 @@ class Env:
     REDIS_SSL_CERT_REQS = "REDIS_SSL_CERT_REQS"
     REDIS_SSL_CA_CERTS = "REDIS_SSL_CA_CERTS"
     REDIS_URL = "REDIS_URL"
+    # Read by _resolve_health_check_interval in this same client, so the
+    # documented "set it to 0 to restore the old behaviour" lever has to reach
+    # here too — otherwise these processes silently keep the 30s default.
+    REDIS_HEALTH_CHECK_INTERVAL = "REDIS_HEALTH_CHECK_INTERVAL"
     CELERY_BROKER_BASE_URL = "CELERY_BROKER_BASE_URL"
     CELERY_BROKER_USER = "CELERY_BROKER_USER"
     CELERY_BROKER_PASS = "CELERY_BROKER_PASS"

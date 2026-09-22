@@ -183,3 +183,23 @@ class TestUrlMode:
         location = derived["CACHES"]["default"]["LOCATION"]
         assert location.count("ssl_ca_certs") == 1
         assert "/in/url.pem" in location
+
+
+class TestSchemeFlagMismatch:
+    """REDIS_SSL=true left beside an older plaintext REDIS_URL.
+
+    The URL wins for the connection, so the flag alone must not decide the pool
+    kwargs: ssl_cert_reqs reaching a plain redis.Connection is a TypeError on the
+    first cache read in a request, not at startup.
+    """
+
+    def test_a_plaintext_url_does_not_get_tls_pool_kwargs(self):
+        derived = _derive(REDIS_URL="redis://h:6379/0", REDIS_SSL="true")
+        cache = derived["CACHES"]["default"]
+        assert cache["LOCATION"] == "redis://h:6379/0"
+        assert "CONNECTION_POOL_KWARGS" not in cache["OPTIONS"]
+
+    def test_a_rediss_url_still_needs_none_of_them(self):
+        """TLS travels in the URL and its query string in URL mode."""
+        derived = _derive(REDIS_URL="rediss://h:6380/0", REDIS_SSL="true")
+        assert "CONNECTION_POOL_KWARGS" not in derived["CACHES"]["default"]["OPTIONS"]

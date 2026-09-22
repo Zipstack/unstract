@@ -251,6 +251,7 @@ class ToolsUtils:
                     ToolRV.REDIS_SSL_CERT_REQS,
                     ToolRV.REDIS_SSL_CA_CERTS,
                     ToolRV.REDIS_URL,
+                    ToolRV.REDIS_HEALTH_CHECK_INTERVAL,
                     ToolRV.METRICS_REDIS_DB,
                 )
                 if os.environ.get(name)

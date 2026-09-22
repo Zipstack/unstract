@@ -273,6 +273,7 @@ class UnstractRunner:
             Env.REDIS_SSL_CERT_REQS,
             Env.REDIS_SSL_CA_CERTS,
             Env.REDIS_URL,
+            Env.REDIS_HEALTH_CHECK_INTERVAL,
         ):
             _redis_value = os.getenv(_redis_env)
             if _redis_value:
