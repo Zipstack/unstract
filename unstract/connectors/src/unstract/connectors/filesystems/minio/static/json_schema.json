@@ -14,11 +14,6 @@
       "title": "Name of the connector",
       "default": "Unstract's S3/Minio"
     },
-    "bucket": {
-      "type": "string",
-      "title": "Bucket Name",
-      "description": "Name of the bucket to be restricted to."
-    },
     "key": {
       "type": "string",
       "title": "Key",
@@ -42,6 +37,11 @@
       "title": "Region Name",
       "default": "ap-south",
       "description": "Region of the AWS S3 account (leave blank for Minio)"
+    },
+    "bucket": {
+      "type": "string",
+      "title": "Bucket Name",
+      "description": "Name of the bucket to be restricted to."
     }
   }
 }
