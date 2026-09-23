@@ -16,12 +16,15 @@ def _metrics_redis_db() -> int:
 
     Default 1 is the database this has always used, so an unset var leaves every
     existing deployment exactly as it was. It exists so a SINGLE-DATABASE endpoint
-    can be supported: Azure Managed Redis, Redis Enterprise and every cluster-mode
-    service expose db 0 only, and this was the last place in the codebase where a
-    database was chosen in code rather than in configuration.
+    can be supported: the non-clustered tiers of Azure Managed Redis and Redis
+    Enterprise expose db 0 only, and this was the last place in the codebase where
+    a database was chosen in code rather than in configuration. (Cluster mode is
+    unsupported for a different reason entirely — plain redis.Redis gets MOVED
+    redirects regardless of how many databases the service offers.)
 
-    Set it alongside CACHE_REDIS_DB and FILE_ACTIVE_CACHE_REDIS_DB — those three
-    are the whole of Unstract's on-prem database map.
+    It is one of FOUR keys in Unstract's on-prem database map; workers/sample.env
+    carries the list and the collapsing recipe. REDIS_DB is the one that is easy
+    to forget, because it is already set.
 
     An explicit db argument beats a REDIS_URL's /<db> path — create_redis_client
     strips the path for exactly this caller — so this works in URL mode too.
@@ -36,7 +39,7 @@ def _metrics_redis_db() -> int:
     A genuinely unparseable value falls back to the default and says so, for the
     same reason: losing every metric is a bad trade for a typo.
     """
-    raw = os.getenv("METRICS_REDIS_DB", "").strip() or "1"
+    raw = os.getenv("METRICS_REDIS_DB", "").strip() or str(_DEFAULT_DB)
     try:
         return int(raw)
     except ValueError:

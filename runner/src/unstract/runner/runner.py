@@ -272,6 +272,7 @@ class UnstractRunner:
             Env.REDIS_SSL,
             Env.REDIS_SSL_CERT_REQS,
             Env.REDIS_SSL_CA_CERTS,
+            Env.REDIS_SSL_CHECK_HOSTNAME,
             Env.REDIS_URL,
             Env.REDIS_HEALTH_CHECK_INTERVAL,
         ):

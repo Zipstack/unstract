@@ -24,6 +24,10 @@ from utils.cors_origin import normalize_web_app_origin
 from unstract.core.cache.redis_client import (
     build_socketio_redis_url,
     ensure_tls_query_params,
+    resolve_ssl_cert_reqs,
+    resolve_ssl_check_hostname,
+    set_url_db_path,
+    url_db_path,
 )
 
 # Django 5.0+ caps URLValidator at 2048 chars. S3 pre-signed URLs signed with
@@ -113,7 +117,11 @@ REDIS_DB = os.environ.get("REDIS_DB", "")
 # untouched. `rediss://` is what actually selects TLS for both django-redis and
 # kombu; this flag only decides which scheme gets built.
 REDIS_SSL = os.environ.get("REDIS_SSL", "false").strip().lower() == "true"
-REDIS_SSL_CERT_REQS = os.environ.get("REDIS_SSL_CERT_REQS", "required")
+# Resolved by unstract.core, not re-read here: the raw value needs trimming,
+# lower-casing and validating, and a second copy of that logic is how this file
+# and create_redis_client came to hold two verification policies for one endpoint.
+REDIS_SSL_CERT_REQS = resolve_ssl_cert_reqs()
+REDIS_SSL_CHECK_HOSTNAME = resolve_ssl_check_hostname()
 REDIS_SSL_CA_CERTS = os.environ.get("REDIS_SSL_CA_CERTS", "").strip()
 # A full URL overrides the discrete vars above, exactly as it does in
 # unstract.core's create_redis_client — otherwise the workers would follow the URL
@@ -586,17 +594,33 @@ else:
     # query string, so one string configures both — verified against the pinned
     # versions. The CA is appended rather than required in the URL, since it is a
     # local path rather than part of the endpoint's identity.
-    # Same helper the Socket.IO URL uses. Hand-rolling the append here is how the
-    # two copies drifted: this one added only ssl_ca_certs while unstract.core
-    # added ssl_cert_reqs as well, so one process held two verification policies
+    # Same helper the Socket.IO URL uses. Hand-rolling the append here is how two
+    # copies drift: this one WOULD add only ssl_ca_certs while unstract.core added
+    # ssl_cert_reqs as well, leaving one process holding two verification policies
     # for one endpoint. django-redis reads TLS from the LOCATION's query string
-    # only, exactly like kombu.
+    # AND from OPTIONS["CONNECTION_POOL_KWARGS"] — the query string wins when both
+    # set the same key (ConnectionPool.from_url ends with kwargs.update(url_options)).
+    # kombu is the URL-only one. The distinction matters: the pool-kwargs block
+    # below is the discrete-vars path's ONLY route, so reading "query string only"
+    # as "that block is dead" would drop hostname verification back to redis-py's
+    # unauthenticated default.
+    # THE DATABASE RULE, applied to the LOCATION so this cache lands where
+    # create_redis_client would put it. django-redis takes a LOCATION string and
+    # ignores OPTIONS["DB"], so rewriting the path is the only lever — and
+    # without it the backend followed the URL's own path while the workers
+    # honoured REDIS_DB. One REDIS_URL, one REDIS_DB, two different databases:
+    # workers RPUSH log_history_queue to db N, the backend LPOPs an empty db 0,
+    # and nothing errors. Same helper both sides use, so the rule has one
+    # implementation rather than two that agree today.
+    _url_db = url_db_path(REDIS_URL)
+    _redis_url = (
+        set_url_db_path(REDIS_URL, _cache_db) if (REDIS_URL and REDIS_DB) else REDIS_URL
+    )
     _redis_url = ensure_tls_query_params(
-        REDIS_URL,
+        _redis_url,
         cert_reqs=REDIS_SSL_CERT_REQS,
         ca_certs=REDIS_SSL_CA_CERTS,
-        check_hostname=os.environ.get("REDIS_SSL_CHECK_HOSTNAME", "true").strip().lower()
-        == "true",
+        check_hostname=REDIS_SSL_CHECK_HOSTNAME,
     )
 
     # Built by unstract.core, which the log-consumer worker's publisher also uses.
@@ -642,15 +666,22 @@ else:
         # against a public CA still does not prove WHICH server answered. Forced
         # off when verification itself is off, or Python's ssl module raises.
         if REDIS_SSL_CERT_REQS != "none":
-            _pool_kwargs["ssl_check_hostname"] = (
-                os.environ.get("REDIS_SSL_CHECK_HOSTNAME", "true").strip().lower()
-                == "true"
-            )
+            _pool_kwargs["ssl_check_hostname"] = REDIS_SSL_CHECK_HOSTNAME
         if REDIS_SSL_CA_CERTS:
             _pool_kwargs["ssl_ca_certs"] = REDIS_SSL_CA_CERTS
         _cache_options["CONNECTION_POOL_KWARGS"] = _pool_kwargs
 
-    if _cache_db and not _redis_url:
+    # Fires whenever the keyspace actually MOVES. Before the rule above reached
+    # URL mode this was gated on `not _redis_url`, so the one mode that could now
+    # relocate a live cache was the one mode that said nothing.
+    #
+    # Both sides have to be the EFFECTIVE db, not REDIS_DB: in URL mode with
+    # REDIS_DB unset the URL's own path stands, so comparing it against
+    # _cache_db's 0 default announced a move that never happens — a warning
+    # about data loss on a perfectly ordinary `redis://h/3`.
+    _previous_db = (_url_db or 0) if REDIS_URL else 0
+    _effective_db = _cache_db if (REDIS_DB or not REDIS_URL) else _previous_db
+    if _effective_db != _previous_db:
         # Visible in the field, because this is a one-way RELOCATION of the whole
         # CACHES["default"] keyspace. django-redis 5.4.0 ignores OPTIONS["DB"], so
         # this cache has always sat on db 0 no matter what REDIS_DB said; carrying
@@ -661,10 +692,13 @@ else:
         # deploy old pods read db 0 while new pods read db N. Drain
         # log_history_queue before cutting over.
         logging.getLogger(__name__).warning(
-            "Django cache is moving to Redis db %s (REDIS_DB). It previously sat on "
-            "db 0 regardless, because django-redis ignores OPTIONS['DB']. Anything "
-            "already in db 0 — including log_history_queue — stays there.",
-            _cache_db,
+            "Django cache is moving from Redis db %s to db %s (REDIS_DB). In "
+            "discrete mode it previously sat on db 0 regardless, because "
+            "django-redis ignores OPTIONS['DB']. Anything already in db %s — "
+            "including log_history_queue — stays there.",
+            _previous_db,
+            _effective_db,
+            _previous_db,
         )
 
     CACHES = {

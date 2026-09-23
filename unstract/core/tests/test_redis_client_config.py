@@ -12,10 +12,10 @@ None of those raise at import, so they are asserted here instead.
 """
 
 import pathlib
+import re
 
 import pytest
 import redis
-
 from unstract.core.cache.redis_client import (
     _build_connection_kwargs,
     _resolve_redis_env,
@@ -69,9 +69,10 @@ class TestDefaults:
 
     def test_explicit_argument_beats_env(self, monkeypatch):
         monkeypatch.setenv("REDIS_HEALTH_CHECK_INTERVAL", "45")
-        assert _kwargs(create_redis_client(health_check_interval=7))[
-            "health_check_interval"
-        ] == 7
+        assert (
+            _kwargs(create_redis_client(health_check_interval=7))["health_check_interval"]
+            == 7
+        )
 
     def test_unparseable_health_check_falls_back(self, monkeypatch):
         """A typo must not take the platform's Redis down."""
@@ -296,7 +297,7 @@ class TestSocketIoUrl:
         assert build_socketio_redis_url() == "redis://:p%40ss%2Fword@h:6379"
 
     def test_tls_switches_scheme_and_pins_verification(self, monkeypatch):
-        """kombu defaults rediss:// to CERT_NONE — encrypted but unauthenticated.
+        """Kombu defaults rediss:// to CERT_NONE — encrypted but unauthenticated.
 
         Without ssl_cert_reqs in the query, enabling TLS would buy encryption
         against an unverified server, which is not what operators understand it
@@ -385,7 +386,7 @@ class TestCertReqsAndHostname:
         assert _kwargs(create_redis_client())["ssl_check_hostname"] is True
 
     def test_hostname_verification_is_forced_off_without_verification(self, monkeypatch):
-        """ssl raises if check_hostname is True while verify_mode is CERT_NONE."""
+        """Ssl raises if check_hostname is True while verify_mode is CERT_NONE."""
         monkeypatch.setenv("REDIS_HOST", "h")
         monkeypatch.setenv("REDIS_SSL", "true")
         monkeypatch.setenv("REDIS_SSL_CERT_REQS", "none")
@@ -492,7 +493,8 @@ class TestDatabaseRule:
 
 
 class TestContainerAllowlists:
-    """The two hand-maintained env allowlists must carry what this module READS.
+    """The two hand-maintained env allowlists must carry what this module READS,
+    AND must actually copy it into the container.
 
     Tool containers and sidecars get a hand-picked environment, not an inherited
     one, so a variable missing from a list applies everywhere EXCEPT the processes
@@ -500,39 +502,319 @@ class TestContainerAllowlists:
     omissions found in review (REDIS_HEALTH_CHECK_INTERVAL from both lists) were
     of exactly this shape, and nothing kept the two lists in step.
 
+    TWO mechanisms, both checked. Declaring the name on Env / ToolRuntimeVariable
+    does nothing on its own: a separate loop copies a fixed tuple of those
+    constants into the child environment, and a name can be declared and left out
+    of the tuple. The first version of this class asserted only the declaration,
+    so deleting `Env.REDIS_HEALTH_CHECK_INTERVAL` from runner.py's tuple — the
+    exact omission the class was written for — left the suite green.
+
+    _SHARED is DERIVED from redis_client.py's source rather than hand-listed, so a
+    variable added to the module fails this guard instead of needing a third list
+    to be remembered. REDIS_SSL_CHECK_HOSTNAME was added by the same commit that
+    introduced the hand-written version and was missing from it.
+
     Read as text rather than imported: neither package is installable in this
-    environment, and the question is what the source declares.
+    environment, and the question is what the source declares and forwards.
     """
 
     _ROOT = pathlib.Path(__file__).resolve().parents[3]
     _SIDECAR = _ROOT / "runner/src/unstract/runner/constants.py"
+    _SIDECAR_FORWARD = _ROOT / "runner/src/unstract/runner/runner.py"
     _TOOL = (
-        _ROOT
-        / "unstract/workflow-execution/src/unstract/workflow_execution/constants.py"
+        _ROOT / "unstract/workflow-execution/src/unstract/workflow_execution/constants.py"
     )
-    # Read by create_redis_client in BOTH processes. METRICS_REDIS_DB is
-    # deliberately absent from the sidecar: it publishes logs and never imports
-    # sdk1, so its allowlist is checked against this set alone.
-    _SHARED = {
-        "REDIS_DB",
-        "REDIS_SSL",
-        "REDIS_SSL_CERT_REQS",
-        "REDIS_SSL_CA_CERTS",
-        "REDIS_URL",
-        "REDIS_HEALTH_CHECK_INTERVAL",
+    _TOOL_FORWARD = (
+        _ROOT
+        / "unstract/workflow-execution/src/unstract/workflow_execution/tools_utils.py"
+    )
+    _CLIENT = _ROOT / "unstract/core/src/unstract/core/cache/redis_client.py"
+
+    # Variables that are per-PROCESS rather than per-endpoint, so a container
+    # deliberately does not inherit them. Listing them here (with the reason) is
+    # what keeps the derivation below honest: anything else new must be forwarded
+    # or explicitly excused.
+    _NOT_FORWARDED = {
+        # Sentinel is the self-hosted HA path; a sidecar or tool container is
+        # handed the resolved endpoint, it does not do discovery itself.
+        "REDIS_SENTINEL_MODE",
+        "REDIS_SENTINEL_MASTER_NAME",
+        # Host/port/credentials were already forwarded before UN-4123 under their
+        # own names; they are not part of this TLS-era set.
+        "REDIS_HOST",
+        "REDIS_PORT",
+        "REDIS_USER",
+        "REDIS_USERNAME",
+        "REDIS_PASSWORD",
     }
 
+    @classmethod
+    def _shared(cls) -> set[str]:
+        """Every REDIS_* env var redis_client.py reads, minus the excused ones."""
+        source = cls._CLIENT.read_text()
+        names = set(re.findall(r'os\.getenv\(\s*"(REDIS_[A-Z_]+)"', source))
+        names |= {
+            f"REDIS_{suffix}"
+            for suffix in re.findall(r'os\.getenv\(\s*f"\{env_prefix\}([A-Z_]+)"', source)
+        }
+        return names - cls._NOT_FORWARDED
+
+    def test_the_derived_set_is_not_empty(self):
+        """A regex that silently matches nothing would make every case below pass."""
+        shared = self._shared()
+        assert len(shared) >= 6, shared
+        assert "REDIS_SSL_CHECK_HOSTNAME" in shared
+
     @pytest.mark.parametrize("which", ["sidecar", "tool"])
-    def test_every_variable_this_module_reads_is_forwarded(self, which):
+    def test_every_variable_this_module_reads_is_declared(self, which):
         path = self._SIDECAR if which == "sidecar" else self._TOOL
         declared = path.read_text()
-        missing = [name for name in sorted(self._SHARED) if f'"{name}"' not in declared]
+        missing = [name for name in sorted(self._shared()) if f'"{name}"' not in declared]
         assert not missing, (
-            f"{path.name} does not forward {missing}; create_redis_client reads "
+            f"{path.name} does not declare {missing}; create_redis_client reads "
             "them, so the setting would apply everywhere except this container."
+        )
+
+    @pytest.mark.parametrize("which", ["sidecar", "tool"])
+    def test_every_declared_variable_is_actually_copied_into_the_container(self, which):
+        """The tuple, not the constants file, is what reaches the child process."""
+        path = self._SIDECAR_FORWARD if which == "sidecar" else self._TOOL_FORWARD
+        alias = "Env." if which == "sidecar" else "ToolRV."
+        source = path.read_text()
+        missing = [
+            name for name in sorted(self._shared()) if f"{alias}{name}," not in source
+        ]
+        assert not missing, (
+            f"{path.name} declares but never forwards {missing}: the constant "
+            "exists and the loop that copies it into the container skips it, so "
+            "the variable silently stops at the parent process."
         )
 
     def test_the_tool_list_also_carries_the_sdk1_metrics_database(self):
         """sdk1 runs in tool containers; the sidecar never imports it."""
         assert '"METRICS_REDIS_DB"' in self._TOOL.read_text()
         assert '"METRICS_REDIS_DB"' not in self._SIDECAR.read_text()
+
+
+class TestCertReqsNoneInTheUrl:
+    """A URL carrying ?ssl_cert_reqs=none must not also get ssl_check_hostname.
+
+    Python's ssl module raises `Cannot set verify_mode to CERT_NONE when
+    check_hostname is enabled`, so the pair is not a degraded connection — it is
+    NO connection, on every client in the process, at the first command rather
+    than at startup. The suppression used to test the ENV value only, so a URL
+    saying `none` with the env at its "required" default got check_hostname
+    bolted on. docker/redis-tls/README.md documents that exact URL.
+
+    The older test for this input asserted only that ssl_cert_reqs=none was
+    PRESENT, which the broken output also satisfied.
+    """
+
+    _URL = "rediss://h:6380/0?ssl_cert_reqs=none"
+
+    def _assert_compatible(self, cert_reqs, check_hostname):
+        """The combination the ssl module actually refuses."""
+        assert not (check_hostname and cert_reqs == "none"), (
+            f"ssl_cert_reqs={cert_reqs!r} with ssl_check_hostname={check_hostname!r} "
+            "raises ValueError at handshake setup"
+        )
+
+    def test_the_client_kwargs_are_not_contradictory(self, monkeypatch):
+        monkeypatch.setenv("REDIS_URL", self._URL)
+        kwargs = _kwargs(create_redis_client())
+        self._assert_compatible(
+            kwargs.get("ssl_cert_reqs"), kwargs.get("ssl_check_hostname")
+        )
+
+    def test_the_client_builds_a_usable_ssl_context(self, monkeypatch):
+        """End to end: what redis-py does with those kwargs at connect time."""
+        import ssl as _ssl
+
+        monkeypatch.setenv("REDIS_URL", self._URL)
+        conn = create_redis_client().connection_pool.make_connection()
+        context = _ssl.create_default_context()
+        # redis-py's SSLConnection._wrap_socket_with_ssl, in the order it does it.
+        context.check_hostname = conn.check_hostname
+        context.verify_mode = conn.cert_reqs
+
+    def test_the_socketio_url_gains_no_check_hostname(self, monkeypatch):
+        monkeypatch.setenv("REDIS_URL", self._URL)
+        url = build_socketio_redis_url()
+        assert "ssl_check_hostname" not in url, url
+        assert url.count("ssl_cert_reqs") == 1
+
+    def test_an_optional_cert_reqs_in_the_url_still_gets_hostname_checking(
+        self, monkeypatch
+    ):
+        """Only `none` suppresses it — the guard must not be a blanket opt-out."""
+        monkeypatch.setenv("REDIS_URL", "rediss://h:6380/0?ssl_cert_reqs=optional")
+        assert "ssl_check_hostname=true" in build_socketio_redis_url()
+
+
+class TestBlankAndMalformedTlsValues:
+    """Blank means UNSET, and a value that is neither blank nor valid says so.
+
+    `os.getenv` reports "" as SET, so a bare `== "true"` read the repo's own
+    "leave the default" spelling as False — turning hostname verification OFF
+    while the operator believed they were on the new secure default.
+    """
+
+    @pytest.mark.parametrize("raw", ["", "   "])
+    def test_blank_check_hostname_keeps_the_secure_default(self, monkeypatch, raw):
+        monkeypatch.setenv("REDIS_SSL", "true")
+        monkeypatch.setenv("REDIS_SSL_CHECK_HOSTNAME", raw)
+        assert _resolve_redis_env("REDIS_")["ssl_check_hostname"] is True
+
+    @pytest.mark.parametrize("raw", ["1", "yes", "TRUE", "On"])
+    def test_other_truthy_spellings_are_accepted(self, monkeypatch, raw):
+        monkeypatch.setenv("REDIS_SSL", "true")
+        monkeypatch.setenv("REDIS_SSL_CHECK_HOSTNAME", raw)
+        assert _resolve_redis_env("REDIS_")["ssl_check_hostname"] is True
+
+    @pytest.mark.parametrize("raw", ["0", "no", "FALSE", "Off"])
+    def test_other_falsy_spellings_are_accepted(self, monkeypatch, raw):
+        monkeypatch.setenv("REDIS_SSL", "true")
+        monkeypatch.setenv("REDIS_SSL_CHECK_HOSTNAME", raw)
+        assert _resolve_redis_env("REDIS_")["ssl_check_hostname"] is False
+
+    def test_an_unknown_check_hostname_warns_and_stays_secure(self, monkeypatch, caplog):
+        monkeypatch.setenv("REDIS_SSL", "true")
+        monkeypatch.setenv("REDIS_SSL_CHECK_HOSTNAME", "maybe")
+        assert _resolve_redis_env("REDIS_")["ssl_check_hostname"] is True
+        assert "REDIS_SSL_CHECK_HOSTNAME" in caplog.text
+
+    @pytest.mark.parametrize("raw", ["", "   "])
+    def test_blank_cert_reqs_falls_back_to_required(self, monkeypatch, raw):
+        """Blank used to resolve THREE ways: RedisError on the discrete client,
+        a silent CERT_NONE on the kombu URL, and "required" on the URL path.
+        """
+        monkeypatch.setenv("REDIS_SSL", "true")
+        monkeypatch.setenv("REDIS_SSL_CERT_REQS", raw)
+        assert _resolve_redis_env("REDIS_")["ssl_cert_reqs"] == "required"
+        assert "ssl_cert_reqs=required" in build_socketio_redis_url()
+
+    @pytest.mark.parametrize("raw", ["None", "none ", "REQUIRED"])
+    def test_cert_reqs_is_normalised(self, monkeypatch, raw):
+        """The "is verification off?" test is an equality check, so case and
+        whitespace decided whether ssl_check_hostname was suppressed.
+        """
+        monkeypatch.setenv("REDIS_SSL", "true")
+        monkeypatch.setenv("REDIS_SSL_CERT_REQS", raw)
+        assert _resolve_redis_env("REDIS_")["ssl_cert_reqs"] == raw.strip().lower()
+
+    def test_an_invalid_cert_reqs_warns_and_falls_back(self, monkeypatch, caplog):
+        monkeypatch.setenv("REDIS_SSL", "true")
+        monkeypatch.setenv("REDIS_SSL_CERT_REQS", "strict")
+        assert _resolve_redis_env("REDIS_")["ssl_cert_reqs"] == "required"
+        assert "REDIS_SSL_CERT_REQS" in caplog.text
+
+    @pytest.mark.parametrize("raw", ["", "   "])
+    def test_a_blank_db_does_not_raise(self, monkeypatch, raw):
+        """int("") used to escape create_redis_client as a bare ValueError that
+        named neither the variable nor the prefix.
+        """
+        monkeypatch.setenv("REDIS_DB", raw)
+        assert _kwargs(create_redis_client())["db"] == 0
+
+    def test_an_unparseable_db_warns_rather_than_raising(self, monkeypatch, caplog):
+        monkeypatch.setenv("REDIS_DB", "two")
+        assert _kwargs(create_redis_client())["db"] == 0
+        assert "REDIS_DB" in caplog.text
+
+    def test_a_plaintext_url_beside_ssl_true_is_announced(self, monkeypatch, caplog):
+        """The operator believes TLS is on; the wire is cleartext."""
+        monkeypatch.setenv("REDIS_SSL", "true")
+        monkeypatch.setenv("REDIS_URL", "redis://h:6379/0")
+        _resolve_redis_env("REDIS_")
+        assert "will NOT be encrypted" in caplog.text
+
+
+class TestSentinelHostnameVerification:
+    """Sentinel masters are reached by the IP `get-master-addr-by-name` returns.
+
+    SentinelManagedConnection.connect_to assigns that address to self.host, and
+    SSLConnection passes self.host as server_hostname — so hostname verification
+    on a master connection is checked against an IP that no DNS SAN covers, and
+    an IP SAN is not a workable answer because the address changes on failover.
+    Defaulting it on would have broken every existing REDIS_SENTINEL_MODE +
+    REDIS_SSL deployment on upgrade, through the full ten-attempt backoff.
+
+    The DISCOVERY connections do use the configured service name, so they keep
+    verification on.
+    """
+
+    def _planes(self, prefix="REDIS_"):
+        env = _resolve_redis_env(prefix, default_port="26379")
+        discovery = _build_connection_kwargs(env, True, 5, 5, include_auth_only=True)
+        master = _build_connection_kwargs(env, True, 5, 5, sentinel_master=True)
+        return discovery, master
+
+    def test_the_master_plane_does_not_verify_the_hostname_by_default(self, monkeypatch):
+        monkeypatch.setenv("REDIS_SENTINEL_MODE", "true")
+        monkeypatch.setenv("REDIS_SSL", "true")
+        discovery, master = self._planes()
+        assert discovery["ssl_check_hostname"] is True
+        assert master["ssl_check_hostname"] is False
+
+    def test_an_explicit_request_is_honoured_on_both_planes(self, monkeypatch):
+        """The default is a compatibility choice, not a ceiling."""
+        monkeypatch.setenv("REDIS_SENTINEL_MODE", "true")
+        monkeypatch.setenv("REDIS_SSL", "true")
+        monkeypatch.setenv("REDIS_SSL_CHECK_HOSTNAME", "true")
+        discovery, master = self._planes()
+        assert discovery["ssl_check_hostname"] is True
+        assert master["ssl_check_hostname"] is True
+
+    def test_an_explicit_false_still_turns_discovery_off(self, monkeypatch):
+        monkeypatch.setenv("REDIS_SENTINEL_MODE", "true")
+        monkeypatch.setenv("REDIS_SSL", "true")
+        monkeypatch.setenv("REDIS_SSL_CHECK_HOSTNAME", "false")
+        discovery, master = self._planes()
+        assert discovery["ssl_check_hostname"] is False
+        assert master["ssl_check_hostname"] is False
+
+    def test_a_typo_does_not_count_as_an_explicit_request(self, monkeypatch):
+        """Otherwise a typo re-breaks the Sentinel masters this default protects."""
+        monkeypatch.setenv("REDIS_SENTINEL_MODE", "true")
+        monkeypatch.setenv("REDIS_SSL", "true")
+        monkeypatch.setenv("REDIS_SSL_CHECK_HOSTNAME", "ture")
+        _, master = self._planes()
+        assert master["ssl_check_hostname"] is False
+
+    def test_the_standalone_path_is_unaffected(self, monkeypatch):
+        monkeypatch.setenv("REDIS_SSL", "true")
+        assert _kwargs(create_redis_client())["ssl_check_hostname"] is True
+
+
+class TestGenericDbDoesNotCrossIntoAPrefixUrl:
+    """A prefix that brought its OWN url owns its own database.
+
+    workers/sample.env ships REDIS_DB=0 uncommented, so reading the generic var
+    as a fallback meant CACHE_REDIS_URL=rediss://…/1 silently landed on db 0 —
+    an unrelated global overriding the path the operator wrote, which is not the
+    rule the docstring, sample.env or the chart state. An INHERITED generic URL
+    still honours the prefix's db: that is the chart's shape (one REDIS_URL,
+    CACHE_REDIS_DB=1) and the reason the rule exists at all.
+    """
+
+    def test_a_prefix_url_keeps_its_path_against_the_generic_db(self, monkeypatch):
+        monkeypatch.setenv("REDIS_DB", "0")
+        monkeypatch.setenv("CACHE_REDIS_URL", "redis://h:6380/1")
+        assert _kwargs(create_redis_client("CACHE_REDIS_"))["db"] == 1
+
+    def test_the_prefixs_own_db_still_wins(self, monkeypatch):
+        monkeypatch.setenv("REDIS_DB", "0")
+        monkeypatch.setenv("CACHE_REDIS_URL", "redis://h:6380/1")
+        monkeypatch.setenv("CACHE_REDIS_DB", "2")
+        assert _kwargs(create_redis_client("CACHE_REDIS_"))["db"] == 2
+
+    def test_an_inherited_url_still_honours_the_prefix_db(self, monkeypatch):
+        monkeypatch.setenv("REDIS_URL", "redis://h:6379/0")
+        monkeypatch.setenv("CACHE_REDIS_DB", "1")
+        assert _kwargs(create_redis_client("CACHE_REDIS_"))["db"] == 1
+
+    def test_an_inherited_url_still_honours_the_generic_db(self, monkeypatch):
+        """For prefix REDIS_ the two levels ARE the same variable."""
+        monkeypatch.setenv("REDIS_URL", "redis://h:6379/0")
+        monkeypatch.setenv("REDIS_DB", "3")
+        assert _kwargs(create_redis_client("CACHE_REDIS_"))["db"] == 3

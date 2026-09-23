@@ -53,7 +53,15 @@ REDIS_SSL_CA_CERTS=/abs/path/to/unstract/docker/redis-tls/certs/ca.crt
 REDIS_URL=rediss://:devpassword@unstract-redis-managed:6380/0?ssl_cert_reqs=required
 REDIS_SSL_CA_CERTS=/certs/ca.crt
 CACHE_REDIS_URL=rediss://:devpassword@unstract-redis-managed:6380/1?ssl_cert_reqs=required
+CACHE_REDIS_DB=1
 ```
+
+**`CACHE_REDIS_DB=1` is not optional here**, even though the URL already says
+`/1`. A `.env` copied from `workers/sample.env` carries `CACHE_REDIS_DB=0`
+uncommented, and an explicitly-set `{prefix}DB` beats the URL's path — so without
+this line the cache lands on db 0 and the recipe below breaks in exactly the way
+the next paragraph warns about. (Commenting `CACHE_REDIS_DB` out works too and
+lets the `/1` stand; setting it is the less surprising of the two.)
 
 The `/1` matters, and so does its partner. The workers write `file_active:*`
 through the `CACHE_REDIS_` client, and the BACKEND reads and clears those keys
@@ -93,17 +101,23 @@ which still exercises the forwarding fix and the TLS handshake.
 
 `REDIS_SSL_CERT_REQS` is honoured **alongside** a URL: the setting is resolved
 once, with the generic fallback, and applied to `rediss://` URLs that carry no
-`ssl_cert_reqs=` of their own. (It did not used to be, which made this recipe
-silently fall back to `required` and fail the handshake against the self-signed
-dev cert.) Putting it in the URL works too and wins if both are set:
-`rediss://:devpassword@unstract-redis-managed:6380/0?ssl_cert_reqs=none`.
+`ssl_cert_reqs=` of their own. Putting it in the URL works too and wins if both
+are set: `rediss://:devpassword@unstract-redis-managed:6380/0?ssl_cert_reqs=none`.
 
-Hostname verification follows the same setting — it is forced off when
-verification is off, and on otherwise. The dev certificate carries SANs for
+Hostname verification follows the same setting, **whichever way it is set** — it
+is forced off when verification is off, and on otherwise. That has to hold for
+the in-URL form as well, because Python's `ssl` module raises
+`Cannot set verify_mode to CERT_NONE when check_hostname is enabled` rather than
+degrading: the two together are not a weaker connection, they are no connection
+at all, on the first command. The dev certificate carries SANs for
 `unstract-redis-managed`, `localhost` and `127.0.0.1`, so `required` works from
 containers and from the host without further configuration. Against a real
 managed endpoint this does not arise: ElastiCache and Azure chain to public CAs, and
-for Memorystore you would mount its CA into the sidecar image.
+for Memorystore you would mount its CA into the sidecar image. If an endpoint's
+certificate does not cover how you address it — an IP, or an internal CNAME —
+`REDIS_SSL_CHECK_HOSTNAME=false` keeps verification of the chain while skipping
+the name check. Sentinel MASTER connections skip it by default, because Sentinel
+hands back an IP that no DNS SAN covers and that changes on failover.
 
 Then restart: `docker compose restart` for the containers, and your usual manual
 restart for the backend.
