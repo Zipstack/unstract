@@ -44,7 +44,8 @@ LiteLLM requires provider prefixes on model names:
 | OpenAI | `openai/` | `openai/gpt-4` |
 | Azure | `azure/` | `azure/gpt-4-deployment` |
 | Anthropic | `anthropic/` | `anthropic/claude-3-opus` |
-| Bedrock | `bedrock/` | `bedrock/anthropic.claude-v2` |
+| Bedrock (Converse/Invoke) | `bedrock/` | `bedrock/anthropic.claude-v2` |
+| Bedrock Mantle (OpenAI-compatible) | `bedrock_mantle/` | `bedrock_mantle/openai.gpt-5.6-terra` |
 | VertexAI | `vertex_ai/` | `vertex_ai/gemini-pro` |
 | Ollama | `ollama_chat/` | `ollama_chat/llama2` |
 | Mistral | `mistral/` | `mistral/mistral-large` |
@@ -203,8 +204,13 @@ Common modifications:
 
 1. **Add reasoning/thinking support**:
    - Add `enable_thinking` boolean field to JSON schema
-   - Add conditional `thinking` config in `validate()` method
-   - See `AnthropicLLMParameters` in `base1.py` for reference
+   - Add conditional reasoning config in `validate()` method
+   - See `AnthropicLLMParameters` in `base1.py` for the `thinking` shape
+   - **The shape is provider-specific.** Anthropic models take a `thinking`
+     block with a token budget; most other reasoning-capable families take
+     `reasoning_effort`. Emitting the wrong one is a silent no-op — LiteLLM
+     drops it. `AWSBedrockLLMParameters` has to serve both, so see
+     `_apply_bedrock_reasoning_config` for how it branches on the model family.
 
 2. **Add custom field mapping**:
    ```python

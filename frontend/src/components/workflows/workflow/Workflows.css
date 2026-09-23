@@ -14,14 +14,14 @@
 }
 
 .workflows-pg-layout {
-  background-color: var(--page-bg-2);
+  background-color: var(--background);
   padding: 12px;
   height: 100%;
   overflow-y: auto;
 }
 
 .workflows-pg-body {
-  background-color: var(--white);
+  background-color: var(--card);
   height: 100%;
   display: flex;
   flex-direction: column;
@@ -65,13 +65,6 @@
   grid-auto-flow: column;
   column-gap: 4px;
   width: fit-content;
-}
-
-.listWrapper {
-  height: 92%;
-  overflow: hidden auto;
-  margin-block-start: 12px;
-  margin-inline: 16px;
 }
 
 .listItem {

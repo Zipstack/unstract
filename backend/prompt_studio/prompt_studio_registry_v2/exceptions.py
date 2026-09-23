@@ -31,3 +31,11 @@ class InValidCustomToolError(APIException):
         "This prompt studio project cannot be exported. It probably "
         "has some empty or unexecuted prompts."
     )
+
+
+class RegistryToolInUseError(APIException):
+    status_code = 409
+    default_detail = (
+        "This exported tool is still used by one or more workflows. "
+        "Remove those usages before deleting it."
+    )

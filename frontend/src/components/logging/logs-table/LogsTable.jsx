@@ -1,11 +1,9 @@
-import { Input, Table, Tooltip, Typography } from "antd";
+import { CircleX, Hourglass, Info, Search } from "lucide-react";
+import { Input } from "@/components/ui/shims/antd-inputs";
+import { Tooltip } from "@/components/ui/shims/antd-overlays";
+import { Table } from "@/components/ui/shims/antd-structure";
+import { Typography } from "@/components/ui/shims/antd-typography";
 import "./LogsTable.css";
-import {
-  CloseCircleFilled,
-  HourglassOutlined,
-  InfoCircleFilled,
-  SearchOutlined,
-} from "@ant-design/icons";
 import PropTypes from "prop-types";
 import { useNavigate } from "react-router-dom";
 import { logsStaticContent } from "../../../helpers/GetStaticData";
@@ -31,7 +29,7 @@ SearchFilterDropdown.propTypes = {
 
 // Search filter icon component
 const SearchFilterIcon = ({ isActive }) => (
-  <SearchOutlined className={isActive ? "search-filter-icon-active" : ""} />
+  <Search className={isActive ? "search-filter-icon-active" : ""} />
 );
 
 SearchFilterIcon.propTypes = {
@@ -59,7 +57,7 @@ const LogsTable = ({
       sorter: true,
       render: (_, record) => (
         <Tooltip title={record.executedAtWithSeconds}>
-          {record.executedAt}
+          <span>{record.executedAt}</span>
         </Tooltip>
       ),
     },
@@ -108,14 +106,12 @@ const LogsTable = ({
         <span>
           <Tooltip title="Successful files">
             <span className="status-container">
-              <InfoCircleFilled className="gen-index-success" />{" "}
-              {record?.successfulFiles}
+              <Info className="gen-index-success" /> {record?.successfulFiles}
             </span>
           </Tooltip>
           <Tooltip title="Failed files">
             <span className="status-container">
-              <CloseCircleFilled className="gen-index-fail" />{" "}
-              {record?.failedFiles}
+              <CircleX className="gen-index-fail" /> {record?.failedFiles}
             </span>
           </Tooltip>
           <Tooltip title="Queued files">
@@ -123,7 +119,7 @@ const LogsTable = ({
               (record?.successfulFiles + record?.failedFiles) >
               0 && (
               <span className="status-container">
-                <HourglassOutlined className="gen-index-progress" />{" "}
+                <Hourglass className="gen-index-progress" />{" "}
                 {record?.totalFiles -
                   (record?.successfulFiles + record?.failedFiles)}
               </span>

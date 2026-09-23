@@ -1,6 +1,7 @@
-import { TableOutlined, UnorderedListOutlined } from "@ant-design/icons";
-import { Tabs, Tooltip } from "antd";
+import { List, Table } from "lucide-react";
 import { useEffect, useState } from "react";
+import { Tooltip } from "@/components/ui/shims/antd-overlays";
+import { Tabs } from "@/components/ui/shims/antd-structure";
 
 import { getSequenceNumber, promptType } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
@@ -41,7 +42,7 @@ function ToolsMain() {
       key: "1",
       label: isSimplePromptStudio ? (
         <Tooltip title="Fields">
-          <UnorderedListOutlined />
+          <List />
         </Tooltip>
       ) : (
         "Document Parser"
@@ -51,7 +52,7 @@ function ToolsMain() {
       key: "2",
       label: isSimplePromptStudio ? (
         <Tooltip title="Combined Output">
-          <TableOutlined />
+          <Table />
         </Tooltip>
       ) : (
         "Combined Output"

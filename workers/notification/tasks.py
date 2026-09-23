@@ -26,9 +26,21 @@ from queue_backend import worker_task
 from shared.infrastructure.config import WorkerConfig
 from shared.infrastructure.logging import WorkerLogger
 
+from unstract.core.network.ssrf import safe_host
 from unstract.core.notification_enums import NotificationType
 
 logger = WorkerLogger.get_logger(__name__)
+
+
+class TerminalWebhookRefusal(Exception):
+    """A refusal no retry can clear, already dead-lettered by its raiser.
+
+    Distinct from the errors below it so ``send_webhook_notification``'s broad
+    ``except Exception`` cannot route it back into ``self.retry`` — a plain
+    ``Exception`` here was retried ``max_retries`` times for a URL that will
+    never be dialable, and dead-lettered the buffer rows a second time.
+    """
+
 
 # Initialize worker configuration
 config = WorkerConfig.from_env("NOTIFICATION")
@@ -252,9 +264,15 @@ def send_webhook_notification(
         retry_delay: The delay between retries in seconds
         platform: Platform type from notification config (SLACK, API, etc.)
         raise_on_final_failure: When True, re-raise on retry exhaustion so the
-            task ends in FAILURE and any Celery ``link_error`` callback runs
-            (used by the clubbed/buffered dispatch to dead-letter the rows).
-            When False (default), preserve the legacy "return None" behavior.
+            task ends in FAILURE (a Celery monitoring signal). NOTE: the buffer
+            rows are dead-lettered by ``_mark_buffer_outcome(dispatched=False)``
+            over the internal API *before* this re-raise, on BOTH transports —
+            ``link``/``link_error`` callbacks are no longer wired (they routed to
+            the ``celery`` queue and were dropped as "unregistered task"), so the
+            raise itself dead-letters nothing. When False (default), preserve the
+            legacy "return None" behavior. The PG dispatch seam forces this False
+            (and ``max_retries`` 0) because under the consumer's eager
+            ``task.apply()`` a raise means redelivery, not a FAILURE state.
 
     Returns:
         None (matches original behavior)
@@ -305,9 +323,30 @@ def send_webhook_notification(
             _mark_buffer_outcome(buffer_row_ids, organization_id, dispatched=True)
             return None  # Success - matches original behavior
         else:
-            # Failed delivery - raise exception for retry handling
             error_message = result.get("message", "Unknown webhook delivery error")
+
+            # A refusal the sink marked non-retryable is a property of the URL
+            # itself, so no attempt can change it. Dead-letter now instead of
+            # re-resolving a tenant-supplied hostname up to max_retries times.
+            if result.get("details", {}).get("retryable") is False:
+                # The host, not the URL: a webhook URL routinely carries a
+                # token in its query string and this line goes to shared logs.
+                logger.error(
+                    f"Webhook to host={safe_host(url)} refused and not "
+                    f"retryable: {error_message}"
+                )
+                _mark_buffer_outcome(buffer_row_ids, organization_id, dispatched=False)
+                if raise_on_final_failure:
+                    raise TerminalWebhookRefusal(error_message)
+                return None
+
+            # Failed delivery - raise exception for retry handling
             raise Exception(error_message)
+
+    except TerminalWebhookRefusal:
+        # Buffer rows are already dead-lettered above and no attempt can change
+        # the outcome. Surface FAILURE to the caller without re-entering retry.
+        raise
 
     except (ValidationError, DeliveryError) as e:
         # Handle provider-specific errors

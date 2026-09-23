@@ -36,5 +36,9 @@ class GeminiLLMAdapter(GeminiLLMParameters, BaseAdapter):
         return "/icons/adapter-icons/Gemini.png"
 
     @staticmethod
+    def get_doc_url() -> str:
+        return "https://docs.unstract.com/unstract/unstract_platform/adapters/llms/gemini_llm/"
+
+    @staticmethod
     def get_adapter_type() -> AdapterTypes:
         return AdapterTypes.LLM

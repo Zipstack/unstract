@@ -159,3 +159,10 @@ class Workflow(HasMembersMixin, DefaultOrganizationMixin, BaseModel):
                 name="unique_workflow_name",
             ),
         ]
+        # Backs the default org-scoped `-modified_at, pk` list ordering.
+        indexes = [
+            models.Index(
+                fields=["organization", "-modified_at"],
+                name="workflow_org_modified_idx",
+            ),
+        ]

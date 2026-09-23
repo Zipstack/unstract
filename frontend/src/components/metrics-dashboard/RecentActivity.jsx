@@ -1,46 +1,47 @@
-import {
-  ApiOutlined,
-  BranchesOutlined,
-  CheckCircleOutlined,
-  ClockCircleOutlined,
-  CloseCircleOutlined,
-  InfoCircleOutlined,
-  PlayCircleOutlined,
-  SyncOutlined,
-} from "@ant-design/icons";
-import { Card, Empty, List, Spin, Tag, Tooltip, Typography } from "antd";
 import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
+import {
+  CircleCheck,
+  CirclePlay,
+  CircleX,
+  Clock,
+  GitBranch,
+  Info,
+  Plug,
+  RefreshCw,
+} from "lucide-react";
 import PropTypes from "prop-types";
 import { useNavigate } from "react-router-dom";
+import { Empty, Spin, Tag } from "@/components/ui/shims/antd-leaves";
+import { Tooltip } from "@/components/ui/shims/antd-overlays";
+import { Card, List } from "@/components/ui/shims/antd-structure";
+import { Text } from "@/components/ui/shims/antd-typography";
 import { useSessionStore } from "../../store/session-store";
 
 import "./MetricsDashboard.css";
 
 dayjs.extend(relativeTime);
 
-const { Text } = Typography;
-
 // Status configuration with colors and icons
 const STATUS_CONFIG = {
   COMPLETED: {
     color: "success",
-    icon: <CheckCircleOutlined />,
+    icon: <CircleCheck />,
     label: "Completed",
   },
   RUNNING: {
     color: "processing",
-    icon: <SyncOutlined spin />,
+    icon: <RefreshCw spin />,
     label: "Processing",
   },
   QUEUED: {
     color: "default",
-    icon: <ClockCircleOutlined />,
+    icon: <Clock />,
     label: "Queued",
   },
   ERROR: {
     color: "error",
-    icon: <CloseCircleOutlined />,
+    icon: <CircleX />,
     label: "Failed",
   },
 };
@@ -49,19 +50,19 @@ const STATUS_CONFIG = {
 const TYPE_CONFIG = {
   etl: {
     label: "ETL Pipeline",
-    icon: <BranchesOutlined />,
+    icon: <GitBranch />,
     color: "#722ed1",
     logType: "ETL",
   },
   api: {
     label: "API Request",
-    icon: <ApiOutlined />,
+    icon: <Plug />,
     color: "#1890ff",
     logType: "API",
   },
   workflow: {
     label: "Workflow",
-    icon: <PlayCircleOutlined />,
+    icon: <CirclePlay />,
     color: "#52c41a",
     logType: "WF",
   },
@@ -73,7 +74,7 @@ const TYPE_CONFIG = {
  *
  * @return {JSX.Element} The rendered recent activity component.
  */
-function RecentActivity({ data, loading }) {
+function RecentActivity({ data = null, loading = false }) {
   const navigate = useNavigate();
   const { sessionDetails } = useSessionStore();
   const orgName = sessionDetails?.orgName;
@@ -151,7 +152,7 @@ function RecentActivity({ data, loading }) {
                   <Text type="secondary" className="recent-activity-meta">
                     <span>{item.total_tokens.toLocaleString()} tokens</span>
                     <Tooltip title="Total LLM tokens used to process this file">
-                      <InfoCircleOutlined className="recent-activity-info" />
+                      <Info className="recent-activity-info" />
                     </Tooltip>
                   </Text>
                 )}
@@ -184,11 +185,6 @@ RecentActivity.propTypes = {
     ),
   }),
   loading: PropTypes.bool,
-};
-
-RecentActivity.defaultProps = {
-  data: null,
-  loading: false,
 };
 
 export { RecentActivity };

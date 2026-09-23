@@ -6,7 +6,10 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background-color: #184772;
+  /* Was #184772 -- a navy chip left over from the navy top bar, and already
+   * an orphan colour once that bar went violet. On the light bar it needs to
+   * be the one that carries white initials, so it tracks the brand token. */
+  background-color: var(--primary);
   border-radius: 5px;
   cursor: pointer;
 }
@@ -81,13 +84,14 @@
   background-color: rgba(0, 0, 0, 0.04);
 }
 
+/* White read against the old violet bar; the bar is now `--card`. */
 .page-identifier {
   vertical-align: super;
-  color: white;
+  color: var(--foreground);
 }
 
 .page-heading {
-  color: white;
+  color: var(--foreground);
   font-size: 16px;
   font-weight: 600;
   margin-left: 10px;

@@ -711,12 +711,6 @@ class InternalAPIClient(CachedAPIClientMixin):
             workflow_id, execution_id, organization_id
         )
 
-    def submit_file_batch_for_processing(
-        self, batch_data: dict[str, Any]
-    ) -> dict[str, Any]:
-        """Submit file batch for processing."""
-        return self.execution_client.submit_file_batch_for_processing(batch_data)
-
     def execute_workflow_async(self, execution_data: dict[str, Any]) -> dict[str, Any]:
         """Execute workflow asynchronously for scheduler.
 
@@ -1444,6 +1438,21 @@ class InternalAPIClient(CachedAPIClientMixin):
     ) -> dict[str, Any]:
         """Make GET request."""
         return self.base_client.get(endpoint, params, organization_id)
+
+    def sweep_undispatched_executions(self) -> dict[str, Any]:
+        """Ask the backend to terminalise executions that were never dispatched.
+
+        Closes a gap no worker can see: an abort between ``create_workflow_execution``
+        and ``execute_workflow_async`` commits a PENDING execution row without ever
+        creating a queue message or a barrier, so the reaper's barrier scan cannot
+        find it and PENDING — a non-terminal state — is never resolved.
+
+        Backend-side because the sweep touches ``WorkflowExecution``, the API-deployment
+        rate limiter; the reaper only supplies leader
+        election so exactly one instance runs it. Org-agnostic: the sweep spans all
+        organizations, so no ``organization_id`` is sent.
+        """
+        return self.post("v1/execution-logs/sweep-undispatched-executions/", data={})
 
     def post(
         self, endpoint: str, data: dict[str, Any], organization_id: str | None = None

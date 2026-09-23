@@ -51,15 +51,11 @@ class AdapterInstanceModelManager(DefaultOrganizationManagerMixin, BaseModelMana
         group_shared_ids = resources_visible_via_groups(self.model, user_group_ids)
         member_ids = resources_visible_via_memberships(self.model, user)
 
-        return (
-            self.get_queryset()
-            .filter(
-                models.Q(pk__in=member_ids)
-                | models.Q(shared_to_org=True)
-                | models.Q(is_friction_less=True)
-                | models.Q(pk__in=group_shared_ids)
-            )
-            .distinct("id")
+        return self.get_queryset().filter(
+            models.Q(pk__in=member_ids)
+            | models.Q(shared_to_org=True)
+            | models.Q(is_friction_less=True)
+            | models.Q(pk__in=group_shared_ids)
         )
 
 
@@ -170,6 +166,13 @@ class AdapterInstance(HasMembersMixin, DefaultOrganizationMixin, BaseModel):
             models.UniqueConstraint(
                 fields=["adapter_name", "adapter_type", "organization"],
                 name="unique_organization_adapter",
+            ),
+        ]
+        # Backs the default org-scoped `-modified_at, pk` list ordering.
+        indexes = [
+            models.Index(
+                fields=["organization", "-modified_at"],
+                name="adapter_org_modified_idx",
             ),
         ]
 

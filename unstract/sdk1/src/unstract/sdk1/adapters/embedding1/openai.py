@@ -36,5 +36,9 @@ class OpenAIEmbeddingAdapter(OpenAIEmbeddingParameters, BaseAdapter):
         return "/icons/adapter-icons/OpenAI.png"
 
     @staticmethod
+    def get_doc_url() -> str:
+        return "https://docs.unstract.com/unstract/unstract_platform/adapters/embedding/openai_embedding/"
+
+    @staticmethod
     def get_adapter_type() -> AdapterTypes:
         return AdapterTypes.EMBEDDING

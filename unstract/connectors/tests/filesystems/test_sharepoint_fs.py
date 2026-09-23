@@ -241,6 +241,11 @@ class TestSharePointFSUnit(unittest.TestCase):
 class TestSharePointFSIntegration(unittest.TestCase):
     """Integration tests for SharePointFS (require real credentials)."""
 
+    @unittest.skip(
+        "Order-dependent: writes to a fixed remote path with no cleanup, and "
+        "the read test consumes what the write test left behind. Fix isolation "
+        "before enabling, otherwise this fails once real credentials are provided."
+    )
     @unittest.skipUnless(
         os.environ.get("SHAREPOINT_CLIENT_SECRET"),
         "Integration test requires SHAREPOINT_* environment variables",
@@ -286,6 +291,11 @@ class TestSharePointFSIntegration(unittest.TestCase):
         except Exception as e:
             self.fail(f"Failed to write file: {e}")
 
+    @unittest.skip(
+        "Order-dependent: writes to a fixed remote path with no cleanup, and "
+        "the read test consumes what the write test left behind. Fix isolation "
+        "before enabling, otherwise this fails once real credentials are provided."
+    )
     @unittest.skipUnless(
         os.environ.get("SHAREPOINT_CLIENT_SECRET"),
         "Integration test requires SHAREPOINT_* environment variables",

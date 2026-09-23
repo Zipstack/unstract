@@ -39,6 +39,10 @@ class UnstructuredCommunity(X2TextAdapter):
     def get_icon() -> str:
         return "/icons/adapter-icons/UnstructuredIO.png"
 
+    @staticmethod
+    def get_doc_url() -> str:
+        return "https://docs.unstract.com/unstract/unstract_platform/adapters/text_extractors/unstructured_io_community_text_extractor/"
+
     def process(
         self,
         input_file_path: str,

@@ -43,6 +43,11 @@ class UnstractFileSystem(UnstractConnector, ABC):
         return ""
 
     @staticmethod
+    def get_doc_url() -> str:
+        # Connectors without a dedicated page fall back to the category index
+        return "https://docs.unstract.com/unstract/unstract_platform/connectors/filesystems/index/"
+
+    @staticmethod
     def get_json_schema() -> str:
         return ""
 

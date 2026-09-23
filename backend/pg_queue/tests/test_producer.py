@@ -5,12 +5,15 @@ the JSON-coercion logic without needing a test database.
 """
 
 import datetime
+import logging
 import uuid
 from unittest.mock import MagicMock, patch
 
 import pytest
+from django.utils import timezone as django_timezone
 
 from pg_queue import producer
+from unstract.core.data_models import QueueMessageState
 
 _MODEL = "pg_queue.producer.PgQueueMessage"
 
@@ -23,7 +26,7 @@ class TestEnqueueTask:
                 task_name="async_execute_bin",
                 queue="celery_api_deployments",
                 args=["org", "wf", "exec"],
-                kwargs={"transport": "pg_queue"},
+                kwargs={"use_file_history": True},
                 org_id="org",
                 priority=5,
                 fairness={
@@ -41,7 +44,7 @@ class TestEnqueueTask:
         assert msg["task_name"] == "async_execute_bin"
         assert msg["queue"] == "celery_api_deployments"
         assert msg["args"] == ["org", "wf", "exec"]
-        assert msg["kwargs"] == {"transport": "pg_queue"}
+        assert msg["kwargs"] == {"use_file_history": True}
         assert msg["fairness"]["workload_type"] == "api"
 
     def test_uuid_args_kwargs_are_json_coerced(self):
@@ -106,6 +109,53 @@ class TestEnqueueTask:
         when = model.objects.create.call_args.kwargs["message"]["kwargs"]["when"]
         assert isinstance(when, str) and "2026-06-18" in when
 
+    @pytest.mark.parametrize(
+        "bad", [float("nan"), float("inf"), float("-inf")], ids=["nan", "inf", "-inf"]
+    )
+    @pytest.mark.parametrize("slot", ["args", "kwargs", "fairness"])
+    def test_json_safe_rejects_non_finite_floats(self, bad, slot, caplog):
+        # A non-finite float slips past the default lenient encoder and only fails at
+        # the jsonb insert (DataError); allow_nan=False surfaces it as a ValueError at
+        # the enqueue seam so the notification dispatcher can dead-letter it.
+        #
+        # Every _json_safe-coerced slot is covered, not just kwargs: the scenario this
+        # guard exists for is a webhook BODY carrying a non-finite float, and
+        # notification_dispatch puts the body in args[1]. inf/-inf are rejected by
+        # allow_nan=False exactly like nan.
+        payloads = {
+            "args": {"args": ["url", {"score": bad}]},
+            "kwargs": {"kwargs": {"score": bad}},
+            "fairness": {"fairness": {"org_id": "o", "weight": bad}},
+        }
+        with patch(_MODEL) as model:
+            with caplog.at_level(logging.ERROR, logger=producer.logger.name):
+                with pytest.raises(ValueError):
+                    producer.enqueue_task(
+                        task_name="send_webhook_notification",
+                        queue="notifications",
+                        org_id="org-1",
+                        **payloads[slot],
+                    )
+        model.objects.create.assert_not_called()  # never reaches the DB insert
+        # The breadcrumb is the point of moving coercion inside the try — assert the
+        # rendered record actually carries it, not merely that .exception() was hit.
+        assert "send_webhook_notification" in caplog.text
+        assert "notifications" in caplog.text
+        assert "org-1" in caplog.text
+
+    def test_json_safe_strips_nul_instead_of_failing_the_enqueue(self):
+        # UN-4126: a NUL survives json.dumps but jsonb refuses it at insert, so
+        # this site used to enqueue a message the DB would reject. Unlike a
+        # non-finite float it IS repairable, so the task must still be enqueued
+        # — with the NUL gone — rather than raising at the seam.
+        with patch(_MODEL) as model:
+            model.objects.create.return_value = MagicMock(msg_id=1)
+            producer.enqueue_task(
+                task_name="t", queue="celery", kwargs={"text": "POZF\x00BBOK"}
+            )
+        message = model.objects.create.call_args.kwargs["message"]
+        assert message["kwargs"]["text"] == "POZFBBOK"
+
     def test_enqueue_failure_logs_and_propagates(self):
         with patch(_MODEL) as model:
             model.objects.create.side_effect = RuntimeError("db down")
@@ -141,3 +191,90 @@ class TestEnqueueTask:
             )
         msg = model.objects.create.call_args.kwargs["message"]
         assert msg["on_success"]["kwargs"]["callback_kwargs"]["doc_id"] == str(uid)
+
+
+class TestDelayedVisibility:
+    """UN-3843 — ``countdown``/``eta`` defer delivery via ``scheduled`` + ``available_at``.
+
+    A deferred row is written ``state='scheduled'`` so it is absent from the claim's
+    partial index; the reaper promotes it when due. These pin the producer half of
+    that contract — that the right ``(available_at, state)`` pair reaches the row, and
+    that every non-deferred call still writes exactly what it wrote before this
+    parameter existed.
+    """
+
+    @staticmethod
+    def _create_kwargs(model):
+        return model.objects.create.call_args.kwargs
+
+    def test_no_delay_is_unchanged_and_ready(self):
+        # The zero-regression case: every pre-existing call site lands here.
+        before = django_timezone.now()
+        with patch(_MODEL) as model:
+            model.objects.create.return_value = MagicMock(msg_id=1)
+            producer.enqueue_task(task_name="t", queue="q")
+        kw = self._create_kwargs(model)
+        assert kw["state"] == QueueMessageState.READY.value
+        assert before <= kw["available_at"] <= django_timezone.now()
+
+    def test_countdown_defers_and_marks_scheduled(self):
+        with patch(_MODEL) as model:
+            model.objects.create.return_value = MagicMock(msg_id=1)
+            before = django_timezone.now()
+            producer.enqueue_task(task_name="t", queue="q", countdown=90)
+        kw = self._create_kwargs(model)
+        assert kw["state"] == QueueMessageState.SCHEDULED.value
+        # ~90s out; generous window so a slow CI box can't flake it.
+        delta = (kw["available_at"] - before).total_seconds()
+        assert 89 <= delta <= 95
+
+    def test_eta_defers_and_marks_scheduled(self):
+        eta = django_timezone.now() + datetime.timedelta(minutes=5)
+        with patch(_MODEL) as model:
+            model.objects.create.return_value = MagicMock(msg_id=1)
+            producer.enqueue_task(task_name="t", queue="q", eta=eta)
+        kw = self._create_kwargs(model)
+        assert kw["state"] == QueueMessageState.SCHEDULED.value
+        assert kw["available_at"] == eta
+
+    def test_naive_eta_is_read_as_utc(self):
+        # USE_TZ makes `now()` aware; a naive eta would raise on comparison. Treat
+        # it as UTC rather than rejecting an otherwise valid call.
+        naive = (
+            django_timezone.now() + datetime.timedelta(hours=1)
+        ).replace(tzinfo=None)
+        with patch(_MODEL) as model:
+            model.objects.create.return_value = MagicMock(msg_id=1)
+            producer.enqueue_task(task_name="t", queue="q", eta=naive)
+        kw = self._create_kwargs(model)
+        assert kw["state"] == QueueMessageState.SCHEDULED.value
+        assert kw["available_at"].tzinfo is not None
+
+    @pytest.mark.parametrize("countdown", [0, -5])
+    def test_non_positive_countdown_stays_on_the_immediate_path(self, countdown):
+        # A stagger computes `i * delay`; step 0 must not pay a reaper tick just to
+        # become claimable.
+        with patch(_MODEL) as model:
+            model.objects.create.return_value = MagicMock(msg_id=1)
+            producer.enqueue_task(task_name="t", queue="q", countdown=countdown)
+        assert self._create_kwargs(model)["state"] == QueueMessageState.READY.value
+
+    def test_past_eta_stays_on_the_immediate_path(self):
+        past = django_timezone.now() - datetime.timedelta(minutes=1)
+        with patch(_MODEL) as model:
+            model.objects.create.return_value = MagicMock(msg_id=1)
+            producer.enqueue_task(task_name="t", queue="q", eta=past)
+        assert self._create_kwargs(model)["state"] == QueueMessageState.READY.value
+
+    def test_countdown_and_eta_together_are_rejected(self):
+        with patch(_MODEL) as model:
+            model.objects.create.return_value = MagicMock(msg_id=1)
+            with pytest.raises(ValueError, match="mutually exclusive"):
+                producer.enqueue_task(
+                    task_name="t",
+                    queue="q",
+                    countdown=10,
+                    eta=django_timezone.now(),
+                )
+            # Rejected before any row is written — no half-enqueued message.
+            model.objects.create.assert_not_called()

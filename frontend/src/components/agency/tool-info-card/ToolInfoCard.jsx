@@ -1,6 +1,8 @@
-import { Card, Col, Row, Typography } from "antd";
 import PropTypes from "prop-types";
 import { useDrag } from "react-dnd";
+import { Col, Row } from "@/components/ui/shims/antd-layout";
+import { Card } from "@/components/ui/shims/antd-structure";
+import { Typography } from "@/components/ui/shims/antd-typography";
 
 import "./ToolInfoCard.css";
 import { ToolIcon } from "../tool-icon/ToolIcon";

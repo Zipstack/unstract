@@ -1,14 +1,19 @@
 import json
 import os
+import unittest
 from unittest.mock import Mock, patch
 
 from django.test import TestCase
+from unstract.connectors.databases.mysql import MySQL
 from workflow_manager.endpoint_v2.constants import DestinationKey
 from workflow_manager.endpoint_v2.destination import DestinationConnector
 
-from unstract.connectors.databases.mysql import MySQL
 
-
+@unittest.skip(
+    "Order-dependent: shares a fixed table across tests with no working "
+    "teardown, so results depend on execution order. Fix isolation before "
+    "enabling, otherwise this fails once real credentials are provided."
+)
 class TestDestinationConnectorMySQL(TestCase):
     """Integration test for insert_into_db method with real MySQL connector."""
 
@@ -344,9 +349,7 @@ class TestDestinationConnectorMySQL(TestCase):
 
             self.assertIsNotNone(data, "Expected data column to contain inserted data")
 
-            self.assertIsNotNone(
-                metadata, "Expected metadata column to contain metadata"
-            )
+            self.assertIsNotNone(metadata, "Expected metadata column to contain metadata")
 
             cursor.close()
             print("✅ All column data values verified successfully")
@@ -368,7 +371,7 @@ class TestDestinationConnectorMySQL(TestCase):
             )
             # Add the required columns for the test
             create_table_query += (
-                "file_path LONGTEXT, " "execution_id LONGTEXT, " "data LONGTEXT)"
+                "file_path LONGTEXT, execution_id LONGTEXT, data LONGTEXT)"
             )
 
             cursor.execute(create_table_query)

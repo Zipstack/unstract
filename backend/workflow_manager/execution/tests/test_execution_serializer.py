@@ -6,35 +6,18 @@ every non-successful file in a finished failure run has to land in ``failed`` �
 including files that never got a ``file_execution`` row. COMPLETED and live
 (PENDING/EXECUTING) runs keep the exact row-count behaviour.
 
-DB-free and app-registry-free: the heavy ``WorkflowExecution`` model is stubbed
-in ``sys.modules`` before importing the serializer (mirrors
-``usage_v2/tests/test_helper.py`` / ``pg_queue/tests/test_producer.py``), so no
-``django.setup()`` / live DB is needed — the methods under test are pure. The
-real ``ExecutionStatus`` enum (no Django) is kept for its ``is_failure`` logic.
+The methods under test are pure — they read counts off the passed object — so a
+MagicMock stands in for WorkflowExecution and no DB is touched. The suite runs
+under pytest-django (app registry loaded), so the serializer imports directly.
 """
 
 from __future__ import annotations
 
 import logging
-import os
-import sys
-import types
 from unittest.mock import MagicMock
 
-# Force (not setdefault): a dev shell that already exports DJANGO_SETTINGS_MODULE
-# (backend.settings.dev / .cloud) would otherwise redirect collection to a module
-# that may not exist here. DRF reads settings lazily; no django.setup() is run.
-os.environ["DJANGO_SETTINGS_MODULE"] = "backend.settings.test"
-
-# Stub the model module so importing the serializer needs no app registry / DB.
-_models_stub = types.ModuleType("workflow_manager.workflow_v2.models")
-_models_stub.WorkflowExecution = type("WorkflowExecution", (), {})
-sys.modules["workflow_manager.workflow_v2.models"] = _models_stub
-
-from workflow_manager.execution.serializer.execution import (  # noqa: E402
-    ExecutionSerializer,
-)
-from workflow_manager.workflow_v2.enums import ExecutionStatus  # noqa: E402
+from workflow_manager.execution.serializer.execution import ExecutionSerializer
+from workflow_manager.workflow_v2.enums import ExecutionStatus
 
 _LOGGER = "workflow_manager.execution.serializer.execution"
 _ids = iter(range(1, 100_000))

@@ -88,6 +88,11 @@ class JsonSchemaKey:
     EMBEDDING_SUFFIX = "embedding_suffix"
     FUNCTION_NAME = "function_name"
     PROMPT_REGISTRY_ID = "prompt_registry_id"
+    CUSTOM_TOOL = "custom_tool"
+    # Deliberately not `tool_id`: in the workflow domain that consumes the same
+    # listing, `tool_id` means the tool's *function name* (see
+    # `ToolInstance.tool_id`), not a Prompt Studio project id.
+    PROMPT_STUDIO_TOOL_ID = "prompt_studio_tool_id"
     NOTES = "NOTES"
     TOOL_SETTINGS = "tool_settings"
     ENABLE_CHALLENGE = "enable_challenge"

@@ -226,35 +226,56 @@ def merge_into_baseline(statuses: list[CriticalPathStatus], destination: Path) -
     treated as empty: silently dropping previously-covered paths would erase
     the other tier's contribution and turn the next build into a regression
     festival. CI should delete the cache and retry on this exception.
+
+    Ids absent from the registry are pruned. The union alone never forgets, so a
+    deliberately retired path would otherwise sit in the cache forever; pruning
+    makes editing ``critical_paths.yaml`` the way to accept a removal.
     """
     existing: set[str] = set()
     if destination.exists():
         try:
-            parsed = json.loads(destination.read_text())
-            existing = set(parsed.get("covered_paths") or [])
-        except (json.JSONDecodeError, OSError) as exc:
+            existing = set(_read_baseline(destination)["covered_paths"])
+        except (OSError, ValueError) as exc:
             raise BaselineCorruptError(
                 f"refusing to merge into corrupt baseline {destination}: {exc}. "
                 "Delete the cache entry and re-run."
             ) from exc
     fresh = {s.path.id for s in statuses if s.state == "covered"}
-    payload = {"covered_paths": sorted(existing | fresh)}
+    known = {s.path.id for s in statuses}
+    payload = {"covered_paths": sorted((existing | fresh) & known)}
     destination.parent.mkdir(parents=True, exist_ok=True)
     destination.write_text(json.dumps(payload, indent=2))
+
+
+def _read_baseline(source: Path) -> dict[str, Any]:
+    """Parse a baseline file and check its shape.
+
+    Well-formed JSON of the wrong shape is as unusable as a truncated file, and
+    would otherwise surface as an ``AttributeError``/``TypeError`` from whichever
+    caller touched it first. Raises ``OSError`` or ``ValueError``
+    (``JSONDecodeError`` is one) for callers to translate.
+    """
+    parsed = json.loads(source.read_text())
+    if not isinstance(parsed, dict):
+        raise ValueError(f"expected a JSON object, got {type(parsed).__name__}")
+    covered = parsed.get("covered_paths") or []
+    if not isinstance(covered, list) or not all(isinstance(p, str) for p in covered):
+        raise ValueError("'covered_paths' must be a list of strings")
+    return {**parsed, "covered_paths": covered}
 
 
 def load_baseline(source: Path) -> dict[str, Any] | None:
     """Load the cached baseline.
 
     Returns None if the file doesn't exist (first build / fresh cache).
-    Raises :class:`BaselineCorruptError` if the file exists but is unreadable
-    or unparseable — see :func:`merge_into_baseline` for the rationale.
+    Raises :class:`BaselineCorruptError` if the file exists but is unreadable,
+    unparseable, or misshapen — see :func:`merge_into_baseline` for the rationale.
     """
     if not source.exists():
         return None
     try:
-        return json.loads(source.read_text())
-    except (json.JSONDecodeError, OSError) as exc:
+        return _read_baseline(source)
+    except (OSError, ValueError) as exc:
         raise BaselineCorruptError(
             f"baseline at {source} is unreadable: {exc}. "
             "Delete the cache entry and re-run."

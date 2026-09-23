@@ -7,7 +7,7 @@ Verifies:
 4. ExecutorPluginLoader.get() discovers entry-point-based plugins (mocked)
 5. ExecutorPluginLoader.discover_executors() loads cloud executors (mocked)
 6. text_processor.add_hex_line_numbers()
-7. ExecutionDispatcher._get_queue() naming convention
+7. Queue-per-executor naming convention (QUEUE_PREFIX)
 8. Protocol classes importable and runtime-checkable
 9. executors/__init__.py triggers discover_executors()
 """
@@ -17,7 +17,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from executor.executors.plugins.loader import ExecutorPluginLoader
 from executor.executors.plugins.text_processor import add_hex_line_numbers
-from unstract.sdk1.execution.dispatcher import ExecutionDispatcher
+from unstract.workflow_execution.executor_rpc import QUEUE_PREFIX
 
 
 @pytest.fixture(autouse=True)
@@ -232,35 +232,31 @@ class TestTextProcessor:
 
 
 class TestQueuePerExecutor:
-    def test_get_queue_legacy(self):
-        assert ExecutionDispatcher._get_queue("legacy") == "celery_executor_legacy"
+    """Queue-per-executor naming, now owned solely by the PG executor RPC.
 
-    def test_get_queue_table(self):
-        assert ExecutionDispatcher._get_queue("table") == "celery_executor_table"
+    The names are ``celery_executor_*`` for historical reasons and are NOT dead
+    Celery surface: ``worker-pg-executor`` subscribes to exactly these strings
+    (chart ``workerPgExecutor.env.WORKER_PG_QUEUE_CONSUMER_QUEUE``). Renaming the
+    prefix without changing the chart would silently strand every tool execution,
+    so these assertions pin the literal wire names rather than deriving them.
+    """
 
-    def test_get_queue_smart_table(self):
-        assert (
-            ExecutionDispatcher._get_queue("smart_table") == "celery_executor_smart_table"
-        )
+    @pytest.mark.parametrize(
+        "executor_name",
+        ["legacy", "table", "smart_table", "simple_prompt_studio", "agentic"],
+    )
+    def test_queue_for_known_executor(self, executor_name):
+        assert f"{QUEUE_PREFIX}{executor_name}" == f"celery_executor_{executor_name}"
 
-    def test_get_queue_simple_prompt_studio(self):
-        assert (
-            ExecutionDispatcher._get_queue("simple_prompt_studio")
-            == "celery_executor_simple_prompt_studio"
-        )
-
-    def test_get_queue_agentic(self):
-        assert ExecutionDispatcher._get_queue("agentic") == "celery_executor_agentic"
-
-    def test_get_queue_arbitrary_name(self):
+    def test_queue_for_arbitrary_name(self):
         """Any executor_name works — no whitelist."""
-        assert ExecutionDispatcher._get_queue("my_custom") == "celery_executor_my_custom"
+        assert f"{QUEUE_PREFIX}my_custom" == "celery_executor_my_custom"
 
-    def test_queue_name_enum_matches_dispatcher(self):
-        """QueueName.EXECUTOR matches what dispatcher generates for 'legacy'."""
+    def test_queue_name_enum_matches_prefix(self):
+        """QueueName.EXECUTOR matches what the PG dispatcher builds for 'legacy'."""
         from shared.enums.worker_enums import QueueName
 
-        assert QueueName.EXECUTOR.value == ExecutionDispatcher._get_queue("legacy")
+        assert QueueName.EXECUTOR.value == f"{QUEUE_PREFIX}legacy"
 
 
 # ── 6. Protocol classes importable ──────────────────────────────────

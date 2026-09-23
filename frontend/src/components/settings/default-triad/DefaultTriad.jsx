@@ -1,8 +1,11 @@
-import { ArrowLeftOutlined } from "@ant-design/icons";
-import { Button, Select, Typography } from "antd";
+import { ArrowLeft } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { Button } from "@/components/ui/shims/antd-button";
+import { Select } from "@/components/ui/shims/antd-inputs";
+import { Typography } from "@/components/ui/shims/antd-typography";
 
+import { fetchAllPages } from "../../../helpers/pagination";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
 import { IslandLayout } from "../../../layouts/island-layout/IslandLayout.jsx";
@@ -61,14 +64,11 @@ function DefaultTriad() {
   };
 
   const fetchData = () => {
-    const requestOptions = {
-      method: "GET",
+    fetchAllPages(axiosPrivate, {
       url: `/api/v1/unstract/${sessionDetails?.orgId}/adapter/`,
-    };
-    axiosPrivate(requestOptions)
-      .then((res) => {
-        const data = res?.data;
-        setAdapterList(data);
+    })
+      .then((adapters) => {
+        setAdapterList(adapters);
       })
       .catch((err) => {
         setAlertDetails(
@@ -178,7 +178,7 @@ function DefaultTriad() {
           type="text"
           onClick={() => navigate(`/${sessionDetails?.orgName}/tools`)}
         >
-          <ArrowLeftOutlined />
+          <ArrowLeft />
         </Button>
         <Typography.Text className="plt-set-head-typo">
           Default LLM Profile
@@ -196,6 +196,7 @@ function DefaultTriad() {
                     {labelMap[type]}
                   </Typography>
                   <Select
+                    showSearch
                     placeholder={`Select ${labelMap[type]}`}
                     value={selectedValues[type] || undefined}
                     onChange={(value) => handleDropdownChange(type, value)}

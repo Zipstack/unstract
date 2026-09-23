@@ -1,7 +1,6 @@
 import os
 from unittest.mock import Mock, patch
 
-import pytest
 from django.test import TestCase
 from unstract.connectors.databases.postgresql import PostgreSQL
 from workflow_manager.endpoint_v2.constants import DestinationKey
@@ -31,9 +30,12 @@ class TestDestinationConnectorPostgreSQL(TestCase):
             "processing_time": 1.5,
         }
         self.input_file_path = "/path/to/test/file.pdf"
-        # Lowercase: the connector quotes the name on CREATE (case-preserved) but
-        # lowercases it when reading information_schema back.
-        self.test_table_name = "output_3"
+        # Per-worker table so parallel xdist workers don't write to one shared
+        # table — a cross-worker row would otherwise win `ORDER BY created_at
+        # DESC LIMIT 1`. Lowercase: the connector quotes the name on CREATE
+        # (case-preserved) but lowercases it when reading information_schema back.
+        worker = os.getenv("PYTEST_XDIST_WORKER", "")
+        self.test_table_name = f"output_3_{worker}" if worker else "output_3"
 
         # Create real PostgreSQL connector instance
         self.postgres_connector = PostgreSQL(settings=self.postgres_config)
@@ -193,14 +195,6 @@ class TestDestinationConnectorPostgreSQL(TestCase):
             f"✅ Successfully inserted test data into PostgreSQL table: {self.test_table_name}"
         )
 
-    @pytest.mark.xfail(
-        reason=(
-            "get_sql_values_for_query serializes data=None as the literal "
-            "string 'None', which is invalid JSON for the jsonb data column "
-            "(PR #2115 review). Remove this marker once None maps to SQL NULL."
-        ),
-        strict=True,
-    )
     def test_insert_into_db_with_error_postgresql(self) -> None:
         """Test insertion with error parameter into real PostgreSQL database."""
         mock_workflow = self.create_mock_workflow()

@@ -10,70 +10,14 @@ method when the plugin is installed.  Challenge and evaluation plugins
 are integrated at the caller level (LegacyExecutor).
 """
 
-import ipaddress
 import logging
 import os
-import socket
 from typing import Any
-from urllib.parse import urlparse
 
 from executor.executors.constants import PromptServiceConstants as PSKeys
 from executor.executors.exceptions import LegacyExecutorError, RateLimitError
 
 logger = logging.getLogger(__name__)
-
-
-def _resolve_host_addresses(host: str) -> set[str]:
-    """Resolve a hostname or IP string to a set of IP address strings."""
-    try:
-        ipaddress.ip_address(host)
-        return {host}
-    except ValueError:
-        pass
-    try:
-        return {
-            sockaddr[0]
-            for _family, _type, _proto, _canonname, sockaddr in socket.getaddrinfo(
-                host, None, type=socket.SOCK_STREAM
-            )
-        }
-    except Exception:
-        return set()
-
-
-def _is_safe_public_url(url: str) -> bool:
-    """Validate webhook URL for SSRF protection.
-
-    Only allows HTTPS and blocks private/loopback/internal addresses.
-    """
-    try:
-        p = urlparse(url)
-        if p.scheme not in ("https",):
-            return False
-        host = p.hostname or ""
-        if host in ("localhost",):
-            return False
-
-        addrs = _resolve_host_addresses(host)
-        if not addrs:
-            return False
-
-        for addr in addrs:
-            try:
-                ip = ipaddress.ip_address(addr)
-            except ValueError:
-                return False
-            if (
-                ip.is_private
-                or ip.is_loopback
-                or ip.is_link_local
-                or ip.is_reserved
-                or ip.is_multicast
-            ):
-                return False
-        return True
-    except Exception:
-        return False
 
 
 class AnswerPromptService:
@@ -103,6 +47,41 @@ class AnswerPromptService:
                 output.get(PSKeys.NAME, ""),
             )
         return promptx
+
+    @staticmethod
+    def _llm_caches_prompts(llm: Any) -> bool:
+        """Whether reordering into a cached prefix pays off for this LLM.
+
+        True only when the LLM reports prompt caching is active for it — caching
+        enabled (adapter flag / constructor arg / ``ENABLE_PROMPT_CACHING``
+        master switch) AND a supported provider/model. LLM objects that don't
+        expose the capability default to False, so their prompt order is left
+        unchanged.
+        """
+        checker = getattr(llm, "is_prompt_caching_active", None)
+        if not callable(checker):
+            return False
+        # Fail closed: if the probe raises, keep the original (context-last)
+        # prompt order rather than risk a reorder for an LLM whose caching
+        # support is unknown. Hence the deliberately broad excepts below.
+        try:
+            return bool(checker())
+        except Exception:  # noqa: BLE001 - fail closed, see comment above
+            provider = getattr(getattr(llm, "adapter", None), "get_provider", None)
+            provider_name = None
+            if callable(provider):
+                try:
+                    provider_name = provider()
+                except Exception:  # noqa: BLE001 - provider is best-effort log context
+                    provider_name = None
+            logger.warning(
+                "Failed to determine prompt-caching support for LLM "
+                "(type=%s, provider=%s); using original prompt order",
+                type(llm).__name__,
+                provider_name,
+                exc_info=True,
+            )
+            return False
 
     @staticmethod
     def construct_and_run_prompt(
@@ -148,20 +127,36 @@ class AnswerPromptService:
         if not enable_word_confidence or summarize_as_source:
             word_confidence_postamble = ""
 
-        prompt = AnswerPromptService.construct_prompt(
-            preamble=tool_settings.get(PSKeys.PREAMBLE, ""),
-            prompt=output[prompt],
-            postamble=tool_settings.get(PSKeys.POSTAMBLE, ""),
-            grammar_list=tool_settings.get(PSKeys.GRAMMAR, []),
-            context=context,
-            platform_postamble=platform_postamble,
-            word_confidence_postamble=word_confidence_postamble,
-            prompt_type=prompt_type,
-        )
-        output[PSKeys.COMBINED_PROMPT] = prompt
+        prompt_args = {
+            "preamble": tool_settings.get(PSKeys.PREAMBLE, ""),
+            "prompt": output[prompt],
+            "postamble": tool_settings.get(PSKeys.POSTAMBLE, ""),
+            "grammar_list": tool_settings.get(PSKeys.GRAMMAR, []),
+            "context": context,
+            "platform_postamble": platform_postamble,
+            "word_confidence_postamble": word_confidence_postamble,
+            "prompt_type": prompt_type,
+        }
+        cache_prefix: str | None = None
+        # Only reorder into a cached prefix when this LLM actually caches
+        # (caching enabled AND a supported provider/model). Reordering for an
+        # unsupported provider would change the prompt structure — moving the
+        # document context ahead of the instructions — with no caching benefit,
+        # so those providers keep the original prompt order.
+        if AnswerPromptService._llm_caches_prompts(llm):
+            # Reorder so the reused document context becomes a cached prefix.
+            # The text the model sees is ``cache_prefix + prompt_str``.
+            cache_prefix, prompt_str = AnswerPromptService.construct_cached_prompt(
+                **prompt_args
+            )
+            output[PSKeys.COMBINED_PROMPT] = cache_prefix + prompt_str
+        else:
+            prompt_str = AnswerPromptService.construct_prompt(**prompt_args)
+            output[PSKeys.COMBINED_PROMPT] = prompt_str
         return AnswerPromptService.run_completion(
             llm=llm,
-            prompt=prompt,
+            prompt=prompt_str,
+            cache_prefix=cache_prefix,
             metadata=metadata,
             prompt_key=output[PSKeys.NAME],
             prompt_type=prompt_type,
@@ -190,6 +185,31 @@ class AnswerPromptService:
         return notes
 
     @staticmethod
+    def _prepare_postambles(
+        postamble: str,
+        platform_postamble: str,
+        word_confidence_postamble: str,
+        prompt_type: str,
+    ) -> tuple[str, str]:
+        """Apply JSON + platform/word-confidence formatting to the postambles.
+
+        Shared by :meth:`construct_prompt` and :meth:`construct_cached_prompt` so
+        the cached and non-cached prompts stay byte-identical apart from the
+        context/question ordering. Returns the ``(postamble, platform_postamble)``
+        pair to interpolate.
+        """
+        if prompt_type == PSKeys.JSON:
+            json_postamble = os.environ.get(
+                PSKeys.JSON_POSTAMBLE, PSKeys.DEFAULT_JSON_POSTAMBLE
+            )
+            postamble += f"\n{json_postamble}"
+        if platform_postamble:
+            platform_postamble += "\n\n"
+            if word_confidence_postamble:
+                platform_postamble += f"{word_confidence_postamble}\n\n"
+        return postamble, platform_postamble
+
+    @staticmethod
     def construct_prompt(
         preamble: str,
         prompt: str,
@@ -203,15 +223,9 @@ class AnswerPromptService:
         """Build the full prompt string with preamble, grammar, postamble, context."""
         prompt = f"{preamble}\n\nQuestion or Instruction: {prompt}"
         prompt += AnswerPromptService._build_grammar_notes(grammar_list)
-        if prompt_type == PSKeys.JSON:
-            json_postamble = os.environ.get(
-                PSKeys.JSON_POSTAMBLE, PSKeys.DEFAULT_JSON_POSTAMBLE
-            )
-            postamble += f"\n{json_postamble}"
-        if platform_postamble:
-            platform_postamble += "\n\n"
-            if word_confidence_postamble:
-                platform_postamble += f"{word_confidence_postamble}\n\n"
+        postamble, platform_postamble = AnswerPromptService._prepare_postambles(
+            postamble, platform_postamble, word_confidence_postamble, prompt_type
+        )
         prompt += (
             f"\n\n{postamble}\n\nContext:\n---------------\n{context}\n"
             f"-----------------\n\n{platform_postamble}Answer:"
@@ -219,9 +233,41 @@ class AnswerPromptService:
         return prompt
 
     @staticmethod
+    def construct_cached_prompt(
+        preamble: str,
+        prompt: str,
+        postamble: str,
+        grammar_list: list[dict[str, Any]],
+        context: str,
+        platform_postamble: str,
+        word_confidence_postamble: str,
+        prompt_type: str = "text",
+    ) -> tuple[str, str]:
+        """Build ``(cache_prefix, volatile)`` with the document context first.
+
+        Same content as :meth:`construct_prompt`, but the reused ``context`` is
+        moved to the front so it forms a cacheable prefix that repeats across
+        every prompt run against the same document, while the per-prompt
+        question is the volatile suffix. The model sees ``cache_prefix +
+        volatile``. This reorders the prompt (context before question instead of
+        after), which is why it is flag-gated and A/B-evaluated.
+        """
+        postamble, platform_postamble = AnswerPromptService._prepare_postambles(
+            postamble, platform_postamble, word_confidence_postamble, prompt_type
+        )
+        cache_prefix = f"Context:\n---------------\n{context}\n-----------------\n\n"
+        volatile = (
+            f"{preamble}\n\nQuestion or Instruction: {prompt}"
+            + AnswerPromptService._build_grammar_notes(grammar_list)
+            + f"\n\n{postamble}\n\n{platform_postamble}Answer:"
+        )
+        return cache_prefix, volatile
+
+    @staticmethod
     def run_completion(
         llm: Any,
         prompt: str,
+        cache_prefix: str | None = None,
         metadata: dict[str, str] | None = None,
         prompt_key: str | None = None,
         prompt_type: str | None = "text",
@@ -249,6 +295,7 @@ class AnswerPromptService:
         try:
             completion = llm.complete(
                 prompt=prompt,
+                cache_prefix=cache_prefix,
                 process_text=process_text,
                 extract_json=prompt_type.lower() != PSKeys.TEXT,
             )
@@ -292,9 +339,9 @@ class AnswerPromptService:
         if not webhook_url:
             logger.warning("Postprocessing webhook enabled but URL missing; skipping.")
             return parsed_data, None
-        if not _is_safe_public_url(webhook_url):
-            logger.warning("Postprocessing webhook URL is not allowed; skipping.")
-            return parsed_data, None
+        # No URL check here: _make_webhook_request applies the identical guard
+        # at the sink. Duplicating it only bought a second blocking getaddrinfo
+        # per prompt per document.
         try:
             return postprocess_data(
                 parsed_data,

@@ -25,12 +25,12 @@
 }
 
 .retrieval-strategy-modal .ant-radio-wrapper:hover {
-  border-color: #1890ff;
+  border-color: var(--primary);
   background-color: #f6ffed;
 }
 
 .retrieval-strategy-modal .ant-radio-wrapper-checked {
-  border-color: #1890ff;
+  border-color: var(--primary);
   background-color: #e6f7ff;
 }
 
@@ -72,7 +72,7 @@
   background-color: #fafafa;
   padding: 12px;
   border-radius: 4px;
-  border-left: 3px solid #1890ff;
+  border-left: 3px solid var(--primary);
 }
 
 .retrieval-strategy-modal .strategy-icon {
@@ -173,11 +173,11 @@
 }
 
 .retrieval-strategy-modal__token-usage-low {
-  color: #52c41a;
+  color: var(--success);
 }
 
 .retrieval-strategy-modal__token-usage-medium {
-  color: #faad14;
+  color: var(--warning);
 }
 
 .retrieval-strategy-modal__token-usage-high {
@@ -185,11 +185,11 @@
 }
 
 .retrieval-strategy-modal__cost-impact-low {
-  color: #52c41a;
+  color: var(--success);
 }
 
 .retrieval-strategy-modal__cost-impact-medium {
-  color: #faad14;
+  color: var(--warning);
 }
 
 .retrieval-strategy-modal__cost-impact-high {

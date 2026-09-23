@@ -6,12 +6,24 @@ under test. Other e2e tests should take the shared ``authed_session`` fixture.
 
 from __future__ import annotations
 
+import os
+
 import pytest
 import requests
 
+from tests.e2e.conftest import LOGIN_PROVIDER_ENV
 from tests.rig.runtime import PlatformEndpoints
 
-pytestmark = [pytest.mark.e2e, pytest.mark.critical]
+pytestmark = [
+    pytest.mark.e2e,
+    pytest.mark.critical,
+    # A deployment that swapped the login provider has no form login to assert
+    # against; its own suite covers the flow it actually ships.
+    pytest.mark.skipif(
+        bool(os.environ.get(LOGIN_PROVIDER_ENV, "").strip()),
+        reason=f"{LOGIN_PROVIDER_ENV} set: form login is not the flow under test",
+    ),
+]
 
 
 @pytest.mark.critical_path("auth-login")

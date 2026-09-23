@@ -57,11 +57,14 @@ readonly PG_ROLE_FILEPROC="pg-fileproc"
 readonly PG_ROLE_CALLBACK="pg-callback"
 readonly PG_ROLE_SCHEDULER="pg-scheduler"
 readonly PG_ROLE_EXECUTOR="pg-executor"
+readonly PG_ROLE_METRICS="pg-metrics"
+readonly PG_ROLE_NOTIFICATION="pg-notification"
+readonly PG_ROLE_IDE_CALLBACK="pg-ide-callback"
 declare -rA PG_CONSUMER_ROLES=(
     ["$PG_ROLE_ORCH_API"]="api_deployment;celery_api_deployments"
     ["$PG_ROLE_ORCH_GENERAL"]="general;celery"
-    ["$PG_ROLE_FILEPROC"]="file_processing;file_processing,api_file_processing"
-    ["$PG_ROLE_CALLBACK"]="callback;file_processing_callback,api_file_processing_callback"
+    ["$PG_ROLE_FILEPROC"]="file_processing;file_processing,file_processing_priority,api_file_processing"
+    ["$PG_ROLE_CALLBACK"]="callback;file_processing_callback,celery_callback,api_file_processing_callback"
     # Runs scheduler.tasks.execute_pipeline_task fired by the orchestrator's PG
     # scheduler tick (Beat replacement). Distinct from the Celery 'scheduler'
     # worker (which Beat fires onto RabbitMQ).
@@ -69,7 +72,22 @@ declare -rA PG_CONSUMER_ROLES=(
     # Runs execute_extraction (the executor RPC) over PG — request-reply: writes
     # the result to pg_task_result for the blocking caller. Queues mirror the
     # Celery executor's CELERY_QUEUES_EXECUTOR.
-    ["$PG_ROLE_EXECUTOR"]="executor;celery_executor_legacy,celery_executor_agentic,celery_executor_agentic_table"
+    ["$PG_ROLE_EXECUTOR"]="executor;celery_executor_legacy,celery_executor_agentic,celery_executor_table,celery_executor_smart_table,celery_executor_simple_prompt_studio,celery_executor_agentic_table,celery_executor_lookup_test"
+    # Runs the dashboard_metrics.* periodics fired by the PG scheduler tick,
+    # replacing the Celery 'workerMetrics' (-Q dashboard_metric_events). Its own
+    # role rather than a queue bolted onto pg-scheduler: the consumer's health
+    # heartbeat freezes for the duration of a task, so HEALTH_STALE is an upper
+    # bound on one task's wall clock. The aggregation runs for minutes; sharing
+    # pg-scheduler's tight 240s bound would restart that pod and take in-flight
+    # pipeline triggers down with it. Sized in docker-compose.yaml.
+    ["$PG_ROLE_METRICS"]="scheduler;dashboard_metric_events"
+    # The backend notification seam enqueues send_webhook_notification onto
+    # these queues unconditionally (UN-4046). Without this role a host-run PG
+    # fleet accepts every buffered webhook and drains none — enqueue_task
+    # succeeds, so nothing errors at the producer.
+    ["$PG_ROLE_NOTIFICATION"]="notification;notifications,notifications_webhook,notifications_email,notifications_sms,notifications_priority"
+    # Prompt Studio IDE callbacks (ide_index_*/ide_prompt_*/extraction_*).
+    ["$PG_ROLE_IDE_CALLBACK"]="ide_callback;ide_callback"
 )
 declare -rA PG_QUEUE_MEMBERS=(
     ["$PG_QUEUE_CONSUMER_TYPE"]=1
@@ -80,6 +98,9 @@ declare -rA PG_QUEUE_MEMBERS=(
     ["$PG_ROLE_CALLBACK"]=1
     ["$PG_ROLE_SCHEDULER"]=1
     ["$PG_ROLE_EXECUTOR"]=1
+    ["$PG_ROLE_METRICS"]=1
+    ["$PG_ROLE_NOTIFICATION"]=1
+    ["$PG_ROLE_IDE_CALLBACK"]=1
 )
 # The Celery transport set: every worker EXCEPT the PG-queue members — the
 # *complement* of the 'pg-queue' set, so the two transports' logs can be tailed
@@ -119,6 +140,7 @@ declare -A WORKERS=(
     ["$PG_ROLE_CALLBACK"]="$PG_ROLE_CALLBACK"
     ["$PG_ROLE_SCHEDULER"]="$PG_ROLE_SCHEDULER"
     ["$PG_ROLE_EXECUTOR"]="$PG_ROLE_EXECUTOR"
+    ["$PG_ROLE_METRICS"]="$PG_ROLE_METRICS"
     # PG Queue reaper — leader-elected recovery loop (barrier-orphan sweep)
     ["reaper"]="$PG_QUEUE_REAPER_TYPE"
     ["pg-queue-reaper"]="$PG_QUEUE_REAPER_TYPE"

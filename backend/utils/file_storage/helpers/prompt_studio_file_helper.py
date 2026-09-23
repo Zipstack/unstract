@@ -211,8 +211,16 @@ class PromptStudioFileHelper:
                 tool_id=str(tool_id),
             )
         )
-        # Delete the source file
-        fs_instance.rm(str(Path(file_system_path) / file_name))
+        # Delete the source file. Guarded rather than unconditional: callers
+        # run this *before* deleting the DocumentManager row so that a failed
+        # file delete leaves a row worth retrying. A failure in the other
+        # direction — file gone, row delete failed — then retries against a
+        # path that is no longer there, and a bare rm() raises FileNotFoundError
+        # on the usual fsspec backends. That turned the retry into a permanent
+        # 400 and left the row undeletable through the endpoint.
+        source_file = str(Path(file_system_path) / file_name)
+        if fs_instance.exists(source_file):
+            fs_instance.rm(source_file)
         # Delete all related files for cascade delete
         directories = ["extract/", "extract/metadata/", "summarize/", "converted/"]
         base_file_name, _ = os.path.splitext(file_name)

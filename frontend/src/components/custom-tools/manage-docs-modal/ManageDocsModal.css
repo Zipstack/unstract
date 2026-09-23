@@ -34,7 +34,7 @@
 }
 
 .summarization-status-enabled {
-  background-color: #52c41a;
+  background-color: var(--success);
 }
 
 .summarization-status-disabled {

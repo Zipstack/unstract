@@ -75,11 +75,10 @@ class SchedulerHelper:
             cron_string=cron_string,
             enabled=pipeline.active,
         )
-        # Ramp control (Phase 9, ②c): align this schedule's firer (Beat vs PG)
-        # with the rollout. Inert until the gate + pg_scheduler_enabled flag are
-        # on (fails closed to Beat), so this is a no-op during normal operation;
-        # when a schedule is owned by PG it disables the Beat PeriodicTask in the
-        # same transaction so the two never both fire. Best-effort (never raises).
+        # Align this schedule's firer (Beat vs PG). NOT a no-op: since UN-4046
+        # PG_SCHEDULER_ENABLED defaults to true, so the normal path here hands the
+        # schedule to PG and disables the Beat PeriodicTask in the same transaction
+        # (which is what stops the two both firing). Best-effort (never raises).
         # organization_id is the org identifier string (what the mirror stores).
         reconcile_ownership_for(str(pipeline.pk), organization_id, active=pipeline.active)
 

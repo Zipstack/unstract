@@ -36,5 +36,9 @@ class AWSBedrockEmbeddingAdapter(AWSBedrockEmbeddingParameters, BaseAdapter):
         return "/icons/adapter-icons/Bedrock.png"
 
     @staticmethod
+    def get_doc_url() -> str:
+        return "https://docs.unstract.com/unstract/unstract_platform/adapters/embedding/amazon_bedrock_embedding/"
+
+    @staticmethod
     def get_adapter_type() -> AdapterTypes:
         return AdapterTypes.EMBEDDING

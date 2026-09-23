@@ -45,6 +45,11 @@ WORKER_SCHEMA_CONTRACT = {
         "read_ct",
         "priority",
         "state",
+        # Delayed visibility (countdown/eta), migration 0002. Absent from this set
+        # until now, while workers depend on it in raw SQL — so renaming or dropping
+        # it would have kept this guard green and broken delayed delivery at runtime,
+        # which is exactly the drift this file exists to catch.
+        "available_at",
     },
     "pg_task_result": {
         "task_id",
@@ -71,6 +76,24 @@ WORKER_SCHEMA_CONTRACT = {
         "organization_id",
         "workflow_id",
         "pipeline_name",
+        "cron_string",
+        "enabled",
+        "pg_owned",
+        "last_run_at",
+        "next_run_at",
+        "created_at",
+        "updated_at",
+    },
+    # UN-3796 — generic (non-pipeline) Beat periodics. Sibling of the table above;
+    # each row carries its own task/queue/args rather than the pipeline trigger's
+    # one fixed shape.
+    "pg_periodic_task": {
+        "name",
+        "task_name",
+        "queue",
+        "task_args",
+        "task_kwargs",
+        "org_id",
         "cron_string",
         "enabled",
         "pg_owned",

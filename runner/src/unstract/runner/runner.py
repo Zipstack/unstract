@@ -245,6 +245,16 @@ class UnstractRunner:
             "CELERY_BROKER_BASE_URL": os.getenv(Env.CELERY_BROKER_BASE_URL),
             "CELERY_BROKER_USER": os.getenv(Env.CELERY_BROKER_USER),
             "CELERY_BROKER_PASS": os.getenv(Env.CELERY_BROKER_PASS),
+            # Log transport (UN-3755). The sidecar is a LogPublisher producer
+            # (log_processor.py:165), so it must agree with every other publisher or
+            # its tool logs go to RabbitMQ while the rest go to Redis — and with the
+            # Celery log consumer scaled to zero, those logs are simply lost. This
+            # dict is an allowlist, not inherited env, so omitting it fails silently.
+            # Needs no new credentials: REDIS_* is already passed above.
+            Env.LOG_TRANSPORT: os.getenv(Env.LOG_TRANSPORT, "celery"),
+            Env.LOG_STREAM_QUEUE_NAME: os.getenv(
+                Env.LOG_STREAM_QUEUE_NAME, "log_stream_queue"
+            ),
             "CONTAINER_NAME": container_name,
         }
         sidecar_config = self.client.get_container_run_config(

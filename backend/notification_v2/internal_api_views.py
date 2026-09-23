@@ -14,6 +14,7 @@ import logging
 from datetime import timedelta
 from typing import Any, cast
 
+from account_v2.models import Organization
 from api_v2.models import APIDeployment
 from django.conf import settings
 from django.db import transaction
@@ -27,7 +28,6 @@ from pipeline_v2.models import Pipeline
 from utils.organization_utils import filter_queryset_by_organization
 from workflow_manager.workflow_v2.models.execution import WorkflowExecution
 
-from backend.celery_service import app as celery_app
 from notification_v2.clubbed_renderer import MAX_BATCH_SIZE, render_clubbed_message
 from notification_v2.enums import BufferStatus
 from notification_v2.helper import (
@@ -37,11 +37,24 @@ from notification_v2.helper import (
     webhook_url_hash,
 )
 from notification_v2.models import Notification, NotificationBuffer
+from notification_v2.notification_dispatch import (
+    PermanentDispatchError,
+    dispatch_webhook_notification,
+)
 
 logger = logging.getLogger(__name__)
 
 # Constants for error messages
 INTERNAL_SERVER_ERROR_MSG = "Internal server error"
+
+# How many early transient-failure cycles get their SENDING claim refunded before the
+# claim starts sticking. Refunding forever makes net attempt progress zero, so
+# ``NOTIFICATION_MAX_DISPATCH_ATTEMPTS`` becomes unreachable and a permanently
+# recurring failure (not just a brief broker blip) re-dispatches every flush tick with
+# no termination condition. Small by design: a genuine blip clears well inside this,
+# and anything still failing after it is treated as repetitive and allowed to age
+# toward the cap.
+NOTIFICATION_TRANSIENT_REFUND_LIMIT = 3
 
 
 def _load_execution(execution_id: str | None) -> WorkflowExecution | None:
@@ -513,6 +526,38 @@ def _reclaim_stale_sending() -> int:
     return int(reclaimed)
 
 
+def _org_identifier(org_pk: int) -> str | None:
+    """Resolve the string ``Organization.organization_id`` from the buffer's org pk.
+
+    The PG queue row records the org's string identifier (used for per-org
+    fairness), but the buffer stores/uses the Organization pk. One indexed pk
+    lookup per dispatch group (post-commit) — negligible relative to the
+    downstream webhook dispatch.
+
+    Data-anomaly guard: ``NotificationBuffer.organization`` is
+    ``on_delete=CASCADE``, so a live buffer row with a missing org is unreachable
+    in normal operation. A ``None`` here therefore signals a dangling FK — we log
+    it (the only org-traceable breadcrumb) and enqueue with an empty org id, which
+    dispatches correctly but without fairness attribution.
+    """
+    org_string_id = (
+        Organization.objects.filter(pk=org_pk)
+        .values_list("organization_id", flat=True)
+        .first()
+    )
+    if org_string_id is None:
+        # Sentry-routed (logger.error): a live buffer row with no org is a data
+        # anomaly (dangling FK / corruption) that shouldn't happen under the
+        # CASCADE constraint, not routine noise. The enqueue still succeeds — it
+        # just carries an empty org id, so the row loses fairness attribution.
+        logger.error(
+            "metric=notification_org_identifier_missing_total org_pk=%s "
+            "(dangling FK; enqueued without fairness attribution)",
+            org_pk,
+        )
+    return org_string_id
+
+
 def _send_clubbed(
     *,
     url: str,
@@ -521,7 +566,7 @@ def _send_clubbed(
     platform: str,
     max_retries: int,
     buffer_ids: list[str],
-    org_id: Any,
+    org_id: int,
 ) -> None:
     """Send the clubbed Celery task after the DB transition has committed.
 
@@ -540,8 +585,10 @@ def _send_clubbed(
     ``buffer_row_ids`` + ``organization_id`` to the worker so it can mark them.
     """
     try:
-        celery_app.send_task(
-            "send_webhook_notification",
+        # The queue row records the org STRING id, but the buffer/worker contract
+        # below uses the org pk — hence _org_identifier(org_id) on the row,
+        # org_id in kwargs. The two must not be conflated.
+        dispatch_task_id = dispatch_webhook_notification(
             args=[url, body, headers, settings.NOTIFICATION_TIMEOUT],
             kwargs={
                 "max_retries": max_retries,
@@ -557,16 +604,57 @@ def _send_clubbed(
                 "organization_id": org_id,
             },
             queue="notifications",
+            org_string_id=_org_identifier(org_id),
         )
         logger.info(
             "metric=notification_batch_dispatched_total platform=%s result=success "
-            "org_id=%s webhook_url_hash=%s rows=%d",
+            "org_id=%s webhook_url_hash=%s rows=%d task_id=%s",
+            platform,
+            org_id,
+            webhook_url_hash(url),
+            len(buffer_ids),
+            dispatch_task_id,
+        )
+    except PermanentDispatchError:
+        # PG-ONLY permanent failure. From this path the only reachable cause is
+        # payload JSON-serialization (e.g. a NaN/Infinity float that jsonb rejects
+        # at insert): this call passes no reply_key/callback and a default in-range
+        # priority, so enqueue_task's other permanent checks can't fire here (the
+        # full set lives on PermanentDispatchError's docstring). It fails
+        # identically every flush tick — dead-letter now (distinct metric) instead
+        # of reverting to PENDING and re-rendering + re-dispatching + emitting a
+        # broker_failure traceback until the attempt cap. The Celery path never
+        # raises this, so the flag-off flow is unchanged: a Celery send_task failure
+        # is an ordinary Exception handled by the transient branch below, exactly as
+        # before UN-3753. Guard on SENDING so a row the worker already resolved
+        # isn't clobbered.
+        logger.exception(
+            "metric=notification_batch_dispatched_total platform=%s "
+            "result=dispatch_error org_id=%s webhook_url_hash=%s rows=%d",
             platform,
             org_id,
             webhook_url_hash(url),
             len(buffer_ids),
         )
+        NotificationBuffer.objects.filter(
+            id__in=buffer_ids,
+            status=BufferStatus.SENDING.value,
+        ).update(status=BufferStatus.DEAD_LETTER.value)
     except Exception:
+        # TRANSIENT transport/broker failure — revert to PENDING (outside the
+        # committed txn) so the next flush tick retries. Guard on SENDING so a row
+        # the worker already marked terminal (broker raised post-delivery) isn't
+        # resurrected into a duplicate.
+        #
+        # The refund is BOUNDED, not unconditional: refunding the SENDING claim on
+        # every cycle makes net progress zero, so `NOTIFICATION_MAX_DISPATCH_ATTEMPTS`
+        # can never be reached and a permanently-recurring failure re-renders and
+        # re-dispatches forever (emitting a traceback each tick). Refunding is still
+        # correct for a genuinely transient blip — nothing was queued or sent — so we
+        # keep it while attempts are low and let the cap take over once a failure has
+        # proven itself repetitive. This matters more now that this branch also
+        # catches non-permanent PG enqueue failures (e.g. a DataError that will recur
+        # identically), not just "RabbitMQ is briefly down".
         logger.exception(
             "metric=notification_batch_dispatched_total platform=%s "
             "result=broker_failure org_id=%s webhook_url_hash=%s rows=%d",
@@ -575,21 +663,24 @@ def _send_clubbed(
             webhook_url_hash(url),
             len(buffer_ids),
         )
-        # Revert to PENDING (outside the committed txn) so a transient broker
-        # outage retries next tick; refund the SENDING-claim attempt since nothing
-        # was queued or sent. Guard on SENDING so a row the worker already marked
-        # terminal (broker raised post-delivery) isn't resurrected into a duplicate.
-        NotificationBuffer.objects.filter(
+        reverted = NotificationBuffer.objects.filter(
             id__in=buffer_ids,
             status=BufferStatus.SENDING.value,
-        ).update(
+        )
+        # Refund only the early attempts; past the limit the claim stands so the
+        # counter grows and the cap can eventually dead-letter the group.
+        reverted.filter(
+            dispatch_attempts__lte=NOTIFICATION_TRANSIENT_REFUND_LIMIT
+        ).update(dispatch_attempts=F("dispatch_attempts") - 1)
+        # Every claimed row goes back to PENDING for the next flush tick, refunded
+        # or not.
+        reverted.update(
             status=BufferStatus.PENDING.value,
             dispatched_at=None,
-            dispatch_attempts=F("dispatch_attempts") - 1,
         )
 
 
-def _penalize_render_failure(buffer_ids: list[str], org_id: Any, platform: str) -> None:
+def _penalize_render_failure(buffer_ids: list[str], org_id: int, platform: str) -> None:
     """Charge a dispatch attempt to a group whose payloads failed to render.
 
     The SENDING-claim increment never runs on a render failure, so count it here
@@ -609,7 +700,7 @@ def _penalize_render_failure(buffer_ids: list[str], org_id: Any, platform: str) 
 
 
 def _dispatch_group(
-    org_id: Any,
+    org_id: int,
     webhook_url: str,
     auth_sig: str,
     platform: str,

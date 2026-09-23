@@ -1,6 +1,9 @@
+from __future__ import annotations
+
 import logging
 
 from django.core.exceptions import ValidationError
+from global_api_deployment_key.models import GlobalApiDeploymentKey
 from pipeline_v2.models import Pipeline
 from rest_framework.request import Request
 from workflow_manager.workflow_v2.workflow_helper import WorkflowHelper
@@ -60,6 +63,56 @@ class KeyHelper:
         if isinstance(instance, Pipeline):
             return api_key.pipeline == instance
         return False
+
+    @staticmethod
+    def validate_global_api_deployment_key(
+        api_key: str, api_deployment: APIDeployment
+    ) -> GlobalApiDeploymentKey:
+        """Validate a Global API Deployment Key for deployment execution.
+
+        Checks:
+        1. Key exists and is active
+        2. Key belongs to the same organization as the deployment
+        3. Key has access to the specific deployment (allow_all or listed)
+
+        Args:
+            api_key: The bearer token value
+            api_deployment: The API deployment being accessed
+
+        Returns:
+            GlobalApiDeploymentKey: The validated key instance
+
+        Raises:
+            UnauthorizedKey: If validation fails
+        """
+        try:
+            # UUIDField coerces/validates the key string via to_python, raising
+            # ValidationError for a malformed value — the same pattern
+            # ``validate_api_key`` relies on, so no manual uuid parsing is needed.
+            global_key = GlobalApiDeploymentKey.objects.get(key=api_key, is_active=True)
+        except (GlobalApiDeploymentKey.DoesNotExist, ValidationError):
+            # Unknown, inactive, or malformed key. Log the reason for
+            # observability; the client still gets a generic 401 (we don't
+            # leak which condition failed).
+            logger.warning(
+                "Global API key rejected (unknown/inactive/malformed) for "
+                "deployment %s (key ...%s).",
+                api_deployment.id,
+                str(api_key)[-4:],
+            )
+            raise UnauthorizedKey() from None
+
+        if not global_key.has_access_to_deployment(api_deployment):
+            logger.warning(
+                "Global API key '%s' (%s) rejected: no access to deployment %s "
+                "(out of scope or different organization).",
+                global_key.name,
+                global_key.id,
+                api_deployment.id,
+            )
+            raise UnauthorizedKey()
+
+        return global_key
 
     @staticmethod
     def validate_workflow_exists(workflow_id: str) -> None:
