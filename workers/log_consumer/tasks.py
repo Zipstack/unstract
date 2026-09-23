@@ -52,10 +52,10 @@ if _sentinel_mode:
     _sentinel_master_name = os.getenv("REDIS_SENTINEL_MASTER_NAME", "mymaster")
     _transport_options = {"master_name": _sentinel_master_name}
 else:
-    # UN-4123: built by unstract.core so this cannot drift from the backend again.
-    # It previously hardcoded redis://, so with platform TLS on, this publisher
-    # could not reach a TLS-only endpoint and execution logs stopped arriving in
-    # the UI — the backend's own manager having moved to rediss:// without it.
+    # UN-4123: built by unstract.core so this cannot drift from the backend.
+    # Hand-building it here would hardcode a scheme, and a publisher stuck on
+    # redis:// cannot reach a TLS-only endpoint — execution logs would simply stop
+    # arriving in the UI, with nothing failing loudly.
     socket_io_manager_url = build_socketio_redis_url()
 
 sio = socketio.Server(

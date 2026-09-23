@@ -5,12 +5,14 @@ called directly; these tests execute that exact source range against a controlle
 environment instead of re-implementing it, which would test a copy rather than
 the thing that ships.
 
-The case that matters is REDIS_URL. `create_redis_client` honoured it from the
-start, while this module still built its own URL from REDIS_HOST/REDIS_PORT — so
-the workers moved to the configured endpoint and the backend silently stayed
-behind. Nothing errors: the API deployment simply returns ``result: null``,
-because the execution's cached result was written to one Redis and looked up in
-the other. Found on a live run, not by reading the code.
+The case that matters is REDIS_URL, because the failure it prevents is silent.
+If this module built its own URL from REDIS_HOST/REDIS_PORT while
+`create_redis_client` honoured REDIS_URL, the workers would follow the configured
+endpoint and the backend would stay behind — and nothing would error. The API
+deployment simply returns ``result: null``, because the execution's cached result
+was written to one Redis and looked up in the other. That shape was found on a
+live run against a managed endpoint, not by reading the code, which is why these
+tests execute the shipping source rather than a copy of it.
 """
 
 from __future__ import annotations
@@ -27,10 +29,10 @@ def _derive(**env: str) -> dict:
     source = _SETTINGS.read_text()
     # TWO slices of the shipping file, no hand-written copies. The variable
     # DEFINITIONS (REDIS_USER … REDIS_URL) live ~400 lines above the derivation
-    # block, and they used to be duplicated in the prelude below — so the four
-    # variables this work introduced never executed, and a mutation to any of
-    # them (a flipped REDIS_SSL default, a typo'd REDIS_URI) left the suite green
-    # while the copy under test stayed correct. Both ranges now come from source.
+    # block. Duplicating them in the prelude would mean the definitions never
+    # execute: a mutation to any of them (a flipped REDIS_SSL default, a typo'd
+    # REDIS_URI) leaves the suite green while the hand-written copy under test
+    # stays correct. Both ranges therefore come from source.
     defs_start = source.index('REDIS_USER = os.environ.get("REDIS_USER"')
     defs_end = source.index("\n", source.index('REDIS_URL = os.environ.get("REDIS_URL"')) + 1
     start = source.index("REDIS_SENTINEL_MODE = (")
@@ -148,7 +150,7 @@ class TestDiscreteVars:
 
 class TestUrlMode:
     def test_url_drives_the_cache(self):
-        """The regression: this used to ignore REDIS_URL entirely."""
+        """The silent split: a cache that ignores REDIS_URL while the workers honour it."""
         url = "rediss://:pw@managed.example:6380/0?ssl_cert_reqs=required"
         derived = _derive(REDIS_HOST="in-cluster", REDIS_URL=url)
         assert derived["CACHES"]["default"]["LOCATION"].startswith(url)

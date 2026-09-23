@@ -169,10 +169,11 @@ def build_socketio_redis_url(env_prefix: str = "REDIS_") -> str:
     """Redis URL for a Socket.IO/kombu client, TLS settings included (UN-4123).
 
     The backend and the log-consumer worker both publish Socket.IO events through
-    kombu, and each used to build this URL by hand. They drifted: the backend
-    learned TLS while the worker kept a hardcoded ``redis://``, so against a
-    TLS-only endpoint the worker could not publish and execution logs stopped
-    reaching the UI — with nothing failing loudly. One function now serves both.
+    kombu, and each built this URL by hand. Two hand-built URLs for one endpoint
+    drift: teach one of them TLS and the other keeps its ``redis://``, and against
+    a TLS-only endpoint that publisher simply cannot connect — no exception the
+    caller sees, just execution logs that stop reaching the UI. One builder serves
+    both so the pair cannot diverge.
 
     kombu reads TLS out of the URL and NOTHING ELSE: ``KombuManager`` takes a URL,
     not connection kwargs. Two consequences are handled here rather than left to
@@ -475,10 +476,10 @@ def _create_client_from_url(
     if max_connections is not None:
         kwargs["max_connections"] = max_connections
     if url.startswith(_TLS_SCHEME):
-        # URL mode used to set NEITHER of these, so `rediss://` took redis-py's
-        # defaults — verification policy silently diverging from the discrete
-        # path, and hostname checking off. A setting already in the URL's query
-        # string wins; these only fill the gap.
+        # Set explicitly, or `rediss://` takes redis-py's defaults: verification
+        # policy diverging from the discrete path within one process, and hostname
+        # checking off. A setting already in the URL's query string wins; these
+        # only fill the gap.
         if ssl_ca_certs:
             kwargs["ssl_ca_certs"] = ssl_ca_certs
         if "ssl_cert_reqs=" not in url and ssl_cert_reqs:

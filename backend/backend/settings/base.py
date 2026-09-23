@@ -596,9 +596,9 @@ else:
         )
 
     # Built by unstract.core, which the log-consumer worker's publisher also uses.
-    # Both used to assemble this by hand and drifted — the worker stayed on a
-    # hardcoded redis:// after this side learned TLS, so with a TLS-only endpoint
-    # its events never reached subscribers. The helper also pins ssl_cert_reqs
+    # Two hand-built URLs for one endpoint drift: one side would keep a hardcoded
+    # redis:// while the other speaks TLS, and against a TLS-only endpoint that
+    # publisher's events would never reach subscribers. The helper also pins ssl_cert_reqs
     # (kombu defaults rediss:// to CERT_NONE) and carries ssl_ca_certs, neither of
     # which this expression did for the discrete-vars path.
     SOCKET_IO_MANAGER_URL = build_socketio_redis_url()
@@ -609,9 +609,13 @@ else:
     # So the db has to travel in the URL path, or this cache silently sits on db 0
     # while every other service honours REDIS_DB: workers would RPUSH
     # log_history_queue to db N and the backend would LPOP an empty db 0.
-    # USERNAME is deliberately NOT restored: auth is password-only as the built-in
-    # `default` user (what managed AUTH strings are), and sending a username turns
-    # AUTH into its two-argument ACL form.
+    # USERNAME and DB below are passed for readability and are DISCARDED by
+    # django-redis — they are not the mechanism for either. Auth stays password-only
+    # as the built-in `default` user (what a managed AUTH string is): a username
+    # would turn AUTH into its two-argument ACL form, and this cache never sends
+    # one. If a django-redis bump ever starts reading USERNAME, that becomes a real
+    # behaviour change rather than a silent one — which is what the assertions in
+    # tests/test_redis_settings_derivation.py pin.
     _cache_options = {
         "CLIENT_CLASS": "django_redis.client.DefaultClient",
         "SERIALIZER": "django_redis.serializers.json.JSONSerializer",
