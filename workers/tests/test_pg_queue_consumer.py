@@ -133,6 +133,33 @@ class TestPollOnce:
         assert kwargs["kwargs"] == {"k": "v"}
         assert kwargs["headers"] == {FAIRNESS_HEADER_NAME: fairness}
 
+    def test_payload_task_id_is_passed_to_apply(self):
+        # Idempotency-critical: Celery's Task.apply does ``task_id = task_id or
+        # uuid()``, so without an explicit task_id the task sees a FRESH request.id
+        # on every delivery and any guard keyed on it (fan-out claims,
+        # generation_task_id uniqueness, task-complete markers) dedupes nothing
+        # across a redelivery. The producer's stable id must reach apply().
+        task = MagicMock()
+        app = MagicMock()
+        app.tasks.get.return_value = task
+        client = MagicMock()
+        client.read.return_value = [
+            _msg(6, {"task_name": "t", "args": [], "kwargs": {}, "task_id": "stable-1"})
+        ]
+        PgQueueConsumer(["q"], client=client, app=app).poll_once()
+        assert task.apply.call_args.kwargs["task_id"] == "stable-1"
+
+    def test_missing_task_id_falls_back_to_celery_uuid(self):
+        # No task_id in the payload -> pass None so Celery mints one, rather than
+        # passing "" (which apply() would take literally as the request id).
+        task = MagicMock()
+        app = MagicMock()
+        app.tasks.get.return_value = task
+        client = MagicMock()
+        client.read.return_value = [_msg(6, {"task_name": "t", "args": [], "kwargs": {}})]
+        PgQueueConsumer(["q"], client=client, app=app).poll_once()
+        assert task.apply.call_args.kwargs["task_id"] is None
+
     def test_ack_finding_no_row_warns(self, caplog):
         client = MagicMock()
         client.delete.return_value = False  # row already gone (vt expired mid-run)
@@ -271,6 +298,67 @@ class TestPoisonDropMarksExecution:
         assert marks == [("exec-1", "org-1")]  # marked ERROR
         client.delete.assert_called_once_with(5)  # then dropped
         client.set_vt.assert_not_called()
+
+    def test_poison_log_enriched_with_org_and_read_ct(self, monkeypatch, caplog):
+        # Q2 debuggability: the poison drop logs a clear "poison-dropped" message
+        # carrying read_ct + org_id + queue so a dropped task is greppable/
+        # Sentry-visible and its source queue is identifiable at a glance.
+        monkeypatch.setattr(
+            "queue_backend.pg_queue.recovery.mark_execution_error",
+            lambda *a, **k: True,
+        )
+        client = MagicMock()
+        payload = {**_callback_payload(), "queue": "agentic_callback"}
+        client.read.return_value = [self._poison(payload=payload, read_ct=6)]
+        with caplog.at_level(logging.ERROR, logger="queue_backend.pg_queue.consumer"):
+            PgQueueConsumer(
+                ["q"], client=client, api_client=MagicMock(), max_attempts=5
+            ).poll_once()
+        assert "poison-dropped" in caplog.text
+        assert "read_ct=6" in caplog.text
+        assert "org_id=org-1" in caplog.text  # org surfaced for the dropped task
+        assert "queue=agentic_callback" in caplog.text  # source queue surfaced
+        # read_ct is rendered ONCE (an earlier "after N attempts" phrasing printed
+        # the same value twice under a name that misread as an execution count).
+        assert caplog.text.count("6") >= 1
+        assert "attempts (msg_id" not in caplog.text
+
+    def test_poison_log_redacts_credentials_and_body(self, monkeypatch, caplog):
+        # Security: notification payloads carry the subscriber's Authorization /
+        # API-key headers and the clubbed webhook body (customer extracted data).
+        # A poison drop must not dump either to stdout/Sentry.
+        monkeypatch.setattr(
+            "queue_backend.pg_queue.recovery.mark_execution_error",
+            lambda *a, **k: True,
+        )
+        payload = {
+            "task_name": "send_webhook_notification",
+            "queue": "notifications",
+            "args": [
+                "https://hook.test",
+                {"secret_field": "customer extracted data"},
+                {"Authorization": "Bearer super-secret", "X-Api-Key": "ak_live_123"},
+                30,
+            ],
+            "kwargs": {"organization_id": "org-1", "auth_token": "tok_abc"},
+        }
+        client = MagicMock()
+        client.read.return_value = [self._poison(payload=payload, read_ct=6)]
+        with caplog.at_level(logging.ERROR, logger="queue_backend.pg_queue.consumer"):
+            PgQueueConsumer(
+                ["q"], client=client, api_client=MagicMock(), max_attempts=5
+            ).poll_once()
+        # No secret value survives, by any route.
+        assert "super-secret" not in caplog.text
+        assert "ak_live_123" not in caplog.text
+        assert "tok_abc" not in caplog.text
+        # Customer body replaced by a type+size summary, not dumped.
+        assert "customer extracted data" not in caplog.text
+        assert "<dict len=1>" in caplog.text
+        # Routing metadata IS preserved — that's what the drop is debugged from.
+        assert "send_webhook_notification" in caplog.text
+        assert "https://hook.test" in caplog.text
+        assert "REDACTED" in caplog.text
 
     def test_positional_orchestration_poison_marks_error(self, monkeypatch):
         # H2 regression: a poisoned async_execute_bin carries execution_id
@@ -978,7 +1066,8 @@ class TestRecordTaskStatus:
     pg_task_result so the REST PromptStudio.task_status poll resolves under PG.
     completed unless the run raised (error) or the executor reported success=False
     (completed rows are status-only; failed rows carry the executor error text). TTL'd
-    + best-effort — never wedges the ack."""
+    + best-effort — never wedges the ack.
+    """
 
     _RB = "queue_backend.pg_queue.consumer.PgResultBackend"
     _RET = 86400
@@ -1103,6 +1192,34 @@ class TestLeaseRenewal:
         with patch.object(mod, "PgQueueClient"):  # no real DB connection
             c = mod.build_consumer_from_env()
         assert c.lease_seconds == 77
+
+    def test_env_wires_max_attempts(self, monkeypatch):
+        # Per-worker override: an execution worker keeps the default (at-least-once),
+        # the interactive orchestrator sets 1 (at-most-once, no LLM re-compute).
+        from queue_backend.pg_queue import consumer as mod
+
+        monkeypatch.setenv("WORKER_PG_QUEUE_CONSUMER_MAX_ATTEMPTS", "1")
+        with patch.object(mod, "PgQueueClient"):  # no real DB connection
+            c = mod.build_consumer_from_env()
+        assert c.max_attempts == 1
+
+    def test_max_attempts_defaults_to_5_when_unset(self, monkeypatch):
+        from queue_backend.pg_queue import consumer as mod
+        from queue_backend.pg_queue.consumer import _DEFAULT_MAX_ATTEMPTS
+
+        monkeypatch.delenv("WORKER_PG_QUEUE_CONSUMER_MAX_ATTEMPTS", raising=False)
+        with patch.object(mod, "PgQueueClient"):  # no real DB connection
+            c = mod.build_consumer_from_env()
+        # The code default stays 5 so execution workers remain at-least-once.
+        assert c.max_attempts == _DEFAULT_MAX_ATTEMPTS == 5
+
+    def test_env_invalid_max_attempts_raises_named_error(self, monkeypatch):
+        from queue_backend.pg_queue import consumer as mod
+
+        monkeypatch.setenv("WORKER_PG_QUEUE_CONSUMER_MAX_ATTEMPTS", "abc")
+        with patch.object(mod, "PgQueueClient"):
+            with pytest.raises(ValueError, match="WORKER_PG_QUEUE_CONSUMER_MAX_ATTEMPTS"):
+                mod.build_consumer_from_env()
 
     def test_poll_claims_with_lease_not_vt(self):
         client = MagicMock()

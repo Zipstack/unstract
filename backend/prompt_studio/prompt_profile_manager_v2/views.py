@@ -4,15 +4,13 @@ from account_v2.custom_exceptions import DuplicateData
 from django.db import IntegrityError
 from django.db.models import QuerySet
 from django.http import HttpRequest
-from permissions.permission import (
-    IsOwnerOrSharedUserOrSharedToOrg,
-    IsParentToolOwner,
-)
+from permissions.permission import IsOwnerOrSharedUserOrSharedToOrg
 from rest_framework import status, viewsets
 from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
 from utils.filtering import FilterHelper
 
+from prompt_studio.permission import ParentToolAccess
 from prompt_studio.prompt_profile_manager_v2.constants import (
     ProfileManagerErrors,
     ProfileManagerKeys,
@@ -29,14 +27,17 @@ class ProfileManagerView(viewsets.ModelViewSet):
     serializer_class = ProfileManagerSerializer
 
     def get_permissions(self) -> list[Any]:
-        # Mutations require ownership of the parent tool (creator + co-owners);
-        # reads honor sharing.
+        # A profile is part of the project's design, so anyone the project is
+        # shared with manages it (UN-2868); reads honor sharing.
         if self.action in ("create", "destroy", "partial_update", "update"):
-            return [IsParentToolOwner()]
+            return [ParentToolAccess()]
         return [IsOwnerOrSharedUserOrSharedToOrg()]
 
     def get_queryset(self) -> QuerySet | None:
-        queryset = ProfileManager.objects.for_user(self.request.user)
+        # Serializer reads all four adapters for the display info
+        queryset = ProfileManager.objects.for_user(self.request.user).select_related(
+            "llm", "embedding_model", "vector_store", "x2text"
+        )
         filter_args = FilterHelper.build_filter_args(
             self.request,
             ProfileManagerKeys.CREATED_BY,

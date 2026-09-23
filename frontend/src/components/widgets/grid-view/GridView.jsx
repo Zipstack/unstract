@@ -1,13 +1,10 @@
-import { Card, Dropdown, Popconfirm, Typography } from "antd";
+import { CircleHelp, EllipsisVertical, Pencil, Trash2 } from "lucide-react";
 import PropTypes from "prop-types";
 import { useNavigate } from "react-router-dom";
+import { Dropdown, Popconfirm } from "@/components/ui/shims/antd-overlays";
+import { Card } from "@/components/ui/shims/antd-structure";
+import { Typography } from "@/components/ui/shims/antd-typography";
 import "./GridView.css";
-import {
-  DeleteOutlined,
-  EditOutlined,
-  MoreOutlined,
-  QuestionCircleOutlined,
-} from "@ant-design/icons";
 
 function GridView({ listOfTools, handleEdit, handleDelete }) {
   const navigate = useNavigate();
@@ -32,7 +29,7 @@ function GridView({ listOfTools, handleEdit, handleDelete }) {
                       {
                         label: "Edit",
                         key: "edit",
-                        icon: <EditOutlined />,
+                        icon: <Pencil />,
                         onClick: (event) => handleEdit(event, item?.tool_id),
                       },
                       {
@@ -43,7 +40,7 @@ function GridView({ listOfTools, handleEdit, handleDelete }) {
                             okText="Yes"
                             cancelText="No"
                             icon={
-                              <QuestionCircleOutlined
+                              <CircleHelp
                                 style={{
                                   color: "#dc4446",
                                 }}
@@ -54,7 +51,7 @@ function GridView({ listOfTools, handleEdit, handleDelete }) {
                             }}
                           >
                             <Typography.Text type="danger">
-                              <DeleteOutlined
+                              <Trash2
                                 style={{
                                   color: "#dc4446",
                                   marginInlineEnd: "8px",
@@ -73,7 +70,7 @@ function GridView({ listOfTools, handleEdit, handleDelete }) {
                   placement="bottomRight"
                   onClick={(evt) => evt.stopPropagation()}
                 >
-                  <MoreOutlined />
+                  <EllipsisVertical />
                 </Dropdown>
               }
             >

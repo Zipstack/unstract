@@ -1,14 +1,17 @@
-import { Empty, Typography } from "antd";
 import PropTypes from "prop-types";
 import { createRef, useEffect, useState } from "react";
+import { Empty } from "@/components/ui/shims/antd-leaves";
+import { Typography } from "@/components/ui/shims/antd-typography";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
+import { useWorkflowCanEdit } from "../../../hooks/useWorkflowCanEdit";
 import { RjsfFormLayout } from "../../../layouts/rjsf-form-layout/RjsfFormLayout.jsx";
 import { useAlertStore } from "../../../store/alert-store";
 import { useSessionStore } from "../../../store/session-store";
 import { useToolSettingsStore } from "../../../store/tool-settings";
 import { useWorkflowStore } from "../../../store/workflow-store";
 import { CustomButton } from "../../widgets/custom-button/CustomButton.jsx";
+import { ReadOnlyNotice } from "../../widgets/read-only-notice/ReadOnlyNotice";
 import "./ToolSettings.css";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
 
@@ -21,6 +24,7 @@ function ToolSettings({ spec, isSpecLoading }) {
   const { updateMetadata, getMetadata, isLoading } = useWorkflowStore();
   const axiosPrivate = useAxiosPrivate();
   const handleException = useExceptionHandler();
+  const canEdit = useWorkflowCanEdit();
 
   // Transform adapter names to IDs for validation compatibility
   const transformAdapterNamesToIds = (metadata, schema) => {
@@ -65,6 +69,11 @@ function ToolSettings({ spec, isSpecLoading }) {
   };
 
   const validateAndSubmit = (updatedFormData) => {
+    // The read-only styling stops the mouse but not the keyboard, so refuse
+    // here too rather than let Enter fire a request the backend will reject.
+    if (!canEdit) {
+      return;
+    }
     if (formRef && !formRef.current?.validateForm()) {
       return;
     }
@@ -124,26 +133,31 @@ function ToolSettings({ spec, isSpecLoading }) {
 
   return (
     <div className="tool-settings-layout">
-      <RjsfFormLayout
-        schema={spec}
-        formData={formData}
-        setFormData={setFormData}
-        isLoading={isSpecLoading}
-        validateAndSubmit={validateAndSubmit}
-        formRef={formRef}
-        isStateUpdateRequired={true}
-      >
-        <div className="display-flex-right tool-settings-submit-btn">
-          <CustomButton
-            type="primary"
-            block
-            htmlType="submit"
-            disabled={isLoading}
-          >
-            Save
-          </CustomButton>
-        </div>
-      </RjsfFormLayout>
+      {!canEdit && <ReadOnlyNotice />}
+      <div className={canEdit ? undefined : "uneditable"}>
+        <RjsfFormLayout
+          schema={spec}
+          formData={formData}
+          setFormData={setFormData}
+          isLoading={isSpecLoading}
+          validateAndSubmit={validateAndSubmit}
+          formRef={formRef}
+          isStateUpdateRequired={true}
+        >
+          {canEdit && (
+            <div className="display-flex-right tool-settings-submit-btn">
+              <CustomButton
+                type="primary"
+                block
+                htmlType="submit"
+                disabled={isLoading}
+              >
+                Save
+              </CustomButton>
+            </div>
+          )}
+        </RjsfFormLayout>
+      </div>
     </div>
   );
 }

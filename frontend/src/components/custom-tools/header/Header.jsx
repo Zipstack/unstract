@@ -1,11 +1,15 @@
-import { SettingOutlined } from "@ant-design/icons";
-import { Button, Dropdown, Form, Input, Modal, Tooltip } from "antd";
+import { Settings } from "lucide-react";
 import PropTypes from "prop-types";
 import { useCallback, useMemo, useState } from "react";
+import { Button } from "@/components/ui/shims/antd-button";
+import { Form } from "@/components/ui/shims/antd-form";
+import { Input } from "@/components/ui/shims/antd-inputs";
+import { Dropdown, Modal, Tooltip } from "@/components/ui/shims/antd-overlays";
 import { ExportToolIcon } from "../../../assets";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import usePostHogEvents from "../../../hooks/usePostHogEvents";
+import { usePromptStudioCanEdit } from "../../../hooks/usePromptStudioCanEdit";
 import { useAlertStore } from "../../../store/alert-store";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { useSessionStore } from "../../../store/session-store";
@@ -50,6 +54,8 @@ function Header({
   const { details, isPublicSource, markChangesAsExported } =
     useCustomToolStore();
   const { sessionDetails } = useSessionStore();
+  // Renaming a shared project is an edit, so it follows the same rule.
+  const canEdit = usePromptStudioCanEdit();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
   const handleException = useExceptionHandler();
@@ -336,7 +342,8 @@ function Header({
         <div>
           <Tooltip title="Settings">
             <Button
-              icon={<SettingOutlined />}
+              icon={<Settings />}
+              data-testid="ps-header-settings-btn"
               onClick={() => setOpenSettings(true)}
             />
           </Tooltip>
@@ -369,6 +376,7 @@ function Header({
           }}
           trigger={["click"]}
           disabled={isPublicSource}
+          data-testid="ps-header-export-menu"
         >
           <CustomButton
             type="primary"
@@ -376,6 +384,7 @@ function Header({
             disabled={isPublicSource}
             icon={<ExportToolIcon />}
             className="export-text"
+            data-testid="ps-header-export-btn"
           >
             Export
           </CustomButton>
@@ -438,10 +447,12 @@ function Header({
         onEditTitle={
           isPublicSource || !details?.tool_id ? undefined : handleOpenEditModal
         }
+        editTitleDisabled={!canEdit}
         customButtons={actionButtons}
       />
       <Modal
         title="Edit Project"
+        data-testid="ps-edit-project-modal"
         open={editModalOpen}
         onOk={handleEditSubmit}
         onCancel={() => setEditModalOpen(false)}
@@ -467,6 +478,7 @@ function Header({
         onCancel={() => setConfirmModalVisible(false)} // Close the modal on cancel
         open={confirmModalVisible}
         title="Are you sure"
+        data-testid="ps-force-export-modal"
         okText="Force Export"
         centered
       >
@@ -479,6 +491,7 @@ function Header({
         onCancel={() => setApiDeploymentConfirmModalVisible(false)}
         open={apiDeploymentConfirmModalVisible}
         title="Create API Deployment"
+        data-testid="ps-create-api-deployment-modal"
         okText="Proceed"
         centered
         width={600}

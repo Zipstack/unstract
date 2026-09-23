@@ -1,12 +1,14 @@
-import { InfoCircleOutlined } from "@ant-design/icons";
-import { Space, Tooltip, Typography } from "antd";
+import { Info } from "lucide-react";
+import { Space } from "@/components/ui/shims/antd-layout";
+import { Tooltip } from "@/components/ui/shims/antd-overlays";
+import { Typography } from "@/components/ui/shims/antd-typography";
 
 function PromptsReorderTitle() {
   return (
     <Space>
       <Typography.Text>Reorder Prompts</Typography.Text>
       <Tooltip title="Drag and drop the prompts to arrange them in your desired order.">
-        <InfoCircleOutlined />
+        <Info />
       </Tooltip>
     </Space>
   );

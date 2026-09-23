@@ -15,6 +15,7 @@ from unstract.sdk1.adapters.exceptions import ExtractorError
 from unstract.sdk1.adapters.utils import AdapterUtils
 from unstract.sdk1.adapters.x2text.constants import X2TextConstants
 from unstract.sdk1.adapters.x2text.llm_whisperer_v2.src.constants import (
+    LineSplitterStrategies,
     Modes,
     OutputModes,
     WhispererConfig,
@@ -171,6 +172,20 @@ class LLMWhispererHelper:
         Returns:
             dict[str, Any]: Query params
         """
+        line_splitter_strategy = config.get(
+            WhispererConfig.LINE_SPLITTER_STRATEGY,
+            WhispererDefaults.LINE_SPLITTER_STRATEGY,
+        )
+        # This setting was never sent to the service, so stored values were never
+        # validated. The service rejects an unknown strategy with a 400.
+        if line_splitter_strategy not in {s.value for s in LineSplitterStrategies}:
+            logger.warning(
+                "Unsupported line splitter strategy '%s', falling back to '%s'",
+                line_splitter_strategy,
+                WhispererDefaults.LINE_SPLITTER_STRATEGY,
+            )
+            line_splitter_strategy = WhispererDefaults.LINE_SPLITTER_STRATEGY
+
         params = {
             WhispererConfig.MODE: config.get(WhispererConfig.MODE, Modes.FORM.value),
             WhispererConfig.OUTPUT_MODE: config.get(
@@ -180,10 +195,7 @@ class LLMWhispererHelper:
                 WhispererConfig.LINE_SPLITTER_TOLERANCE,
                 WhispererDefaults.LINE_SPLITTER_TOLERANCE,
             ),
-            WhispererConfig.LINE_SPLITTER_STRATEGY: config.get(
-                WhispererConfig.LINE_SPLITTER_STRATEGY,
-                WhispererDefaults.LINE_SPLITTER_STRATEGY,
-            ),
+            WhispererConfig.LINE_SPLITTER_STRATEGY: line_splitter_strategy,
             WhispererConfig.HORIZONTAL_STRETCH_FACTOR: config.get(
                 WhispererConfig.HORIZONTAL_STRETCH_FACTOR,
                 WhispererDefaults.HORIZONTAL_STRETCH_FACTOR,
@@ -200,7 +212,7 @@ class LLMWhispererHelper:
                 WhispererConfig.MARK_HORIZONTAL_LINES,
                 WhispererDefaults.MARK_HORIZONTAL_LINES,
             ),
-            WhispererConfig.PAGE_SEPARATOR: config.get(
+            WhispererConfig.PAGE_SEPARATOR_PARAM: config.get(
                 WhispererConfig.PAGE_SEPARATOR,
                 WhispererDefaults.PAGE_SEPARATOR,
             ),
@@ -260,6 +272,8 @@ class LLMWhispererHelper:
         params = LLMWhispererHelper.get_whisperer_params(
             config=config, extra_params=extra_params
         )
+        # Recorded against the extraction for cross referencing in usage reports
+        params[WhispererConfig.FILE_NAME] = Path(input_file_path).name
         response: requests.Response
         try:
             input_file_data = BytesIO(fs.read(path=input_file_path, mode="rb"))

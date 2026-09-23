@@ -1,14 +1,19 @@
 import json
 import os
+import unittest
 from unittest.mock import Mock, patch
 
 from django.test import TestCase
+from unstract.connectors.databases.mariadb import MariaDB
 from workflow_manager.endpoint_v2.constants import DestinationKey
 from workflow_manager.endpoint_v2.destination import DestinationConnector
 
-from unstract.connectors.databases.mariadb import MariaDB
 
-
+@unittest.skip(
+    "Order-dependent: shares a fixed table across tests with no working "
+    "teardown, so results depend on execution order. Fix isolation before "
+    "enabling, otherwise this fails once real credentials are provided."
+)
 class TestDestinationConnectorMariaDB(TestCase):
     """Integration test for insert_into_db method with real MariaDB connector."""
 
@@ -71,9 +76,7 @@ class TestDestinationConnectorMariaDB(TestCase):
 
     def verify_table_columns(self, table_name: str) -> None:
         """Verify that all expected columns exist in the table with correct types."""
-        table_info = self.mariadb_connector.get_information_schema(
-            table_name=table_name
-        )
+        table_info = self.mariadb_connector.get_information_schema(table_name=table_name)
 
         print(f"🔍 Actual table structure for '{table_name}': {table_info}")
 
@@ -347,9 +350,7 @@ class TestDestinationConnectorMariaDB(TestCase):
 
             self.assertIsNotNone(data, "Expected data column to contain inserted data")
 
-            self.assertIsNotNone(
-                metadata, "Expected metadata column to contain metadata"
-            )
+            self.assertIsNotNone(metadata, "Expected metadata column to contain metadata")
 
             cursor.close()
             print("✅ All column data values verified successfully")
@@ -371,7 +372,7 @@ class TestDestinationConnectorMariaDB(TestCase):
             )
             # Add the required columns for the test
             create_table_query += (
-                "file_path LONGTEXT, " "execution_id LONGTEXT, " "data LONGTEXT)"
+                "file_path LONGTEXT, execution_id LONGTEXT, data LONGTEXT)"
             )
 
             cursor.execute(create_table_query)

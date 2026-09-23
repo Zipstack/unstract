@@ -65,11 +65,6 @@ class InternalEndpoints:
         return build_internal_endpoint(f"file-execution/{file_execution_id}/status")
 
     @staticmethod
-    def webhook_send() -> str:
-        """Webhook send endpoint."""
-        return build_internal_endpoint("webhook/send")
-
-    @staticmethod
     def organization(org_id: str = "{org_id}") -> str:
         """Organization endpoint."""
         return build_internal_endpoint(f"organization/{org_id}")

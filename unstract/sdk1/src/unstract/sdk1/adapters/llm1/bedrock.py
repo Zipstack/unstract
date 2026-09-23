@@ -36,5 +36,9 @@ class AWSBedrockLLMAdapter(AWSBedrockLLMParameters, BaseAdapter):
         return "/icons/adapter-icons/Bedrock.png"
 
     @staticmethod
+    def get_doc_url() -> str:
+        return "https://docs.unstract.com/unstract/unstract_platform/adapters/llms/amazon_bedrock/"
+
+    @staticmethod
     def get_adapter_type() -> AdapterTypes:
         return AdapterTypes.LLM

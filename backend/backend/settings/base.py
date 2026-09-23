@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/4.2/ref/settings/
 
 import logging
 import os
+import re
 from pathlib import Path
 from urllib.parse import quote
 
@@ -118,6 +119,23 @@ PATH_PREFIX = os.environ.get("PATH_PREFIX", "api/v1").strip("/")
 API_DEPLOYMENT_PATH_PREFIX = os.environ.get(
     "API_DEPLOYMENT_PATH_PREFIX", "deployment"
 ).strip("/")
+
+# Organization-scoped MCP server, mounted at /api/v1/unstract/<org>/mcp/.
+# OFF by default: only the deployment-scoped server is required for the initial
+# release, so this ships disabled rather than removed — enabling it is a
+# settings change, not a revert. Its 23 tools reach the whole organization, so
+# it should stay off until the tier model behind it is settled (a `read` key
+# cannot use it at all today, because every MCP call is an HTTP POST).
+MCP_PLATFORM_SERVER_ENABLED = (
+    os.environ.get("MCP_PLATFORM_SERVER_ENABLED", "false").strip().lower() == "true"
+)
+
+# Budget for billable MCP tool calls (LLM inference, indexing, pipeline runs),
+# counted per organization over a rolling window. Bounds how often an agent can
+# trigger paid work; it counts calls, not tokens — see mcp_server/spend_guard.py.
+# Applies to whichever servers are enabled above.
+MCP_BILLABLE_CALL_LIMIT = int(os.environ.get("MCP_BILLABLE_CALL_LIMIT", 50))
+MCP_BILLABLE_WINDOW_SECONDS = int(os.environ.get("MCP_BILLABLE_WINDOW_SECONDS", 3600))
 
 # Maximum file size for presigned URLs in API deployments (in MB)
 API_DEPL_PRESIGNED_URL_MAX_FILE_SIZE_MB = int(
@@ -354,9 +372,6 @@ SHARED_APPS = (
     # Connector OAuth
     # "connector_auth",
     "social_django",
-    # Doc generator
-    "drf_yasg",
-    "docs",
     # Plugins
     "plugins.apps.PluginsConfig",
     "feature_flag",
@@ -379,6 +394,7 @@ SHARED_APPS = (
     "pipeline_v2",
     "platform_settings_v2",
     "api_v2",
+    "mcp_server",
     "usage_v2",
     "notification_v2",
     "prompt_studio.prompt_profile_manager_v2",
@@ -392,6 +408,7 @@ SHARED_APPS = (
     "configuration",
     "dashboard_metrics",
     "platform_api",
+    "global_api_deployment_key",
 )
 TENANT_APPS = []
 
@@ -627,13 +644,73 @@ REST_FRAMEWORK = {
     "DEFAULT_FILTER_BACKENDS": [
         "utils.filters.organization_filter.OrganizationFilterBackend",
         "django_filters.rest_framework.DjangoFilterBackend",
-        "rest_framework.filters.OrderingFilter",
+        "utils.filters.ordering_filter.DeterministicOrderingFilter",
     ],
     # For API versioning
     "DEFAULT_VERSIONING_CLASS": "rest_framework.versioning.URLPathVersioning",
     "DEFAULT_VERSION": "v1",
     "ALLOWED_VERSIONS": ["v1"],
     "VERSION_PARAM": "version",
+    # The standardized-errors variant, because EXCEPTION_HANDLER above
+    # delegates to that package: it is the schema class that knows the error
+    # bodies these views actually return.
+    "DEFAULT_SCHEMA_CLASS": "drf_standardized_errors.openapi.AutoSchema",
+}
+
+# Read only while generating the OpenAPI spec
+# (``manage.py generate_docstudio_spec``); no effect at request time.
+SPECTACULAR_SETTINGS = {
+    "TITLE": "Unstract API",
+    "VERSION": "v1",
+    "PREPROCESSING_HOOKS": ["drf_spectacular.hooks.preprocess_exclude_path_format"],
+    "SERVE_INCLUDE_SCHEMA": False,
+    # Declared, because DRF's unset authentication default is otherwise
+    # introspected as a decision and publishes auth these endpoints reject.
+    "APPEND_COMPONENTS": {
+        "securitySchemes": {
+            "deploymentKey": {
+                "type": "http",
+                "scheme": "bearer",
+                "description": (
+                    "A key that runs an API deployment: the deployment's own "
+                    "key, or a global API deployment key with access to it."
+                ),
+            },
+            "platformKey": {
+                "type": "http",
+                "scheme": "bearer",
+                "description": (
+                    "An organisation-wide platform API key, minted under "
+                    "Settings. It carries the organisation it belongs to, but "
+                    "cannot execute an API deployment."
+                ),
+            },
+        }
+    },
+    # Without this the enum component is named after the field that holds it,
+    # and generated clients get a class called `TypeEnum`.
+    "ENUM_NAME_OVERRIDES": {
+        "ErrorType": "api_v2.openapi_schema.ERROR_TYPES",
+        "ApiKeyPermission": "platform_api.models.ApiKeyPermission.choices",
+    },
+    # Group descriptions generated clients show in their help; without this
+    # the spec has no root `tags` array for the text to live in.
+    "TAGS": [
+        {
+            "name": "deployment",
+            "description": (
+                "Discover an organisation's API deployments, run one against "
+                "one or more documents, and poll the result."
+            ),
+        },
+        {
+            "name": "identity",
+            "description": (
+                "Resolve what a platform API key is scoped to, so a client can "
+                "discover its organisation rather than being told it."
+            ),
+        },
+    ],
 }
 
 # These paths will work without authentication
@@ -647,21 +724,37 @@ WHITELISTED_PATHS_LIST = [
     "/static",
 ]
 WHITELISTED_PATHS = [f"/{PATH_PREFIX}{PATH}" for PATH in WHITELISTED_PATHS_LIST]
-# White lists workflow-api-deployment path
+# White lists workflow-api-deployment path. This also covers the deployment MCP
+# server, which hangs off the same URL and authenticates with the deployment's
+# own API key rather than a session.
 WHITELISTED_PATHS.append(f"/{API_DEPLOYMENT_PATH_PREFIX}")
 
 # Whitelisting health check API
 WHITELISTED_PATHS.append("/health")
 
-# These path will work without organization in request
-ORGANIZATION_MIDDLEWARE_WHITELISTED_PATHS = []
-
-# API Doc Generator Settings
-# https://drf-yasg.readthedocs.io/en/stable/settings.html
-REDOC_SETTINGS = {
-    "PATH_IN_MIDDLE": True,
-    "REQUIRED_PROPS_FIRST": True,
-}
+# These path will work without organization in request.
+# `whoami` resolves the organisation from the API key itself, so it carries no
+# organisation segment -- without this the middleware would read `whoami` as one.
+# Note this is not WHITELISTED_PATHS: the endpoint still authenticates.
+# Anchored: `re.match` is a prefix test, so without the `$` an organisation
+# literally named `whoami` would have its entire API treated as organisation-less.
+#
+# Built from TENANT_SUBFOLDER_PREFIX rather than re-spelling the mount: if the
+# mount moves, a second literal here would silently stop matching and every
+# organisation-less `whoami` call would start answering 403, with no startup
+# error and no failing test. `re.escape` because PATH_PREFIX comes from the
+# environment and would otherwise be interpreted as a pattern.
+#
+# Adding an entry to this list disarms BOTH organisation guards in
+# CustomAuthMiddleware for that path -- the key-belongs-to-org check at the
+# Bearer branch and the org-access-denied check on the session branch -- because
+# each is conditioned on `request.organization_id` being truthy and this branch
+# sets it to None. `whoami` is safe because its view derives the organisation
+# from the key row and refuses a session caller outright; a new entry inherits
+# neither of those properties by default.
+ORGANIZATION_MIDDLEWARE_WHITELISTED_PATHS = [
+    rf"^/{re.escape(TENANT_SUBFOLDER_PREFIX)}/whoami/$",
+]
 
 # Social Auth Settings
 SOCIAL_AUTH_LOGIN_REDIRECT_URL = f"{WEB_APP_ORIGIN_URL}/oauth-status/?status=success"

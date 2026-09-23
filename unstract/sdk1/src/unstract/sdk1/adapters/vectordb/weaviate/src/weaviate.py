@@ -51,6 +51,10 @@ class Weaviate(VectorDBAdapter):
     def get_icon() -> str:
         return "/icons/adapter-icons/Weaviate.png"
 
+    @staticmethod
+    def get_doc_url() -> str:
+        return "https://docs.unstract.com/unstract/unstract_platform/adapters/vector_dbs/weaviate_vectordb/"
+
     def get_vector_db_instance(self) -> BasePydanticVectorStore:
         return self._vector_db_instance
 

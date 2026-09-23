@@ -14,11 +14,11 @@ from permissions.permission import IsOrganizationMember
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
-from rest_framework.filters import OrderingFilter
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.throttling import UserRateThrottle
+from utils.filters.ordering_filter import DeterministicOrderingFilter
 from utils.user_context import UserContext
 
 from .cache import (
@@ -156,7 +156,7 @@ class DashboardMetricsViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = [IsAuthenticated, IsOrganizationMember]
     throttle_classes = [MetricsRateThrottle]
     serializer_class = EventMetricsHourlySerializer
-    filter_backends = [DjangoFilterBackend, OrderingFilter]
+    filter_backends = [DjangoFilterBackend, DeterministicOrderingFilter]
     ordering_fields = ["timestamp", "metric_name", "metric_value"]
     ordering = ["-timestamp"]
 

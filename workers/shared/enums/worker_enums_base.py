@@ -58,13 +58,38 @@ class WorkerType(str, Enum):
         if self.is_pluggable():
             return f"pluggable_worker.{self.value}.tasks"
 
-        # Map to actual directory structure
+        return f"{self.to_directory()}.tasks"
+
+    def to_directory(self) -> str:
+        """Return the on-disk directory name for this **non-pluggable** worker.
+
+        Single source of truth for the naming-convention mapping: enum values use
+        underscores (Python module names), while ``API_DEPLOYMENT``'s on-disk dir
+        uses a hyphen (``api-deployment``). ``to_import_path`` builds on this, and
+        the file-path task loader in ``worker.py`` reads it directly rather than
+        slicing the import path.
+
+        Raises:
+            ValueError: if called on a pluggable worker type. Pluggable code lives
+                under ``pluggable_worker/<value>``, so the mapping's passthrough
+                would return a bare, *plausible-looking* but wrong path. Today only
+                call ordering prevents that (``to_import_path`` guards with
+                ``is_pluggable()``, and ``worker.py`` early-returns for pluggable
+                workers before reaching here) — nothing enforced it. Since
+                ``worker.py`` now RAISES on a missing directory instead of logging,
+                a future caller that skips the guard would turn a silently-wrong
+                path into a boot crash-loop; fail loudly and locally instead.
+        """
+        if self.is_pluggable():
+            raise ValueError(
+                f"{self!r} is a pluggable worker; its code lives under "
+                f"pluggable_worker/{self.value} — use to_import_path() instead."
+            )
         directory_mapping = {
-            "api_deployment": "api-deployment",
+            WorkerType.API_DEPLOYMENT: "api-deployment",
             # All others use same name for directory and module
         }
-        directory = directory_mapping.get(self.value, self.value)
-        return f"{directory}.tasks"
+        return directory_mapping.get(self, self.value)
 
     def is_pluggable(self) -> bool:
         """Check if this worker type is a pluggable worker.

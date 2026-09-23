@@ -19,7 +19,7 @@ from tenant_account_v2.sharing_helpers import (
 )
 from tool_instance_v2.serializers import ToolInstanceSerializer
 from tool_instance_v2.tool_instance_helper import ToolInstanceHelper
-from utils.input_sanitizer import validate_name_field, validate_no_html_tags
+from utils.input_sanitizer import validate_name_field
 from utils.serializer.integrity_error_mixin import IntegrityErrorMixin
 
 from backend.constants import RequestKey
@@ -64,11 +64,6 @@ class WorkflowSerializer(IntegrityErrorMixin, AuditSerializer):
     def validate_workflow_name(self, value: str) -> str:
         return validate_name_field(value, field_name="Workflow name")
 
-    def validate_description(self, value: str) -> str:
-        if value is None:
-            return value
-        return validate_no_html_tags(value, field_name="Description")
-
     def to_representation(self, instance: Workflow) -> dict[str, str]:
         representation: dict[str, str] = super().to_representation(instance)
         representation[WorkflowKey.WF_NAME] = instance.workflow_name
@@ -85,6 +80,7 @@ class WorkflowSerializer(IntegrityErrorMixin, AuditSerializer):
         request = self.context.get("request")
         representation["is_owner"] = instance.is_owner(request.user) if request else False
         representation["co_owners_count"] = instance.co_owners_count()
+        representation["owner_emails"] = instance.owner_emails()
         return representation
 
     def create(self, validated_data: dict[str, Any]) -> Any:

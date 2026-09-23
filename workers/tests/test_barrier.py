@@ -1,29 +1,21 @@
-"""Characterisation tests for the ``Barrier`` abstraction (PG Queue Phase 6a).
+"""Tests for the ``Barrier`` seam and its two production fan-out call sites.
 
-The two production chord call sites
-(``WorkflowOrchestrationUtils.create_chord_execution`` and
-``api-deployment/tasks.py``'s inline chord) were lifted behind
-``CeleryChordBarrier`` so a future Phase 6b can swap in
-``RedisDecrBarrier`` (or PG-based) implementations without touching
-call sites.
+The seam exists because ``WorkflowOrchestrationUtils.create_chord_execution`` and
+``api-deployment/tasks.py`` both fan out and both need one dispatch point. It
+once carried three implementations selected by ``WORKER_BARRIER_BACKEND``;
+UN-4078 left only :class:`PgBarrier`.
 
-Three layers of coverage:
+Two layers of coverage:
 
-1. **Barrier protocol shape** — ``CeleryChordBarrier`` satisfies the
-   ``Barrier`` Protocol and ``AsyncResult`` satisfies ``BarrierHandle``.
-2. **Wire equivalence with the pre-Barrier chord call** — given the
-   same args, ``CeleryChordBarrier.enqueue(...)`` produces the same
-   ``chord(header)(body)`` invocation, the same ``app.signature(...)``
-   args, and the same return value. A regression that bypasses the
-   abstraction or alters the wire surface fails one of these tests.
-3. **Fairness plumbing** — when ``fairness=`` is passed, the fairness
-   header is attached to every enqueued task and to the callback
-   (closes Phase 5.1's chord-fairness gap that was deliberately
-   scoped out).
+1. **Protocol shape** — the surviving implementation satisfies ``Barrier``, and
+   the handle satisfies ``BarrierHandle``.
+2. **Call-site contracts** — the api-deployment fan-out passes API fairness,
+   handles the zero-batch branch, raises rather than silently falling back on a
+   falsy result with non-empty batches, and routes manual review per batch.
 
-The single ``chord(...)`` call still lives in
-``queue_backend/barrier.py`` (asserted by the inventory test in
-``test_chord_sites_characterisation.py``).
+The wire-equivalence layer (chord call shape, AMQP fairness headers) went with
+``CeleryChordBarrier``; the equivalent PG assertions live in
+``test_pg_barrier.py``.
 """
 
 from __future__ import annotations
@@ -36,17 +28,17 @@ import pytest
 from queue_backend import (
     Barrier,
     BarrierHandle,
-    CeleryChordBarrier,
     FairnessKey,
 )
-from queue_backend.fairness import FAIRNESS_HEADER_NAME, WorkloadType
+from queue_backend.fairness import WorkloadType
 
 
 @pytest.fixture
 def app() -> MagicMock:
     """Celery-app-shaped mock with a working ``.signature(...)``.
 
-    Used by every test that drives ``CeleryChordBarrier.enqueue(...)``.
+    The fan-out call sites still build header signatures through a Celery app
+    before handing them to the barrier, so they still need one.
     Shared via fixture rather than a per-class ``_make_app`` helper to
     keep test classes free of boilerplate (SonarCloud S4144
     duplication).
@@ -74,13 +66,16 @@ def mock_chord():
 
 
 class TestBarrierProtocolShape:
-    def test_celery_chord_barrier_satisfies_protocol(self):
-        """``CeleryChordBarrier`` is structurally a ``Barrier``.
+    def test_pg_barrier_satisfies_protocol(self):
+        """The one remaining implementation is structurally a ``Barrier``.
 
-        Pinned so Phase 6b's ``RedisDecrBarrier`` can be substituted at
-        any call site without runtime ``AttributeError``.
+        Kept after ``CeleryChordBarrier`` was deleted: the Protocol still exists
+        because two call sites program against it, so something must assert the
+        implementation actually satisfies it.
         """
-        barrier: Barrier = CeleryChordBarrier()
+        from queue_backend import PgBarrier
+
+        barrier: Barrier = PgBarrier()
         assert callable(getattr(barrier, "enqueue", None))
 
     def test_barrier_handle_protocol_satisfied_by_celery_async_result(self):
@@ -151,247 +146,30 @@ class TestBarrierProtocolShape:
 # --- Wire equivalence with the pre-Barrier chord call ---
 
 
-class TestCeleryChordBarrierWireEquivalence:
-    """``CeleryChordBarrier.enqueue(...)`` must produce the same
-    ``chord(batch_tasks)(callback_signature)`` invocation that the
-    original inline ``chord(...)`` calls produced — modulo the
-    additive ``x-fairness-key`` header that the barrier optionally
-    stamps onto signatures.
+class TestCreateChordExecutionUsesPgBarrier:
+    """Pin ``WorkflowOrchestrationUtils.create_chord_execution`` to :class:`PgBarrier`.
+
+    Replaces the old singleton-routing suite. There used to be a module-level
+    ``_BARRIER`` chosen by ``WORKER_BARRIER_BACKEND`` plus a per-execution
+    ``transport`` that decided between it and a fresh ``PgBarrier``; both went
+    with the Celery transport (UN-4078). What is worth pinning now is that the
+    call site still funnels through one substrate and forwards its arguments
+    unchanged — a refactor that reached for a barrier directly, or dropped
+    ``fairness`` on the way through, would otherwise pass silently.
     """
 
-    def test_empty_header_returns_none_and_skips_chord(self, app, mock_chord):
-        """Zero-batch contract preserved: barrier returns None,
-        ``chord(...)`` is never called.
-
-        Parent callers (``general/tasks.py``, ``api-deployment/tasks.py``)
-        rely on this signal to handle pipeline status updates directly.
-        """
-        result = CeleryChordBarrier().enqueue(
-            [],
-            callback_task_name="process_batch_callback",
-            callback_kwargs={"execution_id": "exec-1", "pipeline_id": "pipe-1"},
-            callback_queue="file_processing_callback",
-            app_instance=app,
-        )
-
-        assert result is None
-        mock_chord.assert_not_called()
-
-    def test_non_empty_header_invokes_chord_header_then_body(self, app, mock_chord):
-        """The original ``chord(header)(body)`` two-step call must
-        be preserved exactly — a refactor that flattens or reorders
-        these calls would change Celery's chord semantics."""
-        header = [MagicMock(name="h1"), MagicMock(name="h2")]
-
-        CeleryChordBarrier().enqueue(
-            header,
-            callback_task_name="process_batch_callback",
-            callback_kwargs={"execution_id": "exec-1"},
-            callback_queue="file_processing_callback",
-            app_instance=app,
-        )
-
-        # Step 1: chord(header)
-        mock_chord.assert_called_once_with(header)
-        # Step 2: chord_obj(callback_signature) — applies the chord
-        mock_chord.return_value.assert_called_once_with(app.signature.return_value)
-
-    def test_callback_signature_args_match_pre_uplift_contract(self, app, mock_chord):
-        """``app.signature(task_name, kwargs=..., queue=...)`` is
-        called with exactly the args the pre-Barrier helper used."""
-        callback_kwargs = {
-            "execution_id": "exec-42",
-            "pipeline_id": "pipe-7",
-            "organization_id": "org-x",
-        }
-
-        CeleryChordBarrier().enqueue(
-            [MagicMock(name="h")],
-            callback_task_name="process_batch_callback_api",
-            callback_kwargs=callback_kwargs,
-            callback_queue="api_file_processing_callback",
-            app_instance=app,
-        )
-
-        # Without ``fairness=``, no ``headers=`` kwarg on the signature
-        # call — matches the pre-Barrier wire byte-for-byte.
-        app.signature.assert_called_once_with(
-            "process_batch_callback_api",
-            kwargs=callback_kwargs,
-            queue="api_file_processing_callback",
-        )
-
-    def test_returns_chord_result_object(self, app, mock_chord):
-        """The barrier handle is whatever ``chord(header)(body)``
-        returns — Celery's ``AsyncResult`` in production. Callers
-        log ``.id`` for chord-id tracing."""
-        chord_result = MagicMock(name="chord_result")
-        mock_chord.return_value.return_value = chord_result
-
-        result = CeleryChordBarrier().enqueue(
-            [MagicMock()],
-            callback_task_name="process_batch_callback",
-            callback_kwargs={"execution_id": "exec-1"},
-            callback_queue="file_processing_callback",
-            app_instance=app,
-        )
-
-        assert result is chord_result
-
-    def test_chord_failure_is_re_raised_after_logging(self, app, mock_chord):
-        """If ``chord(...)`` raises (broker outage, serialisation
-        error, etc.), the barrier logs and re-raises — never swallows.
-
-        Without this, callers would treat broker failures as silent
-        zero-task chords and skip pipeline status updates entirely.
-        """
-        mock_chord.side_effect = RuntimeError("broker exploded")
-
-        with pytest.raises(RuntimeError, match="broker exploded"):
-            CeleryChordBarrier().enqueue(
-                [MagicMock()],
-                callback_task_name="process_batch_callback",
-                callback_kwargs={"execution_id": "exec-1"},
-                callback_queue="file_processing_callback",
-                app_instance=app,
-            )
-
-
-# --- Fairness plumbing ---
-
-
-class TestCeleryChordBarrierFairnessHeader:
-    """When ``fairness=FairnessKey(...)`` is passed, the barrier
-    stamps ``x-fairness-key`` on every header task and the callback.
-
-    Closes the chord-fairness gap from Phase 5.1: bare ``dispatch()``
-    calls carried fairness; the two chord call sites didn't (they
-    bypassed ``dispatch()`` entirely). After this Phase 6a uplift,
-    every queue-crossing payload on the workflow-execution path now
-    carries the fairness slot.
-    """
-
-    def test_fairness_header_stamped_on_callback_signature(self, app, mock_chord):
-        CeleryChordBarrier().enqueue(
-            [MagicMock(name="h")],
-            callback_task_name="process_batch_callback_api",
-            callback_kwargs={"execution_id": "exec-1"},
-            callback_queue="api_file_processing_callback",
-            app_instance=app,
-            fairness=FairnessKey(org_id="org-1", workload_type=WorkloadType.API),
-        )
-
-        headers = app.signature.call_args.kwargs.get("headers")
-        assert headers is not None, (
-            "expected ``headers=`` kwarg on app.signature when fairness "
-            "is passed"
-        )
-        assert headers[FAIRNESS_HEADER_NAME] == {
-            "org_id": "org-1",
-            "workload_type": "api",
-            "pipeline_priority": 5,
-        }
-
-    def test_fairness_header_stamped_on_every_header_task(self, app, mock_chord):
-        """Every batch task in the header carries the fairness header
-        so PG Queue's per-task fairness scheduler can route each
-        independently.
-
-        Header signatures are stamped via ``Signature.clone().set(...)``
-        (not in-place ``.set(...)``) — clone avoids cross-tenant
-        header leakage if a future retry path or signature cache ever
-        re-uses the original ``header_tasks`` list with a different
-        ``FairnessKey``. The test asserts ``.clone().set(headers=...)``
-        is called on each original task.
-        """
-        h1, h2, h3 = (MagicMock(name=f"header_task_{i}") for i in range(3))
-
-        CeleryChordBarrier().enqueue(
-            [h1, h2, h3],
-            callback_task_name="process_batch_callback",
-            callback_kwargs={"execution_id": "exec-1"},
-            callback_queue="file_processing_callback",
-            app_instance=app,
-            fairness=FairnessKey(org_id="org-1", workload_type=WorkloadType.NON_API),
-        )
-
-        expected = {
-            FAIRNESS_HEADER_NAME: {
-                "org_id": "org-1",
-                "workload_type": "non_api",
-                "pipeline_priority": 5,
-            }
-        }
-        for task in (h1, h2, h3):
-            # ``.clone()`` produces a fresh signature; the ``.set(...)``
-            # then attaches the fairness header to the clone, leaving
-            # the original ``task`` unchanged.
-            task.clone.assert_called_once_with()
-            task.clone.return_value.set.assert_called_once_with(headers=expected)
-            # Direct ``.set(...)`` on the original is NEVER called —
-            # the whole point of the clone-and-set pattern.
-            task.set.assert_not_called()
-
-    def test_no_fairness_no_header_added(self, app, mock_chord):
-        """When ``fairness=None``, the barrier behaves byte-for-byte
-        like the pre-Barrier chord call — no ``headers=`` kwarg on
-        the signature, no ``.set(headers=...)`` on header tasks.
-
-        Mixed-version rolling deploys are safe because this branch
-        produces the same wire as the old direct chord call.
-        """
-        header = [MagicMock(name="h1"), MagicMock(name="h2")]
-
-        CeleryChordBarrier().enqueue(
-            header,
-            callback_task_name="process_batch_callback",
-            callback_kwargs={"execution_id": "exec-1"},
-            callback_queue="file_processing_callback",
-            app_instance=app,
-        )
-
-        # Callback signature: no headers kwarg.
-        assert "headers" not in app.signature.call_args.kwargs
-
-        # Header tasks: ``.set(...)`` not called for headers stamping.
-        for task in header:
-            # ``set`` might be called for other reasons in production,
-            # but never with ``headers=`` when fairness is None.
-            for call in task.set.call_args_list:
-                assert "headers" not in call.kwargs, (
-                    "unexpected fairness header stamped without fairness="
-                )
-
-
-# --- Singleton routing (pins the _BARRIER dispatch point) ---
-
-
-class TestOrchestrationUtilsRoutesThroughSingleton:
-    """Pin the ``WorkflowOrchestrationUtils.create_chord_execution``
-    routing to the module-level ``_BARRIER`` singleton.
-
-    A refactor that bypasses the singleton (e.g. inlining
-    ``CeleryChordBarrier().enqueue(...)`` inside the static method,
-    or going back to a direct ``chord(...)`` call) would still pass
-    the inventory canary in ``test_chord_sites_characterisation.py``
-    as long as ``chord(...)`` lives somewhere inside ``barrier.py``.
-    This test closes that gap so the singleton is the unambiguous
-    single dispatch point — ready for Phase 6b's factory swap.
-    """
-
-    def test_create_chord_execution_delegates_to_module_barrier(self):
+    def test_delegates_to_pg_barrier_with_arguments_intact(self):
         from shared.workflow.execution import orchestration_utils
         from shared.workflow.execution.orchestration_utils import (
             WorkflowOrchestrationUtils,
         )
 
         app_mock = MagicMock(name="celery_app")
-        app_mock.signature.return_value = MagicMock(name="callback_signature")
         batch = [MagicMock(name="h1")]
         fairness = FairnessKey(org_id="org-1", workload_type=WorkloadType.API)
 
-        with patch.object(orchestration_utils, "_BARRIER") as mock_barrier:
-            mock_barrier.enqueue.return_value = MagicMock(name="result")
+        with patch.object(orchestration_utils, "PgBarrier") as barrier_cls:
+            barrier_cls.return_value.enqueue.return_value = MagicMock(name="result")
             WorkflowOrchestrationUtils.create_chord_execution(
                 batch_tasks=batch,
                 callback_task_name="process_batch_callback_api",
@@ -401,53 +179,35 @@ class TestOrchestrationUtilsRoutesThroughSingleton:
                 fairness=fairness,
             )
 
-        # Default transport (celery) → the env-selected singleton, with the
-        # per-execution transport threaded through to the substrate (9e).
-        mock_barrier.enqueue.assert_called_once_with(
+        barrier_cls.return_value.enqueue.assert_called_once_with(
             batch,
             callback_task_name="process_batch_callback_api",
             callback_kwargs={"execution_id": "exec-1"},
             callback_queue="api_file_processing_callback",
             app_instance=app_mock,
             fairness=fairness,
-            transport="celery",
         )
 
-    def test_pg_queue_transport_bypasses_singleton_for_pgbarrier(self):
-        # 9e: a pg_queue execution must coordinate on Postgres regardless of
-        # WORKER_BARRIER_BACKEND, so it uses a fresh PgBarrier — NOT the (possibly
-        # chord) singleton. Pin that the singleton's enqueue is never called.
-        from shared.workflow.execution import orchestration_utils
+    def test_no_transport_argument_is_accepted(self):
+        """The per-execution ``transport`` kwarg is gone, not merely ignored.
+
+        It was the field that let a stale payload select a Celery fan-out after
+        the Celery consumers were scaled to zero. Accepting and discarding it
+        would leave that call shape looking valid.
+        """
         from shared.workflow.execution.orchestration_utils import (
             WorkflowOrchestrationUtils,
         )
 
-        app_mock = MagicMock(name="celery_app")
-        batch = [MagicMock(name="h1")]
-
-        with (
-            patch.object(orchestration_utils, "_BARRIER") as mock_singleton,
-            patch.object(orchestration_utils, "PgBarrier") as mock_pgbarrier_cls,
-        ):
+        with pytest.raises(TypeError):
             WorkflowOrchestrationUtils.create_chord_execution(
-                batch_tasks=batch,
-                callback_task_name="process_batch_callback",
-                callback_kwargs={"execution_id": "exec-pg"},
-                callback_queue="general",
-                app_instance=app_mock,
-                transport="pg_queue",
+                batch_tasks=[MagicMock()],
+                callback_task_name="cb",
+                callback_kwargs={"execution_id": "exec-1"},
+                callback_queue="q",
+                app_instance=MagicMock(),
+                transport="celery",
             )
-
-        mock_singleton.enqueue.assert_not_called()  # NOT the env singleton
-        mock_pgbarrier_cls.assert_called_once_with()  # a fresh PgBarrier
-        mock_pgbarrier_cls.return_value.enqueue.assert_called_once()
-        assert (
-            mock_pgbarrier_cls.return_value.enqueue.call_args.kwargs["transport"]
-            == "pg_queue"
-        )
-
-
-# --- Executing tests for call-site fairness contracts ---
 
 
 def _load_api_deployment_tasks():

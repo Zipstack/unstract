@@ -1,6 +1,8 @@
-import { Form, Input, Modal, Select } from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
+import { Form } from "@/components/ui/shims/antd-form";
+import { Input, Select } from "@/components/ui/shims/antd-inputs";
+import { Modal } from "@/components/ui/shims/antd-overlays";
 
 import { getBackendErrorDetail } from "../../../helpers/GetStaticData.js";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
@@ -28,6 +30,7 @@ const CreateApiDeploymentModal = ({
   workflowEndpointList = [],
   setDeploymentName,
   onDeploymentCreated,
+  refreshList,
 }) => {
   const workflowStore = useWorkflowStore();
   const { updateWorkflow } = workflowStore;
@@ -107,8 +110,9 @@ const CreateApiDeploymentModal = ({
             onDeploymentCreated();
           }
         } else {
-          // Add new deployment to list
-          setTableData((prev) => [res?.data, ...prev]);
+          // Refetch: the create response is a summary without the owner
+          // fields the list renders.
+          refreshList?.();
           setSelectedRow(res?.data);
           openCodeModal(true);
         }
@@ -261,7 +265,7 @@ const CreateApiDeploymentModal = ({
             }
             help={getBackendErrorDetail("workflow", backendErrors)}
           >
-            <Select>
+            <Select showSearch>
               {workflowEndpointList?.map((endpoint) => {
                 return (
                   <Option
@@ -292,6 +296,7 @@ CreateApiDeploymentModal.propTypes = {
   workflowEndpointList: PropTypes.object,
   setDeploymentName: PropTypes.func,
   onDeploymentCreated: PropTypes.func,
+  refreshList: PropTypes.func,
 };
 
 export { CreateApiDeploymentModal };

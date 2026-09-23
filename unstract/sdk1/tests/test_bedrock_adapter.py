@@ -3,7 +3,14 @@
 Covers the auth_type selector behaviour added alongside the IAM Role /
 Instance Profile mode, plus backwards compatibility for legacy adapter
 configurations stored before auth_type existed.
+
+Also covers routing between the two AWS Bedrock endpoints -- the classic
+bedrock-runtime Converse/Invoke surface and the OpenAI-compatible
+bedrock-mantle endpoint -- and the per-family reasoning shape that goes with
+each.
 """
+
+import logging
 
 import pytest
 from unstract.sdk1.adapters.base1 import (
@@ -648,3 +655,267 @@ def test_embedding_legacy_drops_stray_bearer_token() -> None:
     )
     assert "aws_bearer_token" not in out
     assert "api_key" not in out
+
+
+# ── LLM: Bedrock Mantle routing ──────────────────────────────────────────────
+#
+# AWS serves two disjoint model-id namespaces behind the Bedrock brand: the
+# classic bedrock-runtime Converse/Invoke surface (LiteLLM `bedrock/`) and the
+# OpenAI-compatible bedrock-mantle endpoint (LiteLLM `bedrock_mantle/`). The
+# ids look confusingly alike -- `openai.gpt-oss-120b-1:0` is Converse while
+# `openai.gpt-oss-120b` is Mantle -- so routing is decided by an exact lookup
+# in LiteLLM's registry, never a family prefix.
+
+_LLM_BASE: dict[str, str] = {
+    "region_name": "us-east-1",
+    "aws_access_key_id": "AKIAFAKE",
+    "aws_secret_access_key": "secret",
+}
+
+
+def _validate_llm(**overrides: object) -> dict[str, object]:
+    return AWSBedrockLLMParameters.validate({**_LLM_BASE, **overrides})
+
+
+@pytest.mark.parametrize(
+    "model",
+    [
+        "openai.gpt-5.6-terra",
+        "openai.gpt-5.6-sol",
+        "openai.gpt-5.6-luna",
+        "openai.gpt-oss-120b",
+        "google.gemma-4-31b",
+        "xai.grok-4.3",
+    ],
+)
+def test_llm_mantle_models_route_to_bedrock_mantle(model: str) -> None:
+    assert _validate_llm(model=model)["model"] == f"bedrock_mantle/{model}"
+
+
+@pytest.mark.parametrize(
+    "model",
+    [
+        # Anthropic and Amazon foundation models are Converse-only.
+        "anthropic.claude-3-haiku-20240307-v1:0",
+        "amazon.titan-text-express-v1",
+        # Converse twin of a Mantle model -- the `-1:0` suffix is the whole
+        # difference, which is why an exact match matters.
+        "openai.gpt-oss-120b-1:0",
+        # Cross-Region inference profile ids belong to bedrock-runtime, not
+        # Mantle (Mantle is in-Region only).
+        "us.openai.gpt-5.6-terra",
+        "global.openai.gpt-5.6-terra",
+        # Application Inference Profile ARN.
+        "arn:aws:bedrock:us-east-1:000000000000:application-inference-profile/abcd",
+    ],
+)
+def test_llm_non_mantle_models_keep_standard_bedrock_route(model: str) -> None:
+    assert _validate_llm(model=model)["model"] == f"bedrock/{model}"
+
+
+def test_llm_unknown_mantle_model_falls_back_to_standard_bedrock(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A Mantle model the loaded registry has not catalogued routes to `bedrock/`.
+
+    This is the failure that bites when AWS ships a Mantle model before LiteLLM
+    catalogues it: routing degrades silently to the classic endpoint, where the
+    request fails with an opaque AWS error. Pinned here so the fallback is a
+    known, documented property rather than an accident of registry contents.
+    """
+    import litellm
+
+    pruned = {
+        k: v
+        for k, v in litellm.model_cost.items()
+        if k != "bedrock_mantle/openai.gpt-5.6-terra"
+    }
+    monkeypatch.setattr(litellm, "model_cost", pruned)
+
+    assert (
+        _validate_llm(model="openai.gpt-5.6-terra")["model"]
+        == "bedrock/openai.gpt-5.6-terra"
+    )
+
+
+@pytest.mark.parametrize(
+    "model",
+    ["bedrock/openai.gpt-5.6-terra", "bedrock_mantle/anthropic.claude-3-haiku"],
+)
+def test_llm_explicit_prefix_is_respected(model: str) -> None:
+    """An operator-supplied prefix overrides the registry lookup."""
+    assert _validate_llm(model=model)["model"] == model
+
+
+def test_llm_routing_is_idempotent_across_revalidation() -> None:
+    """Re-validating an already validated config must be a no-op.
+
+    ``LLM.complete()`` re-validates kwargs on every call, so validate() has to
+    be a fixed point -- otherwise the provider prefix would compound.
+    """
+    first = _validate_llm(model="openai.gpt-5.6-terra")
+    second = AWSBedrockLLMParameters.validate(dict(first))
+    assert first["model"] == second["model"] == "bedrock_mantle/openai.gpt-5.6-terra"
+
+
+# ── LLM: params the Mantle endpoint cannot honour ────────────────────────────
+
+
+def test_llm_mantle_strips_guardrail_and_aip_arn(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Guardrails and Application Inference Profiles are Converse-only features.
+
+    LiteLLM drops them silently on the Mantle route, which would leave an
+    operator believing a guardrail is enforced when it is not.
+    """
+    with caplog.at_level(logging.WARNING):
+        out = _validate_llm(
+            model="openai.gpt-5.6-terra",
+            model_id="arn:aws:bedrock:us-east-1:000000000000:application-inference-profile/abcd",
+            guardrail_identifier="ff6ujrregl1q",
+            guardrail_version="1",
+        )
+    assert not out.get("guardrailConfig")
+    assert not out.get("model_id")
+    assert "Bedrock Guardrails" in caplog.text
+    assert "Application Inference Profile" in caplog.text
+
+
+def test_llm_mantle_strip_warns_once_not_per_completion(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """`LLM.complete()` re-validates on every call, so the warning must not repeat.
+
+    The first pass removes the keys, so a second validation of the already
+    validated payload has nothing left to strip. A reorder that moved the strip
+    after the Pydantic dump would emit this warning on every completion.
+    """
+    with caplog.at_level(logging.WARNING):
+        first = _validate_llm(
+            model="openai.gpt-5.6-terra",
+            guardrail_identifier="ff6ujrregl1q",
+            guardrail_version="1",
+        )
+        warnings_after_first = len(caplog.records)
+        AWSBedrockLLMParameters.validate(dict(first))
+
+    assert warnings_after_first == 1
+    assert len(caplog.records) == 1
+
+
+def test_llm_standard_bedrock_keeps_guardrail(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    with caplog.at_level(logging.WARNING):
+        out = _validate_llm(
+            model="anthropic.claude-3-haiku-20240307-v1:0",
+            guardrail_identifier="ff6ujrregl1q",
+            guardrail_version="1",
+        )
+    assert out["guardrailConfig"] == {
+        "guardrailIdentifier": "ff6ujrregl1q",
+        "guardrailVersion": "1",
+    }
+    assert "Mantle" not in caplog.text
+
+
+def test_llm_mantle_without_guardrail_logs_nothing(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    with caplog.at_level(logging.WARNING):
+        _validate_llm(model="openai.gpt-5.6-terra")
+    assert "Mantle" not in caplog.text
+
+
+def test_llm_mantle_auth_modes_are_unchanged() -> None:
+    """Routing must not disturb credential resolution."""
+    keys = _validate_llm(model="openai.gpt-5.6-terra", auth_type="access_keys")
+    assert keys["aws_access_key_id"] == "AKIAFAKE"
+    assert keys["aws_secret_access_key"] == "secret"
+
+    bearer = AWSBedrockLLMParameters.validate(
+        {
+            "auth_type": "bearer_token",
+            "model": "openai.gpt-5.6-terra",
+            "region_name": "us-east-1",
+            "aws_bearer_token": "BEDROCK_API_KEY",
+        }
+    )
+    assert bearer["api_key"] == "BEDROCK_API_KEY"
+    assert "aws_bearer_token" not in bearer
+
+    iam = AWSBedrockLLMParameters.validate(
+        {
+            "auth_type": "iam_role",
+            "model": "openai.gpt-5.6-terra",
+            "region_name": "us-east-1",
+        }
+    )
+    assert "aws_access_key_id" not in iam
+    assert iam["aws_region_name"] == "us-east-1"
+
+
+# ── LLM: reasoning shape per model family ────────────────────────────────────
+#
+# Anthropic models take a `thinking` block; every other reasoning-capable
+# family takes `reasoning_effort`, which LiteLLM maps to that family's own wire
+# field. Emitting the Anthropic shape for a non-Anthropic model is a silent
+# no-op, which is why the switch never did anything outside Claude.
+
+
+def test_llm_thinking_uses_anthropic_shape_for_claude() -> None:
+    out = _validate_llm(
+        model="anthropic.claude-3-7-sonnet-20250219-v1:0",
+        enable_thinking=True,
+        budget_tokens=2048,
+    )
+    assert out["thinking"] == {"type": "enabled", "budget_tokens": 2048}
+    assert "reasoning_effort" not in out
+    assert out["temperature"] == 1
+
+
+@pytest.mark.parametrize(
+    "model",
+    [
+        "openai.gpt-5.6-terra",  # Mantle -> reasoning.effort
+        "openai.gpt-oss-120b-1:0",  # Converse -> additionalModelRequestFields
+        "amazon.nova-2-lite-v1:0",  # Converse -> reasoningConfig
+    ],
+)
+def test_llm_thinking_uses_reasoning_effort_for_non_anthropic(model: str) -> None:
+    out = _validate_llm(model=model, enable_thinking=True)
+    assert out["reasoning_effort"] == "medium"
+    assert "thinking" not in out
+    assert out["temperature"] == 1
+
+
+def test_llm_explicit_reasoning_effort_is_preserved() -> None:
+    out = _validate_llm(
+        model="openai.gpt-5.6-terra", enable_thinking=True, reasoning_effort="high"
+    )
+    assert out["reasoning_effort"] == "high"
+
+
+def test_llm_reasoning_disabled_emits_neither_shape() -> None:
+    """A declared Pydantic field would otherwise re-emit `reasoning_effort=None`."""
+    for model in ("openai.gpt-5.6-terra", "anthropic.claude-3-haiku-20240307-v1:0"):
+        out = _validate_llm(model=model)
+        assert "reasoning_effort" not in out
+        assert "thinking" not in out
+
+
+def test_llm_reasoning_survives_revalidation() -> None:
+    """Reasoning state must round-trip, since kwargs are re-validated per call."""
+    first = _validate_llm(model="openai.gpt-5.6-terra", enable_thinking=True)
+    second = AWSBedrockLLMParameters.validate(dict(first))
+    assert second["reasoning_effort"] == "medium"
+    assert second["temperature"] == 1
+
+    claude_first = _validate_llm(
+        model="anthropic.claude-3-7-sonnet-20250219-v1:0",
+        enable_thinking=True,
+        budget_tokens=1024,
+    )
+    claude_second = AWSBedrockLLMParameters.validate(dict(claude_first))
+    assert claude_second["thinking"] == {"type": "enabled", "budget_tokens": 1024}

@@ -42,10 +42,12 @@ class AnswerFetchError(APIException):
 
 
 class DefaultProfileError(APIException):
-    status_code = 500
+    # A missing default profile is a project-configuration problem the user can
+    # fix, not a server fault - 500 misreports it as an outage.
+    status_code = 400
     default_detail = (
-        "Default LLM profile is not configured."
-        "Please set an LLM profile as default to continue."
+        "No LLM profile could be resolved. Set an LLM profile as the project "
+        "default, or attach one to the prompt, to continue."
     )
 
 

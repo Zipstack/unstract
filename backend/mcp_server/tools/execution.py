@@ -1,0 +1,396 @@
+"""Tools that run the connected API deployment and read back its results."""
+
+import logging
+import uuid
+from typing import Any
+
+from api_v2.constants import ApiExecution
+from api_v2.deployment_helper import DeploymentHelper
+from api_v2.dto import DeploymentExecutionDTO
+from api_v2.exceptions import RateLimitExceeded
+from api_v2.rate_limiter import APIDeploymentRateLimiter
+from api_v2.serializers import ExecutionQuerySerializer, ExecutionRequestSerializer
+from rest_framework.exceptions import ValidationError
+from tags.serializers import TagParamsSerializer
+from utils.enums import CeleryTaskState
+from workflow_manager.workflow_v2.dto import ExecutionResponse
+from workflow_manager.workflow_v2.exceptions import ExecutionDoesNotExistError
+from workflow_manager.workflow_v2.models.execution import WorkflowExecution
+
+from mcp_server.context import MCPContext
+from mcp_server.exceptions import MCPToolError
+from mcp_server.sanitize import (
+    log_exception,
+    redact_structure,
+    valid_uuid,
+)
+
+logger = logging.getLogger(__name__)
+
+# Mirrors the serializer limits into the JSON schema, so a well-behaved client
+# is stopped before it spends a round trip on a request that cannot validate.
+# Sourced from the serializers rather than copied, so the advertised schema
+# tracks the limits actually enforced.
+MAX_DOCUMENTS = ExecutionRequestSerializer.MAX_FILES_ALLOWED
+MAX_TAGS = TagParamsSerializer.MAX_TAGS_ALLOWED
+
+# An agent polling with getExecutionStatus does not benefit from holding the
+# HTTP request open for the full 300s the REST API permits, and a long-held
+# MCP call reads as a hang. Default to a short wait and let the agent poll.
+DEFAULT_TIMEOUT_SEC = 30
+
+
+def _format_validation_error(error: ValidationError) -> str:
+    """Flatten DRF validation detail into a sentence an agent can act on.
+
+    ``error.detail`` stringifies with ``ErrorDetail(string=..., code=...)``
+    wrappers and nested dict/list structure. That is noise the agent has to
+    parse around before it can see which argument was wrong, so flatten it to
+    ``field: message`` pairs.
+    """
+
+    def walk(node: Any, path: str = "") -> list[str]:
+        if isinstance(node, dict):
+            return [
+                message
+                for key, value in node.items()
+                for message in walk(value, f"{path}.{key}" if path else str(key))
+            ]
+        if isinstance(node, list):
+            return [message for item in node for message in walk(item, path)]
+        return [f"{path}: {node}" if path else str(node)]
+
+    return "; ".join(walk(error.detail))
+
+
+def extract_document_schema() -> dict[str, Any]:
+    return {
+        "type": "object",
+        "properties": {
+            "document_urls": {
+                "type": "array",
+                "items": {"type": "string"},
+                "minItems": 1,
+                "maxItems": MAX_DOCUMENTS,
+                "description": (
+                    "HTTPS URLs of the documents to extract, which Unstract "
+                    "fetches server-side. The host must be an AWS S3 endpoint "
+                    "(*.amazonaws.com); links to any other host are rejected. "
+                    "For a private object, pass a pre-signed URL — that is the "
+                    "usual case. An object that is already publicly readable "
+                    "needs no signature."
+                ),
+            },
+            "timeout": {
+                "type": "integer",
+                "minimum": -1,
+                "maximum": ApiExecution.MAXIMUM_TIMEOUT_IN_SEC,
+                "default": DEFAULT_TIMEOUT_SEC,
+                "description": (
+                    "Seconds to wait for the extraction to finish before "
+                    "returning a pending result. Use -1 to return immediately "
+                    "and poll with getExecutionStatus."
+                ),
+            },
+            "include_metadata": {
+                "type": "boolean",
+                "default": False,
+                "description": "Include extraction metadata in the result.",
+            },
+            "include_metrics": {
+                "type": "boolean",
+                "default": False,
+                "description": "Include token and cost metrics in the result.",
+            },
+            "include_extracted_text": {
+                "type": "boolean",
+                "default": False,
+                "description": (
+                    "Include the full raw text extracted from each document, "
+                    "alongside the structured output. This can be very large."
+                ),
+            },
+            "tags": {
+                "type": "array",
+                "items": {"type": "string"},
+                "maxItems": MAX_TAGS,
+                "description": (
+                    f"Tags to associate with this execution (at most "
+                    f"{MAX_TAGS}). Each tag must start with a letter and "
+                    "contain only letters, numbers, underscores and hyphens."
+                ),
+            },
+            "llm_profile_id": {
+                "type": "string",
+                "description": (
+                    "UUID of an LLM profile to override the deployment's "
+                    "default. Omit to use the configured default."
+                ),
+            },
+        },
+        "required": ["document_urls"],
+    }
+
+
+def extract_document(
+    context: MCPContext,
+    document_urls: list[str],
+    timeout: int = DEFAULT_TIMEOUT_SEC,
+    include_metadata: bool = False,
+    include_metrics: bool = False,
+    include_extracted_text: bool = False,
+    tags: list[str] | None = None,
+    llm_profile_id: str | None = None,
+) -> dict[str, Any]:
+    """Run the deployment's workflow over the supplied document URLs.
+
+    Deliberately routed through ``ExecutionRequestSerializer`` rather than
+    calling the execution helper directly: that serializer owns URL validation
+    (HTTPS/endpoint restrictions) and the file-count cap, and reimplementing
+    those here would let the MCP surface drift away from the REST surface it
+    is meant to mirror.
+    """
+    if not context.api.is_active:
+        raise MCPToolError(
+            f"API deployment '{context.api.display_name}' is not active. "
+            "Activate it in Unstract before extracting."
+        )
+
+    # `tags` is a comma-separated string on the REST surface; MCP clients
+    # produce JSON arrays, so convert rather than exposing the wire format.
+    payload: dict[str, Any] = {
+        ApiExecution.PRESIGNED_URLS: document_urls,
+        ApiExecution.TIMEOUT_FORM_DATA: timeout,
+        ApiExecution.INCLUDE_METADATA: include_metadata,
+        ApiExecution.INCLUDE_METRICS: include_metrics,
+        ApiExecution.INCLUDE_EXTRACTED_TEXT: include_extracted_text,
+    }
+    if tags:
+        payload[ApiExecution.TAGS] = ",".join(tags)
+    if llm_profile_id:
+        payload[ApiExecution.LLM_PROFILE_ID] = llm_profile_id
+
+    serializer = ExecutionRequestSerializer(
+        data=payload, context={"api": context.api, "api_key": context.api_key}
+    )
+    try:
+        serializer.is_valid(raise_exception=True)
+    except ValidationError as error:
+        raise MCPToolError(
+            f"Invalid arguments: {_format_validation_error(error)}"
+        ) from error
+
+    validated = serializer.validated_data
+    presigned_urls = validated.get(ApiExecution.PRESIGNED_URLS, [])
+
+    organization = context.api.organization
+    execution_id = str(uuid.uuid4())
+
+    # Take the rate-limit slot before downloading anything. The REST view
+    # fetches first because it already holds the uploaded files in the request
+    # body; here the fetch is ours to make, and doing it for a call we are
+    # about to reject would pull every document over the network for nothing.
+    can_proceed, limit_info = APIDeploymentRateLimiter.check_and_acquire(
+        organization, execution_id
+    )
+    if not can_proceed:
+        raise MCPToolError(
+            "Rate limit exceeded for this organization "
+            f"({limit_info['current_usage']}/{limit_info['limit']} "
+            f"{limit_info['limit_type']}). Retry once running extractions finish."
+        )
+
+    try:
+        file_objs: list[Any] = []
+        DeploymentHelper.load_presigned_files(presigned_urls, file_objs)
+        response = DeploymentHelper.execute_workflow(
+            organization_name=context.org_name,
+            api=context.api,
+            file_objs=file_objs,
+            timeout=validated.get(ApiExecution.TIMEOUT_FORM_DATA),
+            include_metadata=validated.get(ApiExecution.INCLUDE_METADATA),
+            include_metrics=validated.get(ApiExecution.INCLUDE_METRICS),
+            include_extracted_text=validated.get(ApiExecution.INCLUDE_EXTRACTED_TEXT),
+            use_file_history=validated.get(ApiExecution.USE_FILE_HISTORY, False),
+            tag_names=validated.get(ApiExecution.TAGS, []),
+            llm_profile_id=validated.get(ApiExecution.LLM_PROFILE_ID),
+            execution_id=execution_id,
+        )
+    except RateLimitExceeded as error:
+        # A limit raised from deeper in the stack is a different limit than the
+        # one checked above, but it is still the agent's to wait out — so
+        # convert it rather than letting it fall through to the generic
+        # "failed unexpectedly" branch below.
+        APIDeploymentRateLimiter.release_slot(organization, execution_id)
+        raise MCPToolError(
+            f"Rate limit exceeded: {error.detail}. Retry once running extractions finish."
+        ) from error
+    except Exception as error:
+        APIDeploymentRateLimiter.release_slot(organization, execution_id)
+        # Redacted, and without a traceback: this exception comes from the
+        # connector and execution stack, so it can carry a connection string or
+        # a signed URL — and a log line outlives the request and is shipped to
+        # aggregation, reaching an audience the credential was never scoped to.
+        log_exception(
+            logger, f"MCP extractDocument failed for api '{context.api.api_name}'", error
+        )
+        # The upstream exception text is NOT returned to the caller. Redaction
+        # strips the credential shapes it recognises, but an arbitrary exception
+        # from a connector, a provider client or the execution stack also
+        # carries internal hostnames, paths, row ids and stack detail that an
+        # MCP client has no business seeing — and "recognised" is doing a lot of
+        # work in that sentence. The full exception is in the log line above,
+        # where an operator can correlate it by api name and timestamp.
+        raise MCPToolError(
+            "Extraction failed unexpectedly. The failure has been logged; "
+            "contact your Unstract administrator if this persists."
+        ) from error
+
+    # Raw upstream response, not assembled field by field here, so it goes
+    # through the same redaction net as the error messages.
+    result = redact_structure(dict(response))
+    # Surface the execution id unconditionally. On the pending path it is the
+    # agent's only handle for polling, and execute_workflow does not guarantee
+    # it is present in the response body.
+    result.setdefault("execution_id", execution_id)
+    return result
+
+
+def get_execution_status_schema() -> dict[str, Any]:
+    return {
+        "type": "object",
+        "properties": {
+            "execution_id": {
+                "type": "string",
+                "description": (
+                    "The execution_id returned by a previous extractDocument call."
+                ),
+            },
+            "include_metadata": {
+                "type": "boolean",
+                "default": False,
+                "description": "Include extraction metadata in the result.",
+            },
+            "include_metrics": {
+                "type": "boolean",
+                "default": False,
+                "description": "Include token and cost metrics in the result.",
+            },
+            "include_extracted_text": {
+                "type": "boolean",
+                "default": False,
+                "description": (
+                    "Include the full raw text extracted from each document. "
+                    "This can be very large."
+                ),
+            },
+        },
+        "required": ["execution_id"],
+    }
+
+
+def get_execution_status(
+    context: MCPContext,
+    execution_id: str,
+    include_metadata: bool = False,
+    include_metrics: bool = False,
+    include_extracted_text: bool = False,
+) -> dict[str, Any]:
+    """Return the status, and once ready the result, of an extraction."""
+    serializer = ExecutionQuerySerializer(
+        data={
+            ApiExecution.EXECUTION_ID: execution_id,
+            ApiExecution.INCLUDE_METADATA: include_metadata,
+            ApiExecution.INCLUDE_METRICS: include_metrics,
+            ApiExecution.INCLUDE_EXTRACTED_TEXT: include_extracted_text,
+        }
+    )
+    try:
+        serializer.is_valid(raise_exception=True)
+    except ValidationError as error:
+        raise MCPToolError(
+            f"Invalid arguments: {_format_validation_error(error)}"
+        ) from error
+    except ExecutionDoesNotExistError as error:
+        # `validate_execution_id` raises TWO different types: ValidationError
+        # for a malformed UUID, and this — an APIException, not a
+        # ValidationError — for a well-formed id that matches no execution.
+        # Uncaught it escapes to the transport catch-all, so the agent gets
+        # "Tool execution failed", and the deployment-scoped not-found message
+        # further down is never reached because the serializer runs first.
+        #
+        # Answered with that same wording deliberately: whether an id belongs
+        # to another deployment or to no execution at all is not something a
+        # caller should be able to tell apart, and the next step is identical.
+        raise MCPToolError(
+            f"No execution with id '{execution_id}' for this deployment. "
+            "Poll only ids returned by extractDocument."
+        ) from error
+
+    validated = serializer.validated_data
+    validated_id = validated.get(ApiExecution.EXECUTION_ID)
+
+    # Scope the id to this *deployment* before fetching anything.
+    # DeploymentHelper.get_execution_status resolves a bare
+    # WorkflowExecution.objects.get(id=...) with no tenant or deployment
+    # filter, and this deployment runs one shared schema rather than a schema
+    # per tenant. The API key narrows the caller to a deployment, not to an
+    # execution id within it, so without this check a key for deployment A
+    # could poll deployment B's execution — and, because a completed status
+    # acknowledges the result and drops it from cache, destroy it for the
+    # caller it belongs to.
+    #
+    # Filtered on `pipeline_id`, which holds the APIDeployment that started the
+    # run (`DeploymentHelper` sets `pipeline_id = api.id`), NOT on
+    # `workflow_id`. `APIDeployment.workflow` is a plain FK with no uniqueness
+    # constraint — `related_name="apis"` is plural — so two deployments can
+    # share one workflow, and a workflow-scoped filter would let either poll
+    # the other's executions.
+    #
+    # The serializer validates shape, not that the id parses as a UUID; a
+    # malformed one would raise ValidationError from the field below rather
+    # than the actionable message this function already writes.
+    valid_uuid(validated_id, "execution id", "Poll only ids returned by extractDocument.")
+    execution = (
+        WorkflowExecution.objects.filter(id=validated_id, pipeline_id=context.api.id)
+        .only("id")
+        .first()
+    )
+    if execution is None:
+        raise MCPToolError(
+            f"No execution with id '{validated_id}' for this deployment. "
+            "Poll only ids returned by extractDocument."
+        )
+
+    response: ExecutionResponse = DeploymentHelper.get_execution_status(validated_id)
+
+    if response.result_acknowledged:
+        # The REST surface answers 406 here. An agent cannot act on a status
+        # code, so say plainly that the result is gone and not retrievable.
+        return {
+            "execution_status": response.execution_status,
+            "message": (
+                "This result was already acknowledged and is no longer "
+                "retrievable. Start a new extraction if you need it again."
+            ),
+        }
+
+    if response.execution_status == CeleryTaskState.COMPLETED.value:
+        deployment_execution_dto = DeploymentExecutionDTO(
+            api=context.api, api_key=context.api_key
+        )
+        DeploymentHelper.process_completed_execution(
+            response=response,
+            deployment_execution_dto=deployment_execution_dto,
+            include_metadata=validated.get(ApiExecution.INCLUDE_METADATA),
+            include_metrics=validated.get(ApiExecution.INCLUDE_METRICS),
+            include_extracted_text=validated.get(ApiExecution.INCLUDE_EXTRACTED_TEXT),
+        )
+
+    return {
+        "execution_id": execution_id,
+        "execution_status": response.execution_status,
+        # Raw upstream result, not assembled field by field here: a failed
+        # connector's error text can embed the connection string it tried.
+        "result": redact_structure(response.result),
+    }

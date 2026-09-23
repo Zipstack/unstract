@@ -80,6 +80,7 @@ jobs:
         with:
           version: "0.6.14"
           python-version: 3.12.9
+          enable-cache: true
 
       - name: Cache tox environments
         uses: actions/cache@v5
@@ -159,6 +160,7 @@ jobs:
         with:
           version: "0.6.14"
           python-version: 3.12.9
+          enable-cache: true
 
       - name: Cache tox environments
         uses: actions/cache@v5
@@ -253,6 +255,7 @@ jobs:
         with:
           version: "0.6.14"
           python-version: 3.12.9
+          enable-cache: true
 
       - name: Cache tox environments
         uses: actions/cache@v5

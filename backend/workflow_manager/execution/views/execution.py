@@ -2,8 +2,8 @@ import logging
 
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import viewsets
-from rest_framework.filters import OrderingFilter
 from rest_framework.permissions import BasePermission, IsAuthenticated
+from utils.filters.ordering_filter import DeterministicOrderingFilter
 from utils.pagination import CustomPagination
 
 from workflow_manager.execution.filter import ExecutionFilter
@@ -34,7 +34,7 @@ class ExecutionViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = [IsAuthenticated, UserWorkflowExecutionPermission]
     serializer_class = ExecutionSerializer
     pagination_class = CustomPagination
-    filter_backends = [DjangoFilterBackend, OrderingFilter]
+    filter_backends = [DjangoFilterBackend, DeterministicOrderingFilter]
     ordering_fields = ["created_at", "execution_time"]
     ordering = ["-created_at"]
     filterset_class = ExecutionFilter

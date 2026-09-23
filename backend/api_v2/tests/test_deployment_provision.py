@@ -14,6 +14,7 @@ import secrets
 import pytest
 from account_v2.models import Organization, User
 from django.test import TestCase
+from permissions.roles import ResourceRole
 from rest_framework import status
 from rest_framework.test import APIRequestFactory, force_authenticate
 from tenant_account_v2.models import OrganizationMember
@@ -42,7 +43,12 @@ class APIDeploymentProvisionTest(TestCase):
         OrganizationMember.objects.create(
             organization=self.org, user=self.user, role="user"
         )
-        self.workflow = Workflow.objects.create(workflow_name="wf-deploy", is_active=True)
+        self.workflow = Workflow.objects.create(
+            workflow_name="wf-deploy", is_active=True, created_by=self.user
+        )
+        # The real create path grants this row, and deploying is owner-only:
+        # ``created_by`` is audit-only, so ownership comes from the membership.
+        self.workflow.memberships.create(user=self.user, role=ResourceRole.OWNER)
         for endpoint_type in WorkflowEndpoint.EndpointType:
             WorkflowEndpoint.objects.create(
                 workflow=self.workflow,

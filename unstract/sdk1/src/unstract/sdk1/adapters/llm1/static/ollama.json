@@ -56,6 +56,12 @@
       "default": 3,
       "description": "The maximum number of times to retry a request if it fails."
     },
+    "enable_streaming": {
+      "type": "boolean",
+      "title": "Enable Streaming",
+      "default": true,
+      "description": "Stream the model's reply and assemble it in the platform. Keeps the connection alive on long replies so a provider read timeout is not hit. Turn it off only for an endpoint that cannot stream."
+    },
     "request_timeout": {
       "type": "number",
       "minimum": 0,

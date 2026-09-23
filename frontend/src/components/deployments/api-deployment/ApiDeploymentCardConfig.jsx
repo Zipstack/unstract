@@ -1,13 +1,17 @@
 import {
-  CloudDownloadOutlined,
-  CodeOutlined,
-  FileSearchOutlined,
-  KeyOutlined,
-  NotificationOutlined,
-  SyncOutlined,
-} from "@ant-design/icons";
-import { Flex, Space, Switch, Tooltip, Typography } from "antd";
+  Bell,
+  CloudDownload,
+  Code,
+  FileSearch,
+  Key,
+  RefreshCw,
+} from "lucide-react";
 import PropTypes from "prop-types";
+import { Switch } from "@/components/ui/shims/antd-inputs";
+import { Flex, Space } from "@/components/ui/shims/antd-layout";
+import { Tooltip } from "@/components/ui/shims/antd-overlays";
+import { Typography } from "@/components/ui/shims/antd-typography";
+import { canEditResource } from "../../../helpers/resourceAccess";
 
 import { StatusPills } from "../../pipelines-or-deployments/pipelines/PipelineCardConfig";
 import {
@@ -52,38 +56,45 @@ function createApiDeploymentCardConfig({
         items: [
           {
             key: "view-logs",
-            icon: <FileSearchOutlined />,
+            icon: <FileSearch />,
             label: "View Logs",
             onClick: () => onViewLogs?.(deployment),
           },
           { type: "divider" },
           {
             key: "manage-keys",
-            icon: <KeyOutlined />,
+            icon: <Key />,
             label: "Manage Keys",
             onClick: () => onManageKeys?.(deployment),
           },
           {
             key: "notifications",
-            icon: <NotificationOutlined />,
+            icon: <Bell />,
             label: "Notifications",
             onClick: () => onSetupNotifications?.(deployment),
           },
           { type: "divider" },
           {
             key: "code-snippets",
-            icon: <CodeOutlined />,
+            icon: <Code />,
             label: "Code Snippets",
             onClick: () => onCodeSnippets?.(deployment),
           },
           {
             key: "download-postman",
-            icon: <CloudDownloadOutlined />,
+            icon: <CloudDownload />,
             label: "Download Postman Collection",
             onClick: () => onDownloadPostman?.(deployment),
           },
         ],
       };
+
+      // Enabling or disabling is use, not configuration, so anyone the
+      // deployment is shared with may do it -- the backend admits an
+      // activation-only PATCH for exactly this.
+      const toggleTitle = deployment.is_active
+        ? "Disable API deployment"
+        : "Enable API deployment";
 
       return (
         <div className="card-list-content">
@@ -92,16 +103,11 @@ function createApiDeploymentCardConfig({
             description={deployment.description}
           >
             <Space size={16} className="card-list-actions">
-              <Tooltip
-                title={
-                  deployment.is_active
-                    ? "Disable API deployment"
-                    : "Enable API deployment"
-                }
-              >
+              <Tooltip title={toggleTitle}>
                 <Switch
                   size="small"
                   checked={deployment.is_active}
+                  data-testid={`api-deployment-toggle-${deployment.id}`}
                   onChange={(checked, e) => {
                     e.stopPropagation();
                     updateStatus(deployment);
@@ -110,6 +116,7 @@ function createApiDeploymentCardConfig({
               </Tooltip>
               <CardActionBox
                 item={deployment}
+                testIdPrefix="api-deployment"
                 setSelectedItem={setSelectedRow}
                 onEdit={onEdit}
                 onShare={onShare}
@@ -146,7 +153,7 @@ function createApiDeploymentCardConfig({
 
           <Flex align="center" gap={32} className="card-list-footer-row">
             <Space size={10} className="card-list-footer-item">
-              <SyncOutlined />
+              <RefreshCw />
               <Typography.Text
                 type="secondary"
                 className="card-list-footer-label"

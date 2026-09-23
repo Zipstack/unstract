@@ -7,6 +7,7 @@ from django.db import models
 from django.db.models.signals import pre_delete
 from django.dispatch import receiver
 from utils.models.base_model import BaseModel
+from utils.models.org_aware_manager import OrgAwareManager
 from utils.user_context import UserContext
 
 from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
@@ -20,6 +21,9 @@ logger = logging.getLogger(__name__)
 
 class IndexManager(BaseModel):
     """Model to store the index details."""
+
+    # See DocumentManager.objects for why scoping lives at the manager.
+    objects = OrgAwareManager()
 
     index_manager_id = models.UUIDField(
         primary_key=True, default=uuid.uuid4, editable=False

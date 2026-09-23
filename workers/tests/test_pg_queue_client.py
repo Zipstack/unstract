@@ -26,8 +26,9 @@ from queue_backend.fairness import DEFAULT_PRIORITY, MAX_PRIORITY, MIN_PRIORITY
 from queue_backend.pg_queue import PgQueueClient, QueueMessage
 from queue_backend.pg_queue.client import _SEND_RETRY_BACKOFF_SECONDS
 from queue_backend.pg_queue.connection import create_pg_connection
-from queue_backend.pg_queue.reaper import rearm_expired_claims
+from queue_backend.pg_queue.reaper import promote_due_scheduled, rearm_expired_claims
 from queue_backend.pg_queue.schema import qualified
+from unstract.core.data_models import QueueMessageState
 
 # --- Unit: SQL shape against a mocked connection ---
 
@@ -66,6 +67,19 @@ class TestPgQueueClientUnit:
         assert params[2] == "org-9"
         assert '"a": 1' in params[1]  # message JSON-serialised
         conn.commit.assert_called_once()
+
+    def test_send_sanitises_the_message_before_the_jsonb_cast(self):
+        # Gating-lane cover for the enqueue sink (UN-4126). The DB round-trip
+        # lives in `integration-workers`, which is `optional: true` and cannot
+        # turn CI red — so assert the encoder contract here, where it can:
+        # a NUL that reaches `%s::jsonb` fails the INSERT, and on the
+        # self-chained callback path that failure is swallowed and the user is
+        # told their completed extraction failed.
+        conn, cur = _mock_conn(fetchone=(1,))
+        PgQueueClient(conn=conn).send("q1", {"args": [{"n": "POZF\x00BBOK"}]})
+        _, params = cur.execute.call_args.args
+        assert "\\u0000" not in params[1]
+        assert "POZFBBOK" in params[1]
 
     def test_send_coerces_missing_org_to_empty_string(self):
         # org_id column is non-null (Django S6553) — None must become "".
@@ -523,6 +537,24 @@ class TestPgQueueClientIntegration:
         assert client.delete(msg_id) is True
         assert client.read(queue_name, vt_seconds=30, qty=10) == []  # gone
 
+    def test_send_repairs_a_nul_instead_of_failing_the_enqueue(
+        self, pg_conn, queue_name
+    ):
+        # UN-4126: a self-chained continuation prepends the EXECUTOR RESULT as
+        # the callback's first arg, so the payload that carried a NUL in the
+        # blocking-RPC path also travels through send(). jsonb refuses it, and
+        # _chain_continuation never raises — so the enqueue used to fail
+        # silently, losing the callback and falling back to on_error, i.e.
+        # reporting a failure for work that had succeeded. The message must
+        # land, with the NUL gone.
+        client = PgQueueClient(conn=pg_conn)
+        msg_id = client.send(
+            queue_name, {"args": [{"output": {"invoice_number": "POZF\x00BBOK"}}]}
+        )
+        msgs = client.read(queue_name, vt_seconds=30, qty=10)
+        assert [m.msg_id for m in msgs] == [msg_id]
+        assert msgs[0].message["args"][0]["output"]["invoice_number"] == "POZFBBOK"
+
     def test_read_hides_message_for_vt(self, pg_conn, queue_name):
         client = PgQueueClient(conn=pg_conn)
         client.send(queue_name, {"n": 1})
@@ -669,6 +701,82 @@ class TestPgQueueClientIntegration:
         assert len(claimed) == 1
         assert rearm_expired_claims(pg_conn) == 0  # vt not expired → untouched
         assert client.read(queue_name, vt_seconds=30, qty=10) == []  # still claimed
+
+    def _schedule(self, pg_conn, queue_name, seconds_from_now):
+        """Insert a deferred row the way the backend producer writes one."""
+        state = QueueMessageState.SCHEDULED.value
+        with pg_conn.cursor() as cur:
+            cur.execute(
+                f"INSERT INTO {qualified('pg_queue_message')} "
+                "(queue_name, message, org_id, priority, enqueued_at, vt, read_ct, "
+                " state, available_at) "
+                "VALUES (%s, %s::jsonb, '', 5, now(), now(), 0, %s, "
+                "        now() + make_interval(secs => %s)) "
+                "RETURNING msg_id",
+                (queue_name, '{"n": 1}', state, seconds_from_now),
+            )
+            msg_id = cur.fetchone()[0]
+        pg_conn.commit()
+        return msg_id
+
+    def test_scheduled_row_is_invisible_to_the_claim(self, pg_conn, queue_name):
+        # The core delayed-visibility guarantee (UN-3843): a not-yet-due row must
+        # never be handed to a consumer. It is enforced structurally — 'scheduled'
+        # is absent from the claim's partial index — not by a time predicate.
+        client = PgQueueClient(conn=pg_conn)
+        self._schedule(pg_conn, queue_name, 3600)
+        assert client.read(queue_name, vt_seconds=30, qty=10) == []
+
+    def test_promotion_makes_a_due_row_claimable(self, pg_conn, queue_name):
+        # ...and the reaper sweep is what releases it. Negative offset = already due.
+        client = PgQueueClient(conn=pg_conn)
+        msg_id = self._schedule(pg_conn, queue_name, -1)
+        assert client.read(queue_name, vt_seconds=30, qty=10) == []  # still deferred
+        assert promote_due_scheduled(pg_conn) == 1
+        claimed = client.read(queue_name, vt_seconds=30, qty=10)
+        assert [m.msg_id for m in claimed] == [msg_id]
+
+    def test_promotion_leaves_not_yet_due_rows_alone(self, pg_conn, queue_name):
+        # The sweep must not release early — "not before available_at" is the whole
+        # contract. A bug here fires a staggered send all at once.
+        self._schedule(pg_conn, queue_name, 3600)
+        assert promote_due_scheduled(pg_conn) == 0
+        assert PgQueueClient(conn=pg_conn).read(queue_name, vt_seconds=30, qty=10) == []
+
+    def test_promotion_is_idempotent(self, pg_conn, queue_name):
+        # A promoted row leaves the predicate, so a second tick is a no-op rather
+        # than re-arming an already-claimed message back to 'ready' (double-run).
+        client = PgQueueClient(conn=pg_conn)
+        self._schedule(pg_conn, queue_name, -1)
+        assert promote_due_scheduled(pg_conn) == 1
+        assert promote_due_scheduled(pg_conn) == 0
+        client.read(queue_name, vt_seconds=30, qty=10)  # now claimed
+        assert promote_due_scheduled(pg_conn) == 0  # claimed rows are not re-promoted
+
+    def test_rearm_does_not_touch_scheduled_rows(self, pg_conn, queue_name):
+        # The two sweeps share a table and both write state='ready'; re-arm keys on
+        # 'claimed' only, so a deferred row can't be released by the crash path.
+        self._schedule(pg_conn, queue_name, 3600)
+        assert rearm_expired_claims(pg_conn) == 0
+        assert PgQueueClient(conn=pg_conn).read(queue_name, vt_seconds=30, qty=10) == []
+
+    def test_default_available_at_keeps_the_raw_insert_working(self, pg_conn, queue_name):
+        # Deploy-safety guard: the workers' enqueue SQL does not mention
+        # available_at, so the column MUST keep a DB-level default (migration 0002
+        # re-adds the one Django's AddField drops). Without it every worker enqueue
+        # fails with a not-null violation, in any deploy order.
+        client = PgQueueClient(conn=pg_conn)
+        msg_id = client.send(queue_name, {"n": 1})
+        with pg_conn.cursor() as cur:
+            cur.execute(
+                f"SELECT available_at, state FROM {qualified('pg_queue_message')} "
+                "WHERE msg_id = %s",
+                (msg_id,),
+            )
+            available_at, state = cur.fetchone()
+        assert state == QueueMessageState.READY.value
+        assert available_at is not None
+        assert client.read(queue_name, vt_seconds=30, qty=10)  # immediately claimable
 
     def test_state_check_constraint_matches_enum(self, pg_conn, queue_name):
         # Drift guard (mirrors test_db_check_constraint_matches_fairness_bounds):

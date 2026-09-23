@@ -1,5 +1,6 @@
 import logging
 
+from django.core.exceptions import ValidationError
 from django.utils import timezone
 
 from pipeline_v2.exceptions import InactivePipelineError
@@ -44,10 +45,51 @@ class PipelineProcessor:
 
     @classmethod
     def get_active_pipeline(cls, pipeline_id: str) -> Pipeline | None:
-        """Retrieves a list of active pipelines."""
+        """Retrieve a pipeline, requiring it to be active.
+
+        Raises ``InactivePipelineError`` (422) when the row exists but is
+        paused; use :meth:`get_pipeline_by_id` when merely identifying the row.
+
+        A malformed identifier is "not found", not a fault -- see
+        :meth:`get_pipeline_by_id` for why ``ValidationError`` is caught here.
+        This path is reached *unauthenticated*: the public execution endpoint
+        looks the pipeline up before validating the API key, so letting it
+        escape turns any non-UUID path segment into a 500.
+        """
         try:
             return cls.fetch_pipeline(pipeline_id, check_active=True)
         except Pipeline.DoesNotExist:
+            return None
+        except ValidationError:
+            logger.debug("Malformed pipeline identifier: %s", pipeline_id)
+            return None
+
+    @classmethod
+    def get_pipeline_by_id(cls, pipeline_id: str) -> Pipeline | None:
+        """Retrieve a pipeline regardless of whether it is currently active.
+
+        The active/inactive distinction matters to callers that are about to
+        *run* something. Callers that only need to identify the row -- to check
+        ownership, say -- must not be forced through ``get_active_pipeline``,
+        which raises ``InactivePipelineError`` (422) and logs at ERROR for what
+        is an ordinary request against a paused pipeline.
+
+        A malformed identifier is "not found", not a fault: ``pk`` is a UUID
+        column, so a non-UUID string raises ``ValidationError`` out of
+        ``to_python`` rather than ``DoesNotExist``. Callers reach this with
+        unvalidated caller input (path segments are ``<str:>``, and request
+        bodies are read before the serializer runs), so letting that escape
+        turns ordinary client garbage into a 500.
+        """
+        try:
+            return cls.fetch_pipeline(pipeline_id, check_active=False)
+        except Pipeline.DoesNotExist:
+            return None
+        except ValidationError:
+            # Logged so a malformed identifier stays distinguishable from an
+            # absent row: both answer 404, and without this the difference is
+            # invisible when triaging.
+            logger.debug("Malformed pipeline identifier: %s", pipeline_id)
             return None
 
     @staticmethod

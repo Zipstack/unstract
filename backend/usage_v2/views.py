@@ -6,10 +6,10 @@ from permissions.permission import IsOrganizationMember
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import ValidationError
-from rest_framework.filters import OrderingFilter
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from utils.date import DateTimeProcessor
+from utils.filters.ordering_filter import DeterministicOrderingFilter
 from utils.pagination import CustomPagination
 from utils.user_context import UserContext
 
@@ -29,7 +29,7 @@ class UsageView(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, IsOrganizationMember]
     serializer_class = UsageSerializer
     pagination_class = CustomPagination
-    filter_backends = [DjangoFilterBackend, OrderingFilter]
+    filter_backends = [DjangoFilterBackend, DeterministicOrderingFilter]
     filterset_class = UsageFilter
     ordering_fields = ["created_at"]
 
