@@ -49,6 +49,11 @@ class Env:
     REDIS_SSL = "REDIS_SSL"
     REDIS_SSL_CERT_REQS = "REDIS_SSL_CERT_REQS"
     REDIS_SSL_CA_CERTS = "REDIS_SSL_CA_CERTS"
+    # Forwarded as a PATH, and nothing mounts a CA into the sidecar: only the
+    # shared logs volume is. It therefore works only for an image that bakes the
+    # CA in at this path — otherwise load_verify_locations() raises on a file
+    # that is not there. Kept forwarded so the baked-in case is configurable;
+    # the caveat is spelled out in runner/sample.env.
     REDIS_URL = "REDIS_URL"
     # Read by _resolve_health_check_interval in this same client, so the
     # documented "set it to 0 to restore the old behaviour" lever has to reach

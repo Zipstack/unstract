@@ -55,6 +55,21 @@ REDIS_SSL_CA_CERTS=/certs/ca.crt
 CACHE_REDIS_URL=rediss://:devpassword@unstract-redis-managed:6380/1?ssl_cert_reqs=required
 ```
 
+The `/1` matters, and so does its partner. The workers write `file_active:*`
+through the `CACHE_REDIS_` client, and the BACKEND reads and clears those keys
+using `FILE_ACTIVE_CACHE_REDIS_DB` — which defaults to `0`. Leave it at the
+default beside the `/1` above and the two sit on different databases: active-file
+dedup finds nothing, every file is reprocessed as new, and nothing errors. That is
+the failure `workers/sample.env` warns about, so add this to `backend/.env`:
+
+```bash
+FILE_ACTIVE_CACHE_REDIS_DB=1
+```
+
+(Or put the cache on `/0` and leave both at the default. Either is fine; only the
+mismatch is not, and this recipe deliberately keeps them apart so the two-database
+layout is exercised.)
+
 Those containers need the CA mounted. Add to your `docker/compose.override.yaml`:
 
 ```yaml

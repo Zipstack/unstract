@@ -210,11 +210,23 @@ class TestUrlMode:
         assert _kwargs(create_redis_client(env_prefix="CACHE_REDIS_"))["db"] == 1
         assert _kwargs(create_redis_client())["db"] == 0
 
-    def test_an_explicit_prefix_url_keeps_its_own_db(self, monkeypatch):
-        """A URL written FOR this prefix names its db deliberately."""
+    def test_an_explicit_db_beats_even_this_prefixs_own_url(self, monkeypatch):
+        """Changed deliberately: {prefix}DB wins over ANY url's path.
+
+        This used to assert 3 — a URL written for this prefix kept its own db,
+        while an INHERITED url lost to {prefix}DB. Two rules for one question, and
+        no way to state either without naming which url it came from. The uniform
+        rule is: a url supplies host/port/credentials, {prefix}DB supplies the
+        database when set. An operator who wants the url's db simply leaves
+        {prefix}DB unset, which is covered by the case above.
+        """
         monkeypatch.setenv("REDIS_URL", "rediss://cache.example:6380/0")
         monkeypatch.setenv("CACHE_REDIS_URL", "rediss://cache.example:6380/3")
         monkeypatch.setenv("CACHE_REDIS_DB", "1")
+        assert _kwargs(create_redis_client(env_prefix="CACHE_REDIS_"))["db"] == 1
+
+    def test_a_prefix_url_path_applies_when_no_db_is_set(self, monkeypatch):
+        monkeypatch.setenv("CACHE_REDIS_URL", "rediss://cache.example:6380/3")
         assert _kwargs(create_redis_client(env_prefix="CACHE_REDIS_"))["db"] == 3
 
     def test_explicit_argument_still_wins(self, monkeypatch):
@@ -439,3 +451,39 @@ class TestSentinelTls:
             master.connection_pool.connection_class.__name__
             == "SentinelManagedConnection"
         )
+
+
+class TestDatabaseRule:
+    """A URL supplies host/port/credentials; the db is {prefix}DB if explicitly
+    set, else the URL's path, else 0.
+
+    The two halves used to disagree: an INHERITED generic URL honoured the
+    prefix's db, while a prefix's OWN url did not — an explicit REDIS_DB beside
+    REDIS_URL was dropped, and beside a URL with no path the db came out None.
+    """
+
+    def test_url_path_applies_when_no_db_is_set(self, monkeypatch):
+        monkeypatch.setenv("REDIS_URL", "redis://h:6379/2")
+        assert _kwargs(create_redis_client())["db"] == 2
+
+    def test_an_explicit_db_beats_the_url_path(self, monkeypatch):
+        monkeypatch.setenv("REDIS_URL", "redis://h:6379/2")
+        monkeypatch.setenv("REDIS_DB", "3")
+        assert _kwargs(create_redis_client())["db"] == 3
+
+    def test_an_explicit_db_applies_to_a_pathless_url(self, monkeypatch):
+        """This used to yield db=None — neither the env nor a sane default."""
+        monkeypatch.setenv("REDIS_URL", "redis://h:6379")
+        monkeypatch.setenv("REDIS_DB", "3")
+        assert _kwargs(create_redis_client())["db"] == 3
+
+    def test_a_prefix_db_survives_an_inherited_url(self, monkeypatch):
+        """The chart's shape: one REDIS_URL, CACHE_REDIS_DB=1 beside it."""
+        monkeypatch.setenv("REDIS_URL", "redis://h:6379/0")
+        monkeypatch.setenv("CACHE_REDIS_DB", "1")
+        assert _kwargs(create_redis_client(env_prefix="CACHE_REDIS_"))["db"] == 1
+
+    def test_an_explicit_argument_still_wins(self, monkeypatch):
+        monkeypatch.setenv("REDIS_URL", "redis://h:6379/2")
+        monkeypatch.setenv("REDIS_DB", "3")
+        assert _kwargs(create_redis_client(db=7))["db"] == 7

@@ -8,7 +8,11 @@ Mode is detected from {prefix}SENTINEL_MODE env var (LLMW pattern).
 
 A full URL in {prefix}URL (falling back to REDIS_URL) overrides the discrete
 host/port/credential vars, and `rediss://` turns on TLS by itself — the scheme is
-the switch, so there is no separate "use TLS" flag to forget. Discrete vars remain
+the switch, so there is no separate "use TLS" flag to forget.
+
+Precedence, in one sentence: a URL supplies host, port and credentials; the
+database is {prefix}DB when explicitly set, otherwise the URL's path, otherwise 0.
+An explicit `db=` argument beats all of them. Discrete vars remain
 the default and primary path: they need no URL-encoding of passwords, and they are
 what the Helm chart and every sample.env configure.
 In Sentinel mode, REDIS_HOST/REDIS_PORT point to the K8s Sentinel service endpoint.
@@ -263,15 +267,20 @@ def _resolve_redis_env(
             env_prefix,
             env_prefix,
         )
-    # A prefix that INHERITS the generic REDIS_URL must still honour its own
-    # {prefix}DB. The Helm chart sets CACHE_REDIS_DB=1 while configuring one
-    # REDIS_URL for the platform; without this the worker cache would silently
-    # follow the URL's db instead, landing on db 0 beside everything else. An
-    # explicit {prefix}URL is left alone — it names its own db deliberately.
-    own_url = os.getenv(f"{env_prefix}URL", "").strip()
-    own_db = os.getenv(f"{env_prefix}DB", "").strip()
-    if result["url"] and not own_url and own_db and db_override is None:
-        result["db_from_prefix_env"] = int(own_db)
+    # THE DATABASE RULE, in one sentence: a URL supplies host, port and
+    # credentials; the database is {prefix}DB when that is explicitly set,
+    # otherwise the URL's path, otherwise 0.
+    #
+    # It has to be stated because redis-py's own rule is different — the URL path
+    # wins and a db= kwarg is ignored — and because the two halves used to
+    # disagree with each other. An INHERITED generic URL honoured the prefix's db
+    # (the chart sets one REDIS_URL and CACHE_REDIS_DB=1, and without this the
+    # worker cache silently joined everything else on db 0), while a prefix's OWN
+    # url did not: an explicit REDIS_DB beside REDIS_URL was dropped, and beside a
+    # URL carrying no path at all the db came out as None rather than 0.
+    explicit_db = os.getenv(f"{env_prefix}DB", os.getenv("REDIS_DB", "")).strip()
+    if result["url"] and explicit_db and db_override is None:
+        result["db_from_prefix_env"] = int(explicit_db)
     # Read OUTSIDE the `if ssl` below: URL mode carries TLS in the scheme and never
     # sets {prefix}SSL, so gating the CA on that flag left `rediss://` verifying
     # against the system trust store alone — which fails for exactly the servers
