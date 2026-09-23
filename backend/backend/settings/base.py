@@ -24,6 +24,7 @@ from utils.cors_origin import normalize_web_app_origin
 from unstract.core.cache.redis_client import (
     build_socketio_redis_url,
     ensure_tls_query_params,
+    parse_db,
     resolve_ssl_cert_reqs,
     resolve_ssl_check_hostname,
     set_url_db_path,
@@ -241,9 +242,14 @@ FILE_EXECUTION_TRACKER_COMPLETED_TTL_IN_SECOND = int(
     os.environ.get("FILE_EXECUTION_TRACKER_COMPLETED_TTL_IN_SECOND", 60 * 10)
 )  # 10 minutes
 
-FILE_ACTIVE_CACHE_REDIS_DB = int(
-    os.environ.get("FILE_ACTIVE_CACHE_REDIS_DB", 0)
-)  # Redis DB for active file cache tracking
+# Redis DB for active file cache tracking. Parsed the same way every other
+# database var is (UN-4123): a blank value is this repo's "leave the default",
+# not a crash, and backend/sample.env ships this variable — so an operator
+# collapsing the four-key database map onto a db-0-only endpoint is exactly who
+# would hit `int("")` here.
+FILE_ACTIVE_CACHE_REDIS_DB = parse_db(
+    os.environ.get("FILE_ACTIVE_CACHE_REDIS_DB", ""), "FILE_ACTIVE_CACHE_"
+)
 
 INSTANT_WF_POLLING_TIMEOUT = int(
     os.environ.get("INSTANT_WF_POLLING_TIMEOUT", "300")
@@ -552,7 +558,7 @@ if REDIS_SENTINEL_MODE:
     if REDIS_USER:
         _sentinel_kwargs["username"] = REDIS_USER
 
-    _redis_db = REDIS_DB or "0"
+    _redis_db = parse_db(REDIS_DB, "REDIS_")
 
     # SocketIO connection manager (Kombu Sentinel URL format)
     _cred_prefix = ""
@@ -577,7 +583,7 @@ if REDIS_SENTINEL_MODE:
                 "CONNECTION_FACTORY": "django_redis.pool.SentinelConnectionFactory",
                 "SENTINELS": [(REDIS_HOST, int(REDIS_PORT))],
                 "SENTINEL_KWARGS": _sentinel_kwargs,
-                "DB": int(_redis_db),
+                "DB": _redis_db,
                 "PASSWORD": REDIS_PASSWORD,
                 "SERIALIZER": "django_redis.serializers.json.JSONSerializer",
             },
@@ -588,7 +594,7 @@ else:
     # Credentials for the Socket.IO URL are assembled inside
     # build_socketio_redis_url(); only the cache LOCATION is built here.
     _scheme = "rediss" if REDIS_SSL else "redis"
-    _cache_db = int(REDIS_DB) if REDIS_DB else 0
+    _cache_db = parse_db(REDIS_DB, "REDIS_")
 
     # Both django-redis (via redis-py) and kombu read TLS settings out of the URL's
     # query string, so one string configures both — verified against the pinned

@@ -155,8 +155,13 @@ def _parse_bool(raw: str, default: bool, name: str) -> bool:
     return default
 
 
-def _parse_db(raw: str, env_prefix: str) -> int:
+def parse_db(raw: str, env_prefix: str) -> int:
     """Parse a database index; blank means UNSET, unparseable warns and uses 0.
+
+    Public because the backend reads database vars of its own — the cache db, the
+    Sentinel branch's db, and FILE_ACTIVE_CACHE_REDIS_DB. Left to `int()` there,
+    the two halves disagree on a malformed value: the workers warn and continue on
+    db 0 while the backend refuses to start.
 
     A bare `int(os.getenv(...))` raised `ValueError: invalid literal for int()
     with base 10: ''` on `REDIS_DB=` — the blank-means-unset spelling used
@@ -438,7 +443,7 @@ def _resolve_redis_env(
     db = (
         db_override
         if db_override is not None
-        else _parse_db(prefixed_db or generic_db, env_prefix)
+        else parse_db(prefixed_db or generic_db, env_prefix)
     )
     # Falls back to REDIS_SSL: before UN-4123 each prefix needed its own *_SSL, so
     # turning TLS on platform-wide meant remembering CACHE_REDIS_SSL and
@@ -495,7 +500,7 @@ def _resolve_redis_env(
     # levels are the same variable, so this reads identically there.
     explicit_db = prefixed_db if own_url else (prefixed_db or generic_db)
     if result["url"] and explicit_db and db_override is None:
-        result["db_from_prefix_env"] = _parse_db(explicit_db, env_prefix)
+        result["db_from_prefix_env"] = parse_db(explicit_db, env_prefix)
     # Read OUTSIDE the `if ssl` below: URL mode carries TLS in the scheme and never
     # sets {prefix}SSL, so gating the CA on that flag left `rediss://` verifying
     # against the system trust store alone — which fails for exactly the servers

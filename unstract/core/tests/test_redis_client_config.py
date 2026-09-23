@@ -575,19 +575,49 @@ class TestContainerAllowlists:
             "them, so the setting would apply everywhere except this container."
         )
 
+    # The exact region of each file that copies constants into the child
+    # environment. Searching the WHOLE file instead would accept any occurrence —
+    # a comment, a docstring, a different tuple — which is the same
+    # "present somewhere != present where it matters" weakness this class was
+    # rewritten to remove, one level down. Mutation-proved: with a whole-file
+    # search, COMMENTING OUT a tuple entry survived.
+    _FORWARD_REGIONS = {
+        "sidecar": ("for _redis_env in (", ")"),
+        "tool": ("for name in (", ")"),
+    }
+
+    @classmethod
+    def _forwarding_tuple(cls, which: str) -> str:
+        """The tuple's LIVE lines — commented-out entries do not forward anything."""
+        path = cls._SIDECAR_FORWARD if which == "sidecar" else cls._TOOL_FORWARD
+        source = path.read_text()
+        opener, closer = cls._FORWARD_REGIONS[which]
+        start = source.index(opener)
+        region = source[start : source.index(closer, start)]
+        return "\n".join(
+            line for line in region.splitlines() if not line.strip().startswith("#")
+        )
+
+    @pytest.mark.parametrize("which", ["sidecar", "tool"])
+    def test_the_forwarding_tuple_is_locatable(self, which):
+        """If the anchor stops matching, every case below would search an empty
+        string and fail loudly — but say so here, where the cause is obvious.
+        """
+        region = self._forwarding_tuple(which)
+        assert "REDIS_" in region, region
+
     @pytest.mark.parametrize("which", ["sidecar", "tool"])
     def test_every_declared_variable_is_actually_copied_into_the_container(self, which):
         """The tuple, not the constants file, is what reaches the child process."""
-        path = self._SIDECAR_FORWARD if which == "sidecar" else self._TOOL_FORWARD
         alias = "Env." if which == "sidecar" else "ToolRV."
-        source = path.read_text()
+        region = self._forwarding_tuple(which)
         missing = [
-            name for name in sorted(self._shared()) if f"{alias}{name}," not in source
+            name for name in sorted(self._shared()) if f"{alias}{name}," not in region
         ]
         assert not missing, (
-            f"{path.name} declares but never forwards {missing}: the constant "
-            "exists and the loop that copies it into the container skips it, so "
-            "the variable silently stops at the parent process."
+            f"{which} declares but never forwards {missing}: the constant exists "
+            "and the loop that copies it into the container skips it (or has it "
+            "commented out), so the variable silently stops at the parent process."
         )
 
     def test_the_tool_list_also_carries_the_sdk1_metrics_database(self):
@@ -660,10 +690,16 @@ class TestBlankAndMalformedTlsValues:
     """
 
     @pytest.mark.parametrize("raw", ["", "   "])
-    def test_blank_check_hostname_keeps_the_secure_default(self, monkeypatch, raw):
+    def test_blank_check_hostname_keeps_the_secure_default(
+        self, monkeypatch, raw, caplog
+    ):
         monkeypatch.setenv("REDIS_SSL", "true")
         monkeypatch.setenv("REDIS_SSL_CHECK_HOSTNAME", raw)
         assert _resolve_redis_env("REDIS_")["ssl_check_hostname"] is True
+        # Blank is the CONVENTION, not a malformed value. Without this the test
+        # cannot tell "unset" from "unparseable, warned, fell back" — both give
+        # True, but only one of them is silent.
+        assert "REDIS_SSL_CHECK_HOSTNAME" not in caplog.text
 
     @pytest.mark.parametrize("raw", ["1", "yes", "TRUE", "On"])
     def test_other_truthy_spellings_are_accepted(self, monkeypatch, raw):
@@ -684,7 +720,7 @@ class TestBlankAndMalformedTlsValues:
         assert "REDIS_SSL_CHECK_HOSTNAME" in caplog.text
 
     @pytest.mark.parametrize("raw", ["", "   "])
-    def test_blank_cert_reqs_falls_back_to_required(self, monkeypatch, raw):
+    def test_blank_cert_reqs_falls_back_to_required(self, monkeypatch, raw, caplog):
         """Blank used to resolve THREE ways: RedisError on the discrete client,
         a silent CERT_NONE on the kombu URL, and "required" on the URL path.
         """
@@ -692,6 +728,7 @@ class TestBlankAndMalformedTlsValues:
         monkeypatch.setenv("REDIS_SSL_CERT_REQS", raw)
         assert _resolve_redis_env("REDIS_")["ssl_cert_reqs"] == "required"
         assert "ssl_cert_reqs=required" in build_socketio_redis_url()
+        assert "REDIS_SSL_CERT_REQS" not in caplog.text
 
     @pytest.mark.parametrize("raw", ["None", "none ", "REQUIRED"])
     def test_cert_reqs_is_normalised(self, monkeypatch, raw):
@@ -709,12 +746,13 @@ class TestBlankAndMalformedTlsValues:
         assert "REDIS_SSL_CERT_REQS" in caplog.text
 
     @pytest.mark.parametrize("raw", ["", "   "])
-    def test_a_blank_db_does_not_raise(self, monkeypatch, raw):
+    def test_a_blank_db_does_not_raise(self, monkeypatch, raw, caplog):
         """int("") used to escape create_redis_client as a bare ValueError that
         named neither the variable nor the prefix.
         """
         monkeypatch.setenv("REDIS_DB", raw)
         assert _kwargs(create_redis_client())["db"] == 0
+        assert "REDIS_DB" not in caplog.text
 
     def test_an_unparseable_db_warns_rather_than_raising(self, monkeypatch, caplog):
         monkeypatch.setenv("REDIS_DB", "two")
@@ -814,7 +852,60 @@ class TestGenericDbDoesNotCrossIntoAPrefixUrl:
         assert _kwargs(create_redis_client("CACHE_REDIS_"))["db"] == 1
 
     def test_an_inherited_url_still_honours_the_generic_db(self, monkeypatch):
-        """For prefix REDIS_ the two levels ARE the same variable."""
+        """A prefix with NEITHER its own URL nor its own DB inherits both generics.
+
+        (The REDIS_-prefix case — where the two levels are literally the same
+        variable — is covered by TestDatabaseRule.)
+        """
         monkeypatch.setenv("REDIS_URL", "redis://h:6379/0")
         monkeypatch.setenv("REDIS_DB", "3")
         assert _kwargs(create_redis_client("CACHE_REDIS_"))["db"] == 3
+
+
+class TestUrlCertReqsParsing:
+    """`url_cert_reqs` is what decides whether hostname checking is suppressed.
+
+    Each of these survived the suite before it was pinned.
+    """
+
+    def test_it_takes_the_first_value_on_a_repeat(self, monkeypatch):
+        """Matching redis-py's parse_url, which does `unquote(value[0])`.
+
+        Taking the last instead would disagree with the connection the URL
+        actually builds — the suppression decision and the wire would differ.
+        """
+        monkeypatch.setenv(
+            "REDIS_URL", "rediss://h:6380/0?ssl_cert_reqs=none&ssl_cert_reqs=required"
+        )
+        assert _resolve_redis_env("REDIS_")["ssl_check_hostname"] is False
+
+    @pytest.mark.parametrize("raw", ["NONE", "None", "%20none%20"])
+    def test_it_normalises_case_and_whitespace(self, monkeypatch, raw):
+        monkeypatch.setenv("REDIS_URL", f"rediss://h:6380/0?ssl_cert_reqs={raw}")
+        assert _resolve_redis_env("REDIS_")["ssl_check_hostname"] is False
+
+    def test_a_url_without_cert_reqs_leaves_the_env_in_charge(self, monkeypatch):
+        monkeypatch.setenv("REDIS_URL", "rediss://h:6380/0")
+        monkeypatch.setenv("REDIS_SSL_CERT_REQS", "none")
+        assert _resolve_redis_env("REDIS_")["ssl_check_hostname"] is False
+
+
+class TestDiscreteModeStillInheritsTheGenericDb:
+    """No URL anywhere: a prefixed client falls back to REDIS_DB as it always did.
+
+    The "at the URL's own level" rule narrows the fallback for a prefix that
+    brought its OWN url. It must not narrow the plain discrete path, where there
+    is no URL to own anything — that would silently move every prefixed client
+    onto db 0.
+    """
+
+    def test_a_prefix_without_its_own_db_uses_the_generic_one(self, monkeypatch):
+        monkeypatch.setenv("REDIS_HOST", "h")
+        monkeypatch.setenv("REDIS_DB", "3")
+        assert _kwargs(create_redis_client("CACHE_REDIS_"))["db"] == 3
+
+    def test_the_prefixs_own_db_still_wins(self, monkeypatch):
+        monkeypatch.setenv("REDIS_HOST", "h")
+        monkeypatch.setenv("REDIS_DB", "3")
+        monkeypatch.setenv("CACHE_REDIS_DB", "1")
+        assert _kwargs(create_redis_client("CACHE_REDIS_"))["db"] == 1

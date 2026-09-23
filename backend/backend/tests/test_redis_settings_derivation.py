@@ -358,3 +358,83 @@ class TestTheRelocationWarning:
             _derive(REDIS_URL="redis://h:6379/3")
             _derive(REDIS_HOST="h")
         assert "moving" not in caplog.text
+
+
+class TestTheBackendUsesTheSharedParsers:
+    """The backend must not re-implement what unstract.core already resolves.
+
+    Every one of these survived the suite until it was pinned, and each is a case
+    where the backend and create_redis_client would give different answers for the
+    same environment — the divergence class this whole change exists to remove.
+    """
+
+    def test_cert_reqs_is_normalised(self):
+        """`REQUIRED` / ` none ` reached redis-py verbatim before."""
+        location = _derive(REDIS_URL="rediss://h:6380/0", REDIS_SSL_CERT_REQS="NONE")[
+            "CACHES"
+        ]["default"]["LOCATION"]
+        assert "ssl_cert_reqs=none" in location
+        # ...and the normalised value must still drive the suppression, or the
+        # LOCATION carries the pair ssl refuses.
+        assert "ssl_check_hostname" not in location
+
+    def test_an_invalid_cert_reqs_falls_back_rather_than_shipping_it(self):
+        location = _derive(REDIS_URL="rediss://h:6380/0", REDIS_SSL_CERT_REQS="strict")[
+            "CACHES"
+        ]["default"]["LOCATION"]
+        assert "ssl_cert_reqs=required" in location
+
+    def test_an_unparseable_redis_db_warns_instead_of_killing_the_process(self, caplog):
+        """create_redis_client warns and continues on db 0; so must this.
+
+        `int(REDIS_DB)` here meant the workers kept running while the backend
+        refused to start on the same value.
+        """
+        with caplog.at_level(logging.WARNING):
+            derived = _derive(REDIS_HOST="h", REDIS_DB="one")
+        assert derived["CACHES"]["default"]["LOCATION"] == "redis://h:6379/0"
+        assert "REDIS_DB" in caplog.text
+
+    def test_a_whitespace_only_redis_db_is_unset_and_SILENT(self, caplog):
+        """This is the case that pins parse_db's own .strip().
+
+        _resolve_redis_env strips before it calls parse_db, so through
+        create_redis_client that strip is unreachable — but this module reads
+        `os.environ.get("REDIS_DB", "")` raw, so it is the only caller where it
+        does anything. Without it a whitespace-only value is not "unset" but
+        "unparseable", and the backend warns on every boot about a variable the
+        operator left blank.
+        """
+        with caplog.at_level(logging.WARNING):
+            derived = _derive(REDIS_HOST="h", REDIS_DB="   ")
+        assert derived["CACHES"]["default"]["LOCATION"] == "redis://h:6379/0"
+        assert "REDIS_DB" not in caplog.text
+
+    def test_no_database_var_is_parsed_with_a_bare_int(self):
+        """Covers the sites the exec harness cannot reach.
+
+        FILE_ACTIVE_CACHE_REDIS_DB is defined ~350 lines above the derivation
+        block, outside both slices, so no _derive() case can observe it. A source
+        check reaches it — and reaches the other two at the same time, which is
+        the point: the defect was never one line, it was the same expression
+        repeated wherever a database var is read.
+
+        `int(os.environ.get("FILE_ACTIVE_CACHE_REDIS_DB", 0))` and
+        `int(REDIS_DB)` both raise on a blank or malformed value, taking the
+        process down at import — while create_redis_client, two imports away,
+        warns and continues on db 0 for the very same variable.
+        """
+        source = _SETTINGS.read_text()
+        offenders = [
+            line.strip()
+            for line in source.splitlines()
+            if "int(" in line
+            and "REDIS_DB" in line
+            and "parse_db" not in line
+            and not line.strip().startswith("#")
+        ]
+        assert not offenders, (
+            f"{offenders} parse a Redis database with a bare int(); use "
+            "unstract.core.cache.redis_client.parse_db so the backend and the "
+            "workers agree on a malformed value."
+        )
