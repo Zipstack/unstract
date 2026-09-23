@@ -151,6 +151,46 @@ def create_redis_client(
         )
 
 
+def ensure_tls_query_params(
+    url: str,
+    cert_reqs: str | None = None,
+    ca_certs: str | None = None,
+    check_hostname: bool | None = None,
+) -> str:
+    """Add the TLS settings a `rediss://` URL is missing, leaving present ones alone.
+
+    Anything that hands a URL to a library which reads TLS ONLY from the query
+    string needs this — kombu's KombuManager and django-redis's LOCATION both do.
+    It lives here rather than at each call site because that is how the two copies
+    drifted before: one appended ssl_cert_reqs AND ssl_ca_certs, the other only
+    ssl_ca_certs, so the same endpoint got two different verification policies
+    depending on which side built the string.
+
+    A non-TLS URL is returned untouched — there is nothing to configure.
+    """
+    if not url.startswith(_TLS_SCHEME):
+        return url
+    extra: dict[str, str] = {}
+    if cert_reqs and "ssl_cert_reqs=" not in url:
+        extra["ssl_cert_reqs"] = cert_reqs
+    if (
+        check_hostname is not None
+        and "ssl_check_hostname=" not in url
+        and cert_reqs != "none"
+    ):
+        # A chain verified against a public CA says nothing about WHICH server
+        # answered unless the hostname is checked.
+        extra["ssl_check_hostname"] = str(check_hostname).lower()
+    if ca_certs and "ssl_ca_certs=" not in url:
+        extra["ssl_ca_certs"] = ca_certs
+    if not extra:
+        return url
+    separator = "&" if "?" in url else "?"
+    # safe="/" keeps a CA path readable: a slash is legal in a query value, and
+    # percent-encoding it only makes the URL harder to eyeball in a log line.
+    return url + separator + urlencode(extra, safe="/", quote_via=quote)
+
+
 def _compose_redis_url(env: dict[str, Any]) -> str:
     """Assemble a URL from the discrete vars, percent-encoding the credentials.
 
@@ -204,18 +244,12 @@ def build_socketio_redis_url(env_prefix: str = "REDIS_") -> str:
     if not url.startswith(_TLS_SCHEME):
         return url
 
-    extra = {}
-    if "ssl_cert_reqs=" not in url:
-        extra["ssl_cert_reqs"] = cert_reqs
-    if "ssl_check_hostname=" not in url and cert_reqs != "none":
-        # Same reasoning as ssl_cert_reqs: a chain verified against a public CA
-        # says nothing about WHICH server answered unless the hostname is checked.
-        extra["ssl_check_hostname"] = str(env.get("ssl_check_hostname", True)).lower()
-    if ca_certs and "ssl_ca_certs=" not in url:
-        extra["ssl_ca_certs"] = ca_certs
-    if extra:
-        separator = "&" if "?" in url else "?"
-        url = url + separator + urlencode(extra, quote_via=quote)
+    url = ensure_tls_query_params(
+        url,
+        cert_reqs=cert_reqs,
+        ca_certs=ca_certs,
+        check_hostname=env.get("ssl_check_hostname", True),
+    )
     return url
 
 

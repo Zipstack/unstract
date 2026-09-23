@@ -11,6 +11,8 @@ and writes against the wrong keyspace; an empty-string env var counts as "set" t
 None of those raise at import, so they are asserted here instead.
 """
 
+import pathlib
+
 import pytest
 import redis
 
@@ -315,7 +317,7 @@ class TestSocketIoUrl:
         monkeypatch.setenv("REDIS_HOST", "h")
         monkeypatch.setenv("REDIS_SSL", "true")
         monkeypatch.setenv("REDIS_SSL_CA_CERTS", "/etc/ssl/redis-ca.pem")
-        assert "ssl_ca_certs=%2Fetc%2Fssl%2Fredis-ca.pem" in build_socketio_redis_url()
+        assert "ssl_ca_certs=/etc/ssl/redis-ca.pem" in build_socketio_redis_url()
 
     def test_url_mode_is_used_as_given(self, monkeypatch):
         monkeypatch.setenv("REDIS_HOST", "in-cluster")
@@ -337,7 +339,7 @@ class TestSocketIoUrl:
     def test_ca_is_added_to_a_tls_url(self, monkeypatch):
         monkeypatch.setenv("REDIS_URL", "rediss://h:6380/0?ssl_cert_reqs=required")
         monkeypatch.setenv("REDIS_SSL_CA_CERTS", "/ca.pem")
-        assert "ssl_ca_certs=%2Fca.pem" in build_socketio_redis_url()
+        assert "ssl_ca_certs=/ca.pem" in build_socketio_redis_url()
 
     def test_a_plaintext_url_gains_no_tls_query(self, monkeypatch):
         monkeypatch.setenv("REDIS_URL", "redis://h:6379/0")
@@ -487,3 +489,50 @@ class TestDatabaseRule:
         monkeypatch.setenv("REDIS_URL", "redis://h:6379/2")
         monkeypatch.setenv("REDIS_DB", "3")
         assert _kwargs(create_redis_client(db=7))["db"] == 7
+
+
+class TestContainerAllowlists:
+    """The two hand-maintained env allowlists must carry what this module READS.
+
+    Tool containers and sidecars get a hand-picked environment, not an inherited
+    one, so a variable missing from a list applies everywhere EXCEPT the processes
+    doing the work — silently, because the default is a working value. Both
+    omissions found in review (REDIS_HEALTH_CHECK_INTERVAL from both lists) were
+    of exactly this shape, and nothing kept the two lists in step.
+
+    Read as text rather than imported: neither package is installable in this
+    environment, and the question is what the source declares.
+    """
+
+    _ROOT = pathlib.Path(__file__).resolve().parents[3]
+    _SIDECAR = _ROOT / "runner/src/unstract/runner/constants.py"
+    _TOOL = (
+        _ROOT
+        / "unstract/workflow-execution/src/unstract/workflow_execution/constants.py"
+    )
+    # Read by create_redis_client in BOTH processes. METRICS_REDIS_DB is
+    # deliberately absent from the sidecar: it publishes logs and never imports
+    # sdk1, so its allowlist is checked against this set alone.
+    _SHARED = {
+        "REDIS_DB",
+        "REDIS_SSL",
+        "REDIS_SSL_CERT_REQS",
+        "REDIS_SSL_CA_CERTS",
+        "REDIS_URL",
+        "REDIS_HEALTH_CHECK_INTERVAL",
+    }
+
+    @pytest.mark.parametrize("which", ["sidecar", "tool"])
+    def test_every_variable_this_module_reads_is_forwarded(self, which):
+        path = self._SIDECAR if which == "sidecar" else self._TOOL
+        declared = path.read_text()
+        missing = [name for name in sorted(self._SHARED) if f'"{name}"' not in declared]
+        assert not missing, (
+            f"{path.name} does not forward {missing}; create_redis_client reads "
+            "them, so the setting would apply everywhere except this container."
+        )
+
+    def test_the_tool_list_also_carries_the_sdk1_metrics_database(self):
+        """sdk1 runs in tool containers; the sidecar never imports it."""
+        assert '"METRICS_REDIS_DB"' in self._TOOL.read_text()
+        assert '"METRICS_REDIS_DB"' not in self._SIDECAR.read_text()

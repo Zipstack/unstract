@@ -46,7 +46,10 @@ def _derive(**env: str) -> dict:
         # The Socket.IO URL is built by unstract.core so the backend and the
         # log-consumer worker cannot drift; its own cases live in
         # unstract/core/tests/test_redis_client_config.py::TestSocketIoUrl.
-        "from unstract.core.cache.redis_client import build_socketio_redis_url\n"
+        "from unstract.core.cache.redis_client import (\n"
+        "    build_socketio_redis_url,\n"
+        "    ensure_tls_query_params,\n"
+        ")\n"
     ) + source[defs_start:defs_end]
     import os as _os
 

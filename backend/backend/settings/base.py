@@ -21,7 +21,10 @@ from dotenv import find_dotenv, load_dotenv
 from utils.common_utils import CommonUtils
 from utils.cors_origin import normalize_web_app_origin
 
-from unstract.core.cache.redis_client import build_socketio_redis_url
+from unstract.core.cache.redis_client import (
+    build_socketio_redis_url,
+    ensure_tls_query_params,
+)
 
 # Django 5.0+ caps URLValidator at 2048 chars. S3 pre-signed URLs signed with
 # temporary/STS credentials (carrying X-Amz-Security-Token) routinely exceed this,
@@ -583,17 +586,18 @@ else:
     # query string, so one string configures both — verified against the pinned
     # versions. The CA is appended rather than required in the URL, since it is a
     # local path rather than part of the endpoint's identity.
-    _redis_url = REDIS_URL
-    if (
-        _redis_url
-        and REDIS_SSL_CA_CERTS
-        and _redis_url.startswith("rediss://")
-        and "ssl_ca_certs=" not in _redis_url
-    ):
-        _sep = "&" if "?" in _redis_url else "?"
-        _redis_url = (
-            f"{_redis_url}{_sep}ssl_ca_certs={quote(REDIS_SSL_CA_CERTS, safe='/')}"
-        )
+    # Same helper the Socket.IO URL uses. Hand-rolling the append here is how the
+    # two copies drifted: this one added only ssl_ca_certs while unstract.core
+    # added ssl_cert_reqs as well, so one process held two verification policies
+    # for one endpoint. django-redis reads TLS from the LOCATION's query string
+    # only, exactly like kombu.
+    _redis_url = ensure_tls_query_params(
+        REDIS_URL,
+        cert_reqs=REDIS_SSL_CERT_REQS,
+        ca_certs=REDIS_SSL_CA_CERTS,
+        check_hostname=os.environ.get("REDIS_SSL_CHECK_HOSTNAME", "true").strip().lower()
+        == "true",
+    )
 
     # Built by unstract.core, which the log-consumer worker's publisher also uses.
     # Two hand-built URLs for one endpoint drift: one side would keep a hardcoded
