@@ -45,10 +45,7 @@ class WhispererEnv:
     Can be used to alter behaviour at runtime.
 
     Attributes:
-        WAIT_TIMEOUT: Timeout for the extraction in seconds. Defaults to 900s
-        MAX_RETRIES: Number of times a failed request is retried. Defaults to 3
-        RETRY_MIN_WAIT: Lower bound in seconds for the retry backoff. Defaults to 1.0
-        RETRY_MAX_WAIT: Upper bound in seconds for the retry backoff. Defaults to 60.0
+        WAIT_TIMEOUT: Timeout for the extraction in seconds. Defaults to 300s
         LOG_LEVEL: Logging level for the client library. Defaults to INFO
     """
 
