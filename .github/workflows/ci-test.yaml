@@ -97,7 +97,10 @@ jobs:
         # Pinned: this resolves at job time, so a tox release lands in CI with no
         # commit of ours. tox 4.64.0 shipped the PEP 832 `.venv` redirect and
         # broke every branch at once; bump deliberately, not by drift.
-        run: uv tool install tox==4.64.1 --with tox-uv==1.36.0
+        # --no-build: wheels only, so no sdist setup script runs at install
+        # time. The whole tree (tox, tox-uv, uv, virtualenv, ...) ships wheels,
+        # so this constrains nothing and resolves identically.
+        run: uv tool install tox==4.64.1 --with tox-uv==1.36.0 --no-build
 
       - name: Validate test manifests
         # Cheap pre-flight: catches manifest schema errors before tier runs.
@@ -178,7 +181,10 @@ jobs:
         # Pinned: this resolves at job time, so a tox release lands in CI with no
         # commit of ours. tox 4.64.0 shipped the PEP 832 `.venv` redirect and
         # broke every branch at once; bump deliberately, not by drift.
-        run: uv tool install tox==4.64.1 --with tox-uv==1.36.0
+        # --no-build: wheels only, so no sdist setup script runs at install
+        # time. The whole tree (tox, tox-uv, uv, virtualenv, ...) ships wheels,
+        # so this constrains nothing and resolves identically.
+        run: uv tool install tox==4.64.1 --with tox-uv==1.36.0 --no-build
 
       - name: Validate test manifests
         # Cheap pre-flight before the multi-minute image build.
@@ -276,7 +282,10 @@ jobs:
         # Pinned: this resolves at job time, so a tox release lands in CI with no
         # commit of ours. tox 4.64.0 shipped the PEP 832 `.venv` redirect and
         # broke every branch at once; bump deliberately, not by drift.
-        run: uv tool install tox==4.64.1 --with tox-uv==1.36.0
+        # --no-build: wheels only, so no sdist setup script runs at install
+        # time. The whole tree (tox, tox-uv, uv, virtualenv, ...) ships wheels,
+        # so this constrains nothing and resolves identically.
+        run: uv tool install tox==4.64.1 --with tox-uv==1.36.0 --no-build
 
       - name: Restore main-branch test baseline (for regression detection)
         # One unified baseline across all tiers; this job is its sole
