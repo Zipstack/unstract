@@ -146,6 +146,16 @@ class TestRetryClassification:
         assert raised is None
         assert len(client.calls) == 2
 
+    def test_retryable_then_terminal_stops_and_drops_not_raises(self):
+        # A transient 503 retries once, then a 400 on that retry is terminal --
+        # the loop must stop there (not spend the 3rd attempt) and the final
+        # classification (400 -> not retryable) decides drop-without-raising,
+        # not the classification of the earlier, already-superseded attempt.
+        client, raised, sleep = _run([_response(503), _response(400)])
+        assert raised is None
+        assert len(client.calls) == 2
+        assert sleep.call_count == 1
+
 
 class TestRequestShape:
     def test_missing_credentials_raise_before_any_post(self):

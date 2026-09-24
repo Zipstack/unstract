@@ -16,7 +16,7 @@ from unittest.mock import Mock, patch
 import pytest
 from account_v2.models import User
 from django.test import TestCase
-from permissions.roles import ResourceRole
+from prompt_studio.permission import ParentToolAccess
 from rest_framework import status
 from rest_framework.parsers import JSONParser
 from rest_framework.request import Request as DRFRequest
@@ -27,7 +27,7 @@ from workflow_manager.workflow_v2.models.workflow import Workflow
 from workflow_manager.workflow_v2.views import WorkflowViewSet
 
 from permissions.membership_serializers import AddOwnerSerializer
-from prompt_studio.permission import ParentToolAccess
+from permissions.roles import ResourceRole
 from permissions.tests.base import (
     RESOURCE_SPECS,
     CoOwnerOrgTestMixin,
@@ -386,9 +386,7 @@ class ParentToolAccessTests(CoOwnerOrgTestMixin, TestCase):
 
     def test_null_parent_falls_back_to_object_creator(self) -> None:
         # No parent tool → access derives from the object's own ``created_by``.
-        orphan = SimpleNamespace(
-            prompt_studio_tool=None, created_by_id=self.owner.pk
-        )
+        orphan = SimpleNamespace(prompt_studio_tool=None, created_by_id=self.owner.pk)
         self.assertTrue(self._perm(self.owner, orphan))
         self.assertFalse(self._perm(self.coowner, orphan))
 
@@ -673,3 +671,35 @@ class CreateEndpointGrantsCreatorOwnershipTests(CoOwnerOrgTestMixin, TestCase):
         )
         self.assertTrue(tool.is_owner(self.coowner))
         self.assertIn(tool, CustomTool.objects.for_user(self.coowner))
+
+
+class DeprecatedAxisShimTests(CoOwnerOrgTestMixin, TestCase):
+    """The temporary ``share_axes``/``snapshot_share_axes``/``diff_share_axes``
+    shim (see the block comment in ``resource_share_views.py``) -- restored
+    only so cloud's still-stale ``origin/main`` ``AgenticProjectViewSet``
+    doesn't ``AttributeError`` once this branch merges and deletes the real
+    thing on OSS main. Delete this test alongside that block, once
+    Zipstack/unstract-cloud#1698 merges.
+    """
+
+    def setUp(self) -> None:
+        self._seed_org()
+        self.workflow = Workflow.objects.create(
+            workflow_name="wf-shim", organization=self.org, created_by=self.owner
+        )
+        self.workflow.memberships.create(user=self.owner, role=ResourceRole.OWNER)
+
+    def test_snapshot_then_diff_reproduces_the_original_always_empty_shape(self) -> None:
+        # Matches the pre-removal contract exactly: the PATCH path this shim
+        # exists for has no way to actually change shared_users/shared_groups
+        # (see 999e443b4), so the diff for either axis is always empty.
+        view = WorkflowViewSet()
+        before = view.snapshot_share_axes(self.workflow)
+        self.assertEqual(before, {"shared_users": set(), "shared_groups": set()})
+        diff = view.diff_share_axes(
+            self.workflow, before, {"shared_users": [], "shared_groups": []}
+        )
+        self.assertEqual(set(diff), {"shared_users", "shared_groups"})
+        for axis_diff in diff.values():
+            self.assertEqual(axis_diff.added, set())
+            self.assertEqual(axis_diff.removed, set())

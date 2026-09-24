@@ -383,18 +383,27 @@ class GroupViewSetServiceAccountTests(GroupSharingTestBase):
         # self.member is already in self.group (see GroupSharingTestBase);
         # only self.outsider is new. The response, and the notification it
         # feeds, must both narrow to the actual insert, not the request.
-        response = self._call(
-            {"post": "members"},
-            "post",
-            self.svc,
-            data={"user_ids": [self.member.id, self.outsider.id]},
-            pk=str(self.group.pk),
-        )
+        with patch(
+            "tenant_account_v2.group_views.notify_group_membership_changed"
+        ) as notify:
+            response = self._call(
+                {"post": "members"},
+                "post",
+                self.svc,
+                data={"user_ids": [self.member.id, self.outsider.id]},
+                pk=str(self.group.pk),
+            )
         self.assertEqual(response.status_code, 201)
         self.assertEqual(response.data["added_user_ids"], [self.outsider.id])
         self.assertEqual(
             GroupMembership.objects.filter(group=self.group, user=self.member).count(), 1
         )
+        # The regression this guards against: passing the full request list
+        # (including the already-a-member id) would still pass the earlier
+        # assertions above -- only this call proves the notification itself
+        # was narrowed, not just the DB write and the response.
+        notify.assert_called_once()
+        self.assertEqual(notify.call_args.kwargs["user_ids"], [self.outsider.id])
 
     def test_service_account_can_remove_member(self) -> None:
         response = self._call(
@@ -534,8 +543,8 @@ class ResourceShareNotificationTests(GroupSharingTestBase):
         group_ids: list[int],
         share_action: str = ShareAction.SHARED.value,
         revoked_at=None,
-    ) -> None:
-        send_resource_shared(
+    ) -> bool:
+        return send_resource_shared(
             organization=self.org,
             group_ids=group_ids,
             actor_id=self.owner.pk,
@@ -600,6 +609,41 @@ class ResourceShareNotificationTests(GroupSharingTestBase):
                     ("Ops", ["member@example.com", "outsider@example.com"]),
                 ]
             ),
+        )
+
+    def test_plugin_skip_result_is_not_a_failure(self) -> None:
+        # The plugin's tri-state None means "skipped" (unconfigured, disabled,
+        # bad input) -- never a reason to ask for redelivery.
+        set_resource_share_groups(self.workflow, [self.group.id])
+        self.service.send_group_resource_shared_notification.return_value = None
+        self.assertTrue(self._send(group_ids=[self.group.id]))
+
+    def test_all_groups_failing_asks_for_redelivery(self) -> None:
+        other_group = OrganizationGroup.objects.create(
+            organization=self.org, name="Ops", created_by=self.owner
+        )
+        GroupMembership.objects.create(group=other_group, user=self.outsider)
+        set_resource_share_groups(self.workflow, [self.group.id, other_group.id])
+        self.service.send_group_resource_shared_notification.return_value = False
+        self.assertFalse(self._send(group_ids=[self.group.id, other_group.id]))
+
+    def test_partial_group_failure_is_not_retried_and_every_group_is_attempted(
+        self,
+    ) -> None:
+        # A retry would re-mail the group that already succeeded -- accept the
+        # partial loss instead. Every group must still be attempted, not just
+        # the ones before the first failure: ThreadPoolExecutor.map's pending
+        # futures must not be cancelled by an early result.
+        other_group = OrganizationGroup.objects.create(
+            organization=self.org, name="Ops", created_by=self.owner
+        )
+        GroupMembership.objects.create(group=other_group, user=self.outsider)
+        set_resource_share_groups(self.workflow, [self.group.id, other_group.id])
+        self.service.send_group_resource_shared_notification.side_effect = [False, True]
+        result = self._send(group_ids=[self.group.id, other_group.id])
+        self.assertTrue(result)
+        self.assertEqual(
+            self.service.send_group_resource_shared_notification.call_count, 2
         )
 
     def test_group_from_another_org_is_never_mailed(self) -> None:

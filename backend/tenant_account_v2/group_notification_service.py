@@ -48,11 +48,16 @@ notification_plugin = get_plugin("notification")
 # otherwise serialize one blocking SendGrid call per group.
 _MAX_CONCURRENT_GROUP_SENDS = 10
 
-# OSS ``ShareableResource.kind`` → the email plugin's ``ResourceType`` value.
-# Deliberately plain strings: OSS must not import a cloud-only enum. Not a 1:1
-# rename — pipelines and adapters resolve via the shared helpers below instead,
-# the same ones the direct-share viewsets use, so a new adapter/pipeline type
-# only needs registering once.
+# OSS ``ShareableResource.kind`` → the email plugin's ``ResourceType`` value,
+# for the 6 kinds that are a plain 1:1 rename. Pipelines and adapters resolve
+# via ``notification_resource_types`` instead, the same helpers the
+# direct-share viewsets use, so a new adapter/pipeline type only needs
+# registering once. These 6 are still a second, hand-maintained copy of what
+# each ViewSet's own ``get_notification_resource_type`` already states --
+# unifying them the same way is a larger change than this one, tracked
+# separately. Plain strings here, not the cloud enum: this dict is only ever
+# read once the plugin is confirmed loaded (see ``_service()``), but nothing
+# enforces that path if a future caller reached it another way.
 _STATIC_RESOURCE_TYPES = {
     "workflow": "workflow",
     "api_deployment": "api",
@@ -155,7 +160,16 @@ def _mail_all_groups(
     actor: User,
     share_action: str,
 ) -> bool:
-    """Send each group's copy concurrently; ``False`` if any real send failed."""
+    """Send each group's copy concurrently.
+
+    Returns ``False`` (ask for redelivery) only when every attempted group
+    genuinely failed to send. A skipped group (the plugin's tri-state
+    ``None`` -- unconfigured, disabled, bad input) never counts as a failure.
+    A *partial* failure -- some groups sent, others didn't -- is deliberately
+    not retried either: redelivery would re-mail the groups that already
+    succeeded, which is the exact duplication the worker's own retry
+    classification exists to avoid. The lost group is logged instead.
+    """
     to_mail = [g for g in groups if recipients_by_group.get(g.pk)]
     for group in groups:
         logger.info(
@@ -168,14 +182,29 @@ def _mail_all_groups(
     if not to_mail:
         return True
 
-    def _send(group: OrganizationGroup) -> bool:
+    def _send(group: OrganizationGroup) -> bool | None:
         return _mail_group(
             service, group, recipients_by_group[group.pk], shared, actor, share_action
         )
 
     workers = min(len(to_mail), _MAX_CONCURRENT_GROUP_SENDS)
     with ThreadPoolExecutor(max_workers=workers) as pool:
-        return all(pool.map(_send, to_mail))
+        # list() first: pool.map returns a lazy generator, and all() stopping
+        # at the first False would cancel every pending future past it --
+        # groups later in the batch would silently never be mailed at all.
+        results = list(pool.map(_send, to_mail))
+    failed = [g.pk for g, r in zip(to_mail, results, strict=True) if r is False]
+    if not failed:
+        return True
+    if len(failed) == len(to_mail):
+        return False
+    logger.error(
+        "metric=group_notification_partial_failure_total failed_group_ids=%s "
+        "of %d attempted",
+        failed,
+        len(to_mail),
+    )
+    return True
 
 
 def send_membership_changed(
@@ -221,13 +250,16 @@ def send_membership_changed(
     )
     if not recipients:
         return True
-    return service.send_group_membership_notification(
+    result = service.send_group_membership_notification(
         group_name=group.name,
         membership_action=MembershipAction(membership_action).value,
         recipients=recipients,
         actor=actor,
         organization=organization,
     )
+    # Tri-state from the plugin: None (skipped -- unconfigured, disabled, bad
+    # input) is not a failure, only an explicit False is.
+    return result is not False
 
 
 def _service() -> Any | None:
@@ -369,8 +401,13 @@ def _mail_group(
     shared: _SharedResource,
     actor: User,
     share_action: str,
-) -> bool:
-    """Send one group's copy of the resource-share email."""
+) -> bool | None:
+    """Send one group's copy of the resource-share email.
+
+    Passes through the plugin's tri-state result -- see
+    :func:`_mail_all_groups` for how ``None`` (skipped) is distinguished
+    from ``False`` (genuinely failed).
+    """
     return service.send_group_resource_shared_notification(
         resource_type=shared.type,
         resource_name=shared.name,
@@ -395,7 +432,10 @@ def _groups_in_org(
 def _live_member_users(organization: Organization, user_ids: Iterable[int]) -> list[User]:
     """Users from ``user_ids`` who are still live members of ``organization``.
 
-    Service accounts are excluded, matching ``compute_effective_members``.
+    Service accounts are excluded, matching ``compute_effective_members``. Also
+    drops anyone with a falsy ``email`` -- silently, since this list decides
+    who has real recipients, and that in turn decides whether a group is
+    attempted at all (and so whether a 502 can ever fire for it).
     """
     requested = list(user_ids)
     memberships = OrganizationMember.objects.filter(
@@ -440,6 +480,11 @@ def _load_resource(
     ).first()
     if resource is None:
         raise ResourceNotFoundError(f"{kind} {resource_id} not found in organization")
+    # Populate the FK cache with the instance we already hold: the mail send
+    # (``resource_instance.organization``) runs inside a pool thread, and a
+    # lazy query there opens a connection ``close_old_connections`` never
+    # cleans up (that hook only runs on the request thread).
+    resource.organization = organization
     name = getattr(resource, descriptor.name_field, "") or ""
     return _SharedResource(resource, name, _resource_type_for(descriptor, resource))
 

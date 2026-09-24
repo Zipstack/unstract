@@ -8,7 +8,8 @@ by VIEWER membership rows, while ``shared_groups`` is stored polymorphically in
 """
 
 import logging
-from typing import Any
+from dataclasses import dataclass, field
+from typing import Any, ClassVar
 
 from django.db.models import Model
 from plugins import get_plugin
@@ -122,8 +123,52 @@ def _send_revoke_notification(
         logger.exception("Failed to send access-removed notification for %s", instance.pk)
 
 
+@dataclass
+class AxisDiff:
+    """DEPRECATED shim -- see ``ResourceShareManagementMixin.share_axes`` below."""
+
+    before: set[Any] = field(default_factory=set)
+    after: set[Any] = field(default_factory=set)
+
+    @property
+    def added(self) -> set[Any]:
+        return self.after - self.before
+
+    @property
+    def removed(self) -> set[Any]:
+        return self.before - self.after
+
+
 class ResourceShareManagementMixin:
     """Adds the shared share-management surface to a resource ViewSet."""
+
+    # DEPRECATED, temporary: ``share_axes``, ``snapshot_share_axes`` and
+    # ``diff_share_axes`` (with ``AxisDiff`` above) were removed on this branch
+    # -- the PATCH-based sharing path they backed is dead, its diff is always
+    # empty (see 999e443b4). Restored here only because cloud's
+    # ``AgenticProjectViewSet.partial_update`` on ``origin/main`` still calls
+    # them, and OSS merges before cloud (Zipstack/unstract-cloud#1698 carries
+    # the real removal). Delete this whole block, and this comment, once #1698
+    # merges -- at that point nothing on cloud main calls it anymore.
+    share_axes: ClassVar[tuple[str, ...]] = ("shared_users", "shared_groups")
+
+    def snapshot_share_axes(self, instance: Model) -> dict[str, set[Any]]:
+        """DEPRECATED shim. See the block comment above ``share_axes``."""
+        return {axis: self._read_axis(instance, axis) for axis in self.share_axes}
+
+    def diff_share_axes(
+        self,
+        instance: Model,
+        before: dict[str, set[Any]],
+        request_data: dict[str, Any],
+    ) -> dict[str, AxisDiff]:
+        """DEPRECATED shim. See the block comment above ``share_axes``."""
+        instance.refresh_from_db()
+        return {
+            axis: AxisDiff(before=before[axis], after=self._read_axis(instance, axis))
+            for axis in self.share_axes
+            if axis in request_data
+        }
 
     @action(detail=True, methods=["post"], url_path="share")
     def share(self, request: Request, pk: str | None = None) -> Response:
@@ -160,9 +205,10 @@ class ResourceShareManagementMixin:
         ShareAuthorizationService.authorize_and_commit(
             actor=request.user, resource=resource, desired=desired
         )
-        # ``authorize_and_commit`` has already committed here: ``ATOMIC_REQUESTS``
-        # is off, so this view isn't itself wrapped in a transaction, and the
-        # diffs below read persisted state rather than one that could roll back.
+        # ``authorize_and_commit`` has already committed here, on the current
+        # deployment: ``ATOMIC_REQUESTS`` is a settings knob, currently off, so
+        # this view isn't wrapped in a transaction and the diffs below read
+        # persisted state. Flipping that knob would flip this premise too.
         resource.refresh_from_db()
         # Only the two per-recipient axes notify. ``shared_to_org`` is left out
         # deliberately: a toggle has no recipient list short of the whole org,

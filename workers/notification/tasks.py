@@ -516,11 +516,13 @@ _GROUP_NOTIFICATION_RETRY_DELAY = 2.0
 # to connect, write and read separately. The loop below is the only retry --
 # transport-level retries would stack their own timeouts underneath these.
 # Worst case per attempt is connect+write+read+pool = 50s. Across
-# _GROUP_NOTIFICATION_ATTEMPTS attempts plus the sleep between each retry, the
-# task's real bound is 3*50 + 2*_GROUP_NOTIFICATION_RETRY_DELAY = 154s, and
-# must stay under WORKER_PG_QUEUE_CONSUMER_HEALTH_STALE_SECONDS (the heartbeat
-# is frozen for the task's duration) and VT_SECONDS. Excludes DNS, which
-# connect does not cover.
+# _GROUP_NOTIFICATION_ATTEMPTS attempts plus the sleep between each retry,
+# that's a NOMINAL budget of 3*50 + 2*_GROUP_NOTIFICATION_RETRY_DELAY = 154s --
+# not a hard bound, since ``read`` times out per socket read, not on the
+# total: a response trickling in under 30s per chunk runs past this
+# regardless. Sized to stay under WORKER_PG_QUEUE_CONSUMER_HEALTH_STALE_SECONDS
+# (the heartbeat is frozen for the task's duration) and VT_SECONDS in the
+# common case. Excludes DNS, which connect does not cover.
 _GROUP_NOTIFICATION_TIMEOUT = httpx.Timeout(connect=5.0, write=10.0, read=30.0, pool=5.0)
 
 
@@ -592,7 +594,9 @@ def _fail_group_notification(endpoint: str, organization_id: str, error: str) ->
     raise RuntimeError(f"Group notification {endpoint} failed: {error}")
 
 
-def _drop_group_notification(endpoint: str, organization_id: str, error: str) -> None:
+def _drop_group_notification(
+    endpoint: str, organization_id: str, error: str, payload: dict
+) -> None:
     """Log a permanent failure without raising.
 
     A non-retryable failure (a definitive 4xx, or a response lost after the
@@ -600,12 +604,18 @@ def _drop_group_notification(endpoint: str, organization_id: str, error: str) ->
     and since one send call mails a whole group with no per-recipient
     checkpoint, redelivering it re-mails everyone who already got it. Raising
     here would trade a dropped notification for a duplicated one.
+
+    The message is acked and deleted once this returns -- nothing else records
+    what was lost, so the payload goes in the log line (a dropped *revoke* is
+    compliance-visible, not just an inconvenience).
     """
     logger.error(
-        "metric=group_notification_dropped_total endpoint=%s org_id=%s error=%s",
+        "metric=group_notification_dropped_total endpoint=%s org_id=%s error=%s "
+        "payload=%s",
         endpoint,
         organization_id,
         error,
+        payload,
     )
 
 
@@ -619,6 +629,10 @@ def _post_group_notification(endpoint: str, organization_id: str, payload: dict)
     """
     url, headers = _build_group_notification_request(endpoint, organization_id)
     last_error = ""
+    # Seeded True so a zero-iteration loop would fail loud via
+    # _fail_group_notification (an empty last_error) rather than silently drop
+    # -- moot today since _GROUP_NOTIFICATION_ATTEMPTS is a fixed positive
+    # constant, but this is the safer default if that ever changed.
     retryable = True
     for attempt in range(1, _GROUP_NOTIFICATION_ATTEMPTS + 1):
         succeeded, retryable, last_error = _post_group_notification_once(
@@ -640,7 +654,7 @@ def _post_group_notification(endpoint: str, organization_id: str, payload: dict)
     if retryable:
         _fail_group_notification(endpoint, organization_id, last_error)
     else:
-        _drop_group_notification(endpoint, organization_id, last_error)
+        _drop_group_notification(endpoint, organization_id, last_error, payload)
 
 
 @worker_task(name="notify_resource_shared_with_group")
