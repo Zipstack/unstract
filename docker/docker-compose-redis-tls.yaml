@@ -1,0 +1,69 @@
+# A stand-in for a managed Redis, for local development only (UN-4123).
+#
+# Managed offerings differ from the plain dev Redis in exactly two ways that our
+# code has to cope with: they require AUTH, and they speak TLS. This container
+# does both, so the TLS path can be exercised end to end — execution, log
+# streaming, tool sidecars — without cloud access or a VPN.
+#
+# It runs ALONGSIDE the normal `unstract-redis`, on a different port, so nothing
+# switches until you point services at it. That is deliberate: the point of the
+# exercise is to flip between the two and confirm BOTH work.
+#
+#   ./redis-tls/generate-certs.sh
+#   docker compose -f docker-compose-redis-tls.yaml up -d
+#
+# See redis-tls/README.md for the env to set and what to verify.
+services:
+  redis-managed:
+    image: "redis:7.2.3"
+    container_name: unstract-redis-managed
+    restart: unless-stopped
+    # `--port 0` disables the plaintext listener entirely, which is what Azure
+    # Cache does by default. A service that fails to pick up the TLS settings
+    # therefore cannot quietly succeed over plaintext and hide the bug.
+    #
+    # `--tls-auth-clients no` mirrors the managed services: the client verifies
+    # the server, not the other way round. No mTLS, no client certs to ship.
+    command: >
+      redis-server
+      --port 0
+      --tls-port 6380
+      --tls-cert-file /certs/server.crt
+      --tls-key-file /certs/server.key
+      --tls-ca-cert-file /certs/ca.crt
+      --tls-auth-clients no
+      --requirepass ${REDIS_DEV_PASSWORD:-devpassword}
+      --loglevel notice
+    ports:
+      # Same port inside and out, so one hostname:port works from containers
+      # (unstract-redis-managed:6380) and from a backend on the host
+      # (localhost:6380).
+      - "6380:6380"
+    volumes:
+      - ./redis-tls/certs:/certs:ro
+      - redis_managed_data:/data
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "redis-cli",
+          "--tls",
+          "-p", "6380",
+          "--cacert", "/certs/ca.crt",
+          "-a", "${REDIS_DEV_PASSWORD:-devpassword}",
+          "--no-auth-warning",
+          "ping",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    labels:
+      - traefik.enable=false
+
+volumes:
+  redis_managed_data:
+
+networks:
+  default:
+    name: unstract-network
+    external: true
