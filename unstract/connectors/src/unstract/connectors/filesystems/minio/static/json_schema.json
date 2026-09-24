@@ -5,7 +5,8 @@
   "required": [
     "connectorName",
     "endpoint_url",
-    "region_name"
+    "region_name",
+    "bucket"
   ],
   "properties": {
     "connectorName": {
@@ -36,6 +37,11 @@
       "title": "Region Name",
       "default": "ap-south",
       "description": "Region of the AWS S3 account (leave blank for Minio)"
+    },
+    "bucket": {
+      "type": "string",
+      "title": "Bucket Name",
+      "description": "Name of the bucket to be restricted to."
     }
   }
 }
