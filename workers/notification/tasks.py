@@ -629,11 +629,11 @@ def _post_group_notification(endpoint: str, organization_id: str, payload: dict)
     """
     url, headers = _build_group_notification_request(endpoint, organization_id)
     last_error = ""
-    # Seeded True so a zero-iteration loop would fail loud via
-    # _fail_group_notification (an empty last_error) rather than silently drop
-    # -- moot today since _GROUP_NOTIFICATION_ATTEMPTS is a fixed positive
-    # constant, but this is the safer default if that ever changed.
-    retryable = True
+    # Seeded False: a zero-iteration loop (only possible if
+    # _GROUP_NOTIFICATION_ATTEMPTS were ever misconfigured to <= 0) means
+    # nothing was ever attempted, so drop rather than raise -- raising here
+    # would redeliver forever with no attempt ever being made.
+    retryable = False
     for attempt in range(1, _GROUP_NOTIFICATION_ATTEMPTS + 1):
         succeeded, retryable, last_error = _post_group_notification_once(
             url, headers, payload

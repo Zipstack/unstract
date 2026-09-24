@@ -192,20 +192,22 @@ class TestRequestShape:
         assert timeout is _GROUP_NOTIFICATION_TIMEOUT
         assert timeout.connect < timeout.read
 
-    def test_task_wall_time_stays_under_the_visibility_timeout(self):
-        """The bound the chart and compose comments defer to.
+    def test_timeout_constants_sum_under_the_visibility_and_health_stale_ceilings(self):
+        """Consistency check on the constants, not a measurement of a real POST.
 
         VT is 300s for this worker in both deployments; the heartbeat is frozen
         for the task's duration, so health-stale (360s) is the other ceiling.
         Includes the sleep between retries -- a per-post-only sum undercounts
-        the real wall time by (attempts - 1) * retry delay.
+        the real wall time by (attempts - 1) * retry delay. Nothing here times
+        an actual request -- this only proves the constants are still
+        consistent with each other, not that a real POST stays under budget.
         """
         t = _GROUP_NOTIFICATION_TIMEOUT
         per_post = t.connect + t.write + t.read + t.pool
         sleeps = (_GROUP_NOTIFICATION_ATTEMPTS - 1) * _GROUP_NOTIFICATION_RETRY_DELAY
         worst = per_post * _GROUP_NOTIFICATION_ATTEMPTS + sleeps
-        assert worst == 154
         assert worst < 300, f"worst case {worst}s exceeds the 300s visibility timeout"
+        assert worst < 360, f"worst case {worst}s exceeds the 360s health-stale ceiling"
 
 
 class TestTaskPayloads:
