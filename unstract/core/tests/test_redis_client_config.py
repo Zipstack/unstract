@@ -11,6 +11,7 @@ and writes against the wrong keyspace; an empty-string env var counts as "set" t
 None of those raise at import, so they are asserted here instead.
 """
 
+import logging
 import pathlib
 import re
 from urllib.parse import unquote, urlsplit
@@ -18,6 +19,10 @@ from urllib.parse import unquote, urlsplit
 import pytest
 import redis
 from unstract.core.cache.redis_client import (
+    url_username_from_env,
+    parse_port,
+    env_chain_named,
+    env_chain,
     _build_connection_kwargs,
     _resolve_redis_env,
     build_socketio_redis_url,
@@ -573,11 +578,25 @@ class TestContainerAllowlists:
     def _shared(cls) -> set[str]:
         """Every REDIS_* env var redis_client.py reads, minus the excused ones."""
         source = cls._CLIENT.read_text()
-        names = set(re.findall(r'os\.getenv\(\s*"(REDIS_[A-Z_]+)"', source))
-        names |= {
-            f"REDIS_{suffix}"
-            for suffix in re.findall(r'os\.getenv\(\s*f"\{env_prefix\}([A-Z_]+)"', source)
-        }
+        # Scans the ARGUMENTS of every env-reading call, not just os.getenv.
+        # Keying on os.getenv alone meant that rewriting a read to go through
+        # env_chain made the variable invisible here — the TLS set dropped out
+        # of this guard silently, which is the same drift this class exists to
+        # catch. Scoped to these call names rather than the whole file so a
+        # variable merely NAMED in a docstring is not demanded of every
+        # container.
+        calls = re.findall(
+            r"(?:os\.getenv|env_chain|env_chain_named)\("
+            r"([^()]*(?:\([^()]*\)[^()]*)*)\)",
+            source,
+        )
+        names: set[str] = set()
+        for args in calls:
+            names |= set(re.findall(r'"(REDIS_[A-Z_]+)"', args))
+            names |= {
+                f"REDIS_{suffix}"
+                for suffix in re.findall(r'f"\{env_prefix\}([A-Z_]+)"', args)
+            }
         return names - cls._NOT_FORWARDED
 
     def test_the_derived_set_is_not_empty(self):
@@ -1193,3 +1212,82 @@ class TestTheConsumersAgreeOnTheUsername:
         monkeypatch.setenv("REDIS_URL", "redis://h:6379/0")
         monkeypatch.setenv("REDIS_PASSWORD", "pw")
         assert urlsplit(build_socketio_redis_url()).username == "alice"
+
+
+class TestBlankMeansUnsetForTlsToo:
+    """The convention has to cover TLS, not just credentials.
+
+    Once a blank prefixed PASSWORD fell through to the generic one but a blank
+    prefixed SSL did not, `CACHE_REDIS_SSL=` beside `REDIS_SSL=true` gave the
+    worker cache a real AUTH over an UNENCRYPTED socket — the credential the
+    same change taught it to inherit, now in clear on the wire.
+    """
+
+    @pytest.mark.parametrize(
+        "blank,generic,key,expected",
+        [
+            ("CACHE_REDIS_SSL", ("REDIS_SSL", "true"), "ssl", True),
+            (
+                "CACHE_REDIS_SSL_CERT_REQS",
+                ("REDIS_SSL_CERT_REQS", "none"),
+                "ssl_cert_reqs",
+                "none",
+            ),
+            (
+                "CACHE_REDIS_SSL_CHECK_HOSTNAME",
+                ("REDIS_SSL_CHECK_HOSTNAME", "false"),
+                "ssl_check_hostname",
+                False,
+            ),
+            (
+                "CACHE_REDIS_SSL_CA_CERTS",
+                ("REDIS_SSL_CA_CERTS", "/etc/ca.pem"),
+                "ssl_ca_certs",
+                "/etc/ca.pem",
+            ),
+        ],
+    )
+    def test_a_blank_prefixed_tls_var_does_not_shadow(
+        self, monkeypatch, blank, generic, key, expected
+    ):
+        monkeypatch.setenv(generic[0], generic[1])
+        monkeypatch.setenv(blank, "")
+        assert _resolve_redis_env("CACHE_REDIS_")[key] == expected
+
+
+class TestEnvChainHelpers:
+    """The helpers the consumers share. Each had a one-line failure mode."""
+
+    def test_env_chain_returns_the_raw_value_not_a_stripped_one(self, monkeypatch):
+        """A file-mounted secret ends in a newline. Stripping the RETURN value
+        truncated it here while backend/settings/base.py read the same variable
+        unstripped, so one process authenticated two different ways."""
+        monkeypatch.setenv("REDIS_PASSWORD", "s3cret\n")
+        assert env_chain("REDIS_PASSWORD") == "s3cret\n"
+
+    def test_env_chain_skips_whitespace_only_values(self, monkeypatch):
+        monkeypatch.setenv("CACHE_REDIS_PASSWORD", "   ")
+        monkeypatch.setenv("REDIS_PASSWORD", "s3cret")
+        assert env_chain("CACHE_REDIS_PASSWORD", "REDIS_PASSWORD") == "s3cret"
+
+    def test_env_chain_named_reports_the_variable_that_was_set(self, monkeypatch):
+        """So a warning cannot send an operator grepping for an unset key."""
+        monkeypatch.delenv("CACHE_REDIS_PORT", raising=False)
+        monkeypatch.setenv("REDIS_PORT", "6380")
+        assert env_chain_named("CACHE_REDIS_PORT", "REDIS_PORT") == ("6380", "REDIS_PORT")
+
+    def test_url_username_from_env_honours_the_same_blank_rule(self, monkeypatch):
+        monkeypatch.setenv("REDIS_USER", "   ")
+        monkeypatch.setenv("REDIS_USERNAME", "alice")
+        assert url_username_from_env() == "alice"
+
+    def test_parse_port_treats_blank_as_unset(self):
+        assert parse_port(None, "REDIS_PORT", 6379) == 6379
+
+    def test_parse_port_falls_back_on_an_unparseable_value(self, caplog):
+        with caplog.at_level(logging.ERROR):
+            assert parse_port("638O", "REDIS_PORT", 6379) == 6379
+        assert "REDIS_PORT" in caplog.text
+
+    def test_parse_port_returns_an_int(self):
+        assert parse_port("6380", "REDIS_PORT", 6379) == 6380

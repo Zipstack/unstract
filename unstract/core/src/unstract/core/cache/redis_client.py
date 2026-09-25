@@ -136,15 +136,17 @@ def url_db_path(url: str) -> int | None:
         return None
 
 
-def _parse_bool(raw: str, default: bool, name: str) -> bool:
+def _parse_bool(raw: str | None, default: bool, name: str) -> bool:
     """Parse a boolean env var; blank means UNSET, unknown warns and defaults.
 
     Blank-means-unset is this repo's own convention — `FOO=` in a sample.env
     means "leave the default", and every other variable in UN-4123 treats it that
     way. `os.getenv` does not: it reports an empty string as SET, so a bare
     `os.getenv(...) == "true"` turns `FOO=` into False.
+
+    Accepts None so callers can hand it env_chain's "nothing was set" directly.
     """
-    value = raw.strip().lower()
+    value = (raw or "").strip().lower()
     if not value:
         return default
     if value in _TRUE_LITERALS:
@@ -190,9 +192,7 @@ def resolve_ssl_cert_reqs(env_prefix: str = "REDIS_") -> str:
     endpoint, three verification policies. Case and stray whitespace had the same
     effect, since the "is verification off?" test is an equality check.
     """
-    raw = os.getenv(
-        f"{env_prefix}SSL_CERT_REQS", os.getenv("REDIS_SSL_CERT_REQS", "")
-    ).strip()
+    raw = (env_chain(f"{env_prefix}SSL_CERT_REQS", "REDIS_SSL_CERT_REQS") or "").strip()
     value = raw.lower()
     if not value:
         return _DEFAULT_CERT_REQS
@@ -216,13 +216,10 @@ def resolve_ssl_check_hostname(env_prefix: str = "REDIS_", default: bool = True)
     FALSE, silently downgrading the Django cache to an encrypted but
     unauthenticated connection.
     """
-    return _parse_bool(
-        os.getenv(
-            f"{env_prefix}SSL_CHECK_HOSTNAME", os.getenv("REDIS_SSL_CHECK_HOSTNAME", "")
-        ),
-        default,
-        f"{env_prefix}SSL_CHECK_HOSTNAME",
+    raw, name = env_chain_named(
+        f"{env_prefix}SSL_CHECK_HOSTNAME", "REDIS_SSL_CHECK_HOSTNAME"
     )
+    return _parse_bool(raw, default, name)
 
 
 def url_cert_reqs(url: str) -> str | None:
@@ -390,13 +387,32 @@ def env_chain(*names: str) -> str | None:
     a set-but-empty variable as set, so the blank shadows the level below it.
     """
     for name in names:
-        value = os.getenv(name, "").strip()
-        if value:
+        value = os.getenv(name, "")
+        # Emptiness is tested on the STRIPPED value; the RAW one is returned.
+        # Stripping the return value silently truncated a password or username
+        # that came from a file-mounted secret with a trailing newline, while
+        # backend/settings/base.py read the same variable unstripped — so one
+        # process authenticated two different ways against one endpoint.
+        if value.strip():
             return value
     return None
 
 
-def parse_port(raw: str | None, env_prefix: str, default_port: str | int) -> int:
+def env_chain_named(*names: str) -> tuple[str | None, str]:
+    """env_chain, plus the name of the variable the value came from.
+
+    So a warning about an unusable value can name the variable that is actually
+    SET. Reporting the prefixed name for a value that came from the generic one
+    sends an operator grepping for a key that does not exist in their config.
+    """
+    for name in names:
+        value = os.getenv(name, "")
+        if value.strip():
+            return value, name
+    return None, names[0]
+
+
+def parse_port(raw: str | None, var_name: str, default_port: str | int) -> int:
     """A port number; blank means unset, unparseable warns and falls back.
 
     parse_db already does this for the database and says why: an int() straight
@@ -409,7 +425,10 @@ def parse_port(raw: str | None, env_prefix: str, default_port: str | int) -> int
     try:
         return int(raw)
     except ValueError:
-        logger.warning("Invalid %sPORT=%r; using %s", env_prefix, raw, default_port)
+        # error, not warning: the fallback is a PORT, and on a host serving both
+        # 6379 and 6380 a typo lands the client on the other server rather than
+        # failing — a wrong endpoint, reported as a wrong value.
+        logger.error("Invalid %s=%r; using %s", var_name, raw, default_port)
         return int(default_port)
 
 
@@ -429,7 +448,7 @@ def url_username_from_env(env_prefix: str = "REDIS_") -> str | None:
     fallback)` would return that blank instead of falling through to the second
     spelling.
     """
-    return os.getenv(f"{env_prefix}USER") or os.getenv(f"{env_prefix}USERNAME") or None
+    return env_chain(f"{env_prefix}USER", f"{env_prefix}USERNAME")
 
 
 def apply_url_credentials(url: str, password: str | None, username: str | None) -> str:
@@ -546,9 +565,8 @@ def _resolve_redis_env(
 ) -> dict[str, Any]:
     """Read common Redis env vars into a dict."""
     host = env_chain(f"{env_prefix}HOST", "REDIS_HOST") or "localhost"
-    port = parse_port(
-        env_chain(f"{env_prefix}PORT", "REDIS_PORT"), env_prefix, default_port
-    )
+    port_raw, port_name = env_chain_named(f"{env_prefix}PORT", "REDIS_PORT")
+    port = parse_port(port_raw, port_name, default_port)
     # BLANK MEANS UNSET, like parse_db and _parse_bool in this same module — a
     # nested os.getenv(prefixed, generic) takes the blank and never consults the
     # generic one. workers/sample.env ships `CACHE_REDIS_PASSWORD=` uncommented,
@@ -572,10 +590,13 @@ def _resolve_redis_env(
     # turning TLS on platform-wide meant remembering CACHE_REDIS_SSL and
     # MANUAL_REVIEW_REDIS_SSL too — and a missed one fails as a plaintext client
     # talking to a TLS port, not as a config error.
-    ssl = (
-        os.getenv(f"{env_prefix}SSL", os.getenv("REDIS_SSL", "false")).strip().lower()
-        == "true"
-    )
+    # BLANK MEANS UNSET here too. It did not, and the asymmetry was dangerous
+    # rather than merely untidy: once password/user fell through a blank prefixed
+    # value but TLS did not, a blank CACHE_REDIS_SSL beside REDIS_SSL=true gave
+    # the worker cache a real AUTH over an UNENCRYPTED socket — the credential
+    # this same commit taught it to inherit, now on the wire in clear.
+    ssl_raw, ssl_name = env_chain_named(f"{env_prefix}SSL", "REDIS_SSL")
+    ssl = _parse_bool(ssl_raw, False, ssl_name)
     own_url = os.getenv(f"{env_prefix}URL", "").strip()
     generic_url = os.getenv("REDIS_URL", "").strip()
     result: dict[str, Any] = {
@@ -644,8 +665,8 @@ def _resolve_redis_env(
     #
     # Needed where the server's CA is not publicly trusted — notably Memorystore,
     # whose CA is Google-managed. ElastiCache and Azure chain to public CAs.
-    ca_certs = os.getenv(
-        f"{env_prefix}SSL_CA_CERTS", os.getenv("REDIS_SSL_CA_CERTS", "")
+    ca_certs = (
+        env_chain(f"{env_prefix}SSL_CA_CERTS", "REDIS_SSL_CA_CERTS") or ""
     ).strip()
     if ca_certs:
         result["ssl_ca_certs"] = ca_certs

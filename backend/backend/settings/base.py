@@ -26,6 +26,7 @@ from unstract.core.cache.redis_client import (
     build_socketio_redis_url,
     ensure_tls_query_params,
     parse_db,
+    parse_port,
     resolve_ssl_cert_reqs,
     resolve_ssl_check_hostname,
     set_url_db_path,
@@ -114,7 +115,11 @@ GOOGLE_STORAGE_BASE_URL = os.environ.get("GOOGLE_STORAGE_BASE_URL")
 REDIS_USER = os.environ.get("REDIS_USER", "default")
 REDIS_PASSWORD = os.environ.get("REDIS_PASSWORD", "")
 REDIS_HOST = os.environ.get("REDIS_HOST", "localhost")
-REDIS_PORT = os.environ.get("REDIS_PORT", "6379")
+# Through the shared parser, not a bare int() at the Sentinel call site below:
+# a blank REDIS_PORT= — this repo's "leave the default" spelling — raised
+# ValueError while Django settings were being imported, so the backend alone
+# failed to start while every worker came up healthy on 6379.
+REDIS_PORT = parse_port(os.environ.get("REDIS_PORT"), "REDIS_PORT", 6379)
 REDIS_DB = os.environ.get("REDIS_DB", "")
 # TLS to Redis (UN-4123). Off by default, so the in-cluster/local server is
 # untouched. `rediss://` is what actually selects TLS for both django-redis and
@@ -583,7 +588,7 @@ if REDIS_SENTINEL_MODE:
                 "CLIENT_CLASS": "django_redis.client.SentinelClient",
                 "CONNECTION_POOL_CLASS": "redis.sentinel.SentinelConnectionPool",
                 "CONNECTION_FACTORY": "django_redis.pool.SentinelConnectionFactory",
-                "SENTINELS": [(REDIS_HOST, int(REDIS_PORT))],
+                "SENTINELS": [(REDIS_HOST, REDIS_PORT)],
                 "SENTINEL_KWARGS": _sentinel_kwargs,
                 "DB": _redis_db,
                 "PASSWORD": REDIS_PASSWORD,
