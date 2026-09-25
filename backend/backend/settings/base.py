@@ -30,6 +30,7 @@ from unstract.core.cache.redis_client import (
     resolve_ssl_check_hostname,
     set_url_db_path,
     url_db_path,
+    url_username_from_env,
 )
 
 # Django 5.0+ caps URLValidator at 2048 chars. S3 pre-signed URLs signed with
@@ -678,15 +679,26 @@ else:
         #
         # The helper returns the URL untouched when it already carries a
         # password, so a credential-bearing REDIS_URL behaves exactly as before.
-        # os.environ direct, NOT the REDIS_USER above: that one defaults to
-        # "default", while create_redis_client reads the variable with no
-        # default. Passing the fallback here would make this cache send the
-        # two-argument `AUTH default <pw>` while the client in the same process
-        # sends the one-argument form — both authenticate, but they would differ
-        # on the wire for no reason, and "the three consumers agree" is the
-        # property this change exists to establish.
+        # The username comes from the SAME resolver the core client uses, not
+        # from a hand-written os.environ.get here. Two reasons, and the second
+        # was a live divergence:
+        #
+        #   - the module-level REDIS_USER above defaults to "default", while
+        #     create_redis_client reads the variable with no default. Passing
+        #     the fallback would make this cache send the two-argument
+        #     `AUTH default <pw>` while the client in the same process sends the
+        #     one-argument form.
+        #   - the resolver accepts BOTH spellings, REDIS_USER and
+        #     REDIS_USERNAME. platform-service ships the second one, so a single
+        #     shared Redis-credential secret can easily inject it — and reading
+        #     only REDIS_USER left this cache authenticating as `default` while
+        #     the client beside it authenticated as the configured ACL user.
+        #
+        # Re-deriving the chain here is the same second copy this commit removed
+        # for the "@" heuristic; asking core for it is what keeps the three
+        # consumers in step by construction rather than by comment.
         _redis_url = apply_url_credentials(
-            _redis_url, REDIS_PASSWORD, os.environ.get("REDIS_USER")
+            _redis_url, REDIS_PASSWORD, url_username_from_env()
         )
     # Gated on the EFFECTIVE scheme, not the flag. In URL mode TLS is carried by
     # the URL (and its query string), so a plaintext REDIS_URL left behind while

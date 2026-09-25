@@ -19,11 +19,79 @@ from __future__ import annotations
 
 import logging
 import pathlib
+import re
 from urllib.parse import urlsplit
 
 import pytest
 
 _SETTINGS = pathlib.Path(__file__).resolve().parents[1] / "settings" / "base.py"
+
+
+def _slice_bounds(source: str) -> dict[str, tuple[int, int]]:
+    """Character ranges of base.py that _derive executes.
+
+    Factored out so the coverage guard below can assert on the SAME ranges the
+    harness runs, rather than a second description of them that could drift.
+    """
+    defs_start = source.index('REDIS_USER = os.environ.get("REDIS_USER"')
+    defs_end = (
+        source.index("\n", source.index('REDIS_URL = os.environ.get("REDIS_URL"')) + 1
+    )
+    imports_start = source.index("from unstract.core.cache.redis_client import (")
+    imports_end = source.index(")\n", imports_start) + 2
+    urllib_start = source.index("from urllib.parse import ")
+    urllib_end = source.index("\n", urllib_start) + 1
+    return {
+        "urllib": (urllib_start, urllib_end),
+        "imports": (imports_start, imports_end),
+        "defs": (defs_start, defs_end),
+        "block": (
+            source.index("REDIS_SENTINEL_MODE = ("),
+            source.index("SESSION_ENGINE ="),
+        ),
+    }
+
+
+def test_the_harness_covers_every_redis_line_in_the_settings_file():
+    """The splice must not silently stop covering the code it claims to test.
+
+    _derive executes two ranges out of base.py with a ~415-line gap between
+    them, and anything in that gap is invisible to every assertion in this
+    file. That is not theoretical: adding `REDIS_PASSWORD = ""` at base.py:251,
+    or appending a CACHES["default"]["LOCATION"] override after SESSION_ENGINE,
+    leaves all of these tests green while shipping a broken cache.
+
+    The file already concedes the gap once — test_no_database_var_is_parsed_with
+    _a_bare_int greps the source text because FILE_ACTIVE_CACHE_REDIS_DB sits
+    outside both slices. A grep only covers the one pattern someone thought of;
+    this covers the boundary itself, and fails naming the line that escaped.
+    """
+    source = _SETTINGS.read_text()
+    bounds = _slice_bounds(source)
+    covered = []
+    for start, end in bounds.values():
+        covered.append(range(start, end))
+
+    offenders = []
+    offset = 0
+    for line in source.splitlines(keepends=True):
+        if re.match(r"\s*(REDIS_|_redis|_cache|CACHES|SOCKET_IO)", line) and not any(
+            offset in span for span in covered
+        ):
+            offenders.append((source[:offset].count("\n") + 1, line.strip()[:70]))
+        offset += len(line)
+
+    # Known and deliberate: these are asserted by source-text inspection
+    # instead, because they are consumed far from the derivation block.
+    allowed = {"FILE_ACTIVE_CACHE_REDIS_DB", "REDIS_DB_PORTAL"}
+    offenders = [o for o in offenders if not any(a in o[1] for a in allowed)]
+
+    assert not offenders, (
+        "these Redis lines in base.py are OUTSIDE the ranges _derive executes, "
+        "so no test in this file can observe them:\n"
+        + "\n".join(f"  base.py:{n}: {text}" for n, text in offenders)
+        + "\nWiden the slice, or add the name to `allowed` with a reason."
+    )
 
 
 def _derive(**env: str) -> dict:
@@ -138,7 +206,10 @@ class TestDiscreteVars:
         an empty db 0.
         """
         derived = _derive(REDIS_HOST="h", REDIS_DB="3")
-        assert derived["CACHES"]["default"]["LOCATION"].endswith("/3")
+        # Full string, not endswith("/3"): the failure this guards is
+        # same-endpoint-WRONG-db, and endswith is equally satisfied by
+        # "redis://WRONGHOST:6379/3" or a changed port.
+        assert derived["CACHES"]["default"]["LOCATION"] == "redis://h:6379/3"
 
     def test_ssl_switches_scheme_and_pool_kwargs(self):
         derived = _derive(REDIS_HOST="h", REDIS_SSL="true", REDIS_SSL_CA_CERTS="/ca.pem")
@@ -512,10 +583,31 @@ class TestUrlModeCacheCredentials:
         """REDIS_USER defaults to "default" in this module but not in
         create_redis_client; passing the fallback would make the two send
         different AUTH forms for the same configuration.
+
+        The password must be NON-empty. With REDIS_PASSWORD="" the helper
+        returns at its `if not password` guard before the username argument is
+        read at all, so the test named for this choice could not fail on it —
+        mutating the call to pass the module-level REDIS_USER left the suite
+        green while changing a one-argument AUTH into a two-argument one.
         """
         assert (
-            self._location(REDIS_URL="redis://h:6379/0", REDIS_PASSWORD="")
-            == "redis://h:6379/0"
+            self._location(REDIS_URL="redis://h:6379/0", REDIS_PASSWORD="pw")
+            == "redis://:pw@h:6379/0"
+        )
+
+    def test_the_cache_honours_the_second_username_spelling(self):
+        """platform-service ships REDIS_USERNAME, the chart ships REDIS_USER.
+
+        Reading only REDIS_USER left this cache authenticating as the built-in
+        `default` while create_redis_client in the SAME process authenticated
+        as the configured ACL user — and where `default` is disabled, only the
+        cache fails.
+        """
+        assert (
+            self._location(
+                REDIS_URL="redis://h:6379/0", REDIS_PASSWORD="pw", REDIS_USERNAME="alice"
+            )
+            == "redis://alice:pw@h:6379/0"
         )
 
     def test_discrete_mode_still_uses_options(self):

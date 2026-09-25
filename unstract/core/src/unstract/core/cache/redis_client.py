@@ -381,6 +381,57 @@ def _compose_redis_url(env: dict[str, Any]) -> str:
     return f"{scheme}://{credentials}{env['host']}:{env['port']}"
 
 
+def env_chain(*names: str) -> str | None:
+    """First NON-BLANK value among these env vars, else None.
+
+    Blank means unset throughout this module — it is the "leave the default"
+    spelling the sample recipes and values files use, and it is why a nested
+    `os.getenv(prefixed, os.getenv(generic))` is wrong here: `os.getenv` reports
+    a set-but-empty variable as set, so the blank shadows the level below it.
+    """
+    for name in names:
+        value = os.getenv(name, "").strip()
+        if value:
+            return value
+    return None
+
+
+def parse_port(raw: str | None, env_prefix: str, default_port: str | int) -> int:
+    """A port number; blank means unset, unparseable warns and falls back.
+
+    parse_db already does this for the database and says why: an int() straight
+    out of os.getenv raises at client construction with a message naming neither
+    the variable nor the prefix, which in most consumers kills the process at
+    import and in the two that catch broadly degrades to no-cache.
+    """
+    if raw is None:
+        return int(default_port)
+    try:
+        return int(raw)
+    except ValueError:
+        logger.warning("Invalid %sPORT=%r; using %s", env_prefix, raw, default_port)
+        return int(default_port)
+
+
+def url_username_from_env(env_prefix: str = "REDIS_") -> str | None:
+    """The ACL username for a URL, in BOTH spellings that ship.
+
+    `{prefix}USER` is what the chart writes; `{prefix}USERNAME` is what
+    platform-service/sample.env writes and platform_service/env.py reads. One
+    shared Redis-credential secret naturally injects whichever name its author
+    picked, so a consumer that reads only one of them authenticates as a
+    different user than the client beside it in the same process — and on an
+    endpoint where the built-in `default` is disabled, only that one consumer
+    fails.
+
+    Empty means absent, matching the rest of this module: `REDIS_USER=` is the
+    "leave it unset" spelling the sample recipes use, and `os.getenv(name,
+    fallback)` would return that blank instead of falling through to the second
+    spelling.
+    """
+    return os.getenv(f"{env_prefix}USER") or os.getenv(f"{env_prefix}USERNAME") or None
+
+
 def apply_url_credentials(url: str, password: str | None, username: str | None) -> str:
     """Put credentials into a URL that carries none, leaving one that does alone.
 
@@ -394,9 +445,20 @@ def apply_url_credentials(url: str, password: str | None, username: str | None) 
     against an authenticated server, and Socket.IO events simply stop arriving.
 
     The password IS in the returned string. Smaller exposure than a values file,
-    but not none: the backend stores the result as settings.SOCKET_IO_MANAGER_URL,
-    and Django's SafeExceptionReporterFilter does not redact that name — a
-    technical-500 page would print it. One more reason DEBUG must stay off.
+    but not none, and it now has TWO landing places in Django settings:
+    SOCKET_IO_MANAGER_URL, and CACHES["default"]["LOCATION"]. Neither name
+    matches SafeExceptionReporterFilter's `API|TOKEN|KEY|SECRET|PASS|SIGNATURE|
+    HTTP_COOKIE`, so neither is redacted on a technical-500 page, in
+    `manage.py diffsettings`, or in any settings dump — whereas
+    OPTIONS["PASSWORD"], where the cache password used to sit, IS masked.
+    The LOCATION is also the key of django-redis's process-global pool dict.
+
+    This is a deliberate trade, not an oversight: django-redis 5.4.0 discards
+    OPTIONS["USERNAME"], so the LOCATION is the ONLY route by which an ACL
+    username can reach that cache. Stated here because the call site in
+    backend/settings/base.py is where someone will look for the risk and the
+    reasoning lives on this side of the boundary. One more reason DEBUG must
+    stay off.
     """
     if not password:
         return url
@@ -483,12 +545,21 @@ def _resolve_redis_env(
     env_prefix: str, default_port: str = "6379", db_override: int | None = None
 ) -> dict[str, Any]:
     """Read common Redis env vars into a dict."""
-    host = os.getenv(f"{env_prefix}HOST", os.getenv("REDIS_HOST", "localhost"))
-    port = int(os.getenv(f"{env_prefix}PORT", os.getenv("REDIS_PORT", default_port)))
-    password = os.getenv(f"{env_prefix}PASSWORD", os.getenv("REDIS_PASSWORD"))
-    username = os.getenv(
-        f"{env_prefix}USER",
-        os.getenv(f"{env_prefix}USERNAME", os.getenv("REDIS_USER")),
+    host = env_chain(f"{env_prefix}HOST", "REDIS_HOST") or "localhost"
+    port = parse_port(
+        env_chain(f"{env_prefix}PORT", "REDIS_PORT"), env_prefix, default_port
+    )
+    # BLANK MEANS UNSET, like parse_db and _parse_bool in this same module — a
+    # nested os.getenv(prefixed, generic) takes the blank and never consults the
+    # generic one. workers/sample.env ships `CACHE_REDIS_PASSWORD=` uncommented,
+    # so an operator following this module's own recipe (REDIS_URL without
+    # credentials + REDIS_PASSWORD) got url_password="" for every prefixed
+    # client, apply_url_credentials no-opped, and the worker caches connected
+    # ANONYMOUSLY — the exact failure that helper exists to eliminate,
+    # reintroduced by an empty variable.
+    password = env_chain(f"{env_prefix}PASSWORD", "REDIS_PASSWORD")
+    username = env_chain(
+        f"{env_prefix}USER", f"{env_prefix}USERNAME", "REDIS_USER", "REDIS_USERNAME"
     )
     prefixed_db = os.getenv(f"{env_prefix}DB", "").strip()
     generic_db = os.getenv("REDIS_DB", "").strip()
@@ -559,10 +630,8 @@ def _resolve_redis_env(
     # the generic one, so the full fallback chain applies. For env_prefix
     # "REDIS_" the two levels are the same variable and this reads identically.
     if own_url:
-        result["url_password"] = os.getenv(f"{env_prefix}PASSWORD")
-        result["url_username"] = os.getenv(
-            f"{env_prefix}USER", os.getenv(f"{env_prefix}USERNAME")
-        )
+        result["url_password"] = env_chain(f"{env_prefix}PASSWORD")
+        result["url_username"] = url_username_from_env(env_prefix)
     else:
         result["url_password"] = result["password"]
         result["url_username"] = result["username"]
