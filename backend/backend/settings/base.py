@@ -22,13 +22,17 @@ from utils.common_utils import CommonUtils
 from utils.cors_origin import normalize_web_app_origin
 
 from unstract.core.cache.redis_client import (
+    apply_url_credentials,
     build_socketio_redis_url,
     ensure_tls_query_params,
     parse_db,
+    parse_port,
     resolve_ssl_cert_reqs,
     resolve_ssl_check_hostname,
+    resolve_ssl_enabled,
     set_url_db_path,
     url_db_path,
+    url_username_from_env,
 )
 
 # Django 5.0+ caps URLValidator at 2048 chars. S3 pre-signed URLs signed with
@@ -112,12 +116,20 @@ GOOGLE_STORAGE_BASE_URL = os.environ.get("GOOGLE_STORAGE_BASE_URL")
 REDIS_USER = os.environ.get("REDIS_USER", "default")
 REDIS_PASSWORD = os.environ.get("REDIS_PASSWORD", "")
 REDIS_HOST = os.environ.get("REDIS_HOST", "localhost")
-REDIS_PORT = os.environ.get("REDIS_PORT", "6379")
+# Through the shared parser, not a bare int() at the Sentinel call site below:
+# a blank REDIS_PORT= — this repo's "leave the default" spelling — raised
+# ValueError while Django settings were being imported, so the backend alone
+# failed to start while every worker came up healthy on 6379.
+REDIS_PORT = parse_port(os.environ.get("REDIS_PORT"), "REDIS_PORT", 6379)
 REDIS_DB = os.environ.get("REDIS_DB", "")
 # TLS to Redis (UN-4123). Off by default, so the in-cluster/local server is
 # untouched. `rediss://` is what actually selects TLS for both django-redis and
 # kombu; this flag only decides which scheme gets built.
-REDIS_SSL = os.environ.get("REDIS_SSL", "false").strip().lower() == "true"
+# Through the shared resolver, not a local `== "true"`: _TRUE_LITERALS accepts
+# 1, yes and on, so the bare comparison read REDIS_SSL=1 as FALSE — the workers
+# connected rediss:// while this cache built a redis:// LOCATION and skipped its
+# CONNECTION_POOL_KWARGS, i.e. one endpoint with two TLS policies in one process.
+REDIS_SSL = resolve_ssl_enabled()
 # Resolved by unstract.core, not re-read here: the raw value needs trimming,
 # lower-casing and validating, and a second copy of that logic is how this file
 # and create_redis_client came to hold two verification policies for one endpoint.
@@ -552,18 +564,56 @@ REDIS_SENTINEL_MODE = (
 REDIS_SENTINEL_MASTER_NAME = os.environ.get("REDIS_SENTINEL_MASTER_NAME", "mymaster")
 
 if REDIS_SENTINEL_MODE:
+    # This branch used to hold four divergences from create_redis_client, all
+    # pre-existing. They are closed here because "the cache and the client reach
+    # the same place" is not a property that can stop at a mode boundary — an
+    # operator on Sentinel gets the same guarantee or the guarantee is a
+    # half-truth. TestSentinelModeAgreesWithCore covers each one.
+    #
+    # The username comes from the shared resolver, not the module-level
+    # REDIS_USER: that one defaults to "default", so this cache sent a
+    # two-argument ACL AUTH where core sends the one-argument form, and it read
+    # only REDIS_USER so the REDIS_USERNAME spelling platform-service ships was
+    # ignored entirely.
+    _sentinel_username = url_username_from_env()
+
+    # 26379 — the Sentinel port — matching core's
+    # _resolve_redis_env(default_port="26379"). The module-level REDIS_PORT
+    # defaults to 6379, which is the standalone port, so an unset REDIS_PORT
+    # pointed this cache at the wrong port while every other client found the
+    # sentinels. The chart always sets it, which is why this stayed hidden.
+    REDIS_PORT = parse_port(os.environ.get("REDIS_PORT"), "REDIS_PORT", 26379)
+
     _sentinel_kwargs = {}
     if REDIS_PASSWORD:
         _sentinel_kwargs["password"] = REDIS_PASSWORD
-    if REDIS_USER:
-        _sentinel_kwargs["username"] = REDIS_USER
+    if _sentinel_username:
+        _sentinel_kwargs["username"] = _sentinel_username
+
+    # TLS reached neither the discovery connections nor the master one, so a
+    # TLS-only Sentinel deployment got a plaintext cache while core encrypted
+    # both. Core builds them from one env dict for exactly this reason; the
+    # same settings go to both here.
+    _sentinel_pool_kwargs = {}
+    if REDIS_SSL:
+        _sentinel_tls = {
+            "ssl": True,
+            "ssl_cert_reqs": REDIS_SSL_CERT_REQS,
+            "ssl_check_hostname": REDIS_SSL_CHECK_HOSTNAME,
+        }
+        if REDIS_SSL_CA_CERTS:
+            _sentinel_tls["ssl_ca_certs"] = REDIS_SSL_CA_CERTS
+        _sentinel_kwargs.update(_sentinel_tls)
+        _sentinel_pool_kwargs.update(_sentinel_tls)
 
     _redis_db = parse_db(REDIS_DB, "REDIS_")
 
     # SocketIO connection manager (Kombu Sentinel URL format)
     _cred_prefix = ""
-    if REDIS_USER and REDIS_PASSWORD:
-        _cred_prefix = f"{quote(REDIS_USER, safe='')}:{quote(REDIS_PASSWORD, safe='')}@"
+    if _sentinel_username and REDIS_PASSWORD:
+        _cred_prefix = (
+            f"{quote(_sentinel_username, safe='')}:{quote(REDIS_PASSWORD, safe='')}@"
+        )
     elif REDIS_PASSWORD:
         _cred_prefix = f":{quote(REDIS_PASSWORD, safe='')}@"
     SOCKET_IO_MANAGER_URL = (
@@ -572,7 +622,7 @@ if REDIS_SENTINEL_MODE:
     SOCKET_IO_TRANSPORT_OPTIONS = {"master_name": REDIS_SENTINEL_MASTER_NAME}
 
     # django-redis expects username in the LOCATION URL for ACL auth
-    _user_prefix = f"{REDIS_USER}@" if REDIS_USER else ""
+    _user_prefix = f"{_sentinel_username}@" if _sentinel_username else ""
     CACHES = {
         "default": {
             "BACKEND": "django_redis.cache.RedisCache",
@@ -581,8 +631,12 @@ if REDIS_SENTINEL_MODE:
                 "CLIENT_CLASS": "django_redis.client.SentinelClient",
                 "CONNECTION_POOL_CLASS": "redis.sentinel.SentinelConnectionPool",
                 "CONNECTION_FACTORY": "django_redis.pool.SentinelConnectionFactory",
-                "SENTINELS": [(REDIS_HOST, int(REDIS_PORT))],
+                "SENTINELS": [(REDIS_HOST, REDIS_PORT)],
                 "SENTINEL_KWARGS": _sentinel_kwargs,
+                # TLS for the MASTER connection. SENTINEL_KWARGS covers only the
+                # discovery ones; core carries both, so a deployment with TLS on
+                # got an encrypted discovery and a plaintext master.
+                "CONNECTION_POOL_KWARGS": _sentinel_pool_kwargs,
                 "DB": _redis_db,
                 "PASSWORD": REDIS_PASSWORD,
                 "SERIALIZER": "django_redis.serializers.json.JSONSerializer",
@@ -643,23 +697,72 @@ else:
     # So the db has to travel in the URL path, or this cache silently sits on db 0
     # while every other service honours REDIS_DB: workers would RPUSH
     # log_history_queue to db N and the backend would LPOP an empty db 0.
-    # USERNAME and DB below are passed for readability and are DISCARDED by
-    # django-redis — they are not the mechanism for either. Auth stays password-only
-    # as the built-in `default` user (what a managed AUTH string is): a username
-    # would turn AUTH into its two-argument ACL form, and this cache never sends
-    # one. If a django-redis bump ever starts reading USERNAME, that becomes a real
-    # behaviour change rather than a silent one — which is what the assertions in
-    # tests/test_redis_settings_derivation.py pin.
+    # DB below is passed for readability and is DISCARDED by django-redis — it is
+    # not the mechanism. An ACL USERNAME is not passed through OPTIONS at all,
+    # because django-redis would discard that too: it travels in the LOCATION,
+    # the same route the URL branch uses. This used to say auth "stays
+    # password-only as the built-in `default` user ... this cache never sends
+    # one", which described the discrete path accurately and made it the one
+    # consumer that could not reach an ACL endpoint — create_redis_client in the
+    # same process sends the username, so where `default` is disabled the cache
+    # alone failed. That is the identical divergence the URL branch was fixed
+    # for, left standing on the path the module docstring calls primary.
     _cache_options = {
         "CLIENT_CLASS": "django_redis.client.DefaultClient",
         "SERIALIZER": "django_redis.serializers.json.JSONSerializer",
     }
+    _cache_username = url_username_from_env()
     if not _redis_url:
-        # Credentials and db travel IN the URL in URL mode; passing them again
-        # through OPTIONS risks one of them winning over the other.
         _cache_options["DB"] = _cache_db
-        _cache_options["USERNAME"] = REDIS_USER
-        _cache_options["PASSWORD"] = REDIS_PASSWORD
+        _cache_location = f"{_scheme}://{REDIS_HOST}:{REDIS_PORT}/{_cache_db}"
+        if _cache_username:
+            # Only when a username must travel. Keeping the password in OPTIONS
+            # otherwise is deliberate: OPTIONS["PASSWORD"] matches Django's
+            # SafeExceptionReporterFilter and is masked in a settings dump,
+            # while LOCATION is not. Pay that exposure only where django-redis
+            # leaves no alternative.
+            _cache_location = apply_url_credentials(
+                _cache_location, REDIS_PASSWORD, _cache_username
+            )
+        else:
+            _cache_options["PASSWORD"] = REDIS_PASSWORD
+    else:
+        # URL mode: the credentials go into the LOCATION, through the SAME helper
+        # the Socket.IO URL uses. Two reasons it is not OPTIONS["PASSWORD"]:
+        #
+        #   - django-redis 5.4.0 discards OPTIONS["USERNAME"], so an ACL username
+        #     could not reach this cache at all. It would authenticate as the
+        #     built-in `default` user while create_redis_client in the same
+        #     process authenticated as the configured one — and on an endpoint
+        #     where `default` is disabled, the cache alone would fail.
+        #   - a hand-rolled gate here diverged from the core one within a single
+        #     PR: it keyed on "@" being absent from the netloc, which the core
+        #     comment explicitly rejects, so a URL carrying only an ACL username
+        #     left this cache anonymous. One helper, one rule, no second copy to
+        #     keep in step.
+        #
+        # The helper returns the URL untouched when it already carries a
+        # password, so a credential-bearing REDIS_URL behaves exactly as before.
+        # The username comes from the SAME resolver the core client uses, not
+        # from a hand-written os.environ.get here. Two reasons, and the second
+        # was a live divergence:
+        #
+        #   - the module-level REDIS_USER above defaults to "default", while
+        #     create_redis_client reads the variable with no default. Passing
+        #     the fallback would make this cache send the two-argument
+        #     `AUTH default <pw>` while the client in the same process sends the
+        #     one-argument form.
+        #   - the resolver accepts BOTH spellings, REDIS_USER and
+        #     REDIS_USERNAME. platform-service ships the second one, so a single
+        #     shared Redis-credential secret can easily inject it — and reading
+        #     only REDIS_USER left this cache authenticating as `default` while
+        #     the client beside it authenticated as the configured ACL user.
+        #
+        # Re-deriving the chain here is the same second copy this commit removed
+        # for the "@" heuristic; asking core for it is what keeps the three
+        # consumers in step by construction rather than by comment.
+        _redis_url = apply_url_credentials(_redis_url, REDIS_PASSWORD, _cache_username)
+        _cache_location = _redis_url
     # Gated on the EFFECTIVE scheme, not the flag. In URL mode TLS is carried by
     # the URL (and its query string), so a plaintext REDIS_URL left behind while
     # REDIS_SSL=true would otherwise hand ssl_cert_reqs to a plain
@@ -697,11 +800,17 @@ else:
         # counters and the dashboard caches go with it, and during a rolling
         # deploy old pods read db 0 while new pods read db N. Drain
         # log_history_queue before cutting over.
+        #
+        # The message deliberately does NOT explain where the previous db came
+        # from. It fires on both paths — discrete, where the cache sat on db 0
+        # regardless because django-redis ignores OPTIONS['DB'], and URL mode,
+        # where it came from the URL's own path — and the earlier wording gave
+        # the discrete explanation to both. The db NUMBERS are right in every
+        # case; only the stated reason was wrong on the URL path.
         logging.getLogger(__name__).warning(
-            "Django cache is moving from Redis db %s to db %s (REDIS_DB). In "
-            "discrete mode it previously sat on db 0 regardless, because "
-            "django-redis ignores OPTIONS['DB']. Anything already in db %s — "
-            "including log_history_queue — stays there.",
+            "Django cache is moving from Redis db %s to db %s (REDIS_DB). "
+            "Anything already in db %s — including log_history_queue — stays "
+            "there.",
             _previous_db,
             _effective_db,
             _previous_db,
@@ -710,8 +819,7 @@ else:
     CACHES = {
         "default": {
             "BACKEND": "django_redis.cache.RedisCache",
-            "LOCATION": _redis_url
-            or f"{_scheme}://{REDIS_HOST}:{REDIS_PORT}/{_cache_db}",
+            "LOCATION": _cache_location,
             "OPTIONS": _cache_options,
             "KEY_FUNCTION": "utils.redis_cache.custom_key_function",
         }

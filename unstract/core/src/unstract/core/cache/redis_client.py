@@ -136,15 +136,17 @@ def url_db_path(url: str) -> int | None:
         return None
 
 
-def _parse_bool(raw: str, default: bool, name: str) -> bool:
+def _parse_bool(raw: str | None, default: bool, name: str) -> bool:
     """Parse a boolean env var; blank means UNSET, unknown warns and defaults.
 
     Blank-means-unset is this repo's own convention — `FOO=` in a sample.env
     means "leave the default", and every other variable in UN-4123 treats it that
     way. `os.getenv` does not: it reports an empty string as SET, so a bare
     `os.getenv(...) == "true"` turns `FOO=` into False.
+
+    Accepts None so callers can hand it env_chain's "nothing was set" directly.
     """
-    value = raw.strip().lower()
+    value = (raw or "").strip().lower()
     if not value:
         return default
     if value in _TRUE_LITERALS:
@@ -190,9 +192,7 @@ def resolve_ssl_cert_reqs(env_prefix: str = "REDIS_") -> str:
     endpoint, three verification policies. Case and stray whitespace had the same
     effect, since the "is verification off?" test is an equality check.
     """
-    raw = os.getenv(
-        f"{env_prefix}SSL_CERT_REQS", os.getenv("REDIS_SSL_CERT_REQS", "")
-    ).strip()
+    raw = (env_chain(f"{env_prefix}SSL_CERT_REQS", "REDIS_SSL_CERT_REQS") or "").strip()
     value = raw.lower()
     if not value:
         return _DEFAULT_CERT_REQS
@@ -216,13 +216,10 @@ def resolve_ssl_check_hostname(env_prefix: str = "REDIS_", default: bool = True)
     FALSE, silently downgrading the Django cache to an encrypted but
     unauthenticated connection.
     """
-    return _parse_bool(
-        os.getenv(
-            f"{env_prefix}SSL_CHECK_HOSTNAME", os.getenv("REDIS_SSL_CHECK_HOSTNAME", "")
-        ),
-        default,
-        f"{env_prefix}SSL_CHECK_HOSTNAME",
+    raw, name = env_chain_named(
+        f"{env_prefix}SSL_CHECK_HOSTNAME", "REDIS_SSL_CHECK_HOSTNAME"
     )
+    return _parse_bool(raw, default, name)
 
 
 def url_cert_reqs(url: str) -> str | None:
@@ -322,7 +319,8 @@ def ensure_tls_query_params(
     """Add the TLS settings a `rediss://` URL is missing, leaving present ones alone.
 
     Anything that hands a URL to a library that reads TLS out of the query string
-    needs this: kombu's KombuManager takes a URL and NOTHING else, and
+    needs this: kombu's KombuManager reads TLS from the URL alone — its
+    connection_options reach kombu.Connection, but the TLS settings do not — and
     django-redis's LOCATION is a string too (it also reads
     OPTIONS["CONNECTION_POOL_KWARGS"], but the query string wins on conflict).
 
@@ -380,6 +378,156 @@ def _compose_redis_url(env: dict[str, Any]) -> str:
     return f"{scheme}://{credentials}{env['host']}:{env['port']}"
 
 
+def env_chain(*names: str) -> str | None:
+    """First NON-BLANK value among these env vars, else None.
+
+    Blank means unset throughout this module — it is the "leave the default"
+    spelling the sample recipes and values files use, and it is why a nested
+    `os.getenv(prefixed, os.getenv(generic))` is wrong here: `os.getenv` reports
+    a set-but-empty variable as set, so the blank shadows the level below it.
+    """
+    for name in names:
+        value = os.getenv(name, "")
+        # Emptiness is tested on the STRIPPED value; the RAW one is returned.
+        # Stripping the return value silently truncated a password or username
+        # that came from a file-mounted secret with a trailing newline, while
+        # backend/settings/base.py read the same variable unstripped — so one
+        # process authenticated two different ways against one endpoint.
+        if value.strip():
+            return value
+    return None
+
+
+def env_chain_named(*names: str) -> tuple[str | None, str]:
+    """env_chain, plus the name of the variable the value came from.
+
+    So a warning about an unusable value can name the variable that is actually
+    SET. Reporting the prefixed name for a value that came from the generic one
+    sends an operator grepping for a key that does not exist in their config.
+    """
+    for name in names:
+        value = os.getenv(name, "")
+        if value.strip():
+            return value, name
+    return None, names[0]
+
+
+def parse_port(raw: str | None, var_name: str, default_port: str | int) -> int:
+    """A port number; blank means unset, unparseable warns and falls back.
+
+    parse_db already does this for the database and says why: an int() straight
+    out of os.getenv raises at client construction with a message naming neither
+    the variable nor the prefix, which in most consumers kills the process at
+    import and in the two that catch broadly degrades to no-cache.
+    """
+    # Blank is unset, like everywhere else here. base.py hands this the raw env
+    # value rather than env_chain's None, so without this a bare `REDIS_PORT=` —
+    # the repo's own "leave the default" spelling — logged an ERROR at startup
+    # in the backend and nowhere else.
+    if raw is None or not raw.strip():
+        return int(default_port)
+    try:
+        return int(raw)
+    except ValueError:
+        # error, not warning: the fallback is a PORT, and on a host serving both
+        # 6379 and 6380 a typo lands the client on the other server rather than
+        # failing — a wrong endpoint, reported as a wrong value.
+        logger.error("Invalid %s=%r; using %s", var_name, raw, default_port)
+        return int(default_port)
+
+
+def resolve_ssl_enabled(env_prefix: str = "REDIS_") -> bool:
+    """{prefix}SSL, falling back to REDIS_SSL; blank means unset.
+
+    Exported so the backend's settings module uses the SAME parse rather than
+    its own `== "true"`. _TRUE_LITERALS accepts 1, yes and on, so the bare
+    comparison read `REDIS_SSL=1` as FALSE — every create_redis_client consumer
+    connected rediss:// while the Django cache built a redis:// LOCATION and
+    skipped its CONNECTION_POOL_KWARGS entirely. One endpoint, one process, two
+    TLS policies, which is the failure this module was centralised to prevent.
+    """
+    raw, name = env_chain_named(f"{env_prefix}SSL", "REDIS_SSL")
+    return _parse_bool(raw, False, name)
+
+
+def url_username_from_env(env_prefix: str = "REDIS_") -> str | None:
+    """The ACL username for a URL, in BOTH spellings that ship.
+
+    `{prefix}USER` is what the chart writes; `{prefix}USERNAME` is what
+    platform-service/sample.env writes and platform_service/env.py reads. One
+    shared Redis-credential secret naturally injects whichever name its author
+    picked, so a consumer that reads only one of them authenticates as a
+    different user than the client beside it in the same process — and on an
+    endpoint where the built-in `default` is disabled, only that one consumer
+    fails.
+
+    Empty means absent, matching the rest of this module: `REDIS_USER=` is the
+    "leave it unset" spelling the sample recipes use, and `os.getenv(name,
+    fallback)` would return that blank instead of falling through to the second
+    spelling.
+    """
+    return env_chain(f"{env_prefix}USER", f"{env_prefix}USERNAME")
+
+
+def apply_url_credentials(url: str, password: str | None, username: str | None) -> str:
+    """Put credentials into a URL that carries none, leaving one that does alone.
+
+    KombuManager reads TLS out of the query string only, so the URL is where TLS
+    has to go, and the credentials ride with it so ONE builder serves both the
+    kombu and the redis-py callers. That is a choice, not a constraint:
+    KombuManager forwards connection_options to kombu.Connection, which accepts
+    userid= and password=.
+
+    A URL written without credentials otherwise produces an anonymous publisher
+    against an authenticated server, and Socket.IO events simply stop arriving.
+
+    The password IS in the returned string. Smaller exposure than a values file,
+    but not none, and it now has TWO landing places in Django settings:
+    SOCKET_IO_MANAGER_URL, and CACHES["default"]["LOCATION"]. Neither name
+    matches SafeExceptionReporterFilter's `API|TOKEN|KEY|SECRET|PASS|SIGNATURE|
+    HTTP_COOKIE`, so neither is redacted on a technical-500 page, in
+    `manage.py diffsettings`, or in any settings dump — whereas
+    OPTIONS["PASSWORD"], where the cache password used to sit, IS masked.
+    The LOCATION is also the key of django-redis's process-global pool dict.
+
+    This is a deliberate trade, not an oversight: django-redis 5.4.0 discards
+    OPTIONS["USERNAME"], so the LOCATION is the ONLY route by which an ACL
+    username can reach that cache. Stated here because the call site in
+    backend/settings/base.py is where someone will look for the risk and the
+    reasoning lives on this side of the boundary. One more reason DEBUG must
+    stay off.
+    """
+    if not password:
+        return url
+    parts = urlsplit(url)
+    # Truthiness, not `is not None`: `redis://:@host` parses to password "", and
+    # both redis-py (`if url.password:`) and kombu (`unquote(password or "") or
+    # None`) read that as absent.
+    if parts.password:
+        return url
+    # REBUILD the netloc; do not prepend to it. parts.netloc INCLUDES any
+    # userinfo, so prepending on a username-only URL produced
+    # `alice:pw@alice@host` — and userinfo splits on the LAST "@", so the
+    # password parsed as "pw@alice". A wrong credential, not a missing one.
+    #
+    # A username already in the URL is reused VERBATIM rather than re-quoted: it
+    # is percent-encoded already, and quoting it again turned `al%40ice` into
+    # `al%2540ice`.
+    userinfo, _, host_port = parts.netloc.rpartition("@")
+    url_user = userinfo.partition(":")[0]
+    user = url_user or (quote(str(username), safe="") if username else "")
+    credentials = f"{user}:{quote(str(password), safe='')}@"
+    return urlunsplit(
+        (
+            parts.scheme,
+            credentials + host_port,
+            parts.path,
+            parts.query,
+            parts.fragment,
+        )
+    )
+
+
 def build_socketio_redis_url(env_prefix: str = "REDIS_") -> str:
     """Redis URL for a Socket.IO/kombu client, TLS settings included (UN-4123).
 
@@ -415,6 +563,9 @@ def build_socketio_redis_url(env_prefix: str = "REDIS_") -> str:
     ca_certs = env.get("ssl_ca_certs")
 
     url = env["url"] or _compose_redis_url(env)
+    # _compose_redis_url already embeds them for the discrete path; a configured
+    # URL may not carry any, and kombu can read them from nowhere else.
+    url = apply_url_credentials(url, env.get("url_password"), env.get("url_username"))
     if not url.startswith(_TLS_SCHEME):
         return url
 
@@ -431,13 +582,45 @@ def _resolve_redis_env(
     env_prefix: str, default_port: str = "6379", db_override: int | None = None
 ) -> dict[str, Any]:
     """Read common Redis env vars into a dict."""
-    host = os.getenv(f"{env_prefix}HOST", os.getenv("REDIS_HOST", "localhost"))
-    port = int(os.getenv(f"{env_prefix}PORT", os.getenv("REDIS_PORT", default_port)))
-    password = os.getenv(f"{env_prefix}PASSWORD", os.getenv("REDIS_PASSWORD"))
-    username = os.getenv(
-        f"{env_prefix}USER",
-        os.getenv(f"{env_prefix}USERNAME", os.getenv("REDIS_USER")),
+    # Stripped explicitly: env_chain returns the RAW value so a credential keeps
+    # any whitespace it was given, but a host must not. urlsplit() drops a
+    # trailing newline from a URL host while redis.Redis(host=...) keeps it, so
+    # a file-mounted REDIS_HOST ending in \n would fail DNS on the discrete path
+    # and succeed on the URL one.
+    host = (env_chain(f"{env_prefix}HOST", "REDIS_HOST") or "localhost").strip()
+    port_raw, port_name = env_chain_named(f"{env_prefix}PORT", "REDIS_PORT")
+    port = parse_port(port_raw, port_name, default_port)
+    # BLANK MEANS UNSET, like parse_db and _parse_bool in this same module — a
+    # nested os.getenv(prefixed, generic) takes the blank and never consults the
+    # generic one. workers/sample.env ships `CACHE_REDIS_PASSWORD=` uncommented,
+    # so an operator following this module's own recipe (REDIS_URL without
+    # credentials + REDIS_PASSWORD) got url_password="" for every prefixed
+    # client, apply_url_credentials no-opped, and the worker caches connected
+    # ANONYMOUSLY — the exact failure that helper exists to eliminate,
+    # reintroduced by an empty variable.
+    password = env_chain(f"{env_prefix}PASSWORD", "REDIS_PASSWORD")
+    username = env_chain(
+        f"{env_prefix}USER", f"{env_prefix}USERNAME", "REDIS_USER", "REDIS_USERNAME"
     )
+    # An ACL username without a password is not a configuration Redis has. AUTH
+    # takes either one argument or two, so redis-py packs `AUTH alice None` and
+    # raises `DataError: Invalid input of type: 'NoneType'` on the FIRST command
+    # — a type error from inside the library, nowhere near the values file that
+    # caused it. Said plainly at configuration time instead, and the username is
+    # dropped so this client degrades to the same anonymous connection the
+    # Django cache already makes for this input (apply_url_credentials returns
+    # the URL untouched when there is no password), rather than the two
+    # disagreeing about a config neither can honour.
+    if username and not password:
+        logger.error(
+            "%sUSER=%r is set but no password is; Redis has no one-argument ACL "
+            "AUTH, so the username is being ignored. Set %sPASSWORD, or clear "
+            "the username.",
+            env_prefix,
+            username,
+            env_prefix,
+        )
+        username = None
     prefixed_db = os.getenv(f"{env_prefix}DB", "").strip()
     generic_db = os.getenv("REDIS_DB", "").strip()
     db = (
@@ -449,10 +632,12 @@ def _resolve_redis_env(
     # turning TLS on platform-wide meant remembering CACHE_REDIS_SSL and
     # MANUAL_REVIEW_REDIS_SSL too — and a missed one fails as a plaintext client
     # talking to a TLS port, not as a config error.
-    ssl = (
-        os.getenv(f"{env_prefix}SSL", os.getenv("REDIS_SSL", "false")).strip().lower()
-        == "true"
-    )
+    # BLANK MEANS UNSET here too. It did not, and the asymmetry was dangerous
+    # rather than merely untidy: once password/user fell through a blank prefixed
+    # value but TLS did not, a blank CACHE_REDIS_SSL beside REDIS_SSL=true gave
+    # the worker cache a real AUTH over an UNENCRYPTED socket — the credential
+    # this same commit taught it to inherit, now on the wire in clear.
+    ssl = resolve_ssl_enabled(env_prefix)
     own_url = os.getenv(f"{env_prefix}URL", "").strip()
     generic_url = os.getenv("REDIS_URL", "").strip()
     result: dict[str, Any] = {
@@ -499,6 +684,19 @@ def _resolve_redis_env(
     # docstring, sample.env or the chart state. For env_prefix="REDIS_" the two
     # levels are the same variable, so this reads identically there.
     explicit_db = prefixed_db if own_url else (prefixed_db or generic_db)
+    # CREDENTIALS AT THE URL'S OWN LEVEL, by the same rule as the database above.
+    # A prefix that brought its OWN url may point at a DIFFERENT endpoint, and
+    # an anonymous one at that; letting the generic REDIS_PASSWORD reach across
+    # would make that client send AUTH to a server with none, breaking a
+    # connection that worked before. An INHERITED url is the same endpoint as
+    # the generic one, so the full fallback chain applies. For env_prefix
+    # "REDIS_" the two levels are the same variable and this reads identically.
+    if own_url:
+        result["url_password"] = env_chain(f"{env_prefix}PASSWORD")
+        result["url_username"] = url_username_from_env(env_prefix)
+    else:
+        result["url_password"] = result["password"]
+        result["url_username"] = result["username"]
     if result["url"] and explicit_db and db_override is None:
         result["db_from_prefix_env"] = parse_db(explicit_db, env_prefix)
     # Read OUTSIDE the `if ssl` below: URL mode carries TLS in the scheme and never
@@ -508,8 +706,8 @@ def _resolve_redis_env(
     #
     # Needed where the server's CA is not publicly trusted — notably Memorystore,
     # whose CA is Google-managed. ElastiCache and Azure chain to public CAs.
-    ca_certs = os.getenv(
-        f"{env_prefix}SSL_CA_CERTS", os.getenv("REDIS_SSL_CA_CERTS", "")
+    ca_certs = (
+        env_chain(f"{env_prefix}SSL_CA_CERTS", "REDIS_SSL_CA_CERTS") or ""
     ).strip()
     if ca_certs:
         result["ssl_ca_certs"] = ca_certs
@@ -536,8 +734,14 @@ def _resolve_redis_env(
     # check_hostname is True while verify_mode is CERT_NONE. Decided from the
     # EFFECTIVE value — the URL's query string outranks the env var, and testing
     # the env var alone is what produced that ValueError on every connection.
-    raw_check_hostname = os.getenv(
-        f"{env_prefix}SSL_CHECK_HOSTNAME", os.getenv("REDIS_SSL_CHECK_HOSTNAME", "")
+    # The SAME read as resolve_ssl_check_hostname above — this one decides
+    # whether the value was EXPLICIT, and leaving it on the nested os.getenv
+    # made a blank prefixed value fall through for the value but not for the
+    # explicitness. On a Sentinel + TLS deployment that meant a global
+    # REDIS_SSL_CHECK_HOSTNAME=true was honoured on the discovery connections
+    # and silently dropped on the master one.
+    raw_check_hostname, _ = env_chain_named(
+        f"{env_prefix}SSL_CHECK_HOSTNAME", "REDIS_SSL_CHECK_HOSTNAME"
     )
     # Whether the operator ASKED for a value, as opposed to inheriting the
     # default. Sentinel's master plane needs to know the difference — see
@@ -546,8 +750,8 @@ def _resolve_redis_env(
     # verification back on for Sentinel masters, which is the breakage this
     # distinction exists to avoid.
     result["ssl_check_hostname_explicit"] = (
-        raw_check_hostname.strip().lower() in _TRUE_LITERALS | _FALSE_LITERALS
-    )
+        raw_check_hostname or ""
+    ).strip().lower() in _TRUE_LITERALS | _FALSE_LITERALS
     if effective_cert_reqs(result["url"], result["ssl_cert_reqs"]) == "none":
         result["ssl_check_hostname"] = False
         result["ssl_check_hostname_explicit"] = False
@@ -674,6 +878,8 @@ def _create_standalone_client(
             ssl_ca_certs=env.get("ssl_ca_certs"),
             ssl_cert_reqs=env.get("ssl_cert_reqs"),
             ssl_check_hostname=env.get("ssl_check_hostname"),
+            password=env.get("url_password"),
+            username=env.get("url_username"),
         )
 
     logger.info(
@@ -715,6 +921,8 @@ def _create_client_from_url(
     ssl_ca_certs: str | None,
     ssl_cert_reqs: str | None = None,
     ssl_check_hostname: bool | None = None,
+    password: str | None = None,
+    username: str | None = None,
 ) -> redis.Redis:
     """Build a client from a full Redis URL.
 
@@ -760,6 +968,34 @@ def _create_client_from_url(
         kwargs["db"] = db_override
 
     parts = urlsplit(url)
+    # Credentials FILL A GAP the URL leaves; they never override one.
+    # ConnectionPool.from_url ends with kwargs.update(url_options), so a URL
+    # carrying credentials still wins.
+    #
+    # Without this, a URL written WITHOUT credentials plus a separately
+    # configured {prefix}PASSWORD connects ANONYMOUSLY — and setting the two
+    # apart is the configuration the on-prem recipe should be able to recommend,
+    # because it keeps the password out of a URL that gets printed into error
+    # messages, ArgoCD conditions and ExternalSecret templates. The endpoint
+    # answers NOAUTH on the first command, which reads as a broken server rather
+    # than a dropped password.
+    # Gated on the PASSWORD, and the username rides with it. A username alone is
+    # not a credential: values.yaml ships REDIS_USER: default, so filling it in
+    # on its own would make redis-py send AUTH to the in-cluster server, which
+    # has none — turning a working default deployment into a failing one.
+    # Keyed on the URL's PASSWORD, not on the presence of "@". A URL may carry an
+    # ACL username alone — redis://alice@host — and that @ is not evidence of a
+    # password. Truthiness rather than `is None`: `redis://:@host` parses to ""
+    # and redis-py's own parse_url sets the key only `if url.password`.
+    #
+    # No `not parts.username` guard below: from_url ends with
+    # kwargs.update(url_options), so a URL username wins regardless — that guard
+    # was unfalsifiable, which is where a later reader deletes something
+    # load-bearing by mistake.
+    if password and not parts.password:
+        kwargs["password"] = password
+        if username:
+            kwargs["username"] = username
     logger.info(
         "Redis URL mode enabled. Connecting to %s:%s (tls=%s)",
         parts.hostname,

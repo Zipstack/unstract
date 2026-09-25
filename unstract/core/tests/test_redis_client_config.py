@@ -11,12 +11,18 @@ and writes against the wrong keyspace; an empty-string env var counts as "set" t
 None of those raise at import, so they are asserted here instead.
 """
 
+import logging
 import pathlib
 import re
+from urllib.parse import unquote, urlsplit
 
 import pytest
 import redis
 from unstract.core.cache.redis_client import (
+    url_username_from_env,
+    parse_port,
+    env_chain_named,
+    env_chain,
     _build_connection_kwargs,
     _resolve_redis_env,
     build_socketio_redis_url,
@@ -263,19 +269,39 @@ class TestAuth:
             "s3cr3t"
         )
 
-    def test_empty_prefixed_password_shadows_the_fallback(self, monkeypatch):
-        """Documents a trap rather than endorsing it.
+    def test_empty_prefixed_password_falls_through_to_the_fallback(self, monkeypatch):
+        """This is the revisit the previous version of this test asked for.
 
-        ``os.getenv(key, fallback)`` returns "" when the key exists but is empty,
-        so an empty CACHE_REDIS_PASSWORD suppresses REDIS_PASSWORD and the client
-        connects UNAUTHENTICATED. The Helm chart must therefore never render an
-        empty credential; this test fails if that behaviour ever changes, so the
-        chart-side guarantee can be revisited.
+        It used to assert the opposite and said so: an empty
+        CACHE_REDIS_PASSWORD suppressed REDIS_PASSWORD and the client connected
+        UNAUTHENTICATED, which was tolerated because "the Helm chart must
+        therefore never render an empty credential".
+
+        That guarantee does not hold. workers/sample.env ships
+        `CACHE_REDIS_PASSWORD=` uncommented, so an operator following this
+        module's own managed-Redis recipe — REDIS_URL without credentials plus
+        REDIS_PASSWORD — got no password on any prefixed client and a NOAUTH on
+        first command. Blank now means unset here, the same rule parse_db and
+        _parse_bool already document two functions away.
         """
         monkeypatch.setenv("REDIS_PASSWORD", "s3cr3t")
         monkeypatch.setenv("CACHE_REDIS_PASSWORD", "")
         kwargs = _kwargs(create_redis_client(env_prefix="CACHE_REDIS_"))
-        assert kwargs.get("password") is None
+        assert kwargs["password"] == "s3cr3t"
+
+    def test_a_prefixed_password_still_overrides(self, monkeypatch):
+        """Blank falling through must not turn into the prefix being ignored."""
+        monkeypatch.setenv("REDIS_PASSWORD", "s3cr3t")
+        monkeypatch.setenv("CACHE_REDIS_PASSWORD", "other")
+        kwargs = _kwargs(create_redis_client(env_prefix="CACHE_REDIS_"))
+        assert kwargs["password"] == "other"
+
+    def test_a_blank_password_on_a_prefixed_url_reaches_the_url(self, monkeypatch):
+        """The recipe this PR documents, with the sample.env blank in place."""
+        monkeypatch.setenv("REDIS_URL", "rediss://managed:6380/0")
+        monkeypatch.setenv("REDIS_PASSWORD", "pw")
+        monkeypatch.setenv("CACHE_REDIS_PASSWORD", "")
+        assert urlsplit(build_socketio_redis_url("CACHE_REDIS_")).password == "pw"
 
 
 class TestSocketIoUrl:
@@ -552,11 +578,25 @@ class TestContainerAllowlists:
     def _shared(cls) -> set[str]:
         """Every REDIS_* env var redis_client.py reads, minus the excused ones."""
         source = cls._CLIENT.read_text()
-        names = set(re.findall(r'os\.getenv\(\s*"(REDIS_[A-Z_]+)"', source))
-        names |= {
-            f"REDIS_{suffix}"
-            for suffix in re.findall(r'os\.getenv\(\s*f"\{env_prefix\}([A-Z_]+)"', source)
-        }
+        # Scans the ARGUMENTS of every env-reading call, not just os.getenv.
+        # Keying on os.getenv alone meant that rewriting a read to go through
+        # env_chain made the variable invisible here — the TLS set dropped out
+        # of this guard silently, which is the same drift this class exists to
+        # catch. Scoped to these call names rather than the whole file so a
+        # variable merely NAMED in a docstring is not demanded of every
+        # container.
+        calls = re.findall(
+            r"(?:os\.getenv|env_chain|env_chain_named)\("
+            r"([^()]*(?:\([^()]*\)[^()]*)*)\)",
+            source,
+        )
+        names: set[str] = set()
+        for args in calls:
+            names |= set(re.findall(r'"(REDIS_[A-Z_]+)"', args))
+            names |= {
+                f"REDIS_{suffix}"
+                for suffix in re.findall(r'f"\{env_prefix\}([A-Z_]+)"', args)
+            }
         return names - cls._NOT_FORWARDED
 
     def test_the_derived_set_is_not_empty(self):
@@ -909,3 +949,352 @@ class TestDiscreteModeStillInheritsTheGenericDb:
         monkeypatch.setenv("REDIS_DB", "3")
         monkeypatch.setenv("CACHE_REDIS_DB", "1")
         assert _kwargs(create_redis_client("CACHE_REDIS_"))["db"] == 1
+
+
+class TestUrlModeCredentials:
+    """A URL written without credentials must not connect anonymously.
+
+    Keeping the password OUT of the URL is the safer configuration — a URL is
+    printed into error messages, ArgoCD conditions and ExternalSecret templates,
+    and a password in it travels to all three. That configuration is only usable
+    if the separately-supplied credential is actually applied.
+    """
+
+    def test_the_configured_password_fills_a_gap_the_url_leaves(self, monkeypatch):
+        monkeypatch.setenv("REDIS_URL", "rediss://h:6380/0")
+        monkeypatch.setenv("REDIS_PASSWORD", "s3cret")
+        assert _kwargs(create_redis_client())["password"] == "s3cret"
+
+    def test_a_url_carrying_credentials_still_wins(self, monkeypatch):
+        """ConnectionPool.from_url ends with kwargs.update(url_options)."""
+        monkeypatch.setenv("REDIS_URL", "rediss://:in-url@h:6380/0")
+        monkeypatch.setenv("REDIS_PASSWORD", "s3cret")
+        assert _kwargs(create_redis_client())["password"] == "in-url"
+
+    def test_a_username_password_pair_in_the_url_wins_too(self, monkeypatch):
+        monkeypatch.setenv("REDIS_URL", "rediss://u:pw@h:6380/0")
+        monkeypatch.setenv("REDIS_PASSWORD", "s3cret")
+        monkeypatch.setenv("REDIS_USER", "alice")
+        kwargs = _kwargs(create_redis_client())
+        assert kwargs["password"] == "pw"
+        assert kwargs["username"] == "u"
+
+    def test_the_username_rides_with_the_password(self, monkeypatch):
+        monkeypatch.setenv("REDIS_URL", "rediss://h:6380/0")
+        monkeypatch.setenv("REDIS_PASSWORD", "s3cret")
+        monkeypatch.setenv("REDIS_USER", "alice")
+        assert _kwargs(create_redis_client())["username"] == "alice"
+
+    def test_a_username_alone_is_not_a_credential(self, monkeypatch):
+        """values.yaml ships REDIS_USER: default, and the in-cluster server has
+        no auth. Filling in a username on its own would make redis-py send AUTH
+        to it — turning a working default deployment into a failing one.
+        """
+        monkeypatch.setenv("REDIS_URL", "redis://h:6379/0")
+        monkeypatch.setenv("REDIS_USER", "default")
+        monkeypatch.setenv("REDIS_PASSWORD", "")
+        kwargs = _kwargs(create_redis_client())
+        assert kwargs.get("username") is None
+        assert kwargs.get("password") is None
+
+    def test_no_credentials_anywhere_stays_anonymous(self, monkeypatch):
+        monkeypatch.setenv("REDIS_URL", "redis://h:6379/0")
+        assert _kwargs(create_redis_client()).get("password") is None
+
+    def test_the_socketio_url_gains_the_credentials_too(self, monkeypatch):
+        """Kombu takes a URL and nothing else, so a separately-supplied password
+        cannot reach it any other way. Without this the publisher is anonymous
+        against an authenticated server and Socket.IO events simply stop.
+        """
+        monkeypatch.setenv("REDIS_URL", "rediss://h:6380/0")
+        monkeypatch.setenv("REDIS_PASSWORD", "s3cret")
+        # Assert on PARSED fields, not a substring: a substring check passes on
+        # `rediss://alice:s3cret@alice@h:6380/0`, where the password actually
+        # parses as "s3cret@alice".
+        parts = urlsplit(build_socketio_redis_url())
+        assert parts.password == "s3cret"
+        assert parts.hostname == "h"
+
+    def test_the_socketio_url_leaves_existing_credentials_alone(self, monkeypatch):
+        """Parsed fields, not substrings — the same rule as the test above.
+
+        `"in-url" in url` also passes on `rediss://:in-url@in-url@h:6380/0`,
+        where the password parses as "in-url@in-url", and on
+        `rediss://h:6380/0?note=in-url`, where there is no password at all.
+        """
+        monkeypatch.setenv("REDIS_URL", "rediss://:in-url@h:6380/0")
+        monkeypatch.setenv("REDIS_PASSWORD", "s3cret")
+        parts = urlsplit(build_socketio_redis_url())
+        assert parts.password == "in-url"
+        assert parts.hostname == "h"
+
+    def test_an_empty_password_in_the_url_is_treated_as_absent(self, monkeypatch):
+        """`redis://:@host` parses to password "", which redis-py's own
+        parse_url reads as absent (`if url.password:`). Testing `is None` would
+        decline to fill a gap the library agrees is a gap — and the shape is
+        what Helm produces from `redis://:{{ .Values.password }}@host` when the
+        value is empty.
+        """
+        monkeypatch.setenv("REDIS_URL", "redis://:@h:6379/0")
+        monkeypatch.setenv("REDIS_PASSWORD", "s3cret")
+        assert _kwargs(create_redis_client())["password"] == "s3cret"
+
+    def test_a_username_only_url_still_gets_the_password(self, monkeypatch):
+        """`redis://alice@host` carries an @ but NO password.
+
+        Treating the @ as evidence of credentials dropped the separately
+        supplied password and left the client unable to authenticate.
+        """
+        monkeypatch.setenv("REDIS_URL", "redis://alice@h:6379/0")
+        monkeypatch.setenv("REDIS_PASSWORD", "s3cret")
+        kwargs = _kwargs(create_redis_client())
+        assert kwargs["password"] == "s3cret"
+        assert kwargs["username"] == "alice"
+
+
+class TestUrlCredentialsAreResolvedAtTheUrlsLevel:
+    """Same rule as the database: a prefix that brought its OWN url owns its
+    own credentials.
+
+    That url may point at a DIFFERENT endpoint, and an anonymous one; letting
+    the generic REDIS_PASSWORD reach across would make the client send AUTH to
+    a server that has none, breaking a connection that worked before.
+    """
+
+    def test_a_prefix_url_does_not_inherit_the_generic_password(self, monkeypatch):
+        monkeypatch.setenv("CACHE_REDIS_URL", "redis://anon:6379/0")
+        monkeypatch.setenv("REDIS_PASSWORD", "s3cret")
+        assert _kwargs(create_redis_client("CACHE_REDIS_")).get("password") is None
+
+    def test_the_prefixs_own_password_applies(self, monkeypatch):
+        monkeypatch.setenv("CACHE_REDIS_URL", "redis://anon:6379/0")
+        monkeypatch.setenv("CACHE_REDIS_PASSWORD", "own")
+        monkeypatch.setenv("REDIS_PASSWORD", "s3cret")
+        assert _kwargs(create_redis_client("CACHE_REDIS_"))["password"] == "own"
+
+    def test_an_inherited_url_still_uses_the_generic_password(self, monkeypatch):
+        """Same endpoint as the generic one, so the fallback chain applies."""
+        monkeypatch.setenv("REDIS_URL", "redis://h:6379/0")
+        monkeypatch.setenv("REDIS_PASSWORD", "s3cret")
+        assert _kwargs(create_redis_client("CACHE_REDIS_"))["password"] == "s3cret"
+
+    def test_the_socketio_url_follows_the_same_rule(self, monkeypatch):
+        monkeypatch.setenv("CACHE_REDIS_URL", "rediss://anon:6379/0")
+        monkeypatch.setenv("REDIS_PASSWORD", "s3cret")
+        # A bare `"s3cret" not in url` also passes on "" and on any mangled
+        # output, so the endpoint is pinned too.
+        parts = urlsplit(build_socketio_redis_url("CACHE_REDIS_"))
+        assert parts.password is None
+        assert parts.hostname == "anon"
+
+
+class TestSocketIoUrlCredentials:
+    """The Socket.IO builder must agree with create_redis_client on every shape.
+
+    Its output is a STRING handed to kombu, so a malformed one authenticates
+    with a wrong secret rather than none — and `socketio.Server` is constructed
+    with logger=False, so the symptom is events silently stopping.
+    """
+
+    def test_a_username_only_url_keeps_its_host_and_gets_the_password(self, monkeypatch):
+        """`parts.netloc` INCLUDES userinfo; prepending to it produced
+        `alice:pw@alice@host`, and userinfo splits on the LAST @.
+        """
+        monkeypatch.setenv("REDIS_URL", "redis://alice@h:6379/0")
+        monkeypatch.setenv("REDIS_PASSWORD", "s3cret")
+        parts = urlsplit(build_socketio_redis_url())
+        assert parts.hostname == "h"
+        assert parts.username == "alice"
+        assert parts.password == "s3cret"
+
+    def test_an_encoded_username_is_not_double_encoded(self, monkeypatch):
+        """It is percent-encoded already; quoting it again gave `al%2540ice`."""
+        monkeypatch.setenv("REDIS_URL", "redis://al%40ice@h:6379/0")
+        monkeypatch.setenv("REDIS_PASSWORD", "s3cret")
+        # Asserted POSITIVELY: `"%2540" not in url` is equally satisfied by a
+        # URL that dropped the username, or replaced it with REDIS_USER.
+        assert urlsplit(build_socketio_redis_url()).username == "al%40ice"
+
+    def test_a_password_with_url_metacharacters_is_encoded(self, monkeypatch):
+        """Unencoded, `p@ss/w:rd` reparses with host "ss" — a DIFFERENT server."""
+        monkeypatch.setenv("REDIS_URL", "rediss://h:6380/0")
+        monkeypatch.setenv("REDIS_PASSWORD", "p@ss/w:rd")
+        url = build_socketio_redis_url()
+        assert urlsplit(url).hostname == "h"
+        # Round-trip, not a spelling check. The hostname guard catches the
+        # host half of a doubled userinfo but not the credential half:
+        # `rediss://x:p%40ss%2Fw%3Ard@p%40ss%2Fw%3Ard@h:6380/0` has hostname
+        # "h" and contains the substring, yet kombu would send
+        # "p@ss/w:rd@p@ss/w:rd". unquote() is what kombu itself applies.
+        assert unquote(urlsplit(url).password) == "p@ss/w:rd"
+
+    def test_an_empty_password_in_the_url_is_treated_as_absent(self, monkeypatch):
+        """`redis://:@host` parses to "", which redis-py and kombu both read as
+        no password — so the separately supplied one must fill the gap.
+        """
+        monkeypatch.setenv("REDIS_URL", "redis://:@h:6379/0")
+        monkeypatch.setenv("REDIS_PASSWORD", "s3cret")
+        assert urlsplit(build_socketio_redis_url()).password == "s3cret"
+
+    def test_a_username_alone_stays_anonymous(self, monkeypatch):
+        """values.yaml ships REDIS_USER: default against an unauthenticated
+        in-cluster server; adding credentials here would break it.
+        """
+        monkeypatch.setenv("REDIS_URL", "redis://h:6379/0")
+        monkeypatch.setenv("REDIS_USER", "default")
+        monkeypatch.setenv("REDIS_PASSWORD", "")
+        assert build_socketio_redis_url() == "redis://h:6379/0"
+
+    def test_the_prefix_username_spelling_is_honoured(self, monkeypatch):
+        """{prefix}USERNAME is the compatibility spelling of {prefix}USER."""
+        monkeypatch.setenv("CACHE_REDIS_URL", "redis://h:6379/0")
+        monkeypatch.setenv("CACHE_REDIS_PASSWORD", "pw")
+        monkeypatch.setenv("CACHE_REDIS_USERNAME", "alice")
+        assert urlsplit(build_socketio_redis_url("CACHE_REDIS_")).username == "alice"
+
+
+class TestTheConsumersAgreeOnTheUsername:
+    """The client, the Socket.IO URL and the Django cache must resolve the SAME
+    ACL user. Each was previously pinned only to itself, so a change that made
+    them disagree passed every test.
+    """
+
+    def test_a_url_username_outranks_the_configured_one(self, monkeypatch):
+        """Both set at once is the only environment that tells the two apart.
+
+        values.yaml ships REDIS_USER: default, so pairing it with a URL that
+        names a different user is an ordinary config — and reversing the
+        precedence made the client authenticate as `alice` while kombu and the
+        Django cache authenticated as `default`. On an endpoint where `default`
+        is disabled, Socket.IO events stop and nothing else does.
+        """
+        monkeypatch.setenv("REDIS_URL", "redis://alice@h:6379/0")
+        monkeypatch.setenv("REDIS_PASSWORD", "pw")
+        monkeypatch.setenv("REDIS_USER", "default")
+        assert urlsplit(build_socketio_redis_url()).username == "alice"
+        assert _kwargs(create_redis_client())["username"] == "alice"
+
+    def test_a_password_only_url_takes_no_username_from_the_env(self, monkeypatch):
+        """The `not parts.password` guard is load-bearing for the USERNAME.
+
+        For the password it is not: from_url ends with kwargs.update(url_options)
+        so the URL's password wins either way. Dropping the guard therefore
+        looks harmless and is not — it lets REDIS_USER ride along, turning a
+        one-argument `AUTH <pw>` into a two-argument `AUTH alice <pw>` while the
+        Socket.IO URL for the same config still sends the one-argument form.
+        """
+        monkeypatch.setenv("REDIS_URL", "redis://:urlpw@h:6379/0")
+        monkeypatch.setenv("REDIS_PASSWORD", "envpw")
+        monkeypatch.setenv("REDIS_USER", "alice")
+        kwargs = _kwargs(create_redis_client())
+        assert kwargs["password"] == "urlpw"
+        assert kwargs.get("username") is None
+        assert urlsplit(build_socketio_redis_url()).username in (None, "")
+
+    def test_the_username_env_var_has_two_spellings(self, monkeypatch):
+        """REDIS_USER is what the chart writes; REDIS_USERNAME is what
+        platform-service/sample.env writes. One shared credential secret can
+        inject either, so a consumer that reads only one authenticates as a
+        different user than the client beside it.
+        """
+        monkeypatch.delenv("REDIS_USER", raising=False)
+        monkeypatch.setenv("REDIS_USERNAME", "alice")
+        monkeypatch.setenv("REDIS_URL", "redis://h:6379/0")
+        monkeypatch.setenv("REDIS_PASSWORD", "pw")
+        assert urlsplit(build_socketio_redis_url()).username == "alice"
+        assert _kwargs(create_redis_client())["username"] == "alice"
+
+    def test_a_blank_user_falls_through_to_the_other_spelling(self, monkeypatch):
+        """`REDIS_USER=` is the "leave it unset" spelling the recipes use, and
+        `os.getenv(name, fallback)` would hand back the blank instead."""
+        monkeypatch.setenv("REDIS_USER", "")
+        monkeypatch.setenv("REDIS_USERNAME", "alice")
+        monkeypatch.setenv("REDIS_URL", "redis://h:6379/0")
+        monkeypatch.setenv("REDIS_PASSWORD", "pw")
+        assert urlsplit(build_socketio_redis_url()).username == "alice"
+
+
+class TestBlankMeansUnsetForTlsToo:
+    """The convention has to cover TLS, not just credentials.
+
+    Once a blank prefixed PASSWORD fell through to the generic one but a blank
+    prefixed SSL did not, `CACHE_REDIS_SSL=` beside `REDIS_SSL=true` gave the
+    worker cache a real AUTH over an UNENCRYPTED socket — the credential the
+    same change taught it to inherit, now in clear on the wire.
+    """
+
+    @pytest.mark.parametrize(
+        "blank,generic,key,expected",
+        [
+            ("CACHE_REDIS_SSL", ("REDIS_SSL", "true"), "ssl", True),
+            (
+                "CACHE_REDIS_SSL_CERT_REQS",
+                ("REDIS_SSL_CERT_REQS", "none"),
+                "ssl_cert_reqs",
+                "none",
+            ),
+            (
+                "CACHE_REDIS_SSL_CHECK_HOSTNAME",
+                ("REDIS_SSL_CHECK_HOSTNAME", "false"),
+                "ssl_check_hostname",
+                False,
+            ),
+            (
+                "CACHE_REDIS_SSL_CA_CERTS",
+                ("REDIS_SSL_CA_CERTS", "/etc/ca.pem"),
+                "ssl_ca_certs",
+                "/etc/ca.pem",
+            ),
+        ],
+    )
+    def test_a_blank_prefixed_tls_var_does_not_shadow(
+        self, monkeypatch, blank, generic, key, expected
+    ):
+        monkeypatch.setenv(generic[0], generic[1])
+        monkeypatch.setenv(blank, "")
+        assert _resolve_redis_env("CACHE_REDIS_")[key] == expected
+
+
+class TestEnvChainHelpers:
+    """The helpers the consumers share. Each had a one-line failure mode."""
+
+    def test_env_chain_returns_the_raw_value_not_a_stripped_one(self, monkeypatch):
+        """A file-mounted secret ends in a newline. Stripping the RETURN value
+        truncated it here while backend/settings/base.py read the same variable
+        unstripped, so one process authenticated two different ways."""
+        monkeypatch.setenv("REDIS_PASSWORD", "s3cret\n")
+        assert env_chain("REDIS_PASSWORD") == "s3cret\n"
+
+    def test_env_chain_skips_whitespace_only_values(self, monkeypatch):
+        monkeypatch.setenv("CACHE_REDIS_PASSWORD", "   ")
+        monkeypatch.setenv("REDIS_PASSWORD", "s3cret")
+        assert env_chain("CACHE_REDIS_PASSWORD", "REDIS_PASSWORD") == "s3cret"
+
+    def test_env_chain_named_reports_the_variable_that_was_set(self, monkeypatch):
+        """So a warning cannot send an operator grepping for an unset key."""
+        monkeypatch.delenv("CACHE_REDIS_PORT", raising=False)
+        monkeypatch.setenv("REDIS_PORT", "6380")
+        assert env_chain_named("CACHE_REDIS_PORT", "REDIS_PORT") == ("6380", "REDIS_PORT")
+
+    def test_url_username_from_env_honours_the_same_blank_rule(self, monkeypatch):
+        monkeypatch.setenv("REDIS_USER", "   ")
+        monkeypatch.setenv("REDIS_USERNAME", "alice")
+        assert url_username_from_env() == "alice"
+
+    @pytest.mark.parametrize("raw", [None, "", "   "])
+    def test_parse_port_treats_blank_as_unset(self, raw, caplog):
+        """Quietly, too. base.py hands this the raw env value rather than
+        env_chain's None, so treating "" as unparseable logged an ERROR at
+        startup in the backend and nowhere else — for the repo's own
+        "leave the default" spelling."""
+        with caplog.at_level(logging.ERROR):
+            assert parse_port(raw, "REDIS_PORT", 6379) == 6379
+        assert caplog.text == ""
+
+    def test_parse_port_falls_back_on_an_unparseable_value(self, caplog):
+        with caplog.at_level(logging.ERROR):
+            assert parse_port("638O", "REDIS_PORT", 6379) == 6379
+        assert "REDIS_PORT" in caplog.text
+
+    def test_parse_port_returns_an_int(self):
+        assert parse_port("6380", "REDIS_PORT", 6379) == 6380
