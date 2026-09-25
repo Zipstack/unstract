@@ -563,6 +563,19 @@ REDIS_SENTINEL_MODE = (
 
 REDIS_SENTINEL_MASTER_NAME = os.environ.get("REDIS_SENTINEL_MASTER_NAME", "mymaster")
 
+# NOT COVERED by TestTheBackendAgreesWithCoreOnEverySharedSetting — _derive only
+# exercises the standalone branch below, so the "cache and client reach the same
+# place" property stops at this line. Four divergences from create_redis_client
+# live in here and are PRE-EXISTING on main, untouched by UN-4123:
+#   * REDIS_USER defaults to "default" above, so this cache sends a two-argument
+#     ACL AUTH where core sends the one-argument form;
+#   * it reads REDIS_USER directly, so the REDIS_USERNAME spelling is ignored;
+#   * REDIS_SSL is not applied here at all — a plaintext cache against a
+#     TLS-only Sentinel deployment;
+#   * the Sentinel default port is 26379 in core and 6379 here.
+# Left alone deliberately: this is the self-hosted HA path, a managed endpoint
+# is a single primary and does not use it, and changing behaviour here would be
+# changing code no test in this file executes. Its own ticket.
 if REDIS_SENTINEL_MODE:
     _sentinel_kwargs = {}
     if REDIS_PASSWORD:
@@ -758,11 +771,17 @@ else:
         # counters and the dashboard caches go with it, and during a rolling
         # deploy old pods read db 0 while new pods read db N. Drain
         # log_history_queue before cutting over.
+        #
+        # The message deliberately does NOT explain where the previous db came
+        # from. It fires on both paths — discrete, where the cache sat on db 0
+        # regardless because django-redis ignores OPTIONS['DB'], and URL mode,
+        # where it came from the URL's own path — and the earlier wording gave
+        # the discrete explanation to both. The db NUMBERS are right in every
+        # case; only the stated reason was wrong on the URL path.
         logging.getLogger(__name__).warning(
-            "Django cache is moving from Redis db %s to db %s (REDIS_DB). In "
-            "discrete mode it previously sat on db 0 regardless, because "
-            "django-redis ignores OPTIONS['DB']. Anything already in db %s — "
-            "including log_history_queue — stays there.",
+            "Django cache is moving from Redis db %s to db %s (REDIS_DB). "
+            "Anything already in db %s — including log_history_queue — stays "
+            "there.",
             _previous_db,
             _effective_db,
             _previous_db,

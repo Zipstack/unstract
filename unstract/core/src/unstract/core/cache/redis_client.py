@@ -602,6 +602,25 @@ def _resolve_redis_env(
     username = env_chain(
         f"{env_prefix}USER", f"{env_prefix}USERNAME", "REDIS_USER", "REDIS_USERNAME"
     )
+    # An ACL username without a password is not a configuration Redis has. AUTH
+    # takes either one argument or two, so redis-py packs `AUTH alice None` and
+    # raises `DataError: Invalid input of type: 'NoneType'` on the FIRST command
+    # — a type error from inside the library, nowhere near the values file that
+    # caused it. Said plainly at configuration time instead, and the username is
+    # dropped so this client degrades to the same anonymous connection the
+    # Django cache already makes for this input (apply_url_credentials returns
+    # the URL untouched when there is no password), rather than the two
+    # disagreeing about a config neither can honour.
+    if username and not password:
+        logger.error(
+            "%sUSER=%r is set but no password is; Redis has no one-argument ACL "
+            "AUTH, so the username is being ignored. Set %sPASSWORD, or clear "
+            "the username.",
+            env_prefix,
+            username,
+            env_prefix,
+        )
+        username = None
     prefixed_db = os.getenv(f"{env_prefix}DB", "").strip()
     generic_db = os.getenv("REDIS_DB", "").strip()
     db = (

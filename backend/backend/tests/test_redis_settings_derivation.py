@@ -20,7 +20,7 @@ from __future__ import annotations
 import logging
 import pathlib
 import re
-from urllib.parse import unquote, urlsplit
+from urllib.parse import urlsplit
 
 import pytest
 
@@ -702,6 +702,11 @@ class TestTheBackendAgreesWithCoreOnEverySharedSetting:
         {"REDIS_URL": "rediss://h:6380/0", "REDIS_PASSWORD": "pw"},
         {"REDIS_URL": "rediss://h:6380/0", "REDIS_PASSWORD": "p@ss/w:rd"},
         {"REDIS_URL": "redis://h:6379/0", "REDIS_DB": "3", "REDIS_PASSWORD": "pw"},
+        # Username with NO password: neither side can honour it, so what the
+        # sweep pins is that they fail the SAME way rather than one going
+        # anonymous while the other crashes inside redis-py.
+        {"REDIS_HOST": "h", "REDIS_USER": "alice"},
+        {"REDIS_URL": "redis://h:6379/0", "REDIS_USERNAME": "alice"},
         {"REDIS_HOST": "h", "REDIS_PASSWORD": "pw", "REDIS_USER": ""},
         {"REDIS_HOST": "h", "REDIS_PASSWORD": "pw", "REDIS_SSL": ""},
     ]
@@ -736,23 +741,38 @@ class TestTheBackendAgreesWithCoreOnEverySharedSetting:
 
     @staticmethod
     def _from_cache(env: dict) -> dict:
-        """The same facts, read back off the Django cache LOCATION."""
+        """The same facts, resolved by django-redis ITSELF.
+
+        Not by parsing the LOCATION string. django-redis's precedence — the
+        LOCATION's userinfo wins, OPTIONS["PASSWORD"] only backfills — is true
+        of 5.4.0, but hardcoding it here would be a second copy of library
+        behaviour inside the very test whose job is to survive changes it cannot
+        predict. A bump that reversed the precedence would leave this green
+        while the cache diverged, which is the exact failure mode this class
+        replaced. Asking ConnectionFactory means the rule is never restated.
+        """
+        from django_redis.pool import ConnectionFactory
+
         derived = _derive(**env)
-        location = derived["CACHES"]["default"]["LOCATION"]
-        parts = urlsplit(location)
-        options = derived["CACHES"]["default"]["OPTIONS"]
+        cache = derived["CACHES"]["default"]
+        options = {
+            k: v
+            for k, v in cache["OPTIONS"].items()
+            if k not in ("CLIENT_CLASS", "SERIALIZER")
+        }
+        # The factory memoises pools by LOCATION, so a stale entry from an
+        # earlier case would answer for this one.
+        ConnectionFactory._pools = {}
+        client = ConnectionFactory(dict(options)).connect(cache["LOCATION"])
+        pool = client.connection_pool
+        kwargs = pool.connection_kwargs
         return {
-            "host": parts.hostname,
-            "port": parts.port or int(derived["REDIS_PORT"]),
-            "db": int((parts.path or "/0").lstrip("/") or 0),
-            # django-redis discards OPTIONS["USERNAME"], so the LOCATION is the
-            # only route for a username — that asymmetry is the whole reason the
-            # URL branch exists, and it is what this sweep exists to keep true.
-            "username": unquote(parts.username) if parts.username else None,
-            "password": unquote(parts.password)
-            if parts.password
-            else (options.get("PASSWORD") or None),
-            "tls": parts.scheme == "rediss",
+            "host": kwargs.get("host"),
+            "port": int(kwargs.get("port") or derived["REDIS_PORT"]),
+            "db": int(kwargs.get("db") or 0),
+            "username": kwargs.get("username") or None,
+            "password": kwargs.get("password") or None,
+            "tls": pool.connection_class.__name__ == "SSLConnection",
         }
 
     @pytest.mark.parametrize("env", _CASES, ids=lambda e: ",".join(sorted(e)))
