@@ -396,8 +396,9 @@ def apply_url_credentials(url: str, password: str | None, username: str | None) 
     if not password:
         return url
     parts = urlsplit(url)
-    if "@" in parts.netloc:
+    if parts.password is not None:
         return url
+    username = parts.username or username
     credentials = f"{quote(str(username), safe='')}:" if username else ":"
     credentials += f"{quote(str(password), safe='')}@"
     return urlunsplit(
@@ -448,7 +449,7 @@ def build_socketio_redis_url(env_prefix: str = "REDIS_") -> str:
     url = env["url"] or _compose_redis_url(env)
     # _compose_redis_url already embeds them for the discrete path; a configured
     # URL may not carry any, and kombu can read them from nowhere else.
-    url = apply_url_credentials(url, env.get("password"), env.get("username"))
+    url = apply_url_credentials(url, env.get("url_password"), env.get("url_username"))
     if not url.startswith(_TLS_SCHEME):
         return url
 
@@ -533,6 +534,21 @@ def _resolve_redis_env(
     # docstring, sample.env or the chart state. For env_prefix="REDIS_" the two
     # levels are the same variable, so this reads identically there.
     explicit_db = prefixed_db if own_url else (prefixed_db or generic_db)
+    # CREDENTIALS AT THE URL'S OWN LEVEL, by the same rule as the database above.
+    # A prefix that brought its OWN url may point at a DIFFERENT endpoint, and
+    # an anonymous one at that; letting the generic REDIS_PASSWORD reach across
+    # would make that client send AUTH to a server with none, breaking a
+    # connection that worked before. An INHERITED url is the same endpoint as
+    # the generic one, so the full fallback chain applies. For env_prefix
+    # "REDIS_" the two levels are the same variable and this reads identically.
+    if own_url:
+        result["url_password"] = os.getenv(f"{env_prefix}PASSWORD")
+        result["url_username"] = os.getenv(
+            f"{env_prefix}USER", os.getenv(f"{env_prefix}USERNAME")
+        )
+    else:
+        result["url_password"] = result["password"]
+        result["url_username"] = result["username"]
     if result["url"] and explicit_db and db_override is None:
         result["db_from_prefix_env"] = parse_db(explicit_db, env_prefix)
     # Read OUTSIDE the `if ssl` below: URL mode carries TLS in the scheme and never
@@ -708,8 +724,8 @@ def _create_standalone_client(
             ssl_ca_certs=env.get("ssl_ca_certs"),
             ssl_cert_reqs=env.get("ssl_cert_reqs"),
             ssl_check_hostname=env.get("ssl_check_hostname"),
-            password=env.get("password"),
-            username=env.get("username"),
+            password=env.get("url_password"),
+            username=env.get("url_username"),
         )
 
     logger.info(
@@ -813,9 +829,13 @@ def _create_client_from_url(
     # not a credential: values.yaml ships REDIS_USER: default, so filling it in
     # on its own would make redis-py send AUTH to the in-cluster server, which
     # has none — turning a working default deployment into a failing one.
-    if password and "@" not in parts.netloc:
+    # Keyed on the URL's PASSWORD, not on the presence of "@". A URL may carry an
+    # ACL username alone — redis://alice@host — and that @ is not evidence of a
+    # password; treating it as such dropped the separately supplied one and left
+    # the client unable to authenticate.
+    if password and parts.password is None:
         kwargs["password"] = password
-        if username:
+        if username and not parts.username:
             kwargs["username"] = username
     logger.info(
         "Redis URL mode enabled. Connecting to %s:%s (tls=%s)",

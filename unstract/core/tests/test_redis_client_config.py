@@ -975,3 +975,47 @@ class TestUrlModeCredentials:
         monkeypatch.setenv("REDIS_PASSWORD", "s3cret")
         url = build_socketio_redis_url()
         assert "in-url" in url and "s3cret" not in url
+
+    def test_a_username_only_url_still_gets_the_password(self, monkeypatch):
+        """`redis://alice@host` carries an @ but NO password.
+
+        Treating the @ as evidence of credentials dropped the separately
+        supplied password and left the client unable to authenticate.
+        """
+        monkeypatch.setenv("REDIS_URL", "redis://alice@h:6379/0")
+        monkeypatch.setenv("REDIS_PASSWORD", "s3cret")
+        kwargs = _kwargs(create_redis_client())
+        assert kwargs["password"] == "s3cret"
+        assert kwargs["username"] == "alice"
+
+
+class TestUrlCredentialsAreResolvedAtTheUrlsLevel:
+    """Same rule as the database: a prefix that brought its OWN url owns its
+    own credentials.
+
+    That url may point at a DIFFERENT endpoint, and an anonymous one; letting
+    the generic REDIS_PASSWORD reach across would make the client send AUTH to
+    a server that has none, breaking a connection that worked before.
+    """
+
+    def test_a_prefix_url_does_not_inherit_the_generic_password(self, monkeypatch):
+        monkeypatch.setenv("CACHE_REDIS_URL", "redis://anon:6379/0")
+        monkeypatch.setenv("REDIS_PASSWORD", "s3cret")
+        assert _kwargs(create_redis_client("CACHE_REDIS_")).get("password") is None
+
+    def test_the_prefixs_own_password_applies(self, monkeypatch):
+        monkeypatch.setenv("CACHE_REDIS_URL", "redis://anon:6379/0")
+        monkeypatch.setenv("CACHE_REDIS_PASSWORD", "own")
+        monkeypatch.setenv("REDIS_PASSWORD", "s3cret")
+        assert _kwargs(create_redis_client("CACHE_REDIS_"))["password"] == "own"
+
+    def test_an_inherited_url_still_uses_the_generic_password(self, monkeypatch):
+        """Same endpoint as the generic one, so the fallback chain applies."""
+        monkeypatch.setenv("REDIS_URL", "redis://h:6379/0")
+        monkeypatch.setenv("REDIS_PASSWORD", "s3cret")
+        assert _kwargs(create_redis_client("CACHE_REDIS_"))["password"] == "s3cret"
+
+    def test_the_socketio_url_follows_the_same_rule(self, monkeypatch):
+        monkeypatch.setenv("CACHE_REDIS_URL", "rediss://anon:6379/0")
+        monkeypatch.setenv("REDIS_PASSWORD", "s3cret")
+        assert "s3cret" not in build_socketio_redis_url("CACHE_REDIS_")
