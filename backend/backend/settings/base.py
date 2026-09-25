@@ -13,7 +13,7 @@ import logging
 import os
 import re
 from pathlib import Path
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 
 import httpx
 from django.core.validators import URLValidator
@@ -659,6 +659,14 @@ else:
         # through OPTIONS risks one of them winning over the other.
         _cache_options["DB"] = _cache_db
         _cache_options["USERNAME"] = REDIS_USER
+        _cache_options["PASSWORD"] = REDIS_PASSWORD
+    elif REDIS_PASSWORD and "@" not in urlsplit(_redis_url).netloc:
+        # ...unless the URL carries NO credentials, which is the configuration
+        # that keeps the password out of a string that gets printed. django-redis
+        # feeds OPTIONS["PASSWORD"] into ConnectionPool.from_url, which ends with
+        # kwargs.update(url_options) — so this fills the gap and a URL bearing
+        # credentials still wins. Without it this cache connects ANONYMOUSLY
+        # while create_redis_client beside it authenticates.
         _cache_options["PASSWORD"] = REDIS_PASSWORD
     # Gated on the EFFECTIVE scheme, not the flag. In URL mode TLS is carried by
     # the URL (and its query string), so a plaintext REDIS_URL left behind while

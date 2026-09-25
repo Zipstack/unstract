@@ -380,6 +380,37 @@ def _compose_redis_url(env: dict[str, Any]) -> str:
     return f"{scheme}://{credentials}{env['host']}:{env['port']}"
 
 
+def apply_url_credentials(url: str, password: str | None, username: str | None) -> str:
+    """Put credentials into a URL that carries none, leaving one that does alone.
+
+    kombu takes a URL and NOTHING else — no connection kwargs — so a password
+    supplied separately cannot reach it any other way. A URL written without
+    credentials would otherwise produce an anonymous publisher against an
+    authenticated server, and the Socket.IO events simply stop arriving.
+
+    The password IS in the returned string, unavoidably. That is acceptable here
+    and not in a values file: this URL is built in-process and handed straight to
+    the client, rather than written into a manifest, a Secret template or an
+    error message.
+    """
+    if not password:
+        return url
+    parts = urlsplit(url)
+    if "@" in parts.netloc:
+        return url
+    credentials = f"{quote(str(username), safe='')}:" if username else ":"
+    credentials += f"{quote(str(password), safe='')}@"
+    return urlunsplit(
+        (
+            parts.scheme,
+            credentials + parts.netloc,
+            parts.path,
+            parts.query,
+            parts.fragment,
+        )
+    )
+
+
 def build_socketio_redis_url(env_prefix: str = "REDIS_") -> str:
     """Redis URL for a Socket.IO/kombu client, TLS settings included (UN-4123).
 
@@ -415,6 +446,9 @@ def build_socketio_redis_url(env_prefix: str = "REDIS_") -> str:
     ca_certs = env.get("ssl_ca_certs")
 
     url = env["url"] or _compose_redis_url(env)
+    # _compose_redis_url already embeds them for the discrete path; a configured
+    # URL may not carry any, and kombu can read them from nowhere else.
+    url = apply_url_credentials(url, env.get("password"), env.get("username"))
     if not url.startswith(_TLS_SCHEME):
         return url
 

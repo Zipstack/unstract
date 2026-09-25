@@ -55,10 +55,17 @@ def _derive(**env: str) -> dict:
     # without it that branch raises NameError instead of logging, which is part of
     # why it went untested.
     ns: dict = {"__name__": "backend.settings.base"}
+    # The urllib import is spliced from source for the same reason as the
+    # unstract.core one: a hand-written copy must be remembered every time the
+    # settings module starts using another name from it, and the symptom is a
+    # NameError in every case rather than one clear failure.
+    urllib_start = source.index("from urllib.parse import ")
+    urllib_end = source.index("\n", urllib_start) + 1
+
     prelude = (
-        "import logging\n"
-        "import os\n"
-        "from urllib.parse import quote\n" + source[imports_start:imports_end]
+        "import logging\nimport os\n"
+        + source[urllib_start:urllib_end]
+        + source[imports_start:imports_end]
     ) + source[defs_start:defs_end]
     import os as _os
 
@@ -438,3 +445,26 @@ class TestTheBackendUsesTheSharedParsers:
             "unstract.core.cache.redis_client.parse_db so the backend and the "
             "workers agree on a malformed value."
         )
+
+
+class TestUrlModeCacheCredentials:
+    """django-redis reads OPTIONS["PASSWORD"]; the URL is not its only source.
+
+    A URL written without credentials kept this cache ANONYMOUS while
+    create_redis_client beside it authenticated — one process, one endpoint, two
+    outcomes. OPTIONS["PASSWORD"] reaches ConnectionPool.from_url, which ends
+    with kwargs.update(url_options), so a URL bearing credentials still wins.
+    """
+
+    def test_the_password_fills_a_gap_the_url_leaves(self):
+        derived = _derive(REDIS_URL="rediss://h:6380/0", REDIS_PASSWORD="s3cret")
+        assert derived["CACHES"]["default"]["OPTIONS"]["PASSWORD"] == "s3cret"
+
+    def test_a_url_carrying_credentials_is_left_alone(self):
+        """Passing it again risks the two disagreeing about which wins."""
+        derived = _derive(REDIS_URL="rediss://:in-url@h:6380/0", REDIS_PASSWORD="s3cret")
+        assert "PASSWORD" not in derived["CACHES"]["default"]["OPTIONS"]
+
+    def test_no_password_stays_anonymous(self):
+        derived = _derive(REDIS_URL="rediss://h:6380/0")
+        assert "PASSWORD" not in derived["CACHES"]["default"]["OPTIONS"]

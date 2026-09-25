@@ -960,3 +960,18 @@ class TestUrlModeCredentials:
     def test_no_credentials_anywhere_stays_anonymous(self, monkeypatch):
         monkeypatch.setenv("REDIS_URL", "redis://h:6379/0")
         assert _kwargs(create_redis_client()).get("password") is None
+
+    def test_the_socketio_url_gains_the_credentials_too(self, monkeypatch):
+        """Kombu takes a URL and nothing else, so a separately-supplied password
+        cannot reach it any other way. Without this the publisher is anonymous
+        against an authenticated server and Socket.IO events simply stop.
+        """
+        monkeypatch.setenv("REDIS_URL", "rediss://h:6380/0")
+        monkeypatch.setenv("REDIS_PASSWORD", "s3cret")
+        assert "://:s3cret@h:6380" in build_socketio_redis_url()
+
+    def test_the_socketio_url_leaves_existing_credentials_alone(self, monkeypatch):
+        monkeypatch.setenv("REDIS_URL", "rediss://:in-url@h:6380/0")
+        monkeypatch.setenv("REDIS_PASSWORD", "s3cret")
+        url = build_socketio_redis_url()
+        assert "in-url" in url and "s3cret" not in url
