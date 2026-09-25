@@ -63,7 +63,7 @@ def get_tool_list(request: Request) -> Response:
             try:
                 workflow_id = uuid.UUID(workflow_id)
             except ValueError:
-                raise BadRequestException(f"Invalid workflow_id: {workflow_id}")
+                raise BadRequestException("Invalid workflow_id.")
         try:
             logger.info("Fetching tools from the tool registry...")
             return Response(

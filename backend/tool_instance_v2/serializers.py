@@ -58,6 +58,16 @@ class ToolInstanceSerializer(AuditSerializer):
             raise ValidationError("A tool cannot be moved to another workflow.")
         return value
 
+    def validate_tool_id(self, value: str) -> str:
+        """Refuse deprecated registry tools, except the one an instance already has."""
+        if self.instance and value == self.instance.tool_id:
+            return value
+        if ToolProcessor.is_registry_tool(value):
+            raise ValidationError(
+                f"Tool '{value}' is deprecated and can't be added to a workflow."
+            )
+        return value
+
     def validate_workflow_id(self, value):
         """Same guard for the declared alias -- ``workflow_id`` is the FK's
         attname, so DRF writes the column through it directly.
@@ -284,11 +294,6 @@ class ToolInstanceSerializer(AuditSerializer):
         tool_uid = validated_data.get(TIKey.TOOL_ID)
         if not tool_uid:
             raise ToolDoesNotExist()
-
-        if ToolProcessor.is_registry_tool(tool_uid):
-            raise ValidationError(
-                f"Tool '{tool_uid}' is deprecated and can't be added to a workflow."
-            )
 
         tool: Tool = ToolProcessor.get_tool_by_uid(tool_uid=tool_uid)
         # TODO: Handle other fields once tools SDK is out

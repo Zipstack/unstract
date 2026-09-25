@@ -988,9 +988,6 @@ function Agency() {
         const { addNewTool } = useWorkflowStore.getState();
         addNewTool(newToolInstance);
 
-        // A replaced deprecated tool drops out of the list and can't be re-added.
-        getExportedTools();
-
         setAlertDetails({
           type: "success",
           content:
@@ -1002,6 +999,11 @@ function Agency() {
         setAlertDetails(
           handleException(err, "Failed to update Prompt Studio project"),
         );
+      } finally {
+        // A removed deprecated tool drops out of the list and can't be re-added.
+        getExportedTools().catch(() => {
+          // getExportedTools already alerts on failure.
+        });
       }
     }
   };

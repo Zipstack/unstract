@@ -8,14 +8,16 @@ Unit tests: collaborators are patched per-test, so no database is touched.
 from __future__ import annotations
 
 from pathlib import Path
+import uuid
 from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
-from rest_framework.serializers import ValidationError
+from rest_framework.test import APIRequestFactory, force_authenticate
 
 from tool_instance_v2 import serializers as _ser_mod
 from tool_instance_v2 import tool_processor as _tp_mod
+from tool_instance_v2 import views as _views_mod
 
 ToolProcessor = _tp_mod.ToolProcessor
 ToolInstanceSerializer = _ser_mod.ToolInstanceSerializer
@@ -99,37 +101,59 @@ class TestGetToolList:
 
 
 @pytest.mark.usefixtures("repo_tool_registry")
-class TestCreateRejectsRegistryTools:
-    def _create(self, tool_id: str) -> MagicMock:
-        workflow = MagicMock(name="workflow")
-        workflow.tool_instances.count.return_value = 0
-        audit_create = MagicMock(return_value=MagicMock())
-        with (
-            patch.object(
-                _ser_mod.Workflow,
-                "objects",
-                MagicMock(get=MagicMock(return_value=workflow)),
-            ),
-            patch.object(_ser_mod.ToolProcessor, "get_tool_by_uid", MagicMock()),
-            patch.object(
-                _ser_mod.ToolProcessor,
-                "get_default_settings",
-                MagicMock(return_value={}),
-            ),
-            patch.object(
-                ToolInstanceSerializer, "_overlay_resolved_challenge_llm", MagicMock()
-            ),
-            patch.object(_ser_mod.AuditSerializer, "create", audit_create),
-        ):
-            ToolInstanceSerializer(context={"request": MagicMock()}).create(
-                {"workflow_id": WORKFLOW_ID, "tool_id": tool_id}
-            )
-        return audit_create
+class TestToolIdValidation:
+    """`is_valid` is what the viewset's create and update both run."""
+
+    def _errors(self, data: dict[str, Any], instance: Any = None) -> dict[str, Any]:
+        serializer = ToolInstanceSerializer(
+            instance, data=data, partial=instance is not None
+        )
+        serializer.is_valid()
+        return serializer.errors
 
     @pytest.mark.parametrize("tool_id", ["classify", "text_extractor"])
-    def test_registry_tool_is_rejected(self, tool_id: str) -> None:
-        with pytest.raises(ValidationError, match="deprecated"):
-            self._create(tool_id)
+    def test_create_with_a_registry_tool_is_rejected(self, tool_id: str) -> None:
+        errors = self._errors({"workflow_id": WORKFLOW_ID, "tool_id": tool_id})
+        assert "deprecated" in str(errors["tool_id"])
 
-    def test_prompt_studio_tool_is_created(self) -> None:
-        self._create(PROMPT_STUDIO_TOOL_ID).assert_called_once()
+    def test_create_with_a_prompt_studio_tool_is_accepted(self) -> None:
+        errors = self._errors(
+            {"workflow_id": WORKFLOW_ID, "tool_id": PROMPT_STUDIO_TOOL_ID}
+        )
+        assert "tool_id" not in errors
+
+    def test_switching_an_instance_to_a_registry_tool_is_rejected(self) -> None:
+        instance = MagicMock(name="instance", tool_id=PROMPT_STUDIO_TOOL_ID)
+        errors = self._errors({"tool_id": "classify"}, instance=instance)
+        assert "deprecated" in str(errors["tool_id"])
+
+    def test_an_instance_keeps_the_registry_tool_it_already_has(self) -> None:
+        instance = MagicMock(name="instance", tool_id="classify")
+        errors = self._errors({"tool_id": "classify"}, instance=instance)
+        assert "tool_id" not in errors
+
+
+class TestGetToolListView:
+    def _get(self, query: str) -> Any:
+        request = APIRequestFactory().get(f"/tool/{query}")
+        force_authenticate(request, user=MagicMock(name="user"))
+        with patch.object(
+            _views_mod.ToolProcessor, "get_tool_list", MagicMock(return_value=[])
+        ) as get_tool_list:
+            response = _views_mod.get_tool_list(request)
+        return response, get_tool_list
+
+    def test_workflow_id_is_passed_as_a_uuid(self) -> None:
+        response, get_tool_list = self._get(f"?workflow_id={WORKFLOW_ID}")
+        assert response.status_code == 200
+        assert get_tool_list.call_args.args[1] == uuid.UUID(WORKFLOW_ID)
+
+    def test_missing_workflow_id_lists_without_a_workflow(self) -> None:
+        response, get_tool_list = self._get("")
+        assert response.status_code == 200
+        assert get_tool_list.call_args.args[1] is None
+
+    def test_malformed_workflow_id_is_a_bad_request(self) -> None:
+        response, get_tool_list = self._get("?workflow_id=not-a-uuid")
+        assert response.status_code == 400
+        get_tool_list.assert_not_called()
