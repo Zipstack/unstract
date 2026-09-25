@@ -616,3 +616,33 @@ class TestUrlModeCacheCredentials:
             "OPTIONS"
         ]
         assert options["PASSWORD"] == "s3cret"
+
+
+class TestTheSslFlagParsesTheSameEverywhere:
+    """REDIS_SSL decides TLS for the whole platform, so every consumer must
+    read the same literals. A local `== "true"` here read `REDIS_SSL=1` as
+    FALSE while unstract.core read it as True: the workers connected rediss://
+    and this cache built a redis:// LOCATION and skipped its
+    CONNECTION_POOL_KWARGS entirely — against a TLS-only managed endpoint the
+    backend cache alone fails, and against one accepting both it authenticates
+    in clear while everything else is encrypted.
+    """
+
+    @pytest.mark.parametrize("literal", ["true", "1", "yes", "on", "TRUE", " on "])
+    def test_every_true_literal_switches_the_scheme(self, literal):
+        derived = _derive(REDIS_HOST="h", REDIS_SSL=literal)
+        assert derived["CACHES"]["default"]["LOCATION"].startswith("rediss://")
+        assert derived["REDIS_SSL"] is True
+
+    @pytest.mark.parametrize("literal", ["false", "0", "no", "off", "", "   "])
+    def test_every_false_and_blank_literal_leaves_it_plaintext(self, literal):
+        derived = _derive(REDIS_HOST="h", REDIS_SSL=literal)
+        assert derived["CACHES"]["default"]["LOCATION"].startswith("redis://")
+        assert derived["REDIS_SSL"] is False
+
+    def test_the_pool_kwargs_follow_the_same_flag(self):
+        """The scheme and the verification settings must not disagree: the
+        `if REDIS_SSL` gate guards both, so a literal one reader accepts and
+        the other does not strips the cert settings as well as the scheme."""
+        derived = _derive(REDIS_HOST="h", REDIS_SSL="1")
+        assert derived["CACHES"]["default"]["OPTIONS"]["CONNECTION_POOL_KWARGS"]

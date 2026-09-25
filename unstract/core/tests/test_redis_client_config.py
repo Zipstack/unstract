@@ -1281,8 +1281,15 @@ class TestEnvChainHelpers:
         monkeypatch.setenv("REDIS_USERNAME", "alice")
         assert url_username_from_env() == "alice"
 
-    def test_parse_port_treats_blank_as_unset(self):
-        assert parse_port(None, "REDIS_PORT", 6379) == 6379
+    @pytest.mark.parametrize("raw", [None, "", "   "])
+    def test_parse_port_treats_blank_as_unset(self, raw, caplog):
+        """Quietly, too. base.py hands this the raw env value rather than
+        env_chain's None, so treating "" as unparseable logged an ERROR at
+        startup in the backend and nowhere else — for the repo's own
+        "leave the default" spelling."""
+        with caplog.at_level(logging.ERROR):
+            assert parse_port(raw, "REDIS_PORT", 6379) == 6379
+        assert caplog.text == ""
 
     def test_parse_port_falls_back_on_an_unparseable_value(self, caplog):
         with caplog.at_level(logging.ERROR):

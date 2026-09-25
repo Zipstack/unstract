@@ -420,7 +420,11 @@ def parse_port(raw: str | None, var_name: str, default_port: str | int) -> int:
     the variable nor the prefix, which in most consumers kills the process at
     import and in the two that catch broadly degrades to no-cache.
     """
-    if raw is None:
+    # Blank is unset, like everywhere else here. base.py hands this the raw env
+    # value rather than env_chain's None, so without this a bare `REDIS_PORT=` —
+    # the repo's own "leave the default" spelling — logged an ERROR at startup
+    # in the backend and nowhere else.
+    if raw is None or not raw.strip():
         return int(default_port)
     try:
         return int(raw)
@@ -430,6 +434,20 @@ def parse_port(raw: str | None, var_name: str, default_port: str | int) -> int:
         # failing — a wrong endpoint, reported as a wrong value.
         logger.error("Invalid %s=%r; using %s", var_name, raw, default_port)
         return int(default_port)
+
+
+def resolve_ssl_enabled(env_prefix: str = "REDIS_") -> bool:
+    """{prefix}SSL, falling back to REDIS_SSL; blank means unset.
+
+    Exported so the backend's settings module uses the SAME parse rather than
+    its own `== "true"`. _TRUE_LITERALS accepts 1, yes and on, so the bare
+    comparison read `REDIS_SSL=1` as FALSE — every create_redis_client consumer
+    connected rediss:// while the Django cache built a redis:// LOCATION and
+    skipped its CONNECTION_POOL_KWARGS entirely. One endpoint, one process, two
+    TLS policies, which is the failure this module was centralised to prevent.
+    """
+    raw, name = env_chain_named(f"{env_prefix}SSL", "REDIS_SSL")
+    return _parse_bool(raw, False, name)
 
 
 def url_username_from_env(env_prefix: str = "REDIS_") -> str | None:
@@ -564,7 +582,12 @@ def _resolve_redis_env(
     env_prefix: str, default_port: str = "6379", db_override: int | None = None
 ) -> dict[str, Any]:
     """Read common Redis env vars into a dict."""
-    host = env_chain(f"{env_prefix}HOST", "REDIS_HOST") or "localhost"
+    # Stripped explicitly: env_chain returns the RAW value so a credential keeps
+    # any whitespace it was given, but a host must not. urlsplit() drops a
+    # trailing newline from a URL host while redis.Redis(host=...) keeps it, so
+    # a file-mounted REDIS_HOST ending in \n would fail DNS on the discrete path
+    # and succeed on the URL one.
+    host = (env_chain(f"{env_prefix}HOST", "REDIS_HOST") or "localhost").strip()
     port_raw, port_name = env_chain_named(f"{env_prefix}PORT", "REDIS_PORT")
     port = parse_port(port_raw, port_name, default_port)
     # BLANK MEANS UNSET, like parse_db and _parse_bool in this same module — a
@@ -595,8 +618,7 @@ def _resolve_redis_env(
     # value but TLS did not, a blank CACHE_REDIS_SSL beside REDIS_SSL=true gave
     # the worker cache a real AUTH over an UNENCRYPTED socket — the credential
     # this same commit taught it to inherit, now on the wire in clear.
-    ssl_raw, ssl_name = env_chain_named(f"{env_prefix}SSL", "REDIS_SSL")
-    ssl = _parse_bool(ssl_raw, False, ssl_name)
+    ssl = resolve_ssl_enabled(env_prefix)
     own_url = os.getenv(f"{env_prefix}URL", "").strip()
     generic_url = os.getenv("REDIS_URL", "").strip()
     result: dict[str, Any] = {
@@ -693,8 +715,14 @@ def _resolve_redis_env(
     # check_hostname is True while verify_mode is CERT_NONE. Decided from the
     # EFFECTIVE value — the URL's query string outranks the env var, and testing
     # the env var alone is what produced that ValueError on every connection.
-    raw_check_hostname = os.getenv(
-        f"{env_prefix}SSL_CHECK_HOSTNAME", os.getenv("REDIS_SSL_CHECK_HOSTNAME", "")
+    # The SAME read as resolve_ssl_check_hostname above — this one decides
+    # whether the value was EXPLICIT, and leaving it on the nested os.getenv
+    # made a blank prefixed value fall through for the value but not for the
+    # explicitness. On a Sentinel + TLS deployment that meant a global
+    # REDIS_SSL_CHECK_HOSTNAME=true was honoured on the discovery connections
+    # and silently dropped on the master one.
+    raw_check_hostname, _ = env_chain_named(
+        f"{env_prefix}SSL_CHECK_HOSTNAME", "REDIS_SSL_CHECK_HOSTNAME"
     )
     # Whether the operator ASKED for a value, as opposed to inheriting the
     # default. Sentinel's master plane needs to know the difference — see
@@ -703,8 +731,8 @@ def _resolve_redis_env(
     # verification back on for Sentinel masters, which is the breakage this
     # distinction exists to avoid.
     result["ssl_check_hostname_explicit"] = (
-        raw_check_hostname.strip().lower() in _TRUE_LITERALS | _FALSE_LITERALS
-    )
+        raw_check_hostname or ""
+    ).strip().lower() in _TRUE_LITERALS | _FALSE_LITERALS
     if effective_cert_reqs(result["url"], result["ssl_cert_reqs"]) == "none":
         result["ssl_check_hostname"] = False
         result["ssl_check_hostname_explicit"] = False

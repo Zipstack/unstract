@@ -28,6 +28,7 @@ from unstract.core.cache.redis_client import (
     parse_db,
     parse_port,
     resolve_ssl_cert_reqs,
+    resolve_ssl_enabled,
     resolve_ssl_check_hostname,
     set_url_db_path,
     url_db_path,
@@ -124,7 +125,11 @@ REDIS_DB = os.environ.get("REDIS_DB", "")
 # TLS to Redis (UN-4123). Off by default, so the in-cluster/local server is
 # untouched. `rediss://` is what actually selects TLS for both django-redis and
 # kombu; this flag only decides which scheme gets built.
-REDIS_SSL = os.environ.get("REDIS_SSL", "false").strip().lower() == "true"
+# Through the shared resolver, not a local `== "true"`: _TRUE_LITERALS accepts
+# 1, yes and on, so the bare comparison read REDIS_SSL=1 as FALSE — the workers
+# connected rediss:// while this cache built a redis:// LOCATION and skipped its
+# CONNECTION_POOL_KWARGS, i.e. one endpoint with two TLS policies in one process.
+REDIS_SSL = resolve_ssl_enabled()
 # Resolved by unstract.core, not re-read here: the raw value needs trimming,
 # lower-casing and validating, and a second copy of that logic is how this file
 # and create_redis_client came to hold two verification policies for one endpoint.
