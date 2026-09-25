@@ -2,7 +2,7 @@ import fnmatch
 import logging
 import os
 import shutil
-import uuid
+import tempfile
 from collections.abc import Collection
 from hashlib import sha256
 from io import BytesIO
@@ -25,8 +25,16 @@ from workflow_manager.endpoint_v2.constants import (
     SourceConstant,
     SourceKey,
 )
-from workflow_manager.endpoint_v2.dto import FileHash, SourceConfig
-from workflow_manager.endpoint_v2.enums import AllowedFileTypes
+from workflow_manager.endpoint_v2.dto import (
+    FileExecutionResult,
+    FileHash,
+    SourceConfig,
+)
+from workflow_manager.endpoint_v2.enums import (
+    INCONCLUSIVE_MIME_TYPES,
+    AllowedFileTypes,
+    resolve_inconclusive_mime_type,
+)
 from workflow_manager.endpoint_v2.exceptions import (
     InvalidInputDirectory,
     InvalidSourceConnectionType,
@@ -37,6 +45,7 @@ from workflow_manager.endpoint_v2.exceptions import (
     UnsupportedMimeTypeError,
 )
 from workflow_manager.endpoint_v2.models import WorkflowEndpoint
+from workflow_manager.endpoint_v2.result_cache_utils import ResultCacheUtils
 from workflow_manager.file_execution.models import WorkflowFileExecution
 from workflow_manager.utils.workflow_log import WorkflowLog
 from workflow_manager.workflow_v2.enums import ExecutionStatus
@@ -46,6 +55,7 @@ from workflow_manager.workflow_v2.models.file_history import FileHistory
 from workflow_manager.workflow_v2.models.workflow import Workflow
 
 from unstract.connectors.filesystems.unstract_file_system import UnstractFileSystem
+from unstract.core.mime_gate import identify_zip_container
 from unstract.filesystem import FileStorageType, FileSystem
 from unstract.sdk1.file_storage import FileStorage
 from unstract.workflow_execution.enums import LogLevel, LogStage, LogState
@@ -69,6 +79,14 @@ class SourceConnector(BaseConnector):
     """
 
     READ_CHUNK_SIZE = 4194304  # Chunk size for reading files
+    # Most formats are identifiable from their leading bytes, so a small sample
+    # keeps the common path cheap.
+    MIME_DETECT_CHUNK_SIZE = 8192
+    # A wrapper-only answer from the sample is never the verdict: OLE2 keeps its
+    # directory sector at the end of the file, and a zip container reads as
+    # octet-stream from any buffer. One shared set, so the API and connector
+    # paths cannot disagree about what counts as undecided.
+    CONTAINER_MIME_TYPES = INCONCLUSIVE_MIME_TYPES
 
     def __init__(
         self,
@@ -1000,7 +1018,9 @@ class SourceConnector(BaseConnector):
                 file_content_hash.update(chunk)
                 if first_iteration:
                     # Detect MIME type using first chunk
-                    mime_type = magic.from_buffer(chunk, mime=True)
+                    mime_type = resolve_inconclusive_mime_type(
+                        magic.from_buffer(chunk, mime=True), chunk
+                    )
                     logger.info(
                         f"Detected MIME type: {mime_type} for file {input_file_path}"
                     )
@@ -1188,6 +1208,148 @@ class SourceConnector(BaseConnector):
         return os.path.basename(input_file_path), file_stream
 
     @classmethod
+    def _detect_uploaded_file_mime_type(cls, file: UploadedFile) -> str | None:
+        """Detect an uploaded file's MIME type from its own bytes.
+
+        The multipart Content-Type is supplied by the caller and never verified,
+        so it cannot be used to decide what is allowed into API storage.
+
+        Returns None for an empty upload, which has no type to judge.
+        """
+        sample = file.read(cls.MIME_DETECT_CHUNK_SIZE)
+        file.seek(0)
+        if not sample:
+            # libmagic reports "application/x-empty", which is in no allow-list and
+            # would surface as an unsupported-type error. An empty upload is a
+            # distinct failure, reported as such once staging hands off.
+            return None
+
+        mime_type = magic.from_buffer(sample, mime=True)
+        if mime_type in cls.CONTAINER_MIME_TYPES:
+            mime_type = cls._detect_container_mime_type(file, fallback=mime_type)
+        return resolve_inconclusive_mime_type(mime_type, sample)
+
+    @classmethod
+    def _detect_container_mime_type(cls, file: UploadedFile, fallback: str) -> str:
+        """Resolve a wrapper by classifying the file from a path.
+
+        Always a path, never a buffer: libmagic cannot name a zip container from
+        `from_buffer` even when handed every byte, so an in-memory upload is
+        spilled to a temporary file rather than classified in place. Django's
+        own ceiling bounds how large that copy can be.
+        """
+        temporary_file_path = getattr(file, "temporary_file_path", None)
+        if temporary_file_path is not None:
+            return cls._classify_file_path(temporary_file_path(), fallback)
+
+        with tempfile.NamedTemporaryFile(suffix=".upload") as spill:
+            for chunk in file.chunks(chunk_size=cls.READ_CHUNK_SIZE):
+                spill.write(chunk)
+            spill.flush()
+            file.seek(0)
+            return cls._classify_file_path(spill.name, fallback)
+
+    @classmethod
+    def _classify_file_path(cls, path: str, fallback: str) -> str:
+        """Classify a staged path, looking inside a zip when that is all we get."""
+        mime_type = magic.from_file(path, mime=True)
+        if mime_type == "application/zip":
+            inside = identify_zip_container(path)
+            return inside or mime_type
+        return mime_type or fallback
+
+    @classmethod
+    def _report_rejected_file(
+        cls,
+        workflow_log: WorkflowLog,
+        workflow_id: str,
+        execution_id: str,
+        file: UploadedFile,
+        file_name: str,
+        mime_type: str | None,
+        log_message: str,
+    ) -> None:
+        """Record a rejection for the caller without risking the whole request.
+
+        This runs inside the staging loop, and the cache write behind it does an
+        unguarded pipeline execute. Letting a transient Redis fault escape would
+        fail the entire execution over one bad file - and discard the good files
+        already staged alongside it.
+        """
+        workflow_log.log_error(logger=logger, message=log_message)
+        try:
+            ResultCacheUtils.update_api_results(
+                workflow_id=workflow_id,
+                execution_id=execution_id,
+                api_result=FileExecutionResult(file=file_name, error=log_message),
+            )
+        except Exception:
+            logger.exception(
+                f"Could not record the rejection of '{file_name}' for the caller"
+            )
+
+        try:
+            cls._persist_rejected_file_execution(
+                execution_id=execution_id,
+                file=file,
+                file_name=file_name,
+                mime_type=mime_type,
+                log_message=log_message,
+            )
+        except Exception:
+            logger.exception(
+                f"Could not persist a file execution row for rejected '{file_name}'"
+            )
+
+    @classmethod
+    def _persist_rejected_file_execution(
+        cls,
+        execution_id: str,
+        file: UploadedFile,
+        file_name: str,
+        mime_type: str | None,
+        log_message: str,
+    ) -> None:
+        """Record a rejected file as a terminal ERROR file execution.
+
+        The cache entry above is deleted on the first status poll and expires
+        with the result TTL, so without a row there is nothing left to answer
+        "why was my file not processed?". It also keeps the rejection countable:
+        the execution serializer derives successful/failed from these rows, so a
+        run with a rejected file stops reading as a clean success.
+        """
+        workflow_execution = WorkflowExecution.objects.get(pk=execution_id)
+
+        # The row's identity rests entirely on this value: the API path has no
+        # file_path, so get_or_create would fold two rejected uploads into one
+        # row and under-count them. Content alone is not enough - the same bytes
+        # sent twice under different names are two rejections the caller needs
+        # told about separately - so the name is folded in. Deliberately not a
+        # plain content hash: a rejected file was never processed, and should
+        # not look to file history as though it had been.
+        digest = sha256()
+        for chunk in file.chunks(chunk_size=cls.READ_CHUNK_SIZE):
+            digest.update(chunk)
+        file.seek(0)
+        row_identity = sha256(digest.digest() + file_name.encode("utf-8")).hexdigest()
+
+        file_execution = WorkflowFileExecution.objects.get_or_create_file_execution(
+            workflow_execution=workflow_execution,
+            file_hash=FileHash(
+                file_path=None,
+                source_connection_type=WorkflowEndpoint.ConnectionType.API,
+                file_name=file_name,
+                file_hash=row_identity,
+                file_size=file.size,
+                mime_type=mime_type,
+            ),
+            is_api=True,
+        )
+        file_execution.update_status(
+            status=ExecutionStatus.ERROR, execution_error=log_message
+        )
+
+    @classmethod
     def add_input_file_to_api_storage(
         cls,
         pipeline_id: str,
@@ -1228,30 +1390,47 @@ class SourceConnector(BaseConnector):
             file_name = file.name
             destination_path = os.path.join(api_storage_dir, file_name)
 
-            mime_type = file.content_type
-            logger.info(f"Detected MIME type: {mime_type} for file {file_name}")
-            if not mime_type:
-                logger.info(
-                    f"MIME type not found for file {file_name}, using default MIME type: {AllowedFileTypes.OCTET_STREAM.value}"
+            try:
+                mime_type = cls._detect_uploaded_file_mime_type(file)
+            except (OSError, ValueError, magic.MagicException):
+                # Narrow on purpose: these are faults in THIS upload's bytes, so
+                # failing the one file is right. A broken libmagic database or an
+                # unreadable temp dir hits every file in every request, and
+                # swallowing that would tell each caller their files are invalid
+                # while the platform is down - it must propagate and fail loudly.
+                log_message = (
+                    f"Rejecting file '{file_name}': could not determine its type"
                 )
-                mime_type = AllowedFileTypes.OCTET_STREAM.value
+                logger.exception(log_message)
+                cls._report_rejected_file(
+                    workflow_log,
+                    workflow_id,
+                    execution_id,
+                    file,
+                    file_name,
+                    None,
+                    log_message,
+                )
+                continue
 
-            if not AllowedFileTypes.is_allowed(mime_type):
-                log_message = f"Skipping file '{file_name}' to stage due to unsupported MIME type '{mime_type}'"
-                workflow_log.log_info(logger=logger, message=log_message)
-                # Generate a clearly marked temporary hash to avoid reading the file content
-                # Helps to prevent duplicate entries in file executions
-                fake_hash = f"temp-hash-{uuid.uuid4().hex}"
-                file_hash = FileHash(
-                    file_path=destination_path,
-                    source_connection_type=connection_type,
-                    file_name=file_name,
-                    file_hash=fake_hash,
-                    is_executed=True,
-                    file_size=file.size,
-                    mime_type=mime_type,
+            logger.info(f"Detected MIME type: {mime_type} for file {file_name}")
+
+            if mime_type is not None and not AllowedFileTypes.is_allowed(mime_type):
+                log_message = (
+                    f"Rejecting file '{file_name}' with unsupported MIME type "
+                    f"'{mime_type}'"
                 )
-                file_hashes.update({file_name: file_hash})
+                # Rejected files are never dispatched, so nothing downstream will
+                # report on them - surface the failure in the API response here.
+                cls._report_rejected_file(
+                    workflow_log,
+                    workflow_id,
+                    execution_id,
+                    file,
+                    file_name,
+                    mime_type,
+                    log_message,
+                )
                 continue
 
             file_system = FileSystem(FileStorageType.API_EXECUTION)

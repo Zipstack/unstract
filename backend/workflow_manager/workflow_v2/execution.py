@@ -388,6 +388,51 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
             logger.error(f"execution doesn't exist {execution_id}")
 
     @staticmethod
+    def update_execution_completed(
+        execution_id: str, total_files: int = 0, failed_files: int = 0
+    ) -> WorkflowExecution | None:
+        """Terminalise an execution that finished without any work to dispatch.
+
+        The counters must be written alongside the status: a terminal row whose
+        failed_files is NULL reads as a clean success to is_failure_run() and to
+        run history, which would hide a run whose files were all rejected.
+
+        Returns the row as persisted, so callers can see whether the status
+        actually changed rather than assuming it did.
+        """
+        try:
+            execution = WorkflowExecution.objects.get(pk=execution_id)
+            # Same reason as update_execution_err: on the PG transport the model
+            # method owns the terminal-one-way guard, so a row the callback already
+            # finalized cannot be reverted. The legacy transport has no such guard.
+            execution.update_execution(status=ExecutionStatus.COMPLETED)
+            execution.total_files = total_files
+            execution.successful_files = 0
+            execution.failed_files = failed_files
+            # Field-scoped, so the status column and anything a concurrent writer
+            # touched are left alone. Note this is scoped to the DB row only:
+            # WorkflowExecution.save() re-runs _handle_execution_cache() whatever
+            # update_fields says, republishing this object's in-memory status to
+            # the Redis cache — see the fuller account in
+            # update_execution_queue_message_id. Harmless here because the row is
+            # freshly created and undispatched, so no worker can have moved it on.
+            execution.save(
+                update_fields=[
+                    "total_files",
+                    "successful_files",
+                    "failed_files",
+                    "modified_at",
+                ]
+            )
+            # The guard may have refused the status change without raising; re-read
+            # so the returned row reflects what is actually stored.
+            execution.refresh_from_db()
+            return execution
+        except WorkflowExecution.DoesNotExist:
+            logger.error(f"execution doesn't exist {execution_id}")
+            return None
+
+    @staticmethod
     def update_execution_task(execution_id: str, task_id: str) -> None:
         try:
             logger.info(
@@ -459,7 +504,7 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         # update_fields) re-runs _handle_execution_cache(), which would republish
         # this method's stale in-memory status to the Redis execution cache and can
         # clobber a status the worker has since advanced — the same reason
-        # _set_result_acknowledge uses a queryset .update(). This marker write must
+        # set_result_acknowledge uses a queryset .update(). This marker write must
         # touch ONLY the handle column and never the status/counters or the cache.
         updated = WorkflowExecution.objects.filter(pk=execution_id).update(
             queue_message_id=queue_message_id

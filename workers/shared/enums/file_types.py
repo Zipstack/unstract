@@ -7,6 +7,11 @@ validation rules from workflow_manager/endpoint_v2/enums.py.
 from enum import Enum
 from typing import Any
 
+from unstract.core.mime_gate import (  # noqa: F401  re-exported
+    INCONCLUSIVE_MIME_TYPES,
+    resolve_inconclusive_mime_type,
+)
+
 
 class AllowedFileTypes(Enum):
     """Allowed MIME types for file processing.
@@ -47,11 +52,13 @@ class AllowedFileTypes(Enum):
 
     # Other formats
     CDFV2 = "application/CDFV2"
-    OCTET_STREAM = "application/octet-stream"
 
     @classmethod
     def is_allowed(cls, mime_type: str) -> bool:
         """Check if a MIME type is allowed for processing.
+
+        Any `text/*` passes, which is how html, xml, tsv, rtf and markdown reach
+        the extractor as text rather than as a listed format.
 
         Args:
             mime_type: The MIME type string to validate
@@ -59,6 +66,8 @@ class AllowedFileTypes(Enum):
         Returns:
             bool: True if the MIME type is allowed, False otherwise
         """
+        if mime_type.startswith("text/"):
+            return True
         return mime_type in cls._value2member_map_
 
 
