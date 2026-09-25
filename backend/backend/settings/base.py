@@ -655,23 +655,35 @@ else:
     # So the db has to travel in the URL path, or this cache silently sits on db 0
     # while every other service honours REDIS_DB: workers would RPUSH
     # log_history_queue to db N and the backend would LPOP an empty db 0.
-    # USERNAME and DB below are passed for readability and are DISCARDED by
-    # django-redis — they are not the mechanism for either. Auth stays password-only
-    # as the built-in `default` user (what a managed AUTH string is): a username
-    # would turn AUTH into its two-argument ACL form, and this cache never sends
-    # one. If a django-redis bump ever starts reading USERNAME, that becomes a real
-    # behaviour change rather than a silent one — which is what the assertions in
-    # tests/test_redis_settings_derivation.py pin.
+    # DB below is passed for readability and is DISCARDED by django-redis — it is
+    # not the mechanism. An ACL USERNAME is not passed through OPTIONS at all,
+    # because django-redis would discard that too: it travels in the LOCATION,
+    # the same route the URL branch uses. This used to say auth "stays
+    # password-only as the built-in `default` user ... this cache never sends
+    # one", which described the discrete path accurately and made it the one
+    # consumer that could not reach an ACL endpoint — create_redis_client in the
+    # same process sends the username, so where `default` is disabled the cache
+    # alone failed. That is the identical divergence the URL branch was fixed
+    # for, left standing on the path the module docstring calls primary.
     _cache_options = {
         "CLIENT_CLASS": "django_redis.client.DefaultClient",
         "SERIALIZER": "django_redis.serializers.json.JSONSerializer",
     }
+    _cache_username = url_username_from_env()
     if not _redis_url:
-        # Credentials and db travel IN the URL in URL mode; passing them again
-        # through OPTIONS risks one of them winning over the other.
         _cache_options["DB"] = _cache_db
-        _cache_options["USERNAME"] = REDIS_USER
-        _cache_options["PASSWORD"] = REDIS_PASSWORD
+        _cache_location = f"{_scheme}://{REDIS_HOST}:{REDIS_PORT}/{_cache_db}"
+        if _cache_username:
+            # Only when a username must travel. Keeping the password in OPTIONS
+            # otherwise is deliberate: OPTIONS["PASSWORD"] matches Django's
+            # SafeExceptionReporterFilter and is masked in a settings dump,
+            # while LOCATION is not. Pay that exposure only where django-redis
+            # leaves no alternative.
+            _cache_location = apply_url_credentials(
+                _cache_location, REDIS_PASSWORD, _cache_username
+            )
+        else:
+            _cache_options["PASSWORD"] = REDIS_PASSWORD
     else:
         # URL mode: the credentials go into the LOCATION, through the SAME helper
         # the Socket.IO URL uses. Two reasons it is not OPTIONS["PASSWORD"]:
@@ -707,9 +719,8 @@ else:
         # Re-deriving the chain here is the same second copy this commit removed
         # for the "@" heuristic; asking core for it is what keeps the three
         # consumers in step by construction rather than by comment.
-        _redis_url = apply_url_credentials(
-            _redis_url, REDIS_PASSWORD, url_username_from_env()
-        )
+        _redis_url = apply_url_credentials(_redis_url, REDIS_PASSWORD, _cache_username)
+        _cache_location = _redis_url
     # Gated on the EFFECTIVE scheme, not the flag. In URL mode TLS is carried by
     # the URL (and its query string), so a plaintext REDIS_URL left behind while
     # REDIS_SSL=true would otherwise hand ssl_cert_reqs to a plain
@@ -760,8 +771,7 @@ else:
     CACHES = {
         "default": {
             "BACKEND": "django_redis.cache.RedisCache",
-            "LOCATION": _redis_url
-            or f"{_scheme}://{REDIS_HOST}:{REDIS_PORT}/{_cache_db}",
+            "LOCATION": _cache_location,
             "OPTIONS": _cache_options,
             "KEY_FUNCTION": "utils.redis_cache.custom_key_function",
         }

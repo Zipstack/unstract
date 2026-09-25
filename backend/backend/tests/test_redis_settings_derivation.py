@@ -20,7 +20,7 @@ from __future__ import annotations
 import logging
 import pathlib
 import re
-from urllib.parse import urlsplit
+from urllib.parse import unquote, urlsplit
 
 import pytest
 
@@ -174,20 +174,35 @@ class TestDiscreteVars:
         derived = _derive(REDIS_HOST="h", REDIS_PASSWORD="s3cret")
         assert derived["CACHES"]["default"]["OPTIONS"]["PASSWORD"] == "s3cret"
 
-    def test_db_and_username_are_passed_through_options(self):
-        """Pins the stated invariant so a django-redis bump is visible.
+    def test_an_acl_username_travels_in_the_location_not_options(self):
+        """This used to assert OPTIONS["USERNAME"] == "alice" and call that the
+        stated invariant — django-redis discards the key, so auth "stays
+        password-only as the built-in `default` user".
 
-        The comment beside this code says USERNAME is deliberately not honoured —
-        django-redis 5.4.0 discards it, so auth stays password-only as the
-        built-in `default` user. That holds by accident of the pinned version:
-        these assertions pin what the settings SEND, so if a bump starts reading
-        USERNAME the change is a deliberate one rather than a surprise.
+        That made the discrete path the one consumer unable to reach an ACL
+        endpoint: create_redis_client in the same process sends the username, so
+        where `default` is disabled the cache alone failed. Passing a key the
+        library throws away is not an invariant worth pinning; reaching the same
+        server as everything else is. The LOCATION is the only route django-redis
+        leaves, which is exactly why the URL branch already used it.
         """
-        options = _derive(REDIS_HOST="h", REDIS_DB="3", REDIS_USER="alice")["CACHES"][
-            "default"
-        ]["OPTIONS"]
-        assert options["DB"] == 3
-        assert options["USERNAME"] == "alice"
+        derived = _derive(
+            REDIS_HOST="h", REDIS_DB="3", REDIS_USER="alice", REDIS_PASSWORD="pw"
+        )
+        cache = derived["CACHES"]["default"]
+        assert cache["OPTIONS"]["DB"] == 3
+        assert "USERNAME" not in cache["OPTIONS"]
+        parts = urlsplit(cache["LOCATION"])
+        assert parts.username == "alice"
+        assert parts.password == "pw"
+        assert parts.hostname == "h"
+
+    def test_no_username_keeps_the_password_out_of_the_location(self):
+        """OPTIONS["PASSWORD"] is masked by Django's settings filter; LOCATION is
+        not. Pay that exposure only where django-redis leaves no alternative."""
+        cache = _derive(REDIS_HOST="h", REDIS_PASSWORD="pw")["CACHES"]["default"]
+        assert cache["OPTIONS"]["PASSWORD"] == "pw"
+        assert urlsplit(cache["LOCATION"]).password is None
 
     def test_url_mode_does_not_duplicate_credentials_into_options(self):
         """They travel in the URL; passing both risks one winning over the other."""
@@ -646,3 +661,100 @@ class TestTheSslFlagParsesTheSameEverywhere:
         the other does not strips the cert settings as well as the scheme."""
         derived = _derive(REDIS_HOST="h", REDIS_SSL="1")
         assert derived["CACHES"]["default"]["OPTIONS"]["CONNECTION_POOL_KWARGS"]
+
+
+class TestTheBackendAgreesWithCoreOnEverySharedSetting:
+    """A parity sweep, not another one-off.
+
+    Four review rounds on this PR produced the same finding four times in
+    different clothes: a setting was centralised in unstract.core and the
+    parallel read in this settings module was left behind — the "@" credential
+    heuristic, the REDIS_USERNAME spelling, blank-means-unset, and the SSL
+    true-literals. Each was fixed with a test for that one setting, and the next
+    round found the next one.
+
+    This pins the PROPERTY instead: for a matrix of environments, what the
+    Django cache ends up talking to must match what create_redis_client in the
+    same process would. A future setting that is centralised on one side only
+    fails here without anyone having to predict which setting it will be.
+    """
+
+    # Each case is what an operator actually writes, not a minimal pair.
+    _CASES = [
+        {"REDIS_HOST": "h"},
+        {"REDIS_HOST": "h", "REDIS_PASSWORD": "pw"},
+        {"REDIS_HOST": "h", "REDIS_PASSWORD": "pw", "REDIS_USER": "alice"},
+        {"REDIS_HOST": "h", "REDIS_PASSWORD": "pw", "REDIS_USERNAME": "alice"},
+        {"REDIS_HOST": "h", "REDIS_SSL": "true"},
+        {"REDIS_HOST": "h", "REDIS_SSL": "1"},
+        {"REDIS_HOST": "h", "REDIS_SSL": "yes", "REDIS_SSL_CERT_REQS": "none"},
+        {"REDIS_URL": "redis://h:6379/0"},
+        {"REDIS_URL": "redis://h:6379/0", "REDIS_PASSWORD": "pw"},
+        {"REDIS_URL": "redis://h:6379/0", "REDIS_PASSWORD": "pw", "REDIS_USER": "alice"},
+        {
+            "REDIS_URL": "redis://h:6379/0",
+            "REDIS_PASSWORD": "pw",
+            "REDIS_USERNAME": "bob",
+        },
+        {"REDIS_URL": "redis://alice@h:6379/0", "REDIS_PASSWORD": "pw"},
+        {"REDIS_URL": "redis://:inurl@h:6379/0", "REDIS_PASSWORD": "pw"},
+        {"REDIS_URL": "redis://:@h:6379/0", "REDIS_PASSWORD": "pw"},
+        {"REDIS_URL": "rediss://h:6380/0", "REDIS_PASSWORD": "pw"},
+        {"REDIS_URL": "rediss://h:6380/0", "REDIS_PASSWORD": "p@ss/w:rd"},
+        {"REDIS_URL": "redis://h:6379/0", "REDIS_DB": "3", "REDIS_PASSWORD": "pw"},
+        {"REDIS_HOST": "h", "REDIS_PASSWORD": "pw", "REDIS_USER": ""},
+        {"REDIS_HOST": "h", "REDIS_PASSWORD": "pw", "REDIS_SSL": ""},
+    ]
+
+    @staticmethod
+    def _from_core(env: dict) -> dict:
+        """What create_redis_client would connect with, for this environment."""
+        import os
+
+        from unstract.core.cache.redis_client import create_redis_client
+
+        saved = {k: os.environ.get(k) for k in list(os.environ) if "REDIS" in k}
+        for key in saved:
+            os.environ.pop(key, None)
+        os.environ.update(env)
+        try:
+            kwargs = create_redis_client().connection_pool.connection_kwargs
+            cls = create_redis_client().connection_pool.connection_class.__name__
+        finally:
+            for key in list(os.environ):
+                if "REDIS" in key:
+                    os.environ.pop(key, None)
+            os.environ.update({k: v for k, v in saved.items() if v is not None})
+        return {
+            "host": kwargs.get("host"),
+            "port": kwargs.get("port"),
+            "db": int(kwargs.get("db") or 0),
+            "username": kwargs.get("username") or None,
+            "password": kwargs.get("password") or None,
+            "tls": cls == "SSLConnection",
+        }
+
+    @staticmethod
+    def _from_cache(env: dict) -> dict:
+        """The same facts, read back off the Django cache LOCATION."""
+        derived = _derive(**env)
+        location = derived["CACHES"]["default"]["LOCATION"]
+        parts = urlsplit(location)
+        options = derived["CACHES"]["default"]["OPTIONS"]
+        return {
+            "host": parts.hostname,
+            "port": parts.port or int(derived["REDIS_PORT"]),
+            "db": int((parts.path or "/0").lstrip("/") or 0),
+            # django-redis discards OPTIONS["USERNAME"], so the LOCATION is the
+            # only route for a username — that asymmetry is the whole reason the
+            # URL branch exists, and it is what this sweep exists to keep true.
+            "username": unquote(parts.username) if parts.username else None,
+            "password": unquote(parts.password)
+            if parts.password
+            else (options.get("PASSWORD") or None),
+            "tls": parts.scheme == "rediss",
+        }
+
+    @pytest.mark.parametrize("env", _CASES, ids=lambda e: ",".join(sorted(e)))
+    def test_the_cache_and_the_client_reach_the_same_place(self, env):
+        assert self._from_cache(env) == self._from_core(env)
