@@ -778,3 +778,117 @@ class TestTheBackendAgreesWithCoreOnEverySharedSetting:
     @pytest.mark.parametrize("env", _CASES, ids=lambda e: ",".join(sorted(e)))
     def test_the_cache_and_the_client_reach_the_same_place(self, env):
         assert self._from_cache(env) == self._from_core(env)
+
+
+class TestSentinelModeAgreesWithCore:
+    """The parity property must not stop at a mode boundary.
+
+    TestTheBackendAgreesWithCoreOnEverySharedSetting cannot cover Sentinel: its
+    _from_core calls create_redis_client, which in Sentinel mode performs real
+    discovery and blocks. So the comparison here is against the resolver rather
+    than a built client — _resolve_redis_env with the same default_port core's
+    Sentinel path passes — which is enough to pin the four facts that diverged.
+
+    The branch was NOT untestable, which an earlier comment in base.py claimed:
+    _derive's slice spans both branches, so it just needed an env that selects
+    this one. "No test executes it" and "no test was written for it" are
+    different statements, and only the second was true.
+    """
+
+    @staticmethod
+    def _core(**env: str) -> dict:
+        import os
+
+        from unstract.core.cache.redis_client import _resolve_redis_env
+
+        saved = {k: os.environ.get(k) for k in list(os.environ) if "REDIS" in k}
+        for key in saved:
+            os.environ.pop(key, None)
+        os.environ.update(env)
+        try:
+            return _resolve_redis_env("REDIS_", default_port="26379")
+        finally:
+            for key in list(os.environ):
+                if "REDIS" in key:
+                    os.environ.pop(key, None)
+            os.environ.update({k: v for k, v in saved.items() if v is not None})
+
+    def test_the_sentinel_port_default_matches_core(self):
+        """REDIS_PORT unset pointed this cache at 6379 — the STANDALONE port —
+        while every other client found the sentinels on 26379."""
+        env = {"REDIS_SENTINEL_MODE": "true", "REDIS_HOST": "sent"}
+        sentinels = _derive(**env)["CACHES"]["default"]["OPTIONS"]["SENTINELS"]
+        assert sentinels == [("sent", self._core(**env)["port"])]
+        assert sentinels == [("sent", 26379)]
+
+    def test_an_explicit_port_still_wins(self):
+        env = {"REDIS_SENTINEL_MODE": "true", "REDIS_HOST": "sent", "REDIS_PORT": "27000"}
+        assert _derive(**env)["CACHES"]["default"]["OPTIONS"]["SENTINELS"] == [
+            ("sent", 27000)
+        ]
+
+    def test_no_username_configured_means_no_username_sent(self):
+        """REDIS_USER defaults to "default" at module scope, so this cache sent
+        a two-argument ACL AUTH where core sends the one-argument form."""
+        env = {
+            "REDIS_SENTINEL_MODE": "true",
+            "REDIS_HOST": "sent",
+            "REDIS_PASSWORD": "pw",
+        }
+        cache = _derive(**env)["CACHES"]["default"]
+        assert self._core(**env)["username"] is None
+        assert "username" not in cache["OPTIONS"]["SENTINEL_KWARGS"]
+        assert urlsplit(cache["LOCATION"]).username is None
+
+    @pytest.mark.parametrize("spelling", ["REDIS_USER", "REDIS_USERNAME"])
+    def test_both_username_spellings_reach_the_sentinel_cache(self, spelling):
+        """platform-service ships REDIS_USERNAME; reading only REDIS_USER left
+        this cache authenticating as `default` while core used the ACL user."""
+        env = {
+            "REDIS_SENTINEL_MODE": "true",
+            "REDIS_HOST": "sent",
+            "REDIS_PASSWORD": "pw",
+            spelling: "alice",
+        }
+        derived = _derive(**env)
+        cache = derived["CACHES"]["default"]
+        assert self._core(**env)["username"] == "alice"
+        assert cache["OPTIONS"]["SENTINEL_KWARGS"]["username"] == "alice"
+        assert urlsplit(cache["LOCATION"]).username == "alice"
+        assert urlsplit(derived["SOCKET_IO_MANAGER_URL"]).username == "alice"
+
+    def test_tls_reaches_both_the_sentinels_and_the_master(self):
+        """SENTINEL_KWARGS covers only discovery. Carrying TLS there alone would
+        leave an encrypted discovery and a plaintext master; carrying it nowhere
+        — which is what this branch did — leaves a plaintext cache against a
+        TLS-only deployment while core encrypts both."""
+        env = {
+            "REDIS_SENTINEL_MODE": "true",
+            "REDIS_HOST": "sent",
+            "REDIS_SSL": "true",
+            "REDIS_SSL_CERT_REQS": "none",
+        }
+        options = _derive(**env)["CACHES"]["default"]["OPTIONS"]
+        assert self._core(**env)["ssl"] is True
+        for where in ("SENTINEL_KWARGS", "CONNECTION_POOL_KWARGS"):
+            assert options[where]["ssl"] is True, where
+            assert options[where]["ssl_cert_reqs"] == "none", where
+
+    def test_a_ca_reaches_both_too(self):
+        env = {
+            "REDIS_SENTINEL_MODE": "true",
+            "REDIS_HOST": "sent",
+            "REDIS_SSL": "true",
+            "REDIS_SSL_CA_CERTS": "/etc/ssl/ca.pem",
+        }
+        options = _derive(**env)["CACHES"]["default"]["OPTIONS"]
+        for where in ("SENTINEL_KWARGS", "CONNECTION_POOL_KWARGS"):
+            assert options[where]["ssl_ca_certs"] == "/etc/ssl/ca.pem", where
+
+    def test_no_tls_configured_adds_no_tls_keys(self):
+        """Flag off must leave the Sentinel cache byte-identical to before."""
+        options = _derive(REDIS_SENTINEL_MODE="true", REDIS_HOST="sent")["CACHES"][
+            "default"
+        ]["OPTIONS"]
+        assert options["SENTINEL_KWARGS"] == {}
+        assert options["CONNECTION_POOL_KWARGS"] == {}

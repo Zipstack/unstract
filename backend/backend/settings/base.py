@@ -563,32 +563,57 @@ REDIS_SENTINEL_MODE = (
 
 REDIS_SENTINEL_MASTER_NAME = os.environ.get("REDIS_SENTINEL_MASTER_NAME", "mymaster")
 
-# NOT COVERED by TestTheBackendAgreesWithCoreOnEverySharedSetting — _derive only
-# exercises the standalone branch below, so the "cache and client reach the same
-# place" property stops at this line. Four divergences from create_redis_client
-# live in here and are PRE-EXISTING on main, untouched by UN-4123:
-#   * REDIS_USER defaults to "default" above, so this cache sends a two-argument
-#     ACL AUTH where core sends the one-argument form;
-#   * it reads REDIS_USER directly, so the REDIS_USERNAME spelling is ignored;
-#   * REDIS_SSL is not applied here at all — a plaintext cache against a
-#     TLS-only Sentinel deployment;
-#   * the Sentinel default port is 26379 in core and 6379 here.
-# Left alone deliberately: this is the self-hosted HA path, a managed endpoint
-# is a single primary and does not use it, and changing behaviour here would be
-# changing code no test in this file executes. Its own ticket.
 if REDIS_SENTINEL_MODE:
+    # This branch used to hold four divergences from create_redis_client, all
+    # pre-existing. They are closed here because "the cache and the client reach
+    # the same place" is not a property that can stop at a mode boundary — an
+    # operator on Sentinel gets the same guarantee or the guarantee is a
+    # half-truth. TestSentinelModeAgreesWithCore covers each one.
+    #
+    # The username comes from the shared resolver, not the module-level
+    # REDIS_USER: that one defaults to "default", so this cache sent a
+    # two-argument ACL AUTH where core sends the one-argument form, and it read
+    # only REDIS_USER so the REDIS_USERNAME spelling platform-service ships was
+    # ignored entirely.
+    _sentinel_username = url_username_from_env()
+
+    # 26379 — the Sentinel port — matching core's
+    # _resolve_redis_env(default_port="26379"). The module-level REDIS_PORT
+    # defaults to 6379, which is the standalone port, so an unset REDIS_PORT
+    # pointed this cache at the wrong port while every other client found the
+    # sentinels. The chart always sets it, which is why this stayed hidden.
+    REDIS_PORT = parse_port(os.environ.get("REDIS_PORT"), "REDIS_PORT", 26379)
+
     _sentinel_kwargs = {}
     if REDIS_PASSWORD:
         _sentinel_kwargs["password"] = REDIS_PASSWORD
-    if REDIS_USER:
-        _sentinel_kwargs["username"] = REDIS_USER
+    if _sentinel_username:
+        _sentinel_kwargs["username"] = _sentinel_username
+
+    # TLS reached neither the discovery connections nor the master one, so a
+    # TLS-only Sentinel deployment got a plaintext cache while core encrypted
+    # both. Core builds them from one env dict for exactly this reason; the
+    # same settings go to both here.
+    _sentinel_pool_kwargs = {}
+    if REDIS_SSL:
+        _sentinel_tls = {
+            "ssl": True,
+            "ssl_cert_reqs": REDIS_SSL_CERT_REQS,
+            "ssl_check_hostname": REDIS_SSL_CHECK_HOSTNAME,
+        }
+        if REDIS_SSL_CA_CERTS:
+            _sentinel_tls["ssl_ca_certs"] = REDIS_SSL_CA_CERTS
+        _sentinel_kwargs.update(_sentinel_tls)
+        _sentinel_pool_kwargs.update(_sentinel_tls)
 
     _redis_db = parse_db(REDIS_DB, "REDIS_")
 
     # SocketIO connection manager (Kombu Sentinel URL format)
     _cred_prefix = ""
-    if REDIS_USER and REDIS_PASSWORD:
-        _cred_prefix = f"{quote(REDIS_USER, safe='')}:{quote(REDIS_PASSWORD, safe='')}@"
+    if _sentinel_username and REDIS_PASSWORD:
+        _cred_prefix = (
+            f"{quote(_sentinel_username, safe='')}:{quote(REDIS_PASSWORD, safe='')}@"
+        )
     elif REDIS_PASSWORD:
         _cred_prefix = f":{quote(REDIS_PASSWORD, safe='')}@"
     SOCKET_IO_MANAGER_URL = (
@@ -597,7 +622,7 @@ if REDIS_SENTINEL_MODE:
     SOCKET_IO_TRANSPORT_OPTIONS = {"master_name": REDIS_SENTINEL_MASTER_NAME}
 
     # django-redis expects username in the LOCATION URL for ACL auth
-    _user_prefix = f"{REDIS_USER}@" if REDIS_USER else ""
+    _user_prefix = f"{_sentinel_username}@" if _sentinel_username else ""
     CACHES = {
         "default": {
             "BACKEND": "django_redis.cache.RedisCache",
@@ -608,6 +633,10 @@ if REDIS_SENTINEL_MODE:
                 "CONNECTION_FACTORY": "django_redis.pool.SentinelConnectionFactory",
                 "SENTINELS": [(REDIS_HOST, REDIS_PORT)],
                 "SENTINEL_KWARGS": _sentinel_kwargs,
+                # TLS for the MASTER connection. SENTINEL_KWARGS covers only the
+                # discovery ones; core carries both, so a deployment with TLS on
+                # got an encrypted discovery and a plaintext master.
+                "CONNECTION_POOL_KWARGS": _sentinel_pool_kwargs,
                 "DB": _redis_db,
                 "PASSWORD": REDIS_PASSWORD,
                 "SERIALIZER": "django_redis.serializers.json.JSONSerializer",
