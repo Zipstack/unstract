@@ -13,7 +13,7 @@ import logging
 import os
 import re
 from pathlib import Path
-from urllib.parse import quote, urlsplit
+from urllib.parse import quote
 
 import httpx
 from django.core.validators import URLValidator
@@ -22,6 +22,7 @@ from utils.common_utils import CommonUtils
 from utils.cors_origin import normalize_web_app_origin
 
 from unstract.core.cache.redis_client import (
+    apply_url_credentials,
     build_socketio_redis_url,
     ensure_tls_query_params,
     parse_db,
@@ -660,14 +661,33 @@ else:
         _cache_options["DB"] = _cache_db
         _cache_options["USERNAME"] = REDIS_USER
         _cache_options["PASSWORD"] = REDIS_PASSWORD
-    elif REDIS_PASSWORD and "@" not in urlsplit(_redis_url).netloc:
-        # ...unless the URL carries NO credentials, which is the configuration
-        # that keeps the password out of a string that gets printed. django-redis
-        # feeds OPTIONS["PASSWORD"] into ConnectionPool.from_url, which ends with
-        # kwargs.update(url_options) — so this fills the gap and a URL bearing
-        # credentials still wins. Without it this cache connects ANONYMOUSLY
-        # while create_redis_client beside it authenticates.
-        _cache_options["PASSWORD"] = REDIS_PASSWORD
+    else:
+        # URL mode: the credentials go into the LOCATION, through the SAME helper
+        # the Socket.IO URL uses. Two reasons it is not OPTIONS["PASSWORD"]:
+        #
+        #   - django-redis 5.4.0 discards OPTIONS["USERNAME"], so an ACL username
+        #     could not reach this cache at all. It would authenticate as the
+        #     built-in `default` user while create_redis_client in the same
+        #     process authenticated as the configured one — and on an endpoint
+        #     where `default` is disabled, the cache alone would fail.
+        #   - a hand-rolled gate here diverged from the core one within a single
+        #     PR: it keyed on "@" being absent from the netloc, which the core
+        #     comment explicitly rejects, so a URL carrying only an ACL username
+        #     left this cache anonymous. One helper, one rule, no second copy to
+        #     keep in step.
+        #
+        # The helper returns the URL untouched when it already carries a
+        # password, so a credential-bearing REDIS_URL behaves exactly as before.
+        # os.environ direct, NOT the REDIS_USER above: that one defaults to
+        # "default", while create_redis_client reads the variable with no
+        # default. Passing the fallback here would make this cache send the
+        # two-argument `AUTH default <pw>` while the client in the same process
+        # sends the one-argument form — both authenticate, but they would differ
+        # on the wire for no reason, and "the three consumers agree" is the
+        # property this change exists to establish.
+        _redis_url = apply_url_credentials(
+            _redis_url, REDIS_PASSWORD, os.environ.get("REDIS_USER")
+        )
     # Gated on the EFFECTIVE scheme, not the flag. In URL mode TLS is carried by
     # the URL (and its query string), so a plaintext REDIS_URL left behind while
     # REDIS_SSL=true would otherwise hand ssl_cert_reqs to a plain

@@ -322,7 +322,8 @@ def ensure_tls_query_params(
     """Add the TLS settings a `rediss://` URL is missing, leaving present ones alone.
 
     Anything that hands a URL to a library that reads TLS out of the query string
-    needs this: kombu's KombuManager takes a URL and NOTHING else, and
+    needs this: kombu's KombuManager reads TLS from the URL alone — its
+    connection_options reach kombu.Connection, but the TLS settings do not — and
     django-redis's LOCATION is a string too (it also reads
     OPTIONS["CONNECTION_POOL_KWARGS"], but the query string wins on conflict).
 
@@ -383,28 +384,44 @@ def _compose_redis_url(env: dict[str, Any]) -> str:
 def apply_url_credentials(url: str, password: str | None, username: str | None) -> str:
     """Put credentials into a URL that carries none, leaving one that does alone.
 
-    kombu takes a URL and NOTHING else — no connection kwargs — so a password
-    supplied separately cannot reach it any other way. A URL written without
-    credentials would otherwise produce an anonymous publisher against an
-    authenticated server, and the Socket.IO events simply stop arriving.
+    KombuManager reads TLS out of the query string only, so the URL is where TLS
+    has to go, and the credentials ride with it so ONE builder serves both the
+    kombu and the redis-py callers. That is a choice, not a constraint:
+    KombuManager forwards connection_options to kombu.Connection, which accepts
+    userid= and password=.
 
-    The password IS in the returned string, unavoidably. That is acceptable here
-    and not in a values file: this URL is built in-process and handed straight to
-    the client, rather than written into a manifest, a Secret template or an
-    error message.
+    A URL written without credentials otherwise produces an anonymous publisher
+    against an authenticated server, and Socket.IO events simply stop arriving.
+
+    The password IS in the returned string. Smaller exposure than a values file,
+    but not none: the backend stores the result as settings.SOCKET_IO_MANAGER_URL,
+    and Django's SafeExceptionReporterFilter does not redact that name — a
+    technical-500 page would print it. One more reason DEBUG must stay off.
     """
     if not password:
         return url
     parts = urlsplit(url)
-    if parts.password is not None:
+    # Truthiness, not `is not None`: `redis://:@host` parses to password "", and
+    # both redis-py (`if url.password:`) and kombu (`unquote(password or "") or
+    # None`) read that as absent.
+    if parts.password:
         return url
-    username = parts.username or username
-    credentials = f"{quote(str(username), safe='')}:" if username else ":"
-    credentials += f"{quote(str(password), safe='')}@"
+    # REBUILD the netloc; do not prepend to it. parts.netloc INCLUDES any
+    # userinfo, so prepending on a username-only URL produced
+    # `alice:pw@alice@host` — and userinfo splits on the LAST "@", so the
+    # password parsed as "pw@alice". A wrong credential, not a missing one.
+    #
+    # A username already in the URL is reused VERBATIM rather than re-quoted: it
+    # is percent-encoded already, and quoting it again turned `al%40ice` into
+    # `al%2540ice`.
+    userinfo, _, host_port = parts.netloc.rpartition("@")
+    url_user = userinfo.partition(":")[0]
+    user = url_user or (quote(str(username), safe="") if username else "")
+    credentials = f"{user}:{quote(str(password), safe='')}@"
     return urlunsplit(
         (
             parts.scheme,
-            credentials + parts.netloc,
+            credentials + host_port,
             parts.path,
             parts.query,
             parts.fragment,
@@ -819,7 +836,7 @@ def _create_client_from_url(
     # carrying credentials still wins.
     #
     # Without this, a URL written WITHOUT credentials plus a separately
-    # configured {prefix}PASSWORD connected ANONYMOUSLY — and setting the two
+    # configured {prefix}PASSWORD connects ANONYMOUSLY — and setting the two
     # apart is the configuration the on-prem recipe should be able to recommend,
     # because it keeps the password out of a URL that gets printed into error
     # messages, ArgoCD conditions and ExternalSecret templates. The endpoint
@@ -831,11 +848,16 @@ def _create_client_from_url(
     # has none — turning a working default deployment into a failing one.
     # Keyed on the URL's PASSWORD, not on the presence of "@". A URL may carry an
     # ACL username alone — redis://alice@host — and that @ is not evidence of a
-    # password; treating it as such dropped the separately supplied one and left
-    # the client unable to authenticate.
-    if password and parts.password is None:
+    # password. Truthiness rather than `is None`: `redis://:@host` parses to ""
+    # and redis-py's own parse_url sets the key only `if url.password`.
+    #
+    # No `not parts.username` guard below: from_url ends with
+    # kwargs.update(url_options), so a URL username wins regardless — that guard
+    # was unfalsifiable, which is where a later reader deletes something
+    # load-bearing by mistake.
+    if password and not parts.password:
         kwargs["password"] = password
-        if username and not parts.username:
+        if username:
             kwargs["username"] = username
     logger.info(
         "Redis URL mode enabled. Connecting to %s:%s (tls=%s)",

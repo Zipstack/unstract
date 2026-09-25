@@ -13,6 +13,7 @@ None of those raise at import, so they are asserted here instead.
 
 import pathlib
 import re
+from urllib.parse import urlsplit
 
 import pytest
 import redis
@@ -968,13 +969,29 @@ class TestUrlModeCredentials:
         """
         monkeypatch.setenv("REDIS_URL", "rediss://h:6380/0")
         monkeypatch.setenv("REDIS_PASSWORD", "s3cret")
-        assert "://:s3cret@h:6380" in build_socketio_redis_url()
+        # Assert on PARSED fields, not a substring: a substring check passes on
+        # `rediss://alice:s3cret@alice@h:6380/0`, where the password actually
+        # parses as "s3cret@alice".
+        parts = urlsplit(build_socketio_redis_url())
+        assert parts.password == "s3cret"
+        assert parts.hostname == "h"
 
     def test_the_socketio_url_leaves_existing_credentials_alone(self, monkeypatch):
         monkeypatch.setenv("REDIS_URL", "rediss://:in-url@h:6380/0")
         monkeypatch.setenv("REDIS_PASSWORD", "s3cret")
         url = build_socketio_redis_url()
         assert "in-url" in url and "s3cret" not in url
+
+    def test_an_empty_password_in_the_url_is_treated_as_absent(self, monkeypatch):
+        """`redis://:@host` parses to password "", which redis-py's own
+        parse_url reads as absent (`if url.password:`). Testing `is None` would
+        decline to fill a gap the library agrees is a gap — and the shape is
+        what Helm produces from `redis://:{{ .Values.password }}@host` when the
+        value is empty.
+        """
+        monkeypatch.setenv("REDIS_URL", "redis://:@h:6379/0")
+        monkeypatch.setenv("REDIS_PASSWORD", "s3cret")
+        assert _kwargs(create_redis_client())["password"] == "s3cret"
 
     def test_a_username_only_url_still_gets_the_password(self, monkeypatch):
         """`redis://alice@host` carries an @ but NO password.
@@ -1019,3 +1036,61 @@ class TestUrlCredentialsAreResolvedAtTheUrlsLevel:
         monkeypatch.setenv("CACHE_REDIS_URL", "rediss://anon:6379/0")
         monkeypatch.setenv("REDIS_PASSWORD", "s3cret")
         assert "s3cret" not in build_socketio_redis_url("CACHE_REDIS_")
+
+
+class TestSocketIoUrlCredentials:
+    """The Socket.IO builder must agree with create_redis_client on every shape.
+
+    Its output is a STRING handed to kombu, so a malformed one authenticates
+    with a wrong secret rather than none — and `socketio.Server` is constructed
+    with logger=False, so the symptom is events silently stopping.
+    """
+
+    def test_a_username_only_url_keeps_its_host_and_gets_the_password(self, monkeypatch):
+        """`parts.netloc` INCLUDES userinfo; prepending to it produced
+        `alice:pw@alice@host`, and userinfo splits on the LAST @.
+        """
+        monkeypatch.setenv("REDIS_URL", "redis://alice@h:6379/0")
+        monkeypatch.setenv("REDIS_PASSWORD", "s3cret")
+        parts = urlsplit(build_socketio_redis_url())
+        assert parts.hostname == "h"
+        assert parts.username == "alice"
+        assert parts.password == "s3cret"
+
+    def test_an_encoded_username_is_not_double_encoded(self, monkeypatch):
+        """It is percent-encoded already; quoting it again gave `al%2540ice`."""
+        monkeypatch.setenv("REDIS_URL", "redis://al%40ice@h:6379/0")
+        monkeypatch.setenv("REDIS_PASSWORD", "s3cret")
+        assert "%2540" not in build_socketio_redis_url()
+
+    def test_a_password_with_url_metacharacters_is_encoded(self, monkeypatch):
+        """Unencoded, `p@ss/w:rd` reparses with host "ss" — a DIFFERENT server."""
+        monkeypatch.setenv("REDIS_URL", "rediss://h:6380/0")
+        monkeypatch.setenv("REDIS_PASSWORD", "p@ss/w:rd")
+        url = build_socketio_redis_url()
+        assert urlsplit(url).hostname == "h"
+        assert "p%40ss%2Fw%3Ard" in url
+
+    def test_an_empty_password_in_the_url_is_treated_as_absent(self, monkeypatch):
+        """`redis://:@host` parses to "", which redis-py and kombu both read as
+        no password — so the separately supplied one must fill the gap.
+        """
+        monkeypatch.setenv("REDIS_URL", "redis://:@h:6379/0")
+        monkeypatch.setenv("REDIS_PASSWORD", "s3cret")
+        assert urlsplit(build_socketio_redis_url()).password == "s3cret"
+
+    def test_a_username_alone_stays_anonymous(self, monkeypatch):
+        """values.yaml ships REDIS_USER: default against an unauthenticated
+        in-cluster server; adding credentials here would break it.
+        """
+        monkeypatch.setenv("REDIS_URL", "redis://h:6379/0")
+        monkeypatch.setenv("REDIS_USER", "default")
+        monkeypatch.setenv("REDIS_PASSWORD", "")
+        assert build_socketio_redis_url() == "redis://h:6379/0"
+
+    def test_the_prefix_username_spelling_is_honoured(self, monkeypatch):
+        """{prefix}USERNAME is the compatibility spelling of {prefix}USER."""
+        monkeypatch.setenv("CACHE_REDIS_URL", "redis://h:6379/0")
+        monkeypatch.setenv("CACHE_REDIS_PASSWORD", "pw")
+        monkeypatch.setenv("CACHE_REDIS_USERNAME", "alice")
+        assert urlsplit(build_socketio_redis_url("CACHE_REDIS_")).username == "alice"

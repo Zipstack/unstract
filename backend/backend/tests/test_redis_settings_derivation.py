@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import logging
 import pathlib
+from urllib.parse import urlsplit
 
 import pytest
 
@@ -448,23 +449,78 @@ class TestTheBackendUsesTheSharedParsers:
 
 
 class TestUrlModeCacheCredentials:
-    """django-redis reads OPTIONS["PASSWORD"]; the URL is not its only source.
+    """The cache credentials travel in the LOCATION, through the shared helper.
 
-    A URL written without credentials kept this cache ANONYMOUS while
-    create_redis_client beside it authenticated — one process, one endpoint, two
-    outcomes. OPTIONS["PASSWORD"] reaches ConnectionPool.from_url, which ends
-    with kwargs.update(url_options), so a URL bearing credentials still wins.
+    Not OPTIONS["PASSWORD"]: django-redis 5.4.0 discards OPTIONS["USERNAME"], so
+    an ACL username could not reach this cache at all — it would authenticate as
+    the built-in `default` user while create_redis_client in the same process
+    used the configured one.
+
+    A hand-rolled gate here also diverged from the core one within a single PR:
+    it keyed on "@" being absent from the netloc, which the core comment
+    explicitly rejects, leaving a username-only URL anonymous. One helper, one
+    rule.
     """
 
+    def _location(self, **env: str) -> str:
+        return _derive(**env)["CACHES"]["default"]["LOCATION"]
+
     def test_the_password_fills_a_gap_the_url_leaves(self):
-        derived = _derive(REDIS_URL="rediss://h:6380/0", REDIS_PASSWORD="s3cret")
-        assert derived["CACHES"]["default"]["OPTIONS"]["PASSWORD"] == "s3cret"
+        assert (
+            urlsplit(
+                self._location(REDIS_URL="rediss://h:6380/0", REDIS_PASSWORD="s3cret")
+            ).password
+            == "s3cret"
+        )
+
+    def test_a_username_only_url_still_gets_the_password(self):
+        """The shape the `@` heuristic got wrong."""
+        parts = urlsplit(
+            self._location(REDIS_URL="redis://alice@h:6379/0", REDIS_PASSWORD="s3cret")
+        )
+        assert parts.hostname == "h"
+        assert parts.username == "alice"
+        assert parts.password == "s3cret"
+
+    def test_an_acl_username_reaches_the_cache(self):
+        """django-redis discards OPTIONS["USERNAME"], so the LOCATION is the
+        only lever. Without it the cache authenticates as `default` while the
+        other consumers use the configured user.
+        """
+        parts = urlsplit(
+            self._location(
+                REDIS_URL="redis://h:6379/0", REDIS_PASSWORD="pw", REDIS_USER="alice"
+            )
+        )
+        assert parts.username == "alice"
+        assert parts.password == "pw"
 
     def test_a_url_carrying_credentials_is_left_alone(self):
-        """Passing it again risks the two disagreeing about which wins."""
-        derived = _derive(REDIS_URL="rediss://:in-url@h:6380/0", REDIS_PASSWORD="s3cret")
-        assert "PASSWORD" not in derived["CACHES"]["default"]["OPTIONS"]
+        assert (
+            urlsplit(
+                self._location(
+                    REDIS_URL="rediss://:in-url@h:6380/0", REDIS_PASSWORD="s3cret"
+                )
+            ).password
+            == "in-url"
+        )
 
     def test_no_password_stays_anonymous(self):
-        derived = _derive(REDIS_URL="rediss://h:6380/0")
-        assert "PASSWORD" not in derived["CACHES"]["default"]["OPTIONS"]
+        assert urlsplit(self._location(REDIS_URL="rediss://h:6380/0")).password is None
+
+    def test_the_shipped_default_user_alone_adds_nothing(self):
+        """REDIS_USER defaults to "default" in this module but not in
+        create_redis_client; passing the fallback would make the two send
+        different AUTH forms for the same configuration.
+        """
+        assert (
+            self._location(REDIS_URL="redis://h:6379/0", REDIS_PASSWORD="")
+            == "redis://h:6379/0"
+        )
+
+    def test_discrete_mode_still_uses_options(self):
+        """URL mode moved to the LOCATION; the discrete path did not change."""
+        options = _derive(REDIS_HOST="h", REDIS_PASSWORD="s3cret")["CACHES"]["default"][
+            "OPTIONS"
+        ]
+        assert options["PASSWORD"] == "s3cret"
