@@ -674,6 +674,8 @@ def _create_standalone_client(
             ssl_ca_certs=env.get("ssl_ca_certs"),
             ssl_cert_reqs=env.get("ssl_cert_reqs"),
             ssl_check_hostname=env.get("ssl_check_hostname"),
+            password=env.get("password"),
+            username=env.get("username"),
         )
 
     logger.info(
@@ -715,6 +717,8 @@ def _create_client_from_url(
     ssl_ca_certs: str | None,
     ssl_cert_reqs: str | None = None,
     ssl_check_hostname: bool | None = None,
+    password: str | None = None,
+    username: str | None = None,
 ) -> redis.Redis:
     """Build a client from a full Redis URL.
 
@@ -760,6 +764,25 @@ def _create_client_from_url(
         kwargs["db"] = db_override
 
     parts = urlsplit(url)
+    # Credentials FILL A GAP the URL leaves; they never override one.
+    # ConnectionPool.from_url ends with kwargs.update(url_options), so a URL
+    # carrying credentials still wins.
+    #
+    # Without this, a URL written WITHOUT credentials plus a separately
+    # configured {prefix}PASSWORD connected ANONYMOUSLY — and setting the two
+    # apart is the configuration the on-prem recipe should be able to recommend,
+    # because it keeps the password out of a URL that gets printed into error
+    # messages, ArgoCD conditions and ExternalSecret templates. The endpoint
+    # answers NOAUTH on the first command, which reads as a broken server rather
+    # than a dropped password.
+    # Gated on the PASSWORD, and the username rides with it. A username alone is
+    # not a credential: values.yaml ships REDIS_USER: default, so filling it in
+    # on its own would make redis-py send AUTH to the in-cluster server, which
+    # has none — turning a working default deployment into a failing one.
+    if password and "@" not in parts.netloc:
+        kwargs["password"] = password
+        if username:
+            kwargs["username"] = username
     logger.info(
         "Redis URL mode enabled. Connecting to %s:%s (tls=%s)",
         parts.hostname,

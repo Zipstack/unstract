@@ -909,3 +909,54 @@ class TestDiscreteModeStillInheritsTheGenericDb:
         monkeypatch.setenv("REDIS_DB", "3")
         monkeypatch.setenv("CACHE_REDIS_DB", "1")
         assert _kwargs(create_redis_client("CACHE_REDIS_"))["db"] == 1
+
+
+class TestUrlModeCredentials:
+    """A URL written without credentials must not connect anonymously.
+
+    Keeping the password OUT of the URL is the safer configuration — a URL is
+    printed into error messages, ArgoCD conditions and ExternalSecret templates,
+    and a password in it travels to all three. That configuration is only usable
+    if the separately-supplied credential is actually applied.
+    """
+
+    def test_the_configured_password_fills_a_gap_the_url_leaves(self, monkeypatch):
+        monkeypatch.setenv("REDIS_URL", "rediss://h:6380/0")
+        monkeypatch.setenv("REDIS_PASSWORD", "s3cret")
+        assert _kwargs(create_redis_client())["password"] == "s3cret"
+
+    def test_a_url_carrying_credentials_still_wins(self, monkeypatch):
+        """ConnectionPool.from_url ends with kwargs.update(url_options)."""
+        monkeypatch.setenv("REDIS_URL", "rediss://:in-url@h:6380/0")
+        monkeypatch.setenv("REDIS_PASSWORD", "s3cret")
+        assert _kwargs(create_redis_client())["password"] == "in-url"
+
+    def test_a_username_password_pair_in_the_url_wins_too(self, monkeypatch):
+        monkeypatch.setenv("REDIS_URL", "rediss://u:pw@h:6380/0")
+        monkeypatch.setenv("REDIS_PASSWORD", "s3cret")
+        monkeypatch.setenv("REDIS_USER", "alice")
+        kwargs = _kwargs(create_redis_client())
+        assert kwargs["password"] == "pw"
+        assert kwargs["username"] == "u"
+
+    def test_the_username_rides_with_the_password(self, monkeypatch):
+        monkeypatch.setenv("REDIS_URL", "rediss://h:6380/0")
+        monkeypatch.setenv("REDIS_PASSWORD", "s3cret")
+        monkeypatch.setenv("REDIS_USER", "alice")
+        assert _kwargs(create_redis_client())["username"] == "alice"
+
+    def test_a_username_alone_is_not_a_credential(self, monkeypatch):
+        """values.yaml ships REDIS_USER: default, and the in-cluster server has
+        no auth. Filling in a username on its own would make redis-py send AUTH
+        to it — turning a working default deployment into a failing one.
+        """
+        monkeypatch.setenv("REDIS_URL", "redis://h:6379/0")
+        monkeypatch.setenv("REDIS_USER", "default")
+        monkeypatch.setenv("REDIS_PASSWORD", "")
+        kwargs = _kwargs(create_redis_client())
+        assert kwargs.get("username") is None
+        assert kwargs.get("password") is None
+
+    def test_no_credentials_anywhere_stays_anonymous(self, monkeypatch):
+        monkeypatch.setenv("REDIS_URL", "redis://h:6379/0")
+        assert _kwargs(create_redis_client()).get("password") is None
