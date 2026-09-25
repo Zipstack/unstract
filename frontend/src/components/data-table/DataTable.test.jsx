@@ -1521,3 +1521,306 @@ describe("DataTable controlled filters", () => {
     });
   });
 });
+
+/**
+ * antd's `dataIndex` is either a key or a PATH — `["product", "name"]` reads
+ * `record.product.name`. The flat lookup this guards indexed the record with
+ * the array itself, which JavaScript stringifies to the property name
+ * `"product,name"`, so the value was always undefined and — because a column
+ * with no `render` hands it straight to the cell — silently blank.
+ *
+ * LLMWhisperer's API Keys table declares its Plan column exactly this way and
+ * lost the whole column to an empty strip after the migration.
+ */
+describe("DataTable nested dataIndex", () => {
+  const nested = [
+    { id: 1, product: { id: "free", name: "LLM Whisperer Free" } },
+  ];
+
+  it("resolves an array dataIndex as a path into the record", () => {
+    render(
+      <DataTable
+        columns={[
+          {
+            title: "Plan",
+            dataIndex: ["product", "name"],
+            key: "product_name",
+          },
+        ]}
+        dataSource={nested}
+        rowKey="id"
+      />,
+    );
+    expect(screen.getByText("LLM Whisperer Free")).toBeInTheDocument();
+  });
+
+  it("renders an empty cell rather than throwing on a missing segment", () => {
+    expect(() =>
+      render(
+        <DataTable
+          columns={[
+            {
+              title: "Plan",
+              dataIndex: ["product", "name"],
+              key: "product_name",
+            },
+          ]}
+          dataSource={[{ id: 1, product: null }, { id: 2 }]}
+          rowKey="id"
+        />,
+      ),
+    ).not.toThrow();
+    // Two rows, both with an EMPTY Plan cell — not the empty state, and not a
+    // stand-in like "undefined" or "N/A" that a laxer resolver would print.
+    const cells = document.querySelectorAll("tbody td");
+    expect(cells).toHaveLength(2);
+    for (const cell of cells) {
+      expect(cell).toHaveTextContent("");
+    }
+  });
+
+  it("walks a path of any depth, including an array index", () => {
+    render(
+      <DataTable
+        columns={[
+          {
+            title: "Owner",
+            dataIndex: ["subscription", "owners", 0, "email"],
+            key: "owner",
+          },
+        ]}
+        dataSource={[
+          { id: 1, subscription: { owners: [{ email: "a@example.com" }] } },
+        ]}
+        rowKey="id"
+      />,
+    );
+    expect(screen.getByText("a@example.com")).toBeInTheDocument();
+  });
+
+  /*
+   * The identity a nested column reports back through antd's `onChange`.
+   *
+   * With no `key`, the column id and `toSorterInfo`'s lookup both coerce the
+   * array to `"product,name"` — agreeing only because NEITHER normalises it.
+   * Normalising the id alone (to `"product.name"`, say) is exactly the tidy-up
+   * a later reader would attempt, and it would silently stop a nested column
+   * reporting its sort, with every other test here still green.
+   */
+  it("reports a keyless nested column through onChange when sorted", async () => {
+    const onChange = vi.fn();
+    render(
+      <DataTable
+        columns={[
+          { title: "Plan", dataIndex: ["product", "name"], sorter: true },
+        ]}
+        dataSource={nested}
+        rowKey="id"
+        onChange={onChange}
+      />,
+    );
+    await userEvent.click(screen.getByText("Plan"));
+    expect(onChange).toHaveBeenCalled();
+    const sorter = onChange.mock.calls.at(-1)[2];
+    expect(sorter.field).toEqual(["product", "name"]);
+    expect(sorter.order).toBe("ascend");
+  });
+
+  it("hands the resolved nested value to render, as antd does", () => {
+    const renderCell = vi.fn((value) => `plan: ${value}`);
+    render(
+      <DataTable
+        columns={[
+          {
+            title: "Plan",
+            dataIndex: ["product", "name"],
+            key: "product_name",
+            render: renderCell,
+          },
+        ]}
+        dataSource={nested}
+        rowKey="id"
+      />,
+    );
+    expect(renderCell).toHaveBeenCalledWith("LLM Whisperer Free", nested[0], 0);
+    expect(screen.getByText("plan: LLM Whisperer Free")).toBeInTheDocument();
+  });
+});
+
+/*
+ * `expandable` was the widest of the silently dropped antd props: the whole
+ * object fell into `...props` and onto the wrapper <div>, so `expandedRowRender`
+ * was never called. HITL's review editor shows a truncated JSON blob plus an
+ * expand button for an array or object inside a table cell, and clicking that
+ * button did nothing whatsoever — nested values were unreadable in Table view
+ * (UN-4124).
+ */
+describe("DataTable expandable", () => {
+  const detail = (record) => <div>detail for {record.name}</div>;
+
+  it("renders the expanded row for a controlled expandedRowKeys", () => {
+    render(
+      <DataTable
+        columns={columns}
+        dataSource={rowsFor(2)}
+        rowKey="id"
+        expandable={{ expandedRowRender: detail, expandedRowKeys: [2] }}
+      />,
+    );
+    expect(screen.getByText("detail for Row 2")).toBeInTheDocument();
+    expect(screen.queryByText("detail for Row 1")).not.toBeInTheDocument();
+  });
+
+  it("matches numeric keys against the string row ids TanStack produces", () => {
+    // A call-site numbering its rows `key: index` passes numbers, and
+    // `[0].includes("0")` is false — the mismatch that hid every expansion.
+    render(
+      <DataTable
+        columns={columns}
+        dataSource={[{ key: 0, name: "Row 1" }]}
+        rowKey="key"
+        expandable={{ expandedRowRender: detail, expandedRowKeys: [0] }}
+      />,
+    );
+    expect(screen.getByText("detail for Row 1")).toBeInTheDocument();
+  });
+
+  it("spans every column so the panel is full width", () => {
+    render(
+      <DataTable
+        columns={[
+          { key: "name", dataIndex: "name", title: "Name" },
+          { key: "id", dataIndex: "id", title: "Id" },
+        ]}
+        dataSource={rowsFor(1)}
+        rowKey="id"
+        expandable={{ expandedRowRender: detail, expandedRowKeys: [1] }}
+      />,
+    );
+    const panel = screen.getByText("detail for Row 1").closest("td");
+    // Two data columns plus the toggle column the shim adds.
+    expect(panel).toHaveAttribute("colspan", "3");
+  });
+
+  it("honours rowExpandable", () => {
+    render(
+      <DataTable
+        columns={columns}
+        dataSource={rowsFor(2)}
+        rowKey="id"
+        expandable={{
+          expandedRowRender: detail,
+          expandedRowKeys: [1, 2],
+          rowExpandable: (record) => record.id === 1,
+        }}
+      />,
+    );
+    expect(screen.getByText("detail for Row 1")).toBeInTheDocument();
+    expect(screen.queryByText("detail for Row 2")).not.toBeInTheDocument();
+  });
+
+  it("toggles from its own column when the keys are uncontrolled", async () => {
+    const user = userEvent.setup();
+    const onExpand = vi.fn();
+    render(
+      <DataTable
+        columns={columns}
+        dataSource={rowsFor(1)}
+        rowKey="id"
+        expandable={{ expandedRowRender: detail, onExpand }}
+      />,
+    );
+    expect(screen.queryByText("detail for Row 1")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Expand row" }));
+    expect(screen.getByText("detail for Row 1")).toBeInTheDocument();
+    expect(onExpand).toHaveBeenCalledWith(
+      true,
+      expect.objectContaining({ id: 1 }),
+    );
+
+    await user.click(screen.getByRole("button", { name: "Collapse row" }));
+    await waitFor(() =>
+      expect(screen.queryByText("detail for Row 1")).not.toBeInTheDocument(),
+    );
+  });
+
+  it("leaves the toggle column out for showExpandColumn: false", () => {
+    render(
+      <DataTable
+        columns={columns}
+        dataSource={rowsFor(1)}
+        rowKey="id"
+        expandable={{
+          expandedRowRender: detail,
+          expandedRowKeys: [1],
+          showExpandColumn: false,
+        }}
+      />,
+    );
+    expect(screen.getByText("detail for Row 1")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /row$/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("reports a controlled toggle without moving on its own", async () => {
+    const user = userEvent.setup();
+    const onExpandedRowsChange = vi.fn();
+    render(
+      <DataTable
+        columns={columns}
+        dataSource={rowsFor(1)}
+        rowKey="id"
+        expandable={{
+          expandedRowRender: detail,
+          expandedRowKeys: [],
+          onExpandedRowsChange,
+        }}
+      />,
+    );
+    await user.click(screen.getByRole("button", { name: "Expand row" }));
+    /*
+     * The caller's own key type, not the string TanStack normalizes it to:
+     * these rows key on a numeric `id`, and a parent testing `includes(1)`
+     * against a reported `["1"]` would never match.
+     */
+    expect(onExpandedRowsChange).toHaveBeenCalledWith([1]);
+    // The parent did not move its keys, so neither did the table.
+    expect(screen.queryByText("detail for Row 1")).not.toBeInTheDocument();
+  });
+
+  it("keeps the caller's key types when collapsing too", async () => {
+    const user = userEvent.setup();
+    const onExpandedRowsChange = vi.fn();
+    render(
+      <DataTable
+        columns={columns}
+        dataSource={rowsFor(2)}
+        rowKey="id"
+        expandable={{
+          expandedRowRender: detail,
+          expandedRowKeys: [1, 2],
+          onExpandedRowsChange,
+        }}
+      />,
+    );
+    await user.click(
+      screen.getAllByRole("button", { name: "Collapse row" })[0],
+    );
+    // The surviving key keeps its number type rather than being stringified.
+    expect(onExpandedRowsChange).toHaveBeenCalledWith([2]);
+  });
+
+  it("leaves the prop off the DOM", () => {
+    const { container } = render(
+      <DataTable
+        columns={columns}
+        dataSource={rowsFor(1)}
+        rowKey="id"
+        expandable={{ expandedRowRender: detail }}
+      />,
+    );
+    expect(container.querySelector("[expandable]")).toBeNull();
+  });
+});

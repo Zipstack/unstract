@@ -712,23 +712,6 @@ class ExecutionAPIClient(BaseAPIClient):
             organization_id=organization_id,
         )
 
-    def submit_file_batch_for_processing(
-        self, batch_data: dict[str, Any]
-    ) -> dict[str, Any]:
-        """Submit file batch for processing.
-
-        Args:
-            batch_data: File batch data
-
-        Returns:
-            Submission result
-        """
-        return self.post(
-            "v1/workflow-manager/file-batch/submit/",
-            batch_data,
-            organization_id=batch_data.get("organization_id"),
-        )
-
     # Pipeline Management Methods for Scheduler Worker
 
     def get_pipeline_data(

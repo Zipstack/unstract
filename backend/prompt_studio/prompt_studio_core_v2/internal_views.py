@@ -13,6 +13,7 @@ not exposed to end users.
 
 import json
 import logging
+import uuid
 
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
@@ -24,6 +25,36 @@ logger = logging.getLogger(__name__)
 _ERR_INVALID_JSON = "Invalid JSON"
 
 
+def _resolve_profile(profile_manager_id):
+    """Return ``(profile, None)``, or ``(None, JsonResponse)`` when it is absent.
+
+    ``ProfileManager.objects`` is org-scoped on ``vector_store__organization``,
+    so a miss here has the same two causes as a missing document — the row is
+    gone, or the org scope hides it from this caller — and neither is fixed by
+    trying again. A malformed id raises Django's ``ValidationError`` while the
+    query is built, which is just as permanent.
+
+    Left to the generic ``except Exception`` these all became a 500, which the
+    worker's client retries three times with a 1s backoff factor: ~7s of worker
+    sleep on a condition no retry can change. 404 is outside that retry set.
+    """
+    from django.core.exceptions import ValidationError
+
+    from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
+
+    try:
+        return ProfileManager.objects.get(pk=profile_manager_id), None
+    except (ProfileManager.DoesNotExist, ValidationError):
+        logger.error(
+            "Profile manager %s not found or not visible in the current " "organization.",
+            profile_manager_id,
+        )
+        return None, JsonResponse(
+            {"success": False, "error": "Profile manager not found"},
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+
 def _parse_json_body(request):
     """Parse JSON from request body, returning (data, None) or (None, JsonResponse)."""
     try:
@@ -33,6 +64,51 @@ def _parse_json_body(request):
             {"success": False, "error": _ERR_INVALID_JSON},
             status=status.HTTP_400_BAD_REQUEST,
         )
+
+
+def _validated_uuids(raw_ids, field_name):
+    """``raw_ids`` parsed as UUIDs, or ``(None, JsonResponse)`` for a 400.
+
+    These are UUID columns, so a non-UUID entry makes ``filter()`` raise
+    Django's ``ValidationError`` while the query is being *built* — before any
+    row-count check downstream can notice. That lands in the generic
+    ``except Exception`` and returns a 500, which the worker's client retries
+    three times with backoff on a value no retry can change. Same reasoning as
+    ``_resolve_profile``: fail outside the {500,502,503,504} retry set.
+
+    ``utils.uuid_validation.validated_uuid`` is the equivalent for the DRF
+    views and is deliberately not reused here: it raises DRF's
+    ``ValidationError``, and nothing maps that to a response in a plain Django
+    view, so it would reach that same ``except Exception`` and 500 for a new
+    reason.
+    """
+    if not isinstance(raw_ids, (list, tuple)):
+        # A non-sequence here would raise TypeError on the loop below, outside
+        # any handler, so it has to be rejected rather than iterated.
+        return None, JsonResponse(
+            {
+                "success": False,
+                "error": (
+                    f"'{field_name}' must be a JSON array, got "
+                    f"{type(raw_ids).__name__}."
+                ),
+            },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    parsed = []
+    for raw in raw_ids:
+        try:
+            parsed.append(uuid.UUID(str(raw)))
+        except (ValueError, AttributeError, TypeError):
+            return None, JsonResponse(
+                {
+                    "success": False,
+                    "error": f"'{field_name}' must contain only valid UUIDs.",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+    return parsed, None
 
 
 @csrf_exempt
@@ -95,6 +171,19 @@ def prompt_output(request):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+    # Both reach a UUID column below — prompt_ids the filter, document_id the
+    # DocumentManager lookup inside handle_prompt_output_update — so both are
+    # parsed before the query is built rather than after it raises. Ordered
+    # last among the 400s so the shape checks above keep reporting first; the
+    # only constraint is that this runs before the ORM does.
+    prompt_ids, err = _validated_uuids(prompt_ids, "prompt_ids")
+    if err:
+        return err
+    document_ids, err = _validated_uuids([document_id], "document_id")
+    if err:
+        return err
+    document_id = document_ids[0]
+
     try:
         from prompt_studio.prompt_studio_output_manager_v2.output_manager_helper import (
             OutputManagerHelper,
@@ -106,6 +195,38 @@ def prompt_output(request):
                 "sequence_number"
             )
         )
+
+        # ``ToolStudioPrompt.objects`` is org-scoped on the nullable
+        # ``tool_id__organization``, so this filter can return fewer prompts
+        # than were asked for — or none. handle_prompt_output_update early-exits
+        # on an empty list, so the endpoint would answer 200 with an empty body
+        # and the worker, which never reads the body on success, would discard
+        # every prompt output for the run. Same reasoning as extraction_status
+        # below: fail loudly, and outside the client's {500,502,503,504} retry
+        # set, because no retry resolves a prompt the scope hides.
+        requested = set(prompt_ids)
+        if len(prompts) != len(requested):
+            # Both sides are uuid.UUID: prompt_ids was parsed above and
+            # prompt_id is a UUIDField, so the difference below is real.
+            resolved = {p.prompt_id for p in prompts}
+            logger.error(
+                "prompt_output: %d of %d prompts resolved for document %s; "
+                "unresolved=%s. Refusing to persist a partial run.",
+                len(prompts),
+                len(requested),
+                document_id,
+                sorted(str(p) for p in requested - resolved),
+            )
+            return JsonResponse(
+                {
+                    "success": False,
+                    "error": (
+                        "One or more prompts were not found or are not visible "
+                        "in the current organization"
+                    ),
+                },
+                status=status.HTTP_404_NOT_FOUND,
+            )
 
         response = OutputManagerHelper.handle_prompt_output_update(
             run_id=run_id,
@@ -158,12 +279,13 @@ def index_update(request):
         )
 
     try:
-        from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
         from prompt_studio.prompt_studio_index_manager_v2.prompt_studio_index_helper import (
             PromptStudioIndexHelper,
         )
 
-        profile_manager = ProfileManager.objects.get(pk=profile_manager_id)
+        profile_manager, err = _resolve_profile(profile_manager_id)
+        if err:
+            return err
         PromptStudioIndexHelper.handle_index_manager(
             document_id=document_id,
             profile_manager=profile_manager,
@@ -223,13 +345,15 @@ def extraction_status(request):
         )
 
     try:
-        from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
         from prompt_studio.prompt_studio_index_manager_v2.prompt_studio_index_helper import (
+            ExtractionStatusResult,
             PromptStudioIndexHelper,
         )
 
-        profile_manager = ProfileManager.objects.get(pk=profile_manager_id)
-        success = PromptStudioIndexHelper.mark_extraction_status(
+        profile_manager, err = _resolve_profile(profile_manager_id)
+        if err:
+            return err
+        result = PromptStudioIndexHelper.mark_extraction_status(
             document_id=document_id,
             profile_manager=profile_manager,
             x2text_config_hash=x2text_config_hash,
@@ -237,7 +361,44 @@ def extraction_status(request):
             extracted=extracted,
             error_message=error_message,
         )
-        return JsonResponse({"success": success})
+        # A 200 on anything but OK is indistinguishable from a write that
+        # landed: the worker only wraps this call in try/except and never reads
+        # the body, so the status would be silently dropped and every later
+        # Answer Prompt would re-run the full extraction. Non-2xx makes the
+        # worker's existing handler log it.
+        #
+        # The two failures need different statuses. The client retries
+        # {500, 502, 503, 504} three times with a 1s backoff factor, so a
+        # document that is gone would burn four round trips and ~7s of worker
+        # sleep on a condition no retry can change. 404 is outside that set.
+        #
+        # Matched member by member with no wildcard branch: a fourth member
+        # added later raises here instead of being absorbed into the 500 case.
+        if result is not ExtractionStatusResult.OK:
+            logger.error(
+                "extraction_status not recorded for document %s profile %s (%s)",
+                document_id,
+                profile_manager_id,
+                result.value,
+            )
+        match result:
+            case ExtractionStatusResult.OK:
+                return JsonResponse({"success": True})
+            case ExtractionStatusResult.DOCUMENT_MISSING:
+                return JsonResponse(
+                    {"success": False, "error": "Document not found"},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+            case ExtractionStatusResult.WRITE_FAILED:
+                return JsonResponse(
+                    {
+                        "success": False,
+                        "error": "Extraction status could not be recorded",
+                    },
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                )
+            case unhandled:
+                raise AssertionError(f"Unhandled ExtractionStatusResult: {unhandled!r}")
 
     except Exception as e:
         logger.exception("extraction_status internal API failed")
@@ -321,9 +482,9 @@ def profile_detail(request, profile_id):
     Returns vector_store, embedding_model, x2text adapter IDs and chunk_overlap.
     """
     try:
-        from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
-
-        profile = ProfileManager.objects.get(pk=profile_id)
+        profile, err = _resolve_profile(profile_id)
+        if err:
+            return err
         return JsonResponse(
             {
                 "success": True,
@@ -431,7 +592,6 @@ def summary_index_key(request):
     try:
         from utils.file_storage.constants import FileStorageKeys
 
-        from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
         from prompt_studio.prompt_studio_core_v2.prompt_ide_base_tool import (
             PromptIdeBaseTool,
         )
@@ -440,7 +600,9 @@ def summary_index_key(request):
         from unstract.sdk1.file_storage.env_helper import EnvHelper
         from unstract.sdk1.utils.indexing import IndexingUtils
 
-        profile = ProfileManager.objects.get(pk=summary_profile_id)
+        profile, err = _resolve_profile(summary_profile_id)
+        if err:
+            return err
         fs_instance = EnvHelper.get_storage(
             storage_type=StorageType.PERMANENT,
             env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,

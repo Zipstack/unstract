@@ -711,12 +711,6 @@ class InternalAPIClient(CachedAPIClientMixin):
             workflow_id, execution_id, organization_id
         )
 
-    def submit_file_batch_for_processing(
-        self, batch_data: dict[str, Any]
-    ) -> dict[str, Any]:
-        """Submit file batch for processing."""
-        return self.execution_client.submit_file_batch_for_processing(batch_data)
-
     def execute_workflow_async(self, execution_data: dict[str, Any]) -> dict[str, Any]:
         """Execute workflow asynchronously for scheduler.
 

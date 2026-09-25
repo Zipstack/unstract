@@ -40,6 +40,24 @@ import { cn } from "@/lib/utils";
  */
 
 /**
+ * One cell's value, read the way antd reads it.
+ *
+ * `dataIndex` is either a key or a PATH: `["product", "name"]` is antd's
+ * documented nested form and means `record.product.name`. The flat lookup this
+ * replaces indexed the record with the array itself, and JavaScript stringifies
+ * that to the property name `"product,name"` — so the value was always
+ * undefined, and silently so, because a column with no `render` hands it
+ * straight to the cell. LLMWhisperer's API Keys table declares its Plan column
+ * exactly that way and lost the whole column to a blank strip.
+ */
+function cellValue(record, dataIndex) {
+  if (Array.isArray(dataIndex)) {
+    return dataIndex.reduce((v, k) => (v == null ? undefined : v[k]), record);
+  }
+  return record?.[dataIndex];
+}
+
+/**
  * One antd column → one TanStack column def.
  *
  * antd spells a banded header as a column that carries a `title` and a
@@ -53,6 +71,14 @@ import { cn } from "@/lib/utils";
  * version used would collide across levels.
  */
 function toColumn(c, path) {
+  /*
+   * Three places spell this identity, and they must agree: here, `columnKey`
+   * (ColumnFilter.jsx) and `toSorterInfo` below, which matches on it to answer
+   * antd's `onChange`. A PATH `dataIndex` with no `key` coerces to
+   * `"product,name"` in all three, so they still agree — which is why this is
+   * deliberately NOT normalised to `dataIndex.join(".")`. Tidying it here alone
+   * would silently stop sorting and filtering reporting for a nested column.
+   */
   const id = String(c.key ?? c.dataIndex ?? path);
   // `column` rides along so the header can render antd's filter affordance,
   // which is declared on the antd def and has no TanStack equivalent.
@@ -76,7 +102,31 @@ function toColumn(c, path) {
 
   return {
     id,
-    accessorKey: c.dataIndex,
+    /*
+     * A path needs an accessor FUNCTION: TanStack's `accessorKey` is a single
+     * key, so handing it the array repeats the same stringified-`"product,name"`
+     * lookup one layer down.
+     *
+     * This is NOT inert. TanStack defaults every column to `sortUndefined: 1`,
+     * and `getSortedRowModel` reads `row.getValue()` to apply it BEFORE it ever
+     * consults `sortingFn` — so undefined-valued rows sort to the end even
+     * though `sortingFn` is `() => 0`. A nested column was accidentally exempt
+     * while every one of its values was undefined; with a real accessor it now
+     * behaves exactly as an equivalent string column already does (verified:
+     * both reorder identically on a sparse column). That quirk is pre-existing
+     * and cross-cutting, not introduced here, and no nested column declares a
+     * `sorter` today.
+     *
+     * The string case keeps `accessorKey` because it is unchanged, not because
+     * its behaviour is right: TanStack deep-reads a DOTTED string while the
+     * cell below reads it as a literal key, which is antd's own reading. Those
+     * two disagree for `dataIndex: "a.b"`. Pre-existing on both halves, no
+     * literal dotted `dataIndex` exists in either repo, and reconciling it is a
+     * behaviour change beyond this fix.
+     */
+    ...(Array.isArray(c.dataIndex)
+      ? { accessorFn: (record) => cellValue(record, c.dataIndex) }
+      : { accessorKey: c.dataIndex }),
     header: c.title,
     enableSorting: Boolean(c.sorter),
     /*
@@ -95,7 +145,9 @@ function toColumn(c, path) {
         : () => 0,
     meta,
     cell: ({ row }) => {
-      const value = c.dataIndex ? row.original?.[c.dataIndex] : undefined;
+      const value = c.dataIndex
+        ? cellValue(row.original, c.dataIndex)
+        : undefined;
       // antd's render(value, record, index) contract.
       return c.render ? c.render(value, row.original, row.index) : value;
     },
@@ -361,6 +413,22 @@ function DataTable({
    * order-less state.
    */
   sortDirections,
+  /**
+   * antd's `expandable={{ expandedRowRender, expandedRowKeys, rowExpandable,
+   * showExpandColumn, onExpand, … }}` — a full-width extra row rendered under
+   * the record it belongs to.
+   *
+   * Declared for the same reason as `onRow`, `showHeader`, `scroll`,
+   * `bordered`, `locale` and `sortDirections` above, and it is the widest
+   * silent drop of the set: undeclared, the whole object fell into `...props`
+   * and onto the wrapper <div>, so `expandedRowRender` was never called and
+   * the table rendered as if the prop had not been passed. HITL's review
+   * editor is the visible casualty — an array or object inside a table cell
+   * shows a truncated JSON blob with an expand button beside it, and clicking
+   * that button did nothing at all, leaving nested values unreadable in Table
+   * view (UN-4124).
+   */
+  expandable,
   ...props
 }) {
   const empty = locale?.emptyText ?? emptyText;
@@ -368,10 +436,144 @@ function DataTable({
   const [selection, setSelection] = React.useState({});
 
   const rows = React.useMemo(() => dataSource ?? [], [dataSource]);
-  const cols = React.useMemo(
-    () => toColumns(columns, rowSelection),
-    [columns, rowSelection],
+
+  /*
+   * Expansion, in antd's shape. Keys are compared as strings because that is
+   * what TanStack's `getRowId` (and so `row.id`) produces from whatever
+   * `rowKey` resolves to — a call-site numbering its rows `key: index` passes
+   * numbers, and `[0].includes("0")` is false.
+   */
+  const expandedRowRender = expandable?.expandedRowRender;
+  const canExpand = typeof expandedRowRender === "function";
+  const controlledExpandedKeys = expandable?.expandedRowKeys;
+  const [ownExpandedKeys, setOwnExpandedKeys] = React.useState(
+    () => expandable?.defaultExpandedRowKeys ?? [],
   );
+  const expandedKeys = React.useMemo(
+    () => new Set((controlledExpandedKeys ?? ownExpandedKeys).map(String)),
+    [controlledExpandedKeys, ownExpandedKeys],
+  );
+
+  const isRowExpandable = React.useCallback(
+    (record) =>
+      canExpand &&
+      (typeof expandable?.rowExpandable === "function"
+        ? Boolean(expandable.rowExpandable(record))
+        : true),
+    [canExpand, expandable?.rowExpandable],
+  );
+
+  const onExpandCb = expandable?.onExpand;
+  const onExpandedRowsChange = expandable?.onExpandedRowsChange;
+  const toggleExpanded = React.useCallback(
+    (key, record, originalKey) => {
+      const willExpand = !expandedKeys.has(key);
+      /*
+       * Report the caller's own key values, never the normalized strings:
+       * normalization exists to match TanStack's `row.id` and must not leak
+       * out. A controlled caller that passed `[1]` and then tests
+       * `next.includes(1)` would never match `["1"]`.
+       */
+      const source = controlledExpandedKeys ?? ownExpandedKeys;
+      const next = willExpand
+        ? [...source, originalKey]
+        : source.filter((k) => String(k) !== key);
+      // A controlled `expandedRowKeys` belongs to the parent: report, never set.
+      if (controlledExpandedKeys === undefined) {
+        setOwnExpandedKeys(next);
+      }
+      onExpandCb?.(willExpand, record);
+      onExpandedRowsChange?.(next);
+    },
+    [
+      expandedKeys,
+      controlledExpandedKeys,
+      ownExpandedKeys,
+      onExpandCb,
+      onExpandedRowsChange,
+    ],
+  );
+
+  /*
+   * The untouched key behind `row.id`. `getRowId` stringifies whatever `rowKey`
+   * resolves to, so this is the only way back to the value the call-site
+   * actually holds — falling back to the row index, which is what `getRowId`
+   * itself uses when the record carries no key.
+   */
+  const originalRowKey = React.useCallback(
+    (record, index) => {
+      const raw =
+        typeof rowKey === "function" ? rowKey(record) : record?.[rowKey];
+      return raw === undefined || raw === null ? index : raw;
+    },
+    [rowKey],
+  );
+
+  /*
+   * antd hides the toggle column for `showExpandColumn: false` — the idiom for
+   * a table driven entirely by its own controls, which is how HITL opens a
+   * cell's nested table from a button inside the cell.
+   */
+  const showExpandColumn = canExpand && expandable?.showExpandColumn !== false;
+  const expandIcon = expandable?.expandIcon;
+  const cols = React.useMemo(() => {
+    const base = toColumns(columns, rowSelection);
+    if (!showExpandColumn) {
+      return base;
+    }
+    return [
+      {
+        id: "__expand",
+        header: () => null,
+        enableSorting: false,
+        size: 48,
+        cell: ({ row }) => {
+          const record = row.original;
+          if (!isRowExpandable(record)) {
+            return null;
+          }
+          const expanded = expandedKeys.has(row.id);
+          const onExpand = (event) => {
+            // The row itself may carry an onRow click handler.
+            event?.stopPropagation?.();
+            toggleExpanded(row.id, record, originalRowKey(record, row.index));
+          };
+          if (typeof expandIcon === "function") {
+            return expandIcon({
+              expanded,
+              record,
+              onExpand: (_record, event) => onExpand(event),
+            });
+          }
+          return (
+            <button
+              type="button"
+              aria-expanded={expanded}
+              aria-label={expanded ? "Collapse row" : "Expand row"}
+              onClick={onExpand}
+              className="ant-table-row-expand-icon inline-flex size-5 items-center justify-center rounded border text-muted-foreground hover:text-foreground"
+            >
+              {expanded ? (
+                <ChevronDown className="size-3" />
+              ) : (
+                <ChevronRight className="size-3" />
+              )}
+            </button>
+          );
+        },
+      },
+      ...base,
+    ];
+  }, [
+    columns,
+    rowSelection,
+    showExpandColumn,
+    expandIcon,
+    expandedKeys,
+    isRowExpandable,
+    toggleExpanded,
+    originalRowKey,
+  ]);
   const leaves = React.useMemo(() => leafColumns(columns), [columns]);
 
   /*
@@ -806,35 +1008,65 @@ function DataTable({
                 </TableCell>
               </TableRow>
             ) : table.getRowModel().rows.length ? (
-              table.getRowModel().rows.map((row) => (
-                <TableRow
-                  key={row.id}
-                  data-state={row.getIsSelected() ? "selected" : undefined}
-                  className={
-                    typeof rowClassName === "function"
-                      ? rowClassName(row.original, row.index)
-                      : rowClassName
-                  }
-                  {...(onRow ? onRow(row.original, row.index) : {})}
-                >
-                  {row.getVisibleCells().map((cell) => (
-                    <TableCell
-                      key={cell.id}
-                      className={cn(
-                        cell.column.columnDef.meta?.align === "center" &&
-                          "text-center",
-                        cell.column.columnDef.meta?.align === "right" &&
-                          "text-right",
-                      )}
+              table.getRowModel().rows.map((row) => {
+                const expanded =
+                  expandedKeys.has(row.id) && isRowExpandable(row.original);
+                return (
+                  /*
+                   * The expanded row is a SIBLING <tr>, not a nested one: a
+                   * table row may only contain cells, so antd's full-width
+                   * panel has to be its own row spanning every column.
+                   */
+                  <React.Fragment key={row.id}>
+                    <TableRow
+                      data-state={row.getIsSelected() ? "selected" : undefined}
+                      className={
+                        typeof rowClassName === "function"
+                          ? rowClassName(row.original, row.index)
+                          : rowClassName
+                      }
+                      {...(onRow ? onRow(row.original, row.index) : {})}
                     >
-                      {flexRender(
-                        cell.column.columnDef.cell,
-                        cell.getContext(),
-                      )}
-                    </TableCell>
-                  ))}
-                </TableRow>
-              ))
+                      {row.getVisibleCells().map((cell) => (
+                        <TableCell
+                          key={cell.id}
+                          className={cn(
+                            cell.column.columnDef.meta?.align === "center" &&
+                              "text-center",
+                            cell.column.columnDef.meta?.align === "right" &&
+                              "text-right",
+                          )}
+                        >
+                          {flexRender(
+                            cell.column.columnDef.cell,
+                            cell.getContext(),
+                          )}
+                        </TableCell>
+                      ))}
+                    </TableRow>
+                    {expanded ? (
+                      <TableRow
+                        className={cn(
+                          "ant-table-expanded-row hover:bg-transparent",
+                          typeof expandable?.expandedRowClassName === "function"
+                            ? expandable.expandedRowClassName(
+                                row.original,
+                                row.index,
+                              )
+                            : expandable?.expandedRowClassName,
+                        )}
+                      >
+                        <TableCell
+                          colSpan={table.getVisibleLeafColumns().length}
+                          className="p-2"
+                        >
+                          {expandedRowRender(row.original, row.index, 0, true)}
+                        </TableCell>
+                      </TableRow>
+                    ) : null}
+                  </React.Fragment>
+                );
+              })
             ) : (
               <TableRow className="hover:bg-transparent">
                 <TableCell

@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/4.2/ref/settings/
 
 import logging
 import os
+import re
 from pathlib import Path
 from urllib.parse import quote
 
@@ -19,6 +20,16 @@ from django.core.validators import URLValidator
 from dotenv import find_dotenv, load_dotenv
 from utils.common_utils import CommonUtils
 from utils.cors_origin import normalize_web_app_origin
+
+from unstract.core.cache.redis_client import (
+    build_socketio_redis_url,
+    ensure_tls_query_params,
+    parse_db,
+    resolve_ssl_cert_reqs,
+    resolve_ssl_check_hostname,
+    set_url_db_path,
+    url_db_path,
+)
 
 # Django 5.0+ caps URLValidator at 2048 chars. S3 pre-signed URLs signed with
 # temporary/STS credentials (carrying X-Amz-Security-Token) routinely exceed this,
@@ -103,6 +114,23 @@ REDIS_PASSWORD = os.environ.get("REDIS_PASSWORD", "")
 REDIS_HOST = os.environ.get("REDIS_HOST", "localhost")
 REDIS_PORT = os.environ.get("REDIS_PORT", "6379")
 REDIS_DB = os.environ.get("REDIS_DB", "")
+# TLS to Redis (UN-4123). Off by default, so the in-cluster/local server is
+# untouched. `rediss://` is what actually selects TLS for both django-redis and
+# kombu; this flag only decides which scheme gets built.
+REDIS_SSL = os.environ.get("REDIS_SSL", "false").strip().lower() == "true"
+# Resolved by unstract.core, not re-read here: the raw value needs trimming,
+# lower-casing and validating, and a second copy of that logic is how this file
+# and create_redis_client came to hold two verification policies for one endpoint.
+REDIS_SSL_CERT_REQS = resolve_ssl_cert_reqs()
+REDIS_SSL_CHECK_HOSTNAME = resolve_ssl_check_hostname()
+REDIS_SSL_CA_CERTS = os.environ.get("REDIS_SSL_CA_CERTS", "").strip()
+# A full URL overrides the discrete vars above, exactly as it does in
+# unstract.core's create_redis_client — otherwise the workers would follow the URL
+# while this process stayed on REDIS_HOST, and the two would silently sit on
+# DIFFERENT servers. That split is invisible until something written by one side
+# is read by the other: an API deployment returns `result: null` because the
+# execution's cached result was written to the URL's Redis and looked up here.
+REDIS_URL = os.environ.get("REDIS_URL", "").strip()
 SESSION_EXPIRATION_TIME_IN_SECOND = os.environ.get(
     "SESSION_EXPIRATION_TIME_IN_SECOND", 3600
 )
@@ -214,9 +242,14 @@ FILE_EXECUTION_TRACKER_COMPLETED_TTL_IN_SECOND = int(
     os.environ.get("FILE_EXECUTION_TRACKER_COMPLETED_TTL_IN_SECOND", 60 * 10)
 )  # 10 minutes
 
-FILE_ACTIVE_CACHE_REDIS_DB = int(
-    os.environ.get("FILE_ACTIVE_CACHE_REDIS_DB", 0)
-)  # Redis DB for active file cache tracking
+# Redis DB for active file cache tracking. Parsed the same way every other
+# database var is (UN-4123): a blank value is this repo's "leave the default",
+# not a crash, and backend/sample.env ships this variable — so an operator
+# collapsing the four-key database map onto a db-0-only endpoint is exactly who
+# would hit `int("")` here.
+FILE_ACTIVE_CACHE_REDIS_DB = parse_db(
+    os.environ.get("FILE_ACTIVE_CACHE_REDIS_DB", ""), "FILE_ACTIVE_CACHE_"
+)
 
 INSTANT_WF_POLLING_TIMEOUT = int(
     os.environ.get("INSTANT_WF_POLLING_TIMEOUT", "300")
@@ -525,7 +558,7 @@ if REDIS_SENTINEL_MODE:
     if REDIS_USER:
         _sentinel_kwargs["username"] = REDIS_USER
 
-    _redis_db = REDIS_DB or "0"
+    _redis_db = parse_db(REDIS_DB, "REDIS_")
 
     # SocketIO connection manager (Kombu Sentinel URL format)
     _cred_prefix = ""
@@ -550,7 +583,7 @@ if REDIS_SENTINEL_MODE:
                 "CONNECTION_FACTORY": "django_redis.pool.SentinelConnectionFactory",
                 "SENTINELS": [(REDIS_HOST, int(REDIS_PORT))],
                 "SENTINEL_KWARGS": _sentinel_kwargs,
-                "DB": int(_redis_db),
+                "DB": _redis_db,
                 "PASSWORD": REDIS_PASSWORD,
                 "SERIALIZER": "django_redis.serializers.json.JSONSerializer",
             },
@@ -558,26 +591,128 @@ if REDIS_SENTINEL_MODE:
         }
     }
 else:
-    # SocketIO connection manager (standalone)
-    _cred_prefix = ""
-    if REDIS_USER and REDIS_PASSWORD:
-        _cred_prefix = f"{quote(REDIS_USER, safe='')}:{quote(REDIS_PASSWORD, safe='')}@"
-    elif REDIS_PASSWORD:
-        _cred_prefix = f":{quote(REDIS_PASSWORD, safe='')}@"
-    SOCKET_IO_MANAGER_URL = f"redis://{_cred_prefix}{REDIS_HOST}:{REDIS_PORT}"
+    # Credentials for the Socket.IO URL are assembled inside
+    # build_socketio_redis_url(); only the cache LOCATION is built here.
+    _scheme = "rediss" if REDIS_SSL else "redis"
+    _cache_db = parse_db(REDIS_DB, "REDIS_")
+
+    # Both django-redis (via redis-py) and kombu read TLS settings out of the URL's
+    # query string, so one string configures both — verified against the pinned
+    # versions. The CA is appended rather than required in the URL, since it is a
+    # local path rather than part of the endpoint's identity.
+    # Same helper the Socket.IO URL uses. Hand-rolling the append here is how two
+    # copies drift: this one WOULD add only ssl_ca_certs while unstract.core added
+    # ssl_cert_reqs as well, leaving one process holding two verification policies
+    # for one endpoint. django-redis reads TLS from the LOCATION's query string
+    # AND from OPTIONS["CONNECTION_POOL_KWARGS"] — the query string wins when both
+    # set the same key (ConnectionPool.from_url ends with kwargs.update(url_options)).
+    # kombu is the URL-only one. The distinction matters: the pool-kwargs block
+    # below is the discrete-vars path's ONLY route, so reading "query string only"
+    # as "that block is dead" would drop hostname verification back to redis-py's
+    # unauthenticated default.
+    # THE DATABASE RULE, applied to the LOCATION so this cache lands where
+    # create_redis_client would put it. django-redis takes a LOCATION string and
+    # ignores OPTIONS["DB"], so rewriting the path is the only lever — and
+    # without it the backend followed the URL's own path while the workers
+    # honoured REDIS_DB. One REDIS_URL, one REDIS_DB, two different databases:
+    # workers RPUSH log_history_queue to db N, the backend LPOPs an empty db 0,
+    # and nothing errors. Same helper both sides use, so the rule has one
+    # implementation rather than two that agree today.
+    _url_db = url_db_path(REDIS_URL)
+    _redis_url = (
+        set_url_db_path(REDIS_URL, _cache_db) if (REDIS_URL and REDIS_DB) else REDIS_URL
+    )
+    _redis_url = ensure_tls_query_params(
+        _redis_url,
+        cert_reqs=REDIS_SSL_CERT_REQS,
+        ca_certs=REDIS_SSL_CA_CERTS,
+        check_hostname=REDIS_SSL_CHECK_HOSTNAME,
+    )
+
+    # Built by unstract.core, which the log-consumer worker's publisher also uses.
+    # Two hand-built URLs for one endpoint drift: one side would keep a hardcoded
+    # redis:// while the other speaks TLS, and against a TLS-only endpoint that
+    # publisher's events would never reach subscribers. The helper also pins ssl_cert_reqs
+    # (kombu defaults rediss:// to CERT_NONE) and carries ssl_ca_certs, neither of
+    # which this expression did for the discrete-vars path.
+    SOCKET_IO_MANAGER_URL = build_socketio_redis_url()
     SOCKET_IO_TRANSPORT_OPTIONS = {}
+
+    # django-redis 5.4.0 reads only PASSWORD (plus timeouts) out of OPTIONS — its
+    # ConnectionFactory.make_connection_params ignores USERNAME and DB entirely.
+    # So the db has to travel in the URL path, or this cache silently sits on db 0
+    # while every other service honours REDIS_DB: workers would RPUSH
+    # log_history_queue to db N and the backend would LPOP an empty db 0.
+    # USERNAME and DB below are passed for readability and are DISCARDED by
+    # django-redis — they are not the mechanism for either. Auth stays password-only
+    # as the built-in `default` user (what a managed AUTH string is): a username
+    # would turn AUTH into its two-argument ACL form, and this cache never sends
+    # one. If a django-redis bump ever starts reading USERNAME, that becomes a real
+    # behaviour change rather than a silent one — which is what the assertions in
+    # tests/test_redis_settings_derivation.py pin.
+    _cache_options = {
+        "CLIENT_CLASS": "django_redis.client.DefaultClient",
+        "SERIALIZER": "django_redis.serializers.json.JSONSerializer",
+    }
+    if not _redis_url:
+        # Credentials and db travel IN the URL in URL mode; passing them again
+        # through OPTIONS risks one of them winning over the other.
+        _cache_options["DB"] = _cache_db
+        _cache_options["USERNAME"] = REDIS_USER
+        _cache_options["PASSWORD"] = REDIS_PASSWORD
+    # Gated on the EFFECTIVE scheme, not the flag. In URL mode TLS is carried by
+    # the URL (and its query string), so a plaintext REDIS_URL left behind while
+    # REDIS_SSL=true would otherwise hand ssl_cert_reqs to a plain
+    # redis.Connection — TypeError on the first cache read in a request, not at
+    # startup. Same trap the pooled standalone client hits, inverted.
+    if REDIS_SSL and not _redis_url:
+        _pool_kwargs = {"ssl_cert_reqs": REDIS_SSL_CERT_REQS}
+        # redis-py defaults ssl_check_hostname to False and overrides
+        # create_default_context()'s safe default with it, so a chain verified
+        # against a public CA still does not prove WHICH server answered. Forced
+        # off when verification itself is off, or Python's ssl module raises.
+        if REDIS_SSL_CERT_REQS != "none":
+            _pool_kwargs["ssl_check_hostname"] = REDIS_SSL_CHECK_HOSTNAME
+        if REDIS_SSL_CA_CERTS:
+            _pool_kwargs["ssl_ca_certs"] = REDIS_SSL_CA_CERTS
+        _cache_options["CONNECTION_POOL_KWARGS"] = _pool_kwargs
+
+    # Fires whenever the keyspace actually MOVES. Before the rule above reached
+    # URL mode this was gated on `not _redis_url`, so the one mode that could now
+    # relocate a live cache was the one mode that said nothing.
+    #
+    # Both sides have to be the EFFECTIVE db, not REDIS_DB: in URL mode with
+    # REDIS_DB unset the URL's own path stands, so comparing it against
+    # _cache_db's 0 default announced a move that never happens — a warning
+    # about data loss on a perfectly ordinary `redis://h/3`.
+    _previous_db = (_url_db or 0) if REDIS_URL else 0
+    _effective_db = _cache_db if (REDIS_DB or not REDIS_URL) else _previous_db
+    if _effective_db != _previous_db:
+        # Visible in the field, because this is a one-way RELOCATION of the whole
+        # CACHES["default"] keyspace. django-redis 5.4.0 ignores OPTIONS["DB"], so
+        # this cache has always sat on db 0 no matter what REDIS_DB said; carrying
+        # the db in the LOCATION path is the fix, but it MOVES live data. What
+        # moves is not only cache — CacheService wraps
+        # get_redis_connection("default"), so log_history_queue, the rate-limit
+        # counters and the dashboard caches go with it, and during a rolling
+        # deploy old pods read db 0 while new pods read db N. Drain
+        # log_history_queue before cutting over.
+        logging.getLogger(__name__).warning(
+            "Django cache is moving from Redis db %s to db %s (REDIS_DB). In "
+            "discrete mode it previously sat on db 0 regardless, because "
+            "django-redis ignores OPTIONS['DB']. Anything already in db %s — "
+            "including log_history_queue — stays there.",
+            _previous_db,
+            _effective_db,
+            _previous_db,
+        )
 
     CACHES = {
         "default": {
             "BACKEND": "django_redis.cache.RedisCache",
-            "LOCATION": f"redis://{REDIS_HOST}:{REDIS_PORT}",
-            "OPTIONS": {
-                "CLIENT_CLASS": "django_redis.client.DefaultClient",
-                "SERIALIZER": "django_redis.serializers.json.JSONSerializer",
-                "DB": int(REDIS_DB) if REDIS_DB else 0,
-                "USERNAME": REDIS_USER,
-                "PASSWORD": REDIS_PASSWORD,
-            },
+            "LOCATION": _redis_url
+            or f"{_scheme}://{REDIS_HOST}:{REDIS_PORT}/{_cache_db}",
+            "OPTIONS": _cache_options,
             "KEY_FUNCTION": "utils.redis_cache.custom_key_function",
         }
     }
@@ -670,23 +805,45 @@ SPECTACULAR_SETTINGS = {
             "deploymentKey": {
                 "type": "http",
                 "scheme": "bearer",
-                "description": "The API deployment's own key.",
-            }
+                "description": (
+                    "A key that runs an API deployment: the deployment's own "
+                    "key, or a global API deployment key with access to it."
+                ),
+            },
+            "platformKey": {
+                "type": "http",
+                "scheme": "bearer",
+                "description": (
+                    "An organisation-wide platform API key, minted under "
+                    "Settings. It carries the organisation it belongs to, but "
+                    "cannot execute an API deployment."
+                ),
+            },
         }
     },
     # Without this the enum component is named after the field that holds it,
     # and generated clients get a class called `TypeEnum`.
-    "ENUM_NAME_OVERRIDES": {"ErrorType": "api_v2.openapi_schema.ERROR_TYPES"},
+    "ENUM_NAME_OVERRIDES": {
+        "ErrorType": "api_v2.openapi_schema.ERROR_TYPES",
+        "ApiKeyPermission": "platform_api.models.ApiKeyPermission.choices",
+    },
     # Group descriptions generated clients show in their help; without this
     # the spec has no root `tags` array for the text to live in.
     "TAGS": [
         {
             "name": "deployment",
             "description": (
-                "Run an API deployment against one or more documents and poll "
-                "the result."
+                "Discover an organisation's API deployments, run one against "
+                "one or more documents, and poll the result."
             ),
-        }
+        },
+        {
+            "name": "identity",
+            "description": (
+                "Resolve what a platform API key is scoped to, so a client can "
+                "discover its organisation rather than being told it."
+            ),
+        },
     ],
 }
 
@@ -709,8 +866,29 @@ WHITELISTED_PATHS.append(f"/{API_DEPLOYMENT_PATH_PREFIX}")
 # Whitelisting health check API
 WHITELISTED_PATHS.append("/health")
 
-# These path will work without organization in request
-ORGANIZATION_MIDDLEWARE_WHITELISTED_PATHS = []
+# These path will work without organization in request.
+# `whoami` resolves the organisation from the API key itself, so it carries no
+# organisation segment -- without this the middleware would read `whoami` as one.
+# Note this is not WHITELISTED_PATHS: the endpoint still authenticates.
+# Anchored: `re.match` is a prefix test, so without the `$` an organisation
+# literally named `whoami` would have its entire API treated as organisation-less.
+#
+# Built from TENANT_SUBFOLDER_PREFIX rather than re-spelling the mount: if the
+# mount moves, a second literal here would silently stop matching and every
+# organisation-less `whoami` call would start answering 403, with no startup
+# error and no failing test. `re.escape` because PATH_PREFIX comes from the
+# environment and would otherwise be interpreted as a pattern.
+#
+# Adding an entry to this list disarms BOTH organisation guards in
+# CustomAuthMiddleware for that path -- the key-belongs-to-org check at the
+# Bearer branch and the org-access-denied check on the session branch -- because
+# each is conditioned on `request.organization_id` being truthy and this branch
+# sets it to None. `whoami` is safe because its view derives the organisation
+# from the key row and refuses a session caller outright; a new entry inherits
+# neither of those properties by default.
+ORGANIZATION_MIDDLEWARE_WHITELISTED_PATHS = [
+    rf"^/{re.escape(TENANT_SUBFOLDER_PREFIX)}/whoami/$",
+]
 
 # Social Auth Settings
 SOCIAL_AUTH_LOGIN_REDIRECT_URL = f"{WEB_APP_ORIGIN_URL}/oauth-status/?status=success"

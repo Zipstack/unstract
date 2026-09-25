@@ -91,23 +91,140 @@ def _call_internal(
     return response.json()
 
 
-def _log_if_skipped(name: str, result: dict[str, Any]) -> None:
-    """Surface a lock-held no-op.
+def _log_if_failed(name: str, result: dict[str, Any]) -> None:
+    """Surface a cleanup that reported failure.
 
-    The backend returns success with ``skipped=True`` when the Redis lock is held. That
-    is correct behaviour, but left at INFO a permanently leaked lock looks like 96
-    successful runs a day that did nothing.
+    The backend catches every exception and answers 200 with ``success: False``,
+    so a permanently failing retention delete is otherwise invisible here.
     """
+    if not result.get("success", True):
+        logger.warning("%s did not complete: %s", name, result.get("error", "no detail"))
+
+
+def _log_if_skipped(name: str, result: dict[str, Any]) -> None:
+    """Surface a run that did nothing, whatever shape the backend reported it in.
+
+    Each condition is correct behaviour in isolation, but left at INFO a leaked lock
+    or a frozen source table looks like a day of successful runs. The arms below are
+    the enumeration; keeping a second copy here only lets the two drift.
+
+    The conditions are independent, not alternatives: an empty prefilter and a
+    failed monthly rollup co-occur, since the rollup is org-agnostic and runs even
+    when the org loop did not. Reported as an ``elif`` chain the failure would sit
+    behind a benign "no active orgs" line.
+
+    ``skipped_reason`` reports the prefilter, not the whole run, so the row count
+    says which happened.
+    """
+    wrote = sum(
+        result.get(granularity, {}).get("upserted", 0)
+        for granularity in ("hourly", "daily", "monthly")
+    )
+    monthly = result.get("monthly", {})
     if result.get("skipped"):
         logger.warning(
             "%s did no work: %s", name, result.get("reason", "reported skipped=True")
         )
+        return
+
+    if result.get("skipped_reason"):
+        logger.warning("%s: %s (rows written: %d)", name, result["skipped_reason"], wrote)
+    if result.get("errors"):
+        # ERROR, not WARNING: a periodic on the PG transport is fire-and-forget, so
+        # nothing records a task status either way and severity is the only signal
+        # that reaches an alert. Raising instead would buy a poison-drop at
+        # MAX_ATTEMPTS=1 and no retry.
+        logger.error(
+            "%s completed with %s error(s) across %s organisation(s)",
+            name,
+            result["errors"],
+            result.get("organizations_processed", "?"),
+        )
+    if stale := monthly.get("needs_daily_repair"):
+        # Same wording as the backend's own line: these months were KEPT, not
+        # overwritten. Saying "lowered" here points at a rollback when the fix is a
+        # backfill, and on-call sees this line first on the PG transport.
+        logger.warning(
+            "%s left %s unchanged — the daily tier now sums lower than the stored "
+            "total, so the figures were kept rather than overwritten. Repair daily "
+            "for those months with `backfill_metrics`",
+            name,
+            ", ".join(stale),
+        )
+    if short := monthly.get("incomplete_daily_coverage"):
+        # Independent of needs_daily_repair: a month with no stored total to compare
+        # against is under-counted without ever being "lowered".
+        logger.warning(
+            "%s rolled up an incomplete daily tier for %s — those totals are "
+            "under-counted whether or not they were lowered. Repair with "
+            "`backfill_metrics` if the source tables hold those days; a date on "
+            "which nothing ran anywhere reads the same and needs no action",
+            name,
+            ", ".join(short),
+        )
+    if monthly.get("coverage_check") == "unavailable":
+        logger.warning(
+            "%s could not check whether the daily tier is missing whole days", name
+        )
+    if monthly.get("lowered_check") == "unavailable":
+        # Distinct from "nothing was lowered": the check itself did not run, so this
+        # run verified nothing about the derived tier.
+        logger.warning(
+            "%s could not check whether the rollup would lower monthly totals", name
+        )
+    if monthly.get("failed"):
+        # Distinct from a per-org metric error: the rollup is org-agnostic, so its
+        # failure leaves EVERY tenant's monthly tier stale for this run.
+        logger.error(
+            "%s: the monthly rollup did not run; every tenant's monthly tier is "
+            "stale for this run",
+            name,
+        )
+    if (
+        result.get("tier") != "hourly"
+        and not wrote
+        and not result.get("skipped_reason")
+        and not result.get("errors")
+    ):
+        # The signature of the regression this change could introduce: a tier with
+        # work to do, no error, and nothing written. Not on the */15 hourly row,
+        # which writes nothing on a quiet weekend by design — the backend guards the
+        # same condition with _writes_daily_monthly, and without the guard here this
+        # warns 96 times a day about a healthy fleet.
+        logger.warning("%s: %s tier wrote no rows", name, result.get("tier", "?"))
 
 
 @worker_task(name="dashboard_metrics.aggregate_from_sources")
-def dashboard_metrics_aggregate() -> dict[str, Any]:
-    """Aggregate source tables into the hourly/daily/monthly metrics tables."""
-    result = _call_internal(_AGGREGATE_PATH)
+def dashboard_metrics_aggregate(
+    tier: str | None = None,
+    source_window_days: int | None = None,
+    **_ignored: Any,
+) -> dict[str, Any]:
+    """Aggregate source tables into the hourly/daily/monthly metrics tables.
+
+    Both kwargs come from the schedule row and both are optional: ``tier`` selects
+    which tiers to write, ``source_window_days`` widens the daily lookback for the
+    reconciliation pass. Omitting either applies the backend task's own default.
+
+    Unknown kwargs are accepted rather than rejected. Note what this does and does
+    not buy: it does NOT save the deploy that introduces a kwarg, because a pod on
+    the previous image has the old signature. It saves a LATER release — a row may
+    gain a kwarg while pods still run this code. That matters here because the rows
+    ship in the backend image and this consumer ships in another, a TypeError is
+    dropped at MAX_ATTEMPTS=1, and the once-daily reconciliation row has no next
+    tick to recover on.
+    """
+    if _ignored:
+        logger.warning("Ignoring unrecognised aggregation kwargs: %s", sorted(_ignored))
+    body = {
+        key: value
+        for key, value in (
+            ("tier", tier),
+            ("source_window_days", source_window_days),
+        )
+        if value is not None
+    } or None
+    result = _call_internal(_AGGREGATE_PATH, body=body)
     _log_if_skipped("dashboard_metrics.aggregate_from_sources", result)
     return result
 
@@ -116,11 +233,15 @@ def dashboard_metrics_aggregate() -> dict[str, Any]:
 def dashboard_metrics_cleanup_hourly(retention_days: int | None = None) -> dict[str, Any]:
     """Delete hourly metrics older than the retention window."""
     body = {"retention_days": retention_days} if retention_days is not None else None
-    return _call_internal(_CLEANUP_HOURLY_PATH, body=body)
+    result = _call_internal(_CLEANUP_HOURLY_PATH, body=body)
+    _log_if_failed("dashboard_metrics.cleanup_hourly_data", result)
+    return result
 
 
 @worker_task(name="dashboard_metrics.cleanup_daily_data")
 def dashboard_metrics_cleanup_daily(retention_days: int | None = None) -> dict[str, Any]:
     """Delete daily metrics older than the retention window."""
     body = {"retention_days": retention_days} if retention_days is not None else None
-    return _call_internal(_CLEANUP_DAILY_PATH, body=body)
+    result = _call_internal(_CLEANUP_DAILY_PATH, body=body)
+    _log_if_failed("dashboard_metrics.cleanup_daily_data", result)
+    return result

@@ -41,8 +41,9 @@ class TestCallbackAlreadyRan:
 
 
 class TestCoreCallbackGuard:
-    """``_process_batch_callback_core`` short-circuits a PG duplicate before any
-    side effect (using the status the context already carries), and only on PG.
+    """``_process_batch_callback_core`` short-circuits a duplicate before any side
+    effect, using the status the context already carries. Unconditional since
+    UN-4078 — the wire marker is still popped, but nothing branches on it.
     """
 
     def _context(self, status):
@@ -88,16 +89,22 @@ class TestCoreCallbackGuard:
         with pytest.raises(AssertionError, match="side effects must not run"):
             self._run(is_pg=True, status=ExecutionStatus.ERROR.value)
 
-    def test_celery_never_skips(self):
-        # No marker → guard skipped entirely; the callback proceeds even on a
-        # COMPLETED status — proving zero Celery regression.
-        with pytest.raises(AssertionError, match="side effects must not run"):
-            self._run(is_pg=False, status=ExecutionStatus.COMPLETED.value)
+    def test_guard_holds_without_the_marker(self):
+        # UN-4078: the guard no longer keys on the wire marker — PG is the only
+        # transport, so a COMPLETED redelivery is skipped whether or not the
+        # producer stamped it (an old producer that omits it must not re-fire
+        # webhooks / billing).
+        out, _extract, determine = self._run(
+            is_pg=False, status=ExecutionStatus.COMPLETED.value
+        )
+        assert out["duplicate_callback_skipped"] is True
+        determine.assert_not_called()
 
 
 class TestApiCallbackGuard:
-    """``process_batch_callback_api`` short-circuits a PG duplicate using the
-    execution status it already fetches (no extra round-trip).
+    """``process_batch_callback_api`` short-circuits a duplicate using the
+    execution status it already fetches (no extra round-trip). Unconditional
+    since UN-4078.
     """
 
     def _run(self, *, is_pg: bool, status: str):
@@ -131,6 +138,8 @@ class TestApiCallbackGuard:
         with pytest.raises(AssertionError, match="side effects must not run"):
             self._run(is_pg=True, status=ExecutionStatus.EXECUTING.value)
 
-    def test_celery_never_skips(self):
-        with pytest.raises(AssertionError, match="side effects must not run"):
-            self._run(is_pg=False, status=ExecutionStatus.COMPLETED.value)
+    def test_guard_holds_without_the_marker(self):
+        # UN-4078: see the core-callback twin — the guard is unconditional now.
+        out, determine = self._run(is_pg=False, status=ExecutionStatus.COMPLETED.value)
+        assert out["status"] == "skipped_duplicate_callback"
+        determine.assert_not_called()

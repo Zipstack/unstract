@@ -49,10 +49,9 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
 
     serializer_class = WorkflowExecutionSerializer
     lookup_field = "id"
-    # Backward compat: workers may call without X-Organization-ID during
-    # rolling deployments. Safe because internal APIs require service API key
-    # and get_queryset() applies org filtering when header is present.
-    # Remove once all workers reliably pass X-Organization-ID.
+    # OrganizationFilterBackend is off here; get_queryset() scopes instead, via
+    # filter_queryset_by_organization, which fails closed. X-Organization-ID is
+    # therefore required in practice: a worker that omits it gets zero rows.
     skip_org_filter = True
 
     def get_queryset(self):
@@ -1616,12 +1615,12 @@ class WorkflowEndpointAPIView(APIView):
                 "usercontext_org_name": organization_from_context.display_name
                 if organization_from_context
                 else None,
-                "headers": dict(request.headers),
                 "internal_service": getattr(request, "internal_service", False),
                 "authenticated_via": getattr(request, "authenticated_via", None),
                 "path": request.path,
             }
-            logger.info(f"WorkflowEndpointAPIView debug - {request_debug}")
+            # Headers omitted: they carry the internal service bearer key.
+            logger.debug("WorkflowEndpointAPIView debug - %s", request_debug)
 
             # Get workflow using the DefaultOrganizationManagerMixin which automatically filters by organization
             try:

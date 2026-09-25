@@ -190,7 +190,8 @@ class SweepUndispatchedExecutionsAPIView(APIView):
     sweep also needs the rate limiter — both backend-side.
 
     Transport-agnostic on purpose: the create-then-dispatch window sits upstream of
-    ``resolve_transport``, so this recovers Celery-path strands too.
+    transport selection, so this still recovers strands left by the pre-UN-4046
+    Celery path.
     """
 
     def post(self, request: Request) -> Response:
