@@ -379,7 +379,11 @@ class AnswerPromptService:
             structured_output[prompt_key] = None
             return
 
-        parsed_data = repair_json_with_best_structure(answer)
+        # _run_completion has already stamped the hash onto this same metadata
+        # dict, so it is present by the time the repair runs.
+        parsed_data = repair_json_with_best_structure(
+            answer, whisper_hash=(metadata or {}).get(PSKeys.WHISPER_HASH)
+        )
         if not isinstance(parsed_data, (dict, list)):
             logger.error("Error parsing response to JSON")
             structured_output[prompt_key] = {}
