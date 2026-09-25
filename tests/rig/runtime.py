@@ -341,7 +341,7 @@ class TestcontainersRuntime:
             rabbit = RabbitMqContainer("rabbitmq:3.13-management").start()
             self._stack.append(rabbit)
             minio = MinioContainer(
-                "quay.io/minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e"
+                "unstract/minio:RELEASE.2026-09-22T19-25-18Z@sha256:bd014394a80898e68c149f2311fdf8d5a2c2f3bb2c33b9327ae6d02b4b065ae1"
             ).start()
             self._stack.append(minio)
 
