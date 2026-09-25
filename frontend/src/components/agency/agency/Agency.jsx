@@ -245,7 +245,7 @@ function Agency() {
   const getExportedTools = (signal) => {
     const requestOptions = {
       method: "GET",
-      url: getUrl(`tool/`),
+      url: getUrl(`tool/?workflow_id=${projectId}`),
       signal,
     };
     return axiosPrivate(requestOptions)
@@ -926,6 +926,11 @@ function Agency() {
 
   // Handle tool selection from sidebar
   const handleToolSelection = async (functionName) => {
+    // Re-adding the current tool deletes and recreates its instance, which the
+    // backend refuses for deprecated registry tools, so leave it in place.
+    if (details?.tool_instances?.some((ti) => ti.tool_id === functionName)) {
+      return;
+    }
     setSelectedTool(functionName);
 
     const tool = exportedTools.find((t) => t.function_name === functionName);
@@ -982,6 +987,9 @@ function Agency() {
         // Update workflow store with new tool instance
         const { addNewTool } = useWorkflowStore.getState();
         addNewTool(newToolInstance);
+
+        // A replaced deprecated tool drops out of the list and can't be re-added.
+        getExportedTools();
 
         setAlertDetails({
           type: "success",

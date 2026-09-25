@@ -22,7 +22,11 @@ from workflow_manager.workflow_v2.models.workflow import Workflow
 from backend.constants import RequestKey
 from tool_instance_v2.constants import ToolInstanceErrors, ToolKey
 from tool_instance_v2.constants import ToolInstanceKey as TIKey
-from tool_instance_v2.exceptions import FetchToolListFailed, ToolFunctionIsMandatory
+from tool_instance_v2.exceptions import (
+    BadRequestException,
+    FetchToolListFailed,
+    ToolFunctionIsMandatory,
+)
 from tool_instance_v2.models import ToolInstance
 from tool_instance_v2.serializers import (
     ToolInstanceReorderSerializer as TIReorderSerializer,
@@ -54,10 +58,16 @@ def get_tool_list(request: Request) -> Response:
     Fetches a list of tools available in the Tool registry
     """
     if request.method == "GET":
+        workflow_id = request.query_params.get(WorkflowKey.WF_ID)
+        if workflow_id:
+            try:
+                workflow_id = uuid.UUID(workflow_id)
+            except ValueError:
+                raise BadRequestException(f"Invalid workflow_id: {workflow_id}")
         try:
             logger.info("Fetching tools from the tool registry...")
             return Response(
-                data=ToolProcessor.get_tool_list(request.user),
+                data=ToolProcessor.get_tool_list(request.user, workflow_id),
                 status=status.HTTP_200_OK,
             )
         except Exception as exc:

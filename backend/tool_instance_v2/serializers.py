@@ -285,6 +285,11 @@ class ToolInstanceSerializer(AuditSerializer):
         if not tool_uid:
             raise ToolDoesNotExist()
 
+        if ToolProcessor.is_registry_tool(tool_uid):
+            raise ValidationError(
+                f"Tool '{tool_uid}' is deprecated and can't be added to a workflow."
+            )
+
         tool: Tool = ToolProcessor.get_tool_by_uid(tool_uid=tool_uid)
         # TODO: Handle other fields once tools SDK is out
         validated_data[TIKey.PK] = uuid.uuid4()
