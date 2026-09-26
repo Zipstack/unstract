@@ -7,6 +7,8 @@ class Modes(Enum):
     LOW_COST = "low_cost"
     HIGH_QUALITY = "high_quality"
     FORM = "form"
+    TABLE = "table"
+    DOCUMENT_INSIGHTS = "document_insights"
 
 
 class OutputModes(Enum):

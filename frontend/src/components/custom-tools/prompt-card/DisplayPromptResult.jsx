@@ -14,6 +14,7 @@ import {
 import "./PromptCard.css";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
+import { hasHighlightData } from "./constants";
 
 function DisplayPromptResult({
   output,
@@ -417,14 +418,21 @@ const TextResult = ({
 
   const confidence = getConfidenceForText();
 
-  return enableHighlight ? (
+  // Make the answer clickable when the tool has highlighting enabled OR
+  // when the backend produced highlight_data (e.g. signature page refs
+  // from LLMWhisperer's document_insights mode), so signature highlights
+  // still work without requiring the separate enable_highlight toggle.
+  const isHighlightable = hasHighlightData(highlightData);
+  const isClickable = enableHighlight || isHighlightable;
+
+  return isClickable ? (
     <Typography.Text
       wrap
       onClick={() =>
         onSelectHighlight(highlightData, promptId, profileId, confidence)
       }
       className={`prompt-output-result json-value ${
-        highlightData ? "clickable" : ""
+        isHighlightable ? "clickable" : ""
       } ${selectedHighlight?.highlightedPrompt === promptId ? "selected" : ""}`}
     >
       {parsedOutput}
