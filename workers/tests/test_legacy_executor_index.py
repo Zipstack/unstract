@@ -36,9 +36,13 @@ def _clean_registry():
 
 
 def _register_legacy():
-    from executor.executors.legacy_executor import LegacyExecutor  # noqa: F401
+    # Guarded because the import below may be the FIRST in the process, in which
+    # case ``@ExecutorRegistry.register`` fires on it and registering again
+    # raises a duplicate-name ValueError.
+    from executor.executors.legacy_executor import LegacyExecutor
 
-    ExecutorRegistry.register(LegacyExecutor)
+    if "legacy" not in ExecutorRegistry.list_executors():
+        ExecutorRegistry.register(LegacyExecutor)
 
 
 def _make_index_context(**overrides):
