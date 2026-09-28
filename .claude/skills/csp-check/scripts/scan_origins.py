@@ -74,6 +74,9 @@ IGNORED = {
     "fb.me",
     "yandex.com",
     "sentry.io",
+    # posthog-js's built-in US defaults. Inert only because api_host is pinned to
+    # https://eu.i.posthog.com/ at frontend/src/index.jsx -- move that pin and these
+    # become live hosts the policy blocks, with this list keeping the gate quiet about it.
     "posthog.com",
     "app.posthog.com",
     "us.posthog.com",
