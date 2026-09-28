@@ -23,6 +23,14 @@ internally (transient); a child that **crash-loops** (dies immediately N times i
 a row, never reaching a real poll) forces the probe to 503 so k8s restarts the
 pod rather than the supervisor masking a wedged fleet with fresh-looking re-forks.
 
+**Readiness** (UN-4136): the same port serves ``/ready``, which answers 200 only
+once EVERY child has finished its ``import worker`` bootstrap and built its
+consumer. ``/health`` cannot say this — the heartbeats are seeded fresh at
+construction so liveness does not trip during a slow import — which is why a pod
+used to go Ready ~20s after start while its N children were still importing, and
+the HPA counted that multi-core start-up burst as load. A k8s ``startupProbe`` on
+``/ready`` keeps the pod NotReady until the burst is over.
+
 **Fork safety**: the initial fleet is forked while the parent is single-threaded.
 Re-forks happen after the liveness daemon thread exists; the only other thread is
 that probe (idle in ``select`` between requests, and CPython 3.12 re-inits the
@@ -152,6 +160,11 @@ class _Fleet:
         now = time.time()
         for i in range(concurrency):
             self._heartbeats[i] = now
+        # Shared, fork-inherited "finished loading" flags (one per child), read by
+        # /ready. Same write discipline as the heartbeats: the owning child sets
+        # its slot once bootstrapped; the parent clears it in reap(), when no child
+        # owns the slot. Zero-initialised, so a fresh fleet starts not-ready.
+        self._loaded = multiprocessing.Array("b", concurrency, lock=False)
         self._pids: dict[int, int] = {}
         self._last_fork: dict[int, float] = {}
         self._consecutive_crashes: dict[int, int] = {}
@@ -167,6 +180,13 @@ class _Fleet:
         which write their own slot directly).
         """
         return self._heartbeats
+
+    @property
+    def loaded(self):  # noqa: ANN201
+        """The shared loaded-flag array (a ctypes array, passed to forked children,
+        which set their own slot once bootstrapped).
+        """
+        return self._loaded
 
     def _validate(self, slot: int) -> None:
         if not 0 <= slot < self._n:
@@ -184,9 +204,14 @@ class _Fleet:
         self._restart_due.pop(slot, None)
 
     def reap(self, slot: int) -> float:
-        """Drop the slot's pid + last-fork together; return the child's uptime (s)."""
+        """Drop the slot's pid + last-fork together; return the child's uptime (s).
+
+        Also clears the slot's loaded flag: its replacement must finish its own
+        bootstrap before the fleet counts as loaded again.
+        """
         forked_at = self._last_fork.pop(slot, time.monotonic())
         self._pids.pop(slot, None)
+        self._loaded[slot] = 0
         return time.monotonic() - forked_at
 
     def schedule_restart(self, slot: int, uptime: float) -> int:
@@ -231,6 +256,14 @@ class _Fleet:
             n >= _CRASH_LOOP_THRESHOLD for n in tuple(self._consecutive_crashes.values())
         )
 
+    def loaded_count(self) -> int:
+        """Children that have finished their bootstrap (``import worker`` + build)."""
+        return sum(self._loaded)
+
+    def all_loaded(self) -> bool:
+        """Readiness verdict source: True once every slot's child has loaded."""
+        return self.loaded_count() == self._n
+
     def oldest_age(self) -> float:
         now = time.time()
         return max((now - hb for hb in self._heartbeats), default=0.0)
@@ -244,14 +277,16 @@ class _Fleet:
         return float("inf") if self.is_crash_looping() else self.oldest_age()
 
 
-def _run_child(slot: int, heartbeats) -> None:  # noqa: ANN001 (ctypes array)
+def _run_child(slot: int, heartbeats, loaded) -> None:  # noqa: ANN001 (ctypes arrays)
     """Build one consumer and run it forever, publishing its heartbeat.
 
     The worker import (and any connections it opens) happens HERE, in the child —
     never inherited across the fork — so each process owns its own connections.
     A *guarded* daemon thread publishes the consumer's last-poll wall-time into
-    ``heartbeats[slot]`` for the supervisor's fleet liveness.
+    ``heartbeats[slot]`` for the supervisor's fleet liveness, and ``loaded[slot]``
+    is set once the bootstrap is done, for the supervisor's ``/ready``.
     """
+    started = time.monotonic()
     from pg_queue_consumer._bootstrap import select_source_worker_type
 
     select_source_worker_type()  # set WORKER_TYPE before importing worker
@@ -277,11 +312,17 @@ def _run_child(slot: int, heartbeats) -> None:  # noqa: ANN001 (ctypes array)
             time.sleep(_REPORT_INTERVAL_SECONDS)
 
     threading.Thread(target=_publish_heartbeat, daemon=True, name=f"pg-hb-{slot}").start()
+    loaded[slot] = 1
+    logger.info(
+        "PG-queue consumer: child slot=%s loaded in %.1fs",
+        slot,
+        time.monotonic() - started,
+    )
     # consumer.run() installs its own SIGTERM/SIGINT handlers → graceful stop.
     consumer.run()
 
 
-def _child_after_fork(slot: int, heartbeats) -> None:  # noqa: ANN001 (ctypes array)
+def _child_after_fork(slot: int, heartbeats, loaded) -> None:  # noqa: ANN001 (ctypes arrays)
     """Child side of the fork: reset inherited state, run, hard-exit on failure.
 
     Resets the supervisor's signal handlers to ``SIG_DFL`` *immediately* — until
@@ -294,7 +335,7 @@ def _child_after_fork(slot: int, heartbeats) -> None:  # noqa: ANN001 (ctypes ar
     signal.signal(signal.SIGTERM, signal.SIG_DFL)
     signal.signal(signal.SIGINT, signal.SIG_DFL)
     try:
-        _run_child(slot, heartbeats)
+        _run_child(slot, heartbeats, loaded)
     except Exception:
         # A child that can't even start must not return into the supervisor loop
         # (it would fork grandchildren). Log + hard exit. Exception (not
@@ -321,7 +362,7 @@ def _try_fork_child(fleet: _Fleet, slot: int) -> bool:
         )
         return False
     if pid == 0:  # child — never returns
-        _child_after_fork(slot, fleet.heartbeats)
+        _child_after_fork(slot, fleet.heartbeats, fleet.loaded)
     fleet.record_fork(slot, pid)
     logger.info("PG-queue consumer: forked child slot=%s pid=%s", slot, pid)
     return True
@@ -480,6 +521,9 @@ def _maybe_start_supervisor_health(fleet: _Fleet) -> LivenessServer | None:
     (``check="pg_queue_fleet"``, age key ``oldest_child_seconds_since_poll``) since
     the freshness source is the fleet's oldest child, not one poll loop.
 
+    ``/ready`` → 200 only once every child has loaded (:meth:`_Fleet.all_loaded`),
+    for the chart's opt-in ``startupProbe``.
+
     A bind failure does not abort the consumer (it must keep draining the queue),
     but ``EADDRINUSE`` usually signals a real config bug, so it's logged at error;
     either way ``liveness_probe_bound: false`` is surfaced in the status payload so
@@ -502,6 +546,7 @@ def _maybe_start_supervisor_health(fleet: _Fleet) -> LivenessServer | None:
     def _extra_status() -> dict[str, object]:
         return {
             "alive_children": fleet.alive_count(),
+            "loaded_children": fleet.loaded_count(),
             "concurrency": fleet.concurrency,
             "crash_looping": fleet.is_crash_looping(),
             "liveness_probe_bound": True,
@@ -522,6 +567,7 @@ def _maybe_start_supervisor_health(fleet: _Fleet) -> LivenessServer | None:
         age_key="oldest_child_seconds_since_poll",
         extra_status_fn=_extra_status,
         metrics_fn=metrics.render,
+        ready_fn=fleet.all_loaded,
         thread_name="pg-supervisor-liveness",
         log_label="pg-queue supervisor",
     )
@@ -541,8 +587,8 @@ def _maybe_start_supervisor_health(fleet: _Fleet) -> LivenessServer | None:
         )
         return None
     logger.info(
-        "PG-queue consumer supervisor: fleet liveness on :%s/health (stale after "
-        "%ss, %d children)",
+        "PG-queue consumer supervisor: fleet liveness on :%s/health, readiness on "
+        "/ready (stale after %ss, %d children)",
         server.bound_port,
         stale_after,
         fleet.concurrency,
