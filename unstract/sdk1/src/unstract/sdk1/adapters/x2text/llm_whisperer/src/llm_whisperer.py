@@ -8,6 +8,7 @@ from typing import Any
 import requests
 from requests import Response
 from requests.exceptions import ConnectionError, HTTPError, Timeout
+
 from unstract.sdk1.adapters.exceptions import ExtractorError
 from unstract.sdk1.adapters.utils import AdapterUtils
 from unstract.sdk1.adapters.x2text.constants import X2TextConstants

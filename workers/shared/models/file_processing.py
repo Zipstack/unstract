@@ -12,7 +12,6 @@ from typing import Any
 # from unstract.api.internal_client import InternalAPIClient
 # from unstract.infrastructure.logging.workflow_logger import WorkerWorkflowLogger
 from shared.infrastructure.logging import WorkerLogger
-
 from unstract.core.data_models import FileHashData, WorkerFileData
 
 logger = WorkerLogger.get_logger(__name__)

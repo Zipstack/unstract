@@ -9,7 +9,6 @@ from notification.providers.api_webhook import APIWebhook
 from notification.providers.base_provider import BaseNotificationProvider
 from notification.providers.slack_webhook import SlackWebhook
 from shared.infrastructure.logging import WorkerLogger
-
 from unstract.core.notification_enums import NotificationType
 
 logger = WorkerLogger.get_logger(__name__)

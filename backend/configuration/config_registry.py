@@ -165,9 +165,9 @@ class ConfigurationRegistry:
 
             converters = {
                 ConfigType.INT: int,
-                ConfigType.BOOL: lambda v: v.lower() in ("true", "1")
-                if isinstance(v, str)
-                else bool(v),
+                ConfigType.BOOL: lambda v: (
+                    v.lower() in ("true", "1") if isinstance(v, str) else bool(v)
+                ),
                 ConfigType.JSON: lambda v: __import__("json").loads(v),
                 ConfigType.STRING: str,
             }
