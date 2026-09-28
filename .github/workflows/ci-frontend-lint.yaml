@@ -15,6 +15,10 @@ on:
     branches: [main]
 
 jobs:
+  # Gating jobs below run when `changes` finds frontend files, AND whenever
+  # `changes` itself did not succeed: a skipped job satisfies a required
+  # check, so a broken filter must fail open (run the checks), never skip them.
+  # `!cancelled()` is what lets them run past a failed dependency.
   changes:
     if: github.event.pull_request.draft == false
     runs-on: ubuntu-latest
@@ -38,7 +42,7 @@ jobs:
 
   biome-ci:
     needs: changes
-    if: needs.changes.outputs.frontend == 'true'
+    if: ${{ !cancelled() && github.event.pull_request.draft != true && (needs.changes.result != 'success' || needs.changes.outputs.frontend == 'true') }}
     runs-on: ubuntu-latest
 
     steps:
@@ -97,7 +101,7 @@ jobs:
   # nothing about the .tsx files — tsc is the only thing that does.
   typecheck:
     needs: changes
-    if: needs.changes.outputs.frontend == 'true'
+    if: ${{ !cancelled() && github.event.pull_request.draft != true && (needs.changes.result != 'success' || needs.changes.outputs.frontend == 'true') }}
     runs-on: ubuntu-latest
 
     steps:
@@ -121,7 +125,7 @@ jobs:
   # tiers skip frontend-only PRs; this job is what gates those.
   vitest:
     needs: changes
-    if: needs.changes.outputs.frontend == 'true'
+    if: ${{ !cancelled() && github.event.pull_request.draft != true && (needs.changes.result != 'success' || needs.changes.outputs.frontend == 'true') }}
     runs-on: ubuntu-latest
 
     steps:
