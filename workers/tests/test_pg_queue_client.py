@@ -68,6 +68,19 @@ class TestPgQueueClientUnit:
         assert '"a": 1' in params[1]  # message JSON-serialised
         conn.commit.assert_called_once()
 
+    def test_send_sanitises_the_message_before_the_jsonb_cast(self):
+        # Gating-lane cover for the enqueue sink (UN-4126). The DB round-trip
+        # lives in `integration-workers`, which is `optional: true` and cannot
+        # turn CI red — so assert the encoder contract here, where it can:
+        # a NUL that reaches `%s::jsonb` fails the INSERT, and on the
+        # self-chained callback path that failure is swallowed and the user is
+        # told their completed extraction failed.
+        conn, cur = _mock_conn(fetchone=(1,))
+        PgQueueClient(conn=conn).send("q1", {"args": [{"n": "POZF\x00BBOK"}]})
+        _, params = cur.execute.call_args.args
+        assert "\\u0000" not in params[1]
+        assert "POZFBBOK" in params[1]
+
     def test_send_coerces_missing_org_to_empty_string(self):
         # org_id column is non-null (Django S6553) — None must become "".
         conn, cur = _mock_conn(fetchone=(1,))
@@ -523,6 +536,24 @@ class TestPgQueueClientIntegration:
         assert msgs[0].message == {"hello": "world"}
         assert client.delete(msg_id) is True
         assert client.read(queue_name, vt_seconds=30, qty=10) == []  # gone
+
+    def test_send_repairs_a_nul_instead_of_failing_the_enqueue(
+        self, pg_conn, queue_name
+    ):
+        # UN-4126: a self-chained continuation prepends the EXECUTOR RESULT as
+        # the callback's first arg, so the payload that carried a NUL in the
+        # blocking-RPC path also travels through send(). jsonb refuses it, and
+        # _chain_continuation never raises — so the enqueue used to fail
+        # silently, losing the callback and falling back to on_error, i.e.
+        # reporting a failure for work that had succeeded. The message must
+        # land, with the NUL gone.
+        client = PgQueueClient(conn=pg_conn)
+        msg_id = client.send(
+            queue_name, {"args": [{"output": {"invoice_number": "POZF\x00BBOK"}}]}
+        )
+        msgs = client.read(queue_name, vt_seconds=30, qty=10)
+        assert [m.msg_id for m in msgs] == [msg_id]
+        assert msgs[0].message["args"][0]["output"]["invoice_number"] == "POZFBBOK"
 
     def test_read_hides_message_for_vt(self, pg_conn, queue_name):
         client = PgQueueClient(conn=pg_conn)

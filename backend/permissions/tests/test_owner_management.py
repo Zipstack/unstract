@@ -18,6 +18,8 @@ from account_v2.models import User
 from django.test import TestCase
 from permissions.roles import ResourceRole
 from rest_framework import status
+from rest_framework.parsers import JSONParser
+from rest_framework.request import Request as DRFRequest
 from rest_framework.response import Response
 from rest_framework.test import APIRequestFactory, force_authenticate
 from rest_framework.views import APIView
@@ -25,7 +27,7 @@ from workflow_manager.workflow_v2.models.workflow import Workflow
 from workflow_manager.workflow_v2.views import WorkflowViewSet
 
 from permissions.membership_serializers import AddOwnerSerializer
-from permissions.permission import IsParentToolOwner
+from prompt_studio.permission import ParentToolAccess
 from permissions.tests.base import (
     RESOURCE_SPECS,
     CoOwnerOrgTestMixin,
@@ -323,10 +325,12 @@ class OwnerNotificationWiringTests(CoOwnerOrgTestMixin, TestCase):
         self.assertIn(self.coowner.pk, owner_ids)
 
 
-class IsParentToolOwnerTests(CoOwnerOrgTestMixin, TestCase):
-    """``IsParentToolOwner`` inherits access from the parent ``CustomTool``
-    (owner/co-owner/admin/service-account allow; viewer/outsider deny) and falls
-    back to the object's own ``created_by`` when there is no parent tool.
+class ParentToolAccessTests(CoOwnerOrgTestMixin, TestCase):
+    """``ParentToolAccess`` inherits access from the parent ``CustomTool``.
+
+    A Prompt Studio project is shared for collaboration, so a viewer manages
+    its profiles alongside its owner; only an outsider is refused. Falls back
+    to the object's own ``created_by`` when there is no parent tool.
     """
 
     def setUp(self) -> None:
@@ -346,7 +350,7 @@ class IsParentToolOwnerTests(CoOwnerOrgTestMixin, TestCase):
     def _perm(self, user: User, obj: object) -> bool:
         request = APIRequestFactory().get("/")
         request.user = user
-        return IsParentToolOwner().has_object_permission(request, APIView(), obj)
+        return ParentToolAccess().has_object_permission(request, APIView(), obj)
 
     def test_parent_tool_owners_admin_service_account_allowed(self) -> None:
         child = SimpleNamespace(prompt_studio_tool=self.tool)
@@ -356,16 +360,38 @@ class IsParentToolOwnerTests(CoOwnerOrgTestMixin, TestCase):
         self.assertTrue(self._perm(self.admin, child))
         self.assertTrue(self._perm(svc, child))
 
-    def test_parent_tool_viewer_and_outsider_denied(self) -> None:
+    def test_parent_tool_viewer_allowed_outsider_denied(self) -> None:
+        # The collaboration rule: a shared viewer manages the project's
+        # profiles; someone with no access to the project does not.
         child = SimpleNamespace(prompt_studio_tool=self.tool)
-        self.assertFalse(self._perm(self.viewer, child))
+        self.assertTrue(self._perm(self.viewer, child))
         self.assertFalse(self._perm(self.outsider, child))
 
-    def test_null_parent_falls_back_to_object_owner(self) -> None:
+    def test_null_parent_falls_back_to_object_creator(self) -> None:
         # No parent tool → access derives from the object's own ``created_by``.
-        orphan = SimpleNamespace(prompt_studio_tool=None, created_by=self.owner)
+        orphan = SimpleNamespace(
+            prompt_studio_tool=None, created_by_id=self.owner.pk
+        )
         self.assertTrue(self._perm(self.owner, orphan))
         self.assertFalse(self._perm(self.coowner, orphan))
+
+    def test_create_resolves_the_parent_from_the_payload(self) -> None:
+        # ``create`` is collection-level, so DRF never calls get_object();
+        # the parent is read from the request body instead.
+        def can_create(user: User, tool_id: object) -> bool:
+            # A DRF Request, not the raw WSGI one: the gate reads ``.data``.
+            raw = APIRequestFactory().post(
+                "/", {"prompt_studio_tool": str(tool_id)}, format="json"
+            )
+            request = DRFRequest(raw, parsers=[JSONParser()])
+            request.user = user
+            return ParentToolAccess().has_permission(
+                request, SimpleNamespace(action="create")
+            )
+
+        self.assertTrue(can_create(self.owner, self.tool.tool_id))
+        self.assertTrue(can_create(self.viewer, self.tool.tool_id))
+        self.assertFalse(can_create(self.outsider, self.tool.tool_id))
 
 
 class AdapterShareOwnerExemptionTests(CoOwnerOrgTestMixin, TestCase):
@@ -510,9 +536,13 @@ class CreateEndpointGrantsCreatorOwnershipTests(CoOwnerOrgTestMixin, TestCase):
         self.assertIn(created, model.objects.for_user(self.coowner))
 
     def _build_workflow_fixture(self) -> Workflow:
-        return Workflow.objects.create(
+        workflow = Workflow.objects.create(
             workflow_name="wf-parent", organization=self.org, created_by=self.coowner
         )
+        # The real create path grants this row, and ``created_by`` is
+        # audit-only -- without it the creator does not own the parent.
+        workflow.memberships.create(user=self.coowner, role=ResourceRole.OWNER)
+        return workflow
 
     @pytest.mark.critical_path("co-owner-manage")
     def test_workflow_create_grants_creator_ownership(self) -> None:

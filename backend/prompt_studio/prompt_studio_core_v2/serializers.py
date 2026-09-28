@@ -5,8 +5,9 @@ from account_v2.serializer import UserSerializer
 from adapter_processor_v2.models import AdapterInstance
 from django.core.exceptions import ObjectDoesNotExist
 from rest_framework import serializers
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import PermissionDenied, ValidationError
 from tenant_account_v2.sharing_helpers import (
+    is_org_admin,
     serialize_group_refs,
     serialize_owner_refs,
 )
@@ -99,6 +100,9 @@ class CustomToolSerializer(IntegrityErrorMixin, AuditSerializer):
     # groups axis is read-only here (UN-2977 plan §B). Direct viewers live in
     # the membership table (UN-2202) and surface via the share-modal serializer.
     shared_groups = serializers.PrimaryKeyRelatedField(many=True, read_only=True)
+    # The editor needs to know whether to offer edit controls at all; the list
+    # serializer already carries this.
+    is_owner = serializers.SerializerMethodField()
 
     class Meta:
         model = CustomTool
@@ -114,6 +118,10 @@ class CustomToolSerializer(IntegrityErrorMixin, AuditSerializer):
             "output",
         )
 
+    def get_is_owner(self, instance: CustomTool) -> bool:
+        request = self.context.get("request")
+        return instance.is_owner(request.user) if request else False
+
     unique_error_message_map: dict[str, dict[str, str]] = {
         "unique_tool_name": {
             "field": "tool_name",
@@ -124,7 +132,19 @@ class CustomToolSerializer(IntegrityErrorMixin, AuditSerializer):
     }
 
     def validate_tool_name(self, value: str) -> str:
-        return validate_name_field(value, field_name="Tool name")
+        value = validate_name_field(value, field_name="Tool name")
+        # Settings and the project's name share this endpoint, and settings are
+        # collaborative -- so the rename is gated here rather than on the view
+        # (UN-2868).
+        request = self.context.get("request")
+        if not self.instance or not request or value == self.instance.tool_name:
+            return value
+        user = request.user
+        if getattr(user, "is_service_account", False):
+            return value
+        if not self.instance.is_owner(user) and not is_org_admin(user):
+            raise PermissionDenied("Only the owner can rename this project.")
+        return value
 
     def validate_summarize_llm_adapter(self, value):
         """Validate that the adapter type is LLM and is accessible to the user."""

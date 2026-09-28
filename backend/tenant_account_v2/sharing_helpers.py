@@ -194,7 +194,10 @@ def resources_visible_via_groups(
 
 
 def resources_visible_via_memberships(
-    model: type[Model], user: Any, organization: Organization | None = None
+    model: type[Model],
+    user: Any,
+    organization: Organization | None = None,
+    role: str | None = None,
 ) -> QuerySet[Any]:
     """Subquery of ``model`` PKs on which ``user`` holds a ``ResourceMembership``
     (OWNER or VIEWER), scoped to ``organization``.
@@ -211,6 +214,9 @@ def resources_visible_via_memberships(
     org-scoped. Falls back to ``UserContext`` so request paths need no change;
     pass ``organization`` explicitly on worker/management paths where
     ``UserContext`` is empty.
+
+    Pass ``role`` to narrow to one role -- OWNER for "may mutate", where a
+    VIEWER row must not count.
     """
     organization = organization or UserContext.get_organization()
     qs = ResourceMembership.objects.filter(
@@ -219,6 +225,8 @@ def resources_visible_via_memberships(
     )
     if organization is not None:
         qs = qs.filter(organization=organization)
+    if role is not None:
+        qs = qs.filter(role=role)
     return _object_id_subquery(qs, model)
 
 

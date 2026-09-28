@@ -7,8 +7,11 @@ from email.utils import parsedate_to_datetime
 from typing import Any
 
 from botocore.exceptions import ClientError
+from fsspec import AbstractFileSystem
+from fsspec.implementations.dirfs import DirFileSystem
 from s3fs.core import S3FileSystem
 
+from unstract.connectors.exceptions import ConnectorError
 from unstract.connectors.filesystems.unstract_file_system import UnstractFileSystem
 
 from .exceptions import (
@@ -19,6 +22,37 @@ from .exceptions import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+class _BucketScopedFileSystem(DirFileSystem):
+    """`DirFileSystem.walk()` relpaths the directory string it yields, but
+    not the `name` field inside each file/dir entry's own metadata dict —
+    those still carry the wrapped fs's raw, bucket-prefixed key. `ls()`
+    already fixes every entry; `walk()` doesn't. Fix it here so discovery
+    (which walks) and browsing (which lists) agree (UN-3487).
+    """
+
+    def _relpath_entries(
+        self, entries: dict[str, Any] | list[str]
+    ) -> dict[str, Any] | list[str]:
+        # detail=False (fsspec's own default) yields bare basenames with
+        # nothing to fix. detail=True yields a dict already keyed by bare
+        # basename — only each entry's own `name` field is bucket-qualified.
+        if not isinstance(entries, dict):
+            return entries
+        return {
+            name: {**info, "name": self._relpath(info["name"])}
+            for name, info in entries.items()
+        }
+
+    def walk(self, path: str, *args: Any, **kwargs: Any) -> Any:
+        for root, dirs, files in super().walk(path, *args, **kwargs):
+            yield root, self._relpath_entries(dirs), self._relpath_entries(files)
+
+    async def _walk(self, path: str, *args: Any, **kwargs: Any) -> Any:
+        async for root, dirs, files in super()._walk(path, *args, **kwargs):
+            yield root, self._relpath_entries(dirs), self._relpath_entries(files)
+
 
 # Cap concurrent per-bucket probes to avoid S3 503 SlowDown on large accounts.
 _MAX_CONCURRENT_BUCKET_PROBES = 16
@@ -138,12 +172,21 @@ class MinioFS(UnstractFileSystem):
     # known to have full access to every bucket they list, so the per-bucket
     # access probe in _AccessFilteredS3FileSystem can be skipped.
     _FS_CLASS: type[S3FileSystem] = _AccessFilteredS3FileSystem
+    # Override to False in a subclass whose settings restrict access some
+    # other way (e.g. UCS, which uses its own `path` setting instead).
+    _REQUIRES_BUCKET: bool = True
 
     def __init__(self, settings: dict[str, Any]):
         super().__init__("MinioFS/S3")
         key = (settings.get("key") or "").strip()
         secret = (settings.get("secret") or "").strip()
         endpoint_url = (settings.get("endpoint_url") or "").strip()
+        self.bucket = (settings.get("bucket") or "").strip()
+        if self._REQUIRES_BUCKET and not self.bucket:
+            raise ConnectorError(
+                "A bucket must be configured for this connector.",
+                treat_as_user_message=True,
+            )
         client_kwargs = {}
         if "region_name" in settings and settings["region_name"] != "":
             client_kwargs = {"region_name": settings["region_name"]}
@@ -324,7 +367,16 @@ class MinioFS(UnstractFileSystem):
         )
         return None
 
-    def get_fsspec_fs(self) -> S3FileSystem:
+    def get_fsspec_fs(self) -> AbstractFileSystem:
+        """Return the filesystem scoped to this connector's bucket.
+
+        When a bucket is configured, every operation (list, read, write,
+        `test_credentials`) is confined to it via `_BucketScopedFileSystem` —
+        the underlying credentials may see more, but this connector never
+        will.
+        """
+        if self.bucket:
+            return _BucketScopedFileSystem(path=self.bucket, fs=self.s3)
         return self.s3
 
     def test_credentials(self) -> bool:

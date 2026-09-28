@@ -11,6 +11,7 @@ from deprecated import deprecated
 from django.conf import settings
 from django.http import StreamingHttpResponse
 from fsspec import AbstractFileSystem
+from fsspec.implementations.dirfs import DirFileSystem
 from pydrive2.files import ApiRequestError
 
 from file_management.exceptions import (
@@ -31,6 +32,27 @@ from unstract.connectors.filesystems.unstract_file_system import UnstractFileSys
 logger = logging.getLogger(__name__)
 
 
+def _default_root_path(
+    file_system: UnstractFileSystem, fs: AbstractFileSystem, path: str
+) -> str | None:
+    """Some connectors restrict browsing to their own default root (e.g. a
+    configured `path`) when the caller didn't ask for a specific one.
+
+    `DirFileSystem.path` (used by a bucket-scoped MinioFS) is excluded: it's
+    the wrapped bucket prefix, not a default root, and every operation
+    already resolves relative to it — applying it again here would
+    double-prefix the path (UN-3487).
+    """
+    if not path or path == "/":
+        try:
+            if file_system.path:
+                return file_system.path
+        except AttributeError:
+            if hasattr(fs, "path") and fs.path and not isinstance(fs, DirFileSystem):
+                return fs.path
+    return None
+
+
 class FileManagerHelper:
     @staticmethod
     def get_file_system(connector: ConnectorInstance) -> UnstractFileSystem:
@@ -47,14 +69,8 @@ class FileManagerHelper:
     @staticmethod
     def list_files(file_system: UnstractFileSystem, path: str) -> list[FileInformation]:
         fs = file_system.get_fsspec_fs()
-        file_path = f"{path}"
-        # TODO: Add below logic by checking each connector?
         try:
-            if file_system.path and (not path or path == "/"):
-                file_path = file_system.path
-        except AttributeError:
-            if hasattr(fs, "path") and fs.path and (not path or path == "/"):
-                file_path = fs.path
+            file_path = _default_root_path(file_system, fs, path) or path
         except Exception:
             logger.error(f"Missing path Atribute in {fs}")
             raise MissingConnectorParams()
@@ -135,13 +151,8 @@ class FileManagerHelper:
     ) -> None:
         fs = file_system.get_fsspec_fs()
 
-        file_path = f"{path}"
-        try:
-            if file_system.path and (not path or path == "/"):
-                file_path = f"{file_system.path}/"
-        except AttributeError:
-            if fs.path and (not path or path == "/"):
-                file_path = f"{fs.path}/"
+        root = _default_root_path(file_system, fs, path)
+        file_path = f"{root}/" if root else path
 
         file_path = file_path + "/" if not file_path.endswith("/") else file_path
 

@@ -2,6 +2,7 @@ import logging
 from typing import Any
 
 from connector_v2.models import ConnectorInstance
+from django.db.models import QuerySet
 from django.http import HttpRequest
 from oauth2client.client import HttpAccessTokenRefreshError
 from rest_framework import serializers, viewsets
@@ -30,8 +31,22 @@ class FileManagementViewSet(viewsets.ModelViewSet):
 
     versioning_class = URLPathVersioning
 
-    def get_queryset(self):
-        return ConnectorInstance.objects.all()
+    def get_queryset(self) -> QuerySet[ConnectorInstance]:
+        # Org-scoped alone isn't enough: this must also respect ownership /
+        # sharing, or any org member could browse another user's connector
+        # by guessing its id.
+        return ConnectorInstance.objects.for_user(self.request.user)
+
+    def _get_connector_or_404(self, id: str) -> ConnectorInstance:
+        """Resolve a connector within the caller's own access scope.
+
+        Raises the same not-found error whether the id is unknown or simply
+        outside `get_queryset()` — the caller can't tell those apart.
+        """
+        try:
+            return self.get_queryset().get(pk=id)
+        except ConnectorInstance.DoesNotExist:
+            raise ConnectorInstanceNotFound()
 
     def get_serializer_class(self) -> serializers.Serializer:
         if self.action == "upload":
@@ -50,13 +65,11 @@ class FileManagementViewSet(viewsets.ModelViewSet):
         id: str = serializer.validated_data.get("connector_id")
         path: str = serializer.validated_data.get("path")
         try:
-            connector_instance: ConnectorInstance = ConnectorInstance.objects.get(pk=id)
+            connector_instance = self._get_connector_or_404(id)
             file_system = FileManagerHelper.get_file_system(connector_instance)
             files = FileManagerHelper.list_files(file_system, path)
             serializer = FileInfoSerializer(files, many=True)
             return Response(serializer.data)
-        except ConnectorInstance.DoesNotExist:
-            raise ConnectorInstanceNotFound()
         except HttpAccessTokenRefreshError as error:
             logger.error(
                 f"HttpAccessTokenRefreshError thrown from file list, error {error}"
@@ -72,7 +85,7 @@ class FileManagementViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         id: str = serializer.validated_data.get("connector_id")
         path: str = serializer.validated_data.get("path")
-        connector_instance: ConnectorInstance = ConnectorInstance.objects.get(pk=id)
+        connector_instance = self._get_connector_or_404(id)
         file_system = FileManagerHelper.get_file_system(connector_instance)
         return FileManagerHelper.download_file(file_system, path)
 
@@ -84,7 +97,7 @@ class FileManagementViewSet(viewsets.ModelViewSet):
 
         path: str = serializer.validated_data.get("path")
         uploaded_files: Any = serializer.validated_data.get("file")
-        connector_instance: ConnectorInstance = ConnectorInstance.objects.get(pk=id)
+        connector_instance = self._get_connector_or_404(id)
         file_system = FileManagerHelper.get_file_system(connector_instance)
 
         for uploaded_file in uploaded_files:

@@ -173,6 +173,7 @@ class AdapterListSerializer(BaseAdapterSerializer):
             "created_at",
             "modified_at",
             "description",
+            "is_friction_less",
         )  # type: ignore
 
     def to_representation(self, instance: AdapterInstance) -> dict[str, str]:

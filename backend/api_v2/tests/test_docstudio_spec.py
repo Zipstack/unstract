@@ -35,7 +35,10 @@ from api_v2.management.commands.generate_docstudio_spec import (
     SpecGenerationFailed,
     render_spec,
 )
-from api_v2.serializers import APIExecutionResponseSerializer
+from api_v2.serializers import (
+    APIExecutionResponseSerializer,
+    ExecutionRequestSerializer,
+)
 
 #: Keys under a path item that are operations. The rest -- `parameters`,
 #: `summary`, vendor extensions -- describe the path, not a call.
@@ -406,6 +409,19 @@ def test_documents_are_uploaded_as_binary_not_as_urls() -> None:
     files = _schema("ExecuteRequest")["properties"]["files"]
 
     assert files["items"] == {"type": "string", "format": "binary"}
+
+
+def test_the_internal_execute_option_is_withdrawn_but_still_accepted() -> None:
+    assert "use_file_history" not in _schema("ExecuteRequest")["properties"]
+
+    request = ExecutionRequestSerializer(
+        data={
+            "use_file_history": True,
+            "presigned_urls": ["https://bucket.s3.amazonaws.com/doc.pdf"],
+        }
+    )
+    assert request.is_valid(), request.errors
+    assert request.validated_data["use_file_history"] is True
 
 
 def test_the_result_a_pending_execution_omits_is_documented_nullable() -> None:

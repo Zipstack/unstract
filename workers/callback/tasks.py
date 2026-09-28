@@ -365,7 +365,7 @@ def _update_execution_status_unified(
     aggregated_results: dict[str, Any],
     organization_id: str,
     error_message: str | None = None,
-    is_pg: bool = False,
+    raise_on_failure: bool = True,
 ) -> dict[str, Any]:
     """Unified workflow execution status update for all callback types.
 
@@ -379,6 +379,9 @@ def _update_execution_status_unified(
         aggregated_results: Aggregated file processing results
         organization_id: Organization context
         error_message: Optional error message for failed executions
+        raise_on_failure: Re-raise a failed status write (the default) so PG's
+            at-least-once redelivery retries it. Pass ``False`` only where the
+            caller is already handling a failure and a raise would mask it.
 
     Returns:
         Execution update result dictionary
@@ -420,17 +423,16 @@ def _update_execution_status_unified(
         logger.error(
             f"Failed to update execution status for {execution_id}: {e}", exc_info=True
         )
-        # On the PG path this finalization write is the single terminalizing step.
-        # Swallowing a failure here strands the execution in EXECUTING forever: the
-        # consumer acks/deletes the message, the barrier row is already gone, and
-        # the reaper has no handle — every safety net is silently defeated. Re-raise
-        # so PG's at-least-once vt-redelivery retries the write and, if it keeps
-        # failing, poison-drops the batch to a terminal ERROR. A post-success
-        # redelivery is idempotency-guarded by _callback_already_ran (skips once
-        # COMPLETED; ERROR/STOPPED are intentionally re-run, so a failed-write
-        # ERROR execution simply retries the write). The Celery path keeps the
-        # legacy swallow (its chord retry covers it) so this is a PG-only change.
-        if is_pg:
+        # This finalization write is the single terminalizing step. Swallowing a
+        # failure here strands the execution in EXECUTING forever: the consumer
+        # acks/deletes the message, the barrier row is already gone, and the reaper
+        # has no handle — every safety net is silently defeated. Re-raise so PG's
+        # at-least-once vt-redelivery retries the write and, if it keeps failing,
+        # poison-drops the batch to a terminal ERROR. A post-success redelivery is
+        # idempotency-guarded by _callback_already_ran (skips once COMPLETED;
+        # ERROR/STOPPED are intentionally re-run, so a failed-write ERROR execution
+        # simply retries the write).
+        if raise_on_failure:
             raise
         # Return error result instead of re-raising to maintain callback flow
         return {
@@ -1430,9 +1432,10 @@ def _process_batch_callback_core(
     # Initialize performance optimizations
     _initialize_performance_managers()
 
-    # PG at-least-once duplicate guard (see _callback_already_ran).
-    # Popped BEFORE parameter extraction so the marker never flows into the context.
-    is_pg = bool(kwargs.pop(PG_TRANSPORT_CALLBACK_KWARG, False))
+    # Wire-compat only: PgBarrier stamps this marker on every callback it fires.
+    # Nothing branches on it since UN-4078 (PG is the only transport), but it is
+    # popped BEFORE parameter extraction so it never flows into the context.
+    kwargs.pop(PG_TRANSPORT_CALLBACK_KWARG, None)
 
     # Extract and validate all parameters using single source of truth
     context = _extract_callback_parameters(task_instance, results, kwargs)
@@ -1460,7 +1463,7 @@ def _process_batch_callback_core(
             # completed — don't re-fire webhooks / re-count billing. Reuses the
             # status from _extract_callback_parameters' fetch (no extra call).
             # (Returns through the outer finally, which closes the api_client.)
-            if is_pg and _callback_already_ran(context.execution_status):
+            if _callback_already_ran(context.execution_status):
                 logger.warning(
                     f"PG callback: execution {context.execution_id} already COMPLETED "
                     f"— a previous callback finalized it; skipping duplicate side "
@@ -1486,7 +1489,6 @@ def _process_batch_callback_core(
                     aggregated_results=aggregated_results,
                     organization_id=context.organization_id,
                     error_message=None,
-                    is_pg=is_pg,
                 )
                 # Handle pipeline updates using unified function (non-API deployment)
                 pipeline_result = _handle_pipeline_updates_unified(
@@ -1566,6 +1568,9 @@ def _process_batch_callback_core(
                         {"error": str(e)[:500]},
                         context.organization_id,
                         error_message=str(e)[:500],
+                        # Already handling a failure: a raise here would replace
+                        # the original error with the status-write error.
+                        raise_on_failure=False,
                     )
                     logger.info(
                         f"Marked execution {context.execution_id} as failed using unified function"
@@ -1643,8 +1648,9 @@ def process_batch_callback_api(
     execution_id = kwargs.get("execution_id")
     pipeline_id = kwargs.get("pipeline_id")
     organization_id = kwargs.get("organization_id")
-    # PG at-least-once duplicate guard marker (see _callback_already_ran).
-    is_pg = bool(kwargs.pop(PG_TRANSPORT_CALLBACK_KWARG, False))
+    # Wire-compat only: stamped by PgBarrier on every callback it fires. Nothing
+    # branches on it since UN-4078; popped so it never flows into the context.
+    kwargs.pop(PG_TRANSPORT_CALLBACK_KWARG, None)
 
     if not execution_id:
         raise ValueError("execution_id is required in kwargs")
@@ -1677,7 +1683,7 @@ def process_batch_callback_api(
         # prior delivery already completed must skip its side effects. Reuses the
         # status just fetched — no extra round-trip. (Returns through the finally
         # below, which closes the api_client.)
-        if is_pg and _callback_already_ran(workflow_execution.get("status")):
+        if _callback_already_ran(workflow_execution.get("status")):
             logger.warning(
                 f"PG API callback: execution {execution_id} already COMPLETED — a "
                 f"previous callback finalized it; skipping duplicate side effects "
@@ -1746,7 +1752,6 @@ def process_batch_callback_api(
                     final_status=execution_status,
                     aggregated_results=aggregated_results,
                     organization_id=organization_id,
-                    is_pg=is_pg,
                 )
 
                 # Create minimal context for unified pipeline handling

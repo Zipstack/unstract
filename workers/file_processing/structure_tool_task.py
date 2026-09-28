@@ -1,17 +1,16 @@
-"""Structure tool Celery task — Phase 3 of executor migration.
+"""Structure tool task — Phase 3 of executor migration.
 
-Replaces the Docker-container-based StructureTool.run() with a Celery
-task that runs in the file_processing worker. Instead of PromptTool
-HTTP calls to prompt-service, it uses ExecutionDispatcher to send
-operations to the executor worker via Celery.
+Replaces the Docker-container-based StructureTool.run() with a task that runs in
+the file_processing worker. Instead of PromptTool HTTP calls to prompt-service,
+it dispatches operations to the executor worker through the executor RPC.
 
 Before (Docker-based):
     File Processing Worker → WorkflowExecutionService → ToolSandbox
     → Docker container → StructureTool.run() → PromptTool (HTTP) → prompt-service
 
-After (Celery-based):
+After:
     File Processing Worker → WorkerWorkflowExecutionService
-    → execute_structure_tool task → ExecutionDispatcher
+    → execute_structure_tool task → executor RPC (PG queue)
     → executor worker → LegacyExecutor
 """
 
@@ -276,10 +275,10 @@ def _merge_agentic_metrics(
 
 @worker_task(bind=True, name=str(TaskName.EXECUTE_STRUCTURE_TOOL))
 def execute_structure_tool(self, params: dict) -> dict:
-    """Execute structure tool as a Celery task.
+    """Execute structure tool as a task.
 
     Replicates StructureTool.run() from tools/structure/src/main.py
-    but uses ExecutionDispatcher instead of PromptTool HTTP calls.
+    but uses the executor RPC instead of PromptTool HTTP calls.
 
     Args:
         params: Dict with keys described in the Phase 3 plan.

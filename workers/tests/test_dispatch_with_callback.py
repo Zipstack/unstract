@@ -16,9 +16,11 @@ from executor.executors.constants import (
     PromptServiceConstants as PSKeys,
 )
 from unstract.sdk1.execution.context import ExecutionContext, Operation
-from unstract.sdk1.execution.dispatcher import ExecutionDispatcher
 from unstract.sdk1.execution.registry import ExecutorRegistry
 from unstract.sdk1.execution.result import ExecutionResult
+from unstract.workflow_execution.executor_rpc import PgExecutionDispatcher
+
+from .executor_dispatch_fakes import FakeExecutorTransport, callback_signature
 
 # ---------------------------------------------------------------------------
 # Patch targets
@@ -176,40 +178,43 @@ def _make_output(name="field_a", prompt="What is the revenue?", **overrides):
 
 
 class TestDispatchWithCallback:
-    """Verify dispatch_with_callback passes link/link_error to send_task."""
+    """Callbacks ride the enqueue payload as continuations, not Celery links.
 
-    def test_callback_kwargs_passed(self):
-        mock_app = MagicMock()
-        mock_app.send_task.return_value = MagicMock(id="task-123")
-        dispatcher = ExecutionDispatcher(celery_app=mock_app)
+    PG has no broker mechanism to fire ``link`` / ``link_error``, so the executor
+    consumer self-chains instead: the signatures are translated to serialisable
+    ``ContinuationSpec``s and carried in the message. These assertions therefore
+    check the *payload*, where the old suite checked ``send_task`` kwargs.
+    """
 
+    def _dispatcher(self):
+        transport = FakeExecutorTransport(result={"success": True, "data": {}})
+        return PgExecutionDispatcher(transport), transport
+
+    def test_callback_continuations_and_task_id_passed(self):
+        dispatcher, transport = self._dispatcher()
         ctx = ExecutionContext(
             executor_name="legacy",
             operation="answer_prompt",
             run_id="run-cb-1",
             execution_source="ide",
         )
-        on_success = MagicMock(name="success_sig")
-        on_error = MagicMock(name="error_sig")
-
         result = dispatcher.dispatch_with_callback(
             ctx,
-            on_success=on_success,
-            on_error=on_error,
+            on_success=callback_signature("cb.success"),
+            on_error=callback_signature("cb.error"),
             task_id="pre-generated-id",
         )
 
-        call_kwargs = mock_app.send_task.call_args
-        assert call_kwargs.kwargs["link"] is on_success
-        assert call_kwargs.kwargs["link_error"] is on_error
-        assert call_kwargs.kwargs["task_id"] == "pre-generated-id"
-        assert result.id == "task-123"
+        call = transport.only_call
+        assert call["on_success"]["task_name"] == "cb.success"
+        assert call["on_error"]["task_name"] == "cb.error"
+        assert call["task_id"] == "pre-generated-id"
+        # The handle echoes the caller's task_id — on Celery this came back off
+        # the AsyncResult, so a caller reading ``.id`` is unaffected by the move.
+        assert result.id == "pre-generated-id"
 
-    def test_no_callbacks_omits_link_kwargs(self):
-        mock_app = MagicMock()
-        mock_app.send_task.return_value = MagicMock(id="task-456")
-        dispatcher = ExecutionDispatcher(celery_app=mock_app)
-
+    def test_no_callbacks_leaves_continuations_unset(self):
+        dispatcher, transport = self._dispatcher()
         ctx = ExecutionContext(
             executor_name="legacy",
             operation="extract",
@@ -218,25 +223,13 @@ class TestDispatchWithCallback:
         )
         dispatcher.dispatch_with_callback(ctx)
 
-        call_kwargs = mock_app.send_task.call_args
-        assert "link" not in call_kwargs.kwargs
-        assert "link_error" not in call_kwargs.kwargs
+        call = transport.only_call
+        assert call["on_success"] is None
+        assert call["on_error"] is None
 
-    def test_no_app_raises(self):
-        dispatcher = ExecutionDispatcher(celery_app=None)
-        ctx = ExecutionContext(
-            executor_name="legacy",
-            operation="extract",
-            run_id="run-cb-3",
-            execution_source="tool",
-        )
-        with pytest.raises(ValueError, match="No Celery app"):
-            dispatcher.dispatch_with_callback(ctx)
-
-
-# ---------------------------------------------------------------------------
-# 5C: ide_index compound operation through eager chain
-# ---------------------------------------------------------------------------
+    # ``test_no_app_raises`` is gone with the Celery dispatcher: PG dispatch is
+    # transport-injected, so there is no "no app configured" state to raise on.
+    # The enqueue-failure contract it stood in for lives in test_executor_rpc.py.
 
 
 class TestIdeIndexEagerChain:
@@ -962,18 +955,14 @@ class TestOperationEnum:
 
 
 class TestDispatcherModes:
-    """Verify all three dispatch modes work."""
+    """Verify all three dispatch modes work on the PG transport."""
 
     def test_dispatch_sync(self):
-        """dispatch() calls send_task and .get()."""
-        mock_app = MagicMock()
-        async_result = MagicMock()
-        async_result.get.return_value = ExecutionResult(
-            success=True, data={"test": 1}
-        ).to_dict()
-        mock_app.send_task.return_value = async_result
-
-        dispatcher = ExecutionDispatcher(celery_app=mock_app)
+        """dispatch() enqueues once and blocks for the result row."""
+        transport = FakeExecutorTransport(
+            result=ExecutionResult(success=True, data={"test": 1}).to_dict()
+        )
+        dispatcher = PgExecutionDispatcher(transport)
         ctx = ExecutionContext(
             executor_name="legacy",
             operation="extract",
@@ -983,15 +972,13 @@ class TestDispatcherModes:
         result = dispatcher.dispatch(ctx, timeout=10)
 
         assert result.success
-        mock_app.send_task.assert_called_once()
-        async_result.get.assert_called_once()
+        assert len(transport.enqueue_calls) == 1
+        assert transport.wait_timeouts == [10]
 
     def test_dispatch_async(self):
-        """dispatch_async() returns task_id without blocking."""
-        mock_app = MagicMock()
-        mock_app.send_task.return_value = MagicMock(id="async-id")
-
-        dispatcher = ExecutionDispatcher(celery_app=mock_app)
+        """dispatch_async() returns the task id it enqueued, without blocking."""
+        transport = FakeExecutorTransport()
+        dispatcher = PgExecutionDispatcher(transport)
         ctx = ExecutionContext(
             executor_name="legacy",
             operation="extract",
@@ -1000,5 +987,8 @@ class TestDispatcherModes:
         )
         task_id = dispatcher.dispatch_async(ctx)
 
-        assert task_id == "async-id"
-        mock_app.send_task.assert_called_once()
+        # PG mints the id itself (the Celery path read it off the AsyncResult),
+        # so assert it round-trips onto the message rather than pinning a literal.
+        assert task_id
+        assert transport.only_call["task_id"] == task_id
+        assert transport.wait_timeouts == []

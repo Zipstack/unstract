@@ -15,6 +15,10 @@ class UnstractCloudStorage(MinioFS):
     # per-bucket access probe that MinioFS runs on its fsspec filesystem.
     # The probe adds latency and could hide a bucket on a transient S3 error.
     _FS_CLASS = S3FileSystem
+    # UCS restricts access via its own `path` setting, not `bucket` — its
+    # schema never carries `bucket`, so MinioFS's required-bucket check
+    # doesn't apply here.
+    _REQUIRES_BUCKET = False
 
     @staticmethod
     def get_id() -> str:

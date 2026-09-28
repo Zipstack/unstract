@@ -340,7 +340,9 @@ class TestcontainersRuntime:
             self._stack.append(redis)
             rabbit = RabbitMqContainer("rabbitmq:3.13-management").start()
             self._stack.append(rabbit)
-            minio = MinioContainer("minio/minio:latest").start()
+            minio = MinioContainer(
+                "unstract/minio:RELEASE.2026-09-22T19-25-18Z@sha256:bd014394a80898e68c149f2311fdf8d5a2c2f3bb2c33b9327ae6d02b4b065ae1"
+            ).start()
             self._stack.append(minio)
 
             return PlatformEndpoints.from_env(

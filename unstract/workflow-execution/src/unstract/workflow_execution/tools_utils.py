@@ -240,6 +240,23 @@ class ToolsUtils:
             ToolRV.REDIS_SENTINEL_MODE: self.redis_sentinel_mode or "False",
             ToolRV.REDIS_SENTINEL_MASTER_NAME: self.redis_sentinel_master_name
             or "mymaster",
+            # UN-4123: only the keys actually set, so an unset var leaves the tool's
+            # environment unchanged instead of gaining an empty string that
+            # os.getenv() would read as configured.
+            **{
+                name: os.environ[name]
+                for name in (
+                    ToolRV.REDIS_DB,
+                    ToolRV.REDIS_SSL,
+                    ToolRV.REDIS_SSL_CERT_REQS,
+                    ToolRV.REDIS_SSL_CA_CERTS,
+                    ToolRV.REDIS_SSL_CHECK_HOSTNAME,
+                    ToolRV.REDIS_URL,
+                    ToolRV.REDIS_HEALTH_CHECK_INTERVAL,
+                    ToolRV.METRICS_REDIS_DB,
+                )
+                if os.environ.get(name)
+            },
         }
         # For async LLM Whisperer extraction
         if self.llmw_poll_interval:

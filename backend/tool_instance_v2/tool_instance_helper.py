@@ -523,6 +523,11 @@ class ToolInstanceHelper:
     ) -> None:
         adapter_instances = AdapterInstance.objects.filter(id__in=adapter_ids).all()
         is_admin = OrganizationMemberService.is_user_organization_admin(user)
+        # A platform key's service account is trusted across its own org, the
+        # same bypass every other access surface applies. Ownership no longer
+        # names it (UN-3853), so without this a key-provisioned workflow would
+        # fail its own execution.
+        is_service_account = getattr(user, "is_service_account", False)
 
         for adapter_instance in adapter_instances:
             if not adapter_instance.is_usable:
@@ -536,6 +541,7 @@ class ToolInstanceHelper:
 
             if not (
                 is_admin
+                or is_service_account
                 or adapter_instance.shared_to_org
                 or _is_resource_owner(user, adapter_instance)
                 or _is_resource_viewer(user, adapter_instance)

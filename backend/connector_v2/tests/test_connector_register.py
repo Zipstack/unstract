@@ -24,6 +24,7 @@ from utils.user_context import UserContext
 from connector_v2.models import ConnectorInstance
 
 MINIO_CONNECTOR_ID = "minio|c799f6e3-2b57-434e-aaac-b5daa415da19"
+_BUCKET = "connector-register-test"
 
 pytestmark = pytest.mark.skipif(
     not all(
@@ -45,12 +46,28 @@ def _credentials(secret: str | None = None) -> dict:
         "secret": secret or os.environ["MINIO_SECRET_ACCESS_KEY"],
         "endpoint_url": os.environ["MINIO_ENDPOINT_URL"],
         "region_name": "",
+        "bucket": _BUCKET,
         "path": "/",
     }
 
 
+def _ensure_bucket_exists() -> None:
+    # UN-3487: MinioFS now requires a bucket, and `test_credentials` probes
+    # it directly — it must actually exist in the rig's MinIO.
+    from s3fs.core import S3FileSystem
+
+    fs = S3FileSystem(
+        key=os.environ["MINIO_ACCESS_KEY_ID"],
+        secret=os.environ["MINIO_SECRET_ACCESS_KEY"],
+        client_kwargs={"endpoint_url": os.environ["MINIO_ENDPOINT_URL"]},
+    )
+    if not fs.exists(_BUCKET):
+        fs.mkdir(_BUCKET)
+
+
 class ConnectorRegisterTest(TestCase):
     def setUp(self) -> None:
+        _ensure_bucket_exists()
         self.org = Organization.objects.create(
             name="org-conn", display_name="Org Conn", organization_id="org-conn"
         )
