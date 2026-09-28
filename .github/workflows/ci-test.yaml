@@ -102,6 +102,17 @@ jobs:
         # so this constrains nothing and resolves identically.
         run: uv tool install tox==4.64.1 --with tox-uv==1.36.0 --no-build
 
+      - name: Setup Bun
+        # The unit tier's `frontend` vitest group is required, and the rig runs
+        # it with `npx --no-install`, so node_modules must already be there.
+        if: matrix.tier == 'unit'
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+
+      - name: Install frontend dependencies
+        if: matrix.tier == 'unit'
+        working-directory: frontend
+        run: bun install --frozen-lockfile
+
       - name: Validate test manifests
         # Cheap pre-flight: catches manifest schema errors before tier runs.
         run: tox -e rig -- validate
