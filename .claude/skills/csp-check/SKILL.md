@@ -74,6 +74,11 @@ It loads one throwaway resource per (directive, host) pair and returns:
   host is allowed on the wrong directive.
 - `controlsNotReported` — must be empty. Non-empty means CSP is not being applied at all.
 
+A wildcard source is probed as `csp-probe.<suffix>`, because `https://*.example.com/…` is
+not a hostname and the request would die before CSP saw it. CSP is evaluated before DNS —
+which is why the `csp-control.invalid` controls get reported without resolving — so a
+`csp-probe.*` entry in `unexpected` means the deployment is not serving that wildcard.
+
 CSP evaluates **redirect targets**: a probe path that 404-redirects to another host
 (`https://hooks.stripe.com/` → `https://stripe.com`) reports the target, not a real gap.
 
@@ -115,6 +120,19 @@ value does not exist until the container starts.
 
 An operator who must serve branding from their own CDN has to add that host to `img-src`
 in `frontend/nginx.conf` and rebuild the frontend image.
+
+The same shape, not live today: `sessionDetails.picture` is an absolute avatar URL the
+auth backend may supply, rendered by `<Image src>` in `TopNavBar.jsx` and in the
+subscription-end plugin page. Neither `account_v2.AuthenticationService.get_user_info`
+nor the cloud Auth0 plugin's populates it — the Auth0 models parse `picture` from the IdP
+token but never carry it into `UserInfo` — so the initials branch always renders and no
+IdP host is in `img-src`. If that ever changes, the avatar is blocked, and because
+`picture` would then be truthy the component shows a broken-image placeholder rather than
+falling back to initials. Whoever fills that field adds the IdP host here.
+
+**The general rule:** any URL that arrives at runtime — deployment config, an API
+response, an IdP token — is invisible to checks 1 and 2 and only shows up in check 3, and
+then only if the account you drive the app with actually has the value set.
 
 ## Changing the policy
 

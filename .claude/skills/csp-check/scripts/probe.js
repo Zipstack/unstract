@@ -36,7 +36,13 @@ async () => {
     if (!kind) continue;
     for (const source of sources) {
       if (!source.startsWith("https://")) continue;
-      probes.push([kind, source.replace(/\/$/, "") + "/__csp_probe", false]);
+      // A wildcard source is not a hostname: https://*.example.com/__csp_probe never
+      // parses, so the request dies before CSP sees it and the probe looks clean whether
+      // or not the deployment serves the wildcard. Substituting a concrete label does
+      // test it -- CSP is evaluated before DNS, which is why the csp-control.invalid
+      // controls below get reported despite not resolving.
+      const url = source.replace("://*.", "://csp-probe.").replace(/\/$/, "");
+      probes.push([kind, url + "/__csp_probe", false]);
     }
   }
   for (const kind of ["img", "connect", "script"]) {
@@ -100,7 +106,8 @@ async () => {
 
   const reported = new Set(hits.map((h) => h.blocked));
   return {
-    // Hosts the policy is supposed to allow but the deployment still blocks.
+    // Hosts the policy is supposed to allow but the deployment still blocks. A
+    // csp-probe.* entry here means the deployment is not serving that wildcard source.
     unexpected: hits.filter((h) => !h.blocked.includes("csp-control.invalid")),
     // Empty means CSP is live and restrictive. Non-empty means it is not applied at all.
     controlsNotReported: expected.filter(
