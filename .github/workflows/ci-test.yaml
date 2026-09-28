@@ -111,7 +111,8 @@ jobs:
       - name: Install frontend dependencies
         if: matrix.tier == 'unit'
         working-directory: frontend
-        run: bun install --frozen-lockfile
+        # No dependency lifecycle scripts: vitest needs none of them.
+        run: bun install --frozen-lockfile --ignore-scripts
 
       - name: Validate test manifests
         # Cheap pre-flight: catches manifest schema errors before tier runs.

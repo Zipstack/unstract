@@ -6,15 +6,39 @@ on:
       - main
     paths:
       - "frontend/**"
+  # No `paths` on pull_request: an untriggered workflow reports no check run,
+  # so a required check would wait forever on non-frontend PRs. Filtering is
+  # done by the `changes` job instead — a job skipped via `if:` reports
+  # `skipped`, which satisfies a required check. Same pattern as ci-test.yaml.
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
     branches: [main]
-    paths:
-      - "frontend/**"
 
 jobs:
-  biome-ci:
+  changes:
     if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    outputs:
+      # Push is already path-filtered by its trigger, so force true off-PR.
+      frontend: ${{ github.event_name != 'pull_request' || steps.filter.outputs.frontend == 'true' }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+
+      - name: Check for frontend changes
+        if: github.event_name == 'pull_request'
+        uses: dorny/paths-filter@7b450fff21473bca461d4b92ce414b9d0420d706 # v4.0.2
+        id: filter
+        with:
+          filters: |
+            frontend:
+              - "frontend/**"
+
+  biome-ci:
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true'
     runs-on: ubuntu-latest
 
     steps:
@@ -72,7 +96,8 @@ jobs:
   # Vite/esbuild strip types without checking them, so a green build says
   # nothing about the .tsx files — tsc is the only thing that does.
   typecheck:
-    if: github.event.pull_request.draft == false
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true'
     runs-on: ubuntu-latest
 
     steps:
@@ -84,7 +109,9 @@ jobs:
 
       - name: Install dependencies
         working-directory: frontend
-        run: bun install --frozen-lockfile
+        # No dependency lifecycle scripts: nothing here needs them (tsc and
+        # esbuild ship per-platform binaries as optionalDependencies).
+        run: bun install --frozen-lockfile --ignore-scripts
 
       - name: Run TypeScript typecheck
         working-directory: frontend
@@ -93,7 +120,8 @@ jobs:
   # ci-test.yaml runs the same suite as the rig's `frontend` group, but its
   # tiers skip frontend-only PRs; this job is what gates those.
   vitest:
-    if: github.event.pull_request.draft == false
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true'
     runs-on: ubuntu-latest
 
     steps:
@@ -105,8 +133,11 @@ jobs:
 
       - name: Install dependencies
         working-directory: frontend
-        run: bun install --frozen-lockfile
+        # No dependency lifecycle scripts: nothing here needs them (tsc and
+        # esbuild ship per-platform binaries as optionalDependencies).
+        run: bun install --frozen-lockfile --ignore-scripts
 
       - name: Run Vitest
         working-directory: frontend
-        run: bunx vitest run
+        # The package script, so the lockfile's vitest runs, never a fetched one.
+        run: bun run test --run
