@@ -112,4 +112,5 @@ class LLMWhispererV2(X2TextAdapter):
                 fs=fs,
             ),
             extraction_metadata=metadata,
+            page_count=LLMWhispererHelper.get_processed_page_count(response),
         )
