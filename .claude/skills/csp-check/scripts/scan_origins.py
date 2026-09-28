@@ -10,18 +10,19 @@ code path that fetches it runs. A host that IS allowed somewhere may still viola
 the specific directive that loads it (a style pulled from a script-src-only host, say)
 -- run the browser probe from SKILL.md to settle that.
 
-Paths are relative to the working directory, so from this script's own directory the
-build is four levels up:
+Bare --dist resolves this repo's frontend/build from any directory; pass a path only for
+a build elsewhere, and note it is relative to your shell, not to this script:
 
-    python3 scan_origins.py --dist ../../../../frontend/build      # after `bun run build`
+    python3 scan_origins.py --dist                                 # after `bun run build`
     python3 scan_origins.py --url https://us-central.unstract.com
-    python3 scan_origins.py --dist ../../../../frontend/build --conf ../../../../frontend/nginx.conf
+    python3 scan_origins.py --dist /tmp/other-build --conf /tmp/other-nginx.conf
 
-Exit non-zero on anything that means "this scan did not actually check the policy":
-a host in no directive, a path outside a path-scoped source, a --dist that is missing or
-holds no bundle files, a URL whose index references no bundle at all, or a chunk that
-failed to fetch for any reason but a 404. A scan that inspected nothing must never look
-like a pass.
+Exit non-zero on anything that means "this scan did not actually check the policy": a
+host in no fetch directive, a path or port outside what its sources allow, a --dist that
+is missing or holds no .js, a URL whose index names no bundle, or a failure fetching a
+chunk index.html links. A 404 on a path found only inside a bundle string is tolerated --
+that is usually a worker path a chunk names but never loads. A scan that inspected
+nothing must never look like a pass.
 """
 
 import argparse
@@ -35,8 +36,20 @@ from pathlib import Path
 from extract_policy import DEFAULT_CONF, parse
 
 URL_RE = re.compile(
-    r"https://([a-zA-Z0-9][a-zA-Z0-9.\-]+\.[a-zA-Z]{2,})(/[^\s\"'`)\\<>]*)?"
+    r"https://([a-zA-Z0-9][a-zA-Z0-9.\-]+\.[a-zA-Z]{2,})(:\d+)?(/[^\s\"'`)\\<>]*)?"
 )
+
+# Directives that govern navigation or reporting rather than loading a subresource. A
+# host listed in one of them cannot be fetched on its strength, so letting it into the
+# allowed map would clear references the browser blocks.
+NON_FETCH_DIRECTIVES = {
+    "form-action",
+    "base-uri",
+    "frame-ancestors",
+    "report-uri",
+    "report-to",
+    "sandbox",
+}
 ASSET_RE = re.compile(r"/assets/[A-Za-z0-9_%.\-]+\.(?:js|css)")
 RELATIVE_ASSET_RE = re.compile(r"[\"'(](\./[A-Za-z0-9_%.\-]+\.(?:js|css))")
 
@@ -96,7 +109,9 @@ def fetch(url: str, attempts: int = 3) -> str:
     """One transient TLS or connection error should not redden the whole gate."""
     for attempt in range(1, attempts + 1):
         try:
-            return urllib.request.urlopen(url).read().decode("utf-8", "ignore")
+            return (
+                urllib.request.urlopen(url, timeout=20).read().decode("utf-8", "ignore")
+            )
         except urllib.error.HTTPError:
             raise  # a status code is an answer, not a blip
         except Exception:  # noqa: BLE001 - retry, then let the caller record it
@@ -111,25 +126,32 @@ def read_deployment(base_url: str) -> tuple[dict[str, str], list[str]]:
     an auth wall or a CDN 403 empties the scan, and an empty scan finds no gaps.
     """
     base_url = base_url.rstrip("/")
-    index = fetch(base_url + "/")
+    try:
+        index = fetch(base_url + "/")
+    except Exception as exc:  # noqa: BLE001 - report it as an incomplete scan, not a traceback
+        raise SystemExit(f"could not fetch {base_url}/ : {exc}") from exc
     # index.html and the entrypoint-generated runtime config carry origins of their own
     # (the operator-set logo and favicon URLs), and neither is under /assets/.
     files = {"index.html": index}
     failures: list[str] = []
-    # (path, required). A chunk index.html links is real code and has to be there; one
-    # found by following RELATIVE_ASSET_RE inside a bundle may be a path the chunk only
-    # names as a string (a worker it never loads), so its absence proves nothing.
-    queue = [(path, True) for path in dict.fromkeys(ASSET_RE.findall(index))]
-    if not queue:
+    # A chunk index.html links is real code and has to be there; one found by following
+    # RELATIVE_ASSET_RE inside a bundle may be a path the chunk only names as a string (a
+    # worker it never loads), so its absence proves nothing. Required-ness is kept in a
+    # dict, not carried on the queue: the same path can arrive from both sources, and
+    # whichever entry happens to be popped first must not decide how a 404 is treated.
+    required_by_path = {path: True for path in ASSET_RE.findall(index)}
+    if not required_by_path:
         # A login wall or a redirect serves a perfectly good 200 with no bundle in it.
         raise SystemExit(f"{base_url}/ references no /assets/ chunk -- not the SPA?")
-    queue.append(("/config/runtime-config.js", False))
+    required_by_path.setdefault("/config/runtime-config.js", False)
+    queue = list(required_by_path)
     seen = set()
     while queue:
-        path, required = queue.pop()
+        path = queue.pop()
         if path in seen:
             continue
         seen.add(path)
+        required = required_by_path[path]
         try:
             body = fetch(base_url + path)
         except urllib.error.HTTPError as exc:
@@ -145,24 +167,31 @@ def read_deployment(base_url: str) -> tuple[dict[str, str], list[str]]:
             failures.append(f"{path} ({exc})")
             continue
         files[path.split("/")[-1]] = body
-        queue.extend(("/assets/" + m[2:], False) for m in RELATIVE_ASSET_RE.findall(body))
+        for match in RELATIVE_ASSET_RE.findall(body):
+            discovered = "/assets/" + match[2:]
+            required_by_path.setdefault(discovered, False)
+            queue.append(discovered)
     return files, failures
 
 
-def allowed_sources(directives: dict[str, list[str]]) -> dict[str, set[str]]:
-    """{host pattern: path prefixes}. An empty prefix means the whole host is allowed.
+def allowed_sources(directives: dict[str, list[str]]) -> dict[str, set[tuple[str, str]]]:
+    """{host pattern: {(port, path prefix)}}. An empty prefix means the whole host.
 
     `https://www.google.com/recaptcha/` grants exactly that path, not the host -- keeping
     the prefix is what stops the scanner reporting `https://www.google.com/g/collect` as
-    covered when the browser would block it.
+    covered when the browser would block it. A source with no port grants the default
+    port only, which is why the port is kept alongside.
     """
-    hosts: dict[str, set[str]] = {}
-    for sources in directives.values():
+    hosts: dict[str, set[tuple[str, str]]] = {}
+    for directive, sources in directives.items():
+        if directive in NON_FETCH_DIRECTIVES:
+            continue
         for source in sources:
             if not source.startswith("https://"):
                 continue
-            host, _, path = source[len("https://") :].partition("/")
-            hosts.setdefault(host, set()).add("/" + path if path else "")
+            authority, _, path = source[len("https://") :].partition("/")
+            host, _, port = authority.partition(":")
+            hosts.setdefault(host, set()).add((port or "443", "/" + path if path else ""))
     return hosts
 
 
@@ -173,14 +202,19 @@ def host_matches(ref_host: str, pattern: str) -> bool:
     return ref_host == pattern
 
 
-def verdict(host: str, paths: set[str], allowed: dict[str, set[str]]) -> tuple[str, str]:
-    """('allowed'|'PATH'|'MISSING', offending path)."""
-    prefixes: set[str] = set()
-    for pattern, pattern_prefixes in allowed.items():
+def verdict(
+    host: str, port: str, paths: set[str], allowed: dict[str, set[tuple[str, str]]]
+) -> tuple[str, str]:
+    """('allowed'|'PATH'|'PORT'|'MISSING', the detail that fails)."""
+    entries: set[tuple[str, str]] = set()
+    for pattern, pattern_entries in allowed.items():
         if host_matches(host, pattern):
-            prefixes |= pattern_prefixes
-    if not prefixes:
+            entries |= pattern_entries
+    if not entries:
         return "MISSING", ""
+    prefixes = {prefix for src_port, prefix in entries if src_port in (port, "*")}
+    if not prefixes:
+        return "PORT", f":{port}"
     if "" in prefixes:
         return "allowed", ""
     for path in sorted(paths):
@@ -192,7 +226,13 @@ def verdict(host: str, paths: set[str], allowed: dict[str, set[str]]) -> tuple[s
 def main() -> None:
     parser = argparse.ArgumentParser()
     group = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument("--dist", type=Path, help="built frontend directory")
+    group.add_argument(
+        "--dist",
+        type=Path,
+        nargs="?",
+        const=DEFAULT_CONF.parent / "build",
+        help="built frontend directory (default: the repo's frontend/build)",
+    )
     group.add_argument("--url", help="deployment base URL")
     parser.add_argument("--conf", type=Path, default=DEFAULT_CONF)
     args = parser.parse_args()
@@ -205,25 +245,29 @@ def main() -> None:
         files, failures = read_deployment(args.url)
     print(f"Scanned {len(files)} bundle files against {header} in {args.conf}\n")
 
-    found: dict[str, dict[str, set[str]]] = {}
+    found: dict[tuple[str, str], dict[str, set[str]]] = {}
     for name, body in files.items():
-        for host, path in URL_RE.findall(body):
+        for host, port, path in URL_RE.findall(body):
             if host in IGNORED:
                 continue
-            entry = found.setdefault(host, {"files": set(), "paths": set()})
+            key = (host, port.lstrip(":") or "443")
+            entry = found.setdefault(key, {"files": set(), "paths": set()})
             entry["files"].add(name)
             entry["paths"].add(path)
 
     problems: list[str] = []
-    for host in sorted(found):
-        mark, path = verdict(host, found[host]["paths"], allowed)
-        chunks = ", ".join(sorted(found[host]["files"])[:3])
-        detail = f"  <- {path}" if path else ""
-        print(f"  {mark:8} {host:38} {chunks}{detail}")
+    for host, port in sorted(found):
+        mark, detail = verdict(host, port, found[(host, port)]["paths"], allowed)
+        label = host if port == "443" else f"{host}:{port}"
+        chunks = ", ".join(sorted(found[(host, port)]["files"])[:3])
+        suffix = f"  <- {detail}" if detail else ""
+        print(f"  {mark:8} {label:38} {chunks}{suffix}")
         if mark == "MISSING":
-            problems.append(f"{host} is in no directive")
+            problems.append(f"{label} is in no fetch directive")
+        elif mark == "PORT":
+            problems.append(f"{label} is on a port no source for {host} allows")
         elif mark == "PATH":
-            problems.append(f"{host}{path} is outside the allowed path on {host}")
+            problems.append(f"{host}{detail} is outside the allowed path on {host}")
 
     if not files:
         raise SystemExit("\nScanned nothing -- an empty scan is not a pass.")

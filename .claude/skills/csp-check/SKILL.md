@@ -12,8 +12,7 @@ description: >
 # CSP Check
 
 The frontend ships an enforcing `Content-Security-Policy` header from
-`frontend/nginx.conf` (UN-2238; it was report-only until then). A resource from an origin
-no directive lists is **blocked** — whatever needed it breaks, and the only trace is a
+`frontend/nginx.conf`. A resource from an origin no directive lists is **blocked** — whatever needed it breaks, and the only trace is a
 console violation. So the policy has to be widened in the same change that adds the
 dependency, not after someone reports a broken page.
 
@@ -31,14 +30,16 @@ run 2 and 3 before widening the policy or shipping a new third-party integration
 cd .claude/skills/csp-check/scripts
 python3 extract_policy.py                                  # what the policy says today
 python3 scan_origins.py --url https://us-central.unstract.com
-python3 scan_origins.py --dist ../../../../frontend/build  # after `bun run build`
+python3 scan_origins.py --dist                             # after `bun run build`
 ```
 
-`--dist` is relative to your shell, not to the script — from `scripts/` the build is four
-levels up. Getting this wrong used to print `Scanned 0 bundle files` and then pass; the
-script now exits non-zero when `--dist` is not a directory, when it finds no files, and
-when a `--url` chunk cannot be fetched, because a scan that inspected nothing is not a
-pass. Check the file count in the first line of output against what the build produced.
+Bare `--dist` resolves the repo's own `frontend/build`, from any directory. Give it a path
+only for a build somewhere else — and note the path is relative to your shell, not to the
+script. The script exits non-zero when `--dist` is missing or holds no `.js`, when a
+`--url` index names no bundle, and when a chunk `index.html` links fails to fetch; a 404
+on a path found only inside a bundle string is tolerated, since that is usually a worker
+path a chunk names but never loads. Check the file count on the first output line against
+what the build produced.
 
 `scan_origins.py` pulls every `/assets/*.js|css` chunk (following relative imports), plus
 `index.html` and the entrypoint-generated `/config/runtime-config.js`, extracts external
@@ -46,11 +47,13 @@ pass. Check the file count in the first line of output against what the build pr
 in doc links, XML namespaces and library error strings are listed in its `IGNORED` set —
 extend it rather than widening the policy for a host nothing fetches.
 
-Verdicts: `MISSING` (no directive names the host) and `PATH` (the host is listed
-path-scoped and this URL falls outside it — `https://www.google.com/recaptcha/` grants
-that path only, so `https://www.google.com/g/collect` is still blocked). `*.` sources
-match subdomains only, the way the browser reads them: `https://*.google-analytics.com`
-covers `region1.google-analytics.com` but not a bare `google-analytics.com`.
+Verdicts: `MISSING` (no fetch directive names the host — `form-action`, `base-uri` and
+`frame-ancestors` do not count, since nothing can be loaded on their strength), `PATH`
+(listed path-scoped and this URL falls outside it — `https://www.google.com/recaptcha/`
+grants that path only, so `https://www.google.com/g/collect` is still blocked) and `PORT`
+(a source with no port grants 443 only). `*.` sources match subdomains only, the way the
+browser reads them: `https://*.google-analytics.com` covers `region1.google-analytics.com`
+but not a bare `google-analytics.com`.
 
 This catches "a new dependency pulls from a new CDN". It cannot tell you *which*
 directive loads a host — a font from a script-src-only host still violates. That is check 2.
