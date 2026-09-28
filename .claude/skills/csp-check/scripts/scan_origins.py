@@ -27,6 +27,7 @@ like a pass.
 import argparse
 import re
 import sys
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -84,7 +85,25 @@ def read_dist(dist: Path) -> dict[str, str]:
             files[str(path.relative_to(dist))] = path.read_text(
                 encoding="utf-8", errors="ignore"
             )
+    # index.html alone is not a build. Without this, an interrupted or wrong-directory
+    # build scans one file, finds no external host in it, and reads as a pass.
+    if not any(name.endswith(".js") for name in files):
+        raise SystemExit(f"--dist {dist} holds no .js bundle -- nothing to check")
     return files
+
+
+def fetch(url: str, attempts: int = 3) -> str:
+    """One transient TLS or connection error should not redden the whole gate."""
+    for attempt in range(1, attempts + 1):
+        try:
+            return urllib.request.urlopen(url).read().decode("utf-8", "ignore")
+        except urllib.error.HTTPError:
+            raise  # a status code is an answer, not a blip
+        except Exception:  # noqa: BLE001 - retry, then let the caller record it
+            if attempt == attempts:
+                raise
+            time.sleep(attempt)
+    raise AssertionError("unreachable")
 
 
 def read_deployment(base_url: str) -> tuple[dict[str, str], list[str]]:
@@ -92,32 +111,33 @@ def read_deployment(base_url: str) -> tuple[dict[str, str], list[str]]:
     an auth wall or a CDN 403 empties the scan, and an empty scan finds no gaps.
     """
     base_url = base_url.rstrip("/")
-    index = urllib.request.urlopen(base_url + "/").read().decode("utf-8", "ignore")
+    index = fetch(base_url + "/")
     # index.html and the entrypoint-generated runtime config carry origins of their own
     # (the operator-set logo and favicon URLs), and neither is under /assets/.
     files = {"index.html": index}
     failures: list[str] = []
-    queue = list(dict.fromkeys(ASSET_RE.findall(index)))
+    # (path, required). A chunk index.html links is real code and has to be there; one
+    # found by following RELATIVE_ASSET_RE inside a bundle may be a path the chunk only
+    # names as a string (a worker it never loads), so its absence proves nothing.
+    queue = [(path, True) for path in dict.fromkeys(ASSET_RE.findall(index))]
     if not queue:
         # A login wall or a redirect serves a perfectly good 200 with no bundle in it.
         raise SystemExit(f"{base_url}/ references no /assets/ chunk -- not the SPA?")
-    queue.append("/config/runtime-config.js")
+    queue.append(("/config/runtime-config.js", False))
     seen = set()
     while queue:
-        path = queue.pop()
+        path, required = queue.pop()
         if path in seen:
             continue
         seen.add(path)
         try:
-            body = (
-                urllib.request.urlopen(base_url + path).read().decode("utf-8", "ignore")
-            )
+            body = fetch(base_url + path)
         except urllib.error.HTTPError as exc:
-            # RELATIVE_ASSET_RE also matches worker paths a chunk merely names as a
-            # string, so a 404 here is usually a path that was never a chunk. Anything
-            # else (an auth wall, a CDN 403, a 5xx) means the scan is missing real code.
+            # A 404 is only tolerable on a speculative path. Anything else -- an auth
+            # wall, a CDN 403, a 5xx, or any failure on a chunk index.html links --
+            # means the scan is missing real code and cannot clear the policy.
             print(f"  ! {path}: {exc}", file=sys.stderr)
-            if exc.code != 404:
+            if required or exc.code != 404:
                 failures.append(f"{path} ({exc.code})")
             continue
         except Exception as exc:  # noqa: BLE001 - keep scanning, but record the gap
@@ -125,7 +145,7 @@ def read_deployment(base_url: str) -> tuple[dict[str, str], list[str]]:
             failures.append(f"{path} ({exc})")
             continue
         files[path.split("/")[-1]] = body
-        queue.extend("/assets/" + m[2:] for m in RELATIVE_ASSET_RE.findall(body))
+        queue.extend(("/assets/" + m[2:], False) for m in RELATIVE_ASSET_RE.findall(body))
     return files, failures
 
 
