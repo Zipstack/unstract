@@ -2,7 +2,6 @@ from typing import Any
 
 from flask import Blueprint, abort, request
 from flask import current_app as app
-
 from unstract.runner.runner import UnstractRunner
 
 # Define a Blueprint with a root URL path

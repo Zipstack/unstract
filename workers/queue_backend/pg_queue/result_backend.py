@@ -73,7 +73,6 @@ from collections.abc import Callable, Iterator
 from typing import TYPE_CHECKING, Any, Final, Self
 
 import redis
-
 from unstract.core.cache.redis_client import create_redis_client
 from unstract.core.data_models import PgTaskStatus
 from unstract.core.jsonb import dumps_for_jsonb, sanitize_for_jsonb

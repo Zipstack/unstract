@@ -85,7 +85,7 @@ def _restore_organisation_segment(schema: dict[str, Any]) -> None:
         for method, operation in item.items():
             if method in HTTP_METHODS:
                 operation.setdefault("parameters", []).append(dict(ORG_SEGMENT_PARAMETER))
-        schema["paths"][f"{TENANT_MOUNT}{ORG_SEGMENT}/{url[len(TENANT_MOUNT):]}"] = item
+        schema["paths"][f"{TENANT_MOUNT}{ORG_SEGMENT}/{url[len(TENANT_MOUNT) :]}"] = item
 
 
 class SpecGenerationFailed(CommandError):
