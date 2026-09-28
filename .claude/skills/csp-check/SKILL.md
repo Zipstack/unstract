@@ -30,16 +30,34 @@ run 2 and 3 before widening the policy or shipping a new third-party integration
 ```bash
 cd .claude/skills/csp-check/scripts
 python3 extract_policy.py                                  # what the policy says today
-python3 scan_origins.py --url https://us-central.unstract.com   # or --dist frontend/build
+python3 scan_origins.py --url https://us-central.unstract.com
+python3 scan_origins.py --dist ../../../../frontend/build  # after `bun run build`
 ```
 
-`scan_origins.py` pulls every `/assets/*.js|css` chunk (following relative imports),
-extracts external `https://` hosts, and exits non-zero on any host no directive allows.
-Hosts that only appear in doc links, XML namespaces and library error strings are listed
-in its `IGNORED` set — extend it rather than widening the policy for a host nothing fetches.
+`--dist` is relative to your shell, not to the script — from `scripts/` the build is four
+levels up. Getting this wrong used to print `Scanned 0 bundle files` and then pass; the
+script now exits non-zero when `--dist` is not a directory, when it finds no files, and
+when a `--url` chunk cannot be fetched, because a scan that inspected nothing is not a
+pass. Check the file count in the first line of output against what the build produced.
+
+`scan_origins.py` pulls every `/assets/*.js|css` chunk (following relative imports), plus
+`index.html` and the entrypoint-generated `/config/runtime-config.js`, extracts external
+`https://` URLs, and exits non-zero on any the policy would block. Hosts that only appear
+in doc links, XML namespaces and library error strings are listed in its `IGNORED` set —
+extend it rather than widening the policy for a host nothing fetches.
+
+Verdicts: `MISSING` (no directive names the host) and `PATH` (the host is listed
+path-scoped and this URL falls outside it — `https://www.google.com/recaptcha/` grants
+that path only, so `https://www.google.com/g/collect` is still blocked). `*.` sources
+match subdomains only, the way the browser reads them: `https://*.google-analytics.com`
+covers `region1.google-analytics.com` but not a bare `google-analytics.com`.
 
 This catches "a new dependency pulls from a new CDN". It cannot tell you *which*
 directive loads a host — a font from a script-src-only host still violates. That is check 2.
+
+What it still cannot see: a URL assembled at runtime, and a URL supplied by deployment
+config. `VITE_CUSTOM_LOGO_URL` / `VITE_FAVICON_PATH` are the live example — see
+"Operator-supplied URLs" below.
 
 ## 2. Live: probe the deployed policy, directive by directive
 
@@ -81,6 +99,22 @@ can be walked without reloading:
 
 Third-party widgets load lazily and per-plan, so exercise the actual flow — an integration
 that never initialises reports nothing.
+
+## Operator-supplied URLs
+
+`generate-runtime-config.sh` writes `/config/runtime-config.js` at container start from
+`VITE_CUSTOM_LOGO_URL` / `VITE_FAVICON_PATH` (and their `REACT_APP_*` fallbacks). Both
+end up governed by `img-src`: the logo through `<Image src>` in `TopNavBar.jsx`, the
+favicon through `setFavicon` in `index.jsx`.
+
+**They must be same-origin paths** (`/config/logo.svg`), not absolute URLs on another
+host. An absolute URL to a host the policy does not list is blocked once the header
+enforces, and both failures are quiet — the logo's `onError` swaps in the default mark
+and the favicon just stays the old one. No build-time scan can catch it, because the
+value does not exist until the container starts.
+
+An operator who must serve branding from their own CDN has to add that host to `img-src`
+in `frontend/nginx.conf` and rebuild the frontend image.
 
 ## Changing the policy
 
