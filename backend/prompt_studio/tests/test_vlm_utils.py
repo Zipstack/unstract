@@ -15,7 +15,24 @@ from _pytest.monkeypatch import MonkeyPatch
 from prompt_studio import vlm_utils
 
 
+@pytest.mark.skipif(
+    vlm_utils.VLM_IMAGE_ANSWER_AVAILABLE,
+    reason=(
+        "cloud plugin merged into the tree (cloud CI runs this suite against "
+        "the OSS tree with plugins/vlm_image_answer copied in) — the "
+        "package-absent contract below only holds in an OSS-only tree"
+    ),
+)
 class TestOssNoOps:
+    """The OSS-only state: no cloud package, so every helper is a no-op.
+
+    Skipped wholesale rather than per-test in a merged cloud tree: once the
+    hooks are real, "returns None" and "does not raise" stop being no-op
+    assertions and start depending on what the cloud hook does with the
+    dummy arguments below — passing for reasons these tests never meant to
+    check. Delegation in that tree is covered by the cloud_hooks tests.
+    """
+
     def test_cloud_package_absent_in_oss(self) -> None:
         assert vlm_utils.VLM_IMAGE_ANSWER_AVAILABLE is False
 
