@@ -11,9 +11,12 @@ file records why some of those rules are `warn` and how each one becomes `error`
 - **Rules that already had violations are pinned to `warn`** in `biome.json`.
   `biome ci` does not fail on warnings, so CI stays green while the violations
   are burned down.
-- **Recommended rules whose default is `warn` or `info`** (e.g.
+- **Every rule in the table below is headed for `error`**, whatever its
+  default. `noUnusedImports` defaults to `warn`, so promoting it means setting it
+  to `error` explicitly, not just deleting its entry.
+- **Other recommended rules whose default is `warn` or `info`** (e.g.
   `noImportantStyles`, `noUnusedFunctionParameters`, `useLiteralKeys`) are left at
-  that default. They are not part of the ratchet below.
+  that default and are not part of the ratchet.
 
 ## Both repos share this config
 
@@ -29,7 +32,7 @@ this change. Only the rules pinned to `warn` are listed.
 
 | Rule | OSS | Cloud | Follow-up |
 |---|---:|---:|---|
-| `correctness/useExhaustiveDependencies` | 429 | 530 | UN-4202 |
+| `correctness/useExhaustiveDependencies` | 431 | 530 | UN-4202 |
 | `correctness/useHookAtTopLevel` | 15 | 10 | UN-4201 |
 | `suspicious/noArrayIndexKey` | 8 | 28 | UN-4203 |
 | `suspicious/noAssignInExpressions` | 13 | 1 | UN-4204 |
@@ -70,7 +73,7 @@ bunx biome lint src/ --only=correctness/useHookAtTopLevel --max-diagnostics=none
 ## Promoting a rule
 
 When a rule reaches zero in both repos, delete its `warn` entry from
-`biome.json` (or set it to `error` if the rule's default is not `error`) in the
+`biome.json`, or set it to `error` if the rule's default is not `error`, in the
 same PR as the last fix, and remove its row above. Land the cloud fixes first.
 
 ## Suppressions

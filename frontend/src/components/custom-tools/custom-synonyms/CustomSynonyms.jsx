@@ -90,7 +90,6 @@ function CustomSynonyms() {
    * replaced it, so the controlled input was reset mid-typing and dropped the
    * leading characters — typing "bill" into the Word column produced "il".
    */
-  // biome-ignore lint/correctness/useExhaustiveDependencies: handleChange/handleDelete are recreated every render but only close over `synonyms`, which is a dependency
   const rows = useMemo(() => {
     if (!synonyms || synonyms.length === 0) {
       return [];
