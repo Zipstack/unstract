@@ -215,11 +215,11 @@ function ListOfTools({ segmentOptions, segmentValue, onSegmentChange }) {
   );
   fetchRef.current = getListOfTools;
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: initial fetch on mount only; later fetches go through requestList
   useEffect(() => {
     setSearchTerm("");
     setDisplayList(undefined);
     requestList(1, DEFAULT_PAGE_SIZE, "", sort.sortBy, sort.order);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleAddNewTool = (body) => {
