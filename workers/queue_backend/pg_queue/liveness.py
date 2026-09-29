@@ -17,6 +17,12 @@ Serves ``/health`` (also ``/healthz``, ``/livez``) on ``0.0.0.0`` (a
 container/k8s probe reaches it from outside the process) in a daemon thread.
 Bind ``port=0`` to let the OS pick a free port (read back via :attr:`bound_port`)
 — used in tests. Start once; :meth:`stop` returns it to the inert state.
+
+Optionally also serves ``/ready`` (also ``/readyz``): "has this process finished
+loading?", answered by a ``ready_fn`` callable. It is a separate question from
+liveness — a process can be alive while it is still importing — and exists for a
+k8s ``startupProbe`` (UN-4136): a pod that is not yet Ready has its start-up CPU
+ignored by the HPA, so the import burst cannot trigger a scale-out.
 """
 
 from __future__ import annotations
@@ -46,9 +52,15 @@ class LivenessServer:
     module stays free of the prometheus dependency; the metric definitions live
     in :mod:`queue_backend.pg_queue.metrics`. A ``metrics_fn`` failure returns
     500 on ``/metrics`` only — it can never affect the ``/health`` verdict.
+
+    ``ready_fn`` (optional) additionally serves ``/ready``: 200 once it returns
+    True, else 503. Without it ``/ready`` is a 404, so a probe pointed at a
+    process that has no readiness notion fails loudly instead of passing. A
+    ``ready_fn`` that raises answers 503 — never a false "ready".
     """
 
     _PATHS = frozenset({"/health", "/healthz", "/livez"})
+    _READY_PATHS = frozenset({"/ready", "/readyz"})
     _METRICS_PATH = "/metrics"
     # Prometheus text exposition format (metrics.METRICS_CONTENT_TYPE — inlined
     # so this module keeps zero imports from the metrics side).
@@ -64,6 +76,7 @@ class LivenessServer:
         age_key: str,
         extra_status_fn: Callable[[], dict[str, Any]] | None = None,
         metrics_fn: Callable[[], bytes] | None = None,
+        ready_fn: Callable[[], bool] | None = None,
         thread_name: str = "pg-queue-liveness",
         log_label: str = "pg-queue",
     ) -> None:
@@ -79,6 +92,7 @@ class LivenessServer:
         self._age_key = age_key
         self._extra_status_fn = extra_status_fn
         self._metrics_fn = metrics_fn
+        self._ready_fn = ready_fn
         self._thread_name = thread_name
         # Prefixes the (now-shared) log messages so they stay attributable to the
         # source process after the consumer/reaper extraction (e.g. "pg-queue
@@ -99,9 +113,11 @@ class LivenessServer:
         freshness_fn = self._freshness_fn
         stale_after = self._stale_after
         paths = self._PATHS
+        ready_paths = self._READY_PATHS
         metrics_path = self._METRICS_PATH
         metrics_content_type = self._METRICS_CONTENT_TYPE
         metrics_fn = self._metrics_fn
+        ready_fn = self._ready_fn
         check_name = self._check_name
         age_key = self._age_key
         extra_status_fn = self._extra_status_fn
@@ -114,6 +130,9 @@ class LivenessServer:
                 if metrics_fn is not None and path == metrics_path:
                     self._serve_metrics()
                     return
+                if ready_fn is not None and path in ready_paths:
+                    self._serve_ready()
+                    return
                 if path not in paths:
                     self.send_response(404)
                     self.end_headers()
@@ -123,26 +142,44 @@ class LivenessServer:
                 # fields are informational and never flip it.
                 age = freshness_fn()
                 stale = age > stale_after
+                self._send_json(
+                    503 if stale else 200,
+                    {
+                        "status": "unhealthy" if stale else "healthy",
+                        "check": check_name,
+                        age_key: round(age, 3),
+                        "stale_after_seconds": stale_after,
+                    },
+                )
+
+            def _serve_ready(self) -> None:
+                # A readiness check that raises must read as NOT ready: answering
+                # 200 would let the pod go Ready (and its start-up CPU count toward
+                # the HPA) on the strength of a bug.
+                try:
+                    ready = bool(ready_fn())  # type: ignore[misc]  # guarded by caller
+                except Exception:
+                    logger.exception("%s: readiness check failed", log_label)
+                    ready = False
+                self._send_json(
+                    200 if ready else 503,
+                    {"status": "ready" if ready else "starting", "check": check_name},
+                )
+
+            def _send_json(self, code: int, core: dict[str, Any]) -> None:
                 # Extra fields first, then overlay the core fields — so a caller's
                 # extra_status_fn can NEVER clobber status/check/age_key/
                 # stale_after_seconds (which a monitor reads): core always wins.
                 payload: dict[str, Any] = {}
                 if extra_status_fn is not None:
                     payload.update(extra_status_fn())
-                payload.update(
-                    {
-                        "status": "unhealthy" if stale else "healthy",
-                        "check": check_name,
-                        age_key: round(age, 3),
-                        "stale_after_seconds": stale_after,
-                    }
-                )
+                payload.update(core)
                 body = json.dumps(payload).encode()
                 # Headers too, not just the body write: a client that hangs up
                 # before headers go out would otherwise raise into socketserver's
                 # handle_error, which prints an unattributed traceback to stderr.
                 try:
-                    self.send_response(503 if stale else 200)
+                    self.send_response(code)
                     self.send_header("Content-Type", "application/json")
                     self.end_headers()
                     self.wfile.write(body)
@@ -160,7 +197,7 @@ class LivenessServer:
                         self.send_response(500)
                         self.end_headers()
                     return
-                # Same hung-up-client guard as the /health path above.
+                # Same hung-up-client guard as _send_json above.
                 try:
                     self.send_response(200)
                     self.send_header("Content-Type", metrics_content_type)

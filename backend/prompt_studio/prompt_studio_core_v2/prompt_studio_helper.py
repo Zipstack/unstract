@@ -25,6 +25,7 @@ from utils.file_storage.constants import FileStorageKeys
 from utils.file_storage.helpers.prompt_studio_file_helper import PromptStudioFileHelper
 from utils.local_context import StateStore
 
+from prompt_studio import vlm_utils
 from prompt_studio.lookup_utils import (
     get_lookup_config,
     get_lookup_configs_for_tool,
@@ -75,7 +76,9 @@ from prompt_studio.prompt_studio_output_manager_v2.output_manager_helper import 
     OutputManagerHelper,
 )
 from prompt_studio.prompt_studio_v2.models import ToolStudioPrompt
+from prompt_studio.vlm_utils import invalidate_vlm_answers_on_reextraction
 from unstract.core.pubsub_helper import LogPublisher
+from unstract.sdk1.adapters.x2text.constants import ImageOutputConstants
 from unstract.sdk1.constants import LogLevel
 from unstract.sdk1.exceptions import IndexingError, SdkError
 from unstract.sdk1.execution.context import ExecutionContext
@@ -444,6 +447,7 @@ class PromptStudioHelper:
         output[TSPKeys.SIMILARITY_TOP_K] = profile_manager.similarity_top_k
         output[TSPKeys.SECTION] = profile_manager.section
         output[TSPKeys.X2TEXT_ADAPTER] = x2text
+        PromptStudioHelper._stamp_x2text_output_mode(output, profile_manager)
 
         webhook_enabled = bool(prompt.enable_postprocessing_webhook)
         webhook_url = (prompt.postprocessing_webhook_url or "").strip()
@@ -846,6 +850,9 @@ class PromptStudioHelper:
             enable_highlight=tool.enable_highlight,
         )
 
+        # Captured before the summarize override: the page-image reader must
+        # key on the extract path even when answers run over the summary.
+        image_extract_path = extract_path
         is_summary = tool.summarize_as_source
         if is_summary:
             profile_manager.chunk_size = 0
@@ -892,6 +899,7 @@ class PromptStudioHelper:
         output[TSPKeys.SIMILARITY_TOP_K] = profile_manager.similarity_top_k
         output[TSPKeys.SECTION] = profile_manager.section
         output[TSPKeys.X2TEXT_ADAPTER] = x2text
+        PromptStudioHelper._stamp_x2text_output_mode(output, profile_manager)
 
         webhook_enabled = bool(prompt.enable_postprocessing_webhook)
         webhook_url = (prompt.postprocessing_webhook_url or "").strip()
@@ -953,6 +961,7 @@ class PromptStudioHelper:
             TSPKeys.FILE_NAME: doc_name,
             TSPKeys.FILE_HASH: file_hash,
             TSPKeys.FILE_PATH: extract_path,
+            TSPKeys.EXTRACT_FILE_PATH: image_extract_path,
             Common.LOG_EVENTS_ID: StateStore.get(Common.LOG_EVENTS_ID),
             TSPKeys.EXECUTION_SOURCE: ExecutionSource.IDE.value,
             TSPKeys.CUSTOM_DATA: tool.custom_data,
@@ -1069,6 +1078,9 @@ class PromptStudioHelper:
             enable_highlight=tool.enable_highlight,
         )
 
+        # Captured before the summarize override: the page-image reader must
+        # key on the extract path even when answers run over the summary.
+        image_extract_path = extract_path
         is_summary = tool.summarize_as_source
         if is_summary:
             profile_manager.chunk_size = 0
@@ -1146,6 +1158,7 @@ class PromptStudioHelper:
             TSPKeys.FILE_NAME: doc_name,
             TSPKeys.FILE_HASH: file_hash,
             TSPKeys.FILE_PATH: extract_path,
+            TSPKeys.EXTRACT_FILE_PATH: image_extract_path,
             Common.LOG_EVENTS_ID: StateStore.get(Common.LOG_EVENTS_ID),
             TSPKeys.EXECUTION_SOURCE: ExecutionSource.IDE.value,
             TSPKeys.CUSTOM_DATA: tool.custom_data,
@@ -1280,6 +1293,10 @@ class PromptStudioHelper:
             or TSPKeys.SIMPLE,
             TSPKeys.SIMILARITY_TOP_K: default_profile.similarity_top_k,
         }
+        # Stamp the x2text output mode like every other payload builder — the
+        # executor's single-pass guard trusts the stamp, and an unstamped IDE
+        # payload is treated as pre-upgrade text mode (guard never fires).
+        PromptStudioHelper._stamp_x2text_output_mode(tool_settings, default_profile)
 
         lookup_configs = get_lookup_configs_for_tool(tool, prompts=prompts)
         if lookup_configs:
@@ -1396,6 +1413,84 @@ class PromptStudioHelper:
             tool_id=tool_id
         ).order_by(TSPKeys.SEQUENCE_NUMBER)
         return prompt_instances
+
+    @staticmethod
+    def _stamp_x2text_output_mode(output: dict, profile_manager) -> None:
+        """Stamp the x2text output mode onto a per-prompt payload.
+
+        Lets the executor detect image mode from the payload instead of a
+        platform-service call. LLMWhisperer-only (the sole adapter with an
+        image output mode); best-effort — a metadata read failure leaves
+        the stamp absent and the executor falls back to live resolution.
+        """
+        x2text = getattr(profile_manager, "x2text", None)
+        if x2text is None:
+            return
+        try:
+            adapter_id = str(getattr(x2text, "adapter_id", "") or "")
+            if not adapter_id.startswith("llmwhisperer|"):
+                return
+            metadata = x2text.metadata or {}
+            output[TSPKeys.X2TEXT_OUTPUT_MODE] = metadata.get(
+                ImageOutputConstants.OUTPUT_MODE
+            )
+        except Exception:
+            logger.exception("Could not stamp x2text output mode; will resolve live")
+
+    @staticmethod
+    def _validate_image_output_pdf_only(
+        profile_manager: ProfileManager, file_name: str
+    ) -> None:
+        """Reject non-PDF inputs when the x2text adapter is in image mode.
+
+        Image output mode (LLMWhisperer V2) supports PDF input only. The SDK
+        adapter enforces this at extraction time; this mirror-check runs just
+        before extraction is dispatched (from ``dynamic_extractor``, the single
+        choke point for every extract path) so the user gets the identical
+        PDF-only message early. The message + PDF test come from the shared
+        ``ImageOutputConstants`` so the two layers cannot drift.
+
+        Gated on BOTH the LLMWhisperer adapter id and ``output_mode == image``:
+        ``output_mode`` is user-editable adapter metadata, so keying on it alone
+        would make any future x2text adapter that adopts the same key inherit a
+        PDF-only rejection it never asked for.
+
+        Also rejects image-mode extraction outright when the cloud plugin
+        package is present but its backend hooks are broken
+        (``vlm_utils.VLM_HOOKS_BROKEN``) — see the inline comment below.
+        """
+        x2text = profile_manager.x2text
+        if x2text is None:
+            return
+        adapter_id = getattr(x2text, "adapter_id", "") or ""
+        if not adapter_id.startswith("llmwhisperer|"):
+            return
+        metadata = x2text.metadata or {}
+        if (
+            metadata.get(ImageOutputConstants.OUTPUT_MODE)
+            != ImageOutputConstants.IMAGE_MODE
+        ):
+            return
+        # Fail-closed on a half-broken cloud install: with the plugin package
+        # present but its backend hooks unimportable, a re-extraction would
+        # rewrite the page images while the answers stored against the old
+        # pages are never invalidated. Blocking image-mode extraction here
+        # (same choke point) is the only safe behavior.
+        if vlm_utils.VLM_HOOKS_BROKEN:
+            raise IndexingAPIError(
+                detail=(
+                    "Image output mode is unavailable: the VLM consumer "
+                    "plugin is installed but failed to load. Contact your "
+                    "administrator, or switch the profile's text extractor "
+                    "to a text output mode."
+                ),
+                status_code=500,
+            )
+        if not ImageOutputConstants.is_pdf(file_name):
+            raise IndexingAPIError(
+                detail=ImageOutputConstants.PDF_ONLY_ERROR,
+                status_code=400,
+            )
 
     @staticmethod
     def index_document(
@@ -2085,6 +2180,7 @@ class PromptStudioHelper:
         output[TSPKeys.SIMILARITY_TOP_K] = profile_manager.similarity_top_k
         output[TSPKeys.SECTION] = profile_manager.section
         output[TSPKeys.X2TEXT_ADAPTER] = x2text
+        PromptStudioHelper._stamp_x2text_output_mode(output, profile_manager)
         # Webhook postprocessing settings
         webhook_enabled = bool(prompt.enable_postprocessing_webhook)
         webhook_url = (prompt.postprocessing_webhook_url or "").strip()
@@ -2509,6 +2605,14 @@ class PromptStudioHelper:
         profile_manager: ProfileManager,
         document_id: str,
     ) -> str:
+        # Reject a non-PDF input paired with an image-output adapter before any
+        # extraction work. This is the single choke point every extract path
+        # funnels through, and it runs under this profile_manager (not the
+        # default profile), so every entry point and prompt-level profile
+        # override is covered (UNS-757/758).
+        PromptStudioHelper._validate_image_output_pdf_only(
+            profile_manager, os.path.basename(file_path)
+        )
         # Guard against None metadata (when adapter_metadata_b is None)
         metadata = profile_manager.x2text.metadata or {}
         x2text_config_hash = ToolUtils.hash_str(json.dumps(metadata, sort_keys=True))
@@ -2592,6 +2696,50 @@ class PromptStudioHelper:
             )
 
         extracted_text = result.data.get("extracted_text", "")
+
+        # A fresh (non-cache-hit) extraction rewrote any persisted page
+        # images — notify the VLM answer-invalidation hook (no-op in OSS)
+        # BEFORE committing the extraction-success marker. A success marker
+        # for this hash can already exist (the cache-hit path falls through
+        # here when the extracted text file was missing), so on a hook
+        # failure it is explicitly marked failed: a retry then re-runs
+        # extraction and invalidation instead of cache-hitting past a
+        # stale-answer state.
+        try:
+            invalidate_vlm_answers_on_reextraction(
+                document_id=str(document_id),
+                profile_manager=profile_manager,
+                extract_file_path=extract_file_path,
+            )
+        except Exception as e:
+            status_result = PromptStudioIndexHelper.mark_extraction_status(
+                document_id=document_id,
+                profile_manager=profile_manager,
+                x2text_config_hash=x2text_config_hash,
+                enable_highlight=enable_highlight,
+                extracted=False,
+                error_message=f"VLM answer invalidation failed: {e}",
+            )
+            if status_result is not ExtractionStatusResult.OK:
+                # The stale success marker survived. Remove the freshly
+                # written text so a cache hit on that marker falls through
+                # the file-missing path and re-extracts anyway.
+                logger.warning(
+                    f"Failed to mark extraction failure for document {document_id} "
+                    f"after VLM answer invalidation failed; removing extracted text."
+                )
+                try:
+                    EnvHelper.get_storage(
+                        storage_type=StorageType.PERMANENT,
+                        env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,
+                    ).rm(extract_file_path, recursive=False)
+                except Exception:
+                    logger.exception(
+                        f"Failed to remove {extract_file_path}; a retry may "
+                        f"cache-hit past VLM answer invalidation."
+                    )
+            raise
+
         # Distinct name: ``result`` is the dispatcher's ExecutionResult and is
         # still read above. Rebinding it to an ExtractionStatusResult made
         # ``result.data`` correct only by branch ordering.
