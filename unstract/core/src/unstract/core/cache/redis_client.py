@@ -208,6 +208,32 @@ def resolve_ssl_cert_reqs(env_prefix: str = "REDIS_") -> str:
     return value
 
 
+def resolve_sentinel_master_check_hostname(env_prefix: str = "REDIS_") -> bool:
+    """ssl_check_hostname for a Sentinel-managed MASTER connection.
+
+    The master plane answers by a DIFFERENT rule than the discovery plane, and
+    exporting it is what stops a consumer re-deriving it: a master connects to
+    whatever `SENTINEL get-master-addr-by-name` returns, and
+    SentinelManagedConnection assigns that address straight to ``self.host``,
+    which SSLConnection passes as ``server_hostname``. It is an IP, so
+    verification is checked against an address no DNS SAN covers — and pinning
+    an IP SAN is not a workable answer, because the address changes on failover.
+
+    So it is OFF unless the operator asked for it explicitly, matching
+    _tls_kwargs(sentinel_master=True). Off as well when verification itself is
+    off: the pinned redis-py (5.2.1) does NOT coerce that pair — it assigns
+    check_hostname verbatim — so CERT_NONE with checking on reaches Python's ssl
+    module, which rejects it.
+    """
+    raw, _ = env_chain_named(
+        f"{env_prefix}SSL_CHECK_HOSTNAME", "REDIS_SSL_CHECK_HOSTNAME"
+    )
+    explicit = (raw or "").strip().lower() in _TRUE_LITERALS | _FALSE_LITERALS
+    if not explicit or resolve_ssl_cert_reqs(env_prefix) == "none":
+        return False
+    return resolve_ssl_check_hostname(env_prefix)
+
+
 def resolve_ssl_check_hostname(env_prefix: str = "REDIS_", default: bool = True) -> bool:
     """{prefix}SSL_CHECK_HOSTNAME, falling back to REDIS_SSL_CHECK_HOSTNAME, then on.
 

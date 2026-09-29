@@ -27,6 +27,7 @@ from unstract.core.cache.redis_client import (
     ensure_tls_query_params,
     parse_db,
     parse_port,
+    resolve_sentinel_master_check_hostname,
     resolve_ssl_cert_reqs,
     resolve_ssl_check_hostname,
     resolve_ssl_enabled,
@@ -596,15 +597,26 @@ if REDIS_SENTINEL_MODE:
     # same settings go to both here.
     _sentinel_pool_kwargs = {}
     if REDIS_SSL:
-        _sentinel_tls = {
-            "ssl": True,
-            "ssl_cert_reqs": REDIS_SSL_CERT_REQS,
-            "ssl_check_hostname": REDIS_SSL_CHECK_HOSTNAME,
-        }
+        _sentinel_tls = {"ssl": True, "ssl_cert_reqs": REDIS_SSL_CERT_REQS}
         if REDIS_SSL_CA_CERTS:
             _sentinel_tls["ssl_ca_certs"] = REDIS_SSL_CA_CERTS
+
+        # The two planes answer by DIFFERENT rules, and copying one dict into
+        # both got that wrong. Discovery connects to REDIS_HOST, a name whose
+        # certificate can match, so it verifies like any other client. The
+        # MASTER connects to whatever SENTINEL get-master-addr-by-name returns —
+        # an IP that SentinelManagedConnection hands to SSLConnection as
+        # server_hostname, which no DNS SAN covers and which changes on
+        # failover. core turns checking off there unless the operator asked
+        # explicitly; this cache has to agree, or it fails verification against
+        # the same master that create_redis_client reaches.
         _sentinel_kwargs.update(_sentinel_tls)
         _sentinel_pool_kwargs.update(_sentinel_tls)
+        if REDIS_SSL_CERT_REQS != "none":
+            _sentinel_kwargs["ssl_check_hostname"] = REDIS_SSL_CHECK_HOSTNAME
+        _sentinel_pool_kwargs["ssl_check_hostname"] = (
+            resolve_sentinel_master_check_hostname()
+        )
 
     _redis_db = parse_db(REDIS_DB, "REDIS_")
 

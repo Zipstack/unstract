@@ -892,3 +892,77 @@ class TestSentinelModeAgreesWithCore:
         ]["OPTIONS"]
         assert options["SENTINEL_KWARGS"] == {}
         assert options["CONNECTION_POOL_KWARGS"] == {}
+
+
+class TestSentinelTlsPlanesDifferCorrectly:
+    """Discovery and master verify by DIFFERENT rules, and one dict served both.
+
+    Discovery connects to REDIS_HOST — a name whose certificate can match — so
+    it verifies like any other client. The master connects to whatever
+    `SENTINEL get-master-addr-by-name` returns, which SentinelManagedConnection
+    hands to SSLConnection as `server_hostname`: an IP no DNS SAN covers, and
+    one that changes on failover. core turns checking off there unless asked
+    explicitly, so this cache must too — otherwise it fails verification against
+    the very master create_redis_client connects to.
+    """
+
+    @staticmethod
+    def _options(**env: str) -> dict:
+        return _derive(REDIS_SENTINEL_MODE="true", REDIS_HOST="sent", **env)["CACHES"][
+            "default"
+        ]["OPTIONS"]
+
+    def test_the_master_does_not_verify_the_hostname_by_default(self):
+        options = self._options(REDIS_SSL="true")
+        assert options["SENTINEL_KWARGS"]["ssl_check_hostname"] is True
+        assert options["CONNECTION_POOL_KWARGS"]["ssl_check_hostname"] is False
+
+    def test_an_explicit_request_is_honoured_on_the_master(self):
+        """An operator who asks for it still gets it — core says the same."""
+        options = self._options(REDIS_SSL="true", REDIS_SSL_CHECK_HOSTNAME="true")
+        assert options["CONNECTION_POOL_KWARGS"]["ssl_check_hostname"] is True
+
+    def test_an_explicit_false_is_honoured_on_both(self):
+        options = self._options(REDIS_SSL="true", REDIS_SSL_CHECK_HOSTNAME="false")
+        assert options["SENTINEL_KWARGS"]["ssl_check_hostname"] is False
+        assert options["CONNECTION_POOL_KWARGS"]["ssl_check_hostname"] is False
+
+    def test_cert_reqs_none_turns_checking_off_on_both_planes(self):
+        """redis-py 5.2.1 assigns check_hostname verbatim — it does NOT coerce
+        the pair — so CERT_NONE with checking on reaches Python's ssl module,
+        which rejects it. Verified against the pinned version."""
+        options = self._options(REDIS_SSL="true", REDIS_SSL_CERT_REQS="none")
+        assert "ssl_check_hostname" not in options["SENTINEL_KWARGS"]
+        assert options["CONNECTION_POOL_KWARGS"]["ssl_check_hostname"] is False
+
+    def test_the_master_matches_core_for_every_spelling(self):
+        """Pinned to the resolver core itself uses, not to a second copy."""
+        import os
+
+        from unstract.core.cache.redis_client import (
+            resolve_sentinel_master_check_hostname,
+        )
+
+        for raw in (None, "true", "false", "1", "off"):
+            env = {
+                "REDIS_SENTINEL_MODE": "true",
+                "REDIS_HOST": "sent",
+                "REDIS_SSL": "true",
+            }
+            if raw is not None:
+                env["REDIS_SSL_CHECK_HOSTNAME"] = raw
+            derived = _derive(**env)["CACHES"]["default"]["OPTIONS"]
+            saved = {k: os.environ.get(k) for k in list(os.environ) if "REDIS" in k}
+            for key in saved:
+                os.environ.pop(key, None)
+            os.environ.update(env)
+            try:
+                expected = resolve_sentinel_master_check_hostname()
+            finally:
+                for key in list(os.environ):
+                    if "REDIS" in key:
+                        os.environ.pop(key, None)
+                os.environ.update({k: v for k, v in saved.items() if v is not None})
+            assert derived["CONNECTION_POOL_KWARGS"]["ssl_check_hostname"] == expected, (
+                raw
+            )
