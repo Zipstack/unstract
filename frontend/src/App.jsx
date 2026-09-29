@@ -12,7 +12,7 @@ import CustomMarkdown from "./components/helpers/custom-markdown/CustomMarkdown.
 import { NotificationClearAll } from "./components/notification/NotificationClearAll.jsx";
 import { NotificationIdLine } from "./components/notification/NotificationIdLine.jsx";
 import { PageTitle } from "./components/widgets/page-title/PageTitle.jsx";
-import { attachCsrfInterceptor } from "./helpers/csrf.js";
+import { installGlobalCsrfInterceptor } from "./helpers/csrf.js";
 import { THEME } from "./helpers/GetStaticData.js";
 import { attachRequestIdInterceptor } from "./helpers/requestId.js";
 import PostHogPageviewTracker from "./PostHogPageviewTracker.js";
@@ -29,11 +29,7 @@ if (!axios[GLOBAL_INTERCEPTOR_FLAG]) {
 
 // The few intentional raw-axios callers (pre-session bootstrap, background log
 // writes) get CSRF here; everything else goes through useAxiosPrivate.
-const CSRF_INTERCEPTOR_FLAG = Symbol.for("unstract.csrfInterceptor");
-if (!axios[CSRF_INTERCEPTOR_FLAG]) {
-  attachCsrfInterceptor(axios);
-  axios[CSRF_INTERCEPTOR_FLAG] = true;
-}
+installGlobalCsrfInterceptor(axios);
 
 let GoogleTagManagerHelper;
 try {

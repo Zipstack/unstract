@@ -8,6 +8,7 @@ import {
   CSRF_HEADER,
   getCsrfHeaders,
   getCsrfToken,
+  installGlobalCsrfInterceptor,
 } from "./csrf";
 
 const runRequestInterceptors = async (instance, config = {}) => {
@@ -85,6 +86,41 @@ describe("csrf helpers", () => {
       expect(result.headers[CSRF_HEADER]).toBeUndefined();
     });
 
+    it("does not send the token to a protocol-relative URL", async () => {
+      const result = await runRequestInterceptors(withInterceptor(), {
+        method: "post",
+        url: "//example.com/upload",
+      });
+      expect(result.headers[CSRF_HEADER]).toBeUndefined();
+    });
+
+    it("does not send the token when an external baseURL applies", async () => {
+      const result = await runRequestInterceptors(withInterceptor(), {
+        method: "post",
+        baseURL: "https://example.com/api",
+        url: "/items/",
+      });
+      expect(result.headers[CSRF_HEADER]).toBeUndefined();
+    });
+
+    it("sends the token with a same-origin baseURL", async () => {
+      const result = await runRequestInterceptors(withInterceptor(), {
+        method: "post",
+        baseURL: "/api/v1",
+        url: "items/",
+      });
+      expect(result.headers[CSRF_HEADER]).toBe("store-tok");
+    });
+
+    it("ignores an external baseURL when the URL is absolute same-origin", async () => {
+      const result = await runRequestInterceptors(withInterceptor(), {
+        method: "post",
+        baseURL: "https://example.com/api",
+        url: `${globalThis.location.origin}/api/v1/items/`,
+      });
+      expect(result.headers[CSRF_HEADER]).toBe("store-tok");
+    });
+
     it("sends the token to an absolute same-origin URL", async () => {
       const result = await runRequestInterceptors(withInterceptor(), {
         method: "post",
@@ -120,6 +156,21 @@ describe("csrf helpers", () => {
         url: "/api/v1/items/",
       });
       expect(result.headers[CSRF_HEADER]).toBe("rotated");
+    });
+  });
+
+  describe("installGlobalCsrfInterceptor", () => {
+    it("makes the global axios send the token, attaching only once", async () => {
+      const before = axios.interceptors.request.handlers.length;
+      installGlobalCsrfInterceptor(axios);
+      installGlobalCsrfInterceptor(axios);
+      expect(axios.interceptors.request.handlers.length).toBe(before + 1);
+
+      const result = await runRequestInterceptors(axios, {
+        method: "post",
+        url: "/api/v1/organization/org-1/set",
+      });
+      expect(result.headers[CSRF_HEADER]).toBe("store-tok");
     });
   });
 
