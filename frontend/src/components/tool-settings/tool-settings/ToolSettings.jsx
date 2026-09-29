@@ -196,6 +196,7 @@ function ToolSettings({ type }) {
   );
   fetchRef.current = getAdapters;
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reset only when the adapter type changes, not when resetList's identity does
   useEffect(() => {
     setDisplayList(undefined);
     if (!type) {
@@ -205,7 +206,6 @@ function ToolSettings({ type }) {
     // together so the new type starts clean and later refreshes don't replay
     // the previous type's view.
     resetList();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [type]);
 
   // New/edited adapters land on some page under the active sort — refetch the
