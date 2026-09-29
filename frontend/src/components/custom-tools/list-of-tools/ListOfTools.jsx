@@ -99,14 +99,12 @@ function ListOfTools({ segmentOptions, segmentValue, onSegmentChange }) {
         axiosPrivate({
           method: "GET",
           url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/users/${id}`,
-          headers: { "X-CSRFToken": sessionDetails?.csrfToken },
         }),
       addCoOwner: (id, userId) =>
         axiosPrivate({
           method: "POST",
           url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/${id}/owners/`,
           headers: {
-            "X-CSRFToken": sessionDetails?.csrfToken,
             "Content-Type": "application/json",
           },
           data: { user_id: userId },
@@ -115,10 +113,9 @@ function ListOfTools({ segmentOptions, segmentValue, onSegmentChange }) {
         axiosPrivate({
           method: "DELETE",
           url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/${id}/owners/${userId}/`,
-          headers: { "X-CSRFToken": sessionDetails?.csrfToken },
         }),
     }),
-    [axiosPrivate, sessionDetails?.orgId, sessionDetails?.csrfToken],
+    [axiosPrivate, sessionDetails?.orgId],
   );
 
   const {
@@ -168,7 +165,6 @@ function ListOfTools({ segmentOptions, segmentValue, onSegmentChange }) {
       return axiosPrivate({
         method: "GET",
         url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/`,
-        headers: { "X-CSRFToken": sessionDetails?.csrfToken },
         params,
       })
         .then((res) =>
@@ -206,7 +202,6 @@ function ListOfTools({ segmentOptions, segmentValue, onSegmentChange }) {
     },
     [
       sessionDetails?.orgId,
-      sessionDetails?.csrfToken,
       axiosPrivate,
       setPagination,
       setAlertDetails,
@@ -235,7 +230,6 @@ function ListOfTools({ segmentOptions, segmentValue, onSegmentChange }) {
         method,
         url,
         headers: {
-          "X-CSRFToken": sessionDetails?.csrfToken,
           "Content-Type": "application/json",
         },
         data: body,
@@ -269,9 +263,6 @@ function ListOfTools({ segmentOptions, segmentValue, onSegmentChange }) {
     const requestOptions = {
       method: "DELETE",
       url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/${tool.tool_id}`,
-      headers: {
-        "X-CSRFToken": sessionDetails?.csrfToken,
-      },
     };
 
     axiosPrivate(requestOptions)
@@ -325,9 +316,6 @@ function ListOfTools({ segmentOptions, segmentValue, onSegmentChange }) {
     const requestOptions = {
       method: "POST",
       url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/project-transfer/`,
-      headers: {
-        "X-CSRFToken": sessionDetails?.csrfToken,
-      },
       data: formData,
     };
 
@@ -360,9 +348,6 @@ function ListOfTools({ segmentOptions, segmentValue, onSegmentChange }) {
     const requestOptions = {
       method: "GET",
       url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/users/${promptProject?.tool_id}`,
-      headers: {
-        "X-CSRFToken": sessionDetails?.csrfToken,
-      },
     };
     setIsShareLoading(true);
     getAllUsers();
@@ -417,9 +402,6 @@ function ListOfTools({ segmentOptions, segmentValue, onSegmentChange }) {
     const requestOptions = {
       method: "POST",
       url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/${adapter?.tool_id}/share/`,
-      headers: {
-        "X-CSRFToken": sessionDetails?.csrfToken,
-      },
       data: {
         shared_users: userIds,
         shared_to_org: shareWithEveryone || false,

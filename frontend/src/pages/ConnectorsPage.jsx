@@ -53,26 +53,21 @@ function ConnectorsPage() {
     () => ({
       getAllUsers: () => axiosPrivate.get(getUrl("users/")),
       getSharedUsers: (id) =>
-        axiosPrivate.get(getUrl(`connector/users/${id}/`), {
-          headers: { "X-CSRFToken": sessionDetails?.csrfToken },
-        }),
+        axiosPrivate.get(getUrl(`connector/users/${id}/`), {}),
       addCoOwner: (id, userId) =>
         axiosPrivate.post(
           getUrl(`connector/${id}/owners/`),
           { user_id: userId },
           {
             headers: {
-              "X-CSRFToken": sessionDetails?.csrfToken,
               "Content-Type": "application/json",
             },
           },
         ),
       removeCoOwner: (id, userId) =>
-        axiosPrivate.delete(getUrl(`connector/${id}/owners/${userId}/`), {
-          headers: { "X-CSRFToken": sessionDetails?.csrfToken },
-        }),
+        axiosPrivate.delete(getUrl(`connector/${id}/owners/${userId}/`), {}),
     }),
-    [sessionDetails?.csrfToken],
+    [],
   );
 
   const {
@@ -190,11 +185,7 @@ function ConnectorsPage() {
 
   const handleDeleteConnector = async (_event, connector) => {
     try {
-      await axiosPrivate.delete(getUrl(`connector/${connector.id}/`), {
-        headers: {
-          "X-CSRFToken": sessionDetails?.csrfToken,
-        },
-      });
+      await axiosPrivate.delete(getUrl(`connector/${connector.id}/`), {});
       setAlertDetails({
         type: "success",
         content: "Connector deleted successfully",
@@ -250,11 +241,7 @@ function ConnectorsPage() {
       await axiosPrivate.post(
         getUrl(`connector/${connector.id}/share/`),
         updateData,
-        {
-          headers: {
-            "X-CSRFToken": sessionDetails?.csrfToken,
-          },
-        },
+        {},
       );
       setShareModalVisible(false);
       setAlertDetails({

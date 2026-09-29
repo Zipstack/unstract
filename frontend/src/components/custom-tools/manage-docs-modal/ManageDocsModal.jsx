@@ -10,6 +10,7 @@ import { Modal, Tooltip } from "@/components/ui/shims/antd-overlays";
 import { Table, Upload } from "@/components/ui/shims/antd-structure";
 import { Typography } from "@/components/ui/shims/antd-typography";
 
+import { getCsrfHeaders } from "../../../helpers/csrf";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { useAlertStore } from "../../../store/alert-store";
@@ -669,7 +670,6 @@ function ManageDocsModal({
       method: "DELETE",
       url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/file/${details?.tool_id}`,
       headers: {
-        "X-CSRFToken": sessionDetails?.csrfToken,
         "Content-Type": "application/json",
       },
       data: body,
@@ -746,9 +746,7 @@ function ManageDocsModal({
               <Upload.Dragger
                 name="file"
                 action={`/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/file/${details?.tool_id}`}
-                headers={{
-                  "X-CSRFToken": sessionDetails.csrfToken,
-                }}
+                headers={getCsrfHeaders()}
                 onChange={handleUploadChange}
                 disabled={isUploading || !defaultLlmProfile}
                 showUploadList={false}

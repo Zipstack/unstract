@@ -221,7 +221,6 @@ function ConfigureDs({
       method: "POST",
       url,
       headers: {
-        "X-CSRFToken": sessionDetails?.csrfToken,
         "Content-Type": "application/json",
       },
       data: body,
@@ -321,7 +320,6 @@ function ConfigureDs({
       url,
       headers: {
         "Content-Type": "application/json",
-        "X-CSRFToken": sessionDetails?.csrfToken,
       },
       data: body,
     };

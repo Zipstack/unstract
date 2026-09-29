@@ -35,9 +35,6 @@ const CardsList = ({ step, index, activeTool, moveItem }) => {
     const requestOptions = {
       method: "DELETE",
       url: `/api/v1/unstract/${sessionDetails?.orgId}/tool_instance/${toolSettings?.id}/`,
-      headers: {
-        "X-CSRFToken": sessionDetails?.csrfToken,
-      },
     };
 
     axiosPrivate(requestOptions)

@@ -37,9 +37,6 @@ export function DisplayLogsAndNotifications() {
     const requestOptions = {
       method: "GET",
       url: `/api/v1/unstract/${sessionDetails?.orgId}/logs/`,
-      headers: {
-        "X-CSRFToken": sessionDetails?.csrfToken,
-      },
     };
 
     axiosPrivate(requestOptions)
