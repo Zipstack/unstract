@@ -78,8 +78,8 @@ const formatBytes = (bytes, decimals = 1) => {
   const i = Math.floor(Math.log(bytes) / Math.log(k));
 
   return sizes[i]
-    ? `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`
-    : `${bytes / Math.pow(k, i - 1)} ${sizes.at(-1)}`;
+    ? `${parseFloat((bytes / k ** i).toFixed(dm))} ${sizes[i]}`
+    : `${bytes / k ** (i - 1)} ${sizes.at(-1)}`;
 };
 
 const O_AUTH_PROVIDERS = {
