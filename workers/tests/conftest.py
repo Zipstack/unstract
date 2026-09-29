@@ -426,3 +426,28 @@ def _restore_current_celery_app():
         yield
     finally:
         default_app.set_current()
+
+
+@pytest.fixture(autouse=True)
+def _stub_vlm_image_mode_resolution(monkeypatch):
+    """Default image-mode detection to "not image mode" for this suite.
+
+    The vlm_image_answer bridge resolves the x2text adapter's output mode
+    through the platform service for unstamped non-IDE payloads — a real
+    dependency of deployment runs that has no live endpoint in unit tests
+    (the shim is a MagicMock, so the resolver would build a nonsense URL
+    and fail every prompt). Stub it to "config unavailable" so every
+    prompt takes the text path, exactly as before the bridge existed.
+    Image-mode tests opt in by stamping ``x2text_output_mode: "image"``
+    on their per-prompt payloads (no platform call involved).
+    """
+    from executor.executors import vlm_image_answer
+
+    vlm_image_answer._MODE_CACHE.clear()
+    monkeypatch.setattr(
+        vlm_image_answer.PlatformHelper,
+        "get_adapter_config",
+        staticmethod(lambda *_args, **_kwargs: None),
+    )
+    yield
+    vlm_image_answer._MODE_CACHE.clear()
