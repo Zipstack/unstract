@@ -20,6 +20,7 @@ from adapter_processor_v2.deprecated_adapters import (
     get_deprecation_metadata,
     is_adapter_deprecated,
 )
+from adapter_processor_v2.image_output_gating import validate_image_output_allowed
 from backend.constants import FieldLengthConstants as FLC
 from backend.serializers import AuditSerializer
 from unstract.sdk1.constants import AdapterTypes
@@ -114,6 +115,13 @@ class AdapterInstanceSerializer(BaseAdapterSerializer):
 
     def to_internal_value(self, data: dict[str, Any]) -> dict[str, Any]:
         if data.get(AdapterKeys.ADAPTER_METADATA, None):
+            # Reject image output mode on deployments without the cloud
+            # consumer plugin, before the metadata is encrypted away.
+            validate_image_output_allowed(
+                data[AdapterKeys.ADAPTER_METADATA],
+                data.get(AdapterKeys.ADAPTER_ID)
+                or getattr(self.instance, "adapter_id", None),
+            )
             encryption_secret: str = settings.ENCRYPTION_KEY
             f: Fernet = Fernet(encryption_secret.encode("utf-8"))
             json_string: str = json.dumps(data.pop(AdapterKeys.ADAPTER_METADATA))
