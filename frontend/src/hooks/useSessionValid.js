@@ -3,33 +3,27 @@ import Cookies from "js-cookie";
 import { useNavigate } from "react-router-dom";
 import { listFlags } from "../helpers/FeatureFlagsData.js";
 import { getSessionData } from "../helpers/GetSessionData";
+import { loadPlugin } from "../helpers/pluginLoader.js";
 import { useExceptionHandler } from "../hooks/useExceptionHandler.jsx";
 import { useAlertStore } from "../store/alert-store";
 import { useSessionStore } from "../store/session-store";
 import { useUserSession } from "./useUserSession.js";
 
-let isPlatformAdmin;
-try {
-  const mod = await import("../plugins/hooks/usePlatformAdmin.js");
-  isPlatformAdmin = mod.usePlatformAdmin();
-} catch {
-  // Plugin not available
-}
+const isPlatformAdmin = await loadPlugin(() =>
+  import("../plugins/hooks/usePlatformAdmin.js").then((m) =>
+    m.usePlatformAdmin(),
+  ),
+);
 
 let selectedProduct;
-let selectedProductStore;
-let PRODUCT_NAMES = {};
+const selectedProductStore = await loadPlugin(
+  () => import("../plugins/store/select-product-store.js"),
+);
+const { PRODUCT_NAMES = {} } = await loadPlugin(
+  () => import("../plugins/llm-whisperer/helper"),
+  {},
+);
 
-try {
-  selectedProductStore = await import(
-    "../plugins/store/select-product-store.js"
-  );
-  const helperMod = await import("../plugins/llm-whisperer/helper");
-  // Guard against empty/missing module export
-  PRODUCT_NAMES = helperMod.PRODUCT_NAMES ?? {};
-} catch {
-  // Ignore if hook not available
-}
 function useSessionValid() {
   const setSessionDetails = useSessionStore((state) => state.setSessionDetails);
   const handleException = useExceptionHandler();

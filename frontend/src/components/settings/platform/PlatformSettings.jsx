@@ -8,6 +8,7 @@ import { Col, Row } from "@/components/ui/shims/antd-layout";
 import { Divider, Tag } from "@/components/ui/shims/antd-leaves";
 import { Typography } from "@/components/ui/shims/antd-typography";
 
+import { loadPlugin } from "../../../helpers/pluginLoader.js";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { IslandLayout } from "../../../layouts/island-layout/IslandLayout.jsx";
 import { useAlertStore } from "../../../store/alert-store";
@@ -24,13 +25,10 @@ import { SettingsLayout } from "../settings-layout/SettingsLayout.jsx";
 // there. Detect the enterprise build by probing for an enterprise-only plugin
 // (absent in OSS) and hide the control entirely otherwise. Mirrors the
 // plugin-gating idiom used in SideNavBar.
-let isEnterpriseBuild = false;
-try {
-  await import("../../../plugins/store/unstract-subscription-plan-store");
-  isEnterpriseBuild = true;
-} catch {
-  // OSS build — enterprise plugins are not bundled.
-}
+const isEnterpriseBuild =
+  (await loadPlugin(
+    () => import("../../../plugins/store/unstract-subscription-plan-store"),
+  )) !== null;
 
 const defaultKeys = [
   {

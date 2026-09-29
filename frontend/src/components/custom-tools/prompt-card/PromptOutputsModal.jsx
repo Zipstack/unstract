@@ -2,6 +2,7 @@ import PropTypes from "prop-types";
 import { Col, Row } from "@/components/ui/shims/antd-layout";
 import { Modal } from "@/components/ui/shims/antd-overlays";
 import { Typography } from "@/components/ui/shims/antd-typography";
+import { loadPlugin } from "../../../helpers/pluginLoader.js";
 import usePromptOutput from "../../../hooks/usePromptOutput";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import SpaceWrapper from "../../widgets/space-wrapper/SpaceWrapper";
@@ -9,13 +10,9 @@ import { TABLE } from "./constants";
 import { DisplayPromptResult } from "./DisplayPromptResult";
 import { ProfileIcon } from "./ProfileIcon";
 
-let TableOutput;
-try {
-  const mod = await import("../../../plugins/prompt-card/TableOutput");
-  TableOutput = mod.TableOutput;
-} catch {
-  // The component will remain null of it is not available
-}
+const TableOutput = await loadPlugin(() =>
+  import("../../../plugins/prompt-card/TableOutput").then((m) => m.TableOutput),
+);
 
 function PromptOutputsModal({
   open,

@@ -1,20 +1,7 @@
 import { lazy } from "react";
 
 import { NotFound } from "../components/error/NotFound/NotFound.jsx";
-
-// The only error that means "this plugin was not shipped" is the build-time
-// stub vite.config.js's `optionalPluginImports` resolves a missing optional
-// plugin to: `throw new Error('Optional plugin not available')`. We match that
-// exact signal and nothing else.
-//
-// We deliberately do NOT reuse the broader `isModuleMissing` here: it also
-// matches "Failed to fetch dynamically imported module", which is a TRANSIENT
-// chunk-load failure of a plugin that IS shipped (CDN/origin blip, stale hashed
-// asset). Treating that as "absent" would silently render NotFound for a real,
-// momentarily-unreachable route instead of surfacing the failure.
-function isPluginAbsent(err) {
-  return (err?.message || "").includes("Optional plugin not available");
-}
+import { isPluginAbsent } from "./pluginLoader.js";
 
 // Wrap an enterprise plugin's dynamic import as a lazy route element. The
 // plugin chunk is fetched only when the element actually renders (i.e. on

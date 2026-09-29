@@ -12,18 +12,15 @@ import { Button } from "@/components/ui/shims/antd-button";
 import { Space } from "@/components/ui/shims/antd-layout";
 import { Drawer, Menu } from "@/components/ui/shims/antd-structure";
 import { Typography } from "@/components/ui/shims/antd-typography";
+import { loadPlugin } from "../../../helpers/pluginLoader.js";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { useSessionStore } from "../../../store/session-store";
 
-let HeaderPublic;
-try {
-  const mod = await import(
+const HeaderPublic = await loadPlugin(() =>
+  import(
     "../../../plugins/prompt-studio-public-share/header-public/HeaderPublic.jsx"
-  );
-  HeaderPublic = mod.HeaderPublic;
-} catch {
-  // Do nothing if plugins are not loaded.
-}
+  ).then((m) => m.HeaderPublic),
+);
 
 const PAGINATION_ACTIONS = {
   PREV: "PREV",

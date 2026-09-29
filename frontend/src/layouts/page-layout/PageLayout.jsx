@@ -11,25 +11,14 @@ import {
   getLocalStorageValue,
   setLocalStorageValue,
 } from "../../helpers/localStorage";
-import { isModuleMissing } from "../../helpers/pluginLoader.js";
+import { loadPlugin } from "../../helpers/pluginLoader.js";
 
 // Optional status banner contributed by the marketplace plugin, when
-// present. The plugin is absent in OSS builds — the import fails and
-// nothing is mounted. The banner self-manages its visibility.
-let MarketplacePendingBanner;
-try {
-  const marketplaceMod = await import("../../plugins/marketplace");
-  MarketplacePendingBanner = marketplaceMod.MarketplacePendingBanner;
-} catch (err) {
-  // Missing plugin is the expected case; surface anything else so a
-  // broken plugin doesn't silently unmount its UI.
-  if (!isModuleMissing(err)) {
-    console.error(
-      "[marketplace] MarketplacePendingBanner import failed unexpectedly",
-      err,
-    );
-  }
-}
+// present. The plugin is absent in OSS builds, so nothing is mounted. The
+// banner self-manages its visibility.
+const MarketplacePendingBanner = await loadPlugin(() =>
+  import("../../plugins/marketplace").then((m) => m.MarketplacePendingBanner),
+);
 
 function PageLayout({
   sideBarOptions,

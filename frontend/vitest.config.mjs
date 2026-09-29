@@ -40,8 +40,8 @@ function jsxInJs() {
  * Mirror of optionalPluginImports() in vite.config.js — the same asymmetry the
  * note above warns about, in a second place.
  *
- * `src/helpers/GetStaticData.js` does `try { await import("../plugins/...") }`,
- * which the build resolves to an empty module when the cloud plugin tree is
+ * `src/helpers/GetStaticData.js` does
+ * `await loadPlugin(() => import("../plugins/..."))`, which the build resolves to an empty module when the cloud plugin tree is
  * absent. Vitest does not read vite.config.js, so in the OSS-only checkout any
  * test importing a component that reaches GetStaticData failed to COLLECT —
  * reported as a failed file, not a failed assertion, and easy to read as

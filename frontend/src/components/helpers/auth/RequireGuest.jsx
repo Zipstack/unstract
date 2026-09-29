@@ -5,18 +5,14 @@ import {
   onboardCompleted,
   publicRoutes,
 } from "../../../helpers/GetStaticData";
+import { loadPlugin } from "../../../helpers/pluginLoader.js";
 import { useSessionStore } from "../../../store/session-store";
 
-let selectedProductStore;
+const selectedProductStore = await loadPlugin(
+  () => import("../../../plugins/store/select-product-store.js"),
+);
 let isLlmWhisperer;
 let isVerticals;
-try {
-  selectedProductStore = await import(
-    "../../../plugins/store/select-product-store.js"
-  );
-} catch {
-  // do nothing
-}
 
 const RequireGuest = () => {
   const { sessionDetails } = useSessionStore();

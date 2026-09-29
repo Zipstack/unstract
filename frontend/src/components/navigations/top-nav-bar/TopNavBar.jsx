@@ -23,6 +23,7 @@ import {
   onboardCompleted,
   THEME,
 } from "../../../helpers/GetStaticData.js";
+import { loadPlugin } from "../../../helpers/pluginLoader.js";
 import useLogout from "../../../hooks/useLogout.js";
 import "../../../layouts/page-layout/PageLayout.css";
 import { useSessionStore } from "../../../store/session-store.js";
@@ -32,46 +33,27 @@ import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
 import { useAlertStore } from "../../../store/alert-store.js";
 import { ConfirmModal } from "../../widgets/confirm-modal/ConfirmModal.jsx";
 
-let TrialDaysInfo;
-try {
-  const mod = await import(
+const TrialDaysInfo = await loadPlugin(() =>
+  import(
     "../../../plugins/unstract-subscription/components/TrialDaysInfo.jsx"
-  );
-  TrialDaysInfo = mod.default;
-} catch {
-  // Plugin not found
-}
+  ).then((m) => m.default),
+);
 
-let selectedProductStore;
+const selectedProductStore = await loadPlugin(
+  () => import("../../../plugins/store/select-product-store.js"),
+);
 let selectedProduct;
 
-try {
-  selectedProductStore = await import(
-    "../../../plugins/store/select-product-store.js"
-  );
-} catch {
-  // Ignore if hook not available
-}
+const PlatformDropdown = await loadPlugin(() =>
+  import("../../../plugins/platform-dropdown/PlatformDropDown.jsx").then(
+    (m) => m.PlatformDropdown,
+  ),
+);
 
-let PlatformDropdown;
-try {
-  const mod = await import(
-    "../../../plugins/platform-dropdown/PlatformDropDown.jsx"
-  );
-  PlatformDropdown = mod.PlatformDropdown;
-} catch {
-  // Plugin not found
-}
-
-let WhispererLogo;
-let WhispererDarkLogo;
-try {
-  const mod = await import("../../../plugins/assets/llmWhisperer/index.js");
-  WhispererLogo = mod.WhispererLogo;
-  WhispererDarkLogo = mod.LlmWhispererLogo;
-} catch {
-  // Ignore if hook not available
-}
+const { WhispererLogo, LlmWhispererLogo: WhispererDarkLogo } = await loadPlugin(
+  () => import("../../../plugins/assets/llmWhisperer/index.js"),
+  {},
+);
 
 /*
  * `Logo` is injected rather than hardcoded: the top bar is a light surface in
@@ -110,35 +92,25 @@ const CustomLogo = ({ onClick, className, Logo }) => {
 // `APIHubLogo`/`WhispererLogo` are the WHITE-ink marks (named for the dark bar
 // they were drawn for); `APIHubDarkLogo`/`LlmWhispererLogo` are the dark-ink
 // ones. Both are pulled so the bar can pick by theme.
-let APIHubLogo;
-let APIHubDarkLogo;
-try {
-  const mod = await import("../../../plugins/assets/verticals/index.js");
-  APIHubLogo = mod.APIHubLogo;
-  APIHubDarkLogo = mod.APIHubDarkLogo;
-} catch {
-  // Ignore if hook not available
-}
+const { APIHubLogo, APIHubDarkLogo } = await loadPlugin(
+  () => import("../../../plugins/assets/verticals/index.js"),
+  {},
+);
 
 let unstractSubscriptionPlan;
-let unstractSubscriptionPlanStore;
-let UNSTRACT_SUBSCRIPTION_PLANS;
-let UnstractPricingMenuLink;
-try {
-  unstractSubscriptionPlanStore = await import(
-    "../../../plugins/store/unstract-subscription-plan-store"
-  );
-  const constantsMod = await import(
-    "../../../plugins/unstract-subscription/helper/constants"
-  );
-  UNSTRACT_SUBSCRIPTION_PLANS = constantsMod.UNSTRACT_SUBSCRIPTION_PLANS;
-  const menuMod = await import(
+const unstractSubscriptionPlanStore = await loadPlugin(
+  () => import("../../../plugins/store/unstract-subscription-plan-store"),
+);
+const UNSTRACT_SUBSCRIPTION_PLANS = await loadPlugin(() =>
+  import("../../../plugins/unstract-subscription/helper/constants").then(
+    (m) => m.UNSTRACT_SUBSCRIPTION_PLANS,
+  ),
+);
+const UnstractPricingMenuLink = await loadPlugin(() =>
+  import(
     "../../../plugins/unstract-subscription/components/UnstractPricingMenuLink.jsx"
-  );
-  UnstractPricingMenuLink = menuMod.UnstractPricingMenuLink;
-} catch {
-  // Plugin unavailable.
-}
+  ).then((m) => m.UnstractPricingMenuLink),
+);
 
 function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
   const navigate = useNavigate();

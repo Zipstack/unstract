@@ -4,6 +4,7 @@ import PropTypes from "prop-types";
 import { useEffect, useMemo, useState } from "react";
 import { Typography } from "@/components/ui/shims/antd-typography";
 
+import { loadPlugin } from "../../../helpers/pluginLoader.js";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import useRequestUrl from "../../../hooks/useRequestUrl";
@@ -11,30 +12,27 @@ import { useAlertStore } from "../../../store/alert-store";
 import { EmptyState } from "../../widgets/empty-state/EmptyState";
 import { ConfigureDs } from "../configure-ds/ConfigureDs";
 
-let transformLlmWhispererJsonSchema;
-let LLMW_V2_ID;
-let PLAN_TYPES;
-let unstractSubscriptionPlanStore;
-let llmWhipererAdapterSchema;
-try {
-  const schemaMod = await import(
-    "../../../plugins/unstract-subscription/helper/transformLlmWhispererJsonSchema"
-  );
-  transformLlmWhispererJsonSchema = schemaMod.transformLlmWhispererJsonSchema;
-  LLMW_V2_ID = schemaMod.LLMW_V2_ID;
-  const constantsMod = await import(
-    "../../../plugins/unstract-subscription/helper/constants"
-  );
-  PLAN_TYPES = constantsMod.PLAN_TYPES;
-  unstractSubscriptionPlanStore = await import(
-    "../../../plugins/store/unstract-subscription-plan-store"
-  );
-  llmWhipererAdapterSchema = await import(
-    "../../../plugins/unstract-subscription/hooks/useLlmWhispererAdapterSchema.js"
-  );
-} catch {
-  // Ignore if not available
-}
+const { transformLlmWhispererJsonSchema, LLMW_V2_ID } = await loadPlugin(
+  () =>
+    import(
+      "../../../plugins/unstract-subscription/helper/transformLlmWhispererJsonSchema"
+    ),
+  {},
+);
+const PLAN_TYPES = await loadPlugin(() =>
+  import("../../../plugins/unstract-subscription/helper/constants").then(
+    (m) => m.PLAN_TYPES,
+  ),
+);
+const unstractSubscriptionPlanStore = await loadPlugin(
+  () => import("../../../plugins/store/unstract-subscription-plan-store"),
+);
+const llmWhipererAdapterSchema = await loadPlugin(
+  () =>
+    import(
+      "../../../plugins/unstract-subscription/hooks/useLlmWhispererAdapterSchema.js"
+    ),
+);
 
 function AddSource({
   selectedSourceId,

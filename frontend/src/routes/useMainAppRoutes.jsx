@@ -7,7 +7,7 @@ import { DefaultTriad } from "../components/settings/default-triad/DefaultTriad.
 import { PlatformSettings } from "../components/settings/platform/PlatformSettings.jsx";
 import { deploymentTypes } from "../helpers/GetStaticData.js";
 import { lazyNamed } from "../helpers/lazyNamed.js";
-import { isModuleMissing } from "../helpers/pluginLoader.js";
+import { loadPlugin } from "../helpers/pluginLoader.js";
 import { lazyPlugin } from "../helpers/pluginRegistry.js";
 
 // Route pages are code-split (via the shared lazyNamed helper) so they are
@@ -188,17 +188,12 @@ const MarketplaceStripeConflictPage = lazyPlugin(
 );
 
 // PRODUCT_NAMES is a data value read synchronously below to decide the route
-// tree, so it cannot be lazy — load it with a guarded await (cloud only; OSS
-// resolves to the stub and is caught).
-let PRODUCT_NAMES = {};
-try {
-  const mod = await import("../plugins/llm-whisperer/helper.js");
-  PRODUCT_NAMES = mod.PRODUCT_NAMES ?? {};
-} catch (err) {
-  if (!isModuleMissing(err)) {
-    console.error("[llm-whisperer] helper import failed unexpectedly", err);
-  }
-}
+// tree, so it cannot be lazy — load it with loadPlugin (cloud only; OSS
+// resolves to the stub and falls back to {}).
+const { PRODUCT_NAMES = {} } = await loadPlugin(
+  () => import("../plugins/llm-whisperer/helper.js"),
+  {},
+);
 
 // NOTE: the old "ReadOnlyReviewPage loaded but ReviewLayout missing" warning
 // was removed — with lazyPlugin both wrappers are always truthy, so the check

@@ -6,6 +6,7 @@ import { Form } from "@/components/ui/shims/antd-form";
 import { Input } from "@/components/ui/shims/antd-inputs";
 import { Dropdown, Modal, Tooltip } from "@/components/ui/shims/antd-overlays";
 import { ExportToolIcon } from "../../../assets";
+import { loadPlugin } from "../../../helpers/pluginLoader.js";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import usePostHogEvents from "../../../hooks/usePostHogEvents";
@@ -19,27 +20,21 @@ import { CustomButton } from "../../widgets/custom-button/CustomButton";
 import { ExportTool } from "../export-tool/ExportTool";
 import "./Header.css";
 
-let SinglePassToggleSwitch;
-let CloneButton;
-let PromptShareButton;
-try {
-  const mod = await import(
+const SinglePassToggleSwitch = await loadPlugin(() =>
+  import(
     "../../../plugins/single-pass-toggle-switch/SinglePassToggleSwitch"
-  );
-  SinglePassToggleSwitch = mod.SinglePassToggleSwitch;
-} catch {}
-try {
-  const mod = await import(
+  ).then((m) => m.SinglePassToggleSwitch),
+);
+const PromptShareButton = await loadPlugin(() =>
+  import(
     "../../../plugins/prompt-studio-public-share/public-share-btn/PromptShareButton.jsx"
-  );
-  PromptShareButton = mod.PromptShareButton;
-} catch {}
-try {
-  const mod = await import(
-    "../../../plugins/prompt-studio-clone/clone-btn/CloneButton.jsx"
-  );
-  CloneButton = mod.CloneButton;
-} catch {}
+  ).then((m) => m.PromptShareButton),
+);
+const CloneButton = await loadPlugin(() =>
+  import("../../../plugins/prompt-studio-clone/clone-btn/CloneButton.jsx").then(
+    (m) => m.CloneButton,
+  ),
+);
 
 const noopCheckLookups = () => Promise.resolve(true);
 

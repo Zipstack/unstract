@@ -2,17 +2,14 @@ import { Button } from "@/components/ui/shims/antd-button";
 import { Col, Row } from "@/components/ui/shims/antd-layout";
 
 import { getBaseUrl } from "../../helpers/GetStaticData";
+import { loadPlugin } from "../../helpers/pluginLoader.js";
 import "./Login.css";
 import { UnstractBlackLogo } from "../../assets";
 import { ProductContentLayout } from "./ProductContentLayout";
 
-let LoginForm = null;
-try {
-  const mod = await import("../../plugins/login-form/LoginForm");
-  LoginForm = mod.LoginForm;
-} catch {
-  // Plugin not available (OSS version)
-}
+const LoginForm = await loadPlugin(() =>
+  import("../../plugins/login-form/LoginForm").then((m) => m.LoginForm),
+);
 
 function Login() {
   const baseUrl = getBaseUrl();

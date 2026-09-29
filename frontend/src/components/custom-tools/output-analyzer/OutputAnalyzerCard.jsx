@@ -6,6 +6,7 @@ import { Divider } from "@/components/ui/shims/antd-leaves";
 import { Typography } from "@/components/ui/shims/antd-typography";
 
 import { base64toBlob } from "../../../helpers/GetStaticData";
+import { loadPlugin } from "../../../helpers/pluginLoader.js";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { useAlertStore } from "../../../store/alert-store";
@@ -15,15 +16,11 @@ import { CombinedOutput } from "../combined-output/CombinedOutput";
 import { DocumentViewer } from "../document-viewer/DocumentViewer";
 import { PdfViewer } from "../pdf-viewer/PdfViewer";
 
-let publicDocumentApi;
-try {
-  const mod = await import(
+const publicDocumentApi = await loadPlugin(() =>
+  import(
     "../../../plugins/prompt-studio-public-share/helpers/PublicShareAPIs"
-  );
-  publicDocumentApi = mod.publicDocumentApi;
-} catch {
-  // The component will remain null if it is not available
-}
+  ).then((m) => m.publicDocumentApi),
+);
 
 function OutputAnalyzerCard({ doc, selectedPrompts, totalFields }) {
   const [fileUrl, setFileUrl] = useState("");
