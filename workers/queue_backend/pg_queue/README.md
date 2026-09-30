@@ -113,6 +113,14 @@ deadline**, then SIGKILLs stragglers. Must be ≤ the pod's
 the supervisor reports the *oldest* child's staleness on `/health`. Frozen during a
 long task, so a wedged child goes stale and trips the probe.
 
+**Readiness** — `/ready` on the same port answers 200 only once **every** child has
+finished its `import worker` bootstrap and built its consumer (503 `starting` until
+then; the JSON carries `loaded_children`). It is for a k8s `startupProbe`: the N
+children import in parallel for a minute or two at multiple cores, and a pod that is
+not yet Ready has that CPU ignored by the HPA instead of read as load. Single-process
+consumers (`CONCURRENCY = 1`) answer 200 as soon as the port is up, since they bind it
+only after loading. The reaper serves no `/ready` (404).
+
 **Reaper** — a singleton (leader-elected) sweeper that recovers **stranded** work:
 fast-fails a barrier whose `last_progress_at` stalled, cascades a terminal
 execution to its files, and sweeps expired retention rows.

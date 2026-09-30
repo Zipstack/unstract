@@ -24,6 +24,7 @@ from pg_queue_consumer.supervisor import (
     _join_children,
     _reap_dead,
     _restart_due_children,
+    _run_child,
     _try_fork_child,
     _wait_for_exit,
     concurrency_from_env,
@@ -184,6 +185,34 @@ class TestFleet:
         clock[0] += 100.0  # well past any backoff
         assert f.due_restarts() == [0]
 
+    # --- readiness (UN-4136) ---------------------------------------------------
+
+    def test_fresh_fleet_is_not_loaded(self):
+        # Unlike the heartbeats (seeded fresh), nothing is loaded at construction:
+        # a pod must not go Ready before its children have imported.
+        f = _Fleet(3)
+        assert f.loaded_count() == 0
+        assert f.all_loaded() is False
+
+    def test_all_loaded_only_when_every_slot_has_loaded(self):
+        f = _Fleet(3)
+        f.loaded[0] = 1
+        f.loaded[2] = 1
+        assert f.loaded_count() == 2
+        assert f.all_loaded() is False  # slot 1 still importing
+        f.loaded[1] = 1
+        assert f.all_loaded() is True
+
+    def test_reap_clears_the_slot_loaded_flag(self):
+        # A dead child's replacement must bootstrap again before the fleet counts
+        # as loaded; the stale flag must not carry over.
+        f = _Fleet(2)
+        f.loaded[0] = f.loaded[1] = 1
+        f.record_fork(1, 111)
+        f.reap(1)
+        assert list(f.loaded) == [1, 0]
+        assert f.all_loaded() is False
+
 
 class TestReapDead:
     def test_dead_child_reaped_and_rescheduled(self):
@@ -258,19 +287,32 @@ class TestTryForkChild:
             assert _try_fork_child(f, 0) is True
         assert f.alive_items() == [(0, 222)]
 
+    def test_child_is_handed_the_shared_heartbeat_and_loaded_arrays(self):
+        # The child writes its own slot in BOTH arrays; handing it a copy (or not
+        # handing over `loaded` at all) would leave /ready stuck at 503.
+        f = _Fleet(1)
+        with (
+            patch(f"{_MOD}.os.fork", return_value=0),  # we are the child
+            patch(f"{_MOD}._child_after_fork", side_effect=SystemExit) as child,
+        ):
+            with pytest.raises(SystemExit):
+                _try_fork_child(f, 0)
+        child.assert_called_once_with(0, f.heartbeats, f.loaded)
+
 
 class TestChildAfterFork:
     def test_resets_signals_and_exits_zero_on_clean_run(self):
         with (
             patch(f"{_MOD}.signal.signal") as sig,
-            patch(f"{_MOD}._run_child"),
+            patch(f"{_MOD}._run_child") as run,
             patch(f"{_MOD}.os._exit", side_effect=SystemExit) as exit_,
         ):
-            queue = MagicMock()
+            heartbeats, loaded = MagicMock(), MagicMock()
             with pytest.raises(SystemExit):
-                _child_after_fork(0, queue)
+                _child_after_fork(0, heartbeats, loaded)
         # SIGTERM + SIGINT reset to default before running.
         assert sig.call_count == 2
+        run.assert_called_once_with(0, heartbeats, loaded)
         exit_.assert_called_once_with(0)
 
     def test_hard_exits_one_when_run_raises(self):
@@ -279,10 +321,49 @@ class TestChildAfterFork:
             patch(f"{_MOD}._run_child", side_effect=RuntimeError("boom")),
             patch(f"{_MOD}.os._exit", side_effect=SystemExit) as exit_,
         ):
-            queue = MagicMock()
             with pytest.raises(SystemExit):
-                _child_after_fork(0, queue)
+                _child_after_fork(0, MagicMock(), MagicMock())
         exit_.assert_called_once_with(1)
+
+
+class TestRunChildLoaded:
+    """The child marks itself loaded only after the bootstrap, and before it
+    starts polling (UN-4136).
+    """
+
+    @staticmethod
+    def _run_slot_1(fleet: _Fleet, build) -> None:  # noqa: ANN001
+        # No real `import worker` bootstrap and no real heartbeat thread.
+        with (
+            patch.dict("sys.modules", {"worker": MagicMock()}),
+            patch("pg_queue_consumer._bootstrap.select_source_worker_type"),
+            patch(
+                "queue_backend.pg_queue.consumer.build_consumer_from_env",
+                side_effect=build,
+            ),
+            patch(f"{_MOD}.threading.Thread"),
+        ):
+            _run_child(1, fleet.heartbeats, fleet.loaded)
+
+    def test_marks_its_slot_loaded_before_polling(self):
+        f = _Fleet(2)
+        seen: list[list[int]] = []
+        consumer = MagicMock()
+        # Snapshot the flags at the moment polling would begin.
+        consumer.run.side_effect = lambda: seen.append(list(f.loaded))
+        self._run_slot_1(f, lambda: consumer)
+        assert seen == [[0, 1]]  # own slot only, and set before run()
+
+    def test_not_marked_loaded_when_the_build_fails(self):
+        # A child that cannot finish its bootstrap must never count as loaded.
+        f = _Fleet(2)
+
+        def _boom():  # noqa: ANN202
+            raise RuntimeError("cannot build")
+
+        with pytest.raises(RuntimeError, match="cannot build"):
+            self._run_slot_1(f, _boom)
+        assert list(f.loaded) == [0, 0]
 
 
 class TestWaitForExit:
@@ -385,3 +466,43 @@ class TestSupervisorHealth:
         ):
             # Must not propagate — the consumer keeps draining without a probe.
             assert sup._maybe_start_supervisor_health(_Fleet(1)) is None
+
+    def test_ready_is_503_until_every_child_loads_while_health_stays_200(
+        self, monkeypatch
+    ):
+        # UN-4136: the whole point. /health is fresh from construction (liveness
+        # must not trip during the import), so only /ready can hold the pod
+        # NotReady while the children import.
+        import json
+        import urllib.error
+        import urllib.request
+
+        monkeypatch.setenv("WORKER_PG_QUEUE_CONSUMER_HEALTH_PORT", "0")  # OS picks
+        fleet = _Fleet(2)
+        server = sup._maybe_start_supervisor_health(fleet)
+        assert server is not None
+        base = f"http://127.0.0.1:{server.bound_port}"
+
+        def _ready() -> tuple[int, dict]:
+            try:
+                with urllib.request.urlopen(f"{base}/ready", timeout=5) as resp:
+                    return resp.status, json.loads(resp.read())
+            except urllib.error.HTTPError as exc:
+                return exc.code, json.loads(exc.read())
+
+        try:
+            with urllib.request.urlopen(f"{base}/health", timeout=5) as resp:
+                assert resp.status == 200  # alive, but...
+
+            code, body = _ready()
+            assert (code, body["status"], body["loaded_children"]) == (503, "starting", 0)
+
+            fleet.loaded[0] = 1
+            code, body = _ready()
+            assert (code, body["loaded_children"]) == (503, 1)  # one still importing
+
+            fleet.loaded[1] = 1
+            code, body = _ready()
+            assert (code, body["status"], body["loaded_children"]) == (200, "ready", 2)
+        finally:
+            server.stop()
