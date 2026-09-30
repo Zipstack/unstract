@@ -1474,6 +1474,15 @@ wheels = [
 ]
 
 [[package]]
+name = "json-repair"
+version = "0.63.4"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/62/72/4ec122befe7c2091ba7370d985cf0a3d4dbeccc2f832898ddb7921b4ab94/json_repair-0.63.4.tar.gz", hash = "sha256:77aa642193d62b02b889e8ce0df33898d3ea87282f0b9d8653f8ce8772c642b4", size = 52906, upload-time = "2026-08-25T07:39:02.725Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/a1/ea/1a7b47196b0d03f59a80f5218b2a34160587c84ca8b0bcb56cb4ee93834e/json_repair-0.63.4-py3-none-any.whl", hash = "sha256:0f374f3eee21454aef0a5d72c06b8689b660a1788f80ab392639e3f7d5c5d458", size = 51295, upload-time = "2026-08-25T07:39:01.259Z" },
+]
+
+[[package]]
 name = "jsonschema"
 version = "4.23.0"
 source = { registry = "https://pypi.org/simple" }
@@ -3948,6 +3957,7 @@ dependencies = [
     { name = "celery" },
     { name = "croniter" },
     { name = "httpx" },
+    { name = "json-repair" },
     { name = "prometheus-client" },
     { name = "psutil" },
     { name = "psycopg2-binary" },
@@ -3973,6 +3983,7 @@ requires-dist = [
     { name = "celery", specifier = ">=5.5.3" },
     { name = "croniter", specifier = ">=3.0.3" },
     { name = "httpx", specifier = ">=0.27.0" },
+    { name = "json-repair", specifier = ">=0.42" },
     { name = "prometheus-client", specifier = ">=0.17.0,<1.0.0" },
     { name = "psutil", specifier = ">=5.9.0,<6.0.0" },
     { name = "psycopg2-binary", specifier = "==2.9.9" },
