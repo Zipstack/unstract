@@ -230,7 +230,6 @@ function Pipelines({ type }) {
       url: `/api/v1/unstract/${sessionDetails?.orgId}/pipeline/execute/`,
       headers: {
         "Content-Type": "application/json",
-        "X-CSRFToken": sessionDetails?.csrfToken,
       },
       data: body,
     };
@@ -253,7 +252,6 @@ function Pipelines({ type }) {
       url: `/api/v1/unstract/${sessionDetails?.orgId}/pipeline/${id}/`,
       headers: {
         "Content-Type": "application/json",
-        "X-CSRFToken": sessionDetails?.csrfToken,
       },
       data: body,
     };
@@ -270,9 +268,6 @@ function Pipelines({ type }) {
     const requestOptions = {
       method: "DELETE",
       url: `/api/v1/unstract/${sessionDetails?.orgId}/pipeline/${id}/`,
-      headers: {
-        "X-CSRFToken": sessionDetails?.csrfToken,
-      },
     };
     axiosPrivate(requestOptions)
       .then(() => {

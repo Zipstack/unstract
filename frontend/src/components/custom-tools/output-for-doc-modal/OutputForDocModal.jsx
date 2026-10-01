@@ -199,9 +199,6 @@ function OutputForDocModal({
     const requestOptions = {
       method: "GET",
       url,
-      headers: {
-        "X-CSRFToken": sessionDetails?.csrfToken,
-      },
     };
     setIsLoading(true);
     axiosPrivate(requestOptions)

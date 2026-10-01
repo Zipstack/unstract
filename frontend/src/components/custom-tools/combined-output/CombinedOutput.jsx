@@ -211,9 +211,6 @@ function CombinedOutput({ docId, setFilledFields, selectedPrompts }) {
     const requestOptions = {
       method: "GET",
       url,
-      headers: {
-        "X-CSRFToken": sessionDetails?.csrfToken,
-      },
     };
     const res = await axiosPrivate(requestOptions);
     return res;

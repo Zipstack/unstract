@@ -832,13 +832,11 @@ function Agency() {
 
   const handleWfExecutionApi = async (body) => {
     let header = {
-      "X-CSRFToken": sessionDetails?.csrfToken,
       "Content-Type": "application/json",
     };
     if (shouldIncludeFile(body) && apiOpsPresent && fileList.length > 0) {
       body = getRequestBody(body);
       header = {
-        "X-CSRFToken": sessionDetails?.csrfToken,
         "Content-Type": "multipart/form-data",
       };
     }
@@ -939,9 +937,6 @@ function Agency() {
             const deleteOptions = {
               method: "DELETE",
               url: getUrl(`tool_instance/${existingTool.id}/`),
-              headers: {
-                "X-CSRFToken": sessionDetails?.csrfToken,
-              },
             };
             await axiosPrivate(deleteOptions);
           }
@@ -963,7 +958,6 @@ function Agency() {
           method: "POST",
           url: getUrl(`tool_instance/`),
           headers: {
-            "X-CSRFToken": sessionDetails?.csrfToken,
             "Content-Type": "application/json",
           },
           data: body,

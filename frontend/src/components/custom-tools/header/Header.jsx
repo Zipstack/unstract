@@ -92,7 +92,6 @@ function Header({
       method: "POST",
       url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/export/${details?.tool_id}`,
       headers: {
-        "X-CSRFToken": sessionDetails?.csrfToken,
         "Content-Type": "application/json",
       },
       data: body,
@@ -149,9 +148,6 @@ function Header({
     const requestOptions = {
       method: "GET",
       url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/export/${details?.tool_id}`,
-      headers: {
-        "X-CSRFToken": sessionDetails?.csrfToken,
-      },
     };
     setIsExportLoading(true);
     getAllUsers().then((users) => {
@@ -220,9 +216,6 @@ function Header({
     const requestOptions = {
       method: "GET",
       url: downloadUrl,
-      headers: {
-        "X-CSRFToken": sessionDetails?.csrfToken,
-      },
       responseType: "blob",
     };
 
