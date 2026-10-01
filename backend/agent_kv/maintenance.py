@@ -22,7 +22,7 @@ single-row write, never a queryset-wide one.
 from datetime import timedelta
 
 from django.conf import settings
-from django.db.models import Q
+from django.db.models import F, Q
 from django.utils import timezone
 
 from agent_kv.models import AgentKVJob, JobStatus
@@ -148,14 +148,25 @@ def run_ttl_cleanup() -> dict:
 
     Batch-capped at ``_MAINTENANCE_BATCH_LIMIT`` (shared with
     :func:`run_sweep`) so one call can't stay open against a large expired
-    backlog; ordered by ``expires_at`` (indexed on this model) so the
-    most-overdue rows drain first and the rest are left for the next call
-    rather than starving behind an arbitrary slice.
+    backlog.
+
+    Ordering is ``(cleanup_failed_at NULLS FIRST, expires_at)``, not
+    ``expires_at`` alone. Retaining a ref whose delete failed is what makes a
+    retry possible at all, but under a plain oldest-first ordering those same
+    rows refill the batch every tick and nothing newer is ever reached: 500
+    permanently-failing rows would stall cleanup completely, and every later
+    expired job would keep its files past TTL. Sorting rows that have never
+    failed ahead of rows that have bounds that -- a failure drifts behind all
+    fresh work and is retried once the backlog is clear, and among failures the
+    oldest failure goes first, so they rotate rather than one row monopolising
+    the retries.
     """
     candidates = (
         AgentKVJob.objects.filter(expires_at__lt=timezone.now())
         .filter(Q(input_ref__gt="") | Q(result_ref__gt=""))
-        .order_by("expires_at")[:_MAINTENANCE_BATCH_LIMIT]
+        .order_by(F("cleanup_failed_at").asc(nulls_first=True), "expires_at")[
+            :_MAINTENANCE_BATCH_LIMIT
+        ]
     )
 
     cleaned = 0
@@ -171,16 +182,24 @@ def run_ttl_cleanup() -> dict:
         # permanently (the candidate filter below only matches rows that still
         # carry a non-blank ref, so a blanked row can never be reconsidered).
         cleared = delete_job_files(job)
-        if cleared:
-            AgentKVJob.objects.filter(id=job.id).update(**dict.fromkeys(cleared, ""))
+        fields: dict = dict.fromkeys(cleared, "")
         if len(cleared) == 2:
             cleaned += 1
+            # Fully cleaned rows drop out of the candidate filter anyway (both
+            # refs blank), so this only matters for a row that failed before and
+            # succeeded now -- it must not keep a stale failure marker.
+            fields["cleanup_failed_at"] = None
         else:
             retained += 1
-    # `retained` is reported, not just logged: these rows stay in the candidate
-    # set and are re-attempted next tick. Ordering is by `expires_at`, so a row
-    # that keeps failing is picked up first every pass -- fine for a transient
-    # fault, but a `retained` that stays high across ticks means the batch is
-    # being spent on rows that will never drain and needs looking at rather
-    # than waiting out.
+            # Stamped on every failed attempt, not just the first: the
+            # nulls-first ordering uses this to push the row behind all fresh
+            # work, and refreshing it rotates the retry order among failures
+            # instead of letting the earliest-stamped row be retried forever.
+            fields["cleanup_failed_at"] = timezone.now()
+        AgentKVJob.objects.filter(id=job.id).update(**fields)
+    # `retained` is reported, not just logged: these rows keep their refs and
+    # are retried on a later tick (behind all never-failed work, per the
+    # ordering above). A `retained` that stays high across ticks is the signal
+    # that something is wrong with the object store rather than with one job --
+    # the ordering stops it blocking progress, it does not make it harmless.
     return {"cleaned": cleaned, "retained": retained}

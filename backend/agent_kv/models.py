@@ -80,6 +80,12 @@ class AgentKVJob(DefaultOrganizationMixin, BaseModel):
     dispatched_at = models.DateTimeField(null=True, blank=True)
     completed_at = models.DateTimeField(null=True, blank=True)
     expires_at = models.DateTimeField(null=True, blank=True)
+    # When TTL cleanup last failed to delete one of this job's files. NULL means
+    # "never attempted, or last attempt succeeded", and it is what keeps a
+    # permanently-failing row from starving the cleanup backlog: candidates are
+    # ordered nulls-first, so every job that has never failed is processed
+    # before any job that has. See run_ttl_cleanup.
+    cleanup_failed_at = models.DateTimeField(null=True, blank=True)
     tags = models.JSONField(default=list, blank=True)
     custom_data = models.JSONField(null=True, blank=True)
     webhook_url = models.URLField(max_length=1024, blank=True, default="")
@@ -89,6 +95,10 @@ class AgentKVJob(DefaultOrganizationMixin, BaseModel):
         indexes = [
             models.Index(fields=["organization", "status"]),
             models.Index(fields=["expires_at"]),
+            # TTL cleanup's candidate ordering is (cleanup_failed_at NULLS
+            # FIRST, expires_at); without this the sort is a filesort over
+            # every expired row each tick.
+            models.Index(fields=["cleanup_failed_at", "expires_at"]),
         ]
 
     @classmethod

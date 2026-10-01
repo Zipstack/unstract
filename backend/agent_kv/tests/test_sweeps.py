@@ -321,7 +321,14 @@ def test_ttl_cleanup_queries_expired_jobs_with_a_nonblank_ref(m_objects, m_delet
     (q_arg,), q_kwargs = m_expiry_qs.filter.call_args
     assert q_kwargs == {}
     assert q_arg == (Q(input_ref__gt="") | Q(result_ref__gt=""))
-    m_ref_qs.order_by.assert_called_once_with("expires_at")
+    # Ordering, not just filtering: nulls-first on cleanup_failed_at is what
+    # stops rows whose delete keeps failing from refilling the capped batch
+    # every tick and starving every later expired job (review follow-up).
+    (first_key, second_key), _ = m_ref_qs.order_by.call_args
+    assert second_key == "expires_at"
+    assert first_key.expression.name == "cleanup_failed_at"
+    assert first_key.descending is False
+    assert first_key.nulls_first is True
     m_ordered_qs.__getitem__.assert_called_once_with(slice(None, 500, None))
     assert not m_delete.called
 
@@ -366,7 +373,9 @@ def test_ttl_cleanup_blanks_both_refs_for_the_job_row(m_objects, m_delete):
     iv.TTLCleanupView.as_view()(_post("/x"))
 
     assert m_objects.filter.call_args_list[-1].kwargs == {"id": job_id}
-    m_qs.update.assert_called_once_with(input_ref="", result_ref="")
+    m_qs.update.assert_called_once_with(
+        input_ref="", result_ref="", cleanup_failed_at=None
+    )
     assert not m_qs.delete.called
 
 
@@ -433,19 +442,25 @@ def test_ttl_cleanup_keeps_the_ref_whose_file_delete_failed(m_objects, m_delete)
 
     # Only the confirmed-gone ref is blanked; result_ref is NOT in the update,
     # so the row still matches `result_ref__gt=""` and the next pass retries.
-    m_qs.update.assert_called_once_with(input_ref="")
+    (), kwargs = m_qs.update.call_args
+    assert kwargs["input_ref"] == ""
+    assert "result_ref" not in kwargs
+    # Stamped so the nulls-first ordering pushes this row behind all never-failed
+    # work on the next tick -- retried, but unable to block the backlog.
+    assert kwargs["cleanup_failed_at"] is not None
     # Not counted as cleaned -- it is unfinished, and `retained` is what makes a
     # permanently-failing backlog visible instead of silently draining to zero.
     assert resp.data == {"cleaned": 0, "retained": 1}
 
 
-# (10c) nothing confirmed gone -> no update at all. An `update()` with no
-# kwargs would be a no-op write on every candidate row each pass.
+# (10c) nothing confirmed gone -> no ref is blanked, but the failure is still
+# recorded. Skipping the write entirely would leave cleanup_failed_at NULL, and
+# a NULL sorts FIRST under the candidate ordering -- so the row would hold the
+# head of every batch indefinitely, which is the starvation this ordering
+# exists to prevent.
 @mock.patch.object(maintenance, "delete_job_files")
 @mock.patch.object(AgentKVJob, "objects")
-def test_ttl_cleanup_skips_the_update_entirely_when_nothing_was_deleted(
-    m_objects, m_delete
-):
+def test_ttl_cleanup_blanks_no_ref_but_still_stamps_the_failure(m_objects, m_delete):
     job = AgentKVJob(
         id=uuid.uuid4(), input_ref="org/o/j/input.pdf", result_ref="org/o/j/r.json"
     )
@@ -455,8 +470,37 @@ def test_ttl_cleanup_skips_the_update_entirely_when_nothing_was_deleted(
 
     resp = iv.TTLCleanupView.as_view()(_post("/x"))
 
-    assert not m_qs.update.called
+    # No ref is blanked -- but the failure IS stamped, or the row would sort
+    # nulls-first forever and keep its place at the head of every batch.
+    (), kwargs = m_qs.update.call_args
+    assert kwargs == {"cleanup_failed_at": mock.ANY}
+    assert kwargs["cleanup_failed_at"] is not None
     assert resp.data == {"cleaned": 0, "retained": 1}
+
+
+# (10d) a row that failed before and succeeds now must have its stale failure
+# marker cleared. It drops out of the candidate filter anyway (both refs blank),
+# so this matters for the audit trail and for anything reading
+# cleanup_failed_at as "currently failing" rather than "failed once".
+@mock.patch.object(maintenance, "delete_job_files")
+@mock.patch.object(AgentKVJob, "objects")
+def test_ttl_cleanup_clears_a_stale_failure_marker_on_success(m_objects, m_delete):
+    job = AgentKVJob(
+        id=uuid.uuid4(),
+        input_ref="org/o/j/input.pdf",
+        result_ref="org/o/j/result.json",
+        cleanup_failed_at=timezone.now(),
+    )
+    m_delete.return_value = ["input_ref", "result_ref"]
+    m_qs = m_objects.filter.return_value
+    m_qs.filter.return_value.order_by.return_value.__getitem__.return_value = [job]
+
+    resp = iv.TTLCleanupView.as_view()(_post("/x"))
+
+    m_qs.update.assert_called_once_with(
+        input_ref="", result_ref="", cleanup_failed_at=None
+    )
+    assert resp.data == {"cleaned": 1, "retained": 0}
 
 
 # ---------------------------------------------------------------------------
