@@ -297,11 +297,34 @@ class JobStatusView(APIView):
             # that window; a finalize call that still lands late loses the
             # terminal-state guard and, on the success path, cleans up its
             # own now-orphaned write (FinalizeView, storage.delete_result_file).
-            AgentKVJob.mark_terminal(job.id, job.organization_id, JobStatus.CANCELLED)
-        delete_job_files(job)
-        job.input_ref = ""
-        job.result_ref = ""
-        job.save(update_fields=["input_ref", "result_ref"])
+            won = AgentKVJob.mark_terminal(
+                job.id, job.organization_id, JobStatus.CANCELLED
+            )
+            if won:
+                # Release the concurrency slot, exactly as JobCancelView does
+                # and for the same reason: the slot is taken at submit and
+                # released by _fail_job_response, the finalize callback and the
+                # sweep -- but a job terminalized HERE before dispatch gets no
+                # finalize callback, and the sweep's phase-1 only targets
+                # PENDING, never CANCELLED. Without this, deleting in-flight
+                # jobs leaks a slot each until the 6h TTL, and enough deletes
+                # exhaust the org's allowance and start rejecting new submits.
+                #
+                # Guarded on `won` so a lost race (a concurrent cancel or
+                # finalize terminalized it first) does not release a slot that
+                # the winner is still accounting for; release() is idempotent
+                # (zrem), so the winner's own release stays correct.
+                AgentKVConcurrencyLimiter.release(str(job.organization_id), str(job.id))
+        # Blank only the refs whose files are confirmed gone, so a ref whose
+        # delete failed survives as the handle TTL cleanup retries from. 204
+        # either way: the job IS terminal and the caller's intent is recorded,
+        # and a sync 5xx here would only invite a retry of a DELETE that already
+        # did everything it could.
+        cleared = delete_job_files(job)
+        if cleared:
+            for field in cleared:
+                setattr(job, field, "")
+            job.save(update_fields=cleared)
         return Response(status=204)
 
 

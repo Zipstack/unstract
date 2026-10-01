@@ -91,9 +91,10 @@ def test_delete_job_files_removes_both_refs(m_fs):
         input_ref="org/o/agent_kv/j/input.pdf",
         result_ref="org/o/agent_kv/j/result.json",
     )
-    storage.delete_job_files(job)
+    cleared = storage.delete_job_files(job)
     removed = {c.kwargs["path"] for c in fh.rm.call_args_list}
     assert removed == {job.input_ref, job.result_ref}
+    assert cleared == ["input_ref", "result_ref"]
 
 
 @mock.patch.object(storage, "FileSystem")
@@ -104,17 +105,59 @@ def test_delete_job_files_tolerates_missing_files(m_fs):
         input_ref="org/o/agent_kv/j/input.pdf",
         result_ref="org/o/agent_kv/j/result.json",
     )
-    # Must not raise.
-    storage.delete_job_files(job)
+    # Must not raise, and both count as CLEARED: the goal is "the file is not
+    # there", and a ref whose object is already gone has nothing to retry.
+    cleared = storage.delete_job_files(job)
     assert fh.rm.call_count == 2
+    assert cleared == ["input_ref", "result_ref"]
 
 
 @mock.patch.object(storage, "FileSystem")
 def test_delete_job_files_skips_blank_refs(m_fs):
     fh = m_fs.return_value.get_file_storage.return_value
     job = AgentKVJob(input_ref="", result_ref="")
-    storage.delete_job_files(job)
+    cleared = storage.delete_job_files(job)
     assert not fh.rm.called
+    # Reported clear: nothing was ever staged, so there is nothing to retry and
+    # the caller is free to blank (already-blank) refs.
+    assert cleared == ["input_ref", "result_ref"]
+
+
+# The Greptile-review contract (#3): a ref is reported clear ONLY when its file
+# is confirmed gone. A storage error that is not FileNotFoundError leaves the
+# ref out, and the ref is what TTL cleanup retries from -- its candidate query
+# matches rows by `input_ref > "" OR result_ref > ""`, so a blanked ref whose
+# object is still in the bucket orphans that object permanently.
+@mock.patch.object(storage, "FileSystem")
+def test_delete_job_files_omits_the_ref_whose_delete_raised(m_fs):
+    fh = m_fs.return_value.get_file_storage.return_value
+    job = AgentKVJob(
+        input_ref="org/o/agent_kv/j/input.pdf",
+        result_ref="org/o/agent_kv/j/result.json",
+    )
+
+    def rm(*, path):
+        if path == job.result_ref:
+            raise OSError("object store unreachable")
+
+    fh.rm.side_effect = rm
+
+    cleared = storage.delete_job_files(job)
+
+    # Still attempted both -- one failure must not abort the other's cleanup.
+    assert fh.rm.call_count == 2
+    assert cleared == ["input_ref"]
+
+
+@mock.patch.object(storage, "FileSystem")
+def test_delete_job_files_reports_nothing_clear_when_both_deletes_raise(m_fs):
+    fh = m_fs.return_value.get_file_storage.return_value
+    fh.rm.side_effect = OSError("object store unreachable")
+    job = AgentKVJob(
+        input_ref="org/o/agent_kv/j/input.pdf",
+        result_ref="org/o/agent_kv/j/result.json",
+    )
+    assert storage.delete_job_files(job) == []
 
 
 @mock.patch.object(storage, "FileSystem")

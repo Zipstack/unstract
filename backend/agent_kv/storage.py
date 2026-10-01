@@ -66,15 +66,44 @@ def read_result(result_ref: str) -> dict:
     return _fs().json_load(path=result_ref)
 
 
-def delete_job_files(job) -> None:
+def delete_job_files(job) -> list[str]:
+    """Delete the job's staged input and result, returning the ref FIELD names
+    that are now confirmed to point at nothing.
+
+    The return value exists so a caller can blank only the refs whose files are
+    actually gone. Blanking unconditionally -- what both callers used to do --
+    loses the only handle to a file whose delete FAILED: TTL cleanup selects
+    candidates by `input_ref > "" OR result_ref > ""`, so a blanked row drops
+    out of the candidate set permanently and the object sits in the bucket
+    forever, unreferenced and unbillable-to-anyone (Greptile review #3).
+
+    A ref is reported clear when it was already empty (nothing was ever staged)
+    or when the delete succeeded. ``FileNotFoundError`` counts as success: the
+    goal is "the file is not there", and a ref whose object is already gone has
+    nothing left to retry. Any other exception leaves the ref OUT of the
+    returned list, so the caller keeps it and the next pass retries.
+    """
     fh = _fs()
-    for ref in (job.input_ref, job.result_ref):
+    cleared: list[str] = []
+    for field in ("input_ref", "result_ref"):
+        ref = getattr(job, field, "") or ""
         if not ref:
+            cleared.append(field)
             continue
         try:
             fh.rm(path=ref)
+        except FileNotFoundError:
+            cleared.append(field)
         except Exception:
-            logger.warning("agent-kv cleanup: could not remove %s", ref)
+            # Left out of `cleared` deliberately -- the ref is the retry handle.
+            logger.warning(
+                "agent-kv cleanup: could not remove %s (ref kept for retry)",
+                ref,
+                exc_info=True,
+            )
+        else:
+            cleared.append(field)
+    return cleared
 
 
 def delete_result_file(result_ref: str) -> None:

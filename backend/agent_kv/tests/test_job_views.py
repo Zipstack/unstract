@@ -331,6 +331,7 @@ def test_delete_calls_delete_job_files_and_blanks_refs(
         result_ref="org/o/agent_kv/j/result.json",
     )
     m_jobs.get.return_value = job
+    m_delete_files.return_value = ["input_ref", "result_ref"]
 
     resp = ev.JobDeleteView.as_view()(_authed(method="delete"), job_id=uuid.uuid4())
 
@@ -338,7 +339,9 @@ def test_delete_calls_delete_job_files_and_blanks_refs(
     m_delete_files.assert_called_once_with(job)
     assert job.input_ref == ""
     assert job.result_ref == ""
-    assert m_save.called
+    # update_fields carries exactly the blanked refs, so a ref left set is not
+    # written back as "" by a wider save().
+    assert m_save.call_args.kwargs["update_fields"] == ["input_ref", "result_ref"]
 
 
 # ---------------------------------------------------------------------------
@@ -358,6 +361,7 @@ def test_delete_on_running_job_cancels_before_deleting_files(
     job = AgentKVJob(status=JobStatus.RUNNING)
     job.organization_id = "org1"
     m_jobs.get.return_value = job
+    m_delete_files.return_value = ["input_ref", "result_ref"]
 
     manager = mock.Mock()
     manager.attach_mock(m_mark_terminal, "mark_terminal")
@@ -369,6 +373,92 @@ def test_delete_on_running_job_cancels_before_deleting_files(
     m_mark_terminal.assert_called_once_with(job.id, "org1", JobStatus.CANCELLED)
     m_delete_files.assert_called_once_with(job)
     assert [c[0] for c in manager.mock_calls] == ["mark_terminal", "delete_job_files"]
+
+
+# ---------------------------------------------------------------------------
+# (8e) DELETE on an in-flight job RELEASES the concurrency slot, exactly as
+# JobCancelView does (Greptile review #2). The slot is taken at submit and
+# released by _fail_job_response, the finalize callback and the sweep -- a job
+# terminalized here before dispatch hits none of those, and the sweep's phase-1
+# only targets PENDING, never CANCELLED. Without the release each such delete
+# leaked a slot until the 6h TTL, and enough of them exhaust the org's
+# allowance and start rejecting new submits.
+# ---------------------------------------------------------------------------
+@mock.patch.object(ev.AgentKVConcurrencyLimiter, "release")
+@mock.patch.object(AgentKVJob, "save")
+@mock.patch.object(ev, "delete_job_files", return_value=["input_ref", "result_ref"])
+@mock.patch.object(AgentKVJob, "mark_terminal", return_value=True)
+@mock.patch.object(AgentKVJob, "objects")
+@mock.patch.object(AgentKVKey, "objects")
+def test_delete_on_running_job_releases_the_concurrency_slot(
+    m_keys, m_jobs, m_mark_terminal, m_delete_files, m_save, m_release
+):
+    m_keys.get.return_value = kv_key()
+    job = AgentKVJob(status=JobStatus.RUNNING)
+    job.organization_id = "org1"
+    m_jobs.get.return_value = job
+
+    resp = ev.JobDeleteView.as_view()(_authed(method="delete"), job_id=uuid.uuid4())
+
+    assert resp.status_code == 204
+    m_release.assert_called_once_with("org1", str(job.id))
+
+
+# ---------------------------------------------------------------------------
+# (8f) ...but only when THIS request won the terminal-state race. A concurrent
+# cancel or finalize that terminalized first is the one accounting for the
+# slot; releasing on a lost race would hand a slot back twice.
+# ---------------------------------------------------------------------------
+@mock.patch.object(ev.AgentKVConcurrencyLimiter, "release")
+@mock.patch.object(AgentKVJob, "save")
+@mock.patch.object(ev, "delete_job_files", return_value=["input_ref", "result_ref"])
+@mock.patch.object(AgentKVJob, "mark_terminal", return_value=False)
+@mock.patch.object(AgentKVJob, "objects")
+@mock.patch.object(AgentKVKey, "objects")
+def test_delete_does_not_release_the_slot_when_it_loses_the_terminal_race(
+    m_keys, m_jobs, m_mark_terminal, m_delete_files, m_save, m_release
+):
+    m_keys.get.return_value = kv_key()
+    job = AgentKVJob(status=JobStatus.RUNNING)
+    job.organization_id = "org1"
+    m_jobs.get.return_value = job
+
+    resp = ev.JobDeleteView.as_view()(_authed(method="delete"), job_id=uuid.uuid4())
+
+    assert resp.status_code == 204
+    assert not m_release.called
+
+
+# ---------------------------------------------------------------------------
+# (8g) a ref whose file could NOT be deleted is left set (Greptile review #3).
+# It is the only handle TTL cleanup can retry from: its candidate query matches
+# rows by `input_ref > "" OR result_ref > ""`, so blanking a ref whose object is
+# still in the bucket orphans that object permanently. Still 204 -- the job is
+# terminal and the caller's intent is recorded.
+# ---------------------------------------------------------------------------
+@mock.patch.object(AgentKVJob, "save")
+@mock.patch.object(ev, "delete_job_files")
+@mock.patch.object(AgentKVJob, "objects")
+@mock.patch.object(AgentKVKey, "objects")
+def test_delete_keeps_the_ref_whose_file_delete_failed(
+    m_keys, m_jobs, m_delete_files, m_save
+):
+    m_keys.get.return_value = kv_key()
+    job = AgentKVJob(
+        status=JobStatus.COMPLETED,
+        input_ref="org/o/agent_kv/j/input.pdf",
+        result_ref="org/o/agent_kv/j/result.json",
+    )
+    m_jobs.get.return_value = job
+    # Input gone; the result delete raised inside delete_job_files.
+    m_delete_files.return_value = ["input_ref"]
+
+    resp = ev.JobDeleteView.as_view()(_authed(method="delete"), job_id=uuid.uuid4())
+
+    assert resp.status_code == 204
+    assert job.input_ref == ""
+    assert job.result_ref == "org/o/agent_kv/j/result.json"
+    assert m_save.call_args.kwargs["update_fields"] == ["input_ref"]
 
 
 # ---------------------------------------------------------------------------

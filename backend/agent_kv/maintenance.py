@@ -159,12 +159,28 @@ def run_ttl_cleanup() -> dict:
     )
 
     cleaned = 0
+    retained = 0
     for job in candidates:
-        delete_job_files(job)
-        # Targeted single-row update (not a queryset-wide `.update()`):
-        # each job's refs must be blanked only after ITS OWN files are
-        # deleted, so a delete_job_files failure for one job can't blank
-        # another job's still-undeleted refs.
-        AgentKVJob.objects.filter(id=job.id).update(input_ref="", result_ref="")
-        cleaned += 1
-    return {"cleaned": cleaned}
+        # Blank only the refs whose files are CONFIRMED gone. Targeted
+        # single-row update (not a queryset-wide `.update()`) for the same
+        # reason it always was: one job's refs must never be blanked off the
+        # back of another job's delete.
+        #
+        # A ref left set is the retry handle -- this loop used to blank both
+        # unconditionally, so a transient object-store failure orphaned the file
+        # permanently (the candidate filter below only matches rows that still
+        # carry a non-blank ref, so a blanked row can never be reconsidered).
+        cleared = delete_job_files(job)
+        if cleared:
+            AgentKVJob.objects.filter(id=job.id).update(**dict.fromkeys(cleared, ""))
+        if len(cleared) == 2:
+            cleaned += 1
+        else:
+            retained += 1
+    # `retained` is reported, not just logged: these rows stay in the candidate
+    # set and are re-attempted next tick. Ordering is by `expires_at`, so a row
+    # that keeps failing is picked up first every pass -- fine for a transient
+    # fault, but a `retained` that stays high across ticks means the batch is
+    # being spent on rows that will never drain and needs looking at rather
+    # than waiting out.
+    return {"cleaned": cleaned, "retained": retained}

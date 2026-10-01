@@ -316,7 +316,7 @@ def test_ttl_cleanup_queries_expired_jobs_with_a_nonblank_ref(m_objects, m_delet
         resp = iv.TTLCleanupView.as_view()(_post("/x"))
 
     assert resp.status_code == 200
-    assert resp.data == {"cleaned": 0}
+    assert resp.data == {"cleaned": 0, "retained": 0}
     assert m_objects.filter.call_args_list[0].kwargs == {"expires_at__lt": frozen_now}
     (q_arg,), q_kwargs = m_expiry_qs.filter.call_args
     assert q_kwargs == {}
@@ -335,6 +335,7 @@ def test_ttl_cleanup_deletes_files_before_blanking_refs(m_objects, m_delete):
     job = AgentKVJob(
         id=job_id, input_ref="org/o/j/input.pdf", result_ref="org/o/j/result.json"
     )
+    m_delete.return_value = ["input_ref", "result_ref"]
     m_qs = m_objects.filter.return_value
     m_qs.filter.return_value.order_by.return_value.__getitem__.return_value = [job]
 
@@ -345,7 +346,7 @@ def test_ttl_cleanup_deletes_files_before_blanking_refs(m_objects, m_delete):
     resp = iv.TTLCleanupView.as_view()(_post("/x"))
 
     assert resp.status_code == 200
-    assert resp.data == {"cleaned": 1}
+    assert resp.data == {"cleaned": 1, "retained": 0}
     assert [c[0] for c in manager.mock_calls] == ["delete_job_files", "update"]
     m_delete.assert_called_once_with(job)
 
@@ -358,6 +359,7 @@ def test_ttl_cleanup_deletes_files_before_blanking_refs(m_objects, m_delete):
 def test_ttl_cleanup_blanks_both_refs_for_the_job_row(m_objects, m_delete):
     job_id = uuid.uuid4()
     job = AgentKVJob(id=job_id, input_ref="org/o/j/input.pdf", result_ref="")
+    m_delete.return_value = ["input_ref", "result_ref"]
     m_qs = m_objects.filter.return_value
     m_qs.filter.return_value.order_by.return_value.__getitem__.return_value = [job]
 
@@ -375,6 +377,7 @@ def test_ttl_cleanup_blanks_both_refs_for_the_job_row(m_objects, m_delete):
 def test_ttl_cleanup_returns_count_of_jobs_cleaned(m_objects, m_delete):
     job1 = AgentKVJob(id=uuid.uuid4(), input_ref="a", result_ref="")
     job2 = AgentKVJob(id=uuid.uuid4(), input_ref="", result_ref="b")
+    m_delete.return_value = ["input_ref", "result_ref"]
     m_qs = m_objects.filter.return_value
     m_qs.filter.return_value.order_by.return_value.__getitem__.return_value = [
         job1,
@@ -383,7 +386,7 @@ def test_ttl_cleanup_returns_count_of_jobs_cleaned(m_objects, m_delete):
 
     resp = iv.TTLCleanupView.as_view()(_post("/x"))
 
-    assert resp.data == {"cleaned": 2}
+    assert resp.data == {"cleaned": 2, "retained": 0}
     assert m_delete.call_count == 2
     assert m_qs.update.call_count == 2
 
@@ -401,9 +404,59 @@ def test_ttl_cleanup_with_no_candidates_is_a_pure_noop(m_objects, m_delete):
     resp = iv.TTLCleanupView.as_view()(_post("/x"))
 
     assert resp.status_code == 200
-    assert resp.data == {"cleaned": 0}
+    assert resp.data == {"cleaned": 0, "retained": 0}
     assert not m_delete.called
     assert not m_qs.update.called
+
+
+# (10b) THE case test (7)'s comment claims ("a delete failure must not blank a
+# ref pointing at a file that's still there") but which nothing actually
+# asserted until the Greptile review: test (7) only pinned the ORDER of the two
+# calls, and ordering is irrelevant when the update blanks both refs regardless
+# of what the delete returned. Before the fix this test fails -- `update` is
+# called with both refs blanked and the still-present result file loses its only
+# handle, since the candidate query below matches only rows with a non-blank
+# ref.
+@mock.patch.object(maintenance, "delete_job_files")
+@mock.patch.object(AgentKVJob, "objects")
+def test_ttl_cleanup_keeps_the_ref_whose_file_delete_failed(m_objects, m_delete):
+    job_id = uuid.uuid4()
+    job = AgentKVJob(
+        id=job_id, input_ref="org/o/j/input.pdf", result_ref="org/o/j/result.json"
+    )
+    # Input gone, result delete raised inside delete_job_files.
+    m_delete.return_value = ["input_ref"]
+    m_qs = m_objects.filter.return_value
+    m_qs.filter.return_value.order_by.return_value.__getitem__.return_value = [job]
+
+    resp = iv.TTLCleanupView.as_view()(_post("/x"))
+
+    # Only the confirmed-gone ref is blanked; result_ref is NOT in the update,
+    # so the row still matches `result_ref__gt=""` and the next pass retries.
+    m_qs.update.assert_called_once_with(input_ref="")
+    # Not counted as cleaned -- it is unfinished, and `retained` is what makes a
+    # permanently-failing backlog visible instead of silently draining to zero.
+    assert resp.data == {"cleaned": 0, "retained": 1}
+
+
+# (10c) nothing confirmed gone -> no update at all. An `update()` with no
+# kwargs would be a no-op write on every candidate row each pass.
+@mock.patch.object(maintenance, "delete_job_files")
+@mock.patch.object(AgentKVJob, "objects")
+def test_ttl_cleanup_skips_the_update_entirely_when_nothing_was_deleted(
+    m_objects, m_delete
+):
+    job = AgentKVJob(
+        id=uuid.uuid4(), input_ref="org/o/j/input.pdf", result_ref="org/o/j/r.json"
+    )
+    m_delete.return_value = []
+    m_qs = m_objects.filter.return_value
+    m_qs.filter.return_value.order_by.return_value.__getitem__.return_value = [job]
+
+    resp = iv.TTLCleanupView.as_view()(_post("/x"))
+
+    assert not m_qs.update.called
+    assert resp.data == {"cleaned": 0, "retained": 1}
 
 
 # ---------------------------------------------------------------------------
