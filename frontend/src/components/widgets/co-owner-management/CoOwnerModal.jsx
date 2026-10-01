@@ -21,10 +21,8 @@ function CoOwnerModal({ coOwner, resourceType }) {
       resourceType={resourceType}
       allUsers={coOwner.coOwnerAllUsers}
       coOwners={coOwner.coOwnerData.coOwners}
-      createdBy={coOwner.coOwnerData.createdBy}
       loading={coOwner.coOwnerLoading}
-      onAddCoOwner={coOwner.onAddCoOwner}
-      onRemoveCoOwner={coOwner.onRemoveCoOwner}
+      onApplyCoOwners={coOwner.onApplyCoOwners}
     />
   );
 }

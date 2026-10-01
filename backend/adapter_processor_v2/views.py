@@ -53,8 +53,6 @@ from .constants import AdapterKeys as constant
 from .models import AdapterInstance, UserDefaultAdapter
 
 notification_plugin = get_plugin("notification")
-if notification_plugin:
-    from plugins.notification.constants import ResourceType
 
 logger = logging.getLogger(__name__)
 
@@ -155,12 +153,11 @@ class AdapterInstanceViewSet(
     def get_notification_resource_type(self, resource: Any) -> str | None:
         if not notification_plugin:
             return None
-        return {
-            "LLM": ResourceType.LLM.value,
-            "EMBEDDING": ResourceType.EMBEDDING.value,
-            "VECTOR_DB": ResourceType.VECTOR_DB.value,
-            "X2TEXT": ResourceType.X2TEXT.value,
-        }.get(resource.adapter_type, ResourceType.LLM.value)
+        from tenant_account_v2.notification_resource_types import (
+            adapter_notification_type,
+        )
+
+        return adapter_notification_type(resource.adapter_type)
 
     def get_permissions(self) -> list[Any]:
         # Frictionless adapters: hidden from non-owners (update/retrieve),
@@ -401,17 +398,6 @@ class AdapterInstanceViewSet(
             raise DeleteAdapterInUseError(adapter_name=adapter_instance.adapter_name)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
-    def partial_update(
-        self, request: Request, *args: tuple[Any], **kwargs: dict[str, Any]
-    ) -> Response:
-        adapter = self.get_object()
-        before = self.snapshot_share_axes(adapter)
-
-        response = super().partial_update(request, *args, **kwargs)
-        if response.status_code == 200 and notification_plugin:
-            self._notify_shared_users(adapter, before, request.data, request.user)
-        return response
-
     @action(detail=True, methods=["post"], url_path="share")
     def share(self, request: Request, pk: str | None = None) -> Response:
         """Apply share state, then clear default-adapter links for any user
@@ -457,42 +443,6 @@ class AdapterInstanceViewSet(
         if user.pk in self._effective_member_ids(resource):
             return
         self._clear_default_adapter_for_removed_users(resource, {user.pk})
-
-    def _notify_shared_users(
-        self,
-        adapter: AdapterInstance,
-        before: dict[str, set[Any]],
-        request_data: dict[str, Any],
-        actor: Any,
-    ) -> None:
-        """Email users newly added to ``shared_users`` (best-effort)."""
-        users_diff = self.diff_share_axes(adapter, before, request_data).get(
-            "shared_users"
-        )
-        if not (users_diff and users_diff.added):
-            return
-        try:
-            adapter_type_to_resource = {
-                "LLM": ResourceType.LLM.value,
-                "EMBEDDING": ResourceType.EMBEDDING.value,
-                "VECTOR_DB": ResourceType.VECTOR_DB.value,
-                "X2TEXT": ResourceType.X2TEXT.value,
-            }
-            resource_type = adapter_type_to_resource.get(
-                adapter.adapter_type, ResourceType.LLM.value
-            )
-            service_class = notification_plugin["service_class"]
-            notification_service = service_class()
-            notification_service.send_sharing_notification(
-                resource_type=resource_type,
-                resource_name=adapter.adapter_name,
-                resource_id=str(adapter.id),
-                shared_by=actor,
-                shared_to=list(users_diff.added),
-                resource_instance=adapter,
-            )
-        except Exception as e:
-            logger.exception("Failed to send sharing notification: %s", e)
 
     def _clear_default_adapter_for_removed_users(
         self,
