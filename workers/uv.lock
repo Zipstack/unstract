@@ -4712,6 +4712,11 @@ wheels = [
 ]
 
 [[package]]
+name = "unstract-agent-kv-schema"
+version = "0.1.0"
+source = { editable = "../unstract/agent-kv-schema" }
+
+[[package]]
 name = "unstract-connectors"
 version = "0.0.3"
 source = { editable = "../unstract/connectors" }
@@ -4958,6 +4963,7 @@ dependencies = [
     { name = "python-socketio" },
     { name = "redis" },
     { name = "requests" },
+    { name = "unstract-agent-kv-schema" },
     { name = "unstract-connectors" },
     { name = "unstract-core" },
     { name = "unstract-filesystem" },
@@ -5009,6 +5015,7 @@ requires-dist = [
     { name = "python-socketio", specifier = ">=5.9.0" },
     { name = "redis", specifier = ">=4.5.0,<6.0.0" },
     { name = "requests", specifier = ">=2.33.0,<3.0.0" },
+    { name = "unstract-agent-kv-schema", editable = "../unstract/agent-kv-schema" },
     { name = "unstract-connectors", editable = "../unstract/connectors" },
     { name = "unstract-core", editable = "../unstract/core" },
     { name = "unstract-filesystem", editable = "../unstract/filesystem" },

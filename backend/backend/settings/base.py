@@ -204,6 +204,40 @@ API_DEPLOYMENT_RATE_LIMIT_LOCK_BLOCKING_TIMEOUT = int(
     os.environ.get("API_DEPLOYMENT_RATE_LIMIT_LOCK_BLOCKING_TIMEOUT", 5)
 )
 
+# Agent-KV API
+AGENT_KV_PATH_PREFIX = os.environ.get("AGENT_KV_PATH_PREFIX", "agent-kv")
+# Bucket-rooted object-store root for staged inputs/results, mirroring
+# WORKFLOW_EXECUTION_DIR_PREFIX / API_EXECUTION_DIR_PREFIX: the FIRST segment is
+# the bucket (s3fs/gcsfs treat it that way), so it must already exist. MUST match
+# the cloud executor's AGENT_KV_STORAGE_DIR_PREFIX -- the executor keys its OCR
+# cache under the same root.
+AGENT_KV_STORAGE_DIR_PREFIX = (
+    os.environ.get("AGENT_KV_STORAGE_DIR_PREFIX", "unstract/agent_kv").strip().strip("/")
+    or "unstract/agent_kv"
+)  # same normalisation as the cloud executor's reader (whitespace, edge slashes)
+AGENT_KV_MAX_FILE_SIZE_MB = int(os.environ.get("AGENT_KV_MAX_FILE_SIZE_MB", 50))
+AGENT_KV_MAX_PAGES = int(os.environ.get("AGENT_KV_MAX_PAGES", 100))
+AGENT_KV_MAX_CALCULATIONS_BYTES = int(
+    os.environ.get("AGENT_KV_MAX_CALCULATIONS_BYTES", 20_000)
+)
+AGENT_KV_MAX_SCHEMA_BYTES = int(os.environ.get("AGENT_KV_MAX_SCHEMA_BYTES", 262_144))
+AGENT_KV_RESULT_TTL_DAYS = int(os.environ.get("AGENT_KV_RESULT_TTL_DAYS", 7))
+AGENT_KV_MAX_TIMEOUT_SECONDS = int(os.environ.get("AGENT_KV_MAX_TIMEOUT_SECONDS", 300))
+AGENT_KV_CONCURRENT_LIMIT = int(os.environ.get("AGENT_KV_CONCURRENT_LIMIT", 5))
+AGENT_KV_KEY_RATE_LIMIT_PER_MINUTE = int(
+    os.environ.get("AGENT_KV_KEY_RATE_LIMIT_PER_MINUTE", 60)
+)
+AGENT_KV_SWEEP_GRACE_SECONDS = int(os.environ.get("AGENT_KV_SWEEP_GRACE_SECONDS", 3600))
+AGENT_KV_STUCK_JOB_GRACE_SECONDS = int(
+    os.environ.get("AGENT_KV_STUCK_JOB_GRACE_SECONDS", 21600)
+)
+AGENT_KV_CALCULATIONS_ENABLED = (
+    os.environ.get("AGENT_KV_CALCULATIONS_ENABLED", "false").lower() == "true"
+)
+AGENT_KV_STRUCTURED_OUTPUT_ENABLED = (
+    os.environ.get("AGENT_KV_STRUCTURED_OUTPUT_ENABLED", "false").lower() == "true"
+)
+
 
 DB_NAME = os.environ.get("DB_NAME", "unstract_db")
 DB_USER = os.environ.get("DB_USER", "unstract_dev")
@@ -454,6 +488,7 @@ SHARED_APPS = (
     "dashboard_metrics",
     "platform_api",
     "global_api_deployment_key",
+    "agent_kv",
 )
 TENANT_APPS = []
 
@@ -982,6 +1017,9 @@ WHITELISTED_PATHS = [f"/{PATH_PREFIX}{PATH}" for PATH in WHITELISTED_PATHS_LIST]
 # server, which hangs off the same URL and authenticates with the deployment's
 # own API key rather than a session.
 WHITELISTED_PATHS.append(f"/{API_DEPLOYMENT_PATH_PREFIX}")
+
+# Agent-KV public API: bearer-key auth happens in the views.
+WHITELISTED_PATHS.append(f"/{AGENT_KV_PATH_PREFIX}")
 
 # Whitelisting health check API
 WHITELISTED_PATHS.append("/health")

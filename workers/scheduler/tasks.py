@@ -23,7 +23,10 @@ from queue_backend.fairness import WorkloadType
 #      worker-general (this happened — the bare form shipped and broke the general
 #      worker at flag-off, where PG is not even involved).
 # `/app` is on PYTHONPATH (run-worker-docker.sh), so `scheduler.` resolves under both.
-from scheduler import dashboard_metrics_tasks  # noqa: F401, E402  (side-effect import)
+#
+# The same reasoning covers agent_kv_tasks, which registers the Agent-KV
+# sweep/TTL-cleanup periodics (spec §5.4) on this worker type.
+from scheduler import agent_kv_tasks, dashboard_metrics_tasks
 from shared.enums.status_enums import PipelineStatus
 from shared.enums.worker_enums import QueueName
 from shared.infrastructure.config import WorkerConfig
@@ -46,6 +49,28 @@ from unstract.core.data_models import (
 )
 
 # Import the exact backend logic to ensure consistency
+
+# Both modules above are imported ONLY for the side effect of registering their
+# @worker_task entries on this worker; nothing here calls into them. Naming them
+# in a module-level tuple is what keeps them imported.
+#
+# `# noqa: F401` is NOT enough, and that is not a style preference — it is the
+# reproduced cause of this exact line being deleted once already. Two hooks
+# interact:
+#   1. ruff's isort (I001) merges two `from scheduler import X` statements into
+#      one parenthesised statement, which relocates each trailing `# noqa` onto
+#      a MEMBER line.
+#   2. F401 is reported against the statement, whose first line now carries no
+#      directive, so pycln (`[tool.pycln] all = true` — it removes side-effect
+#      imports by design) deletes both members.
+# That is what happened in a79e9d69: pre-commit.ci silently dropped BOTH this
+# import and the pre-existing dashboard-metrics one, un-registering the
+# dashboard-metrics periodics that had been live since UN-3796 as collateral.
+# A genuine reference cannot be fixed away by either hook.
+#
+# Deleting this tuple re-arms that failure, and it fails SILENTLY: the worker
+# starts fine and only the scheduled messages are rejected as unknown tasks.
+_PERIODIC_TASK_MODULES = (dashboard_metrics_tasks, agent_kv_tasks)
 
 logger = WorkerLogger.get_logger(__name__)
 

@@ -70,6 +70,12 @@ class WorkerRegistry:
         ),
         WorkerType.IDE_CALLBACK: WorkerQueueConfig(
             primary_queue=QueueName.IDE_CALLBACK,
+            # Agent-KV terminal callbacks (agent_kv_complete/agent_kv_error)
+            # ride the same worker on their own dedicated queue (spec §5.3).
+            additional_queues=[QueueName.AGENT_KV_CALLBACK],
+        ),
+        WorkerType.SANDBOX: WorkerQueueConfig(
+            primary_queue=QueueName.SANDBOX_CODEGEN,
         ),
     }
 
@@ -156,6 +162,14 @@ class WorkerRegistry:
                 TaskRoute("ide_prompt_complete", QueueName.IDE_CALLBACK),
                 TaskRoute("ide_prompt_error", QueueName.IDE_CALLBACK),
                 TaskRoute("ide_callback.tasks.*", QueueName.IDE_CALLBACK),
+                TaskRoute("agent_kv_complete", QueueName.AGENT_KV_CALLBACK),
+                TaskRoute("agent_kv_error", QueueName.AGENT_KV_CALLBACK),
+            ],
+        ),
+        WorkerType.SANDBOX: WorkerTaskRouting(
+            worker_type=WorkerType.SANDBOX,
+            routes=[
+                TaskRoute("execute_sandboxed_code", QueueName.SANDBOX_CODEGEN),
             ],
         ),
     }
@@ -199,6 +213,9 @@ class WorkerRegistry:
             "log_level": "INFO",
         },
         WorkerType.IDE_CALLBACK: {
+            "log_level": "INFO",
+        },
+        WorkerType.SANDBOX: {
             "log_level": "INFO",
         },
     }
