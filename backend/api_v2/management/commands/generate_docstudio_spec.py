@@ -7,16 +7,18 @@ serializer or the schema annotation, and regenerate in the same PR.
     uv run python manage.py generate_docstudio_spec           # from backend/
     uv run python manage.py generate_docstudio_spec --check   # no write, drift is an error
 
-The generated paths carry ``API_DEPLOYMENT_PATH_PREFIX``, so generation refuses
-to produce a spec mounted anywhere but the public default: the committed
-artifact describes the deployment as it is served publicly, not as one
-installation chooses to mount it.
+The generated paths carry ``API_DEPLOYMENT_PATH_PREFIX`` or ``PATH_PREFIX``
+depending on the mount, so generation refuses to produce a spec mounted anywhere
+but the public defaults: the committed artifact describes the API as it is
+served publicly, not as one installation chooses to mount it.
 """
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
+from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 from drf_spectacular.drainage import GENERATOR_STATS
 from drf_spectacular.generators import SchemaGenerator
@@ -25,10 +27,21 @@ from drf_spectacular.validation import validate_schema
 DEFAULT_OUT = Path(__file__).resolve().parents[4] / "specs" / "docstudio-oss.json"
 URLCONF = "api_v2.deployment_spec_urls"
 REGENERATE = "uv run python manage.py generate_docstudio_spec"
-# The mount the deployment is served at publicly. `API_DEPLOYMENT_PATH_PREFIX`
-# can move it per installation, and a spec carrying a private prefix would send
-# every generated client to a URL only that installation answers.
-PUBLISHED_PATH_PREFIX = "deployment"
+# The mounts these routes are served at publicly. `API_DEPLOYMENT_PATH_PREFIX`
+# and `PATH_PREFIX` can move them per installation, and a spec carrying a
+# private prefix would send every generated client to a URL only that
+# installation answers. Written as literals rather than read from settings, so
+# an override fails the gate rather than being baked into the artifact.
+#
+# Each entry is the *route*, not the mount it hangs off. `api/v1/unstract` alone
+# is exactly `TENANT_SUBFOLDER_PREFIX`, so with a `startswith` over the union an
+# `API_DEPLOYMENT_PATH_PREFIX` pointed anywhere under the tenant mount --
+# `api/v1/unstract/deploy`, say -- passed the gate this comment says it fails.
+PUBLISHED_PATH_PREFIXES = (
+    "deployment",
+    "api/v1/unstract/whoami",
+    "api/v1/unstract/{org_id}/api/deployment",
+)
 # Named in every failure message: the repos that regenerate from this file are
 # the ones a spec change actually breaks, and nothing there watches this repo.
 DOWNSTREAM = (
@@ -36,6 +49,43 @@ DOWNSTREAM = (
     "(Zipstack/unstract-cli) are generated from this file — raise the matching "
     "PRs there for anything that changes an operation id, a tag or a schema."
 )
+
+# A literal for the same reason as `PUBLISHED_PATH_PREFIXES`.
+TENANT_MOUNT = "/api/v1/unstract/"
+ORG_SEGMENT = "{org_id}"
+HTTP_METHODS = frozenset(
+    {"get", "put", "post", "delete", "options", "head", "patch", "trace"}
+)
+ORG_SEGMENT_PARAMETER = {
+    "in": "path",
+    "name": "org_id",
+    "required": True,
+    "schema": {"type": "string"},
+    "description": (
+        "The organisation the request is scoped to, as `whoami` reports it in "
+        "`organization_id`."
+    ),
+}
+
+
+def _restore_organisation_segment(schema: dict[str, Any]) -> None:
+    """Put back the organisation segment the router never sees.
+
+    `OrganizationMiddleware` strips it before routing, so paths taken from the
+    URLconf are not the ones callers send. The routes genuinely served without
+    it are the ones that setting whitelists, so it decides this too.
+    """
+    for url in [url for url in schema["paths"] if url.startswith(TENANT_MOUNT)]:
+        if any(
+            re.match(whitelisted, url)
+            for whitelisted in settings.ORGANIZATION_MIDDLEWARE_WHITELISTED_PATHS
+        ):
+            continue
+        item = schema["paths"].pop(url)
+        for method, operation in item.items():
+            if method in HTTP_METHODS:
+                operation.setdefault("parameters", []).append(dict(ORG_SEGMENT_PARAMETER))
+        schema["paths"][f"{TENANT_MOUNT}{ORG_SEGMENT}/{url[len(TENANT_MOUNT):]}"] = item
 
 
 class SpecGenerationFailed(CommandError):
@@ -69,16 +119,15 @@ def render_spec() -> str:
             f"API nobody implements:\n{diagnostics}"
         )
 
-    off_prefix = [
-        path
-        for path in schema["paths"]
-        if not path.startswith(f"/{PUBLISHED_PATH_PREFIX}/")
-    ]
+    _restore_organisation_segment(schema)
+
+    published = tuple(f"/{prefix}/" for prefix in PUBLISHED_PATH_PREFIXES)
+    off_prefix = [path for path in schema["paths"] if not path.startswith(published)]
     if off_prefix:
         raise SpecGenerationFailed(
-            f"Generated paths are not under /{PUBLISHED_PATH_PREFIX}/: "
-            f"{', '.join(sorted(off_prefix))}. Unset API_DEPLOYMENT_PATH_PREFIX "
-            f"and regenerate."
+            f"Generated paths are outside the published mounts "
+            f"({', '.join(published)}): {', '.join(sorted(off_prefix))}. Unset "
+            f"API_DEPLOYMENT_PATH_PREFIX and PATH_PREFIX and regenerate."
         )
 
     # Hand-written fragments (path parameter schemas, security schemes) reach

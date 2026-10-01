@@ -738,6 +738,82 @@ class TestPollHeartbeat:
         finally:
             server.stop()
 
+    def test_single_process_ready_is_200_once_serving(self):
+        # UN-4136: the single-process server only starts after `import worker` and
+        # the consumer build, so reaching /ready means loaded. The chart's
+        # startupProbe hits /ready on every PG consumer, CONCURRENCY=1 included.
+        import json
+        import urllib.request
+
+        from queue_backend.pg_queue.consumer import LivenessServer
+
+        consumer = PgQueueConsumer(["q"], client=MagicMock())
+        server = LivenessServer(consumer, port=0, stale_after=60)
+        server.start()
+        try:
+            base = f"http://127.0.0.1:{server.bound_port}"
+            for path in ("/ready", "/readyz", "/ready?probe=startup"):
+                with urllib.request.urlopen(f"{base}{path}", timeout=5) as resp:
+                    assert resp.status == 200, path
+                    assert json.loads(resp.read())["status"] == "ready", path
+        finally:
+            server.stop()
+
+    def test_ready_is_404_without_a_ready_fn(self):
+        # A process with no readiness notion (e.g. the reaper) must NOT answer
+        # /ready with a pass — a startupProbe mistakenly pointed at it has to fail.
+        import urllib.error
+        import urllib.request
+
+        from queue_backend.pg_queue.liveness import LivenessServer as Base
+
+        server = Base(
+            freshness_fn=lambda: 0.0,
+            stale_after=60,
+            port=0,
+            check_name="t",
+            age_key="age",
+        )
+        server.start()
+        try:
+            with pytest.raises(urllib.error.HTTPError) as ei:
+                urllib.request.urlopen(
+                    f"http://127.0.0.1:{server.bound_port}/ready", timeout=5
+                )
+            assert ei.value.code == 404
+        finally:
+            server.stop()
+
+    def test_ready_fn_that_raises_answers_503_and_leaves_health_alone(self):
+        import json
+        import urllib.error
+        import urllib.request
+
+        from queue_backend.pg_queue.liveness import LivenessServer as Base
+
+        def _broken() -> bool:
+            raise RuntimeError("boom")
+
+        server = Base(
+            freshness_fn=lambda: 0.0,
+            stale_after=60,
+            port=0,
+            check_name="t",
+            age_key="age",
+            ready_fn=_broken,
+        )
+        server.start()
+        try:
+            base = f"http://127.0.0.1:{server.bound_port}"
+            with pytest.raises(urllib.error.HTTPError) as ei:
+                urllib.request.urlopen(f"{base}/ready", timeout=5)
+            assert ei.value.code == 503
+            assert json.loads(ei.value.read())["status"] == "starting"
+            with urllib.request.urlopen(f"{base}/health", timeout=5) as resp:
+                assert resp.status == 200  # readiness never flips liveness
+        finally:
+            server.stop()
+
     def test_double_start_is_rejected(self):
         from queue_backend.pg_queue.consumer import LivenessServer
 

@@ -12,6 +12,20 @@ A row appears ONLY when the task finishes — ``status="completed"`` carrying th
 text if the task raised. Absence of a row means "not done yet"; there is
 deliberately no ``pending`` state to maintain.
 
+``failed`` has a **third** meaning, and recovery logic must account for it: a
+payload could not be stored. Two constants distinguish the cases, and they point
+in OPPOSITE directions for a retry:
+
+- :data:`PAYLOAD_UNSTORABLE_ERROR` — the task *completed*; only its result was
+  unstorable. Retrying this reply key re-runs an executor task that already
+  finished, a second full LLM spend — the very thing the consumer's ack
+  discipline avoids. **Do not retry.**
+- :data:`ERROR_TEXT_UNSTORABLE` — the task *raised*, and its own error message was
+  unstorable. The work never happened. **Retrying is correct.**
+
+Seeing ``failed`` is therefore not enough; match the error text before deciding.
+(Mirrored on ``PgTaskResult`` in ``backend/pg_queue/models.py``.)
+
 Once the blocking caller consumes the reply, :meth:`PgResultBackend.forget` nulls
 the payload in place — a third legal shape: ``completed``/``failed`` with
 ``result`` and ``error`` cleared (a tombstone the reaper deletes at
@@ -52,7 +66,6 @@ result is still written (and the blocking caller unblocked) rather than dropped
 from __future__ import annotations
 
 import contextlib
-import json
 import logging
 import os
 import time
@@ -63,10 +76,12 @@ import redis
 
 from unstract.core.cache.redis_client import create_redis_client
 from unstract.core.data_models import PgTaskStatus
+from unstract.core.jsonb import dumps_for_jsonb, sanitize_for_jsonb
 from unstract.core.polling import poll_for_row
 
 from .connection import CONN_DEAD_ERRORS as _CONN_DEAD_ERRORS
-from .connection import create_pg_connection
+from .connection import PAYLOAD_REJECTED_ERRORS as _PAYLOAD_REJECTED_ERRORS
+from .connection import create_pg_connection, is_connection_dead
 from .schema import qualified
 
 if TYPE_CHECKING:
@@ -83,6 +98,27 @@ logger = logging.getLogger(__name__)
 # it. Defaults to the executor caller-timeout default so a result always
 # outlives any caller still waiting on it.
 DEFAULT_RETENTION_SECONDS = 3600
+
+# Recorded as the ``failed`` row's error text when a finished task's result
+# cannot be stored (see :meth:`PgResultBackend.store_result`). The caller reads
+# this instead of waiting out its full RPC timeout, so it has to say enough to
+# diagnose from the caller's side alone.
+PAYLOAD_UNSTORABLE_ERROR: Final[str] = (
+    "Executor task finished, but its result could not be stored: the payload is "
+    "not representable in a jsonb column. The work completed; only the reply was "
+    "lost. See the worker-pg-executor logs for this reply key."
+)
+
+# The twin for the failure channel, and the two must never be interchanged. A
+# task that RAISED has not done the work, so recording it with the text above
+# would tell a reader the opposite of the truth and suppress a retry that is not
+# merely safe but correct. Kept as two constants rather than one parametrised
+# string so the difference is visible at both call sites.
+ERROR_TEXT_UNSTORABLE: Final[str] = (
+    "Executor task failed, and its error message could not be stored: the text is "
+    "not representable in the error column. The task did NOT complete — this reply "
+    "key is safe to retry. See the worker-pg-executor logs for this reply key."
+)
 
 
 # First write wins — an at-least-once redelivery of the executor message must
@@ -280,7 +316,7 @@ class PgResultBackend:
                 yield cur
             conn.commit()
         except Exception as exc:
-            conn_dead = isinstance(exc, _CONN_DEAD_ERRORS)
+            conn_dead = is_connection_dead(exc)
             try:
                 conn.rollback()
             except Exception:
@@ -332,7 +368,13 @@ class PgResultBackend:
                 with self._cursor() as cur:
                     operation(cur)
                 return
-            except _CONN_DEAD_ERRORS:
+            except _CONN_DEAD_ERRORS as exc:
+                # A payload rejection also lands here (ProgramLimitExceeded
+                # subclasses OperationalError). Re-sending it can only fail
+                # again, so hand it straight to store_result's degradation
+                # rather than paying a reconnect and a second large write.
+                if not is_connection_dead(exc):
+                    raise
                 # Last attempt, or an injected (non-owned) conn _cursor won't
                 # have dropped — retrying can't reconnect, so re-raise.
                 if attempt >= _STORE_RETRY_ATTEMPTS or not self._owns_conn:
@@ -368,18 +410,151 @@ class PgResultBackend:
         polling. Best-effort: a signal failure only slows the waiter (its fallback
         poll still delivers). A redelivery re-signals harmlessly — a stale token
         just expires.
+
+        **A row is written for every outcome the database will accept, and the
+        waiter is signalled unconditionally.** The payload is encoded with
+        :func:`~unstract.core.jsonb.dumps_for_jsonb`, which repairs the strings a
+        ``jsonb`` cast would refuse (a NUL from ``native_text`` extraction, a lone
+        surrogate) so a completed task still delivers its result. If it is
+        *still* unstorable — an unrepairable value such as ``NaN``, or a column
+        rejection this encoder does not model — the outcome degrades to a
+        ``failed`` row carrying :data:`PAYLOAD_UNSTORABLE_ERROR` rather than
+        escaping. Letting it escape is what stranded callers for the full
+        ``EXECUTOR_RESULT_TIMEOUT`` (UN-4126): the consumer logs and acks, so a
+        write that never lands is a reply that never comes.
         """
-        if result is not None:
-            status, result_json, error_text = STATUS_COMPLETED, json.dumps(result), ""
-        else:
-            status, result_json, error_text = STATUS_FAILED, None, error or ""
+        try:
+            self._write_outcome(task_id, result, error, retention_seconds)
+        finally:
+            # Signal in a ``finally``: a missed wake-up costs the caller its
+            # entire EXECUTOR_RESULT_TIMEOUT, which is the failure this method
+            # exists to prevent, so it must not be skipped by any escape above.
+            # Harmless when no row landed — the waiter re-checks and keeps
+            # waiting; and a no-op in poll mode.
+            self._signal_stored(task_id)
+
+    def _write_outcome(
+        self,
+        task_id: str,
+        result: dict[str, Any] | None,
+        error: str | None,
+        retention_seconds: int,
+    ) -> None:
+        """Write the outcome row, degrading to ``failed`` rather than escaping."""
+        if result is None:
+            # ``error`` lands in a ``text`` column, which rejects a NUL just as
+            # ``jsonb`` does — and an extraction error can embed document content,
+            # so it can also be long enough to hit SQLSTATE 54. Same net as the
+            # completed branch below: without it a rejection here escapes with no
+            # row, which is the UN-4126 strand reached from the failure channel.
+            try:
+                self._insert_outcome(
+                    task_id,
+                    STATUS_FAILED,
+                    None,
+                    sanitize_for_jsonb(error or ""),
+                    retention_seconds,
+                )
+            except _PAYLOAD_REJECTED_ERRORS:
+                logger.exception(
+                    "PgResultBackend: the database rejected the error text for "
+                    "reply_key=%s; recording a degraded failed row instead.",
+                    task_id,
+                )
+                self._insert_degraded(
+                    task_id, retention_seconds, message=ERROR_TEXT_UNSTORABLE
+                )
+            return
+
+        try:
+            result_json = dumps_for_jsonb(result)
+        except (TypeError, ValueError):
+            logger.exception(
+                "PgResultBackend: result for reply_key=%s is not encodable for "
+                "jsonb; recording a failed outcome so the caller fails fast "
+                "instead of waiting out its RPC timeout.",
+                task_id,
+            )
+            self._insert_degraded(task_id, retention_seconds)
+            return
+
+        try:
+            self._insert_outcome(
+                task_id, STATUS_COMPLETED, result_json, "", retention_seconds
+            )
+        except _PAYLOAD_REJECTED_ERRORS:
+            # Wider than `DataError` alone, but deliberately NOT `Exception`.
+            # `ProgramLimitExceeded` ("string too long" / "index row size exceeds
+            # maximum", SQLSTATE 54) subclasses OperationalError, so a
+            # DataError-only net misses it: it is first misread as a dead
+            # connection by `_store_with_reconnect`, pointlessly retried, then
+            # escapes — no row, caller strands for the full timeout.
+            #
+            # Catching bare `Exception` would fix that too, but at a worse cost:
+            # a genuine connection failure would be recorded as "payload
+            # unstorable", hiding a database outage behind a content error and
+            # breaking the deliberate contract that infrastructure errors
+            # propagate (see TestStoreResultReconnectRetry). Content rejections
+            # are a knowable, closed family — enumerate them.
+            # `_cursor` has already rolled back, so the connection is reusable
+            # and no row exists for this key yet.
+            logger.exception(
+                "PgResultBackend: the database rejected the result for "
+                "reply_key=%s even after sanitisation; recording a failed "
+                "outcome. If this is a content rejection it is a gap in "
+                "unstract.core.jsonb — capture the payload and extend it.",
+                task_id,
+            )
+            self._insert_degraded(task_id, retention_seconds)
+
+    def _insert_degraded(
+        self,
+        task_id: str,
+        retention_seconds: int,
+        *,
+        message: str = PAYLOAD_UNSTORABLE_ERROR,
+    ) -> None:
+        """Record an outcome whose real payload could not be stored. Never raises.
+
+        *message* says WHICH of the two cases this is, and it is load-bearing:
+        :data:`PAYLOAD_UNSTORABLE_ERROR` means the task completed, so a retry is a
+        second full LLM spend; :data:`ERROR_TEXT_UNSTORABLE` means it raised, so
+        retrying is correct. The default serves the completed branch, which is the
+        common one; the failure branch passes the twin explicitly.
+
+        Last line of defence: the real payload is already lost, so a failure here
+        must not propagate and cost the caller its timeout as well. If even this
+        cannot be written (the database is genuinely unreachable) the caller does
+        still time out — nothing in this process can prevent that — but it is
+        logged as such rather than silently swallowed.
+        """
+        try:
+            self._insert_outcome(task_id, STATUS_FAILED, None, message, retention_seconds)
+        except Exception:
+            logger.exception(
+                "PgResultBackend: could not record even the degraded failed row "
+                "for reply_key=%s — the caller will wait out its full timeout.",
+                task_id,
+            )
+
+    def _insert_outcome(
+        self,
+        task_id: str,
+        status: str,
+        result_json: str | None,
+        error_text: str,
+        retention_seconds: int,
+    ) -> None:
+        """Insert one outcome row (first write wins), with the reconnect retry."""
         self._store_with_reconnect(
             lambda cur: cur.execute(
                 _store_sql(),
                 (str(task_id), status, result_json, error_text, retention_seconds),
             )
         )
-        # Row is committed above → wake any blocking waiter (redis mode only).
+
+    def _signal_stored(self, task_id: str) -> None:
+        """Wake any blocking waiter once a row is committed (redis mode only)."""
         if _signal_backend() == _SIGNAL_REDIS:
             _signal_ready(str(task_id))
 

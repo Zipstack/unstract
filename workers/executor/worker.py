@@ -4,7 +4,6 @@ Celery worker for the pluggable executor system.
 Routes execute_extraction tasks to registered executors.
 """
 
-import logging
 import os
 
 from queue_backend import worker_task
@@ -16,11 +15,6 @@ from shared.infrastructure.logging import WorkerLogger
 # Setup worker
 logger = WorkerLogger.setup(WorkerType.EXECUTOR)
 app, config = WorkerBuilder.build_celery_app(WorkerType.EXECUTOR)
-
-# Suppress Celery trace logging of task return values.
-# The trace logger prints the full result dict on task success, which
-# can contain sensitive customer data (extracted text, summaries, etc.).
-logging.getLogger("celery.app.trace").setLevel(logging.WARNING)
 
 
 def check_executor_health():
@@ -79,7 +73,8 @@ def healthcheck(self):
     }
 
 
-# Import tasks so shared_task definitions bind to this app.
-# Import executors to trigger @ExecutorRegistry.register at import time.
-import executor.executors  # noqa: E402, F401
+# Import tasks so shared_task definitions bind to this app. This also populates
+# ExecutorRegistry: executor/tasks.py calls register_all() at module scope, and
+# it is the site that does the work on every deployed path — workers/worker.py
+# exec-loads that file by path, and nothing launches `celery -A executor`.
 import executor.tasks  # noqa: E402, F401

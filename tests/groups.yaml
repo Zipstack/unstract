@@ -52,15 +52,16 @@ groups:
     # runner points vitest's own JUnit reporter at the group's junit.xml, so
     # results come through per-test rather than as one synthetic row.
     #
-    # `optional` because CI images without `node_modules` should skip this
-    # rather than fail: the runner exits 5 ("nothing collected") when npx is
-    # absent, and optional keeps that from gating the overall result.
+    # Required: a red test gates the unit tier. It needs `node_modules`, so
+    # ci-test.yaml installs frontend deps on the unit leg; with them missing,
+    # `npx --no-install vitest` fails and turns the group red. A host with no
+    # npx at all (cloud's self-hosted runner) still skips via the runner's
+    # exit 5, which folds green for non-pytest groups.
     tier: unit
     runner: vitest
     workdir: frontend
     paths: [src]
     timeout_seconds: 900
-    optional: true
 
   unit-rig:
     # Rig self-tests. Run from repo root so the `tests.rig` import resolves.

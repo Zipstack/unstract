@@ -78,8 +78,8 @@ const formatBytes = (bytes, decimals = 1) => {
   const i = Math.floor(Math.log(bytes) / Math.log(k));
 
   return sizes[i]
-    ? `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`
-    : `${bytes / Math.pow(k, i - 1)} ${sizes.at(-1)}`;
+    ? `${parseFloat((bytes / k ** i).toFixed(dm))} ${sizes[i]}`
+    : `${bytes / k ** (i - 1)} ${sizes.at(-1)}`;
 };
 
 const O_AUTH_PROVIDERS = {
@@ -394,7 +394,6 @@ const onboardCompleted = (adaptersList) => {
 const formattedDateTime = (ISOdateTime) => {
   if (ISOdateTime) {
     const validIsoDate = moment.utc(ISOdateTime).toISOString();
-    // eslint-disable-next-line new-cap
     const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
     return momentTz.tz(validIsoDate, zone).format("lll z");
   } else {
@@ -662,7 +661,6 @@ function formatSecondsToHMS(seconds) {
 
 const formattedDateTimeWithSeconds = (ISOdateTime) => {
   if (ISOdateTime) {
-    // eslint-disable-next-line new-cap
     const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
     const zonedDate = parseISO(ISOdateTime);
     return format(zonedDate, "MMM d, yyyy h:mm:ss a zzz", { timeZone: zone });

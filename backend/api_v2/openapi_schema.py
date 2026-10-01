@@ -15,9 +15,12 @@ from drf_spectacular.utils import (
     extend_schema_serializer,
     extend_schema_view,
 )
+from platform_api.openapi_schema import PlatformKeyError
 from rest_framework import serializers
 
+from api_v2.models import API_NAME_MAX_LENGTH, DESCRIPTION_MAX_LENGTH
 from api_v2.serializers import (
+    APIDeploymentListSerializer,
     APIExecutionResponseSerializer,
     ExecutionQuerySerializer,
     ExecutionRequestSerializer,
@@ -170,8 +173,12 @@ EXECUTE_ERRORS = {
     ),
 }
 
+EXECUTE_SUMMARY = "Execute an API deployment against documents"
+
 EXECUTE_DESCRIPTION = (
-    "Execute an API deployment against one or more documents.\n\n"
+    "Runs an API deployment. Takes a deployment key — either the "
+    "deployment's own key, or a global API deployment key that has access "
+    "to it.\n\n"
     "Supply the documents either as `files` (multipart upload) or as "
     "`presigned_urls` (HTTPS S3 URLs), or both — a request carrying neither is "
     f"rejected, and the two together may not exceed "
@@ -180,15 +187,16 @@ EXECUTE_DESCRIPTION = (
     "execution is queued; read the outcome from the status endpoint."
 )
 
+STATUS_SUMMARY = "Read the result of an execution"
+
 STATUS_DESCRIPTION = (
-    "Read the result of a previously started execution.\n\n"
-    "This read is one-shot: the first call that observes a completed execution "
-    "acknowledges it and the stored result is discarded, so every later call "
-    "for that execution answers 406. Poll while the execution is pending, and "
-    "keep the payload of the call that returns it — it cannot be fetched again."
-    "\n\nA still-running execution answers 422 carrying its current `status`, "
-    "so a polling loop should treat 422 as the normal reply and stop on 200. "
-    "Clients that raise on any non-2xx need to allow for that."
+    "Reads a previously started execution, taking the same deployment key "
+    "that ran it. The read is one-shot: the first call that observes a completed "
+    "execution acknowledges it and the stored result is discarded, so every "
+    "later call for that execution answers 406. Keep the payload of the call "
+    "that returns it — it cannot be fetched again.\n\n"
+    "A still-running execution answers 422 carrying its current `status`, so a "
+    "polling loop should treat 422 as the normal reply and stop on 200."
 )
 
 
@@ -197,6 +205,7 @@ STATUS_DESCRIPTION = (
 DEPLOYMENT_EXECUTION_SCHEMA = extend_schema_view(
     post=extend_schema(
         operation_id="execute",
+        summary=EXECUTE_SUMMARY,
         tags=["deployment"],
         auth=DEPLOYMENT_AUTH,
         parameters=DEPLOYMENT_PATH_PARAMETERS,
@@ -218,6 +227,7 @@ DEPLOYMENT_EXECUTION_SCHEMA = extend_schema_view(
     ),
     get=extend_schema(
         operation_id="status",
+        summary=STATUS_SUMMARY,
         tags=["deployment"],
         auth=DEPLOYMENT_AUTH,
         parameters=DEPLOYMENT_PATH_PARAMETERS + [ExecutionQuerySerializer],
@@ -240,5 +250,100 @@ DEPLOYMENT_EXECUTION_SCHEMA = extend_schema_view(
             **DEPLOYMENT_ERRORS,
         },
         description=STATUS_DESCRIPTION,
+    ),
+)
+
+
+# Declares no field of its own, so a change to the real serializer moves the
+# spec. It carries a caller-facing description and a component name the
+# pagination envelope can be wrapped round without stuttering.
+@extend_schema_serializer(component_name="APIDeploymentSummary")
+class APIDeploymentSummary(APIDeploymentListSerializer):
+    """One API deployment, as it appears in an organisation's listing.
+
+    `api_name` and `api_endpoint` are what an execution call needs;
+    `display_name` and `description` say what the deployment is for.
+    """
+
+    # The model defaults these, so DRF reports them optional --- true of a
+    # request body, wrong for a response the server always fills. Left alone,
+    # a generated client types them nullable and every caller writes a check
+    # for a key that is always there. The lengths are restated because DRF drops
+    # them from a read-only field.
+    api_name = serializers.CharField(read_only=True, max_length=API_NAME_MAX_LENGTH)
+    display_name = serializers.CharField(read_only=True, max_length=API_NAME_MAX_LENGTH)
+    description = serializers.CharField(read_only=True, max_length=DESCRIPTION_MAX_LENGTH)
+    is_active = serializers.BooleanField(read_only=True)
+
+
+# This operation takes a platform key rather than a deployment key, so its
+# credential failures come from the auth middleware in `PlatformKeyError` shape
+# rather than from the project exception handler.
+API_DEPLOYMENT_LIST_QUERY_PARAMETERS = [
+    OpenApiParameter(
+        "workflow",
+        {"type": "string", "format": "uuid"},
+        OpenApiParameter.QUERY,
+        description="Return only the deployments of this workflow.",
+    ),
+    OpenApiParameter(
+        "api_name",
+        {"type": "string"},
+        OpenApiParameter.QUERY,
+        description="Return only the deployment with exactly this `api_name`.",
+    ),
+    OpenApiParameter(
+        "search",
+        {"type": "string"},
+        OpenApiParameter.QUERY,
+        description="Return only deployments whose display name contains this "
+        "text, case-insensitively.",
+    ),
+]
+
+LIST_API_DEPLOYMENTS_SUMMARY = "List an organisation's API deployments"
+
+LIST_API_DEPLOYMENTS_DESCRIPTION = (
+    "Lists what an organisation has deployed, authenticated by a platform API "
+    "key that belongs to it.\n\n"
+    "A deployment key is not part of this listing; executing a deployment "
+    "still needs one.\n\n"
+    "Ordered by most recent run first, then by identifier, so paging is stable."
+)
+
+
+API_DEPLOYMENT_LIST_SCHEMA = extend_schema_view(
+    list=extend_schema(
+        operation_id="list_deployments",
+        summary=LIST_API_DEPLOYMENTS_SUMMARY,
+        tags=["deployment"],
+        auth=[{"platformKey": []}],
+        parameters=API_DEPLOYMENT_LIST_QUERY_PARAMETERS,
+        responses={
+            200: OpenApiResponse(
+                APIDeploymentSummary(many=True),
+                description="One page of the organisation's API deployments.",
+            ),
+            400: OpenApiResponse(
+                ErrorResponse,
+                description="A query parameter was malformed.",
+            ),
+            401: OpenApiResponse(
+                PlatformKeyError,
+                description="No usable platform API key was supplied — absent, "
+                "malformed, unknown, or revoked.",
+            ),
+            403: OpenApiResponse(
+                PlatformKeyError,
+                description="The key was recognised but refused: it does not "
+                "belong to the organisation named in the path, or its "
+                "permission tier is not one this deployment knows.",
+            ),
+            500: OpenApiResponse(
+                description="The request could not be served. The body is not "
+                "guaranteed to be JSON.",
+            ),
+        },
+        description=LIST_API_DEPLOYMENTS_DESCRIPTION,
     ),
 )

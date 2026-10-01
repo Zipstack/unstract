@@ -7,6 +7,7 @@ from rest_framework.serializers import ValidationError
 
 from backend.serializers import AuditSerializer
 from prompt_studio.prompt_profile_manager_v2.constants import ProfileManagerKeys
+from prompt_studio.vlm_utils import get_profile_vision_warning
 
 from .models import ProfileManager
 
@@ -27,6 +28,12 @@ class ProfileManagerSerializer(AuditSerializer):
         fields = "__all__"
         # Dropped so a duplicate create surfaces the view's DuplicateData.
         validators = []
+
+    def validate_prompt_studio_tool(self, value):
+        """Refuse reparenting: the gate authorises against the stored parent."""
+        if self.instance and value != self.instance.prompt_studio_tool:
+            raise ValidationError("A profile cannot be moved to another project.")
+        return value
 
     def validate(self, attrs: dict[str, Any]) -> dict[str, Any]:
         """Reject a change to an adapter the requester cannot access.
@@ -66,4 +73,9 @@ class ProfileManagerSerializer(AuditSerializer):
         if conf:
             conf["Profile Name"] = instance.profile_name
         rep["conf"] = conf
+        # Non-blocking image-mode/vision-LLM mismatch warning (cloud-only;
+        # always None in OSS — key omitted).
+        vision_warning = get_profile_vision_warning(instance)
+        if vision_warning:
+            rep["vision_warning"] = vision_warning
         return rep

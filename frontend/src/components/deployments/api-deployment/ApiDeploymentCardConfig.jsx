@@ -11,6 +11,7 @@ import { Switch } from "@/components/ui/shims/antd-inputs";
 import { Flex, Space } from "@/components/ui/shims/antd-layout";
 import { Tooltip } from "@/components/ui/shims/antd-overlays";
 import { Typography } from "@/components/ui/shims/antd-typography";
+import { canEditResource } from "../../../helpers/resourceAccess";
 
 import { StatusPills } from "../../pipelines-or-deployments/pipelines/PipelineCardConfig";
 import {
@@ -88,6 +89,13 @@ function createApiDeploymentCardConfig({
         ],
       };
 
+      // Enabling or disabling is use, not configuration, so anyone the
+      // deployment is shared with may do it -- the backend admits an
+      // activation-only PATCH for exactly this.
+      const toggleTitle = deployment.is_active
+        ? "Disable API deployment"
+        : "Enable API deployment";
+
       return (
         <div className="card-list-content">
           <CardHeaderRow
@@ -95,13 +103,7 @@ function createApiDeploymentCardConfig({
             description={deployment.description}
           >
             <Space size={16} className="card-list-actions">
-              <Tooltip
-                title={
-                  deployment.is_active
-                    ? "Disable API deployment"
-                    : "Enable API deployment"
-                }
-              >
+              <Tooltip title={toggleTitle}>
                 <Switch
                   size="small"
                   checked={deployment.is_active}

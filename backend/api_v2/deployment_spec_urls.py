@@ -9,11 +9,14 @@ Widening the spec to another endpoint means annotating its view with
 ``@extend_schema`` and adding its urlconf here.
 """
 
+from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
+from django.urls import path
 
+from api_v2.api_deployment_views import APIDeploymentViewSet
 from backend import base_urls
 
-SPEC_URLCONFS = ("api_v2.execution_urls",)
+SPEC_URLCONFS = ("api_v2.execution_urls", "platform_api.whoami_urls")
 
 urlpatterns = [
     entry
@@ -27,3 +30,14 @@ if missing:
         f"{', '.join(sorted(missing))} is not mounted in backend.base_urls; the "
         "spec would be generated for routes the server does not serve."
     )
+
+# Restated rather than selected: this route is served from a urlconf carrying
+# routes that are not published, and only its GET is. Both halves of the
+# restatement are held to the served route by `test_docstudio_spec`.
+urlpatterns += [
+    path(
+        f"{settings.TENANT_SUBFOLDER_PREFIX}/api/deployment/",
+        APIDeploymentViewSet.as_view({"get": "list"}),
+        name="api_deployment",
+    ),
+]

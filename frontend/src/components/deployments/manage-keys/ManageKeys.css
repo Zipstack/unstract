@@ -15,3 +15,9 @@
 .actions {
   margin-right: 10px;
 }
+
+/* API keys are credentials: a shared user sees the controls, greyed. */
+.actions[aria-disabled="true"] {
+  opacity: 0.4;
+  cursor: not-allowed;
+}

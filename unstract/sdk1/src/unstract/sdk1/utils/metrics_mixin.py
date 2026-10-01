@@ -1,4 +1,5 @@
 import logging
+import os
 import time
 import uuid
 from typing import Any
@@ -6,6 +7,46 @@ from typing import Any
 from unstract.core.cache.redis_client import create_redis_client
 
 logger = logging.getLogger(__name__)
+
+_DEFAULT_DB = 1
+
+
+def _metrics_redis_db() -> int:
+    """Which logical database the `metrics:*` keys live on (UN-4123).
+
+    Default 1 is the database this has always used, so an unset var leaves every
+    existing deployment exactly as it was. It exists so a SINGLE-DATABASE endpoint
+    can be supported: the non-clustered tiers of Azure Managed Redis and Redis
+    Enterprise expose db 0 only, and this was the last place in the codebase where
+    a database was chosen in code rather than in configuration. (Cluster mode is
+    unsupported for a different reason entirely — plain redis.Redis gets MOVED
+    redirects regardless of how many databases the service offers.)
+
+    It is one of FOUR keys in Unstract's on-prem database map; workers/sample.env
+    carries the list and the collapsing recipe. REDIS_DB is the one that is easy
+    to forget, because it is already set.
+
+    An explicit db argument beats a REDIS_URL's /<db> path — create_redis_client
+    strips the path for exactly this caller — so this works in URL mode too.
+
+    A blank value means UNSET, not malformed: a declared-but-empty variable is this
+    repo's own convention for "leave the default" (CACHE_REDIS_PASSWORD=,
+    REDIS_SSL_CA_CERTS=), and every other variable in this work treats it that way.
+    Without that, int("") raised inside __init__'s try/except and every LLM timing
+    metric went silently missing platform-wide, once per instrumented call, behind
+    a log line that named Redis rather than this variable.
+
+    A genuinely unparseable value falls back to the default and says so, for the
+    same reason: losing every metric is a bad trade for a typo.
+    """
+    raw = os.getenv("METRICS_REDIS_DB", "").strip() or str(_DEFAULT_DB)
+    try:
+        return int(raw)
+    except ValueError:
+        logger.warning(
+            "Invalid METRICS_REDIS_DB=%r; falling back to db %s", raw, _DEFAULT_DB
+        )
+        return _DEFAULT_DB
 
 
 class MetricsMixin:
@@ -21,7 +62,7 @@ class MetricsMixin:
         self.op_id = str(uuid.uuid4())  # Unique identifier for this instance
         self.redis_client = None
         try:
-            self.redis_client = create_redis_client(db=1)
+            self.redis_client = create_redis_client(db=_metrics_redis_db())
         except Exception as e:
             logger.error(f"Failed to initialize Redis client for run_id={run_id}: {e}")
 

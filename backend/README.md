@@ -175,7 +175,8 @@ psql -d unstract_db -U unstract_dev
 
 ## API Docs
 
-The OpenAPI spec for the API deployment endpoints is committed at
+The OpenAPI spec for the publicly served API -- the API deployment endpoints,
+and the organisation-less `whoami` -- is committed at
 [`specs/docstudio-oss.json`](../specs/docstudio-oss.json) and is the contract the published
 clients and their generated SDKs are built from. It is not served at runtime — regenerate it in
 the same PR as any route, serializer or schema-annotation change:

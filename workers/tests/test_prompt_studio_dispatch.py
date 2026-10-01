@@ -1,16 +1,16 @@
 """IDE path integration tests through executor chain.
 
-Phase 4 replaces PromptTool HTTP calls in PromptStudioHelper with
-ExecutionDispatcher → executor worker → LegacyExecutor.
+Phase 4 replaced PromptTool HTTP calls in PromptStudioHelper with a dispatch to
+the executor worker → LegacyExecutor.
 
-These tests build the EXACT payloads that prompt_studio_helper.py
-now sends via ExecutionDispatcher, push them through the full Celery
-eager-mode chain, and verify the results match what the IDE expects.
+These tests build the EXACT payloads that prompt_studio_helper.py now sends,
+push them through the full chain with the executor task running in-process, and
+verify the results match what the IDE expects.
 
 This validates the full contract:
     prompt_studio_helper builds payload
     → ExecutionContext(execution_source="ide", ...)
-    → Celery task → LegacyExecutor._handle_X()
+    → execute_extraction task → LegacyExecutor._handle_X()
     → ExecutionResult → result.data used by IDE
 
 All tests use execution_source="ide" to match the real IDE path.
@@ -23,9 +23,11 @@ from executor.executors.constants import (
     PromptServiceConstants as PSKeys,
 )
 from unstract.sdk1.execution.context import ExecutionContext
-from unstract.sdk1.execution.dispatcher import ExecutionDispatcher
 from unstract.sdk1.execution.registry import ExecutorRegistry
 from unstract.sdk1.execution.result import ExecutionResult
+from unstract.workflow_execution.executor_rpc import PgExecutionDispatcher
+
+from .executor_dispatch_fakes import EagerExecutorTransport
 
 # ---------------------------------------------------------------------------
 # Patch targets (same as Phase 2 sanity)
@@ -654,41 +656,28 @@ class TestIDESinglePass:
 
 
 class TestIDEDispatcherIntegration:
-    """Test ExecutionDispatcher dispatch() with IDE payloads in eager mode.
+    """Dispatcher round trips with IDE payloads, running the task in-process.
 
-    Celery's send_task() doesn't work with eager mode for AsyncResult.get(),
-    so we patch send_task to delegate to task.apply() instead.
+    ``EagerExecutorTransport`` runs ``execute_extraction`` synchronously instead
+    of enqueueing it, so each test still covers dispatcher → task → executor →
+    result. This replaces the old ``send_task``-patching dance, which existed
+    only because Celery's eager mode does not support ``AsyncResult.get()``.
     """
-
-    @staticmethod
-    def _patch_send_task(eager_app):
-        """Patch send_task on eager_app to use task.apply()."""
-        original_send_task = eager_app.send_task
-
-        def patched_send_task(name, args=None, kwargs=None, **opts):
-            task = eager_app.tasks[name]
-            return task.apply(args=args, kwargs=kwargs)
-
-        eager_app.send_task = patched_send_task
-        return original_send_task
 
     @patch(_PATCH_FS)
     @patch(_PATCH_X2TEXT)
     def test_dispatcher_extract_round_trip(self, mock_x2text_cls, mock_get_fs, eager_app):
-        """ExecutionDispatcher.dispatch() → extract → ExecutionResult."""
+        """Dispatcher round trip → extract → ExecutionResult."""
         mock_x2text = MagicMock()
         mock_x2text.process.return_value = _mock_process_response("dispatcher extracted")
         mock_x2text.x2text_instance = MagicMock()
         mock_x2text_cls.return_value = mock_x2text
         mock_get_fs.return_value = MagicMock()
 
-        original = self._patch_send_task(eager_app)
-        try:
-            dispatcher = ExecutionDispatcher(celery_app=eager_app)
-            ctx = _ide_extract_ctx()
-            result = dispatcher.dispatch(ctx)
-        finally:
-            eager_app.send_task = original
+        dispatcher = PgExecutionDispatcher(
+            EagerExecutorTransport(eager_app.tasks["execute_extraction"])
+        )
+        result = dispatcher.dispatch(_ide_extract_ctx())
 
         assert result.success is True
         assert result.data["extracted_text"] == "dispatcher extracted"
@@ -700,18 +689,15 @@ class TestIDEDispatcherIntegration:
     def test_dispatcher_answer_prompt_round_trip(
         self, mock_shim_cls, mock_deps, _mock_idx, _mock_plugin, eager_app
     ):
-        """ExecutionDispatcher.dispatch() → answer_prompt → ExecutionResult."""
+        """Dispatcher round trip → answer_prompt → ExecutionResult."""
         llm = _mock_llm("dispatcher answer")
         mock_deps.return_value = _mock_prompt_deps(llm)
         mock_shim_cls.return_value = MagicMock()
 
-        original = self._patch_send_task(eager_app)
-        try:
-            dispatcher = ExecutionDispatcher(celery_app=eager_app)
-            ctx = _ide_answer_prompt_ctx()
-            result = dispatcher.dispatch(ctx)
-        finally:
-            eager_app.send_task = original
+        dispatcher = PgExecutionDispatcher(
+            EagerExecutorTransport(eager_app.tasks["execute_extraction"])
+        )
+        result = dispatcher.dispatch(_ide_answer_prompt_ctx())
 
         assert result.success is True
         assert result.data["output"]["invoice_number"] == "dispatcher answer"
@@ -724,18 +710,15 @@ class TestIDEDispatcherIntegration:
     def test_dispatcher_single_pass_round_trip(
         self, mock_shim_cls, mock_deps, _mock_idx, _mock_plugin, eager_app
     ):
-        """ExecutionDispatcher.dispatch() → single_pass → ExecutionResult."""
+        """Dispatcher round trip → single_pass → ExecutionResult."""
         llm = _mock_llm("sp dispatch")
         mock_deps.return_value = _mock_prompt_deps(llm)
         mock_shim_cls.return_value = MagicMock()
 
-        original = self._patch_send_task(eager_app)
-        try:
-            dispatcher = ExecutionDispatcher(celery_app=eager_app)
-            ctx = _ide_single_pass_ctx()
-            result = dispatcher.dispatch(ctx)
-        finally:
-            eager_app.send_task = original
+        dispatcher = PgExecutionDispatcher(
+            EagerExecutorTransport(eager_app.tasks["execute_extraction"])
+        )
+        result = dispatcher.dispatch(_ide_single_pass_ctx())
 
         assert result.success is True
         assert "revenue" in result.data["output"]
@@ -743,7 +726,7 @@ class TestIDEDispatcherIntegration:
     @patch(_PATCH_FS)
     @patch(_PATCH_INDEX_DEPS)
     def test_dispatcher_index_round_trip(self, mock_deps, mock_get_fs, eager_app):
-        """ExecutionDispatcher.dispatch() → index → ExecutionResult."""
+        """Dispatcher round trip → index → ExecutionResult."""
         mock_index_cls = MagicMock()
         mock_index = MagicMock()
         mock_index.generate_index_key.return_value = "doc-dispatch-idx"
@@ -754,13 +737,10 @@ class TestIDEDispatcherIntegration:
         mock_deps.return_value = (mock_index_cls, MagicMock(), MagicMock())
         mock_get_fs.return_value = MagicMock()
 
-        original = self._patch_send_task(eager_app)
-        try:
-            dispatcher = ExecutionDispatcher(celery_app=eager_app)
-            ctx = _ide_index_ctx()
-            result = dispatcher.dispatch(ctx)
-        finally:
-            eager_app.send_task = original
+        dispatcher = PgExecutionDispatcher(
+            EagerExecutorTransport(eager_app.tasks["execute_extraction"])
+        )
+        result = dispatcher.dispatch(_ide_index_ctx())
 
         assert result.success is True
         assert result.data["doc_id"] == "doc-dispatch-idx"

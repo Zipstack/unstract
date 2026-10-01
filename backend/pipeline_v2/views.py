@@ -10,9 +10,12 @@ from django.db import IntegrityError, transaction
 from django.db.models import F, QuerySet
 from django.http import HttpResponse
 from permissions.membership_views import OwnerManagementMixin
-from permissions.permission import IsOwner, IsOwnerOrSharedUserOrSharedToOrg
+from permissions.permission import (
+    IsOwner,
+    IsOwnerOrSharedUserOrSharedToOrg,
+    is_activation_only_patch,
+)
 from permissions.resource_share_views import ResourceShareManagementMixin
-from permissions.roles import ResourceRole
 from plugins import get_plugin
 from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action
@@ -66,6 +69,12 @@ class PipelineViewSet(
         return None
 
     def get_permissions(self) -> list[Any]:
+        # Enabling or disabling is use, not configuration, so it follows
+        # sharing. ``pipeline_id`` is echoed by the client and changes nothing.
+        if self.action == "partial_update" and is_activation_only_patch(
+            self.request, flag="active", ignore=("pipeline_id",)
+        ):
+            return [IsOwnerOrSharedUserOrSharedToOrg()]
         if self.action in [
             "destroy",
             "partial_update",
@@ -158,9 +167,7 @@ class PipelineViewSet(
                 pipeline_instance = serializer.save()
                 # Grant before the API key so the creator's access is committed
                 # with the row itself, matching api_deployment_views.create().
-                pipeline_instance.memberships.get_or_create(
-                    user_id=request.user.id, defaults={"role": ResourceRole.OWNER}
-                )
+                pipeline_instance.grant_owner(request.user)
                 # Create API key using the created instance
                 KeyHelper.create_api_key(pipeline_instance, request)
         except IntegrityError:
