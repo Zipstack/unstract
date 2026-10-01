@@ -3,17 +3,24 @@
 An empty value passes here (presence is the separate completeness check). For a
 multivalued leaf each comma-separated element is validated against the format.
 """
+
 import math
 import re
 from datetime import datetime
-from typing import List, Optional
 
 from .dataclasses import KeySpec
 
 _NUMERIC_STRIP = re.compile(r"[,\s$%]")
 _DATE_FORMATS = (
-    "%m/%d/%Y", "%m/%d/%y", "%Y-%m-%d", "%d/%m/%Y", "%m-%d-%Y",
-    "%B %d, %Y", "%b %d, %Y", "%m/%Y", "%Y",
+    "%m/%d/%Y",
+    "%m/%d/%y",
+    "%Y-%m-%d",
+    "%d/%m/%Y",
+    "%m-%d-%Y",
+    "%B %d, %Y",
+    "%b %d, %Y",
+    "%m/%Y",
+    "%Y",
 )
 
 
@@ -58,16 +65,17 @@ def _check_one(value: str, spec: KeySpec) -> bool:
 
 def validate_format(value: str, spec: KeySpec) -> bool:
     """True if `value` conforms to `spec.format`. Empty value -> True (completeness is
-    checked separately). Multivalued -> every element must conform."""
+    checked separately). Multivalued -> every element must conform.
+    """
     if value is None or value.strip() == "":
         return True
     if spec.multivalued:
-        elements: List[str] = [e.strip() for e in value.split(",") if e.strip()]
+        elements: list[str] = [e.strip() for e in value.split(",") if e.strip()]
         return all(_check_one(e, spec) for e in elements) if elements else True
     return _check_one(value, spec)
 
 
-def coerce_number(value: str) -> Optional[float]:
+def coerce_number(value: str) -> float | None:
     """Parse a numeric/currency string to a float, or None. Strips commas/spaces/$/%."""
     if value is None:
         return None
@@ -83,7 +91,7 @@ def coerce_number(value: str) -> Optional[float]:
     return n if math.isfinite(n) else None
 
 
-def coerce_date(value: str) -> Optional[str]:
+def coerce_date(value: str) -> str | None:
     """Parse a date string to ISO 'YYYY-MM-DD', or None."""
     if value is None:
         return None
@@ -96,7 +104,7 @@ def coerce_date(value: str) -> Optional[str]:
     return None
 
 
-def coerce_enum(value: str, spec: KeySpec) -> "Optional[str]":
+def coerce_enum(value: str, spec: KeySpec) -> "str | None":
     """Return the canonical `spec.enum_values` element matching `value` case-insensitively, or None."""
     if value is None:
         return None

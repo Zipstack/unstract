@@ -4,6 +4,7 @@ Task name ``execute_sandboxed_code`` is routed to the ``sandbox_codegen``
 queue (registry.py). All caps are re-clamped server-side here — the caller's
 values are advisory only.
 """
+
 import logging
 import os
 
@@ -50,9 +51,14 @@ def _execute_sandboxed_code_impl(
     except (TypeError, ValueError):
         return _fail(request_id, "timeout must be numeric")
     r: RunResult = run_code(
-        code, input_json,
-        timeout=eff_timeout, max_output_bytes=max_output, max_rows=max_rows,
-        memory_mb=memory_mb, max_pids=max_pids, grace=grace,
+        code,
+        input_json,
+        timeout=eff_timeout,
+        max_output_bytes=max_output,
+        max_rows=max_rows,
+        memory_mb=memory_mb,
+        max_pids=max_pids,
+        grace=grace,
     )
     return {
         "request_id": request_id,
@@ -67,8 +73,13 @@ def _execute_sandboxed_code_impl(
 
 def _fail(request_id: str, msg: str) -> dict:
     return {
-        "request_id": request_id, "success": False, "rows_jsonl": "",
-        "rows_written": 0, "stdout": "", "stderr": "", "error": msg,
+        "request_id": request_id,
+        "success": False,
+        "rows_jsonl": "",
+        "rows_written": 0,
+        "stdout": "",
+        "stderr": "",
+        "error": msg,
     }
 
 

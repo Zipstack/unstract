@@ -5,9 +5,9 @@ import json
 import pdfplumber
 from django.conf import settings
 from rest_framework import serializers
-from unstract.agent_kv_schema import SchemaError, compile_schema
 
 from agent_kv.constants import EXTRACTOR_ROUTES, TABLE_EXTRACTOR_NAME, V1_EXTRACTOR_NAME
+from unstract.agent_kv_schema import SchemaError, compile_schema
 
 ALLOWED_EXTENSIONS = {".pdf", ".xlsx", ".xls", ".png", ".jpg", ".jpeg", ".tiff"}
 PDF_LIKE = {".pdf"}
@@ -261,9 +261,7 @@ class SubmitSerializer(serializers.Serializer):
         except (ValueError, TypeError) as e:
             raise serializers.ValidationError(f"extractors is not valid JSON: {e}")
         if not isinstance(entries, list) or not entries:
-            raise serializers.ValidationError(
-                "extractors must be a non-empty JSON array"
-            )
+            raise serializers.ValidationError("extractors must be a non-empty JSON array")
         if len(entries) > 1:
             # The FORMAT is being fixed before launch; the fan-out execution is
             # not built (one executor exists, and page images are not shared).
@@ -276,9 +274,7 @@ class SubmitSerializer(serializers.Serializer):
         validated, compiled = [], {}
         for i, entry in enumerate(entries):
             if not isinstance(entry, dict):
-                raise serializers.ValidationError(
-                    f"extractors[{i}] must be an object"
-                )
+                raise serializers.ValidationError(f"extractors[{i}] must be an object")
             ser = ExtractorSerializer(data=entry)
             if not ser.is_valid():
                 raise serializers.ValidationError({f"extractors[{i}]": ser.errors})

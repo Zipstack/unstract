@@ -4,6 +4,7 @@ This is the single entry point both the API (submit-time validation) and the
 cloud engine use. Anything compile_schema accepts, the engine must execute;
 anything it rejects never reaches OCR or an LLM.
 """
+
 import ast
 from dataclasses import dataclass, field
 
@@ -36,10 +37,30 @@ class CompiledSchema:
 
 _ALLOWED_CALLS = {"sum", "count", "min", "max", "avg"}
 _ALLOWED_NODES = (
-    ast.Expression, ast.BoolOp, ast.And, ast.Or, ast.UnaryOp, ast.Not,
-    ast.USub, ast.Compare, ast.Eq, ast.NotEq, ast.Lt, ast.LtE,
-    ast.Gt, ast.GtE, ast.BinOp, ast.Add, ast.Sub, ast.Mult, ast.Div,
-    ast.Call, ast.Name, ast.Attribute, ast.Constant, ast.Load,
+    ast.Expression,
+    ast.BoolOp,
+    ast.And,
+    ast.Or,
+    ast.UnaryOp,
+    ast.Not,
+    ast.USub,
+    ast.Compare,
+    ast.Eq,
+    ast.NotEq,
+    ast.Lt,
+    ast.LtE,
+    ast.Gt,
+    ast.GtE,
+    ast.BinOp,
+    ast.Add,
+    ast.Sub,
+    ast.Mult,
+    ast.Div,
+    ast.Call,
+    ast.Name,
+    ast.Attribute,
+    ast.Constant,
+    ast.Load,
 )
 
 
@@ -52,15 +73,17 @@ def _check_constraint_syntax(expr: str) -> None:
     for node in ast.walk(tree):
         if not isinstance(node, _ALLOWED_NODES):
             raise SchemaError(
-                f"constraint uses disallowed syntax "
-                f"({type(node).__name__}): {expr!r}"
+                f"constraint uses disallowed syntax " f"({type(node).__name__}): {expr!r}"
             )
         if isinstance(node, ast.Call):
             if not isinstance(node.func, ast.Name) or node.func.id not in _ALLOWED_CALLS:
                 raise SchemaError(f"constraint calls a disallowed function: {expr!r}")
-            if node.keywords or len(node.args) != 1 or not isinstance(
-                node.args[0], ast.Constant
-            ) or not isinstance(node.args[0].value, str):
+            if (
+                node.keywords
+                or len(node.args) != 1
+                or not isinstance(node.args[0], ast.Constant)
+                or not isinstance(node.args[0].value, str)
+            ):
                 raise SchemaError(
                     f"constraint aggregate needs one string literal arg: {expr!r}"
                 )
@@ -117,7 +140,9 @@ def compile_schema(spec: dict, caps: SchemaCaps | None = None) -> CompiledSchema
             )
     for kspec in key_specs + [s for a in array_specs for s in a.item_specs]:
         if len(kspec.regex_pattern) > caps.max_regex_len:
-            raise SchemaError(f"'{kspec.path}' regex exceeds max_regex_len={caps.max_regex_len}")
+            raise SchemaError(
+                f"'{kspec.path}' regex exceeds max_regex_len={caps.max_regex_len}"
+            )
         if len(kspec.aliases) > caps.max_aliases:
             raise SchemaError(f"'{kspec.path}' exceeds max_aliases={caps.max_aliases}")
         if len(kspec.effective_description) > caps.max_description_len:
@@ -136,5 +161,6 @@ def compile_schema(spec: dict, caps: SchemaCaps | None = None) -> CompiledSchema
     for expr in constraints:
         _check_constraint_syntax(expr)
 
-    return CompiledSchema(key_specs=key_specs, array_specs=array_specs,
-                          constraints=list(constraints))
+    return CompiledSchema(
+        key_specs=key_specs, array_specs=array_specs, constraints=list(constraints)
+    )

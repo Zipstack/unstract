@@ -21,6 +21,7 @@ Two independent kill mechanisms bound runaway children:
   same hostile input. Keeping it strictly higher keeps the wall-clock path
   the only mechanism that fires in the common case.
 """
+
 from __future__ import annotations
 
 import json
@@ -172,13 +173,17 @@ def run_code(
                     os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
                 except Exception:
                     pass
-            return RunResult(success=False, error=f"execution failed: {type(exc).__name__}")
+            return RunResult(
+                success=False, error=f"execution failed: {type(exc).__name__}"
+            )
 
         stdout = _scrub(stdout or "", tmp)[:_CAPTURE_LIMIT]
         stderr = _scrub(stderr or "", tmp)[:_CAPTURE_LIMIT]
         if returncode != 0:
             return RunResult(
-                success=False, stdout=stdout, stderr=stderr,
+                success=False,
+                stdout=stdout,
+                stderr=stderr,
                 error=f"execution failed: exit {returncode}",
             )
 
@@ -195,8 +200,12 @@ def run_code(
         try:
             raw = out.read_text(encoding="utf-8", errors="replace")
             if len(raw.encode()) > max_output_bytes:
-                return RunResult(success=False, stdout=stdout, stderr=stderr,
-                                 error="execution failed: output exceeds size cap")
+                return RunResult(
+                    success=False,
+                    stdout=stdout,
+                    stderr=stderr,
+                    error="execution failed: output exceeds size cap",
+                )
             rows = 0
             for line in raw.splitlines():
                 if not line.strip():
@@ -204,13 +213,26 @@ def run_code(
                 json.loads(line)
                 rows += 1
                 if rows > max_rows:
-                    return RunResult(success=False, stdout=stdout, stderr=stderr,
-                                     error=f"execution failed: output exceeds row cap of {max_rows} rows")
+                    return RunResult(
+                        success=False,
+                        stdout=stdout,
+                        stderr=stderr,
+                        error=f"execution failed: output exceeds row cap of {max_rows} rows",
+                    )
         except ValueError:
-            return RunResult(success=False, stdout=stdout, stderr=stderr,
-                             error="execution failed: invalid JSONL output")
+            return RunResult(
+                success=False,
+                stdout=stdout,
+                stderr=stderr,
+                error="execution failed: invalid JSONL output",
+            )
         except Exception:
-            return RunResult(success=False, stdout=stdout, stderr=stderr,
-                             error="execution failed: unreadable output")
-        return RunResult(success=True, rows_jsonl=raw, rows_written=rows,
-                         stdout=stdout, stderr=stderr)
+            return RunResult(
+                success=False,
+                stdout=stdout,
+                stderr=stderr,
+                error="execution failed: unreadable output",
+            )
+        return RunResult(
+            success=True, rows_jsonl=raw, rows_written=rows, stdout=stdout, stderr=stderr
+        )

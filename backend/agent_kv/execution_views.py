@@ -7,7 +7,6 @@ from django.utils import timezone
 from plugins import get_plugin
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from unstract.agent_kv_schema.compile import SchemaError, compile_schema
 
 from agent_kv.constants import STAGE_NAMES_BY_EXTRACTOR
 from agent_kv.dispatch import DispatchError, dispatch_job
@@ -18,6 +17,7 @@ from agent_kv.key_validator import AgentKVKeyValidator
 from agent_kv.models import AgentKVJob, JobStatus
 from agent_kv.rate_limiter import AgentKVConcurrencyLimiter, check_key_rate
 from agent_kv.storage import delete_job_files, stage_input
+from unstract.agent_kv_schema.compile import SchemaError, compile_schema
 
 logger = logging.getLogger(__name__)
 

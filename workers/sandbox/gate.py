@@ -37,15 +37,35 @@ reference to ``sys`` other than the immediate ``sys.argv`` attribute access is
 rejected, not just a denylist of attributes) and ``open()`` on the runner's
 two argv paths.
 """
+
 import ast
 
 _ALLOWED_IMPORTS = {
-    "json", "math", "statistics", "decimal", "datetime", "re", "collections",
-    "itertools", "functools", "sys",
+    "json",
+    "math",
+    "statistics",
+    "decimal",
+    "datetime",
+    "re",
+    "collections",
+    "itertools",
+    "functools",
+    "sys",
 }
 _DENYLISTED_CALLS = {
-    "eval", "exec", "compile", "__import__", "globals", "locals", "vars",
-    "getattr", "setattr", "delattr", "breakpoint", "input", "help",
+    "eval",
+    "exec",
+    "compile",
+    "__import__",
+    "globals",
+    "locals",
+    "vars",
+    "getattr",
+    "setattr",
+    "delattr",
+    "breakpoint",
+    "input",
+    "help",
 }
 # Attribute-form calls only (e.g. `mod.compile(...)`): `compile` is excluded
 # because it's the one denylisted name that collides with a legitimate
@@ -69,20 +89,34 @@ def check_code_safe(code: str) -> tuple[bool, str]:
     # the bare-`sys`-Name rule below can tell `sys.argv` (permitted) apart
     # from every other reference to the name `sys` (rejected), including
     # ones with no ast.Attribute node at all, e.g. `x = sys`.
-    parents = {child: parent for parent in ast.walk(tree) for child in ast.iter_child_nodes(parent)}
+    parents = {
+        child: parent
+        for parent in ast.walk(tree)
+        for child in ast.iter_child_nodes(parent)
+    }
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             for a in node.names:
                 if a.name.split(".")[0] not in _ALLOWED_IMPORTS:
-                    return False, f"safety gate: import '{a.name}' is not in the allowed set"
+                    return (
+                        False,
+                        f"safety gate: import '{a.name}' is not in the allowed set",
+                    )
                 # `import sys as s` would let aliased sys access dodge the
                 # literal-name-"sys" match the bare-Name rule below relies
                 # on. Only bare `import sys` is allowed.
-                if a.name.split(".")[0] == "sys" and a.asname is not None and a.asname != "sys":
+                if (
+                    a.name.split(".")[0] == "sys"
+                    and a.asname is not None
+                    and a.asname != "sys"
+                ):
                     return False, "safety gate: 'import sys as ...' is not allowed"
         elif isinstance(node, ast.ImportFrom):
             if (node.module or "").split(".")[0] not in _ALLOWED_IMPORTS:
-                return False, f"safety gate: import '{node.module}' is not in the allowed set"
+                return (
+                    False,
+                    f"safety gate: import '{node.module}' is not in the allowed set",
+                )
             # `from sys import argv` (or anything else from sys) binds names
             # directly with no ast.Name(id='sys') reference for the rule
             # below to see. Reject all from-sys forms outright.
@@ -120,7 +154,11 @@ def check_code_safe(code: str) -> tuple[bool, str]:
                     name.startswith("__") and name.endswith("__")
                 ):
                     return False, f"safety gate: disallowed subscript key '{name}'"
-        elif isinstance(node, ast.Name) and node.id == "sys" and isinstance(node.ctx, ast.Load):
+        elif (
+            isinstance(node, ast.Name)
+            and node.id == "sys"
+            and isinstance(node.ctx, ast.Load)
+        ):
             # The name `sys` may be used ONLY as the immediate value of a
             # `sys.argv` attribute access. This subsumes a plain denylist of
             # dangerous sys attributes (sys.modules, sys._getframe, ...)

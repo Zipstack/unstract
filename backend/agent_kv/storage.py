@@ -38,7 +38,9 @@ def stage_input(org_id: str, job_id: str, uploaded_file) -> str:
     return ref
 
 
-def write_result(org_id: str, job_id: str, result: dict, *, nonce: str | None = None) -> str:
+def write_result(
+    org_id: str, job_id: str, result: dict, *, nonce: str | None = None
+) -> str:
     """Write a job result and return its object-store ref.
 
     The path is UNIQUE per call (``.../result-<nonce>.json``, nonce defaulting

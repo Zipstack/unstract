@@ -62,7 +62,6 @@ from tests.e2e.agent_kv.conftest import (
     INVOICE_PDF,
     INVOICE_XLSX,
     RENT_ROLL_PDF,
-    RENT_ROLL_TABLE,
     AgentKVAuth,
     cancel,
     delete,
