@@ -31,7 +31,6 @@ try {
   handleLookupOutput = mod.handleLookupOutput;
 } catch (error) {
   // Surface chunk-load failures — silent catch hid them.
-  // eslint-disable-next-line no-console
   console.warn("[usePromptOutput] handleLookupOutput unavailable:", error);
 }
 
@@ -41,7 +40,6 @@ try {
   const mod = await import("../plugins/lookup-enriched-toggle/helpers");
   getEnrichmentFromItem = mod.getEnrichmentFromItem;
 } catch (error) {
-  // eslint-disable-next-line no-console
   console.warn("[usePromptOutput] getEnrichmentFromItem unavailable:", error);
 }
 
@@ -155,7 +153,6 @@ const usePromptOutput = () => {
           handleLookupOutput(item.prompt_output_id, enrichment);
         }
       } catch (err) {
-        // eslint-disable-next-line no-console
         console.warn("[usePromptOutput] lookup enrichment failed:", err);
       }
 

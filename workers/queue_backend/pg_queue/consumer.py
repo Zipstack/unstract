@@ -1212,6 +1212,11 @@ class LivenessServer(_BaseLivenessServer):
     consumer's heartbeat (``seconds_since_last_poll``). Same wire shape as before
     (``/health`` → 200 fresh / 503 stale, ``check="pg_queue_poll"``), plus
     ``/metrics`` exporting that heartbeat as a scrapeable gauge.
+
+    ``/ready`` is always 200 here: it takes an already-built consumer, and
+    ``main()`` only starts it after ``import worker`` and the build, so a probe
+    that can reach it is talking to a loaded process. The same ``startupProbe``
+    therefore works for single-process and prefork pools alike.
     """
 
     def __init__(
@@ -1227,6 +1232,7 @@ class LivenessServer(_BaseLivenessServer):
             check_name="pg_queue_poll",
             age_key="seconds_since_last_poll",
             metrics_fn=metrics.render,
+            ready_fn=lambda: True,
             thread_name="pg-consumer-liveness",
             log_label="pg-queue consumer",
         )
