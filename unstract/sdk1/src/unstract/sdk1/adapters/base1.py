@@ -544,6 +544,7 @@ def _validate_branded_openai_compatible(
 
 _NVIDIA_BUILD_API_BASE = "https://integrate.api.nvidia.com/v1"
 _OPENROUTER_API_BASE = "https://openrouter.ai/api/v1"
+_ORCAROUTER_API_BASE = "https://api.orcarouter.ai/v1"
 _MINIMAX_API_BASE = "https://api.minimax.io/v1"
 _OPENROUTER_PROVIDER_PREFIX = "openrouter/"
 _MINIMAX_PROVIDER_PREFIX = "minimax/"
@@ -586,6 +587,17 @@ class NvidiaBuildLLMParameters(OpenAICompatibleLLMParameters):
         return _validate_branded_openai_compatible(
             adapter_metadata, _NVIDIA_BUILD_API_BASE
         )
+
+
+class OrcaRouterLLMParameters(OpenAICompatibleLLMParameters):
+    """OpenAI-compatible adapter for OrcaRouter's model routing gateway."""
+
+    # Required str so a directly-constructed instance stays valid.
+    api_base: str = _ORCAROUTER_API_BASE
+
+    @staticmethod
+    def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
+        return _validate_branded_openai_compatible(adapter_metadata, _ORCAROUTER_API_BASE)
 
 
 class MiniMaxLLMParameters(BaseChatCompletionParameters):
