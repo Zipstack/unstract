@@ -24,11 +24,17 @@ logger = logging.getLogger(__name__)
 # AI Foundry / Vertex proxies). Opus 4.6 / Sonnet 4.6 and older still accept
 # them, so detection is a narrow allowlist rather than a broad `claude-*` match.
 #
-# Each stem is compiled into a pattern that is regex-searched against the model
-# id after lowercasing and normalizing `.` / `_` to `-`. The match is anchored
-# at the trailing edge so unrelated future ids (`claude-sonnet-50`,
-# `claude-opus-4-70`, `claude-sonnet-5verbose`) do not match. One stem covers
-# every encoding of the id we have observed, e.g. for `claude-sonnet-5`:
+# Detection is a mix of literal stems and Opus family ranges. The Opus ranges
+# cover every Opus release from 4.7 onwards — 4.7, 4.8, 4.9 and every Opus 5+
+# release — so a new Opus id does not need a code change; the other families
+# (Sonnet 5, Fable 5, Mythos 5) are listed as literal stems.
+#
+# Each entry is compiled into a pattern that is regex-searched against the
+# model id after lowercasing and normalizing `.` / `_` to `-`. The match is
+# anchored at the trailing edge so unrelated future ids (`claude-sonnet-50`,
+# `claude-opus-4-70`, `claude-opus-50`, `claude-sonnet-5verbose`) do not
+# match. One entry covers every encoding of the id we have observed, e.g. for
+# `claude-sonnet-5`:
 #   - Native Anthropic              `claude-sonnet-5`, `anthropic/claude-sonnet-5`
 #   - Bedrock foundation model      `anthropic.claude-sonnet-5-<date>-v1:0`
 #   - Bedrock cross-region profile  `us.anthropic.claude-sonnet-5-...`,
@@ -42,23 +48,34 @@ logger = logging.getLogger(__name__)
 # Leading text (route prefixes like `converse/`, `invoke/`, `bedrock/`) passes
 # through because the regex is anchored only at the trailing edge.
 # Keep this list current — add a stem here when Anthropic deprecates sampling on
-# a new model.
+# a new (non-Opus) model.
 # Trailing anchor allows: end-of-string, or one of `-`/`:`/`@`/`/` (the
 # delimiters used in date suffixes, ARN paths, Vertex `@<date>`, and the
 # `v1:0` tag), or `v` followed by a digit (the version-tag start). A bare
 # `v` is intentionally rejected so alpha continuations like `sonnet-5verbose`
 # do not silently match.
-# See https://docs.claude.com/en/about-claude/models/overview
+# See https://docs.claude.com/en/about-claude/models/overview and
+# https://docs.claude.com/en/about-claude/models/whats-new-claude-4-7
+_SAMPLING_TRAILING_EDGE: str = r"(?=$|[-:@/]|v\d)"
 _SAMPLING_DEPRECATED_MODEL_STEMS: tuple[str, ...] = (
-    "claude-opus-4-7",
-    "claude-opus-4-8",
     "claude-sonnet-5",
     "claude-fable-5",
     "claude-mythos-5",
 )
+# Regex fragments (not escaped) for model families where a whole version range
+# is deprecated. `claude-opus-4-[789]` covers 4.7–4.9 but not a hypothetical
+# `claude-opus-4-10`; Anthropic's cadence makes an Opus 5 jump far more likely,
+# and Opus 5+ is covered by the second entry.
+_SAMPLING_DEPRECATED_MODEL_FAMILIES: tuple[str, ...] = (
+    r"claude-opus-4-[789]",  # Opus 4.7, 4.8, 4.9
+    r"claude-opus-[5-9]",  # Opus 5 and later
+)
 _SAMPLING_DEPRECATED_MODEL_PATTERNS: tuple[re.Pattern[str], ...] = tuple(
-    re.compile(rf"{re.escape(stem)}(?=$|[-:@/]|v\d)")
-    for stem in _SAMPLING_DEPRECATED_MODEL_STEMS
+    re.compile(rf"{fragment}{_SAMPLING_TRAILING_EDGE}")
+    for fragment in (
+        *(re.escape(stem) for stem in _SAMPLING_DEPRECATED_MODEL_STEMS),
+        *_SAMPLING_DEPRECATED_MODEL_FAMILIES,
+    )
 )
 _DEPRECATED_SAMPLING_PARAMS: tuple[str, ...] = ("temperature", "top_p", "top_k")
 # Fields whose value can carry a model id. `model` is universal; `model_id` is
@@ -100,7 +117,9 @@ def _has_deprecated_sampling_params(model: str | None) -> bool:
     Claude Opus 4.7, and every model released since (Opus 4.8, Sonnet 5,
     Fable 5, Mythos 5) rejects them too; sending any of them yields a 400 from
     Anthropic and from the providers that proxy it (Bedrock, Azure AI Foundry,
-    Vertex AI). See `_SAMPLING_DEPRECATED_MODEL_STEMS` for the covered set.
+    Vertex AI). Every Opus release from 4.7 onwards (4.7, 4.8, 4.9, Opus 5+)
+    is covered by version-range patterns; see `_SAMPLING_DEPRECATED_MODEL_STEMS`
+    and `_SAMPLING_DEPRECATED_MODEL_FAMILIES` for the covered set.
 
     The check normalizes case and `.`/`_` separators to `-`, then regex-
     searches against the patterns with a trailing-edge boundary, so
