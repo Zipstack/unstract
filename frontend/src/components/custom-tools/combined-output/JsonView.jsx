@@ -4,18 +4,15 @@ import { useEffect, useRef, useState } from "react";
 import { Tooltip } from "@/components/ui/shims/antd-overlays";
 import { Tabs } from "@/components/ui/shims/antd-structure";
 
+import { loadPlugin } from "../../../helpers/pluginLoader.js";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { JsonViewBody } from "./JsonViewBody";
 
-let EnrichedOutputToggle;
-try {
-  const mod = await import(
-    "../../../plugins/lookup-enriched-toggle/EnrichedOutputToggle"
-  );
-  EnrichedOutputToggle = mod.EnrichedOutputToggle;
-} catch {
-  // The component will remain undefined if it is not available
-}
+const EnrichedOutputToggle = await loadPlugin(() =>
+  import("../../../plugins/lookup-enriched-toggle/EnrichedOutputToggle").then(
+    (m) => m.EnrichedOutputToggle,
+  ),
+);
 
 function JsonView({
   combinedOutput,

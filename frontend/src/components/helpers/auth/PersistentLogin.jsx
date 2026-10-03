@@ -1,27 +1,23 @@
 import { useEffect, useState } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 
+import { loadPlugin } from "../../../helpers/pluginLoader.js";
 import useSessionValid from "../../../hooks/useSessionValid";
 import { useSessionStore } from "../../../store/session-store";
 import { PromptRun } from "../../custom-tools/prompt-card/PromptRun";
 import { GenericLoader } from "../../generic-loader/GenericLoader";
 import { SocketMessages } from "../socket-messages/SocketMessages";
 
-let selectedProductStore;
+const selectedProductStore = await loadPlugin(
+  () => import("../../../plugins/store/select-product-store.js"),
+);
 let selectedProduct;
 let setSelectedProduct;
-let SELECTED_PRODUCT;
-let PRODUCT_NAMES = {};
-try {
-  selectedProductStore = await import(
-    "../../../plugins/store/select-product-store.js"
-  );
-  const commonMod = await import("../../../plugins/helpers/common");
-  SELECTED_PRODUCT = commonMod.SELECTED_PRODUCT;
-  PRODUCT_NAMES = commonMod.PRODUCT_NAMES ?? {};
-} catch {
-  // Ignore if hook not available
-}
+
+const { SELECTED_PRODUCT, PRODUCT_NAMES = {} } = await loadPlugin(
+  () => import("../../../plugins/helpers/common"),
+  {},
+);
 
 function PersistentLogin() {
   const [isLoading, setIsLoading] = useState(true);
@@ -70,7 +66,8 @@ function PersistentLogin() {
       selectedProductQueryParam &&
       Object.values(PRODUCT_NAMES).includes(selectedProductQueryParam)
     ) {
-      setSelectedProduct(selectedProductQueryParam);
+      // The store and the product constants load independently now.
+      setSelectedProduct?.(selectedProductQueryParam);
     }
   }, [selectedProductQueryParam]);
 

@@ -11,6 +11,7 @@ import { Tabs } from "@/components/ui/shims/antd-structure";
 import { Typography } from "@/components/ui/shims/antd-typography";
 
 import { fetchAllPages } from "../../../helpers/pagination";
+import { loadPlugin } from "../../../helpers/pluginLoader.js";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import usePostHogEvents from "../../../hooks/usePostHogEvents";
@@ -24,18 +25,10 @@ import { ReadOnlyNotice } from "../../widgets/read-only-notice/ReadOnlyNotice";
 import { ConfigureFormsLayout } from "../configure-forms-layout/ConfigureFormsLayout";
 import "./ConfigureConnectorModal.css";
 
-let RuleEngine;
-let ruleEngineTabs;
-
-try {
-  const ruleEnginePlugin = await import(
-    "../../../plugins/manual-review/rule-engine"
-  );
-  RuleEngine = ruleEnginePlugin.RuleEngine;
-  ruleEngineTabs = ruleEnginePlugin.ruleEngineTabs;
-} catch {
-  // Plugin not available
-}
+const { RuleEngine, ruleEngineTabs } = await loadPlugin(
+  () => import("../../../plugins/manual-review/rule-engine"),
+  {},
+);
 
 function ConfigureConnectorModal({
   open,

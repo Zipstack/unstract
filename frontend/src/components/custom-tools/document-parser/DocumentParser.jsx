@@ -4,6 +4,7 @@ import { useSearchParams } from "react-router-dom";
 
 import "./DocumentParser.css";
 import { promptType } from "../../../helpers/GetStaticData";
+import { loadPlugin } from "../../../helpers/pluginLoader.js";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { useAlertStore } from "../../../store/alert-store";
@@ -13,25 +14,21 @@ import { useSessionStore } from "../../../store/session-store";
 import { EmptyState } from "../../widgets/empty-state/EmptyState";
 import { PromptCardWrapper } from "../prompt-card/PromptCardWrapper";
 
-let promptCardService;
-let promptPatchApiSps;
-let SpsPromptsEmptyState;
-try {
-  const pcMod = await import(
-    "../../../plugins/prompt-card/prompt-card-service"
-  );
-  promptCardService = pcMod.promptCardService;
-  const helperMod = await import(
-    "../../../plugins/simple-prompt-studio/helper"
-  );
-  promptPatchApiSps = helperMod.promptPatchApiSps;
-  const spsMod = await import(
-    "../../../plugins/simple-prompt-studio/SpsPromptsEmptyState"
-  );
-  SpsPromptsEmptyState = spsMod.SpsPromptsEmptyState;
-} catch {
-  // The component will remain null of it is not available
-}
+const promptCardService = await loadPlugin(() =>
+  import("../../../plugins/prompt-card/prompt-card-service").then(
+    (m) => m.promptCardService,
+  ),
+);
+const promptPatchApiSps = await loadPlugin(() =>
+  import("../../../plugins/simple-prompt-studio/helper").then(
+    (m) => m.promptPatchApiSps,
+  ),
+);
+const SpsPromptsEmptyState = await loadPlugin(() =>
+  import("../../../plugins/simple-prompt-studio/SpsPromptsEmptyState").then(
+    (m) => m.SpsPromptsEmptyState,
+  ),
+);
 
 // Module-scoped to avoid per-render recompilation.
 const UUID_RE =

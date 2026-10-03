@@ -8,6 +8,7 @@ import { Divider, Tag } from "@/components/ui/shims/antd-leaves";
 import { Collapse } from "@/components/ui/shims/antd-overlays";
 import { Card } from "@/components/ui/shims/antd-structure";
 import { Typography } from "@/components/ui/shims/antd-typography";
+import { loadPlugin } from "../../../helpers/pluginLoader.js";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
 import { EditableText } from "../editable-text/EditableText";
@@ -15,33 +16,23 @@ import { Header } from "./Header";
 import { OutputForIndex } from "./OutputForIndex";
 import { PromptOutput } from "./PromptOutput";
 
-let TableExtractionSettingsBtn;
-try {
-  const mod = await import(
-    "../../../plugins/prompt-card/TableExtractionSettingsBtn"
-  );
-  TableExtractionSettingsBtn = mod.TableExtractionSettingsBtn;
-} catch {
-  // The component will remain null of it is not available
-}
+const TableExtractionSettingsBtn = await loadPlugin(() =>
+  import("../../../plugins/prompt-card/TableExtractionSettingsBtn").then(
+    (m) => m.TableExtractionSettingsBtn,
+  ),
+);
 
-let LookupIndicator;
-try {
-  const mod = await import(
-    "../../../plugins/lookup-studio/prompt-card/LookupIndicator"
-  );
-  LookupIndicator = mod.LookupIndicator;
-} catch {}
+const LookupIndicator = await loadPlugin(() =>
+  import("../../../plugins/lookup-studio/prompt-card/LookupIndicator").then(
+    (m) => m.LookupIndicator,
+  ),
+);
 
-let AgenticTableChecklist;
-try {
-  const mod = await import(
-    "../../../plugins/prompt-card/AgenticTableChecklist"
-  );
-  AgenticTableChecklist = mod.AgenticTableChecklist;
-} catch {
-  // The component will remain null of it is not available
-}
+const AgenticTableChecklist = await loadPlugin(() =>
+  import("../../../plugins/prompt-card/AgenticTableChecklist").then(
+    (m) => m.AgenticTableChecklist,
+  ),
+);
 
 function PromptCardItems({
   promptDetails,

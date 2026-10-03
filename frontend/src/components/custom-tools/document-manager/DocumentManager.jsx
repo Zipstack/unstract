@@ -17,6 +17,7 @@ import {
   base64toBlobWithMime,
   docIndexStatus,
 } from "../../../helpers/GetStaticData";
+import { loadPlugin } from "../../../helpers/pluginLoader.js";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import usePostHogEvents from "../../../hooks/usePostHogEvents";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
@@ -44,41 +45,34 @@ const viewTypes = {
 };
 
 // Import components for the summarize feature
-let SummarizeView = null;
-try {
-  const svMod = await import("../../../plugins/summarize-view/SummarizeView");
-  SummarizeView = svMod.SummarizeView;
-  const stMod = await import("../../../plugins/summarize-tab/SummarizeTab");
-  const tabLabel = stMod.tabLabel;
-  if (tabLabel) {
-    items.push({
-      key: "3",
-      label: tabLabel,
-    });
-  }
-} catch {
-  // The component will remain null of it is not available
+const SummarizeView = await loadPlugin(() =>
+  import("../../../plugins/summarize-view/SummarizeView").then(
+    (m) => m.SummarizeView,
+  ),
+);
+const summarizeTabLabel = await loadPlugin(() =>
+  import("../../../plugins/summarize-tab/SummarizeTab").then((m) => m.tabLabel),
+);
+// The tab is only useful when the view it opens is available too.
+if (SummarizeView && summarizeTabLabel) {
+  items.push({
+    key: "3",
+    label: summarizeTabLabel,
+  });
 }
 
 // Import component for the simple prompt studio feature
-let getDocumentsSps;
-try {
-  const mod = await import(
+const getDocumentsSps = await loadPlugin(() =>
+  import(
     "../../../plugins/simple-prompt-studio/simple-prompt-studio-api-service"
-  );
-  getDocumentsSps = mod.getDocumentsSps;
-} catch {
-  // The component will remain null of it is not available
-}
-let publicDocumentApi;
-try {
-  const mod = await import(
+  ).then((m) => m.getDocumentsSps),
+);
+const publicDocumentApi = await loadPlugin(() =>
+  import(
     "../../../plugins/prompt-studio-public-share/helpers/PublicShareAPIs"
-  );
-  publicDocumentApi = mod.publicDocumentApi;
-} catch {
-  // The component will remain null of it is not available
-}
+  ).then((m) => m.publicDocumentApi),
+);
+
 function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
   const [openManageDocsModal, setOpenManageDocsModal] = useState(false);
   const [page, setPage] = useState(1);

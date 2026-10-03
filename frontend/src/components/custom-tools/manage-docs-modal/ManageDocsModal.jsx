@@ -10,6 +10,7 @@ import { Modal, Tooltip } from "@/components/ui/shims/antd-overlays";
 import { Table, Upload } from "@/components/ui/shims/antd-structure";
 import { Typography } from "@/components/ui/shims/antd-typography";
 
+import { loadPlugin } from "../../../helpers/pluginLoader.js";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { useAlertStore } from "../../../store/alert-store";
@@ -24,35 +25,23 @@ import "./ManageDocsModal.css";
 import usePostHogEvents from "../../../hooks/usePostHogEvents";
 import { usePromptOutputStore } from "../../../store/prompt-output-store";
 
-let SummarizeStatusTitle = null;
-try {
-  const mod = await import(
-    "../../../plugins/summarize-status-title/SummarizeStatusTitle"
-  );
-  SummarizeStatusTitle = mod.SummarizeStatusTitle;
-} catch {
-  // The component will remain null if it is not available
-}
+const SummarizeStatusTitle = await loadPlugin(() =>
+  import("../../../plugins/summarize-status-title/SummarizeStatusTitle").then(
+    (m) => m.SummarizeStatusTitle,
+  ),
+);
 
-let publicIndexApi = null;
-try {
-  const mod = await import(
+const publicIndexApi = await loadPlugin(() =>
+  import(
     "../../../plugins/prompt-studio-public-share/helpers/PublicShareAPIs"
-  );
-  publicIndexApi = mod.publicIndexApi;
-} catch {
-  // The component will remain null if it is not available
-}
+  ).then((m) => m.publicIndexApi),
+);
 
-let ConfirmMultiDoc = null;
-try {
-  const mod = await import(
-    "../../../plugins/prompt-studio-multi-doc/ConfirmMultiDoc"
-  );
-  ConfirmMultiDoc = mod.ConfirmMultiDoc;
-} catch {
-  // The component will remain null if it is not available
-}
+const ConfirmMultiDoc = await loadPlugin(() =>
+  import("../../../plugins/prompt-studio-multi-doc/ConfirmMultiDoc").then(
+    (m) => m.ConfirmMultiDoc,
+  ),
+);
 
 const indexTypes = {
   raw: "RAW",

@@ -25,6 +25,7 @@ import {
   getLocalStorageValue,
   setLocalStorageValue,
 } from "../../../helpers/localStorage";
+import { loadPlugin } from "../../../helpers/pluginLoader.js";
 import { useSessionStore } from "../../../store/session-store";
 
 import "./SideNavBar.css";
@@ -32,67 +33,40 @@ import "../../settings/settings/Settings.css";
 
 const { Sider } = Layout;
 
-let getMenuItem;
-try {
-  getMenuItem = await import("../../../plugins/app-deployment/getMenuItem");
-} catch {
-  // Plugin unavailable.
-}
+const getMenuItem = await loadPlugin(
+  () => import("../../../plugins/app-deployment/getMenuItem"),
+);
 
-let sideMenu;
-try {
-  sideMenu = await import("../../../plugins/hooks/useSideMenu");
-} catch {
-  // Plugin unavailable.
-}
+const sideMenu = await loadPlugin(
+  () => import("../../../plugins/hooks/useSideMenu"),
+);
 
 let unstractSubscriptionPlan;
-let unstractSubscriptionPlanStore;
-let UNSTRACT_SUBSCRIPTION_PLANS;
-try {
-  unstractSubscriptionPlanStore = await import(
-    "../../../plugins/store/unstract-subscription-plan-store"
-  );
-  const unstractSubscriptionConstants = await import(
-    "../../../plugins/unstract-subscription/helper/constants"
-  );
-  UNSTRACT_SUBSCRIPTION_PLANS =
-    unstractSubscriptionConstants?.UNSTRACT_SUBSCRIPTION_PLANS;
-} catch {
-  // Plugin unavailable.
-}
+const unstractSubscriptionPlanStore = await loadPlugin(
+  () => import("../../../plugins/store/unstract-subscription-plan-store"),
+);
+const UNSTRACT_SUBSCRIPTION_PLANS = await loadPlugin(() =>
+  import("../../../plugins/unstract-subscription/helper/constants").then(
+    (m) => m.UNSTRACT_SUBSCRIPTION_PLANS,
+  ),
+);
 
-let selectedProductStore;
+const selectedProductStore = await loadPlugin(
+  () => import("../../../plugins/store/select-product-store.js"),
+);
 let selectedProduct;
-try {
-  selectedProductStore = await import(
-    "../../../plugins/store/select-product-store.js"
-  );
-} catch {
-  // Ignore if hook not available
-}
 
-let agenticPromptStudioEnabled = false;
-try {
-  await import("../../../plugins/agentic-prompt-studio");
-  agenticPromptStudioEnabled = true;
-} catch {
-  // Plugin unavailable
-}
+const agenticPromptStudioEnabled =
+  (await loadPlugin(() => import("../../../plugins/agentic-prompt-studio"))) !==
+  null;
 
-let lookupStudioEnabled = false;
-try {
-  await import("../../../plugins/lookup-studio");
-  lookupStudioEnabled = true;
-} catch {}
+const lookupStudioEnabled =
+  (await loadPlugin(() => import("../../../plugins/lookup-studio"))) !== null;
 
-let manualReviewSettingsEnabled = false;
-try {
-  await import("../../../plugins/manual-review/settings/Settings.jsx");
-  manualReviewSettingsEnabled = true;
-} catch {
-  // Plugin unavailable
-}
+const manualReviewSettingsEnabled =
+  (await loadPlugin(
+    () => import("../../../plugins/manual-review/settings/Settings.jsx"),
+  )) !== null;
 
 const getSettingsMenuItems = (orgName, isAdmin) => [
   {

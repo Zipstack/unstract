@@ -3,13 +3,13 @@ import moment from "moment";
 import momentTz from "moment-timezone";
 import { v4 as uuidv4 } from "uuid";
 
-let cloudHomePagePath;
-try {
-  const mod = await import("../plugins/unstract-subscription/helper/constants");
-  cloudHomePagePath = mod.cloudHomePagePath;
-} catch {
-  // Ignore if plugin not available
-}
+import { loadPlugin } from "./pluginLoader.js";
+
+const cloudHomePagePath = await loadPlugin(() =>
+  import("../plugins/unstract-subscription/helper/constants").then(
+    (m) => m.cloudHomePagePath,
+  ),
+);
 
 const THEME = {
   DARK: "dark",

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Outlet, useNavigate, useParams } from "react-router-dom";
 
 import { fetchAllPages } from "../../../helpers/pagination";
+import { loadPlugin } from "../../../helpers/pluginLoader.js";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { useAlertStore } from "../../../store/alert-store";
@@ -11,27 +12,20 @@ import { useSocketCustomToolStore } from "../../../store/socket-custom-tool";
 import { useTokenUsageStore } from "../../../store/token-usage-store";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
 
-let shareManagerToolSource;
-try {
-  const mod = await import(
+// Without the plugin, the Not-found Page will be triggered.
+const shareManagerToolSource = await loadPlugin(() =>
+  import(
     "../../../plugins/prompt-studio-public-share/helpers/PublicShareAPIs"
-  );
-  shareManagerToolSource = mod.shareManagerToolSource;
-} catch {
-  // Do nothing, Not-found Page will be triggered.
-}
+  ).then((m) => m.shareManagerToolSource),
+);
 
-let fetchLookupAssignments;
-let fetchLookupOutputs;
-let resetLookupAssignments;
-try {
-  const mod = await import(
-    "../../../plugins/lookup-studio/store/useFetchLookupAssignments"
+const { fetchLookupAssignments, fetchLookupOutputs, resetLookupAssignments } =
+  await loadPlugin(
+    () =>
+      import("../../../plugins/lookup-studio/store/useFetchLookupAssignments"),
+    {},
   );
-  fetchLookupAssignments = mod.fetchLookupAssignments;
-  fetchLookupOutputs = mod.fetchLookupOutputs;
-  resetLookupAssignments = mod.resetLookupAssignments;
-} catch {}
+
 function CustomToolsHelper() {
   const [isLoading, setIsLoading] = useState(true);
   const { id } = useParams();

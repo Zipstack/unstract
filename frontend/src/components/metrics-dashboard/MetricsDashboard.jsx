@@ -19,6 +19,7 @@ import { Typography } from "@/components/ui/shims/antd-typography";
 
 import { EmptyPlaceholder } from "../../assets";
 import { evictExpiredCache } from "../../helpers/metricsCache";
+import { loadPlugin } from "../../helpers/pluginLoader.js";
 import {
   useMetricsOverview,
   useRecentActivity,
@@ -33,27 +34,19 @@ import { RecentActivity } from "./RecentActivity";
 
 import "./MetricsDashboard.css";
 
-// Cloud-only: Plan banner with subscription details
-let PlanBanner;
-try {
-  const mod = await import(
-    "../../plugins/unstract-subscription/components/PlanBanner.jsx"
-  );
-  PlanBanner = mod.PlanBanner;
-} catch {
-  // Plugin unavailable - no banner on OSS
-}
+// Cloud-only: Plan banner with subscription details (no banner on OSS)
+const PlanBanner = await loadPlugin(() =>
+  import("../../plugins/unstract-subscription/components/PlanBanner.jsx").then(
+    (m) => m.PlanBanner,
+  ),
+);
 
-// Cloud-only: Subscription usage tab
-let SubscriptionUsageTab;
-try {
-  const mod = await import(
+// Cloud-only: Subscription usage tab (no subscription tab on OSS)
+const SubscriptionUsageTab = await loadPlugin(() =>
+  import(
     "../../plugins/unstract-subscription/components/SubscriptionUsageTab.jsx"
-  );
-  SubscriptionUsageTab = mod.SubscriptionUsageTab;
-} catch {
-  // Plugin unavailable - no subscription tab on OSS
-}
+  ).then((m) => m.SubscriptionUsageTab),
+);
 
 const { RangePicker } = DatePicker;
 

@@ -14,21 +14,18 @@ import {
   displayPromptResult,
   getDocIdFromKey,
 } from "../../../helpers/GetStaticData";
+import { loadPlugin } from "../../../helpers/pluginLoader.js";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { useAlertStore } from "../../../store/alert-store";
 import { useTokenUsageStore } from "../../../store/token-usage-store";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
 import { ProfileInfoBar } from "../profile-info-bar/ProfileInfoBar";
 
-let publicOutputsApi;
-try {
-  const mod = await import(
+const publicOutputsApi = await loadPlugin(() =>
+  import(
     "../../../plugins/prompt-studio-public-share/helpers/PublicShareAPIs"
-  );
-  publicOutputsApi = mod.publicOutputsApi;
-} catch {
-  // The component will remain null of it is not available
-}
+  ).then((m) => m.publicOutputsApi),
+);
 
 const outputStatus = {
   yet_to_process: "YET_TO_PROCESS",
