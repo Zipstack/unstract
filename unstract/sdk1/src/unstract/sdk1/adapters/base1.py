@@ -543,6 +543,7 @@ def _validate_branded_openai_compatible(
 
 
 _NVIDIA_BUILD_API_BASE = "https://integrate.api.nvidia.com/v1"
+_ATLASCLOUD_API_BASE = "https://api.atlascloud.ai/v1"
 _OPENROUTER_API_BASE = "https://openrouter.ai/api/v1"
 _MINIMAX_API_BASE = "https://api.minimax.io/v1"
 _OPENROUTER_PROVIDER_PREFIX = "openrouter/"
@@ -586,6 +587,17 @@ class NvidiaBuildLLMParameters(OpenAICompatibleLLMParameters):
         return _validate_branded_openai_compatible(
             adapter_metadata, _NVIDIA_BUILD_API_BASE
         )
+
+
+class AtlasCloudLLMParameters(OpenAICompatibleLLMParameters):
+    """OpenAI-compatible adapter for Atlas Cloud (atlascloud.ai)."""
+
+    # Required str so a directly-constructed instance stays valid.
+    api_base: str = _ATLASCLOUD_API_BASE
+
+    @staticmethod
+    def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
+        return _validate_branded_openai_compatible(adapter_metadata, _ATLASCLOUD_API_BASE)
 
 
 class MiniMaxLLMParameters(BaseChatCompletionParameters):
