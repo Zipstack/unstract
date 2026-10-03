@@ -633,7 +633,7 @@ class ModelStaleWriterGuardTests(TestCase):
         stale = self._stale(
             ex, ExecutionStatus.EXECUTING, successful_files=None, failed_files=None
         )
-        WorkflowHelper._set_result_acknowledge(stale)
+        WorkflowHelper.set_result_acknowledge(stale)
         ex.refresh_from_db()
         assert ex.status == ExecutionStatus.COMPLETED.value
         assert ex.successful_files == 1
