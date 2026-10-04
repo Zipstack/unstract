@@ -204,10 +204,13 @@ class FinalizeView(APIView):
                     # above -- so a cancelled job's input intentionally
                     # rides the normal TTL sweep instead of being deleted
                     # here.
-                    delete_input(job)
-                    AgentKVJob.objects.filter(id=job_id, organization_id=org_id).update(
-                        input_ref=""
-                    )
+                    # Blank the ref only when the file is confirmed gone --
+                    # otherwise it is the only handle TTL cleanup can retry
+                    # from, and blanking it orphans the uploaded document.
+                    if delete_input(job):
+                        AgentKVJob.objects.filter(
+                            id=job_id, organization_id=org_id
+                        ).update(input_ref="")
         finally:
             AgentKVConcurrencyLimiter.release(org_id, str(job_id))
 

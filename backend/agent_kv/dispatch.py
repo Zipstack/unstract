@@ -108,8 +108,29 @@ def dispatch_job(job, *, extractor: str, schema: dict, options: dict) -> None:
     # row this UPDATE doesn't match is left exactly as the winning writer
     # left it. `modified_at` is stamped automatically by
     # BaseModelQuerySet.update() (utils/models/base_model.py).
-    AgentKVJob.objects.filter(id=job.id, status=JobStatus.PENDING).update(
+    advanced = AgentKVJob.objects.filter(id=job.id, status=JobStatus.PENDING).update(
         task_id=job.task_id,
         status=job.status,
         dispatched_at=job.dispatched_at,
     )
+    if not advanced:
+        # The row moved off PENDING between the enqueue above and this write.
+        # The benign case is a terminal status (the guard's whole purpose) --
+        # but there is a non-terminal one: StageReportView promotes
+        # PENDING -> RUNNING on the executor's FIRST stage report, which can
+        # easily land before this bookkeeping. The guard above then matches 0
+        # rows and `dispatched_at` stays NULL -- and a non-terminal row with a
+        # NULL `dispatched_at` is invisible to BOTH sweep phases: phase 1
+        # requires `status=PENDING`, phase 2 filters `dispatched_at__lt=cutoff`
+        # and SQL `NULL < x` is never true. The job reports `running` forever
+        # and `GET result` 409s for the life of the row, with nothing able to
+        # recover it.
+        #
+        # So stamp the dispatch bookkeeping for any still-non-terminal row,
+        # WITHOUT touching `status`: the row genuinely was dispatched, and
+        # moving RUNNING back to DISPATCHED would lose the executor's own
+        # progress. `dispatched_at__isnull=True` keeps this idempotent and
+        # stops a retry overwriting the original dispatch time.
+        AgentKVJob.objects.filter(id=job.id, dispatched_at__isnull=True).exclude(
+            status__in=list(AgentKVJob.TERMINAL)
+        ).update(task_id=job.task_id, dispatched_at=job.dispatched_at)

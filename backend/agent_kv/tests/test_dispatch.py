@@ -104,8 +104,66 @@ def test_dispatch_guarded_update_cannot_overwrite_a_terminal_row(
     # the update's row count; it already told the caller it dispatched.
     dispatch.dispatch_job(job, extractor=V1_EXTRACTOR_NAME, schema={}, options={})
 
-    filter_kwargs = m_objects.filter.call_args.kwargs
-    assert filter_kwargs == {"id": job.id, "status": JobStatus.PENDING}
+    assert m_objects.filter.call_args_list[0].kwargs == {
+        "id": job.id,
+        "status": JobStatus.PENDING,
+    }
+    # The 0-row result now triggers a SECOND guarded write (below), whose
+    # `.exclude(status__in=TERMINAL)` is what keeps a terminal row untouched
+    # here -- so the terminal case is still structurally safe.
+    (_, excl_kwargs) = (
+        m_objects.filter.return_value.exclude.call_args.args,
+        m_objects.filter.return_value.exclude.call_args.kwargs,
+    )
+    assert set(excl_kwargs["status__in"]) == set(AgentKVJob.TERMINAL)
+
+
+# The stranded-job regression. `StageReportView` promotes PENDING -> RUNNING on
+# the executor's first stage report, which can land before this post-enqueue
+# bookkeeping. The PENDING-guarded UPDATE then matches 0 rows and
+# `dispatched_at` stays NULL -- and a non-terminal row with a NULL
+# `dispatched_at` is invisible to BOTH sweep phases (phase 1 requires PENDING;
+# phase 2's `dispatched_at__lt` can never match a NULL), so the job reports
+# `running` forever and `GET result` 409s for the life of the row.
+@mock.patch.object(dispatch, "_platform_api_key", return_value="pk")
+@mock.patch.object(dispatch, "_dispatcher")
+@mock.patch.object(AgentKVJob, "objects")
+def test_dispatch_stamps_dispatched_at_when_the_row_already_moved_to_running(
+    m_objects, m_disp, m_key
+):
+    m_objects.filter.return_value.update.return_value = 0  # PENDING guard missed
+    job = _job()
+
+    dispatch.dispatch_job(job, extractor=V1_EXTRACTOR_NAME, schema={}, options={})
+
+    # Second write is narrowed to a row that still has no dispatch time, and
+    # excludes terminal rows.
+    assert m_objects.filter.call_args_list[1].kwargs == {
+        "id": job.id,
+        "dispatched_at__isnull": True,
+    }
+    fallback = m_objects.filter.return_value.exclude.return_value
+    update_kwargs = fallback.update.call_args.kwargs
+    assert update_kwargs["dispatched_at"] == job.dispatched_at
+    assert update_kwargs["task_id"] == job.task_id
+    # Crucially does NOT write `status`: the row genuinely was dispatched, but
+    # moving RUNNING back to DISPATCHED would discard the executor's progress.
+    assert "status" not in update_kwargs
+
+
+@mock.patch.object(dispatch, "_platform_api_key", return_value="pk")
+@mock.patch.object(dispatch, "_dispatcher")
+@mock.patch.object(AgentKVJob, "objects")
+def test_dispatch_does_not_attempt_the_fallback_when_the_pending_guard_won(
+    m_objects, m_disp, m_key
+):
+    m_objects.filter.return_value.update.return_value = 1  # normal path
+    job = _job()
+
+    dispatch.dispatch_job(job, extractor=V1_EXTRACTOR_NAME, schema={}, options={})
+
+    assert len(m_objects.filter.call_args_list) == 1
+    assert not m_objects.filter.return_value.exclude.called
 
 
 @mock.patch.object(dispatch, "_platform_api_key", return_value="pk")

@@ -160,6 +160,42 @@ def test_delete_job_files_reports_nothing_clear_when_both_deletes_raise(m_fs):
     assert storage.delete_job_files(job) == []
 
 
+# delete_input carries the same confirmed-clear contract as delete_job_files.
+# It did not when the Greptile round fixed delete_job_files and its two
+# callers: this third ref-blanking site (FinalizeView) was missed, because the
+# fix followed one function's callers instead of grepping for every site that
+# blanks a ref. A failed delete here orphaned the customer's uploaded document
+# permanently -- TTL cleanup only selects rows that still carry a non-blank
+# ref, so a blanked row can never be reconsidered.
+@mock.patch.object(storage, "FileSystem")
+def test_delete_input_reports_clear_on_success(m_fs):
+    job = AgentKVJob(input_ref="org/o/agent_kv/j/input.pdf")
+    assert storage.delete_input(job) is True
+
+
+@mock.patch.object(storage, "FileSystem")
+def test_delete_input_reports_clear_when_the_file_is_already_gone(m_fs):
+    m_fs.return_value.get_file_storage.return_value.rm.side_effect = FileNotFoundError
+    job = AgentKVJob(input_ref="org/o/agent_kv/j/input.pdf")
+    # Already missing is the goal state -- nothing left to retry.
+    assert storage.delete_input(job) is True
+
+
+@mock.patch.object(storage, "FileSystem")
+def test_delete_input_reports_NOT_clear_when_the_delete_raised(m_fs):
+    m_fs.return_value.get_file_storage.return_value.rm.side_effect = OSError("down")
+    job = AgentKVJob(input_ref="org/o/agent_kv/j/input.pdf")
+    # Must not raise, and must not claim the ref is clear.
+    assert storage.delete_input(job) is False
+
+
+@mock.patch.object(storage, "FileSystem")
+def test_delete_input_reports_clear_for_a_blank_ref(m_fs):
+    fh = m_fs.return_value.get_file_storage.return_value
+    assert storage.delete_input(AgentKVJob(input_ref="")) is True
+    assert not fh.rm.called
+
+
 @mock.patch.object(storage, "FileSystem")
 def test_delete_input_removes_only_input_ref(m_fs):
     fh = m_fs.return_value.get_file_storage.return_value

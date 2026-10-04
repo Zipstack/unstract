@@ -63,12 +63,21 @@ def _post(path, body=None):
 
 
 def _wire_sweep_phases(m_objects, never_dispatched=(), stuck=()):
+    """Wire the sweep's two phase queries.
+
+    Phase 2 is `filter(status__in=...).filter(Q(...) | Q(...))` -- two levels,
+    because the age test is an OR: `dispatched_at < cutoff` OR
+    `dispatched_at IS NULL AND created_at < cutoff`. A `__lt` filter alone can
+    never match a NULL (SQL `NULL < x` is not true), so without that second arm
+    a DISPATCHED/RUNNING row with a NULL `dispatched_at` hangs forever.
+    """
     phase1_qs = mock.MagicMock()
     phase1_qs.order_by.return_value.__getitem__.return_value = list(never_dispatched)
-    phase2_qs = mock.MagicMock()
+    phase2_status_qs = mock.MagicMock()
+    phase2_qs = phase2_status_qs.filter.return_value
     phase2_qs.order_by.return_value.__getitem__.return_value = list(stuck)
-    m_objects.filter.side_effect = [phase1_qs, phase2_qs]
-    return phase1_qs, phase2_qs
+    m_objects.filter.side_effect = [phase1_qs, phase2_status_qs]
+    return phase1_qs, phase2_qs, phase2_status_qs
 
 
 # (1) the never-dispatched-phase candidate query is exactly PENDING + older
@@ -84,7 +93,7 @@ def test_sweep_queries_pending_older_than_grace_and_undispatched(
     m_objects, m_mark_terminal
 ):
     frozen_now = timezone.now()
-    phase1_qs, phase2_qs = _wire_sweep_phases(m_objects)
+    phase1_qs, phase2_qs, phase2_status_qs = _wire_sweep_phases(m_objects)
 
     with mock.patch.object(timezone, "now", return_value=frozen_now):
         resp = iv.SweepView.as_view()(_post("/x"))
@@ -195,7 +204,7 @@ def test_stuck_sweep_queries_dispatched_and_running_older_than_stuck_grace(
     m_objects, m_mark_terminal
 ):
     frozen_now = timezone.now()
-    phase1_qs, phase2_qs = _wire_sweep_phases(m_objects)
+    phase1_qs, phase2_qs, phase2_status_qs = _wire_sweep_phases(m_objects)
 
     with mock.patch.object(timezone, "now", return_value=frozen_now):
         resp = iv.SweepView.as_view()(_post("/x"))
@@ -204,8 +213,16 @@ def test_stuck_sweep_queries_dispatched_and_running_older_than_stuck_grace(
     assert resp.data == {"swept": 0, "timed_out": 0}
     filter_kwargs = m_objects.filter.call_args_list[1].kwargs
     assert set(filter_kwargs["status__in"]) == {JobStatus.DISPATCHED, JobStatus.RUNNING}
-    assert filter_kwargs["dispatched_at__lt"] == frozen_now - timedelta(
-        seconds=settings.AGENT_KV_STUCK_JOB_GRACE_SECONDS
+    cutoff = frozen_now - timedelta(seconds=settings.AGENT_KV_STUCK_JOB_GRACE_SECONDS)
+    # The age test is an OR, and the second arm is load-bearing: a `__lt`
+    # filter alone can never match a NULL `dispatched_at`, so such a row would
+    # be invisible to this phase AND to phase 1 (which requires PENDING), and
+    # would hang non-terminal forever. A row with no dispatch time falls back
+    # to `created_at` -- the only timestamp it has.
+    (age_q,), age_kwargs = phase2_status_qs.filter.call_args
+    assert age_kwargs == {}
+    assert age_q == (
+        Q(dispatched_at__lt=cutoff) | Q(dispatched_at__isnull=True, created_at__lt=cutoff)
     )
     phase2_qs.order_by.assert_called_once_with("dispatched_at")
     phase2_qs.order_by.return_value.__getitem__.assert_called_once_with(
@@ -298,8 +315,59 @@ def test_sweep_reports_both_phase_counts_independently(
 # ---------------------------------------------------------------------------
 
 
+class _Lane:
+    """One of run_ttl_cleanup's two candidate queries, recording how it was used.
+
+    A real object rather than a ``Mock``: the lane is sorted and then SLICED,
+    and a Mock whose ``__getitem__`` is wrapped to record the slice ends up
+    calling itself (the wrapper re-enters the same mock), which is how the
+    first version of this helper recursed instead of asserting.
+    """
+
+    def __init__(self, rows):
+        self.rows = list(rows)
+        self.order_by_args = None
+        self.slice = None
+
+    def order_by(self, *args):
+        self.order_by_args = args
+        return self
+
+    def __getitem__(self, sl):
+        self.slice = sl
+        return self.rows[sl]
+
+
+class _Lanes:
+    """Stand-in for the narrowed expired queryset, dispatching to either lane.
+
+    run_ttl_cleanup narrows the expired set once and queries it TWICE --
+    ``cleanup_failed_at__isnull=False`` (retries, a reserved slice) and
+    ``...=True`` (new expirations, the remainder). A plain ``Mock`` hands back
+    the same child for both calls regardless of arguments, so the two lanes
+    would yield identical rows and every job would be processed twice.
+    """
+
+    def __init__(self, retries, fresh):
+        self.retry = _Lane(retries)
+        self.fresh = _Lane(fresh)
+        self.filter_kwargs: list[dict] = []
+
+    def filter(self, *_args, **kwargs):
+        self.filter_kwargs.append(kwargs)
+        is_null = kwargs.get("cleanup_failed_at__isnull")
+        return self.retry if is_null is False else self.fresh
+
+
+def _ttl_lanes(m_objects, *, retries=(), fresh=()):
+    """Wire a mocked ``AgentKVJob.objects`` to both TTL-cleanup lanes."""
+    lanes = _Lanes(retries, fresh)
+    m_objects.filter.return_value.filter.return_value = lanes
+    return lanes
+
+
 # (6) the candidate query is exactly expires_at < now AND (non-blank
-# input_ref OR non-blank result_ref), oldest-expired first, capped at 500.
+# input_ref OR non-blank result_ref), capped at 500 across both lanes.
 # This is what proves BOTH "non-expired untouched" (the expires_at__lt
 # half) and "blank-ref rows excluded / second run is a no-op" (the Q half:
 # a row TTLCleanupView just blanked no longer satisfies `__gt=""`).
@@ -307,10 +375,7 @@ def test_sweep_reports_both_phase_counts_independently(
 @mock.patch.object(AgentKVJob, "objects")
 def test_ttl_cleanup_queries_expired_jobs_with_a_nonblank_ref(m_objects, m_delete):
     frozen_now = timezone.now()
-    m_expiry_qs = m_objects.filter.return_value
-    m_ref_qs = m_expiry_qs.filter.return_value
-    m_ordered_qs = m_ref_qs.order_by.return_value
-    m_ordered_qs.__getitem__.return_value = []
+    lanes = _ttl_lanes(m_objects)
 
     with mock.patch.object(timezone, "now", return_value=frozen_now):
         resp = iv.TTLCleanupView.as_view()(_post("/x"))
@@ -318,19 +383,75 @@ def test_ttl_cleanup_queries_expired_jobs_with_a_nonblank_ref(m_objects, m_delet
     assert resp.status_code == 200
     assert resp.data == {"cleaned": 0, "retained": 0}
     assert m_objects.filter.call_args_list[0].kwargs == {"expires_at__lt": frozen_now}
-    (q_arg,), q_kwargs = m_expiry_qs.filter.call_args
+    (q_arg,), q_kwargs = m_objects.filter.return_value.filter.call_args
     assert q_kwargs == {}
     assert q_arg == (Q(input_ref__gt="") | Q(result_ref__gt=""))
-    # Ordering, not just filtering: nulls-first on cleanup_failed_at is what
-    # stops rows whose delete keeps failing from refilling the capped batch
-    # every tick and starving every later expired job (review follow-up).
-    (first_key, second_key), _ = m_ref_qs.order_by.call_args
-    assert second_key == "expires_at"
-    assert first_key.expression.name == "cleanup_failed_at"
-    assert first_key.descending is False
-    assert first_key.nulls_first is True
-    m_ordered_qs.__getitem__.assert_called_once_with(slice(None, 500, None))
+    # Two lanes off that one narrowed set: retries first, then new expirations.
+    assert lanes.filter_kwargs == [
+        {"cleanup_failed_at__isnull": False},
+        {"cleanup_failed_at__isnull": True},
+    ]
     assert not m_delete.called
+
+
+# (6b) each lane sorts by a SINGLE named column ascending -- never
+# `cleanup_failed_at NULLS FIRST`. A btree index is NULLS LAST ascending, so
+# that ordering could not use the (cleanup_failed_at, expires_at) index at all
+# and Postgres had to sort every matching expired row before applying the
+# limit, work that grows with the backlog. Splitting the query removed it.
+@mock.patch.object(maintenance, "delete_job_files")
+@mock.patch.object(AgentKVJob, "objects")
+def test_ttl_cleanup_lanes_sort_by_a_plain_ascending_column(m_objects, m_delete):
+    lanes = _ttl_lanes(m_objects)
+
+    iv.TTLCleanupView.as_view()(_post("/x"))
+
+    assert lanes.retry.order_by_args == ("cleanup_failed_at",)
+    assert lanes.fresh.order_by_args == ("expires_at",)
+
+
+# (6c) with nothing to retry, the fresh lane still gets the WHOLE batch -- the
+# reserve is a cap on the retry lane, not a permanent tax on the normal case.
+@mock.patch.object(maintenance, "delete_job_files")
+@mock.patch.object(AgentKVJob, "objects")
+def test_ttl_cleanup_fresh_lane_gets_the_whole_batch_when_nothing_is_retrying(
+    m_objects, m_delete
+):
+    lanes = _ttl_lanes(m_objects)
+
+    iv.TTLCleanupView.as_view()(_post("/x"))
+
+    assert lanes.retry.slice == slice(None, 100, None)
+    assert lanes.fresh.slice == slice(None, 500, None)
+
+
+# (6d) THE fix for the second starvation direction. With the retry lane full,
+# the fresh lane shrinks by exactly that many, so the two together never exceed
+# the batch cap -- and crucially the retry lane is served FIRST, so a steady
+# stream of new expirations can no longer push retries out of every batch and
+# leave their files in storage indefinitely. Both orderings tried before this
+# starved one side: oldest-expiry-first starved fresh work, NULLS FIRST starved
+# retries.
+@mock.patch.object(maintenance, "delete_job_files", return_value=["input_ref"])
+@mock.patch.object(AgentKVJob, "objects")
+def test_ttl_cleanup_reserves_capacity_for_retries_under_a_flood_of_new_expiries(
+    m_objects, m_delete
+):
+    retries = [
+        AgentKVJob(id=uuid.uuid4(), input_ref=f"r{i}", cleanup_failed_at=timezone.now())
+        for i in range(100)
+    ]
+    fresh = [AgentKVJob(id=uuid.uuid4(), input_ref=f"f{i}") for i in range(500)]
+    lanes = _ttl_lanes(m_objects, retries=retries, fresh=fresh)
+
+    resp = iv.TTLCleanupView.as_view()(_post("/x"))
+
+    assert lanes.retry.slice == slice(None, 100, None)
+    assert lanes.fresh.slice == slice(None, 400, None)
+    # Every retry was attempted even though 500 fresh rows were queued behind
+    # them, and the batch cap still held: 100 + 400 == 500.
+    assert m_delete.call_count == 500
+    assert resp.data == {"cleaned": 0, "retained": 500}
 
 
 # (7) files are deleted BEFORE the refs are blanked -- order matters: a
@@ -344,7 +465,7 @@ def test_ttl_cleanup_deletes_files_before_blanking_refs(m_objects, m_delete):
     )
     m_delete.return_value = ["input_ref", "result_ref"]
     m_qs = m_objects.filter.return_value
-    m_qs.filter.return_value.order_by.return_value.__getitem__.return_value = [job]
+    _ttl_lanes(m_objects, fresh=[job])
 
     manager = mock.Mock()
     manager.attach_mock(m_delete, "delete_job_files")
@@ -368,7 +489,7 @@ def test_ttl_cleanup_blanks_both_refs_for_the_job_row(m_objects, m_delete):
     job = AgentKVJob(id=job_id, input_ref="org/o/j/input.pdf", result_ref="")
     m_delete.return_value = ["input_ref", "result_ref"]
     m_qs = m_objects.filter.return_value
-    m_qs.filter.return_value.order_by.return_value.__getitem__.return_value = [job]
+    _ttl_lanes(m_objects, fresh=[job])
 
     iv.TTLCleanupView.as_view()(_post("/x"))
 
@@ -388,10 +509,13 @@ def test_ttl_cleanup_returns_count_of_jobs_cleaned(m_objects, m_delete):
     job2 = AgentKVJob(id=uuid.uuid4(), input_ref="", result_ref="b")
     m_delete.return_value = ["input_ref", "result_ref"]
     m_qs = m_objects.filter.return_value
-    m_qs.filter.return_value.order_by.return_value.__getitem__.return_value = [
-        job1,
-        job2,
-    ]
+    _ttl_lanes(
+        m_objects,
+        fresh=[
+            job1,
+            job2,
+        ],
+    )
 
     resp = iv.TTLCleanupView.as_view()(_post("/x"))
 
@@ -408,7 +532,7 @@ def test_ttl_cleanup_returns_count_of_jobs_cleaned(m_objects, m_delete):
 @mock.patch.object(AgentKVJob, "objects")
 def test_ttl_cleanup_with_no_candidates_is_a_pure_noop(m_objects, m_delete):
     m_qs = m_objects.filter.return_value
-    m_qs.filter.return_value.order_by.return_value.__getitem__.return_value = []
+    _ttl_lanes(m_objects, fresh=[])
 
     resp = iv.TTLCleanupView.as_view()(_post("/x"))
 
@@ -436,7 +560,7 @@ def test_ttl_cleanup_keeps_the_ref_whose_file_delete_failed(m_objects, m_delete)
     # Input gone, result delete raised inside delete_job_files.
     m_delete.return_value = ["input_ref"]
     m_qs = m_objects.filter.return_value
-    m_qs.filter.return_value.order_by.return_value.__getitem__.return_value = [job]
+    _ttl_lanes(m_objects, fresh=[job])
 
     resp = iv.TTLCleanupView.as_view()(_post("/x"))
 
@@ -466,7 +590,7 @@ def test_ttl_cleanup_blanks_no_ref_but_still_stamps_the_failure(m_objects, m_del
     )
     m_delete.return_value = []
     m_qs = m_objects.filter.return_value
-    m_qs.filter.return_value.order_by.return_value.__getitem__.return_value = [job]
+    _ttl_lanes(m_objects, fresh=[job])
 
     resp = iv.TTLCleanupView.as_view()(_post("/x"))
 
@@ -493,7 +617,7 @@ def test_ttl_cleanup_clears_a_stale_failure_marker_on_success(m_objects, m_delet
     )
     m_delete.return_value = ["input_ref", "result_ref"]
     m_qs = m_objects.filter.return_value
-    m_qs.filter.return_value.order_by.return_value.__getitem__.return_value = [job]
+    _ttl_lanes(m_objects, fresh=[job])
 
     resp = iv.TTLCleanupView.as_view()(_post("/x"))
 

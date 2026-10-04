@@ -81,10 +81,11 @@ class AgentKVJob(DefaultOrganizationMixin, BaseModel):
     completed_at = models.DateTimeField(null=True, blank=True)
     expires_at = models.DateTimeField(null=True, blank=True)
     # When TTL cleanup last failed to delete one of this job's files. NULL means
-    # "never attempted, or last attempt succeeded", and it is what keeps a
-    # permanently-failing row from starving the cleanup backlog: candidates are
-    # ordered nulls-first, so every job that has never failed is processed
-    # before any job that has. See run_ttl_cleanup.
+    # "never attempted, or last attempt succeeded", and it is what separates
+    # the two lanes run_ttl_cleanup processes: NOT NULL rows are retries, which
+    # get a reserved slice of each batch, and NULL rows are new expirations,
+    # which get the rest. Capping both is what stops either side starving the
+    # other. See run_ttl_cleanup.
     cleanup_failed_at = models.DateTimeField(null=True, blank=True)
     tags = models.JSONField(default=list, blank=True)
     custom_data = models.JSONField(null=True, blank=True)
@@ -95,9 +96,18 @@ class AgentKVJob(DefaultOrganizationMixin, BaseModel):
         indexes = [
             models.Index(fields=["organization", "status"]),
             models.Index(fields=["expires_at"]),
-            # TTL cleanup's candidate ordering is (cleanup_failed_at NULLS
-            # FIRST, expires_at); without this the sort is a filesort over
-            # every expired row each tick.
+            # Serves BOTH of run_ttl_cleanup's lanes, each of which sorts by a
+            # single column ascending behind a predicate on this index's
+            # leading column:
+            #   retries: WHERE cleanup_failed_at IS NOT NULL ORDER BY cleanup_failed_at
+            #   fresh:   WHERE cleanup_failed_at IS NULL     ORDER BY expires_at
+            # Deliberately a plain ascending index. The first version of that
+            # query asked for `cleanup_failed_at ASC NULLS FIRST`, which a
+            # btree index cannot serve (btree is NULLS LAST ascending), so
+            # Postgres sorted every matching expired row before applying the
+            # 500-row limit -- work that grew with the backlog. Splitting the
+            # query removed the NULLS FIRST rather than adding a second index
+            # with a non-default null order.
             models.Index(fields=["cleanup_failed_at", "expires_at"]),
         ]
 

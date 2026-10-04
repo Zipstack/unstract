@@ -126,18 +126,40 @@ def delete_result_file(result_ref: str) -> None:
         logger.warning("agent-kv cleanup: could not remove orphaned %s", result_ref)
 
 
-def delete_input(job) -> None:
+def delete_input(job) -> bool:
     """Delete only the staged input file (spec D10: "uploaded document
-    deleted on job completion"), tolerant of it being missing already.
+    deleted on job completion"), returning whether ``input_ref`` is now
+    confirmed to point at nothing.
 
     Deliberately narrower than ``delete_job_files``: it never touches
     ``result_ref``/the result file. ``FinalizeView`` calls this right after
     a job is fully terminalized, in the same request that may have just
     written the result -- that file must be left completely alone.
+
+    Same confirmed-clear contract as ``delete_job_files``, and for the same
+    reason: this swallowed every exception while its caller blanked
+    ``input_ref`` unconditionally, so a transient object-store error orphaned
+    the customer's uploaded document permanently -- TTL cleanup only selects
+    rows that still carry a non-blank ref, so a blanked row can never be
+    reconsidered. ``delete_job_files`` and its two callers were fixed for this
+    in the Greptile round; THIS third site was missed, because the fix was
+    applied by following the one function's callers rather than by grepping for
+    every site that blanks a ref.
+
+    True when there was nothing to delete or the file is gone (including
+    already-missing); False when it is still there and the ref must be kept.
     """
     if not job.input_ref:
-        return
+        return True
     try:
         _fs().rm(path=job.input_ref)
+    except FileNotFoundError:
+        return True
     except Exception:
-        logger.warning("agent-kv cleanup: could not remove %s", job.input_ref)
+        logger.warning(
+            "agent-kv cleanup: could not remove %s (ref kept for retry)",
+            job.input_ref,
+            exc_info=True,
+        )
+        return False
+    return True
