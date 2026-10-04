@@ -1,8 +1,18 @@
 """Cap-enforcing, syntax-validating wrapper over the ported compiler.
 
-This is the single entry point both the API (submit-time validation) and the
-cloud engine use. Anything compile_schema accepts, the engine must execute;
-anything it rejects never reaches OCR or an LLM.
+This is the entry point the API uses for submit-time validation. Anything
+``compile_schema`` accepts, the engine must execute; anything it rejects never
+reaches OCR or an LLM.
+
+It is NOT, despite what this docstring said before, "the single entry point
+both the API and the cloud engine use". The engine calls the raw
+``kv_schema.compile``/``compile_arrays`` directly (see the import note in the
+cloud plugin's ``engine/kv_extractor.py``), so the caps below are enforced on
+the submit path only. That is sound while the backend is the sole producer of a
+compiled schema -- which it is today -- but it means the caps are a gate, not
+an invariant the engine itself re-checks. Anything that ever hands the engine a
+schema from another source has to apply them, or this module has to become what
+it claimed to be.
 """
 
 import ast

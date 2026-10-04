@@ -5,13 +5,49 @@ empty/un-coercible operand SKIPS the constraint (advisory), never crashes. Retur
 """
 
 import ast
+import math
 import operator
 
 from .validators import coerce_number
 
+# Equality on these values is TOLERANT, not exact. Operands are normalized
+# currency/number values that arrived as floats, so binary floating point makes
+# exact `==` wrong for the thing constraints exist to express. The feature's own
+# headline example reports a false violation on a CORRECT invoice:
+# three line items of 8230.4 sum to 24691.199999999997, which `operator.eq`
+# says is not 24691.2 (reproduced).
+#
+# `math.isclose` with a relative tolerance covers the whole magnitude range --
+# an absolute epsilon that suits invoice totals is meaningless against a
+# balance sheet in millions, or against unit prices in thousandths. Both bounds
+# are set: `rel_tol=1e-9` is ~15 significant figures, far tighter than any
+# extracted value's real precision, and `abs_tol=1e-9` keeps comparisons
+# against exact zero working (relative tolerance alone is useless there, since
+# every non-zero value is infinitely far from 0 in relative terms).
+#
+# The real fix for the value path is Decimal end to end -- see
+# `normalizers.coerce_number` and UN-4222. This makes the COMPARISON correct for
+# the float values that exist today, and stays correct afterwards.
+_REL_TOL = 1e-9
+_ABS_TOL = 1e-9
+
+
+def _num_eq(a, b) -> bool:
+    if isinstance(a, (int, float)) and isinstance(b, (int, float)):
+        return math.isclose(a, b, rel_tol=_REL_TOL, abs_tol=_ABS_TOL)
+    return operator.eq(a, b)
+
+
+def _num_ne(a, b) -> bool:
+    return not _num_eq(a, b)
+
+
 _CMP = {
-    ast.Eq: operator.eq,
-    ast.NotEq: operator.ne,
+    ast.Eq: _num_eq,
+    ast.NotEq: _num_ne,
+    # Ordering comparisons are left exact on purpose: a tolerant `<` would make
+    # `a < b` and `a == b` both true at the boundary, and the failure mode these
+    # express (a total that is too large/small) is not a rounding artefact.
     ast.Lt: operator.lt,
     ast.LtE: operator.le,
     ast.Gt: operator.gt,
