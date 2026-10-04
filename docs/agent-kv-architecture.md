@@ -126,17 +126,42 @@ trusting the client):
 The sandbox receives only `{record JSON + generated code}` — no document, no schema, no
 tenant identifiers; output is validated JSONL, row- and byte-capped.
 
-**Accepted v1 residual (R12):** generated code legitimately needs the `open()` builtin
-(it reads its input JSON and writes its output JSONL), so it can read a world-readable
-file *in its own pod* and return it to the submitting customer. The import allowlist is
-exactly `{json, math, statistics, decimal, datetime, re, collections, itertools,
-functools, sys}` — `pathlib`, `os`, `io`, `socket` and `urllib` are all **outside** it, so
-the residual is a **single read of a known path**, not directory traversal and not an
-exfiltration path. Contained by layers 2–5 (no secrets, non-root read-only rootfs, no egress,
-per-job tempdir, results only to the caller's own key) → worst case is disclosure of a
-**non-sensitive** container file to the caller who submitted the job. This is why the
-default-deny egress and no-secrets invariants are load-bearing and must not be relaxed.
-Deferred mitigation: `runtimeClass: gvisor`. Full analysis in
+**Accepted v1 residual (R12) — CORRECTED.** Generated code legitimately needs the
+`open()` builtin (it reads its input JSON and writes its output JSONL), so it can read
+files in its own pod and return them to the submitting customer.
+
+An earlier version of this paragraph described that residual as *"a single read of a
+known path … non-sensitive … not an exfiltration path"*, contained by a layer-3
+*"no secrets"* invariant. **Both halves of that are false, verified by execution**, and
+this is the text an admin signs off against, so it is corrected here independently of
+when the hardening lands:
+
+- **It reaches credentials, not a benign file.** The sandboxed child runs as the *same
+  UID* as the worker process, so `open('/proc/<ppid>/environ')` returns the worker's
+  full environment — including `DB_PASSWORD`. No import is needed: `open()` alone is
+  enough, so the allowlist (`pathlib`/`os`/`io`/`socket`/`urllib` all outside it) does
+  not bound this.
+- **The "no secrets" invariant does not hold for this pod.** `workerPgSandbox.additionalConfigs`
+  is `[database]` — on the PG transport the queue *is* Postgres, so the pod must mount
+  `DB_HOST/DB_USER/DB_PASSWORD/DB_NAME`. Combined with the NetworkPolicy permitting
+  egress to db-proxy:5432 (it must, for the same reason), the recovered credential is
+  **directly usable**, and in cloud staging `DB_USER` is `postgres`.
+- **The AST gate is not a second line of defence here.** It is bypassable
+  (`statistics.random._os.system(...)`, `collections._sys._getframe(0).f_builtins[...]`
+  — allowlisted modules re-export `sys`/`os` as non-dunder attributes the gate never
+  inspects), so it should be read as best-effort hygiene, not containment.
+
+**So the true worst case is credential disclosure plus database reach beyond the job's
+own input**, not disclosure of a non-sensitive container file. What still contains it is
+narrower than claimed: read-only rootfs, non-root, per-job tempdir, default-deny egress
+*except* Postgres and DNS, and results returned only to the submitting key. Egress
+default-deny remains load-bearing; "no secrets" must not be cited as an invariant for
+this pod until the credential is actually removed from it.
+
+Required mitigation (not deferred): a narrowly-scoped queue/result DB role, so the
+credential the pod carries cannot read beyond its own job — tracked as **UN-4218**,
+alongside a numeric `runAsUser` and `/proc` hardening. Deferred mitigation:
+`runtimeClass: gvisor`. Full analysis in
 [sandbox design §8a](superpowers/specs/2026-09-01-agent-kv-sandbox-worker-design.md).
 
 Other boundaries: view-owned auth with per-endpoint 401 tests; UUID4 job ids + org-scoped

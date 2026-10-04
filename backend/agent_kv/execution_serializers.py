@@ -9,9 +9,21 @@ from rest_framework import serializers
 from agent_kv.constants import EXTRACTOR_ROUTES, TABLE_EXTRACTOR_NAME, V1_EXTRACTOR_NAME
 from unstract.agent_kv_schema import SchemaError, compile_schema
 
-ALLOWED_EXTENSIONS = {".pdf", ".xlsx", ".xls", ".png", ".jpg", ".jpeg", ".tiff"}
+# Images are deliberately ABSENT, and that is a cross-repo contract, not an
+# oversight. The cloud engine's `_build_agent_graph` (agentic_kv
+# kv_extractor.py) treats only `.pdf/.xlsx/.xls` as a document; anything else
+# takes a branch that skips `document_processor` entirely, and
+# `ImageLoader.load_pages` -- the only thing that would populate pages for an
+# image -- has no call site anywhere in the plugin (the engine's own comment
+# there says images are "out of P2 scope").
+#
+# Accepting them here anyway failed OPEN: an image dispatched normally with
+# `pages_total=1`, every key came back not-found, and the job returned
+# `success: true` with a page billed. Refusing at submit is the honest
+# behaviour until the engine side is wired; re-add them in the same change that
+# gives `load_pages` a call site, not before.
+ALLOWED_EXTENSIONS = {".pdf", ".xlsx", ".xls"}
 PDF_LIKE = {".pdf"}
-IMAGE_LIKE = {".png", ".jpg", ".jpeg", ".tiff"}
 EXTRACTION_MODES = ("whole-doc", "per-page")
 
 
@@ -306,8 +318,6 @@ class SubmitSerializer(serializers.Serializer):
                         f"max is {settings.AGENT_KV_MAX_PAGES} (§6.1)"
                     }
                 )
-        elif ext in IMAGE_LIKE:
-            self.pages_total = 1
         # Excel: no page concept pre-OCR (spec §6.1); pages_total stays None,
         # size cap already enforced; the engine enforces the post-OCR cap.
         return data

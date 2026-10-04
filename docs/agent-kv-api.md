@@ -212,7 +212,11 @@ Not exposed (D6): model choice, challenger model, `parallel_pages`, thinking bud
 
 **Two implementation-level notes not visible in the table:**
 
-- File type is allowlisted (`.pdf .xlsx .xls .png .jpg .jpeg .tiff`) and size-capped
+- File type is allowlisted (`.pdf .xlsx .xls`) and size-capped
+  - Images (`.png .jpg .jpeg .tiff`) are **not** accepted. The engine treats only
+    `.pdf/.xlsx/.xls` as a document and `ImageLoader.load_pages` has no call site,
+    so an accepted image returned `success: true` with every key not-found and a
+    page billed. They are refused at submit until the engine side is wired.
   (`AGENT_KV_MAX_FILE_SIZE_MB`); PDFs are page-counted **locally, pre-OCR**, via
   `pdfplumber` and rejected over `AGENT_KV_MAX_PAGES` before any paid work runs. Images
   count as 1 page. Excel has no pre-OCR page concept — it is capped by file size only at
@@ -962,7 +966,7 @@ with the default shown:
 |---|---|---|
 | `AGENT_KV_PATH_PREFIX` | `agent-kv` | Top-level public URL prefix (whitelisted past tenant middleware). |
 | `AGENT_KV_MAX_FILE_SIZE_MB` | `50` | Submit-time file size cap. |
-| `AGENT_KV_MAX_PAGES` | `100` | Pre-OCR page cap for PDFs/images (§6.1). |
+| `AGENT_KV_MAX_PAGES` | `100` | Pre-OCR page cap for PDFs (§6.1). Excel has no pre-OCR page concept; images are not accepted. |
 | `AGENT_KV_MAX_CALCULATIONS_BYTES` | `20000` | Byte cap on the optional `calculations` field. |
 | `AGENT_KV_MAX_SCHEMA_BYTES` | `262144` | Byte cap on the raw `keys` JSON document (256 KiB). |
 | `AGENT_KV_RESULT_TTL_DAYS` | `7` | Result retention window (and a cancelled job's input, which rides the same TTL — a completed/failed job's input is deleted immediately at finalize instead), stamped at submit time (see [§10](#10-retention-and-ttl)). |

@@ -139,29 +139,47 @@ in its own pod** and emit the contents as a calculation row. This is **not robus
 closable at the AST layer** (`open` and `json.load(open(...))` are both needed), so v1
 **accepts it** as a bounded residual, contained by layers 2–5 rather than layer 1.
 
-**Scope correction (2026-09-10, confirmed against `workers/sandbox/gate.py`).** An earlier
-revision of this section claimed the allowlist includes `pathlib`. It does not. The
-allowlist is exactly `{json, math, statistics, decimal, datetime, re, collections,
-itertools, functools, sys}` — `pathlib`, `os`, `io`, `socket` and `urllib` are all
-**outside** it. The residual is therefore a **single read of an already-known path**, not
-directory traversal (no listing helper is reachable) and not exfiltration (no network
-module is reachable). Containment:
+**Scope correction (2026-10-04, verified by execution under the production
+`python -I -S -E`).** This section twice understated the residual, and the corrected
+assessment is the one to review against.
 
-- the pod carries **no secrets** (§8 / R11 — no LLM/OCR/storage creds, and critically
-  not the platform master `ENCRYPTION_KEY`; only its own broker/result-backend DB
-  credential),
-- it runs **non-root** on a **read-only rootfs** (cannot read `/etc/shadow`, cannot
-  write outside the `/tmp` emptyDir),
-- **default-deny egress** (no network path to exfiltrate what it reads),
+The import allowlist is exactly `{json, math, statistics, decimal, datetime, re,
+collections, itertools, functools, sys}` — `pathlib`, `os`, `io`, `socket` and `urllib`
+are all outside it. That bounds nothing here, for two reasons found in review:
+
+1. **`open()` alone reaches credentials.** The child runs as the *same UID* as the worker,
+   so `open('/proc/<ppid>/environ')` returns the worker's full environment, `DB_PASSWORD`
+   included. No import is involved, so the allowlist does not apply.
+2. **The allowlist is not a boundary anyway.** Allowlisted modules re-export the excluded
+   ones as non-dunder attributes the gate never inspects — `statistics.random._os.system('id')`
+   runs `id`, `collections._sys` *is* `sys`, and
+   `collections._sys._getframe(0).f_builtins['__imp'+'ort__']('os')` reaches arbitrary
+   import (the dunder-subscript check only catches *constant* strings). All GATE-PASS.
+   Treat layer 1 as best-effort hygiene, not containment.
+
+The previous "Containment" list also claimed *the pod carries **no secrets***, while its
+own parenthetical admitted the DB credential. The second half is the true one:
+`workerPgSandbox.additionalConfigs` is `[database]`, so the pod mounts
+`DB_HOST/DB_USER/DB_PASSWORD/DB_NAME` and the NetworkPolicy must permit db-proxy:5432 —
+both because, on the PG transport, the queue *is* Postgres. In cloud staging `DB_USER` is
+`postgres`. So what actually contains this:
+
+- it runs **non-root** on a **read-only rootfs** (cannot write outside the `/tmp` emptyDir)
+  — though `runAsNonRoot: true` currently has **no numeric `runAsUser`**, so it holds only
+  because the image sets `USER worker`,
+- **default-deny egress except Postgres and DNS** — not "no egress",
 - **per-job tempdir** isolation (no cross-tenant file access), and
 - results return **only to the submitting customer's own API key**.
 
-So the worst case is disclosure of a **non-sensitive container file** (e.g. a stock
-`/etc/passwd`) back to the customer who submitted the job — no secret, no cross-tenant
-read, no exfiltration. The **deferred mitigation is `runtimeClass: gvisor`** (a
-filesystem/syscall sandbox), already listed as a v1-out-of-scope upgrade in §1 and the
-parent design §6.3. This residual is the reason the NetworkPolicy's default-deny egress
-and the no-secrets invariant are load-bearing and must not be relaxed.
+**Corrected worst case: disclosure of the database credential the pod mounts, plus
+database reach beyond the job's own input** — not a stock `/etc/passwd`. "No secrets" must
+not be cited as a layer-3 invariant for this pod until the credential is actually
+narrowed. Egress default-deny remains load-bearing.
+
+**Required mitigation (no longer deferred):** a narrowly-scoped queue/result DB role, a
+numeric `runAsUser`, and `/proc` hardening — tracked as **UN-4218**. The **deferred**
+mitigation remains `runtimeClass: gvisor` (a filesystem/syscall sandbox), listed as a
+v1-out-of-scope upgrade in §1 and the parent design §6.3.
 
 ## 9. Testing (S11)
 
