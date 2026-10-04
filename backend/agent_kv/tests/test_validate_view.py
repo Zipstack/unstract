@@ -34,8 +34,18 @@ def _authed(method="post", path="/agent-kv/validate", data=None):
 # ---------------------------------------------------------------------------
 # (1) Valid schema -> returns valid:true with correct counts
 # ---------------------------------------------------------------------------
+# These three mock `check_key_rate` explicitly, like test_submit_view.py does.
+# They previously relied on the limiter's ambient behaviour: it failed OPEN on
+# any Redis error, so with no Redis in the unit lane it returned True and the
+# tests passed for a reason unrelated to what they assert. The limiter now
+# fails CLOSED (a Sentinel failover used to remove the concurrency and rate
+# ceilings at once while the API kept accepting billable work), so an
+# unreachable Redis is a 429 and these became 429 == 200. The mock is the right
+# fix either way: these are schema-validation tests, and the rate limiter
+# should not be in their path at all.
+@mock.patch.object(ev, "check_key_rate", return_value=True)
 @mock.patch.object(AgentKVKey, "objects")
-def test_validate_valid_schema_returns_counts(m_keys):
+def test_validate_valid_schema_returns_counts(m_keys, m_rate):
     m_keys.get.return_value = kv_key()
     schema = {
         "quotation_number": {"description": "The quote number", "required": True},
@@ -67,8 +77,9 @@ def test_validate_valid_schema_returns_counts(m_keys):
 # ---------------------------------------------------------------------------
 # (2) Invalid schema -> returns valid:false with error message verbatim
 # ---------------------------------------------------------------------------
+@mock.patch.object(ev, "check_key_rate", return_value=True)
 @mock.patch.object(AgentKVKey, "objects")
-def test_validate_invalid_schema_returns_error(m_keys):
+def test_validate_invalid_schema_returns_error(m_keys, m_rate):
     m_keys.get.return_value = kv_key()
     # Pass a non-dict as top-level schema
     req = _authed(data={"keys": "not a dict"})
@@ -109,8 +120,9 @@ def test_validate_over_rate_limit_returns_429(m_keys, m_check_rate):
 # ---------------------------------------------------------------------------
 # (5) Missing 'keys' in request body -> 400
 # ---------------------------------------------------------------------------
+@mock.patch.object(ev, "check_key_rate", return_value=True)
 @mock.patch.object(AgentKVKey, "objects")
-def test_validate_missing_keys_returns_400(m_keys):
+def test_validate_missing_keys_returns_400(m_keys, m_rate):
     m_keys.get.return_value = kv_key()
     req = _authed(data={})
 
