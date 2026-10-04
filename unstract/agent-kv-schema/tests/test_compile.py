@@ -146,3 +146,69 @@ def test_pathologically_deep_under_decoy_array_raises_fast():
     # RecursionError.
     with pytest.raises(SchemaError, match="max_depth"):
         compile_schema({"_array": _nest(5000)}, caps=SchemaCaps(max_depth=6))
+
+
+# ---------------------------------------------------------------------------
+# Author-supplied regex is refused at SUBMIT, not discovered at match time.
+#
+# Two defects, both found in review:
+#  1. The pattern was never compiled here, so an invalid one was accepted and
+#     only hit per-value in the engine's QA pass -- where `_check_one` swallows
+#     `re.error` and returns True, silently passing validation the author
+#     thought they had configured.
+#  2. `validate_format` runs the pattern with no time budget, so catastrophic
+#     backtracking is a DoS. The length cap is NOT a mitigation: `^(a+)+$` is 7
+#     characters and takes ~1.9s against 26 `a`s, ~4x per character added
+#     (measured on this code), so a 40-char value runs for hours -- and
+#     AGENT_KV_CONCURRENT_LIMIT=5 lets one org pin five shared worker slots
+#     from a single submit.
+#
+# The detector is a conservative heuristic, not a proof: it rejects the shape
+# behind the realistic cases (a quantifier inside a quantified group). The
+# complete fix is a linear-time engine (RE2), which cannot live here because
+# this package deliberately has zero dependencies -- UN-4221.
+# ---------------------------------------------------------------------------
+
+import pytest
+
+from unstract.agent_kv_schema.compile import SchemaError, compile_schema
+
+
+def _schema(pattern: str) -> dict:
+    return {"amount": {"description": "x", "format": f"regex:{pattern}"}}
+
+
+@pytest.mark.parametrize(
+    "pattern",
+    [
+        "^(a+)+$",  # the classic
+        "^(a*)*$",
+        "(?:x+)+",  # non-capturing group is not an escape hatch
+        "^(a+){2,}$",  # counted repetition of a quantified group
+    ],
+)
+def test_nested_quantifier_is_refused_at_compile(pattern):
+    with pytest.raises(SchemaError, match="nested quantifier"):
+        compile_schema(_schema(pattern))
+
+
+def test_invalid_regex_is_refused_at_compile_not_swallowed_at_match_time():
+    with pytest.raises(SchemaError, match="invalid regex"):
+        compile_schema(_schema("["))
+
+
+@pytest.mark.parametrize(
+    "pattern",
+    [
+        r"^\d{3}-\d{4}$",
+        r"^[A-Z]{2}\d+$",
+        r"^INV-\d+$",
+        r"^\$?[\d,]+\.\d{2}$",
+    ],
+)
+def test_ordinary_patterns_still_compile(pattern):
+    """The other half of the heuristic's contract. A detector that rejected
+    real-world patterns would just push authors off the regex format entirely.
+    """
+    compiled = compile_schema(_schema(pattern))
+    assert compiled.key_specs[0].regex_pattern == pattern

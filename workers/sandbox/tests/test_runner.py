@@ -99,7 +99,11 @@ def test_non_timeout_exception_kills_process_group():
     # Mirrors the TimeoutExpired kill path.
     mock_proc = MagicMock()
     mock_proc.pid = 4321
-    mock_proc.communicate.side_effect = OSError("boom")
+    # `wait`, not `communicate`: the harness no longer pipes the child's
+    # output through the parent's memory. stdout/stderr go to files in the
+    # per-job tempdir so RLIMIT_FSIZE (which does not apply to pipes) bounds
+    # them, and the parent reads back at most _CAPTURE_LIMIT.
+    mock_proc.wait.side_effect = OSError("boom")
     with patch("sandbox.runner.subprocess.Popen", return_value=mock_proc), \
          patch("sandbox.runner.os.getpgid", return_value=4321) as mock_getpgid, \
          patch("sandbox.runner.os.killpg") as mock_killpg:
@@ -173,3 +177,36 @@ def test_exception_traceback_scrubs_host_path():
     assert "/var/folders" not in r.stderr
     assert "/tmp/sandbox_" not in r.stderr
     assert "boom" in r.stderr
+
+
+def test_runaway_stdout_does_not_buffer_into_the_parent():
+    """Gate-agnostic DoS: `while True: print(...)` imports nothing and passes
+    the AST gate trivially. It used to stream into the parent's memory via
+    `communicate()` (the `[:_CAPTURE_LIMIT]` truncation happened afterwards),
+    so it could OOM the worker before the wall-clock timeout fired --
+    RLIMIT_FSIZE does not apply to pipes and RLIMIT_AS bounds only the child.
+
+    Output now goes to a file, where RLIMIT_FSIZE bites, and the parent reads
+    back at most _CAPTURE_LIMIT. Asserts the bound on what the parent holds,
+    which is the thing that was unbounded.
+    """
+    r = run_code(
+        "import sys\n"
+        "for _ in range(100000):\n"
+        "    print('A' * 10000)\n"
+        "open(sys.argv[2], 'w').close()\n",
+        json.dumps({"records": [{}]}),
+        **{**_DEFAULTS, "max_output_bytes": 65536},
+    )
+    assert len(r.stdout) <= 4096
+    assert len(r.stderr) <= 4096
+
+
+def test_stdout_is_still_captured_for_an_ordinary_script():
+    """The bound must not cost us diagnostics on the normal path."""
+    r = run_code(
+        "import sys\nprint('hello from the sandbox')\nopen(sys.argv[2], 'w').close()\n",
+        json.dumps({"records": [{}]}),
+        **_DEFAULTS,
+    )
+    assert "hello from the sandbox" in r.stdout

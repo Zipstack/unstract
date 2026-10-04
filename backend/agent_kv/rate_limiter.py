@@ -6,6 +6,26 @@ from django_redis import get_redis_connection
 
 logger = logging.getLogger(__name__)
 
+
+def _limiter_failure_allows_request() -> bool:
+    """Whether a request proceeds when the limiter backend is unreachable.
+
+    Fails CLOSED unless `AGENT_KV_LIMITER_FAIL_OPEN` is explicitly set. Both
+    limiters previously returned True on any Redis exception, which is the one
+    choice that cannot be observed from the outside: a Sentinel failover
+    silently removed the concurrency ceiling AND the per-key rate ceiling at the
+    same time, and the API went on accepting billable LLM work as if both still
+    held. Closed is the safer default for a paid, concurrency-capped API -- a
+    429 is recoverable by the caller, an unbounded fan-out is not.
+
+    The waiver remains available because availability-over-accounting is a
+    legitimate operational choice, but it now has to be made deliberately, in
+    config, where it is visible -- rather than being the implicit behaviour of
+    an `except` block.
+    """
+    return bool(getattr(settings, "AGENT_KV_LIMITER_FAIL_OPEN", False))
+
+
 _SLOT_TTL_SECONDS = 6 * 3600
 
 
@@ -57,8 +77,16 @@ return 1
             )
             return bool(int(acquired))
         except Exception:
-            logger.warning("agent-kv concurrency limiter failing open", exc_info=True)
-            return True
+            # Fail CLOSED by default. Both this ceiling and the per-key rate
+            # ceiling used to `return True` on any Redis error, so a single
+            # Sentinel failover or pool exhaustion removed BOTH at once while
+            # the API kept returning 202s for billable LLM work -- with nothing
+            # but a per-request `logger.warning` to show for it.
+            #
+            # `logger.exception` (not warning): the limiter being unavailable is
+            # an error, and the old level is what let this sit unnoticed.
+            logger.exception("agent-kv concurrency limiter unavailable")
+            return _limiter_failure_allows_request()
 
     @classmethod
     def release(cls, organization_id: str, job_id: str) -> None:
@@ -77,5 +105,5 @@ def check_key_rate(key_id: str) -> bool:
         r.expire(key, 120)
         return count <= settings.AGENT_KV_KEY_RATE_LIMIT_PER_MINUTE
     except Exception:
-        logger.warning("agent-kv key rate limiter failing open", exc_info=True)
-        return True
+        logger.exception("agent-kv key rate limiter unavailable")
+        return _limiter_failure_allows_request()

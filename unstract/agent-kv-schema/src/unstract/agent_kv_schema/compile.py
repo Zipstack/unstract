@@ -6,6 +6,7 @@ anything it rejects never reaches OCR or an LLM.
 """
 
 import ast
+import re
 from dataclasses import dataclass, field
 
 from . import kv_schema
@@ -109,6 +110,53 @@ def _max_depth(node: object, max_depth: int, depth: int = 0) -> int:
     return max(_max_depth(v, max_depth, depth + 1) for v in child)
 
 
+# Quantified groups that themselves contain a quantifier, e.g. `(a+)+`, `(a*)*`,
+# `(.+)*`, `(?:x+)+`. This is the shape behind catastrophic backtracking.
+_NESTED_QUANTIFIER = re.compile(
+    r"\((?:\?[:=!]|\?<[=!]|\?P<[^>]+>)?"  # group open, incl. non-capturing/named
+    r"[^()]*[+*}]\??"  # ...containing a quantifier
+    r"[^()]*\)"  # ...group close
+    r"\s*[+*]|\)\s*\{\d+,\d*\}"  # ...itself quantified
+)
+
+
+def _reject_unsafe_regex(path: str, pattern: str) -> None:
+    """Refuse an author-supplied pattern at SUBMIT rather than at match time.
+
+    Two separate problems, both found in review:
+
+    1. The pattern was never compiled here, so a syntactically invalid one was
+       accepted and only discovered per-value in the engine's QA pass -- where
+       ``_check_one`` swallows ``re.error`` and returns True, silently passing
+       validation the author thought they had configured.
+    2. ``validate_format`` runs the pattern against extracted values with no
+       time budget, so a catastrophically-backtracking pattern is a DoS. The
+       length cap is NOT a mitigation: ``^(a+)+$`` is 7 characters and takes
+       ~1.9s on 26 ``a``s, ~4x per character added (measured), so a 40-char
+       value runs for hours. With ``AGENT_KV_CONCURRENT_LIMIT=5`` one org can
+       pin five shared worker slots from a single submit.
+
+    The nested-quantifier check is a CONSERVATIVE HEURISTIC, not a proof. It
+    rejects the shape responsible for the realistic cases (a quantified group
+    whose body is itself quantified) and will reject some safe patterns that
+    happen to look like it -- an explicit trade, since the author gets an
+    immediate, actionable error instead of a job that hangs. It does not catch
+    every pathological pattern; the complete fix is a linear-time engine (RE2),
+    which cannot be added here because this package deliberately has zero
+    dependencies and is installed by both repos. Tracked as UN-4221.
+    """
+    try:
+        re.compile(pattern)
+    except re.error as e:
+        raise SchemaError(f"'{path}' has an invalid regex: {e}") from None
+    if _NESTED_QUANTIFIER.search(pattern):
+        raise SchemaError(
+            f"'{path}' regex has a nested quantifier (e.g. '(a+)+'), which can "
+            "backtrack catastrophically and stall extraction. Rewrite it "
+            "without a quantifier inside a quantified group."
+        )
+
+
 def compile_schema(spec: dict, caps: SchemaCaps | None = None) -> CompiledSchema:
     caps = caps or SchemaCaps()
     if not isinstance(spec, dict):
@@ -139,6 +187,7 @@ def compile_schema(spec: dict, caps: SchemaCaps | None = None) -> CompiledSchema
                 f"max_columns_per_array={caps.max_columns_per_array}"
             )
     for kspec in key_specs + [s for a in array_specs for s in a.item_specs]:
+        _reject_unsafe_regex(kspec.path, kspec.regex_pattern)
         if len(kspec.regex_pattern) > caps.max_regex_len:
             raise SchemaError(
                 f"'{kspec.path}' regex exceeds max_regex_len={caps.max_regex_len}"

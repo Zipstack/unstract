@@ -129,18 +129,54 @@ def run_code(
         inp.write_text(input_json)
         out.write_text("")
 
+        # Child stdout/stderr go to FILES in the per-job tempdir, not pipes.
+        # `communicate()` buffers the child's full output in the PARENT's
+        # memory and the `[:_CAPTURE_LIMIT]` truncation happens after, so
+        # `while True: print('A'*100000)` -- no imports, passes the gate
+        # trivially -- streamed gigabytes into this process and could OOM the
+        # worker before the wall-clock timeout fired. A gate-agnostic DoS.
+        #
+        # Files make the EXISTING rlimit bite: RLIMIT_FSIZE is already set to
+        # `max_output_bytes` but does not apply to pipes, so a child writing to
+        # a file gets SIGXFSZ at the limit instead. The parent then reads back
+        # at most `_CAPTURE_LIMIT`, so its memory is bounded by that constant
+        # rather than by the child's behaviour.
+        #
+        # Note the budget is now shared with the script's own output.jsonl,
+        # since RLIMIT_FSIZE covers every file the child writes. That is the
+        # intended reading of `max_output_bytes` -- a total write budget -- and
+        # a script that spends it on stdout failing to write its result is a
+        # better outcome than an OOM-killed worker.
+        stdout_path = d / "stdout.txt"
+        stderr_path = d / "stderr.txt"
+
+        def _captured() -> tuple[str, str]:
+            """Read back both streams, each capped, tolerant of a missing file."""
+            texts = []
+            for path in (stdout_path, stderr_path):
+                try:
+                    with open(path, encoding="utf-8", errors="replace") as fh:
+                        texts.append(fh.read(_CAPTURE_LIMIT))
+                except OSError:
+                    texts.append("")
+            return texts[0], texts[1]
+
         proc = None
         try:
-            proc = subprocess.Popen(
-                [sys.executable, "-I", "-S", "-E", str(script), str(inp), str(out)],
-                cwd=tmp,
-                env={"PATH": _MINIMAL_PATH},
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                preexec_fn=_limits(cpu_seconds, memory_mb, max_pids, max_output_bytes),
-            )
-            stdout, stderr = proc.communicate(timeout=timeout)
+            with open(stdout_path, "w") as f_out, open(stderr_path, "w") as f_err:
+                proc = subprocess.Popen(
+                    [sys.executable, "-I", "-S", "-E", str(script), str(inp), str(out)],
+                    cwd=tmp,
+                    env={"PATH": _MINIMAL_PATH},
+                    stdout=f_out,
+                    stderr=f_err,
+                    text=True,
+                    preexec_fn=_limits(
+                        cpu_seconds, memory_mb, max_pids, max_output_bytes
+                    ),
+                )
+                proc.wait(timeout=timeout)
+            stdout, stderr = _captured()
             returncode = proc.returncode
         except subprocess.TimeoutExpired:
             # Wall-clock deadline hit: kill the whole process group so any
@@ -150,15 +186,15 @@ def run_code(
             try:
                 os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
             except Exception:
-                pass
-            try:
-                stdout, stderr = proc.communicate(timeout=1)
-            except Exception:
-                stdout, stderr = "", ""
+                logger.warning(
+                    "sandbox: could not kill the timed-out child's process group",
+                    exc_info=True,
+                )
+            stdout, stderr = _captured()
             return RunResult(
                 success=False,
-                stdout=_scrub(stdout or "", tmp)[:_CAPTURE_LIMIT],
-                stderr=_scrub(stderr or "", tmp)[:_CAPTURE_LIMIT],
+                stdout=_scrub(stdout, tmp)[:_CAPTURE_LIMIT],
+                stderr=_scrub(stderr, tmp)[:_CAPTURE_LIMIT],
                 error=f"execution timed out after {timeout}s",
             )
         except Exception as exc:
@@ -168,11 +204,19 @@ def run_code(
             # child doesn't run away unsupervised. `proc` can be None here
             # (Popen itself failed to spawn), unlike in the TimeoutExpired
             # branch, so guard on that before attempting the kill.
+            # Logged, not silent: both broad `except` blocks here used to
+            # swallow the cause entirely, so an OSError or a fork EAGAIN was
+            # reported to the engine as an ordinary codegen failure with
+            # nothing anywhere to say the harness itself had failed.
+            logger.warning("sandbox: harness failure running generated code: %s", exc)
             if proc is not None:
                 try:
                     os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
                 except Exception:
-                    pass
+                    logger.warning(
+                        "sandbox: could not kill the child's process group",
+                        exc_info=True,
+                    )
             return RunResult(
                 success=False, error=f"execution failed: {type(exc).__name__}"
             )

@@ -227,6 +227,14 @@ AGENT_KV_CONCURRENT_LIMIT = int(os.environ.get("AGENT_KV_CONCURRENT_LIMIT", 5))
 AGENT_KV_KEY_RATE_LIMIT_PER_MINUTE = int(
     os.environ.get("AGENT_KV_KEY_RATE_LIMIT_PER_MINUTE", 60)
 )
+# When Redis is unreachable, do requests proceed? Default False = fail CLOSED
+# (429). Both Agent-KV limiters used to fail open implicitly, inside an `except`
+# block, so a Sentinel failover removed the concurrency ceiling and the per-key
+# rate ceiling at once while the API kept accepting billable LLM work. Fail-open
+# remains available as a deliberate, visible operational choice.
+AGENT_KV_LIMITER_FAIL_OPEN = (
+    os.environ.get("AGENT_KV_LIMITER_FAIL_OPEN", "false").lower() == "true"
+)
 AGENT_KV_SWEEP_GRACE_SECONDS = int(os.environ.get("AGENT_KV_SWEEP_GRACE_SECONDS", 3600))
 AGENT_KV_STUCK_JOB_GRACE_SECONDS = int(
     os.environ.get("AGENT_KV_STUCK_JOB_GRACE_SECONDS", 21600)

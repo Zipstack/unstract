@@ -10,14 +10,38 @@ contained by the OTHER layers, which are the real security boundary:
 
   * Layer 2 — the runner scrubs the environment and applies rlimits before
     exec'ing the generated script.
-  * Layer 3 — the pod runs non-root on a read-only rootfs with no mounted
-    secrets, default-deny egress, and per-job isolation.
+  * Layer 3 — the pod runs non-root on a read-only rootfs with default-deny
+    egress and per-job isolation. NOT "with no mounted secrets": an earlier
+    version of this line said that, and it is false. `workerPgSandbox`
+    attaches the `database` shared-config group, because on the PG transport
+    the queue IS Postgres, so the pod necessarily carries
+    `DB_HOST/DB_USER/DB_PASSWORD/DB_NAME` and the NetworkPolicy necessarily
+    permits db-proxy:5432. See R12 in docs/agent-kv-architecture.md and
+    UN-4218.
   * Layer 4/5 — gVisor (deferred) is the syscall-sandbox mitigation that
     turns any in-process escape into a contained one.
 
-So this gate's job is to CLOSE the cheap, demonstrated bypasses and raise the
-cost of the rest — not to be the sole barrier. Do not treat a pass here as
-proof the code is safe.
+So this gate's job is to raise the cost of a bypass — not to be the sole
+barrier. Do not treat a pass here as proof the code is safe.
+
+**Measured bypasses (2026-10-04, executed under the production
+`python -I -S -E`).** These all return GATE-PASS today, and they are recorded
+here so nobody reads the `sys`-handling rationale below as airtight:
+
+  * `statistics.random._os.system('id')` — ran `id`.
+  * `collections._sys` *is* the `sys` module.
+  * `collections._sys._getframe(0).f_builtins['__imp' + 'ort__']('os')` —
+    reaches arbitrary import, because the dunder-subscript check matches only
+    *constant* strings and a concatenation is not one.
+
+The root cause is structural: allowlisted modules re-export `sys` and `os` as
+NON-dunder attributes (`_sys`, `_os`), and the gate inspects neither. So the
+careful `sys`-aliasing rules below are worth materially less than they look —
+they close the direct spellings while a one-hop attribute walk through any
+allowlisted module goes around them. Closing this properly needs an allowlist
+of attribute paths, not a denylist of names; until then the containment
+argument rests on layers 2–5, which is what the rest of this module header
+says and what the design documents now say too.
 
 This is also the authoritative copy: the sandbox NEVER trusts the client-side
 pre-flight check in the agentic_kv engine (``engine/code_executor._check_code_safe``,

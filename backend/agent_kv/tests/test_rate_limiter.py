@@ -57,9 +57,18 @@ def test_release_removes_member(m_redis):
 
 
 @mock.patch.object(rl, "_redis")
-def test_redis_error_fails_open(m_redis):
+def test_redis_error_during_the_script_fails_closed(m_redis):
+    """Was `test_redis_error_fails_open`, asserting `is True`.
+
+    It pinned the defect as the contract: an error mid-script removed the
+    concurrency ceiling and the API kept accepting billable work. The failure
+    now surfaces as a 429 at the caller (`RateLimited`), which is recoverable;
+    an unbounded fan-out is not. See `AGENT_KV_LIMITER_FAIL_OPEN` for the
+    deliberate waiver.
+    """
     m_redis.return_value.eval.side_effect = ConnectionError("down")
-    assert rl.AgentKVConcurrencyLimiter.check_and_acquire("org1", "job1") is True
+    with mock.patch.object(settings, "AGENT_KV_LIMITER_FAIL_OPEN", False):
+        assert rl.AgentKVConcurrencyLimiter.check_and_acquire("org1", "job1") is False
 
 
 @mock.patch.object(rl, "_redis")
@@ -88,3 +97,58 @@ def test_key_rate_under_limit(m_time, m_redis):
     expected_key = f"agent_kv:rate:key1:{expected_window}"
     mock_redis.incr.assert_called_once_with(expected_key)
     mock_redis.expire.assert_called_once_with(expected_key, 120)
+
+
+# ---------------------------------------------------------------------------
+# Backend-unavailable behaviour. Both limiters used to `return True` on ANY
+# Redis exception, which is the one failure mode invisible from outside: a
+# Sentinel failover or pool exhaustion removed the concurrency ceiling AND the
+# per-key rate ceiling simultaneously, while the API went on returning 202s for
+# billable LLM work with only a per-request `logger.warning` to show for it.
+# ---------------------------------------------------------------------------
+
+
+@mock.patch.object(rl, "_redis", side_effect=OSError("redis down"))
+def test_concurrency_limiter_fails_closed_by_default(m_redis):
+    with mock.patch.object(settings, "AGENT_KV_LIMITER_FAIL_OPEN", False):
+        assert rl.AgentKVConcurrencyLimiter.check_and_acquire("org1", "job1") is False
+
+
+@mock.patch.object(rl, "_redis", side_effect=OSError("redis down"))
+def test_key_rate_limiter_fails_closed_by_default(m_redis):
+    with mock.patch.object(settings, "AGENT_KV_LIMITER_FAIL_OPEN", False):
+        assert rl.check_key_rate("key1") is False
+
+
+@mock.patch.object(rl, "_redis", side_effect=OSError("redis down"))
+def test_limiters_fail_open_only_when_the_setting_says_so(m_redis):
+    """The waiver stays available -- availability-over-accounting is a real
+    operational choice -- but it has to be made deliberately, in config, rather
+    than being the implicit behaviour of an `except` block.
+    """
+    with mock.patch.object(settings, "AGENT_KV_LIMITER_FAIL_OPEN", True):
+        assert rl.AgentKVConcurrencyLimiter.check_and_acquire("org1", "job1") is True
+        assert rl.check_key_rate("key1") is True
+
+
+@mock.patch.object(rl, "_redis", side_effect=OSError("redis down"))
+def test_limiter_unavailability_is_logged_at_error_level(m_redis, caplog):
+    """`logger.exception`, not `logger.warning`. The old level is part of why
+    this sat unnoticed -- a limiter being gone is an error, not a warning.
+    """
+    with mock.patch.object(settings, "AGENT_KV_LIMITER_FAIL_OPEN", False):
+        with caplog.at_level("ERROR", logger=rl.logger.name):
+            rl.AgentKVConcurrencyLimiter.check_and_acquire("org1", "job1")
+            rl.check_key_rate("key1")
+    assert [r.levelname for r in caplog.records] == ["ERROR", "ERROR"]
+    # The traceback is attached, so the actual Redis failure is diagnosable.
+    assert all(r.exc_info for r in caplog.records)
+
+
+@mock.patch.object(rl, "_redis", side_effect=OSError("redis down"))
+def test_release_still_tolerates_an_unreachable_backend(m_redis):
+    """Release must stay best-effort regardless: it is called on terminal
+    paths (finalize, cancel, sweep) where raising would abort the caller's own
+    work, and a slot it cannot free expires on its own TTL.
+    """
+    rl.AgentKVConcurrencyLimiter.release("org1", "job1")
