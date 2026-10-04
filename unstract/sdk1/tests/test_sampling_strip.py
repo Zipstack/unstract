@@ -30,6 +30,7 @@ from unstract.sdk1.adapters.base1 import (
     _has_deprecated_sampling_params,
     _strip_deprecated_sampling_params,
 )
+from unstract.sdk1.llm import LLM
 
 # ── detection: positives ────────────────────────────────────────────────────
 
@@ -511,11 +512,20 @@ def _azure_metadata(**overrides: str | bool) -> dict[str, Any]:
     }
 
 
-def _azure_revalidate(first: dict[str, Any]) -> dict[str, Any]:
-    """Re-validate the way `LLM` does: `cost_model` is set aside first."""
-    kwargs = dict(first)
-    kwargs.pop("cost_model", None)
-    return AzureOpenAILLMParameters.validate(kwargs)
+def _azure_revalidate(
+    first: dict[str, Any], **call_kwargs: float | str
+) -> dict[str, Any]:
+    """Re-validate through `LLM._revalidate`, the path every completion takes.
+
+    `LLM` sets `cost_model` aside at construction and merges per-call kwargs
+    over the stored ones, so this drives the real method on a bare instance
+    rather than re-implementing that merge here.
+    """
+    llm = LLM.__new__(LLM)
+    llm.adapter = AzureOpenAILLMParameters
+    llm.kwargs = dict(first)
+    llm._cost_model = llm.kwargs.pop("cost_model", None)
+    return llm._revalidate(call_kwargs)
 
 
 @pytest.mark.parametrize("enable_reasoning", [False, True])
@@ -524,9 +534,9 @@ def test_azure_validate_drops_temperature_for_gpt_6_behind_opaque_deployment(
 ) -> None:
     """The deployment name hides the model; the `model` field names GPT-6.
 
-    The strip must hold on the re-validation pass, where only the deployment
-    name is left and Azure's `temperature` default of 1 would otherwise return
-    (and reasoning would otherwise force 1).
+    On re-validation only the deployment name is left in `model`, so the
+    strip has to hold off `cost_model`, which `LLM` passes back -- otherwise
+    Azure's `temperature` default of 1 (or reasoning's forced 1) returns.
     """
     first = AzureOpenAILLMParameters.validate(
         _azure_metadata(
@@ -537,20 +547,34 @@ def test_azure_validate_drops_temperature_for_gpt_6_behind_opaque_deployment(
     )
     assert first["model"] == "azure/prod-chat"
     assert first["cost_model"] == "azure/gpt-6-luna"
-    assert first["temperature"] is None
+    assert "temperature" not in first
 
     second = _azure_revalidate(first)
-    assert second["temperature"] is None
+    assert "temperature" not in second
+    assert second["cost_model"] == "azure/gpt-6-luna"
     if enable_reasoning:
         assert second["reasoning_effort"] == "medium"
+
+
+def test_azure_revalidate_drops_per_call_temperature_for_gpt_6() -> None:
+    """A caller-supplied `temperature` must not reach an opaque GPT-6 deployment.
+
+    Cloud callers pass `temperature=` to `complete()` / `complete_vision()`;
+    detection keys off `cost_model`, which a per-call kwarg cannot displace.
+    """
+    first = AzureOpenAILLMParameters.validate(
+        _azure_metadata(model="gpt-6-luna", deployment_name="prod-chat")
+    )
+    second = _azure_revalidate(first, temperature=0.5)
+    assert "temperature" not in second
 
 
 def test_azure_validate_drops_temperature_when_deployment_names_gpt_6() -> None:
     first = AzureOpenAILLMParameters.validate(
         _azure_metadata(deployment_name="gpt-6-sol")
     )
-    assert first["temperature"] is None
-    assert _azure_revalidate(first)["temperature"] is None
+    assert "temperature" not in first
+    assert "temperature" not in _azure_revalidate(first, temperature=0.5)
 
 
 @pytest.mark.parametrize("enable_reasoning", [False, True])
@@ -566,6 +590,13 @@ def test_azure_validate_retains_temperature_for_other_models(
     )
     assert first["temperature"] == 1
     assert _azure_revalidate(first)["temperature"] == 1
+
+
+def test_azure_revalidate_keeps_per_call_temperature_for_other_models() -> None:
+    first = AzureOpenAILLMParameters.validate(
+        _azure_metadata(model="gpt-4o", deployment_name="prod-chat")
+    )
+    assert _azure_revalidate(first, temperature=0.5)["temperature"] == 0.5
 
 
 def test_azure_ai_foundry_validate_strips_temperature_for_gpt_6() -> None:

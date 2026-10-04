@@ -714,39 +714,20 @@ class OpenRouterLLMParameters(BaseChatCompletionParameters):
         return f"{_OPENROUTER_PROVIDER_PREFIX}{model}"
 
 
-def _azure_rejects_sampling_params(
-    original_model: str, adapter_metadata: dict[str, "Any"]
-) -> bool:
+def _azure_rejects_sampling_params(model_ids: tuple[str, ...]) -> bool:
     """Whether an Azure OpenAI deployment serves a model that rejects sampling.
 
     The deployment name routes the call but need not name the model, so the
-    real model id lives in the optional ``model`` field, carried as
-    ``cost_model``. ``LLM`` sets ``cost_model`` aside and re-validates without
-    it, so on that pass the only surviving evidence of an earlier strip is the
-    explicit ``temperature: None`` that ``_pin_sampling_params_removed`` leaves.
-    The Azure form has no temperature field, so an explicit None can only come
-    from that pin.
+    real model id comes from the optional ``model`` field on the first pass and
+    from ``cost_model`` -- which ``LLM`` passes back on every re-validation --
+    after that. Any of them naming the model is enough.
     """
-    return (
-        _has_deprecated_sampling_params(original_model)
-        or _has_deprecated_sampling_params(adapter_metadata.get("model"))
-        or ("temperature" in adapter_metadata and adapter_metadata["temperature"] is None)
-    )
+    return any(_has_deprecated_sampling_params(m) for m in model_ids)
 
 
-def _pin_sampling_params_removed(validated: dict[str, "Any"]) -> dict[str, "Any"]:
-    """Return a copy of ``validated`` with sampling params removed for good.
-
-    Unlike ``_strip_deprecated_sampling_params``, ``temperature`` is pinned to
-    None rather than popped: a missing key would let the field default back in
-    when ``LLM`` re-validates kwargs whose model id no longer names the model.
-    LiteLLM omits a None temperature from the request.
-    """
-    result = dict(validated)
-    for param in _DEPRECATED_SAMPLING_PARAMS:
-        result.pop(param, None)
-    result["temperature"] = None
-    return result
+def _without_sampling_params(validated: dict[str, "Any"]) -> dict[str, "Any"]:
+    """Return a copy of ``validated`` with every sampling param removed."""
+    return {k: v for k, v in validated.items() if k not in _DEPRECATED_SAMPLING_PARAMS}
 
 
 class AzureOpenAILLMParameters(BaseChatCompletionParameters):
@@ -772,8 +753,12 @@ class AzureOpenAILLMParameters(BaseChatCompletionParameters):
 
     @staticmethod
     def validate(adapter_metadata: dict[str, "Any"]) -> dict[str, "Any"]:
-        # Capture user-provided model name before deployment_name overwrites it
-        original_model = adapter_metadata.get("model", "")
+        # Capture user-provided model name before deployment_name overwrites it.
+        # On re-validation `model` holds the deployment, so `LLM` passes the
+        # first pass's `cost_model` back; prefer it so the real id survives.
+        original_model = adapter_metadata.get("cost_model") or adapter_metadata.get(
+            "model", ""
+        )
 
         adapter_metadata["model"] = AzureOpenAILLMParameters.validate_model(
             adapter_metadata
@@ -785,7 +770,7 @@ class AzureOpenAILLMParameters(BaseChatCompletionParameters):
             adapter_metadata["api_base"] = azure_endpoint
 
         sampling_deprecated = _azure_rejects_sampling_params(
-            original_model, adapter_metadata
+            (original_model, adapter_metadata["model"])
         )
 
         # Handle Azure OpenAI reasoning configuration
@@ -806,9 +791,7 @@ class AzureOpenAILLMParameters(BaseChatCompletionParameters):
         if enable_reasoning:
             reasoning_effort = adapter_metadata.get("reasoning_effort", "medium")
             result_metadata["reasoning_effort"] = reasoning_effort
-            # Reasoning needs an unconstrained temperature, unless the model
-            # takes none at all.
-            result_metadata["temperature"] = None if sampling_deprecated else 1
+            result_metadata["temperature"] = 1
 
         # Create validation metadata excluding control fields
         exclude_fields = {"enable_reasoning"}
@@ -838,7 +821,7 @@ class AzureOpenAILLMParameters(BaseChatCompletionParameters):
             validated["cost_model"] = cost_model
 
         if sampling_deprecated:
-            validated = _pin_sampling_params_removed(validated)
+            validated = _without_sampling_params(validated)
 
         return validated
 
