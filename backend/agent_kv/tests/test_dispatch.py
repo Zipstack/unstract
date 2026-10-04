@@ -253,3 +253,38 @@ def test_dispatcher_factory_call_matches_the_live_signature():
     ) as m_factory:
         d._dispatcher()
     m_factory.assert_called_once_with()
+
+
+# Post-enqueue bookkeeping must never fail a dispatch that already succeeded.
+# `SubmitView` turns a DispatchError into a FAILED job, so a DB hiccup here
+# would terminalize a job whose task is on the queue -- the executor then runs,
+# calls back, and finds a terminal row it cannot write to, while the caller was
+# told nothing was billed for work that did run. The review round added a
+# SECOND update after the enqueue, which widened this window.
+@mock.patch.object(dispatch, "_platform_api_key", return_value="pk")
+@mock.patch.object(dispatch, "_dispatcher")
+@mock.patch.object(AgentKVJob, "objects")
+def test_bookkeeping_failure_does_not_fail_an_already_queued_dispatch(
+    m_objects, m_disp, m_key
+):
+    m_objects.filter.side_effect = OSError("db gone")
+    job = _job()
+
+    # Must not raise: raising is what would mark the live job FAILED.
+    dispatch.dispatch_job(job, extractor=V1_EXTRACTOR_NAME, schema={}, options={})
+
+    # And the enqueue did happen, so the task is genuinely on the queue.
+    assert m_disp.return_value.dispatch_with_callback.called
+
+
+@mock.patch.object(dispatch, "_platform_api_key", return_value="pk")
+@mock.patch.object(dispatch, "_dispatcher")
+@mock.patch.object(AgentKVJob, "objects")
+def test_bookkeeping_failure_is_logged_at_error_level(m_objects, m_disp, m_key, caplog):
+    """Swallowing it silently would trade one bad failure mode for another:
+    the sweep reconciles the row, but nothing would say why it had to.
+    """
+    m_objects.filter.side_effect = OSError("db gone")
+    with caplog.at_level("ERROR", logger=dispatch.logger.name):
+        dispatch.dispatch_job(_job(), extractor=V1_EXTRACTOR_NAME, schema={}, options={})
+    assert any(r.levelname == "ERROR" and r.exc_info for r in caplog.records)

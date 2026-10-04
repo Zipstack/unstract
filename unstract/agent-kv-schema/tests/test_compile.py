@@ -212,3 +212,29 @@ def test_ordinary_patterns_still_compile(pattern):
     """
     compiled = compile_schema(_schema(pattern))
     assert compiled.key_specs[0].regex_pattern == pattern
+
+
+# The overlapping-alternation family, found in review AFTER the
+# nested-quantifier check shipped: `^(a|aa)+$` passes that check and still
+# backtracks catastrophically, because at each position the engine can consume
+# one `a` or two and must try both on failure.
+@pytest.mark.parametrize("pattern", ["^(a|aa)+$", "^(a|ab)+$", "(?:x|xx)+"])
+def test_overlapping_alternation_is_refused(pattern):
+    with pytest.raises(SchemaError, match="alternatives overlap"):
+        compile_schema(_schema(pattern))
+
+
+@pytest.mark.parametrize(
+    "pattern",
+    [
+        "^(foo|bar)+$",  # distinct first chars -> no position admits two parses
+        r"^(\d|[A-Z])+$",  # metacharacter branches are not analysed
+        "^INV-(A|B)+$",
+    ],
+)
+def test_non_overlapping_alternation_still_compiles(pattern):
+    """The detector compares only LITERAL branches, by the prefix relation.
+    Refusing every quantified alternation would reject a lot of safe, ordinary
+    patterns -- `(?:a|b)+` is linear.
+    """
+    compile_schema(_schema(pattern))

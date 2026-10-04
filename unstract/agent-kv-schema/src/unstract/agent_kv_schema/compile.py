@@ -130,6 +130,38 @@ _NESTED_QUANTIFIER = re.compile(
 )
 
 
+# A quantified group whose alternatives OVERLAP, e.g. `(a|aa)+`. Found in
+# review after the nested-quantifier check shipped: `^(a|aa)+$` passes that
+# check and still backtracks catastrophically, because at each position the
+# engine can consume one `a` or two and must try both on failure.
+#
+# Only LITERAL branches are compared, and only by the prefix relation: if one
+# branch is a prefix of another (`a` of `aa`), the group is ambiguous and
+# refused. `(foo|bar)+` is left alone -- distinct first characters mean no
+# position admits two parses, so it is linear. Branches containing
+# metacharacters are not analysed (`.`/classes/nested groups need real regex
+# analysis, which is what UN-4225 is for); this closes the demonstrated family
+# without pretending to be a decision procedure.
+_QUANTIFIED_GROUP = re.compile(r"\((\?:)?([^()]*)\)\s*(?:[+*]|\{\d+,\d*\})")
+_LITERAL_BRANCH = re.compile(r"^[\w\-/ ]*$")
+
+
+def _overlapping_alternation(pattern: str) -> str | None:
+    """Return a human-readable overlap if a quantified group is ambiguous."""
+    for match in _QUANTIFIED_GROUP.finditer(pattern):
+        body = match.group(2)
+        if "|" not in body:
+            continue
+        branches = body.split("|")
+        if not all(_LITERAL_BRANCH.match(b) for b in branches):
+            continue
+        for i, a in enumerate(branches):
+            for j, b in enumerate(branches):
+                if i != j and a and b.startswith(a):
+                    return f"{a!r} is a prefix of {b!r}"
+    return None
+
+
 def _reject_unsafe_regex(path: str, pattern: str) -> None:
     """Refuse an author-supplied pattern at SUBMIT rather than at match time.
 
@@ -164,6 +196,14 @@ def _reject_unsafe_regex(path: str, pattern: str) -> None:
             f"'{path}' regex has a nested quantifier (e.g. '(a+)+'), which can "
             "backtrack catastrophically and stall extraction. Rewrite it "
             "without a quantifier inside a quantified group."
+        )
+    overlap = _overlapping_alternation(pattern)
+    if overlap:
+        raise SchemaError(
+            f"'{path}' regex quantifies a group whose alternatives overlap "
+            f"({overlap}), e.g. '(a|aa)+', which can backtrack "
+            "catastrophically and stall extraction. Make the alternatives "
+            "mutually exclusive, or use a character class."
         )
 
 

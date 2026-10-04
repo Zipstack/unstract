@@ -108,6 +108,28 @@ def dispatch_job(job, *, extractor: str, schema: dict, options: dict) -> None:
     # row this UPDATE doesn't match is left exactly as the winning writer
     # left it. `modified_at` is stamped automatically by
     # BaseModelQuerySet.update() (utils/models/base_model.py).
+    # Everything below is POST-ENQUEUE bookkeeping. The task is already on the
+    # queue, so a failure here must never be reported as a failed dispatch:
+    # `SubmitView` turns a DispatchError into a FAILED job, and the executor
+    # would then run, callback, and find a terminal row it cannot write to --
+    # the caller told nothing was billed for work that did run. Wrapped rather
+    # than left to propagate, which is what the single pre-review UPDATE did.
+    #
+    # Losing the bookkeeping entirely is recoverable: sweep phase 1 reaps a
+    # still-PENDING row with no `dispatched_at`, and phase 2's
+    # `dispatched_at IS NULL` arm covers the non-PENDING case.
+    try:
+        _record_dispatch(job)
+    except Exception:
+        logger.exception(
+            "agent-kv: dispatch bookkeeping failed for job %s after enqueue "
+            "(task is queued; the sweep will reconcile)",
+            job.id,
+        )
+
+
+def _record_dispatch(job) -> None:
+    """Persist task_id/status/dispatched_at against whatever the row raced to."""
     advanced = AgentKVJob.objects.filter(id=job.id, status=JobStatus.PENDING).update(
         task_id=job.task_id,
         status=job.status,

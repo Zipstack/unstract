@@ -62,3 +62,45 @@ def test_ordering_comparisons_stay_exact():
         "total > 100"
     ]
     assert evaluate_constraints(["total >= 100"], {"total": "100.00"}, {}) == []
+
+
+# The tolerance must sit BELOW a cent at every realistic magnitude, not just at
+# invoice scale. `rel_tol=1e-9` (the first attempt) is 0.1 at a $100,000,000
+# total, so it silently absorbed a one-cent reconciliation error -- the exact
+# failure the check exists to catch. The original cent-mismatch test only
+# covered a ~$25,000 total and so could not see it.
+
+
+def test_a_one_cent_error_is_caught_at_one_hundred_million():
+    rows = {"line_items": [{"line_total": "50000000.00"} for _ in range(2)]}
+    expr = "grand_total == sum('line_items.line_total')"
+    assert evaluate_constraints([expr], {"grand_total": "100000000.01"}, rows) == [expr]
+
+
+def test_a_correct_one_hundred_million_total_is_not_a_false_violation():
+    """The other side: tightening must not start reporting correct documents."""
+    rows = {"line_items": [{"line_total": "50000000.00"} for _ in range(2)]}
+    assert (
+        evaluate_constraints(
+            ["grand_total == sum('line_items.line_total')"],
+            {"grand_total": "100000000.00"},
+            rows,
+        )
+        == []
+    )
+
+
+def test_float_noise_is_still_absorbed_over_many_rows():
+    """The lower bound on the tolerance. 1,000 rows of 8230.40 do not sum to
+    exactly 8230400.0 in binary floating point, and that must not be a
+    violation.
+    """
+    rows = {"line_items": [{"line_total": "8230.40"} for _ in range(1000)]}
+    assert (
+        evaluate_constraints(
+            ["grand_total == sum('line_items.line_total')"],
+            {"grand_total": "8230400.00"},
+            rows,
+        )
+        == []
+    )

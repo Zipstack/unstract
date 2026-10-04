@@ -190,6 +190,19 @@ def run_code(
                     "sandbox: could not kill the timed-out child's process group",
                     exc_info=True,
                 )
+            # REAP before reading. SIGKILL is asynchronous: without this the
+            # child may still be writing when the capture files are read
+            # (truncated diagnostics) and, worse, is left unreaped in a
+            # long-lived worker -- a zombie per timed-out job. The pre-review
+            # code got this incidentally from `communicate(timeout=1)`; moving
+            # to files dropped the wait with it.
+            try:
+                proc.wait(timeout=5)
+            except Exception:
+                logger.warning(
+                    "sandbox: timed-out child did not exit after SIGKILL",
+                    exc_info=True,
+                )
             stdout, stderr = _captured()
             return RunResult(
                 success=False,

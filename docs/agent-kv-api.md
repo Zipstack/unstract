@@ -213,14 +213,15 @@ Not exposed (D6): model choice, challenger model, `parallel_pages`, thinking bud
 **Two implementation-level notes not visible in the table:**
 
 - File type is allowlisted (`.pdf .xlsx .xls`) and size-capped
-  - Images (`.png .jpg .jpeg .tiff`) are **not** accepted. The engine treats only
-    `.pdf/.xlsx/.xls` as a document and `ImageLoader.load_pages` has no call site,
-    so an accepted image returned `success: true` with every key not-found and a
-    page billed. They are refused at submit until the engine side is wired.
   (`AGENT_KV_MAX_FILE_SIZE_MB`); PDFs are page-counted **locally, pre-OCR**, via
-  `pdfplumber` and rejected over `AGENT_KV_MAX_PAGES` before any paid work runs. Images
-  count as 1 page. Excel has no pre-OCR page concept — it is capped by file size only at
-  submit time (the engine enforces a post-OCR virtual-page cap).
+  `pdfplumber` and rejected over `AGENT_KV_MAX_PAGES` before any paid work runs. Excel
+  has no pre-OCR page concept — it is capped by file size only at submit time (the
+  engine enforces a post-OCR virtual-page cap).
+  - Images (`.png .jpg .jpeg .tiff`) are **not** accepted, and no longer count as
+    1 page. The engine treats only `.pdf/.xlsx/.xls` as a document and
+    `ImageLoader.load_pages` has no call site, so an accepted image returned
+    `success: true` with every key not-found and a page billed. They are refused at
+    submit until the engine side is wired.
 - `timeout`'s upper bound is not the literal `300` in the spec prose — it's
   `AGENT_KV_MAX_TIMEOUT_SECONDS` (default `300`, but deployment-configurable).
 

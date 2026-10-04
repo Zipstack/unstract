@@ -17,19 +17,34 @@ from .validators import coerce_number
 # three line items of 8230.4 sum to 24691.199999999997, which `operator.eq`
 # says is not 24691.2 (reproduced).
 #
-# `math.isclose` with a relative tolerance covers the whole magnitude range --
-# an absolute epsilon that suits invoice totals is meaningless against a
-# balance sheet in millions, or against unit prices in thousandths. Both bounds
-# are set: `rel_tol=1e-9` is ~15 significant figures, far tighter than any
-# extracted value's real precision, and `abs_tol=1e-9` keeps comparisons
-# against exact zero working (relative tolerance alone is useless there, since
-# every non-zero value is infinitely far from 0 in relative terms).
+# The tolerance has to sit BELOW a cent at every realistic magnitude while
+# staying ABOVE the float noise floor. Those two bounds are what set the
+# numbers, and the first attempt at this got it wrong: `rel_tol=1e-9` is 0.1 at
+# a total of $100,000,000, so it silently absorbed a one-cent reconciliation
+# error on a large invoice -- the exact failure this check exists to catch
+# (found in review; the original test only covered a ~$25,000 total).
 #
-# The real fix for the value path is Decimal end to end -- see
-# `normalizers.coerce_number` and UN-4226. This makes the COMPARISON correct for
+# Noise floor: summing N values of magnitude M accumulates roughly
+# N * 2.2e-16 * M of float error. M=$1e8 over 1,000 rows is ~2.2e-5, i.e. about
+# a five-hundredth of a cent.
+#
+#   rel_tol=1e-12  -> 1e-4 at $1e8 (a hundredth of a cent): absorbs that noise,
+#                     and a one-cent error is 100x larger, so it is still
+#                     reported. Relative rather than absolute-only so the bound
+#                     tracks magnitude -- an absolute epsilon suited to invoice
+#                     totals is meaningless against unit prices in thousandths.
+#   abs_tol=1e-6   -> keeps comparisons against exact zero working, where
+#                     relative tolerance is useless (every non-zero value is
+#                     infinitely far from 0 in relative terms), and is itself
+#                     well under a cent.
+#
+# Known ceiling: past ~$1e12 with ~10,000 rows the noise floor (~2.2) exceeds a
+# cent and no float tolerance can separate the two. That is a float problem,
+# not a tolerance problem, and the fix is Decimal end to end --
+# `normalizers.coerce_number`, UN-4226. This makes the COMPARISON correct for
 # the float values that exist today, and stays correct afterwards.
-_REL_TOL = 1e-9
-_ABS_TOL = 1e-9
+_REL_TOL = 1e-12
+_ABS_TOL = 1e-6
 
 
 def _num_eq(a, b) -> bool:
