@@ -166,7 +166,7 @@ def test_pathologically_deep_under_decoy_array_raises_fast():
 # The detector is a conservative heuristic, not a proof: it rejects the shape
 # behind the realistic cases (a quantifier inside a quantified group). The
 # complete fix is a linear-time engine (RE2), which cannot live here because
-# this package deliberately has zero dependencies -- UN-4221.
+# this package deliberately has zero dependencies -- UN-4225.
 # ---------------------------------------------------------------------------
 
 import pytest

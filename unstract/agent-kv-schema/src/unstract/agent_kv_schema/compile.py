@@ -153,7 +153,7 @@ def _reject_unsafe_regex(path: str, pattern: str) -> None:
     immediate, actionable error instead of a job that hangs. It does not catch
     every pathological pattern; the complete fix is a linear-time engine (RE2),
     which cannot be added here because this package deliberately has zero
-    dependencies and is installed by both repos. Tracked as UN-4221.
+    dependencies and is installed by both repos. Tracked as UN-4225.
     """
     try:
         re.compile(pattern)

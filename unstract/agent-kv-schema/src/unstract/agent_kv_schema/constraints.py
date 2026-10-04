@@ -26,7 +26,7 @@ from .validators import coerce_number
 # every non-zero value is infinitely far from 0 in relative terms).
 #
 # The real fix for the value path is Decimal end to end -- see
-# `normalizers.coerce_number` and UN-4222. This makes the COMPARISON correct for
+# `normalizers.coerce_number` and UN-4226. This makes the COMPARISON correct for
 # the float values that exist today, and stays correct afterwards.
 _REL_TOL = 1e-9
 _ABS_TOL = 1e-9
