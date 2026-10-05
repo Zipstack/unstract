@@ -75,8 +75,9 @@ class ConsumerMetrics(_Exporter):
     """Per-pod metrics for a PG-queue consumer (or the fleet supervisor).
 
     ``freshness_fn`` is the same heartbeat the liveness probe reads —
-    seconds since the poll loop last made progress (for the supervisor, the
-    OLDEST child's, so one wedged child surfaces). The optional fleet hooks
+    seconds since the poll loop last made progress (for the supervisor, the age
+    at least half its children have reached; a single wedged child is killed by
+    the supervisor rather than surfaced here). The optional fleet hooks
     exist because the supervisor's ``/health`` JSON already reports them and
     an operator graphing the fleet needs them as numbers, not JSON.
     """

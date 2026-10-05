@@ -22,6 +22,7 @@ from pg_queue_consumer.supervisor import (
     _Fleet,
     _child_after_fork,
     _join_children,
+    _kill_stuck_children,
     _reap_dead,
     _restart_due_children,
     _run_child,
@@ -29,6 +30,7 @@ from pg_queue_consumer.supervisor import (
     _wait_for_exit,
     concurrency_from_env,
     shutdown_grace_from_env,
+    stuck_child_seconds_from_env,
 )
 
 _MOD = "pg_queue_consumer.supervisor"
@@ -171,10 +173,40 @@ class TestFleet:
             f.schedule_restart(0, uptime=0.1)
         assert math.isinf(f.freshness())
 
-    def test_freshness_is_oldest_age_when_healthy(self):
-        f = _Fleet(2)
-        f._heartbeats[1] = time.time() - 100
+    def test_freshness_with_one_child_is_its_age(self):
+        f = _Fleet(1)
+        f._heartbeats[0] = time.time() - 100
         assert 99 < f.freshness() < 102
+
+    def test_one_stale_child_of_many_does_not_age_the_fleet(self):
+        # UN-4223: one hung child must not fail liveness for the whole pod.
+        f = _Fleet(20)
+        f._heartbeats[3] = time.time() - 9999
+        assert f.freshness() < 5
+        assert f.oldest_age() > 9990  # still visible for diagnosis
+
+    @pytest.mark.parametrize(
+        ("concurrency", "stale", "trips"),
+        [
+            (20, 9, False),
+            (20, 10, True),  # exactly half
+            (3, 1, False),
+            (3, 2, True),  # ceil(1.5)
+            (2, 1, True),  # half of two
+        ],
+    )
+    def test_freshness_trips_once_half_the_fleet_is_stale(
+        self, concurrency, stale, trips
+    ):
+        f = _Fleet(concurrency)
+        for slot in range(stale):
+            f._heartbeats[slot] = time.time() - 1000
+        assert (f.freshness() > 500) is trips
+
+    def test_stale_count(self):
+        f = _Fleet(4)
+        f._heartbeats[0] = f._heartbeats[2] = time.time() - 1000
+        assert f.stale_count(500) == 2
 
     def test_due_restarts_respects_backoff(self, monkeypatch):
         f = _Fleet(1)
@@ -248,6 +280,125 @@ class TestReapDead:
         with patch(f"{_MOD}.os.waitpid", side_effect=ChildProcessError()):
             _reap_dead(f, threading.Event())
         assert f.alive_count() == 0
+
+
+_STUCK = "WORKER_PG_QUEUE_CONSUMER_STUCK_CHILD_SECONDS"
+_PORT = "WORKER_PG_QUEUE_CONSUMER_HEALTH_PORT"
+_STALE = "WORKER_PG_QUEUE_CONSUMER_HEALTH_STALE_SECONDS"
+
+
+class TestStuckChildSecondsFromEnv:
+    @pytest.fixture(autouse=True)
+    def _clean(self, monkeypatch):
+        for var in (_STUCK, _PORT, _STALE):
+            monkeypatch.delenv(var, raising=False)
+
+    def test_defaults_to_health_stale_window(self, monkeypatch):
+        # The same bound that used to restart the whole container.
+        monkeypatch.setenv(_PORT, "8090")
+        monkeypatch.setenv(_STALE, "7260")
+        assert stuck_child_seconds_from_env() == pytest.approx(7260.0)
+
+    def test_off_without_a_health_port(self):
+        # No probe ever enforced a cap here, so none is introduced implicitly.
+        assert stuck_child_seconds_from_env() is None
+
+    def test_override_wins_even_without_a_port(self, monkeypatch):
+        monkeypatch.setenv(_PORT, "8090")
+        monkeypatch.setenv(_STALE, "7260")
+        monkeypatch.setenv(_STUCK, "3660")
+        assert stuck_child_seconds_from_env() == pytest.approx(3660.0)
+        monkeypatch.delenv(_PORT)
+        assert stuck_child_seconds_from_env() == pytest.approx(3660.0)
+
+    @pytest.mark.parametrize("bad", ["0", "-5", "inf", "nan"])
+    def test_invalid_override_raises(self, monkeypatch, bad):
+        monkeypatch.setenv(_STUCK, bad)
+        with pytest.raises(ValueError, match="STUCK_CHILD_SECONDS"):
+            stuck_child_seconds_from_env()
+
+    def test_malformed_override_raises(self, monkeypatch):
+        monkeypatch.setenv(_STUCK, "1h")
+        with pytest.raises(ValueError, match="STUCK_CHILD_SECONDS"):
+            stuck_child_seconds_from_env()
+
+
+class TestKillStuckChildren:
+    @staticmethod
+    def _fleet_with_stuck_slot_1(monkeypatch) -> _Fleet:  # noqa: ANN001
+        clock = [1000.0]
+        monkeypatch.setattr(f"{_MOD}.time.monotonic", lambda: clock[0])
+        f = _Fleet(3)
+        for slot, pid in enumerate((111, 222, 333)):
+            f.record_fork(slot, pid)
+        clock[0] += 5000.0  # every child has been up 5000s
+        f._heartbeats[1] = time.time() - 4000  # slot 1 frozen on one task
+        return f
+
+    def test_only_the_stuck_child_is_sigkilled(self, monkeypatch):
+        import signal as _signal
+
+        f = self._fleet_with_stuck_slot_1(monkeypatch)
+        with patch(f"{_MOD}.os.kill") as kill:
+            _kill_stuck_children(f, 3600.0, threading.Event())
+        kill.assert_called_once_with(222, _signal.SIGKILL)
+
+    def test_not_killed_again_before_it_is_reaped(self, monkeypatch):
+        f = self._fleet_with_stuck_slot_1(monkeypatch)
+        with patch(f"{_MOD}.os.kill") as kill:
+            _kill_stuck_children(f, 3600.0, threading.Event())
+            _kill_stuck_children(f, 3600.0, threading.Event())
+        assert kill.call_count == 1
+
+    def test_killed_child_is_reaped_and_reforked_without_counting_a_crash(
+        self, monkeypatch
+    ):
+        f = self._fleet_with_stuck_slot_1(monkeypatch)
+        with patch(f"{_MOD}.os.kill"):
+            _kill_stuck_children(f, 3600.0, threading.Event())
+
+        def _waitpid(pid, _flags):  # noqa: ANN001, ANN202
+            return (pid, 9) if pid == 222 else (0, 0)
+
+        with patch(f"{_MOD}.os.waitpid", side_effect=_waitpid):
+            _reap_dead(f, threading.Event())
+        assert sorted(f.alive_items()) == [(0, 111), (2, 333)]
+        assert f._consecutive_crashes[1] == 0  # ran long: not a crash loop
+        assert 1 in f._restart_due
+        assert 1 not in f._stuck_killed  # its replacement can be killed later
+
+    def test_fresh_replacement_is_not_killed_for_its_predecessors_age(self, monkeypatch):
+        # A re-fork keeps the slot's old heartbeat until it first polls; it must
+        # not be killed mid-bootstrap for that.
+        clock = [1000.0]
+        monkeypatch.setattr(f"{_MOD}.time.monotonic", lambda: clock[0])
+        f = _Fleet(1)
+        f._heartbeats[0] = time.time() - 4000
+        f.record_fork(0, 444)
+        clock[0] += 30.0
+        with patch(f"{_MOD}.os.kill") as kill:
+            _kill_stuck_children(f, 3600.0, threading.Event())
+        kill.assert_not_called()
+
+    def test_disabled_cap_kills_nothing(self, monkeypatch):
+        f = self._fleet_with_stuck_slot_1(monkeypatch)
+        with patch(f"{_MOD}.os.kill") as kill:
+            _kill_stuck_children(f, None, threading.Event())
+        kill.assert_not_called()
+
+    def test_nothing_killed_while_stopping(self, monkeypatch):
+        f = self._fleet_with_stuck_slot_1(monkeypatch)
+        stopping = threading.Event()
+        stopping.set()
+        with patch(f"{_MOD}.os.kill") as kill:
+            _kill_stuck_children(f, 3600.0, stopping)
+        kill.assert_not_called()
+
+    def test_already_gone_child_is_tolerated(self, monkeypatch):
+        f = self._fleet_with_stuck_slot_1(monkeypatch)
+        with patch(f"{_MOD}.os.kill", side_effect=ProcessLookupError()):
+            _kill_stuck_children(f, 3600.0, threading.Event())
+        assert 1 in f._stuck_killed
 
 
 class TestRestartDueChildren:
@@ -493,6 +644,10 @@ class TestSupervisorHealth:
         try:
             with urllib.request.urlopen(f"{base}/health", timeout=5) as resp:
                 assert resp.status == 200  # alive, but...
+                body = json.loads(resp.read())
+            assert body["stale_children"] == 0
+            assert "quorum_child_seconds_since_poll" in body
+            assert "oldest_child_seconds_since_poll" in body
 
             code, body = _ready()
             assert (code, body["status"], body["loaded_children"]) == (503, "starting", 0)
