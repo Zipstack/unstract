@@ -23,6 +23,14 @@ internally (transient); a child that **crash-loops** (dies immediately N times i
 a row, never reaching a real poll) forces the probe to 503 so k8s restarts the
 pod rather than the supervisor masking a wedged fleet with fresh-looking re-forks.
 
+**Child watchdog** (UN-4223): a child whose heartbeat goes stale past
+``HEALTH_STALE_SECONDS`` is SIGKILLed and re-forked on its own. Its lease-renewal
+thread dies with it, so the claim lapses and the reaper redelivers the message
+(the poison cap bounds a task that hangs on every attempt). Without this, one hung
+task made the fleet's ``/health`` 503 and a liveness kill drained every sibling;
+now only the stuck slot is lost, for one stale window. SIGKILL rather than SIGTERM:
+a graceful stop waits for the in-flight task, which is the thing that is hung.
+
 **Readiness** (UN-4136): the same port serves ``/ready``, which answers 200 only
 once EVERY child has finished its ``import worker`` bootstrap and built its
 consumer. ``/health`` cannot say this — the heartbeats are seeded fresh at
@@ -105,6 +113,40 @@ def concurrency_from_env() -> int:
         )
         n = _MAX_CONCURRENCY
     return n
+
+
+def _parse_bool(raw: str) -> bool:
+    value = raw.strip().lower()
+    if value in ("1", "true", "yes", "on"):
+        return True
+    if value in ("0", "false", "no", "off"):
+        return False
+    raise ValueError(f"expected a boolean, got {raw!r}")
+
+
+def child_watchdog_from_env() -> float | None:
+    """Heartbeat age (seconds) past which the supervisor SIGKILLs a single child, or
+    ``None`` when the watchdog is off.
+
+    Reuses ``WORKER_PG_QUEUE_CONSUMER_HEALTH_STALE_SECONDS`` — the threshold at which
+    the fleet probe already declares a child stale, which every deployment sizes at
+    or above the VT so a legitimately long task never crosses it. Off when that knob
+    is unset (its 60s code default would kill any task longer than a minute) or when
+    ``WORKER_PG_QUEUE_CONSUMER_CHILD_WATCHDOG`` is false.
+    """
+    from queue_backend.pg_queue.consumer import consumer_env
+
+    if not consumer_env("CHILD_WATCHDOG", True, _parse_bool):
+        return None
+    stale: float | None = consumer_env("HEALTH_STALE_SECONDS", None, float)
+    if stale is None:
+        return None
+    if not math.isfinite(stale) or stale <= 0:
+        raise ValueError(
+            "WORKER_PG_QUEUE_CONSUMER_HEALTH_STALE_SECONDS must be a finite number "
+            f"> 0, got {stale!r}"
+        )
+    return stale
 
 
 def shutdown_grace_from_env() -> float:
@@ -264,6 +306,15 @@ class _Fleet:
         """Readiness verdict source: True once every slot's child has loaded."""
         return self.loaded_count() == self._n
 
+    def is_loaded(self, slot: int) -> bool:
+        self._validate(slot)
+        return bool(self._loaded[slot])
+
+    def slot_age(self, slot: int) -> float:
+        """Seconds since ``slot``'s child last polled, per its published heartbeat."""
+        self._validate(slot)
+        return time.time() - self._heartbeats[slot]
+
     def oldest_age(self) -> float:
         now = time.time()
         return max((now - hb for hb in self._heartbeats), default=0.0)
@@ -406,6 +457,36 @@ def _restart_due_children(fleet: _Fleet, stopping: threading.Event) -> None:
         _try_fork_child(fleet, slot)
 
 
+def _kill_stale_children(fleet: _Fleet, stale_after: float, killed: set[int]) -> None:
+    """SIGKILL every loaded child whose heartbeat is older than ``stale_after``.
+
+    Only a *loaded* child is judged: a re-forked slot keeps its predecessor's old
+    heartbeat until the new child bootstraps and publishes (record_fork does not
+    reseed it), so judging it earlier would kill every replacement during import.
+    ``killed`` holds pids already signalled and not yet reaped, so a child is
+    killed and logged once; the next ``_reap_dead`` reaps it and schedules the
+    re-fork like any other exit.
+    """
+    for slot, pid in fleet.alive_items():
+        if pid in killed or not fleet.is_loaded(slot):
+            continue
+        age = fleet.slot_age(slot)
+        if age <= stale_after:
+            continue
+        logger.error(
+            "PG-queue consumer: child slot=%s pid=%s has not polled for %.0fs "
+            "(> %.0fs) — presumed hung; SIGKILL so its message redelivers and the "
+            "slot is re-forked",
+            slot,
+            pid,
+            age,
+            stale_after,
+        )
+        with contextlib.suppress(ProcessLookupError):
+            os.kill(pid, signal.SIGKILL)
+        killed.add(pid)
+
+
 def run_supervised(concurrency: int) -> None:
     """Fork ``concurrency`` consumer children and supervise them until SIGTERM."""
     logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
@@ -417,6 +498,16 @@ def run_supervised(concurrency: int) -> None:
         "children)",
         grace_seconds,
     )
+    watchdog_after = child_watchdog_from_env()
+    if watchdog_after is None:
+        logger.info("PG-queue consumer supervisor: child watchdog off")
+    else:
+        logger.info(
+            "PG-queue consumer supervisor: child watchdog kills a child silent for "
+            "> %.0fs",
+            watchdog_after,
+        )
+    killed: set[int] = set()
     stopping = threading.Event()
 
     def _signal_children(sig: int) -> None:
@@ -453,7 +544,10 @@ def run_supervised(concurrency: int) -> None:
     try:
         while not stopping.is_set():
             _reap_dead(fleet, stopping)
+            killed.intersection_update(pid for _slot, pid in fleet.alive_items())
             _restart_due_children(fleet, stopping)
+            if watchdog_after is not None and not stopping.is_set():
+                _kill_stale_children(fleet, watchdog_after, killed)
             stopping.wait(_MONITOR_INTERVAL_SECONDS)  # responsive to SIGTERM
     finally:
         stopping.set()

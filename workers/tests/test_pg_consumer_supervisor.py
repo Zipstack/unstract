@@ -22,11 +22,13 @@ from pg_queue_consumer.supervisor import (
     _Fleet,
     _child_after_fork,
     _join_children,
+    _kill_stale_children,
     _reap_dead,
     _restart_due_children,
     _run_child,
     _try_fork_child,
     _wait_for_exit,
+    child_watchdog_from_env,
     concurrency_from_env,
     shutdown_grace_from_env,
 )
@@ -212,6 +214,118 @@ class TestFleet:
         f.reap(1)
         assert list(f.loaded) == [1, 0]
         assert f.all_loaded() is False
+
+
+_STALE = "WORKER_PG_QUEUE_CONSUMER_HEALTH_STALE_SECONDS"
+_WATCHDOG = "WORKER_PG_QUEUE_CONSUMER_CHILD_WATCHDOG"
+
+
+class TestChildWatchdogFromEnv:
+    """UN-4223: the watchdog kills at the stale threshold the fleet probe uses, and
+    only when that threshold was deliberately configured.
+    """
+
+    def test_tracks_health_stale_when_set(self, monkeypatch):
+        monkeypatch.delenv(_WATCHDOG, raising=False)
+        monkeypatch.setenv(_STALE, "7260")
+        assert child_watchdog_from_env() == pytest.approx(7260.0)
+
+    def test_off_when_health_stale_unset(self, monkeypatch):
+        # The 60s code default would kill any task longer than a minute.
+        monkeypatch.delenv(_WATCHDOG, raising=False)
+        monkeypatch.delenv(_STALE, raising=False)
+        assert child_watchdog_from_env() is None
+
+    @pytest.mark.parametrize("off", ["false", "0", "no", "OFF"])
+    def test_kill_switch(self, monkeypatch, off):
+        monkeypatch.setenv(_STALE, "7260")
+        monkeypatch.setenv(_WATCHDOG, off)
+        assert child_watchdog_from_env() is None
+
+    def test_explicit_true_is_on(self, monkeypatch):
+        monkeypatch.setenv(_STALE, "600")
+        monkeypatch.setenv(_WATCHDOG, "true")
+        assert child_watchdog_from_env() == pytest.approx(600.0)
+
+    def test_malformed_switch_raises(self, monkeypatch):
+        monkeypatch.setenv(_STALE, "600")
+        monkeypatch.setenv(_WATCHDOG, "maybe")
+        with pytest.raises(ValueError, match=_WATCHDOG):
+            child_watchdog_from_env()
+
+    @pytest.mark.parametrize("bad", ["0", "-5", "inf", "nan"])
+    def test_non_positive_or_non_finite_stale_raises(self, monkeypatch, bad):
+        monkeypatch.delenv(_WATCHDOG, raising=False)
+        monkeypatch.setenv(_STALE, bad)
+        with pytest.raises(ValueError, match=_STALE):
+            child_watchdog_from_env()
+
+
+class TestKillStaleChildren:
+    """UN-4223: one hung child is killed on its own instead of a liveness kill
+    draining every sibling with it.
+    """
+
+    @staticmethod
+    def _fleet(ages: list[float], loaded: list[int]) -> _Fleet:
+        f = _Fleet(len(ages))
+        now = time.time()
+        for slot, age in enumerate(ages):
+            f._heartbeats[slot] = now - age
+            f.loaded[slot] = loaded[slot]
+            f.record_fork(slot, 100 + slot)
+        return f
+
+    def test_only_the_stale_child_is_sigkilled(self):
+        import signal as _signal
+
+        f = self._fleet([5, 9000, 5], loaded=[1, 1, 1])
+        killed: set[int] = set()
+        with patch(f"{_MOD}.os.kill") as kill:
+            _kill_stale_children(f, stale_after=7260, killed=killed)
+        kill.assert_called_once_with(101, _signal.SIGKILL)
+        assert killed == {101}
+
+    def test_child_still_bootstrapping_is_spared(self):
+        # A re-forked slot keeps its predecessor's old heartbeat until it loads.
+        f = self._fleet([9000], loaded=[0])
+        with patch(f"{_MOD}.os.kill") as kill:
+            _kill_stale_children(f, stale_after=7260, killed=set())
+        kill.assert_not_called()
+
+    def test_age_at_threshold_is_spared(self):
+        f = self._fleet([60], loaded=[1])
+        with (
+            patch(f"{_MOD}.time.time", return_value=f._heartbeats[0] + 60),
+            patch(f"{_MOD}.os.kill") as kill,
+        ):
+            _kill_stale_children(f, stale_after=60, killed=set())
+        kill.assert_not_called()
+
+    def test_already_signalled_child_is_not_killed_again(self):
+        f = self._fleet([9000], loaded=[1])
+        with patch(f"{_MOD}.os.kill") as kill:
+            _kill_stale_children(f, stale_after=7260, killed={100})
+        kill.assert_not_called()
+
+    def test_vanished_child_is_tolerated(self):
+        f = self._fleet([9000], loaded=[1])
+        killed: set[int] = set()
+        with patch(f"{_MOD}.os.kill", side_effect=ProcessLookupError):
+            _kill_stale_children(f, stale_after=7260, killed=killed)
+        assert killed == {100}
+
+    def test_killed_child_is_reforked_without_counting_a_crash(self):
+        # A watchdog kill ends a long-running child, so the slot re-forks with no
+        # crash-loop penalty — exactly like any other healthy exit.
+        f = self._fleet([9000], loaded=[1])
+        f._last_fork[0] -= _MIN_HEALTHY_UPTIME_SECONDS + 100
+        with patch(f"{_MOD}.os.kill"):
+            _kill_stale_children(f, stale_after=7260, killed=set())
+        with patch(f"{_MOD}.os.waitpid", return_value=(100, 9)):
+            _reap_dead(f, threading.Event())
+        assert f._consecutive_crashes[0] == 0
+        assert f.is_loaded(0) is False  # replacement must bootstrap before judged
 
 
 class TestReapDead:
