@@ -1214,6 +1214,49 @@ class TestTheConsumersAgreeOnTheUsername:
         assert urlsplit(build_socketio_redis_url()).username == "alice"
 
 
+class TestTheDefaultUserWithoutAPasswordIsNotAnError:
+    """A username without a password is dropped either way; only the DIAGNOSTIC
+    is conditional.
+
+    `default` is Redis's own built-in user and `AUTH default <pw>` is equivalent
+    to `AUTH <pw>`, so `default` with no password is not a misconfiguration -- it
+    is the absence of ACL usage, which is the normal state for the in-cluster
+    Redis, and values.yaml ships REDIS_USER: default. Logging it at ERROR fired
+    on every default on-prem install: ~20k lines a day per namespace across
+    eight pod types, measured on two staging namespaces before this was fixed.
+    """
+
+    @pytest.mark.parametrize("raw", ["default", "DEFAULT", "  default  "])
+    def test_the_default_user_without_a_password_is_silent(
+        self, monkeypatch, raw, caplog
+    ):
+        monkeypatch.setenv("REDIS_USER", raw)
+        monkeypatch.delenv("REDIS_PASSWORD", raising=False)
+        # Dropped, exactly as a named user would be -- the behaviour is unchanged.
+        assert _resolve_redis_env("REDIS_")["username"] is None
+        # Spelling and whitespace are normalised before the comparison, because
+        # the chart writes one spelling and a hand-edited values file another.
+        assert "ACL AUTH" not in caplog.text
+
+    def test_a_named_user_without_a_password_still_errors(self, monkeypatch, caplog):
+        """The case the diagnostic exists for, and the one redis-py turns into an
+        opaque `DataError: Invalid input of type: 'NoneType'` on the first command.
+        """
+        monkeypatch.setenv("REDIS_USER", "alice")
+        monkeypatch.delenv("REDIS_PASSWORD", raising=False)
+        assert _resolve_redis_env("REDIS_")["username"] is None
+        assert "ACL AUTH" in caplog.text
+        assert "alice" in caplog.text
+
+    def test_the_default_user_WITH_a_password_is_kept(self, monkeypatch):
+        """The exemption must not reach the supported configuration: `default`
+        plus a password is a real two-argument AUTH and has to survive.
+        """
+        monkeypatch.setenv("REDIS_USER", "default")
+        monkeypatch.setenv("REDIS_PASSWORD", "pw")
+        assert _resolve_redis_env("REDIS_")["username"] == "default"
+
+
 class TestBlankMeansUnsetForTlsToo:
     """The convention has to cover TLS, not just credentials.
 
