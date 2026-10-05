@@ -366,7 +366,7 @@ def _run_child(slot: int, heartbeats, loaded) -> None:  # noqa: ANN001 (ctypes a
 
     def _publish_heartbeat() -> None:
         # last-poll wall-time = now − (seconds since last poll). Frozen while a
-        # task runs (the consumer stamps its heartbeat at the top of poll_once),
+        # task runs (the consumer stamps its heartbeat before each queue read),
         # so a child stuck on a too-long task goes stale exactly as the single
         # consumer does. Guarded so a transient error (e.g. teardown during
         # shutdown) logs loudly and the loop continues instead of dying silently

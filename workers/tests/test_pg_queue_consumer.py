@@ -666,8 +666,8 @@ class TestPollHeartbeat:
         assert consumer.seconds_since_last_poll() < 1.0
 
     def test_heartbeat_stamped_before_read(self):
-        # Pins the headline design: the stamp lands at the TOP of poll_once
-        # (before read), so a task running longer than the threshold still trips
+        # Pins the headline design: the stamp lands before each queue read (not
+        # after it), so a task running longer than the threshold still trips
         # the probe. A bottom-of-poll stamp would pass test_poll_once_refreshes
         # but fail here.
         client = MagicMock()
