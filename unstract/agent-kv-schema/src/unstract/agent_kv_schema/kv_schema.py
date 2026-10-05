@@ -16,6 +16,7 @@ RESERVED_NODE = {
     "_array",
     "description",
     "_key",
+    "_dedup",
 }  # node-level (distinct from leaf-attr RESERVED)
 
 # Absolute structural-depth ceiling for callers that don't pass an explicit
@@ -24,6 +25,19 @@ RESERVED_NODE = {
 # fast as a clean ValueError (-> SchemaError) instead of a RecursionError;
 # compile_schema always passes the real, much smaller cap from SchemaCaps.
 _DEFAULT_MAX_DEPTH = 100
+
+
+def _parse_dedup(raw: Any, path: str) -> bool:
+    """Validate the per-array `_dedup` flag.
+
+    Strict about the type rather than truthy: `"_dedup": "false"` is a string
+    and would be TRUE under a truthiness check, silently leaving dedup on for
+    an author who explicitly asked for it off -- and silently dropping their
+    duplicate rows. A wrong type is a schema error, not a default.
+    """
+    if isinstance(raw, bool):
+        return raw
+    raise ValueError(f"'{path}' _dedup must be true or false (got {type(raw).__name__})")
 
 
 def _parse_format(raw: str):
@@ -92,6 +106,7 @@ def _walk(
                 description=str(node.get("description", "")),
                 item_specs=item_specs,
                 key_column=str(node.get("_key", "")),
+                dedup_rows=_parse_dedup(node.get("_dedup", True), ".".join(path_parts)),
             )
         )
         return

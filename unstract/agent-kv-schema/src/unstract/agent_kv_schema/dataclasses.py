@@ -34,3 +34,20 @@ class ArraySpec:
     item_specs: list[KeySpec] = field(default_factory=list)
     key_column: str = ""
     required: bool = False
+    #: Collapse rows identical in EVERY extracted cell? Declared per array as
+    #: `"_dedup": false`.
+    #:
+    #: Defaults True, which is the pre-existing behaviour and is wanted for the
+    #: corpus the extractor was built against: layout-preserving OCR repeats a
+    #: label once per replicate column, producing rows identical in every cell.
+    #:
+    #: But it is NOT lossless, and the docstring that claimed it was has been
+    #: corrected. A document that genuinely contains two identical line items
+    #: comes back with one, so the row count and any calculation summing or
+    #: counting the rows are wrong -- and the codegen path consumes exactly
+    #: these rows. Being unable to tell two real records from one OCR artefact
+    #: is a reason not to guess, so a schema author who knows their documents
+    #: can say so. Default left at True rather than flipped: changing it would
+    #: trade a known-wrong case for an untested one on the corpus this was
+    #: built for.
+    dedup_rows: bool = True

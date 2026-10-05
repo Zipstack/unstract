@@ -114,6 +114,29 @@ A schema node is one of three shapes, decided structurally:
   nested array inside an array's row schema is rejected at compile time ("not supported
   in P8a") — arrays are single-level only in v1.
 
+  `_dedup` (optional, default `true`) controls whether rows identical in **every**
+  extracted column are collapsed to one. Leave it on for documents where
+  layout-preserving OCR repeats a row once per replicate column — that is what it
+  exists for. Set it to `false` when your documents can genuinely contain two
+  identical rows:
+
+  ```json
+  "line_items": {
+    "_dedup": false,
+    "_array": {
+      "description": {"description": "Line description"},
+      "total": {"description": "Line total", "format": "currency"}
+    }
+  }
+  ```
+
+  With `_dedup: true` an invoice listing the same item twice comes back with one
+  row, so the row count — and any `_constraints` aggregate over those rows — is
+  wrong. The default is `true` only because flipping it would break the OCR corpus
+  the extractor was built against; it is not the safer value for every document.
+  Must be a JSON boolean: `"false"` as a string is rejected rather than silently
+  read as true.
+
 ### Constraints (`_constraints`)
 
 An optional top-level `_constraints` key: a list of string expressions checked against
