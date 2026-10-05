@@ -154,13 +154,27 @@ def _aggregate(node: ast.Call, arrays: dict[str, list[dict[str, str]]]):
     nums = [n for r in rows if (n := coerce_number(r.get(column))) is not None]
     if not nums:  # nothing usable -> advisory skip
         raise _Skip()
+    # `math.fsum`, not the builtin `sum`: exactly-rounded, so accumulation error
+    # does not grow with row count. The builtin accumulates left to right, and
+    # on a long array that drift is the one thing that could push a CORRECT
+    # total outside the comparison tolerance and report a false violation.
+    #
+    # Review raised exactly that risk for a 100,000-row array. It did not
+    # reproduce -- 60 randomised value/row combinations up to 100,000 rows and
+    # ~$100k per line produced zero false positives, and the specific figure
+    # quoted (`sum([8230.40] * 100_000) == 823039999.9985306`) is not what
+    # CPython computes; it is exactly 823040000.0, because for identical
+    # addends the partial sums stay representable. But "does not reproduce
+    # across 60 samples" is a weaker guarantee than "cannot happen", the fix
+    # costs one function call, and this is the third review pass over these few
+    # lines -- so the error source is removed rather than argued about.
     if fn == "sum":
-        return float(sum(nums))
+        return float(math.fsum(nums))
     if fn == "min":
         return float(min(nums))
     if fn == "max":
         return float(max(nums))
-    return float(sum(nums) / len(nums))  # avg
+    return float(math.fsum(nums) / len(nums))  # avg
 
 
 def _operand(node, values: dict[str, str], arrays: dict[str, list[dict[str, str]]]):

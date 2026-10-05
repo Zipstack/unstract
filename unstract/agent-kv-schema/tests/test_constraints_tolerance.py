@@ -7,6 +7,8 @@ false violation on a CORRECT invoice -- which is worse than no check, because
 it trains reviewers to ignore the output.
 """
 
+import pytest
+
 from unstract.agent_kv_schema import evaluate_constraints
 
 # Three identical line items. 8230.4 * 3 is 24691.199999999997 in binary
@@ -104,3 +106,26 @@ def test_float_noise_is_still_absorbed_over_many_rows():
         )
         == []
     )
+
+
+# Long arrays. The aggregate uses `math.fsum`, so accumulation error does not
+# grow with row count and a correct total stays correct at any realistic array
+# length -- while a real one-cent error is still reported at the same length.
+@pytest.mark.parametrize("rows", [1_000, 10_000, 100_000])
+def test_a_correct_total_is_not_a_violation_however_many_rows(rows):
+    items = {"line_items": [{"line_total": "8230.40"}] * rows}
+    total = f"{8230.40 * rows:.2f}"
+    assert (
+        evaluate_constraints(
+            ["grand_total == sum('line_items.line_total')"],
+            {"grand_total": total},
+            items,
+        )
+        == []
+    )
+
+
+def test_a_one_cent_error_is_still_caught_at_one_hundred_thousand_rows():
+    items = {"line_items": [{"line_total": "8230.40"}] * 100_000}
+    expr = "grand_total == sum('line_items.line_total')"
+    assert evaluate_constraints([expr], {"grand_total": "823040000.01"}, items) == [expr]
