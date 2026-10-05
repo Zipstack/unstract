@@ -1226,7 +1226,7 @@ class TestTheDefaultUserWithoutAPasswordIsNotAnError:
     eight pod types, measured on two staging namespaces before this was fixed.
     """
 
-    @pytest.mark.parametrize("raw", ["default", "DEFAULT", "  default  "])
+    @pytest.mark.parametrize("raw", ["default", "  default  "])
     def test_the_default_user_without_a_password_is_silent(
         self, monkeypatch, raw, caplog
     ):
@@ -1234,9 +1234,20 @@ class TestTheDefaultUserWithoutAPasswordIsNotAnError:
         monkeypatch.delenv("REDIS_PASSWORD", raising=False)
         # Dropped, exactly as a named user would be -- the behaviour is unchanged.
         assert _resolve_redis_env("REDIS_")["username"] is None
-        # Spelling and whitespace are normalised before the comparison, because
-        # the chart writes one spelling and a hand-edited values file another.
+        # Padding is stripped before the comparison because env_chain returns the
+        # RAW value on purpose, so a hand-edited values file can carry it.
         assert "ACL AUTH" not in caplog.text
+
+    def test_a_case_distinct_default_still_errors(self, monkeypatch, caplog):
+        """Redis ACL usernames are CASE-SENSITIVE, so `DEFAULT` is a named user
+        distinct from the built-in `default` -- not the exemption, and a missing
+        password for it is a real mistake. Lowercasing the comparison hid this.
+        """
+        monkeypatch.setenv("REDIS_USER", "DEFAULT")
+        monkeypatch.delenv("REDIS_PASSWORD", raising=False)
+        assert _resolve_redis_env("REDIS_")["username"] is None
+        assert "ACL AUTH" in caplog.text
+        assert "DEFAULT" in caplog.text
 
     def test_a_named_user_without_a_password_still_errors(self, monkeypatch, caplog):
         """The case the diagnostic exists for, and the one redis-py turns into an

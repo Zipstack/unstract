@@ -647,8 +647,15 @@ def _resolve_redis_env(
     # namespace, across eight pod types, measured on two staging namespaces. A
     # NON-default username without a password is still a real mistake and still
     # reported, because that is the one redis-py turns into an opaque DataError.
+    #
+    # CASE-SENSITIVE, deliberately: Redis ACL usernames are, so `DEFAULT` is a
+    # named user distinct from the built-in `default` and a missing password for
+    # it is a real mistake worth reporting. Whitespace is stripped because
+    # env_chain returns the RAW value on purpose (stripping it there truncated a
+    # password once), so a hand-edited values file can carry padding around a
+    # username that was meant to be the built-in one.
     if username and not password:
-        if username.strip().lower() != "default":
+        if username.strip() != "default":
             logger.error(
                 "%sUSER=%r is set but no password is; Redis has no one-argument "
                 "ACL AUTH, so the username is being ignored. Set %sPASSWORD, or "
