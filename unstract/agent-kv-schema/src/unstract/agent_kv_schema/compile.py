@@ -84,7 +84,7 @@ def _check_constraint_syntax(expr: str) -> None:
     for node in ast.walk(tree):
         if not isinstance(node, _ALLOWED_NODES):
             raise SchemaError(
-                f"constraint uses disallowed syntax " f"({type(node).__name__}): {expr!r}"
+                f"constraint uses disallowed syntax ({type(node).__name__}): {expr!r}"
             )
         if isinstance(node, ast.Call):
             if not isinstance(node.func, ast.Name) or node.func.id not in _ALLOWED_CALLS:

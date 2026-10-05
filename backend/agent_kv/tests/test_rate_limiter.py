@@ -38,7 +38,8 @@ def test_acquire_under_limit(m_time, m_redis):
     assert limit == settings.AGENT_KV_CONCURRENT_LIMIT
     assert expire == rl._SLOT_TTL_SECONDS
     # No client-side check-then-act calls remain.
-    assert not mock_redis.zcard.called and not mock_redis.zadd.called
+    assert not mock_redis.zcard.called
+    assert not mock_redis.zadd.called
     # Self-heal-before-check-before-acquire ordering lives inside the script.
     body = script
     assert body.index("ZREMRANGEBYSCORE") < body.index("ZCARD") < body.index("ZADD")

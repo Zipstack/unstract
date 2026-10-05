@@ -170,8 +170,9 @@ def test_dispatch_does_not_attempt_the_fallback_when_the_pending_guard_won(
 @mock.patch.object(dispatch, "_dispatcher")
 def test_enqueue_failure_raises_dispatch_error(m_disp, m_key):
     m_disp.return_value.dispatch_with_callback.side_effect = RuntimeError("broker down")
+    job = _job()
     with pytest.raises(dispatch.DispatchError):
-        dispatch.dispatch_job(_job(), extractor=V1_EXTRACTOR_NAME, schema={}, options={})
+        dispatch.dispatch_job(job, extractor=V1_EXTRACTOR_NAME, schema={}, options={})
 
 
 @mock.patch.object(dispatch, "_dispatcher")
@@ -207,8 +208,9 @@ def test_platform_api_key_raises_dispatch_error_when_absent():
         "get_active_platform_key",
         return_value=None,
     ):
+        job = _job()
         with pytest.raises(dispatch.DispatchError):
-            dispatch._platform_api_key(_job())
+            dispatch._platform_api_key(job)
 
 
 @mock.patch.object(dispatch, "_dispatcher")
@@ -222,8 +224,9 @@ def test_raw_exception_from_platform_key_lookup_is_wrapped_as_dispatch_error(
     """
     m_key.side_effect = RuntimeError("platform db down")
 
+    job = _job()
     with pytest.raises(dispatch.DispatchError):
-        dispatch.dispatch_job(_job(), extractor=V1_EXTRACTOR_NAME, schema={}, options={})
+        dispatch.dispatch_job(job, extractor=V1_EXTRACTOR_NAME, schema={}, options={})
 
     # Never got far enough to enqueue.
     assert not m_disp.return_value.dispatch_with_callback.called

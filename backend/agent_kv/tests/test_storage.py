@@ -261,7 +261,10 @@ def test_default_storage_prefix_is_bucket_rooted():
         pytest.skip("AGENT_KV_STORAGE_DIR_PREFIX is overridden in this environment")
     assert settings.AGENT_KV_STORAGE_DIR_PREFIX == "unstract/agent_kv"
     bucket, _, rest = settings.AGENT_KV_STORAGE_DIR_PREFIX.partition("/")
-    assert bucket and rest
+    # Split: a composite assert cannot say WHICH half failed, and these two
+    # mean different things -- no bucket segment vs. a bucket with no path.
+    assert bucket
+    assert rest
 
 
 @mock.patch.object(storage, "FileSystem")

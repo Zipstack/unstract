@@ -1021,13 +1021,16 @@ WHITELISTED_PATHS_LIST = [
     "/static",
 ]
 WHITELISTED_PATHS = [f"/{PATH_PREFIX}{PATH}" for PATH in WHITELISTED_PATHS_LIST]
-# White lists workflow-api-deployment path. This also covers the deployment MCP
-# server, which hangs off the same URL and authenticates with the deployment's
-# own API key rather than a session.
-WHITELISTED_PATHS.append(f"/{API_DEPLOYMENT_PATH_PREFIX}")
-
-# Agent-KV public API: bearer-key auth happens in the views.
-WHITELISTED_PATHS.append(f"/{AGENT_KV_PATH_PREFIX}")
+WHITELISTED_PATHS.extend(
+    [
+        # workflow-api-deployment. Also covers the deployment MCP server, which
+        # hangs off the same URL and authenticates with the deployment's own API
+        # key rather than a session.
+        f"/{API_DEPLOYMENT_PATH_PREFIX}",
+        # Agent-KV public API: bearer-key auth happens in the views.
+        f"/{AGENT_KV_PATH_PREFIX}",
+    ]
+)
 
 # Whitelisting health check API
 WHITELISTED_PATHS.append("/health")

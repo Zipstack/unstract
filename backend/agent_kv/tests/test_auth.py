@@ -29,15 +29,17 @@ def _wrapped():
 
 
 def test_missing_key_is_forbidden():
+    view, request = _wrapped(), _request()
     with pytest.raises(Forbidden):
-        _wrapped()(mock.Mock(), _request())
+        view(mock.Mock(), request)
 
 
 @mock.patch.object(AgentKVKey, "objects")
 def test_unknown_key_is_forbidden(m_objects):
     m_objects.get.side_effect = AgentKVKey.DoesNotExist
+    view, request = _wrapped(), _request(f"Bearer {uuid.uuid4()}")
     with pytest.raises(Forbidden):
-        _wrapped()(mock.Mock(), _request(f"Bearer {uuid.uuid4()}"))
+        view(mock.Mock(), request)
 
 
 @mock.patch.object(AgentKVKey, "objects")
@@ -56,8 +58,9 @@ def test_valid_key_injected_into_kwargs(m_objects):
 
 @mock.patch.object(AgentKVKey, "objects")
 def test_non_uuid_key_is_forbidden_without_db_hit(m_objects):
+    view, request = _wrapped(), _request("Bearer not-a-uuid")
     with pytest.raises(Forbidden):
-        _wrapped()(mock.Mock(), _request("Bearer not-a-uuid"))
+        view(mock.Mock(), request)
     assert not m_objects.get.called
 
 

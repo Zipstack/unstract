@@ -168,7 +168,7 @@ def _drain_until_slot_free(
     return False
 
 
-@pytest.fixture()
+@pytest.fixture
 def require_llm() -> None:
     """Skip a scenario that needs a job to actually reach COMPLETED.
 
@@ -262,7 +262,8 @@ def test_happy_path_extraction(agent_kv_key: AgentKVAuth, require_llm: None) -> 
     for field in INVOICE_FIELDS:
         assert field in record, (field, record)
 
-    assert isinstance(body.get("keys"), list) and body["keys"], body
+    assert isinstance(body.get("keys"), list), body
+    assert body["keys"], body
     # Each audit entry is keyed ``key_path`` (what the engine and the result
     # serializer emit), NOT ``path``.
     audited_paths = {entry["key_path"] for entry in body["keys"]}
@@ -577,7 +578,8 @@ def test_bad_llm_key_ends_failed(agent_kv_key: AgentKVAuth) -> None:
     assert status_doc["status"] == "failed", status_doc
     assert "error" in status_doc, status_doc
     error = status_doc["error"]
-    assert isinstance(error, str) and error, status_doc
+    assert isinstance(error, str), status_doc
+    assert error, status_doc
 
     _assert_user_safe_error(error)
 
@@ -830,9 +832,9 @@ def test_calculation_happy_path(agent_kv_key: AgentKVAuth, require_llm: None) ->
     assert body["success"] is True, body
     assert body["calculations_applied"] is True, body
     assert body["execution"]["success"] is True, body["execution"]
-    assert isinstance(body["calculation_rows"], list) and body["calculation_rows"], body[
-        "calculation_rows"
-    ]
+    rows = body["calculation_rows"]
+    assert isinstance(rows, list), rows
+    assert rows, rows
 
 
 def test_hostile_calculation_fails_user_safely(

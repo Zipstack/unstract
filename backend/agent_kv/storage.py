@@ -33,7 +33,7 @@ def _base(org_id: str, job_id: str) -> str:
 def stage_input(org_id: str, job_id: str, uploaded_file) -> str:
     ext = os.path.splitext(uploaded_file.name or "")[1].lower() or ".bin"
     ref = f"{_base(org_id, job_id)}/input{ext}"
-    data = b"".join(chunk for chunk in uploaded_file.chunks())
+    data = b"".join(uploaded_file.chunks())
     _fs().write(path=ref, mode="wb", data=data)
     return ref
 

@@ -170,7 +170,7 @@ class SubmitView(APIView):
             job.save()
             job_saved = True
         except Exception:
-            logger.error("agent-kv staging/save failed for job %s", job.id, exc_info=True)
+            logger.exception("agent-kv staging/save failed for job %s", job.id)
             return _fail_job_response(
                 job,
                 org_id,
@@ -193,7 +193,7 @@ class SubmitView(APIView):
                 job, extractor=entry["name"], schema=entry["keys"], options=options
             )
         except DispatchError:
-            logger.error("agent-kv dispatch failed for job %s", job.id, exc_info=True)
+            logger.exception("agent-kv dispatch failed for job %s", job.id)
             return _fail_job_response(
                 job,
                 org_id,
@@ -205,10 +205,9 @@ class SubmitView(APIView):
             # as DispatchError, but nothing here may rely on that alone —
             # any other exception must still terminalize the job and
             # release the slot rather than escape as an unhandled 500.
-            logger.error(
+            logger.exception(
                 "agent-kv dispatch raised unexpectedly for job %s",
                 job.id,
-                exc_info=True,
             )
             return _fail_job_response(
                 job,

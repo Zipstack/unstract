@@ -54,11 +54,11 @@ from unstract.core.data_models import (
 # @worker_task entries on this worker; nothing here calls into them. Naming them
 # in a module-level tuple is what keeps them imported.
 #
-# `# noqa: F401` is NOT enough, and that is not a style preference — it is the
+# A bare `noqa` directive is NOT enough, and that is not a style preference — it
 # reproduced cause of this exact line being deleted once already. Two hooks
 # interact:
 #   1. ruff's isort (I001) merges two `from scheduler import X` statements into
-#      one parenthesised statement, which relocates each trailing `# noqa` onto
+#      one parenthesised statement, which relocates each trailing noqa directive onto
 #      a MEMBER line.
 #   2. F401 is reported against the statement, whose first line now carries no
 #      directive, so pycln (`[tool.pycln] all = true` — it removes side-effect
