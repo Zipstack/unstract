@@ -21,6 +21,7 @@ import httpx
 import litellm
 import pytest
 from litellm.llms.custom_httpx.http_handler import HTTPHandler
+from litellm.llms.vertex_ai.vertex_llm_base import VertexBase
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -109,30 +110,6 @@ def test_client_is_shared_per_timeout() -> None:
     assert first["client"] is second["client"]
 
 
-def test_vertex_complete_passes_the_client_to_litellm(no_cost: None) -> None:
-    llm_module = _load_llm_module()
-    llm = llm_module.LLM(
-        adapter_id=VERTEX_ADAPTER_ID,
-        adapter_metadata={
-            "model": "gemini-2.5-flash",
-            "json_credentials": "{}",
-            "project": "test-project",
-            "timeout": 300,
-        },
-    )
-    calls: list[dict[str, object]] = []
-
-    def spy(**kwargs: object) -> object:
-        calls.append(kwargs)
-        return _REAL_COMPLETION(**{**kwargs, "mock_response": "ok"})
-
-    with patch.object(llm_module.litellm, "completion", spy):
-        llm.complete("hi")
-
-    assert calls[0]["stream"] is True
-    assert calls[0]["client"].client.timeout.read == 300
-
-
 # ── The timeout reaches the HTTP request ─────────────────────────────────────
 
 
@@ -154,36 +131,84 @@ def _gemini_sse_body(text: str) -> bytes:
     return f"data: {json.dumps(event)}\n\n".encode()
 
 
-def test_streamed_gemini_request_carries_the_adapter_timeout(no_cost: None) -> None:
-    """End to end through LiteLLM: the request's read timeout is the adapter's.
-
-    Without the client LLM passes, this request goes out with LiteLLM's 6000 s
-    ``request_timeout`` instead.
-    """
-    llm_module = _load_llm_module()
-    llm = llm_module.LLM(
-        adapter_id=GEMINI_ADAPTER_ID,
-        adapter_metadata={
-            "model": "gemini-2.5-flash",
-            "api_key": "test-key",
-            "timeout": 420,
-        },
-    )
-    seen: list[httpx.Request] = []
+@pytest.fixture
+def sent() -> Iterator[list[httpx.Request]]:
+    """Capture outgoing HTTP requests and answer each with a Gemini stream."""
+    requests: list[httpx.Request] = []
 
     def handle_request(
         _transport: httpx.HTTPTransport, request: httpx.Request
     ) -> httpx.Response:
-        seen.append(request)
+        requests.append(request)
         return httpx.Response(
             200,
             headers={"content-type": "text/event-stream"},
             content=_gemini_sse_body("hello"),
         )
 
-    with patch.object(httpx.HTTPTransport, "handle_request", handle_request):
-        result = llm.complete("hi")
+    # Vertex needs an OAuth token; skip the Google auth round trip.
+    with (
+        patch.object(httpx.HTTPTransport, "handle_request", handle_request),
+        patch.object(
+            VertexBase, "_ensure_access_token", return_value=("token", "test-project")
+        ),
+    ):
+        yield requests
+
+
+def _gemini_llm(timeout: int) -> object:
+    return _load_llm_module().LLM(
+        adapter_id=GEMINI_ADAPTER_ID,
+        adapter_metadata={
+            "model": "gemini-2.5-flash",
+            "api_key": "test-key",
+            "timeout": timeout,
+        },
+    )
+
+
+def _vertex_llm(timeout: int) -> object:
+    return _load_llm_module().LLM(
+        adapter_id=VERTEX_ADAPTER_ID,
+        adapter_metadata={
+            "model": "gemini-2.5-flash",
+            "json_credentials": "{}",
+            "project": "test-project",
+            "timeout": timeout,
+        },
+    )
+
+
+# Without the client LLM passes, each of these requests goes out with
+# LiteLLM's 6000 s ``request_timeout`` instead of the adapter's.
+
+
+def test_gemini_complete_request_carries_the_adapter_timeout(
+    no_cost: None, sent: list[httpx.Request]
+) -> None:
+    result = _gemini_llm(timeout=420).complete("hi")
 
     assert result["response"].text == "hello"
-    assert len(seen) == 1
-    assert seen[0].extensions["timeout"]["read"] == 420
+    assert len(sent) == 1
+    assert sent[0].extensions["timeout"]["read"] == 420
+
+
+def test_vertex_complete_request_carries_the_adapter_timeout(
+    no_cost: None, sent: list[httpx.Request]
+) -> None:
+    result = _vertex_llm(timeout=300).complete("hi")
+
+    assert result["response"].text == "hello"
+    assert len(sent) == 1
+    assert "aiplatform.googleapis.com" in str(sent[0].url)
+    assert sent[0].extensions["timeout"]["read"] == 300
+
+
+def test_gemini_stream_complete_request_carries_the_adapter_timeout(
+    no_cost: None, sent: list[httpx.Request]
+) -> None:
+    text = "".join(r.text for r in _gemini_llm(timeout=240).stream_complete("hi"))
+
+    assert text == "hello"
+    assert len(sent) == 1
+    assert sent[0].extensions["timeout"]["read"] == 240

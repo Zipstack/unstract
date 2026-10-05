@@ -97,9 +97,15 @@ def _inject_mock_response(completion_kwargs: dict[str, object]) -> None:
     completion_kwargs["mock_response"] = mock
 
 
-@cache
+@lru_cache(maxsize=8)
 def _gemini_stream_client(timeout: float) -> HTTPHandler:
-    """One shared HTTP client per timeout value, so connections are pooled."""
+    """One shared HTTP client per timeout value, so connections are pooled.
+
+    Adapters use a handful of timeouts, so a few clients cover them. The cap
+    keeps a worker that sees many distinct values from holding a pool for
+    each; an evicted client is not closed here, because a call in flight may
+    still be using it, and is released once the last reference goes.
+    """
     return HTTPHandler(timeout=httpx.Timeout(timeout))
 
 
