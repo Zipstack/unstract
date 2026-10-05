@@ -317,6 +317,17 @@ class TestStuckChildSecondsFromEnv:
         with pytest.raises(ValueError, match="STUCK_CHILD_SECONDS"):
             stuck_child_seconds_from_env()
 
+    def test_warns_when_cap_exceeds_stale_window(self, monkeypatch, caplog):
+        monkeypatch.setenv(_PORT, "8090")
+        monkeypatch.setenv(_STALE, "180")
+        with caplog.at_level("WARNING", logger=_MOD):
+            sup._warn_if_cap_exceeds_stale_window(3600.0)
+            assert "exceeds" in caplog.text
+            caplog.clear()
+            sup._warn_if_cap_exceeds_stale_window(180.0)
+            sup._warn_if_cap_exceeds_stale_window(None)
+        assert caplog.text == ""
+
     def test_malformed_override_raises(self, monkeypatch):
         monkeypatch.setenv(_STUCK, "1h")
         with pytest.raises(ValueError, match="STUCK_CHILD_SECONDS"):
@@ -331,6 +342,7 @@ class TestKillStuckChildren:
         f = _Fleet(3)
         for slot, pid in enumerate((111, 222, 333)):
             f.record_fork(slot, pid)
+            f.loaded[slot] = 1
         clock[0] += 5000.0  # every child has been up 5000s
         f._heartbeats[1] = time.time() - 4000  # slot 1 frozen on one task
         return f
@@ -366,6 +378,47 @@ class TestKillStuckChildren:
         assert f._consecutive_crashes[1] == 0  # ran long: not a crash loop
         assert 1 in f._restart_due
         assert 1 not in f._stuck_killed  # its replacement can be killed later
+        assert f.stuck_kill_count == 1
+
+    def test_reaping_a_killed_child_reseeds_its_heartbeat(self, monkeypatch):
+        # Review finding: in a two-child fleet one slot is the quorum, so leaving
+        # the killed child's frozen age in place kept /health at 503 through the
+        # replacement's bootstrap.
+        clock = [1000.0]
+        monkeypatch.setattr(f"{_MOD}.time.monotonic", lambda: clock[0])
+        f = _Fleet(2)
+        for slot, pid in enumerate((111, 222)):
+            f.record_fork(slot, pid)
+            f.loaded[slot] = 1
+        clock[0] += 5000.0
+        f._heartbeats[1] = time.time() - 4000
+        assert f.freshness() > 3600  # stale before the kill
+        with patch(f"{_MOD}.os.kill"):
+            _kill_stuck_children(f, 3600.0, threading.Event())
+        with patch(
+            f"{_MOD}.os.waitpid",
+            side_effect=lambda pid, _flags: (pid, 9) if pid == 222 else (0, 0),
+        ):
+            _reap_dead(f, threading.Event())
+        assert f.freshness() < 5  # healthy while the replacement boots
+
+    def test_a_crashed_child_is_not_reseeded(self):
+        # The reseed is only for stuck kills; a crash must still age the slot.
+        f = _Fleet(1)
+        f._heartbeats[0] = time.time() - 500
+        f.record_fork(0, 111)
+        with patch(f"{_MOD}.os.waitpid", return_value=(111, 0)):
+            _reap_dead(f, threading.Event())
+        assert f.oldest_age() > 400
+
+    def test_a_child_still_loading_is_never_killed(self, monkeypatch):
+        # Review finding: with a cap shorter than the bootstrap, a child that has
+        # not polled yet passed both checks and was killed before it could start.
+        f = self._fleet_with_stuck_slot_1(monkeypatch)
+        f.loaded[1] = 0
+        with patch(f"{_MOD}.os.kill") as kill:
+            _kill_stuck_children(f, 3600.0, threading.Event())
+        kill.assert_not_called()
 
     def test_fresh_replacement_is_not_killed_for_its_predecessors_age(self, monkeypatch):
         # A re-fork keeps the slot's old heartbeat until it first polls; it must
@@ -375,6 +428,7 @@ class TestKillStuckChildren:
         f = _Fleet(1)
         f._heartbeats[0] = time.time() - 4000
         f.record_fork(0, 444)
+        f.loaded[0] = 1  # loaded, but its heartbeat not yet published
         clock[0] += 30.0
         with patch(f"{_MOD}.os.kill") as kill:
             _kill_stuck_children(f, 3600.0, threading.Event())

@@ -65,10 +65,35 @@ class _Exporter:
 
         Gauge(name, doc, registry=self.registry).set_function(fn)
 
+    def _function_counter(self, name: str, doc: str, fn: Callable[[], float]) -> None:
+        self.registry.register(_FunctionCounter(name, doc, fn))
+
     def render(self) -> bytes:
         from prometheus_client import generate_latest
 
         return generate_latest(self.registry)
+
+
+class _FunctionCounter:
+    """A counter whose value is read from ``fn`` at scrape time.
+
+    ``prometheus_client.Counter`` can only be incremented, not backed by a
+    callback; this suits a count kept by its owner (e.g. the supervisor's
+    ``_Fleet``) rather than by the metrics layer.
+    """
+
+    def __init__(self, name: str, doc: str, fn: Callable[[], float]) -> None:
+        self._name, self._doc, self._fn = name, doc, fn
+
+    def describe(self) -> Iterable[Metric]:
+        from prometheus_client.core import CounterMetricFamily
+
+        return (CounterMetricFamily(self._name, self._doc),)
+
+    def collect(self) -> Iterable[Metric]:
+        from prometheus_client.core import CounterMetricFamily
+
+        return (CounterMetricFamily(self._name, self._doc, value=self._fn()),)
 
 
 class ConsumerMetrics(_Exporter):
@@ -88,6 +113,8 @@ class ConsumerMetrics(_Exporter):
         freshness_fn: Callable[[], float],
         alive_children_fn: Callable[[], float] | None = None,
         concurrency_fn: Callable[[], float] | None = None,
+        oldest_child_age_fn: Callable[[], float] | None = None,
+        stuck_child_kills_fn: Callable[[], float] | None = None,
     ) -> None:
         super().__init__()
         self._function_gauge(
@@ -107,6 +134,21 @@ class ConsumerMetrics(_Exporter):
                 "pg_consumer_configured_concurrency",
                 "Configured child-process concurrency of the supervisor fleet",
                 concurrency_fn,
+            )
+        if oldest_child_age_fn is not None:
+            self._function_gauge(
+                "pg_consumer_oldest_child_age_seconds",
+                "Seconds since the most-stale child in the supervisor fleet last "
+                "polled (one child stuck on a task shows here, not in the heartbeat "
+                "age, until it is killed)",
+                oldest_child_age_fn,
+            )
+        if stuck_child_kills_fn is not None:
+            self._function_counter(
+                "pg_consumer_stuck_child_kills",
+                "Children the supervisor SIGKILLed for running one task past the "
+                "stuck-child cap (each one's message is redelivered)",
+                stuck_child_kills_fn,
             )
 
 

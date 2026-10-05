@@ -188,6 +188,31 @@ def stuck_child_seconds_from_env() -> float | None:
     return consumer_env("HEALTH_STALE_SECONDS", _DEFAULT_HEALTH_STALE_SECONDS, float)
 
 
+def _warn_if_cap_exceeds_stale_window(stuck_after: float | None) -> None:
+    """A cap above the health stale window lets a stuck child count as stale
+    before it is killed. In a small fleet one child can be half of it, so the
+    probe would restart the pod first, the outage the cap exists to prevent.
+    """
+    from queue_backend.pg_queue.consumer import (
+        _DEFAULT_HEALTH_STALE_SECONDS,
+        consumer_env,
+    )
+
+    if stuck_after is None or consumer_env("HEALTH_PORT", None, int) is None:
+        return
+    stale_after = consumer_env(
+        "HEALTH_STALE_SECONDS", _DEFAULT_HEALTH_STALE_SECONDS, float
+    )
+    if stuck_after > stale_after:
+        logger.warning(
+            "PG-queue consumer supervisor: STUCK_CHILD_SECONDS (%.0fs) exceeds "
+            "HEALTH_STALE_SECONDS (%.0fs) — a stuck child can fail the probe "
+            "before it is killed; keep the cap at or below the stale window",
+            stuck_after,
+            stale_after,
+        )
+
+
 class _Fleet:
     """Owns the per-slot child state — pid, last-fork, heartbeat, crash count and
     pending-restart schedule — keeping them mutually consistent. Slots are
@@ -218,6 +243,7 @@ class _Fleet:
         # Slots already SIGKILLed as stuck, so a child that takes a tick to die
         # is not re-killed and re-logged on every monitor pass. Cleared in reap().
         self._stuck_killed: set[int] = set()
+        self._stuck_kill_count = 0
 
     @property
     def concurrency(self) -> int:
@@ -245,7 +271,8 @@ class _Fleet:
         """Mark ``slot`` alive under ``pid``; clears any pending restart. Note the
         heartbeat is deliberately NOT reseeded here — a re-forked child must earn
         freshness by actually polling, so a crash-looping slot ages instead of
-        looking perpetually fresh.
+        looking perpetually fresh. (A slot the supervisor killed as stuck is the
+        one exception; :meth:`reap` reseeds it.)
         """
         self._validate(slot)
         self._pids[slot] = pid
@@ -257,11 +284,20 @@ class _Fleet:
 
         Also clears the slot's loaded flag: its replacement must finish its own
         bootstrap before the fleet counts as loaded again.
+
+        A slot the supervisor killed as stuck gets its heartbeat reseeded: the
+        stuck task is gone, and leaving its frozen age in place would keep the
+        slot stale for the replacement's whole bootstrap. In a two-child fleet
+        that one slot is the quorum, so the probe would restart the pod anyway.
+        A crash loop is still caught, by :meth:`is_crash_looping`. The child is
+        dead by now, so the parent is the slot's only writer.
         """
         forked_at = self._last_fork.pop(slot, time.monotonic())
         self._pids.pop(slot, None)
         self._loaded[slot] = 0
-        self._stuck_killed.discard(slot)
+        if slot in self._stuck_killed:
+            self._stuck_killed.discard(slot)
+            self._heartbeats[slot] = time.time()
         return time.monotonic() - forked_at
 
     def schedule_restart(self, slot: int, uptime: float) -> int:
@@ -340,15 +376,17 @@ class _Fleet:
         """``(slot, pid, heartbeat_age)`` for each live child stuck past
         ``stuck_after`` and not yet killed.
 
-        A re-forked child's heartbeat is NOT reseeded (see :meth:`record_fork`), so
-        it carries its predecessor's age until it first polls. Requiring the child
-        itself to have been up for ``stuck_after`` stops a fresh replacement from
-        being killed mid-bootstrap for its predecessor's staleness.
+        Only children that have finished loading count: before that the slot
+        holds the parent's seed or a predecessor's heartbeat, not this child's,
+        and a slow bootstrap is not a stuck task. A loaded child's heartbeat
+        starts fresh, because the consumer stamps its last poll when it is built.
+        Requiring the child to have been up for ``stuck_after`` as well covers
+        the moment between it setting its loaded flag and first publishing.
         """
         now_wall, now_mono = time.time(), time.monotonic()
         stuck = []
         for slot, pid in self.alive_items():
-            if slot in self._stuck_killed:
+            if slot in self._stuck_killed or not self._loaded[slot]:
                 continue
             age = now_wall - self._heartbeats[slot]
             uptime = now_mono - self._last_fork.get(slot, now_mono)
@@ -359,6 +397,12 @@ class _Fleet:
     def mark_stuck_killed(self, slot: int) -> None:
         self._validate(slot)
         self._stuck_killed.add(slot)
+        self._stuck_kill_count += 1
+
+    @property
+    def stuck_kill_count(self) -> int:
+        """Children killed as stuck since the supervisor started."""
+        return self._stuck_kill_count
 
     def freshness(self) -> float:
         """Liveness verdict source: a crash-looping fleet is force-stale (``inf``)
@@ -536,6 +580,7 @@ def run_supervised(concurrency: int) -> None:
     fleet = _Fleet(concurrency)
     grace_seconds = shutdown_grace_from_env()
     stuck_after = stuck_child_seconds_from_env()
+    _warn_if_cap_exceeds_stale_window(stuck_after)
     logger.info(
         "PG-queue consumer supervisor: shutdown drain grace = %.0fs (shared across "
         "children); stuck-child cap = %s",
@@ -688,6 +733,8 @@ def _maybe_start_supervisor_health(fleet: _Fleet) -> LivenessServer | None:
         freshness_fn=fleet.freshness,
         alive_children_fn=lambda: float(fleet.alive_count()),
         concurrency_fn=lambda: float(fleet.concurrency),
+        oldest_child_age_fn=fleet.oldest_age,
+        stuck_child_kills_fn=lambda: float(fleet.stuck_kill_count),
     )
     server = LivenessServer(
         freshness_fn=fleet.freshness,

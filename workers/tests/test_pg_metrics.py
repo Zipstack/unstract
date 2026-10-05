@@ -143,6 +143,19 @@ class TestConsumerMetrics:
             4.0
         )
 
+    def test_stuck_child_hooks(self):
+        kills = 0.0
+        metrics = ConsumerMetrics(
+            freshness_fn=lambda: 0.0,
+            oldest_child_age_fn=lambda: 99.0,
+            stuck_child_kills_fn=lambda: kills,
+        )
+        oldest = _sample(metrics, "pg_consumer_oldest_child_age_seconds")
+        assert oldest == pytest.approx(99.0)
+        assert _sample(metrics, "pg_consumer_stuck_child_kills_total") == 0.0
+        kills = 2.0  # read at scrape time
+        assert _sample(metrics, "pg_consumer_stuck_child_kills_total") == 2.0
+
     def test_render_is_prometheus_exposition(self):
         body = ConsumerMetrics(freshness_fn=lambda: 1.0).render()
         assert b"pg_consumer_heartbeat_age_seconds" in body
@@ -596,5 +609,7 @@ class TestSupervisorMetricsRoute:
             assert b"pg_consumer_heartbeat_age_seconds" in body
             assert b"pg_consumer_alive_children" in body
             assert b"pg_consumer_configured_concurrency 2.0" in body
+            assert b"pg_consumer_oldest_child_age_seconds" in body
+            assert b"pg_consumer_stuck_child_kills_total 0.0" in body
         finally:
             server.stop()
