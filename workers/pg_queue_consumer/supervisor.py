@@ -23,13 +23,16 @@ internally (transient); a child that **crash-loops** (dies immediately N times i
 a row, never reaching a real poll) forces the probe to 503 so k8s restarts the
 pod rather than the supervisor masking a wedged fleet with fresh-looking re-forks.
 
-**Child watchdog** (UN-4223): a child whose heartbeat goes stale past
-``HEALTH_STALE_SECONDS`` is SIGKILLed and re-forked on its own. Its lease-renewal
+**Child watchdog** (UN-4223, opt-in via ``CHILD_WATCHDOG``): a loaded child whose
+heartbeat goes stale past ``HEALTH_STALE_SECONDS``, or a child still not loaded
+that long after its fork, is SIGKILLed and re-forked on its own. Its lease-renewal
 thread dies with it, so the claim lapses and the reaper redelivers the message
-(the poison cap bounds a task that hangs on every attempt). Without this, one hung
-task made the fleet's ``/health`` 503 and a liveness kill drained every sibling;
-now only the stuck slot is lost, for one stale window. SIGKILL rather than SIGTERM:
-a graceful stop waits for the in-flight task, which is the thing that is hung.
+(the poison cap bounds a task that hangs on every attempt). The siblings keep
+running, so a pod without a liveness probe on ``/health`` loses one slot for one
+stale window instead of the whole fleet. ``/health`` itself still reports 503 from
+the stale crossing until the replacement loads (~20s), because ``oldest_age``
+counts the killed slot's heartbeat. SIGKILL rather than SIGTERM: a graceful stop
+waits for the in-flight task, which is the thing that is hung.
 
 **Readiness** (UN-4136): the same port serves ``/ready``, which answers 200 only
 once EVERY child has finished its ``import worker`` bootstrap and built its
@@ -128,19 +131,26 @@ def child_watchdog_from_env() -> float | None:
     """Heartbeat age (seconds) past which the supervisor SIGKILLs a single child, or
     ``None`` when the watchdog is off.
 
-    Reuses ``WORKER_PG_QUEUE_CONSUMER_HEALTH_STALE_SECONDS`` — the threshold at which
-    the fleet probe already declares a child stale, which every deployment sizes at
-    or above the VT so a legitimately long task never crosses it. Off when that knob
-    is unset (its 60s code default would kill any task longer than a minute) or when
-    ``WORKER_PG_QUEUE_CONSUMER_CHILD_WATCHDOG`` is false.
+    Off unless ``WORKER_PG_QUEUE_CONSUMER_CHILD_WATCHDOG`` is true. Opt-in because
+    it turns ``HEALTH_STALE_SECONDS`` into a hard per-task wall-clock cap: on k8s a
+    liveness probe already killed at that threshold (the whole pod), but a
+    docker-compose install has no healthcheck, so there it has never been enforced
+    and may sit below a legitimately long batch. Enable it only where
+    ``HEALTH_STALE_SECONDS`` exceeds the longest legitimate task. Enabling it
+    without that knob is a misconfiguration (its 60s code default would kill any
+    task longer than a minute), so it raises.
     """
     from queue_backend.pg_queue.consumer import consumer_env
 
-    if not consumer_env("CHILD_WATCHDOG", True, _parse_bool):
+    if not consumer_env("CHILD_WATCHDOG", False, _parse_bool):
         return None
     stale: float | None = consumer_env("HEALTH_STALE_SECONDS", None, float)
     if stale is None:
-        return None
+        raise ValueError(
+            "WORKER_PG_QUEUE_CONSUMER_CHILD_WATCHDOG is enabled but "
+            "WORKER_PG_QUEUE_CONSUMER_HEALTH_STALE_SECONDS is unset — set it above "
+            "the longest legitimate task"
+        )
     if not math.isfinite(stale) or stale <= 0:
         raise ValueError(
             "WORKER_PG_QUEUE_CONSUMER_HEALTH_STALE_SECONDS must be a finite number "
@@ -211,6 +221,9 @@ class _Fleet:
         self._last_fork: dict[int, float] = {}
         self._consecutive_crashes: dict[int, int] = {}
         self._restart_due: dict[int, float] = {}  # slot -> monotonic not-before
+        # Written by the main thread, read by the liveness thread for /metrics; an
+        # int read is atomic under the GIL.
+        self.watchdog_kills = 0
 
     @property
     def concurrency(self) -> int:
@@ -310,6 +323,11 @@ class _Fleet:
         self._validate(slot)
         return bool(self._loaded[slot])
 
+    def fork_age(self, slot: int) -> float:
+        """Seconds since ``slot``'s current child was forked."""
+        self._validate(slot)
+        return time.monotonic() - self._last_fork.get(slot, time.monotonic())
+
     def slot_age(self, slot: int) -> float:
         """Seconds since ``slot``'s child last polled, per its published heartbeat."""
         self._validate(slot)
@@ -362,6 +380,9 @@ def _run_child(slot: int, heartbeats, loaded) -> None:  # noqa: ANN001 (ctypes a
                 )
             time.sleep(_REPORT_INTERVAL_SECONDS)
 
+    # Publish once before ``loaded`` so the watchdog never pairs a loaded slot with
+    # the previous child's stale heartbeat.
+    heartbeats[slot] = time.time() - consumer.seconds_since_last_poll()
     threading.Thread(target=_publish_heartbeat, daemon=True, name=f"pg-hb-{slot}").start()
     loaded[slot] = 1
     logger.info(
@@ -458,33 +479,56 @@ def _restart_due_children(fleet: _Fleet, stopping: threading.Event) -> None:
 
 
 def _kill_stale_children(fleet: _Fleet, stale_after: float, killed: set[int]) -> None:
-    """SIGKILL every loaded child whose heartbeat is older than ``stale_after``.
+    """SIGKILL every child silent for longer than ``stale_after``.
 
-    Only a *loaded* child is judged: a re-forked slot keeps its predecessor's old
-    heartbeat until the new child bootstraps and publishes (record_fork does not
-    reseed it), so judging it earlier would kill every replacement during import.
-    ``killed`` holds pids already signalled and not yet reaped, so a child is
-    killed and logged once; the next ``_reap_dead`` reaps it and schedules the
-    re-fork like any other exit.
+    A *loaded* child is judged by its heartbeat. A child not yet loaded is judged
+    by time since its fork instead: a re-forked slot keeps its predecessor's old
+    heartbeat until the new child bootstraps (record_fork does not reseed it), so
+    the heartbeat would kill every replacement during import, while a child that
+    hangs in ``import worker`` would otherwise never be judged at all. ``killed``
+    holds pids already signalled and not yet reaped, so a child is killed and
+    logged once; the next ``_reap_dead`` reaps it and schedules the re-fork like
+    any other exit.
     """
     for slot, pid in fleet.alive_items():
-        if pid in killed or not fleet.is_loaded(slot):
+        if pid in killed:
             continue
-        age = fleet.slot_age(slot)
+        loaded = fleet.is_loaded(slot)
+        age = fleet.slot_age(slot) if loaded else fleet.fork_age(slot)
         if age <= stale_after:
             continue
         logger.error(
-            "PG-queue consumer: child slot=%s pid=%s has not polled for %.0fs "
-            "(> %.0fs) — presumed hung; SIGKILL so its message redelivers and the "
-            "slot is re-forked",
+            "PG-queue consumer: child slot=%s pid=%s %s for %.0fs (> %.0fs) — "
+            "presumed hung; SIGKILL so its message redelivers and the slot is "
+            "re-forked",
             slot,
             pid,
+            "has not polled" if loaded else "has not finished loading",
             age,
             stale_after,
         )
         with contextlib.suppress(ProcessLookupError):
             os.kill(pid, signal.SIGKILL)
         killed.add(pid)
+        fleet.watchdog_kills += 1
+
+
+def _monitor_tick(
+    fleet: _Fleet,
+    stopping: threading.Event,
+    watchdog_after: float | None,
+    killed: set[int],
+) -> None:
+    """One supervisor iteration: reap exits, re-fork due slots, then the watchdog.
+
+    ``killed`` is trimmed to live pids right after the reap, so a recycled pid is
+    never mistaken for one already signalled.
+    """
+    _reap_dead(fleet, stopping)
+    killed.intersection_update(pid for _slot, pid in fleet.alive_items())
+    _restart_due_children(fleet, stopping)
+    if watchdog_after is not None and not stopping.is_set():
+        _kill_stale_children(fleet, watchdog_after, killed)
 
 
 def run_supervised(concurrency: int) -> None:
@@ -543,11 +587,7 @@ def run_supervised(concurrency: int) -> None:
     health = _maybe_start_supervisor_health(fleet)
     try:
         while not stopping.is_set():
-            _reap_dead(fleet, stopping)
-            killed.intersection_update(pid for _slot, pid in fleet.alive_items())
-            _restart_due_children(fleet, stopping)
-            if watchdog_after is not None and not stopping.is_set():
-                _kill_stale_children(fleet, watchdog_after, killed)
+            _monitor_tick(fleet, stopping, watchdog_after, killed)
             stopping.wait(_MONITOR_INTERVAL_SECONDS)  # responsive to SIGTERM
     finally:
         stopping.set()
@@ -652,6 +692,7 @@ def _maybe_start_supervisor_health(fleet: _Fleet) -> LivenessServer | None:
         freshness_fn=fleet.freshness,
         alive_children_fn=lambda: float(fleet.alive_count()),
         concurrency_fn=lambda: float(fleet.concurrency),
+        watchdog_kills_fn=lambda: float(fleet.watchdog_kills),
     )
     server = LivenessServer(
         freshness_fn=fleet.freshness,

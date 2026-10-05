@@ -96,10 +96,11 @@ _DEFAULT_POISON_REPARK_BUDGET = 5
 # response, and the row is TTL'd.
 _TASK_STATUS_RETENTION_SECONDS = 86400
 # Liveness: a poll loop that hasn't cycled in this many seconds is reported
-# unhealthy. The heartbeat is stamped at the top of each poll_once and frozen
-# during task execution, so this threshold doubles as an UPPER BOUND on a single
-# task's wall-clock: a task running longer than it trips the probe → pod restart
-# → the in-flight task is killed and (at-least-once) redelivered. 60s suits the
+# unhealthy. The heartbeat is stamped before each queue read and frozen during
+# task execution, so this threshold doubles as an UPPER BOUND on a single task's
+# wall-clock: a task running longer than it trips the probe → pod restart (or,
+# under the prefork supervisor with CHILD_WATCHDOG on, a SIGKILL of just that
+# child) → the in-flight task is killed and (at-least-once) redelivered. 60s suits the
 # current sub-second leaf (send_webhook_notification); for longer-running tasks,
 # raise WORKER_PG_QUEUE_CONSUMER_HEALTH_STALE_SECONDS above
 # max(batch_size x worst_case_task_seconds, backoff_max).
@@ -365,8 +366,8 @@ class PgQueueConsumer:
         self._result_backend: PgResultBackend | None = None
         # Heartbeat for the liveness probe: monotonic timestamp of the most
         # recent poll attempt. Seeded at construction so a just-started consumer
-        # reads healthy. Updated at the TOP of poll_once, so a loop wedged on a
-        # long-running task (poll_once not returning) goes stale and is caught —
+        # reads healthy. Updated before EACH queue read in poll_once, so a loop
+        # wedged on a long-running task goes stale and is caught —
         # something pgrep-based --status and the launch-time check cannot see.
         self._last_poll_monotonic = time.monotonic()
 
@@ -379,9 +380,12 @@ class PgQueueConsumer:
         cycle still counts (so run() doesn't take the empty-queue backoff path
         after a partial failure).
         """
-        self._last_poll_monotonic = time.monotonic()
         total = 0
         for queue_name in self.queue_names:
+            # Per queue, not per cycle: a cycle runs one task from EACH queue, and
+            # HEALTH_STALE is sized for one task, so a per-cycle stamp would let
+            # two legitimate long tasks add up to a false "stale".
+            self._last_poll_monotonic = time.monotonic()
             try:
                 messages = self._client.read(
                     queue_name, vt_seconds=self.lease_seconds, qty=self.batch_size

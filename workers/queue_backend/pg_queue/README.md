@@ -35,8 +35,8 @@ integers.
 | `BACKOFF_MAX` | Max empty-queue poll backoff | `2.0` |
 | `MAX_ATTEMPTS` | Max deliveries before a message is dropped as **poison** | `5` |
 | `HEALTH_PORT` | Liveness HTTP port (unset → probe disabled) | unset |
-| `HEALTH_STALE_SECONDS` | A poll loop idle beyond this is reported unhealthy; with `CONCURRENCY > 1` the supervisor also SIGKILLs and re-forks a child silent this long | `60` (watchdog off when unset) |
-| `CHILD_WATCHDOG` | Kill switch for that per-child watchdog | `true` |
+| `HEALTH_STALE_SECONDS` | A poll loop idle beyond this is reported unhealthy | `60` |
+| `CHILD_WATCHDOG` | With `CONCURRENCY > 1`, SIGKILL and re-fork a child silent past `HEALTH_STALE_SECONDS` (requires it set above the longest legitimate task) | `false` |
 | `WORKER_TYPE` | Which source worker's tasks this consumer registers (bootstrap) | — |
 
 ### Reaper (`WORKER_PG_REAPER_*`)
@@ -78,8 +78,8 @@ redelivery in **minutes, not hours**. `VT_SECONDS` is retained as the *drain /
 max-runtime bound* (grace, health-stale), and the lease is clamped to it. Note the
 lease is **not** a hard cap on runtime — a live-but-hung task keeps renewing forever;
 the backstop is process death, which stops renewal: the supervisor's child watchdog
-kills a child silent past `HEALTH_STALE_SECONDS`, and a single-process consumer
-relies on its liveness probe restarting the pod. The renewal owns its own DB connection (closed on exit) and is best-effort:
+(`CHILD_WATCHDOG`) kills a child silent past `HEALTH_STALE_SECONDS`; otherwise a
+liveness probe restarting the pod, where one exists. The renewal owns its own DB connection (closed on exit) and is best-effort:
 a connection death retries within the `~2×` slack the `LEASE/3` interval leaves before
 expiry, and escalates to an ERROR log once it keeps failing past `LEASE` (the lease is
 then genuinely lost and the message may double-run). Because renewal covers only the

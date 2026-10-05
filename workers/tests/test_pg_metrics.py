@@ -598,3 +598,15 @@ class TestSupervisorMetricsRoute:
             assert b"pg_consumer_configured_concurrency 2.0" in body
         finally:
             server.stop()
+
+
+def test_consumer_metrics_exports_watchdog_kills_as_a_counter():
+    # UN-4223: a slot killed and re-forked leaves alive_children unchanged, so
+    # the kill count is the only scrapeable trace of the watchdog acting.
+    from queue_backend.pg_queue.metrics import ConsumerMetrics
+
+    body = ConsumerMetrics(
+        freshness_fn=lambda: 0.0, watchdog_kills_fn=lambda: 3.0
+    ).render()
+    assert b"# TYPE pg_consumer_child_watchdog_kills_total counter" in body
+    assert b"pg_consumer_child_watchdog_kills_total 3.0" in body

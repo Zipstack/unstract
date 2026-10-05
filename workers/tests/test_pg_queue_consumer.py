@@ -681,6 +681,24 @@ class TestPollHeartbeat:
         consumer.poll_once()
         assert seen["during"] > before  # refreshed BEFORE read ran, not after
 
+    def test_heartbeat_restamped_before_each_queue_read(self):
+        # UN-4223: a cycle runs one task per queue and HEALTH_STALE is sized for
+        # one task, so each queue's read must start from a fresh stamp — a single
+        # per-cycle stamp would add two long tasks into a false "stale".
+        client = MagicMock()
+        consumer = PgQueueConsumer(["q1", "q2"], client=client)
+        seen: list[float] = []
+
+        def _read(*_a, **_k):
+            seen.append(consumer._last_poll_monotonic)
+            consumer._last_poll_monotonic -= 5000  # the first queue's long task
+            return []
+
+        client.read.side_effect = _read
+        consumer.poll_once()
+        assert len(seen) == 2
+        assert seen[1] > seen[0] - 1  # re-stamped, not inherited from queue 1
+
     def test_health_server_disabled_without_port(self):
         # No port configured → no server bound (opt-in).
         from queue_backend.pg_queue.consumer import _maybe_start_health_server
