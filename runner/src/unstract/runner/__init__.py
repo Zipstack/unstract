@@ -2,7 +2,6 @@ import logging
 import os
 
 from flask import Flask
-
 from unstract.core.flask import register_error_handlers, register_request_id_middleware
 from unstract.core.flask.logging import setup_logging
 from unstract.runner.constants import LogLevel

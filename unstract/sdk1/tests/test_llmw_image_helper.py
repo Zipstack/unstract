@@ -13,13 +13,6 @@ from unittest.mock import MagicMock
 import pytest
 import requests
 from _pytest.monkeypatch import MonkeyPatch
-from unstract.sdk1.adapters.exceptions import ExtractorError
-from unstract.sdk1.adapters.x2text.dto import PageImageReference
-from unstract.sdk1.adapters.x2text.llm_whisperer_v2.src import helper as helper_mod
-from unstract.sdk1.adapters.x2text.llm_whisperer_v2.src.helper import (
-    LLMWhispererHelper,
-)
-from unstract.sdk1.file_storage import FileStorage, FileStorageProvider
 
 from tests.llmw_image_fixtures import (
     CORRUPT_ZIP,
@@ -28,6 +21,13 @@ from tests.llmw_image_fixtures import (
     make_page_zip,
     minimal_png,
 )
+from unstract.sdk1.adapters.exceptions import ExtractorError
+from unstract.sdk1.adapters.x2text.dto import PageImageReference
+from unstract.sdk1.adapters.x2text.llm_whisperer_v2.src import helper as helper_mod
+from unstract.sdk1.adapters.x2text.llm_whisperer_v2.src.helper import (
+    LLMWhispererHelper,
+)
+from unstract.sdk1.file_storage import FileStorage, FileStorageProvider
 
 H = LLMWhispererHelper
 

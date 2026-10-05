@@ -28,6 +28,7 @@ class GoogleDriveFS(UnstractFileSystem):
                 if self._client is None:  # Double-check
                     # Import heavy libraries here, not at module level
                     from google.oauth2.credentials import Credentials
+
                     self._client = self._create_client()
         return self._client
 ```
@@ -76,6 +77,7 @@ def __init__(self, settings: dict[str, Any]):
     self.ssl_cert = settings.get("sslCert", "")
     self.ssl_key = settings.get("sslKey", "")
     self.ssl_ca = settings.get("sslCA", "")
+
 
 def get_engine(self):
     conn_params = {...}
@@ -128,14 +130,10 @@ def test_credentials(self) -> bool:
         conn.close()
         return True
     except AuthenticationError as e:
-        raise ConnectorError(
-            f"Authentication failed: {e}",
-            treat_as_user_message=True
-        )
+        raise ConnectorError(f"Authentication failed: {e}", treat_as_user_message=True)
     except ConnectionRefusedError as e:
         raise ConnectorError(
-            f"Connection refused - check host and port: {e}",
-            treat_as_user_message=True
+            f"Connection refused - check host and port: {e}", treat_as_user_message=True
         )
     except Exception as e:
         raise ConnectorError(f"Connection error: {e}")
@@ -186,9 +184,11 @@ def sql_to_db_mapping(self, value: Any, column_name: str | None = None) -> str:
 ```python
 from fsspec import AbstractFileSystem
 
+
 class MyStorageFS(UnstractFileSystem):
     def get_fsspec_fs(self) -> AbstractFileSystem:
         from myfs import MyFileSystem
+
         return MyFileSystem(
             key=self.access_key,
             secret=self.secret_key,
@@ -202,7 +202,10 @@ class MyStorageFS(UnstractFileSystem):
 
     def is_dir_by_metadata(self, metadata: dict[str, Any]) -> bool:
         """Check if path is directory from metadata."""
-        return metadata.get("type") == "directory" or metadata.get("StorageClass") == "DIRECTORY"
+        return (
+            metadata.get("type") == "directory"
+            or metadata.get("StorageClass") == "DIRECTORY"
+        )
 ```
 
 ---
@@ -220,8 +223,7 @@ SharePoint returned plain lists instead of dicts, breaking file processing silen
 **Bad** — reimplementing methods the base class already provides:
 ```python
 class MyFileSystem(AbstractFileSystem):
-    def ls(self, path, detail=True, **kwargs):
-        ...  # Core method - MUST implement
+    def ls(self, path, detail=True, **kwargs): ...  # Core method - MUST implement
 
     # BAD: These are all redundant reimplementations
     def listdir(self, path, detail=True, **kwargs):
@@ -240,8 +242,9 @@ class MyFileSystem(AbstractFileSystem):
     def isdir(self, path):
         return self.info(path)["type"] == "directory"  # Base already does this
 
-    def walk(self, path, maxdepth=None, **kwargs):
-        ...  # Base already delegates to ls() with full detail/on_error support
+    def walk(
+        self, path, maxdepth=None, **kwargs
+    ): ...  # Base already delegates to ls() with full detail/on_error support
 
     def delete(self, path, **kwargs):
         self.rm(path, **kwargs)  # Base already does this
@@ -249,8 +252,9 @@ class MyFileSystem(AbstractFileSystem):
     def read_bytes(self, path):
         return self.cat_file(path)  # Base already does this
 
-    def write_bytes(self, path, data, **kwargs):
-        ...  # Base already delegates to pipe_file()
+    def write_bytes(
+        self, path, data, **kwargs
+    ): ...  # Base already delegates to pipe_file()
 ```
 
 **Good** — implement only the core methods, let fsspec handle the rest:
@@ -258,7 +262,7 @@ class MyFileSystem(AbstractFileSystem):
 class MyFileSystem(AbstractFileSystem):
     # REQUIRED: Core methods that talk to the service API
     def ls(self, path, detail=True, **kwargs): ...
-    def info(self, path, **kwargs): ...      # Optional optimization
+    def info(self, path, **kwargs): ...  # Optional optimization
     def _open(self, path, mode="rb", **kwargs): ...
     def cat_file(self, path, **kwargs): ...
     def pipe_file(self, path, value, **kwargs): ...  # NOT write_bytes
@@ -291,19 +295,21 @@ lists when False) and the `on_error` callback.
 from google.cloud import bigquery
 from google.oauth2 import service_account
 
-class BigQueryDB(UnstractDB):
-    ...
+
+class BigQueryDB(UnstractDB): ...
 ```
 
 **Good**:
 ```python
 # No heavy imports at module level
 
+
 class BigQueryDB(UnstractDB):
     def get_engine(self):
         # Import when needed
         from google.cloud import bigquery
         from google.oauth2 import service_account
+
         ...
 ```
 
@@ -341,6 +347,7 @@ def __init__(self, settings: dict[str, Any]):
 def get_id() -> str:
     return "postgres|abc123"
 
+
 # Version 2.0 - DON'T DO THIS
 @staticmethod
 def get_id() -> str:
@@ -362,9 +369,9 @@ def get_engine(self):
     conn_params = {
         # TCP keepalive settings
         "keepalives": 1,
-        "keepalives_idle": 30,      # Seconds before sending keepalive
+        "keepalives_idle": 30,  # Seconds before sending keepalive
         "keepalives_interval": 10,  # Seconds between keepalives
-        "keepalives_count": 5,      # Failed keepalives before disconnect
+        "keepalives_count": 5,  # Failed keepalives before disconnect
         "connect_timeout": 30,
         # ...
     }
@@ -441,7 +448,7 @@ def execute_batch(self, query: str, data: list[tuple], batch_size: int = 1000) -
     try:
         with engine.cursor() as cursor:
             for i in range(0, len(data), batch_size):
-                batch = data[i:i + batch_size]
+                batch = data[i : i + batch_size]
                 cursor.executemany(query, batch)
                 total_rows += len(batch)
             engine.commit()

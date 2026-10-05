@@ -10,6 +10,8 @@ import base64
 from pathlib import Path
 
 import pytest
+
+from tests.llmw_image_fixtures import InMemoryFileStorage, minimal_png
 from unstract.sdk1.adapters.x2text.page_image_loader import (
     DEFAULT_PAGE_CAP,
     LoadedPageImage,
@@ -22,8 +24,6 @@ from unstract.sdk1.adapters.x2text.page_image_loader import (
     load_page_images,
 )
 from unstract.sdk1.file_storage import FileStorage, FileStorageProvider
-
-from tests.llmw_image_fixtures import InMemoryFileStorage, minimal_png
 
 _DIR = "/data/extract/doc/pages"
 

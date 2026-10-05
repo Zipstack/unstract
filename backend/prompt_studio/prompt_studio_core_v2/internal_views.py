@@ -46,7 +46,7 @@ def _resolve_profile(profile_manager_id):
         return ProfileManager.objects.get(pk=profile_manager_id), None
     except (ProfileManager.DoesNotExist, ValidationError):
         logger.error(
-            "Profile manager %s not found or not visible in the current " "organization.",
+            "Profile manager %s not found or not visible in the current organization.",
             profile_manager_id,
         )
         return None, JsonResponse(
@@ -89,8 +89,7 @@ def _validated_uuids(raw_ids, field_name):
             {
                 "success": False,
                 "error": (
-                    f"'{field_name}' must be a JSON array, got "
-                    f"{type(raw_ids).__name__}."
+                    f"'{field_name}' must be a JSON array, got {type(raw_ids).__name__}."
                 ),
             },
             status=status.HTTP_400_BAD_REQUEST,
@@ -337,8 +336,7 @@ def extraction_status(request):
             {
                 "success": False,
                 "error": (
-                    "document_id, profile_manager_id, and x2text_config_hash "
-                    "are required"
+                    "document_id, profile_manager_id, and x2text_config_hash are required"
                 ),
             },
             status=status.HTTP_400_BAD_REQUEST,
@@ -590,15 +588,15 @@ def summary_index_key(request):
         )
 
     try:
+        from unstract.sdk1.constants import LogLevel
+        from unstract.sdk1.file_storage.constants import StorageType
+        from unstract.sdk1.file_storage.env_helper import EnvHelper
+        from unstract.sdk1.utils.indexing import IndexingUtils
         from utils.file_storage.constants import FileStorageKeys
 
         from prompt_studio.prompt_studio_core_v2.prompt_ide_base_tool import (
             PromptIdeBaseTool,
         )
-        from unstract.sdk1.constants import LogLevel
-        from unstract.sdk1.file_storage.constants import StorageType
-        from unstract.sdk1.file_storage.env_helper import EnvHelper
-        from unstract.sdk1.utils.indexing import IndexingUtils
 
         profile, err = _resolve_profile(summary_profile_id)
         if err:

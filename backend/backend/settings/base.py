@@ -18,9 +18,6 @@ from urllib.parse import quote
 import httpx
 from django.core.validators import URLValidator
 from dotenv import find_dotenv, load_dotenv
-from utils.common_utils import CommonUtils
-from utils.cors_origin import normalize_web_app_origin
-
 from unstract.core.cache.redis_client import (
     apply_url_credentials,
     build_socketio_redis_url,
@@ -35,6 +32,8 @@ from unstract.core.cache.redis_client import (
     url_db_path,
     url_username_from_env,
 )
+from utils.common_utils import CommonUtils
+from utils.cors_origin import normalize_web_app_origin
 
 # Django 5.0+ caps URLValidator at 2048 chars. S3 pre-signed URLs signed with
 # temporary/STS credentials (carrying X-Amz-Security-Token) routinely exceed this,

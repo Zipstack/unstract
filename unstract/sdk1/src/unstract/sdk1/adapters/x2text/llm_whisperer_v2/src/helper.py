@@ -15,6 +15,7 @@ from unstract.llmwhisperer.client_v2 import (
     LLMWhispererClientException,
     LLMWhispererClientV2,
 )
+
 from unstract.sdk1.adapters.exceptions import ExtractorError
 from unstract.sdk1.adapters.utils import AdapterUtils
 from unstract.sdk1.adapters.x2text.constants import (
@@ -663,8 +664,7 @@ class LLMWhispererHelper:
             # Visible, not silent: a naming-convention change mid-archive would
             # otherwise truncate the page set and still report success.
             logger.warning(
-                "Image mode: ignored %d non-page entr%s in the pdf-to-images "
-                "archive: %s",
+                "Image mode: ignored %d non-page entr%s in the pdf-to-images archive: %s",
                 len(skipped),
                 "y" if len(skipped) == 1 else "ies",
                 ", ".join(skipped[:10]),

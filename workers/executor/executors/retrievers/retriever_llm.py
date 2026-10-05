@@ -14,7 +14,6 @@ from llama_index.core.base.llms.types import (
 )
 from llama_index.core.llms.llm import LLM as LlamaIndexBaseLLM  # noqa: N811
 from pydantic import PrivateAttr
-
 from unstract.sdk1.llm import LLM, LLMCompat
 
 
