@@ -341,6 +341,16 @@ def collect_with_retry[T](
             )
             if delay is None:
                 raise
+            # A retry that would start after the deadline only spends another
+            # request on a call that has already run out of time.
+            if deadline is not None and time.monotonic() + delay >= deadline:
+                log.warning(
+                    "Not retrying %s: the %gs total time limit would pass "
+                    "during the backoff",
+                    description,
+                    max_seconds,
+                )
+                raise
             time.sleep(delay)
     raise RuntimeError("unreachable")  # for type-checker: loop always returns or raises
 

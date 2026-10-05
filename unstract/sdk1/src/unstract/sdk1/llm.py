@@ -1,4 +1,5 @@
 import logging
+import math
 import os
 import re
 from collections.abc import Callable, Generator, Mapping, Sequence
@@ -107,7 +108,7 @@ _DEFAULT_STREAM_MAX_SECONDS = 1800.0
 @cache
 def _warn_invalid_stream_max_seconds(value: str) -> None:
     logger.warning(
-        "%s=%r is not a number; using the default of %.0fs.",
+        "%s=%r is not a finite number; using the default of %.0fs.",
         _STREAM_MAX_SECONDS_ENV,
         value,
         _DEFAULT_STREAM_MAX_SECONDS,
@@ -122,6 +123,10 @@ def _stream_max_seconds() -> float | None:
     try:
         value = float(raw)
     except ValueError:
+        value = math.nan
+    # ``float()`` also accepts "inf" and "nan", either of which would quietly
+    # switch the limit off.
+    if not math.isfinite(value):
         _warn_invalid_stream_max_seconds(raw)
         return _DEFAULT_STREAM_MAX_SECONDS
     return value if value > 0 else None

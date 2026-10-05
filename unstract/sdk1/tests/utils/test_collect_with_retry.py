@@ -226,3 +226,22 @@ def test_retries_normally_within_the_deadline() -> None:
         )
     assert result == ["meta", "c1"]
     assert len(calls) == 2
+
+
+def test_no_retry_when_the_backoff_would_pass_the_deadline() -> None:
+    """A retry that would start after the limit is never sent."""
+    fn, calls = _stream_factory([["meta", TimeoutError()], ["meta", "c1"]])
+    with (
+        patch.object(retry_utils, "calculate_delay", return_value=10.0),
+        patch.object(retry_utils.time, "sleep") as fake_sleep,
+        pytest.raises(TimeoutError),
+    ):
+        collect_with_retry(
+            fn,
+            max_retries=2,
+            retry_predicate=lambda _: True,
+            is_content=_is_content,
+            max_seconds=5,
+        )
+    assert len(calls) == 1
+    fake_sleep.assert_not_called()

@@ -114,13 +114,15 @@ def test_limit_is_read_from_the_environment(
     assert llm_module._stream_max_seconds() == expected
 
 
+@pytest.mark.parametrize("raw", ["30m", "inf", "-inf", "nan"])
 def test_invalid_limit_falls_back_to_the_default_with_a_warning(
-    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    raw: str, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
+    """A typo, or a non-finite value ``float()`` accepts, keeps the limit on."""
     llm_module = _load_llm_module()
-    monkeypatch.setenv("LLM_STREAM_MAX_SECONDS", "30m")
+    monkeypatch.setenv("LLM_STREAM_MAX_SECONDS", raw)
 
     with caplog.at_level(logging.WARNING, logger=llm_module.logger.name):
         assert llm_module._stream_max_seconds() == 1800.0
 
-    assert "LLM_STREAM_MAX_SECONDS='30m' is not a number" in caplog.text
+    assert f"LLM_STREAM_MAX_SECONDS={raw!r} is not a finite number" in caplog.text
