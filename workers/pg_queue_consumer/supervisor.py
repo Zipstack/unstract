@@ -83,6 +83,10 @@ _RESTART_MAX_BACKOFF_SECONDS = 30.0
 _MIN_HEALTHY_UPTIME_SECONDS = 10.0
 # Consecutive immediate crashes after which the fleet probe is forced unhealthy.
 _CRASH_LOOP_THRESHOLD = 3
+# Least time a child gets to finish ``import worker`` before the watchdog treats it
+# as hung. HEALTH_STALE is sized for task runtime and can be short (ide-callback:
+# 180s), while a bootstrap under a CPU cap can take minutes.
+_MIN_BOOTSTRAP_BUDGET_SECONDS = 600.0
 # Fallback graceful-drain budget (s, shared across all children) on shutdown, used
 # only when neither an explicit override nor the consumer VT is set — see
 # shutdown_grace_from_env().
@@ -482,7 +486,8 @@ def _kill_stale_children(fleet: _Fleet, stale_after: float, killed: set[int]) ->
     """SIGKILL every child silent for longer than ``stale_after``.
 
     A *loaded* child is judged by its heartbeat. A child not yet loaded is judged
-    by time since its fork instead: a re-forked slot keeps its predecessor's old
+    by time since its fork, against the larger of ``stale_after`` and
+    ``_MIN_BOOTSTRAP_BUDGET_SECONDS``: a re-forked slot keeps its predecessor's old
     heartbeat until the new child bootstraps (record_fork does not reseed it), so
     the heartbeat would kill every replacement during import, while a child that
     hangs in ``import worker`` would otherwise never be judged at all. ``killed``
@@ -490,12 +495,14 @@ def _kill_stale_children(fleet: _Fleet, stale_after: float, killed: set[int]) ->
     logged once; the next ``_reap_dead`` reaps it and schedules the re-fork like
     any other exit.
     """
+    bootstrap_budget = max(stale_after, _MIN_BOOTSTRAP_BUDGET_SECONDS)
     for slot, pid in fleet.alive_items():
         if pid in killed:
             continue
         loaded = fleet.is_loaded(slot)
         age = fleet.slot_age(slot) if loaded else fleet.fork_age(slot)
-        if age <= stale_after:
+        limit = stale_after if loaded else bootstrap_budget
+        if age <= limit:
             continue
         logger.error(
             "PG-queue consumer: child slot=%s pid=%s %s for %.0fs (> %.0fs) — "
@@ -505,11 +512,13 @@ def _kill_stale_children(fleet: _Fleet, stale_after: float, killed: set[int]) ->
             pid,
             "has not polled" if loaded else "has not finished loading",
             age,
-            stale_after,
+            limit,
         )
-        with contextlib.suppress(ProcessLookupError):
-            os.kill(pid, signal.SIGKILL)
         killed.add(pid)
+        try:
+            os.kill(pid, signal.SIGKILL)
+        except ProcessLookupError:
+            continue  # exited on its own first; the reap handles it, not a kill
         fleet.watchdog_kills += 1
 
 

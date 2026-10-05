@@ -18,6 +18,7 @@ from pg_queue_consumer.supervisor import (
     _CRASH_LOOP_THRESHOLD,
     _DEFAULT_SHUTDOWN_GRACE_SECONDS,
     _MAX_CONCURRENCY,
+    _MIN_BOOTSTRAP_BUDGET_SECONDS,
     _MIN_HEALTHY_UPTIME_SECONDS,
     _Fleet,
     _child_after_fork,
@@ -306,6 +307,19 @@ class TestKillStaleChildren:
             _kill_stale_children(f, stale_after=7260, killed=set())
         kill.assert_called_once_with(100, _signal.SIGKILL)
 
+    def test_slow_bootstrap_gets_at_least_the_bootstrap_floor(self):
+        # A short task threshold (ide-callback: 180s) must not cut off an import
+        # that is merely slow, e.g. under a CPU cap.
+        f = self._fleet([0], loaded=[0])
+        f._last_fork[0] -= _MIN_BOOTSTRAP_BUDGET_SECONDS - 60
+        with patch(f"{_MOD}.os.kill") as kill:
+            _kill_stale_children(f, stale_after=180, killed=set())
+        kill.assert_not_called()
+        f._last_fork[0] -= 120  # now past the floor
+        with patch(f"{_MOD}.os.kill") as kill:
+            _kill_stale_children(f, stale_after=180, killed=set())
+        kill.assert_called_once()
+
     def test_age_at_threshold_is_spared(self):
         f = self._fleet([60], loaded=[1])
         with (
@@ -321,12 +335,13 @@ class TestKillStaleChildren:
             _kill_stale_children(f, stale_after=7260, killed={100})
         kill.assert_not_called()
 
-    def test_vanished_child_is_tolerated(self):
+    def test_vanished_child_is_tolerated_and_not_counted(self):
         f = self._fleet([9000], loaded=[1])
         killed: set[int] = set()
         with patch(f"{_MOD}.os.kill", side_effect=ProcessLookupError):
             _kill_stale_children(f, stale_after=7260, killed=killed)
-        assert killed == {100}
+        assert killed == {100}  # not signalled again before the reap
+        assert f.watchdog_kills == 0  # the metric counts kills that happened
 
     def test_kill_is_counted_for_metrics(self):
         f = self._fleet([9000, 9000], loaded=[1, 1])
@@ -541,7 +556,8 @@ class TestRunChildLoaded:
         ages: list[float] = []
         consumer.run.side_effect = lambda: ages.append(f.slot_age(1))
         self._run_slot_1(f, lambda: consumer)
-        assert ages and ages[0] < 5
+        assert len(ages) == 1
+        assert ages[0] < 5
 
     def test_not_marked_loaded_when_the_build_fails(self):
         # A child that cannot finish its bootstrap must never count as loaded.
