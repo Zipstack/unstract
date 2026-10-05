@@ -9,12 +9,13 @@ started is a failed *generation* and must not be replayed.
 
 from __future__ import annotations
 
+import time
 from typing import TYPE_CHECKING
 from unittest.mock import patch
 
 import pytest
 from unstract.sdk1.utils import retry_utils
-from unstract.sdk1.utils.retry_utils import collect_with_retry
+from unstract.sdk1.utils.retry_utils import DeadlineExceededError, collect_with_retry
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
@@ -150,3 +151,78 @@ def test_closes_failed_generator_before_retrying() -> None:
         )
     assert result == ["c1"]
     assert closed == [True]
+
+
+# ── max_seconds: a total wall-clock cap ──────────────────────────────────────
+
+
+def _endless(item: str, pause: float, closed: list[bool]) -> Iterator[str]:
+    """A stream that never ends: a model stuck generating."""
+    try:
+        while True:
+            time.sleep(pause)
+            yield item
+    finally:
+        closed.append(True)
+
+
+@pytest.mark.parametrize("item", ["c1", "meta"])
+def test_endless_stream_is_stopped_at_the_deadline(item: str) -> None:
+    """A read timeout never fires while items keep arriving; the deadline does.
+
+    It also fires before any content, and the stream is not retried: a second
+    attempt would hit the same wall.
+    """
+    closed: list[bool] = []
+    calls: list[int] = []
+
+    def fn() -> Iterator[str]:
+        calls.append(1)
+        return _endless(item, pause=0.01, closed=closed)
+
+    with pytest.raises(
+        DeadlineExceededError, match="exceeded its 0.05s total time limit"
+    ):
+        collect_with_retry(
+            fn,
+            max_retries=2,
+            retry_predicate=lambda _: True,
+            is_content=_is_content,
+            max_seconds=0.05,
+        )
+    assert len(calls) == 1
+    assert closed == [True]
+
+
+def test_no_retry_once_the_deadline_has_passed() -> None:
+    calls: list[int] = []
+
+    def fn() -> Iterator[str]:
+        calls.append(1)
+        yield "meta"
+        time.sleep(0.06)
+        raise TimeoutError("read timed out")
+
+    with pytest.raises(TimeoutError):
+        collect_with_retry(
+            fn,
+            max_retries=2,
+            retry_predicate=lambda _: True,
+            is_content=_is_content,
+            max_seconds=0.05,
+        )
+    assert len(calls) == 1
+
+
+def test_retries_normally_within_the_deadline() -> None:
+    fn, calls = _stream_factory([["meta", TimeoutError()], ["meta", "c1"]])
+    with patch.object(retry_utils.time, "sleep"):
+        result = collect_with_retry(
+            fn,
+            max_retries=2,
+            retry_predicate=lambda _: True,
+            is_content=_is_content,
+            max_seconds=60,
+        )
+    assert result == ["meta", "c1"]
+    assert len(calls) == 2

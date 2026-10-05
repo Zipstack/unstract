@@ -274,6 +274,10 @@ def iter_with_retry[T](
             time.sleep(delay)
 
 
+class DeadlineExceededError(Exception):
+    """A drained stream ran past its total wall-clock limit."""
+
+
 def collect_with_retry[T](
     fn: Callable[[], Iterable[T]],
     *,
@@ -282,6 +286,7 @@ def collect_with_retry[T](
     is_content: Callable[[T], bool],
     description: str = "",
     logger_instance: logging.Logger | None = None,
+    max_seconds: float | None = None,
 ) -> list[T]:
     """Drain fn() into a list with retry. Only retries before content.
 
@@ -292,9 +297,16 @@ def collect_with_retry[T](
     and is raised immediately: replaying it would re-run a generation that
     may already have consumed minutes. Items from a failed attempt are
     discarded so a retry never duplicates them.
+
+    ``max_seconds`` caps the whole call, retries included, and raises
+    ``DeadlineExceededError`` once it passes. A read timeout cannot do this:
+    it resets on every item, so a stream that keeps producing (a model stuck
+    generating) would otherwise run forever. The check runs as each item
+    arrives; a stream that goes silent is still bounded by the read timeout.
     """
     _validate_max_retries(max_retries)
     log = logger_instance or logger
+    deadline = None if max_seconds is None else time.monotonic() + max_seconds
     for attempt in range(max_retries + 1):
         items: list[T] = []
         has_content = False
@@ -308,13 +320,21 @@ def collect_with_retry[T](
             for item in gen:
                 items.append(item)
                 has_content = has_content or is_content(item)
+                if deadline is not None and time.monotonic() > deadline:
+                    raise DeadlineExceededError(
+                        f"stream exceeded its {max_seconds:g}s total time "
+                        f"limit after {len(items)} chunk(s)"
+                    )
             return items
         except Exception as e:
             # Release the in-flight HTTP/socket resources before retrying.
             close = getattr(gen, "close", None)
             if callable(close):
                 close()
-            if has_content:
+            if has_content or isinstance(e, DeadlineExceededError):
+                raise
+            # Out of time: surface the failure rather than start another attempt.
+            if deadline is not None and time.monotonic() >= deadline:
                 raise
             delay = _get_retry_delay(
                 e, attempt, max_retries, retry_predicate, description, log
