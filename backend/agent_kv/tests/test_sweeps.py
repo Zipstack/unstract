@@ -37,6 +37,7 @@ if not apps.ready:
 
 from django.conf import settings  # noqa: E402
 from django.db.models import Q  # noqa: E402
+from django.db.models.functions import Coalesce  # noqa: E402
 from django.utils import timezone  # noqa: E402
 from rest_framework.test import APIRequestFactory  # noqa: E402
 
@@ -224,7 +225,13 @@ def test_stuck_sweep_queries_dispatched_and_running_older_than_stuck_grace(
     assert age_q == (
         Q(dispatched_at__lt=cutoff) | Q(dispatched_at__isnull=True, created_at__lt=cutoff)
     )
-    phase2_qs.order_by.assert_called_once_with("dispatched_at")
+    # Coalesce, NOT a bare "dispatched_at". This assertion used to pin the
+    # bare column, which is the bug: Postgres sorts ascending NULLS LAST, so
+    # with a full batch of non-NULL stuck rows ahead of them, the
+    # `dispatched_at IS NULL` rows the second Q arm exists to recover were
+    # never selected. The backstop could not fire in exactly the situation it
+    # exists for -- a backlog. (2.14 in the branch review.)
+    phase2_qs.order_by.assert_called_once_with(Coalesce("dispatched_at", "created_at"))
     phase2_qs.order_by.return_value.__getitem__.assert_called_once_with(
         slice(None, 500, None)
     )
@@ -360,9 +367,14 @@ class _Lanes:
 
 
 def _ttl_lanes(m_objects, *, retries=(), fresh=()):
-    """Wire a mocked ``AgentKVJob.objects`` to both TTL-cleanup lanes."""
+    """Wire a mocked ``AgentKVJob.objects`` to both TTL-cleanup lanes.
+
+    Three chained filters now: `expires_at < now`, then TERMINAL-only (2.15 --
+    a running job must not have its input deleted out from under it), then the
+    non-blank-ref Q.
+    """
     lanes = _Lanes(retries, fresh)
-    m_objects.filter.return_value.filter.return_value = lanes
+    m_objects.filter.return_value.filter.return_value.filter.return_value = lanes
     return lanes
 
 
@@ -383,7 +395,13 @@ def test_ttl_cleanup_queries_expired_jobs_with_a_nonblank_ref(m_objects, m_delet
     assert resp.status_code == 200
     assert resp.data == {"cleaned": 0, "retained": 0}
     assert m_objects.filter.call_args_list[0].kwargs == {"expires_at__lt": frozen_now}
-    (q_arg,), q_kwargs = m_objects.filter.return_value.filter.call_args
+    # TERMINAL-only: a job still RUNNING past its TTL must keep its staged
+    # input. The retention policy covers finished work, not running work.
+    status_filter = m_objects.filter.return_value.filter.call_args
+    assert set(status_filter.kwargs["status__in"]) == set(AgentKVJob.TERMINAL)
+    (q_arg,), q_kwargs = (
+        m_objects.filter.return_value.filter.return_value.filter.call_args
+    )
     assert q_kwargs == {}
     assert q_arg == (Q(input_ref__gt="") | Q(result_ref__gt=""))
     # Two lanes off that one narrowed set: retries first, then new expirations.

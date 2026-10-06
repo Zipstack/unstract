@@ -756,3 +756,110 @@ def test_real_serializer_rejects_the_old_flat_shape_with_400(m_keys, m_plugin, m
 
     assert resp.status_code == 400
     assert "extractors" in str(resp.data)
+
+
+# ---------------------------------------------------------------------------
+# (9) The `extractors` file part is read under a bound, and decoded strictly.
+#
+# The size cap lives in `validate_extractors`, i.e. AFTER the part was
+# materialised, and `DATA_UPLOAD_MAX_MEMORY_SIZE` excludes file-typed parts --
+# so a 500 MB part was read in full before being rejected at 256 KiB. One such
+# request per worker process OOMs the pod: a cheap denial of service.
+#
+# Reported as 2.7 in the branch review.
+# ---------------------------------------------------------------------------
+from django.core.files.uploadedfile import SimpleUploadedFile  # noqa: E402
+
+
+@mock.patch.object(ev, "check_key_rate", return_value=True)
+@mock.patch.object(ev, "get_plugin", return_value=_plugin_with_gate())
+@mock.patch.object(AgentKVKey, "objects")
+def test_an_oversized_extractors_part_is_rejected_by_size(m_keys, m_plugin, m_rate):
+    """The cap is now consulted BEFORE the part is materialised.
+
+    Note what this does and does not prove: it pins the 400, which is the
+    behaviour a caller sees. It cannot observe the read size, because the
+    multipart parser builds its own file object from the wire and the instance
+    constructed here never reaches the view. The bounded read itself is visible
+    in `SubmitView.post` as `part.read(limit + 1)`; a test that claimed to
+    verify it through this path would be asserting on an object the view never
+    touched.
+    """
+    m_keys.get.return_value = _key_with_org()
+    cap = 64
+    part = SimpleUploadedFile("extractors.json", b"x" * (cap * 50))
+
+    req = APIRequestFactory().post("/agent-kv/", {"extractors": part}, format="multipart")
+    req.META["HTTP_AUTHORIZATION"] = "Bearer 123e4567-e89b-12d3-a456-426614174001"
+    with mock.patch.object(ev.settings, "AGENT_KV_MAX_SCHEMA_BYTES", cap):
+        resp = ev.SubmitView.as_view()(req)
+
+    assert resp.status_code == 400
+    assert "exceeds" in str(resp.data)
+
+
+@mock.patch.object(ev, "check_key_rate", return_value=True)
+@mock.patch.object(ev, "get_plugin", return_value=_plugin_with_gate())
+@mock.patch.object(AgentKVKey, "objects")
+def test_a_non_utf8_extractors_part_is_rejected(m_keys, m_plugin, m_rate):
+    """`errors="replace"` let a latin-1 key name decode to U+FFFD and then
+    compile cleanly -- a malformed payload became a job that ran against a
+    schema the caller never wrote.
+    """
+    m_keys.get.return_value = _key_with_org()
+
+    class _Latin1Part:
+        def read(self, n=-1):
+            return b'[{"name": "table", "keys": {"target_table": "\xe9"}}]'
+
+    req = APIRequestFactory().post(
+        "/agent-kv/", {"extractors": _Latin1Part()}, format="multipart"
+    )
+    req.META["HTTP_AUTHORIZATION"] = "Bearer 123e4567-e89b-12d3-a456-426614174001"
+    resp = ev.SubmitView.as_view()(req)
+
+    assert resp.status_code == 400
+    assert "UTF-8" in str(resp.data)
+
+
+# ---------------------------------------------------------------------------
+# (10) A DB failure after staging must not orphan the upload.
+#
+# `run_ttl_cleanup` selects candidates from AgentKVJob rows, so an object whose
+# row was never saved is unreachable by every cleanup path there is -- customer
+# data sitting in the bucket that nobody can find or delete.
+#
+# Reported as 2.8 in the branch review.
+# ---------------------------------------------------------------------------
+@mock.patch.object(ev, "delete_job_files")
+@mock.patch.object(ev.AgentKVConcurrencyLimiter, "release")
+@mock.patch.object(ev.AgentKVConcurrencyLimiter, "check_and_acquire", return_value=True)
+@mock.patch.object(AgentKVJob, "mark_terminal")
+@mock.patch.object(AgentKVJob, "save", side_effect=RuntimeError("db down"))
+@mock.patch.object(ev, "stage_input", return_value="org1/job/in.pdf")
+@mock.patch.object(ev, "SubmitSerializer")
+@mock.patch.object(ev, "check_key_rate", return_value=True)
+@mock.patch.object(ev, "get_plugin", return_value=_plugin_with_gate())
+@mock.patch.object(AgentKVKey, "objects")
+def test_a_save_failure_after_staging_removes_the_staged_object(
+    m_keys,
+    m_plugin,
+    m_rate,
+    m_serializer_cls,
+    m_stage,
+    m_save,
+    m_mark_terminal,
+    m_acquire,
+    m_release,
+    m_delete,
+):
+    m_keys.get.return_value = _key_with_org()
+    _mock_serializer(m_serializer_cls)
+
+    resp = ev.SubmitView.as_view()(_authed_post())
+
+    assert resp.status_code == 500
+    assert m_delete.called, (
+        "the staged upload was left in the bucket with no job row carrying its "
+        "ref; TTL cleanup selects from job rows, so it can never be reached"
+    )

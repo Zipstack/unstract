@@ -23,7 +23,13 @@ from agent_kv.storage import delete_input, delete_result_file, write_result
 logger = logging.getLogger(__name__)
 
 _VALID_STAGE_STATUSES = frozenset({"running", "done"})
-_RESERVED_STAGE_ENTRY_KEYS = frozenset({"status", "seconds"})
+# `name` is reserved too: `_status_document` builds each stage entry as
+# `{"name": name, **stages_json[name]}`, and the spread comes LAST -- so a
+# persisted `name` counter overrides it. That renames the stage in every later
+# status response and breaks the `if name in stages_json` filter the document
+# uses to decide which stages to show, i.e. one counter can make a job's
+# progress disappear.
+_RESERVED_STAGE_ENTRY_KEYS = frozenset({"status", "seconds", "name"})
 _SCALAR_COUNTER_TYPES = (str, int, float, bool)
 
 
@@ -122,9 +128,21 @@ class StageReportView(APIView):
                 }
             )
 
+        # `job.stage` is varchar(32). A longer name was an unhandled 500, and
+        # `job.stages` could grow unbounded distinct keys from a misbehaving
+        # or malicious executor.
+        if len(stage) > 32:
+            return Response({"detail": "stage name too long"}, status=400)
+
         entry = {"status": status_value}
         if "seconds" in body:
-            entry["seconds"] = body["seconds"]
+            # Type-checked rather than taken verbatim: this is untrusted
+            # executor payload and it is echoed back in the status document,
+            # so a dict or list here was persisted and returned to the caller.
+            seconds = body["seconds"]
+            if not isinstance(seconds, (int, float)) or isinstance(seconds, bool):
+                return Response({"detail": "seconds must be a number"}, status=400)
+            entry["seconds"] = seconds
         entry.update(_sanitize_counters(body.get("counters")))
 
         updates = {

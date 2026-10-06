@@ -540,12 +540,15 @@ metered; work not yet started is not. A job that finishes before the cancel is n
 simply has its result discarded on arrival.
 
 - Won the race (job was non-terminal): `200` `{"status": "cancelled"}`.
-- Already terminal: `409` `{"status": "<job.status>"}` — **note this one is the raw
-  uppercase enum value** (e.g. `"COMPLETED"`), unlike every lowercased `status` value
-  elsewhere in this API (status doc, result 409). This is the code as shipped
-  (`execution_views.py::JobCancelView`, confirmed by
-  `test_job_views.py::test_cancel_on_completed_is_409_and_result_untouched`), not a
-  typo in this document.
+- Already terminal: `409` `{"status": "<job.status>"}`, lowercased (e.g.
+  `"completed"`) — consistent with every other `status` value in this API.
+
+  *An earlier version of this document claimed the opposite: that this one field
+  carried the raw uppercase enum, and that it was "not a typo". It was wrong.
+  `JobCancelView` returns `job.status.lower()`, and the unit test cited as proof
+  (`test_job_views.py::test_cancel_on_completed_is_409_and_result_untouched`)
+  asserts `{"status": "completed"}`. The e2e lane carried the same wrong
+  assertion and had never been run.*
 
 ```bash
 curl -X POST https://api.unstract.example/agent-kv/5b6e9b0a-.../cancel \

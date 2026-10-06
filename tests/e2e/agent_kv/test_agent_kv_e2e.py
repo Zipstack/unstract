@@ -342,9 +342,14 @@ def test_cancel_mid_run(agent_kv_key: AgentKVAuth) -> None:
         assert cancel_body == {"status": "cancelled"}, cancel_body
         assert final_status == "cancelled", status_resp.json()
     else:
-        # docs §7: the 409 body's status is the RAW uppercase enum value,
-        # unlike every other status field in this API.
-        assert cancel_body["status"] == final_status.upper(), (cancel_body, final_status)
+        # Lowercased, like every other status field in this API. The docs and
+        # this assertion both used to claim the 409 body carried the RAW
+        # uppercase enum -- it does not: `JobCancelView` returns
+        # `job.status.lower()`, and the unit test the docs cited as proof
+        # (`test_cancel_on_completed_is_409_and_result_untouched`) asserts
+        # `{"status": "completed"}`. This lane had never run, so the wrong
+        # assertion was never executed. (2.6 in the branch review.)
+        assert cancel_body["status"] == final_status, (cancel_body, final_status)
 
 
 def test_cancelled_job_does_not_leak_its_concurrency_slot(

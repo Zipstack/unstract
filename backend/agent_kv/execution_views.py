@@ -5,6 +5,7 @@ from datetime import timedelta
 from django.conf import settings
 from django.utils import timezone
 from plugins import get_plugin
+from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -230,7 +231,31 @@ class SubmitView(APIView):
         data = request.data.copy()
         part = data.get("extractors")
         if hasattr(part, "read"):  # `extractors` uploaded as a file part (§7.1)
-            data["extractors"] = part.read().decode("utf-8", errors="replace")
+            # Bounded read. The size cap lives in `validate_extractors`, i.e.
+            # AFTER this point -- and `DATA_UPLOAD_MAX_MEMORY_SIZE` excludes
+            # file-typed parts, so a 500 MB `extractors` part was materialised
+            # in full (plus up to 4x that again for the `str`) before being
+            # rejected at 256 KiB. One such request per worker process OOMs the
+            # pod, which makes it a cheap denial of service.
+            #
+            # Read one byte past the cap: enough to know it is over without
+            # ever holding more than the cap plus one.
+            limit = settings.AGENT_KV_MAX_SCHEMA_BYTES
+            raw = part.read(limit + 1)
+            if len(raw) > limit:
+                raise ValidationError(
+                    {"extractors": f"extractors payload exceeds {limit} bytes"}
+                )
+            try:
+                # `errors="strict"`, not "replace". A latin-1 key name used to
+                # decode to U+FFFD and then compile cleanly, so a malformed
+                # payload became a job that ran against a schema the caller
+                # never wrote.
+                data["extractors"] = raw.decode("utf-8")
+            except UnicodeDecodeError:
+                raise ValidationError(
+                    {"extractors": "extractors must be valid UTF-8"}
+                ) from None
         serializer = SubmitSerializer(data=data)
         serializer.is_valid(raise_exception=True)
         v = serializer.validated_data
@@ -256,6 +281,22 @@ class SubmitView(APIView):
             job_saved = True
         except Exception:
             logger.exception("agent-kv staging/save failed for job %s", job.id)
+            # Delete the staged object before responding. If `stage_input`
+            # succeeded and `job.save()` then raised, the upload exists with no
+            # row to carry its ref -- and `run_ttl_cleanup` selects candidates
+            # from `AgentKVJob` rows, so an object with no row is structurally
+            # unreachable by every cleanup path there is. It would sit in the
+            # bucket forever, holding customer data nobody can find or delete.
+            if job.input_ref:
+                try:
+                    delete_job_files(job)
+                except Exception:
+                    logger.exception(
+                        "agent-kv: could not remove the staged input for failed "
+                        "submit %s; it is now orphaned (no job row carries its "
+                        "ref, so TTL cleanup cannot reach it)",
+                        job.id,
+                    )
             return _fail_job_response(
                 job,
                 org_id,

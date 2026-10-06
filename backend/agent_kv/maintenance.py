@@ -24,6 +24,7 @@ from datetime import timedelta
 
 from django.conf import settings
 from django.db.models import Q
+from django.db.models.functions import Coalesce
 from django.utils import timezone
 
 from agent_kv.models import AgentKVJob, JobStatus
@@ -139,7 +140,13 @@ def run_sweep() -> dict:
             Q(dispatched_at__lt=stuck_cutoff)
             | Q(dispatched_at__isnull=True, created_at__lt=stuck_cutoff)
         )
-        .order_by("dispatched_at")[:_MAINTENANCE_BATCH_LIMIT]
+        # Coalesce, not a bare `dispatched_at`. The second Q arm exists to
+        # recover rows whose post-enqueue bookkeeping was lost -- they have
+        # `dispatched_at IS NULL` -- but Postgres sorts ascending NULLS LAST,
+        # so with a full batch of non-NULL stuck rows ahead of them those rows
+        # were never selected. The backstop could not fire in exactly the
+        # situation it exists for: a backlog.
+        .order_by(Coalesce("dispatched_at", "created_at"))[:_MAINTENANCE_BATCH_LIMIT]
     )
 
     timed_out = 0
@@ -210,8 +217,17 @@ def run_ttl_cleanup() -> dict:
     row before applying the limit, which grows with the backlog.
     """
     now = timezone.now()
-    expired = AgentKVJob.objects.filter(expires_at__lt=now).filter(
-        Q(input_ref__gt="") | Q(result_ref__gt="")
+    # TERMINAL only. Without this, a job still RUNNING past `expires_at` had
+    # its staged input deleted out from under the executor -- the TTL is a
+    # retention policy for finished work, not a kill switch for running work.
+    # Reachable whenever a job is stuck non-terminal for longer than
+    # AGENT_KV_RESULT_TTL_DAYS, which is precisely what the sweep's phase 2
+    # exists to catch; the sweep terminalizes those first, and then this
+    # cleans them.
+    expired = (
+        AgentKVJob.objects.filter(expires_at__lt=now)
+        .filter(status__in=list(AgentKVJob.TERMINAL))
+        .filter(Q(input_ref__gt="") | Q(result_ref__gt=""))
     )
 
     # Retries first, capped at the reserve so they cannot crowd out fresh work.

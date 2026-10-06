@@ -760,3 +760,77 @@ def test_stage_report_for_an_already_terminal_job_is_quiet(m_objects, caplog):
 
     assert resp.data["reason"] == "already_terminal"
     assert caplog.records == [], "a late report for a finished job is ordinary"
+
+
+# ---------------------------------------------------------------------------
+# Untrusted executor payload must not be able to rewrite the status document.
+# Reported as 2.13 in the branch review.
+# ---------------------------------------------------------------------------
+def test_a_name_counter_cannot_rename_the_stage():
+    """`_status_document` builds `{"name": name, **entry}` with the spread
+    LAST, so a persisted `name` wins -- renaming the stage in every later status
+    response and breaking the `if name in stages_json` filter that decides
+    which stages are shown at all.
+    """
+    assert "name" in iv._RESERVED_STAGE_ENTRY_KEYS
+    assert iv._sanitize_counters({"name": "pwned", "steps": 3}) == {"steps": 3}
+
+
+@mock.patch.object(AgentKVJob, "objects")
+def test_a_non_numeric_seconds_is_rejected(m_objects):
+    """`seconds` is echoed back in the status document, so a dict or list here
+    was persisted and returned to the caller verbatim.
+    """
+    resp = iv.StageReportView.as_view()(
+        _post(
+            "/x",
+            {
+                "org_id": "org1",
+                "stage": "table_extraction",
+                "status": "running",
+                "seconds": {"nested": "payload"},
+            },
+        ),
+        job_id=uuid.uuid4(),
+    )
+
+    assert resp.status_code == 400
+    assert "seconds" in str(resp.data)
+
+
+@mock.patch.object(AgentKVJob, "objects")
+def test_a_boolean_seconds_is_rejected(m_objects):
+    """`bool` is a subclass of `int`, so a bare isinstance check would let
+    `True` through and persist it as a duration.
+    """
+    resp = iv.StageReportView.as_view()(
+        _post(
+            "/x",
+            {
+                "org_id": "org1",
+                "stage": "table_extraction",
+                "status": "running",
+                "seconds": True,
+            },
+        ),
+        job_id=uuid.uuid4(),
+    )
+
+    assert resp.status_code == 400
+
+
+@mock.patch.object(AgentKVJob, "objects")
+def test_an_overlong_stage_name_is_rejected(m_objects):
+    """`job.stage` is varchar(32); a longer name was an unhandled 500, and
+    `job.stages` could grow unbounded distinct keys.
+    """
+    resp = iv.StageReportView.as_view()(
+        _post(
+            "/x",
+            {"org_id": "org1", "stage": "x" * 33, "status": "running"},
+        ),
+        job_id=uuid.uuid4(),
+    )
+
+    assert resp.status_code == 400
+    assert "too long" in str(resp.data)
