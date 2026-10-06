@@ -411,12 +411,15 @@ def test_delete_on_running_job_releases_the_concurrency_slot(
 # ---------------------------------------------------------------------------
 @mock.patch.object(ev.AgentKVConcurrencyLimiter, "release")
 @mock.patch.object(AgentKVJob, "save")
+# A lost race re-reads the row before cleanup (see 8i); this suite touches no
+# database, so the read itself is stubbed out here.
+@mock.patch.object(AgentKVJob, "refresh_from_db")
 @mock.patch.object(ev, "delete_job_files", return_value=["input_ref", "result_ref"])
 @mock.patch.object(AgentKVJob, "mark_terminal", return_value=False)
 @mock.patch.object(AgentKVJob, "objects")
 @mock.patch.object(AgentKVKey, "objects")
 def test_delete_does_not_release_the_slot_when_it_loses_the_terminal_race(
-    m_keys, m_jobs, m_mark_terminal, m_delete_files, m_save, m_release
+    m_keys, m_jobs, m_mark_terminal, m_delete_files, m_refresh, m_save, m_release
 ):
     m_keys.get.return_value = kv_key()
     job = AgentKVJob(status=JobStatus.RUNNING)
@@ -511,3 +514,86 @@ def test_all_job_views_401_without_key():
         req = getattr(APIRequestFactory(), method)("/agent-kv/x")
         resp = view.as_view()(req, job_id=uuid.uuid4())
         assert resp.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# (8i) Losing the terminal race must RE-READ the job before touching its files.
+#
+# The race: DELETE reads a RUNNING job (result_ref ""), the finalize callback
+# wins the guarded UPDATE in between and writes COMPLETED + a real result_ref,
+# and `mark_terminal` here returns False. Without a refresh the cleanup below
+# runs against the stale copy: `delete_job_files` reports an already-empty
+# `result_ref` as "cleared" (there was nothing to delete), and the save then
+# writes "" OVER the winner's real ref. The job stays COMPLETED, its result
+# 404s, and the object is orphaned -- TTL cleanup selects on `result_ref > ""`,
+# so a blanked row never comes back.
+#
+# Reported by Greptile on PR #2317.
+# ---------------------------------------------------------------------------
+@mock.patch.object(ev.AgentKVConcurrencyLimiter, "release")
+@mock.patch.object(AgentKVJob, "save")
+@mock.patch.object(ev, "delete_job_files")
+@mock.patch.object(AgentKVJob, "mark_terminal", return_value=False)
+@mock.patch.object(AgentKVJob, "objects")
+@mock.patch.object(AgentKVKey, "objects")
+def test_delete_refreshes_the_job_when_it_loses_the_terminal_race(
+    m_keys, m_jobs, m_mark_terminal, m_delete_files, m_save, m_release
+):
+    m_keys.get.return_value = kv_key()
+    job = AgentKVJob(status=JobStatus.RUNNING)
+    job.organization_id = "org1"
+    m_jobs.get.return_value = job
+
+    # The winner's write, applied by refresh_from_db: COMPLETED + a real ref.
+    def _win_the_race():
+        job.status = JobStatus.COMPLETED
+        job.result_ref = "org1/job/result.json"
+
+    with mock.patch.object(
+        AgentKVJob, "refresh_from_db", side_effect=_win_the_race
+    ) as m_refresh:
+        # Capture what the cleanup actually SAW. `call_args` would be useless
+        # here: it records a reference to the same job object the view then
+        # blanks, so by assertion time it reads "" whether the fix works or not.
+        seen: list[str] = []
+
+        def _record(j):
+            seen.append(j.result_ref)
+            return ["input_ref", "result_ref"] if j.result_ref else ["input_ref"]
+
+        m_delete_files.side_effect = _record
+        resp = ev.JobDeleteView.as_view()(_authed(method="delete"), job_id=uuid.uuid4())
+
+    assert resp.status_code == 204
+    assert m_refresh.called, (
+        "a lost terminal race must re-read the job; acting on the stale copy "
+        "blanks the winner's result_ref and orphans the result file"
+    )
+    # The file helper saw the winner's ref, so the real object is deleted...
+    assert seen == ["org1/job/result.json"]
+    # ...and the blanking is of a ref that was genuinely cleared, not a stale "".
+    assert m_save.call_args.kwargs["update_fields"] == ["input_ref", "result_ref"]
+
+
+@mock.patch.object(ev.AgentKVConcurrencyLimiter, "release")
+@mock.patch.object(AgentKVJob, "save")
+@mock.patch.object(ev, "delete_job_files", return_value=["input_ref", "result_ref"])
+@mock.patch.object(AgentKVJob, "mark_terminal", return_value=True)
+@mock.patch.object(AgentKVJob, "objects")
+@mock.patch.object(AgentKVKey, "objects")
+def test_delete_does_not_refresh_when_it_wins_the_terminal_race(
+    m_keys, m_jobs, m_mark_terminal, m_delete_files, m_save, m_release
+):
+    """Winning means nothing else wrote to the row, so the in-memory copy is
+    current and the extra query would be waste on the common path.
+    """
+    m_keys.get.return_value = kv_key()
+    job = AgentKVJob(status=JobStatus.RUNNING)
+    job.organization_id = "org1"
+    m_jobs.get.return_value = job
+
+    with mock.patch.object(AgentKVJob, "refresh_from_db") as m_refresh:
+        resp = ev.JobDeleteView.as_view()(_authed(method="delete"), job_id=uuid.uuid4())
+
+    assert resp.status_code == 204
+    assert not m_refresh.called

@@ -331,6 +331,23 @@ class JobStatusView(APIView):
                 # the winner is still accounting for; release() is idempotent
                 # (zrem), so the winner's own release stays correct.
                 AgentKVConcurrencyLimiter.release(str(job.organization_id), str(job.id))
+            else:
+                # Lost the race: a finalize or cancel terminalized this job
+                # between our read above and the guarded UPDATE. `job` is now
+                # STALE, and `result_ref` is the field that matters -- a winning
+                # finalize has just written one.
+                #
+                # Without this refresh the cleanup below runs against the stale
+                # copy, where `result_ref` is still "". `delete_job_files`
+                # reports an already-empty ref as "cleared" (nothing to delete),
+                # so the save then writes "" OVER the winner's real ref. The job
+                # stays COMPLETED, its result 404s (`JobResultView` treats
+                # COMPLETED-without-a-ref as swept), and the object is orphaned
+                # in the bucket with nothing left pointing at it -- TTL cleanup
+                # selects on `result_ref > ""`, so a blanked row never comes
+                # back. Deleting is still the caller's intent; it just has to
+                # act on the refs that actually exist now.
+                job.refresh_from_db()
         # Blank only the refs whose files are confirmed gone, so a ref whose
         # delete failed survives as the handle TTL cleanup retries from. 204
         # either way: the job IS terminal and the caller's intent is recorded,
