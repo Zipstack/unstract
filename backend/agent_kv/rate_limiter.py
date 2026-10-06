@@ -26,7 +26,11 @@ def _limiter_failure_allows_request() -> bool:
     return bool(getattr(settings, "AGENT_KV_LIMITER_FAIL_OPEN", False))
 
 
-_SLOT_TTL_SECONDS = 6 * 3600
+#: How long a held slot survives in Redis without being released. Public
+#: because the sweep needs it: past this age there is nothing left to release,
+#: which is what bounds its cancelled-job scan.
+SLOT_TTL_SECONDS = 6 * 3600
+_SLOT_TTL_SECONDS = SLOT_TTL_SECONDS
 
 
 def _redis():

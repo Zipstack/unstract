@@ -63,21 +63,27 @@ def _post(path, body=None):
 # other phase's identical-shaped chain aliasing it.
 
 
-def _wire_sweep_phases(m_objects, never_dispatched=(), stuck=()):
-    """Wire the sweep's two phase queries.
+def _wire_sweep_phases(m_objects, never_dispatched=(), stuck=(), cancelled=()):
+    """Wire the sweep's three phase queries.
 
     Phase 2 is `filter(status__in=...).filter(Q(...) | Q(...))` -- two levels,
     because the age test is an OR: `dispatched_at < cutoff` OR
     `dispatched_at IS NULL AND created_at < cutoff`. A `__lt` filter alone can
     never match a NULL (SQL `NULL < x` is not true), so without that second arm
     a DISPATCHED/RUNNING row with a NULL `dispatched_at` hangs forever.
+
+    Phase 3 releases slots still held by jobs CANCELLED after dispatch, whose
+    executor died without calling back -- neither phase above selects a
+    CANCELLED row, so the slot would sit occupied until Redis expired it.
     """
     phase1_qs = mock.MagicMock()
     phase1_qs.order_by.return_value.__getitem__.return_value = list(never_dispatched)
     phase2_status_qs = mock.MagicMock()
     phase2_qs = phase2_status_qs.filter.return_value
     phase2_qs.order_by.return_value.__getitem__.return_value = list(stuck)
-    m_objects.filter.side_effect = [phase1_qs, phase2_status_qs]
+    phase3_qs = mock.MagicMock()
+    phase3_qs.order_by.return_value.__getitem__.return_value = list(cancelled)
+    m_objects.filter.side_effect = [phase1_qs, phase2_status_qs, phase3_qs]
     return phase1_qs, phase2_qs, phase2_status_qs
 
 
@@ -662,3 +668,58 @@ def test_frozen_sweep_and_ttl_cleanup_urls_resolve_to_the_right_views():
 
     ttl_cleanup = resolve("/internal/v1/agent-kv/ttl-cleanup/")
     assert ttl_cleanup.func.cls is iv.TTLCleanupView
+
+
+# ---------------------------------------------------------------------------
+# Phase 3: slots held by jobs CANCELLED after dispatch.
+#
+# Cancelling a dispatched job deliberately does not release its slot -- the
+# executor is still running and still billing, so the slot belongs to the
+# finalize callback. But if that executor dies no callback arrives, and neither
+# phase 1 (PENDING) nor phase 2 (DISPATCHED/RUNNING) selects a CANCELLED row,
+# so the slot sat occupied until Redis expired it six hours later.
+#
+# Reported by Greptile on PR #2317.
+# ---------------------------------------------------------------------------
+@mock.patch.object(maintenance.AgentKVConcurrencyLimiter, "release")
+@mock.patch.object(AgentKVJob, "mark_terminal", return_value=True)
+@mock.patch.object(AgentKVJob, "objects")
+def test_sweep_releases_slots_held_by_abandoned_cancelled_jobs(
+    m_objects, m_mark_terminal, m_release
+):
+    job = AgentKVJob(status=JobStatus.CANCELLED)
+    job.organization_id = "org1"
+    _wire_sweep_phases(m_objects, cancelled=[job])
+
+    resp = iv.SweepView.as_view()(_post("/x"))
+
+    assert resp.status_code == 200
+    m_release.assert_called_once_with("org1", str(job.id))
+    # The job is ALREADY terminal; phase 3 only frees the slot.
+    assert not m_mark_terminal.called
+
+
+@mock.patch.object(maintenance.AgentKVConcurrencyLimiter, "release")
+@mock.patch.object(AgentKVJob, "objects")
+def test_phase_three_is_bounded_on_both_sides(m_objects, m_release):
+    """Older than the stuck grace, so a live executor is not cut short; and
+    newer than the slot TTL, past which Redis has already dropped the entry and
+    there is nothing left to release. Without the second bound this would
+    rescan every cancelled job ever, forever.
+    """
+    frozen_now = timezone.now()
+    _wire_sweep_phases(m_objects)
+
+    with mock.patch.object(timezone, "now", return_value=frozen_now):
+        iv.SweepView.as_view()(_post("/x"))
+
+    kwargs = m_objects.filter.call_args_list[2].kwargs
+    assert kwargs["status"] == JobStatus.CANCELLED
+    assert kwargs["dispatched_at__isnull"] is False
+    stuck_cutoff = frozen_now - timedelta(
+        seconds=settings.AGENT_KV_STUCK_JOB_GRACE_SECONDS
+    )
+    assert kwargs["completed_at__lt"] == stuck_cutoff
+    assert kwargs["completed_at__gt"] == frozen_now - timedelta(
+        seconds=maintenance.SLOT_TTL_SECONDS
+    )

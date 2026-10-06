@@ -125,6 +125,24 @@ def dispatch_job(job, *, extractor: str, schema: dict, options: dict) -> None:
                 "pages_total": job.pages_total,
             },
         )
+        # Last check before spending money. A cancel can land between the
+        # submit's `job.save()` and this enqueue: the cancel sees a PENDING,
+        # never-dispatched row, so it terminalizes it AND releases its
+        # concurrency slot -- correctly, because nothing had been dispatched
+        # yet. Enqueueing anyway would then run paid work for a job the caller
+        # already cancelled, with its slot already handed to someone else.
+        #
+        # Re-read rather than trusting the in-memory row, which predates the
+        # cancel by construction.
+        if AgentKVJob.objects.filter(
+            id=job.id, status__in=list(AgentKVJob.TERMINAL)
+        ).exists():
+            logger.info(
+                "agent-kv: job %s was terminalized before dispatch; not " "enqueueing",
+                job.id,
+            )
+            return
+
         cb_kwargs = {"callback_kwargs": {"job_id": str(job.id), "org_id": org_id}}
         _dispatcher().dispatch_with_callback(
             context,

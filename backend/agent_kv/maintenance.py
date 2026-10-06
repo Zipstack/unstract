@@ -28,7 +28,7 @@ from django.db.models.functions import Coalesce
 from django.utils import timezone
 
 from agent_kv.models import AgentKVJob, JobStatus
-from agent_kv.rate_limiter import AgentKVConcurrencyLimiter
+from agent_kv.rate_limiter import SLOT_TTL_SECONDS, AgentKVConcurrencyLimiter
 from agent_kv.storage import delete_job_files
 
 logger = logging.getLogger(__name__)
@@ -161,6 +161,41 @@ def run_sweep() -> dict:
         if won:
             timed_out += 1
             AgentKVConcurrencyLimiter.release(str(org_id), str(job.id))
+
+    # Phase 3: release slots still held by jobs that were CANCELLED after being
+    # dispatched.
+    #
+    # Cancelling a dispatched job deliberately does NOT release its slot -- the
+    # executor is still running and still billing, so the slot belongs to the
+    # finalize callback that will arrive when it finishes. But if that executor
+    # dies, no callback ever arrives, and neither phase above selects a
+    # CANCELLED row: phase 1 wants PENDING, phase 2 wants DISPATCHED/RUNNING.
+    # The slot then sits occupied until Redis expires it.
+    #
+    # Bounded on BOTH sides, which is what keeps this from rescanning the same
+    # ancient rows forever: older than the stuck grace (so a live executor is
+    # not cut short) and newer than the slot TTL (past which Redis has already
+    # dropped the entry, so there is nothing left to release).
+    slot_ttl_floor = now - timedelta(seconds=SLOT_TTL_SECONDS)
+    abandoned_cancelled = AgentKVJob.objects.filter(
+        status=JobStatus.CANCELLED,
+        dispatched_at__isnull=False,
+        completed_at__lt=stuck_cutoff,
+        completed_at__gt=slot_ttl_floor,
+    ).order_by("completed_at")[:_MAINTENANCE_BATCH_LIMIT]
+
+    released = 0
+    for job in abandoned_cancelled:
+        # `release` is an idempotent zrem, so re-releasing a slot the callback
+        # already freed costs nothing and is not worth a guard.
+        AgentKVConcurrencyLimiter.release(str(job.organization_id), str(job.id))
+        released += 1
+    if released:
+        logger.info(
+            "agent-kv sweep released %s concurrency slot(s) held by cancelled "
+            "jobs whose executor never called back",
+            released,
+        )
 
     # These two counts are the only evidence the sweep ran and the only
     # evidence it had to do anything. A sweep that terminalizes a thousand jobs

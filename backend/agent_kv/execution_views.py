@@ -288,14 +288,30 @@ class SubmitView(APIView):
             # unreachable by every cleanup path there is. It would sit in the
             # bucket forever, holding customer data nobody can find or delete.
             if job.input_ref:
+                # `delete_job_files` reports which refs are confirmed gone and
+                # swallows the rest -- normally the ref survives as the retry
+                # handle. Here there is no row to hold it, so a delete that
+                # failed means the object is orphaned with nothing anywhere
+                # pointing at it. Log the ref itself: it is the only way anyone
+                # can clean it up by hand.
                 try:
-                    delete_job_files(job)
+                    cleared = delete_job_files(job)
                 except Exception:
+                    cleared = []
                     logger.exception(
-                        "agent-kv: could not remove the staged input for failed "
-                        "submit %s; it is now orphaned (no job row carries its "
-                        "ref, so TTL cleanup cannot reach it)",
+                        "agent-kv: staged-input cleanup raised for failed "
+                        "submit %s (ref=%s)",
                         job.id,
+                        job.input_ref,
+                    )
+                if "input_ref" not in cleared:
+                    logger.error(
+                        "agent-kv: the staged input for failed submit %s could "
+                        "NOT be removed and no job row exists to carry its ref "
+                        "-- object %s is orphaned and unreachable by TTL "
+                        "cleanup; remove it manually",
+                        job.id,
+                        job.input_ref,
                     )
             return _fail_job_response(
                 job,

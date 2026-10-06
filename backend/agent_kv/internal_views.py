@@ -131,6 +131,10 @@ class StageReportView(APIView):
         # `job.stage` is varchar(32). A longer name was an unhandled 500, and
         # `job.stages` could grow unbounded distinct keys from a misbehaving
         # or malicious executor.
+        if not isinstance(stage, str):
+            # A truthy non-string (e.g. `1`) passed the presence check above and
+            # then raised TypeError at `len()` -- a 500 for a malformed report.
+            return Response({"detail": "stage must be a string"}, status=400)
         if len(stage) > 32:
             return Response({"detail": "stage name too long"}, status=400)
 

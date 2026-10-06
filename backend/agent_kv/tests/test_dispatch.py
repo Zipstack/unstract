@@ -17,6 +17,43 @@ from agent_kv.constants import TABLE_EXTRACTOR_NAME  # noqa: E402
 from agent_kv.models import AgentKVJob, JobStatus  # noqa: E402
 
 
+def _fail_only_bookkeeping(m_objects, exc):
+    """Let the pre-dispatch terminal check succeed, then fail the next query.
+
+    These tests are about a DB error during POST-ENQUEUE bookkeeping, which
+    must not be reported as a failed dispatch. A blanket `filter.side_effect`
+    now hits the pre-dispatch terminal check instead -- a different, earlier
+    failure that correctly DOES abort the dispatch, since a job that cannot be
+    verified as live must not have money spent on it.
+    """
+    live = mock.MagicMock()
+    live.exists.return_value = False
+    m_objects.filter.side_effect = [live, exc]
+
+
+def _filtered_with(m_objects, **expected):
+    """True if `objects.filter` was ever called with exactly these kwargs.
+
+    Content-based rather than positional: `dispatch_job` makes several filter
+    calls (the pre-dispatch terminal check, the guarded bookkeeping UPDATE, and
+    on the slow path a narrowed fallback), and index-pinned assertions broke
+    every time one was added.
+    """
+    return any(call.kwargs == expected for call in m_objects.filter.call_args_list)
+
+
+def _not_cancelled(m_objects):
+    """Make the pre-dispatch terminal check report "still live".
+
+    `dispatch_job` re-reads the row immediately before enqueueing, so a cancel
+    that landed between the submit's save() and the enqueue cannot result in
+    paid work for a job whose slot was already released. With `objects` mocked
+    the default `.exists()` is a truthy Mock, which would short-circuit every
+    dispatch in this file.
+    """
+    m_objects.filter.return_value.exists.return_value = False
+
+
 def _job():
     from account_v2.models import Organization
 
@@ -34,6 +71,7 @@ def _job():
 @mock.patch.object(dispatch, "_dispatcher")
 @mock.patch.object(AgentKVJob, "objects")
 def test_dispatch_success_stamps_job(m_objects, m_disp, m_key):
+    _not_cancelled(m_objects)
     job = _job()
     dispatch.dispatch_job(
         job,
@@ -74,7 +112,9 @@ def test_dispatch_success_stamps_job(m_objects, m_disp, m_key):
     assert job.dispatched_at is not None
     # Guarded queryset UPDATE (not job.save()): only a still-PENDING row may
     # be advanced to DISPATCHED.
-    m_objects.filter.assert_called_once_with(id=job.id, status=JobStatus.PENDING)
+    # The pre-dispatch terminal check filters first; the guarded bookkeeping
+    # UPDATE is the last filter call.
+    assert _filtered_with(m_objects, id=job.id, status=JobStatus.PENDING)
     m_objects.filter.return_value.update.assert_called_once_with(
         task_id=job.task_id,
         status=JobStatus.DISPATCHED,
@@ -97,6 +137,7 @@ def test_dispatch_guarded_update_cannot_overwrite_a_terminal_row(
     pinning the exact WHERE-clause kwargs and simulating the "no rows
     matched" outcome, since this suite runs with no real DB.
     """
+    _not_cancelled(m_objects)
     m_objects.filter.return_value.update.return_value = 0  # simulates a FAILED row
     job = _job()
 
@@ -104,10 +145,7 @@ def test_dispatch_guarded_update_cannot_overwrite_a_terminal_row(
     # the update's row count; it already told the caller it dispatched.
     dispatch.dispatch_job(job, extractor=TABLE_EXTRACTOR_NAME, schema={}, options={})
 
-    assert m_objects.filter.call_args_list[0].kwargs == {
-        "id": job.id,
-        "status": JobStatus.PENDING,
-    }
+    assert _filtered_with(m_objects, id=job.id, status=JobStatus.PENDING)
     # The 0-row result now triggers a SECOND guarded write (below), whose
     # `.exclude(status__in=TERMINAL)` is what keeps a terminal row untouched
     # here -- so the terminal case is still structurally safe.
@@ -131,6 +169,7 @@ def test_dispatch_guarded_update_cannot_overwrite_a_terminal_row(
 def test_dispatch_stamps_dispatched_at_when_the_row_already_moved_to_running(
     m_objects, m_disp, m_key
 ):
+    _not_cancelled(m_objects)
     m_objects.filter.return_value.update.return_value = 0  # PENDING guard missed
     job = _job()
 
@@ -138,10 +177,7 @@ def test_dispatch_stamps_dispatched_at_when_the_row_already_moved_to_running(
 
     # Second write is narrowed to a row that still has no dispatch time, and
     # excludes terminal rows.
-    assert m_objects.filter.call_args_list[1].kwargs == {
-        "id": job.id,
-        "dispatched_at__isnull": True,
-    }
+    assert _filtered_with(m_objects, id=job.id, dispatched_at__isnull=True)
     fallback = m_objects.filter.return_value.exclude.return_value
     update_kwargs = fallback.update.call_args.kwargs
     assert update_kwargs["dispatched_at"] == job.dispatched_at
@@ -157,12 +193,14 @@ def test_dispatch_stamps_dispatched_at_when_the_row_already_moved_to_running(
 def test_dispatch_does_not_attempt_the_fallback_when_the_pending_guard_won(
     m_objects, m_disp, m_key
 ):
+    _not_cancelled(m_objects)
     m_objects.filter.return_value.update.return_value = 1  # normal path
     job = _job()
 
     dispatch.dispatch_job(job, extractor=TABLE_EXTRACTOR_NAME, schema={}, options={})
 
-    assert len(m_objects.filter.call_args_list) == 1
+    # Terminal check + the single guarded bookkeeping UPDATE; no fallback.
+    assert len(m_objects.filter.call_args_list) == 2
     assert not m_objects.filter.return_value.exclude.called
 
 
@@ -187,7 +225,10 @@ def test_dispatch_job_uses_platform_api_key_lookup(m_disp):
         return_value=mock.Mock(key="the-real-key"),
     ):
         job = _job()
-        with mock.patch.object(AgentKVJob, "objects"):
+        with mock.patch.object(AgentKVJob, "objects") as m_objects:
+            # Without this the pre-dispatch terminal check reads a truthy Mock
+            # and short-circuits, so nothing is ever enqueued.
+            _not_cancelled(m_objects)
             dispatch.dispatch_job(
                 job, extractor=TABLE_EXTRACTOR_NAME, schema={}, options={}
             )
@@ -272,7 +313,8 @@ def test_dispatcher_factory_call_matches_the_live_signature():
 def test_bookkeeping_failure_does_not_fail_an_already_queued_dispatch(
     m_objects, m_disp, m_key
 ):
-    m_objects.filter.side_effect = OSError("db gone")
+    _not_cancelled(m_objects)
+    _fail_only_bookkeeping(m_objects, OSError("db gone"))
     job = _job()
 
     # Must not raise: raising is what would mark the live job FAILED.
@@ -289,9 +331,55 @@ def test_bookkeeping_failure_is_logged_at_error_level(m_objects, m_disp, m_key, 
     """Swallowing it silently would trade one bad failure mode for another:
     the sweep reconciles the row, but nothing would say why it had to.
     """
-    m_objects.filter.side_effect = OSError("db gone")
+    _not_cancelled(m_objects)
+    _fail_only_bookkeeping(m_objects, OSError("db gone"))
     with caplog.at_level("ERROR", logger=dispatch.logger.name):
         dispatch.dispatch_job(
             _job(), extractor=TABLE_EXTRACTOR_NAME, schema={}, options={}
         )
     assert any(r.levelname == "ERROR" and r.exc_info for r in caplog.records)
+
+
+# ---------------------------------------------------------------------------
+# A job cancelled between submit's save() and the enqueue must not be dispatched.
+#
+# The cancel sees a PENDING, never-dispatched row, so it terminalizes it AND
+# releases its concurrency slot -- correctly, nothing had been dispatched yet.
+# Enqueueing anyway would then run paid work for a job the caller already
+# cancelled, with its slot already handed to the next submit: the concurrency
+# ceiling bypassed and the customer billed for a cancelled job.
+#
+# Reported by Greptile on PR #2317.
+# ---------------------------------------------------------------------------
+@mock.patch.object(dispatch, "_platform_api_key", return_value="pk")
+@mock.patch.object(dispatch, "_dispatcher")
+@mock.patch.object(AgentKVJob, "objects")
+def test_a_job_cancelled_before_enqueue_is_not_dispatched(m_objects, m_disp, m_key):
+    job = _job()
+    m_objects.filter.return_value.exists.return_value = True  # already terminal
+
+    dispatch.dispatch_job(job, extractor=TABLE_EXTRACTOR_NAME, schema={}, options={})
+
+    assert (
+        not m_disp.return_value.dispatch_with_callback.called
+    ), "paid work was enqueued for a job that was already cancelled"
+    # And no bookkeeping UPDATE either -- there is nothing to advance.
+    assert not m_objects.filter.return_value.update.called
+
+
+@mock.patch.object(dispatch, "_platform_api_key", return_value="pk")
+@mock.patch.object(dispatch, "_dispatcher")
+@mock.patch.object(AgentKVJob, "objects")
+def test_the_terminal_check_reads_the_row_rather_than_the_in_memory_copy(
+    m_objects, m_disp, m_key
+):
+    """The in-memory job predates the cancel by construction, so trusting
+    `job.status` here would never see it.
+    """
+    job = _job()
+    job.status = JobStatus.PENDING  # stale: the row may already be CANCELLED
+    _not_cancelled(m_objects)
+
+    dispatch.dispatch_job(job, extractor=TABLE_EXTRACTOR_NAME, schema={}, options={})
+
+    assert _filtered_with(m_objects, id=job.id, status__in=list(AgentKVJob.TERMINAL))

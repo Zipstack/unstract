@@ -201,8 +201,17 @@ def agent_kv_error(
         raise
 
 
-@worker_task(name="agent_kv_cancelled")
+@worker_task(
+    bind=True,
+    name="agent_kv_cancelled",
+    autoretry_for=(Exception,),
+    max_retries=3,
+    retry_backoff=True,
+    retry_backoff_max=300,
+    retry_jitter=True,
+)
 def agent_kv_cancelled(
+    self,
     callback_kwargs: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     """Fire the terminal webhook for a job cancelled by the API.
@@ -226,14 +235,27 @@ def agent_kv_cancelled(
     if not url:
         return None
     try:
-        _send_webhook(url, job_id, "cancelled")
+        delivered = _send_webhook(url, job_id, "cancelled")
     except Exception:
         logger.exception("agent_kv_cancelled webhook failed: job_id=%s", job_id)
         raise
+    if not delivered:
+        # `send_webhook` returns False for a non-2xx response or a connection
+        # failure. Returning success here acknowledged the queue message, so
+        # the caller simply never received the terminal notification this task
+        # exists to deliver -- and nothing retried or recorded it. Raise so the
+        # retry budget applies, exactly as a transport exception would.
+        logger.error(
+            "agent_kv_cancelled: webhook not delivered for job %s (retry %s of " "%s)",
+            job_id,
+            self.request.retries,
+            self.max_retries,
+        )
+        raise RuntimeError(f"cancellation webhook not delivered for job {job_id}")
     return {"job_id": job_id, "status": "cancelled"}
 
 
-def _send_webhook(url: str, job_id: str, status: str) -> None:
+def _send_webhook(url: str, job_id: str, status: str) -> bool:
     """Deliver one terminal notification.
 
     Single place the SSRF waiver is read, so the cancel path cannot drift from
@@ -244,7 +266,7 @@ def _send_webhook(url: str, job_id: str, status: str) -> None:
     allow_insecure = os.environ.get(
         "AGENT_KV_WEBHOOK_INSECURE_ALLOW_HTTP_PRIVATE", ""
     ).lower() in ("1", "true", "yes")
-    send_webhook(
+    return send_webhook(
         url,
         {"job_id": job_id, "status": status},
         allow_insecure=allow_insecure,
