@@ -76,8 +76,8 @@ if ENV_FILE:
     load_dotenv(ENV_FILE)
 
 # Celery Broker Configuration (read after the .env load so it can set LOG_TRANSPORT)
-# Required on the Celery log transport; optional on Redis, where an unset base URL
-# leaves the URL empty and Celery connects lazily to nothing.
+# Required on the Celery log transport; optional on Redis, which never dials the
+# broker (an unset base URL leaves the URL empty and Celery connects lazily).
 for _broker_setting in required_broker_settings(os.environ):
     get_required_setting(_broker_setting)
 CELERY_BROKER_BASE_URL = os.environ.get("CELERY_BROKER_BASE_URL")

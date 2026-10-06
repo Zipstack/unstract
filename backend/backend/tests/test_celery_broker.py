@@ -50,12 +50,17 @@ class TestRequiredSettings:
     def test_a_full_broker_config_reports_nothing(self, transport):
         assert _missing({**_FULL, "LOG_TRANSPORT": transport}) == []
 
-    @pytest.mark.parametrize("transport", ["redis", "celery"])
+    @pytest.mark.parametrize("transport", [None, "celery"])
     @pytest.mark.parametrize("dropped", [CELERY_BROKER_USER, CELERY_BROKER_PASS])
-    def test_a_base_url_without_credentials_is_reported(self, transport, dropped):
-        env = {**_FULL, "LOG_TRANSPORT": transport}
+    def test_celery_transport_reports_a_missing_credential(self, transport, dropped):
+        env = dict(_FULL) if transport is None else {**_FULL, "LOG_TRANSPORT": transport}
         del env[dropped]
         assert _missing(env) == [dropped]
+
+    def test_redis_transport_with_a_bare_base_url_requires_nothing(self):
+        env = {CELERY_BROKER_BASE_URL: _FULL[CELERY_BROKER_BASE_URL]}
+        env["LOG_TRANSPORT"] = "redis"
+        assert required_broker_settings(env) == ()
 
 
 class TestBrokerUrl:
@@ -141,11 +146,18 @@ class TestSettingsWiring:
         assert result.returncode == 0, result.stderr
         assert result.stdout.strip().splitlines()[-1] == "''"
 
-    def test_redis_transport_with_a_bare_base_url_fails_at_import(self):
+    def test_redis_transport_with_a_bare_base_url_imports(self):
+        # The base URL may outlive its credentials in a deployment's config; on
+        # Redis the resulting credential-less URL is built but never dialled.
+        result = _import_settings(
+            {"LOG_TRANSPORT": "redis", CELERY_BROKER_BASE_URL: "amqp://h:5672//"}
+        )
+        assert result.returncode == 0, result.stderr
+        assert result.stdout.strip().splitlines()[-1] == "'amqp://h:5672//'"
+
+    def test_celery_transport_with_a_bare_base_url_fails_at_import(self):
         missing = _reported_missing(
-            _import_settings(
-                {"LOG_TRANSPORT": "redis", CELERY_BROKER_BASE_URL: "amqp://h:5672//"}
-            )
+            _import_settings({CELERY_BROKER_BASE_URL: "amqp://h:5672//"})
         )
         assert CELERY_BROKER_USER in missing
         assert CELERY_BROKER_PASS in missing

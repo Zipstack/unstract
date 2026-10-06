@@ -24,11 +24,11 @@ def uses_redis_log_transport(env: Mapping[str, str]) -> bool:
 def required_broker_settings(env: Mapping[str, str]) -> tuple[str, ...]:
     """Broker settings that must be present in ``env``.
 
-    The Celery log transport publishes over the broker, so it needs all three. On
-    the Redis transport the broker is optional, but a base URL that is set still
-    needs its credentials rather than yielding a credential-less URL.
+    The Celery log transport publishes over the broker, so it needs all three. The
+    Redis transport never dials the broker, so it needs none of them, even when a
+    base URL is still configured without its credentials.
     """
-    if uses_redis_log_transport(env) and not env.get(CELERY_BROKER_BASE_URL):
+    if uses_redis_log_transport(env):
         return ()
     return _BROKER_SETTINGS
 
