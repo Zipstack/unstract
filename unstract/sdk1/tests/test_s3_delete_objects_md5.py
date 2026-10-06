@@ -72,8 +72,6 @@ def test_digest_covers_xml_escaped_keys() -> None:
 
 
 def _registered_md5_handlers() -> list[tuple[str, Any]]:
-    # Matched by name, not identity: sdk1 and connectors each carry a copy and
-    # whichever is imported first registers; the other is a no-op by design.
     return [
         h
         for h in botocore.handlers.BUILTIN_HANDLERS

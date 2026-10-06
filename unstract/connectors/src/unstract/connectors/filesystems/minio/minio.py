@@ -11,8 +11,10 @@ from fsspec import AbstractFileSystem
 from fsspec.implementations.dirfs import DirFileSystem
 from s3fs.core import S3FileSystem
 
+# Re-adds Content-MD5 on DeleteObjects for MinIO < RELEASE.2025-01-20 (UN-4224).
+# sdk1 is already a runtime dependency here via `unstract.filesystem`.
+import unstract.sdk1.patches.s3_delete_objects_md5  # noqa: F401
 from unstract.connectors.exceptions import ConnectorError
-from unstract.connectors.filesystems.minio import delete_objects_md5  # noqa: F401
 from unstract.connectors.filesystems.unstract_file_system import UnstractFileSystem
 
 from .exceptions import (

@@ -17,9 +17,8 @@ every session created afterwards — botocore, boto3 and the aiobotocore session
 ``s3fs`` creates lazily on first use. Sessions created before this module is
 imported are not affected.
 
-unstract-connectors carries an identical copy (it does not depend on sdk1);
-whichever is imported first registers the handler, the other is a no-op. Keep
-the two in sync.
+Loaded by the sdk1 file-storage helper and by the MinIO connector in
+unstract-connectors. Registration is idempotent.
 """
 
 import base64
