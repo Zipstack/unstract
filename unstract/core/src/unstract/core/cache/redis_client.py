@@ -637,15 +637,33 @@ def _resolve_redis_env(
     # Django cache already makes for this input (apply_url_credentials returns
     # the URL untouched when there is no password), rather than the two
     # disagreeing about a config neither can honour.
+    #
+    # "default" is EXEMPT from the diagnostic, though still dropped. It is Redis's
+    # own built-in user, `AUTH default <pw>` is equivalent to `AUTH <pw>`, and the
+    # chart ships REDIS_USER: default -- so "default with no password" is not a
+    # misconfiguration, it is the absence of ACL usage, which is the normal state
+    # for the in-cluster Redis that has no password at all. Logging it as an error
+    # fired on every default on-prem install: ~20k ERROR lines a day per
+    # namespace, across eight pod types, measured on two staging namespaces. A
+    # NON-default username without a password is still a real mistake and still
+    # reported, because that is the one redis-py turns into an opaque DataError.
+    #
+    # CASE-SENSITIVE, deliberately: Redis ACL usernames are, so `DEFAULT` is a
+    # named user distinct from the built-in `default` and a missing password for
+    # it is a real mistake worth reporting. Whitespace is stripped because
+    # env_chain returns the RAW value on purpose (stripping it there truncated a
+    # password once), so a hand-edited values file can carry padding around a
+    # username that was meant to be the built-in one.
     if username and not password:
-        logger.error(
-            "%sUSER=%r is set but no password is; Redis has no one-argument ACL "
-            "AUTH, so the username is being ignored. Set %sPASSWORD, or clear "
-            "the username.",
-            env_prefix,
-            username,
-            env_prefix,
-        )
+        if username.strip() != "default":
+            logger.error(
+                "%sUSER=%r is set but no password is; Redis has no one-argument "
+                "ACL AUTH, so the username is being ignored. Set %sPASSWORD, or "
+                "clear the username.",
+                env_prefix,
+                username,
+                env_prefix,
+            )
         username = None
     prefixed_db = os.getenv(f"{env_prefix}DB", "").strip()
     generic_db = os.getenv("REDIS_DB", "").strip()
