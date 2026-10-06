@@ -56,3 +56,16 @@ def check_ide_callback_health():
 WorkerRegistry.register_health_check(
     WorkerType.IDE_CALLBACK, "ide_callback_health", check_ide_callback_health
 )
+
+# Import task modules so Celery registers them on this app -- mirrors how
+# other single-app workers (e.g. executor/worker.py) import their tasks
+# module explicitly. NOTE: this module is not the actual Celery entrypoint
+# in production today -- both docker-compose and run-worker(.sh|-docker.sh)
+# always launch the unified `workers/worker.py` (`celery -A worker worker`)
+# for this worker type, which loads `ide_callback/tasks.py` itself via
+# `load_worker_tasks()` (see that file's bottom-of-file import of
+# `agent_kv_tasks` for the mechanism that actually applies in production).
+# These imports are kept here anyway so this module stays correct/self-
+# registering if it's ever wired up as a real `-A` target.
+import ide_callback.agent_kv_tasks  # noqa: E402, F401
+import ide_callback.tasks  # noqa: E402, F401

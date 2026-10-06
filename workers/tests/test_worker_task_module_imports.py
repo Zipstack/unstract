@@ -27,6 +27,7 @@ both properly isolated and a truer reproduction of what a booting worker does.
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -81,8 +82,11 @@ print("RESULT" + json.dumps(failures))
 
 def _run_probe(source: str, workers: list[str] | None = None) -> dict[str, str]:
     proc = subprocess.run(
-        [sys.executable, "-c",
-         source.format(root=str(_WORKERS_ROOT), workers=workers or _TASK_MODULES)],
+        [
+            sys.executable,
+            "-c",
+            source.format(root=str(_WORKERS_ROOT), workers=workers or _TASK_MODULES),
+        ],
         capture_output=True,
         text=True,
         cwd=str(_WORKERS_ROOT),
@@ -90,7 +94,9 @@ def _run_probe(source: str, workers: list[str] | None = None) -> dict[str, str]:
     )
     marker = [ln for ln in proc.stdout.splitlines() if ln.startswith("RESULT")]
     if not marker:
-        pytest.fail(f"probe did not complete.\nstdout:\n{proc.stdout}\nstderr:\n{proc.stderr}")
+        pytest.fail(
+            f"probe did not complete.\nstdout:\n{proc.stdout}\nstderr:\n{proc.stderr}"
+        )
     return json.loads(marker[-1][len("RESULT") :])
 
 
@@ -122,35 +128,55 @@ def test_every_tasks_module_imports_by_file_path() -> None:
     )
 
 
-def test_scheduler_registers_the_metrics_proxies_under_their_wire_names() -> None:
-    """The broken import is a SIDE-EFFECT import — it must actually register.
+def test_scheduler_tasks_registers_every_periodic_under_its_wire_name() -> None:
+    """Loading ``scheduler/tasks.py`` must REGISTER the periodic proxies, not
+    merely import without error.
 
-    Asserting only that scheduler.tasks imports would still pass if someone 'fixed' it
-    by deleting the import, silently unregistering the three dashboard-metrics proxies
-    that the PG metrics consumer resolves BY NAME.
+    This replaces a test that stated this exact intent -- "asserting only that
+    scheduler.tasks imports would still pass if someone 'fixed' it by deleting
+    the import" -- and then imported ``scheduler.dashboard_metrics_tasks``
+    DIRECTLY, which registers the tasks by itself. So it passed no matter what
+    ``scheduler/tasks.py`` contained, and it passed through the very regression
+    it was written to catch: in a79e9d69 pre-commit.ci's auto-fix deleted BOTH
+    side-effect imports from scheduler/tasks.py (ruff's isort merged the two
+    `from scheduler import ...` statements, which relocated each `# noqa` onto a
+    member line where it no longer suppresses the statement-level F401, and
+    pycln -- `all = true` -- then removed both). Nothing went red.
+
+    The failure mode is silent: the worker boots fine and only the scheduled
+    messages are rejected as unknown tasks, so dashboard metrics stop updating
+    and Agent-KV jobs stop being swept with no error anywhere near the cause.
+    Hence going through ``scheduler.tasks`` -- what a booting worker actually
+    loads -- and asserting against the Celery registry rather than the modules.
     """
     source = """
 import importlib, json, sys
 sys.path.insert(0, {root!r})
-m = importlib.import_module("scheduler.dashboard_metrics_tasks")
-print("RESULT" + json.dumps({{
-    "aggregate": m.dashboard_metrics_aggregate.name,
-    "hourly": m.dashboard_metrics_cleanup_hourly.name,
-    "daily": m.dashboard_metrics_cleanup_daily.name,
-}}))
+importlib.import_module("scheduler.tasks")
+from celery import current_app
+print("RESULT" + json.dumps(sorted(
+    n for n in current_app.tasks
+    if n.startswith("dashboard_metrics.") or n.startswith("agent_kv.")
+)))
 """
     proc = subprocess.run(
         [sys.executable, "-c", source.format(root=str(_WORKERS_ROOT))],
         capture_output=True,
         text=True,
         cwd=str(_WORKERS_ROOT),
+        # Resolved at import with no default; unset, scheduler.tasks raises
+        # before any registration and this would fail for the wrong reason.
+        env={**os.environ, "INTERNAL_API_BASE_URL": "http://localhost:8000"},
         timeout=300,
     )
     marker = [ln for ln in proc.stdout.splitlines() if ln.startswith("RESULT")]
     assert marker, f"probe failed:\n{proc.stdout}\n{proc.stderr}"
-    names = json.loads(marker[-1][len("RESULT") :])
-    assert names == {
-        "aggregate": "dashboard_metrics.aggregate_from_sources",
-        "hourly": "dashboard_metrics.cleanup_hourly_data",
-        "daily": "dashboard_metrics.cleanup_daily_data",
-    }
+    assert json.loads(marker[-1][len("RESULT") :]) == [
+        # Pinned to verbatim Beat/PG-scheduler rows -- the consumer resolves
+        # these BY NAME, so a rename here is a silent un-registration too.
+        "agent_kv.sweep",
+        "agent_kv.ttl_cleanup",
+        "dashboard_metrics.aggregate_from_sources",
+        "dashboard_metrics.cleanup_daily_data",
+        "dashboard_metrics.cleanup_hourly_data",
+    ]

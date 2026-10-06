@@ -62,7 +62,10 @@ declare -A WORKER_QUEUES=(
     ["log_consumer"]="celery_log_task_queue"
     ["scheduler"]="scheduler"
     ["${EXECUTOR_WORKER_TYPE}"]="celery_executor_legacy"
-    ["ide_callback"]="ide_callback"
+    # agent_kv_callback carries the Agent-KV terminal callbacks
+    # (agent_kv_complete/agent_kv_error, spec §5.3) dispatched by
+    # backend/agent_kv/dispatch.py; ide_callback owns both queues.
+    ["ide_callback"]="ide_callback,agent_kv_callback"
 )
 
 # Worker health ports
