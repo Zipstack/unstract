@@ -1,5 +1,4 @@
 import pytest
-
 from sandbox.gate import check_code_safe
 
 _SAFE = "import json\nrows=[{'x':1}]\nwith open('out','w') as f:\n    f.write('{}')\n"
@@ -92,7 +91,7 @@ def test_sys_argv_int_subscript_still_allowed():
     # not a dunder).
     ok, reason = check_code_safe(
         "import json, sys\n"
-        "rec = json.load(open(sys.argv[1]))[\"records\"][0]\n"
+        'rec = json.load(open(sys.argv[1]))["records"][0]\n'
         "open(sys.argv[2], 'w').write(json.dumps(rec))\n"
     )
     assert ok is True, reason
@@ -193,8 +192,19 @@ def test_denylisted_attr_calls_excludes_only_compile():
 
     assert _DENYLISTED_CALLS - _DENYLISTED_ATTR_CALLS == {"compile"}
     assert "compile" in _DENYLISTED_CALLS  # bare-Name branch still has it
-    for name in ("eval", "exec", "__import__", "globals", "vars", "getattr",
-                 "setattr", "delattr", "breakpoint", "input", "help"):
+    for name in (
+        "eval",
+        "exec",
+        "__import__",
+        "globals",
+        "vars",
+        "getattr",
+        "setattr",
+        "delattr",
+        "breakpoint",
+        "input",
+        "help",
+    ):
         assert name in _DENYLISTED_ATTR_CALLS
 
 
@@ -214,11 +224,54 @@ def test_codegen_template_passes():
         "import sys\n"
         "def main():\n"
         "    with open(sys.argv[1]) as f:\n"
-        "        record = json.load(f)[\"records\"][0]\n"
-        "    record[\"net\"] = round(float(record.get(\"total\", 0)) * 0.9, 2)\n"
-        "    with open(sys.argv[2], \"w\") as f:\n"
-        "        f.write(json.dumps(record) + \"\\n\")\n"
+        '        record = json.load(f)["records"][0]\n'
+        '    record["net"] = round(float(record.get("total", 0)) * 0.9, 2)\n'
+        '    with open(sys.argv[2], "w") as f:\n'
+        '        f.write(json.dumps(record) + "\\n")\n'
         "main()\n"
     )
     assert ok is True, reason
     assert reason == ""
+
+
+class TestEveryRuleIsRegistered:
+    """Structural backstop for the `_RULES` tuple `check_code_safe` iterates.
+
+    A rule function that is defined but absent from the tuple is never
+    consulted, so the gate silently ACCEPTS what it used to reject. Today that
+    cannot slip through unnoticed: dropping any one of the eight rules was
+    measured to fail between 3 and 10 of the behavioural tests above, because
+    each existing rule has hostile cases of its own. These two tests are here
+    for the rules that do not exist yet -- a new rule added without a
+    registry entry, or added with cases that overlap an earlier rule's -- where
+    the behavioural tests would pass while the rule did nothing.
+    """
+
+    def test_every_rule_function_is_registered(self):
+        from sandbox import gate
+
+        defined = {
+            name
+            for name, obj in vars(gate).items()
+            if name.startswith("_rule_") and callable(obj)
+        }
+        registered = {rule.__name__ for rule in gate._RULES}
+        assert defined == registered, (
+            "these rule functions are defined but never consulted: "
+            f"{sorted(defined - registered)}"
+        )
+
+    def test_the_registry_order_is_the_documented_one(self):
+        """Order is behaviour: the first matching rule owns the reason string."""
+        from sandbox import gate
+
+        assert [rule.__name__ for rule in gate._RULES] == [
+            "_rule_import",
+            "_rule_import_from",
+            "_rule_denylisted_call",
+            "_rule_dangerous_attribute",
+            "_rule_dunder_attribute",
+            "_rule_builtins_subscript",
+            "_rule_sys_name",
+            "_rule_denylisted_name",
+        ]

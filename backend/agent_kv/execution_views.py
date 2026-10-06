@@ -104,6 +104,52 @@ def _fail_job_response(job, org_id: str, message: str, *, job_saved: bool) -> Re
     )
 
 
+def _subscription_denial(plugin, agent_kv_key, request):
+    """The 402 Response to return instead of admitting this submit, else None.
+
+    Subscription admission (§6.6). A submit dispatches paid work, so it is
+    gated exactly as an API deployment execute is -- same policy, same 402
+    bodies -- via the cloud plugin's gate, which calls the very
+    `SubscriptionHelper` that cloud's `SubscriptionMiddleware` calls.
+
+    Why here and not in that middleware: it resolves the org from the URL
+    (`/deployment/api/{org_name}/...`). Agent-KV's URL carries no org
+    segment -- the org is inside the Bearer key -- so the middleware's
+    `get_organization_id` returns None for these requests, finds no
+    subscription row, and admits every one of them. This is the first
+    point where the org is actually known.
+
+    `organization.organization_id` is the org SLUG -- the CharField
+    `Subscription.organization_id` is keyed on, and what the deployment
+    URL supplies as `org_name`. NOT `agent_kv_key.organization_id`, which
+    is the Organization FK primary key: that matches no row, and the
+    shared policy reads "no row" as "nothing to enforce", so the gate
+    would silently admit everything while looking correctly wired.
+    """
+    gate_factory = plugin.get("service_class")
+    if not gate_factory:  # absent on a cloud build predating the gate
+        return None
+    return gate_factory().check(agent_kv_key.organization.organization_id, request)
+
+
+def _await_terminal_response(job, wait):
+    """Poll *job* for up to *wait* seconds, returning its 200 result once
+    terminal. None means the caller should answer 202 instead -- either no
+    synchronous wait was requested, or the deadline passed first.
+    """
+    if not wait:
+        return None
+    deadline = time.monotonic() + wait
+    while time.monotonic() < deadline:
+        job.refresh_from_db()
+        if job.status in AgentKVJob.TERMINAL:
+            from agent_kv.execution_views_result import result_payload
+
+            return Response(result_payload(job), status=200)
+        time.sleep(1)
+    return None
+
+
 class SubmitView(APIView):
     authentication_classes: list = []
     permission_classes: list = []
@@ -116,31 +162,9 @@ class SubmitView(APIView):
         if not check_key_rate(str(agent_kv_key.id)):
             raise RateLimited()
 
-        # Subscription admission (§6.6). A submit dispatches paid work, so it is
-        # gated exactly as an API deployment execute is -- same policy, same 402
-        # bodies -- via the cloud plugin's gate, which calls the very
-        # `SubscriptionHelper` that cloud's `SubscriptionMiddleware` calls.
-        #
-        # Why here and not in that middleware: it resolves the org from the URL
-        # (`/deployment/api/{org_name}/...`). Agent-KV's URL carries no org
-        # segment -- the org is inside the Bearer key -- so the middleware's
-        # `get_organization_id` returns None for these requests, finds no
-        # subscription row, and admits every one of them. This is the first
-        # point where the org is actually known.
-        #
-        # `organization.organization_id` is the org SLUG -- the CharField
-        # `Subscription.organization_id` is keyed on, and what the deployment
-        # URL supplies as `org_name`. NOT `agent_kv_key.organization_id`, which
-        # is the Organization FK primary key: that matches no row, and the
-        # shared policy reads "no row" as "nothing to enforce", so the gate
-        # would silently admit everything while looking correctly wired.
-        gate_factory = plugin.get("service_class")
-        if gate_factory:  # absent on a cloud build predating the gate
-            denied = gate_factory().check(
-                agent_kv_key.organization.organization_id, request
-            )
-            if denied is not None:
-                return denied
+        denied = _subscription_denial(plugin, agent_kv_key, request)
+        if denied is not None:
+            return denied
 
         data = request.data.copy()
         part = data.get("extractors")
@@ -216,16 +240,9 @@ class SubmitView(APIView):
                 job_saved=True,
             )
 
-        wait = v["timeout"]
-        if wait:
-            deadline = time.monotonic() + wait
-            while time.monotonic() < deadline:
-                job.refresh_from_db()
-                if job.status in AgentKVJob.TERMINAL:
-                    from agent_kv.execution_views_result import result_payload
-
-                    return Response(result_payload(job), status=200)
-                time.sleep(1)
+        completed = _await_terminal_response(job, v["timeout"])
+        if completed is not None:
+            return completed
 
         return Response(
             {

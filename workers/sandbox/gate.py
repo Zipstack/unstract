@@ -103,6 +103,138 @@ _DENYLISTED_NAMES = {"__builtins__", "__globals__", "__loader__", "__import__"}
 _SYS_ALLOWED_ATTR = "argv"
 
 
+def _rule_import(node, parents) -> str | None:
+    """Only allowlisted top-level modules, and `sys` only unaliased."""
+    if not isinstance(node, ast.Import):
+        return None
+    for a in node.names:
+        if a.name.split(".")[0] not in _ALLOWED_IMPORTS:
+            return f"safety gate: import '{a.name}' is not in the allowed set"
+        # `import sys as s` would let aliased sys access dodge the
+        # literal-name-"sys" match the bare-Name rule below relies
+        # on. Only bare `import sys` is allowed.
+        if a.name.split(".")[0] == "sys" and a.asname is not None and a.asname != "sys":
+            return "safety gate: 'import sys as ...' is not allowed"
+    return None
+
+
+def _rule_import_from(node, parents) -> str | None:
+    """Allowlisted modules only, and no `from sys import ...` in any form."""
+    if not isinstance(node, ast.ImportFrom):
+        return None
+    if (node.module or "").split(".")[0] not in _ALLOWED_IMPORTS:
+        return f"safety gate: import '{node.module}' is not in the allowed set"
+    # `from sys import argv` (or anything else from sys) binds names
+    # directly with no ast.Name(id='sys') reference for the rule
+    # below to see. Reject all from-sys forms outright.
+    if (node.module or "").split(".")[0] == "sys":
+        return "safety gate: 'from sys import ...' is not allowed"
+    return None
+
+
+def _rule_denylisted_call(node, parents) -> str | None:
+    """A direct call to a denylisted builtin, e.g. `eval(...)`."""
+    if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)):
+        return None
+    if node.func.id in _DENYLISTED_CALLS:
+        return f"safety gate: disallowed call '{node.func.id}'"
+    return None
+
+
+def _rule_dangerous_attribute(node, parents) -> str | None:
+    """Reject an attribute REFERENCE to a dangerous name, not only an
+    immediate call: `f = b.eval` binds eval under another name, then
+    `f(...)` runs it with no attribute left to check -- the old
+    call-only check (`b.eval(...)`) missed this. Catching the
+    `.eval` access itself closes it, and subsumes the call form
+    (a call's `.func` is a Load attribute too). `compile` is
+    excluded via _DENYLISTED_ATTR_CALLS so `re.compile(...)` still
+    works.
+    """
+    if (
+        isinstance(node, ast.Attribute)
+        and isinstance(node.ctx, ast.Load)
+        and node.attr in _DENYLISTED_ATTR_CALLS
+    ):
+        return f"safety gate: disallowed attribute access '{node.attr}'"
+    return None
+
+
+def _rule_dunder_attribute(node, parents) -> str | None:
+    """Any dunder attribute access at all."""
+    if isinstance(node, ast.Attribute) and node.attr.startswith("__"):
+        return f"safety gate: dunder attribute access '{node.attr}'"
+    return None
+
+
+def _rule_builtins_subscript(node, parents) -> str | None:
+    """A string subscript like `x['__builtins__']` reaches the builtins
+    / globals mapping without any ast.Attribute node for the dunder
+    check to see. Reject a constant string slice that is a dunder or
+    names the builtins/globals mapping. (py3.12: `node.slice` is the
+    expression directly -- no ast.Index wrapper.)
+    """
+    if not isinstance(node, ast.Subscript):
+        return None
+    key = node.slice
+    if isinstance(key, ast.Constant) and isinstance(key.value, str):
+        name = key.value
+        if name in {"__builtins__", "__globals__"} or (
+            name.startswith("__") and name.endswith("__")
+        ):
+            return f"safety gate: disallowed subscript key '{name}'"
+    return None
+
+
+def _rule_sys_name(node, parents) -> str | None:
+    """The name `sys` may be used ONLY as the immediate value of a
+    `sys.argv` attribute access. This subsumes a plain denylist of
+    dangerous sys attributes (sys.modules, sys._getframe, ...)
+    AND closes the aliasing bypass a denylist alone can't: once
+    `sys` is bound to another name (`x = sys`, `f = [sys]`,
+    `g(sys)`, ...) that name has no attribute-check tying it back
+    to `sys`, but the *reference to `sys` itself* right here is
+    still caught, no matter what happens to it afterwards.
+    """
+    if not (
+        isinstance(node, ast.Name) and node.id == "sys" and isinstance(node.ctx, ast.Load)
+    ):
+        return None
+    parent = parents.get(node)
+    if not (
+        isinstance(parent, ast.Attribute)
+        and parent.attr == _SYS_ALLOWED_ATTR
+        and parent.value is node
+    ):
+        return "safety gate: 'sys' may only be used as 'sys.argv'"
+    return None
+
+
+def _rule_denylisted_name(node, parents) -> str | None:
+    """A bare reference to a denylisted name, whether or not it is called."""
+    if isinstance(node, ast.Name) and (
+        node.id in _DENYLISTED_NAMES or node.id in _DENYLISTED_CALLS
+    ):
+        return f"safety gate: disallowed name '{node.id}'"
+    return None
+
+
+# ORDER IS BEHAVIOUR. These were an if/elif chain, so at most one rule ever
+# fired per node and the earlier rule owned the message. The loop below returns
+# on the first non-None for the same reason -- reordering these changes which
+# reason a given input reports.
+_RULES = (
+    _rule_import,
+    _rule_import_from,
+    _rule_denylisted_call,
+    _rule_dangerous_attribute,
+    _rule_dunder_attribute,
+    _rule_builtins_subscript,
+    _rule_sys_name,
+    _rule_denylisted_name,
+)
+
+
 def check_code_safe(code: str) -> tuple[bool, str]:
     """Return ``(ok, reason)``. ``reason`` is user-safe (no paths)."""
     try:
@@ -119,87 +251,8 @@ def check_code_safe(code: str) -> tuple[bool, str]:
         for child in ast.iter_child_nodes(parent)
     }
     for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            for a in node.names:
-                if a.name.split(".")[0] not in _ALLOWED_IMPORTS:
-                    return (
-                        False,
-                        f"safety gate: import '{a.name}' is not in the allowed set",
-                    )
-                # `import sys as s` would let aliased sys access dodge the
-                # literal-name-"sys" match the bare-Name rule below relies
-                # on. Only bare `import sys` is allowed.
-                if (
-                    a.name.split(".")[0] == "sys"
-                    and a.asname is not None
-                    and a.asname != "sys"
-                ):
-                    return False, "safety gate: 'import sys as ...' is not allowed"
-        elif isinstance(node, ast.ImportFrom):
-            if (node.module or "").split(".")[0] not in _ALLOWED_IMPORTS:
-                return (
-                    False,
-                    f"safety gate: import '{node.module}' is not in the allowed set",
-                )
-            # `from sys import argv` (or anything else from sys) binds names
-            # directly with no ast.Name(id='sys') reference for the rule
-            # below to see. Reject all from-sys forms outright.
-            if (node.module or "").split(".")[0] == "sys":
-                return False, "safety gate: 'from sys import ...' is not allowed"
-        elif isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
-            if node.func.id in _DENYLISTED_CALLS:
-                return False, f"safety gate: disallowed call '{node.func.id}'"
-        elif (
-            isinstance(node, ast.Attribute)
-            and isinstance(node.ctx, ast.Load)
-            and node.attr in _DENYLISTED_ATTR_CALLS
-        ):
-            # Reject an attribute REFERENCE to a dangerous name, not only an
-            # immediate call: `f = b.eval` binds eval under another name, then
-            # `f(...)` runs it with no attribute left to check -- the old
-            # call-only check (`b.eval(...)`) missed this. Catching the
-            # `.eval` access itself closes it, and subsumes the call form
-            # (a call's `.func` is a Load attribute too). `compile` is
-            # excluded via _DENYLISTED_ATTR_CALLS so `re.compile(...)` still
-            # works.
-            return False, f"safety gate: disallowed attribute access '{node.attr}'"
-        elif isinstance(node, ast.Attribute) and node.attr.startswith("__"):
-            return False, f"safety gate: dunder attribute access '{node.attr}'"
-        elif isinstance(node, ast.Subscript):
-            # A string subscript like `x['__builtins__']` reaches the builtins
-            # / globals mapping without any ast.Attribute node for the dunder
-            # check to see. Reject a constant string slice that is a dunder or
-            # names the builtins/globals mapping. (py3.12: `node.slice` is the
-            # expression directly -- no ast.Index wrapper.)
-            key = node.slice
-            if isinstance(key, ast.Constant) and isinstance(key.value, str):
-                name = key.value
-                if name in {"__builtins__", "__globals__"} or (
-                    name.startswith("__") and name.endswith("__")
-                ):
-                    return False, f"safety gate: disallowed subscript key '{name}'"
-        elif (
-            isinstance(node, ast.Name)
-            and node.id == "sys"
-            and isinstance(node.ctx, ast.Load)
-        ):
-            # The name `sys` may be used ONLY as the immediate value of a
-            # `sys.argv` attribute access. This subsumes a plain denylist of
-            # dangerous sys attributes (sys.modules, sys._getframe, ...)
-            # AND closes the aliasing bypass a denylist alone can't: once
-            # `sys` is bound to another name (`x = sys`, `f = [sys]`,
-            # `g(sys)`, ...) that name has no attribute-check tying it back
-            # to `sys`, but the *reference to `sys` itself* right here is
-            # still caught, no matter what happens to it afterwards.
-            parent = parents.get(node)
-            if not (
-                isinstance(parent, ast.Attribute)
-                and parent.attr == _SYS_ALLOWED_ATTR
-                and parent.value is node
-            ):
-                return False, "safety gate: 'sys' may only be used as 'sys.argv'"
-        elif isinstance(node, ast.Name) and node.id in _DENYLISTED_NAMES:
-            return False, f"safety gate: disallowed name '{node.id}'"
-        elif isinstance(node, ast.Name) and node.id in _DENYLISTED_CALLS:
-            return False, f"safety gate: disallowed name '{node.id}'"
+        for rule in _RULES:
+            reason = rule(node, parents)
+            if reason is not None:
+                return False, reason
     return True, ""

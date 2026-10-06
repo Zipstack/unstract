@@ -111,17 +111,27 @@ def _coerce(raw: str):
 def _aggregate(node: ast.Call, arrays: dict[str, list[dict[str, str]]]):
     """Evaluate one of the five allowlisted aggregates over an array column.
 
-    FAIL-CLOSED by construction: the only thing this accepts is `NAME('literal')` where
-    NAME is in `_AGG`, the func is a bare ast.Name (no attribute access — blocks
-    `os.system`/`x.__class__`), there is exactly one positional arg, no keywords, and that
-    arg is a string Constant. Any deviation raises `_Skip` (-> constraint skipped, never run).
+    FAIL-CLOSED by construction: nothing reaches an aggregate that `_agg_call_parts`
+    has not first validated as `NAME('literal')`, and any deviation there raises
+    `_Skip` (-> constraint skipped, never run). The argument is `'array_path'` (only
+    valid for count, = row count) or `'array_path.column'`; see `_agg_count` and
+    `_agg_numeric` for what each does with the cells.
+    """
+    fn, array_path, column = _agg_call_parts(node)
+    rows = arrays.get(array_path)
+    if rows is None:  # no such array available
+        raise _Skip()
+    if fn == "count":
+        return _agg_count(rows, column)
+    return _agg_numeric(fn, rows, column)
 
-    Argument is `'array_path'` (only valid for count = row count) or `'array_path.column'`.
-    Numeric cells (sum/min/max/avg) are pulled with the SAME `coerce_number` used elsewhere
-    (strips commas/$/%, drops non-finite/empty -> None); such cells are skipped (not zeroed).
-    `count('a.col')` counts rows whose column value is NON-EMPTY (text columns like
-    sku/description count too); `count('a')` is the row count. A sum/min/max/avg over zero
-    usable cells raises `_Skip` (advisory) rather than guessing 0.
+
+def _agg_call_parts(node: ast.Call) -> tuple[str, str, str]:
+    """Validate `NAME('array[.column]')` and split it into (fn, array_path, column).
+
+    This is the fail-closed gate: the func must be a bare `ast.Name` in `_AGG` (no
+    attribute access -- blocks `os.system`/`x.__class__`), exactly one positional arg,
+    no keywords, and that arg a string Constant. Any deviation raises `_Skip`.
     """
     if not isinstance(node.func, ast.Name) or node.func.id not in _AGG:
         raise _Skip()  # not a whitelisted aggregate name
@@ -130,7 +140,7 @@ def _aggregate(node: ast.Call, arrays: dict[str, list[dict[str, str]]]):
     arg = node.args[0]
     if not (isinstance(arg, ast.Constant) and isinstance(arg.value, str)):
         raise _Skip()  # arg must be a literal string path
-    fn, ref = node.func.id, arg.value
+    ref = arg.value
     # Split on the LAST dot: an ArraySpec.path may itself be dotted (e.g. 'invoice.lines'),
     # while the column is always a row-LOCAL bare name. A bare ref (no dot) is a whole-array
     # row count -> array_path=ref, column=''.
@@ -138,17 +148,24 @@ def _aggregate(node: ast.Call, arrays: dict[str, list[dict[str, str]]]):
         array_path, _, column = ref.rpartition(".")
     else:
         array_path, column = ref, ""
-    rows = arrays.get(array_path)
-    if rows is None:  # no such array available
-        raise _Skip()
+    return node.func.id, array_path, column
 
-    if fn == "count":
-        if not column:  # count('array') -> number of rows
-            return float(len(rows))
-        # count('array.col') -> rows with a non-empty value for that column (text columns
-        # like sku/description/name are valid to count; numeric coercion would zero them out)
-        return float(sum(1 for r in rows if (r.get(column) or "").strip() != ""))
 
+def _agg_count(rows: list[dict[str, str]], column: str) -> float:
+    """`count('array')` is the row count; `count('array.col')` counts non-empty cells."""
+    if not column:  # count('array') -> number of rows
+        return float(len(rows))
+    # count('array.col') -> rows with a non-empty value for that column (text columns
+    # like sku/description/name are valid to count; numeric coercion would zero them out)
+    return float(sum(1 for r in rows if (r.get(column) or "").strip() != ""))
+
+
+def _agg_numeric(fn: str, rows: list[dict[str, str]], column: str) -> float:
+    """sum/min/max/avg over the numeric cells of one column.
+
+    Non-numeric and non-finite cells are skipped (not zeroed). Zero usable cells
+    raises `_Skip` (advisory) rather than guessing 0.
+    """
     if not column:  # sum/min/max/avg need a column
         raise _Skip()
     nums = [n for r in rows if (n := coerce_number(r.get(column))) is not None]
@@ -207,19 +224,28 @@ def _truth(node, values: dict[str, str], arrays: dict[str, list[dict[str, str]]]
     if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.Not):
         return not _truth(node.operand, values, arrays)
     if isinstance(node, ast.Compare) and len(node.ops) == len(node.comparators):
-        left = _operand(node.left, values, arrays)
-        for op, comp in zip(node.ops, node.comparators, strict=False):
-            if type(op) not in _CMP:
-                raise _Skip()
-            right = _operand(comp, values, arrays)
-            # only compare like-typed operands (number<->number, str<->str); else skip
-            if isinstance(left, (int, float)) != isinstance(right, (int, float)):
-                raise _Skip()
-            if not _CMP[type(op)](left, right):
-                return False
-            left = right
-        return True
+        return _compare_chain(node, values, arrays)
     raise _Skip()
+
+
+def _compare_chain(
+    node: ast.Compare,
+    values: dict[str, str],
+    arrays: dict[str, list[dict[str, str]]],
+) -> bool:
+    """Evaluate `a < b <= c` left to right, short-circuiting on the first False."""
+    left = _operand(node.left, values, arrays)
+    for op, comp in zip(node.ops, node.comparators, strict=False):
+        if type(op) not in _CMP:
+            raise _Skip()
+        right = _operand(comp, values, arrays)
+        # only compare like-typed operands (number<->number, str<->str); else skip
+        if isinstance(left, (int, float)) != isinstance(right, (int, float)):
+            raise _Skip()
+        if not _CMP[type(op)](left, right):
+            return False
+        left = right
+    return True
 
 
 def _evaluate_one(

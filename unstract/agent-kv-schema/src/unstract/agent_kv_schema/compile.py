@@ -207,6 +207,51 @@ def _reject_unsafe_regex(path: str, pattern: str) -> None:
         )
 
 
+def _check_shape_caps(key_specs: list, array_specs: list, caps: SchemaCaps) -> None:
+    """Leaf, array and per-array-column counts."""
+    if len(key_specs) > caps.max_leaves:
+        raise SchemaError(f"schema exceeds max_leaves={caps.max_leaves}")
+    if len(array_specs) > caps.max_arrays:
+        raise SchemaError(f"schema exceeds max_arrays={caps.max_arrays}")
+    for aspec in array_specs:
+        if len(aspec.item_specs) > caps.max_columns_per_array:
+            raise SchemaError(
+                f"array '{aspec.path}' exceeds "
+                f"max_columns_per_array={caps.max_columns_per_array}"
+            )
+
+
+def _check_per_key_caps(key_specs: list, array_specs: list, caps: SchemaCaps) -> None:
+    """Regex safety and per-key length caps, for scalar and array columns alike."""
+    for kspec in key_specs + [s for a in array_specs for s in a.item_specs]:
+        _reject_unsafe_regex(kspec.path, kspec.regex_pattern)
+        if len(kspec.regex_pattern) > caps.max_regex_len:
+            raise SchemaError(
+                f"'{kspec.path}' regex exceeds max_regex_len={caps.max_regex_len}"
+            )
+        if len(kspec.aliases) > caps.max_aliases:
+            raise SchemaError(f"'{kspec.path}' exceeds max_aliases={caps.max_aliases}")
+        if len(kspec.effective_description) > caps.max_description_len:
+            raise SchemaError(
+                f"'{kspec.path}' description exceeds "
+                f"max_description_len={caps.max_description_len}"
+            )
+
+
+def _validated_constraints(spec: dict, caps: SchemaCaps) -> list:
+    """The `_constraints` list, checked for type, count and expression syntax."""
+    constraints = spec.get("_constraints", [])
+    if not isinstance(constraints, list) or not all(
+        isinstance(c, str) for c in constraints
+    ):
+        raise SchemaError("_constraints must be a list of strings")
+    if len(constraints) > caps.max_constraints:
+        raise SchemaError(f"schema exceeds max_constraints={caps.max_constraints}")
+    for expr in constraints:
+        _check_constraint_syntax(expr)
+    return constraints
+
+
 def compile_schema(spec: dict, caps: SchemaCaps | None = None) -> CompiledSchema:
     caps = caps or SchemaCaps()
     if not isinstance(spec, dict):
@@ -226,39 +271,9 @@ def compile_schema(spec: dict, caps: SchemaCaps | None = None) -> CompiledSchema
     except ValueError as e:
         raise SchemaError(str(e)) from e
 
-    if len(key_specs) > caps.max_leaves:
-        raise SchemaError(f"schema exceeds max_leaves={caps.max_leaves}")
-    if len(array_specs) > caps.max_arrays:
-        raise SchemaError(f"schema exceeds max_arrays={caps.max_arrays}")
-    for aspec in array_specs:
-        if len(aspec.item_specs) > caps.max_columns_per_array:
-            raise SchemaError(
-                f"array '{aspec.path}' exceeds "
-                f"max_columns_per_array={caps.max_columns_per_array}"
-            )
-    for kspec in key_specs + [s for a in array_specs for s in a.item_specs]:
-        _reject_unsafe_regex(kspec.path, kspec.regex_pattern)
-        if len(kspec.regex_pattern) > caps.max_regex_len:
-            raise SchemaError(
-                f"'{kspec.path}' regex exceeds max_regex_len={caps.max_regex_len}"
-            )
-        if len(kspec.aliases) > caps.max_aliases:
-            raise SchemaError(f"'{kspec.path}' exceeds max_aliases={caps.max_aliases}")
-        if len(kspec.effective_description) > caps.max_description_len:
-            raise SchemaError(
-                f"'{kspec.path}' description exceeds "
-                f"max_description_len={caps.max_description_len}"
-            )
-
-    constraints = spec.get("_constraints", [])
-    if not isinstance(constraints, list) or not all(
-        isinstance(c, str) for c in constraints
-    ):
-        raise SchemaError("_constraints must be a list of strings")
-    if len(constraints) > caps.max_constraints:
-        raise SchemaError(f"schema exceeds max_constraints={caps.max_constraints}")
-    for expr in constraints:
-        _check_constraint_syntax(expr)
+    _check_shape_caps(key_specs, array_specs, caps)
+    _check_per_key_caps(key_specs, array_specs, caps)
+    constraints = _validated_constraints(spec, caps)
 
     return CompiledSchema(
         key_specs=key_specs, array_specs=array_specs, constraints=list(constraints)

@@ -75,44 +75,10 @@ def _walk(
         )
 
     if "_array" in node:
-        extra = set(node.keys()) - RESERVED_NODE
-        if extra:
-            raise ValueError(
-                f"Array node at {'.'.join(path_parts) or '<root>'} has unexpected keys {sorted(extra)}; "
-                f"allowed: {sorted(RESERVED_NODE)}"
-            )
-        item_schema = node["_array"]
-        if not isinstance(item_schema, dict) or not item_schema:
-            raise ValueError(
-                f"Array item schema at {'.'.join(path_parts)} must be a non-empty object"
-            )
-        item_specs: list[KeySpec] = []
-        for col_name, col_node in item_schema.items():
-            if isinstance(col_node, dict) and "_array" in col_node:
-                raise ValueError(
-                    f"Nested array at {'.'.join(path_parts)}.{col_name} is P8b (not supported in P8a)"
-                )
-            _walk(
-                col_node,
-                [col_name],
-                item_specs,
-                [],  # row-LOCAL paths; nested arrays sink to [] (rejected above)
-                max_depth=max_depth,
-                depth=depth + 1,
-            )
-        arrays.append(
-            ArraySpec(
-                path=".".join(path_parts),
-                description=str(node.get("description", "")),
-                item_specs=item_specs,
-                key_column=str(node.get("_key", "")),
-                dedup_rows=_parse_dedup(node.get("_dedup", True), ".".join(path_parts)),
-            )
-        )
+        _walk_array(node, path_parts, arrays, max_depth=max_depth, depth=depth)
         return
 
     object_values = [v for v in node.values() if isinstance(v, dict)]
-    scalar_keys = [k for k, v in node.items() if not isinstance(v, dict)]
 
     is_interior = len(object_values) == len(node)  # every value is an object
     is_leaf = len(object_values) == 0  # no value is an object
@@ -135,7 +101,57 @@ def _walk(
             )
         return
 
-    # Leaf node: scalar attributes only.
+    _append_leaf(node, path_parts, out)
+
+
+def _walk_array(
+    node: dict[str, Any],
+    path_parts: list[str],
+    arrays: list[ArraySpec],
+    *,
+    max_depth: int,
+    depth: int,
+) -> None:
+    """Compile an `_array` node into one ArraySpec of row-local column KeySpecs."""
+    extra = set(node.keys()) - RESERVED_NODE
+    if extra:
+        raise ValueError(
+            f"Array node at {'.'.join(path_parts) or '<root>'} has unexpected keys {sorted(extra)}; "
+            f"allowed: {sorted(RESERVED_NODE)}"
+        )
+    item_schema = node["_array"]
+    if not isinstance(item_schema, dict) or not item_schema:
+        raise ValueError(
+            f"Array item schema at {'.'.join(path_parts)} must be a non-empty object"
+        )
+    item_specs: list[KeySpec] = []
+    for col_name, col_node in item_schema.items():
+        if isinstance(col_node, dict) and "_array" in col_node:
+            raise ValueError(
+                f"Nested array at {'.'.join(path_parts)}.{col_name} is P8b (not supported in P8a)"
+            )
+        _walk(
+            col_node,
+            [col_name],
+            item_specs,
+            [],  # row-LOCAL paths; nested arrays sink to [] (rejected above)
+            max_depth=max_depth,
+            depth=depth + 1,
+        )
+    arrays.append(
+        ArraySpec(
+            path=".".join(path_parts),
+            description=str(node.get("description", "")),
+            item_specs=item_specs,
+            key_column=str(node.get("_key", "")),
+            dedup_rows=_parse_dedup(node.get("_dedup", True), ".".join(path_parts)),
+        )
+    )
+
+
+def _append_leaf(node: dict[str, Any], path_parts: list[str], out: list[KeySpec]) -> None:
+    """Emit the KeySpec for a leaf node -- scalar attributes only."""
+    scalar_keys = [k for k, v in node.items() if not isinstance(v, dict)]
     unknown = [k for k in scalar_keys if k not in RESERVED]
     if unknown:
         raise ValueError(

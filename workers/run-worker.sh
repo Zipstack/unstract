@@ -24,6 +24,10 @@ ENV_FILE="$WORKERS_DIR/.env"
 # Worker type constant for the executor worker
 readonly EXECUTOR_WORKER_TYPE="executor"
 readonly IDE_CALLBACK_WORKER_TYPE="ide_callback"
+# Canonical name of the codegen sandbox worker. Same reason as the two above:
+# it keys several maps and a couple of dispatch cases, and a typo in any one of
+# them is a silently unstarted worker rather than an error.
+readonly SANDBOX_WORKER_TYPE="sandbox"
 # Canonical name of the PG-queue consumer worker (referenced in several maps
 # and special-cases below; a constant keeps them in sync).
 readonly PG_QUEUE_CONSUMER_TYPE="pg_queue_consumer"
@@ -137,7 +141,7 @@ declare -A WORKERS=(
     ["${EXECUTOR_WORKER_TYPE}"]="${EXECUTOR_WORKER_TYPE}"
     ["ide-callback"]="${IDE_CALLBACK_WORKER_TYPE}"
     ["${IDE_CALLBACK_WORKER_TYPE}"]="${IDE_CALLBACK_WORKER_TYPE}"
-    ["sandbox"]="sandbox"
+    ["$SANDBOX_WORKER_TYPE"]="$SANDBOX_WORKER_TYPE"
     # PG Queue consumer — polls Postgres (SKIP LOCKED), not RabbitMQ via Celery
     ["pg-queue-consumer"]="$PG_QUEUE_CONSUMER_TYPE"
     ["$PG_QUEUE_CONSUMER_TYPE"]="$PG_QUEUE_CONSUMER_TYPE"
@@ -183,7 +187,7 @@ declare -A WORKER_QUEUES=(
     # backend/agent_kv/dispatch.py; ide_callback owns both queues.
     ["${IDE_CALLBACK_WORKER_TYPE}"]="${IDE_CALLBACK_WORKER_TYPE},agent_kv_callback"
     # Codegen sandbox worker (WorkerType.SANDBOX) — sandboxed code execution.
-    ["sandbox"]="sandbox_codegen"
+    ["$SANDBOX_WORKER_TYPE"]="sandbox_codegen"
     # The PG queue (in pg_queue_message) this consumer polls — exported as
     # WORKER_PG_QUEUE_CONSUMER_QUEUE, not a Celery --queues value.
     ["$PG_QUEUE_CONSUMER_TYPE"]="notifications"
@@ -203,7 +207,7 @@ declare -A WORKER_HEALTH_PORTS=(
     # sandbox: 8092 — 8090/8091 are reserved below for pg_queue_consumer /
     # pluggable-worker auto-discovery; 8092 is the sandbox worker's fixed slot
     # (WorkerType.to_health_port() reads SANDBOX_HEALTH_PORT first).
-    ["sandbox"]="8092"
+    ["$SANDBOX_WORKER_TYPE"]="8092"
     # pg_queue_consumer: 8090 — reserved here, just past the 8080-8089 core
     # range and just below where pluggable-worker discovery starts allocating
     # (8091+, see below), so it collides with neither. The consumer binds it
@@ -800,7 +804,7 @@ run_worker() {
             "${IDE_CALLBACK_WORKER_TYPE}")
                 export IDE_CALLBACK_HEALTH_PORT="$health_port"
                 ;;
-            "sandbox")
+            "${SANDBOX_WORKER_TYPE}")
                 export SANDBOX_HEALTH_PORT="$health_port"
                 ;;
             *)
@@ -882,7 +886,7 @@ run_worker() {
             "${IDE_CALLBACK_WORKER_TYPE}")
                 cmd_args+=("--concurrency=2")
                 ;;
-            "sandbox")
+            "${SANDBOX_WORKER_TYPE}")
                 cmd_args+=("--concurrency=2")
                 ;;
             *)

@@ -95,6 +95,92 @@ def _limits(cpu_seconds: int, memory_mb: int, max_pids: int, fsize: int):
     return _apply
 
 
+def _kill_group(proc, note: str) -> None:
+    """SIGKILL the child's whole process group, best effort.
+
+    The group (not just the pid) because _limits() makes the child a session
+    leader via os.setsid() before it execs, so any children/grandchildren the
+    script spawned die with it. Failures are logged, never raised: this runs on
+    paths that are already returning a failure RunResult.
+    """
+    try:
+        os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+    except Exception:
+        logger.warning(note, exc_info=True)
+
+
+def _reap(proc) -> None:
+    """Wait briefly for a SIGKILLed child so it does not linger as a zombie."""
+    try:
+        proc.wait(timeout=5)
+    except Exception:
+        logger.warning(
+            "sandbox: timed-out child did not exit after SIGKILL",
+            exc_info=True,
+        )
+
+
+def _result_from_output(
+    out: Path,
+    *,
+    max_output_bytes: int,
+    max_rows: int,
+    stdout: str,
+    stderr: str,
+) -> RunResult:
+    """Read the script's output.jsonl and turn it into the final RunResult.
+
+    Guarded end-to-end: `read_text` is forced to UTF-8 with `errors="replace"`
+    so bytes the child wrote that aren't valid UTF-8 decode to replacement
+    characters instead of raising `UnicodeDecodeError` (which, unguarded, would
+    propagate out of run_code and break the "always return a structured
+    RunResult" contract every other failure path honours). The broad
+    `except Exception` is defense-in-depth for any other unexpected read
+    failure (e.g. a filesystem error) -- it never masks the specific
+    size/row-cap returns above it, which `return` out of the `try` rather
+    than raise.
+    """
+    try:
+        raw = out.read_text(encoding="utf-8", errors="replace")
+        if len(raw.encode()) > max_output_bytes:
+            return RunResult(
+                success=False,
+                stdout=stdout,
+                stderr=stderr,
+                error="execution failed: output exceeds size cap",
+            )
+        rows = 0
+        for line in raw.splitlines():
+            if not line.strip():
+                continue
+            json.loads(line)
+            rows += 1
+            if rows > max_rows:
+                return RunResult(
+                    success=False,
+                    stdout=stdout,
+                    stderr=stderr,
+                    error=f"execution failed: output exceeds row cap of {max_rows} rows",
+                )
+    except ValueError:
+        return RunResult(
+            success=False,
+            stdout=stdout,
+            stderr=stderr,
+            error="execution failed: invalid JSONL output",
+        )
+    except Exception:
+        return RunResult(
+            success=False,
+            stdout=stdout,
+            stderr=stderr,
+            error="execution failed: unreadable output",
+        )
+    return RunResult(
+        success=True, rows_jsonl=raw, rows_written=rows, stdout=stdout, stderr=stderr
+    )
+
+
 def run_code(
     code: str,
     input_json: str,
@@ -183,26 +269,16 @@ def run_code(
             # children/grandchildren the script spawned die too (this is
             # why _limits() makes the child a session leader via
             # os.setsid() before it execs the script).
-            try:
-                os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
-            except Exception:
-                logger.warning(
-                    "sandbox: could not kill the timed-out child's process group",
-                    exc_info=True,
-                )
+            _kill_group(
+                proc, "sandbox: could not kill the timed-out child's process group"
+            )
             # REAP before reading. SIGKILL is asynchronous: without this the
             # child may still be writing when the capture files are read
             # (truncated diagnostics) and, worse, is left unreaped in a
             # long-lived worker -- a zombie per timed-out job. The pre-review
             # code got this incidentally from `communicate(timeout=1)`; moving
             # to files dropped the wait with it.
-            try:
-                proc.wait(timeout=5)
-            except Exception:
-                logger.warning(
-                    "sandbox: timed-out child did not exit after SIGKILL",
-                    exc_info=True,
-                )
+            _reap(proc)
             stdout, stderr = _captured()
             return RunResult(
                 success=False,
@@ -223,13 +299,7 @@ def run_code(
             # nothing anywhere to say the harness itself had failed.
             logger.warning("sandbox: harness failure running generated code: %s", exc)
             if proc is not None:
-                try:
-                    os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
-                except Exception:
-                    logger.warning(
-                        "sandbox: could not kill the child's process group",
-                        exc_info=True,
-                    )
+                _kill_group(proc, "sandbox: could not kill the child's process group")
             return RunResult(
                 success=False, error=f"execution failed: {type(exc).__name__}"
             )
@@ -244,52 +314,10 @@ def run_code(
                 error=f"execution failed: exit {returncode}",
             )
 
-        # The output read + JSONL parse is guarded end-to-end: `read_text` is
-        # forced to UTF-8 with `errors="replace"` so bytes the child wrote
-        # that aren't valid UTF-8 decode to replacement characters instead of
-        # raising `UnicodeDecodeError` (which, unguarded, would propagate out
-        # of run_code and break the "always return a structured RunResult"
-        # contract every other failure path here honours). The broad
-        # `except Exception` below is defense-in-depth for any other
-        # unexpected read failure (e.g. a filesystem error) — it never masks
-        # the specific size/row-cap returns above it, which `return` out of
-        # the `try` rather than raise.
-        try:
-            raw = out.read_text(encoding="utf-8", errors="replace")
-            if len(raw.encode()) > max_output_bytes:
-                return RunResult(
-                    success=False,
-                    stdout=stdout,
-                    stderr=stderr,
-                    error="execution failed: output exceeds size cap",
-                )
-            rows = 0
-            for line in raw.splitlines():
-                if not line.strip():
-                    continue
-                json.loads(line)
-                rows += 1
-                if rows > max_rows:
-                    return RunResult(
-                        success=False,
-                        stdout=stdout,
-                        stderr=stderr,
-                        error=f"execution failed: output exceeds row cap of {max_rows} rows",
-                    )
-        except ValueError:
-            return RunResult(
-                success=False,
-                stdout=stdout,
-                stderr=stderr,
-                error="execution failed: invalid JSONL output",
-            )
-        except Exception:
-            return RunResult(
-                success=False,
-                stdout=stdout,
-                stderr=stderr,
-                error="execution failed: unreadable output",
-            )
-        return RunResult(
-            success=True, rows_jsonl=raw, rows_written=rows, stdout=stdout, stderr=stderr
+        return _result_from_output(
+            out,
+            max_output_bytes=max_output_bytes,
+            max_rows=max_rows,
+            stdout=stdout,
+            stderr=stderr,
         )
