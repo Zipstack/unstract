@@ -73,6 +73,11 @@ test = [
     # runtime that arrives with the `aws` extra (or transitively through the
     # connectors), but the test venv needs it explicitly to exercise signing.
     "boto3==1.43.106",
+    # storage_compat tests drive FileStorage -> s3fs -> aiobotocore and check
+    # gcsfs's class selection; at runtime these arrive with the `aws` / `gcs`
+    # extras, which the test venv does not install.
+    "s3fs==2026.9.0",
+    "gcsfs~=2026.10.0",
     "parameterized==0.9.0",
     "pytest>=9.0.3",
     "pytest-mock==3.14.0",

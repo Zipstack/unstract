@@ -3904,12 +3904,14 @@ dev = [
 docs = [{ name = "lazydocs", specifier = "~=0.4.8" }]
 test = [
     { name = "boto3", specifier = "==1.43.106" },
+    { name = "gcsfs", specifier = "~=2026.10.0" },
     { name = "parameterized", specifier = "==0.9.0" },
     { name = "pytest", specifier = ">=9.0.3" },
     { name = "pytest-asyncio", specifier = ">=0.24.0" },
     { name = "pytest-cov", specifier = ">=6.0.0" },
     { name = "pytest-md-report", specifier = ">=0.6.2" },
     { name = "pytest-mock", specifier = "==3.14.0" },
+    { name = "s3fs", specifier = "==2026.9.0" },
 ]
 
 [[package]]
