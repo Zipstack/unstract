@@ -42,12 +42,26 @@ logger = WorkerLogger.get_logger(__name__)
 # ``executor/worker.py`` reaches it by importing this module.
 register_all()
 
+#: Operations that are expected to emit usage records. An op in this set that
+#: finishes successfully with NO records logs below -- it is the only signal
+#: that billing silently produced nothing.
+#:
+#: Keeping a paid op out of this set is not a missing log line, it is a missing
+#: alarm: the cloud `flush()` returns `[]` on a skipped LLM without raising, so
+#: total loss of a run's billing rows is otherwise indistinguishable from a run
+#: that legitimately made no LLM calls. Add every new LLM-bearing operation here
+#: at the same time as the operation itself.
 _LLM_BEARING_OPS = frozenset(
     {
         "answer_prompt",
         "single_pass_extraction",
         "summarize",
         "structure_pipeline",
+        # The Agent-KV API's table extractor (cloud `agentic_table`'s blind-API
+        # operation). Every run drives two LLMs; a run of this op with no usage
+        # records means the billing chain broke, never that there was nothing
+        # to bill.
+        "table_extract_api",
     }
 )
 
