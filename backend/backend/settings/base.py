@@ -72,13 +72,19 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 DEFAULT_LOG_LEVEL = os.environ.get("DEFAULT_LOG_LEVEL", "INFO")
 
 # Celery Broker Configuration
-CELERY_BROKER_BASE_URL = get_required_setting("CELERY_BROKER_BASE_URL")
-CELERY_BROKER_USER = get_required_setting("CELERY_BROKER_USER")
-CELERY_BROKER_PASS = get_required_setting("CELERY_BROKER_PASS")
-CELERY_BROKER_URL = str(
-    httpx.URL(CELERY_BROKER_BASE_URL).copy_with(
-        username=CELERY_BROKER_USER, password=CELERY_BROKER_PASS
+# Optional: only the Celery transport uses a broker. Left unset, the URL stays
+# empty and Celery connects lazily, so nothing dials a broker that is not there.
+CELERY_BROKER_BASE_URL = os.environ.get("CELERY_BROKER_BASE_URL")
+CELERY_BROKER_USER = os.environ.get("CELERY_BROKER_USER")
+CELERY_BROKER_PASS = os.environ.get("CELERY_BROKER_PASS")
+CELERY_BROKER_URL = (
+    str(
+        httpx.URL(CELERY_BROKER_BASE_URL).copy_with(
+            username=CELERY_BROKER_USER, password=CELERY_BROKER_PASS
+        )
     )
+    if CELERY_BROKER_BASE_URL
+    else ""
 )
 
 ENV_FILE = find_dotenv()

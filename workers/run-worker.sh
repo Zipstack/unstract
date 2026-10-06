@@ -323,7 +323,6 @@ ENVIRONMENT:
     Required variables:
     - INTERNAL_SERVICE_API_KEY
     - INTERNAL_API_BASE_URL
-    - CELERY_BROKER_BASE_URL
     - DB_HOST, DB_USER, DB_PASSWORD, DB_NAME (for PostgreSQL result backend)
 
     Plugin availability is detected dynamically via plugin registry.
@@ -429,7 +428,6 @@ validate_env() {
     local required_vars=(
         "INTERNAL_SERVICE_API_KEY"
         "INTERNAL_API_BASE_URL"
-        "CELERY_BROKER_BASE_URL"
         "DB_HOST"
         "DB_USER"
         "DB_PASSWORD"
