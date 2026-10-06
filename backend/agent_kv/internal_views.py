@@ -96,9 +96,31 @@ class StageReportView(APIView):
         )
         job = job_qs.first()
         if job is None:
-            # Late report for a job that already reached a terminal state
-            # (completed/failed/cancelled) -- a no-op, not an error.
-            return Response({"ok": True, "noop": True})
+            # Two very different situations used to share this response: a late
+            # report for an already-terminal job (ordinary), and a report for a
+            # job_id/org_id pair that matches NO row at all (never ordinary).
+            #
+            # The second is what an org-slug-vs-FK-pk mix-up looks like, and
+            # `dispatch.py` documents that exact confusion shipping once
+            # already. If it recurs, every stage report is a silent 200 no-op,
+            # every job stays non-terminal and gets reaped as "Job timed out" --
+            # a 100% failure rate presenting as timeouts, with nothing in any
+            # log. So say which one happened.
+            exists = AgentKVJob.objects.filter(id=job_id, organization_id=org_id).exists()
+            if not exists:
+                logger.warning(
+                    "agent-kv stage report for unknown job %s (org=%s); no row "
+                    "matches that job/org pair -- check the org identifier",
+                    job_id,
+                    org_id,
+                )
+            return Response(
+                {
+                    "ok": True,
+                    "noop": True,
+                    "reason": "already_terminal" if exists else "unknown_job",
+                }
+            )
 
         entry = {"status": status_value}
         if "seconds" in body:
@@ -230,11 +252,24 @@ class FinalizeView(APIView):
         finally:
             AgentKVConcurrencyLimiter.release(org_id, str(job_id))
 
+        if job is None:
+            logger.warning(
+                "agent-kv finalize for unknown job %s (org=%s); no row matches "
+                "that job/org pair, so nothing was terminalized -- the job (if "
+                "it exists under another org identifier) will be reaped as a "
+                "timeout",
+                job_id,
+                org_id,
+            )
+
         return Response(
             {
                 "finalized": finalized,
                 "webhook_url": job.webhook_url if job else "",
                 "status": job.status.lower() if job else "",
+                # Lets the callback worker tell "already terminal" (ordinary)
+                # from "no such job" (a wiring fault) -- they were byte-identical.
+                "reason": "ok" if job else "unknown_job",
             }
         )
 

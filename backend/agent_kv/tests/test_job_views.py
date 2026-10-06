@@ -390,12 +390,56 @@ def test_delete_on_running_job_cancels_before_deleting_files(
 @mock.patch.object(AgentKVJob, "mark_terminal", return_value=True)
 @mock.patch.object(AgentKVJob, "objects")
 @mock.patch.object(AgentKVKey, "objects")
-def test_delete_on_running_job_releases_the_concurrency_slot(
+def test_delete_on_a_running_job_does_NOT_release_the_slot(
     m_keys, m_jobs, m_mark_terminal, m_delete_files, m_save, m_release
 ):
+    """Inverted: this used to assert the release, which was the bug.
+
+    Nothing revokes a running executor -- `job.task_id` is written at dispatch
+    and never read again -- so the engine keeps running, keeps calling LLMs and
+    keeps billing. Handing its slot back immediately let the next submit start
+    alongside it, so submit-then-delete in a loop ran arbitrarily many
+    concurrent extractions against a ceiling of AGENT_KV_CONCURRENT_LIMIT, all
+    paid for.
+
+    The slot is released by `FinalizeView`'s `finally` when the executor's
+    callback lands. Reported as 2.5 in the branch review.
+    """
     m_keys.get.return_value = kv_key()
     job = AgentKVJob(status=JobStatus.RUNNING)
     job.organization_id = "org1"
+    job.dispatched_at = timezone.now()
+    m_jobs.get.return_value = job
+
+    resp = ev.JobDeleteView.as_view()(_authed(method="delete"), job_id=uuid.uuid4())
+
+    assert resp.status_code == 204
+    assert not m_release.called, (
+        "the executor is still running and still billing; its slot belongs to "
+        "the finalize callback, not to this request"
+    )
+
+
+@mock.patch.object(ev, "dispatch_cancelled_webhook")
+@mock.patch.object(ev.AgentKVConcurrencyLimiter, "release")
+@mock.patch.object(AgentKVJob, "save")
+@mock.patch.object(ev, "delete_job_files", return_value=["input_ref", "result_ref"])
+@mock.patch.object(AgentKVJob, "mark_terminal", return_value=True)
+@mock.patch.object(AgentKVJob, "objects")
+@mock.patch.object(AgentKVKey, "objects")
+def test_delete_on_a_never_dispatched_job_DOES_release_the_slot(
+    m_keys, m_jobs, m_mark_terminal, m_delete_files, m_save, m_release, m_hook
+):
+    """The case the release exists for, and the only one.
+
+    A job cancelled before dispatch gets no finalize callback, and the sweep's
+    phase-1 only targets PENDING, never CANCELLED -- so without this its slot
+    leaks until the 6h TTL.
+    """
+    m_keys.get.return_value = kv_key()
+    job = AgentKVJob(status=JobStatus.PENDING)
+    job.organization_id = "org1"
+    job.dispatched_at = None
     m_jobs.get.return_value = job
 
     resp = ev.JobDeleteView.as_view()(_authed(method="delete"), job_id=uuid.uuid4())
@@ -677,3 +721,60 @@ def test_delete_that_cancels_a_running_job_also_queues_the_webhook(
 
     assert resp.status_code == 204
     assert m_hook.called
+
+
+# ---------------------------------------------------------------------------
+# (8k) The same narrowing on JobCancelView, which has the identical shape.
+# ---------------------------------------------------------------------------
+@mock.patch.object(ev, "dispatch_cancelled_webhook")
+@mock.patch.object(ev.AgentKVConcurrencyLimiter, "release")
+@mock.patch.object(AgentKVJob, "mark_terminal", return_value=True)
+@mock.patch.object(AgentKVJob, "objects")
+@mock.patch.object(AgentKVKey, "objects")
+def test_cancel_on_a_running_job_does_NOT_release_the_slot(
+    m_keys, m_jobs, m_mark_terminal, m_release, m_hook
+):
+    m_keys.get.return_value = kv_key()
+    job = AgentKVJob(status=JobStatus.RUNNING)
+    job.organization_id = "org1"
+    job.dispatched_at = timezone.now()
+    m_jobs.get.return_value = job
+
+    resp = ev.JobCancelView.as_view()(_authed(method="post"), job_id=uuid.uuid4())
+
+    assert resp.status_code == 200
+    assert not m_release.called
+
+
+@mock.patch.object(ev, "dispatch_cancelled_webhook")
+@mock.patch.object(ev.AgentKVConcurrencyLimiter, "release")
+@mock.patch.object(AgentKVJob, "mark_terminal", return_value=True)
+@mock.patch.object(AgentKVJob, "objects")
+@mock.patch.object(AgentKVKey, "objects")
+def test_cancel_on_a_never_dispatched_job_DOES_release_the_slot(
+    m_keys, m_jobs, m_mark_terminal, m_release, m_hook
+):
+    m_keys.get.return_value = kv_key()
+    job = AgentKVJob(status=JobStatus.PENDING)
+    job.organization_id = "org1"
+    job.dispatched_at = None
+    m_jobs.get.return_value = job
+
+    resp = ev.JobCancelView.as_view()(_authed(method="post"), job_id=uuid.uuid4())
+
+    assert resp.status_code == 200
+    m_release.assert_called_once_with("org1", str(job.id))
+
+
+def test_a_dispatched_but_still_pending_job_is_not_treated_as_undispatched():
+    """`dispatched_at` and `status` are checked together on purpose.
+
+    Post-enqueue bookkeeping can fail after the task is already on the queue
+    (dispatch.py wraps it precisely because losing it must not fail the
+    dispatch), leaving a row that still reads PENDING while an executor runs.
+    Releasing that slot would over-subscribe exactly as the RUNNING case did.
+    """
+    job = AgentKVJob(status=JobStatus.PENDING)
+    job.dispatched_at = timezone.now()
+
+    assert not ev._never_dispatched(job)

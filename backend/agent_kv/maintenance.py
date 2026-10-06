@@ -19,6 +19,7 @@ is either a guarded UPDATE (``AgentKVJob.mark_terminal``) or a targeted
 single-row write, never a queryset-wide one.
 """
 
+import logging
 from datetime import timedelta
 
 from django.conf import settings
@@ -28,6 +29,8 @@ from django.utils import timezone
 from agent_kv.models import AgentKVJob, JobStatus
 from agent_kv.rate_limiter import AgentKVConcurrencyLimiter
 from agent_kv.storage import delete_job_files
+
+logger = logging.getLogger(__name__)
 
 _MAINTENANCE_BATCH_LIMIT = 500
 # Slots in each TTL-cleanup batch held for rows whose file delete failed before.
@@ -152,6 +155,21 @@ def run_sweep() -> dict:
             timed_out += 1
             AgentKVConcurrencyLimiter.release(str(org_id), str(job.id))
 
+    # These two counts are the only evidence the sweep ran and the only
+    # evidence it had to do anything. A sweep that terminalizes a thousand jobs
+    # as FAILED used to emit nothing at all -- the module has had no logger
+    # since it was written -- so a backlog of stranded jobs looked identical to
+    # a quiet, healthy system.
+    if swept or timed_out:
+        logger.warning(
+            "agent-kv sweep terminalized %s never-dispatched and %s stuck job(s); "
+            "a non-zero count here means jobs were stranded and their "
+            "concurrency slots held",
+            swept,
+            timed_out,
+        )
+    else:
+        logger.info("agent-kv sweep: nothing to terminalize")
     return {"swept": swept, "timed_out": timed_out}
 
 
@@ -246,4 +264,16 @@ def run_ttl_cleanup() -> dict:
     # stays high across ticks is the signal that something is wrong with the
     # object store rather than with one job -- the split stops either side
     # blocking the other, it does not make a persistent fault harmless.
+    # `retained` is the count this pass could NOT clean -- a file delete that
+    # failed keeps its ref so the next pass retries it. A `retained` that never
+    # falls is a stuck object, and stays invisible without this.
+    if retained:
+        logger.warning(
+            "agent-kv TTL cleanup removed %s job(s) and RETAINED %s whose files "
+            "could not be deleted; those refs are kept for the next pass",
+            cleaned,
+            retained,
+        )
+    elif cleaned:
+        logger.info("agent-kv TTL cleanup removed %s expired job(s)", cleaned)
     return {"cleaned": cleaned, "retained": retained}

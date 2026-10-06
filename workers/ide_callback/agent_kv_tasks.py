@@ -80,7 +80,19 @@ def _resolve_error(failed_task_id: str, explicit: str | None = None) -> str:
         if res.result:
             return str(res.result)
     except Exception:
-        pass
+        # Was a bare `pass`. The common case here is a kombu deserialization
+        # failure: the executor raised a cloud-plugin exception class that is
+        # not importable in the OSS ide_callback image, so the result backend
+        # has the error and this process cannot read it. The job is then
+        # finalized with "Executor failed without an error message" -- the exact
+        # useless error this lookup exists to avoid -- and silently, so the real
+        # cause was unrecoverable even from logs.
+        logger.warning(
+            "Could not read the executor error from the result backend for "
+            "task %s; the job will be finalized with a generic message",
+            failed_task_id,
+            exc_info=True,
+        )
     return _UNKNOWN
 
 

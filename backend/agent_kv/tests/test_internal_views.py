@@ -365,6 +365,7 @@ def test_finalize_success_writes_result_then_marks_terminal(
         "finalized": True,
         "webhook_url": "https://example.com/hook",
         "status": "completed",
+        "reason": "ok",
     }
     assert [c[0] for c in manager.mock_calls] == ["write_result", "mark_terminal"]
     m_write.assert_called_once_with("org1", str(job_id), {"foo": "bar"})
@@ -532,6 +533,7 @@ def test_finalize_duplicate_does_not_rewrite_result(
         "finalized": False,
         "webhook_url": "https://example.com/hook",
         "status": "completed",
+        "reason": "ok",
     }
     assert not m_write.called
     assert not m_mark_terminal.called
@@ -584,7 +586,12 @@ def test_finalize_failure_records_error(m_jobs, m_write, m_mark_terminal, m_rele
     )
 
     assert resp.status_code == 200
-    assert resp.data == {"finalized": True, "webhook_url": "", "status": "failed"}
+    assert resp.data == {
+        "finalized": True,
+        "webhook_url": "",
+        "status": "failed",
+        "reason": "ok",
+    }
     assert not m_write.called
     m_mark_terminal.assert_called_once_with(
         job_id, "org1", JobStatus.FAILED, error="LLM provider timed out"
@@ -684,3 +691,72 @@ def test_frozen_internal_urls_resolve_to_the_right_views():
     finalize = resolve(f"/internal/v1/agent-kv/jobs/{job_id}/finalize/")
     assert finalize.func.cls is iv.FinalizeView
     assert finalize.kwargs == {"job_id": job_id}
+
+
+# ---------------------------------------------------------------------------
+# An unknown job/org pair must be distinguishable from an ordinary duplicate.
+#
+# Both used to return a byte-identical 200 no-op with nothing logged. The
+# second is what an org-slug-vs-FK-pk mix-up looks like -- and `dispatch.py`
+# documents that exact confusion shipping once already. If it recurs, every
+# finalize is a silent no-op, every job stays non-terminal and is reaped as
+# "Job timed out": a 100% failure rate presenting as timeouts, invisible.
+#
+# Reported as 2.12 in the branch review.
+# ---------------------------------------------------------------------------
+@mock.patch.object(iv.AgentKVConcurrencyLimiter, "release")
+@mock.patch.object(AgentKVJob, "objects")
+def test_finalize_for_an_unknown_job_says_so_and_logs(m_objects, m_release, caplog):
+    import logging
+
+    m_objects.filter.return_value.first.return_value = None
+
+    with caplog.at_level(logging.WARNING, logger="agent_kv.internal_views"):
+        resp = iv.FinalizeView.as_view()(
+            _post("/x", {"org_id": "org1", "success": True}), job_id=uuid.uuid4()
+        )
+
+    assert resp.status_code == 200
+    assert resp.data["reason"] == "unknown_job"
+    assert resp.data["finalized"] is False
+    assert "unknown job" in caplog.text
+
+
+@mock.patch.object(AgentKVJob, "objects")
+def test_stage_report_for_an_unknown_job_says_so_and_logs(m_objects, caplog):
+    """`already_terminal` is ordinary and stays quiet; `unknown_job` is not."""
+    import logging
+
+    m_objects.filter.return_value.exclude.return_value.first.return_value = None
+    m_objects.filter.return_value.exists.return_value = False
+
+    with caplog.at_level(logging.WARNING, logger="agent_kv.internal_views"):
+        resp = iv.StageReportView.as_view()(
+            _post(
+                "/x", {"org_id": "org1", "stage": "table_extraction", "status": "running"}
+            ),
+            job_id=uuid.uuid4(),
+        )
+
+    assert resp.status_code == 200
+    assert resp.data["reason"] == "unknown_job"
+    assert "unknown job" in caplog.text
+
+
+@mock.patch.object(AgentKVJob, "objects")
+def test_stage_report_for_an_already_terminal_job_is_quiet(m_objects, caplog):
+    import logging
+
+    m_objects.filter.return_value.exclude.return_value.first.return_value = None
+    m_objects.filter.return_value.exists.return_value = True
+
+    with caplog.at_level(logging.WARNING, logger="agent_kv.internal_views"):
+        resp = iv.StageReportView.as_view()(
+            _post(
+                "/x", {"org_id": "org1", "stage": "table_extraction", "status": "running"}
+            ),
+            job_id=uuid.uuid4(),
+        )
+
+    assert resp.data["reason"] == "already_terminal"
+    assert caplog.records == [], "a late report for a finished job is ordinary"

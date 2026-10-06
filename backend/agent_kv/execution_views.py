@@ -89,6 +89,18 @@ def _status_document(job) -> dict:
     return doc
 
 
+def _never_dispatched(job) -> bool:
+    """True when this job never reached an executor, so no callback will come.
+
+    Read from the row as it was BEFORE this request terminalized it. Both
+    conditions are deliberate: `dispatched_at` is stamped by post-enqueue
+    bookkeeping that can legitimately fail, and `status` is what the dispatcher
+    advances -- a job with either marker set has, or may have, a running
+    executor whose finalize callback owns the slot.
+    """
+    return job.dispatched_at is None and job.status == JobStatus.PENDING
+
+
 def _fail_job_response(job, org_id: str, message: str, *, job_saved: bool) -> Response:
     """Shared cleanup for any post-acquire submit failure (spec §5.3/§5.4).
 
@@ -343,20 +355,35 @@ class JobStatusView(APIView):
                 job.id, job.organization_id, JobStatus.CANCELLED
             )
             if won:
-                # Release the concurrency slot, exactly as JobCancelView does
-                # and for the same reason: the slot is taken at submit and
-                # released by _fail_job_response, the finalize callback and the
-                # sweep -- but a job terminalized HERE before dispatch gets no
-                # finalize callback, and the sweep's phase-1 only targets
-                # PENDING, never CANCELLED. Without this, deleting in-flight
-                # jobs leaks a slot each until the 6h TTL, and enough deletes
-                # exhaust the org's allowance and start rejecting new submits.
+                # Release the concurrency slot ONLY for a job that was never
+                # dispatched.
+                #
+                # The slot is taken at submit and released by
+                # `_fail_job_response`, the finalize callback and the sweep. A
+                # job cancelled BEFORE dispatch gets no finalize callback, and
+                # the sweep's phase-1 only targets PENDING, never CANCELLED --
+                # so without this release its slot would leak until the 6h TTL.
+                # That is what this release is for, and all it is for.
+                #
+                # It used to fire for ANY non-terminal job, including one
+                # mid-run. Nothing revokes a running executor -- `job.task_id`
+                # is written at dispatch and never read again -- so the engine
+                # kept running, kept calling LLMs and kept billing while its
+                # slot was handed to the next submit. Submit-then-cancel in a
+                # loop therefore ran arbitrarily many concurrent extractions
+                # against a ceiling of `AGENT_KV_CONCURRENT_LIMIT`, all paid for.
+                #
+                # Narrowing loses nothing: a mid-run cancel's slot is released
+                # by `FinalizeView`'s `finally` when the executor's callback
+                # lands, and `release()` is idempotent (zrem).
                 #
                 # Guarded on `won` so a lost race (a concurrent cancel or
                 # finalize terminalized it first) does not release a slot that
-                # the winner is still accounting for; release() is idempotent
-                # (zrem), so the winner's own release stays correct.
-                AgentKVConcurrencyLimiter.release(str(job.organization_id), str(job.id))
+                # the winner is still accounting for.
+                if _never_dispatched(job):
+                    AgentKVConcurrencyLimiter.release(
+                        str(job.organization_id), str(job.id)
+                    )
                 # This request owns the terminal notification: no fresh finalize
                 # can follow a cancel that won, so nothing else will send it.
                 dispatch_cancelled_webhook(job)
@@ -423,14 +450,29 @@ class JobCancelView(APIView):
         job = _get_job(agent_kv_key, job_id)
         won = AgentKVJob.mark_terminal(job.id, job.organization_id, JobStatus.CANCELLED)
         if won:
-            # The slot is acquired at submit and released by _fail_job_response,
-            # the finalize callback, and the sweep. A job cancelled BEFORE
-            # dispatch gets no finalize callback, and the sweep's phase-1 only
-            # targets PENDING (not CANCELLED) -- so without this release its
-            # slot would leak until the 6h TTL (pre-Greptile important #4).
-            # release() is idempotent (zrem), so a later finalize-callback
-            # release on a cancel-mid-run is harmless.
-            AgentKVConcurrencyLimiter.release(str(job.organization_id), str(job.id))
+            # Release the concurrency slot ONLY for a job that was never
+            # dispatched.
+            #
+            # The slot is taken at submit and released by
+            # `_fail_job_response`, the finalize callback and the sweep. A
+            # job cancelled BEFORE dispatch gets no finalize callback, and
+            # the sweep's phase-1 only targets PENDING, never CANCELLED --
+            # so without this release its slot would leak until the 6h TTL.
+            # That is what this release is for, and all it is for.
+            #
+            # It used to fire for ANY non-terminal job, including one
+            # mid-run. Nothing revokes a running executor -- `job.task_id`
+            # is written at dispatch and never read again -- so the engine
+            # kept running, kept calling LLMs and kept billing while its
+            # slot was handed to the next submit. Submit-then-cancel in a
+            # loop therefore ran arbitrarily many concurrent extractions
+            # against a ceiling of `AGENT_KV_CONCURRENT_LIMIT`, all paid for.
+            #
+            # Narrowing loses nothing: a mid-run cancel's slot is released
+            # by `FinalizeView`'s `finally` when the executor's callback
+            # lands, and `release()` is idempotent (zrem).
+            if _never_dispatched(job):
+                AgentKVConcurrencyLimiter.release(str(job.organization_id), str(job.id))
             # Docs §8 promises a terminal notification, and cancellation never
             # reaches finalize -- so this path has to send it. Guarded on `won`
             # so a cancel that LOST leaves the notification to the finalize that

@@ -63,11 +63,14 @@ class TestCallContract:
 
     def test_ttl_cleanup_calls_the_ttl_cleanup_client_method(self):
         mock_api = MagicMock()
-        mock_api.agent_kv_ttl_cleanup.return_value = {"cleaned": 2}
+        mock_api.agent_kv_ttl_cleanup.return_value = {"cleaned": 2, "retained": 1}
         with patch.object(akt, "_get_api_client", return_value=mock_api):
             result = akt.agent_kv_ttl_cleanup()
         mock_api.agent_kv_ttl_cleanup.assert_called_once_with()
-        assert result == {"cleaned": 2}
+        # `retained` is part of the contract: it counts jobs whose files could not
+        # be deleted and whose refs are kept for the next pass. Pinned so it cannot
+        # be dropped silently.
+        assert result == {"cleaned": 2, "retained": 1}
 
 
 class TestInternalClientAgentKvMethods:
@@ -87,9 +90,9 @@ class TestInternalClientAgentKvMethods:
 
     def test_agent_kv_ttl_cleanup_posts_to_the_ttl_cleanup_endpoint(self):
         with patch.object(
-            InternalAPIClient, "post", return_value={"cleaned": 1}
+            InternalAPIClient, "post", return_value={"cleaned": 1, "retained": 0}
         ) as m_post:
             client = InternalAPIClient.__new__(InternalAPIClient)
             result = client.agent_kv_ttl_cleanup()
         m_post.assert_called_once_with("v1/agent-kv/ttl-cleanup/", data={})
-        assert result == {"cleaned": 1}
+        assert result == {"cleaned": 1, "retained": 0}

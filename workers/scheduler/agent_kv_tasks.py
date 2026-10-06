@@ -62,10 +62,18 @@ def _get_api_client():
 @worker_task(name="agent_kv.sweep")
 def agent_kv_sweep() -> dict[str, Any]:
     """Terminalize never-dispatched PENDING and stuck Agent-KV jobs (spec §5.4)."""
-    return _get_api_client().agent_kv_sweep()
+    result = _get_api_client().agent_kv_sweep()
+    # Logged here as well as backend-side: this is the only place that records
+    # the periodic actually FIRED. The counts alone cannot distinguish "ran and
+    # found nothing" from "never ran", which is precisely the failure this
+    # task pair shipped with (see the backend migration that schedules them).
+    logger.info("agent_kv.sweep completed: %s", result)
+    return result
 
 
 @worker_task(name="agent_kv.ttl_cleanup")
 def agent_kv_ttl_cleanup() -> dict[str, Any]:
     """Delete staged Agent-KV input/result files past their TTL (spec §5.4)."""
-    return _get_api_client().agent_kv_ttl_cleanup()
+    result = _get_api_client().agent_kv_ttl_cleanup()
+    logger.info("agent_kv.ttl_cleanup completed: %s", result)
+    return result
