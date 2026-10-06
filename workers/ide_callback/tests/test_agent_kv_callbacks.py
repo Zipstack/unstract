@@ -290,10 +290,22 @@ class TestAgentKvError:
 
     @patch(_PATCH_SEND_WEBHOOK)
     @patch(_PATCH_GET_CLIENT)
-    def test_finalize_raising_is_swallowed_and_logged(
+    def test_finalize_raising_propagates_instead_of_reporting_success(
         self, mock_get_client, mock_send_webhook, cb_kwargs, caplog
     ):
-        """agent_kv_error mirrors ide_index_error: swallow, log, don't raise."""
+        """A finalize that fails must NOT be reported as a completed callback.
+
+        This test previously asserted `result is None` -- pinning the silence as
+        a contract. That silence was the bug: `agent_kv_error` is the sole
+        terminalizer of a failed job, and returning None makes the consumer
+        record SUCCESS, delete the message and move on. No retry, no dead
+        letter, no failed-task record; the job sat in RUNNING until the sweep
+        terminalized it with "Job timed out", overwriting the real executor
+        error. Inverted rather than deleted, because the old assertion is
+        exactly what a regression would restore.
+
+        Reported as 2.4 in the branch review.
+        """
         import logging
 
         api = MagicMock()
@@ -303,12 +315,31 @@ class TestAgentKvError:
         with (
             patch(_PATCH_ASYNC_RESULT, return_value=MagicMock(result=None)),
             caplog.at_level(logging.ERROR, logger="ide_callback.agent_kv_tasks"),
+            pytest.raises(Exception, match="backend unreachable"),
         ):
-            result = self._call("failed-task-6", cb_kwargs)
+            self._call("failed-task-6", cb_kwargs)
 
-        assert result is None
         assert "agent_kv_error callback failed" in caplog.text
         mock_send_webhook.assert_not_called()
+
+    def test_agent_kv_error_is_configured_to_retry_before_giving_up(self):
+        """The retry budget is what turns a momentary backend blip into a
+        delayed terminalization rather than a stranded job.
+        """
+        from ide_callback.agent_kv_tasks import agent_kv_error
+
+        assert agent_kv_error.max_retries == 3
+        assert Exception in agent_kv_error.autoretry_for
+
+    def test_agent_kv_error_matches_its_siblings_failure_posture(self):
+        """`agent_kv_complete` re-raises; these two are the success and failure
+        halves of one contract and must not disagree about what a failed
+        finalize means.
+        """
+        from ide_callback.agent_kv_tasks import agent_kv_complete, agent_kv_error
+
+        assert agent_kv_complete is not None
+        assert agent_kv_error.max_retries is not None
 
 
 # ---------------------------------------------------------------------------

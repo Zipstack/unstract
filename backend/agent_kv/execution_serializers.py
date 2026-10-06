@@ -154,6 +154,13 @@ _OPTIONS_SERIALIZERS = {
     TABLE_EXTRACTOR_NAME: TableOptionsSerializer,
 }
 
+#: Each extractor's own `keys` validator. An extractor absent from this table
+#: falls through to the schema compiler, which is `kv`'s contract: its `keys` IS
+#: a compiled schema rather than a fixed set of fields.
+_KEYS_SERIALIZERS = {
+    TABLE_EXTRACTOR_NAME: TableKeysSerializer,
+}
+
 
 class ExtractorSerializer(serializers.Serializer):
     """One entry of the submit's `extractors` array (spec §7.0/§7.1)."""
@@ -171,24 +178,43 @@ class ExtractorSerializer(serializers.Serializer):
             )
         return v
 
-    def validate_keys(self, spec):
-        name = (self.initial_data or {}).get("name")
-        if name == TABLE_EXTRACTOR_NAME:
-            keys = TableKeysSerializer(data=spec if isinstance(spec, dict) else {})
+    def _validated_keys(self, name: str, spec):
+        """Validate `keys` for the extractor named by the VALIDATED `name`.
+
+        Not a `validate_keys` field validator, deliberately. That ran before
+        object-level validation and branched on raw ``self.initial_data["name"]``
+        -- while ``validate_name`` saw the value DRF had already trimmed
+        (``CharField.trim_whitespace`` defaults True). So the extractor's
+        identity was decided twice, under two different values:
+        ``{"name": " table ", ...}`` passed the name check as ``table`` and then
+        took the **kv** branch here, never running ``TableKeysSerializer``. A
+        kv-shaped payload like ``{"target_table": {"description": "x"}}``
+        compiles cleanly as a KV schema, so the submit returned **202** and
+        dispatched to ``agentic_table`` with a `target_table` that is a dict
+        rather than the string the binding requires -- the job staged, billed
+        and then failed at the executor.
+
+        Branching on `data["name"]` in ``validate()`` means the name is trimmed
+        and already checked against ``SUPPORTED_EXTRACTORS`` exactly once.
+        """
+        keys_cls = _KEYS_SERIALIZERS.get(name)
+        if keys_cls is not None:
+            keys = keys_cls(data=spec if isinstance(spec, dict) else {})
             keys.is_valid(raise_exception=True)
             return keys.validated_data
-        # kv: size is capped on the SERIALIZED form -- the cap exists to bound
-        # parse and compile cost, and `keys` arrives here already parsed out of
-        # the `extractors` JSON.
-        # ensure_ascii=False so this measures the SAME bytes the outer
-        # `extractors` cap measured.
+
+        # kv (and any future extractor with no dedicated keys serializer): size
+        # is capped on the SERIALIZED form -- the cap exists to bound parse and
+        # compile cost, and `keys` arrives here already parsed out of the
+        # `extractors` JSON. ensure_ascii=False so this measures the SAME bytes
+        # the outer `extractors` cap measured.
         serialized = json.dumps(spec, ensure_ascii=False).encode("utf-8")
         if len(serialized) > settings.AGENT_KV_MAX_SCHEMA_BYTES:
-            raise serializers.ValidationError("keys schema too large")
+            raise serializers.ValidationError({"keys": "keys schema too large"})
         try:
             self.compiled = compile_schema(spec)
         except SchemaError as e:
-            raise serializers.ValidationError(str(e))
+            raise serializers.ValidationError({"keys": str(e)})
         return spec
 
     def validate(self, data):
@@ -202,7 +228,9 @@ class ExtractorSerializer(serializers.Serializer):
             raise serializers.ValidationError(
                 f"unknown keys on extractor entry: {sorted(unknown)}"
             )
-        opts_cls = _OPTIONS_SERIALIZERS[data["name"]]
+        name = data["name"]
+        data["keys"] = self._validated_keys(name, data.get("keys"))
+        opts_cls = _OPTIONS_SERIALIZERS[name]
         opts = opts_cls(data=data.get("options") or {})
         opts.is_valid(raise_exception=True)
         data["options"] = opts.validated_data

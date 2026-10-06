@@ -130,12 +130,41 @@ def agent_kv_complete(
         raise
 
 
-@worker_task(name="agent_kv_error")
+@worker_task(
+    bind=True,
+    name="agent_kv_error",
+    autoretry_for=(Exception,),
+    max_retries=3,
+    retry_backoff=True,
+    retry_backoff_max=300,
+    retry_jitter=True,
+)
 def agent_kv_error(
+    self,
     failed_task_id: str,
     callback_kwargs: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
-    """Celery link_error callback when the agent-kv executor task raises."""
+    """Celery link_error callback when the agent-kv executor task raises.
+
+    This is the SOLE terminalizer of a failed job, so a finalize that does not
+    happen is a job stuck in RUNNING. It used to catch, log and ``return None``
+    -- which the consumer records as SUCCESS, deletes the message, and moves on:
+    no retry, no dead letter, no failed-task record. A momentary backend blip
+    during finalize therefore stranded the job until the sweep eventually
+    terminalized it with "Job timed out", overwriting the real executor error,
+    which existed only in the log line above.
+
+    Now retries with backoff and RAISES on exhaustion, matching its sibling
+    ``agent_kv_complete`` and the ``process_batch_callback_api`` precedent in
+    ``workers/callback/tasks.py``. The PG consumer relies on task-level
+    autoretry for exactly this (see its own comment in
+    ``queue_backend/pg_queue/consumer.py``).
+
+    ``autoretry_for=(Exception,)`` rather than a narrow transport type: the
+    whole point is that this task must not quietly give up, and a programming
+    error that burns three retries and then surfaces loudly is a far better
+    outcome than one that returns None and reports success.
+    """
     cb = callback_kwargs or {}
     job_id = cb.get("job_id", "")
     org_id = cb.get("org_id", "")
@@ -151,9 +180,13 @@ def agent_kv_error(
 
     except Exception:
         logger.exception(
-            "agent_kv_error callback failed: job_id=%s org_id=%s", job_id, org_id
+            "agent_kv_error callback failed: job_id=%s org_id=%s (retry %s of %s)",
+            job_id,
+            org_id,
+            self.request.retries,
+            self.max_retries,
         )
-        return None
+        raise
 
 
 @worker_task(name="agent_kv_cancelled")

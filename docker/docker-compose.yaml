@@ -71,7 +71,7 @@ services:
       - PG_SCHEDULER_ADOPT_PERIODICS=true
     labels:
       - traefik.enable=true
-      - traefik.http.routers.backend.rule=Host(`frontend.unstract.localhost`) && (PathPrefix(`/api/v1`) || PathPrefix(`/deployment`) || PathPrefix(`/public`))
+      - traefik.http.routers.backend.rule=Host(`frontend.unstract.localhost`) && (PathPrefix(`/api/v1`) || PathPrefix(`/deployment`) || PathPrefix(`/public`) || PathPrefix(`/agent-kv`))
       - traefik.http.services.backend.loadbalancer.server.port=8000
 
   # Celery Flower
@@ -113,7 +113,7 @@ services:
       - UNSTRACT_APPS_VERSION=${VERSION}
     labels:
       - traefik.enable=true
-      - traefik.http.routers.frontend.rule=Host(`frontend.unstract.localhost`) && !PathPrefix(`/api/v1`) && !PathPrefix(`/deployment`) && !PathPrefix(`/public`)
+      - traefik.http.routers.frontend.rule=Host(`frontend.unstract.localhost`) && !PathPrefix(`/api/v1`) && !PathPrefix(`/deployment`) && !PathPrefix(`/public`) && !PathPrefix(`/agent-kv`)
       - traefik.http.services.frontend.loadbalancer.server.port=80
 
   platform-service:

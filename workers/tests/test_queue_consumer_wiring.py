@@ -188,3 +188,70 @@ def test_run_worker_pg_ide_callback_role_drains_the_callback_queue():
     match = re.search(r'\["\$PG_ROLE_IDE_CALLBACK"\]="ide_callback;([^"]+)"', text)
     assert match, "could not find the PG_ROLE_IDE_CALLBACK entry in run-worker.sh"
     assert AGENT_KV_CALLBACK_QUEUE in _queues(match.group(1))
+
+
+# --------------------------------------------------------------------------
+# Traefik routing. Same family of failure as an unconsumed queue: the service
+# is up, the route looks configured, and the request lands somewhere that
+# cannot serve it.
+#
+# `/agent-kv/` is mounted by `backend/backend/base_urls.py`, but traefik's
+# backend rule matched only `/api/v1`, `/deployment` and `/public`, and the
+# frontend rule is the negation of exactly those -- so every Agent-KV request
+# through the compose stack was served by the SPA's nginx and never reached
+# Django. The e2e lane did not catch it because it talks to
+# `UNSTRACT_BACKEND_URL` (port 8000) directly, bypassing traefik entirely.
+#
+# Reported as 2.2 in the branch review.
+# --------------------------------------------------------------------------
+
+AGENT_KV_PREFIX = "/agent-kv"
+
+
+def _router_rule(compose_path: Path, router: str) -> str:
+    svc_labels = []
+    for svc in yaml.safe_load(compose_path.read_text())["services"].values():
+        svc_labels.extend(svc.get("labels") or [])
+    prefix = f"traefik.http.routers.{router}.rule="
+    for label in svc_labels:
+        if isinstance(label, str) and label.startswith(prefix):
+            return label[len(prefix) :]
+    pytest.fail(f"no traefik rule for router {router!r} in {compose_path.name}")
+
+
+def test_traefik_routes_agent_kv_to_the_backend():
+    rule = _router_rule(DEV_COMPOSE, "backend")
+    assert f"PathPrefix(`{AGENT_KV_PREFIX}`)" in rule, (
+        "traefik does not route /agent-kv to the backend; the request is served "
+        "by the frontend SPA and never reaches Django"
+    )
+
+
+def test_traefik_excludes_agent_kv_from_the_frontend():
+    """The frontend rule is a negation list, so a prefix missing from it is
+    claimed by the SPA even once the backend also matches -- whichever router
+    wins, one of them is wrong.
+    """
+    rule = _router_rule(DEV_COMPOSE, "frontend")
+    assert f"!PathPrefix(`{AGENT_KV_PREFIX}`)" in rule, (
+        "the frontend router still claims /agent-kv; it must be excluded "
+        "explicitly, exactly as /api/v1, /deployment and /public are"
+    )
+
+
+def test_every_backend_prefix_is_excluded_from_the_frontend():
+    """The two rules are each other's complement by construction. Asserting the
+    relationship rather than one hardcoded prefix means the next mount point
+    cannot be added to one side only.
+    """
+    backend_rule = _router_rule(DEV_COMPOSE, "backend")
+    frontend_rule = _router_rule(DEV_COMPOSE, "frontend")
+
+    backend_prefixes = set(re.findall(r"PathPrefix\(`([^`]+)`\)", backend_rule))
+    excluded = set(re.findall(r"!PathPrefix\(`([^`]+)`\)", frontend_rule))
+
+    missing = backend_prefixes - excluded
+    assert not missing, (
+        f"{sorted(missing)} route to the backend but are not excluded from the "
+        f"frontend router; the SPA will claim them"
+    )

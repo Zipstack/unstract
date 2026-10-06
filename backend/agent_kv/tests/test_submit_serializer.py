@@ -408,3 +408,71 @@ def test_kv_unknown_option_is_rejected():
         s = _kv_options(qaa=True)  # typo for `qa`
         assert not s.is_valid()
         assert "unknown options for extractor 'kv'" in str(s.errors)
+
+
+# ---------------------------------------------------------------------------
+# Extractor identity must be decided ONCE.
+#
+# `validate_keys` used to branch on raw `initial_data["name"]` while
+# `validate_name` saw the value DRF had already trimmed
+# (`CharField.trim_whitespace` defaults True). So `" table "` passed the name
+# check as `table` and then took the **kv** branch for keys, never running
+# `TableKeysSerializer`.
+#
+# A kv-shaped payload compiles cleanly as a KV schema, so the submit returned
+# 202 and dispatched to `agentic_table` with a `target_table` that is a dict
+# rather than the string the binding requires -- staged, billed, then failed at
+# the executor.
+#
+# Reported as 2.1 in the branch review.
+# ---------------------------------------------------------------------------
+def test_a_padded_extractor_name_still_validates_keys_as_that_extractor():
+    s = SubmitSerializer(
+        data=_data(
+            extractors=json.dumps(
+                [
+                    {
+                        # Trimmed to "table" by validate_name...
+                        "name": " table ",
+                        # ...but this is a KV-shaped schema, not a table one. It
+                        # compiles fine as KV, which is how it used to reach 202.
+                        "keys": {"target_table": {"description": "Grand total"}},
+                    }
+                ]
+            )
+        )
+    )
+
+    assert not s.is_valid(), (
+        "a kv-shaped keys payload was accepted for the table extractor; the "
+        "job would stage, bill and then fail at the executor on target_table"
+    )
+    assert "target_table" in _errs(s)
+
+
+def test_a_padded_name_is_still_normalised_for_routing():
+    """The trim itself is fine and worth keeping -- the bug was deciding
+    identity twice, not accepting whitespace.
+    """
+    s = SubmitSerializer(
+        data=_data(extractors=json.dumps([{"name": " table ", "keys": TABLE_KEYS}]))
+    )
+
+    assert s.is_valid(), s.errors
+    assert s.validated_data["extractors"][0]["name"] == "table"
+
+
+def test_table_keys_are_validated_through_the_keys_serializer():
+    """Reaching TableKeysSerializer is what rejects unknown members; the kv
+    fallback would have compiled them as a schema instead.
+    """
+    s = SubmitSerializer(
+        data=_data(
+            extractors=json.dumps(
+                [{"name": "table", "keys": {"target_table": "T", "bogus": 1}}]
+            )
+        )
+    )
+
+    assert not s.is_valid()
+    assert "unknown keys for extractor 'table'" in _errs(s)
