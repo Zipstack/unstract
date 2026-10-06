@@ -290,4 +290,20 @@ def _maybe_webhook(finalize_response: dict[str, Any], job_id: str) -> None:
     url = finalize_response.get("webhook_url") or ""
     if not url:
         return
-    _send_webhook(url, job_id, finalize_response.get("status", ""))
+    status = finalize_response.get("status", "")
+    if not _send_webhook(url, job_id, status):
+        # `send_webhook` returns False for a non-2xx or a connection failure.
+        # Discarding that meant a terminal notification could fail to land with
+        # no retry, no record on the job, and -- for a non-2xx -- not even a log
+        # line. Logged at ERROR here rather than raised: unlike the cancellation
+        # task, this runs AFTER finalize has already terminalized the job, so
+        # raising would re-run a finalize that is no longer idempotent-free.
+        #
+        # Durable delivery (attempt counts, a `webhook_delivered_at` the status
+        # document can expose) is the open design question in 2.10.
+        logger.error(
+            "agent-kv webhook not delivered for job %s (status=%s); the caller "
+            "was not notified and nothing will retry",
+            job_id,
+            status,
+        )

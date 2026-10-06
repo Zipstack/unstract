@@ -1,6 +1,11 @@
-#: v1 accepts exactly one extractor (`kv`), so the job row does not carry which
-#: one it ran. When fan-out lands this becomes per-job state rather than a
-#: constant -- the wire format (spec §7.0) is already shaped for that.
+#: The `kv` extractor's name. Kept as a constant, but NOT routable on this
+#: deployment -- see `EXTRACTOR_ROUTES` below, which carries `table` only.
+#:
+#: An earlier version of this comment said "v1 accepts exactly one extractor
+#: (`kv`), so the job row does not carry which one it ran". Both halves are now
+#: wrong, on line 1 of the file that defines the routing table: `kv` is the one
+#: extractor this deployment does NOT accept, and `AgentKVJob.extractor` has
+#: carried the name since migration 0002.
 V1_EXTRACTOR_NAME = "kv"
 
 STAGE_NAMES = [

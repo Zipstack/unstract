@@ -1,20 +1,28 @@
-"""Guard: every queue we dispatch to must have a consumer in the deployed fleet.
+"""Guard: queues and routes must match the fleet this deployment actually runs.
 
-This is the OSS analogue of the cloud chart's ``validate-pg-worker-fleet.yaml``.
-It exists because the failure it catches is **silent**: since UN-4046 made the
-PG transport unconditional, a queue whose consumer is not configured still
+The OSS analogue of the cloud chart's ``validate-pg-worker-fleet.yaml``, and it
+exists because the failure it catches is **silent**: since UN-4046 made the PG
+transport unconditional, a queue whose consumer is not configured still
 *accepts* work -- ``enqueue_task`` succeeds, rows land in ``pg_queue_message``,
 and nothing errors at the producer. The job simply sits in DISPATCHED forever.
 
-That is exactly what happened to ``celery_executor_agentic_kv``: the Agent-KV
-branch was written when the Celery executor was live, so its queue was wired
-into ``CELERY_QUEUES_EXECUTOR`` -- a variable read only by
-``workers/executor/worker.py`` (the now-disabled Celery worker). The live
-``pg-queue-consumer`` reads ``WORKER_PG_QUEUE_CONSUMER_QUEUE``, which did not
-list it.
+The assertions run in BOTH directions, which is the part to read carefully:
 
-Each test therefore asserts the queue is present in the variable the *running*
-consumer actually reads, at every site that configures one.
+* ``celery_executor_agentic_table`` and ``agent_kv_callback`` must HAVE a
+  consumer -- they are what this deployment dispatches onto.
+* ``celery_executor_agentic_kv`` must NOT be advertised. This deployment ships
+  no ``agentic_kv`` plugin, so a fleet listing that queue would accept work
+  nothing can drain -- the same silent failure, arrived at from the other side.
+
+An earlier version of this docstring described only the first direction and
+narrated how ``celery_executor_agentic_kv`` ought to be wired in. That is the
+one thing a guard with an inverted assertion must not say: a reader checking
+the file against its own description would have concluded the test was wrong.
+
+Each test asserts against the variable the *running* consumer actually reads,
+at every site that configures one -- plus the traefik rules, where the same
+"configured-looking but unreachable" failure shows up as a request served by
+the SPA instead of Django.
 """
 
 from __future__ import annotations

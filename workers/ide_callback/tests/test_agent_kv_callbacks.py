@@ -430,3 +430,66 @@ class TestWebhookFiring:
             {"job_id": "job-1", "status": "failed"},
             allow_insecure=False,
         )
+
+
+class TestWebhookDeliveryResult:
+    """A webhook that does not land must not pass silently.
+
+    `send_webhook` returns False for a non-2xx response or a connection
+    failure, and both call sites used to discard it. The cancellation task now
+    raises (so its retry budget applies); the finalize path logs, because it
+    runs after the job is already terminalized and re-running finalize is not
+    free. Reported as 2.10 in the branch review and by Greptile on #2317.
+    """
+
+    @patch(_PATCH_SEND_WEBHOOK, return_value=False)
+    def test_a_failed_finalize_webhook_is_logged(self, mock_send, caplog):
+        import logging
+
+        from ide_callback import agent_kv_tasks as akt
+
+        with caplog.at_level(logging.ERROR, logger="ide_callback.agent_kv_tasks"):
+            akt._maybe_webhook(
+                {
+                    "finalized": True,
+                    "webhook_url": "https://hook.example/x",
+                    "status": "completed",
+                },
+                "job-1",
+            )
+
+        assert "not delivered" in caplog.text
+        assert "job-1" in caplog.text
+
+    @patch(_PATCH_SEND_WEBHOOK, return_value=True)
+    def test_a_delivered_finalize_webhook_is_quiet(self, mock_send, caplog):
+        import logging
+
+        from ide_callback import agent_kv_tasks as akt
+
+        with caplog.at_level(logging.ERROR, logger="ide_callback.agent_kv_tasks"):
+            akt._maybe_webhook(
+                {
+                    "finalized": True,
+                    "webhook_url": "https://hook.example/x",
+                    "status": "completed",
+                },
+                "job-1",
+            )
+
+        assert caplog.records == []
+
+    @patch(_PATCH_SEND_WEBHOOK, return_value=False)
+    def test_a_failed_cancellation_webhook_raises_so_it_retries(self, mock_send):
+        from ide_callback.agent_kv_tasks import agent_kv_cancelled
+
+        with pytest.raises(Exception, match="not delivered"):
+            agent_kv_cancelled.apply(
+                kwargs={
+                    "callback_kwargs": {
+                        "job_id": "job-1",
+                        "webhook_url": "https://hook.example/x",
+                    }
+                },
+                throw=True,
+            )
