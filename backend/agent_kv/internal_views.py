@@ -150,6 +150,63 @@ class FinalizeView(APIView):
     authentication_classes: list = []
     permission_classes: list = []
 
+    @staticmethod
+    def _complete(job, job_id, org_id: str, body) -> bool:
+        """Persist the result and terminalize as COMPLETED. True if the guard won.
+
+        ``write_result`` unavoidably runs *before* the ``mark_terminal`` guard
+        (the result has to exist to get a ``result_ref`` to pass in), so a
+        guard-loss right after the write -- a concurrent cancel or duplicate
+        finalize won instead -- leaves a result file with no ref anywhere
+        pointing at it. That orphan is deleted here rather than left to leak
+        past even TTL cleanup, which only ever acts on a job's *stored*
+        ``result_ref``. Best-effort; never blocks the response.
+        """
+        result_ref = write_result(org_id, str(job_id), body.get("result") or {})
+        finalized = AgentKVJob.mark_terminal(
+            job_id,
+            org_id,
+            JobStatus.COMPLETED,
+            result_ref=result_ref,
+            usage_summary=body.get("usage_summary"),
+        )
+        if finalized:
+            job.status = JobStatus.COMPLETED
+        else:
+            delete_result_file(result_ref)
+        return finalized
+
+    @staticmethod
+    def _fail(job, job_id, org_id: str, body) -> bool:
+        """Terminalize as FAILED. True if the guard won."""
+        finalized = AgentKVJob.mark_terminal(
+            job_id, org_id, JobStatus.FAILED, error=body.get("error") or ""
+        )
+        if finalized:
+            job.status = JobStatus.FAILED
+        return finalized
+
+    @staticmethod
+    def _drop_staged_input(job, job_id, org_id: str) -> None:
+        """Delete the staged input now the run is over (spec D10).
+
+        Only ever called when ``mark_terminal`` actually won, so it never runs
+        on the duplicate/guard-lost path -- there, either another writer owns
+        cleanup or there is nothing new to terminalize. A CANCELLED job never
+        reaches here either: cancel goes through JobCancelView/mark_terminal
+        directly, and a late finalize against an already-CANCELLED job loses
+        the terminal guard, so a cancelled job's input rides the normal TTL
+        sweep instead.
+
+        The ref is blanked only when the file is confirmed gone -- otherwise it
+        is the only handle TTL cleanup could retry from, and blanking it would
+        orphan the uploaded document.
+        """
+        if delete_input(job):
+            AgentKVJob.objects.filter(id=job_id, organization_id=org_id).update(
+                input_ref=""
+            )
+
     def post(self, request, *args, job_id=None, **kwargs):
         body = request.data
         org_id = body.get("org_id")
@@ -166,51 +223,10 @@ class FinalizeView(APIView):
         finalized = False
         try:
             if job is not None and job.status not in AgentKVJob.TERMINAL:
-                if success:
-                    result_ref = write_result(
-                        org_id, str(job_id), body.get("result") or {}
-                    )
-                    finalized = AgentKVJob.mark_terminal(
-                        job_id,
-                        org_id,
-                        JobStatus.COMPLETED,
-                        result_ref=result_ref,
-                        usage_summary=body.get("usage_summary"),
-                    )
-                    if finalized:
-                        job.status = JobStatus.COMPLETED
-                    else:
-                        # Guard lost after the write above (e.g. a cancel
-                        # raced in between the read and mark_terminal's
-                        # guarded UPDATE): the result we just wrote has no
-                        # ref anywhere -- unreachable forever unless cleaned
-                        # up here. Best-effort; never blocks the response.
-                        delete_result_file(result_ref)
-                else:
-                    finalized = AgentKVJob.mark_terminal(
-                        job_id,
-                        org_id,
-                        JobStatus.FAILED,
-                        error=body.get("error") or "",
-                    )
-                    if finalized:
-                        job.status = JobStatus.FAILED
-
+                handler = self._complete if success else self._fail
+                finalized = handler(job, job_id, org_id, body)
                 if finalized:
-                    # A CANCELLED job never reaches here: cancel goes
-                    # through JobCancelView/mark_terminal directly, not
-                    # this finalize path, and a late finalize call against
-                    # an already-CANCELLED job loses the terminal guard
-                    # above -- so a cancelled job's input intentionally
-                    # rides the normal TTL sweep instead of being deleted
-                    # here.
-                    # Blank the ref only when the file is confirmed gone --
-                    # otherwise it is the only handle TTL cleanup can retry
-                    # from, and blanking it orphans the uploaded document.
-                    if delete_input(job):
-                        AgentKVJob.objects.filter(
-                            id=job_id, organization_id=org_id
-                        ).update(input_ref="")
+                    self._drop_staged_input(job, job_id, org_id)
         finally:
             AgentKVConcurrencyLimiter.release(org_id, str(job_id))
 

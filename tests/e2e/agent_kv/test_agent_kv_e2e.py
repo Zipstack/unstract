@@ -618,31 +618,6 @@ def test_webhook_delivered_on_completion(
         thread.join(timeout=5)
 
 
-# ---------------------------------------------------------------------------
-# 9e. Calculations (sandbox worker, operator-gated)
-# ---------------------------------------------------------------------------
-
-_CALC_ENV_GATE = "AGENT_KV_E2E_CALCULATIONS"
-
-
-def _skip_unless_calculations_declared() -> None:
-    """Calculations need a stack running with ``AGENT_KV_CALCULATIONS_ENABLED
-    =true`` on the backend AND the sandbox codegen worker fleet actually up
-    and consuming ``sandbox_codegen`` (docs/agent-kv-api.md §11) -- neither
-    of which this test process can see or arrange for itself. So, like the
-    bad-LLM-key scenario above, it needs an explicit operator declaration
-    that the stack under test is configured that way; not every stack that
-    runs the rest of this lane has the sandbox worker running.
-    """
-    if os.environ.get(_CALC_ENV_GATE) != "1":
-        pytest.skip(
-            "calculation e2e scenarios need a stack running with "
-            "AGENT_KV_CALCULATIONS_ENABLED=true and the sandbox codegen "
-            f"worker fleet up (docs/agent-kv-api.md §11); set {_CALC_ENV_GATE}=1 "
-            "to declare that this stack is configured that way"
-        )
-
-
 def test_concurrency_limit_returns_429(agent_kv_key: AgentKVAuth) -> None:
     """Saturate the org's concurrency limiter; every other submit-based
     scenario in this module runs before this one, and ``tests/groups.yaml``

@@ -104,6 +104,75 @@ def _fail_job_response(job, org_id: str, message: str, *, job_saved: bool) -> Re
     )
 
 
+def _subscription_denial(plugin, agent_kv_key, request) -> Response | None:
+    """Subscription admission (§6.6), or ``None`` when the org may proceed.
+
+    A submit dispatches paid work, so it is gated exactly as an API deployment
+    execute is -- same policy, same 402 bodies -- via the cloud plugin's gate,
+    which calls the very ``SubscriptionHelper`` that cloud's
+    ``SubscriptionMiddleware`` calls.
+
+    Why here and not in that middleware: it resolves the org from the URL
+    (``/deployment/api/{org_name}/...``). Agent-KV's URL carries no org segment
+    -- the org is inside the Bearer key -- so the middleware's
+    ``get_organization_id`` returns None for these requests, finds no
+    subscription row, and admits every one of them. The view is the first point
+    where the org is actually known.
+
+    ``organization.organization_id`` is the org SLUG -- the CharField
+    ``Subscription.organization_id`` is keyed on, and what the deployment URL
+    supplies as ``org_name``. NOT ``agent_kv_key.organization_id``, which is the
+    Organization FK primary key: that matches no row, and the shared policy
+    reads "no row" as "nothing to enforce", so the gate would silently admit
+    everything while looking correctly wired.
+    """
+    gate_factory = plugin.get("service_class")
+    if not gate_factory:  # absent on a cloud build predating the gate
+        return None
+    return gate_factory().check(agent_kv_key.organization.organization_id, request)
+
+
+def _dispatch_or_fail(job, org_id: str, entry: dict, options: dict) -> Response | None:
+    """Dispatch the job, or return the failure response. ``None`` means sent.
+
+    Both failure paths terminalize the job and release the concurrency slot.
+    The bare ``except`` is belt-and-braces: ``dispatch_job`` wraps its own
+    internal failures as ``DispatchError``, but nothing here may rely on that
+    alone -- any other exception must still terminalize and release rather than
+    escape as an unhandled 500 with the slot still held.
+    """
+    try:
+        dispatch_job(job, extractor=entry["name"], schema=entry["keys"], options=options)
+    except DispatchError:
+        logger.exception("agent-kv dispatch failed for job %s", job.id)
+    except Exception:
+        logger.exception("agent-kv dispatch raised unexpectedly for job %s", job.id)
+    else:
+        return None
+    return _fail_job_response(
+        job, org_id, "Job could not be dispatched; nothing was billed.", job_saved=True
+    )
+
+
+def _sync_wait_response(job, wait: float) -> Response | None:
+    """Poll until the job is terminal or ``wait`` elapses (§7.1 sync mode).
+
+    Returns the full result payload if it terminalized in time, else ``None``
+    so the caller falls through to the normal 202 handshake.
+    """
+    if not wait:
+        return None
+    deadline = time.monotonic() + wait
+    while time.monotonic() < deadline:
+        job.refresh_from_db()
+        if job.status in AgentKVJob.TERMINAL:
+            from agent_kv.execution_views_result import result_payload
+
+            return Response(result_payload(job), status=200)
+        time.sleep(1)
+    return None
+
+
 class SubmitView(APIView):
     authentication_classes: list = []
     permission_classes: list = []
@@ -116,31 +185,9 @@ class SubmitView(APIView):
         if not check_key_rate(str(agent_kv_key.id)):
             raise RateLimited()
 
-        # Subscription admission (§6.6). A submit dispatches paid work, so it is
-        # gated exactly as an API deployment execute is -- same policy, same 402
-        # bodies -- via the cloud plugin's gate, which calls the very
-        # `SubscriptionHelper` that cloud's `SubscriptionMiddleware` calls.
-        #
-        # Why here and not in that middleware: it resolves the org from the URL
-        # (`/deployment/api/{org_name}/...`). Agent-KV's URL carries no org
-        # segment -- the org is inside the Bearer key -- so the middleware's
-        # `get_organization_id` returns None for these requests, finds no
-        # subscription row, and admits every one of them. This is the first
-        # point where the org is actually known.
-        #
-        # `organization.organization_id` is the org SLUG -- the CharField
-        # `Subscription.organization_id` is keyed on, and what the deployment
-        # URL supplies as `org_name`. NOT `agent_kv_key.organization_id`, which
-        # is the Organization FK primary key: that matches no row, and the
-        # shared policy reads "no row" as "nothing to enforce", so the gate
-        # would silently admit everything while looking correctly wired.
-        gate_factory = plugin.get("service_class")
-        if gate_factory:  # absent on a cloud build predating the gate
-            denied = gate_factory().check(
-                agent_kv_key.organization.organization_id, request
-            )
-            if denied is not None:
-                return denied
+        denied = _subscription_denial(plugin, agent_kv_key, request)
+        if denied is not None:
+            return denied
 
         data = request.data.copy()
         part = data.get("extractors")
@@ -188,44 +235,14 @@ class SubmitView(APIView):
         # range drives the shared OCR pass, so it cannot be per-extractor).
         options["page_start"] = v["page_start"]
         options["page_end"] = v["page_end"]
-        try:
-            dispatch_job(
-                job, extractor=entry["name"], schema=entry["keys"], options=options
-            )
-        except DispatchError:
-            logger.exception("agent-kv dispatch failed for job %s", job.id)
-            return _fail_job_response(
-                job,
-                org_id,
-                "Job could not be dispatched; nothing was billed.",
-                job_saved=True,
-            )
-        except Exception:
-            # Belt-and-braces: dispatch_job wraps its own internal failures
-            # as DispatchError, but nothing here may rely on that alone —
-            # any other exception must still terminalize the job and
-            # release the slot rather than escape as an unhandled 500.
-            logger.exception(
-                "agent-kv dispatch raised unexpectedly for job %s",
-                job.id,
-            )
-            return _fail_job_response(
-                job,
-                org_id,
-                "Job could not be dispatched; nothing was billed.",
-                job_saved=True,
-            )
 
-        wait = v["timeout"]
-        if wait:
-            deadline = time.monotonic() + wait
-            while time.monotonic() < deadline:
-                job.refresh_from_db()
-                if job.status in AgentKVJob.TERMINAL:
-                    from agent_kv.execution_views_result import result_payload
+        failed = _dispatch_or_fail(job, org_id, entry, options)
+        if failed is not None:
+            return failed
 
-                    return Response(result_payload(job), status=200)
-                time.sleep(1)
+        inline = _sync_wait_response(job, v["timeout"])
+        if inline is not None:
+            return inline
 
         return Response(
             {

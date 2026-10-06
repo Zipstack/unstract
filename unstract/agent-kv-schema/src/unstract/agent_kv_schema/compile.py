@@ -226,6 +226,17 @@ def compile_schema(spec: dict, caps: SchemaCaps | None = None) -> CompiledSchema
     except ValueError as e:
         raise SchemaError(str(e)) from e
 
+    _enforce_shape_caps(key_specs, array_specs, caps)
+    _enforce_leaf_caps(key_specs, array_specs, caps)
+    constraints = _validated_constraints(spec, caps)
+
+    return CompiledSchema(
+        key_specs=key_specs, array_specs=array_specs, constraints=list(constraints)
+    )
+
+
+def _enforce_shape_caps(key_specs, array_specs, caps: SchemaCaps) -> None:
+    """Bound how much structure the schema declares."""
     if len(key_specs) > caps.max_leaves:
         raise SchemaError(f"schema exceeds max_leaves={caps.max_leaves}")
     if len(array_specs) > caps.max_arrays:
@@ -236,6 +247,10 @@ def compile_schema(spec: dict, caps: SchemaCaps | None = None) -> CompiledSchema
                 f"array '{aspec.path}' exceeds "
                 f"max_columns_per_array={caps.max_columns_per_array}"
             )
+
+
+def _enforce_leaf_caps(key_specs, array_specs, caps: SchemaCaps) -> None:
+    """Bound every leaf's author-supplied text, across scalars and array columns."""
     for kspec in key_specs + [s for a in array_specs for s in a.item_specs]:
         _reject_unsafe_regex(kspec.path, kspec.regex_pattern)
         if len(kspec.regex_pattern) > caps.max_regex_len:
@@ -250,6 +265,9 @@ def compile_schema(spec: dict, caps: SchemaCaps | None = None) -> CompiledSchema
                 f"max_description_len={caps.max_description_len}"
             )
 
+
+def _validated_constraints(spec: dict, caps: SchemaCaps) -> list:
+    """Return the schema's `_constraints`, rejecting a malformed or oversized list."""
     constraints = spec.get("_constraints", [])
     if not isinstance(constraints, list) or not all(
         isinstance(c, str) for c in constraints
@@ -259,7 +277,4 @@ def compile_schema(spec: dict, caps: SchemaCaps | None = None) -> CompiledSchema
         raise SchemaError(f"schema exceeds max_constraints={caps.max_constraints}")
     for expr in constraints:
         _check_constraint_syntax(expr)
-
-    return CompiledSchema(
-        key_specs=key_specs, array_specs=array_specs, constraints=list(constraints)
-    )
+    return constraints

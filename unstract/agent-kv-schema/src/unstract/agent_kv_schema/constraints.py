@@ -108,6 +108,33 @@ def _coerce(raw: str):
     return n if n is not None else raw
 
 
+def _parse_agg_call(node: ast.Call) -> tuple[str, str, str]:
+    """Validate `NAME('literal')` and split it into (fn, array_path, column).
+
+    FAIL-CLOSED by construction: the only thing accepted is `NAME('literal')`
+    where NAME is in `_AGG`, the func is a bare `ast.Name` (no attribute access
+    -- blocks `os.system` / `x.__class__`), there is exactly one positional arg,
+    no keywords, and that arg is a string Constant. Any deviation raises `_Skip`,
+    so the constraint is skipped and never run.
+    """
+    if not isinstance(node.func, ast.Name) or node.func.id not in _AGG:
+        raise _Skip()  # not a whitelisted aggregate name
+    if node.keywords or len(node.args) != 1:
+        raise _Skip()  # exactly one positional arg, no keywords
+    arg = node.args[0]
+    if not (isinstance(arg, ast.Constant) and isinstance(arg.value, str)):
+        raise _Skip()  # arg must be a literal string path
+    ref = arg.value
+    # Split on the LAST dot: an ArraySpec.path may itself be dotted (e.g.
+    # 'invoice.lines'), while the column is always a row-LOCAL bare name. A bare
+    # ref (no dot) is a whole-array row count -> array_path=ref, column=''.
+    if "." in ref:
+        array_path, _, column = ref.rpartition(".")
+    else:
+        array_path, column = ref, ""
+    return node.func.id, array_path, column
+
+
 def _aggregate(node: ast.Call, arrays: dict[str, list[dict[str, str]]]):
     """Evaluate one of the five allowlisted aggregates over an array column.
 
@@ -123,21 +150,7 @@ def _aggregate(node: ast.Call, arrays: dict[str, list[dict[str, str]]]):
     sku/description count too); `count('a')` is the row count. A sum/min/max/avg over zero
     usable cells raises `_Skip` (advisory) rather than guessing 0.
     """
-    if not isinstance(node.func, ast.Name) or node.func.id not in _AGG:
-        raise _Skip()  # not a whitelisted aggregate name
-    if node.keywords or len(node.args) != 1:
-        raise _Skip()  # exactly one positional arg, no keywords
-    arg = node.args[0]
-    if not (isinstance(arg, ast.Constant) and isinstance(arg.value, str)):
-        raise _Skip()  # arg must be a literal string path
-    fn, ref = node.func.id, arg.value
-    # Split on the LAST dot: an ArraySpec.path may itself be dotted (e.g. 'invoice.lines'),
-    # while the column is always a row-LOCAL bare name. A bare ref (no dot) is a whole-array
-    # row count -> array_path=ref, column=''.
-    if "." in ref:
-        array_path, _, column = ref.rpartition(".")
-    else:
-        array_path, column = ref, ""
+    fn, array_path, column = _parse_agg_call(node)
     rows = arrays.get(array_path)
     if rows is None:  # no such array available
         raise _Skip()
@@ -207,19 +220,30 @@ def _truth(node, values: dict[str, str], arrays: dict[str, list[dict[str, str]]]
     if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.Not):
         return not _truth(node.operand, values, arrays)
     if isinstance(node, ast.Compare) and len(node.ops) == len(node.comparators):
-        left = _operand(node.left, values, arrays)
-        for op, comp in zip(node.ops, node.comparators, strict=False):
-            if type(op) not in _CMP:
-                raise _Skip()
-            right = _operand(comp, values, arrays)
-            # only compare like-typed operands (number<->number, str<->str); else skip
-            if isinstance(left, (int, float)) != isinstance(right, (int, float)):
-                raise _Skip()
-            if not _CMP[type(op)](left, right):
-                return False
-            left = right
-        return True
+        return _compare_chain(node, values, arrays)
     raise _Skip()
+
+
+def _compare_chain(
+    node: ast.Compare, values: dict[str, str], arrays: dict[str, list[dict[str, str]]]
+) -> bool:
+    """Evaluate a (possibly chained) comparison, Python-style: `a < b < c`.
+
+    Each link is checked against the previous operand, so the chain short-
+    circuits on the first False exactly as the language does.
+    """
+    left = _operand(node.left, values, arrays)
+    for op, comp in zip(node.ops, node.comparators, strict=False):
+        if type(op) not in _CMP:
+            raise _Skip()
+        right = _operand(comp, values, arrays)
+        # only compare like-typed operands (number<->number, str<->str); else skip
+        if isinstance(left, (int, float)) != isinstance(right, (int, float)):
+            raise _Skip()
+        if not _CMP[type(op)](left, right):
+            return False
+        left = right
+    return True
 
 
 def _evaluate_one(
