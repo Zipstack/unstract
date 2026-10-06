@@ -323,7 +323,8 @@ ENVIRONMENT:
     Required variables:
     - INTERNAL_SERVICE_API_KEY
     - INTERNAL_API_BASE_URL
-    - CELERY_BROKER_BASE_URL (not needed when only PG-queue workers are started)
+    - CELERY_BROKER_BASE_URL (not needed when LOG_TRANSPORT=redis and only PG-queue
+      workers are started)
     - DB_HOST, DB_USER, DB_PASSWORD, DB_NAME (for PostgreSQL result backend)
 
     Plugin availability is detected dynamically via plugin registry.
@@ -431,16 +432,29 @@ validate_env() {
         "INTERNAL_API_BASE_URL"
     )
 
-    # The broker is needed by every Celery worker; skip it only when every
-    # requested worker is a PG-queue member (or the PG-queue set itself).
+    # The broker is needed by every Celery worker, and by every worker while logs
+    # are published over Celery (LOG_TRANSPORT other than "redis", the default).
+    # Skip it only when logs go over Redis and every requested worker is a
+    # PG-queue member (or the PG-queue set itself).
+    local log_transport="${LOG_TRANSPORT-celery}"
+    log_transport="${log_transport,,}"
+    log_transport="${log_transport#"${log_transport%%[![:space:]]*}"}"
+    log_transport="${log_transport%"${log_transport##*[![:space:]]}"}"
+    local needs_broker=""
+    if [[ "$log_transport" != "redis" ]]; then
+        needs_broker=1
+    fi
     local wt resolved
     for wt in "${WORKER_TYPES[@]}"; do
         resolved="${WORKERS[$wt]:-${PLUGGABLE_WORKERS[$wt]:-}}"
         if [[ "$resolved" != "$PG_QUEUE_SET" && -z "${PG_QUEUE_MEMBERS[$resolved]:-}" ]]; then
-            required_vars+=("CELERY_BROKER_BASE_URL")
+            needs_broker=1
             break
         fi
     done
+    if [[ -n "$needs_broker" ]]; then
+        required_vars+=("CELERY_BROKER_BASE_URL")
+    fi
 
     required_vars+=(
         "DB_HOST"

@@ -1,8 +1,9 @@
 """Celery broker settings, resolved from the environment.
 
-Kept free of Django and of ``unstract.core.pubsub_helper`` (which opens a kombu
-connection object at import) so ``settings/base.py`` can import it cheaply and the
-rules can be tested on their own.
+This module itself imports neither Django nor ``unstract.core.pubsub_helper`` (which
+builds a kombu connection object at import), so ``settings/base.py`` can import it
+cheaply. Importing it from outside still runs ``backend/__init__``, which loads the
+Celery app and with it the settings.
 """
 
 from collections.abc import Mapping

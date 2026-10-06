@@ -71,7 +71,11 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # Load default log from env
 DEFAULT_LOG_LEVEL = os.environ.get("DEFAULT_LOG_LEVEL", "INFO")
 
-# Celery Broker Configuration
+ENV_FILE = find_dotenv()
+if ENV_FILE:
+    load_dotenv(ENV_FILE)
+
+# Celery Broker Configuration (read after the .env load so it can set LOG_TRANSPORT)
 # Required on the Celery log transport; optional on Redis, where an unset base URL
 # leaves the URL empty and Celery connects lazily to nothing.
 for _broker_setting in required_broker_settings(os.environ):
@@ -82,10 +86,6 @@ CELERY_BROKER_PASS = os.environ.get("CELERY_BROKER_PASS")
 CELERY_BROKER_URL = build_broker_url(
     CELERY_BROKER_BASE_URL, CELERY_BROKER_USER, CELERY_BROKER_PASS
 )
-
-ENV_FILE = find_dotenv()
-if ENV_FILE:
-    load_dotenv(ENV_FILE)
 
 # Loading environment variables
 
