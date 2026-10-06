@@ -161,6 +161,10 @@ class WorkerRegistry:
                 TaskRoute("ide_callback.tasks.*", QueueName.IDE_CALLBACK),
                 TaskRoute("agent_kv_complete", QueueName.AGENT_KV_CALLBACK),
                 TaskRoute("agent_kv_error", QueueName.AGENT_KV_CALLBACK),
+                # Cancellation does not go through finalize, so its terminal
+                # webhook has no callback to ride on; the backend enqueues this
+                # directly when its guarded cancel wins.
+                TaskRoute("agent_kv_cancelled", QueueName.AGENT_KV_CALLBACK),
             ],
         ),
     }

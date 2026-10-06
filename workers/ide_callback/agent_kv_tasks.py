@@ -156,19 +156,44 @@ def agent_kv_error(
         return None
 
 
-def _maybe_webhook(finalize_response: dict[str, Any], job_id: str) -> None:
-    """Fire the completion webhook, but only for a fresh finalize.
+@worker_task(name="agent_kv_cancelled")
+def agent_kv_cancelled(
+    callback_kwargs: dict[str, Any] | None = None,
+) -> dict[str, Any] | None:
+    """Fire the terminal webhook for a job cancelled by the API.
 
-    ``finalized`` is ``False`` for a duplicate/late finalize call (the job
-    was already terminal) as well as for an unknown job -- either way the
-    webhook already fired (or never should), so firing again here would
-    double-notify the caller.
+    Cancellation does not go through finalize: ``JobCancelView`` (and DELETE on
+    a non-terminal job) terminalizes the row directly, releases the slot and
+    returns. So nothing in the finalize path ever fired a webhook for it, and a
+    late executor callback cannot either -- it loses the terminal guard and
+    ``_maybe_webhook`` correctly declines a non-fresh finalize. The caller who
+    supplied ``webhook_url`` was simply never told, despite docs §8 promising
+    delivery on terminal states.
+
+    Enqueued by the backend ONLY when its guarded cancel actually won, which is
+    what keeps this from double-notifying: if the cancel lost to a finalize, the
+    backend does not enqueue and the finalize callback sends instead. Exactly
+    one of the two paths owns the notification for any given job.
     """
-    if not finalize_response.get("finalized"):
-        return
-    url = finalize_response.get("webhook_url") or ""
+    cb = callback_kwargs or {}
+    job_id = cb.get("job_id", "")
+    url = cb.get("webhook_url", "")
     if not url:
-        return
+        return None
+    try:
+        _send_webhook(url, job_id, "cancelled")
+    except Exception:
+        logger.exception("agent_kv_cancelled webhook failed: job_id=%s", job_id)
+        raise
+    return {"job_id": job_id, "status": "cancelled"}
+
+
+def _send_webhook(url: str, job_id: str, status: str) -> None:
+    """Deliver one terminal notification.
+
+    Single place the SSRF waiver is read, so the cancel path cannot drift from
+    the finalize path on what it permits.
+    """
     # Test/dev stacks only (e2e lane): waive the SSRF guards so a receiver on
     # the compose host is reachable. Unset/false in production.
     allow_insecure = os.environ.get(
@@ -176,6 +201,26 @@ def _maybe_webhook(finalize_response: dict[str, Any], job_id: str) -> None:
     ).lower() in ("1", "true", "yes")
     send_webhook(
         url,
-        {"job_id": job_id, "status": finalize_response.get("status", "")},
+        {"job_id": job_id, "status": status},
         allow_insecure=allow_insecure,
     )
+
+
+def _maybe_webhook(finalize_response: dict[str, Any], job_id: str) -> None:
+    """Fire the completion webhook, but only for a fresh finalize.
+
+    ``finalized`` is ``False`` for a duplicate/late finalize call (the job
+    was already terminal) as well as for an unknown job -- either way the
+    webhook already fired (or never should), so firing again here would
+    double-notify the caller.
+
+    A job cancelled through the API is the "already terminal" case, and its
+    notification is owned by ``agent_kv_cancelled``, enqueued by the backend at
+    the moment its guarded cancel won.
+    """
+    if not finalize_response.get("finalized"):
+        return
+    url = finalize_response.get("webhook_url") or ""
+    if not url:
+        return
+    _send_webhook(url, job_id, finalize_response.get("status", ""))

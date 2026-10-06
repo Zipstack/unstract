@@ -159,12 +159,57 @@ def test_oversize_file_rejected():
 
 
 def test_page_cap_rejected():
+    """No range given, so the whole document is the selection."""
     with mock.patch("agent_kv.execution_serializers.settings") as m:
         _defaults(m)
         m.AGENT_KV_MAX_PAGES = 1
         s = SubmitSerializer(data=_data())
         assert not s.is_valid()
         assert "pages" in str(s.errors).lower()
+
+
+def test_page_cap_counts_the_selected_range_not_the_whole_document():
+    """The cap bounds the work the job will DO, not the size of the file.
+
+    A caller asking for one page of a two-page document is requesting one page
+    of OCR and extraction. Counting the whole document rejected requests that
+    were inside the documented limit. Reported by Greptile on #2317.
+    """
+    with mock.patch("agent_kv.execution_serializers.settings") as m:
+        _defaults(m)
+        m.AGENT_KV_MAX_PAGES = 1
+        s = SubmitSerializer(data=_data(page_start=1, page_end=1))
+        assert s.is_valid(), s.errors
+        assert s.pages_selected == 1
+        # The measured document count is unchanged -- it is what metering and
+        # the status document report, and only the cap comparison moved.
+        assert s.pages_total == 2
+
+
+def test_an_open_ended_range_is_capped_at_the_last_page():
+    """`page_end` past the end selects to the end, it does not inflate the count."""
+    with mock.patch("agent_kv.execution_serializers.settings") as m:
+        _defaults(m)
+        m.AGENT_KV_MAX_PAGES = 2
+        s = SubmitSerializer(data=_data(page_start=2, page_end=999))
+        assert s.is_valid(), s.errors
+        assert s.pages_selected == 1
+
+
+def test_a_selected_range_over_the_cap_is_still_rejected():
+    with mock.patch("agent_kv.execution_serializers.settings") as m:
+        _defaults(m)
+        m.AGENT_KV_MAX_PAGES = 1
+        s = SubmitSerializer(data=_data(page_start=1, page_end=2))
+        assert not s.is_valid()
+        assert "Requested 2 pages" in _errs(s)
+
+
+def test_page_start_past_the_end_of_the_document_is_rejected():
+    """Otherwise the selection is empty and the job runs over nothing, billed."""
+    s = SubmitSerializer(data=_data(page_start=5))
+    assert not s.is_valid()
+    assert "past the end" in _errs(s)
 
 
 def test_extractors_not_json_rejected():

@@ -239,7 +239,13 @@ class SubmitSerializer(serializers.Serializer):
 
     #: ``{extractor_name: compiled schema}`` -- populated during validation.
     compiled = None
+    #: Measured page count of the uploaded document. None for Excel, which has
+    #: no pre-OCR page concept. This is what metering and the status document
+    #: report, and it is NOT what the page cap is compared against.
     pages_total = None
+    #: How many pages the request actually asks to process, after `page_start` /
+    #: `page_end` are applied. This is what the cap bounds. None for Excel.
+    pages_selected = None
 
     def validate_file(self, f):
         name = (f.name or "").lower()
@@ -311,11 +317,30 @@ class SubmitSerializer(serializers.Serializer):
                 raise serializers.ValidationError({"file": "Unreadable PDF"})
             finally:
                 f.seek(0)
-            if self.pages_total > settings.AGENT_KV_MAX_PAGES:
+            if start > self.pages_total:
                 raise serializers.ValidationError(
                     {
-                        "file": f"Document has {self.pages_total} pages; "
-                        f"max is {settings.AGENT_KV_MAX_PAGES} (§6.1)"
+                        "page_start": f"page_start {start} is past the end of a "
+                        f"{self.pages_total}-page document"
+                    }
+                )
+            # The cap bounds the work the job will DO, not the size of the file
+            # it was handed. A caller asking for pages 1-5 of a 400-page PDF is
+            # requesting five pages of OCR and extraction; refusing that against
+            # a 100-page cap rejected a request that was inside the documented
+            # limit. `pages_total` stays the measured document count -- it is
+            # what metering and the status document report -- and only the cap
+            # comparison moves to the selected range.
+            last_page = self.pages_total if end is None else min(end, self.pages_total)
+            self.pages_selected = last_page - start + 1
+            if self.pages_selected > settings.AGENT_KV_MAX_PAGES:
+                raise serializers.ValidationError(
+                    {
+                        "file": f"Requested {self.pages_selected} pages "
+                        f"(page_start={start}, page_end="
+                        f"{end if end is not None else self.pages_total}) of a "
+                        f"{self.pages_total}-page document; max is "
+                        f"{settings.AGENT_KV_MAX_PAGES} (§6.1)"
                     }
                 )
         # Excel: no page concept pre-OCR (spec §6.1); pages_total stays None,

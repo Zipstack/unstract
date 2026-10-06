@@ -20,6 +20,49 @@ class DispatchError(Exception):
     """Enqueue failed; the caller terminalizes the job (spec §5.3)."""
 
 
+def dispatch_cancelled_webhook(job) -> None:
+    """Queue the terminal webhook for a job the API just cancelled.
+
+    Cancellation never reaches finalize -- ``JobCancelView`` and DELETE
+    terminalize the row themselves -- so without this the caller who supplied
+    ``webhook_url`` is never told, and a late executor callback cannot tell them
+    either (it loses the terminal guard, and the callback declines a non-fresh
+    finalize rather than double-notifying). Docs §8 promises delivery on
+    terminal states; this is the cancel half of that promise.
+
+    Call ONLY when the guarded cancel actually won. That is what makes the two
+    paths mutually exclusive: a cancel that lost means a finalize won and will
+    send, and a cancel that won means no fresh finalize can.
+
+    Best-effort by design. The job is already cancelled and the caller already
+    has their 200; failing their request because a notification could not be
+    QUEUED would be the wrong trade, so this logs and returns rather than
+    raising. Delivery itself is the worker's problem.
+    """
+    if not job.webhook_url:
+        return
+    try:
+        from pg_queue.producer import enqueue_task
+
+        enqueue_task(
+            task_name="agent_kv_cancelled",
+            queue=CALLBACK_QUEUE,
+            kwargs={
+                "callback_kwargs": {
+                    "job_id": str(job.id),
+                    "webhook_url": job.webhook_url,
+                }
+            },
+            org_id=str(job.organization_id),
+        )
+    except Exception:
+        logger.exception(
+            "agent-kv: could not queue the cancellation webhook for job %s; "
+            "the job IS cancelled, only the notification was lost",
+            job.id,
+        )
+
+
 def _dispatcher():
     # No `celery_app`: UN-4046 removed that parameter when the routing
     # dispatcher's Celery branch went with the pg_queue_enabled flag. Passing it

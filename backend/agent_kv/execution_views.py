@@ -9,8 +9,13 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from agent_kv.constants import STAGE_NAMES_BY_EXTRACTOR
-from agent_kv.dispatch import DispatchError, dispatch_job
-from agent_kv.exceptions import EngineUnavailable, JobNotFound, RateLimited
+from agent_kv.dispatch import DispatchError, dispatch_cancelled_webhook, dispatch_job
+from agent_kv.exceptions import (
+    EngineUnavailable,
+    JobNotFound,
+    RateLimited,
+    SubscriptionGateUnavailable,
+)
 from agent_kv.execution_serializers import SubmitSerializer
 from agent_kv.execution_views_result import result_payload
 from agent_kv.key_validator import AgentKVKeyValidator
@@ -125,10 +130,31 @@ def _subscription_denial(plugin, agent_kv_key, request) -> Response | None:
     Organization FK primary key: that matches no row, and the shared policy
     reads "no row" as "nothing to enforce", so the gate would silently admit
     everything while looking correctly wired.
+
+    **Fails closed when the plugin exposes no gate.** This used to return None
+    -- admit -- to tolerate a cloud build predating the gate. But the admitted
+    request dispatches billable LLM and OCR work, and this route's URL carries
+    no org segment, so ``SubscriptionMiddleware`` cannot catch it downstream
+    either: a mixed deploy (this backend against a pre-gate cloud image) would
+    run unmetered paid work with nothing anywhere enforcing entitlement.
+
+    Refusing instead is the conservative read of a deployment that can spend
+    money but cannot check whether it may. It surfaces as a 503 naming the
+    cause, not a 402 -- the subscription was never evaluated, and reporting it
+    as denied would send an operator to the billing system for what is an
+    image-pairing problem.
+
+    Raises:
+        SubscriptionGateUnavailable: the engine plugin is installed but exposes
+            no ``service_class``.
     """
     gate_factory = plugin.get("service_class")
-    if not gate_factory:  # absent on a cloud build predating the gate
-        return None
+    if not gate_factory:
+        logger.error(
+            "agent-kv: engine plugin exposes no subscription gate; refusing the "
+            "submit rather than dispatching billable work unmetered"
+        )
+        raise SubscriptionGateUnavailable()
     return gate_factory().check(agent_kv_key.organization.organization_id, request)
 
 
@@ -331,6 +357,9 @@ class JobStatusView(APIView):
                 # the winner is still accounting for; release() is idempotent
                 # (zrem), so the winner's own release stays correct.
                 AgentKVConcurrencyLimiter.release(str(job.organization_id), str(job.id))
+                # This request owns the terminal notification: no fresh finalize
+                # can follow a cancel that won, so nothing else will send it.
+                dispatch_cancelled_webhook(job)
             else:
                 # Lost the race: a finalize or cancel terminalized this job
                 # between our read above and the guarded UPDATE. `job` is now
@@ -402,6 +431,11 @@ class JobCancelView(APIView):
             # release() is idempotent (zrem), so a later finalize-callback
             # release on a cancel-mid-run is harmless.
             AgentKVConcurrencyLimiter.release(str(job.organization_id), str(job.id))
+            # Docs §8 promises a terminal notification, and cancellation never
+            # reaches finalize -- so this path has to send it. Guarded on `won`
+            # so a cancel that LOST leaves the notification to the finalize that
+            # beat it, and the caller is told exactly once.
+            dispatch_cancelled_webhook(job)
             return Response({"status": "cancelled"}, status=200)
         # Lowercased for cross-endpoint consistency (spec §7.2).
         return Response({"status": job.status.lower()}, status=409)

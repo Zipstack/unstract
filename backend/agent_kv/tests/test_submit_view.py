@@ -22,6 +22,19 @@ def _post(data=None):
     return APIRequestFactory().post("/agent-kv/", data or {}, format="multipart")
 
 
+def _plugin_with_gate(denial=None):
+    """A plugin dict shaped like the cloud build's, with a gate that admits.
+
+    Every submit test needs one now: a plugin WITHOUT `service_class` means the
+    deployment cannot check entitlement, and the view refuses rather than
+    dispatching billable work unmetered (see
+    `test_plugin_without_a_service_class_is_refused`).
+    """
+    gate = mock.Mock()
+    gate.check.return_value = denial
+    return {"module": object(), "service_class": lambda: gate}
+
+
 def _authed_post(data=None):
     req = _post(data)
     req.META["HTTP_AUTHORIZATION"] = "Bearer 123e4567-e89b-12d3-a456-426614174001"
@@ -106,7 +119,7 @@ def test_absent_plugin_501s_before_anything(m_keys, m_plugin):
 # 429: per-key rate limit refusal.
 # ---------------------------------------------------------------------------
 @mock.patch.object(ev, "check_key_rate", return_value=False)
-@mock.patch.object(ev, "get_plugin", return_value={"module": object()})
+@mock.patch.object(ev, "get_plugin", return_value=_plugin_with_gate())
 @mock.patch.object(AgentKVKey, "objects")
 def test_key_rate_limited_429s(m_keys, m_plugin, m_rate):
     m_keys.get.return_value = kv_key()
@@ -124,7 +137,7 @@ def test_key_rate_limited_429s(m_keys, m_plugin, m_rate):
 @mock.patch.object(ev, "AgentKVConcurrencyLimiter")
 @mock.patch.object(ev, "SubmitSerializer")
 @mock.patch.object(ev, "check_key_rate", return_value=True)
-@mock.patch.object(ev, "get_plugin", return_value={"module": object()})
+@mock.patch.object(ev, "get_plugin", return_value=_plugin_with_gate())
 @mock.patch.object(AgentKVKey, "objects")
 def test_concurrency_limited_429s_with_no_job_row(
     m_keys, m_plugin, m_rate, m_serializer_cls, m_limiter, m_stage, m_save
@@ -148,7 +161,7 @@ def test_concurrency_limited_429s_with_no_job_row(
 @mock.patch.object(ev, "stage_input")
 @mock.patch.object(ev, "SubmitSerializer")
 @mock.patch.object(ev, "check_key_rate", return_value=True)
-@mock.patch.object(ev, "get_plugin", return_value={"module": object()})
+@mock.patch.object(ev, "get_plugin", return_value=_plugin_with_gate())
 @mock.patch.object(AgentKVKey, "objects")
 def test_stage_input_failure_releases_slot_and_500s_with_safe_body(
     m_keys, m_plugin, m_rate, m_serializer_cls, m_stage, m_limiter
@@ -186,7 +199,7 @@ def test_stage_input_failure_releases_slot_and_500s_with_safe_body(
 @mock.patch.object(ev, "AgentKVConcurrencyLimiter")
 @mock.patch.object(ev, "SubmitSerializer")
 @mock.patch.object(ev, "check_key_rate", return_value=True)
-@mock.patch.object(ev, "get_plugin", return_value={"module": object()})
+@mock.patch.object(ev, "get_plugin", return_value=_plugin_with_gate())
 @mock.patch.object(AgentKVKey, "objects")
 def test_happy_path_returns_202_with_job_id_status_and_status_url(
     m_keys,
@@ -239,7 +252,7 @@ def test_happy_path_returns_202_with_job_id_status_and_status_url(
 @mock.patch.object(ev, "AgentKVConcurrencyLimiter")
 @mock.patch.object(ev, "SubmitSerializer")
 @mock.patch.object(ev, "check_key_rate", return_value=True)
-@mock.patch.object(ev, "get_plugin", return_value={"module": object()})
+@mock.patch.object(ev, "get_plugin", return_value=_plugin_with_gate())
 @mock.patch.object(AgentKVKey, "objects")
 def test_dispatch_job_called_with_expected_options_and_schema(
     m_keys,
@@ -298,7 +311,7 @@ def test_dispatch_job_called_with_expected_options_and_schema(
 @mock.patch.object(ev, "stage_input", return_value="org/o/agent_kv/j/input.pdf")
 @mock.patch.object(ev, "SubmitSerializer")
 @mock.patch.object(ev, "check_key_rate", return_value=True)
-@mock.patch.object(ev, "get_plugin", return_value={"module": object()})
+@mock.patch.object(ev, "get_plugin", return_value=_plugin_with_gate())
 @mock.patch.object(AgentKVKey, "objects")
 def test_dispatch_failure_marks_job_failed_releases_slot_and_500s(
     m_keys,
@@ -346,7 +359,7 @@ def test_dispatch_failure_marks_job_failed_releases_slot_and_500s(
 @mock.patch.object(ev, "stage_input", return_value="org/o/agent_kv/j/input.pdf")
 @mock.patch.object(ev, "SubmitSerializer")
 @mock.patch.object(ev, "check_key_rate", return_value=True)
-@mock.patch.object(ev, "get_plugin", return_value={"module": object()})
+@mock.patch.object(ev, "get_plugin", return_value=_plugin_with_gate())
 @mock.patch.object(AgentKVKey, "objects")
 def test_dispatch_job_raising_non_dispatch_error_is_still_caught_and_cleaned_up(
     m_keys,
@@ -388,7 +401,7 @@ def test_dispatch_job_raising_non_dispatch_error_is_still_caught_and_cleaned_up(
 @mock.patch.object(ev, "stage_input", return_value="org/o/agent_kv/j/input.pdf")
 @mock.patch.object(ev, "SubmitSerializer")
 @mock.patch.object(ev, "check_key_rate", return_value=True)
-@mock.patch.object(ev, "get_plugin", return_value={"module": object()})
+@mock.patch.object(ev, "get_plugin", return_value=_plugin_with_gate())
 @mock.patch.object(AgentKVKey, "objects")
 def test_platform_key_lookup_failure_inside_real_dispatch_is_caught_end_to_end(
     m_keys,
@@ -432,7 +445,7 @@ def test_platform_key_lookup_failure_inside_real_dispatch_is_caught_end_to_end(
 @mock.patch.object(ev, "AgentKVConcurrencyLimiter")
 @mock.patch.object(ev, "SubmitSerializer")
 @mock.patch.object(ev, "check_key_rate", return_value=True)
-@mock.patch.object(ev, "get_plugin", return_value={"module": object()})
+@mock.patch.object(ev, "get_plugin", return_value=_plugin_with_gate())
 @mock.patch.object(AgentKVKey, "objects")
 def test_timeout_zero_returns_immediately_without_polling(
     m_keys,
@@ -474,7 +487,7 @@ def test_timeout_zero_returns_immediately_without_polling(
 @mock.patch.object(ev, "AgentKVConcurrencyLimiter")
 @mock.patch.object(ev, "SubmitSerializer")
 @mock.patch.object(ev, "check_key_rate", return_value=True)
-@mock.patch.object(ev, "get_plugin", return_value={"module": object()})
+@mock.patch.object(ev, "get_plugin", return_value=_plugin_with_gate())
 @mock.patch.object(AgentKVKey, "objects")
 def test_sync_wait_returns_200_with_failure_body_when_job_fails_mid_wait(
     m_keys,
@@ -519,6 +532,8 @@ def test_sync_wait_returns_200_with_failure_body_when_job_fails_mid_wait(
 # resolves org_id=None for these requests and lets every one of them through.
 # The gate is therefore invoked here, after key validation.
 # ---------------------------------------------------------------------------
+
+
 def _key_with_org(slug="acme-slug", pk=42):
     """A key whose FK pk and org slug are deliberately DIFFERENT values.
 
@@ -604,13 +619,21 @@ def test_subscription_gate_is_passed_the_org_slug_not_the_fk_pk(
 @mock.patch.object(ev, "check_key_rate", return_value=True)
 @mock.patch.object(ev, "get_plugin", return_value={"module": object()})
 @mock.patch.object(AgentKVKey, "objects")
-def test_plugin_without_a_service_class_still_proceeds(
+def test_plugin_without_a_service_class_is_refused(
     m_keys, m_plugin, m_rate, m_serializer_cls, m_limiter
 ):
-    """A cloud build predating the gate exposes no `service_class`. The view
-    must degrade to today's behaviour rather than 500 -- the capability probe
-    above already 501s an engine-less deployment, so this only covers the
-    version skew between an older plugin and a newer backend.
+    """A plugin that exposes no `service_class` cannot check entitlement, so
+    the submit is REFUSED rather than admitted.
+
+    This used to degrade to "proceed", to tolerate a cloud image predating the
+    gate. But the admitted request dispatches billable LLM and OCR work, and
+    this route's URL carries no org segment, so `SubscriptionMiddleware` cannot
+    catch it downstream either -- a mixed deploy would run unmetered paid work
+    with nothing anywhere enforcing entitlement. Reported by Greptile on #2317.
+
+    503, not 402: the subscription was never evaluated, so reporting it as
+    denied would send an operator to the billing system for what is an
+    image-pairing problem.
     """
     m_keys.get.return_value = _key_with_org()
     _mock_serializer(m_serializer_cls)
@@ -618,7 +641,9 @@ def test_plugin_without_a_service_class_still_proceeds(
 
     resp = ev.SubmitView.as_view()(_authed_post())
 
-    assert resp.status_code == 429  # reached the concurrency limiter, not a 500
+    assert resp.status_code == 503, resp.data
+    # Refused BEFORE a slot was taken or anything was staged.
+    assert not m_limiter.check_and_acquire.called
 
 
 # ---------------------------------------------------------------------------
@@ -655,7 +680,7 @@ def _real_multipart_post(extractors, **job_level):
 @mock.patch.object(ev, "stage_input")
 @mock.patch.object(ev, "AgentKVConcurrencyLimiter")
 @mock.patch.object(ev, "check_key_rate", return_value=True)
-@mock.patch.object(ev, "get_plugin", return_value={"module": object()})
+@mock.patch.object(ev, "get_plugin", return_value=_plugin_with_gate())
 @mock.patch.object(AgentKVKey, "objects")
 def test_real_serializer_through_real_view_reaches_dispatch_intact_for_table(
     m_keys, m_plugin, m_rate, m_limiter, m_stage, m_save, m_dispatch
@@ -701,7 +726,7 @@ def test_real_serializer_through_real_view_reaches_dispatch_intact_for_table(
 
 
 @mock.patch.object(ev, "check_key_rate", return_value=True)
-@mock.patch.object(ev, "get_plugin", return_value={"module": object()})
+@mock.patch.object(ev, "get_plugin", return_value=_plugin_with_gate())
 @mock.patch.object(AgentKVKey, "objects")
 def test_real_serializer_rejects_the_old_flat_shape_with_400(m_keys, m_plugin, m_rate):
     """End-to-end proof of the hard switch: a caller on the pre-§7.0 format gets

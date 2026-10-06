@@ -597,3 +597,83 @@ def test_delete_does_not_refresh_when_it_wins_the_terminal_race(
 
     assert resp.status_code == 204
     assert not m_refresh.called
+
+
+# ---------------------------------------------------------------------------
+# (8j) Cancellation must deliver the documented terminal webhook.
+#
+# Cancellation never reaches finalize -- JobCancelView and DELETE terminalize
+# the row themselves -- so nothing in the finalize path ever fired a webhook for
+# a cancelled job, and a late executor callback cannot either: it loses the
+# terminal guard, and `_maybe_webhook` correctly declines a non-fresh finalize.
+# A caller who supplied `webhook_url` was simply never told, despite docs §8.
+#
+# Guarded on `won`, which is what keeps exactly one path owning the
+# notification: a cancel that LOST means a finalize won and will send.
+#
+# Reported by Greptile on PR #2317.
+# ---------------------------------------------------------------------------
+@mock.patch.object(ev, "dispatch_cancelled_webhook")
+@mock.patch.object(ev.AgentKVConcurrencyLimiter, "release")
+@mock.patch.object(AgentKVJob, "mark_terminal", return_value=True)
+@mock.patch.object(AgentKVJob, "objects")
+@mock.patch.object(AgentKVKey, "objects")
+def test_cancel_that_wins_queues_the_terminal_webhook(
+    m_keys, m_jobs, m_mark_terminal, m_release, m_hook
+):
+    m_keys.get.return_value = kv_key()
+    job = AgentKVJob(status=JobStatus.RUNNING, webhook_url="https://hook.example/x")
+    job.organization_id = "org1"
+    m_jobs.get.return_value = job
+
+    resp = ev.JobCancelView.as_view()(_authed(method="post"), job_id=uuid.uuid4())
+
+    assert resp.status_code == 200
+    assert m_hook.called, "a won cancel must notify; nothing else will"
+    assert m_hook.call_args.args[0] is job
+
+
+@mock.patch.object(ev, "dispatch_cancelled_webhook")
+@mock.patch.object(ev.AgentKVConcurrencyLimiter, "release")
+@mock.patch.object(AgentKVJob, "mark_terminal", return_value=False)
+@mock.patch.object(AgentKVJob, "objects")
+@mock.patch.object(AgentKVKey, "objects")
+def test_cancel_that_loses_does_not_queue_a_webhook(
+    m_keys, m_jobs, m_mark_terminal, m_release, m_hook
+):
+    """The finalize that beat it owns the notification. Sending here too would
+    double-notify the caller for one job.
+    """
+    m_keys.get.return_value = kv_key()
+    job = AgentKVJob(status=JobStatus.RUNNING, webhook_url="https://hook.example/x")
+    job.organization_id = "org1"
+    m_jobs.get.return_value = job
+
+    resp = ev.JobCancelView.as_view()(_authed(method="post"), job_id=uuid.uuid4())
+
+    assert resp.status_code == 409
+    assert not m_hook.called
+
+
+@mock.patch.object(ev, "dispatch_cancelled_webhook")
+@mock.patch.object(ev.AgentKVConcurrencyLimiter, "release")
+@mock.patch.object(AgentKVJob, "save")
+@mock.patch.object(ev, "delete_job_files", return_value=["input_ref", "result_ref"])
+@mock.patch.object(AgentKVJob, "mark_terminal", return_value=True)
+@mock.patch.object(AgentKVJob, "objects")
+@mock.patch.object(AgentKVKey, "objects")
+def test_delete_that_cancels_a_running_job_also_queues_the_webhook(
+    m_keys, m_jobs, m_mark_terminal, m_delete_files, m_save, m_release, m_hook
+):
+    """DELETE on a non-terminal job cancels it first; that cancellation is just
+    as terminal, and just as invisible to the caller without this.
+    """
+    m_keys.get.return_value = kv_key()
+    job = AgentKVJob(status=JobStatus.RUNNING, webhook_url="https://hook.example/x")
+    job.organization_id = "org1"
+    m_jobs.get.return_value = job
+
+    resp = ev.JobDeleteView.as_view()(_authed(method="delete"), job_id=uuid.uuid4())
+
+    assert resp.status_code == 204
+    assert m_hook.called
