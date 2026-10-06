@@ -9,7 +9,7 @@ This document describes the API **as built in this repo** — the OSS scaffold (
 validation, dispatch, job lifecycle, key management). The document, `keys.json` schema,
 and OCR/LLM extraction pipeline itself are described only insofar as they shape the
 contract; the extraction engine ships as a cloud executor plugin (see
-[§11, 501 behavior](#11-when-the-engine-is-unavailable-501-behavior) below).
+[§6, 501 behavior](#10-when-the-engine-is-unavailable-501-behavior) below).
 
 Design background: `docs/superpowers/specs/2026-08-28-agent-kv-api-design.md` (referred
 to as "the spec" throughout this document; section numbers below are spec section
@@ -23,7 +23,7 @@ There are two independent auth schemes on two different URL prefixes:
 
 | Surface | Prefix | Auth |
 |---|---|---|
-| Public execution API (submit/status/result/cancel/validate) | `/agent-kv/…` (top-level, not under the tenant subfolder) | `Authorization: Bearer <AgentKVKey>` — a dedicated per-organization key, validated by the view itself |
+| Public execution API (submit/status/result/cancel) | `/agent-kv/…` (top-level, not under the tenant subfolder) | `Authorization: Bearer <AgentKVKey>` — a dedicated per-organization key, validated by the view itself |
 | Key management (create/list/rotate/revoke) | `{PATH_PREFIX}/unstract/…/agent-kv/keys/…` (tenant-scoped, alongside Platform API key management) | Session auth, `IsOrganizationAdmin` only |
 
 The execution prefix (`AGENT_KV_PATH_PREFIX`, default `agent-kv`) sits **outside** the
@@ -68,10 +68,17 @@ not a v1 gap unique to this feature.
 
 ## 2. The extraction schema (`keys` field)
 
+> **This section describes the `kv` extractor's schema language, which is not
+> routable on this deployment** (see [§3](#3-submit--post-agent-kv-multipart)).
+> It is documented here because the compiler ships and the language is frozen,
+> so an integration can be written against it ahead of the extractor's release.
+> The `table` extractor's `keys` is just `{"target_table": "<name>"}` and needs
+> none of this.
+
 The `keys` submit field — spec-called "keys.json" — is a JSON object describing what to
 extract. It compiles through `unstract.agent_kv_schema.compile_schema`
 (`unstract/agent-kv-schema/src/unstract/agent_kv_schema/`), the **single schema compiler
-in the system**: the OSS API validates with it at submit time and at `/validate`, and
+in the system**: the OSS API validates with it at submit time, and
 the cloud engine imports the same package to execute — the schema language cannot drift
 between validation and execution by construction (spec §5.1).
 
@@ -165,11 +172,10 @@ Enforced by `compile_schema` regardless of the byte-size cap below (`SchemaCaps`
 These caps are hardcoded in the compiler (not env-configurable); what **is**
 env-configurable is the raw byte size of the whole `keys` document
 (`AGENT_KV_MAX_SCHEMA_BYTES`) and of `calculations`
-(`AGENT_KV_MAX_CALCULATIONS_BYTES`) — see [§13 env reference](#13-environment-reference).
+(`AGENT_KV_MAX_CALCULATIONS_BYTES`) — see [§13 env reference](#12-environment-reference).
 
 A schema that fails to compile is rejected with a `400` at submit time — **nothing is
-billed** — or, at `/validate`, with a `200` carrying `{"valid": false, "error": "<message>"}`
-(compile errors are not 400s there; only a missing `keys` body key is).
+billed**.
 
 ## 3. Submit — `POST /agent-kv/` (multipart)
 
@@ -196,9 +202,16 @@ The request is **extractor-scoped**: a per-extractor schema and its knobs live i
 
 | Field | Required | Notes |
 |---|---|---|
-| `name` | yes | Which extractor: `kv` or `table`; anything else ⇒ 400. More than one entry ⇒ 400 — the format is in place for multi-extractor jobs, the execution is not built yet. |
-| `keys` | yes | This extractor's own schema. For `kv`, its `keys.json` (see [§2](#2-the-extraction-schema-keys-field)); for `table`, `{"target_table": "<the table to extract>"}` — the engine's one required extraction parameter. |
+| `name` | yes | Which extractor. **`table` is the only supported value on this deployment**; anything else, `kv` included, ⇒ 400 (see the note below). More than one entry ⇒ 400 — the format is in place for multi-extractor jobs, the execution is not built yet. |
+| `keys` | yes | This extractor's own request. For `table`, `{"target_table": "<the table to extract>"}` — the engine's one required extraction parameter. |
 | `options` | no | This extractor's own knobs (below). An unrecognised option ⇒ 400, so a knob aimed at the wrong extractor fails loudly instead of being silently dropped. |
+
+> **Why `kv` returns 400 here.** This deployment ships the table extractor only.
+> The `kv` extractor's engine runs on its own release track and nothing on this
+> deployment consumes its queue, so the API refuses a `kv` submit outright
+> rather than accepting it with a `202` for a job that would never run. The
+> wire format is unchanged: when `kv` ships, it becomes a second accepted value
+> of `name` and nothing else about this document changes.
 
 **`kv` options:**
 
@@ -265,9 +278,9 @@ Not exposed (D6): model choice, challenger model, `parallel_pages`, thinking bud
 [result payload](#5-result--get-agent-kvjob_idresult), same shape as the result
 endpoint.
 
-`501`: [engine unavailable](#11-when-the-engine-is-unavailable-501-behavior).
+`501`: [engine unavailable](#10-when-the-engine-is-unavailable-501-behavior).
 `429`: rate-limited (per-key request rate, or per-org concurrent-job limit — see
-[§13](#13-environment-reference)).
+[§6](#12-environment-reference)).
 `402`: the organization's subscription does not permit the request — its trial has
 expired, or the subscription is inactive. Nothing is dispatched and nothing is
 billed. This is the same gate, the same policy and the same response bodies an
@@ -509,36 +522,7 @@ and `parse_failures` appears only when some page failed to parse. There is **no
 > two settings of one option: a client that sets the flag must read `tables.rows`
 > instead of iterating `tables`.
 
-## 6. Validate — `POST /agent-kv/validate`
-
-Compile-only check; **free of charge but not free of auth** — authenticated (valid key)
-and rate-limited the same as submit (spec §6.1: "an open compile endpoint would be a
-probing/DoS surface"). No job is created; nothing is billed either way.
-
-```bash
-curl -X POST https://api.unstract.example/agent-kv/validate \
-  -H "Authorization: Bearer 5c9e2c9e-1234-4a5b-9c6d-abcdef012345" \
-  -H "Content-Type: application/json" \
-  -d '{"keys": {"invoice_number": {"description": "Invoice #", "required": true}}}'
-```
-
-Success (`200`):
-
-```json
-{"valid": true, "leaves": 1, "arrays": 0, "constraints": 0}
-```
-
-Invalid schema — still `200`, not `400` (schema-compile rejection is a *response*, not
-a request error):
-
-```json
-{"valid": false, "error": "Leaf at invoice_number is missing a 'description'"}
-```
-
-Missing `keys` key in the body is the one case that *is* a `400`:
-`{"detail": "body must include 'keys'"}`.
-
-## 7. Cancel — `POST /agent-kv/{job_id}/cancel`
+## 6. Cancel — `POST /agent-kv/{job_id}/cancel`
 
 Defined precisely per spec §7.4: no task-revocation machinery exists anywhere in the
 platform, so cancel flips the job row to `CANCELLED` via the same guarded
@@ -558,7 +542,7 @@ simply has its result discarded on arrival.
 - Won the race (job was non-terminal): `200` `{"status": "cancelled"}`.
 - Already terminal: `409` `{"status": "<job.status>"}` — **note this one is the raw
   uppercase enum value** (e.g. `"COMPLETED"`), unlike every lowercased `status` value
-  elsewhere in this API (status doc, result 409, validate). This is the code as shipped
+  elsewhere in this API (status doc, result 409). This is the code as shipped
   (`execution_views.py::JobCancelView`, confirmed by
   `test_job_views.py::test_cancel_on_completed_is_409_and_result_untouched`), not a
   typo in this document.
@@ -568,7 +552,7 @@ curl -X POST https://api.unstract.example/agent-kv/5b6e9b0a-.../cancel \
   -H "Authorization: Bearer 5c9e2c9e-1234-4a5b-9c6d-abcdef012345"
 ```
 
-## 8. Delete — `DELETE /agent-kv/{job_id}`
+## 7. Delete — `DELETE /agent-kv/{job_id}`
 
 Deletes the result and any residual staged input immediately, and blanks both refs
 (`204`, no body). The job row itself is retained (audit trail); a later `result` fetch
@@ -579,7 +563,7 @@ curl -X DELETE https://api.unstract.example/agent-kv/5b6e9b0a-.../ \
   -H "Authorization: Bearer 5c9e2c9e-1234-4a5b-9c6d-abcdef012345"
 ```
 
-## 9. Webhook delivery
+## 8. Webhook delivery
 
 `webhook_url` (if given at submit) receives exactly one terminal-state POST:
 `{"job_id": "...", "status": "completed"|"failed"|"cancelled"}` — a fixed payload
@@ -621,7 +605,7 @@ ide-callback worker waives both guards (http scheme and non-public host) so the
 e2e lane can deliver to a receiver on the compose host. Never set it in
 production.
 
-## 10. Retention and TTL
+## 9. Retention and TTL
 
 - **Input deletion is completion-triggered, not TTL-based** (spec D10: "uploaded
   document deleted on job completion"). `FinalizeView.post`
@@ -641,7 +625,7 @@ production.
   `DELETE /agent-kv/{job_id}`.
 - **Result retention**: `AGENT_KV_RESULT_TTL_DAYS` (default **7** days, D10's
   engineering default) — results are re-readable until then, then swept by the
-  internal `ttl-cleanup` endpoint ([§12](#12-deploy-checklist)), which blanks
+  internal `ttl-cleanup` endpoint ([§6](#11-deploy-checklist)), which blanks
   `result_ref` (and `input_ref` too, covering the cancelled-job case above, or
   defensively for any input that somehow outlives completion). The job row itself is
   never deleted (audit trail persists past TTL, only the object-store payloads are
@@ -654,7 +638,7 @@ production.
   under the full 7 days. Documented here as shipped behavior, not silently
   reconciled — flagged for anyone tightening D10 later.
 
-## 11. When the engine is unavailable (501 behavior)
+## 10. When the engine is unavailable (501 behavior)
 
 The Django backend cannot see the executor plugin registry (that lives in the workers
 process). Dispatching to a queue no worker consumes would hang, not error — so gating
@@ -674,7 +658,7 @@ plugin is a cloud deliverable, spec §5.1/§11: "OSS scaffold merges dark"). Eve
 {"detail": "agent-kv engine not available on this deployment"}
 ```
 
-with HTTP `501`. `/validate`, key management, status/result/cancel/delete on
+with HTTP `501`. Key management and status/result/cancel/delete on
 *already-existing* jobs are unaffected by this gate — only `SubmitView` probes it,
 since only submit needs the engine.
 
@@ -704,21 +688,21 @@ On `noop: true`, the executor **must**:
 Step 2 is not optional. `FinalizeView`'s terminal-state guard (spec §5.4) correctly
 no-ops the status write for an already-terminal job — but its concurrency-slot
 release (`AgentKVConcurrencyLimiter.release`) lives in a `finally`, unconditional on
-whether the guard actually won ([§10](#10-retention-and-ttl) covers the input-deletion
+whether the guard actually won ([§6](#9-retention-and-ttl) covers the input-deletion
 side of this same guard). An executor that treats `noop: true` as "nothing left to do
 here" and skips the finalize call entirely leaks that job's concurrency slot for the
 rest of the limiter's TTL (6 hours) instead of releasing it immediately. This is the
 entire mechanism behind a pre-pickup cancel actually being observed and cleaned up
 promptly — there is no other signal.
 
-## 12. Deploy checklist
+## 11. Deploy checklist
 
 Everything below is required (or worth checking) to run this feature for real,
 beyond `docker compose up`:
 
 1. **Cloud plugin**: install/enable the `agent_kv` backend capability plugin
    (probed via `plugins.get_plugin("agent_kv")`) — without it, submit always 501s
-   ([§11](#11-when-the-engine-is-unavailable-501-behavior)). This repo ships gated
+   ([§6](#10-when-the-engine-is-unavailable-501-behavior)). This repo ships gated
    dark by design; nothing to do for an OSS-only deployment except accept the 501.
    The marker the probe keys off is the mere presence of
    `backend/plugins/agent_kv/__init__.py` — a cloud image ships it (via the
@@ -800,7 +784,7 @@ beyond `docker compose up`:
    ttl-cleanup additionally needs `storage` for `AGENT_KV_FILE_STORAGE_CREDENTIALS`
    (see item 6 below) — both already on the `backend` deployment's config list.
 5. **Env vars**: every `AGENT_KV_*` setting plus `AGENT_KV_FILE_STORAGE_CREDENTIALS` —
-   see [§13](#13-environment-reference) and `docker/sample.env`. The executor-side vars
+   see [§6](#12-environment-reference) and `docker/sample.env`. The executor-side vars
    (read by the cloud `agentic_kv` plugin, not by the backend settings in §13) are a
    separate chart group: `global.sharedConfigs.agentKv`
    (`charts/unstract-platform/values.yaml`, cloud repo) —
@@ -981,7 +965,7 @@ beyond `docker compose up`:
     `runtimeClass: gvisor` sandbox. Consequently the sandbox pod's default-deny egress
     and no-secrets posture are load-bearing and must not be relaxed.
 
-## 13. Environment reference
+## 12. Environment reference
 
 All `AGENT_KV_*` settings (`backend/backend/settings/base.py`), each `os.environ.get`
 with the default shown:
@@ -993,7 +977,7 @@ with the default shown:
 | `AGENT_KV_MAX_PAGES` | `100` | Pre-OCR page cap for PDFs (§6.1). Excel has no pre-OCR page concept; images are not accepted. |
 | `AGENT_KV_MAX_CALCULATIONS_BYTES` | `20000` | Byte cap on the optional `calculations` field. |
 | `AGENT_KV_MAX_SCHEMA_BYTES` | `262144` | Byte cap on the raw `keys` JSON document (256 KiB). |
-| `AGENT_KV_RESULT_TTL_DAYS` | `7` | Result retention window (and a cancelled job's input, which rides the same TTL — a completed/failed job's input is deleted immediately at finalize instead), stamped at submit time (see [§10](#10-retention-and-ttl)). |
+| `AGENT_KV_RESULT_TTL_DAYS` | `7` | Result retention window (and a cancelled job's input, which rides the same TTL — a completed/failed job's input is deleted immediately at finalize instead), stamped at submit time (see [§6](#9-retention-and-ttl)). |
 | `AGENT_KV_MAX_TIMEOUT_SECONDS` | `300` | Upper bound on the submit `timeout` (synchronous-wait) field. |
 | `AGENT_KV_CONCURRENT_LIMIT` | `5` | Per-organization concurrent in-flight job cap (own Redis namespace, fails open on Redis errors). |
 | `AGENT_KV_KEY_RATE_LIMIT_PER_MINUTE` | `60` | Per-key request rate limit (submit + validate), fails open on Redis errors. |
