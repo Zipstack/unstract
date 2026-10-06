@@ -11,11 +11,12 @@ from fsspec import AbstractFileSystem
 from fsspec.implementations.dirfs import DirFileSystem
 from s3fs.core import S3FileSystem
 
-# Re-adds Content-MD5 on DeleteObjects for MinIO < RELEASE.2025-01-20 (UN-4224).
-# sdk1 is already a runtime dependency here via `unstract.filesystem`.
-import unstract.sdk1.patches.s3_delete_objects_md5  # noqa: F401
 from unstract.connectors.exceptions import ConnectorError
 from unstract.connectors.filesystems.unstract_file_system import UnstractFileSystem
+
+# sdk1 is already a runtime dependency here via `unstract.filesystem`. Importing
+# storage_compat also re-adds Content-MD5 on DeleteObjects (UN-4224).
+from unstract.sdk1.patches.storage_compat import S3_CHECKSUM_CONFIG
 
 from .exceptions import (
     BUCKET_PROBE_DISPOSITION,
@@ -178,6 +179,9 @@ class MinioFS(UnstractFileSystem):
             default_cache_type="none",
             skip_instance_cache=True,
             client_kwargs=client_kwargs,
+            # No aws-chunked uploads: UCS (GCS's S3 API) and TLS MinIO get the
+            # plain payload-signed requests boto3 1.34 sent (UN-4224).
+            config_kwargs=dict(S3_CHECKSUM_CONFIG),
             **creds,
         )
 

@@ -393,7 +393,7 @@ class OpenAILLMParameters(BaseChatCompletionParameters):
 # and the reasoning-model detector below.
 _OPENAI_PROVIDER_PREFIX = "openai/"
 _CUSTOM_OPENAI_PROVIDER_PREFIX = "custom_openai/"
-_OPENAI_REASONING_MODEL_PATTERN = re.compile(r"^(o1|o3|o4|gpt-5)(?:[-/]|$)")
+_OPENAI_REASONING_MODEL_PATTERN = re.compile(r"^(o1|o3|o4|gpt-5|gpt-6)(?:[-/.]|$)")
 # Keyless gateways still need a non-empty key; the OpenAI SDK rejects a
 # null/blank one before any request reaches the endpoint.
 _NO_AUTH_API_KEY = "no-auth"
@@ -403,7 +403,7 @@ def _is_openai_reasoning_model(model: str) -> bool:
     """Best-effort detection of OpenAI reasoning model names.
 
     The check is conservative — it matches only OpenAI's known reasoning
-    families (o1, o3, o4, gpt-5) after stripping the LiteLLM `custom_openai/`
+    families (o1, o3, o4, gpt-5, gpt-6) after stripping the LiteLLM `custom_openai/`
     prefix and optional `openai/` sub-prefix. Custom gateway model aliases
     that hide a reasoning model behind an unrelated name still need the
     explicit `enable_reasoning` opt-in.
@@ -526,7 +526,9 @@ class OpenAICompatibleLLMParameters(BaseChatCompletionParameters):
                 len(_CUSTOM_OPENAI_PROVIDER_PREFIX) :
             ]
 
-        return validated
+        # Gateway aliases the reasoning detector does not recognise still carry
+        # the model id; drop sampling params for models that reject them.
+        return _strip_deprecated_sampling_params(validated)
 
     @staticmethod
     def validate_model(adapter_metadata: dict[str, "Any"]) -> str:

@@ -1,10 +1,10 @@
 import logging
 
 import fsspec
-import unstract.sdk1.patches.s3_delete_objects_md5  # noqa: F401
 from fsspec import AbstractFileSystem
 from unstract.sdk1.exceptions import FileOperationError, FileStorageError
 from unstract.sdk1.file_storage.provider import FileStorageProvider
+from unstract.sdk1.patches.storage_compat import S3_CHECKSUM_CONFIG
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +51,12 @@ class FileStorageHelper:
                     client_kwargs: dict[str, object] = existing_kwargs
                     client_kwargs["region_name"] = region_name
                     storage_config["client_kwargs"] = client_kwargs
+                # Keep boto3 1.34's wire format (no aws-chunked uploads) for
+                # S3-compatible backends; explicit config_kwargs still win.
+                config_kwargs = storage_config.get("config_kwargs") or {}
+                if not isinstance(config_kwargs, dict):
+                    config_kwargs = {}
+                storage_config["config_kwargs"] = {**S3_CHECKSUM_CONFIG, **config_kwargs}
 
             fs = fsspec.filesystem(
                 protocol=protocol,

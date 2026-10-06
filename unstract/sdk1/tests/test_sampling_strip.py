@@ -15,9 +15,11 @@ modes that surfaced in PR #1934 review:
 - every adapter calls the strip on its return path
 """
 
+import asyncio
 import logging
 from typing import Any
 
+import litellm
 import pytest
 from unstract.sdk1.adapters.base1 import (
     _DEPRECATED_SAMPLING_PARAMS,
@@ -512,91 +514,106 @@ def _azure_metadata(**overrides: str | bool) -> dict[str, Any]:
     }
 
 
-def _azure_revalidate(
-    first: dict[str, Any], **call_kwargs: float | str
-) -> dict[str, Any]:
-    """Re-validate through `LLM._revalidate`, the path every completion takes.
+# ── Azure OpenAI through the real LLM completion paths ──────────────────────
+#
+# A deployment name need not name the model, so the Azure adapter detects GPT-6
+# from `cost_model`, which `LLM` sets aside at construction and feeds back via
+# `LLM._revalidate` on every call. These tests drive a real `LLM` through all
+# four completion methods and capture what reaches LiteLLM, so a call site that
+# stops using `_revalidate`, or a merge order that lets a per-call kwarg
+# displace `cost_model`, fails here.
 
-    `LLM` sets `cost_model` aside at construction and merges per-call kwargs
-    over the stored ones, so this drives the real method on a bare instance
-    rather than re-implementing that merge here.
-    """
-    llm = LLM.__new__(LLM)
-    llm.adapter = AzureOpenAILLMParameters
-    llm.kwargs = dict(first)
-    llm._cost_model = llm.kwargs.pop("cost_model", None)
-    return llm._revalidate(call_kwargs)
+_AZURE_ADAPTER_ID = "azureopenai|592d84b9-fe03-4102-a17e-6b391f32850b"
+_REAL_COMPLETION = litellm.completion
+_REAL_ACOMPLETION = litellm.acompletion
 
 
-@pytest.mark.parametrize("enable_reasoning", [False, True])
-def test_azure_validate_drops_temperature_for_gpt_6_behind_opaque_deployment(
-    enable_reasoning: bool,
+def _azure_llm(model: str) -> LLM:
+    return LLM(
+        adapter_id=_AZURE_ADAPTER_ID,
+        adapter_metadata=_azure_metadata(model=model, deployment_name="prod-chat"),
+    )
+
+
+@pytest.fixture
+def litellm_calls(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, Any]]:
+    """Record every kwargs LiteLLM receives and answer from its mock path."""
+    calls: list[dict[str, Any]] = []
+
+    def completion(**kwargs: Any) -> Any:  # noqa: ANN401
+        calls.append(kwargs)
+        return _REAL_COMPLETION(**{**kwargs, "mock_response": "ok"})
+
+    async def acompletion(**kwargs: Any) -> Any:  # noqa: ANN401
+        calls.append(kwargs)
+        return await _REAL_ACOMPLETION(**{**kwargs, "mock_response": "ok"})
+
+    monkeypatch.setattr(litellm, "completion", completion)
+    monkeypatch.setattr(litellm, "acompletion", acompletion)
+    return calls
+
+
+def _run_every_completion_path(llm: LLM, **kwargs: Any) -> None:  # noqa: ANN401
+    llm.complete("hi", **kwargs)
+    llm.complete_vision([{"role": "user", "content": "hi"}], **kwargs)
+    list(llm.stream_complete("hi", **kwargs))
+    asyncio.run(llm.acomplete("hi", **kwargs))
+
+
+def test_azure_gpt_6_behind_opaque_deployment_gets_no_temperature_on_any_path(
+    litellm_calls: list[dict[str, Any]],
 ) -> None:
-    """The deployment name hides the model; the `model` field names GPT-6.
+    """Default and per-call temperatures never reach GPT-6, on any method."""
+    llm = _azure_llm("gpt-6-luna")
+    _run_every_completion_path(llm)
+    _run_every_completion_path(llm, temperature=0.5)
 
-    On re-validation only the deployment name is left in `model`, so the
-    strip has to hold off `cost_model`, which `LLM` passes back -- otherwise
-    Azure's `temperature` default of 1 (or reasoning's forced 1) returns.
-    """
-    first = AzureOpenAILLMParameters.validate(
-        _azure_metadata(
-            model="gpt-6-luna",
-            deployment_name="prod-chat",
-            enable_reasoning=enable_reasoning,
-        )
-    )
-    assert first["model"] == "azure/prod-chat"
-    assert first["cost_model"] == "azure/gpt-6-luna"
-    assert "temperature" not in first
-
-    second = _azure_revalidate(first)
-    assert "temperature" not in second
-    assert second["cost_model"] == "azure/gpt-6-luna"
-    if enable_reasoning:
-        assert second["reasoning_effort"] == "medium"
+    assert len(litellm_calls) == 8
+    for call in litellm_calls:
+        assert call["model"] == "azure/prod-chat"
+        assert "temperature" not in call
 
 
-def test_azure_revalidate_drops_per_call_temperature_for_gpt_6() -> None:
-    """A caller-supplied `temperature` must not reach an opaque GPT-6 deployment.
+def test_azure_per_call_cost_model_cannot_displace_the_stored_one(
+    litellm_calls: list[dict[str, Any]],
+) -> None:
+    """`_revalidate` applies the stored `cost_model` after per-call kwargs."""
+    llm = _azure_llm("gpt-6-luna")
+    _run_every_completion_path(llm, cost_model="azure/gpt-4o", temperature=0.5)
 
-    Cloud callers pass `temperature=` to `complete()` / `complete_vision()`;
-    detection keys off `cost_model`, which a per-call kwarg cannot displace.
-    """
-    first = AzureOpenAILLMParameters.validate(
-        _azure_metadata(model="gpt-6-luna", deployment_name="prod-chat")
-    )
-    second = _azure_revalidate(first, temperature=0.5)
-    assert "temperature" not in second
+    assert len(litellm_calls) == 4
+    assert all("temperature" not in call for call in litellm_calls)
+
+
+def test_azure_other_models_keep_per_call_temperature_on_every_path(
+    litellm_calls: list[dict[str, Any]],
+) -> None:
+    llm = _azure_llm("gpt-4o")
+    _run_every_completion_path(llm, temperature=0.5)
+
+    assert len(litellm_calls) == 4
+    assert all(call["temperature"] == pytest.approx(0.5) for call in litellm_calls)
 
 
 def test_azure_validate_drops_temperature_when_deployment_names_gpt_6() -> None:
-    first = AzureOpenAILLMParameters.validate(
+    validated = AzureOpenAILLMParameters.validate(
         _azure_metadata(deployment_name="gpt-6-sol")
     )
-    assert "temperature" not in first
-    assert "temperature" not in _azure_revalidate(first, temperature=0.5)
+    assert "temperature" not in validated
 
 
 @pytest.mark.parametrize("enable_reasoning", [False, True])
 def test_azure_validate_retains_temperature_for_other_models(
     enable_reasoning: bool,
 ) -> None:
-    first = AzureOpenAILLMParameters.validate(
+    validated = AzureOpenAILLMParameters.validate(
         _azure_metadata(
             model="gpt-5",
             deployment_name="prod-chat",
             enable_reasoning=enable_reasoning,
         )
     )
-    assert first["temperature"] == 1
-    assert _azure_revalidate(first)["temperature"] == 1
-
-
-def test_azure_revalidate_keeps_per_call_temperature_for_other_models() -> None:
-    first = AzureOpenAILLMParameters.validate(
-        _azure_metadata(model="gpt-4o", deployment_name="prod-chat")
-    )
-    assert _azure_revalidate(first, temperature=0.5)["temperature"] == 0.5
+    assert validated["temperature"] == 1
 
 
 def test_azure_ai_foundry_validate_strips_temperature_for_gpt_6() -> None:
