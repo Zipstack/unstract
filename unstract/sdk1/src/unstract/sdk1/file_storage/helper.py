@@ -1,6 +1,7 @@
 import logging
 
 import fsspec
+import unstract.sdk1.patches.s3_delete_objects_md5  # noqa: F401
 from fsspec import AbstractFileSystem
 from unstract.sdk1.exceptions import FileOperationError, FileStorageError
 from unstract.sdk1.file_storage.provider import FileStorageProvider

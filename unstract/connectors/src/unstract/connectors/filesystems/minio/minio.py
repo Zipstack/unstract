@@ -12,6 +12,7 @@ from fsspec.implementations.dirfs import DirFileSystem
 from s3fs.core import S3FileSystem
 
 from unstract.connectors.exceptions import ConnectorError
+from unstract.connectors.filesystems.minio import delete_objects_md5  # noqa: F401
 from unstract.connectors.filesystems.unstract_file_system import UnstractFileSystem
 
 from .exceptions import (

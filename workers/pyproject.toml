@@ -12,7 +12,7 @@ dependencies = [
     # Worker runtime
     "celery>=5.5.3", # Latest stable version - AMQP support built into core
     # AWS/S3 client - pin to match backend for MinIO compatibility
-    "boto3==1.43.106", # Exact: must stay inside the botocore range aiobotocore (s3fs) accepts. 1.36+ needs MinIO >= RELEASE.2025-01-20 for DeleteObjects (UN-2942, UN-4224)
+    "boto3==1.43.106", # Exact: must stay inside the botocore range aiobotocore (s3fs) accepts. 1.36+ dropped Content-MD5 on DeleteObjects; sdk1/connectors re-add it for MinIO < 2025-01-20 (UN-4224)
     # HTTP clients and utilities (merged from shared package)
     "requests>=2.33.0,<3.0.0", # HTTP client for internal API calls
     "urllib3>=1.26.0", # HTTP utilities and retry strategies
