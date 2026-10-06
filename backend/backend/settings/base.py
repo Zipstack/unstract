@@ -15,12 +15,12 @@ import re
 from pathlib import Path
 from urllib.parse import quote
 
-import httpx
 from django.core.validators import URLValidator
 from dotenv import find_dotenv, load_dotenv
 from utils.common_utils import CommonUtils
 from utils.cors_origin import normalize_web_app_origin
 
+from backend.celery_broker import build_broker_url, required_broker_settings
 from unstract.core.cache.redis_client import (
     apply_url_credentials,
     build_socketio_redis_url,
@@ -72,19 +72,15 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 DEFAULT_LOG_LEVEL = os.environ.get("DEFAULT_LOG_LEVEL", "INFO")
 
 # Celery Broker Configuration
-# Optional: only the Celery transport uses a broker. Left unset, the URL stays
-# empty and Celery connects lazily, so nothing dials a broker that is not there.
+# Required on the Celery log transport; optional on Redis, where an unset base URL
+# leaves the URL empty and Celery connects lazily to nothing.
+for _broker_setting in required_broker_settings(os.environ):
+    get_required_setting(_broker_setting)
 CELERY_BROKER_BASE_URL = os.environ.get("CELERY_BROKER_BASE_URL")
 CELERY_BROKER_USER = os.environ.get("CELERY_BROKER_USER")
 CELERY_BROKER_PASS = os.environ.get("CELERY_BROKER_PASS")
-CELERY_BROKER_URL = (
-    str(
-        httpx.URL(CELERY_BROKER_BASE_URL).copy_with(
-            username=CELERY_BROKER_USER, password=CELERY_BROKER_PASS
-        )
-    )
-    if CELERY_BROKER_BASE_URL
-    else ""
+CELERY_BROKER_URL = build_broker_url(
+    CELERY_BROKER_BASE_URL, CELERY_BROKER_USER, CELERY_BROKER_PASS
 )
 
 ENV_FILE = find_dotenv()

@@ -59,10 +59,17 @@ def test_redis_transport_starts_without_a_broker(monkeypatch, processor):
 
 
 @pytest.mark.parametrize("transport", ["celery", None])
-def test_celery_transport_still_requires_the_broker(monkeypatch, processor, transport):
-    _set_env(monkeypatch, transport=transport, broker=False)
-    with pytest.raises(ValueError, match=Env.CELERY_BROKER_BASE_URL):
+@pytest.mark.parametrize("missing", list(_BROKER_ENV))
+def test_celery_transport_still_requires_each_broker_setting(
+    monkeypatch, processor, transport, missing
+):
+    _set_env(monkeypatch, transport=transport, broker=True)
+    monkeypatch.delenv(missing)
+    with pytest.raises(ValueError) as excinfo:
         log_processor.main()
+    assert missing in str(excinfo.value)
+    for present in set(_BROKER_ENV) - {missing}:
+        assert present not in str(excinfo.value)
     processor.assert_not_called()
 
 

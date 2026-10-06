@@ -428,8 +428,12 @@ class WorkerConfig:
             self.internal_api_base_url = "http://unstract-backend:8000/internal"
             logging.warning("Using Docker default for INTERNAL_API_BASE_URL")
 
-        # Validate that Celery URLs were properly built from environment variables
-        if not self.celery_broker_url:
+        # Validate that Celery URLs were properly built from environment variables.
+        # The broker is optional when logs stream over Redis. Imported here so that
+        # LogPublisher builds its broker URL after this module's .env load, not before.
+        from unstract.core.pubsub_helper import use_redis_log_transport
+
+        if not self.celery_broker_url and not use_redis_log_transport():
             errors.append(
                 "CELERY_BROKER_URL could not be built. Please set the following environment variables: "
                 "CELERY_BROKER_BASE_URL (e.g., 'amqp://unstract-rabbitmq:5672//'), "
