@@ -209,11 +209,26 @@ def test_the_result_payload_keys_by_the_extractor_that_ran():
     assert V1_EXTRACTOR_NAME not in payload["extractors"]
 
 
-def test_the_extractor_column_defaults_to_kv():
-    """The migration's default is the historical truth, not a guess: before
-    this column existed the API accepted exactly one extractor, always `kv`.
+def test_the_extractor_column_has_no_default():
+    """Was `test_the_extractor_column_defaults_to_kv`, asserting `== "kv"`.
+
+    It pinned the defect as the contract. The default WAS the historical truth
+    when migration 0002 added the column -- the API accepted exactly one
+    extractor and it was always `kv` -- and it became a mis-filing trap the
+    moment `table` existed: `kv` is a valid key in `STAGE_NAMES_BY_EXTRACTOR`,
+    so a table job filed under it gets the KV stage list and
+    `table_extraction` is silently dropped from every status response, with
+    nothing logged because nothing looks wrong to the filter.
+
+    `""` matches no route, so an omission now fails the dispatch visibly. The
+    row-level truth 0002 back-filled is untouched: existing `kv` rows keep
+    saying `kv`, which is what `test_a_job_whose_extractor_has_no_stage_list_
+    reports_no_stages` below depends on.
     """
-    assert AgentKVJob().extractor == V1_EXTRACTOR_NAME
+    assert AgentKVJob().extractor == ""
+    assert V1_EXTRACTOR_NAME in {
+        value for value, _ in AgentKVJob._meta.get_field("extractor").choices
+    }, "a pre-carve-out row must still be a legal value to READ back"
 
 
 def test_a_job_whose_extractor_has_no_stage_list_reports_no_stages(caplog):

@@ -6,7 +6,7 @@ from django.utils import timezone
 from utils.models.base_model import BaseModel
 from utils.models.organization_mixin import DefaultOrganizationMixin
 
-from agent_kv.constants import V1_EXTRACTOR_NAME
+from agent_kv.constants import TABLE_EXTRACTOR_NAME, V1_EXTRACTOR_NAME
 
 
 class AgentKVKey(DefaultOrganizationMixin, BaseModel):
@@ -50,6 +50,23 @@ class JobStatus(models.TextChoices):
     CANCELLED = "CANCELLED"
 
 
+class JobExtractor(models.TextChoices):
+    """The extractor names a job row may record.
+
+    `status` has had `choices` since 0001 and `extractor` was the one
+    stringly-typed field without them -- so nothing but a reader's memory
+    connected the column to `EXTRACTOR_ROUTES`.
+
+    KV is listed even though this deployment refuses it: the column records
+    which extractor RAN, and rows written before the carve-out legitimately
+    say `kv`. Routability is `EXTRACTOR_ROUTES`' job, and these two sets are
+    deliberately not the same thing -- see `test_table_extractor_routing.py`.
+    """
+
+    KV = V1_EXTRACTOR_NAME
+    TABLE = TABLE_EXTRACTOR_NAME
+
+
 class AgentKVJob(DefaultOrganizationMixin, BaseModel):
     TERMINAL = frozenset({JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.CANCELLED})
 
@@ -64,7 +81,23 @@ class AgentKVJob(DefaultOrganizationMixin, BaseModel):
     # Which extractor this job ran. v1 dispatches exactly one per job, but
     # WHICH one is now a choice, and status/result key their payloads by it --
     # without this column a table job's output would be filed under `kv`.
-    extractor = models.CharField(max_length=32, default=V1_EXTRACTOR_NAME)
+    #
+    # NO DEFAULT, deliberately. Migration 0002 added this column with
+    # `default="kv"`, which was the historical truth at the time (the API
+    # accepted exactly one extractor and it was always `kv`) and is now a
+    # trap: a creation path that omits `extractor=` files a TABLE job as
+    # `kv`, and `kv` is a valid key in `STAGE_NAMES_BY_EXTRACTOR`, so
+    # `_status_document` hands back the KV stage list and silently drops
+    # `table_extraction` from every status response. The job runs, the caller
+    # is billed, and the stages array is empty with no warning logged --
+    # because nothing is wrong as far as the filter can tell.
+    #
+    # With no default, an omission is loud instead: `""` matches no route, so
+    # `dispatch_job` raises and the job terminalizes as FAILED with an error
+    # the caller can see, and `_status_document` logs the unknown-extractor
+    # warning. Which extractor ran is a fact about the job, not something with
+    # a sensible default.
+    extractor = models.CharField(max_length=32, choices=JobExtractor.choices)
     status = models.CharField(
         max_length=16,
         choices=JobStatus.choices,

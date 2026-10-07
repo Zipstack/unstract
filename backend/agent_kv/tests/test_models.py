@@ -94,3 +94,52 @@ def test_mark_terminal_accepts_every_terminal_status(m_objects, good_status):
         )
         is True
     )
+
+
+# --------------------------------------------------------------------------
+# 2.17: `extractor` was the one stringly-typed field without `choices`, and it
+# defaulted to the extractor this build cannot run.
+# --------------------------------------------------------------------------
+
+
+def test_extractor_declares_its_choices():
+    field = AgentKVJob._meta.get_field("extractor")
+    assert {value for value, _ in field.choices} == {"kv", "table"}
+
+
+def test_extractor_has_no_default():
+    """An omitted `extractor=` must be loud, not silently filed as `kv`.
+
+    `kv` IS a valid key in `STAGE_NAMES_BY_EXTRACTOR`, so a table job filed
+    under it gets the KV stage list and `table_extraction` is dropped from
+    every status response -- the job runs, the caller is billed, the stages
+    array comes back empty and nothing logs a warning, because nothing is
+    wrong as far as the filter can tell.
+
+    With no default the omission produces `""`, which matches no route: the
+    dispatch raises, the job terminalizes FAILED with a visible error, and
+    `_status_document` logs the unknown-extractor warning.
+    """
+    field = AgentKVJob._meta.get_field("extractor")
+    assert not field.has_default(), (
+        "migration 0002's `default='kv'` was the historical truth then and is "
+        "a mis-filing trap now; see the field comment"
+    )
+    assert AgentKVJob(organization_id="o").extractor == ""
+
+
+def test_recordable_extractors_are_a_superset_of_routable_ones():
+    """The two sets are deliberately different, so neither is derived.
+
+    `choices` says what a ROW may record -- rows written before the carve-out
+    legitimately say `kv`. `EXTRACTOR_ROUTES` says what a submit may DISPATCH,
+    and `kv` is absent from it on purpose. Deriving either from the other
+    would quietly re-enable the extractor or make old rows unreadable.
+    """
+    from agent_kv.constants import EXTRACTOR_ROUTES
+
+    recordable = {value for value, _ in AgentKVJob._meta.get_field("extractor").choices}
+    assert set(EXTRACTOR_ROUTES) < recordable, (
+        "every routable extractor must be recordable, and `kv` is recordable "
+        "without being routable"
+    )

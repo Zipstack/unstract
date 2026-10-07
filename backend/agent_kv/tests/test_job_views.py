@@ -16,6 +16,7 @@ from rest_framework.test import APIRequestFactory  # noqa: E402
 
 from agent_kv import execution_views as ev  # noqa: E402
 from agent_kv import execution_views_result as evr  # noqa: E402
+from agent_kv.constants import V1_EXTRACTOR_NAME  # noqa: E402
 from agent_kv.models import AgentKVJob, AgentKVKey, JobStatus  # noqa: E402
 from agent_kv.tests._factories import kv_key  # noqa: E402
 
@@ -83,6 +84,12 @@ def test_every_job_scoped_view_filters_by_organization(m_keys, m_jobs, view, met
 def test_status_running_builds_ordered_stages_and_lowercases_status(m_keys, m_jobs):
     m_keys.get.return_value = kv_key()
     job = AgentKVJob(
+        # Explicit, not the column default: the stage names below are the KV
+        # list, and `_status_document` filters a job's stages through
+        # STAGE_NAMES_BY_EXTRACTOR[job.extractor]. This used to ride on
+        # `extractor` defaulting to `kv`, which made a load-bearing fact
+        # invisible in the test that depends on it.
+        extractor=V1_EXTRACTOR_NAME,
         status=JobStatus.RUNNING,
         stage="extraction",
         stages={
@@ -160,6 +167,9 @@ def test_result_after_expiry_is_404(m_keys, m_jobs, m_read):
 def test_result_happy_path_returns_read_result_payload(m_keys, m_jobs, m_read):
     m_keys.get.return_value = kv_key()
     job = AgentKVJob(
+        # Explicit: the assertions below namespace the payload under `kv`,
+        # which is `job.extractor`, not a constant of the response shape.
+        extractor=V1_EXTRACTOR_NAME,
         status=JobStatus.COMPLETED,
         result_ref="org/o/agent_kv/j/result.json",
         expires_at=timezone.now() + timedelta(days=1),
