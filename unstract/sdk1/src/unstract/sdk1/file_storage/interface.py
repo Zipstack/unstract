@@ -55,6 +55,11 @@ class FileStorageInterface(ABC):
         pass
 
     @abstractmethod
+    def rm_exact(self, path: str) -> None:
+        """Remove a file or directory tree, treating glob characters literally."""
+        pass
+
+    @abstractmethod
     def cp(
         self,
         lpath: str,

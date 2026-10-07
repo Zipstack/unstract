@@ -38,7 +38,10 @@ from unstract.sdk1.adapters.x2text.llm_whisperer_v2.src.constants import (
 from unstract.sdk1.adapters.x2text.llm_whisperer_v2.src.dto import (
     WhispererRequestParams,
 )
-from unstract.sdk1.adapters.x2text.page_image_loader import configured_page_cap
+from unstract.sdk1.adapters.x2text.page_image_loader import (
+    configured_max_total_bytes,
+    configured_page_cap,
+)
 from unstract.sdk1.constants import MimeType
 from unstract.sdk1.exceptions import FileOperationError
 from unstract.sdk1.file_storage import FileStorage, FileStorageProvider
@@ -738,6 +741,30 @@ class LLMWhispererHelper:
                 status_code=502,
             )
 
+    @staticmethod
+    def verify_page_bytes(pages: list[tuple[int, bytes]]) -> None:
+        """Reject a page set too large to send to an LLM in one request.
+
+        Same budget, from the same accessor, as the answer-time check in
+        ``page_image_loader`` — so a document that passes here passes there.
+        Raises before anything is persisted.
+        """
+        budget = configured_max_total_bytes()
+        total = sum(len(data) for _, data in pages)
+        if total <= budget:
+            return
+        mb = 1024 * 1024
+        raise ExtractorError(
+            f"The {len(pages)} page images of this document total "
+            f"{total / mb:.1f} MB, more than the {budget // mb} MB an LLM "
+            "provider accepts in one request, so it cannot be answered in "
+            "image output mode however many pages it has. Split the "
+            "document, or select a text output mode instead. Note: the "
+            "page conversion has already been billed — image sizes are only "
+            "known once pages are rendered.",
+            status_code=400,
+        )
+
     # Single canonical derivation of ``{extract_dir}/{stem}/pages`` shared
     # by writer and reader alike (see unstract.sdk1.adapters.x2text.constants).
     build_page_store_dir = staticmethod(_shared_build_page_store_dir)
@@ -763,7 +790,8 @@ class LLMWhispererHelper:
         extraction error is what the caller must see.
         """
         try:
-            fs.rm(page_store_dir, recursive=True)
+            # Named after the uploaded document: never a glob (rm_exact).
+            fs.rm_exact(page_store_dir)
         except Exception as e:
             logger.warning(
                 "Image mode: could not clean up partial page dir %s: %s",
@@ -807,7 +835,8 @@ class LLMWhispererHelper:
         """
         try:
             if fs.exists(page_store_dir):
-                fs.rm(page_store_dir, recursive=True)
+                # Named after the uploaded document: never a glob (rm_exact).
+                fs.rm_exact(page_store_dir)
         except Exception as e:
             raise ExtractorError(
                 "Failed to clear previous page images before writing the new "
@@ -815,10 +844,10 @@ class LLMWhispererHelper:
                 status_code=500,
                 actual_err=e,
             ) from e
-        # ``fs.rm`` is not enough on its own: its S3-compatibility fallback
-        # (MissingContentMD5 → per-object deletes) only WARNS on individual
-        # failures, so a "successful" rm can leave survivors behind — which
-        # would silently join the new set as stale trailing pages. Verify the
+        # The delete is not trusted on its own: it works from a listing, and
+        # fsspec's dircache can serve a stale one that omits objects, so a
+        # "successful" delete can leave survivors behind — which would
+        # silently join the new set as stale trailing pages. Verify the
         # prefix is actually gone (through a fresh listing, not fsspec's
         # dircache) and fail loudly otherwise.
         invalidate = getattr(getattr(fs, "fs", None), "invalidate_cache", None)
@@ -944,6 +973,15 @@ class LLMWhispererHelper:
         # (derived locally above, before submission) BEFORE persisting, so
         # nothing is written on a truncated/over-produced archive.
         LLMWhispererHelper.verify_page_count(pages, expected_page_count)
+
+        # Enforce the byte budget HERE, at extraction, not only when a prompt
+        # runs. The page images are only measurable after conversion, so the
+        # conversion itself cannot be saved — but without this check the
+        # document indexed successfully and failed only when the user ran a
+        # prompt, after they had built their prompts around it. Failing at
+        # indexing is the earliest point the size is known. The answer-time
+        # check in page_image_loader stays as the backstop.
+        LLMWhispererHelper.verify_page_bytes(pages)
 
         page_store_dir = LLMWhispererHelper.build_page_store_dir(
             output_file_path=output_file_path,

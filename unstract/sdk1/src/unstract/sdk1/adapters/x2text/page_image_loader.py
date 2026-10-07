@@ -106,36 +106,45 @@ DEFAULT_MAX_TOTAL_BYTES = 14 * 1024 * 1024
 
 _PAGE_NAME_RE = re.compile(ImageOutputConstants.PAGE_NUMBER_REGEX)
 
-# Platform override for the page cap. Defined here — next to the default and
-# the enforcement — so the two sites that need it agree: the extraction-time
-# pre-check (adapter, before the per-page-billed conversion is submitted) and
-# the answer-time enforcement (cloud consumer plugin).
+# Platform overrides for the two limits. Defined here — next to the defaults
+# and the enforcement — so every site that needs them agrees: the
+# extraction-time checks (adapter: the page-count pre-check before the
+# per-page-billed conversion is submitted, and the byte check right after
+# it) and the answer-time enforcement (cloud consumer plugin). Emergency
+# overrides only; see DEFAULT_PAGE_CAP for why the values live in this file.
 PAGE_CAP_ENV = "VLM_IMAGE_ANSWER_PAGE_CAP"
+MAX_TOTAL_MB_ENV = "VLM_IMAGE_ANSWER_MAX_TOTAL_MB"
 
 
-def configured_page_cap() -> int:
-    """The effective page cap: ``PAGE_CAP_ENV`` or ``DEFAULT_PAGE_CAP``.
+def _positive_int_env(name: str, default: int, *, scale: int = 1) -> int:
+    """Parse a positive-integer env override, logging and defaulting otherwise.
 
-    An absent variable is the normal case and returns the default silently.
+    An absent variable is the normal case and returns ``default`` silently.
     A present-but-unusable value is an operator mistake: log it and fall back
-    rather than failing extraction over a malformed env var.
+    rather than failing extraction over a malformed env var. ``scale``
+    converts the parsed value into the unit of ``default`` (e.g. MB → bytes).
     """
-    raw = os.getenv(PAGE_CAP_ENV)
+    raw = os.getenv(name)
     if raw is None:
-        return DEFAULT_PAGE_CAP
+        return default
     try:
         value = int(raw)
         if value <= 0:
             raise ValueError("must be positive")
     except (TypeError, ValueError):
-        logger.warning(
-            "Invalid %s value %r; using default %d",
-            PAGE_CAP_ENV,
-            raw,
-            DEFAULT_PAGE_CAP,
-        )
-        return DEFAULT_PAGE_CAP
-    return value
+        logger.warning("Invalid %s value %r; using default %d", name, raw, default)
+        return default
+    return value * scale
+
+
+def configured_page_cap() -> int:
+    """The effective page cap: ``PAGE_CAP_ENV`` or ``DEFAULT_PAGE_CAP``."""
+    return _positive_int_env(PAGE_CAP_ENV, DEFAULT_PAGE_CAP)
+
+
+def configured_max_total_bytes() -> int:
+    """The effective byte budget: ``MAX_TOTAL_MB_ENV`` (in MB) or the default."""
+    return _positive_int_env(MAX_TOTAL_MB_ENV, DEFAULT_MAX_TOTAL_BYTES, scale=1024 * 1024)
 
 
 class PageImageLoadError(Exception):
