@@ -115,3 +115,36 @@ def test_directory_already_gone_is_tolerated(
     storage.rm_exact(str(root))
 
     assert not (root / "pages" / "page_001.png").exists()
+
+
+def test_glob_matching_sibling_is_left_alone_on_object_store_semantics() -> None:
+    # Seen on MinIO and a GCS emulator: when another document's folder
+    # matches the name as a glob ("TOBE-065 C Venkat" for "[CDIC]"), plain
+    # rm() deletes THAT folder silently and leaves the target in place.
+    storage = _object_store_like()
+    base = f"/{uuid.uuid4().hex}/extract"
+    target = f"{base}/TOBE-065 [CDIC] Venkat/pages"
+    sibling = f"{base}/TOBE-065 C Venkat/pages/page_001.png"
+    storage.fs.pipe(f"{target}/page_001.png", b"x")
+    storage.fs.pipe(sibling, b"other document")
+
+    storage.rm_exact(target)
+
+    assert storage.fs.find(target) == []
+    assert storage.fs.cat_file(sibling) == b"other document"
+
+
+def test_glob_rm_deletes_the_wrong_folder_when_a_sibling_matches() -> None:
+    # Pins the second failure mode of plain rm(), alongside the
+    # FileNotFoundError premise above.
+    storage = _object_store_like()
+    base = f"/{uuid.uuid4().hex}/extract"
+    target = f"{base}/TOBE-065 [CDIC] Venkat/pages"
+    sibling = f"{base}/TOBE-065 C Venkat/pages/page_001.png"
+    storage.fs.pipe(f"{target}/page_001.png", b"x")
+    storage.fs.pipe(sibling, b"other document")
+
+    storage.rm(target, recursive=True)
+
+    assert storage.fs.find(target) != []
+    assert not storage.fs.exists(sibling)

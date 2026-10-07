@@ -342,13 +342,12 @@ def load_page_images(
     discovered = discover_page_images(fs, page_store_dir)
     if page_cap is not None and len(discovered) > page_cap:
         raise PageCapExceededError(
-            f"Document exceeds the {page_cap}-page limit for image output "
-            f"mode ({len(discovered)} pages found). Image mode answers a "
-            "prompt in one request containing every page image, so a larger "
-            "document cannot be answered. Split the document, or extract it "
-            "in a text output mode instead. (This limit is set by the "
-            "platform via VLM_IMAGE_ANSWER_PAGE_CAP — it is not the "
-            "adapter's 'pages to extract' setting.)",
+            "This document has too many pages for image output mode. It "
+            f"has {len(discovered)} pages, and the limit is {page_cap} "
+            "because every page is sent to the LLM in one request. Split "
+            "the document into smaller files, or use a text output mode "
+            "instead. (The 'Pages to extract' setting does not apply in "
+            "image output mode.)",
             page_store_dir=page_store_dir,
             page_count=len(discovered),
             page_cap=page_cap,
@@ -383,13 +382,13 @@ def load_page_images(
             # Stop before encoding/retaining more — the page cap bounds the
             # count, this bounds the payload.
             raise PageImageSetTooLargeError(
-                f"Page images total more than "
-                f"{max_total_bytes // (1024 * 1024)}MB by page {page_number} "
-                f"of {len(discovered)} — larger than an LLM provider accepts "
-                "in one request, so this document cannot be answered in "
-                "image mode however many pages it has. Split the document, "
-                "or extract it in a text output mode instead. (This budget "
-                "is set by the platform via VLM_IMAGE_ANSWER_MAX_TOTAL_MB.)",
+                "This document is too large for image output mode. Its "
+                "page images go over the "
+                f"{max_total_bytes // (1024 * 1024)} MB limit at page "
+                f"{page_number} of {len(discovered)}, and image mode has to "
+                "send every page to the LLM in one request. Split the "
+                "document into smaller files, or use a text output mode "
+                "instead.",
                 page_store_dir=page_store_dir,
                 total_bytes=total_bytes,
                 max_total_bytes=max_total_bytes,

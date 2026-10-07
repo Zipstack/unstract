@@ -755,13 +755,12 @@ class LLMWhispererHelper:
             return
         mb = 1024 * 1024
         raise ExtractorError(
-            f"The {len(pages)} page images of this document total "
-            f"{total / mb:.1f} MB, more than the {budget // mb} MB an LLM "
-            "provider accepts in one request, so it cannot be answered in "
-            "image output mode however many pages it has. Split the "
-            "document, or select a text output mode instead. Note: the "
-            "page conversion has already been billed — image sizes are only "
-            "known once pages are rendered.",
+            "This document is too large for image output mode. Its "
+            f"{len(pages)} page images total {total / mb:.1f} MB, over the "
+            f"{budget // mb} MB limit for one LLM request. Split the document "
+            "into smaller files, or use a text output mode instead. The page "
+            "conversion has already been charged, because image sizes are "
+            "only known after the pages are rendered.",
             status_code=400,
         )
 
@@ -948,12 +947,12 @@ class LLMWhispererHelper:
         page_cap = configured_page_cap()
         if expected_page_count is not None and expected_page_count > page_cap:
             raise ExtractorError(
-                f"Document exceeds the {page_cap}-page limit for image output "
-                f"mode ({expected_page_count} pages). Image mode answers a "
-                "prompt in one request containing every page image, so a "
-                "larger document cannot be answered. Split the document, or "
-                "select a text output mode instead. Nothing was converted or "
-                "billed.",
+                "This document has too many pages for image output mode. It "
+                f"has {expected_page_count} pages, and the limit is {page_cap} "
+                "because every page is sent to the LLM in one request. Split "
+                "the document into smaller files, or use a text output mode "
+                "instead. No pages were converted or charged. (The 'Pages to "
+                "extract' setting does not apply in image output mode.)",
                 status_code=400,
             )
 

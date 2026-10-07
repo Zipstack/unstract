@@ -436,9 +436,10 @@ class TestPreSubmitPageCap:
             H.get_page_images({}, "/in/doc.pdf", "/out/doc.txt", fs=fs)
 
         msg = str(excinfo.value)
-        assert "exceeds the 20-page limit" in msg
-        assert "164 pages" in msg
-        assert "Nothing was converted or billed" in msg
+        assert "too many pages for image output mode" in msg
+        assert "It has 164 pages, and the limit is 20" in msg
+        assert "No pages were converted or charged" in msg
+        assert "VLM_IMAGE_ANSWER_PAGE_CAP" not in msg
         # The billed call never happened.
         submit.assert_not_called()
 
@@ -581,10 +582,11 @@ class TestExtractionTimeByteBudget:
         with pytest.raises(ExtractorError) as excinfo:
             H.verify_page_bytes([(1, b"x" * 700_000), (2, b"x" * 700_000)])
         msg = str(excinfo.value)
-        assert "2 page images" in msg
-        assert "more than the 1 MB" in msg
-        # Honest about cost: sizes are only known after the billed conversion.
-        assert "already been billed" in msg
+        assert msg.startswith("This document is too large for image output mode.")
+        assert "Its 2 page images total 1.3 MB, over the 1 MB limit" in msg
+        # Honest about cost: sizes are only known after the charged conversion.
+        assert "already been charged" in msg
+        assert "however many pages" not in msg
 
     def test_extraction_fails_before_persisting(self, monkeypatch: MonkeyPatch) -> None:
         monkeypatch.setenv("VLM_IMAGE_ANSWER_MAX_TOTAL_MB", "1")
