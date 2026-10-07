@@ -278,12 +278,13 @@ class TestMinioFSBucketRestriction(unittest.TestCase):
         self.assertIs(scoped.fs, fs.s3)
 
     def test_walk_results_are_relative_to_the_bucket(self) -> None:
-        # `DirFileSystem.walk()` relpaths the directory string it yields,
-        # but not the `name` field inside each entry's own metadata dict —
-        # those still carry the wrapped fs's raw, bucket-prefixed key. This
-        # is what workflow-execution file discovery reads (it walks, the
-        # UI browser lists) — a name still carrying the bucket here is what
+        # Each walk entry's own `name` field must come back bucket-relative,
+        # not as the wrapped fs's raw, bucket-prefixed key (UN-3487). This is
+        # what workflow-execution file discovery reads (it walks, the UI
+        # browser lists) — a name still carrying the bucket here is what
         # doubles the prefix at the point a discovered file gets opened.
+        # fsspec 2026.x's `DirFileSystem.walk()` does this itself; this test
+        # guards against a regression either upstream or in `MinioFS`.
         #
         # Matches fsspec's real shape (verified against AbstractFileSystem.
         # walk): the dict is keyed by bare basename already; only each

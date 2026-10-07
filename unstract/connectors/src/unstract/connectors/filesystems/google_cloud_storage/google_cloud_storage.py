@@ -8,6 +8,10 @@ from typing import Any
 
 from fsspec import AbstractFileSystem
 
+# Keeps gcsfs on its core GCSFileSystem (gcsfs 2026.x otherwise swaps in the
+# experimental gRPC-backed ExtendedGcsFileSystem); must run before gcsfs is
+# imported below (UN-4224).
+import unstract.sdk1.patches.storage_compat  # noqa: F401
 from unstract.connectors.exceptions import ConnectorError
 from unstract.connectors.filesystems.unstract_file_system import UnstractFileSystem
 
