@@ -14,7 +14,7 @@ import { RequireGuest } from "../components/helpers/auth/RequireGuest.jsx";
 import { OAuthStatus } from "../components/oauth-ds/oauth-status/OAuthStatus.jsx";
 import { ErrorBoundary } from "../components/widgets/error-boundary/ErrorBoundary.jsx";
 import { lazyNamed } from "../helpers/lazyNamed.js";
-import { isModuleMissing } from "../helpers/pluginLoader.js";
+import { loadPlugin } from "../helpers/pluginLoader.js";
 import { lazyPlugin } from "../helpers/pluginRegistry.js";
 import { LandingPage } from "../pages/LandingPage.jsx";
 import { useMainAppRoutes } from "./useMainAppRoutes.jsx";
@@ -120,30 +120,22 @@ const LlmWhispererCustomCheckoutPage = lazyPlugin(
 
 // These plugins export hooks that RETURN a <Route> tree consumed
 // synchronously during render, so they cannot be wrapped in React.lazy and
-// are loaded with a guarded await. OSS resolves these to the stub (caught
-// below); cloud loads them. NOTE: in cloud these two modules still load on
+// are loaded with loadPlugin at module evaluation. OSS resolves these to the
+// stub; cloud loads them. NOTE: in cloud these two modules still load on
 // /landing because the await runs at module evaluation. Fully deferring them
 // requires the plugins themselves (in unstract-cloud) to lazy-load their own
 // page imports — tracked as a follow-up.
-let llmWhispererRouter;
-try {
-  const mod = await import("../plugins/routes/useLlmWhispererRoutes.js");
-  llmWhispererRouter = mod.useLlmWhispererRoutes;
-} catch (err) {
-  if (!isModuleMissing(err)) {
-    console.error("[llm-whisperer] routes import failed unexpectedly", err);
-  }
-}
+const llmWhispererRouter = await loadPlugin(() =>
+  import("../plugins/routes/useLlmWhispererRoutes.js").then(
+    (m) => m.useLlmWhispererRoutes,
+  ),
+);
 
-let verticalsRouter;
-try {
-  const mod = await import("../plugins/routes/useVerticalsRoutes.js");
-  verticalsRouter = mod.useVerticalsRoutes;
-} catch (err) {
-  if (!isModuleMissing(err)) {
-    console.error("[verticals] routes import failed unexpectedly", err);
-  }
-}
+const verticalsRouter = await loadPlugin(() =>
+  import("../plugins/routes/useVerticalsRoutes.js").then(
+    (m) => m.useVerticalsRoutes,
+  ),
+);
 
 function Router() {
   const location = useLocation();

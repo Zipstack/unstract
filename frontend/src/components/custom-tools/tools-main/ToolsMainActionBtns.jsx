@@ -4,6 +4,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { Button } from "@/components/ui/shims/antd-button";
 import { Space } from "@/components/ui/shims/antd-layout";
 import { Tooltip } from "@/components/ui/shims/antd-overlays";
+import { loadPlugin } from "../../../helpers/pluginLoader.js";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import usePostHogEvents from "../../../hooks/usePostHogEvents";
@@ -15,34 +16,24 @@ import { RunAllPrompts } from "../prompt-card/RunAllPrompts";
 import { PromptsReorderModal } from "../prompts-reorder/PromptsReorderModal";
 
 // Import single pass related components
-let RunSinglePassBtn;
-try {
-  const mod = await import(
-    "../../../plugins/run-single-pass-btn/RunSinglePassBtn"
-  );
-  RunSinglePassBtn = mod.RunSinglePassBtn;
-} catch {
-  // The variable will remain undefined if the component is not available
-}
+const RunSinglePassBtn = await loadPlugin(() =>
+  import("../../../plugins/run-single-pass-btn/RunSinglePassBtn").then(
+    (m) => m.RunSinglePassBtn,
+  ),
+);
 
 // Import simple prompt studio related components
-let AddPromptBtn;
-try {
-  const mod = await import(
-    "../../../plugins/simple-prompt-studio/AddPromptBtn"
-  );
-  AddPromptBtn = mod.AddPromptBtn;
-} catch {
-  // The variable will remain undefined if the component is not available
-}
+const AddPromptBtn = await loadPlugin(() =>
+  import("../../../plugins/simple-prompt-studio/AddPromptBtn").then(
+    (m) => m.AddPromptBtn,
+  ),
+);
 
-let ChallengeModal;
-try {
-  const mod = await import("../../../plugins/challenge-modal/ChallengeModal");
-  ChallengeModal = mod.ChallengeModal;
-} catch {
-  // The component will remain undefined if it is not available
-}
+const ChallengeModal = await loadPlugin(() =>
+  import("../../../plugins/challenge-modal/ChallengeModal").then(
+    (m) => m.ChallengeModal,
+  ),
+);
 
 function ToolsMainActionBtns() {
   const [openReorderModal, setOpenReorderModal] = useState(false);

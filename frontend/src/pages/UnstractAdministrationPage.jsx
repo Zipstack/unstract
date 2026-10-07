@@ -1,17 +1,13 @@
 import "./UnstractAdministrationPage.css";
+import { loadPlugin } from "../helpers/pluginLoader.js";
 import { useSessionStore } from "../store/session-store";
 
-let UnstractAdministration;
-
-try {
-  const mod = await import(
+// Cloud-only feature, not available in OSS
+const UnstractAdministration = await loadPlugin(() =>
+  import(
     "../plugins/subscription-admin/components/UnstractAdministration.jsx"
-  );
-  UnstractAdministration = mod.UnstractAdministration;
-} catch {
-  // NOSONAR
-  // Cloud-only feature, not available in OSS
-}
+  ).then((m) => m.UnstractAdministration),
+);
 
 function UnstractAdministrationPage() {
   const { sessionDetails } = useSessionStore();

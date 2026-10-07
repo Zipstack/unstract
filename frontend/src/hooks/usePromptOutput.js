@@ -1,47 +1,37 @@
 import { useParams } from "react-router-dom";
 
+import { loadPlugin } from "../helpers/pluginLoader.js";
 import { useCustomToolStore } from "../store/custom-tool-store";
 import { usePromptOutputStore } from "../store/prompt-output-store";
 import { useSessionStore } from "../store/session-store";
 import { useTokenUsageStore } from "../store/token-usage-store";
 import { useAxiosPrivate } from "./useAxiosPrivate";
 
-let promptOutputApiSps;
-try {
-  const mod = await import("../plugins/simple-prompt-studio/helper");
-  promptOutputApiSps = mod.promptOutputApiSps;
-} catch {
-  // The component will remain null of it is not available
-}
-let publicOutputsApi;
-try {
-  const mod = await import(
-    "../plugins/prompt-studio-public-share/helpers/PublicShareAPIs"
-  );
-  publicOutputsApi = mod.publicOutputsApi;
-} catch {
-  // The component will remain null of it is not available
-}
+const promptOutputApiSps = await loadPlugin(() =>
+  import("../plugins/simple-prompt-studio/helper").then(
+    (m) => m.promptOutputApiSps,
+  ),
+);
+const publicOutputsApi = await loadPlugin(() =>
+  import("../plugins/prompt-studio-public-share/helpers/PublicShareAPIs").then(
+    (m) => m.publicOutputsApi,
+  ),
+);
 
-let handleLookupOutput;
-try {
-  const mod = await import(
-    "../plugins/lookup-studio/prompt-card/handleLookupOutput"
-  );
-  handleLookupOutput = mod.handleLookupOutput;
-} catch (error) {
-  // Surface chunk-load failures — silent catch hid them.
-  console.warn("[usePromptOutput] handleLookupOutput unavailable:", error);
-}
+const handleLookupOutput = await loadPlugin(() =>
+  import("../plugins/lookup-studio/prompt-card/handleLookupOutput").then(
+    (m) => m.handleLookupOutput,
+  ),
+);
 
 // Cloud-only extractor; OSS no-op. Signature matches plugin helper.
-let getEnrichmentFromItem = (_item) => null;
-try {
-  const mod = await import("../plugins/lookup-enriched-toggle/helpers");
-  getEnrichmentFromItem = mod.getEnrichmentFromItem;
-} catch (error) {
-  console.warn("[usePromptOutput] getEnrichmentFromItem unavailable:", error);
-}
+const getEnrichmentFromItem = await loadPlugin(
+  () =>
+    import("../plugins/lookup-enriched-toggle/helpers").then(
+      (m) => m.getEnrichmentFromItem,
+    ),
+  (_item) => null,
+);
 
 const usePromptOutput = () => {
   const { sessionDetails } = useSessionStore();

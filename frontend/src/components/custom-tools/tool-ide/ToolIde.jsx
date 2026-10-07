@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Col, Row } from "@/components/ui/shims/antd-layout";
+import { loadPlugin } from "../../../helpers/pluginLoader.js";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
@@ -15,69 +16,58 @@ import "./ToolIde.css";
 import usePostHogEvents from "../../../hooks/usePostHogEvents.js";
 import { PageTitle } from "../../widgets/page-title/PageTitle.jsx";
 
-let PromptShareModal;
-let PromptShareLink;
-let CloneTitle;
-let HeaderPublic;
-
-try {
-  const shareMod = await import(
+const PromptShareModal = await loadPlugin(() =>
+  import(
     "../../../plugins/prompt-studio-public-share/public-share-modal/PromptShareModal.jsx"
-  );
-  PromptShareModal = shareMod.PromptShareModal;
-  const linkMod = await import(
+  ).then((m) => m.PromptShareModal),
+);
+const PromptShareLink = await loadPlugin(() =>
+  import(
     "../../../plugins/prompt-studio-public-share/public-link-modal/PromptShareLink.jsx"
-  );
-  PromptShareLink = linkMod.PromptShareLink;
-  const headerMod = await import(
+  ).then((m) => m.PromptShareLink),
+);
+const HeaderPublic = await loadPlugin(() =>
+  import(
     "../../../plugins/prompt-studio-public-share/header-public/HeaderPublic.jsx"
-  );
-  HeaderPublic = headerMod.HeaderPublic;
-} catch {
-  // Do nothing if plugins are not loaded.
-}
-try {
-  const mod = await import(
+  ).then((m) => m.HeaderPublic),
+);
+const CloneTitle = await loadPlugin(() =>
+  import(
     "../../../plugins/prompt-studio-clone/clone-title-modal/CloneTitle.jsx"
-  );
-  CloneTitle = mod.CloneTitle;
-} catch {
-  // Do nothing if plugins are not loaded.
-}
+  ).then((m) => m.CloneTitle),
+);
 
 // Cloud-only — OSS stub.
-let useLookupDirtySeed = () => {};
-try {
-  const mod = await import(
-    "../../../plugins/lookup-studio/hooks/useLookupDirtySeed.js"
-  );
-  useLookupDirtySeed = mod.useLookupDirtySeed;
-} catch {}
+const useLookupDirtySeed = await loadPlugin(
+  () =>
+    import("../../../plugins/lookup-studio/hooks/useLookupDirtySeed.js").then(
+      (m) => m.useLookupDirtySeed,
+    ),
+  () => {},
+);
 
 // Cloud-only — OSS stub resolves true to skip the gate.
-let useLookupExportGate = () => ({
-  checkLookups: () => Promise.resolve(true),
-  modalEl: null,
-});
-try {
-  const mod = await import(
-    "../../../plugins/lookup-studio/hooks/useLookupExportGate"
-  );
-  useLookupExportGate = mod.useLookupExportGate;
-} catch {}
+const useLookupExportGate = await loadPlugin(
+  () =>
+    import("../../../plugins/lookup-studio/hooks/useLookupExportGate").then(
+      (m) => m.useLookupExportGate,
+    ),
+  () => ({
+    checkLookups: () => Promise.resolve(true),
+    modalEl: null,
+  }),
+);
 
 /*
  * Cloud-only. Mounted here rather than beside either of its triggers: the
  * kebab menu unmounts its contents on click and the prompt card body unmounts
  * on collapse, so a drawer rendered in either was destroyed as it opened.
  */
-let LookupDrawerHost;
-try {
-  const mod = await import(
-    "../../../plugins/lookup-studio/prompt-card/LookupDrawerHost"
-  );
-  LookupDrawerHost = mod.LookupDrawerHost;
-} catch {}
+const LookupDrawerHost = await loadPlugin(() =>
+  import("../../../plugins/lookup-studio/prompt-card/LookupDrawerHost").then(
+    (m) => m.LookupDrawerHost,
+  ),
+);
 
 function ToolIde() {
   const [openSettings, setOpenSettings] = useState(false);

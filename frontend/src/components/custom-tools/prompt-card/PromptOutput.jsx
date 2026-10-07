@@ -15,6 +15,7 @@ import {
   PROMPT_RUN_API_STATUSES,
   PROMPT_RUN_TYPES,
 } from "../../../helpers/GetStaticData";
+import { loadPlugin } from "../../../helpers/pluginLoader.js";
 import usePromptOutput from "../../../hooks/usePromptOutput";
 import { useWindowDimensions } from "../../../hooks/useWindowDimensions";
 import { useAlertStore } from "../../../store/alert-store";
@@ -28,40 +29,28 @@ import { PromptOutputExpandBtn } from "./PromptOutputExpandBtn";
 import { PromptRunCost } from "./PromptRunCost";
 import { PromptRunTimer } from "./PromptRunTimer";
 
-let TableOutput;
-try {
-  const mod = await import("../../../plugins/prompt-card/TableOutput");
-  TableOutput = mod.TableOutput;
-} catch {
-  // The component will remain null of it is not available
-}
-let ChallengeModal;
-try {
-  const mod = await import("../../../plugins/challenge-modal/ChallengeModal");
-  ChallengeModal = mod.ChallengeModal;
-} catch {
-  // The component will remain null of it is not available
-}
+const TableOutput = await loadPlugin(() =>
+  import("../../../plugins/prompt-card/TableOutput").then((m) => m.TableOutput),
+);
+const ChallengeModal = await loadPlugin(() =>
+  import("../../../plugins/challenge-modal/ChallengeModal").then(
+    (m) => m.ChallengeModal,
+  ),
+);
 
-let LookupOutputTabs;
-try {
-  const mod = await import(
-    "../../../plugins/lookup-studio/prompt-card/LookupOutputTabs"
-  );
-  LookupOutputTabs = mod.LookupOutputTabs;
-} catch {
-  // Cloud-only plugin — absent in OSS builds; LookupOutputTabs stays null.
-}
+// Cloud-only plugin — absent in OSS builds; LookupOutputTabs stays null.
+const LookupOutputTabs = await loadPlugin(() =>
+  import("../../../plugins/lookup-studio/prompt-card/LookupOutputTabs").then(
+    (m) => m.LookupOutputTabs,
+  ),
+);
 
-let getEnrichedCopyText;
-try {
-  const mod = await import(
-    "../../../plugins/lookup-studio/prompt-card/getEnrichedCopyText"
-  );
-  getEnrichedCopyText = mod.getEnrichedCopyText;
-} catch {
-  // Cloud-only plugin — absent in OSS builds; falls back to raw copy text.
-}
+// Cloud-only plugin — absent in OSS builds; falls back to raw copy text.
+const getEnrichedCopyText = await loadPlugin(() =>
+  import("../../../plugins/lookup-studio/prompt-card/getEnrichedCopyText").then(
+    (m) => m.getEnrichedCopyText,
+  ),
+);
 
 // Fallback to raw text — plugin throw on malformed enrichment shouldn't break Copy.
 const resolveCopyText = (promptOutputId, fallbackText) => {

@@ -21,56 +21,42 @@ import {
   PROMPT_RUN_TYPES,
   promptStudioUpdateStatus,
 } from "../../../helpers/GetStaticData";
+import { loadPlugin } from "../../../helpers/pluginLoader.js";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { ConfirmModal } from "../../widgets/confirm-modal/ConfirmModal";
 import { EditableText } from "../editable-text/EditableText";
 import { ExpandCardBtn } from "./ExpandCardBtn";
 
-let PromptRunBtnSps;
-try {
-  const mod = await import(
-    "../../../plugins/simple-prompt-studio/PromptRunBtnSps"
-  );
-  PromptRunBtnSps = mod.PromptRunBtnSps;
-} catch {
-  // The component will remain 'undefined' it is not available
-}
+const PromptRunBtnSps = await loadPlugin(() =>
+  import("../../../plugins/simple-prompt-studio/PromptRunBtnSps").then(
+    (m) => m.PromptRunBtnSps,
+  ),
+);
 
-let PromptChangeIndicator;
-try {
-  const mod = await import(
-    "../../../plugins/prompt-change-indicator/PromptChangeIndicator"
-  );
-  PromptChangeIndicator = mod.PromptChangeIndicator;
-} catch {
-  // Cloud-only feedback loop indicator; stays undefined in OSS builds
-}
+// Cloud-only feedback loop indicator; stays null in OSS builds
+const PromptChangeIndicator = await loadPlugin(() =>
+  import("../../../plugins/prompt-change-indicator/PromptChangeIndicator").then(
+    (m) => m.PromptChangeIndicator,
+  ),
+);
 
-let LookupMenuItem;
-try {
-  const mod = await import(
-    "../../../plugins/lookup-studio/prompt-card/LookupMenuItem"
-  );
-  LookupMenuItem = mod.LookupMenuItem;
-} catch {}
+const LookupMenuItem = await loadPlugin(() =>
+  import("../../../plugins/lookup-studio/prompt-card/LookupMenuItem").then(
+    (m) => m.LookupMenuItem,
+  ),
+);
 
-let usePromptRunGatePlugin;
-let lookupPluginLoadError;
-try {
-  const mod = await import(
-    "../../../plugins/lookup-studio/hooks/usePromptRunGate"
-  );
-  usePromptRunGatePlugin = mod.usePromptRunGate;
-} catch (err) {
-  lookupPluginLoadError = err;
-}
+const usePromptRunGatePlugin = await loadPlugin(() =>
+  import("../../../plugins/lookup-studio/hooks/usePromptRunGate").then(
+    (m) => m.usePromptRunGate,
+  ),
+);
 
 // Sibling plugin loaded but this hook didn't — surface so the no-op fallback
 // doesn't silently disable the run gate.
-if (lookupPluginLoadError && LookupMenuItem) {
+if (!usePromptRunGatePlugin && LookupMenuItem) {
   console.warn(
-    "[Header] lookup-studio plugin loaded but usePromptRunGate failed to import",
-    lookupPluginLoadError,
+    "[Header] lookup-studio plugin loaded but usePromptRunGate is unavailable",
   );
 }
 

@@ -13,14 +13,13 @@ import "@react-pdf-viewer/default-layout/lib/styles/index.css";
 import "@react-pdf-viewer/highlight/lib/styles/index.css";
 import "./Highlight.css";
 import { PDF_WORKER_URL } from "../../../helpers/pdfWorkerConfig";
+import { loadPlugin } from "../../../helpers/pluginLoader.js";
 
-let RenderHighlights;
-try {
-  const mod = await import("../../../plugins/pdf-highlight/RenderHighlights");
-  RenderHighlights = mod.RenderHighlights;
-} catch {
-  // Do nothing, no plugin will be loaded.
-}
+const RenderHighlights = await loadPlugin(() =>
+  import("../../../plugins/pdf-highlight/RenderHighlights").then(
+    (m) => m.RenderHighlights,
+  ),
+);
 
 function PdfLoadError({ error, onRetry, reportError }) {
   useEffect(() => {

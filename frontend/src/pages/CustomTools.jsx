@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useLocation } from "react-router-dom";
 
 import { ListOfTools } from "../components/custom-tools/list-of-tools/ListOfTools";
+import { loadPlugin } from "../helpers/pluginLoader.js";
 
 const TAB_OPTIONS = ["Projects", "Look-Ups"];
 
@@ -13,9 +14,13 @@ function CustomTools() {
   );
 
   useEffect(() => {
-    import("../plugins/lookup-studio")
-      .then((mod) => setLookupListComp(() => mod.LookupList))
-      .catch(() => {});
+    loadPlugin(() =>
+      import("../plugins/lookup-studio").then((m) => m.LookupList),
+    ).then((LookupList) => {
+      if (LookupList) {
+        setLookupListComp(() => LookupList);
+      }
+    });
   }, []);
 
   useEffect(() => {

@@ -13,6 +13,7 @@ import { NotificationClearAll } from "./components/notification/NotificationClea
 import { NotificationIdLine } from "./components/notification/NotificationIdLine.jsx";
 import { PageTitle } from "./components/widgets/page-title/PageTitle.jsx";
 import { THEME } from "./helpers/GetStaticData.js";
+import { loadPlugin } from "./helpers/pluginLoader.js";
 import { attachRequestIdInterceptor } from "./helpers/requestId.js";
 import PostHogPageviewTracker from "./PostHogPageviewTracker.js";
 import { Router } from "./routes/Router.jsx";
@@ -26,15 +27,11 @@ if (!axios[GLOBAL_INTERCEPTOR_FLAG]) {
   axios[GLOBAL_INTERCEPTOR_FLAG] = true;
 }
 
-let GoogleTagManagerHelper;
-try {
-  const mod = await import(
-    "./plugins/google-tag-manager-helper/GoogleTagManagerHelper.js"
-  );
-  GoogleTagManagerHelper = mod.GoogleTagManagerHelper;
-} catch {
-  // The component will remain null of it is not available
-}
+const GoogleTagManagerHelper = await loadPlugin(() =>
+  import("./plugins/google-tag-manager-helper/GoogleTagManagerHelper.js").then(
+    (m) => m.GoogleTagManagerHelper,
+  ),
+);
 
 function App() {
   const { sessionDetails, isLogoutLoading } = useSessionStore();

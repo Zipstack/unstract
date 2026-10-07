@@ -12,6 +12,7 @@ import { Modal } from "@/components/ui/shims/antd-overlays";
 import { Menu } from "@/components/ui/shims/antd-structure";
 import { Typography } from "@/components/ui/shims/antd-typography";
 import { getMenuItem } from "../../../helpers/GetStaticData";
+import { loadPlugin } from "../../../helpers/pluginLoader.js";
 import SpaceWrapper from "../../widgets/space-wrapper/SpaceWrapper";
 import { CustomDataSettings } from "../custom-data-settings/CustomDataSettings";
 import { CustomSynonyms } from "../custom-synonyms/CustomSynonyms";
@@ -20,26 +21,23 @@ import { PreAndPostAmbleModal } from "../pre-and-post-amble-modal/PreAndPostAmbl
 
 import "./SettingsModal.css";
 
-let SummarizeManager = null;
+const SummarizeManager = await loadPlugin(() =>
+  import("../../../plugins/summarize-manager/SummarizeManager").then(
+    (m) => m.SummarizeManager,
+  ),
+);
 const EvaluationManager = null;
-let ChallengeManager = null;
-let HighlightManager = null;
-try {
-  const smMod = await import(
-    "../../../plugins/summarize-manager/SummarizeManager"
-  );
-  SummarizeManager = smMod.SummarizeManager;
-  const cmMod = await import(
-    "../../../plugins/challenge-manager/ChallengeManager"
-  );
-  ChallengeManager = cmMod.ChallengeManager;
-  const hmMod = await import(
-    "../../../plugins/highlight-manager/HighlightManager"
-  );
-  HighlightManager = hmMod.HighlightManager;
-} catch {
-  // Component will remain null if it is not present.
-}
+const ChallengeManager = await loadPlugin(() =>
+  import("../../../plugins/challenge-manager/ChallengeManager").then(
+    (m) => m.ChallengeManager,
+  ),
+);
+const HighlightManager = await loadPlugin(() =>
+  import("../../../plugins/highlight-manager/HighlightManager").then(
+    (m) => m.HighlightManager,
+  ),
+);
+
 function SettingsModal({ open, setOpen, handleUpdateTool }) {
   const [selectedId, setSelectedId] = useState(1);
   const [menuItems, setMenuItems] = useState([]);

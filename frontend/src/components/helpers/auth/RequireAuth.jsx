@@ -6,28 +6,20 @@ import {
   homePagePath,
   onboardCompleted,
 } from "../../../helpers/GetStaticData";
+import { loadPlugin } from "../../../helpers/pluginLoader.js";
 import usePostHogEvents from "../../../hooks/usePostHogEvents";
 import { useSessionStore } from "../../../store/session-store";
 
-let ProductFruitsManager;
-try {
-  const mod = await import(
-    "../../../plugins/product-fruits/ProductFruitsManager"
-  );
-  ProductFruitsManager = mod.ProductFruitsManager;
-} catch {
-  // The component will remain null of it is not available
-}
-let selectedProductStore;
+const ProductFruitsManager = await loadPlugin(() =>
+  import("../../../plugins/product-fruits/ProductFruitsManager").then(
+    (m) => m.ProductFruitsManager,
+  ),
+);
+const selectedProductStore = await loadPlugin(
+  () => import("../../../plugins/store/select-product-store.js"),
+);
 let isLlmWhisperer;
 let isVerticals;
-try {
-  selectedProductStore = await import(
-    "../../../plugins/store/select-product-store.js"
-  );
-} catch {
-  // do nothing
-}
 
 const RequireAuth = () => {
   const { sessionDetails } = useSessionStore();

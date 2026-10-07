@@ -7,6 +7,7 @@ import { Image } from "@/components/ui/shims/antd-leaves";
 import { Tooltip } from "@/components/ui/shims/antd-overlays";
 import { Typography } from "@/components/ui/shims/antd-typography";
 
+import { loadPlugin } from "../../../helpers/pluginLoader.js";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import useRequestUrl from "../../../hooks/useRequestUrl";
@@ -67,19 +68,15 @@ function DsSettingsCard({ connType, endpointDetails, message }) {
   };
 
   useEffect(() => {
-    const loadPlugin = async () => {
-      try {
-        const mod = await import(
-          "../../../plugins/dscard-input-options/AppDeploymentCardInputOptions"
-        );
-        if (flags.app_deployment && mod.appDeploymentInputOption) {
-          setUpdatedInputoptions(mod.appDeploymentInputOption);
-        }
-      } catch {
-        // The component will remain null of it is not available
+    loadPlugin(() =>
+      import(
+        "../../../plugins/dscard-input-options/AppDeploymentCardInputOptions"
+      ).then((m) => m.appDeploymentInputOption),
+    ).then((appDeploymentInputOption) => {
+      if (flags.app_deployment && appDeploymentInputOption) {
+        setUpdatedInputoptions(appDeploymentInputOption);
       }
-    };
-    loadPlugin();
+    });
   }, []);
 
   useEffect(() => {

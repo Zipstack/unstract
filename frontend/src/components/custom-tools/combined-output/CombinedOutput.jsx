@@ -11,6 +11,7 @@ import {
   displayPromptResult,
   promptType,
 } from "../../../helpers/GetStaticData";
+import { loadPlugin } from "../../../helpers/pluginLoader.js";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useAlertStore } from "../../../store/alert-store";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
@@ -19,41 +20,34 @@ import "./CombinedOutput.css";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { JsonView } from "./JsonView";
 
-let TableView;
-let promptOutputApiSps;
-try {
-  const tvMod = await import("../../../plugins/simple-prompt-studio/TableView");
-  TableView = tvMod.TableView;
-  const helperMod = await import(
-    "../../../plugins/simple-prompt-studio/helper"
-  );
-  promptOutputApiSps = helperMod.promptOutputApiSps;
-} catch {
-  // The component will remain null if it is not available
-}
+const TableView = await loadPlugin(() =>
+  import("../../../plugins/simple-prompt-studio/TableView").then(
+    (m) => m.TableView,
+  ),
+);
+const promptOutputApiSps = await loadPlugin(() =>
+  import("../../../plugins/simple-prompt-studio/helper").then(
+    (m) => m.promptOutputApiSps,
+  ),
+);
 
-let publicOutputsApi;
-let publicDefaultOutputApi;
-try {
-  const mod = await import(
-    "../../../plugins/prompt-studio-public-share/helpers/PublicShareAPIs"
-  );
-  publicOutputsApi = mod.publicOutputsApi;
-  publicDefaultOutputApi = mod.publicDefaultOutputApi;
-} catch {
-  // The component will remain null if it is not available
-}
+const { publicOutputsApi, publicDefaultOutputApi } = await loadPlugin(
+  () =>
+    import(
+      "../../../plugins/prompt-studio-public-share/helpers/PublicShareAPIs"
+    ),
+  {},
+);
 
 // OSS falls back to passthrough helpers — no enrichment.
-let splitCombinedData = (data) => ({ combined: data, bundle: null });
-let buildEnrichedFromBundle = (_output, _bundle, _formatter) => ({});
-let getEnrichmentFromItem = (_item) => null;
-try {
-  const mod = await import("../../../plugins/lookup-enriched-toggle/helpers");
-  splitCombinedData = mod.splitCombinedData;
-  buildEnrichedFromBundle = mod.buildEnrichedFromBundle;
-  getEnrichmentFromItem = mod.getEnrichmentFromItem;
-} catch {}
+const {
+  splitCombinedData = (data) => ({ combined: data, bundle: null }),
+  buildEnrichedFromBundle = (_output, _bundle, _formatter) => ({}),
+  getEnrichmentFromItem = (_item) => null,
+} = await loadPlugin(
+  () => import("../../../plugins/lookup-enriched-toggle/helpers"),
+  {},
+);
 
 const buildDefaultProfileOutputs = (data) => {
   const { combined: payload, bundle } = splitCombinedData(data);

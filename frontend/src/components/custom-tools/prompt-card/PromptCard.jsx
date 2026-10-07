@@ -5,6 +5,7 @@ import {
   PROMPT_RUN_API_STATUSES,
   promptStudioUpdateStatus,
 } from "../../../helpers/GetStaticData";
+import { loadPlugin } from "../../../helpers/pluginLoader.js";
 import usePostHogEvents from "../../../hooks/usePostHogEvents";
 import { useAlertStore } from "../../../store/alert-store";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
@@ -14,18 +15,14 @@ import { PromptCardItems } from "./PromptCardItems";
 import "./PromptCard.css";
 import { handleUpdateStatus } from "./constants";
 
-let useEnforceTypeSwitchGatePlugin;
-try {
-  const mod = await import(
-    "../../../plugins/lookup-studio/hooks/useEnforceTypeSwitchGate"
-  );
-  useEnforceTypeSwitchGatePlugin = mod.useEnforceTypeSwitchGate;
-} catch {
-  // Cloud plugin not present; gate falls back to no-op below.
-}
-
-const useEnforceTypeSwitchGate =
-  useEnforceTypeSwitchGatePlugin || (() => () => null);
+// Cloud plugin; without it the gate falls back to a no-op.
+const useEnforceTypeSwitchGate = await loadPlugin(
+  () =>
+    import(
+      "../../../plugins/lookup-studio/hooks/useEnforceTypeSwitchGate"
+    ).then((m) => m.useEnforceTypeSwitchGate),
+  () => () => null,
+);
 
 // Fields with an inline error renderer on the card. Anything else falls back
 // to the global alert, so widening the sanitizer cannot silence a rejection.
