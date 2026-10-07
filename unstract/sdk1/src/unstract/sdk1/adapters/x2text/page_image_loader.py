@@ -45,13 +45,25 @@ from unstract.sdk1.file_storage import FileStorage
 logger = logging.getLogger(__name__)
 
 # Effective value is supplied by the caller (platform-configured); this is
-# only the fallback. 300 is the product limit agreed for image mode — above
-# it a document is rejected rather than windowed, because this path answers
-# in a single call. Note that a model's own per-request image limit can be
-# lower than this (e.g. 100 images on a 200K-context model), which is why
-# provider rejections are mapped to a typed error by the caller rather than
-# being prevented by this cap alone.
-DEFAULT_PAGE_CAP = 300
+# only the fallback. Above it a document is rejected rather than windowed,
+# because this path answers in a single call.
+#
+# 90 is derived from DEFAULT_MAX_TOTAL_BYTES below, not chosen independently:
+# at the ~165-379KB per page measured from LLMWhisperer's 150 DPI renders, a
+# 14MB budget holds roughly 38-89 pages (90 is the round number, one page
+# above the strict light-page capacity — pinned by TestCapMatchesBudget).
+# A higher cap is effectively unreachable — and worse, it defeats the
+# extraction-time pre-check, which only knows the page COUNT: a 200-page
+# document would pass a 300 cap, be converted and billed per page, then
+# fail at answer time on the byte budget. Keeping the cap at the top of
+# what the budget allows means a document over the cap is refused before
+# any conversion is billed.
+#
+# It also sits under every provider's other ceilings: the strictest image
+# count (100 per request on Anthropic's 200K-context models) and context
+# window (~90 x 1,500 tokens per page = ~135K tokens). Raising it materially
+# needs windowing across multiple calls, not a bigger number.
+DEFAULT_PAGE_CAP = 90
 
 # Aggregate raw-byte budget across all loaded pages. The page cap bounds the
 # COUNT of images, not their size — without a byte budget, unusually large

@@ -358,3 +358,36 @@ class TestByteBudgetMessage:
         msg = str(excinfo.value)
         assert "VLM_IMAGE_ANSWER_MAX_TOTAL_MB" in msg
         assert "pages to extract" not in msg
+
+
+class TestCapMatchesBudget:
+    """The page cap must stay within what the byte budget can deliver.
+
+    The extraction-time pre-check only knows the page COUNT. If the cap
+    allows more pages than the byte budget can carry, a document between the
+    two passes the pre-check, is converted and billed per page, and then
+    fails at answer time — billed for something that can never be answered.
+    """
+
+    # Lightest page render measured from LLMWhisperer at its default 150 DPI:
+    # a 50-page PDF produced an 8,233,339-byte archive.
+    _LIGHT_PAGE_BYTES = 8_233_339 // 50  # 164,666 bytes
+
+    def test_cap_overshoots_light_page_capacity_by_at_most_one_page(self) -> None:
+        # At the lightest measured page size the 14MB budget strictly holds
+        # 89 pages. 90 was chosen as the round product number, accepting a
+        # one-page gap: a 90-page document of the very lightest pages can
+        # still fail on the byte budget after conversion. This test fails if
+        # the cap and the budget drift further apart than that.
+        from unstract.sdk1.adapters.x2text.page_image_loader import (
+            DEFAULT_MAX_TOTAL_BYTES,
+        )
+
+        capacity = DEFAULT_MAX_TOTAL_BYTES // self._LIGHT_PAGE_BYTES
+        assert capacity == 89
+        assert DEFAULT_PAGE_CAP <= capacity + 1
+
+    def test_cap_is_under_the_strictest_provider_image_count(self) -> None:
+        # Anthropic accepts at most 100 images per request on its
+        # 200K-context models — the lowest image-count limit we target.
+        assert DEFAULT_PAGE_CAP <= 100
