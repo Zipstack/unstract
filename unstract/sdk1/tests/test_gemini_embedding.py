@@ -1,6 +1,7 @@
 import json
 
 import pytest
+
 from unstract.sdk1.adapters.embedding1.gemini import GeminiEmbeddingAdapter
 from unstract.sdk1.adapters.enums import AdapterTypes
 

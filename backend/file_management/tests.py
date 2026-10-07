@@ -19,10 +19,10 @@ from permissions.tests.base import CoOwnerOrgTestMixin
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.test import APIRequestFactory, force_authenticate
+from unstract.connectors.filesystems.minio.minio import MinioFS
 
 from file_management.file_management_helper import FileManagerHelper
 from file_management.views import FileManagementViewSet
-from unstract.connectors.filesystems.minio.minio import MinioFS
 
 
 class FileManagementAccessScopeTest(CoOwnerOrgTestMixin, TestCase):

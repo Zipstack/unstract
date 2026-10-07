@@ -22,6 +22,7 @@ from collections.abc import Iterable
 from typing import Any
 
 from backend.celery_service import app as celery_app
+
 from notification_v2.enums import BufferStatus
 from notification_v2.models import NotificationBuffer
 

@@ -21,6 +21,7 @@ from typing import Any
 
 import litellm
 import pytest
+
 from unstract.sdk1.adapters.base1 import (
     _DEPRECATED_SAMPLING_PARAMS,
     AnthropicLLMParameters,
@@ -251,9 +252,9 @@ def test_strip_skipped_when_both_fields_opaque_and_logs_debug(
         out = _strip_deprecated_sampling_params(inp)
     # Documented limitation: not stripped when no field carries the model id.
     assert out["temperature"] == pytest.approx(0.5)
-    assert any(
-        "Sampling-param strip skipped" in rec.message for rec in caplog.records
-    ), "expected debug breadcrumb when strip is a no-op"
+    assert any("Sampling-param strip skipped" in rec.message for rec in caplog.records), (
+        "expected debug breadcrumb when strip is a no-op"
+    )
 
 
 def test_strip_does_not_log_when_no_sampling_params_present(
