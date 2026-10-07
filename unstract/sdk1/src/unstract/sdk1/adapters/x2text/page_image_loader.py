@@ -56,15 +56,17 @@ logger = logging.getLogger(__name__)
 # check — e.g. raising the cap to 300 in a chart while the budget still holds
 # ~90 pages reopens the billed-then-rejected window described below.
 #
-# RAISING THIS ALSO NEEDS LLMWHISPERER CHANGES. Image mode's pages come from
-# LLMWhisperer's /pdf-to-images endpoint, which:
+# RAISING THIS ABOVE 999 ALSO NEEDS LLMWHISPERER CHANGES. Image mode's pages
+# come from LLMWhisperer's /pdf-to-images endpoint, which:
 #   - hardcodes a 999-page maximum (PDFToImagesConverter.MAX_PAGES, tied to
 #     the page_001..page_999 file naming) with no env override — a cap above
-#     999 here still fails there, with LLMWhisperer's less specific error;
+#     999 here still fails there, with LLMWhisperer's less specific error.
+#     Increases up to 999 need no service change;
 #   - bills per converted page, so a document the cap admits but the byte
 #     budget then rejects is still charged for every page.
-# Coordinate any increase with the LLMWhisperer service, and raise the byte
-# budget and this cap together (or add windowing) — never the cap alone.
+# Coordinate anything above 999 with the LLMWhisperer service. For ANY
+# increase, raise the byte budget and this cap together (or add windowing) —
+# never the cap alone.
 #
 # 90 is derived from DEFAULT_MAX_TOTAL_BYTES below, not chosen independently:
 # at the ~165-379KB per page measured from LLMWhisperer's 150 DPI renders, a
