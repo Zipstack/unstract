@@ -1,3 +1,4 @@
+import os
 import unittest
 
 from unstract.connectors.databases.exceptions_helper import ExceptionHelper
@@ -25,12 +26,18 @@ class TestExtractByteException(unittest.TestCase):
         e = Exception("connection lost")
         self.assertEqual(ExceptionHelper.extract_byte_exception(e), "connection lost")
 
+    def test_nested_tuple_details(self):
+        # pymssql connect() shape: ((code, b"message"),)
+        e = Exception((20009, b"Unable to connect\n"))
+        self.assertEqual(ExceptionHelper.extract_byte_exception(e), "Unable to connect")
+
     def test_message_is_not_evaluated(self):
-        marker = []
-        payload = "(1, marker.append('executed') or 'x')"
+        env_key = "UNSTRACT_TEST_EXCEPTION_HELPER_EVALUATED"
+        self.addCleanup(os.environ.pop, env_key, None)
+        payload = f"(1, __import__('os').environ.__setitem__('{env_key}', '1') or 'x')"
         e = Exception(payload)
         self.assertEqual(ExceptionHelper.extract_byte_exception(e), payload)
-        self.assertEqual(marker, [])
+        self.assertNotIn(env_key, os.environ)
 
 
 if __name__ == "__main__":
