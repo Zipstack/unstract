@@ -53,6 +53,7 @@ from prompt_studio.prompt_studio_core_v2.document_indexing_service import (
     DocumentIndexingService,
 )
 from prompt_studio.prompt_studio_core_v2.exceptions import (
+    DefaultProfileError,
     DeploymentUsageCheckError,
     MaxProfilesReachedError,
     OperationNotSupported,
@@ -1063,6 +1064,20 @@ class PromptStudioCoreView(
         doc_count_before = DocumentManager.objects.filter(
             tool__in=CustomTool.objects.all()
         ).count()
+
+        # Image mode can't answer a PDF over the page cap: reject it here,
+        # before anything is stored, rather than at indexing. Every file is
+        # checked first so a multi-file upload stores all or nothing.
+        try:
+            default_profile = ProfileManager.get_default_llm_profile(custom_tool)
+        except DefaultProfileError:
+            default_profile = None
+        for uploaded_file in uploaded_files:
+            file_type = magic.from_buffer(uploaded_file.read(2048), mime=True)
+            uploaded_file.seek(0)
+            PromptStudioHelper.validate_upload_page_count_for_image_mode(
+                default_profile, uploaded_file, file_type
+            )
 
         documents = []
         for uploaded_file in uploaded_files:

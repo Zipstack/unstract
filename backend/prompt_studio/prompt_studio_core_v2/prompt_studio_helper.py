@@ -54,6 +54,7 @@ from prompt_studio.prompt_studio_core_v2.exceptions import (
     DefaultProfileError,
     EmptyPromptError,
     ExtractionAPIError,
+    ImageModePageLimitExceeded,
     IndexingAPIError,
     NoPromptsFound,
     OperationNotSupported,
@@ -79,6 +80,10 @@ from prompt_studio.prompt_studio_v2.models import ToolStudioPrompt
 from prompt_studio.vlm_utils import invalidate_vlm_answers_on_reextraction
 from unstract.core.pubsub_helper import LogPublisher
 from unstract.sdk1.adapters.x2text.constants import ImageOutputConstants
+from unstract.sdk1.adapters.x2text.llm_whisperer_v2.src.helper import (
+    LLMWhispererHelper,
+)
+from unstract.sdk1.adapters.x2text.page_image_loader import configured_page_cap
 from unstract.sdk1.constants import LogLevel
 from unstract.sdk1.exceptions import IndexingError, SdkError
 from unstract.sdk1.execution.context import ExecutionContext
@@ -1438,6 +1443,63 @@ class PromptStudioHelper:
             logger.exception("Could not stamp x2text output mode; will resolve live")
 
     @staticmethod
+    def _is_image_output_mode(profile_manager: ProfileManager | None) -> bool:
+        """True when the profile's x2text adapter is LLMWhisperer in image mode.
+
+        Gated on BOTH the LLMWhisperer adapter id and ``output_mode == image``:
+        ``output_mode`` is user-editable adapter metadata, so keying on it alone
+        would make any future x2text adapter that adopts the same key inherit
+        image-mode rules it never asked for.
+        """
+        x2text = getattr(profile_manager, "x2text", None)
+        if x2text is None:
+            return False
+        adapter_id = str(getattr(x2text, "adapter_id", "") or "")
+        if not adapter_id.startswith("llmwhisperer|"):
+            return False
+        metadata = x2text.metadata or {}
+        return (
+            metadata.get(ImageOutputConstants.OUTPUT_MODE)
+            == ImageOutputConstants.IMAGE_MODE
+        )
+
+    @staticmethod
+    def validate_upload_page_count_for_image_mode(
+        profile_manager: ProfileManager | None, file_data: Any, file_type: str
+    ) -> None:
+        """Reject, at upload, a PDF with more pages than image mode can answer.
+
+        Image mode sends every page to the LLM in one request, so a document
+        over the page cap can never be answered — and converting it would be
+        billed. Catching it at upload means the user never builds prompts
+        around a document that will fail at indexing.
+
+        Applies only when the project's default profile is in image mode: an
+        upload isn't tied to an output mode, and the same document is fine in
+        a text mode. Uses the SDK's own page counter and cap, so a document
+        accepted here also passes the extraction-time pre-check. A PDF whose
+        page count can't be read is let through; extraction re-checks it.
+        """
+        if file_type != "application/pdf":
+            return
+        if not PromptStudioHelper._is_image_output_mode(profile_manager):
+            return
+        page_cap = configured_page_cap()
+        page_count = LLMWhispererHelper._safe_pdf_page_count(file_data.read())
+        file_data.seek(0)
+        if page_count is None or page_count <= page_cap:
+            return
+        raise ImageModePageLimitExceeded(
+            detail=(
+                "This document has too many pages for image output mode. It "
+                f"has {page_count} pages, and the limit is {page_cap} because "
+                "every page is sent to the LLM in one request. Split the "
+                "document into smaller files, or switch the project's default "
+                "profile to a text output mode."
+            )
+        )
+
+    @staticmethod
     def _validate_image_output_pdf_only(
         profile_manager: ProfileManager, file_name: str
     ) -> None:
@@ -1450,26 +1512,13 @@ class PromptStudioHelper:
         PDF-only message early. The message + PDF test come from the shared
         ``ImageOutputConstants`` so the two layers cannot drift.
 
-        Gated on BOTH the LLMWhisperer adapter id and ``output_mode == image``:
-        ``output_mode`` is user-editable adapter metadata, so keying on it alone
-        would make any future x2text adapter that adopts the same key inherit a
-        PDF-only rejection it never asked for.
+        Gated by ``_is_image_output_mode`` (adapter id AND output mode).
 
         Also rejects image-mode extraction outright when the cloud plugin
         package is present but its backend hooks are broken
         (``vlm_utils.VLM_HOOKS_BROKEN``) — see the inline comment below.
         """
-        x2text = profile_manager.x2text
-        if x2text is None:
-            return
-        adapter_id = getattr(x2text, "adapter_id", "") or ""
-        if not adapter_id.startswith("llmwhisperer|"):
-            return
-        metadata = x2text.metadata or {}
-        if (
-            metadata.get(ImageOutputConstants.OUTPUT_MODE)
-            != ImageOutputConstants.IMAGE_MODE
-        ):
+        if not PromptStudioHelper._is_image_output_mode(profile_manager):
             return
         # Fail-closed on a half-broken cloud install: with the plugin package
         # present but its backend hooks unimportable, a re-extraction would
