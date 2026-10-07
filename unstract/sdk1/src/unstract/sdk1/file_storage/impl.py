@@ -196,10 +196,13 @@ class FileStorage(FileStorageInterface):
 
         ``find`` walks the tree and ``rm_file`` deletes one named object;
         neither expands glob characters on any backend. Files are deleted
-        first, then directories deepest-first (needed on LOCAL; on object
-        storage a prefix disappears with its last object, so directory
-        removal is best-effort). A failed file delete raises, unlike the
-        ``MissingContentMD5`` fallback below, so callers learn about it.
+        first, then directories deepest-first (needed on LOCAL and on GCS
+        HNS buckets). On flat object storage a prefix disappears with its
+        last object, so ``rmdir`` there raises ``FileNotFoundError`` (s3fs)
+        or does nothing (gcsfs) — only that error is tolerated. Any other
+        failure, a failed file delete or a directory that can't be removed
+        (permissions, not empty), raises, unlike the ``MissingContentMD5``
+        fallback below, so callers learn about it.
 
         Slower than ``rm`` on object storage — one request per object rather
         than a bulk delete — so prefer ``rm`` where the path is known not to
@@ -220,8 +223,8 @@ class FileStorage(FileStorageInterface):
         for dir_path in [*dirs, path]:
             try:
                 self.fs.rmdir(dir_path)
-            except Exception:  # noqa: BLE001 - prefix already gone on object stores
-                pass
+            except FileNotFoundError:
+                pass  # prefix already gone with its last object
 
     def _rm_files_individually(self, path: str) -> None:
         """Fallback deletion: delete files one at a time.

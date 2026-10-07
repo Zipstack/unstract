@@ -350,6 +350,27 @@ class TestConfiguredPageCap:
         assert configured_page_cap() == DEFAULT_PAGE_CAP
 
 
+class TestLoaderReadsConfiguredLimits:
+    """Left unset, the loader's limits come from the env, not fixed defaults."""
+
+    def test_default_page_cap_follows_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv(PAGE_CAP_ENV, "2")
+        fs = _store({1: b"a", 2: b"b", 3: b"c"})
+        with pytest.raises(PageCapExceededError):
+            load_page_images(fs, _DIR)
+
+    def test_explicit_none_still_disables(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv(PAGE_CAP_ENV, "2")
+        monkeypatch.setenv("VLM_IMAGE_ANSWER_MAX_TOTAL_MB", "1")
+        fs = _store({1: b"a", 2: b"b", 3: b"c" * (2 * 1024 * 1024)})
+        assert len(load_page_images(fs, _DIR, page_cap=None, max_total_bytes=None)) == 3
+
+    def test_explicit_value_wins_over_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv(PAGE_CAP_ENV, "2")
+        fs = _store({1: b"a", 2: b"b", 3: b"c"})
+        assert len(load_page_images(fs, _DIR, page_cap=3)) == 3
+
+
 class TestByteBudgetMessage:
     def test_over_budget_names_the_platform_knob(self) -> None:
         fs = _store({1: b"x" * 2048, 2: b"y" * 2048})

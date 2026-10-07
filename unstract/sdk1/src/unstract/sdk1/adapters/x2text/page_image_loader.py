@@ -147,6 +147,13 @@ def configured_max_total_bytes() -> int:
     return _positive_int_env(MAX_TOTAL_MB_ENV, DEFAULT_MAX_TOTAL_BYTES, scale=1024 * 1024)
 
 
+class _UseConfigured:
+    """Sentinel type: read the limit from the environment at call time."""
+
+
+USE_CONFIGURED = _UseConfigured()
+
+
 class PageImageLoadError(Exception):
     """Base error for page-image discovery/loading failures."""
 
@@ -307,8 +314,8 @@ def load_page_images(
     fs: FileStorage,
     page_store_dir: str,
     *,
-    page_cap: int | None = DEFAULT_PAGE_CAP,
-    max_total_bytes: int | None = DEFAULT_MAX_TOTAL_BYTES,
+    page_cap: int | None | _UseConfigured = USE_CONFIGURED,
+    max_total_bytes: int | None | _UseConfigured = USE_CONFIGURED,
 ) -> list[LoadedPageImage]:
     """Discover, cap-check, read, and base64-encode all page images.
 
@@ -318,13 +325,20 @@ def load_page_images(
     remaining budget plus one byte, so no read — not even of a single
     pathological object — can ever allocate more than the budget in
     worker memory, regardless of the object's actual size or whether the
-    backend exposes size metadata. ``None`` disables either limit.
+    backend exposes size metadata. ``None`` disables either limit. Left
+    unset, each limit is read from ``configured_page_cap()`` /
+    ``configured_max_total_bytes()`` — the same values the extraction-time
+    checks use, so a document that passed indexing is not rejected here.
 
     Raises:
         PageCapExceededError: more pages than ``page_cap`` allows.
         PageImageSetTooLargeError: pages total more than ``max_total_bytes``.
         (plus the discovery errors from ``discover_page_images``)
     """
+    if isinstance(page_cap, _UseConfigured):
+        page_cap = configured_page_cap()
+    if isinstance(max_total_bytes, _UseConfigured):
+        max_total_bytes = configured_max_total_bytes()
     discovered = discover_page_images(fs, page_store_dir)
     if page_cap is not None and len(discovered) > page_cap:
         raise PageCapExceededError(

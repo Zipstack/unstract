@@ -606,3 +606,35 @@ class TestExtractionTimeByteBudget:
             H.get_page_images({}, "/in/doc.pdf", "/out/doc.txt", fs=fs)
 
         persist.assert_not_called()
+
+    @pytest.mark.parametrize("budget_mb", ["1", "2"])
+    def test_extraction_and_answer_time_checks_agree(
+        self, budget_mb: str, monkeypatch: MonkeyPatch
+    ) -> None:
+        # Both checks must read the same override. A ~1.4 MB page set fails
+        # both under 1 MB and passes both under 2 MB; it must never pass
+        # indexing and then fail when a prompt runs.
+        from unstract.sdk1.adapters.x2text.page_image_loader import (
+            PageImageSetTooLargeError,
+            load_page_images,
+        )
+
+        monkeypatch.setenv("VLM_IMAGE_ANSWER_MAX_TOTAL_MB", budget_mb)
+        pages = [(1, b"x" * 700_000), (2, b"x" * 700_000)]
+        storage = InMemoryFileStorage()
+        page_dir = "/data/extract/doc/pages"
+        for number, data in pages:
+            storage.write(path=f"{page_dir}/page_{number:03d}.png", mode="wb", data=data)
+
+        try:
+            H.verify_page_bytes(pages)
+            indexing_ok = True
+        except ExtractorError:
+            indexing_ok = False
+        try:
+            load_page_images(storage, page_dir)  # no explicit budget
+            answer_ok = True
+        except PageImageSetTooLargeError:
+            answer_ok = False
+
+        assert indexing_ok == answer_ok == (budget_mb == "2")

@@ -77,3 +77,41 @@ def test_glob_rm_is_the_failure_this_replaces() -> None:
     storage.fs.pipe(f"{root}/page_001.png", b"x")
     with pytest.raises(FileNotFoundError):
         storage.rm(root, recursive=True)
+
+
+def test_directory_delete_error_reaches_the_caller(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Only "prefix already gone" is tolerated. A directory that can't be
+    # removed (here: permission denied on LOCAL) must not be reported as
+    # a successful delete.
+    storage = FileStorage(provider=FileStorageProvider.LOCAL)
+    root = tmp_path / "Report [CDIC]"
+    (root / "pages").mkdir(parents=True)
+    (root / "pages" / "page_001.png").write_bytes(b"x")
+
+    def deny(path: str) -> None:
+        raise PermissionError(13, "Permission denied", path)
+
+    monkeypatch.setattr(storage.fs, "rmdir", deny)
+    with pytest.raises(PermissionError):
+        storage.rm_exact(str(root))
+
+
+def test_directory_already_gone_is_tolerated(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # On s3fs a prefix vanishes with its last object, so rmdir raises
+    # FileNotFoundError for it; that is success, not a failure.
+    storage = FileStorage(provider=FileStorageProvider.LOCAL)
+    root = tmp_path / "Report [CDIC]"
+    (root / "pages").mkdir(parents=True)
+    (root / "pages" / "page_001.png").write_bytes(b"x")
+
+    def gone(path: str) -> None:
+        raise FileNotFoundError(path)
+
+    monkeypatch.setattr(storage.fs, "rmdir", gone)
+    storage.rm_exact(str(root))
+
+    assert not (root / "pages" / "page_001.png").exists()
