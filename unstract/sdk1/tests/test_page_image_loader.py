@@ -370,22 +370,34 @@ class TestCapMatchesBudget:
     """
 
     # Lightest page render measured from LLMWhisperer at its default 150 DPI:
-    # a 50-page PDF produced an 8,233,339-byte archive.
-    _LIGHT_PAGE_BYTES = 8_233_339 // 50  # 164,666 bytes
+    # a 50-page PDF produced an 8,233,339-byte pdf-to-images archive.
+    #
+    # This is the ARCHIVE size, not the sum of extracted PNG bytes that
+    # load_page_images counts — an approximation, and deliberately treated
+    # as one. PNG data is already deflate-compressed, so zipping it saves
+    # little, and per-entry headers are ~100 bytes; the archive should be
+    # within a few percent of the image bytes, which is a couple of pages
+    # either side at this cap. So the guard below allows that much slack
+    # rather than asserting an exact page count it cannot back up. Measuring
+    # extracted bytes on real documents is the proper calibration.
+    _APPROX_LIGHT_PAGE_BYTES = 8_233_339 // 50  # ~164,666 bytes
 
-    def test_cap_overshoots_light_page_capacity_by_at_most_one_page(self) -> None:
-        # At the lightest measured page size the 14MB budget strictly holds
-        # 89 pages. 90 was chosen as the round product number, accepting a
-        # one-page gap: a 90-page document of the very lightest pages can
-        # still fail on the byte budget after conversion. This test fails if
-        # the cap and the budget drift further apart than that.
+    # Pages of slack for the archive-vs-extracted-bytes measurement error.
+    _MEASUREMENT_SLACK_PAGES = 2
+
+    def test_cap_stays_near_what_the_budget_can_carry(self) -> None:
+        # At the lightest measured page size the 14MB budget holds ~89 pages;
+        # 90 is the round product number at the top of that. This fails if
+        # the cap and the budget drift apart by more than the measurement
+        # slack — e.g. the cap raised back to 300, or the budget cut without
+        # lowering the cap — which is the drift that reopens the
+        # billed-then-rejected window.
         from unstract.sdk1.adapters.x2text.page_image_loader import (
             DEFAULT_MAX_TOTAL_BYTES,
         )
 
-        capacity = DEFAULT_MAX_TOTAL_BYTES // self._LIGHT_PAGE_BYTES
-        assert capacity == 89
-        assert DEFAULT_PAGE_CAP <= capacity + 1
+        capacity = DEFAULT_MAX_TOTAL_BYTES // self._APPROX_LIGHT_PAGE_BYTES
+        assert DEFAULT_PAGE_CAP <= capacity + self._MEASUREMENT_SLACK_PAGES
 
     def test_cap_is_under_the_strictest_provider_image_count(self) -> None:
         # Anthropic accepts at most 100 images per request on its

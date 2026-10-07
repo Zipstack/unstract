@@ -50,8 +50,9 @@ logger = logging.getLogger(__name__)
 #
 # 90 is derived from DEFAULT_MAX_TOTAL_BYTES below, not chosen independently:
 # at the ~165-379KB per page measured from LLMWhisperer's 150 DPI renders, a
-# 14MB budget holds roughly 38-89 pages (90 is the round number, one page
-# above the strict light-page capacity — pinned by TestCapMatchesBudget).
+# 14MB budget holds roughly 38-89 pages (90 is the round number at the top
+# of that range; the page sizes are approximate, measured from archive
+# sizes on two test documents — see TestCapMatchesBudget).
 # A higher cap is effectively unreachable — and worse, it defeats the
 # extraction-time pre-check, which only knows the page COUNT: a 200-page
 # document would pass a 300 cap, be converted and billed per page, then
