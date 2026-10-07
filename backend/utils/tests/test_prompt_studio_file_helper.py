@@ -41,7 +41,7 @@ class FakeHandle:
 
 
 class FakeFs:
-    """Stand-in for ``fs_instance.fs`` — supports ``open`` and ``rm``."""
+    """Stand-in for ``fs_instance.fs`` — supports ``open`` and ``rm_file``."""
 
     def __init__(
         self,
@@ -57,10 +57,14 @@ class FakeFs:
         self.open_calls.append({"path": path, "mode": mode, "block_size": block_size})
         return self._handle
 
-    def rm(self, path: str) -> None:
+    def rm_file(self, path: str) -> None:
         self.rm_calls.append(path)
         if self._rm_side_effect is not None:
             self._rm_side_effect(path)
+
+    def rm(self, path: str, recursive: bool = False) -> None:
+        # The path carries the document's name; rm() would glob it on GCS/S3.
+        raise AssertionError(f"cleanup must use rm_file, not rm: {path}")
 
 
 class FakeStorage:
@@ -382,6 +386,30 @@ def test_delete_for_ide_is_idempotent_when_the_source_is_already_gone() -> None:
 
     assert _delete_with(fs) is True
     assert fs.removed == []
+
+
+def test_cleanup_deletes_only_the_partial_file_for_a_glob_name(tmp_path) -> None:  # noqa: ANN001
+    """A failed write of "Report [Final].pdf" removes that file only.
+
+    Real fsspec LocalFileSystem; its rm_file is an exact delete, as on gcsfs
+    and s3fs. "Report F.pdf" is what "[Final]" matches as a glob.
+    """
+    from unstract.sdk1.file_storage import FileStorage, FileStorageProvider
+
+    storage = FileStorage(provider=FileStorageProvider.LOCAL)
+    (tmp_path / "Report F.pdf").write_bytes(b"other document")
+    target = str(tmp_path / "Report [Final].pdf")
+
+    class _Boom:
+        def read(self, _n: int) -> bytes:
+            (tmp_path / "Report [Final].pdf").write_bytes(b"partial")
+            raise RuntimeError("upload interrupted")
+
+    with pytest.raises(RuntimeError, match="upload interrupted"):
+        write_streaming(storage, target, _Boom())
+
+    assert not (tmp_path / "Report [Final].pdf").exists()
+    assert (tmp_path / "Report F.pdf").read_bytes() == b"other document"
 
 
 # --- delete_for_ide: names with glob characters ---------------------------
