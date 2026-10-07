@@ -404,3 +404,70 @@ class TestImageOutputWrite:
         summary = H.build_image_output_summary(refs)
         assert "1 page image" in summary
         assert "page_001.png" not in summary  # references never inlined
+
+
+class TestPreSubmitPageCap:
+    """The cap is checked BEFORE pdf-to-images is submitted.
+
+    pdf-to-images bills every converted page, and the answer-time cap would
+    reject the result anyway — so an over-cap document must fail before the
+    conversion is paid for, converting nothing.
+    """
+
+    @staticmethod
+    def _fs_with_pdf(monkeypatch: MonkeyPatch, page_count: int | None) -> MagicMock:
+        """FileStorage whose input PDF reports ``page_count`` pages."""
+        monkeypatch.setattr(
+            H, "_safe_pdf_page_count", staticmethod(lambda _b: page_count)
+        )
+        fs = MagicMock(name="FileStorage")
+        fs.read.return_value = b"%PDF-1.7 fake"
+        return fs
+
+    def test_over_cap_fails_before_submitting(self, monkeypatch: MonkeyPatch) -> None:
+        monkeypatch.setenv("VLM_IMAGE_ANSWER_PAGE_CAP", "20")
+        fs = self._fs_with_pdf(monkeypatch, 164)
+        submit = MagicMock(name="submit_pdf_to_images")
+        monkeypatch.setattr(H, "submit_pdf_to_images", staticmethod(submit))
+
+        with pytest.raises(ExtractorError) as excinfo:
+            H.get_page_images({}, "/in/doc.pdf", "/out/doc.txt", fs=fs)
+
+        msg = str(excinfo.value)
+        assert "exceeds the 20-page limit" in msg
+        assert "164 pages" in msg
+        assert "Nothing was converted or billed" in msg
+        # The billed call never happened.
+        submit.assert_not_called()
+
+    def test_within_cap_proceeds_to_submit(self, monkeypatch: MonkeyPatch) -> None:
+        monkeypatch.setenv("VLM_IMAGE_ANSWER_PAGE_CAP", "20")
+        fs = self._fs_with_pdf(monkeypatch, 3)
+        submit = MagicMock(name="submit", return_value="hash-1")
+        monkeypatch.setattr(H, "submit_pdf_to_images", staticmethod(submit))
+        monkeypatch.setattr(H, "poll_pdf_to_images_status", staticmethod(MagicMock()))
+        pages = [(n, minimal_png()) for n in (1, 2, 3)]
+        monkeypatch.setattr(H, "_download_and_extract", staticmethod(lambda **_k: pages))
+        monkeypatch.setattr(H, "persist_page_images", staticmethod(lambda *_a: []))
+
+        whisper_hash, _ = H.get_page_images({}, "/in/doc.pdf", "/out/doc.txt", fs=fs)
+
+        assert whisper_hash == "hash-1"
+        submit.assert_called_once()
+
+    def test_unreadable_page_count_still_submits(self, monkeypatch: MonkeyPatch) -> None:
+        # Best-effort by design: a PDF we cannot count locally must not be
+        # blocked at extraction — the answer-time cap remains the backstop.
+        monkeypatch.setenv("VLM_IMAGE_ANSWER_PAGE_CAP", "1")
+        fs = self._fs_with_pdf(monkeypatch, None)
+        submit = MagicMock(name="submit", return_value="hash-2")
+        monkeypatch.setattr(H, "submit_pdf_to_images", staticmethod(submit))
+        monkeypatch.setattr(H, "poll_pdf_to_images_status", staticmethod(MagicMock()))
+        monkeypatch.setattr(
+            H, "_download_and_extract", staticmethod(lambda **_k: [(1, minimal_png())])
+        )
+        monkeypatch.setattr(H, "persist_page_images", staticmethod(lambda *_a: []))
+
+        H.get_page_images({}, "/in/doc.pdf", "/out/doc.txt", fs=fs)
+
+        submit.assert_called_once()

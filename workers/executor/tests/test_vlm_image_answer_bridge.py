@@ -24,6 +24,7 @@ from executor.executors.vlm_image_answer import (  # noqa: E402
     IMAGE_OUTPUT_UNSUPPORTED_OPERATION,
     IMAGE_PAGE_CAP_EXCEEDED,
     IMAGE_PAGES_TOO_LARGE,
+    IMAGE_REQUEST_TOO_LARGE,
     detect_image_mode_config,
     raise_if_image_mode_unsupported,
     run_vlm_image_answer,
@@ -262,6 +263,19 @@ class TestPluginDispatch:
         with pytest.raises(VlmImageAnswerError) as excinfo:
             _run(plugin=plugin)
         assert excinfo.value.error_code == IMAGE_PAGE_CAP_EXCEEDED
+
+    def test_provider_size_rejection_keeps_its_plugin_code(self):
+        # The plugin maps a provider's "request too large" rejection to its
+        # own typed error; the bridge must pass that code through rather
+        # than swallow it into a generic failure. Distinct from
+        # IMAGE_PAGES_TOO_LARGE, which is our own pre-call budget.
+        plugin = MagicMock()
+        rejection = RuntimeError("`gpt-x` rejected this request as too large")
+        rejection.error_code = IMAGE_REQUEST_TOO_LARGE
+        plugin.run_with_metrics.side_effect = rejection
+        with pytest.raises(VlmImageAnswerError) as excinfo:
+            _run(plugin=plugin)
+        assert excinfo.value.error_code == IMAGE_REQUEST_TOO_LARGE
 
     def test_too_large_error_maps_to_pages_too_large_code(self):
         plugin = MagicMock()

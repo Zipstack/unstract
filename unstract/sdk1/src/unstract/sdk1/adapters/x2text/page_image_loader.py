@@ -34,6 +34,7 @@ full rationale.
 
 import base64
 import logging
+import os
 import re
 from dataclasses import dataclass
 from pathlib import PurePosixPath
@@ -43,18 +44,60 @@ from unstract.sdk1.file_storage import FileStorage
 
 logger = logging.getLogger(__name__)
 
-# Conservative default; effective value is supplied by the caller
-# (platform-configured), this is only the fallback.
-DEFAULT_PAGE_CAP = 20
+# Effective value is supplied by the caller (platform-configured); this is
+# only the fallback. 300 is the product limit agreed for image mode — above
+# it a document is rejected rather than windowed, because this path answers
+# in a single call. Note that a model's own per-request image limit can be
+# lower than this (e.g. 100 images on a 200K-context model), which is why
+# provider rejections are mapped to a typed error by the caller rather than
+# being prevented by this cap alone.
+DEFAULT_PAGE_CAP = 300
 
 # Aggregate raw-byte budget across all loaded pages. The page cap bounds the
 # COUNT of images, not their size — without a byte budget, unusually large
-# renders would grow worker memory and the provider request unbounded
-# (base64 adds ~33% on top). 50MB raw comfortably exceeds any normal
-# LLMWhisperer render while staying inside provider request limits.
-DEFAULT_MAX_TOTAL_BYTES = 50 * 1024 * 1024
+# renders would grow worker memory and the provider request unbounded.
+#
+# Sized from the SMALLEST request limit across the providers this path can
+# target (Amazon Bedrock and Gemini inline both cap a request at 20MB;
+# Anthropic direct allows 32MB, Google Cloud 30MB), minus base64's ~33%
+# inflation: 20MB / 1.34 ≈ 14MB of raw image bytes. A larger budget would
+# let the provider reject the request before this check ever fires, which
+# costs the caller a full read + encode and surfaces a raw provider error
+# instead of the actionable one below.
+DEFAULT_MAX_TOTAL_BYTES = 14 * 1024 * 1024
 
 _PAGE_NAME_RE = re.compile(ImageOutputConstants.PAGE_NUMBER_REGEX)
+
+# Platform override for the page cap. Defined here — next to the default and
+# the enforcement — so the two sites that need it agree: the extraction-time
+# pre-check (adapter, before the per-page-billed conversion is submitted) and
+# the answer-time enforcement (cloud consumer plugin).
+PAGE_CAP_ENV = "VLM_IMAGE_ANSWER_PAGE_CAP"
+
+
+def configured_page_cap() -> int:
+    """The effective page cap: ``PAGE_CAP_ENV`` or ``DEFAULT_PAGE_CAP``.
+
+    An absent variable is the normal case and returns the default silently.
+    A present-but-unusable value is an operator mistake: log it and fall back
+    rather than failing extraction over a malformed env var.
+    """
+    raw = os.getenv(PAGE_CAP_ENV)
+    if raw is None:
+        return DEFAULT_PAGE_CAP
+    try:
+        value = int(raw)
+        if value <= 0:
+            raise ValueError("must be positive")
+    except (TypeError, ValueError):
+        logger.warning(
+            "Invalid %s value %r; using default %d",
+            PAGE_CAP_ENV,
+            raw,
+            DEFAULT_PAGE_CAP,
+        )
+        return DEFAULT_PAGE_CAP
+    return value
 
 
 class PageImageLoadError(Exception):
@@ -238,10 +281,13 @@ def load_page_images(
     discovered = discover_page_images(fs, page_store_dir)
     if page_cap is not None and len(discovered) > page_cap:
         raise PageCapExceededError(
-            f"Document exceeds {page_cap} pages for image output mode "
-            f"({len(discovered)} pages found). Reduce the page range (e.g. "
-            "via the adapter's 'pages to extract' setting) or raise the "
-            "configured page cap.",
+            f"Document exceeds the {page_cap}-page limit for image output "
+            f"mode ({len(discovered)} pages found). Image mode answers a "
+            "prompt in one request containing every page image, so a larger "
+            "document cannot be answered. Split the document, or extract it "
+            "in a text output mode instead. (This limit is set by the "
+            "platform via VLM_IMAGE_ANSWER_PAGE_CAP — it is not the "
+            "adapter's 'pages to extract' setting.)",
             page_store_dir=page_store_dir,
             page_count=len(discovered),
             page_cap=page_cap,
@@ -278,9 +324,11 @@ def load_page_images(
             raise PageImageSetTooLargeError(
                 f"Page images total more than "
                 f"{max_total_bytes // (1024 * 1024)}MB by page {page_number} "
-                f"of {len(discovered)} — too large to send to the LLM in "
-                "one request. Reduce the page range (e.g. via the adapter's "
-                "'pages to extract' setting).",
+                f"of {len(discovered)} — larger than an LLM provider accepts "
+                "in one request, so this document cannot be answered in "
+                "image mode however many pages it has. Split the document, "
+                "or extract it in a text output mode instead. (This budget "
+                "is set by the platform via VLM_IMAGE_ANSWER_MAX_TOTAL_MB.)",
                 page_store_dir=page_store_dir,
                 total_bytes=total_bytes,
                 max_total_bytes=max_total_bytes,
