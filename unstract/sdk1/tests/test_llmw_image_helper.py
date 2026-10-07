@@ -557,10 +557,10 @@ class TestPageStoreWithGlobCharacters:
 
         monkeypatch.setattr(H, "_write_single_page", staticmethod(fail_on_page_two))
 
+        pages = [(1, minimal_png()), (2, minimal_png())]
+
         with pytest.raises(ExtractorError):
-            H.persist_page_images(
-                storage, page_dir, [(1, minimal_png()), (2, minimal_png())]
-            )
+            H.persist_page_images(storage, page_dir, pages)
 
         assert storage.fs.find(page_dir) == []
 
