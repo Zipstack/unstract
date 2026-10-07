@@ -248,9 +248,13 @@ def test_happy_path_returns_202_with_job_id_status_and_status_url(
 
 # ---------------------------------------------------------------------------
 # The 9-key options dict SubmitView.post builds and forwards to dispatch_job
-# must map every field correctly and carry the compiled schema -- a
-# dropped/typo'd key here would otherwise pass silently since nothing else
-# asserts on dispatch_job's call args.
+# must map every field correctly -- a dropped/typo'd key here would otherwise
+# pass silently since nothing else asserts on dispatch_job's call args.
+#
+# It carries the RAW `keys` dict, not a `CompiledSchema`. The serializer used
+# to stash the compiled form and nothing read it; the engine recompiles from
+# the raw dict by design (see `compile.py`'s docstring), and the compiled form
+# could not cross the queue anyway.
 # ---------------------------------------------------------------------------
 @mock.patch.object(ev, "dispatch_job")
 @mock.patch.object(AgentKVJob, "save", autospec=True)

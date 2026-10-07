@@ -16,6 +16,7 @@ import os
 from unittest import mock
 
 import django
+import pytest
 from django.apps import apps
 
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "backend.settings.test")
@@ -23,8 +24,10 @@ if not apps.ready:
     django.setup()
 
 from django.core.files.uploadedfile import SimpleUploadedFile  # noqa: E402
+from rest_framework import serializers  # noqa: E402
 
 from agent_kv.execution_serializers import (  # noqa: E402
+    ExtractorSerializer,
     KVOptionsSerializer,
     SubmitSerializer,
 )
@@ -476,3 +479,47 @@ def test_table_keys_are_validated_through_the_keys_serializer():
 
     assert not s.is_valid()
     assert "unknown keys for extractor 'table'" in _errs(s)
+
+
+# ---------------------------------------------------------------------------
+# 2.20: `compile_schema` is called in the no-keys-serializer fall-through for
+# what it REFUSES, not for what it returns.
+#
+# The `CompiledSchema` used to be stashed on `ExtractorSerializer.compiled` and
+# collected into `SubmitSerializer.compiled`, which no non-test code read --
+# `dispatch_job` sends the raw `keys` dict and the engine recompiles. Deleting
+# the attribute must not quietly delete the 400, which is the only reason the
+# call is there.
+#
+# The branch is DORMANT on this deployment: `kv` is the only extractor without
+# a keys serializer and `validate_name` refuses it before `_validated_keys`
+# runs, so it is reached by calling it directly. That is the point -- it is the
+# contract for the next extractor added without one, and nothing else covers it.
+# ---------------------------------------------------------------------------
+
+
+def test_the_schema_compiler_fallthrough_still_rejects_a_bad_schema():
+    ser = ExtractorSerializer()
+
+    with pytest.raises(serializers.ValidationError) as exc:
+        # A leaf with no `description` is refused by the ported compiler.
+        ser._validated_keys("some_future_extractor", {"total": {}})
+
+    assert "keys" in exc.value.detail
+
+
+def test_the_schema_compiler_fallthrough_returns_the_raw_spec():
+    """What reaches `dispatch_job` is the submitted dict, unchanged."""
+    ser = ExtractorSerializer()
+    spec = {"total": {"description": "The grand total", "format": "currency"}}
+
+    assert ser._validated_keys("some_future_extractor", spec) is spec
+
+
+def test_neither_serializer_still_carries_a_compiled_attribute():
+    """A `compiled` that is populated and never read reads as plumbing."""
+    for cls in (ExtractorSerializer, SubmitSerializer):
+        assert not hasattr(cls, "compiled"), (
+            f"{cls.__name__}.compiled was dead: `dispatch_job` sends the raw "
+            "keys dict, and the compiled form cannot cross the queue anyway"
+        )

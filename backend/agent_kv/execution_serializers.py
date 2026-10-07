@@ -169,8 +169,6 @@ class ExtractorSerializer(serializers.Serializer):
     keys = serializers.JSONField()
     options = serializers.DictField(required=False, default=dict)
 
-    compiled = None
-
     def validate_name(self, v):
         if v not in SUPPORTED_EXTRACTORS:
             raise serializers.ValidationError(
@@ -211,8 +209,19 @@ class ExtractorSerializer(serializers.Serializer):
         serialized = json.dumps(spec, ensure_ascii=False).encode("utf-8")
         if len(serialized) > settings.AGENT_KV_MAX_SCHEMA_BYTES:
             raise serializers.ValidationError({"keys": "keys schema too large"})
+        # Called for what it REFUSES, not for what it returns. The
+        # `CompiledSchema` used to be stashed on the serializer and collected
+        # into a `{name: compiled}` dict by `SubmitSerializer`, which no
+        # non-test code ever read: `dispatch_job` sends `schema=entry["keys"]`,
+        # the raw dict, and the engine re-compiles it on its own (see the
+        # docstring on `compile.py` -- the caps are a submit-time gate, not an
+        # invariant the engine re-checks). Plumbing the compiled form through
+        # instead is not an option the queue allows: it would have to survive
+        # JSON round-tripping to the executor, which is exactly why the engine
+        # recompiles. So the dead attribute is gone rather than left to read as
+        # plumbing that exists. What this call is for is the 400 below.
         try:
-            self.compiled = compile_schema(spec)
+            compile_schema(spec)
         except SchemaError as e:
             raise serializers.ValidationError({"keys": str(e)})
         return spec
@@ -265,8 +274,6 @@ class SubmitSerializer(serializers.Serializer):
         required=False, allow_blank=True, default="", max_length=1024
     )
 
-    #: ``{extractor_name: compiled schema}`` -- populated during validation.
-    compiled = None
     #: Measured page count of the uploaded document. None for Excel, which has
     #: no pre-OCR page concept. This is what metering and the status document
     #: report, and it is NOT what the page cap is compared against.
@@ -317,7 +324,7 @@ class SubmitSerializer(serializers.Serializer):
                 "multiple extractors are not supported yet; pass exactly one"
             )
 
-        validated, compiled = [], {}
+        validated = []
         for i, entry in enumerate(entries):
             if not isinstance(entry, dict):
                 raise serializers.ValidationError(f"extractors[{i}] must be an object")
@@ -325,8 +332,6 @@ class SubmitSerializer(serializers.Serializer):
             if not ser.is_valid():
                 raise serializers.ValidationError({f"extractors[{i}]": ser.errors})
             validated.append(ser.validated_data)
-            compiled[ser.validated_data["name"]] = ser.compiled
-        self.compiled = compiled
         return validated
 
     def validate(self, data):
