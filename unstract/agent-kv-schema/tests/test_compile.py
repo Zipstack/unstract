@@ -1,5 +1,7 @@
 """compile_schema: structural validation + caps on top of the ported compiler."""
 
+from dataclasses import FrozenInstanceError
+
 import pytest
 
 from unstract.agent_kv_schema import (
@@ -248,3 +250,145 @@ def test_non_overlapping_alternation_still_compiles(pattern):
     patterns -- `(?:a|b)+` is linear.
     """
     compile_schema(_schema(pattern))
+
+
+# --------------------------------------------------------------------------
+# 2.18: formats that can never validate anything, or always fail.
+#
+# Free-text `format` stays an LLM hint -- that is deliberate, see the `format`
+# comment on KeySpec. The three shapes below are not hints, they are mistakes
+# with no observable symptom, all three verified by execution before the fix.
+# --------------------------------------------------------------------------
+
+
+def _one_key(fmt: str) -> dict:
+    return {"amount": {"description": "An amount", "format": fmt}}
+
+
+@pytest.mark.parametrize(
+    ("fmt", "intended"),
+    [
+        ("Number", "number"),
+        ("NUMBER", "number"),
+        ("Date", "date"),
+        ("Currency", "currency"),
+        ("String", "string"),
+        ("Enum", "enum"),
+        ("Regex", "regex"),
+    ],
+)
+def test_a_case_variant_of_a_known_format_is_refused(fmt, intended):
+    """`format: "Number"` silently became a free-text hint.
+
+    `validate_format("not a number at all", spec)` then returned True for
+    every value for the life of the job, and `/validate` reported
+    `{"valid": true}` -- the author configured validation and got none.
+    """
+    with pytest.raises(SchemaError, match=f"Did you mean '{intended}'"):
+        compile_schema(_one_key(fmt))
+
+
+@pytest.mark.parametrize("fmt", ["number", "date", "currency", "string"])
+def test_the_known_formats_still_compile(fmt):
+    compile_schema(_one_key(fmt))
+
+
+@pytest.mark.parametrize(
+    "fmt",
+    [
+        "the invoice total in USD",  # a real hint, which is the point of free text
+        "amount",
+        "numeric-ish",  # near a known format but not a case variant of one
+        "dates",
+    ],
+)
+def test_free_text_format_is_still_accepted_as_an_llm_hint(fmt):
+    compile_schema(_one_key(fmt))
+
+
+@pytest.mark.parametrize("fmt", ["enum:", "enum", "enum: , ,"])
+def test_an_enum_with_no_values_is_refused(fmt):
+    """`enum_values=[]` means `_check_one` tests membership of the empty set,
+    so every non-empty value fails QA forever. This does not disable
+    validation, it inverts it.
+    """
+    with pytest.raises(SchemaError, match="enum with no values"):
+        compile_schema(_one_key(fmt))
+
+
+def test_an_enum_with_values_still_compiles():
+    compiled = compile_schema(_one_key("enum:paid,unpaid"))
+    assert compiled.key_specs[0].enum_values == ["paid", "unpaid"]
+
+
+@pytest.mark.parametrize("fmt", ["regex:", "regex"])
+def test_an_empty_regex_is_refused(fmt):
+    with pytest.raises(SchemaError, match="empty regex"):
+        compile_schema(_one_key(fmt))
+
+
+def test_the_same_rules_apply_to_array_columns():
+    """Array columns are leaves too, and were checked by nothing."""
+    spec = {
+        "lines": {
+            "description": "One row per line",
+            "_array": {"total": {"description": "Line total", "format": "Currency"}},
+        }
+    }
+    with pytest.raises(SchemaError, match="Did you mean 'currency'"):
+        compile_schema(spec)
+
+
+# --------------------------------------------------------------------------
+# 2.18 (second half): `_key` naming a column that does not exist.
+# --------------------------------------------------------------------------
+
+
+def test_a_key_column_that_does_not_exist_is_refused():
+    """A `_key` typo is not an error anywhere downstream.
+
+    Every row misses, the array silently falls back to positional identity,
+    and the cost is accuracy on exactly the arrays the author cared enough
+    about to key. Nothing is reported.
+    """
+    spec = {
+        "lines": {
+            "description": "One row per line",
+            "_key": "skew",  # the column is 'sku'
+            "_array": {
+                "sku": {"description": "SKU"},
+                "total": {"description": "Line total"},
+            },
+        }
+    }
+    with pytest.raises(SchemaError, match="_key 'skew'"):
+        compile_schema(spec)
+
+
+def test_a_key_column_that_exists_still_compiles():
+    compiled = compile_schema(VALID)
+    assert [a.key_column for a in compiled.array_specs] == ["sku"]
+
+
+def test_an_array_with_no_key_column_is_positional_and_accepted():
+    spec = {
+        "lines": {
+            "description": "One row per line",
+            "_array": {"sku": {"description": "SKU"}},
+        }
+    }
+    compiled = compile_schema(spec)
+    assert compiled.array_specs[0].key_column == ""
+
+
+# --------------------------------------------------------------------------
+# 2.18 (third): the specs are compile OUTPUT and must not be mutable.
+# --------------------------------------------------------------------------
+
+
+def test_compiled_specs_are_frozen():
+    compiled = compile_schema(VALID)
+    with pytest.raises(FrozenInstanceError):
+        compiled.key_specs[0].format = "number"
+    with pytest.raises(FrozenInstanceError):
+        compiled.array_specs[0].key_column = "total"

@@ -4,6 +4,7 @@ from datetime import timedelta
 from unittest import mock
 
 import django
+import pytest
 from django.apps import apps
 
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "backend.settings.test")
@@ -35,6 +36,42 @@ def test_foreign_org_job_is_404(m_keys, m_jobs):
     m_jobs.get.side_effect = AgentKVJob.DoesNotExist
     resp = ev.JobStatusView.as_view()(_authed(), job_id=uuid.uuid4())
     assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# (1b) ...and the lookup is actually ORG-SCOPED.
+#
+# The test above forces `DoesNotExist` and asserts the view 404s, which says
+# nothing about the `organization_id` filter: delete
+# `organization_id=agent_kv_key.organization_id` from `_get_job` and it stays
+# green -- while every org could then read, cancel, delete and fetch the result
+# of every other org's job.
+#
+# The production code IS correctly scoped. What was missing is a test that can
+# detect its removal, on the one security-relevant path in the app. Every
+# job-scoped view funnels through `_get_job`, so each is covered.
+#
+# Reported by Greptile on PR #2317.
+# ---------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    ("view", "method"),
+    [
+        (ev.JobStatusView, "get"),
+        (ev.JobResultView, "get"),
+        (ev.JobCancelView, "post"),
+        (ev.JobDeleteView, "delete"),
+    ],
+)
+@mock.patch.object(AgentKVJob, "objects")
+@mock.patch.object(AgentKVKey, "objects")
+def test_every_job_scoped_view_filters_by_organization(m_keys, m_jobs, view, method):
+    m_keys.get.return_value = kv_key(org_pk=7)
+    m_jobs.get.side_effect = AgentKVJob.DoesNotExist
+    job_id = uuid.uuid4()
+
+    view.as_view()(_authed(method=method), job_id=job_id)
+
+    m_jobs.get.assert_called_once_with(id=job_id, organization_id=7)
 
 
 # ---------------------------------------------------------------------------

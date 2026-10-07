@@ -126,7 +126,21 @@ class AgentKVJob(DefaultOrganizationMixin, BaseModel):
 
         Guarded UPDATE: at-least-once callbacks, cancel, and the sweep can all
         race; whoever lands first wins and everyone else no-ops.
+
+        The `.exclude(status__in=TERMINAL)` below guards the ROW, not the
+        argument -- so without the check that opens this method,
+        `mark_terminal(..., JobStatus.RUNNING)` would stamp
+        `status=RUNNING, completed_at=now()`: a row that reads as finished to
+        every TTL/sweep query that keys off `completed_at`, is invisible to
+        the terminal guard, and can never be terminalized again by anything
+        that trusts `completed_at`. No caller does this today; the method is
+        named for the invariant, so it enforces it rather than documenting it.
         """
+        if new_status not in cls.TERMINAL:
+            raise ValueError(
+                f"mark_terminal called with non-terminal status {new_status!r}; "
+                f"expected one of {sorted(cls.TERMINAL)}"
+            )
         fields = {"status": new_status, "completed_at": timezone.now()}
         if error:
             fields["error"] = error

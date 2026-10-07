@@ -6,8 +6,16 @@ imported src/core code_executor's result type (see spec §4, §10).
 
 from dataclasses import dataclass, field
 
+# Both specs are FROZEN. They are compile output: produced once by
+# `kv_schema._walk` and then read by the prompt generator, the QA pass and the
+# constraint evaluator. Nothing assigns to a field (the one derived variant,
+# `normalizers`' scalar view of a multivalued leaf, already goes through
+# `dataclasses.replace`), so freezing costs nothing and makes a stray mutation
+# in a later stage a loud AttributeError instead of a spec that disagrees with
+# the schema the caller submitted.
 
-@dataclass
+
+@dataclass(frozen=True)
 class KeySpec:
     """One compiled leaf key from the user's nested key schema."""
 
@@ -21,7 +29,7 @@ class KeySpec:
     multivalued: bool = False  # value is a comma-separated string
 
 
-@dataclass
+@dataclass(frozen=True)
 class ArraySpec:
     """One compiled FLAT-array node (P8a). `path` = dotted array location (e.g. 'line_items',
     'invoice.lines'). `item_specs` = the declared columns as row-LOCAL scalar KeySpecs (their

@@ -982,8 +982,9 @@ with the default shown:
 | `AGENT_KV_MAX_SCHEMA_BYTES` | `262144` | Byte cap on the raw `keys` JSON document (256 KiB). |
 | `AGENT_KV_RESULT_TTL_DAYS` | `7` | Result retention window (and a cancelled job's input, which rides the same TTL — a completed/failed job's input is deleted immediately at finalize instead), stamped at submit time (see [§6](#9-retention-and-ttl)). |
 | `AGENT_KV_MAX_TIMEOUT_SECONDS` | `300` | Upper bound on the submit `timeout` (synchronous-wait) field. |
-| `AGENT_KV_CONCURRENT_LIMIT` | `5` | Per-organization concurrent in-flight job cap (own Redis namespace, fails open on Redis errors). |
-| `AGENT_KV_KEY_RATE_LIMIT_PER_MINUTE` | `60` | Per-key request rate limit (submit + validate), fails open on Redis errors. |
+| `AGENT_KV_CONCURRENT_LIMIT` | `5` | Per-organization concurrent in-flight job cap (own Redis namespace). Fails **closed** (429) when Redis is unreachable — see `AGENT_KV_LIMITER_FAIL_OPEN`. |
+| `AGENT_KV_KEY_RATE_LIMIT_PER_MINUTE` | `60` | Per-key request rate limit (submit + validate). Fails **closed** (429) when Redis is unreachable — see `AGENT_KV_LIMITER_FAIL_OPEN`. |
+| `AGENT_KV_LIMITER_FAIL_OPEN` | `false` | What both limiters above do when Redis is unreachable. Default `false` = fail **closed**: the request is refused with a 429. Set `true` to restore the old fail-open behaviour, where an unreachable Redis removed the concurrency ceiling **and** the per-key rate ceiling at once while the API went on accepting billable work — a state that cannot be observed from the outside. A 429 is recoverable by the caller; an unbounded fan-out is not. |
 | `AGENT_KV_SWEEP_GRACE_SECONDS` | `3600` | Age (from `created_at`) before a never-dispatched `PENDING` job is eligible for the sweep. |
 | `AGENT_KV_STUCK_JOB_GRACE_SECONDS` | `21600` | Age (from `dispatched_at`) before a `DISPATCHED`/`RUNNING` job is eligible for the sweep's stuck-job phase — force-failed as `"Job timed out"` (6 hours). |
 | `AGENT_KV_CALCULATIONS_ENABLED` | `false` | Gates the submit `calculations` field; the engine cannot execute it yet, so submit 400s while this is off. |

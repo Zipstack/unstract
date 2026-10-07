@@ -723,3 +723,29 @@ def test_phase_three_is_bounded_on_both_sides(m_objects, m_release):
     assert kwargs["completed_at__gt"] == frozen_now - timedelta(
         seconds=maintenance.SLOT_TTL_SECONDS
     )
+
+
+def test_phase_three_takes_the_newest_eligible_rows_first():
+    """Releasing a slot does not remove its row from phase 3's query -- there
+    is no "released" marker -- so oldest-first would re-select the same batch
+    every sweep under backlog, and rows arriving behind it would age out of the
+    window unprocessed.
+
+    Newest-first inverts which rows lose: the skipped ones are the oldest, i.e.
+    closest to the slot TTL floor where Redis is about to drop the entry anyway
+    and a release buys almost nothing.
+
+    Reported by Greptile on PR #2317.
+    """
+    phase1 = mock.MagicMock()
+    phase1.order_by.return_value.__getitem__.return_value = []
+    phase2_status = mock.MagicMock()
+    phase2_status.filter.return_value.order_by.return_value.__getitem__.return_value = []
+    phase3 = mock.MagicMock()
+    phase3.order_by.return_value.__getitem__.return_value = []
+
+    with mock.patch.object(AgentKVJob, "objects") as m_objects:
+        m_objects.filter.side_effect = [phase1, phase2_status, phase3]
+        maintenance.run_sweep()
+
+    phase3.order_by.assert_called_once_with("-completed_at")

@@ -58,20 +58,26 @@ _JOB_LEVEL = {
 
 def _valid_validated_data(**overrides):
     """`SubmitSerializer.validated_data` in the extractor-scoped shape (§7.0)."""
-    keys = overrides.pop("keys", {"total": {"description": "Grand total"}})
+    # `table`, not `kv`. The carve-out re-pointed the real-serializer tests and
+    # missed this mocked payload, so every view test driven by it called
+    # `dispatch_job(extractor="kv")` -- whose FIRST statement is
+    # `EXTRACTOR_ROUTES["kv"]`, a KeyError raised OUTSIDE the try. That landed
+    # in SubmitView's belt-and-braces `except Exception` and produced the exact
+    # 500 some of these tests assert, so they passed while never reaching the
+    # code they name. It also meant the whole file exercised the view with an
+    # `extractors` payload the real serializer rejects with a 400.
+    keys = overrides.pop("keys", {"target_table": "Rent roll"})
     options = {
-        "qa": True,
-        "challenge": True,
-        "extraction_mode": "whole-doc",
-        "structured_output": False,
-        "calculations": "",
-        "document_class": "",
-        "key_notes": "",
+        "instructions": "",
+        "json_structure": "",
+        "enable_header_mapping": False,
+        "correct_number_separators": False,
+        "number_format": "US",
     }
     options.update({k: overrides.pop(k) for k in list(overrides) if k not in _JOB_LEVEL})
     data = {
         "file": mock.Mock(name="uploaded_file"),
-        "extractors": [{"name": "kv", "keys": keys, "options": options}],
+        "extractors": [{"name": "table", "keys": keys, "options": options}],
         "page_start": 1,
         "page_end": None,
         "timeout": 0,
@@ -265,19 +271,15 @@ def test_dispatch_job_called_with_expected_options_and_schema(
     m_dispatch,
 ):
     m_keys.get.return_value = kv_key()
-    keys_schema = {"total": {"description": "Grand total"}}
+    keys_schema = {"target_table": "Rent roll"}
     _mock_serializer(
         m_serializer_cls,
         keys=keys_schema,
-        qa=False,
-        challenge=False,
-        extraction_mode="per-page",
-        structured_output=True,
+        number_format="EU",
+        enable_header_mapping=True,
+        instructions="skip the header row",
         page_start=2,
         page_end=5,
-        document_class="invoice",
-        key_notes="ignore footers",
-        calculations="annualize rent",
     )
     m_limiter.check_and_acquire.return_value = True
     m_save.side_effect = _stamp_created_at
@@ -286,17 +288,19 @@ def test_dispatch_job_called_with_expected_options_and_schema(
 
     assert m_dispatch.called
     kwargs = m_dispatch.call_args.kwargs
+    # The extractor name itself was never asserted, so this test could not tell
+    # a `table` dispatch from a `kv` one -- which is how the mocked payload
+    # stayed on `kv` right through the carve-out.
+    assert kwargs["extractor"] == "table"
     assert kwargs["schema"] == keys_schema
     assert kwargs["options"] == {
-        "qa": False,
-        "challenge": False,
-        "extraction_mode": "per-page",
-        "structured_output": True,
+        "instructions": "skip the header row",
+        "json_structure": "",
+        "enable_header_mapping": True,
+        "correct_number_separators": False,
+        "number_format": "EU",
         "page_start": 2,
         "page_end": 5,
-        "document_class": "invoice",
-        "key_notes": "ignore footers",
-        "calculations": "annualize rent",
     }
 
 
@@ -424,6 +428,18 @@ def test_platform_key_lookup_failure_inside_real_dispatch_is_caught_end_to_end(
     m_platform_key.side_effect = RuntimeError("platform db down: leaked-secret-xyz")
 
     resp = ev.SubmitView.as_view()(_authed_post())
+
+    # The assertion this test was missing. Without it it passed while never
+    # reaching the code it names: the mocked payload said `kv`, so
+    # `dispatch_job`'s first statement -- `EXTRACTOR_ROUTES["kv"]` -- raised a
+    # KeyError OUTSIDE the try, the view's belt-and-braces handler produced the
+    # same 500, and `_platform_api_key` was never called. The
+    # "leaked-secret-xyz" check below was vacuous: that string was never
+    # produced.
+    assert m_platform_key.called, (
+        "the platform-key lookup was never reached, so this test proves "
+        "nothing about the widened dispatch.py try it exists to cover"
+    )
 
     assert resp.status_code == 500
     assert "leaked-secret-xyz" not in str(resp.data)

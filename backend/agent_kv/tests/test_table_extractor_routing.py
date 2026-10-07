@@ -239,3 +239,38 @@ def test_a_job_whose_extractor_has_no_stage_list_reports_no_stages(caplog):
     assert doc["extractors"]["retired_extractor"]["stages"] == []
     assert doc["status"] == job.status.lower()
     assert "retired_extractor" in caplog.text
+
+
+# ---------------------------------------------------------------------------
+# `ValidateView` is part of the carve-out: the class stays in the tree and the
+# route does not. Both halves are asserted here, including that the class says
+# so itself -- a reader of `execution_views.py` sees a complete, decorated,
+# live-looking endpoint, and the only thing that decided otherwise was a file
+# they may never open.
+# ---------------------------------------------------------------------------
+
+
+def test_validate_is_not_a_public_route_on_this_deployment():
+    from agent_kv import execution_urls
+
+    names = {p.name for p in execution_urls.urlpatterns}
+    assert names == {
+        "agent_kv_submit",
+        "agent_kv_status",
+        "agent_kv_result",
+        "agent_kv_cancel",
+    }, (
+        "the public route set changed; `/validate` compiles a `kv` schema and "
+        "`kv` is the one extractor this build refuses, so routing it would "
+        "advertise validation for an extractor every submit 400s"
+    )
+
+
+def test_validate_view_documents_that_it_is_unrouted():
+    from agent_kv.execution_views import ValidateView
+
+    doc = ValidateView.__doc__ or ""
+    assert "NOT ROUTED" in doc, (
+        "ValidateView is a complete, decorated, live-looking endpoint that "
+        "nothing reaches. Say so on the class, not only in execution_urls.py"
+    )

@@ -1669,8 +1669,17 @@ class InternalAPIClient(CachedAPIClientMixin):
             job_id: Agent-KV job ID.
             org_id: Organization ID (required by the endpoint's body, not the
                 URL — mirrors ``StageReportView``/``FinalizeView``).
-            stage: Pipeline stage name (e.g. ``"extract"``).
-            status: Stage status (e.g. ``"started"``, ``"completed"``).
+            stage: Pipeline stage name. Must be one of the stage names the
+                job's extractor declares (``agent_kv.constants
+                .STAGE_NAMES_BY_EXTRACTOR``) -- ``"table_extraction"`` for
+                ``table``, one of ``STAGE_NAMES`` for ``kv``. The endpoint
+                only checks the name is non-empty, but ``_status_document``
+                filters a job's recorded stages through that list, so an
+                off-list name is stored and then dropped from every status
+                response.
+            status: Stage status -- ``"running"`` or ``"done"``, the only two
+                values ``StageReportView`` accepts. (These examples read
+                ``"started"``/``"completed"`` before review; both are 400s.)
             seconds: Optional stage duration in seconds.
             counters: Optional stage counters to record.
 

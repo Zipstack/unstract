@@ -182,7 +182,20 @@ def run_sweep() -> dict:
         dispatched_at__isnull=False,
         completed_at__lt=stuck_cutoff,
         completed_at__gt=slot_ttl_floor,
-    ).order_by("completed_at")[:_MAINTENANCE_BATCH_LIMIT]
+        # NEWEST first, the opposite of the other two phases and deliberate.
+        # Releasing a slot does not remove its row from this query -- there is
+        # no "released" marker -- so oldest-first would re-select the same 500
+        # rows every sweep whenever the backlog exceeds the batch limit, and
+        # rows arriving behind them would age out of the window never having
+        # been looked at.
+        #
+        # Newest-first inverts which rows lose: the ones skipped are the oldest,
+        # i.e. closest to the slot TTL floor, where Redis is about to drop the
+        # entry anyway and a release buys almost nothing. Every row is seen
+        # while its release still matters, unless more than
+        # `_MAINTENANCE_BATCH_LIMIT` become eligible inside one sweep interval
+        # -- and the TTL remains the backstop for that.
+    ).order_by("-completed_at")[:_MAINTENANCE_BATCH_LIMIT]
 
     released = 0
     for job in abandoned_cancelled:

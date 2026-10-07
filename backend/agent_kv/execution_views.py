@@ -353,6 +353,27 @@ class SubmitView(APIView):
 
 
 class ValidateView(APIView):
+    """Dry-run schema compile. **NOT ROUTED ON THIS DEPLOYMENT.**
+
+    ``execution_urls.py`` deliberately omits this view, and that file carries
+    the full rationale. The short version: it compiles a `kv` keys schema and
+    does nothing else, and `kv` is the one extractor this build refuses
+    (``EXTRACTOR_ROUTES`` carries `table` only), so publishing it would
+    advertise validation for an extractor every submit 400s. The `table`
+    extractor's ``keys`` is ``{"target_table": ...}``, validated by
+    ``TableKeysSerializer`` at submit instead.
+
+    Kept in the tree, not deleted: restoring the endpoint is one line in
+    ``execution_urls.py``, and deleting it would force a content merge in the
+    file the branch carrying the KV engine rewrites most.
+
+    So read the code below as dormant. Nothing reaches it but the unit tests
+    that keep it honest -- in particular, it is NOT a live surface for the
+    rate limiter or the key validator it still decorates, and a reader looking
+    for the deployment's public endpoints should look at ``execution_urls.py``,
+    which is the only place that decides.
+    """
+
     authentication_classes: list = []
     permission_classes: list = []
 
