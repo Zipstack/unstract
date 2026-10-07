@@ -204,7 +204,53 @@ The request is **extractor-scoped**: a per-extractor schema and its knobs live i
 |---|---|---|
 | `name` | yes | Which extractor. **`table` is the only supported value on this deployment**; anything else, `kv` included, ⇒ 400 (see the note below). More than one entry ⇒ 400 — the format is in place for multi-extractor jobs, the execution is not built yet. |
 | `keys` | yes | This extractor's own request. For `table`, `{"target_table": "<the table to extract>"}` — the engine's one required extraction parameter. |
+| `adapters` | yes (for `table`) | The platform adapter instances this extraction runs on: `{"llm": "<uuid>", "lite_llm": "<uuid>", "x2text": "<uuid>"}`. All three required. See **§3a** below. |
 | `options` | no | This extractor's own knobs (below). An unrecognised option ⇒ 400, so a knob aimed at the wrong extractor fails loudly instead of being silently dropped. |
+
+### 3a. `adapters` — you supply the models and the OCR credentials
+
+The `table` extractor runs on **your own platform adapters**, named by id. Create
+them once in Unstract (Settings → Adapters, or the adapter API) and pass their ids
+on every submit:
+
+| Role | Adapter type | What it does |
+|---|---|---|
+| `llm` | `LLM` | Structure detection and extraction — the quality-critical model. |
+| `lite_llm` | `LLM` | Per-page table-presence detection. Runs once per page, so this is the cost-critical one; a cheap fast model belongs here. |
+| `x2text` | `X2TEXT` | OCR. An LLMWhisperer adapter, which also carries the endpoint — there is no separate base-URL field. |
+
+Each id is validated at submit, against **your organization** and against the
+expected adapter type. A ⇒ 400, before anything is staged or billed:
+
+- an id that is not your organization's — reported identically to one that does not
+  exist, deliberately, so the endpoint cannot be used to discover which adapter ids
+  are real elsewhere
+- an id of the wrong type, e.g. an `X2TEXT` adapter in the `llm` slot
+- a missing role, or an unknown one
+
+Page usage and token usage are metered against the adapters you named, so **model
+choice and LLM spend sit on your account**, per job.
+
+> **This is a deliberate reversal of the original design (spec D6).** D6 specified
+> that this API would have "no platform adapters by design", with models and OCR
+> credentials configured by the operator in environment variables and "no end-user
+> model control". That was the right call while the API's consumer was hypothetical;
+> it is the wrong one now that the consumers are existing Unstract customers. They
+> already own adapters, there was no operator-level LLM credential anywhere in the
+> platform to reuse — LLM credentials live in per-organization adapter rows,
+> encrypted — and env configuration would have put every customer's model choice and
+> every customer's LLM spend on a single shared operator key.
+>
+> Consequences worth knowing: the API is no longer usable by a caller who has never
+> signed in, since adapters must exist first; and the six `AGENT_KV_LLM_*` /
+> `AGENT_KV_LLMWHISPERER_*` environment variables are **not read on the table path**
+> (they remain in place for the `kv` extractor, which is still env-configured).
+>
+> One thing this does not honour: adapters carry per-user visibility within an
+> organization, and an Agent-KV key resolves to an organization rather than a user.
+> So a key may use **any** adapter in its own organization. A key is already an
+> organization-level credential, so this is a deliberate decision rather than an
+> oversight — but treat key issuance accordingly.
 
 > **Why `kv` returns 400 here.** This deployment ships the table extractor only.
 > The `kv` extractor's engine runs on its own release track and nothing on this
@@ -290,7 +336,37 @@ that middleware to resolve an organization from. Cloud-only: an OSS-only
 deployment returns `501` before ever reaching it.
 `400`: serializer/schema validation failure — nothing billed.
 
-### Example
+### Example — `table` (the only extractor this deployment accepts)
+
+```bash
+curl -X POST https://api.unstract.example/agent-kv/ \
+  -H "Authorization: Bearer 5c9e2c9e-1234-4a5b-9c6d-abcdef012345" \
+  -F "file=@invoice.pdf" \
+  -F 'extractors=[{
+        "name": "table",
+        "keys": {"target_table": "Line items"},
+        "adapters": {
+          "llm":      "7f3c1a90-0000-4000-8000-000000000001",
+          "lite_llm": "7f3c1a90-0000-4000-8000-000000000002",
+          "x2text":   "7f3c1a90-0000-4000-8000-000000000003"
+        },
+        "options": {
+          "instructions": "Ignore the summary block at the foot of the page",
+          "enable_header_mapping": true
+        }
+      }]' \
+  -F "page_start=1" -F "page_end=5" \
+  -F "webhook_url=https://example.com/hooks/agent-kv"
+```
+
+The three adapter ids are yours, from your own organization — see §3a. Omit any of
+them and the submit is a 400.
+
+### Example — `kv`
+
+Shown for the wire format only; **`kv` returns 400 on this deployment** (see the
+note above). Note it takes no `adapters` block: the `kv` extractor is
+env-configured on the operator side.
 
 ```bash
 curl -X POST https://api.unstract.example/agent-kv/ \
@@ -787,7 +863,21 @@ beyond `docker compose up`:
    ttl-cleanup additionally needs `storage` for `AGENT_KV_FILE_STORAGE_CREDENTIALS`
    (see item 6 below) — both already on the `backend` deployment's config list.
 5. **Env vars**: every `AGENT_KV_*` setting plus `AGENT_KV_FILE_STORAGE_CREDENTIALS` —
-   see [§6](#12-environment-reference) and `docker/sample.env`. The executor-side vars
+   see [§6](#12-environment-reference) and `docker/sample.env`.
+
+   > **For the `table` extractor, the executor-side credential group below is NOT
+   > required.** That path resolves the caller's own platform adapters (see §3a), so
+   > none of the six `AGENT_KV_LLM_*` / `AGENT_KV_LLMWHISPERER_*` values is read on
+   > it. The group only has to be configured where the `kv` extractor is deployed,
+   > which is a separate release track. A table-only deployment can leave
+   > `global.sharedConfigs.agentKv.enabled: false` and the API works.
+   >
+   > Two operator knobs are still read on the table path, independently of that
+   > group: `AGENT_KV_STORAGE_DIR_PREFIX` (which must match the backend's — the
+   > executor derives the job's expected directory from it to enforce the tenant
+   > boundary on the staged input) and `AGENT_KV_PARALLEL_PAGES`.
+
+   The executor-side vars
    (read by the cloud `agentic_kv` plugin, not by the backend settings in §13) are a
    separate chart group: `global.sharedConfigs.agentKv`
    (`charts/unstract-platform/values.yaml`, cloud repo) —

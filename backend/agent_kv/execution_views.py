@@ -17,7 +17,7 @@ from agent_kv.exceptions import (
     RateLimited,
     SubscriptionGateUnavailable,
 )
-from agent_kv.execution_serializers import SubmitSerializer
+from agent_kv.execution_serializers import _ADAPTERS_SERIALIZERS, SubmitSerializer
 from agent_kv.execution_views_result import result_payload
 from agent_kv.key_validator import AgentKVKeyValidator
 from agent_kv.models import AgentKVJob, JobStatus
@@ -181,7 +181,13 @@ def _dispatch_or_fail(job, org_id: str, entry: dict, options: dict) -> Response 
     escape as an unhandled 500 with the slot still held.
     """
     try:
-        dispatch_job(job, extractor=entry["name"], schema=entry["keys"], options=options)
+        dispatch_job(
+            job,
+            extractor=entry["name"],
+            schema=entry["keys"],
+            options=options,
+            adapters=entry.get("adapters") or {},
+        )
     except DispatchError:
         logger.exception("agent-kv dispatch failed for job %s", job.id)
     except Exception:
@@ -282,6 +288,73 @@ def _discard_orphaned_input(job) -> None:
         )
 
 
+def _resolved_adapters(entry: dict, agent_kv_key) -> dict:
+    """Confirm every adapter the caller named is THIS org's, and of the right type.
+
+    Returns `{role: "<uuid>"}` unchanged on success -- the ids are already
+    UUID-shaped and role-checked by the serializer
+    (`_validated_adapter_shape`); what is added here is the half that needs a
+    database and the Bearer key.
+
+    **This is the tenant boundary on adapters, and nothing downstream repeats
+    it.** The executor resolves these ids through the platform service with an
+    org-scoped platform key, but it does not re-check that the id belongs to
+    the job's org -- so without this, a caller passes any adapter UUID and the
+    run SPENDS ANOTHER TENANT'S LLM CREDENTIAL. Same class as the
+    `organization_id` filter in `_get_job`, and the highest-consequence failure
+    this endpoint has.
+
+    It lives in the view rather than the serializer for the same reason
+    `_subscription_denial` does: it needs the key. The platform's own helpers
+    do not fit -- `AdapterProcessor.get_adapters_by_type` filters
+    `.for_user(user)` and this path has no user (a key resolves to an
+    ORGANIZATION), and `get_adapter_by_name_and_type` is not scoped at all.
+
+    TYPE is checked too: an `X2TEXT` id accepted into the `llm` slot resolves
+    fine and then fails deep in the engine as a provider error, which reads
+    like a broken model rather than two swapped UUIDs.
+
+    What this deliberately does NOT honour is per-user adapter visibility
+    (`AdapterInstance` is `HasMembersMixin`, with `ResourceMembership` VIEWER
+    rows). An org-scoped key has no user to evaluate it against, so a key may
+    use ANY adapter in its own organization. Deliberate: a key is an
+    organization-level credential, and whoever can mint one can already read
+    the org's data.
+
+    Raises:
+        ValidationError: 400 at submit -- before staging, before a slot is
+            taken, before anything is billed.
+    """
+    requested = entry.get("adapters") or {}
+    if not requested:
+        return {}
+
+    from adapter_processor_v2.models import AdapterInstance
+
+    _, expected_types = _ADAPTERS_SERIALIZERS[entry["name"]]
+    for role, adapter_id in requested.items():
+        expected = expected_types[role]
+        adapter = AdapterInstance.objects.filter(
+            id=adapter_id, organization_id=agent_kv_key.organization_id
+        ).first()
+        if adapter is None:
+            # One message for "no such adapter" and "not yours", on purpose:
+            # telling them apart reveals which UUIDs exist.
+            raise ValidationError(
+                {"adapters": f"{role}: no such adapter in this organization"}
+            )
+        if adapter.adapter_type != expected.value:
+            raise ValidationError(
+                {
+                    "adapters": (
+                        f"{role}: adapter is of type '{adapter.adapter_type}', "
+                        f"expected '{expected.value}'"
+                    )
+                }
+            )
+    return requested
+
+
 class SubmitView(APIView):
     authentication_classes: list = []
     permission_classes: list = []
@@ -303,6 +376,13 @@ class SubmitView(APIView):
         serializer.is_valid(raise_exception=True)
         v = serializer.validated_data
         org_id = str(agent_kv_key.organization_id)
+
+        # Tenancy + type on the named adapters, HERE and not later: before the
+        # job row, before the concurrency slot, before the staging write. A
+        # caller who names another org's adapter, or swaps two UUIDs, gets a
+        # 400 and is charged nothing -- the same "every cap before paid work"
+        # rule the serializer's caps follow.
+        _resolved_adapters(v["extractors"][0], agent_kv_key)
 
         job = AgentKVJob(
             api_key=agent_kv_key,

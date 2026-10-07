@@ -8,6 +8,7 @@ from rest_framework import serializers
 
 from agent_kv.constants import EXTRACTOR_ROUTES, TABLE_EXTRACTOR_NAME, V1_EXTRACTOR_NAME
 from unstract.agent_kv_schema import SchemaError, compile_schema
+from unstract.sdk1.constants import AdapterTypes
 
 # Images are deliberately ABSENT, and that is a cross-repo contract, not an
 # oversight. The cloud engine's `_build_agent_graph` (agentic_kv
@@ -154,6 +155,63 @@ _OPTIONS_SERIALIZERS = {
     TABLE_EXTRACTOR_NAME: TableOptionsSerializer,
 }
 
+
+class TableAdaptersSerializer(serializers.Serializer):
+    """The platform adapters the `table` extractor runs on.
+
+    **Why the caller names adapters rather than the operator configuring env
+    vars.** The engine needs two LLMs and an OCR source. The IDE table path
+    resolves all three from platform adapter instances the user configured
+    (`agentic_table/executor.py` -> `LLM(adapter_instance_id=...)`,
+    `X2Text(adapter_instance_id=...)`), and this API now does the same. That
+    reverses spec D6, which specified system-level env configuration and "no
+    end-user model control" -- a deliberate reversal, recorded here and in
+    `docs/agent-kv-api.md`: the consumers are existing customers with
+    accounts, so they already own adapters, and letting them choose puts model
+    selection and LLM spend on the account that benefits from it.
+
+    Field names follow the platform convention for naming adapters by ROLE,
+    not by id: `prompt_profile_manager_v2.ProfileManager` declares `llm`,
+    `x2text`, `embedding_model`, `vector_store`. Hence `llm` / `lite_llm` /
+    `x2text` rather than `llm_adapter_id` and friends.
+
+    `lite_llm` is separate because the engine uses a cheaper model for
+    per-page presence detection and the advanced one for structure and
+    extraction; collapsing them would silently multiply the cost of the
+    highest-volume stage.
+    """
+
+    llm = serializers.UUIDField()
+    lite_llm = serializers.UUIDField()
+    x2text = serializers.UUIDField()
+
+    def validate(self, data):
+        unknown = set(self.initial_data) - set(self.fields)
+        if unknown:
+            raise serializers.ValidationError(
+                f"unknown adapters for extractor '{TABLE_EXTRACTOR_NAME}': "
+                f"{sorted(unknown)}"
+            )
+        return data
+
+
+#: Each extractor's own `adapters` validator, and which `AdapterTypes` each
+#: role must be. An extractor absent from this table takes no adapters -- `kv`
+#: is env-configured (`extraction_seams.ExtractionConfig`) and deliberately
+#: stays that way for now, so the two credential models coexist: one extractor
+#: per model, never both for one extractor.
+_ADAPTERS_SERIALIZERS = {
+    TABLE_EXTRACTOR_NAME: (
+        TableAdaptersSerializer,
+        {
+            "llm": AdapterTypes.LLM,
+            "lite_llm": AdapterTypes.LLM,
+            "x2text": AdapterTypes.X2TEXT,
+        },
+    ),
+}
+
+
 #: Each extractor's own `keys` validator. An extractor absent from this table
 #: falls through to the schema compiler, which is `kv`'s contract: its `keys` IS
 #: a compiled schema rather than a fixed set of fields.
@@ -162,11 +220,46 @@ _KEYS_SERIALIZERS = {
 }
 
 
+def _validated_adapter_shape(name: str, supplied) -> dict:
+    """Validate an extractor's `adapters` block SHAPE only. No database.
+
+    Returns `{role: "<uuid>"}`, or `{}` for an extractor that takes none.
+
+    Deliberately split from the tenancy check. This runs in the serializer, so
+    it must stay free of the ORM -- `test_submit_serializer.py` is a unit suite
+    with no database, and an adapter lookup here would make every submit test
+    require one. What it does check is everything that needs no database:
+    presence, that each id parses as a UUID, and that no unknown role was sent.
+
+    **Ownership and type are checked in the VIEW**
+    (`execution_views._resolved_adapters`), because they need the Bearer key's
+    organization -- the same reason `_subscription_denial` lives there. Both
+    still run before anything is staged or billed.
+    """
+    entry = _ADAPTERS_SERIALIZERS.get(name)
+    if entry is None:
+        if supplied:
+            raise serializers.ValidationError(
+                {"adapters": f"extractor '{name}' takes no adapters"}
+            )
+        return {}
+
+    adapters_cls, _expected_types = entry
+    ser = adapters_cls(data=supplied if isinstance(supplied, dict) else {})
+    ser.is_valid(raise_exception=True)
+    return {role: str(value) for role, value in ser.validated_data.items()}
+
+
 class ExtractorSerializer(serializers.Serializer):
     """One entry of the submit's `extractors` array (spec §7.0/§7.1)."""
 
     name = serializers.CharField()
     keys = serializers.JSONField()
+    #: Sibling of `keys`/`options`, not nested inside them. These are the
+    #: RESOURCES the extractor runs on, which `ProfileManager` likewise holds
+    #: as fields on the owning object rather than inside a knobs blob -- and
+    #: keeping them out of `options` leaves that member optional.
+    adapters = serializers.DictField(required=False, default=dict)
     options = serializers.DictField(required=False, default=dict)
 
     def validate_name(self, v):
@@ -331,7 +424,16 @@ class SubmitSerializer(serializers.Serializer):
             ser = ExtractorSerializer(data=entry)
             if not ser.is_valid():
                 raise serializers.ValidationError({f"extractors[{i}]": ser.errors})
-            validated.append(ser.validated_data)
+            data = ser.validated_data
+            try:
+                data["adapters"] = _validated_adapter_shape(
+                    data["name"], data.get("adapters")
+                )
+            except serializers.ValidationError as e:
+                raise serializers.ValidationError(
+                    {f"extractors[{i}]": e.detail}
+                ) from None
+            validated.append(data)
         return validated
 
     def validate(self, data):

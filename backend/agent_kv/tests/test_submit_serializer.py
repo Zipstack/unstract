@@ -58,13 +58,36 @@ _JOB_LEVEL = {
 }
 
 
+#: The platform adapters a `table` submit must name. All three are REQUIRED --
+#: the engine needs two LLMs and an OCR source, and this API resolves them from
+#: the caller's own adapter instances rather than from operator env vars.
+#: Ownership and type are checked in the VIEW against the Bearer key's org
+#: (`execution_views._resolved_adapters`); the serializer only checks shape, so
+#: these can be any UUIDs here.
+TABLE_ADAPTERS = {
+    "llm": "11111111-1111-1111-1111-111111111111",
+    "lite_llm": "22222222-2222-2222-2222-222222222222",
+    "x2text": "33333333-3333-3333-3333-333333333333",
+}
+
+
 def _data(**over):
     """Build a submit payload in the extractor-scoped wire format (§7.0)."""
     keys = over.pop("keys", TABLE_KEYS)
+    adapters = over.pop("adapters", TABLE_ADAPTERS)
     options = {k: over.pop(k) for k in list(over) if k not in _JOB_LEVEL}
     d = {
         "file": _pdf_upload(),
-        "extractors": json.dumps([{"name": "table", "keys": keys, "options": options}]),
+        "extractors": json.dumps(
+            [
+                {
+                    "name": "table",
+                    "keys": keys,
+                    "adapters": adapters,
+                    "options": options,
+                }
+            ]
+        ),
     }
     d.update(over)
     return d
@@ -458,7 +481,11 @@ def test_a_padded_name_is_still_normalised_for_routing():
     identity twice, not accepting whitespace.
     """
     s = SubmitSerializer(
-        data=_data(extractors=json.dumps([{"name": " table ", "keys": TABLE_KEYS}]))
+        data=_data(
+            extractors=json.dumps(
+                [{"name": " table ", "keys": TABLE_KEYS, "adapters": TABLE_ADAPTERS}]
+            )
+        )
     )
 
     assert s.is_valid(), s.errors

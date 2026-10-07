@@ -94,7 +94,9 @@ def _platform_api_key(job) -> str:
     return str(platform_key.key)
 
 
-def dispatch_job(job, *, extractor: str, schema: dict, options: dict) -> None:
+def dispatch_job(
+    job, *, extractor: str, schema: dict, options: dict, adapters: dict | None = None
+) -> None:
     executor_name, operation = EXTRACTOR_ROUTES[extractor]
     org_id = str(job.organization_id)
     # Everything that can fail — platform-key lookup, context construction,
@@ -115,6 +117,18 @@ def dispatch_job(job, *, extractor: str, schema: dict, options: dict) -> None:
                 "input_ref": job.input_ref,
                 "schema": schema,
                 "options": options,
+                # Platform adapter instance ids, by role, already validated at
+                # submit against THIS job's organization and against the
+                # expected `AdapterTypes` (see
+                # `execution_serializers.validated_adapters`). The executor
+                # resolves them through the platform service using the key
+                # below -- it does NOT re-check tenancy, so the submit-time
+                # check is the only one there is.
+                #
+                # Empty for an env-configured extractor (`kv`), which is why
+                # this is a dict rather than three params: the two credential
+                # models coexist, one per extractor.
+                "adapters": adapters or {},
                 "platform_api_key": _platform_api_key(job),
                 # The CAP the engine must enforce (spec §6.1/§6.6), not the
                 # measured count -- job.pages_total is None for Excel (no

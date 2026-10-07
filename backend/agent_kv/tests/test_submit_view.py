@@ -3,6 +3,7 @@ import uuid
 from unittest import mock
 
 import django
+import pytest
 from django.apps import apps
 
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "backend.settings.test")
@@ -67,6 +68,13 @@ def _valid_validated_data(**overrides):
     # code they name. It also meant the whole file exercised the view with an
     # `extractors` payload the real serializer rejects with a 400.
     keys = overrides.pop("keys", {"target_table": "Rent roll"})
+    # EXPLICIT, and empty by default. `_resolved_adapters` reads
+    # `entry.get("adapters")` and returns early when it is falsy -- a MagicMock
+    # auto-attribute here would be TRUTHY, so the gate would fall through to a
+    # real `AdapterInstance` query and every view test would die on "Database
+    # access not allowed". Tests that exercise the gate set it and mock the
+    # lookup; the rest leave it empty and never touch the ORM.
+    adapters = overrides.pop("adapters", {})
     options = {
         "instructions": "",
         "json_structure": "",
@@ -77,7 +85,9 @@ def _valid_validated_data(**overrides):
     options.update({k: overrides.pop(k) for k in list(overrides) if k not in _JOB_LEVEL})
     data = {
         "file": mock.Mock(name="uploaded_file"),
-        "extractors": [{"name": "table", "keys": keys, "options": options}],
+        "extractors": [
+            {"name": "table", "keys": keys, "adapters": adapters, "options": options}
+        ],
         "page_start": 1,
         "page_end": None,
         "timeout": 0,
@@ -95,6 +105,47 @@ def _mock_serializer(m_cls, **overrides):
     instance.validated_data = _valid_validated_data(**overrides)
     instance.pages_total = 3
     return instance
+
+
+#: A `table` submit's three required adapter roles.
+_TABLE_ADAPTERS = {
+    "llm": "11111111-1111-1111-1111-111111111111",
+    "lite_llm": "22222222-2222-2222-2222-222222222222",
+    "x2text": "33333333-3333-3333-3333-333333333333",
+}
+
+#: Which `AdapterTypes` value each role must resolve to.
+_ROLE_TYPES = {"llm": "LLM", "lite_llm": "LLM", "x2text": "X2TEXT"}
+
+
+def _adapters_owned_by(organization_id, *, types=None, missing=()):
+    """Patch the adapter lookup `_resolved_adapters` performs.
+
+    The gate runs `AdapterInstance.objects.filter(id=..., organization_id=...)
+    .first()`, so this stands in for the ORM: an id in `missing` resolves to
+    None (not this org's, or nonexistent -- the gate cannot and must not tell
+    those apart), and everything else resolves to an adapter of the type
+    `types` gives, defaulting to the correct one for its role.
+    """
+    from adapter_processor_v2.models import AdapterInstance
+
+    type_by_id = {
+        aid: (types or {}).get(role, _ROLE_TYPES[role])
+        for role, aid in _TABLE_ADAPTERS.items()
+    }
+
+    def _filter(**kw):
+        qs = mock.Mock()
+        aid = str(kw.get("id"))
+        if aid in {str(m) for m in missing} or kw.get(
+            "organization_id"
+        ) != organization_id:
+            qs.first.return_value = None
+        else:
+            qs.first.return_value = mock.Mock(adapter_type=type_by_id.get(aid, "LLM"))
+        return qs
+
+    return mock.patch.object(AdapterInstance, "objects", **{"filter.side_effect": _filter})
 
 
 def _stamp_created_at(job, *args, **kwargs):
@@ -222,7 +273,7 @@ def test_happy_path_returns_202_with_job_id_status_and_status_url(
     m_limiter.check_and_acquire.return_value = True
     m_save.side_effect = _stamp_created_at
 
-    def _side_effect(job, *, extractor, schema, options):
+    def _side_effect(job, *, extractor, schema, options, adapters=None):
         job.status = JobStatus.DISPATCHED
         job.dispatched_at = timezone.now()
 
@@ -719,21 +770,27 @@ def test_real_serializer_through_real_view_reaches_dispatch_intact_for_table(
     m_save.side_effect = _stamp_created_at
     schema = {"target_table": "Rent rolls"}
 
-    resp = ev.SubmitView.as_view()(
-        _real_multipart_post(
-            [
-                {
-                    "name": "table",
-                    "keys": schema,
-                    "options": {"instructions": "skip totals"},
-                }
-            ],
+    with _adapters_owned_by(kv_key().organization_id):
+        resp = ev.SubmitView.as_view()(
+            _real_multipart_post(
+                [
+                    {
+                        "name": "table",
+                        "keys": schema,
+                        "adapters": _TABLE_ADAPTERS,
+                        "options": {"instructions": "skip totals"},
+                    }
+                ],
+            )
         )
-    )
 
     assert resp.status_code == 202, resp.data
     kwargs = m_dispatch.call_args.kwargs
     assert kwargs["extractor"] == "table"
+    # The caller's own adapter instances reach the executor, by role. This is
+    # the whole point of the adapter wire format: the engine resolves these
+    # through the platform service instead of reading operator env vars.
+    assert kwargs["adapters"] == _TABLE_ADAPTERS
     # Nested under `schema`, matching exactly what the cloud executor reads
     # (`params["schema"]["target_table"]") -- NOT hoisted to the top level.
     assert kwargs["schema"] == {"target_table": "Rent rolls"}
@@ -883,3 +940,135 @@ def test_a_save_failure_after_staging_removes_the_staged_object(
         "the staged upload was left in the bucket with no job row carrying its "
         "ref; TTL cleanup selects from job rows, so it can never be reached"
     )
+
+
+# ---------------------------------------------------------------------------
+# The adapter tenancy gate.
+#
+# `POST /agent-kv/` names platform adapters by id, and the executor resolves
+# them through the platform service WITHOUT re-checking whose they are. So the
+# submit-time org filter is the only thing standing between a caller and
+# another tenant's LLM credential. Same class as the `organization_id` filter
+# on every job-scoped view, and higher consequence: that one leaks a job, this
+# one spends someone else's money.
+# ---------------------------------------------------------------------------
+
+
+@mock.patch.object(ev, "dispatch_job")
+@mock.patch.object(AgentKVJob, "save", autospec=True)
+@mock.patch.object(ev, "stage_input")
+@mock.patch.object(ev, "AgentKVConcurrencyLimiter")
+@mock.patch.object(ev, "check_key_rate", return_value=True)
+@mock.patch.object(ev, "get_plugin", return_value=_plugin_with_gate())
+@mock.patch.object(AgentKVKey, "objects")
+@pytest.mark.parametrize("stolen_role", ["llm", "lite_llm", "x2text"])
+def test_an_adapter_from_another_org_is_refused(
+    m_keys, m_plugin, m_rate, m_limiter, m_stage, m_save, m_dispatch, stolen_role
+):
+    """Parametrised across all three roles: one unguarded slot is enough."""
+    key = kv_key()
+    m_keys.get.return_value = key
+    m_limiter.check_and_acquire.return_value = True
+    m_save.side_effect = _stamp_created_at
+
+    with _adapters_owned_by(
+        key.organization_id, missing=[_TABLE_ADAPTERS[stolen_role]]
+    ):
+        resp = ev.SubmitView.as_view()(
+            _real_multipart_post(
+                [
+                    {
+                        "name": "table",
+                        "keys": {"target_table": "Rent rolls"},
+                        "adapters": _TABLE_ADAPTERS,
+                        "options": {},
+                    }
+                ],
+            )
+        )
+
+    assert resp.status_code == 400, resp.data
+    assert "no such adapter in this organization" in str(resp.data)
+    assert stolen_role in str(resp.data)
+    assert not m_dispatch.called, "an unowned adapter must never reach the executor"
+    assert not m_stage.called, "and nothing may be staged or billed first"
+
+
+@mock.patch.object(ev, "dispatch_job")
+@mock.patch.object(AgentKVJob, "save", autospec=True)
+@mock.patch.object(ev, "stage_input")
+@mock.patch.object(ev, "AgentKVConcurrencyLimiter")
+@mock.patch.object(ev, "check_key_rate", return_value=True)
+@mock.patch.object(ev, "get_plugin", return_value=_plugin_with_gate())
+@mock.patch.object(AgentKVKey, "objects")
+def test_an_adapter_of_the_wrong_type_is_refused(
+    m_keys, m_plugin, m_rate, m_limiter, m_stage, m_save, m_dispatch
+):
+    """An X2TEXT id in the `llm` slot resolves fine and then fails deep inside
+    the engine as a provider error -- which reads like a broken model rather
+    than two swapped UUIDs. Caught at submit instead.
+    """
+    key = kv_key()
+    m_keys.get.return_value = key
+    m_limiter.check_and_acquire.return_value = True
+    m_save.side_effect = _stamp_created_at
+
+    with _adapters_owned_by(key.organization_id, types={"llm": "X2TEXT"}):
+        resp = ev.SubmitView.as_view()(
+            _real_multipart_post(
+                [
+                    {
+                        "name": "table",
+                        "keys": {"target_table": "Rent rolls"},
+                        "adapters": _TABLE_ADAPTERS,
+                        "options": {},
+                    }
+                ],
+            )
+        )
+
+    assert resp.status_code == 400, resp.data
+    assert "expected 'LLM'" in str(resp.data)
+    assert not m_dispatch.called
+
+
+@mock.patch.object(ev, "dispatch_job")
+@mock.patch.object(AgentKVJob, "save", autospec=True)
+@mock.patch.object(ev, "stage_input")
+@mock.patch.object(ev, "AgentKVConcurrencyLimiter")
+@mock.patch.object(ev, "check_key_rate", return_value=True)
+@mock.patch.object(ev, "get_plugin", return_value=_plugin_with_gate())
+@mock.patch.object(AgentKVKey, "objects")
+def test_the_refusal_does_not_reveal_whether_the_adapter_exists(
+    m_keys, m_plugin, m_rate, m_limiter, m_stage, m_save, m_dispatch
+):
+    """"Not yours" and "no such adapter" must read identically.
+
+    Telling them apart turns the endpoint into an oracle for which adapter
+    UUIDs are real in other organizations.
+    """
+    key = kv_key()
+    m_keys.get.return_value = key
+    m_limiter.check_and_acquire.return_value = True
+    m_save.side_effect = _stamp_created_at
+
+    bodies = []
+    # First: the id exists but belongs to someone else. Second: it exists
+    # nowhere. The stand-in cannot distinguish them either, which is the point.
+    for missing in ([_TABLE_ADAPTERS["llm"]], [_TABLE_ADAPTERS["llm"]]):
+        with _adapters_owned_by(key.organization_id, missing=missing):
+            resp = ev.SubmitView.as_view()(
+                _real_multipart_post(
+                    [
+                        {
+                            "name": "table",
+                            "keys": {"target_table": "Rent rolls"},
+                            "adapters": _TABLE_ADAPTERS,
+                            "options": {},
+                        }
+                    ],
+                )
+            )
+        bodies.append(str(resp.data))
+
+    assert bodies[0] == bodies[1]
