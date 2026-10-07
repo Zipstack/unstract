@@ -106,36 +106,52 @@ DEFAULT_MAX_TOTAL_BYTES = 14 * 1024 * 1024
 
 _PAGE_NAME_RE = re.compile(ImageOutputConstants.PAGE_NUMBER_REGEX)
 
-# Platform override for the page cap. Defined here — next to the default and
-# the enforcement — so the two sites that need it agree: the extraction-time
-# pre-check (adapter, before the per-page-billed conversion is submitted) and
-# the answer-time enforcement (cloud consumer plugin).
+# Platform overrides for the two limits. Defined here — next to the defaults
+# and the enforcement — so every site that needs them agrees: the
+# extraction-time checks (adapter: the page-count pre-check before the
+# per-page-billed conversion is submitted, and the byte check right after
+# it) and the answer-time enforcement (cloud consumer plugin). Emergency
+# overrides only; see DEFAULT_PAGE_CAP for why the values live in this file.
 PAGE_CAP_ENV = "VLM_IMAGE_ANSWER_PAGE_CAP"
+MAX_TOTAL_MB_ENV = "VLM_IMAGE_ANSWER_MAX_TOTAL_MB"
 
 
-def configured_page_cap() -> int:
-    """The effective page cap: ``PAGE_CAP_ENV`` or ``DEFAULT_PAGE_CAP``.
+def _positive_int_env(name: str, default: int, *, scale: int = 1) -> int:
+    """Parse a positive-integer env override, logging and defaulting otherwise.
 
-    An absent variable is the normal case and returns the default silently.
+    An absent variable is the normal case and returns ``default`` silently.
     A present-but-unusable value is an operator mistake: log it and fall back
-    rather than failing extraction over a malformed env var.
+    rather than failing extraction over a malformed env var. ``scale``
+    converts the parsed value into the unit of ``default`` (e.g. MB → bytes).
     """
-    raw = os.getenv(PAGE_CAP_ENV)
+    raw = os.getenv(name)
     if raw is None:
-        return DEFAULT_PAGE_CAP
+        return default
     try:
         value = int(raw)
         if value <= 0:
             raise ValueError("must be positive")
     except (TypeError, ValueError):
-        logger.warning(
-            "Invalid %s value %r; using default %d",
-            PAGE_CAP_ENV,
-            raw,
-            DEFAULT_PAGE_CAP,
-        )
-        return DEFAULT_PAGE_CAP
-    return value
+        logger.warning("Invalid %s value %r; using default %d", name, raw, default)
+        return default
+    return value * scale
+
+
+def configured_page_cap() -> int:
+    """The effective page cap: ``PAGE_CAP_ENV`` or ``DEFAULT_PAGE_CAP``."""
+    return _positive_int_env(PAGE_CAP_ENV, DEFAULT_PAGE_CAP)
+
+
+def configured_max_total_bytes() -> int:
+    """The effective byte budget: ``MAX_TOTAL_MB_ENV`` (in MB) or the default."""
+    return _positive_int_env(MAX_TOTAL_MB_ENV, DEFAULT_MAX_TOTAL_BYTES, scale=1024 * 1024)
+
+
+class _UseConfigured:
+    """Sentinel type: read the limit from the environment at call time."""
+
+
+USE_CONFIGURED = _UseConfigured()
 
 
 class PageImageLoadError(Exception):
@@ -298,8 +314,8 @@ def load_page_images(
     fs: FileStorage,
     page_store_dir: str,
     *,
-    page_cap: int | None = DEFAULT_PAGE_CAP,
-    max_total_bytes: int | None = DEFAULT_MAX_TOTAL_BYTES,
+    page_cap: int | None | _UseConfigured = USE_CONFIGURED,
+    max_total_bytes: int | None | _UseConfigured = USE_CONFIGURED,
 ) -> list[LoadedPageImage]:
     """Discover, cap-check, read, and base64-encode all page images.
 
@@ -309,23 +325,29 @@ def load_page_images(
     remaining budget plus one byte, so no read — not even of a single
     pathological object — can ever allocate more than the budget in
     worker memory, regardless of the object's actual size or whether the
-    backend exposes size metadata. ``None`` disables either limit.
+    backend exposes size metadata. ``None`` disables either limit. Left
+    unset, each limit is read from ``configured_page_cap()`` /
+    ``configured_max_total_bytes()`` — the same values the extraction-time
+    checks use, so a document that passed indexing is not rejected here.
 
     Raises:
         PageCapExceededError: more pages than ``page_cap`` allows.
         PageImageSetTooLargeError: pages total more than ``max_total_bytes``.
         (plus the discovery errors from ``discover_page_images``)
     """
+    if isinstance(page_cap, _UseConfigured):
+        page_cap = configured_page_cap()
+    if isinstance(max_total_bytes, _UseConfigured):
+        max_total_bytes = configured_max_total_bytes()
     discovered = discover_page_images(fs, page_store_dir)
     if page_cap is not None and len(discovered) > page_cap:
         raise PageCapExceededError(
-            f"Document exceeds the {page_cap}-page limit for image output "
-            f"mode ({len(discovered)} pages found). Image mode answers a "
-            "prompt in one request containing every page image, so a larger "
-            "document cannot be answered. Split the document, or extract it "
-            "in a text output mode instead. (This limit is set by the "
-            "platform via VLM_IMAGE_ANSWER_PAGE_CAP — it is not the "
-            "adapter's 'pages to extract' setting.)",
+            "This document has too many pages for image output mode. It "
+            f"has {len(discovered)} pages, and the limit is {page_cap} "
+            "because every page is sent to the LLM in one request. Split "
+            "the document into smaller files, or use a text output mode "
+            "instead. (The 'Pages to extract' setting does not apply in "
+            "image output mode.)",
             page_store_dir=page_store_dir,
             page_count=len(discovered),
             page_cap=page_cap,
@@ -360,13 +382,13 @@ def load_page_images(
             # Stop before encoding/retaining more — the page cap bounds the
             # count, this bounds the payload.
             raise PageImageSetTooLargeError(
-                f"Page images total more than "
-                f"{max_total_bytes // (1024 * 1024)}MB by page {page_number} "
-                f"of {len(discovered)} — larger than an LLM provider accepts "
-                "in one request, so this document cannot be answered in "
-                "image mode however many pages it has. Split the document, "
-                "or extract it in a text output mode instead. (This budget "
-                "is set by the platform via VLM_IMAGE_ANSWER_MAX_TOTAL_MB.)",
+                "This document is too large for image output mode. Its "
+                "page images go over the "
+                f"{max_total_bytes // (1024 * 1024)} MB limit at page "
+                f"{page_number} of {len(discovered)}, and image mode has to "
+                "send every page to the LLM in one request. Split the "
+                "document into smaller files, or use a text output mode "
+                "instead.",
                 page_store_dir=page_store_dir,
                 total_bytes=total_bytes,
                 max_total_bytes=max_total_bytes,

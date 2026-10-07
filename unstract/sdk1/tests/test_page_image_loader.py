@@ -114,13 +114,14 @@ class TestPageCap:
         err = excinfo.value
         assert err.page_count == 5
         assert err.page_cap == 4
-        assert "exceeds the 4-page limit" in str(err)
-        # Names the platform knob, and explicitly rules out the adapter's
-        # "pages to extract" setting — pointing at that one sent a tester
-        # hunting through a field they had never set (UN-2646 follow-up).
-        assert "VLM_IMAGE_ANSWER_PAGE_CAP" in str(err)
-        assert "not the adapter's 'pages to extract' setting" in str(err)
-        assert "Reduce the page range" not in str(err)
+        msg = str(err)
+        assert "too many pages for image output mode" in msg
+        assert "It has 5 pages, and the limit is 4" in msg
+        # Rules out the adapter's "Pages to extract" setting — pointing at it
+        # sent a tester hunting through a field they had never set (UN-2646
+        # follow-up). The operator-only env var is not shown to users.
+        assert "'Pages to extract' setting does not apply" in msg
+        assert "VLM_IMAGE_ANSWER_PAGE_CAP" not in msg
 
     def test_cap_check_precedes_reads(self) -> None:
         # Fail-fast: no image bytes are read for an oversized document.
@@ -271,8 +272,7 @@ class TestByteBudget:
         # the recorded total is budget + 1, and page 3 was never touched.
         assert err.total_bytes == 51
         assert err.max_total_bytes == 50
-        assert "VLM_IMAGE_ANSWER_MAX_TOTAL_MB" in str(err)
-        assert "pages to extract" not in str(err)
+        assert "too large for image output mode" in str(err)
 
     def test_single_oversized_page_reads_are_bounded(self) -> None:
         # A single pathological object must never be fully allocated: each
@@ -350,14 +350,39 @@ class TestConfiguredPageCap:
         assert configured_page_cap() == DEFAULT_PAGE_CAP
 
 
+class TestLoaderReadsConfiguredLimits:
+    """Left unset, the loader's limits come from the env, not fixed defaults."""
+
+    def test_default_page_cap_follows_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv(PAGE_CAP_ENV, "2")
+        fs = _store({1: b"a", 2: b"b", 3: b"c"})
+        with pytest.raises(PageCapExceededError):
+            load_page_images(fs, _DIR)
+
+    def test_explicit_none_still_disables(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv(PAGE_CAP_ENV, "2")
+        monkeypatch.setenv("VLM_IMAGE_ANSWER_MAX_TOTAL_MB", "1")
+        fs = _store({1: b"a", 2: b"b", 3: b"c" * (2 * 1024 * 1024)})
+        assert len(load_page_images(fs, _DIR, page_cap=None, max_total_bytes=None)) == 3
+
+    def test_explicit_value_wins_over_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv(PAGE_CAP_ENV, "2")
+        fs = _store({1: b"a", 2: b"b", 3: b"c"})
+        assert len(load_page_images(fs, _DIR, page_cap=3)) == 3
+
+
 class TestByteBudgetMessage:
-    def test_over_budget_names_the_platform_knob(self) -> None:
-        fs = _store({1: b"x" * 2048, 2: b"y" * 2048})
+    def test_over_budget_message_is_user_facing(self) -> None:
+        fs = _store({1: b"x" * 700_000, 2: b"y" * 700_000, 3: b"z"})
         with pytest.raises(PageImageSetTooLargeError) as excinfo:
-            load_page_images(fs, _DIR, page_cap=None, max_total_bytes=1024)
+            load_page_images(fs, _DIR, page_cap=None, max_total_bytes=1024 * 1024)
         msg = str(excinfo.value)
-        assert "VLM_IMAGE_ANSWER_MAX_TOTAL_MB" in msg
-        assert "pages to extract" not in msg
+        assert msg.startswith("This document is too large for image output mode.")
+        assert "go over the 1 MB limit at page 2 of 3" in msg
+        assert "Split the document into smaller files" in msg
+        # Operator-only knob and the confusing phrasing are gone.
+        assert "VLM_IMAGE_ANSWER_MAX_TOTAL_MB" not in msg
+        assert "however many pages" not in msg
 
 
 class TestCapMatchesBudget:
