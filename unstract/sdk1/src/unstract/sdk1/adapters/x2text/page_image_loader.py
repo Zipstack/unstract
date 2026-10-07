@@ -44,9 +44,27 @@ from unstract.sdk1.file_storage import FileStorage
 
 logger = logging.getLogger(__name__)
 
-# Effective value is supplied by the caller (platform-configured); this is
-# only the fallback. Above it a document is rejected rather than windowed,
-# because this path answers in a single call.
+# THE single source of truth for the image-mode page cap. Above it a document
+# is rejected rather than windowed, because this path answers in a single
+# call. It is read through configured_page_cap() by both the extraction-time
+# pre-check and the answer-time consumer, so they cannot disagree.
+#
+# Keep the value HERE. PAGE_CAP_ENV exists only as an emergency override and
+# is deliberately not set in any Helm chart: the cap is coupled to the byte
+# budget below, and TestCapMatchesBudget can only check the pair when both
+# live in this file. A deployment-level override silently bypasses that
+# check — e.g. raising the cap to 300 in a chart while the budget still holds
+# ~90 pages reopens the billed-then-rejected window described below.
+#
+# RAISING THIS ALSO NEEDS LLMWHISPERER CHANGES. Image mode's pages come from
+# LLMWhisperer's /pdf-to-images endpoint, which:
+#   - hardcodes a 999-page maximum (PDFToImagesConverter.MAX_PAGES, tied to
+#     the page_001..page_999 file naming) with no env override — a cap above
+#     999 here still fails there, with LLMWhisperer's less specific error;
+#   - bills per converted page, so a document the cap admits but the byte
+#     budget then rejects is still charged for every page.
+# Coordinate any increase with the LLMWhisperer service, and raise the byte
+# budget and this cap together (or add windowing) — never the cap alone.
 #
 # 90 is derived from DEFAULT_MAX_TOTAL_BYTES below, not chosen independently:
 # at the ~165-379KB per page measured from LLMWhisperer's 150 DPI renders, a
@@ -77,6 +95,11 @@ DEFAULT_PAGE_CAP = 90
 # let the provider reject the request before this check ever fires, which
 # costs the caller a full read + encode and surfaces a raw provider error
 # instead of the actionable one below.
+#
+# Like DEFAULT_PAGE_CAP above, keep the value HERE rather than in a Helm
+# chart: the two are a coupled pair, checked together by
+# TestCapMatchesBudget. VLM_IMAGE_ANSWER_MAX_TOTAL_MB is an emergency
+# override only.
 DEFAULT_MAX_TOTAL_BYTES = 14 * 1024 * 1024
 
 _PAGE_NAME_RE = re.compile(ImageOutputConstants.PAGE_NUMBER_REGEX)
