@@ -38,6 +38,7 @@ from unstract.sdk1.adapters.x2text.llm_whisperer_v2.src.constants import (
 from unstract.sdk1.adapters.x2text.llm_whisperer_v2.src.dto import (
     WhispererRequestParams,
 )
+from unstract.sdk1.adapters.x2text.page_image_loader import configured_page_cap
 from unstract.sdk1.constants import MimeType
 from unstract.sdk1.exceptions import FileOperationError
 from unstract.sdk1.file_storage import FileStorage, FileStorageProvider
@@ -908,6 +909,25 @@ class LLMWhispererHelper:
             fs = FileStorage(provider=FileStorageProvider.LOCAL)
 
         input_bytes = fs.read(path=input_file_path, mode="rb")
+
+        # Reject an over-cap document BEFORE submitting: pdf-to-images bills
+        # per converted page, and the answer-time cap would reject the result
+        # anyway — so without this check the caller pays to convert a document
+        # that can never be answered. Best-effort by design: a PDF whose count
+        # cannot be read locally falls through and is caught at answer time.
+        expected_page_count = LLMWhispererHelper._safe_pdf_page_count(input_bytes)
+        page_cap = configured_page_cap()
+        if expected_page_count is not None and expected_page_count > page_cap:
+            raise ExtractorError(
+                f"Document exceeds the {page_cap}-page limit for image output "
+                f"mode ({expected_page_count} pages). Image mode answers a "
+                "prompt in one request containing every page image, so a "
+                "larger document cannot be answered. Split the document, or "
+                "select a text output mode instead. Nothing was converted or "
+                "billed.",
+                status_code=400,
+            )
+
         whisper_hash = LLMWhispererHelper.submit_pdf_to_images(
             config,
             BytesIO(input_bytes),
@@ -921,9 +941,8 @@ class LLMWhispererHelper:
         )
 
         # Verify the returned image count against the input PDF's own page count
-        # (derived locally) BEFORE persisting, so nothing is written on a
-        # truncated/over-produced archive.
-        expected_page_count = LLMWhispererHelper._safe_pdf_page_count(input_bytes)
+        # (derived locally above, before submission) BEFORE persisting, so
+        # nothing is written on a truncated/over-produced archive.
         LLMWhispererHelper.verify_page_count(pages, expected_page_count)
 
         page_store_dir = LLMWhispererHelper.build_page_store_dir(

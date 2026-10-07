@@ -12,12 +12,14 @@ from pathlib import Path
 import pytest
 from unstract.sdk1.adapters.x2text.page_image_loader import (
     DEFAULT_PAGE_CAP,
+    PAGE_CAP_ENV,
     LoadedPageImage,
     PageCapExceededError,
     PageImageSetIncompleteError,
     PageImageSetTooLargeError,
     PageImagesNotFoundError,
     build_vision_message_content,
+    configured_page_cap,
     discover_page_images,
     load_page_images,
 )
@@ -112,7 +114,13 @@ class TestPageCap:
         err = excinfo.value
         assert err.page_count == 5
         assert err.page_cap == 4
-        assert "exceeds 4 pages" in str(err)
+        assert "exceeds the 4-page limit" in str(err)
+        # Names the platform knob, and explicitly rules out the adapter's
+        # "pages to extract" setting — pointing at that one sent a tester
+        # hunting through a field they had never set (UN-2646 follow-up).
+        assert "VLM_IMAGE_ANSWER_PAGE_CAP" in str(err)
+        assert "not the adapter's 'pages to extract' setting" in str(err)
+        assert "Reduce the page range" not in str(err)
 
     def test_cap_check_precedes_reads(self) -> None:
         # Fail-fast: no image bytes are read for an oversized document.
@@ -263,7 +271,8 @@ class TestByteBudget:
         # the recorded total is budget + 1, and page 3 was never touched.
         assert err.total_bytes == 51
         assert err.max_total_bytes == 50
-        assert "pages to extract" in str(err)
+        assert "VLM_IMAGE_ANSWER_MAX_TOTAL_MB" in str(err)
+        assert "pages to extract" not in str(err)
 
     def test_single_oversized_page_reads_are_bounded(self) -> None:
         # A single pathological object must never be fully allocated: each
@@ -306,9 +315,46 @@ class TestByteBudget:
         fs = _store({1: b"a" * 100})
         assert len(load_page_images(fs, _DIR, max_total_bytes=None)) == 1
 
-    def test_default_budget_is_generous(self) -> None:
+    def test_default_budget_fits_the_strictest_provider_request_limit(
+        self,
+    ) -> None:
+        # Bedrock and Gemini-inline both cap a request at 20MB; base64
+        # inflates the payload ~33%, so the raw budget must leave room for
+        # that. A budget above this lets the provider reject the request
+        # before our own check fires.
         from unstract.sdk1.adapters.x2text.page_image_loader import (
             DEFAULT_MAX_TOTAL_BYTES,
         )
 
-        assert DEFAULT_MAX_TOTAL_BYTES == 50 * 1024 * 1024
+        assert DEFAULT_MAX_TOTAL_BYTES == 14 * 1024 * 1024
+        assert DEFAULT_MAX_TOTAL_BYTES * 4 / 3 < 20 * 1024 * 1024
+
+
+class TestConfiguredPageCap:
+    """The env override shared by the extraction pre-check and the consumer."""
+
+    def test_absent_env_uses_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv(PAGE_CAP_ENV, raising=False)
+        assert configured_page_cap() == DEFAULT_PAGE_CAP
+
+    def test_env_overrides_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv(PAGE_CAP_ENV, "42")
+        assert configured_page_cap() == 42
+
+    @pytest.mark.parametrize("raw", ["not-a-number", "0", "-5", ""])
+    def test_unusable_value_falls_back(
+        self, raw: str, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # An operator typo must not fail extraction outright.
+        monkeypatch.setenv(PAGE_CAP_ENV, raw)
+        assert configured_page_cap() == DEFAULT_PAGE_CAP
+
+
+class TestByteBudgetMessage:
+    def test_over_budget_names_the_platform_knob(self) -> None:
+        fs = _store({1: b"x" * 2048, 2: b"y" * 2048})
+        with pytest.raises(PageImageSetTooLargeError) as excinfo:
+            load_page_images(fs, _DIR, page_cap=None, max_total_bytes=1024)
+        msg = str(excinfo.value)
+        assert "VLM_IMAGE_ANSWER_MAX_TOTAL_MB" in msg
+        assert "pages to extract" not in msg
