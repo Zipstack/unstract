@@ -8,6 +8,7 @@ from typing import Any
 
 from account_v2.constants import Common
 from account_v2.models import User
+from adapter_processor_v2.image_output_gating import LLMWHISPERER_ADAPTER_PREFIX
 from adapter_processor_v2.models import AdapterInstance, UserDefaultAdapter
 from django.conf import settings
 from django.db import transaction
@@ -1433,7 +1434,7 @@ class PromptStudioHelper:
             return
         try:
             adapter_id = str(getattr(x2text, "adapter_id", "") or "")
-            if not adapter_id.startswith("llmwhisperer|"):
+            if not adapter_id.startswith(LLMWHISPERER_ADAPTER_PREFIX):
                 return
             metadata = x2text.metadata or {}
             output[TSPKeys.X2TEXT_OUTPUT_MODE] = metadata.get(
@@ -1455,37 +1456,47 @@ class PromptStudioHelper:
         if x2text is None:
             return False
         adapter_id = str(getattr(x2text, "adapter_id", "") or "")
-        if not adapter_id.startswith("llmwhisperer|"):
+        if not adapter_id.startswith(LLMWHISPERER_ADAPTER_PREFIX):
             return False
-        metadata = x2text.metadata or {}
-        return (
-            metadata.get(ImageOutputConstants.OUTPUT_MODE)
-            == ImageOutputConstants.IMAGE_MODE
-        )
+        return (x2text.metadata or {}).get(
+            ImageOutputConstants.OUTPUT_MODE
+        ) == ImageOutputConstants.IMAGE_MODE
 
     @staticmethod
-    def validate_upload_page_count_for_image_mode(
-        profile_manager: ProfileManager | None, file_data: Any, file_type: str
-    ) -> None:
+    def uploads_use_image_output_mode(profile_manager: ProfileManager | None) -> bool:
+        """Whether uploads to a project are checked against image-mode limits.
+
+        True when the project's default profile is LLMWhisperer in image mode:
+        an upload isn't tied to an output mode, and the same document is fine
+        in a text mode. Fails open — an unreadable adapter config (e.g. metadata
+        encrypted with an old key) must not block uploads; extraction still
+        enforces the limits.
+        """
+        try:
+            return PromptStudioHelper._is_image_output_mode(profile_manager)
+        except Exception:
+            logger.exception("Could not read the default profile's output mode")
+            return False
+
+    @staticmethod
+    def validate_upload_page_count_for_image_mode(file_data: Any, file_type: str) -> None:
         """Reject, at upload, a PDF with more pages than image mode can answer.
 
-        Image mode sends every page to the LLM in one request, so a document
-        over the page cap can never be answered — and converting it would be
-        billed. Catching it at upload means the user never builds prompts
-        around a document that will fail at indexing.
+        Call only when ``uploads_use_image_output_mode`` is True. Image mode
+        sends every page to the LLM in one request, so a document over the
+        page cap can never be answered — and converting it would be billed.
+        Catching it at upload means the user never builds prompts around a
+        document that will fail at indexing.
 
-        Applies only when the project's default profile is in image mode: an
-        upload isn't tied to an output mode, and the same document is fine in
-        a text mode. Uses the SDK's own page counter and cap, so a document
-        accepted here also passes the extraction-time pre-check. A PDF whose
-        page count can't be read is let through; extraction re-checks it.
+        Uses the SDK's own page counter and cap, so a document accepted here
+        also passes the extraction-time pre-check. The file is read in place,
+        not copied into memory. A PDF whose page count can't be read is let
+        through; extraction re-checks it.
         """
         if file_type != "application/pdf":
             return
-        if not PromptStudioHelper._is_image_output_mode(profile_manager):
-            return
         page_cap = configured_page_cap()
-        page_count = LLMWhispererHelper._safe_pdf_page_count(file_data.read())
+        page_count = LLMWhispererHelper.pdf_page_count(file_data)
         file_data.seek(0)
         if page_count is None or page_count <= page_cap:
             return
@@ -2781,7 +2792,7 @@ class PromptStudioHelper:
                     EnvHelper.get_storage(
                         storage_type=StorageType.PERMANENT,
                         env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,
-                    ).rm(extract_file_path, recursive=False)
+                    ).rm_exact(extract_file_path)
                 except Exception:
                     logger.exception(
                         f"Failed to remove {extract_file_path}; a retry may "

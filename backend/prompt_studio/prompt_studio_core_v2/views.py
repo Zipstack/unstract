@@ -1065,28 +1065,30 @@ class PromptStudioCoreView(
             tool__in=CustomTool.objects.all()
         ).count()
 
+        # Detect MIME from file content (not browser-supplied header)
+        file_types = []
+        for uploaded_file in uploaded_files:
+            file_types.append(magic.from_buffer(uploaded_file.read(2048), mime=True))
+            uploaded_file.seek(0)
+
         # Image mode can't answer a PDF over the page cap: reject it here,
-        # before anything is stored, rather than at indexing. Every file is
-        # checked first so a multi-file upload stores all or nothing.
+        # rather than at indexing. Every file is checked before any is stored,
+        # so a page-cap rejection never leaves part of the upload behind.
         try:
             default_profile = ProfileManager.get_default_llm_profile(custom_tool)
         except DefaultProfileError:
             default_profile = None
-        for uploaded_file in uploaded_files:
-            file_type = magic.from_buffer(uploaded_file.read(2048), mime=True)
-            uploaded_file.seek(0)
-            PromptStudioHelper.validate_upload_page_count_for_image_mode(
-                default_profile, uploaded_file, file_type
-            )
+        if PromptStudioHelper.uploads_use_image_output_mode(default_profile):
+            for uploaded_file, file_type in zip(uploaded_files, file_types, strict=True):
+                PromptStudioHelper.validate_upload_page_count_for_image_mode(
+                    uploaded_file, file_type
+                )
 
         documents = []
-        for uploaded_file in uploaded_files:
+        for uploaded_file, file_type in zip(uploaded_files, file_types, strict=True):
             # Store file
             file_name = uploaded_file.name
             file_data = uploaded_file
-            # Detect MIME from file content (not browser-supplied header)
-            file_type = magic.from_buffer(uploaded_file.read(2048), mime=True)
-            uploaded_file.seek(0)
 
             if file_converter_plugin and file_type != "application/pdf":
                 file_converter_service = file_converter_plugin["service_class"]()

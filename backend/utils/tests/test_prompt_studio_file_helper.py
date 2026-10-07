@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import io
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 import pytest
 
@@ -15,7 +16,8 @@ from utils.file_storage.helpers.streaming_writer import (
 
 class FakeHandle:
     """Stand-in for an fsspec file handle. Records writes; lets tests
-    inject failures via ``write_side_effect`` / ``close_side_effect``."""
+    inject failures via ``write_side_effect`` / ``close_side_effect``.
+    """
 
     def __init__(
         self,
@@ -109,9 +111,7 @@ def storage(handle: FakeHandle) -> FakeStorage:
 def test_bytes_input_uses_single_shot_write(storage: FakeStorage) -> None:
     write_streaming(storage, "/p/file.pdf", b"abc")
 
-    assert storage.write_calls == [
-        {"path": "/p/file.pdf", "mode": "wb", "data": b"abc"}
-    ]
+    assert storage.write_calls == [{"path": "/p/file.pdf", "mode": "wb", "data": b"abc"}]
     assert storage.fs.open_calls == []
 
 
@@ -210,9 +210,7 @@ def test_rm_failure_does_not_mask_original_error(
     failing = FakeHandle(write_side_effect=write_boom)
     storage.fs = FakeFs(failing, rm_side_effect=rm_boom)
 
-    with caplog.at_level(
-        "WARNING", logger="utils.file_storage.helpers.streaming_writer"
-    ):
+    with caplog.at_level("WARNING", logger="utils.file_storage.helpers.streaming_writer"):
         with pytest.raises(RuntimeError, match="primary failure"):
             write_streaming(storage, "/p/file.pdf", UploadedFileLike(b"X" * 8, 4))
 
@@ -335,17 +333,21 @@ class _DeleteFs:
     def exists(self, path: str) -> bool:
         return path in self.existing
 
-    def rm(self, path: str) -> None:
+    def rm_exact(self, path: str) -> None:
         if path not in self.existing:
             raise FileNotFoundError(path)
         self.existing.remove(path)
         self.removed.append(path)
 
+    def rm(self, path: str, recursive: bool = True) -> None:
+        # Paths here carry the document's name; rm() would glob it on GCS/S3.
+        raise AssertionError(f"delete_for_ide must use rm_exact, not rm: {path}")
+
     def glob(self, pattern: str) -> list[str]:
         return []
 
 
-def _delete_with(fs: _DeleteFs):
+def _delete_with(fs: _DeleteFs, file_name: str = "invoice.pdf", base: str = "/base"):
     from unittest.mock import patch
 
     from utils.file_storage.helpers.prompt_studio_file_helper import (
@@ -358,11 +360,11 @@ def _delete_with(fs: _DeleteFs):
         patch.object(
             PromptStudioFileHelper,
             "get_or_create_prompt_studio_subdirectory",
-            return_value="/base",
+            return_value=base,
         ),
     ):
         return PromptStudioFileHelper.delete_for_ide(
-            org_id="org", user_id="user", tool_id="tool", file_name="invoice.pdf"
+            org_id="org", user_id="user", tool_id="tool", file_name=file_name
         )
 
 
@@ -380,3 +382,36 @@ def test_delete_for_ide_is_idempotent_when_the_source_is_already_gone() -> None:
 
     assert _delete_with(fs) is True
     assert fs.removed == []
+
+
+# --- delete_for_ide: names with glob characters ---------------------------
+#
+# The document's name is part of every path deleted here. fsspec reads
+# "[Final]" as a character class: on GCS/S3 rm("Report [Final].pdf") misses
+# itself and deletes "Report F.pdf" instead (seen on MinIO), and the related
+# files glob matched the wrong document's extract files the same way.
+
+
+def test_delete_for_ide_leaves_a_glob_matching_document_alone(tmp_path) -> None:  # noqa: ANN001
+    from unstract.sdk1.file_storage import FileStorage, FileStorageProvider
+
+    storage = FileStorage(provider=FileStorageProvider.LOCAL)
+    for rel in (
+        "Report [Final].pdf",
+        "extract/Report [Final].txt",
+        "extract/metadata/Report [Final].json",
+        "Report F.pdf",  # what "[Final]" matches as a glob
+        "extract/Report F.txt",
+        "extract/metadata/Report F.json",
+    ):
+        (tmp_path / rel).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / rel).write_bytes(b"x")
+
+    assert _delete_with(storage, "Report [Final].pdf", str(tmp_path)) is True
+
+    left = sorted(str(p.relative_to(tmp_path)) for p in tmp_path.rglob("*.*"))
+    assert left == [
+        "Report F.pdf",
+        "extract/Report F.txt",
+        "extract/metadata/Report F.json",
+    ]

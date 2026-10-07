@@ -6,7 +6,7 @@ import zipfile
 import zlib
 from io import BytesIO
 from pathlib import Path
-from typing import Any
+from typing import Any, BinaryIO
 
 import requests
 from requests import Response
@@ -696,8 +696,13 @@ class LLMWhispererHelper:
         return pages
 
     @staticmethod
-    def _safe_pdf_page_count(pdf_bytes: bytes) -> int | None:
-        """Page count of the input PDF, or None if it cannot be read.
+    def pdf_page_count(source: bytes | BinaryIO) -> int | None:
+        """Page count of a PDF, or None if it cannot be read.
+
+        ``source`` is the PDF's bytes or a seekable binary stream; a stream is
+        read in place rather than copied into memory. This is the counter the
+        image-mode page-cap checks use, so callers outside the SDK (e.g. an
+        upload-time check) agree with the extraction-time pre-check.
 
         Best-effort: the extraction must not fail just because the count could
         not be derived locally, so any error returns None (and the caller
@@ -706,11 +711,16 @@ class LLMWhispererHelper:
         try:
             import pdfplumber  # noqa: PLC0415 - lazy: only image mode needs it
 
-            with pdfplumber.open(BytesIO(pdf_bytes)) as pdf:
+            stream = BytesIO(source) if isinstance(source, bytes | bytearray) else source
+            with pdfplumber.open(stream) as pdf:
                 return len(pdf.pages)
         except Exception as e:
             logger.warning("Image mode: unable to read input PDF page count: %s", e)
             return None
+
+    @staticmethod
+    def _safe_pdf_page_count(pdf_bytes: bytes) -> int | None:
+        return LLMWhispererHelper.pdf_page_count(pdf_bytes)
 
     @staticmethod
     def verify_page_count(

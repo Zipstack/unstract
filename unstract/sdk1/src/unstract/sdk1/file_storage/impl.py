@@ -219,7 +219,10 @@ class FileStorage(FileStorageInterface):
             reverse=True,
         )
         for file_path in files:
-            self.fs.rm_file(file_path)
+            try:
+                self.fs.rm_file(file_path)
+            except FileNotFoundError:
+                pass  # already gone (concurrent delete, stale listing)
         for dir_path in [*dirs, path]:
             try:
                 self.fs.rmdir(dir_path)
