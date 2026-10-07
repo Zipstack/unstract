@@ -10,8 +10,9 @@ class ExceptionHelper:
         Returns:
             str: Extracted and stripped error details as string
         """
-        error_message = str(e)
-        error_code, error_details = eval(error_message)
+        # Drivers raise these as (error_code, error_details); read the args
+        # directly rather than evaluating the server-supplied message.
+        error_details = e.args[1] if len(e.args) >= 2 else str(e)
         if isinstance(error_details, bytes):
             error_details = error_details.decode("utf-8")
         return str(error_details).strip()
