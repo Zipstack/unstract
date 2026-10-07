@@ -141,7 +141,12 @@ def test_closes_failed_generator_before_retrying() -> None:
             closed.append(True)
 
     attempts = iter([_Gen(fail=True), _Gen(fail=False)])
-    with patch.object(retry_utils.time, "sleep"):
+
+    def _sleep(_: float) -> None:
+        # The failed attempt is released before the backoff, not after.
+        assert closed == [True]
+
+    with patch.object(retry_utils.time, "sleep", side_effect=_sleep):
         result = collect_with_retry(
             lambda: next(attempts),
             max_retries=1,
@@ -149,4 +154,148 @@ def test_closes_failed_generator_before_retrying() -> None:
             is_content=_is_content,
         )
     assert result == ["c1"]
-    assert closed == [True]
+    # Both attempts: the failed one and the successful one (UN-4237).
+    assert closed == [True, True]
+
+
+# ── Releasing the HTTP response (UN-4237) ────────────────────────────────────
+#
+# A stream left open is closed by the garbage collector, possibly while the
+# thread holds httpcore's non-reentrant pool lock, which deadlocks the worker.
+# LiteLLM's sync stream wrapper has no ``close()`` and stops before the HTTP
+# body ends, so every stream must be closed explicitly, through the handles
+# the wrapper holds. ``test_stream_connection_release.py`` covers this against
+# a real socket.
+
+
+class _Closable:
+    def __init__(self, name: str, log: list[str]) -> None:
+        self._name = name
+        self._log = log
+
+    def close(self) -> None:
+        self._log.append(self._name)
+
+
+class _ProviderIterator:
+    """Shaped like litellm's ``ModelResponseIterator``."""
+
+    def __init__(self, log: list[str]) -> None:
+        self.streaming_response = _Closable("lines", log)
+        self.response = _Closable("response", log)
+
+
+class _Wrapper:
+    """Shaped like litellm's sync ``CustomStreamWrapper``: no ``close()``."""
+
+    def __init__(self, items: list[str | Exception], log: list[str]) -> None:
+        self._items = items
+        self.completion_stream = _ProviderIterator(log)
+
+    def __iter__(self) -> Iterator[str]:
+        for item in self._items:
+            if isinstance(item, Exception):
+                raise item
+            yield item
+
+
+def test_close_stream_reaches_the_response_behind_a_wrapper() -> None:
+    log: list[str] = []
+    retry_utils.close_stream(_Wrapper([], log))
+    assert sorted(log) == ["lines", "response"]
+
+
+def test_close_stream_ignores_none_and_objects_without_close() -> None:
+    retry_utils.close_stream(None)
+    retry_utils.close_stream(iter(["c1"]))
+    retry_utils.close_stream(object())
+
+
+def test_close_stream_never_raises() -> None:
+    class _Broken:
+        def close(self) -> None:
+            raise RuntimeError("already torn down")
+
+    retry_utils.close_stream(_Broken())
+
+
+def test_closes_drained_stream_on_success() -> None:
+    log: list[str] = []
+    result = collect_with_retry(
+        lambda: _Wrapper(["meta", "c1"], log),
+        max_retries=0,
+        retry_predicate=lambda _: True,
+        is_content=_is_content,
+    )
+    assert result == ["meta", "c1"]
+    assert sorted(log) == ["lines", "response"]
+
+
+def test_closes_stream_when_failure_after_content_is_raised() -> None:
+    log: list[str] = []
+    with pytest.raises(TimeoutError):
+        collect_with_retry(
+            lambda: _Wrapper(["c1", TimeoutError()], log),
+            max_retries=2,
+            retry_predicate=lambda _: True,
+            is_content=_is_content,
+        )
+    assert sorted(log) == ["lines", "response"]
+
+
+def test_close_failure_does_not_mask_the_stream_error() -> None:
+    class _Gen:
+        def __iter__(self) -> Iterator[str]:
+            raise ValueError("bad request")
+
+        def close(self) -> None:
+            raise RuntimeError("close failed")
+
+    with pytest.raises(ValueError, match="bad request"):
+        collect_with_retry(
+            _Gen, max_retries=0, retry_predicate=lambda _: False, is_content=_is_content
+        )
+
+
+def test_iter_with_retry_closes_stream_on_success() -> None:
+    log: list[str] = []
+    result = list(
+        retry_utils.iter_with_retry(
+            lambda: _Wrapper(["meta", "c1"], log),
+            max_retries=0,
+            retry_predicate=lambda _: True,
+        )
+    )
+    assert result == ["meta", "c1"]
+    assert sorted(log) == ["lines", "response"]
+
+
+def test_iter_with_retry_closes_stream_when_caller_stops_early() -> None:
+    log: list[str] = []
+    gen = retry_utils.iter_with_retry(
+        lambda: _Wrapper(["c1", "c2"], log),
+        max_retries=0,
+        retry_predicate=lambda _: True,
+    )
+    assert next(gen) == "c1"
+    gen.close()
+    assert sorted(log) == ["lines", "response"]
+
+
+def test_iter_with_retry_closes_failed_attempt_before_backoff() -> None:
+    log: list[str] = []
+    attempts = iter([_Wrapper([TimeoutError()], log), _Wrapper(["c1"], log)])
+
+    def _sleep(_: float) -> None:
+        assert sorted(log) == ["lines", "response"]
+
+    with patch.object(retry_utils.time, "sleep", side_effect=_sleep):
+        result = list(
+            retry_utils.iter_with_retry(
+                lambda: next(attempts),
+                max_retries=1,
+                retry_predicate=lambda _: True,
+            )
+        )
+    assert result == ["c1"]
+    assert len(log) == 4

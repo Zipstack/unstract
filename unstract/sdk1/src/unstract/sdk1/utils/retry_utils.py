@@ -234,6 +234,50 @@ async def acall_with_retry[T](
     raise RuntimeError("unreachable")  # for type-checker: loop always returns or raises
 
 
+# Attributes on a provider stream that hold the HTTP response (or the line
+# generator over it). LiteLLM's ``ModelResponseIterator`` (Anthropic, Vertex,
+# Gemini, the generic HTTP handler) keeps ``streaming_response`` and, for
+# Vertex, ``response``; the OpenAI SDK's ``Stream`` keeps ``response``.
+_STREAM_RESPONSE_ATTRS = ("streaming_response", "response")
+
+
+def close_stream(stream: object) -> None:
+    """Release the HTTP response behind a streamed completion, best effort.
+
+    A stream left open is only closed when the garbage collector finalises
+    it, and that can happen on a thread holding httpcore's connection-pool
+    lock: the finaliser's ``PoolByteStream.close()`` takes the same
+    non-reentrant lock and the thread deadlocks on itself (UN-4237). Closing
+    here, outside any pool lock, leaves nothing for the collector.
+
+    LiteLLM's sync ``CustomStreamWrapper`` has no ``close()`` and stops
+    iterating before the HTTP body ends, so even a fully drained stream is
+    still open; the wrapper's ``completion_stream`` and the response it
+    holds are closed directly. Duck-typed so this module never imports
+    litellm. Never raises: it runs in ``finally`` blocks and must not mask
+    the original error.
+    """
+    if stream is None:
+        return
+    targets: list[object] = [stream]
+    inner = getattr(stream, "completion_stream", None)
+    if inner is not None:
+        targets.append(inner)
+    for obj in list(targets):
+        for attr in _STREAM_RESPONSE_ATTRS:
+            handle = getattr(obj, attr, None)
+            if handle is not None:
+                targets.append(handle)
+    for target in targets:
+        close = getattr(target, "close", None)
+        if not callable(close):
+            continue
+        try:
+            close()
+        except Exception as e:
+            logger.debug("Ignoring error while closing stream %r: %s", target, e)
+
+
 def iter_with_retry[T](
     fn: Callable[[], Iterable[T]],
     *,
@@ -258,12 +302,6 @@ def iter_with_retry[T](
                 yield item
             return
         except Exception as e:
-            # Close generator to release in-flight HTTP/socket resources
-            # before retrying — otherwise streaming providers leak sockets
-            # until GC.
-            close = getattr(gen, "close", None)
-            if callable(close):
-                close()
             if has_yielded:
                 raise
             delay = _get_retry_delay(
@@ -271,7 +309,13 @@ def iter_with_retry[T](
             )
             if delay is None:
                 raise
-            time.sleep(delay)
+        finally:
+            # On success, on error and when the caller abandons this
+            # generator: see ``close_stream``.
+            close_stream(gen)
+        # After ``finally`` so the connection is released, not held
+        # through the backoff.
+        time.sleep(delay)
 
 
 def collect_with_retry[T](
@@ -310,10 +354,6 @@ def collect_with_retry[T](
                 has_content = has_content or is_content(item)
             return items
         except Exception as e:
-            # Release the in-flight HTTP/socket resources before retrying.
-            close = getattr(gen, "close", None)
-            if callable(close):
-                close()
             if has_content:
                 raise
             delay = _get_retry_delay(
@@ -321,7 +361,13 @@ def collect_with_retry[T](
             )
             if delay is None:
                 raise
-            time.sleep(delay)
+        finally:
+            # On success too: a drained stream is still open (see
+            # ``close_stream``).
+            close_stream(gen)
+        # After ``finally`` so the connection is released, not held
+        # through the backoff.
+        time.sleep(delay)
     raise RuntimeError("unreachable")  # for type-checker: loop always returns or raises
 
 
