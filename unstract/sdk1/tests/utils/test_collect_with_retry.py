@@ -236,6 +236,26 @@ def test_failed_close_is_logged_as_a_warning(caplog: pytest.LogCaptureFixture) -
     assert record.exc_info is not None
 
 
+def test_close_stream_survives_a_close_attribute_that_raises(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Reading ``close`` can raise too; the remaining handles still close."""
+    log: list[str] = []
+
+    class _Wrapper:
+        completion_stream = _Closable("inner", log)
+
+        @property
+        def close(self) -> object:
+            raise RuntimeError("torn down")
+
+    with caplog.at_level(logging.WARNING, logger=retry_utils.logger.name):
+        retry_utils.close_stream(_Wrapper())
+
+    assert log == ["inner"]
+    assert "_Wrapper" in caplog.records[0].getMessage()
+
+
 def _bedrock_shaped(log: list[str], fail_after_first: bool = False) -> object:
     """A wrapper whose ``completion_stream`` is a plain generator, as on Bedrock.
 

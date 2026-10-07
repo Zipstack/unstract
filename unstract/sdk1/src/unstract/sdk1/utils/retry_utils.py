@@ -296,10 +296,10 @@ def close_stream(stream: object) -> None:
     it runs in ``finally`` blocks and must not mask the original error.
     """
     for target in _stream_handles(stream):
-        close = getattr(target, "close", None)
-        if not callable(close):
-            continue
         try:
+            close = getattr(target, "close", None)
+            if not callable(close):
+                continue
             close()
         except Exception:
             # httpcore marks its stream closed before closing the socket, so
