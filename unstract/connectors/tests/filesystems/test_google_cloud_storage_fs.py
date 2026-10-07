@@ -9,8 +9,12 @@ same request gcsfs 2024.x sent for ``info("/")``.
 from typing import Any
 
 import pytest
-from gcsfs import GCSFileSystem
 from gcsfs import core as gcsfs_core
+
+# The core class explicitly: production runs it (storage_compat keeps gcsfs off
+# the experimental ExtendedGcsFileSystem), and `gcsfs.GCSFileSystem` would
+# depend on whether gcsfs was imported before storage_compat in this process.
+from gcsfs.core import GCSFileSystem
 
 from unstract.connectors.filesystems.google_cloud_storage.google_cloud_storage import (
     GoogleCloudStorageFS,
@@ -58,3 +62,8 @@ def test_test_credentials_lists_buckets_with_the_configured_project(
     assert (method, path) == ("GET", "b")
     assert kwargs.get("project") == "my-project"
     assert not any(c[1] == "b/" for c in gcs_requests), "sent the project-less GET b/"
+
+
+def test_uses_the_core_gcsfs_class() -> None:
+    assert type(_connector("my-project")._gcs_fs) is GCSFileSystem
+    assert GCSFileSystem.__module__ == "gcsfs.core"
