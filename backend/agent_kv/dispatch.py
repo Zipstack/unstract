@@ -138,7 +138,7 @@ def dispatch_job(job, *, extractor: str, schema: dict, options: dict) -> None:
             id=job.id, status__in=list(AgentKVJob.TERMINAL)
         ).exists():
             logger.info(
-                "agent-kv: job %s was terminalized before dispatch; not " "enqueueing",
+                "agent-kv: job %s was terminalized before dispatch; not enqueueing",
                 job.id,
             )
             return

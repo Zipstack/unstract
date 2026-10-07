@@ -57,9 +57,12 @@ PG_PERIODIC_TASKS = [
 
 
 def create_pg_periodic_tasks(apps, schema_editor):
-    PgPeriodicTask = apps.get_model("pg_queue", "PgPeriodicTask")
+    # snake_case, not the usual `PgPeriodicTask = apps.get_model(...)` Django
+    # idiom: it is a local variable, and sonar's S117 reads the CamelCase name
+    # as a naming violation. The historical-model object is the same either way.
+    periodic_task = apps.get_model("pg_queue", "PgPeriodicTask")
     for spec in PG_PERIODIC_TASKS:
-        PgPeriodicTask.objects.update_or_create(
+        periodic_task.objects.update_or_create(
             name=spec["name"],
             defaults={
                 "task_name": spec["task_name"],
@@ -79,8 +82,8 @@ def create_pg_periodic_tasks(apps, schema_editor):
 
 
 def remove_pg_periodic_tasks(apps, schema_editor):
-    PgPeriodicTask = apps.get_model("pg_queue", "PgPeriodicTask")
-    PgPeriodicTask.objects.filter(
+    periodic_task = apps.get_model("pg_queue", "PgPeriodicTask")
+    periodic_task.objects.filter(
         name__in=[spec["name"] for spec in PG_PERIODIC_TASKS]
     ).delete()
 

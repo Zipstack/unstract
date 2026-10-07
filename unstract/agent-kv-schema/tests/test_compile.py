@@ -284,8 +284,9 @@ def test_a_case_variant_of_a_known_format_is_refused(fmt, intended):
     every value for the life of the job, and `/validate` reported
     `{"valid": true}` -- the author configured validation and got none.
     """
+    spec = _one_key(fmt)
     with pytest.raises(SchemaError, match=f"Did you mean '{intended}'"):
-        compile_schema(_one_key(fmt))
+        compile_schema(spec)
 
 
 @pytest.mark.parametrize("fmt", ["number", "date", "currency", "string"])
@@ -312,8 +313,9 @@ def test_an_enum_with_no_values_is_refused(fmt):
     so every non-empty value fails QA forever. This does not disable
     validation, it inverts it.
     """
+    spec = _one_key(fmt)
     with pytest.raises(SchemaError, match="enum with no values"):
-        compile_schema(_one_key(fmt))
+        compile_schema(spec)
 
 
 def test_an_enum_with_values_still_compiles():
@@ -323,8 +325,9 @@ def test_an_enum_with_values_still_compiles():
 
 @pytest.mark.parametrize("fmt", ["regex:", "regex"])
 def test_an_empty_regex_is_refused(fmt):
+    spec = _one_key(fmt)
     with pytest.raises(SchemaError, match="empty regex"):
-        compile_schema(_one_key(fmt))
+        compile_schema(spec)
 
 
 def test_the_same_rules_apply_to_array_columns():

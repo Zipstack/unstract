@@ -246,7 +246,7 @@ def agent_kv_cancelled(
         # exists to deliver -- and nothing retried or recorded it. Raise so the
         # retry budget applies, exactly as a transport exception would.
         logger.error(
-            "agent_kv_cancelled: webhook not delivered for job %s (retry %s of " "%s)",
+            "agent_kv_cancelled: webhook not delivered for job %s (retry %s of %s)",
             job_id,
             self.request.retries,
             self.max_retries,

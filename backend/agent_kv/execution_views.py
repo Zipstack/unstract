@@ -212,6 +212,76 @@ def _sync_wait_response(job, wait: float) -> Response | None:
     return None
 
 
+def _request_data_with_extractors_inlined(request):
+    """A mutable copy of the request data with a file-part `extractors` read in.
+
+    Split out of ``SubmitView.post`` for sonar S3776 (the method was at
+    cognitive complexity 20 against a limit of 15); the behaviour is unchanged.
+
+    Bounded read, which is the point. The size cap lives in
+    ``validate_extractors``, i.e. AFTER this point -- and
+    ``DATA_UPLOAD_MAX_MEMORY_SIZE`` excludes file-typed parts, so a 500 MB
+    `extractors` part was materialised in full (plus up to 4x that again for
+    the ``str``) before being rejected at 256 KiB. One such request per worker
+    process OOMs the pod, which makes it a cheap denial of service.
+    """
+    data = request.data.copy()
+    part = data.get("extractors")
+    if not hasattr(part, "read"):  # not a file part (§7.1); nothing to inline
+        return data
+    # Read one byte past the cap: enough to know it is over without ever
+    # holding more than the cap plus one.
+    limit = settings.AGENT_KV_MAX_SCHEMA_BYTES
+    raw = part.read(limit + 1)
+    if len(raw) > limit:
+        raise ValidationError({"extractors": f"extractors payload exceeds {limit} bytes"})
+    try:
+        # `errors="strict"`, not "replace". A latin-1 key name used to decode
+        # to U+FFFD and then compile cleanly, so a malformed payload became a
+        # job that ran against a schema the caller never wrote.
+        data["extractors"] = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        raise ValidationError({"extractors": "extractors must be valid UTF-8"}) from None
+    return data
+
+
+def _discard_orphaned_input(job) -> None:
+    """Delete the staged object for a submit that failed before the row landed.
+
+    Split out of ``SubmitView.post`` for sonar S3776; behaviour unchanged.
+
+    If ``stage_input`` succeeded and ``job.save()`` then raised, the upload
+    exists with no row to carry its ref -- and ``run_ttl_cleanup`` selects
+    candidates from ``AgentKVJob`` rows, so an object with no row is
+    structurally unreachable by every cleanup path there is. It would sit in
+    the bucket forever, holding customer data nobody can find or delete.
+    """
+    if not job.input_ref:
+        return
+    # `delete_job_files` reports which refs are confirmed gone and swallows the
+    # rest -- normally the ref survives as the retry handle. Here there is no
+    # row to hold it, so a delete that failed means the object is orphaned with
+    # nothing anywhere pointing at it. Log the ref itself: it is the only way
+    # anyone can clean it up by hand.
+    try:
+        cleared = delete_job_files(job)
+    except Exception:
+        cleared = []
+        logger.exception(
+            "agent-kv: staged-input cleanup raised for failed submit %s (ref=%s)",
+            job.id,
+            job.input_ref,
+        )
+    if "input_ref" not in cleared:
+        logger.error(
+            "agent-kv: the staged input for failed submit %s could NOT be "
+            "removed and no job row exists to carry its ref -- object %s is "
+            "orphaned and unreachable by TTL cleanup; remove it manually",
+            job.id,
+            job.input_ref,
+        )
+
+
 class SubmitView(APIView):
     authentication_classes: list = []
     permission_classes: list = []
@@ -228,34 +298,7 @@ class SubmitView(APIView):
         if denied is not None:
             return denied
 
-        data = request.data.copy()
-        part = data.get("extractors")
-        if hasattr(part, "read"):  # `extractors` uploaded as a file part (§7.1)
-            # Bounded read. The size cap lives in `validate_extractors`, i.e.
-            # AFTER this point -- and `DATA_UPLOAD_MAX_MEMORY_SIZE` excludes
-            # file-typed parts, so a 500 MB `extractors` part was materialised
-            # in full (plus up to 4x that again for the `str`) before being
-            # rejected at 256 KiB. One such request per worker process OOMs the
-            # pod, which makes it a cheap denial of service.
-            #
-            # Read one byte past the cap: enough to know it is over without
-            # ever holding more than the cap plus one.
-            limit = settings.AGENT_KV_MAX_SCHEMA_BYTES
-            raw = part.read(limit + 1)
-            if len(raw) > limit:
-                raise ValidationError(
-                    {"extractors": f"extractors payload exceeds {limit} bytes"}
-                )
-            try:
-                # `errors="strict"`, not "replace". A latin-1 key name used to
-                # decode to U+FFFD and then compile cleanly, so a malformed
-                # payload became a job that ran against a schema the caller
-                # never wrote.
-                data["extractors"] = raw.decode("utf-8")
-            except UnicodeDecodeError:
-                raise ValidationError(
-                    {"extractors": "extractors must be valid UTF-8"}
-                ) from None
+        data = _request_data_with_extractors_inlined(request)
         serializer = SubmitSerializer(data=data)
         serializer.is_valid(raise_exception=True)
         v = serializer.validated_data
@@ -281,38 +324,7 @@ class SubmitView(APIView):
             job_saved = True
         except Exception:
             logger.exception("agent-kv staging/save failed for job %s", job.id)
-            # Delete the staged object before responding. If `stage_input`
-            # succeeded and `job.save()` then raised, the upload exists with no
-            # row to carry its ref -- and `run_ttl_cleanup` selects candidates
-            # from `AgentKVJob` rows, so an object with no row is structurally
-            # unreachable by every cleanup path there is. It would sit in the
-            # bucket forever, holding customer data nobody can find or delete.
-            if job.input_ref:
-                # `delete_job_files` reports which refs are confirmed gone and
-                # swallows the rest -- normally the ref survives as the retry
-                # handle. Here there is no row to hold it, so a delete that
-                # failed means the object is orphaned with nothing anywhere
-                # pointing at it. Log the ref itself: it is the only way anyone
-                # can clean it up by hand.
-                try:
-                    cleared = delete_job_files(job)
-                except Exception:
-                    cleared = []
-                    logger.exception(
-                        "agent-kv: staged-input cleanup raised for failed "
-                        "submit %s (ref=%s)",
-                        job.id,
-                        job.input_ref,
-                    )
-                if "input_ref" not in cleared:
-                    logger.error(
-                        "agent-kv: the staged input for failed submit %s could "
-                        "NOT be removed and no job row exists to carry its ref "
-                        "-- object %s is orphaned and unreachable by TTL "
-                        "cleanup; remove it manually",
-                        job.id,
-                        job.input_ref,
-                    )
+            _discard_orphaned_input(job)
             return _fail_job_response(
                 job,
                 org_id,
