@@ -15,6 +15,7 @@ pins that behaviour so a downgrade cannot silently reopen the gap.
 
 from __future__ import annotations
 
+import os
 from unittest import mock
 
 import redis
@@ -79,3 +80,28 @@ def test_listener_reconnects_after_redis_connection_error():
     ):
         listener = manager._listen()
         assert next(listener) == payload
+
+
+def test_forked_worker_gets_its_own_pubsub_host_id():
+    """gunicorn --preload builds ``sio`` in the master and forks workers.
+
+    python-socketio drops pub/sub messages carrying its own host_id, so two
+    workers sharing one would silently discard each other's events (a result
+    emitted by one worker never reaches a browser connected to the other).
+    """
+    from utils.log_events import sio
+
+    parent_host_id = sio.manager.host_id
+    read_fd, write_fd = os.pipe()
+    pid = os.fork()
+    if pid == 0:  # child: report its host_id and exit without running pytest
+        os.close(read_fd)
+        os.write(write_fd, sio.manager.host_id.encode())
+        os._exit(0)
+    os.close(write_fd)
+    child_host_id = os.read(read_fd, 64).decode()
+    os.close(read_fd)
+    os.waitpid(pid, 0)
+
+    assert child_host_id
+    assert child_host_id != parent_host_id
