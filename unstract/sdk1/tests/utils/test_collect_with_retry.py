@@ -9,6 +9,7 @@ started is a failed *generation* and must not be replayed.
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING
 from unittest.mock import patch
 
@@ -217,6 +218,142 @@ def test_close_stream_never_raises() -> None:
             raise RuntimeError("already torn down")
 
     retry_utils.close_stream(_Broken())
+
+
+def test_failed_close_is_logged_as_a_warning(caplog: pytest.LogCaptureFixture) -> None:
+    """A close that raises can leave the pool slot checked out for good."""
+
+    class _Broken:
+        def close(self) -> None:
+            raise RuntimeError("already torn down")
+
+    with caplog.at_level(logging.WARNING, logger=retry_utils.logger.name):
+        retry_utils.close_stream(_Broken())
+
+    [record] = caplog.records
+    assert record.levelno == logging.WARNING
+    assert "_Broken" in record.getMessage()
+    assert record.exc_info is not None
+
+
+def _bedrock_shaped(log: list[str], fail_after_first: bool = False) -> object:
+    """A wrapper whose ``completion_stream`` is a plain generator, as on Bedrock.
+
+    There is no response handle to reach: closing the generator itself is the
+    only thing that releases the connection. With ``fail_after_first`` the
+    wrapper raises while the provider generator is still suspended, as
+    litellm does on a mid-stream error.
+    """
+
+    def provider_stream() -> Iterator[str]:
+        try:
+            yield "c1"
+            yield "c2"
+        finally:
+            log.append("generator")
+
+    class _Wrapper:
+        def __init__(self) -> None:
+            self.completion_stream = provider_stream()
+
+        def __iter__(self) -> Iterator[str]:
+            for item in self.completion_stream:
+                yield item
+                if fail_after_first:
+                    raise TimeoutError("mid-stream")
+
+    return _Wrapper()
+
+
+def test_close_stream_closes_a_generator_completion_stream() -> None:
+    log: list[str] = []
+    wrapper = _bedrock_shaped(log)
+    next(iter(wrapper))
+
+    retry_utils.close_stream(wrapper)
+
+    assert log == ["generator"]
+
+
+def test_collect_with_retry_closes_a_generator_completion_stream_on_error() -> None:
+    log: list[str] = []
+    # Held here so reference counting cannot finalise the generator once the
+    # call returns: only an explicit close may run its ``finally``.
+    opened: list[object] = []
+
+    def open_stream() -> object:
+        opened.append(_bedrock_shaped(log, fail_after_first=True))
+        return opened[-1]
+
+    with pytest.raises(TimeoutError):
+        collect_with_retry(
+            open_stream,
+            max_retries=0,
+            retry_predicate=lambda _: True,
+            is_content=_is_content,
+        )
+
+    assert log == ["generator"]
+
+
+def test_close_stream_closes_an_openai_sdk_shaped_stream() -> None:
+    """The OpenAI SDK ``Stream``: its own ``close()`` plus ``.response``."""
+    log: list[str] = []
+
+    class _Stream:
+        def __init__(self) -> None:
+            self.response = _Closable("response", log)
+
+        def close(self) -> None:
+            log.append("stream")
+
+    class _Wrapper:
+        completion_stream = _Stream()
+
+    retry_utils.close_stream(_Wrapper())
+
+    assert sorted(log) == ["response", "stream"]
+
+
+def test_close_stream_reaches_the_responses_api_response() -> None:
+    """The Responses-API bridge keeps the response two iterators down.
+
+    Shaped like litellm 1.104.0: the wrapper's ``completion_stream`` is the
+    bridge, whose ``streaming_response`` is an iterator with no ``close()``
+    holding ``response`` and ``stream_iterator``.
+    """
+    log: list[str] = []
+
+    class _ResponsesIterator:  # no close()
+        def __init__(self) -> None:
+            self.response = _Closable("response", log)
+            self.stream_iterator = _Closable("stream_iterator", log)
+
+    class _Bridge:  # no close()
+        streaming_response = _ResponsesIterator()
+
+    class _Wrapper:
+        completion_stream = _Bridge()
+
+    retry_utils.close_stream(_Wrapper())
+
+    assert sorted(log) == ["response", "stream_iterator"]
+
+
+def test_close_stream_closes_each_object_once_and_terminates_on_cycles() -> None:
+    log: list[str] = []
+
+    class _Loop:
+        def __init__(self) -> None:
+            self.response = self
+            self.completion_stream = self
+
+        def close(self) -> None:
+            log.append("loop")
+
+    retry_utils.close_stream(_Loop())
+
+    assert log == ["loop"]
 
 
 def test_closes_drained_stream_on_success() -> None:

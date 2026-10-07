@@ -1,17 +1,20 @@
 """A streamed completion releases its pooled HTTP connection (UN-4237).
 
 Executor workers deadlocked under load inside httpcore's connection pool.
-LiteLLM's sync stream wrapper has no ``close()`` and stops iterating before
-the HTTP body ends, so every streamed completion left its response checked
-out of the pool. The garbage collector finalised it later, and when that
+LiteLLM's sync stream wrapper has no ``close()``, so a streamed completion
+that failed, was abandoned, or (on Anthropic) simply finished before the HTTP
+body ended left its response checked out of the pool. The garbage collector
+finalised it later, and when that
 happened on a thread already inside ``ConnectionPool.handle_request``, the
 finaliser's ``PoolByteStream.close()`` waited on the same non-reentrant lock
 the thread held: a deadlock no timeout could break.
 
-These tests run the real litellm Anthropic path against a local server
-speaking Anthropic's SSE format, with the garbage collector disabled so it
-cannot be the one releasing anything. Then they reproduce the deadlock's
-trigger directly: a garbage collection inside the pool lock on the next call.
+These tests run real litellm against a local server speaking the provider's
+SSE format, with the garbage collector disabled so it cannot be the one
+releasing anything: the Anthropic path through ``LLM.complete()``, and the
+OpenAI Responses-API bridge, whose response sits two iterators deep. Then they
+reproduce the deadlock's trigger directly: a garbage collection inside the
+pool lock on the next call.
 """
 
 from __future__ import annotations
@@ -31,9 +34,10 @@ import litellm
 import pytest
 from litellm.litellm_core_utils import litellm_logging, streaming_handler
 from litellm.llms.custom_httpx.http_handler import HTTPHandler
+from unstract.sdk1.utils.retry_utils import collect_with_retry, iter_with_retry
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Callable, Iterator
 
 ANTHROPIC_ADAPTER_ID = "anthropic|90ebd4cd-2f19-4cef-a884-9eeb6ac0f203"
 TEXT = "hello over a real socket"
@@ -95,12 +99,68 @@ _ERROR_EVENT = {
 }
 
 
+_RESPONSE: dict[str, object] = {
+    "id": "resp_1",
+    "object": "response",
+    "created_at": 1,
+    "status": "in_progress",
+    "model": "gpt-4o",
+    "output": [],
+    "usage": None,
+}
+_MESSAGE: dict[str, object] = {
+    "id": "msg_1",
+    "type": "message",
+    "role": "assistant",
+    "status": "in_progress",
+    "content": [],
+}
+_TEXT_PART = {"item_id": "msg_1", "output_index": 0, "content_index": 0}
+
+
+def _event(kind: str, **fields: object) -> tuple[str, dict[str, object]]:
+    return kind, {"type": kind, **fields}
+
+
+# OpenAI's Responses API, which litellm bridges to chat completions for
+# ``responses/<model>`` and the models it routes there.
+_RESPONSES_EVENTS: list[tuple[str, dict[str, object]]] = [
+    _event("response.created", response=_RESPONSE),
+    _event("response.output_item.added", output_index=0, item=_MESSAGE),
+    _event(
+        "response.content_part.added",
+        **_TEXT_PART,
+        part={"type": "output_text", "text": "", "annotations": []},
+    ),
+    _event("response.output_text.delta", **_TEXT_PART, delta=TEXT),
+    _event("response.output_text.done", **_TEXT_PART, text=TEXT),
+    _event(
+        "response.completed",
+        response={
+            **_RESPONSE,
+            "status": "completed",
+            "output": [
+                {
+                    **_MESSAGE,
+                    "status": "completed",
+                    "content": [{"type": "output_text", "text": TEXT, "annotations": []}],
+                }
+            ],
+            "usage": {"input_tokens": 5, "output_tokens": 2, "total_tokens": 7},
+        },
+    ),
+]
+
+
 def _sse(event: str, data: dict[str, object]) -> bytes:
     return f"event: {event}\ndata: {json.dumps(data)}\n\n".encode()
 
 
 class _AnthropicSSEHandler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
+    events = _EVENTS
+    error_event: tuple[str, dict[str, object]] = ("error", _ERROR_EVENT)
+    error_after = _ERROR_AFTER
     mid_stream_error = False
 
     def log_message(self, *_: object) -> None:
@@ -116,11 +176,17 @@ class _AnthropicSSEHandler(BaseHTTPRequestHandler):
         self.send_header("content-type", "text/event-stream")
         self.send_header("transfer-encoding", "chunked")
         self.end_headers()
-        for i, (event, data) in enumerate(_EVENTS):
-            if self.mid_stream_error and i == _ERROR_AFTER:
-                self._chunk(_sse("error", _ERROR_EVENT))
+        for i, (event, data) in enumerate(self.events):
+            if self.mid_stream_error and i == self.error_after:
+                self._chunk(_sse(*self.error_event))
             self._chunk(_sse(event, data))
         self._chunk(b"")
+
+
+class _ResponsesSSEHandler(_AnthropicSSEHandler):
+    events = _RESPONSES_EVENTS
+    error_event = _event("error", code="server_error", message="Overloaded", param=None)
+    error_after = 4  # after the text delta
 
 
 class _QuietServer(ThreadingHTTPServer):
@@ -131,9 +197,10 @@ class _QuietServer(ThreadingHTTPServer):
         pass
 
 
-@pytest.fixture
-def server() -> Iterator[ThreadingHTTPServer]:
-    handler = type("_Handler", (_AnthropicSSEHandler,), {})
+def _serve(base: type[_AnthropicSSEHandler]) -> Iterator[ThreadingHTTPServer]:
+    # A subclass per test, so a test setting ``mid_stream_error`` changes
+    # only its own server.
+    handler = type("_Handler", (base,), {})
     srv = _QuietServer(("127.0.0.1", 0), handler)
     thread = threading.Thread(target=srv.serve_forever, daemon=True)
     thread.start()
@@ -142,6 +209,16 @@ def server() -> Iterator[ThreadingHTTPServer]:
     finally:
         srv.shutdown()
         srv.server_close()
+
+
+@pytest.fixture
+def server() -> Iterator[ThreadingHTTPServer]:
+    yield from _serve(_AnthropicSSEHandler)
+
+
+@pytest.fixture
+def responses_server() -> Iterator[ThreadingHTTPServer]:
+    yield from _serve(_ResponsesSSEHandler)
 
 
 @pytest.fixture
@@ -325,3 +402,89 @@ def test_gc_inside_the_pool_lock_does_not_deadlock(
 
     assert not worker.is_alive(), "deadlocked on httpcore's pool lock"
     assert outcome == [TEXT]
+
+
+# ── OpenAI Responses-API bridge ──────────────────────────────────────────────
+#
+# The wrapper's ``completion_stream`` is litellm's Responses-to-chat bridge,
+# whose ``streaming_response`` is an iterator with no ``close()``; the HTTP
+# response sits one level further down. A drained stream reads to the end of
+# the body and releases itself, so only failures and early exits show a leak.
+
+
+def _responses_stream(
+    srv: ThreadingHTTPServer, client: HTTPHandler
+) -> Callable[[], Iterator[object]]:
+    def open_stream() -> Iterator[object]:
+        return _REAL_COMPLETION(
+            model="openai/responses/gpt-4o",
+            api_base=f"http://127.0.0.1:{srv.server_port}/v1",
+            api_key="test-key",
+            messages=[{"role": "user", "content": "hi"}],
+            stream=True,
+            stream_options={"include_usage": True},
+            client=client,
+        )
+
+    return open_stream
+
+
+def _has_text(chunk: object) -> bool:
+    choices = getattr(chunk, "choices", None)
+    return bool(choices and choices[0].delta.content)
+
+
+def test_responses_api_stream_failing_after_content_releases_its_connection(
+    responses_server: ThreadingHTTPServer,
+    client: HTTPHandler,
+    pools: set[httpcore.ConnectionPool],
+    no_gc: None,
+) -> None:
+    responses_server.RequestHandlerClass.mid_stream_error = True
+
+    # litellm rewrites the provider message; the type is what it raises here.
+    with pytest.raises(litellm.exceptions.MidStreamFallbackError):
+        collect_with_retry(
+            _responses_stream(responses_server, client),
+            max_retries=0,
+            retry_predicate=lambda _: False,
+            is_content=_has_text,
+        )
+
+    assert pools, "the request never reached httpcore"
+    assert _checked_out(pools) == 0
+
+
+def test_responses_api_stream_closed_early_releases_its_connection(
+    responses_server: ThreadingHTTPServer,
+    client: HTTPHandler,
+    pools: set[httpcore.ConnectionPool],
+    no_gc: None,
+) -> None:
+    stream = iter_with_retry(
+        _responses_stream(responses_server, client),
+        max_retries=0,
+        retry_predicate=lambda _: False,
+    )
+    next(stream)
+    stream.close()
+
+    assert pools, "the request never reached httpcore"
+    assert _checked_out(pools) == 0
+
+
+def test_responses_api_stream_drained_returns_the_text(
+    responses_server: ThreadingHTTPServer,
+    client: HTTPHandler,
+    pools: set[httpcore.ConnectionPool],
+    no_gc: None,
+) -> None:
+    chunks = collect_with_retry(
+        _responses_stream(responses_server, client),
+        max_retries=0,
+        retry_predicate=lambda _: False,
+        is_content=_has_text,
+    )
+
+    assert "".join(c.choices[0].delta.content or "" for c in chunks if c.choices) == TEXT
+    assert _checked_out(pools) == 0
