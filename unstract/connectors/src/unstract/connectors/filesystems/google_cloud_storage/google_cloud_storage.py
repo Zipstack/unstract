@@ -255,7 +255,7 @@ class GoogleCloudStorageFS(UnstractFileSystem):
         return None
 
     def test_credentials(self) -> bool:
-        """Test Google Cloud Storage credentials by accessing the root path info.
+        """Test Google Cloud Storage credentials by listing the project's buckets.
 
         Raises:
             ConnectorError: connector-error
@@ -264,7 +264,11 @@ class GoogleCloudStorageFS(UnstractFileSystem):
             boolean: true if test-connection is successful
         """
         try:
-            self.get_fsspec_fs().info("/")
+            # `ls("")` lists buckets with the configured project. Do not use
+            # `info("/")`: from gcsfs 2026.x it sends `GET b/` without the
+            # project, which GCS rejects with "Required parameter: project"
+            # for every connector (UN-4224).
+            self.get_fsspec_fs().ls("")
         except Exception as e:
             error_msg = (
                 "Error from Google Cloud Storage while testing connection. \n"
