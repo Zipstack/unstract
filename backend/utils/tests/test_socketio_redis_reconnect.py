@@ -83,25 +83,32 @@ def test_listener_reconnects_after_redis_connection_error():
 
 
 def test_forked_worker_gets_its_own_pubsub_host_id():
-    """gunicorn --preload builds ``sio`` in the master and forks workers.
+    """A forked worker must not inherit the master's pub/sub host_id.
 
-    python-socketio drops pub/sub messages carrying its own host_id, so two
-    workers sharing one would silently discard each other's events (a result
-    emitted by one worker never reaches a browser connected to the other).
+    With gunicorn --preload, ``sio`` is built in the master and the workers
+    are forked from it. python-socketio drops pub/sub messages carrying its own
+    host_id, so two workers sharing one would silently discard each other's
+    events (a result emitted by one worker never reaches a browser connected
+    to the other).
     """
     from utils.log_events import sio
 
     parent_host_id = sio.manager.host_id
     read_fd, write_fd = os.pipe()
     pid = os.fork()
-    if pid == 0:  # child: report its host_id and exit without running pytest
-        os.close(read_fd)
-        os.write(write_fd, sio.manager.host_id.encode())
-        os._exit(0)
+    if pid == 0:  # child: report its host_id; never return into pytest
+        exit_code = 1
+        try:
+            os.close(read_fd)
+            os.write(write_fd, sio.manager.host_id.encode())
+            exit_code = 0
+        finally:
+            os._exit(exit_code)
     os.close(write_fd)
     child_host_id = os.read(read_fd, 64).decode()
     os.close(read_fd)
-    os.waitpid(pid, 0)
+    _, status = os.waitpid(pid, 0)
 
+    assert os.waitstatus_to_exitcode(status) == 0
     assert child_host_id
     assert child_host_id != parent_host_id
