@@ -1,3 +1,5 @@
+import ast
+import json
 import logging
 import re
 
@@ -131,6 +133,86 @@ def strip_litellm_prefix(error_message: str) -> str:
     return cleaned.strip()
 
 
+# litellm renders provider errors as "[ErrClass: ]<Provider>Exception - <body>"
+# once the "litellm.ErrClass:" prefix is gone; Mistral repeats the class name.
+_PROVIDER_EXCEPTION_PREFIX = re.compile(r"^(?:\w+Error:\s*)?\w+Exception\s+-\s+")
+# The streaming path hands litellm the raw httpx body, which it formats with
+# str(bytes) — e.g. b'{"type":"error",...}'.
+_BYTES_REPR = re.compile(r"^b(['\"]).*\1$", re.DOTALL)
+
+
+def _unwrap_bytes_repr(body: str) -> str:
+    if not _BYTES_REPR.match(body):
+        return body
+    try:
+        raw = ast.literal_eval(body)
+    except (ValueError, SyntaxError):
+        return body
+    if isinstance(raw, bytes):
+        return raw.decode("utf-8", errors="replace")
+    return body
+
+
+def _extract_provider_message(body: str) -> tuple[str, str | None]:
+    """Pull the human message and request id out of a provider's JSON body.
+
+    Falls back to the body as-is when it is not JSON or has no known
+    message field.
+    """
+    try:
+        payload = json.loads(body)
+    except ValueError:
+        return body, None
+    if not isinstance(payload, dict):
+        return body, None
+
+    error = payload.get("error")
+    error_dict = error if isinstance(error, dict) else {}
+    message = (
+        error_dict.get("message")
+        or (error if isinstance(error, str) else None)
+        or payload.get("message")
+        or payload.get("detail")
+    )
+    request_id = payload.get("request_id") or error_dict.get("request_id")
+    if not isinstance(message, str) or not message:
+        return body, request_id
+    return message, request_id
+
+
+def format_provider_error(e: Exception) -> str:
+    """Render a litellm provider error as one readable line.
+
+    Keeps the error class and HTTP status that litellm's string form either
+    hides or buries, and points at the adapter's model when the provider
+    reports it as not found — Anthropic's 404 for a retired model says only
+    ``model: <id>``.
+    """
+    cleaned = strip_litellm_prefix(str(e))
+    if not isinstance(e, openai.APIError):
+        return cleaned
+
+    body = _unwrap_bytes_repr(_PROVIDER_EXCEPTION_PREFIX.sub("", cleaned, count=1))
+    message, request_id = _extract_provider_message(body)
+
+    status_code = getattr(e, "status_code", None)
+    label = type(e).__name__
+    if status_code:
+        label += f" (HTTP {status_code})"
+    text = f"{label}: {message}"
+    if request_id:
+        text += f" (request_id: {request_id})"
+
+    model = getattr(e, "model", None)
+    if isinstance(e, openai.NotFoundError) and model:
+        text += (
+            f". Model '{model}' was not found by the provider; it may have "
+            "been retired, or the model name or endpoint may be incorrect. "
+            "Update the model configured in this adapter."
+        )
+    return text
+
+
 def parse_litellm_err(e: Exception, provider_name: str | None = None) -> SdkError:
     """Parse litellm errors - both LLM and embedding provider's.
 
@@ -155,7 +237,7 @@ def parse_litellm_err(e: Exception, provider_name: str | None = None) -> SdkErro
         or getattr(e, "code", None)
     )
 
-    cleaned_message = strip_litellm_prefix(str(e))
+    cleaned_message = format_provider_error(e)
     err = SdkError(cleaned_message, actual_err=e, status_code=status_code)
 
     if not provider_name:
