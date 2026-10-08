@@ -174,17 +174,129 @@ def test_non_provider_errors_keep_their_text() -> None:
     assert format_provider_error(ValueError("bad metadata")) == "bad metadata"
 
 
-def test_embedding_errors_use_the_same_format(provider: _ProviderStub) -> None:
-    provider.respond(404, ANTHROPIC_RETIRED_BODY)
-    err = _raise_from_litellm(provider, f"anthropic/{RETIRED_MODEL}", stream=True)
+@pytest.mark.parametrize("stream", [False, True], ids=["non-streaming", "streaming"])
+def test_anthropic_error_tag_variant_is_parsed(
+    provider: _ProviderStub, stream: bool
+) -> None:
+    """Auth, overload and context-window errors use "AnthropicError - "."""
+    provider.respond(
+        401,
+        {
+            "type": "error",
+            "error": {"type": "authentication_error", "message": "Invalid API Key"},
+        },
+    )
+    err = _raise_from_litellm(provider, "anthropic/claude-x", stream)
 
-    wrapped = parse_litellm_err(err, "my-embedding (Anthropic)")
+    assert format_provider_error(err) == (
+        "AuthenticationError (HTTP 401): Invalid API Key"
+    )
+
+
+def test_stacked_litellm_prefixes_are_stripped(provider: _ProviderStub) -> None:
+    too_long = "prompt is too long: 210000 tokens > 200000 maximum"
+    provider.respond(
+        400,
+        {
+            "type": "error",
+            "error": {"type": "invalid_request_error", "message": too_long},
+        },
+    )
+    err = _raise_from_litellm(provider, "anthropic/claude-x", stream=True)
+
+    assert isinstance(err, litellm.ContextWindowExceededError)
+    assert format_provider_error(err) == (
+        f"ContextWindowExceededError (HTTP 400): {too_long}"
+    )
+
+
+def test_litellm_handle_with_hint_is_dropped(provider: _ProviderStub) -> None:
+    provider.respond(
+        500,
+        {
+            "type": "error",
+            "error": {"type": "api_error", "message": "Internal server error"},
+            "request_id": "req_1",
+        },
+    )
+    err = _raise_from_litellm(provider, "anthropic/claude-x", stream=False)
+
+    assert format_provider_error(err) == (
+        "InternalServerError (HTTP 500): Internal server error (request_id: req_1)"
+    )
+
+
+def test_azure_provider_tag_with_class_name_is_stripped(
+    provider: _ProviderStub,
+) -> None:
+    provider.respond(404, OPENAI_NOT_FOUND_BODY)
+    try:
+        _REAL_COMPLETION(
+            model="azure/gpt-9",
+            api_base=provider.url,
+            api_key="test-key",
+            api_version="2024-02-01",
+            messages=[{"role": "user", "content": "hi"}],
+            num_retries=0,
+        )
+    except Exception as e:  # noqa: BLE001 - the exception is the subject
+        message = format_provider_error(e)
+    else:
+        pytest.fail("litellm did not raise")
+
+    assert message.startswith(
+        "NotFoundError (HTTP 404): The model `gpt-9` does not exist"
+    )
+    assert "AzureException" not in message
+
+
+def test_connection_errors_do_not_claim_an_http_status() -> None:
+    err = litellm.APIConnectionError(
+        message="Service account info was not in the expected format",
+        llm_provider="vertex_ai",
+        model="gemini-x",
+    )
+
+    message = format_provider_error(err)
+
+    assert message.startswith("APIConnectionError: ")
+    assert "HTTP" not in message
+
+
+def test_unparseable_body_never_raises() -> None:
+    # Deep enough for json.loads to raise RecursionError, short enough to be
+    # parsed at all.
+    deeply_nested = '{"a":' * 10000 + "1" + "}" * 10000
+    err = litellm.BadRequestError(
+        message=f"AnthropicException - {deeply_nested}",
+        llm_provider="anthropic",
+        model="claude-x",
+    )
+
+    assert format_provider_error(err).startswith("AnthropicException - {")
+
+
+def test_embedding_errors_use_the_same_format(provider: _ProviderStub) -> None:
+    """Embeddings go through the OpenAI SDK, whose body is a dict repr."""
+    provider.respond(404, OPENAI_NOT_FOUND_BODY)
+    try:
+        litellm.embedding(
+            model="openai/gpt-9",
+            api_base=provider.url,
+            api_key="test-key",
+            input=["hi"],
+        )
+    except Exception as e:  # noqa: BLE001 - the exception is the subject
+        wrapped = parse_litellm_err(e, "my-embedding (OpenAI)")
+    else:
+        pytest.fail("litellm did not raise")
 
     assert isinstance(wrapped, SdkError)
     assert wrapped.status_code == 404
-    assert wrapped.message.startswith("Error from my-embedding (Anthropic).")
-    assert f"NotFoundError (HTTP 404): model: {RETIRED_MODEL}" in wrapped.message
-    assert "b'" not in wrapped.message
+    assert wrapped.message.startswith("Error from my-embedding (OpenAI).")
+    assert "NotFoundError (HTTP 404): The model `gpt-9` does not exist" in wrapped.message
+    assert "Error code" not in wrapped.message
+    assert "{'error'" not in wrapped.message
 
 
 @lru_cache(maxsize=1)

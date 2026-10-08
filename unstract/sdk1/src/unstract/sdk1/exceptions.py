@@ -133,36 +133,60 @@ def strip_litellm_prefix(error_message: str) -> str:
     return cleaned.strip()
 
 
-# litellm renders provider errors as "[ErrClass: ]<Provider>Exception - <body>"
-# once the "litellm.ErrClass:" prefix is gone; Mistral repeats the class name.
-_PROVIDER_EXCEPTION_PREFIX = re.compile(r"^(?:\w+Error:\s*)?\w+Exception\s+-\s+")
-# The streaming path hands litellm the raw httpx body, which it formats with
-# str(bytes) — e.g. b'{"type":"error",...}'.
+# Prefixes litellm stacks ahead of the provider body, in order. Its subclasses
+# re-prefix the parent's message ("litellm.ContextWindowExceededError:
+# litellm.BadRequestError: ...") and some mappings repeat the class bare
+# ("AuthenticationError: MistralException - ...").
+_LITELLM_CLASS_PREFIX = re.compile(r"^(?:litellm\.)?(?:\w+Error|Timeout):\s*")
+# "AnthropicException - ", "AnthropicError - ", "AzureException NotFoundError - "
+_PROVIDER_TAG_PREFIX = re.compile(r"^\w+(?:Exception|Error)(?:\s+\w+)?\s+-\s+")
+# Calls routed through the OpenAI SDK carry its str(): "Error code: 404 - {...}".
+_OPENAI_SDK_PREFIX = re.compile(r"^Error code:\s*\d+\s+-\s+")
+_LITELLM_HANDLE_HINT = re.compile(r"\.?\s*Handle with `litellm\.\w+`\.?\s*$")
+# The streaming path formats the raw httpx body with str(bytes): b'{...}'.
 _BYTES_REPR = re.compile(r"^b(['\"]).*\1$", re.DOTALL)
+# Bodies past this size are shown as-is rather than parsed.
+_MAX_PARSED_BODY_CHARS = 64_000
+
+
+def _strip_repeated(pattern: re.Pattern[str], text: str) -> str:
+    while True:
+        stripped = pattern.sub("", text, count=1)
+        if stripped == text:
+            return text
+        text = stripped
 
 
 def _unwrap_bytes_repr(body: str) -> str:
     if not _BYTES_REPR.match(body):
         return body
-    try:
-        raw = ast.literal_eval(body)
-    except (ValueError, SyntaxError):
-        return body
+    raw = ast.literal_eval(body)
     if isinstance(raw, bytes):
         return raw.decode("utf-8", errors="replace")
     return body
 
 
-def _extract_provider_message(body: str) -> tuple[str, str | None]:
-    """Pull the human message and request id out of a provider's JSON body.
+def _parse_body(body: str) -> object:
+    """Parse a provider body given as JSON or as a Python dict repr."""
+    if len(body) > _MAX_PARSED_BODY_CHARS or not body.startswith("{"):
+        return None
+    try:
+        return json.loads(body)
+    except ValueError:
+        pass
+    try:
+        return ast.literal_eval(body)
+    except (ValueError, SyntaxError):
+        return None
 
-    Falls back to the body as-is when it is not JSON or has no known
+
+def _extract_provider_message(body: str) -> tuple[str, str | None]:
+    """Pull the human message and request id out of a provider's error body.
+
+    Falls back to the body as-is when it cannot be parsed or has no known
     message field.
     """
-    try:
-        payload = json.loads(body)
-    except ValueError:
-        return body, None
+    payload = _parse_body(body)
     if not isinstance(payload, dict):
         return body, None
 
@@ -175,6 +199,8 @@ def _extract_provider_message(body: str) -> tuple[str, str | None]:
         or payload.get("detail")
     )
     request_id = payload.get("request_id") or error_dict.get("request_id")
+    if not isinstance(request_id, str):
+        request_id = None
     if not isinstance(message, str) or not message:
         return body, request_id
     return message, request_id
@@ -186,18 +212,31 @@ def format_provider_error(e: Exception) -> str:
     Keeps the error class and HTTP status that litellm's string form either
     hides or buries, and points at the adapter's model when the provider
     reports it as not found — Anthropic's 404 for a retired model says only
-    ``model: <id>``.
+    ``model: <id>``. Never raises: it runs inside error handlers, so anything
+    unparseable falls back to the litellm text.
     """
     cleaned = strip_litellm_prefix(str(e))
     if not isinstance(e, openai.APIError):
         return cleaned
+    try:
+        return _render_provider_error(e, cleaned)
+    except Exception:
+        logger.warning("Could not format provider error", exc_info=True)
+        return cleaned
 
-    body = _unwrap_bytes_repr(_PROVIDER_EXCEPTION_PREFIX.sub("", cleaned, count=1))
-    message, request_id = _extract_provider_message(body)
 
-    status_code = getattr(e, "status_code", None)
+def _render_provider_error(e: openai.APIError, cleaned: str) -> str:
+    body = _strip_repeated(_LITELLM_CLASS_PREFIX, cleaned)
+    body = _PROVIDER_TAG_PREFIX.sub("", body, count=1)
+    body = _OPENAI_SDK_PREFIX.sub("", body, count=1)
+    body = _LITELLM_HANDLE_HINT.sub("", body)
+    message, request_id = _extract_provider_message(_unwrap_bytes_repr(body))
+
     label = type(e).__name__
-    if status_code:
+    # litellm assigns a status (500, 408) to connection errors and timeouts
+    # even when no response came back; only a status error carries a real one.
+    status_code = getattr(e, "status_code", None)
+    if isinstance(e, openai.APIStatusError) and status_code:
         label += f" (HTTP {status_code})"
     text = f"{label}: {message}"
     if request_id:
