@@ -2,8 +2,11 @@ import logging
 import os
 
 import boto3
+from botocore.config import Config
 from botocore.exceptions import ClientError
 from django.conf import settings
+
+from unstract.sdk1.patches.storage_compat import S3_CHECKSUM_CONFIG
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +27,8 @@ class UnstractAccount:
             aws_access_key_id=access_key,
             aws_secret_access_key=secret_key,
             endpoint_url="https://storage.googleapis.com",
+            # GCS S3 interop: no aws-chunked uploads (UN-4224).
+            config=Config(**S3_CHECKSUM_CONFIG),
         )
 
         # Check if folder exists and create if it is not available
@@ -53,6 +58,8 @@ class UnstractAccount:
             aws_access_key_id=access_key,
             aws_secret_access_key=secret_key,
             endpoint_url="https://storage.googleapis.com",
+            # GCS S3 interop: no aws-chunked uploads (UN-4224).
+            config=Config(**S3_CHECKSUM_CONFIG),
         )
 
         folder = f"{self.tenant}/{self.username}/input/examples/"

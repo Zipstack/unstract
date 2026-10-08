@@ -24,6 +24,7 @@ import struct
 import zipfile
 import zlib
 
+from fsspec.implementations.memory import MemoryFileSystem
 from unstract.sdk1.exceptions import FileOperationError
 from unstract.sdk1.file_storage import FileStorageProvider
 
@@ -75,7 +76,7 @@ class InMemoryFileStorage:
     """Minimal in-memory FileStorage double (S3-like), no network/credentials.
 
     Implements only the surface the image-mode helper uses: ``provider``,
-    ``mkdir``, ``write``, ``read``, ``exists``.
+    ``mkdir``, ``write``, ``read``, ``exists``, ``ls``, ``rm``, ``rm_exact``.
     """
 
     def __init__(self, provider: FileStorageProvider = FileStorageProvider.S3) -> None:
@@ -88,6 +89,16 @@ class InMemoryFileStorage:
 
     def rm(self, path: str, recursive: bool = True) -> None:
         self.rm_calls.append(str(path))
+        self._delete_prefix(path)
+
+    def rm_exact(self, path: str) -> None:
+        # This double never globs, so rm and rm_exact only differ on real
+        # fsspec backends (see FileStorage.rm_exact). Kept as its own entry
+        # point so tests can fault-inject the method production calls.
+        self.rm_calls.append(str(path))
+        self._delete_prefix(path)
+
+    def _delete_prefix(self, path: str) -> None:
         prefix = str(path).rstrip("/") + "/"
         for key in list(self._files):
             if key == str(path) or key.startswith(prefix):
@@ -203,3 +214,32 @@ class FlakyFileStorage(InMemoryFileStorage):
 
     def attempts_for(self, path: str) -> int:
         return self._attempts.get(str(path), 0)
+
+
+class ObjectStoreLikeMemoryFS(MemoryFileSystem):
+    """In-memory filesystem with gcsfs / s3fs delete semantics.
+
+    * ``rm(path, recursive=True)`` takes fsspec's generic path, which expands
+      its argument as a GLOB — exactly what gcsfs and s3fs do for directory
+      deletes. LocalFileSystem overrides ``rm`` with a plain rmtree and never
+      globs, which is why the bracket bug was invisible on LOCAL storage.
+    * ``rm_file(path)`` deletes ONE exact key, mirroring gcsfs ``_rm_file``
+      (a single object DELETE by key) and s3fs ``_rm_file`` (``delete_object``
+      by key). Plain MemoryFileSystem does not override ``rm_file``, so it
+      inherits a globbing version that production backends don't have; using
+      it unmodified would model the wrong backend.
+    * ``ls(path)`` defaults to plain path strings, as on gcsfs / s3fs / local.
+    """
+
+    def ls(self, path: str, detail: bool = False, **kwargs: object) -> list:
+        # gcsfs, s3fs and LocalFileSystem all default to detail=False (plain
+        # path strings); MemoryFileSystem defaults to True (dicts). FileStorage
+        # calls ls() without detail, so match the production default.
+        return super().ls(path, detail=detail, **kwargs)
+
+    def rm_file(self, path: str) -> None:
+        path = self._strip_protocol(path)
+        try:
+            del self.store[path]
+        except KeyError as e:
+            raise FileNotFoundError(path) from e
