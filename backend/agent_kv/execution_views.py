@@ -80,6 +80,12 @@ def _status_document(job) -> dict:
                 ],
             }
         },
+        # Which adapters this run spent, by role. Reported because the caller
+        # chose them and is paying for them: a run naming the wrong `llm` id
+        # produces a correct-looking result at a different price, and without
+        # this the only record is in `usage_v2`, which the caller cannot read.
+        # `{}` for an env-configured extractor.
+        "adapters": job.adapters or {},
         "created_at": job.created_at.isoformat() if job.created_at else None,
         "started_at": job.dispatched_at.isoformat() if job.dispatched_at else None,
         "completed_at": job.completed_at.isoformat() if job.completed_at else None,
@@ -93,13 +99,37 @@ def _status_document(job) -> dict:
 def _never_dispatched(job) -> bool:
     """True when this job never reached an executor, so no callback will come.
 
-    Read from the row as it was BEFORE this request terminalized it. Both
-    conditions are deliberate: `dispatched_at` is stamped by post-enqueue
-    bookkeeping that can legitimately fail, and `status` is what the dispatcher
-    advances -- a job with either marker set has, or may have, a running
-    executor whose finalize callback owns the slot.
+    **Re-read from the database, not from the in-memory row.** The row the
+    cancel path holds was fetched BEFORE `mark_terminal`, and a dispatch can
+    complete inside that gap:
+
+        cancel reads the row  -> PENDING, dispatched_at=NULL
+        dispatch_job          -> passes its own terminal re-read, enqueues,
+                                 writes dispatched_at and DISPATCHED
+        cancel's mark_terminal-> wins (DISPATCHED is not terminal)
+        _never_dispatched     -> True on the STALE row
+
+    which releases the slot while the executor is running and billing. That is
+    a smaller version of the original over-release bug this narrowing was
+    written to fix, reintroduced by trusting the pre-cancel snapshot.
+
+    Only `dispatched_at` is consulted, and `status` deliberately is not: by the
+    time this runs the cancel has already rewritten `status` to CANCELLED, so
+    the old `status == PENDING` test could only ever be answered from the stale
+    object. `dispatched_at` is the durable marker of "an executor may exist"
+    and the cancel never touches it.
+
+    **Residual window, stated rather than papered over.** `dispatch_job`
+    enqueues and only then writes `dispatched_at` (`_record_dispatch`). A cancel
+    landing between those two still sees NULL and still releases early. The
+    consequence is bounded and self-correcting: one extra concurrent slot for
+    the remainder of that one run, after which the executor's finalize releases
+    again (`release` is an idempotent zrem). Closing it completely means
+    stamping a dispatch-intent marker before the enqueue, which changes what
+    `dispatched_at` means to both sweep phases -- a larger change than the
+    defect warrants.
     """
-    return job.dispatched_at is None and job.status == JobStatus.PENDING
+    return not AgentKVJob.objects.filter(id=job.id, dispatched_at__isnull=False).exists()
 
 
 def _fail_job_response(job, org_id: str, message: str, *, job_saved: bool) -> Response:
@@ -338,13 +368,23 @@ def _resolved_adapters(entry: dict, agent_kv_key) -> dict:
     (`_validated_adapter_shape`); what is added here is the half that needs a
     database and the Bearer key.
 
-    **This is the tenant boundary on adapters, and nothing downstream repeats
-    it.** The executor resolves these ids through the platform service with an
-    org-scoped platform key, but it does not re-check that the id belongs to
-    the job's org -- so without this, a caller passes any adapter UUID and the
-    run SPENDS ANOTHER TENANT'S LLM CREDENTIAL. Same class as the
-    `organization_id` filter in `_get_job`, and the highest-consequence failure
-    this endpoint has.
+    **Defence in depth, not the only tenancy check** -- an earlier version of
+    this docstring claimed it was, and was wrong. The platform service re-scopes
+    every adapter lookup as `WHERE id=%s and organization_id=%s`
+    (platform-service/.../helper/adapter_instance.py:28-30), against the org of
+    the bearer platform key that `dispatch._platform_api_key(job)` mints from
+    THIS job's org. Org A therefore cannot spend org B's credential even if this
+    gate were deleted outright.
+
+    What this gate does buy, and why it is still worth having:
+
+    - A clean 400 naming the offending role at submit, instead of a mid-run
+      `SdkError` on a job that already took a concurrency slot and billed for
+      staging.
+    - The two refusals the platform service does NOT make: `is_usable` (a
+      frictionless org's operator-funded trial is exhausted -- it hands back the
+      credentials anyway) and `is_available` (deprecated, removed from the SDK
+      registry).
 
     It lives in the view rather than the serializer for the same reason
     `_subscription_denial` does: it needs the key. The platform's own helpers
@@ -390,6 +430,43 @@ def _resolved_adapters(entry: dict, agent_kv_key) -> dict:
                     )
                 }
             )
+        # Trial exhaustion. `is_usable` is flipped False when a frictionlessly
+        # onboarded org burns through its operator-funded sample allowance, and
+        # the platform service does NOT check it -- it returns the credentials
+        # regardless. So without this the IDE, workflows and Prompt Studio all
+        # refuse (tool_instance_helper.py, prompt_studio_helper.py) while an
+        # Agent-KV submit naming the SAME adapter id gets a 202 and runs on
+        # credentials the operator is paying for and has already cut off.
+        #
+        # Same message those surfaces use, so an exhausted trial reads
+        # identically whichever door the caller knocks on.
+        if not adapter.is_usable:
+            logger.error(
+                "agent-kv: free usage for sample adapter %s is exhausted", adapter.id
+            )
+            raise ValidationError(
+                {
+                    "adapters": (
+                        f"{role}: free usage for the configured trial adapter is "
+                        "exhausted. Connect your own service account to continue: "
+                        "https://docs.unstract.com/unstract_platform/setup_accounts/"
+                        "whats_needed"
+                    )
+                }
+            )
+        # Deprecated: removed from the SDK registry, so resolving it raises
+        # `InValidAdapterId` (adapter_processor.py:120) deep inside the engine
+        # and surfaces to the caller as a mid-run extraction failure on a job
+        # that was already billed for staging. A 400 at submit names the cause.
+        if not adapter.is_available:
+            raise ValidationError(
+                {
+                    "adapters": (
+                        f"{role}: adapter is deprecated and no longer available; "
+                        "pick a current one"
+                    )
+                }
+            )
     return requested
 
 
@@ -415,17 +492,30 @@ class SubmitView(APIView):
         v = serializer.validated_data
         org_id = str(agent_kv_key.organization_id)
 
-        # Tenancy + type on the named adapters, HERE and not later: before the
-        # job row, before the concurrency slot, before the staging write. A
-        # caller who names another org's adapter, or swaps two UUIDs, gets a
-        # 400 and is charged nothing -- the same "every cap before paid work"
-        # rule the serializer's caps follow.
-        _resolved_adapters(v["extractors"][0], agent_kv_key)
+        # Tenancy + type + usability on the named adapters, HERE and not later:
+        # before the job row, before the concurrency slot, before the staging
+        # write. A caller who names another org's adapter, swaps two UUIDs, or
+        # points at an exhausted trial gets a 400 and is charged nothing -- the
+        # same "every cap before paid work" rule the serializer's caps follow.
+        #
+        # Assigned back rather than discarded: `_dispatch_or_fail` reads
+        # `entry["adapters"]` to build `executor_params`, so anything this gate
+        # ever normalizes (it returns the dict unchanged today) must land where
+        # dispatch will see it. Discarding the return made the two paths agree
+        # only by the accident of being the same dict object.
+        v["extractors"][0]["adapters"] = _resolved_adapters(
+            v["extractors"][0], agent_kv_key
+        )
 
         job = AgentKVJob(
             api_key=agent_kv_key,
             organization_id=agent_kv_key.organization_id,
             extractor=v["extractors"][0]["name"],
+            # The gate above validated these against this org, their expected
+            # types, and usability -- so what lands here is exactly what the
+            # run will spend. Ids only, never `adapter_metadata`: this column
+            # is returned to the caller.
+            adapters=v["extractors"][0].get("adapters") or {},
             pages_total=serializer.pages_total,
             tags=v["tags"],
             custom_data=v["custom_data"],
@@ -588,6 +678,10 @@ class JobStatusView(APIView):
                 # Guarded on `won` so a lost race (a concurrent cancel or
                 # finalize terminalized it first) does not release a slot that
                 # the winner is still accounting for.
+                #
+                # `_never_dispatched` re-reads `dispatched_at` from the DB: the
+                # `job` here predates `mark_terminal`, and a dispatch can
+                # complete in that gap (see that function).
                 if _never_dispatched(job):
                     AgentKVConcurrencyLimiter.release(
                         str(job.organization_id), str(job.id)

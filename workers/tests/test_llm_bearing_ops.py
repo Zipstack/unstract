@@ -17,8 +17,22 @@ Reported as 1.2 in the branch review.
 from executor.tasks import _LLM_BEARING_OPS
 
 #: Operations known to drive at least one LLM call on every successful run.
-#: Add to this list and the set together; a new paid op that lands in neither is
-#: exactly the failure this file exists to catch.
+#: Add to this list and the set together.
+#:
+#: **Known limitation of this file.** These are two literals, so the
+#: assertions below can only fail when the copies DISAGREE -- never when both
+#: are wrong together. A new paid op declared in neither still ships with no
+#: billing alarm. The derived version, which asserts every operation in the
+#: backend's `EXTRACTOR_ROUTES` is in `_LLM_BEARING_OPS` and so cannot be
+#: satisfied by forgetting both, is
+#: `backend/agent_kv/tests/test_queue_wiring_is_derived.py`
+#: (`test_every_routed_operation_has_a_billing_backstop`). It lives there
+#: because `EXTRACTOR_ROUTES` is not importable from this test venv, and
+#: `executor.tasks` is not importable from the backend's -- neither side can
+#: import both, which is why this pair exists at all.
+#:
+#: Kept rather than replaced: it covers the four non-Agent-KV paid ops, which
+#: `EXTRACTOR_ROUTES` says nothing about.
 PAID_OPERATIONS = {
     "answer_prompt",
     "single_pass_extraction",

@@ -23,6 +23,7 @@ These tests exercise the two-phase sweep and TTL-cleanup logic through the
 than on ``internal_views``.
 """
 
+import logging
 import os
 import uuid
 from datetime import timedelta
@@ -106,7 +107,7 @@ def test_sweep_queries_pending_older_than_grace_and_undispatched(
         resp = iv.SweepView.as_view()(_post("/x"))
 
     assert resp.status_code == 200
-    assert resp.data == {"swept": 0, "timed_out": 0}
+    assert resp.data == {"swept": 0, "timed_out": 0, "released": 0}
     filter_kwargs = m_objects.filter.call_args_list[0].kwargs
     assert filter_kwargs["status"] == JobStatus.PENDING
     assert filter_kwargs["dispatched_at__isnull"] is True
@@ -176,7 +177,7 @@ def test_sweep_count_reflects_guard_outcomes_not_candidate_count(
     resp = iv.SweepView.as_view()(_post("/x"))
 
     assert resp.status_code == 200
-    assert resp.data == {"swept": 1, "timed_out": 0}
+    assert resp.data == {"swept": 1, "timed_out": 0, "released": 0}
     m_release.assert_called_once_with("org1", str(won_job.id))
 
 
@@ -191,7 +192,7 @@ def test_sweep_with_no_candidates_is_a_pure_noop(m_objects, m_mark_terminal, m_r
     resp = iv.SweepView.as_view()(_post("/x"))
 
     assert resp.status_code == 200
-    assert resp.data == {"swept": 0, "timed_out": 0}
+    assert resp.data == {"swept": 0, "timed_out": 0, "released": 0}
     assert not m_mark_terminal.called
     assert not m_release.called
 
@@ -217,7 +218,7 @@ def test_stuck_sweep_queries_dispatched_and_running_older_than_stuck_grace(
         resp = iv.SweepView.as_view()(_post("/x"))
 
     assert resp.status_code == 200
-    assert resp.data == {"swept": 0, "timed_out": 0}
+    assert resp.data == {"swept": 0, "timed_out": 0, "released": 0}
     filter_kwargs = m_objects.filter.call_args_list[1].kwargs
     assert set(filter_kwargs["status__in"]) == {JobStatus.DISPATCHED, JobStatus.RUNNING}
     cutoff = frozen_now - timedelta(seconds=settings.AGENT_KV_STUCK_JOB_GRACE_SECONDS)
@@ -259,7 +260,7 @@ def test_stuck_sweep_terminalizes_each_candidate_as_failed_timed_out(
     resp = iv.SweepView.as_view()(_post("/x"))
 
     assert resp.status_code == 200
-    assert resp.data == {"swept": 0, "timed_out": 1}
+    assert resp.data == {"swept": 0, "timed_out": 1, "released": 0}
     m_mark_terminal.assert_called_once_with(
         job.id, "org1", JobStatus.FAILED, error="Job timed out"
     )
@@ -298,7 +299,7 @@ def test_stuck_sweep_count_reflects_guard_outcomes_not_candidate_count(
     resp = iv.SweepView.as_view()(_post("/x"))
 
     assert resp.status_code == 200
-    assert resp.data == {"swept": 0, "timed_out": 1}
+    assert resp.data == {"swept": 0, "timed_out": 1, "released": 0}
     m_release.assert_called_once_with("org1", str(won_job.id))
 
 
@@ -320,7 +321,7 @@ def test_sweep_reports_both_phase_counts_independently(
     resp = iv.SweepView.as_view()(_post("/x"))
 
     assert resp.status_code == 200
-    assert resp.data == {"swept": 1, "timed_out": 1}
+    assert resp.data == {"swept": 1, "timed_out": 1, "released": 0}
 
 
 # ---------------------------------------------------------------------------
@@ -697,6 +698,98 @@ def test_sweep_releases_slots_held_by_abandoned_cancelled_jobs(
     m_release.assert_called_once_with("org1", str(job.id))
     # The job is ALREADY terminal; phase 3 only frees the slot.
     assert not m_mark_terminal.called
+
+
+@mock.patch.object(maintenance.AgentKVConcurrencyLimiter, "release")
+@mock.patch.object(AgentKVJob, "mark_terminal", return_value=True)
+@mock.patch.object(AgentKVJob, "objects")
+def test_phase_three_s_release_count_reaches_the_caller(
+    m_objects, m_mark_terminal, m_release
+):
+    """`released` must be in the RESPONSE, not only in a log line.
+
+    Phase 3 counted its releases into a local, logged them, and returned only
+    `{"swept", "timed_out"}`. `SweepView` passes that dict through verbatim and
+    the scheduler task logs it, so no caller could ever see that a slot had
+    been recovered -- the same "counted then discarded" shape as the round-1
+    finding about this function's return value, reintroduced by the phase added
+    to fix another part of it.
+
+    Operationally: a cancelled job whose executor never called back holds a
+    slot against the org's cap, and phase 3 is the only thing that frees it.
+    Without this key, "the cap is being hit and the sweep is recovering slots"
+    and "the cap is being hit and nothing is recovering anything" look the same
+    from outside.
+    """
+    jobs = []
+    for _ in range(3):
+        job = AgentKVJob(status=JobStatus.CANCELLED)
+        job.organization_id = "org1"
+        jobs.append(job)
+    _wire_sweep_phases(m_objects, cancelled=jobs)
+
+    resp = iv.SweepView.as_view()(_post("/x"))
+
+    assert resp.status_code == 200
+    assert resp.data["released"] == 3, resp.data
+    assert m_release.call_count == 3
+
+
+@mock.patch.object(maintenance.AgentKVConcurrencyLimiter, "release")
+@mock.patch.object(AgentKVJob, "mark_terminal", return_value=True)
+@mock.patch.object(AgentKVJob, "objects")
+def test_a_sweep_that_strands_jobs_says_so_at_warning(
+    m_objects, m_mark_terminal, m_release, caplog
+):
+    """The logging added for round-1 finding 2, pinned.
+
+    Nothing anywhere used `caplog` on this module, so all five log lines could
+    be deleted and the suite stayed green -- `test_agent_kv_scheduler_tasks.py`
+    asserts the returned dict, which passed before the logging existed too.
+
+    WARNING specifically, not INFO: a non-zero count means jobs were stranded
+    and their concurrency slots held, which is the condition an operator needs
+    surfaced. Before this, a sweep terminalizing a thousand jobs as FAILED
+    emitted nothing at all, so a backlog of stranded jobs was indistinguishable
+    from a quiet, healthy system.
+    """
+    job = AgentKVJob(id=uuid.uuid4(), organization_id="org1")
+    _wire_sweep_phases(m_objects, never_dispatched=[job])
+
+    with caplog.at_level(logging.INFO, logger="agent_kv.maintenance"):
+        resp = iv.SweepView.as_view()(_post("/x"))
+
+    assert resp.data["swept"] == 1
+    terminalized = [
+        r
+        for r in caplog.records
+        if r.levelno >= logging.WARNING and "terminalized" in r.getMessage()
+    ]
+    assert len(terminalized) == 1, [r.getMessage() for r in caplog.records]
+    assert "1 never-dispatched" in terminalized[0].getMessage()
+
+
+@mock.patch.object(maintenance.AgentKVConcurrencyLimiter, "release")
+@mock.patch.object(AgentKVJob, "mark_terminal", return_value=True)
+@mock.patch.object(AgentKVJob, "objects")
+def test_a_quiet_sweep_still_records_that_it_RAN(
+    m_objects, m_mark_terminal, m_release, caplog
+):
+    """The other half, and the one that matters more.
+
+    "Ran and found nothing" and "never ran at all" produce the same counts, and
+    distinguishing them is the whole reason this line exists -- the sweep
+    shipped unscheduled and the only symptom was an absence. So the quiet path
+    must log too, at INFO.
+    """
+    _wire_sweep_phases(m_objects)
+
+    with caplog.at_level(logging.INFO, logger="agent_kv.maintenance"):
+        iv.SweepView.as_view()(_post("/x"))
+
+    assert any(
+        "nothing to terminalize" in r.getMessage() for r in caplog.records
+    ), [r.getMessage() for r in caplog.records]
 
 
 @mock.patch.object(maintenance.AgentKVConcurrencyLimiter, "release")

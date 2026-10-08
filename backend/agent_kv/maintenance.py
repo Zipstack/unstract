@@ -225,7 +225,20 @@ def run_sweep() -> dict:
         )
     else:
         logger.info("agent-kv sweep: nothing to terminalize")
-    return {"swept": swept, "timed_out": timed_out}
+    # `released` is reported, not just logged. Phase 3 counted slot releases
+    # into a local, logged it, and then returned only the first two counts --
+    # so `SweepView` (which returns this dict verbatim) and the scheduler task
+    # (which logs it) could never show that any slot was recovered. That is the
+    # same "counted, then discarded before the caller sees it" shape as the
+    # round-1 finding about this function's return value, reintroduced by the
+    # phase that was added to fix a different half of it.
+    #
+    # It matters operationally: a cancelled job whose executor never called
+    # back holds a slot against the org's cap, and phase 3 is the only thing
+    # that frees it. Without this key, "the cap is being hit and the sweep is
+    # recovering slots" and "the cap is being hit and nothing is recovering
+    # anything" produce identical output.
+    return {"swept": swept, "timed_out": timed_out, "released": released}
 
 
 def run_ttl_cleanup() -> dict:

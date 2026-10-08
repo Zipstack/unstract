@@ -227,6 +227,15 @@ def submit_raw(
         # OCR adapters the extraction runs on. Defaults to whatever the
         # environment configured; `{}` is sent as-is so a scenario can assert
         # the 400 for an absent block.
+        #
+        # When the env vars are UNSET this omits the block, and the backend
+        # then refuses the submit at the adapter field validator -- before any
+        # file or page-cap check. That is correct behaviour but it is a trap
+        # for tests asserting a DIFFERENT 400: they still see a 400, then fail
+        # on the blamed attribute (`extractors`, not `file`). Red, not skipped.
+        # Every scenario that asserts a specific rejection attribute therefore
+        # takes `require_adapters`, which turns the unconfigured lane into an
+        # explicit skip naming the missing vars.
         resolved = e2e_adapters() if adapters is None else adapters
         if resolved:
             entry["adapters"] = resolved

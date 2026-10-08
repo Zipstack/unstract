@@ -166,11 +166,28 @@ def agent_kv_error(
     terminalized it with "Job timed out", overwriting the real executor error,
     which existed only in the log line above.
 
-    Now retries with backoff and RAISES on exhaustion, matching its sibling
+    Now retries and RAISES on exhaustion, matching its sibling
     ``agent_kv_complete`` and the ``process_batch_callback_api`` precedent in
     ``workers/callback/tasks.py``. The PG consumer relies on task-level
     autoretry for exactly this (see its own comment in
     ``queue_backend/pg_queue/consumer.py``).
+
+    **What ``retry_backoff`` actually does here: nothing.** The PG consumer runs
+    tasks via ``task.apply(..., throw=True)``
+    (``queue_backend/pg_queue/consumer.py``) -- i.e. EAGER. Celery's eager
+    retry recurses synchronously and ignores ``countdown``, so
+    ``retry_backoff=True`` / ``retry_backoff_max=300`` / ``retry_jitter=True``
+    produce three back-to-back attempts in microseconds, which rides out no
+    "momentary blip" at all. They are kept because they are correct for the
+    Celery transport and cost nothing under the PG one -- not because they
+    space the attempts out here.
+
+    The delay that genuinely helps comes AFTER exhaustion, from vt-redelivery
+    once this raises and the message's visibility timeout lapses. So the value
+    of the raise is not just the failed-task record: it is the only thing that
+    buys any real elapsed time before the next attempt. An earlier version of
+    this docstring credited the decorator with that, which would mislead anyone
+    tuning the backoff to fix a slow finalize.
 
     ``autoretry_for=(Exception,)`` rather than a narrow transport type: the
     whole point is that this task must not quietly give up, and a programming

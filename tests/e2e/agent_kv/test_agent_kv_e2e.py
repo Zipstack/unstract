@@ -19,13 +19,23 @@ without ``AGENT_KV_E2E_LLM_ADAPTER`` / ``_LITE_LLM_ADAPTER`` /
 expect a rejection BEFORE that gate (a bad key, the rate limiter, an absent
 ``extractors``) do not take it.
 
-A third, narrower gate (``require_llm``) applies only to the scenarios whose
-assertions depend on a job actually reaching COMPLETED: either
-``AGENT_KV_LLM_API_KEY`` or ``UNSTRACT_LLM_MOCK_RESPONSE`` must be set. Note
-that on the table path the LLM credential now lives on the ADAPTER rather
-than in the executor's environment, so a real-adapter run satisfies this
-whether or not that variable is exported -- it is kept for the mock case and
-for the KV path.
+There is no third gate for "can a job actually reach COMPLETED". There used to
+be (``require_llm``, on ``AGENT_KV_LLM_API_KEY`` or
+``UNSTRACT_LLM_MOCK_RESPONSE``), and on the table path it was wrong: the LLM
+credential lives on the ADAPTER now, not in the executor's environment, so a
+correctly configured lane with adapters and no exported key SKIPPED the only
+two scenarios that poll a job through to a genuine COMPLETED result -- the most
+valuable assertions in the file. ``require_adapters`` is the whole gate:
+configuring adapter ids is what declares this lane can run real extraction, and
+(unless the adapters point at a mock) that it will spend real provider money.
+
+One scenario needs the opposite -- a job that dispatches and then FAILS inside
+the engine -- and takes ``bad_llm_adapter``, the id of an adapter deliberately
+carrying an invalid credential. That also moved: it was gated on
+``AGENT_KV_E2E_BAD_KEY_JOB=1`` plus an invalid ``AGENT_KV_LLM_API_KEY``, a
+variable this path does not read, so an operator who set the stack up exactly
+as documented got a job that ran on the valid adapter and reached
+``completed``.
 
 Values extracted under ``UNSTRACT_LLM_MOCK_RESPONSE`` are whatever the mock
 config returns, not real answers -- assertions here deliberately check
@@ -73,6 +83,7 @@ from tests.e2e.agent_kv.conftest import (
     AgentKVAuth,
     cancel,
     delete,
+    e2e_adapters,
     missing_adapter_env,
     poll,
     result,
@@ -202,20 +213,29 @@ def require_adapters() -> None:
 
 
 @pytest.fixture
-def require_llm() -> None:
-    """Skip a scenario that needs a job to actually reach COMPLETED.
+def bad_llm_adapter() -> str:
+    """An adapter id whose provider credential is deliberately INVALID.
 
-    Every other scenario in this module resolves before any LLM call
-    (auth/schema/limiter/page-cap checks); only the two that poll a job all
-    the way to a genuine COMPLETED result need this.
+    Replaces the old `AGENT_KV_E2E_BAD_KEY_JOB=1` + invalid
+    `AGENT_KV_LLM_API_KEY` arrangement, which stopped working when the table
+    path moved onto caller-supplied adapters: that env var is not read on this
+    path at all, so the scenario it gated could no longer be produced. A test
+    that declared a precondition the stack could not satisfy -- and then ran
+    against a VALID credential, reaching `completed` and failing its own
+    `status == "failed"` assertion.
+
+    The credential now lives on an adapter row, so the trigger has to as well.
+    Create one LLM adapter with a junk API key in the target org and export its
+    id; nothing else about the lane changes.
     """
-    has_key = os.environ.get("AGENT_KV_LLM_API_KEY")
-    has_mock = os.environ.get("UNSTRACT_LLM_MOCK_RESPONSE")
-    if not (has_key or has_mock):
+    adapter_id = os.environ.get("AGENT_KV_E2E_BAD_LLM_ADAPTER")
+    if not adapter_id:
         pytest.skip(
-            "needs AGENT_KV_LLM_API_KEY or UNSTRACT_LLM_MOCK_RESPONSE so the "
-            "job can actually reach COMPLETED"
+            "needs AGENT_KV_E2E_BAD_LLM_ADAPTER: the id of an LLM adapter in "
+            "this key's organization carrying a deliberately INVALID provider "
+            "credential, so a job dispatches and then fails inside the engine"
         )
+    return adapter_id
 
 
 # ---------------------------------------------------------------------------
@@ -239,7 +259,7 @@ def test_submit_without_key_is_403(agent_kv_key: AgentKVAuth) -> None:
 
 
 def test_table_extractor_happy_path(
-    require_adapters: None, agent_kv_key: AgentKVAuth, require_llm: None
+    require_adapters: None, agent_kv_key: AgentKVAuth
 ) -> None:
     """A `table` entry runs the table engine and files its result under `table`.
 
@@ -332,8 +352,20 @@ def test_an_unknown_extractor_is_400(agent_kv_key: AgentKVAuth) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_submit_unreadable_pdf_is_400(agent_kv_key: AgentKVAuth) -> None:
+def test_submit_unreadable_pdf_is_400(
+    require_adapters: None, agent_kv_key: AgentKVAuth
+) -> None:
     """A ``.pdf``-named file that isn't a real PDF is rejected before dispatch.
+
+    Takes ``require_adapters`` even though it asserts a REJECTION. The claim
+    that "scenarios expecting a rejection before the adapter gate keep working
+    unchanged" holds only for the three raised inside ``validate_extractors``;
+    this rejection comes from ``SubmitSerializer.validate()``, and DRF raises
+    field-level errors from ``to_internal_value`` BEFORE ``validate()`` runs --
+    with ``_validated_adapter_shape`` called from the field validator. So with
+    the adapter vars unset (the documented default) the status assert still
+    passed on a 400 and the attr assert then FAILED, blaming ``extractors``
+    instead of ``file``. Red, not skipped.
 
     This is the submit-serializer's own page-count check
     (``pdfplumber.open()`` raising -> ``{"file": "Unreadable PDF"}``), which
@@ -439,7 +471,7 @@ def test_cancelled_job_does_not_leak_its_concurrency_slot(
 
 
 def test_delete_completed_job_then_result_404(
-    require_adapters: None, agent_kv_key: AgentKVAuth, require_llm: None
+    require_adapters: None, agent_kv_key: AgentKVAuth
 ) -> None:
     job_id, _ = submit(
         agent_kv_key,
@@ -462,7 +494,25 @@ def test_delete_completed_job_then_result_404(
 # ---------------------------------------------------------------------------
 
 
-def test_page_cap_rejects_oversized_document(agent_kv_key: AgentKVAuth) -> None:
+def test_page_cap_rejects_oversized_document(
+    require_adapters: None, agent_kv_key: AgentKVAuth
+) -> None:
+    """The page cap refuses an oversized document at submit.
+
+    Takes ``require_adapters`` even though it asserts a REJECTION. The claim
+    that "scenarios expecting a rejection before the adapter gate keep working
+    unchanged" holds only for the three raised inside ``validate_extractors``;
+    this rejection comes from ``SubmitSerializer.validate()``, and DRF raises
+    field-level errors from ``to_internal_value`` BEFORE ``validate()`` runs --
+    with ``_validated_adapter_shape`` called from the field validator. So with
+    the adapter vars unset (the documented default) the status assert still
+    passed on a 400 and the attr assert then FAILED, blaming ``extractors``
+    instead of ``file``. Red, not skipped.
+
+    Same defect as ``test_submit_unreadable_pdf_is_400``, but masked: the
+    ``AGENT_KV_MAX_PAGES`` skip below usually fires first, so it would only
+    have gone red on a lane that configured the cap.
+    """
     fixture_pages = 2  # fixtures/invoice.pdf
     cap_raw = os.environ.get("AGENT_KV_MAX_PAGES")
     if cap_raw is None or int(cap_raw) > fixture_pages:
@@ -493,8 +543,8 @@ def _assert_user_safe_error(error: str) -> None:
         assert leak not in error, f"a filesystem path leaked into: {error!r}"
 
 
-def test_bad_llm_key_ends_failed(
-    require_adapters: None, agent_kv_key: AgentKVAuth
+def test_a_bad_adapter_credential_ends_failed(
+    require_adapters: None, agent_kv_key: AgentKVAuth, bad_llm_adapter: str
 ) -> None:
     """A job that DISPATCHES and then fails in the executor ends ``failed``
     with a user-safe error.
@@ -502,9 +552,16 @@ def test_bad_llm_key_ends_failed(
     Every other failure scenario in this module is a request-time rejection
     (400/403/429) that never reaches the engine. This one covers the other
     half of the contract -- the terminal FAILED path -- and it needs the whole
-    stack to be running with a deliberately invalid ``AGENT_KV_LLM_API_KEY``,
-    which no test can arrange for itself. Hence the explicit operator gate
-    (see the module docstring for how to run it).
+    stack to be running with an adapter whose provider credential is
+    deliberately invalid, which no test can mint for itself. Hence the explicit
+    operator gate (see ``bad_llm_adapter``).
+
+    It used to gate on ``AGENT_KV_E2E_BAD_KEY_JOB=1`` plus an invalid
+    ``AGENT_KV_LLM_API_KEY``. That env var is not read on the table path any
+    more, so an operator who set the stack up exactly as documented got a job
+    that ran on the VALID adapter credential, reached ``completed``, and failed
+    this test's own assertion. The trigger moved to where the credential now
+    lives.
 
     The assertion is about SHAPE, not text: whatever went wrong inside the
     engine, the customer-visible ``error`` must not carry a filesystem path, a
@@ -513,18 +570,16 @@ def test_bad_llm_key_ends_failed(
     ``cancelled`` / ``timed out``), which is what the executor now builds from
     the node listener's exception rather than echoing the engine's own text.
     """
-    if os.environ.get("AGENT_KV_E2E_BAD_KEY_JOB") != "1":
-        pytest.skip(
-            "needs a platform deliberately configured with an INVALID "
-            "AGENT_KV_LLM_API_KEY; set AGENT_KV_E2E_BAD_KEY_JOB=1 to declare "
-            "that this stack is running that way (see the module docstring)"
-        )
+    # The advanced-LLM role carries the junk credential; the other two stay
+    # valid, so the run gets past OCR and fails where this test says it does.
+    adapters = {**e2e_adapters(), "llm": bad_llm_adapter}
 
     job_id, _ = submit(
         agent_kv_key,
         _RENT_ROLL_BYTES,
         "rent_roll.pdf",
         table_keys(),
+        adapters=adapters,
     )
 
     status_doc = poll(agent_kv_key, job_id, timeout_s=600)
@@ -551,7 +606,7 @@ def test_bad_llm_key_ends_failed(
 
 
 def test_sync_wait_submit_returns_result_inline(
-    require_adapters: None, agent_kv_key: AgentKVAuth, require_llm: None
+    require_adapters: None, agent_kv_key: AgentKVAuth
 ) -> None:
     """A submit with ``timeout`` seconds sync-waits: if the job reaches a
     terminal state inside the window, the response is 200 with the result
@@ -585,7 +640,7 @@ def test_sync_wait_submit_returns_result_inline(
 
 
 def test_excel_submit_extracts(
-    require_adapters: None, agent_kv_key: AgentKVAuth, require_llm: None
+    require_adapters: None, agent_kv_key: AgentKVAuth
 ) -> None:
     """An .xlsx submit runs the whole pipeline. Excel has no pre-OCR page
     count (``pages_total`` stays None at submit) and takes the post-OCR
@@ -609,7 +664,7 @@ def test_excel_submit_extracts(
 
 
 def test_webhook_delivered_on_completion(
-    require_adapters: None, agent_kv_key: AgentKVAuth, require_llm: None
+    require_adapters: None, agent_kv_key: AgentKVAuth
 ) -> None:
     """Completion-webhook delivery, end to end: submit with a ``webhook_url``
     pointing at a receiver on the compose host and wait for the POST.

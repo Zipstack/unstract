@@ -118,7 +118,9 @@ _TABLE_ADAPTERS = {
 _ROLE_TYPES = {"llm": "LLM", "lite_llm": "LLM", "x2text": "X2TEXT"}
 
 
-def _adapters_owned_by(organization_id, *, types=None, missing=()):
+def _adapters_owned_by(
+    organization_id, *, types=None, missing=(), unusable=(), unavailable=()
+):
     """Patch the single-adapter lookup `_resolved_adapters` performs.
 
     Patches `ev._lookup_adapter`, the view's own seam, rather than the ORM.
@@ -135,18 +137,35 @@ def _adapters_owned_by(organization_id, *, types=None, missing=()):
     An id in `missing` resolves to None (not this org's, or nonexistent -- the
     gate cannot and must not tell those apart); everything else resolves to an
     adapter of the type `types` gives, defaulting to the right one per role.
+    `unusable` / `unavailable` flip `is_usable` / `is_available` for the ids
+    named, which is how the trial-exhaustion and deprecation refusals are
+    reached here.
+
+    Both flags are set EXPLICITLY on every stand-in, never left to `Mock`'s
+    auto-attribute. A bare `mock.Mock()` returns a truthy child for any
+    attribute, so a gate that reads `adapter.is_usable` would be satisfied by a
+    mock that was never asked to model it -- the gate could be deleted and
+    these tests would still pass. The real values live in
+    `tests/test_adapter_scoping.py`, against rows the DB defaulted itself.
     """
     type_by_id = {
         aid: (types or {}).get(role, _ROLE_TYPES[role])
         for role, aid in _TABLE_ADAPTERS.items()
     }
     missing_ids = {str(m) for m in missing}
+    unusable_ids = {str(m) for m in unusable}
+    unavailable_ids = {str(m) for m in unavailable}
 
     def _lookup(adapter_id, org_id):
         aid = str(adapter_id)
         if aid in missing_ids or org_id != organization_id:
             return None
-        return mock.Mock(adapter_type=type_by_id.get(aid, "LLM"))
+        return mock.Mock(
+            id=aid,
+            adapter_type=type_by_id.get(aid, "LLM"),
+            is_usable=aid not in unusable_ids,
+            is_available=aid not in unavailable_ids,
+        )
 
     return mock.patch.object(ev, "_lookup_adapter", side_effect=_lookup)
 
@@ -948,12 +967,17 @@ def test_a_save_failure_after_staging_removes_the_staged_object(
 # ---------------------------------------------------------------------------
 # The adapter tenancy gate.
 #
-# `POST /agent-kv/` names platform adapters by id, and the executor resolves
-# them through the platform service WITHOUT re-checking whose they are. So the
-# submit-time org filter is the only thing standing between a caller and
-# another tenant's LLM credential. Same class as the `organization_id` filter
-# on every job-scoped view, and higher consequence: that one leaks a job, this
-# one spends someone else's money.
+# `POST /agent-kv/` names platform adapters by id. The platform service DOES
+# re-scope its lookups by organization (`WHERE id=%s and organization_id=%s`,
+# against the org of the job's own platform key), so this gate is defence in
+# depth rather than the only thing standing between a caller and another
+# tenant's credential -- the comment here previously claimed the latter.
+#
+# It is still load-bearing for what the platform service does not do: produce a
+# 400 at submit naming the role (instead of an `SdkError` mid-run, after a slot
+# and staging are spent), and refuse an exhausted trial (`is_usable`) or a
+# deprecated adapter (`is_available`), neither of which the platform service
+# checks before handing the credentials back.
 # ---------------------------------------------------------------------------
 
 
@@ -1042,36 +1066,81 @@ def test_an_adapter_of_the_wrong_type_is_refused(
 @mock.patch.object(ev, "check_key_rate", return_value=True)
 @mock.patch.object(ev, "get_plugin", return_value=_plugin_with_gate())
 @mock.patch.object(AgentKVKey, "objects")
-def test_the_refusal_does_not_reveal_whether_the_adapter_exists(
+def test_an_exhausted_trial_adapter_is_refused_before_anything_is_billed(
     m_keys, m_plugin, m_rate, m_limiter, m_stage, m_save, m_dispatch
 ):
-    """"Not yours" and "no such adapter" must read identically.
+    """`is_usable=False` must 400, not 202.
 
-    Telling them apart turns the endpoint into an oracle for which adapter
-    UUIDs are real in other organizations.
+    A frictionlessly onboarded org runs on operator-funded sample credentials;
+    billing flips `is_usable` when the free allowance is gone, and the IDE,
+    workflows and Prompt Studio all refuse from that moment. The platform
+    service does NOT check the flag -- it hands the credentials back -- so if
+    this endpoint does not check it either, the submit is accepted and the
+    OPERATOR pays for the caller's extraction.
     """
     key = kv_key()
     m_keys.get.return_value = key
     m_limiter.check_and_acquire.return_value = True
     m_save.side_effect = _stamp_created_at
 
-    bodies = []
-    # First: the id exists but belongs to someone else. Second: it exists
-    # nowhere. The stand-in cannot distinguish them either, which is the point.
-    for missing in ([_TABLE_ADAPTERS["llm"]], [_TABLE_ADAPTERS["llm"]]):
-        with _adapters_owned_by(key.organization_id, missing=missing):
-            resp = ev.SubmitView.as_view()(
-                _real_multipart_post(
-                    [
-                        {
-                            "name": "table",
-                            "keys": {"target_table": "Rent rolls"},
-                            "adapters": _TABLE_ADAPTERS,
-                            "options": {},
-                        }
-                    ],
-                )
+    with _adapters_owned_by(key.organization_id, unusable=[_TABLE_ADAPTERS["llm"]]):
+        resp = ev.SubmitView.as_view()(
+            _real_multipart_post(
+                [
+                    {
+                        "name": "table",
+                        "keys": {"target_table": "Rent rolls"},
+                        "adapters": _TABLE_ADAPTERS,
+                        "options": {},
+                    }
+                ],
             )
-        bodies.append(str(resp.data))
+        )
 
-    assert bodies[0] == bodies[1]
+    assert resp.status_code == 400
+    assert "exhausted" in str(resp.data), resp.data
+    assert not m_dispatch.called, "an exhausted trial must not reach the executor"
+    assert not m_stage.called, "nor be charged for staging the upload"
+
+
+@mock.patch.object(ev, "dispatch_job")
+@mock.patch.object(AgentKVJob, "save", autospec=True)
+@mock.patch.object(ev, "stage_input")
+@mock.patch.object(ev, "AgentKVConcurrencyLimiter")
+@mock.patch.object(ev, "check_key_rate", return_value=True)
+@mock.patch.object(ev, "get_plugin", return_value=_plugin_with_gate())
+@mock.patch.object(AgentKVKey, "objects")
+def test_a_deprecated_adapter_is_refused_at_submit(
+    m_keys, m_plugin, m_rate, m_limiter, m_stage, m_save, m_dispatch
+):
+    """`is_available=False` means the SDK registry no longer carries it.
+
+    Left to the executor this raises `InValidAdapterId` deep in the engine and
+    reaches the caller as a mid-run extraction failure, on a job that already
+    took a slot and billed for staging.
+    """
+    key = kv_key()
+    m_keys.get.return_value = key
+    m_limiter.check_and_acquire.return_value = True
+    m_save.side_effect = _stamp_created_at
+
+    with _adapters_owned_by(
+        key.organization_id, unavailable=[_TABLE_ADAPTERS["x2text"]]
+    ):
+        resp = ev.SubmitView.as_view()(
+            _real_multipart_post(
+                [
+                    {
+                        "name": "table",
+                        "keys": {"target_table": "Rent rolls"},
+                        "adapters": _TABLE_ADAPTERS,
+                        "options": {},
+                    }
+                ],
+            )
+        )
+
+    assert resp.status_code == 400
+    assert "deprecated" in str(resp.data), resp.data
+    assert not m_dispatch.called
+    assert not m_stage.called

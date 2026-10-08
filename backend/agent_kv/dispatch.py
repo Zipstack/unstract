@@ -120,10 +120,21 @@ def dispatch_job(
                 # Platform adapter instance ids, by role, already validated at
                 # submit against THIS job's organization and against the
                 # expected `AdapterTypes` (see
-                # `execution_serializers.validated_adapters`). The executor
-                # resolves them through the platform service using the key
-                # below -- it does NOT re-check tenancy, so the submit-time
-                # check is the only one there is.
+                # `execution_serializers._validated_adapter_shape` for the
+                # shape half and `execution_views._resolved_adapters` for the
+                # tenancy half).
+                #
+                # Defence in depth, NOT the only check: the platform service
+                # re-scopes every lookup as
+                # `WHERE id=%s and organization_id=%s`
+                # (platform-service/.../helper/adapter_instance.py:28-30),
+                # where the org comes from the bearer platform key that
+                # `_platform_api_key(job)` below mints from THIS job's org. So
+                # org A cannot spend org B's credential even with the submit
+                # gate removed. What the submit gate buys is a clean 400 naming
+                # the role instead of a mid-run `SdkError`, plus the two checks
+                # the platform service does NOT make: `is_usable` (exhausted
+                # trial) and `is_available` (deprecated).
                 #
                 # Empty for an env-configured extractor (`kv`), which is why
                 # this is a dict rather than three params: the two credential

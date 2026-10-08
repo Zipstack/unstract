@@ -115,7 +115,24 @@ def _get_task_error(
         if res.result:
             return str(res.result)
     except Exception:
-        pass
+        # Was a bare `pass`, the same defect fixed in the Agent-KV twin
+        # (`agent_kv_tasks.py::_error_link`) -- carried over here because the
+        # cause and the cost are identical, not because this PR owns the IDE
+        # path.
+        #
+        # The common case is a kombu deserialization failure: the executor
+        # raised an exception class that is not importable in this image, so
+        # the result backend HAS the error and this process cannot read it. The
+        # execution is then finalized with the generic `default` -- the exact
+        # useless message this lookup exists to avoid -- and silently, leaving
+        # the real cause unrecoverable even from logs.
+        logger.warning(
+            "Could not read the executor error from the result backend for "
+            "task %s; finalizing with the generic message %r",
+            failed_task_id,
+            default,
+            exc_info=True,
+        )
     return default
 
 

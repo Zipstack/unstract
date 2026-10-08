@@ -66,7 +66,15 @@ def agent_kv_sweep() -> dict[str, Any]:
     # Logged here as well as backend-side: this is the only place that records
     # the periodic actually FIRED. The counts alone cannot distinguish "ran and
     # found nothing" from "never ran", which is precisely the failure this
-    # task pair shipped with (see the backend migration that schedules them).
+    # task pair shipped with.
+    #
+    # Nothing in this repo schedules these. The cloud chart's
+    # `backend.agentKvCronJobs` runs the equivalent management commands and is
+    # the single owner (migration `0004_pg_periodic_tasks` used to seed
+    # PgPeriodicTask rows as a second owner and now removes them). A
+    # self-hosted OSS operator who wants these tasks driven through the PG
+    # scheduler registers the rows themselves with `pg_owned: True` -- see
+    # `docs/agent-kv-api.md` §12.
     logger.info("agent_kv.sweep completed: %s", result)
     return result
 

@@ -106,6 +106,25 @@ class AgentKVJob(DefaultOrganizationMixin, BaseModel):
     stage = models.CharField(max_length=32, blank=True, default="")
     stages = models.JSONField(default=dict, blank=True)
     pages_total = models.IntegerField(null=True, blank=True)
+    #: Which platform adapters this run was dispatched with, by role --
+    #: ``{"llm": "<uuid>", "lite_llm": "<uuid>", "x2text": "<uuid>"}``.
+    #:
+    #: Recorded because adapter choice is now a per-request, caller-controlled,
+    #: COST-BEARING decision (the `table` extractor runs on the submitter's own
+    #: adapters, not operator env credentials). Without it the ids reached
+    #: `executor_params` and nothing else: neither the status document nor
+    #: `usage_summary` reported them, so "which model did job X use?" -- the
+    #: first question in any billing dispute -- could only be answered by
+    #: joining `usage_v2` on `run_id`, which the API cannot do and a customer
+    #: cannot see at all.
+    #:
+    #: Empty for an env-configured extractor (`kv`), which is why it is a dict
+    #: with a `{}` default rather than three nullable columns: the two
+    #: credential models coexist, one per extractor.
+    #:
+    #: Ids only. Deliberately never `adapter_metadata` -- that is where the
+    #: provider credentials live, and this column is returned to the caller.
+    adapters = models.JSONField(default=dict, blank=True)
     input_ref = models.CharField(max_length=512, blank=True, default="")
     result_ref = models.CharField(max_length=512, blank=True, default="")
     usage_summary = models.JSONField(null=True, blank=True)

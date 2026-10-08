@@ -14,6 +14,20 @@ The assertions run in BOTH directions, which is the part to read carefully:
   no ``agentic_kv`` plugin, so a fleet listing that queue would accept work
   nothing can drain -- the same silent failure, arrived at from the other side.
 
+**These names are literals, and that is a known limitation.** Re-enabling the
+``kv`` extractor is one ``EXTRACTOR_ROUTES`` entry, after which
+``celery_executor_agentic_kv`` must be SERVED -- and the inverse assertion
+above would have to be deleted to go green, which is the one moment a guard
+should not be getting deleted. The derived version of both directions lives in
+``backend/agent_kv/tests/test_queue_wiring_is_derived.py``, where
+``EXTRACTOR_ROUTES`` is actually importable (the backend package is not
+importable from this test venv -- that asymmetry is why the duplication
+exists). That suite also covers ``run-worker-docker.sh``, which this one does
+not reach.
+
+Keeping both is deliberate: two independent statements of the same fact, one of
+which does not depend on the routing table being correct.
+
 An earlier version of this docstring described only the first direction and
 narrated how ``celery_executor_agentic_kv`` ought to be wired in. That is the
 one thing a guard with an inverted assertion must not say: a reader checking
@@ -118,11 +132,57 @@ def test_test_compose_does_not_wire_the_queue_onto_the_dead_celery_var():
 
     That drained nothing on the PG transport. If someone re-adds it, the queue
     looks configured while the lane still hangs -- so fail loudly.
+
+    Scoped to TEST_COMPOSE deliberately, and NOT parametrized over both files
+    -- review asked for the parametrization and this is why it is wrong here.
+    `docker/docker-compose.yaml` legitimately sets `CELERY_QUEUES_EXECUTOR` on
+    `worker-pg-executor` (it is consumed by `run-worker-docker.sh:281` and by
+    `workers/executor/worker.py` for anyone still launching the Celery
+    executor), so parametrizing would turn this into an immediate red on a
+    config that is vestigial rather than wrong.
+
+    What generalizes is not "the variable must be absent" but "the variable
+    must never advertise a queue the PG consumer does not serve" -- which is
+    the next test, and which DOES run against both files.
     """
     env = _service_env(TEST_COMPOSE, "worker-pg-executor")
     assert DEAD_CELERY_VAR not in env, (
         f"{DEAD_CELERY_VAR} is read only by the disabled Celery executor "
         f"(workers/executor/worker.py). Queues belong in {PG_QUEUE_VAR}."
+    )
+
+
+@pytest.mark.parametrize(
+    ("compose_path", "label"),
+    [(DEV_COMPOSE, "dev compose"), (TEST_COMPOSE, "e2e test compose")],
+)
+def test_the_dead_celery_var_never_advertises_an_unserved_queue(compose_path, label):
+    """The generalized form of the test above, over both compose files.
+
+    Wherever `CELERY_QUEUES_EXECUTOR` survives, it must stay a SUBSET of what
+    the PG consumer actually drains. The hazard is not the variable existing --
+    it is the variable drifting into a superset, because then a reader
+    comparing the two lists concludes a queue is served when nothing drains it,
+    and the Celery path that would have drained it is disabled.
+
+    Concretely this fails if someone adds `celery_executor_agentic_kv` to the
+    Celery list while the PG list correctly omits it.
+    """
+    env = _service_env(compose_path, "worker-pg-executor")
+    dead = env.get(DEAD_CELERY_VAR)
+    if dead is None:
+        pytest.skip(f"{label} does not set {DEAD_CELERY_VAR}")
+
+    pg_raw = env.get(PG_QUEUE_VAR)
+    assert pg_raw is not None, f"{label}: no {PG_QUEUE_VAR} to compare against"
+
+    extra = _queues(dead) - _queues(pg_raw)
+    assert not extra, (
+        f"{label}: {DEAD_CELERY_VAR} advertises {sorted(extra)}, which "
+        f"{PG_QUEUE_VAR} does not serve. {DEAD_CELERY_VAR} is read only by the "
+        f"disabled Celery executor, so nothing drains those -- work routed "
+        f"there is accepted and never runs. Add them to {PG_QUEUE_VAR} or drop "
+        f"them here."
     )
 
 

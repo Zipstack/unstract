@@ -289,6 +289,72 @@ def test_a_case_variant_of_a_known_format_is_refused(fmt, intended):
         compile_schema(spec)
 
 
+@pytest.mark.parametrize(
+    ("fmt", "intended"),
+    [
+        ("Enum:paid,unpaid", "enum:paid,unpaid"),
+        ("ENUM:paid,unpaid", "enum:paid,unpaid"),
+        ("Regex:^[0-9]+$", "regex:^[0-9]+$"),
+        ("REGEX:^[0-9]+$", "regex:^[0-9]+$"),
+    ],
+)
+def test_a_case_variant_of_an_ARGUMENT_taking_format_is_refused(fmt, intended):
+    """The residual the first round's fix left behind.
+
+    `test_a_case_variant_of_a_known_format_is_refused` above covers the BARE
+    names, including bare `"Enum"` and `"Regex"` -- but not the forms that
+    actually carry an argument, which is how anyone real writes them.
+    `_parse_format` matches the `enum:` / `regex:` prefix case-sensitively, so
+    `"Enum:paid,unpaid"` never becomes kind `"enum"`; it reached the typo guard
+    as the whole raw string, and `"enum:paid,unpaid"` is not a member of
+    `_KNOWN_FORMATS` (which holds the bare `"enum"`).
+
+    Net effect before this: the key compiled as a free-text hint, `/validate`
+    reported `{"valid": true}`, and the enum was never enforced -- identical to
+    the `"Number"` failure, through the one gap the fix for it did not close.
+    """
+    with pytest.raises(SchemaError, match="Did you mean"):
+        compile_schema(_one_key(fmt))
+
+    # And the suggestion has to be the usable spelling, argument included --
+    # `"enum"` alone would be rejected by the no-values check one line later,
+    # sending the author in a circle.
+    with pytest.raises(SchemaError) as caught:
+        compile_schema(_one_key(fmt))
+    assert intended in str(caught.value)
+
+
+@pytest.mark.parametrize(
+    "fmt",
+    ["enum:paid,unpaid", "regex:^[0-9]+$", "enum:a,b,c"],
+)
+def test_correctly_cased_argument_formats_still_compile(fmt):
+    """The other half: the fix must not reject the valid spellings.
+
+    These reach the guard with kind already resolved to `"enum"`/`"regex"` by
+    `_parse_format`, so the colon-splitting branch must not fire on them.
+    """
+    compile_schema(_one_key(fmt))
+
+
+@pytest.mark.parametrize(
+    "fmt",
+    [
+        "customer:id",  # a colon in genuine free text
+        "total:in USD",
+        "ref:12345",
+    ],
+)
+def test_free_text_containing_a_colon_is_not_mistaken_for_a_format(fmt):
+    """Splitting on `:` must not capture unrelated hints.
+
+    The prefix before the colon is not a known format in any of these, so they
+    stay free text -- which is what a schema author writing a descriptive hint
+    expects.
+    """
+    compile_schema(_one_key(fmt))
+
+
 @pytest.mark.parametrize("fmt", ["number", "date", "currency", "string"])
 def test_the_known_formats_still_compile(fmt):
     compile_schema(_one_key(fmt))

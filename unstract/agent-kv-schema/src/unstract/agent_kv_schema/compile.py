@@ -220,13 +220,20 @@ _KNOWN_FORMATS = frozenset({"string", "number", "date", "currency", "enum", "reg
 def _reject_unusable_formats(key_specs, array_specs) -> None:
     """Refuse declared formats that can never validate anything, or always fail.
 
-    Three shapes, all accepted before review and all verified by execution:
+    Four shapes, all accepted before review and all verified by execution:
 
     * ``format: "Number"`` -- a case variant of a known format. Silently
       degrades to a free-text hint, disabling validation for that key. Rejected
       with the intended spelling, rather than guessed at: a schema author who
       meant the hint can lower-case it or reword it, and one who meant the
       format gets told.
+    * ``format: "Enum:paid,unpaid"`` / ``"REGEX:^[0-9]+$"`` -- the same defect
+      class for the two formats that take an ARGUMENT, and the one the first
+      round's fix missed. ``_parse_format`` matches the ``enum:`` / ``regex:``
+      prefix case-sensitively, so these never reach kind ``"enum"``/``"regex"``;
+      they arrive as the whole raw string, which no bare-name comparison
+      matches. Validation was silently off for the key -- the precise outcome
+      the first bullet exists to prevent, reached by a route it did not cover.
     * ``format: "enum:"`` -- no values, so ``_check_one`` tests membership of
       the empty set and EVERY non-empty value fails QA for the life of the job.
     * ``format: "regex:"`` -- empty pattern, so ``re.fullmatch("", v)`` matches
@@ -240,7 +247,28 @@ def _reject_unusable_formats(key_specs, array_specs) -> None:
     for kspec in _every_leaf(key_specs, array_specs):
         fmt = kspec.format
         lowered = fmt.casefold()
-        if fmt not in _KNOWN_FORMATS and lowered in _KNOWN_FORMATS:
+        # `lowered` catches a bare case variant (`"Number"`). `kind_only`
+        # catches the two formats that take an ARGUMENT, which the bare check
+        # misses entirely: `_parse_format` matches the `enum:` / `regex:`
+        # prefix case-SENSITIVELY, so `"Enum:paid,unpaid"` never becomes kind
+        # `"enum"` -- it arrives here as the whole raw string, and
+        # `"enum:paid,unpaid".casefold()` is not a member of `_KNOWN_FORMATS`
+        # (which holds the bare `"enum"`). So the mis-cased form slipped this
+        # guard, parsed as a free-text kind, and validation was silently off
+        # for that key -- exactly the failure this function closes for bare
+        # formats.
+        #
+        # Splitting on the colon is safe for genuine free text: a hint like
+        # `"customer:id"` yields `"customer"`, which is not a known format.
+        #
+        # Rejected rather than auto-corrected, to match the bare case above: a
+        # schema author who meant the format gets told the spelling, and one
+        # who meant a free-text hint can reword it. Silently honouring `Enum:`
+        # would make case significant in one direction only.
+        kind_only = lowered.split(":", 1)[0]
+        if fmt not in _KNOWN_FORMATS and (
+            lowered in _KNOWN_FORMATS or kind_only in _KNOWN_FORMATS
+        ):
             raise SchemaError(
                 f"'{kspec.path}' declares format {fmt!r}, which is not a known "
                 f"format and is therefore treated as free text -- no validation "

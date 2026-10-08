@@ -6,6 +6,7 @@ logic, not Celery routing. ``_get_api_client`` and ``send_webhook`` are
 mocked at the ``ide_callback.agent_kv_tasks`` import site.
 """
 
+import logging
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -229,6 +230,53 @@ class TestAgentKvError:
 
     @patch(_PATCH_SEND_WEBHOOK)
     @patch(_PATCH_GET_CLIENT)
+    def test_a_swallowed_lookup_failure_is_logged_with_its_traceback(
+        self, mock_get_client, mock_send_webhook, mock_api, cb_kwargs, caplog
+    ):
+        """The handler was a bare `except Exception: pass`.
+
+        `test_error_link_falls_back_when_lookup_raises` above asserts only the
+        `_UNKNOWN` fallback -- which the bare `pass` also produced, so that test
+        is byte-identical before and after the fix and cannot detect it.
+
+        What actually changed is that the cause is now recoverable. The common
+        case is a kombu deserialization failure: the executor raised a
+        cloud-plugin exception class that this OSS image cannot import, so the
+        result backend HAS the error and this process cannot read it. The job
+        is finalized with "Executor failed without an error message" -- and
+        before, with nothing anywhere saying why.
+
+        `exc_info` is asserted, not just the message: without the traceback the
+        log says a lookup failed but not what failed, which for an unimportable
+        exception class is the entire diagnosis.
+        """
+        with caplog.at_level(logging.WARNING):
+            with patch(_PATCH_ASYNC_RESULT, side_effect=RuntimeError("backend down")):
+                self._call("failed-task-3b", cb_kwargs)
+
+        # Matched by CONTENT, not by position. The callback also logs its own
+        # terminal ERROR ("agent_kv executor task failed: ..."), so taking
+        # `records[0]` would let this pass against a bare `pass` by picking up
+        # an unrelated record -- which it did on the first cut of this test.
+        matching = [
+            r
+            for r in caplog.records
+            if r.levelno >= logging.WARNING and "result backend" in r.getMessage()
+        ]
+        assert len(matching) == 1, (
+            "expected exactly one warning about the unreadable result backend; "
+            f"got {[r.getMessage() for r in caplog.records]}. Restoring the "
+            "bare `pass` makes this the failing assertion."
+        )
+        record = matching[0]
+        assert "failed-task-3b" in record.getMessage(), record.getMessage()
+        assert record.exc_info is not None, (
+            "logged without exc_info -- the traceback is the diagnosis when the "
+            "cause is an exception class this image cannot import"
+        )
+
+    @patch(_PATCH_SEND_WEBHOOK)
+    @patch(_PATCH_GET_CLIENT)
     def test_none_callback_kwargs_uses_empty_defaults(
         self, mock_get_client, mock_send_webhook, mock_api
     ):
@@ -331,15 +379,46 @@ class TestAgentKvError:
         assert agent_kv_error.max_retries == 3
         assert Exception in agent_kv_error.autoretry_for
 
-    def test_agent_kv_error_matches_its_siblings_failure_posture(self):
-        """`agent_kv_complete` re-raises; these two are the success and failure
-        halves of one contract and must not disagree about what a failed
-        finalize means.
+    @patch(_PATCH_SEND_WEBHOOK)
+    @patch(_PATCH_GET_CLIENT)
+    def test_agent_kv_error_matches_its_siblings_failure_posture(
+        self, mock_get_client, mock_send_webhook, cb_kwargs
+    ):
+        """Both callbacks must RAISE when finalize fails -- neither may swallow.
+
+        These two are the success and failure halves of one contract: whichever
+        one runs is the SOLE terminalizer of the job, so a finalize that fails
+        silently leaves the row in RUNNING until the sweep overwrites the real
+        error with "Job timed out". `agent_kv_error` used to catch, log and
+        `return None`, which the consumer records as SUCCESS -- no retry, no
+        dead letter, no failed-task record.
+
+        The previous version of this test asserted
+        `agent_kv_complete is not None` and `agent_kv_error.max_retries is not
+        None`, which is true of essentially any task object and could not fail
+        for the reason the test names. It is the behaviour that has to be
+        pinned, so both callbacks are actually driven here with a finalize that
+        blows up.
         """
         from ide_callback.agent_kv_tasks import agent_kv_complete, agent_kv_error
 
-        assert agent_kv_complete is not None
-        assert agent_kv_error.max_retries is not None
+        api = MagicMock()
+        api.agent_kv_finalize.side_effect = RuntimeError("backend unreachable")
+        mock_get_client.return_value = api
+
+        with pytest.raises(RuntimeError):
+            agent_kv_complete(
+                {"success": True, "data": {"output": {}}, "error": None}, cb_kwargs
+            )
+
+        with pytest.raises(RuntimeError):
+            with patch(_PATCH_ASYNC_RESULT, return_value=MagicMock(result="boom")):
+                agent_kv_error.run("failed-task-posture", cb_kwargs)
+
+        # And neither may fire a webhook off a finalize that did not happen --
+        # telling the caller a job is terminal when the row never moved is
+        # worse than telling them nothing.
+        assert not mock_send_webhook.called
 
 
 # ---------------------------------------------------------------------------

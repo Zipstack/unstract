@@ -299,6 +299,15 @@ Not exposed (D6): model choice, challenger model, `parallel_pages`, thinking bud
   `pdfplumber` and rejected over `AGENT_KV_MAX_PAGES` before any paid work runs. Excel
   has no pre-OCR page concept — it is capped by file size only at submit time (the
   engine enforces a post-OCR virtual-page cap).
+  - **The cap bounds the pages this request will PROCESS, not the document's
+    length.** It is checked against `pages_selected` — the count after
+    `page_start` / `page_end` are applied — not against `pages_total`. So pages
+    1–50 of a 400-page PDF is accepted under a 100-page cap, while the same
+    document submitted without a page range is refused. That is the intended
+    reading: the cap exists to bound paid work per job, and a page range is the
+    caller declaring how much work they are asking for. `pages_total` is still
+    recorded on the job and returned in the status document, so the document's
+    real length is never lost.
   - Images (`.png .jpg .jpeg .tiff`) are **not** accepted, and no longer count as
     1 page. The engine treats only `.pdf/.xlsx/.xls` as a document and
     `ImageLoader.load_pages` has no call site, so an accepted image returned
@@ -423,6 +432,11 @@ list for the extractor that actually ran
       ]
     }
   },
+  "adapters": {
+    "llm": "3f2b1c90-...",
+    "lite_llm": "a71e4d55-...",
+    "x2text": "c90aa812-..."
+  },
   "created_at": "2026-08-28T10:15:00.123456+00:00",
   "started_at": "2026-08-28T10:15:01.500000+00:00",
   "completed_at": null,
@@ -436,9 +450,17 @@ Each stage entry always carries `status` (`running`|`done`) and, if reported,
 counters, and any counter using the reserved keys `status`/`seconds`, are dropped by the
 internal stage-report endpoint rather than persisted (`backend/agent_kv/internal_views.py::_sanitize_counters`).
 
+`adapters` echoes the platform adapter ids this job was dispatched with, by role
+— the ones the submit named and the gate validated (§3a). It is reported because
+the caller chose them and is paying for them: naming the wrong `llm` id yields a
+correct-looking result at a different price, and the only other record of what
+was spent is in `usage_v2`, which the caller cannot read. **Ids only, never
+adapter metadata** — that is where provider credentials live. `{}` for an
+env-configured extractor (`kv`) and for any job predating the field.
+
 `status` is lowercased (`pending`, `dispatched`, `running`, `completed`, `failed`,
-`cancelled`); `error` is included (only) when `status == "failed"`. `pages_total` and
-`completed_at` are always present (as `null` until known) — an addition beyond the
+`cancelled`); `error` is included (only) when `status == "failed"`. `adapters`,
+`pages_total` and `completed_at` are always present (as `null`/`{}` until known) — an addition beyond the
 spec's illustrative example, not a drift, since spec §7.2 was explicitly a partial
 sample ("Verbose, agent-centric, stage-level").
 
@@ -846,10 +868,28 @@ beyond `docker compose up`:
    (`backend/agent_kv/management/commands/`) — each printing the JSON counts
    (`{"swept": N, "timed_out": M}` / `{"cleaned": N}`) and exiting 0. In the cloud
    deployment, a Kubernetes CronJob runs each command on the cadences above instead
-   of registering a `PgPeriodicTask` row. The scheduler proxy tasks
-   (`agent_kv.sweep`/`agent_kv.ttl_cleanup`) and their PG-scheduler registration
-   remain the mechanism for OSS/self-hosted deployments, which have no CronJob
-   equivalent to drive from.
+   of registering a `PgPeriodicTask` row.
+
+   **The CronJob is the only owner.** Migration `0004_pg_periodic_tasks` once also
+   seeded two `PgPeriodicTask` rows for the same two tasks; it now removes them.
+   They were seeded `pg_owned: False` so nothing double-fired, but the flag exists
+   to be flipped, and a flip would have run a `*/10` sweep against the chart's
+   `*/15` — colliding at `:30` on the same rows — with TTL cadences disagreeing 24x.
+   Only the CronJob side carries `concurrencyPolicy: Forbid` and a deadline.
+
+   > **Self-hosted OSS: you must schedule these two yourself.** There is no CronJob
+   > outside the cloud chart and no migration registers them any more. Run
+   > `manage.py agent_kv_sweep` and `manage.py agent_kv_ttl_cleanup` from cron, a
+   > systemd timer, or your own `PgPeriodicTask` rows with `pg_owned: True` — the
+   > scheduler proxy tasks `agent_kv.sweep`/`agent_kv.ttl_cleanup` are still
+   > registered and still work. Without them a stranded job holds its concurrency
+   > slot until the 6 h Redis TTL, and `AGENT_KV_RESULT_TTL_DAYS` is advisory:
+   > staged documents and results stay in the bucket indefinitely, which is a
+   > retention failure, not just a disk-usage one.
+   >
+   > Note this deployment routes `table` only, and that extractor needs the cloud
+   > `agentic_table` plugin — so a pure-OSS install cannot dispatch an Agent-KV job
+   > at all, and has no stranded rows to reap until it ships an engine plugin.
 
    **Chart keys (cloud repo)**: `backend.agentKvCronJobs` in
    `charts/unstract-platform/values.yaml` — `enabled: false` there (on-prem never runs
@@ -865,12 +905,26 @@ beyond `docker compose up`:
 5. **Env vars**: every `AGENT_KV_*` setting plus `AGENT_KV_FILE_STORAGE_CREDENTIALS` —
    see [§6](#12-environment-reference) and `docker/sample.env`.
 
-   > **For the `table` extractor, the executor-side credential group below is NOT
-   > required.** That path resolves the caller's own platform adapters (see §3a), so
-   > none of the six `AGENT_KV_LLM_*` / `AGENT_KV_LLMWHISPERER_*` values is read on
-   > it. The group only has to be configured where the `kv` extractor is deployed,
-   > which is a separate release track. A table-only deployment can leave
+   > **For the `table` extractor, the executor-side credential group below must be
+   > left UNSET — not merely "is not required".** That path resolves the caller's
+   > own platform adapters (see §3a), so none of the six `AGENT_KV_LLM_*` /
+   > `AGENT_KV_LLMWHISPERER_*` values is read on it. The group only has to be
+   > configured where the `kv` extractor is deployed, which is a separate release
+   > track. A table-only deployment leaves
    > `global.sharedConfigs.agentKv.enabled: false` and the API works.
+   >
+   > **Deploy order: cloud worker first, then the backend.** The two repos deploy
+   > independently and nothing on the wire marks the capability. A new backend
+   > against an *old* worker sends validated `adapters` in `executor_params` to a
+   > worker that has no `ParamKeys.ADAPTERS`; it ignores the key and calls
+   > `ExtractionConfig.from_env()`. If those six values are set it runs on
+   > **operator** credentials, bills the `agent_kv:{provider}/{model}` sentinel, and
+   > returns a 202 with a correct-looking result — while the adapters the caller
+   > named were never used. Nothing in either repo's logs reveals it. With the group
+   > unset the same old worker fails loudly with "Missing required Agent-KV env
+   > vars", which is what a half-finished rollout should look like. The reverse
+   > order is safe by construction: the new worker hard-fails "Missing required
+   > adapters" rather than falling back to env.
    >
    > Two operator knobs are still read on the table path, independently of that
    > group: `AGENT_KV_STORAGE_DIR_PREFIX` (which must match the backend's — the
@@ -1067,7 +1121,7 @@ with the default shown:
 |---|---|---|
 | `AGENT_KV_PATH_PREFIX` | `agent-kv` | Top-level public URL prefix (whitelisted past tenant middleware). |
 | `AGENT_KV_MAX_FILE_SIZE_MB` | `50` | Submit-time file size cap. |
-| `AGENT_KV_MAX_PAGES` | `100` | Pre-OCR page cap for PDFs (§6.1). Excel has no pre-OCR page concept; images are not accepted. |
+| `AGENT_KV_MAX_PAGES` | `100` | Pre-OCR cap on the pages a request will PROCESS for PDFs — checked against `pages_selected` (after `page_start`/`page_end`), not the document's `pages_total` (§6.1). Excel has no pre-OCR page concept, so it takes the engine's post-OCR virtual-page cap instead; images are not accepted. |
 | `AGENT_KV_MAX_CALCULATIONS_BYTES` | `20000` | Byte cap on the optional `calculations` field. |
 | `AGENT_KV_MAX_SCHEMA_BYTES` | `262144` | Byte cap on the raw `keys` JSON document (256 KiB). |
 | `AGENT_KV_RESULT_TTL_DAYS` | `7` | Result retention window (and a cancelled job's input, which rides the same TTL — a completed/failed job's input is deleted immediately at finalize instead), stamped at submit time (see [§6](#9-retention-and-ttl)). |

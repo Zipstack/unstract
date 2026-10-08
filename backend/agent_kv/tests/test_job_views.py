@@ -308,12 +308,24 @@ def test_cancel_win_releases_concurrency_slot(m_keys, m_jobs, m_mark_terminal, m
     job = AgentKVJob(status=JobStatus.PENDING)
     job.organization_id = "org1"
     m_jobs.get.return_value = job
+    _dispatched_in_db(m_jobs, False)
 
     resp = ev.JobCancelView.as_view()(_authed(method="post"), job_id=uuid.uuid4())
 
     assert resp.status_code == 200
     m_release.assert_called_once_with("org1", str(job.id))
 
+
+def _dispatched_in_db(m_jobs, dispatched: bool) -> None:
+    """Wire the DB re-read `_never_dispatched` performs.
+
+    It no longer reads `job.dispatched_at` off the in-memory row -- that row
+    predates `mark_terminal`, and a dispatch completing in that gap made the
+    cancel release a slot whose executor was still running (round-2 C1). It now
+    asks the database, so these tests have to say what the database would
+    answer.
+    """
+    m_jobs.filter.return_value.exists.return_value = dispatched
 
 # ---------------------------------------------------------------------------
 # (6c) cancel that LOSES the guard (job already terminal) must NOT release --
@@ -488,6 +500,7 @@ def test_delete_on_a_never_dispatched_job_DOES_release_the_slot(
     job.organization_id = "org1"
     job.dispatched_at = None
     m_jobs.get.return_value = job
+    _dispatched_in_db(m_jobs, False)
 
     resp = ev.JobDeleteView.as_view()(_authed(method="delete"), job_id=uuid.uuid4())
 
@@ -806,6 +819,7 @@ def test_cancel_on_a_never_dispatched_job_DOES_release_the_slot(
     job.organization_id = "org1"
     job.dispatched_at = None
     m_jobs.get.return_value = job
+    _dispatched_in_db(m_jobs, False)
 
     resp = ev.JobCancelView.as_view()(_authed(method="post"), job_id=uuid.uuid4())
 
@@ -813,15 +827,58 @@ def test_cancel_on_a_never_dispatched_job_DOES_release_the_slot(
     m_release.assert_called_once_with("org1", str(job.id))
 
 
-def test_a_dispatched_but_still_pending_job_is_not_treated_as_undispatched():
-    """`dispatched_at` and `status` are checked together on purpose.
+@mock.patch.object(ev, "dispatch_cancelled_webhook")
+@mock.patch.object(ev.AgentKVConcurrencyLimiter, "release")
+@mock.patch.object(AgentKVJob, "mark_terminal", return_value=True)
+@mock.patch.object(AgentKVJob, "objects")
+@mock.patch.object(AgentKVKey, "objects")
+def test_a_cancel_that_raced_a_dispatch_does_NOT_release_the_slot(
+    m_keys, m_jobs, m_mark_terminal, m_release, m_hook
+):
+    """Round-2 C1. The in-memory row says undispatched; the database disagrees.
 
-    Post-enqueue bookkeeping can fail after the task is already on the queue
-    (dispatch.py wraps it precisely because losing it must not fail the
-    dispatch), leaving a row that still reads PENDING while an executor runs.
-    Releasing that slot would over-subscribe exactly as the RUNNING case did.
+    The interleaving: the cancel reads a PENDING row with `dispatched_at=NULL`,
+    then `dispatch_job` passes its own terminal re-read, enqueues, and stamps
+    `dispatched_at` / DISPATCHED. The cancel's `mark_terminal` still wins
+    (DISPATCHED is not terminal), and the old check -- reading
+    `job.dispatched_at` off the snapshot -- answered True and released a slot
+    whose executor was running and billing.
+
+    That is a smaller instance of the very over-release bug the narrowing was
+    written to fix. The row here is deliberately left looking undispatched, so
+    the ONLY thing that can produce the right answer is the DB re-read.
     """
+    m_keys.get.return_value = kv_key()
     job = AgentKVJob(status=JobStatus.PENDING)
-    job.dispatched_at = timezone.now()
+    job.organization_id = "org1"
+    job.dispatched_at = None  # the stale snapshot, as the cancel path sees it
+    m_jobs.get.return_value = job
+    _dispatched_in_db(m_jobs, True)  # what actually happened meanwhile
 
-    assert not ev._never_dispatched(job)
+    resp = ev.JobCancelView.as_view()(_authed(method="post"), job_id=uuid.uuid4())
+
+    assert resp.status_code == 200
+    assert not m_release.called, (
+        "released a slot for a job that HAD been dispatched -- the executor is "
+        "still running and its finalize callback owns the slot"
+    )
+    # The caller is still told, since cancellation never reaches finalize.
+    assert m_hook.called
+
+
+@mock.patch.object(AgentKVJob, "objects")
+def test_the_undispatched_check_asks_the_database_not_the_row(m_jobs):
+    """Pins the mechanism, so the C1 regression cannot return quietly.
+
+    If `_never_dispatched` goes back to reading `job.dispatched_at`, this fails:
+    the row says dispatched (which the old code would honour) while the DB says
+    it is not, and only the DB answer is correct after a `mark_terminal`.
+    """
+    job = AgentKVJob(status=JobStatus.CANCELLED)
+    job.dispatched_at = timezone.now()
+    _dispatched_in_db(m_jobs, False)
+
+    assert ev._never_dispatched(job) is True
+
+    _dispatched_in_db(m_jobs, True)
+    assert ev._never_dispatched(job) is False

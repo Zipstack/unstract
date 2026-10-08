@@ -1,45 +1,64 @@
-"""Schedule the two Agent-KV maintenance periodics.
+"""Remove the Agent-KV maintenance periodics -- the CronJob owns the schedule.
 
-Both tasks were registered in ``workers/scheduler/agent_kv_tasks.py`` and both
-internal endpoints existed, but nothing anywhere created a row to fire them --
-no ``PgPeriodicTask``, no beat entry, no CronJob. The module's own docstring
-said an operator must register them by hand, which in practice means they never
-ran.
+An earlier revision of this migration SEEDED two ``PgPeriodicTask`` rows
+(``agent_kv.sweep`` at ``*/10``, ``agent_kv.ttl_cleanup`` at ``17 3 * * *``) on
+the premise that nothing anywhere fired the two maintenance commands -- "no
+``PgPeriodicTask``, no beat entry, no CronJob". **That premise was false when it
+was written.** ``templates/backend/agent-kv-cronjobs.yaml`` in the cloud chart
+already ran the same two management commands, on the same branch, added several
+commits earlier. The seeding migration was written in response to a review
+finding about the unscheduled sweep without noticing the finding had already
+been answered elsewhere in the same change.
 
-What that costs, concretely:
+Keeping both would have been worse than either alone:
 
-* ``run_sweep`` never runs, so an OOM-killed executor leaves its job row
-  non-terminal forever -- ``link_error`` never fires for a killed process -- and
-  the row holds its concurrency slot until the 6h Redis TTL. Enough of those and
-  the org's allowance is exhausted and new submits start getting 429s.
-* ``run_ttl_cleanup`` never runs, so ``AGENT_KV_RESULT_TTL_DAYS`` is advisory:
-  every staged customer document and every result stays in the bucket
-  indefinitely. That is a retention-policy failure, not just a disk-usage one.
+* **Two owners for one schedule.** The rows are seeded ``pg_owned: False``, and
+  the PG scheduler claims only ``WHERE pg_owned AND enabled``
+  (``pg_queue/models.py``), so they are inert *today*. But the whole point of
+  that flag is that a rollout flips it -- and the moment it did, the ``*/10``
+  rows and the CronJob's ``*/15`` ticks would both fire, colliding exactly at
+  ``:30`` and contending on the same job rows. The TTL cadences disagreed by
+  24x (daily here, hourly in the chart), so whichever fired would be whichever
+  owner someone remembered.
+* **Only one owner has operational bounds.** The CronJob carries
+  ``concurrencyPolicy: Forbid`` and ``activeDeadlineSeconds``; a PG periodic has
+  neither, so a hung sweep under the scheduler has nothing stopping it.
+* **The feature only runs where the CronJob is.** This deployment routes
+  ``table`` only, and the ``agentic_table`` plugin ships in the cloud image. A
+  pure-OSS install cannot dispatch an Agent-KV job at all, so there is no
+  stranded row for a sweep to reap there.
 
-Follows the ``dashboard_metrics`` precedent (migrations 0004-0006) rather than
-inventing a mechanism: the same ``PgPeriodicTask`` table, the same
-``update_or_create`` shape so a re-run is idempotent, and ``pg_owned: False`` so
-applying this migration does not itself start firing them -- the rollout flag
-decides that, exactly as it does for the metrics periodics.
+So the CronJob is the single owner, and this migration deletes the rows rather
+than merely stopping at not creating them -- any environment that applied the
+seeding revision (dev namespaces did) still has them, and leaving them to be
+switched on by a future global ``pg_owned`` flip is precisely the hazard being
+removed.
 
-Cadences are deliberately offset from each other and off the hour: the sweep is
-cheap and wants to be frequent (a stuck job holds a slot), the TTL cleanup is a
-bulk delete that should not land on the same tick as anything else.
+**Self-hosted OSS operators who enable the Agent-KV API must schedule
+``manage.py agent_kv_sweep`` and ``manage.py agent_kv_ttl_cleanup``
+themselves** (cron, a systemd timer, or their own ``PgPeriodicTask`` rows with
+``pg_owned: True``). Without them a stranded job holds its concurrency slot
+until the 6h Redis TTL, and ``AGENT_KV_RESULT_TTL_DAYS`` is advisory --
+staged documents and results stay in the bucket indefinitely, which is a
+retention failure rather than a disk-usage one. ``docs/agent-kv-api.md`` §12
+carries this in the deploy checklist.
+
+Reverse re-creates the rows (still inert) so the migration is reversible and a
+``migrate agent_kv 0003`` lands back on the previous tree's state exactly.
 """
 
 from django.db import migrations
 
+#: What the seeding revision wrote, kept ONLY so forward can delete exactly
+#: those rows by name and reverse can restore them. Not a live schedule --
+#: the cadences that run are in the cloud chart's `backend.agentKvCronJobs`.
 PG_PERIODIC_TASKS = [
     {
         "name": "agent_kv_sweep",
-        # Wire name registered by workers/scheduler/agent_kv_tasks.py.
         "task_name": "agent_kv.sweep",
         "queue": "scheduler",
         "task_args": [],
         "task_kwargs": {},
-        # Every 10 minutes: a stuck job holds a concurrency slot, and the
-        # handler is idempotent and batch-capped server-side, so a missed tick
-        # costs nothing and a frequent one is cheap.
         "cron_string": "*/10 * * * *",
     },
     {
@@ -48,18 +67,24 @@ PG_PERIODIC_TASKS = [
         "queue": "scheduler",
         "task_args": [],
         "task_kwargs": {},
-        # Daily at 03:17 UTC. Off the hour and off the dashboard_metrics
-        # cleanups (02:00 / 03:00) so a bulk object-store delete does not land
-        # on the same tick as another bulk job.
         "cron_string": "17 3 * * *",
     },
 ]
 
 
-def create_pg_periodic_tasks(apps, schema_editor):
+def remove_pg_periodic_tasks(apps, schema_editor):
+    """Delete the seeded rows. Idempotent: a fresh install matches nothing."""
     # snake_case, not the usual `PgPeriodicTask = apps.get_model(...)` Django
     # idiom: it is a local variable, and sonar's S117 reads the CamelCase name
     # as a naming violation. The historical-model object is the same either way.
+    periodic_task = apps.get_model("pg_queue", "PgPeriodicTask")
+    periodic_task.objects.filter(
+        name__in=[spec["name"] for spec in PG_PERIODIC_TASKS]
+    ).delete()
+
+
+def create_pg_periodic_tasks(apps, schema_editor):
+    """Reverse only. Restores the rows the seeding revision created, inert."""
     periodic_task = apps.get_model("pg_queue", "PgPeriodicTask")
     for spec in PG_PERIODIC_TASKS:
         periodic_task.objects.update_or_create(
@@ -74,27 +99,18 @@ def create_pg_periodic_tasks(apps, schema_editor):
                 # endpoints sweep across every organization.
                 "org_id": "",
                 "enabled": True,
-                # Inert until the rollout flag decides otherwise; never fired by
-                # applying this migration. Same posture as dashboard_metrics.
                 "pg_owned": False,
             },
         )
 
 
-def remove_pg_periodic_tasks(apps, schema_editor):
-    periodic_task = apps.get_model("pg_queue", "PgPeriodicTask")
-    periodic_task.objects.filter(
-        name__in=[spec["name"] for spec in PG_PERIODIC_TASKS]
-    ).delete()
-
-
 class Migration(migrations.Migration):
     dependencies = [
         ("agent_kv", "0003_agentkvjob_cleanup_failed_at"),
-        # The table this seeds.
+        # The table this operates on.
         ("pg_queue", "0003_pgperiodictask"),
     ]
 
     operations = [
-        migrations.RunPython(create_pg_periodic_tasks, remove_pg_periodic_tasks),
+        migrations.RunPython(remove_pg_periodic_tasks, create_pg_periodic_tasks),
     ]
