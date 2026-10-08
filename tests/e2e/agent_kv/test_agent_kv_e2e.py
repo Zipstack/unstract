@@ -10,13 +10,22 @@ OSS e2e sweep. The whole module skips unless both:
   accident just because a platform happens to be up; it must be opted into
   for a run that actually ships the plugin.
 
-A second, narrower gate (the ``require_llm`` fixture below) applies only to
-the two scenarios whose assertions depend on a job actually reaching
-COMPLETED (real extraction happened): either ``AGENT_KV_LLM_API_KEY`` or
-``UNSTRACT_LLM_MOCK_RESPONSE`` must be set. Every other scenario here is
-gated purely by request-time checks (auth, schema compile, the concurrency
-limiter, the pre-OCR page cap) that resolve before any LLM call, so they
-don't need either.
+A second gate (the ``require_adapters`` fixture) applies to every scenario
+whose submit must be ACCEPTED. `table` submits now name the caller's own
+``llm`` / ``lite_llm`` / ``x2text`` platform adapters, and the API validates
+each id against the Bearer key's organization and its adapter type -- so
+without ``AGENT_KV_E2E_LLM_ADAPTER`` / ``_LITE_LLM_ADAPTER`` /
+``_X2TEXT_ADAPTER`` every submit is a 400 before dispatch. Scenarios that
+expect a rejection BEFORE that gate (a bad key, the rate limiter, an absent
+``extractors``) do not take it.
+
+A third, narrower gate (``require_llm``) applies only to the scenarios whose
+assertions depend on a job actually reaching COMPLETED: either
+``AGENT_KV_LLM_API_KEY`` or ``UNSTRACT_LLM_MOCK_RESPONSE`` must be set. Note
+that on the table path the LLM credential now lives on the ADAPTER rather
+than in the executor's environment, so a real-adapter run satisfies this
+whether or not that variable is exported -- it is kept for the mock case and
+for the KV path.
 
 Values extracted under ``UNSTRACT_LLM_MOCK_RESPONSE`` are whatever the mock
 config returns, not real answers -- assertions here deliberately check
@@ -64,6 +73,7 @@ from tests.e2e.agent_kv.conftest import (
     AgentKVAuth,
     cancel,
     delete,
+    missing_adapter_env,
     poll,
     result,
     submit,
@@ -162,6 +172,36 @@ def _drain_until_slot_free(
 
 
 @pytest.fixture
+def require_adapters() -> None:
+    """Skip a scenario that needs a submit to be ACCEPTED (202).
+
+    `table` submits must name the caller's own `llm` / `lite_llm` / `x2text`
+    platform adapters, and the API validates each id against the Bearer key's
+    organization and against its adapter type. Those are rows in the deployed
+    stack's database carrying real provider credentials -- an e2e client cannot
+    create them, so the ids come from the environment.
+
+    Without them every submit is a 400 before dispatch, so this gate turns an
+    unconfigured lane into an explicit skip rather than a wall of confusing
+    failures. Scenarios that expect a rejection BEFORE the adapter gate -- a
+    bad key (403), the rate limiter (429), an absent `extractors` field --
+    deliberately do not take this fixture.
+
+    This replaces what `AGENT_KV_LLM_API_KEY` used to provide for the table
+    path: the credentials now live on the adapters, not in the executor's
+    environment.
+    """
+    missing = missing_adapter_env()
+    if missing:
+        pytest.skip(
+            "needs the caller's platform adapters so a submit can be accepted; "
+            f"unset: {', '.join(missing)}. Create an LLM adapter, a cheaper "
+            "LLM adapter and an LLMWhisperer X2TEXT adapter in the target org "
+            "and export their ids."
+        )
+
+
+@pytest.fixture
 def require_llm() -> None:
     """Skip a scenario that needs a job to actually reach COMPLETED.
 
@@ -198,7 +238,9 @@ def test_submit_without_key_is_403(agent_kv_key: AgentKVAuth) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_table_extractor_happy_path(agent_kv_key: AgentKVAuth, require_llm: None) -> None:
+def test_table_extractor_happy_path(
+    require_adapters: None, agent_kv_key: AgentKVAuth, require_llm: None
+) -> None:
     """A `table` entry runs the table engine and files its result under `table`.
 
     Before the job row recorded its extractor, every response keyed by the
@@ -318,7 +360,7 @@ def test_submit_unreadable_pdf_is_400(agent_kv_key: AgentKVAuth) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_cancel_mid_run(agent_kv_key: AgentKVAuth) -> None:
+def test_cancel_mid_run(require_adapters: None, agent_kv_key: AgentKVAuth) -> None:
     job_id, _ = submit(
         agent_kv_key,
         _RENT_ROLL_BYTES,
@@ -353,6 +395,7 @@ def test_cancel_mid_run(agent_kv_key: AgentKVAuth) -> None:
 
 
 def test_cancelled_job_does_not_leak_its_concurrency_slot(
+    require_adapters: None,
     agent_kv_key: AgentKVAuth,
 ) -> None:
     """A cancelled job must give its concurrency slot back.
@@ -396,7 +439,7 @@ def test_cancelled_job_does_not_leak_its_concurrency_slot(
 
 
 def test_delete_completed_job_then_result_404(
-    agent_kv_key: AgentKVAuth, require_llm: None
+    require_adapters: None, agent_kv_key: AgentKVAuth, require_llm: None
 ) -> None:
     job_id, _ = submit(
         agent_kv_key,
@@ -450,7 +493,9 @@ def _assert_user_safe_error(error: str) -> None:
         assert leak not in error, f"a filesystem path leaked into: {error!r}"
 
 
-def test_bad_llm_key_ends_failed(agent_kv_key: AgentKVAuth) -> None:
+def test_bad_llm_key_ends_failed(
+    require_adapters: None, agent_kv_key: AgentKVAuth
+) -> None:
     """A job that DISPATCHES and then fails in the executor ends ``failed``
     with a user-safe error.
 
@@ -506,7 +551,7 @@ def test_bad_llm_key_ends_failed(agent_kv_key: AgentKVAuth) -> None:
 
 
 def test_sync_wait_submit_returns_result_inline(
-    agent_kv_key: AgentKVAuth, require_llm: None
+    require_adapters: None, agent_kv_key: AgentKVAuth, require_llm: None
 ) -> None:
     """A submit with ``timeout`` seconds sync-waits: if the job reaches a
     terminal state inside the window, the response is 200 with the result
@@ -539,7 +584,9 @@ def test_sync_wait_submit_returns_result_inline(
 # ---------------------------------------------------------------------------
 
 
-def test_excel_submit_extracts(agent_kv_key: AgentKVAuth, require_llm: None) -> None:
+def test_excel_submit_extracts(
+    require_adapters: None, agent_kv_key: AgentKVAuth, require_llm: None
+) -> None:
     """An .xlsx submit runs the whole pipeline. Excel has no pre-OCR page
     count (``pages_total`` stays None at submit) and takes the post-OCR
     virtual-page cap path instead. Structure-only assertions, like the
@@ -562,7 +609,7 @@ def test_excel_submit_extracts(agent_kv_key: AgentKVAuth, require_llm: None) -> 
 
 
 def test_webhook_delivered_on_completion(
-    agent_kv_key: AgentKVAuth, require_llm: None
+    require_adapters: None, agent_kv_key: AgentKVAuth, require_llm: None
 ) -> None:
     """Completion-webhook delivery, end to end: submit with a ``webhook_url``
     pointing at a receiver on the compose host and wait for the POST.
@@ -623,7 +670,9 @@ def test_webhook_delivered_on_completion(
         thread.join(timeout=5)
 
 
-def test_concurrency_limit_returns_429(agent_kv_key: AgentKVAuth) -> None:
+def test_concurrency_limit_returns_429(
+    require_adapters: None, agent_kv_key: AgentKVAuth
+) -> None:
     """Saturate the org's concurrency limiter; every other submit-based
     scenario in this module runs before this one, and ``tests/groups.yaml``
     pins this whole group ``parallel: false`` -- both for the same reason:

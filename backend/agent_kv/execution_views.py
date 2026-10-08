@@ -288,6 +288,48 @@ def _discard_orphaned_input(job) -> None:
         )
 
 
+def _lookup_adapter(adapter_id, organization_id):
+    """One adapter belonging to `organization_id`, or ``None``.
+
+    **`_base_manager`, NOT `.objects`.** `AdapterInstance.objects` is an
+    `AdapterInstanceModelManager`, which inherits
+    `DefaultOrganizationManagerMixin.get_queryset()` -- and that filters every
+    query by `UserContext.get_organization()`, a REQUEST-LOCAL thread-local the
+    tenant middleware sets.
+
+    This route is deliberately whitelisted past that middleware (the org comes
+    from the Bearer key, not the URL), so the thread-local is unset here and the
+    ambient filter becomes `organization=None`, matching nothing. Through
+    `.objects` this gate refused EVERY submit -- including valid ones -- with
+    "no such adapter in this organization".
+
+    That is NOT the same situation as `_get_job`, and reasoning by analogy to it
+    is how the defect got written: `AgentKVJob` uses `BaseModelManager`, which
+    does not auto-filter, so its explicit `organization_id=` is the only filter.
+    `AdapterInstance` sets a different default manager.
+
+    `_base_manager` is Django's unfiltered manager and exists for exactly this
+    -- internal lookups that must not inherit a custom default manager's
+    filtering. It therefore makes the explicit `organization_id` below the ONLY
+    org filter, which is why that argument is required rather than optional.
+
+    Not fixed by setting the thread-local instead: that would silently re-scope
+    every other org-managed query in the request, and `UserContext` keys on the
+    org SLUG while the key carries the FK pk -- the exact confusion
+    `dispatch._platform_api_key` documents shipping once already.
+
+    A separate function so the view tests have an honest seam to patch:
+    `_base_manager` is a read-only property and cannot be patched, and mocking
+    `.objects` is what hid this defect in the first place. The real manager is
+    exercised by `tests/test_adapter_scoping.py`.
+    """
+    from adapter_processor_v2.models import AdapterInstance
+
+    return AdapterInstance._base_manager.filter(
+        id=adapter_id, organization_id=organization_id
+    ).first()
+
+
 def _resolved_adapters(entry: dict, agent_kv_key) -> dict:
     """Confirm every adapter the caller named is THIS org's, and of the right type.
 
@@ -329,14 +371,10 @@ def _resolved_adapters(entry: dict, agent_kv_key) -> dict:
     if not requested:
         return {}
 
-    from adapter_processor_v2.models import AdapterInstance
-
     _, expected_types = _ADAPTERS_SERIALIZERS[entry["name"]]
     for role, adapter_id in requested.items():
         expected = expected_types[role]
-        adapter = AdapterInstance.objects.filter(
-            id=adapter_id, organization_id=agent_kv_key.organization_id
-        ).first()
+        adapter = _lookup_adapter(adapter_id, agent_kv_key.organization_id)
         if adapter is None:
             # One message for "no such adapter" and "not yours", on purpose:
             # telling them apart reveals which UUIDs exist.

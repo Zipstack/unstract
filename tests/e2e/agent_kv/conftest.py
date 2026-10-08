@@ -13,6 +13,7 @@ already passed by the time any fixture here actually executes.
 from __future__ import annotations
 
 import json
+import os
 import time
 import uuid
 from dataclasses import dataclass
@@ -149,6 +150,38 @@ def kv_stages(status_doc: dict) -> list[dict]:
     return status_doc["extractors"]["kv"]["stages"]
 
 
+#: The platform adapters an Agent-KV `table` submit must name, read from the
+#: environment because they are rows in the deployed stack's database -- an
+#: e2e client cannot mint them, and they carry real provider credentials.
+#:
+#: Unset by default, which makes every submit a 400. The `require_adapters`
+#: fixture is what turns that into an explicit skip instead of a confusing
+#: failure; scenarios that expect a rejection BEFORE the adapter gate (bad
+#: key, rate limit, absent `extractors`) do not need it.
+#:
+#: Create them once in the target org -- an LLM adapter, a second cheaper LLM
+#: adapter, and an LLMWhisperer X2TEXT adapter -- and export their ids.
+E2E_ADAPTER_ENV = {
+    "llm": "AGENT_KV_E2E_LLM_ADAPTER",
+    "lite_llm": "AGENT_KV_E2E_LITE_LLM_ADAPTER",
+    "x2text": "AGENT_KV_E2E_X2TEXT_ADAPTER",
+}
+
+
+def e2e_adapters() -> dict[str, str]:
+    """The configured adapter ids, by role; roles with no env var are omitted."""
+    return {
+        role: os.environ[var]
+        for role, var in E2E_ADAPTER_ENV.items()
+        if os.environ.get(var)
+    }
+
+
+def missing_adapter_env() -> list[str]:
+    """Which adapter env vars are unset, for a skip message that names them."""
+    return [var for var in E2E_ADAPTER_ENV.values() if not os.environ.get(var)]
+
+
 def submit_raw(
     auth: AgentKVAuth,
     file_bytes: bytes,
@@ -156,6 +189,7 @@ def submit_raw(
     keys: dict | None,
     *,
     extractor: str = "table",
+    adapters: dict[str, str] | None = None,
     **fields: object,
 ) -> requests.Response:
     """POST a submit request and return the raw response -- no assertions.
@@ -184,9 +218,19 @@ def submit_raw(
             f"belongs there"
         )
     else:
-        data["extractors"] = json.dumps(
-            [{"name": extractor, "keys": keys, "options": options}]
-        )
+        entry: dict[str, object] = {
+            "name": extractor,
+            "keys": keys,
+            "options": options,
+        }
+        # `adapters` is REQUIRED for `table` -- the caller names the LLM and
+        # OCR adapters the extraction runs on. Defaults to whatever the
+        # environment configured; `{}` is sent as-is so a scenario can assert
+        # the 400 for an absent block.
+        resolved = e2e_adapters() if adapters is None else adapters
+        if resolved:
+            entry["adapters"] = resolved
+        data["extractors"] = json.dumps([entry])
     return requests.post(
         auth.exec_url,
         headers=auth.headers,
@@ -203,6 +247,7 @@ def submit(
     keys: dict,
     *,
     extractor: str = "table",
+    adapters: dict[str, str] | None = None,
     **fields: object,
 ) -> tuple[str, str]:
     """POST a submit request expected to succeed; return (job_id, status_url).
@@ -210,9 +255,13 @@ def submit(
     Asserts the 202 handshake (spec §7.1 / docs §3) so every caller only ever
     polls a genuinely dispatched job. A 501 here almost always means the
     cloud ``agentic_table`` executor plugin isn't installed on this deployment
-    -- this whole lane requires it (docs §11).
+    -- this whole lane requires it (docs §11). A 400 naming `adapters`
+    means the `AGENT_KV_E2E_*_ADAPTER` ids are unset or do not belong to this
+    key's organization -- gate such a scenario on `require_adapters`.
     """
-    resp = submit_raw(auth, file_bytes, filename, keys, extractor=extractor, **fields)
+    resp = submit_raw(
+        auth, file_bytes, filename, keys, extractor=extractor, adapters=adapters, **fields
+    )
     assert resp.status_code == 202, (
         f"submit: HTTP {resp.status_code} (expected 202; a 501 means the "
         f"agentic_table executor plugin isn't installed on this deployment): {resp.text}"

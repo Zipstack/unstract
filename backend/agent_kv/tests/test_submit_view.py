@@ -119,33 +119,36 @@ _ROLE_TYPES = {"llm": "LLM", "lite_llm": "LLM", "x2text": "X2TEXT"}
 
 
 def _adapters_owned_by(organization_id, *, types=None, missing=()):
-    """Patch the adapter lookup `_resolved_adapters` performs.
+    """Patch the single-adapter lookup `_resolved_adapters` performs.
 
-    The gate runs `AdapterInstance.objects.filter(id=..., organization_id=...)
-    .first()`, so this stands in for the ORM: an id in `missing` resolves to
-    None (not this org's, or nonexistent -- the gate cannot and must not tell
-    those apart), and everything else resolves to an adapter of the type
-    `types` gives, defaulting to the correct one for its role.
+    Patches `ev._lookup_adapter`, the view's own seam, rather than the ORM.
+    Two reasons, both learned the hard way: `AdapterInstance._base_manager` is
+    a read-only property and cannot be patched at all, and patching `.objects`
+    is what hid the defect where the gate refused every valid submit (that
+    manager auto-filters by a request-local org this route never sets).
+
+    So these tests assert the GATE's logic -- org match, type match, identical
+    refusals -- and `tests/test_adapter_scoping.py` asserts that the real
+    lookup finds a real adapter with no request context. Neither covers the
+    other.
+
+    An id in `missing` resolves to None (not this org's, or nonexistent -- the
+    gate cannot and must not tell those apart); everything else resolves to an
+    adapter of the type `types` gives, defaulting to the right one per role.
     """
-    from adapter_processor_v2.models import AdapterInstance
-
     type_by_id = {
         aid: (types or {}).get(role, _ROLE_TYPES[role])
         for role, aid in _TABLE_ADAPTERS.items()
     }
+    missing_ids = {str(m) for m in missing}
 
-    def _filter(**kw):
-        qs = mock.Mock()
-        aid = str(kw.get("id"))
-        if aid in {str(m) for m in missing} or kw.get(
-            "organization_id"
-        ) != organization_id:
-            qs.first.return_value = None
-        else:
-            qs.first.return_value = mock.Mock(adapter_type=type_by_id.get(aid, "LLM"))
-        return qs
+    def _lookup(adapter_id, org_id):
+        aid = str(adapter_id)
+        if aid in missing_ids or org_id != organization_id:
+            return None
+        return mock.Mock(adapter_type=type_by_id.get(aid, "LLM"))
 
-    return mock.patch.object(AdapterInstance, "objects", **{"filter.side_effect": _filter})
+    return mock.patch.object(ev, "_lookup_adapter", side_effect=_lookup)
 
 
 def _stamp_created_at(job, *args, **kwargs):
