@@ -46,6 +46,11 @@ OPENAI_NOT_FOUND_BODY = {
         "code": "model_not_found",
     }
 }
+ANTHROPIC_TOO_LONG = "prompt is too long: 210000 tokens > 200000 maximum"
+OPENAI_TOO_LONG = (
+    "This model's maximum context length is 128000 tokens. "
+    "However, your messages resulted in 210000 tokens."
+)
 _REAL_COMPLETION = litellm.completion
 
 
@@ -167,7 +172,7 @@ def test_litellm_retry_suffix_is_still_stripped() -> None:
         model="claude-x",
     )
 
-    assert format_provider_error(err) == "RateLimitError (HTTP 429): slow down"
+    assert format_provider_error(err) == "RateLimitError: slow down"
 
 
 def test_non_provider_errors_keep_their_text() -> None:
@@ -193,16 +198,41 @@ def test_anthropic_error_tag_variant_is_parsed(
     )
 
 
-def test_stacked_litellm_prefixes_are_stripped(provider: _ProviderStub) -> None:
-    too_long = "prompt is too long: 210000 tokens > 200000 maximum"
-    provider.respond(
-        400,
-        {
-            "type": "error",
-            "error": {"type": "invalid_request_error", "message": too_long},
-        },
-    )
-    err = _raise_from_litellm(provider, "anthropic/claude-x", stream=True)
+@pytest.mark.parametrize(
+    ("model", "body", "too_long"),
+    [
+        (
+            "anthropic/claude-x",
+            {
+                "type": "error",
+                "error": {
+                    "type": "invalid_request_error",
+                    "message": ANTHROPIC_TOO_LONG,
+                },
+            },
+            ANTHROPIC_TOO_LONG,
+        ),
+        (
+            # Three levels: "litellm.ContextWindowExceededError: litellm.
+            # BadRequestError: ContextWindowExceededError: OpenAIException - "
+            "openai/gpt-4o",
+            {
+                "error": {
+                    "type": "invalid_request_error",
+                    "code": "context_length_exceeded",
+                    "message": OPENAI_TOO_LONG,
+                }
+            },
+            OPENAI_TOO_LONG,
+        ),
+    ],
+    ids=["anthropic", "openai"],
+)
+def test_stacked_litellm_prefixes_are_stripped(
+    provider: _ProviderStub, model: str, body: dict[str, object], too_long: str
+) -> None:
+    provider.respond(400, body)
+    err = _raise_from_litellm(provider, model, stream=True)
 
     assert isinstance(err, litellm.ContextWindowExceededError)
     assert format_provider_error(err) == (
@@ -250,6 +280,25 @@ def test_azure_provider_tag_with_class_name_is_stripped(
     assert "AzureException" not in message
 
 
+@pytest.mark.parametrize("model", ["openai/gpt-x", "anthropic/claude-x"])
+def test_refused_connection_does_not_claim_an_http_status(model: str) -> None:
+    """A refused connection reaches us as InternalServerError with 500."""
+    try:
+        _REAL_COMPLETION(
+            model=model,
+            api_base="http://127.0.0.1:1",
+            api_key="test-key",
+            messages=[{"role": "user", "content": "hi"}],
+            num_retries=0,
+        )
+    except Exception as e:  # noqa: BLE001 - the exception is the subject
+        message = format_provider_error(e)
+    else:
+        pytest.fail("litellm did not raise")
+
+    assert "HTTP" not in message
+
+
 def test_connection_errors_do_not_claim_an_http_status() -> None:
     err = litellm.APIConnectionError(
         message="Service account info was not in the expected format",
@@ -261,6 +310,55 @@ def test_connection_errors_do_not_claim_an_http_status() -> None:
 
     assert message.startswith("APIConnectionError: ")
     assert "HTTP" not in message
+
+
+def test_multi_word_provider_tag_is_stripped(
+    provider: _ProviderStub, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    for key, value in {
+        "AWS_ACCESS_KEY_ID": "test",
+        "AWS_SECRET_ACCESS_KEY": "test",
+        "AWS_REGION_NAME": "us-east-1",
+    }.items():
+        monkeypatch.setenv(key, value)
+    invalid = "The security token included in the request is invalid."
+    provider.respond(403, {"message": invalid})
+    err = _raise_from_litellm(
+        provider, "bedrock/anthropic.claude-3-sonnet-20240229-v1:0", stream=False
+    )
+
+    message = format_provider_error(err)
+
+    assert message.endswith(f"(HTTP 403): {invalid}")
+    assert "BedrockException" not in message
+
+
+def test_model_hint_does_not_double_the_period(provider: _ProviderStub) -> None:
+    provider.respond(
+        404,
+        {
+            "error": {
+                "code": "DeploymentNotFound",
+                "message": "The API deployment for this resource does not exist.",
+            }
+        },
+    )
+    try:
+        _REAL_COMPLETION(
+            model="azure/dep",
+            api_base=provider.url,
+            api_key="test-key",
+            api_version="2024-02-01",
+            messages=[{"role": "user", "content": "hi"}],
+            num_retries=0,
+        )
+    except Exception as e:  # noqa: BLE001 - the exception is the subject
+        message = format_provider_error(e)
+    else:
+        pytest.fail("litellm did not raise")
+
+    assert "does not exist. Model 'dep' was not found" in message
+    assert ".." not in message
 
 
 def test_unparseable_body_never_raises() -> None:

@@ -138,8 +138,9 @@ def strip_litellm_prefix(error_message: str) -> str:
 # litellm.BadRequestError: ...") and some mappings repeat the class bare
 # ("AuthenticationError: MistralException - ...").
 _LITELLM_CLASS_PREFIX = re.compile(r"^(?:litellm\.)?(?:\w+Error|Timeout):\s*")
-# "AnthropicException - ", "AnthropicError - ", "AzureException NotFoundError - "
-_PROVIDER_TAG_PREFIX = re.compile(r"^\w+(?:Exception|Error)(?:\s+\w+)?\s+-\s+")
+# "AnthropicException - ", "AnthropicError - ", "AzureException NotFoundError - ",
+# "BedrockException Invalid Authentication - "
+_PROVIDER_TAG_PREFIX = re.compile(r"^\w+(?:Exception|Error)(?:\s+[\w ]+?)?\s+-\s+")
 # Calls routed through the OpenAI SDK carry its str(): "Error code: 404 - {...}".
 _OPENAI_SDK_PREFIX = re.compile(r"^Error code:\s*\d+\s+-\s+")
 _LITELLM_HANDLE_HINT = re.compile(r"\.?\s*Handle with `litellm\.\w+`\.?\s*$")
@@ -233,10 +234,11 @@ def _render_provider_error(e: openai.APIError, cleaned: str) -> str:
     message, request_id = _extract_provider_message(_unwrap_bytes_repr(body))
 
     label = type(e).__name__
-    # litellm assigns a status (500, 408) to connection errors and timeouts
-    # even when no response came back; only a status error carries a real one.
+    # litellm assigns a status to failures that never got a response (a
+    # refused connection is an InternalServerError with 500); it records the
+    # response headers only when one actually came back.
     status_code = getattr(e, "status_code", None)
-    if isinstance(e, openai.APIStatusError) and status_code:
+    if status_code and getattr(e, "litellm_response_headers", None) is not None:
         label += f" (HTTP {status_code})"
     text = f"{label}: {message}"
     if request_id:
@@ -244,6 +246,7 @@ def _render_provider_error(e: openai.APIError, cleaned: str) -> str:
 
     model = getattr(e, "model", None)
     if isinstance(e, openai.NotFoundError) and model:
+        text = text.rstrip(". ")
         text += (
             f". Model '{model}' was not found by the provider; it may have "
             "been retired, or the model name or endpoint may be incorrect. "
