@@ -15,7 +15,7 @@ from unstract.sdk1.adapters.constants import Common
 from unstract.sdk1.adapters.llm1 import adapters
 from unstract.sdk1.constants import Common as SdkCommon
 from unstract.sdk1.constants import ToolEnv
-from unstract.sdk1.exceptions import LLMError, SdkError, strip_litellm_prefix
+from unstract.sdk1.exceptions import LLMError, SdkError, format_provider_error
 from unstract.sdk1.platform import PlatformHelper
 from unstract.sdk1.tool.base import BaseTool
 from unstract.sdk1.utils.common import (
@@ -715,7 +715,7 @@ class LLM:
 
             error_msg = (
                 f"Error from LLM adapter '{self._get_adapter_info()}': "
-                f"{strip_litellm_prefix(str(e))}"
+                f"{format_provider_error(e)}"
             )
 
             raise LLMError(
@@ -808,7 +808,7 @@ class LLM:
 
             error_msg = (
                 f"Error from LLM adapter '{self._get_adapter_info()}': "
-                f"{strip_litellm_prefix(str(e))}"
+                f"{format_provider_error(e)}"
             )
 
             raise LLMError(
@@ -890,7 +890,7 @@ class LLM:
 
             error_msg = (
                 f"Error from LLM adapter '{self._get_adapter_info()}': "
-                f"{strip_litellm_prefix(str(e))}"
+                f"{format_provider_error(e)}"
             )
 
             raise LLMError(
@@ -970,7 +970,7 @@ class LLM:
 
             error_msg = (
                 f"Error from LLM adapter '{self._get_adapter_info()}': "
-                f"{strip_litellm_prefix(str(e))}"
+                f"{format_provider_error(e)}"
             )
 
             raise LLMError(
