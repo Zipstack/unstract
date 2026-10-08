@@ -138,12 +138,13 @@ def strip_litellm_prefix(error_message: str) -> str:
 # litellm.BadRequestError: ...") and some mappings repeat the class bare
 # ("AuthenticationError: MistralException - ...").
 _LITELLM_CLASS_PREFIX = re.compile(r"^(?:litellm\.)?(?:\w+Error|Timeout):\s*")
-# "AnthropicException - ", "AnthropicError - ", "AzureException NotFoundError - ",
-# "BedrockException Invalid Authentication - "
-_PROVIDER_TAG_PREFIX = re.compile(r"^\w+(?:Exception|Error)(?:\s+[\w ]+?)?\s+-\s+")
+# The provider tag is a word ending in Exception or Error, optionally followed
+# by a few words naming the failure (Azure, Bedrock), then a spaced dash.
+_PROVIDER_TAG_SEPARATOR = " - "
+_PROVIDER_TAG_SUFFIXES = ("Exception", "Error")
 # Calls routed through the OpenAI SDK carry its str(): "Error code: 404 - {...}".
 _OPENAI_SDK_PREFIX = re.compile(r"^Error code:\s*\d+\s+-\s+")
-_LITELLM_HANDLE_HINT = re.compile(r"\.?\s*Handle with `litellm\.\w+`\.?\s*$")
+_LITELLM_HANDLE_HINT = "Handle with `litellm."
 # The streaming path formats the raw httpx body with str(bytes): b'{...}'.
 _BYTES_REPR = re.compile(r"^b(['\"]).*\1$", re.DOTALL)
 # Bodies past this size are shown as-is rather than parsed.
@@ -156,6 +157,26 @@ def _strip_repeated(pattern: re.Pattern[str], text: str) -> str:
         if stripped == text:
             return text
         text = stripped
+
+
+def _strip_provider_tag(body: str) -> str:
+    head, separator, rest = body.partition(_PROVIDER_TAG_SEPARATOR)
+    if not separator:
+        return body
+    words = head.split(" ")
+    if not words[0].endswith(_PROVIDER_TAG_SUFFIXES):
+        return body
+    if not all(word.replace("_", "").isalnum() for word in words):
+        return body
+    return rest
+
+
+def _strip_handle_hint(body: str) -> str:
+    """Drop litellm's trailing "Handle with `litellm.<Class>`." advice."""
+    index = body.rfind(_LITELLM_HANDLE_HINT)
+    if index == -1 or not body.rstrip(" .").endswith("`"):
+        return body
+    return body[:index].rstrip(" .")
 
 
 def _unwrap_bytes_repr(body: str) -> str:
@@ -228,9 +249,9 @@ def format_provider_error(e: Exception) -> str:
 
 def _render_provider_error(e: openai.APIError, cleaned: str) -> str:
     body = _strip_repeated(_LITELLM_CLASS_PREFIX, cleaned)
-    body = _PROVIDER_TAG_PREFIX.sub("", body, count=1)
+    body = _strip_provider_tag(body)
     body = _OPENAI_SDK_PREFIX.sub("", body, count=1)
-    body = _LITELLM_HANDLE_HINT.sub("", body)
+    body = _strip_handle_hint(body)
     message, request_id = _extract_provider_message(_unwrap_bytes_repr(body))
 
     label = type(e).__name__

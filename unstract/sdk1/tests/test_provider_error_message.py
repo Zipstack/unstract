@@ -260,7 +260,7 @@ def test_azure_provider_tag_with_class_name_is_stripped(
     provider: _ProviderStub,
 ) -> None:
     provider.respond(404, OPENAI_NOT_FOUND_BODY)
-    try:
+    with pytest.raises(litellm.NotFoundError) as exc_info:
         _REAL_COMPLETION(
             model="azure/gpt-9",
             api_base=provider.url,
@@ -269,10 +269,7 @@ def test_azure_provider_tag_with_class_name_is_stripped(
             messages=[{"role": "user", "content": "hi"}],
             num_retries=0,
         )
-    except Exception as e:  # noqa: BLE001 - the exception is the subject
-        message = format_provider_error(e)
-    else:
-        pytest.fail("litellm did not raise")
+    message = format_provider_error(exc_info.value)
 
     assert message.startswith(
         "NotFoundError (HTTP 404): The model `gpt-9` does not exist"
@@ -283,7 +280,7 @@ def test_azure_provider_tag_with_class_name_is_stripped(
 @pytest.mark.parametrize("model", ["openai/gpt-x", "anthropic/claude-x"])
 def test_refused_connection_does_not_claim_an_http_status(model: str) -> None:
     """A refused connection reaches us as InternalServerError with 500."""
-    try:
+    with pytest.raises(litellm.InternalServerError) as exc_info:
         _REAL_COMPLETION(
             model=model,
             api_base="http://127.0.0.1:1",
@@ -291,10 +288,7 @@ def test_refused_connection_does_not_claim_an_http_status(model: str) -> None:
             messages=[{"role": "user", "content": "hi"}],
             num_retries=0,
         )
-    except Exception as e:  # noqa: BLE001 - the exception is the subject
-        message = format_provider_error(e)
-    else:
-        pytest.fail("litellm did not raise")
+    message = format_provider_error(exc_info.value)
 
     assert "HTTP" not in message
 
@@ -343,7 +337,7 @@ def test_model_hint_does_not_double_the_period(provider: _ProviderStub) -> None:
             }
         },
     )
-    try:
+    with pytest.raises(litellm.NotFoundError) as exc_info:
         _REAL_COMPLETION(
             model="azure/dep",
             api_base=provider.url,
@@ -352,10 +346,7 @@ def test_model_hint_does_not_double_the_period(provider: _ProviderStub) -> None:
             messages=[{"role": "user", "content": "hi"}],
             num_retries=0,
         )
-    except Exception as e:  # noqa: BLE001 - the exception is the subject
-        message = format_provider_error(e)
-    else:
-        pytest.fail("litellm did not raise")
+    message = format_provider_error(exc_info.value)
 
     assert "does not exist. Model 'dep' was not found" in message
     assert ".." not in message
@@ -377,17 +368,14 @@ def test_unparseable_body_never_raises() -> None:
 def test_embedding_errors_use_the_same_format(provider: _ProviderStub) -> None:
     """Embeddings go through the OpenAI SDK, whose body is a dict repr."""
     provider.respond(404, OPENAI_NOT_FOUND_BODY)
-    try:
+    with pytest.raises(litellm.NotFoundError) as exc_info:
         litellm.embedding(
             model="openai/gpt-9",
             api_base=provider.url,
             api_key="test-key",
             input=["hi"],
         )
-    except Exception as e:  # noqa: BLE001 - the exception is the subject
-        wrapped = parse_litellm_err(e, "my-embedding (OpenAI)")
-    else:
-        pytest.fail("litellm did not raise")
+    wrapped = parse_litellm_err(exc_info.value, "my-embedding (OpenAI)")
 
     assert isinstance(wrapped, SdkError)
     assert wrapped.status_code == 404
