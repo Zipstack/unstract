@@ -75,12 +75,6 @@ def backfill_memberships(apps, app_label: str, model_name: str) -> None:
 def repair_ownerless_owner_rows(apps, app_label: str, model_name: str) -> int:
     """Give ``created_by`` an OWNER row on resources that have no owner at all.
 
-    UN-3057: the Prompt Studio clone path created ``CustomTool`` rows without
-    the OWNER row that UN-2202 made authoritative, so projects cloned after
-    :func:`backfill_memberships` ran are ownerless — visible (the clone copies
-    the parent's ``shared_to_org``), but unmanageable by anyone but an org
-    admin. This repairs what that backfill could not have seen.
-
     Only resources with *zero* OWNER rows are touched, so a creator who was
     deliberately replaced by a co-owner is not resurrected. Null creator or
     null organization means there is nothing to grant, so those are skipped.
@@ -97,9 +91,7 @@ def repair_ownerless_owner_rows(apps, app_label: str, model_name: str) -> int:
         )
     )
 
-    # ``_base_manager``: several resources' default manager is org-scoped by
-    # ``UserContext`` (unset here → it would filter every row out and silently
-    # repair nothing). Same guard as ``tenant_account_v2.signals``.
+    # Base manager: unscoped with both live and historical models.
     repaired = promoted = skipped = 0
     for resource in Resource._base_manager.exclude(created_by=None).iterator():
         if resource.organization_id is None:

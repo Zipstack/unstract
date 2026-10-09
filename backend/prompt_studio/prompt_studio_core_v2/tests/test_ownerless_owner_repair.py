@@ -1,15 +1,4 @@
-"""Repair of ownerless ``CustomTool`` rows (UN-3057).
-
-The Prompt Studio clone path created projects without the OWNER
-``ResourceMembership`` that UN-2202 made authoritative, so every project cloned
-after the UN-2202 backfill ran is ownerless: visible, but unmanageable by anyone
-except an org admin. Fixing the clone helper stops new breakage; these already
-broken rows need a repair pass.
-
-Exercises the migration helper against the real models (``django.apps.apps``
-satisfies the ``apps.get_model`` interface the migration passes in), so the
-behaviour is pinned without driving the migration executor.
-"""
+"""Repair of ``CustomTool`` rows that have no OWNER membership."""
 
 from __future__ import annotations
 
