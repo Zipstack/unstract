@@ -827,6 +827,13 @@ class LLM:
         Chunks arrive as they stream from the provider. ``cache_prefix`` behaves
         as in :meth:`complete` — a stable prefix cached ahead of ``prompt`` when
         prompt caching is active for a supported provider.
+
+        A caller that stops iterating early, on purpose or because its own
+        code raised, must close the generator, e.g. with
+        ``contextlib.closing(llm.stream_complete(...))``. Otherwise the
+        provider's HTTP response is released only when the garbage collector
+        finalises it, which can deadlock the connection pool (see
+        ``retry_utils.close_stream``).
         """
         try:
             messages = self._build_messages(prompt, cache_prefix=cache_prefix)

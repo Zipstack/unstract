@@ -242,9 +242,6 @@ class UnstractRunner:
             "FILE_EXECUTION_ID": file_execution_id,
             "MESSAGING_CHANNEL": messaging_channel,
             "LOG_LEVEL": os.getenv(Env.LOG_LEVEL, "INFO"),
-            "CELERY_BROKER_BASE_URL": os.getenv(Env.CELERY_BROKER_BASE_URL),
-            "CELERY_BROKER_USER": os.getenv(Env.CELERY_BROKER_USER),
-            "CELERY_BROKER_PASS": os.getenv(Env.CELERY_BROKER_PASS),
             # Log transport (UN-3755). The sidecar is a LogPublisher producer
             # (log_processor.py:165), so it must agree with every other publisher or
             # its tool logs go to RabbitMQ while the rest go to Redis — and with the
@@ -279,6 +276,17 @@ class UnstractRunner:
             _redis_value = os.getenv(_redis_env)
             if _redis_value:
                 sidecar_env[_redis_env] = _redis_value
+
+        # The broker is needed only on the Celery log transport, so it is forwarded
+        # only when present in the runner's own environment.
+        for _broker_env in (
+            Env.CELERY_BROKER_BASE_URL,
+            Env.CELERY_BROKER_USER,
+            Env.CELERY_BROKER_PASS,
+        ):
+            _broker_value = os.getenv(_broker_env)
+            if _broker_value is not None:
+                sidecar_env[_broker_env] = _broker_value
 
         sidecar_config = self.client.get_container_run_config(
             command=[],

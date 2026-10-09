@@ -97,9 +97,6 @@ function ImportTool({ open, setOpen, onImport, loading }) {
     beforeUpload: () => false, // Prevent automatic upload
     fileList,
     onChange: handleUploadChange,
-    onDrop(e) {
-      console.log("Dropped files", e.dataTransfer.files);
-    },
   };
 
   return (
