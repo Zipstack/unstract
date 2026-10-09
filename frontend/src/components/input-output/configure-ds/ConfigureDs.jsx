@@ -3,7 +3,7 @@ import PropTypes from "prop-types";
 import { createRef, useEffect, useState } from "react";
 import { Col, Row } from "@/components/ui/shims/antd-layout";
 import { Popover } from "@/components/ui/shims/antd-overlays";
-
+import { isSaasProdDeployment } from "../../../helpers/PostHogDeployment";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
 import usePostHogEvents from "../../../hooks/usePostHogEvents.js";
@@ -50,6 +50,25 @@ function ConfigureDs({
     setPostHogCustomEvent,
   } = usePostHogEvents();
   const { getUrl } = useRequestUrl();
+
+  // The existing intent events fire on click; these record what the user
+  // actually got back, so funnels can tell a failed add from an abandoned one.
+  // Error text can echo customer endpoints, so it only leaves SaaS.
+  const captureAdapterResult = (eventName, result, errorMessage) => {
+    if (isConnector) {
+      return;
+    }
+    setPostHogCustomEvent(eventName, {
+      adapter_type: type,
+      adapter_name: selectedSourceName,
+      is_edit: Boolean(editItemId),
+      result,
+      ...(errorMessage &&
+        isSaasProdDeployment() && {
+          error: String(errorMessage).slice(0, 200),
+        }),
+    });
+  };
 
   const oauthCacheKey = `oauth-cachekey-${selectedSourceId}`;
   const oauthStatusKey = `oauth-status-${selectedSourceId}`;
@@ -232,6 +251,10 @@ function ConfigureDs({
       .then((res) => {
         const isValid = res?.data?.is_valid;
         setIsTcSuccessful(isValid);
+        captureAdapterResult(
+          "adapter_test_connection_result",
+          isValid ? "success" : "invalid",
+        );
         if (!isValid) {
           setAlertDetails({
             type: "error",
@@ -247,7 +270,13 @@ function ConfigureDs({
       .catch((err) => {
         const TestErrorMessage =
           err?.response?.data?.message || "Test connection failed";
-        setAlertDetails(handleException(err, TestErrorMessage));
+        const alert = handleException(err, TestErrorMessage);
+        captureAdapterResult(
+          "adapter_test_connection_result",
+          "error",
+          alert.content,
+        );
+        setAlertDetails(alert);
       })
       .finally(() => {
         setIsTcLoading(false);
@@ -338,6 +367,7 @@ function ConfigureDs({
         if (!isConnector && method === "POST") {
           updateSession(type);
         }
+        captureAdapterResult("adapter_save_result", "success");
 
         if (oAuthProvider?.length > 0 && isOAuthMethodSelected()) {
           localStorage.removeItem(oauthCacheKey);
@@ -347,7 +377,9 @@ function ConfigureDs({
         setOpen(false);
       })
       .catch((err) => {
-        setAlertDetails(handleException(err));
+        const alert = handleException(err);
+        captureAdapterResult("adapter_save_result", "error", alert.content);
+        setAlertDetails(alert);
       })
       .finally(() => {
         setIsSubmitApiLoading(false);
