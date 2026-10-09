@@ -170,6 +170,7 @@ class InternalAPIAuthMiddleware(MiddlewareMixin):
 
             # Enhanced organization context validation
             from utils.organization_utils import resolve_organization
+            from utils.user_context import UserContext
 
             try:
                 organization = resolve_organization(org_id, raise_on_not_found=False)
@@ -185,6 +186,8 @@ class InternalAPIAuthMiddleware(MiddlewareMixin):
                     }
                     # Store the organization_id string field in StateStore for UserContext compatibility
                     StateStore.set(Account.ORGANIZATION_ID, organization.organization_id)
+                    # Already loaded: saves the request's first org lookup.
+                    UserContext.cache_organization(organization)
 
                     logger.debug(
                         f"Organization context validated and set: {organization.display_name} (org_id: {organization.organization_id}, pk: {organization.id})"

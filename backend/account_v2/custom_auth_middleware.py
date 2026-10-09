@@ -6,6 +6,7 @@ from django.conf import settings
 from django.http import HttpRequest, HttpResponse, JsonResponse
 from utils.constants import Account
 from utils.local_context import StateStore
+from utils.user_context import UserContext
 from utils.user_session import UserSessionUtils
 
 from account_v2.authentication_plugin_registry import AuthenticationPluginRegistry
@@ -195,6 +196,8 @@ class CustomAuthMiddleware:
         request.csrf_processing_done = True
         StateStore.set(Common.LOG_EVENTS_ID, str(key.id))
         StateStore.set(Account.ORGANIZATION_ID, key.organization.organization_id)
+        # Loaded with the key: saves the request's first org lookup.
+        UserContext.cache_organization(key.organization)
 
         try:
             return self.get_response(request)
