@@ -25,7 +25,6 @@ class Migration(migrations.Migration):
         ("prompt_studio_core_v2", "0010_customtool_custtool_org_modified_idx"),
         ("tenant_account_v2", "0005_resource_membership"),
         ("platform_api", "0004_alter_platformapikey_organization"),
-        ("tenant_account_v2", "0005_resource_membership"),
     ]
 
     operations = [
