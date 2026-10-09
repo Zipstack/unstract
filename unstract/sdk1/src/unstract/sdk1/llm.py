@@ -5,7 +5,7 @@ from collections.abc import Callable, Generator, Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import Enum
 from functools import cache, lru_cache
-from typing import Any, NoReturn, cast
+from typing import TYPE_CHECKING, Any, NoReturn, cast
 
 import litellm
 
@@ -30,6 +30,9 @@ from unstract.sdk1.utils.retry_utils import (
     iter_with_retry,
     pop_litellm_retry_kwargs,
 )
+
+if TYPE_CHECKING:
+    from unstract.sdk1.utils.image_limits import ImageRequestLimits
 
 logger = logging.getLogger(__name__)
 
@@ -292,7 +295,10 @@ class LLM:
 
             self.kwargs = self.adapter.validate(self._adapter_metadata)
             self._cost_model = self.kwargs.pop("cost_model", None)
-            self.kwargs.pop("context_window", None)
+            # Adapters that know their model's context window better than
+            # litellm (MiniMax) report it here; kept for the image-mode token
+            # budget, never forwarded to litellm.
+            self._context_window = self.kwargs.pop("context_window", None)
             # Opt-in provider prompt caching (Anthropic / Bedrock-Anthropic).
             # Enabled either via adapter metadata (from the stored adapter
             # config) or the explicit constructor arg (for callers that build
@@ -1035,6 +1041,53 @@ class LLM:
             LLM model name
         """
         return self.kwargs["model"]
+
+    def get_image_request_limits(self) -> "ImageRequestLimits":
+        """Vision image-request limits for this adapter's provider and model.
+
+        Keyed on the adapter provider and the validated model string (so a
+        Bedrock Mantle model resolves to the Mantle entry and MiniMax never
+        resolves as Anthropic), matched on the real model id when the routed
+        one is an alias (Azure ``cost_model``, Bedrock ``model_id``).
+        """
+        from unstract.sdk1.utils.image_limits import resolve_image_limits
+
+        model_id = self.kwargs.get("model_id")
+        return resolve_image_limits(
+            self.adapter.get_provider(),
+            self.kwargs["model"],
+            cost_model=self._cost_model,
+            extra_model_ids=[str(model_id)] if model_id else (),
+        )
+
+    def get_image_input_token_budget(self) -> int | None:
+        """Context window for the image-mode token term, or None when unknown.
+
+        Order: the limits table's ``max_input_tokens`` override, the
+        adapter's own ``context_window``, then litellm's LOCAL registry.
+        Never ``get_model_info`` (network, and a made-up fallback value).
+        """
+        from unstract.sdk1.utils.image_limits import local_max_input_tokens
+
+        override = self.get_image_request_limits().max_input_tokens.value
+        if override:
+            return override
+        if isinstance(self._context_window, int) and self._context_window > 0:
+            return self._context_window
+        return local_max_input_tokens(self.kwargs["model"], self._cost_model)
+
+    @classmethod
+    def image_input_limits_for(
+        cls, adapter_id: str, adapter_metadata: Mapping[str, object]
+    ) -> "tuple[ImageRequestLimits, int | None]":
+        """``(limits, token_budget)`` for an adapter id + stored metadata.
+
+        Offline: builds a metadata-only ``LLM`` (the adapter's local
+        ``validate``; no platform-service call, no provider network), so the
+        backend can check a profile's LLM from its stored adapter row.
+        """
+        llm = cls(adapter_id=adapter_id, adapter_metadata=dict(adapter_metadata))
+        return llm.get_image_request_limits(), llm.get_image_input_token_budget()
 
     def get_metrics(self) -> dict[str, object]:
         return self._metrics

@@ -6,7 +6,7 @@ import zipfile
 import zlib
 from io import BytesIO
 from pathlib import Path
-from typing import Any, BinaryIO
+from typing import TYPE_CHECKING, Any, BinaryIO
 
 import requests
 from requests import Response
@@ -15,7 +15,7 @@ from unstract.llmwhisperer.client_v2 import (
     LLMWhispererClientException,
     LLMWhispererClientV2,
 )
-from unstract.sdk1.adapters.exceptions import ExtractorError
+from unstract.sdk1.adapters.exceptions import ExtractorError, ImageLimitExceededError
 from unstract.sdk1.adapters.utils import AdapterUtils
 from unstract.sdk1.adapters.x2text.constants import (
     X2TextConstants,
@@ -45,7 +45,11 @@ from unstract.sdk1.adapters.x2text.page_image_loader import (
 from unstract.sdk1.constants import MimeType
 from unstract.sdk1.exceptions import FileOperationError
 from unstract.sdk1.file_storage import FileStorage, FileStorageProvider
+from unstract.sdk1.utils.image_limits import codes as limit_codes
 from unstract.sdk1.utils.retry_utils import retry_with_exponential_backoff
+
+if TYPE_CHECKING:
+    from unstract.sdk1.utils.image_limits.policy import ImageModePolicy
 
 logger = logging.getLogger(__name__)
 
@@ -922,12 +926,93 @@ class LLMWhispererHelper:
         return LLMWhispererHelper.extract_page_images_from_zip(zip_buffer)
 
     @staticmethod
+    def _check_page_count_before_submit(
+        expected_page_count: int | None, image_limits: "ImageModePolicy | None"
+    ) -> None:
+        """Reject an over-budget document BEFORE the per-page-billed conversion.
+
+        With a model-aware policy the budget is the consuming LLM's (image
+        count, context window, LLMWhisperer's 999, operator ceilings) and the
+        error carries a stable code. Without one the legacy fixed cap applies.
+        Best-effort by design: a PDF whose count cannot be read locally falls
+        through and is caught after conversion / at answer time.
+        """
+        if expected_page_count is None:
+            return
+        if image_limits is not None:
+            from unstract.sdk1.utils.image_limits import policy as _policy
+
+            budget = image_limits.page_budget
+            if expected_page_count > budget.max_pages:
+                raise ImageLimitExceededError(
+                    _policy.page_cap_message(expected_page_count, budget, charged=False),
+                    error_code=limit_codes.IMAGE_PAGE_CAP_EXCEEDED,
+                    charged=False,
+                )
+            for line in image_limits.advisories(page_count=expected_page_count):
+                logger.warning("Image mode: %s", line)
+            advisory = image_limits.size_advisory(page_count=expected_page_count)
+            if advisory:
+                logger.warning("Image mode: %s", advisory)
+            return
+        page_cap = configured_page_cap()
+        if expected_page_count > page_cap:
+            raise ExtractorError(
+                "This document has too many pages for image output mode. It "
+                f"has {expected_page_count} pages, and the limit is {page_cap} "
+                "because every page is sent to the LLM in one request. Split "
+                "the document into smaller files, or use a text output mode "
+                "instead. No pages were converted or charged. (The 'Pages to "
+                "extract' setting does not apply in image output mode.)",
+                status_code=400,
+            )
+
+    @staticmethod
+    def _check_pages_after_download(
+        pages: list[tuple[int, bytes]],
+        image_limits: "ImageModePolicy | None",
+        page_store_dir: str,
+    ) -> None:
+        """Apply the byte/per-image checks once the rendered pages are known.
+
+        The conversion is already billed at this point; the checks run before
+        anything is persisted so a rejected document leaves no page set behind.
+        """
+        if image_limits is None:
+            LLMWhispererHelper.verify_page_bytes(pages)
+            return
+        from unstract.sdk1.adapters.x2text.page_image_loader import (
+            PageCapExceededError,
+            PageImageSetTooLargeError,
+            PageImageTooLargeError,
+        )
+        from unstract.sdk1.utils.image_limits import policy as _policy
+
+        try:
+            _policy.check_page_set(
+                image_limits, pages, page_store_dir=page_store_dir, charged=True
+            )
+        except PageCapExceededError as e:
+            raise ImageLimitExceededError(
+                str(e), error_code=limit_codes.IMAGE_PAGE_CAP_EXCEEDED, charged=True
+            ) from e
+        except PageImageTooLargeError as e:
+            raise ImageLimitExceededError(
+                str(e), error_code=limit_codes.IMAGE_PAGE_TOO_LARGE, charged=True
+            ) from e
+        except PageImageSetTooLargeError as e:
+            raise ImageLimitExceededError(
+                str(e), error_code=limit_codes.IMAGE_PAGES_TOO_LARGE, charged=True
+            ) from e
+
+    @staticmethod
     def get_page_images(
         config: dict[str, Any],
         input_file_path: str,
         output_file_path: str | None,
         fs: FileStorage | None = None,
         tag: str | list[str] | None = None,
+        image_limits: "ImageModePolicy | None" = None,
     ) -> tuple[str, list[PageImageReference]]:
         """End-to-end image output flow (orchestrator).
 
@@ -936,6 +1021,11 @@ class LLMWhispererHelper:
         the ordered ``PageImageReference`` list, or raises (fail-closed — never
         partial). The ``whisper_hash`` is returned so callers can record the
         real job id in extraction metadata instead of an empty string.
+
+        ``image_limits`` is the model-aware policy of the LLM(s) that will
+        consume the pages; it drives the pre-submit page budget and the
+        post-download byte and per-image checks. Without it the legacy fixed
+        limits (``configured_page_cap`` / ``configured_max_total_bytes``) apply.
 
         Retrieval is intentionally NOT retried: the service marks the job
         RETRIEVED before streaming and (with the default persistence off) a
@@ -948,23 +1038,14 @@ class LLMWhispererHelper:
 
         input_bytes = fs.read(path=input_file_path, mode="rb")
 
-        # Reject an over-cap document BEFORE submitting: pdf-to-images bills
-        # per converted page, and the answer-time cap would reject the result
-        # anyway — so without this check the caller pays to convert a document
-        # that can never be answered. Best-effort by design: a PDF whose count
-        # cannot be read locally falls through and is caught at answer time.
+        # Reject an over-budget document BEFORE submitting: pdf-to-images
+        # bills per converted page, and the answer-time check would reject
+        # the result anyway — so without this check the caller pays to
+        # convert a document that can never be answered.
         expected_page_count = LLMWhispererHelper._safe_pdf_page_count(input_bytes)
-        page_cap = configured_page_cap()
-        if expected_page_count is not None and expected_page_count > page_cap:
-            raise ExtractorError(
-                "This document has too many pages for image output mode. It "
-                f"has {expected_page_count} pages, and the limit is {page_cap} "
-                "because every page is sent to the LLM in one request. Split "
-                "the document into smaller files, or use a text output mode "
-                "instead. No pages were converted or charged. (The 'Pages to "
-                "extract' setting does not apply in image output mode.)",
-                status_code=400,
-            )
+        LLMWhispererHelper._check_page_count_before_submit(
+            expected_page_count, image_limits
+        )
 
         whisper_hash = LLMWhispererHelper.submit_pdf_to_images(
             config,
@@ -983,18 +1064,20 @@ class LLMWhispererHelper:
         # nothing is written on a truncated/over-produced archive.
         LLMWhispererHelper.verify_page_count(pages, expected_page_count)
 
-        # Enforce the byte budget HERE, at extraction, not only when a prompt
-        # runs. The page images are only measurable after conversion, so the
-        # conversion itself cannot be saved — but without this check the
-        # document indexed successfully and failed only when the user ran a
-        # prompt, after they had built their prompts around it. Failing at
-        # indexing is the earliest point the size is known. The answer-time
-        # check in page_image_loader stays as the backstop.
-        LLMWhispererHelper.verify_page_bytes(pages)
-
         page_store_dir = LLMWhispererHelper.build_page_store_dir(
             output_file_path=output_file_path,
             input_file_path=input_file_path,
+        )
+
+        # Enforce the byte and per-image limits HERE, at extraction, not only
+        # when a prompt runs. The page images are only measurable after
+        # conversion, so the conversion itself cannot be saved — but without
+        # this check the document indexed successfully and failed only when
+        # the user ran a prompt, after they had built their prompts around
+        # it. Failing at indexing is the earliest point the size is known.
+        # The answer-time check in page_image_loader stays as the backstop.
+        LLMWhispererHelper._check_pages_after_download(
+            pages, image_limits, page_store_dir
         )
         references = LLMWhispererHelper.persist_page_images(fs, page_store_dir, pages)
         logger.info(
