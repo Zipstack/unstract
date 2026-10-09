@@ -37,6 +37,7 @@ from typing import TYPE_CHECKING, Any, TypeVar
 from celery import current_app
 
 from unstract.core.data_models import ContinuationSpec, TaskPayload
+from unstract.core.jsonb import dumps_for_jsonb
 
 from ..barrier import callback_recovery_identity
 from ..fairness import FAIRNESS_HEADER_NAME
@@ -95,10 +96,11 @@ _DEFAULT_POISON_REPARK_BUDGET = 5
 # response, and the row is TTL'd.
 _TASK_STATUS_RETENTION_SECONDS = 86400
 # Liveness: a poll loop that hasn't cycled in this many seconds is reported
-# unhealthy. The heartbeat is stamped at the top of each poll_once and frozen
-# during task execution, so this threshold doubles as an UPPER BOUND on a single
-# task's wall-clock: a task running longer than it trips the probe → pod restart
-# → the in-flight task is killed and (at-least-once) redelivered. 60s suits the
+# unhealthy. The heartbeat is stamped before each queue read and frozen during
+# task execution, so this threshold doubles as an UPPER BOUND on a single task's
+# wall-clock: a task running longer than it trips the probe → pod restart (or,
+# under the prefork supervisor with CHILD_WATCHDOG on, a SIGKILL of just that
+# child) → the in-flight task is killed and (at-least-once) redelivered. 60s suits the
 # current sub-second leaf (send_webhook_notification); for longer-running tasks,
 # raise WORKER_PG_QUEUE_CONSUMER_HEALTH_STALE_SECONDS above
 # max(batch_size x worst_case_task_seconds, backoff_max).
@@ -109,13 +111,20 @@ def _json_safe(value: object) -> object:
     """Round-trip through JSON with ``default=str`` so non-JSON-native values
     (UUID / datetime) survive a self-chained enqueue.
 
-    ``PgQueueClient.send`` serialises with a plain ``json.dumps`` (no
-    ``default=``), so a self-chained continuation whose prepended argument is an
-    executor result dict containing a UUID/datetime would raise ``TypeError`` —
-    swallowed by ``_chain_continuation`` and the callback (plus its user-facing
-    event) lost. Coercing here mirrors the backend producer's ``_json_safe``.
+    ``PgQueueClient.send`` serialises without a ``default=``, so a self-chained
+    continuation whose prepended argument is an executor result dict containing
+    a UUID/datetime would raise ``TypeError`` — swallowed by
+    ``_chain_continuation`` and the callback (plus its user-facing event) lost.
+    Coercing here mirrors the backend producer's ``_json_safe``.
+
+    Uses ``dumps_for_jsonb`` so the same pass also strips the strings the
+    ``::jsonb`` cast refuses. The prepended value is the executor result — the
+    payload that carried a NUL in UN-4126 — and on this branch an unencodable
+    message does not hang the caller: the enqueue fails, ``_chain_continuation``
+    swallows it, and the run falls back to ``on_error``, reporting a *failure*
+    for work that succeeded and was already paid for.
     """
-    return json.loads(json.dumps(value, default=str))
+    return json.loads(dumps_for_jsonb(value, default=str))
 
 
 class _PoisonMarkOutcome(Enum):
@@ -357,8 +366,8 @@ class PgQueueConsumer:
         self._result_backend: PgResultBackend | None = None
         # Heartbeat for the liveness probe: monotonic timestamp of the most
         # recent poll attempt. Seeded at construction so a just-started consumer
-        # reads healthy. Updated at the TOP of poll_once, so a loop wedged on a
-        # long-running task (poll_once not returning) goes stale and is caught —
+        # reads healthy. Updated before EACH queue read in poll_once, so a loop
+        # wedged on a long-running task goes stale and is caught —
         # something pgrep-based --status and the launch-time check cannot see.
         self._last_poll_monotonic = time.monotonic()
 
@@ -371,9 +380,12 @@ class PgQueueConsumer:
         cycle still counts (so run() doesn't take the empty-queue backoff path
         after a partial failure).
         """
-        self._last_poll_monotonic = time.monotonic()
         total = 0
         for queue_name in self.queue_names:
+            # Per queue, not per cycle: a cycle runs one task from EACH queue, and
+            # HEALTH_STALE is sized for one task, so a per-cycle stamp would let
+            # two legitimate long tasks add up to a false "stale".
+            self._last_poll_monotonic = time.monotonic()
             try:
                 messages = self._client.read(
                     queue_name, vt_seconds=self.lease_seconds, qty=self.batch_size
@@ -1204,6 +1216,11 @@ class LivenessServer(_BaseLivenessServer):
     consumer's heartbeat (``seconds_since_last_poll``). Same wire shape as before
     (``/health`` → 200 fresh / 503 stale, ``check="pg_queue_poll"``), plus
     ``/metrics`` exporting that heartbeat as a scrapeable gauge.
+
+    ``/ready`` is always 200 here: it takes an already-built consumer, and
+    ``main()`` only starts it after ``import worker`` and the build, so a probe
+    that can reach it is talking to a loaded process. The same ``startupProbe``
+    therefore works for single-process and prefork pools alike.
     """
 
     def __init__(
@@ -1219,6 +1236,7 @@ class LivenessServer(_BaseLivenessServer):
             check_name="pg_queue_poll",
             age_key="seconds_since_last_poll",
             metrics_fn=metrics.render,
+            ready_fn=lambda: True,
             thread_name="pg-consumer-liveness",
             log_label="pg-queue consumer",
         )

@@ -1,4 +1,5 @@
 import logging
+from typing import Any
 
 from django.shortcuts import get_object_or_404
 from rest_framework import status, viewsets
@@ -10,7 +11,10 @@ from utils.pagination import CustomPagination
 
 from workflow_manager.workflow_v2.models.file_history import FileHistory
 from workflow_manager.workflow_v2.models.workflow import Workflow
-from workflow_manager.workflow_v2.permissions import IsWorkflowOwnerOrShared
+from workflow_manager.workflow_v2.permissions import (
+    IsWorkflowOwnerForFileHistoryWrite,
+    IsWorkflowOwnerOrShared,
+)
 from workflow_manager.workflow_v2.serializers import FileHistorySerializer
 
 logger = logging.getLogger(__name__)
@@ -25,6 +29,11 @@ class FileHistoryViewSet(viewsets.ReadOnlyModelViewSet):
     lookup_field = "id"
     permission_classes = [IsAuthenticated, IsWorkflowOwnerOrShared]
     pagination_class = CustomPagination
+
+    def get_permissions(self) -> list[Any]:
+        if self.action in ("destroy", "clear"):
+            return [IsAuthenticated(), IsWorkflowOwnerForFileHistoryWrite()]
+        return list(super().get_permissions())
 
     def _validate_execution_count(self, value, param_name):
         """Validate execution count parameter is a non-negative integer.

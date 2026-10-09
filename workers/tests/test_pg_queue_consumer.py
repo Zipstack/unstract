@@ -666,8 +666,8 @@ class TestPollHeartbeat:
         assert consumer.seconds_since_last_poll() < 1.0
 
     def test_heartbeat_stamped_before_read(self):
-        # Pins the headline design: the stamp lands at the TOP of poll_once
-        # (before read), so a task running longer than the threshold still trips
+        # Pins the headline design: the stamp lands before each queue read (not
+        # after it), so a task running longer than the threshold still trips
         # the probe. A bottom-of-poll stamp would pass test_poll_once_refreshes
         # but fail here.
         client = MagicMock()
@@ -680,6 +680,24 @@ class TestPollHeartbeat:
         )[1]
         consumer.poll_once()
         assert seen["during"] > before  # refreshed BEFORE read ran, not after
+
+    def test_heartbeat_restamped_before_each_queue_read(self):
+        # UN-4223: a cycle runs one task per queue and HEALTH_STALE is sized for
+        # one task, so each queue's read must start from a fresh stamp — a single
+        # per-cycle stamp would add two long tasks into a false "stale".
+        client = MagicMock()
+        consumer = PgQueueConsumer(["q1", "q2"], client=client)
+        seen: list[float] = []
+
+        def _read(*_a, **_k):
+            seen.append(consumer._last_poll_monotonic)
+            consumer._last_poll_monotonic -= 5000  # the first queue's long task
+            return []
+
+        client.read.side_effect = _read
+        consumer.poll_once()
+        assert len(seen) == 2
+        assert seen[1] > seen[0] - 1  # re-stamped, not inherited from queue 1
 
     def test_health_server_disabled_without_port(self):
         # No port configured → no server bound (opt-in).
@@ -735,6 +753,82 @@ class TestPollHeartbeat:
             with pytest.raises(urllib.error.HTTPError) as ei:
                 urllib.request.urlopen(f"{base}/nope", timeout=5)
             assert ei.value.code == 404
+        finally:
+            server.stop()
+
+    def test_single_process_ready_is_200_once_serving(self):
+        # UN-4136: the single-process server only starts after `import worker` and
+        # the consumer build, so reaching /ready means loaded. The chart's
+        # startupProbe hits /ready on every PG consumer, CONCURRENCY=1 included.
+        import json
+        import urllib.request
+
+        from queue_backend.pg_queue.consumer import LivenessServer
+
+        consumer = PgQueueConsumer(["q"], client=MagicMock())
+        server = LivenessServer(consumer, port=0, stale_after=60)
+        server.start()
+        try:
+            base = f"http://127.0.0.1:{server.bound_port}"
+            for path in ("/ready", "/readyz", "/ready?probe=startup"):
+                with urllib.request.urlopen(f"{base}{path}", timeout=5) as resp:
+                    assert resp.status == 200, path
+                    assert json.loads(resp.read())["status"] == "ready", path
+        finally:
+            server.stop()
+
+    def test_ready_is_404_without_a_ready_fn(self):
+        # A process with no readiness notion (e.g. the reaper) must NOT answer
+        # /ready with a pass — a startupProbe mistakenly pointed at it has to fail.
+        import urllib.error
+        import urllib.request
+
+        from queue_backend.pg_queue.liveness import LivenessServer as Base
+
+        server = Base(
+            freshness_fn=lambda: 0.0,
+            stale_after=60,
+            port=0,
+            check_name="t",
+            age_key="age",
+        )
+        server.start()
+        try:
+            with pytest.raises(urllib.error.HTTPError) as ei:
+                urllib.request.urlopen(
+                    f"http://127.0.0.1:{server.bound_port}/ready", timeout=5
+                )
+            assert ei.value.code == 404
+        finally:
+            server.stop()
+
+    def test_ready_fn_that_raises_answers_503_and_leaves_health_alone(self):
+        import json
+        import urllib.error
+        import urllib.request
+
+        from queue_backend.pg_queue.liveness import LivenessServer as Base
+
+        def _broken() -> bool:
+            raise RuntimeError("boom")
+
+        server = Base(
+            freshness_fn=lambda: 0.0,
+            stale_after=60,
+            port=0,
+            check_name="t",
+            age_key="age",
+            ready_fn=_broken,
+        )
+        server.start()
+        try:
+            base = f"http://127.0.0.1:{server.bound_port}"
+            with pytest.raises(urllib.error.HTTPError) as ei:
+                urllib.request.urlopen(f"{base}/ready", timeout=5)
+            assert ei.value.code == 503
+            assert json.loads(ei.value.read())["status"] == "starting"
+            with urllib.request.urlopen(f"{base}/health", timeout=5) as resp:
+                assert resp.status == 200  # readiness never flips liveness
         finally:
             server.stop()
 

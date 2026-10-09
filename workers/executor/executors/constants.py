@@ -20,6 +20,12 @@ class PromptServiceConstants:
     VECTOR_DB = "vector-db"
     EMBEDDING = "embedding"
     X2TEXT_ADAPTER = "x2text_adapter"
+    # Extract-file path that is never rewritten by summarize-as-source /
+    # smart-table overrides — the page-image reader keys on this.
+    EXTRACT_FILE_PATH = "extract_file_path"
+    # Per-prompt stamp of the x2text adapter's output mode (LLMWhisperer
+    # only); lets image-mode detection skip the platform-service call.
+    X2TEXT_OUTPUT_MODE = "x2text_output_mode"
     CHUNK_OVERLAP = "chunk-overlap"
     LLM = "llm"
     IS_ASSERT = "is_assert"

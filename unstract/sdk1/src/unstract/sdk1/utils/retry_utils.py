@@ -274,6 +274,57 @@ def iter_with_retry[T](
             time.sleep(delay)
 
 
+def collect_with_retry[T](
+    fn: Callable[[], Iterable[T]],
+    *,
+    max_retries: int,
+    retry_predicate: Callable[[Exception], bool],
+    is_content: Callable[[T], bool],
+    description: str = "",
+    logger_instance: logging.Logger | None = None,
+) -> list[T]:
+    """Drain fn() into a list with retry. Only retries before content.
+
+    Streamed completions emit bookkeeping items (e.g. Anthropic
+    ``message_start``) before any content. A failure at that point is a
+    failed *request*, retried exactly as a non-streaming call would be. A
+    failure after ``is_content`` matched an item is a failed *generation*
+    and is raised immediately: replaying it would re-run a generation that
+    may already have consumed minutes. Items from a failed attempt are
+    discarded so a retry never duplicates them.
+    """
+    _validate_max_retries(max_retries)
+    log = logger_instance or logger
+    for attempt in range(max_retries + 1):
+        items: list[T] = []
+        has_content = False
+        gen: Iterable[T] | None = None
+        try:
+            # ``fn()`` itself can fail: litellm's streaming ``completion()``
+            # sends the request when called, so a 429/5xx/connection error
+            # is raised here, before any chunk is yielded. That is a failed
+            # request and must retry like the non-streaming path.
+            gen = fn()
+            for item in gen:
+                items.append(item)
+                has_content = has_content or is_content(item)
+            return items
+        except Exception as e:
+            # Release the in-flight HTTP/socket resources before retrying.
+            close = getattr(gen, "close", None)
+            if callable(close):
+                close()
+            if has_content:
+                raise
+            delay = _get_retry_delay(
+                e, attempt, max_retries, retry_predicate, description, log
+            )
+            if delay is None:
+                raise
+            time.sleep(delay)
+    raise RuntimeError("unreachable")  # for type-checker: loop always returns or raises
+
+
 def is_retryable_error(error: Exception) -> bool:
     """Check if a requests-library HTTP error should trigger a retry.
 

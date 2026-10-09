@@ -132,8 +132,6 @@ function CustomSynonyms() {
         ),
       };
     });
-    // handleChange/handleDelete close over `synonyms`, which is in the deps.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [synonyms, isPublicSource]);
 
   const handleChange = (index, propertyName, value) => {

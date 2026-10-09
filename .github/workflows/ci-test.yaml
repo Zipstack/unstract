@@ -94,7 +94,25 @@ jobs:
             ${{ runner.os }}-tox-uv-
 
       - name: Install tox with UV
-        run: uv tool install tox --with tox-uv
+        # Pinned: this resolves at job time, so a tox release lands in CI with no
+        # commit of ours. tox 4.64.0 shipped the PEP 832 `.venv` redirect and
+        # broke every branch at once; bump deliberately, not by drift.
+        # --no-build: wheels only, so no sdist setup script runs at install
+        # time. The whole tree (tox, tox-uv, uv, virtualenv, ...) ships wheels,
+        # so this constrains nothing and resolves identically.
+        run: uv tool install tox==4.64.1 --with tox-uv==1.36.0 --no-build
+
+      - name: Setup Bun
+        # The unit tier's `frontend` vitest group is required, and the rig runs
+        # it with `npx --no-install`, so node_modules must already be there.
+        if: matrix.tier == 'unit'
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+
+      - name: Install frontend dependencies
+        if: matrix.tier == 'unit'
+        working-directory: frontend
+        # No dependency lifecycle scripts: vitest needs none of them.
+        run: bun install --frozen-lockfile --ignore-scripts
 
       - name: Validate test manifests
         # Cheap pre-flight: catches manifest schema errors before tier runs.
@@ -172,7 +190,13 @@ jobs:
             ${{ runner.os }}-tox-uv-
 
       - name: Install tox with UV
-        run: uv tool install tox --with tox-uv
+        # Pinned: this resolves at job time, so a tox release lands in CI with no
+        # commit of ours. tox 4.64.0 shipped the PEP 832 `.venv` redirect and
+        # broke every branch at once; bump deliberately, not by drift.
+        # --no-build: wheels only, so no sdist setup script runs at install
+        # time. The whole tree (tox, tox-uv, uv, virtualenv, ...) ships wheels,
+        # so this constrains nothing and resolves identically.
+        run: uv tool install tox==4.64.1 --with tox-uv==1.36.0 --no-build
 
       - name: Validate test manifests
         # Cheap pre-flight before the multi-minute image build.
@@ -267,7 +291,13 @@ jobs:
             ${{ runner.os }}-tox-uv-
 
       - name: Install tox with UV
-        run: uv tool install tox --with tox-uv
+        # Pinned: this resolves at job time, so a tox release lands in CI with no
+        # commit of ours. tox 4.64.0 shipped the PEP 832 `.venv` redirect and
+        # broke every branch at once; bump deliberately, not by drift.
+        # --no-build: wheels only, so no sdist setup script runs at install
+        # time. The whole tree (tox, tox-uv, uv, virtualenv, ...) ships wheels,
+        # so this constrains nothing and resolves identically.
+        run: uv tool install tox==4.64.1 --with tox-uv==1.36.0 --no-build
 
       - name: Restore main-branch test baseline (for regression detection)
         # One unified baseline across all tiers; this job is its sole

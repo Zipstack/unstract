@@ -333,14 +333,22 @@ class TestcontainersRuntime:
         # __post_init__ invariant (host without port) is self-cleaning;
         # otherwise a partial spec leaks the four containers we just started.
         try:
-            pg = PostgresContainer("pgvector/pgvector:pg15")
+            # Every xdist worker migrates its own test database in one
+            # transaction, each holding a lock per table and constraint. The
+            # default of 64 overflows the shared lock table intermittently
+            # ("out of shared memory") and errors the whole backend group.
+            pg = PostgresContainer("pgvector/pgvector:pg15").with_command(
+                "postgres -c max_locks_per_transaction=256"
+            )
             pg.start()
             self._stack.append(pg)
             redis = RedisContainer("redis:7.2.3").start()
             self._stack.append(redis)
             rabbit = RabbitMqContainer("rabbitmq:3.13-management").start()
             self._stack.append(rabbit)
-            minio = MinioContainer("minio/minio:latest").start()
+            minio = MinioContainer(
+                "unstract/minio:RELEASE.2026-09-22T19-25-18Z@sha256:bd014394a80898e68c149f2311fdf8d5a2c2f3bb2c33b9327ae6d02b4b065ae1"
+            ).start()
             self._stack.append(minio)
 
             return PlatformEndpoints.from_env(

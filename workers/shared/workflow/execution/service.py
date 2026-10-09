@@ -25,7 +25,6 @@ from unstract.core.data_models import (
     FileOperationConstants,
     WorkflowDefinitionResponseData,
     WorkflowEndpointConfigData,
-    is_pg_transport,
 )
 
 # Import file execution tracking for proper recovery mechanism
@@ -1018,11 +1017,11 @@ class WorkerWorkflowExecutionService:
     def _execute_structure_tool_workflow(
         self, execution_service: WorkflowExecutionService, file_name: str
     ) -> None:
-        """Execute structure tool as Celery task instead of Docker container.
+        """Execute structure tool as a task instead of a Docker container.
 
         Calls execute_structure_tool directly (same process, in-band).
-        Only the inner ExecutionDispatcher calls go through Celery to
-        the executor worker.
+        Only the inner executor-RPC dispatches leave this process, and they go
+        to the executor worker over the PG queue.
         """
         from file_processing.structure_tool_task import (
             execute_structure_tool as _execute_structure_tool,
@@ -1362,36 +1361,30 @@ class WorkerWorkflowExecutionService:
         logger.error("No connector_id found in any configuration source")
         return None, {}
 
-    def _pg_destination_already_written(
+    def _destination_already_written(
         self,
         *,
         file_hash: FileHashData,
-        transport: str | None,
         use_file_history: bool,
         workflow_id: str,
         is_api: bool,
     ) -> bool:
         """True if this file's destination write already completed in a prior run.
 
-        On the PG (at-least-once) transport a batch can be re-run after a crash
-        or reaper-recovery, and such a re-run bypasses discovery's FileHistory
+        The queue is at-least-once, so a batch can be re-run after a crash or
+        reaper-recovery, and such a re-run bypasses discovery's FileHistory
         filter — so re-check by hash (plus path for non-API) at the write
         boundary. Returns True only if a COMPLETED FileHistory record already
         exists for this file.
 
-        Scoped two ways:
-        - to the PG transport (the re-run duplicate this prevents is PG-specific;
-          always False on Celery, so that path is unchanged), and
-        - to ``use_file_history``: a workflow run with file history off is
-          contractually "rewrite every run" (mirrors the discovery FileHistory
-          filter), so its write is never skipped.
+        Scoped to ``use_file_history``: a workflow run with file history off is
+        contractually "rewrite every run" (mirrors the discovery FileHistory
+        filter), so its write is never skipped.
 
         Fail-open on any lookup error (never block a legitimate write), logging
         at error level so a persistent lookup regression is visible rather than a
         silent, permanent no-op.
         """
-        if not is_pg_transport(transport):
-            return False
         if not use_file_history:
             return False
         cache_key = file_hash.file_hash
@@ -1527,16 +1520,14 @@ class WorkerWorkflowExecutionService:
                         f"📤 File {file_hash.file_name} marked for DESTINATION processing - sending to {destination_display}"
                     )
 
-                # PG-only re-run duplicate-write guard: a re-run after a crash /
+                # Re-run duplicate-write guard: a re-run after a crash /
                 # reaper-recovery bypasses discovery's FileHistory filter, so
                 # re-check by hash at the write boundary. If this file's
                 # destination write already completed in a prior run, skip it,
-                # avoiding a duplicate destination write. A no-op on the Celery
-                # transport, so that path is unchanged; fail-open so a lookup
+                # avoiding a duplicate destination write. Fail-open so a lookup
                 # error never blocks a write.
-                if self._pg_destination_already_written(
+                if self._destination_already_written(
                     file_hash=file_hash,
-                    transport=file_processing_context.transport,
                     use_file_history=use_file_history,
                     workflow_id=workflow_id,
                     is_api=destination.is_api,
