@@ -38,7 +38,7 @@ _LOG_STREAM_MAX_SIZE_ENV = "LOG_STREAM_QUEUE_MAX_SIZE"
 _LOG_STREAM_MAX_SIZE_DEFAULT = 10000
 
 
-def _use_redis_log_transport() -> bool:
+def use_redis_log_transport() -> bool:
     return os.getenv(_LOG_TRANSPORT_ENV, "celery").strip().lower() == _LOG_TRANSPORT_REDIS
 
 
@@ -194,7 +194,7 @@ class LogPublisher:
                 event=event,
                 message=payload,
             )
-            if _use_redis_log_transport():
+            if use_redis_log_transport():
                 cls._publish_via_redis(task_message)
             else:
                 with cls.kombu_conn.Producer(serializer="json") as producer:

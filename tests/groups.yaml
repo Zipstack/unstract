@@ -143,6 +143,15 @@ groups:
     install_editable: true
     coverage_source: src
 
+  # Guards that the sidecar's startup check asks for the Celery broker only on the
+  # Celery log transport. No `test` uv group in tool-sidecar; rig injects pytest.
+  unit-tool-sidecar:
+    tier: unit
+    workdir: tool-sidecar
+    paths: [tests]
+    install_editable: true
+    coverage_source: src
+
   # ── Integration tier: needs infra but not full platform ────────────────────
   integration-backend:
     tier: integration
