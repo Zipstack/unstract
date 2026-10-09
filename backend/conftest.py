@@ -16,12 +16,29 @@ testenv); this file only takes effect in local/IDE runs.
 
 from pathlib import Path
 
+import pytest
 from dotenv import load_dotenv
 
 # `-s` is set in pyproject so prints surface — log when test.env is absent
 # to make a mis-located file debuggable instead of silently empty.
 if not load_dotenv(Path(__file__).parent / "test.env", override=False):
     print("[conftest] backend/test.env not found; using ambient environment", flush=True)
+
+
+@pytest.fixture(autouse=True)
+def _drop_cached_organization():
+    """Keep the per-request organization cache from crossing tests.
+
+    Tests share a thread, and many leave the organization id set. Production
+    drops the cache when the next request sets the id; a test that relies on
+    a leftover id would instead be served an organization another test
+    created and rolled back.
+    """
+    yield
+    # Lazy: utils.user_context needs the app registry.
+    from utils.user_context import UserContext
+
+    UserContext.clear_organization_cache()
 
 
 def pytest_collection_modifyitems(items):
@@ -32,7 +49,6 @@ def pytest_collection_modifyitems(items):
     backend test needs a database. Kept central so tests declare their DB need
     by how they're written, not by a hand-maintained marker on each file.
     """
-    import pytest
     from django.test import TestCase, TransactionTestCase
 
     for item in items:
