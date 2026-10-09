@@ -116,7 +116,6 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
 
   useEffect(() => {
     // Convert blob URL to an object URL
-    console.log("here--->", fileData);
     if (fileData.blob) {
       const objectUrl = URL.createObjectURL(fileData.blob);
       setBlobFileUrl(objectUrl);
@@ -164,7 +163,6 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
     Object.keys(viewTypes).forEach((item) => {
       handleFetchContent(viewTypes[item]);
     });
-    console.log(selectedDoc);
   }, [selectedDoc]);
 
   useEffect(() => {
@@ -252,13 +250,11 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
   };
 
   const processGetDocsResponse = (data, viewType, mimeType) => {
-    console.log("response-->", viewType, mimeType);
     if (viewType === viewTypes.original) {
       if (mimeType === "application/pdf") {
         // Existing flow: base64 → blob → PdfViewer
         const base64String = data || "";
         const blob = base64toBlobWithMime(base64String, mimeType);
-        console.log("blob-->", blob);
         setFileData({ blob, mimeType });
         const reader = new FileReader();
         reader.readAsDataURL(blob);
@@ -367,7 +363,6 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
 
   const renderDoc = (docName, fileUrl, highlightData) => {
     // Use mimeType from response for rendering decisions
-    console.log(fileData);
     if (fileData.mimeType === "application/pdf") {
       return <PdfViewer fileUrl={fileUrl} highlightData={highlightData} />;
     }
