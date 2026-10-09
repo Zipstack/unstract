@@ -6,7 +6,7 @@ import zipfile
 import zlib
 from io import BytesIO
 from pathlib import Path
-from typing import Any
+from typing import Any, BinaryIO
 
 import requests
 from requests import Response
@@ -38,7 +38,10 @@ from unstract.sdk1.adapters.x2text.llm_whisperer_v2.src.constants import (
 from unstract.sdk1.adapters.x2text.llm_whisperer_v2.src.dto import (
     WhispererRequestParams,
 )
-from unstract.sdk1.adapters.x2text.page_image_loader import configured_page_cap
+from unstract.sdk1.adapters.x2text.page_image_loader import (
+    configured_max_total_bytes,
+    configured_page_cap,
+)
 from unstract.sdk1.constants import MimeType
 from unstract.sdk1.exceptions import FileOperationError
 from unstract.sdk1.file_storage import FileStorage, FileStorageProvider
@@ -693,8 +696,13 @@ class LLMWhispererHelper:
         return pages
 
     @staticmethod
-    def _safe_pdf_page_count(pdf_bytes: bytes) -> int | None:
-        """Page count of the input PDF, or None if it cannot be read.
+    def pdf_page_count(source: bytes | BinaryIO) -> int | None:
+        """Page count of a PDF, or None if it cannot be read.
+
+        ``source`` is the PDF's bytes or a seekable binary stream; a stream is
+        read in place rather than copied into memory. This is the counter the
+        image-mode page-cap checks use, so callers outside the SDK (e.g. an
+        upload-time check) agree with the extraction-time pre-check.
 
         Best-effort: the extraction must not fail just because the count could
         not be derived locally, so any error returns None (and the caller
@@ -703,11 +711,16 @@ class LLMWhispererHelper:
         try:
             import pdfplumber  # noqa: PLC0415 - lazy: only image mode needs it
 
-            with pdfplumber.open(BytesIO(pdf_bytes)) as pdf:
+            stream = BytesIO(source) if isinstance(source, bytes | bytearray) else source
+            with pdfplumber.open(stream) as pdf:
                 return len(pdf.pages)
         except Exception as e:
             logger.warning("Image mode: unable to read input PDF page count: %s", e)
             return None
+
+    @staticmethod
+    def _safe_pdf_page_count(pdf_bytes: bytes) -> int | None:
+        return LLMWhispererHelper.pdf_page_count(pdf_bytes)
 
     @staticmethod
     def verify_page_count(
@@ -738,6 +751,29 @@ class LLMWhispererHelper:
                 status_code=502,
             )
 
+    @staticmethod
+    def verify_page_bytes(pages: list[tuple[int, bytes]]) -> None:
+        """Reject a page set too large to send to an LLM in one request.
+
+        Same budget, from the same accessor, as the answer-time check in
+        ``page_image_loader`` — so a document that passes here passes there.
+        Raises before anything is persisted.
+        """
+        budget = configured_max_total_bytes()
+        total = sum(len(data) for _, data in pages)
+        if total <= budget:
+            return
+        mb = 1024 * 1024
+        raise ExtractorError(
+            "This document is too large for image output mode. Its "
+            f"{len(pages)} page images total {total / mb:.1f} MB, over the "
+            f"{budget // mb} MB limit for one LLM request. Split the document "
+            "into smaller files, or use a text output mode instead. The page "
+            "conversion has already been charged, because image sizes are "
+            "only known after the pages are rendered.",
+            status_code=400,
+        )
+
     # Single canonical derivation of ``{extract_dir}/{stem}/pages`` shared
     # by writer and reader alike (see unstract.sdk1.adapters.x2text.constants).
     build_page_store_dir = staticmethod(_shared_build_page_store_dir)
@@ -763,7 +799,8 @@ class LLMWhispererHelper:
         extraction error is what the caller must see.
         """
         try:
-            fs.rm(page_store_dir, recursive=True)
+            # Named after the uploaded document: never a glob (rm_exact).
+            fs.rm_exact(page_store_dir)
         except Exception as e:
             logger.warning(
                 "Image mode: could not clean up partial page dir %s: %s",
@@ -807,7 +844,8 @@ class LLMWhispererHelper:
         """
         try:
             if fs.exists(page_store_dir):
-                fs.rm(page_store_dir, recursive=True)
+                # Named after the uploaded document: never a glob (rm_exact).
+                fs.rm_exact(page_store_dir)
         except Exception as e:
             raise ExtractorError(
                 "Failed to clear previous page images before writing the new "
@@ -815,10 +853,10 @@ class LLMWhispererHelper:
                 status_code=500,
                 actual_err=e,
             ) from e
-        # ``fs.rm`` is not enough on its own: its S3-compatibility fallback
-        # (MissingContentMD5 → per-object deletes) only WARNS on individual
-        # failures, so a "successful" rm can leave survivors behind — which
-        # would silently join the new set as stale trailing pages. Verify the
+        # The delete is not trusted on its own: it works from a listing, and
+        # fsspec's dircache can serve a stale one that omits objects, so a
+        # "successful" delete can leave survivors behind — which would
+        # silently join the new set as stale trailing pages. Verify the
         # prefix is actually gone (through a fresh listing, not fsspec's
         # dircache) and fail loudly otherwise.
         invalidate = getattr(getattr(fs, "fs", None), "invalidate_cache", None)
@@ -919,12 +957,12 @@ class LLMWhispererHelper:
         page_cap = configured_page_cap()
         if expected_page_count is not None and expected_page_count > page_cap:
             raise ExtractorError(
-                f"Document exceeds the {page_cap}-page limit for image output "
-                f"mode ({expected_page_count} pages). Image mode answers a "
-                "prompt in one request containing every page image, so a "
-                "larger document cannot be answered. Split the document, or "
-                "select a text output mode instead. Nothing was converted or "
-                "billed.",
+                "This document has too many pages for image output mode. It "
+                f"has {expected_page_count} pages, and the limit is {page_cap} "
+                "because every page is sent to the LLM in one request. Split "
+                "the document into smaller files, or use a text output mode "
+                "instead. No pages were converted or charged. (The 'Pages to "
+                "extract' setting does not apply in image output mode.)",
                 status_code=400,
             )
 
@@ -944,6 +982,15 @@ class LLMWhispererHelper:
         # (derived locally above, before submission) BEFORE persisting, so
         # nothing is written on a truncated/over-produced archive.
         LLMWhispererHelper.verify_page_count(pages, expected_page_count)
+
+        # Enforce the byte budget HERE, at extraction, not only when a prompt
+        # runs. The page images are only measurable after conversion, so the
+        # conversion itself cannot be saved — but without this check the
+        # document indexed successfully and failed only when the user ran a
+        # prompt, after they had built their prompts around it. Failing at
+        # indexing is the earliest point the size is known. The answer-time
+        # check in page_image_loader stays as the backstop.
+        LLMWhispererHelper.verify_page_bytes(pages)
 
         page_store_dir = LLMWhispererHelper.build_page_store_dir(
             output_file_path=output_file_path,

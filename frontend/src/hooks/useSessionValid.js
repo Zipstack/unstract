@@ -3,6 +3,7 @@ import Cookies from "js-cookie";
 import { useNavigate } from "react-router-dom";
 import { listFlags } from "../helpers/FeatureFlagsData.js";
 import { getSessionData } from "../helpers/GetSessionData";
+import { usableAdapters } from "../helpers/GetStaticData";
 import { useExceptionHandler } from "../hooks/useExceptionHandler.jsx";
 import { useAlertStore } from "../store/alert-store";
 import { useSessionStore } from "../store/session-store";
@@ -148,7 +149,7 @@ function useSessionValid() {
         const getAdapterDetails = await axios(requestOptions);
         const adapterTypes = [
           ...new Set(
-            getAdapterDetails?.data?.map((obj) =>
+            usableAdapters(getAdapterDetails?.data).map((obj) =>
               obj.adapter_type.toLowerCase(),
             ),
           ),

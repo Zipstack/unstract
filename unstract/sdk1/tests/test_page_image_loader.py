@@ -114,13 +114,14 @@ class TestPageCap:
         err = excinfo.value
         assert err.page_count == 5
         assert err.page_cap == 4
-        assert "exceeds the 4-page limit" in str(err)
-        # Names the platform knob, and explicitly rules out the adapter's
-        # "pages to extract" setting — pointing at that one sent a tester
-        # hunting through a field they had never set (UN-2646 follow-up).
-        assert "VLM_IMAGE_ANSWER_PAGE_CAP" in str(err)
-        assert "not the adapter's 'pages to extract' setting" in str(err)
-        assert "Reduce the page range" not in str(err)
+        msg = str(err)
+        assert "too many pages for image output mode" in msg
+        assert "It has 5 pages, and the limit is 4" in msg
+        # Rules out the adapter's "Pages to extract" setting — pointing at it
+        # sent a tester hunting through a field they had never set (UN-2646
+        # follow-up). The operator-only env var is not shown to users.
+        assert "'Pages to extract' setting does not apply" in msg
+        assert "VLM_IMAGE_ANSWER_PAGE_CAP" not in msg
 
     def test_cap_check_precedes_reads(self) -> None:
         # Fail-fast: no image bytes are read for an oversized document.
@@ -271,8 +272,7 @@ class TestByteBudget:
         # the recorded total is budget + 1, and page 3 was never touched.
         assert err.total_bytes == 51
         assert err.max_total_bytes == 50
-        assert "VLM_IMAGE_ANSWER_MAX_TOTAL_MB" in str(err)
-        assert "pages to extract" not in str(err)
+        assert "too large for image output mode" in str(err)
 
     def test_single_oversized_page_reads_are_bounded(self) -> None:
         # A single pathological object must never be fully allocated: each
@@ -350,11 +350,81 @@ class TestConfiguredPageCap:
         assert configured_page_cap() == DEFAULT_PAGE_CAP
 
 
+class TestLoaderReadsConfiguredLimits:
+    """Left unset, the loader's limits come from the env, not fixed defaults."""
+
+    def test_default_page_cap_follows_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv(PAGE_CAP_ENV, "2")
+        fs = _store({1: b"a", 2: b"b", 3: b"c"})
+        with pytest.raises(PageCapExceededError):
+            load_page_images(fs, _DIR)
+
+    def test_explicit_none_still_disables(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv(PAGE_CAP_ENV, "2")
+        monkeypatch.setenv("VLM_IMAGE_ANSWER_MAX_TOTAL_MB", "1")
+        fs = _store({1: b"a", 2: b"b", 3: b"c" * (2 * 1024 * 1024)})
+        assert len(load_page_images(fs, _DIR, page_cap=None, max_total_bytes=None)) == 3
+
+    def test_explicit_value_wins_over_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv(PAGE_CAP_ENV, "2")
+        fs = _store({1: b"a", 2: b"b", 3: b"c"})
+        assert len(load_page_images(fs, _DIR, page_cap=3)) == 3
+
+
 class TestByteBudgetMessage:
-    def test_over_budget_names_the_platform_knob(self) -> None:
-        fs = _store({1: b"x" * 2048, 2: b"y" * 2048})
+    def test_over_budget_message_is_user_facing(self) -> None:
+        fs = _store({1: b"x" * 700_000, 2: b"y" * 700_000, 3: b"z"})
         with pytest.raises(PageImageSetTooLargeError) as excinfo:
-            load_page_images(fs, _DIR, page_cap=None, max_total_bytes=1024)
+            load_page_images(fs, _DIR, page_cap=None, max_total_bytes=1024 * 1024)
         msg = str(excinfo.value)
-        assert "VLM_IMAGE_ANSWER_MAX_TOTAL_MB" in msg
-        assert "pages to extract" not in msg
+        assert msg.startswith("This document is too large for image output mode.")
+        assert "go over the 1 MB limit at page 2 of 3" in msg
+        assert "Split the document into smaller files" in msg
+        # Operator-only knob and the confusing phrasing are gone.
+        assert "VLM_IMAGE_ANSWER_MAX_TOTAL_MB" not in msg
+        assert "however many pages" not in msg
+
+
+class TestCapMatchesBudget:
+    """The page cap must stay within what the byte budget can deliver.
+
+    The extraction-time pre-check only knows the page COUNT. If the cap
+    allows more pages than the byte budget can carry, a document between the
+    two passes the pre-check, is converted and billed per page, and then
+    fails at answer time — billed for something that can never be answered.
+    """
+
+    # Lightest page render measured from LLMWhisperer at its default 150 DPI:
+    # a 50-page PDF produced an 8,233,339-byte pdf-to-images archive.
+    #
+    # This is the ARCHIVE size, not the sum of extracted PNG bytes that
+    # load_page_images counts — an approximation, and deliberately treated
+    # as one. PNG data is already deflate-compressed, so zipping it saves
+    # little, and per-entry headers are ~100 bytes; the archive should be
+    # within a few percent of the image bytes, which is a couple of pages
+    # either side at this cap. So the guard below allows that much slack
+    # rather than asserting an exact page count it cannot back up. Measuring
+    # extracted bytes on real documents is the proper calibration.
+    _APPROX_LIGHT_PAGE_BYTES = 8_233_339 // 50  # ~164,666 bytes
+
+    # Pages of slack for the archive-vs-extracted-bytes measurement error.
+    _MEASUREMENT_SLACK_PAGES = 2
+
+    def test_cap_stays_near_what_the_budget_can_carry(self) -> None:
+        # At the lightest measured page size the 14MB budget holds ~89 pages;
+        # 90 is the round product number at the top of that. This fails if
+        # the cap and the budget drift apart by more than the measurement
+        # slack — e.g. the cap raised back to 300, or the budget cut without
+        # lowering the cap — which is the drift that reopens the
+        # billed-then-rejected window.
+        from unstract.sdk1.adapters.x2text.page_image_loader import (
+            DEFAULT_MAX_TOTAL_BYTES,
+        )
+
+        capacity = DEFAULT_MAX_TOTAL_BYTES // self._APPROX_LIGHT_PAGE_BYTES
+        assert DEFAULT_PAGE_CAP <= capacity + self._MEASUREMENT_SLACK_PAGES
+
+    def test_cap_is_under_the_strictest_provider_image_count(self) -> None:
+        # Anthropic accepts at most 100 images per request on its
+        # 200K-context models — the lowest image-count limit we target.
+        assert DEFAULT_PAGE_CAP <= 100
