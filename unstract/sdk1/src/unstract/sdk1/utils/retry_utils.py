@@ -234,15 +234,11 @@ async def acall_with_retry[T](
     raise RuntimeError("unreachable")  # for type-checker: loop always returns or raises
 
 
-# Attributes through which a provider stream reaches its HTTP response, at
-# any depth. LiteLLM's sync ``CustomStreamWrapper`` holds the provider
-# iterator in ``completion_stream``; its ``ModelResponseIterator`` (Anthropic,
-# Vertex/Gemini, the generic HTTP handler) holds the line generator in
-# ``streaming_response`` and, for Vertex/Gemini, the response in ``response``.
-# On the Responses-API bridge (``responses/<model>`` and models litellm routes
-# there), ``streaming_response`` is an iterator with no ``close()`` that holds
-# ``response`` and ``stream_iterator`` one level further down. The OpenAI
-# SDK's ``Stream`` keeps ``response``.
+# Attributes through which a provider stream reaches its HTTP response:
+# litellm's stream wrapper (completion_stream), provider iterators
+# (streaming_response / response / http_response), the Responses-API bridge
+# (stream_iterator) and the OpenAI SDK Stream (response). The shapes are pinned
+# by tests/utils/test_collect_with_retry.py; update both together.
 _STREAM_HANDLE_ATTRS = (
     "completion_stream",
     "streaming_response",
@@ -250,8 +246,9 @@ _STREAM_HANDLE_ATTRS = (
     "http_response",
     "stream_iterator",
 )
-# Levels walked below the stream itself; the Responses-API bridge is the
-# deepest known chain (wrapper -> bridge -> iterator -> response).
+# Levels walked below the stream itself. The deepest known chain is the
+# Responses-API bridge: wrapper -> completion_stream -> streaming_response
+# -> response.
 _STREAM_WALK_DEPTH = 3
 
 
@@ -278,7 +275,12 @@ def _stream_handles(stream: object) -> list[object]:
     return found
 
 
-def close_stream(stream: object) -> None:
+def close_stream(
+    stream: object,
+    *,
+    log: logging.Logger | None = None,
+    description: str = "",
+) -> None:
     """Release the HTTP response behind a streamed completion, best effort.
 
     A stream left open is only closed when the garbage collector finalises
@@ -291,24 +293,36 @@ def close_stream(stream: object) -> None:
     LiteLLM's sync ``CustomStreamWrapper`` has no ``close()``, and on some
     providers (Anthropic among them) it stops iterating before the HTTP body
     ends, so even a fully drained stream can still be open. Every object
-    reachable through ``_STREAM_HANDLE_ATTRS`` that has a ``close()`` is
-    closed. Duck-typed so this module never imports litellm. Never raises:
-    it runs in ``finally`` blocks and must not mask the original error.
+    reachable through ``_STREAM_HANDLE_ATTRS`` within ``_STREAM_WALK_DEPTH``
+    levels that has a ``close()`` is closed. Duck-typed so this module never
+    imports litellm. Never raises: it runs in ``finally`` blocks and must not
+    mask the original error.
+
+    ``log`` and ``description`` (the adapter info, as the retry helpers take
+    it) let a failed close be traced back to the provider that leaked.
     """
+    log = log or logger
+    source = f" ({description})" if description else ""
     for target in _stream_handles(stream):
         try:
             close = getattr(target, "close", None)
             if not callable(close):
                 continue
             close()
-        except Exception:
+        except Exception as close_err:
             # httpcore marks its stream closed before closing the socket, so
             # a failure here can leave the pool slot checked out for good:
-            # the leak this function exists to prevent.
-            logger.warning(
-                "Failed to close %s; its pooled HTTP connection may stay checked out",
+            # the leak this function exists to prevent. This runs in a
+            # ``finally`` while the provider error may still be propagating;
+            # suppress that chained context so the traceback shows only the
+            # close failure (the provider error is logged by the caller).
+            close_err.__suppress_context__ = True
+            log.warning(
+                "Failed to close %s%s; its pooled HTTP connection may stay "
+                "checked out",
                 type(target).__name__,
-                exc_info=True,
+                source,
+                exc_info=close_err,
             )
 
 
@@ -348,11 +362,9 @@ def iter_with_retry[T](
             if delay is None:
                 raise
         finally:
-            # On success, on error, and when the caller closes this generator
-            # early. A generator dropped without ``close()`` is finalised by
-            # the garbage collector instead, possibly inside httpcore's pool
-            # lock, so callers that stop early must close it (UN-4237).
-            close_stream(gen)
+            # Release the stream on success, on error, and when the caller
+            # close()s this generator early.
+            close_stream(gen, log=log, description=description)
         # After ``finally`` so the connection is released, not held
         # through the backoff.
         time.sleep(delay)
@@ -404,7 +416,7 @@ def collect_with_retry[T](
         finally:
             # On success too: on some providers a drained stream is still
             # open (see ``close_stream``).
-            close_stream(gen)
+            close_stream(gen, log=log, description=description)
         # After ``finally`` so the connection is released, not held
         # through the backoff.
         time.sleep(delay)

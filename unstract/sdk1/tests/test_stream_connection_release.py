@@ -1,20 +1,10 @@
-"""A streamed completion releases its pooled HTTP connection (UN-4237).
+"""Streamed completions release their pooled HTTP connection explicitly.
 
-Executor workers deadlocked under load inside httpcore's connection pool.
-LiteLLM's sync stream wrapper has no ``close()``, so a streamed completion
-that failed, was abandoned, or (on Anthropic) simply finished before the HTTP
-body ended left its response checked out of the pool. The garbage collector
-finalised it later, and when that
-happened on a thread already inside ``ConnectionPool.handle_request``, the
-finaliser's ``PoolByteStream.close()`` waited on the same non-reentrant lock
-the thread held: a deadlock no timeout could break.
-
-These tests run real litellm against a local server speaking the provider's
-SSE format, with the garbage collector disabled so it cannot be the one
-releasing anything: the Anthropic path through ``LLM.complete()``, and the
-OpenAI Responses-API bridge, whose response sits two iterators deep. Then they
-reproduce the deadlock's trigger directly: a garbage collection inside the
-pool lock on the next call.
+If the garbage collector finalises an open response while the thread holds
+httpcore's non-reentrant pool lock, the thread deadlocks. These tests run real
+litellm against a local SSE server with GC disabled, covering the Anthropic
+path via ``LLM.complete()`` and the OpenAI Responses-API bridge. Then they
+force a collection inside the pool lock to reproduce the deadlock's trigger.
 """
 
 from __future__ import annotations
@@ -367,11 +357,11 @@ def test_gc_inside_the_pool_lock_does_not_deadlock(
     logging_executor: _LoggingExecutor,
     no_gc: None,
 ) -> None:
-    """The production deadlock, triggered on purpose.
+    """The pool-lock deadlock, triggered on purpose.
 
-    Under load the collector ran on an allocation inside ``handle_request``'s
-    locked section. Forcing a collection there, after a completed stream, is
-    what deadlocked every time before the fix. Takes no ``pools`` fixture:
+    Forcing a collection inside ``handle_request``'s locked section, after a
+    completed stream, deadlocks unless every stream was closed explicitly.
+    Takes no ``pools`` fixture:
     pytest reprs a failing test's arguments, and ``ConnectionPool.__repr__``
     takes the very lock a regressed run leaves held.
     """
@@ -406,10 +396,10 @@ def test_gc_inside_the_pool_lock_does_not_deadlock(
 
 # ── OpenAI Responses-API bridge ──────────────────────────────────────────────
 #
-# The wrapper's ``completion_stream`` is litellm's Responses-to-chat bridge,
-# whose ``streaming_response`` is an iterator with no ``close()``; the HTTP
-# response sits one level further down. A drained stream reads to the end of
-# the body and releases itself, so only failures and early exits show a leak.
+# The HTTP response sits at wrapper -> completion_stream -> streaming_response
+# -> response, and streaming_response has no close(). A drained stream reads
+# to the end of the body and releases itself, so only failures and early
+# exits show a leak.
 
 
 def _responses_stream(

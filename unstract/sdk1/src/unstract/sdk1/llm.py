@@ -832,7 +832,8 @@ class LLM:
         code raised, must close the generator, e.g. with
         ``contextlib.closing(llm.stream_complete(...))``. Otherwise the
         provider's HTTP response is released only when the garbage collector
-        finalises it, which can deadlock httpcore's connection pool (UN-4237).
+        finalises it, which can deadlock the connection pool (see
+        ``retry_utils.close_stream``).
         """
         try:
             messages = self._build_messages(prompt, cache_prefix=cache_prefix)

@@ -155,18 +155,13 @@ def test_closes_failed_generator_before_retrying() -> None:
             is_content=_is_content,
         )
     assert result == ["c1"]
-    # Both attempts: the failed one and the successful one (UN-4237).
+    # Both attempts: the failed one and the successful one.
     assert closed == [True, True]
 
 
-# ── Releasing the HTTP response (UN-4237) ────────────────────────────────────
+# ── Releasing the HTTP response (see retry_utils.close_stream) ──────────────
 #
-# A stream left open is closed by the garbage collector, possibly while the
-# thread holds httpcore's non-reentrant pool lock, which deadlocks the worker.
-# LiteLLM's sync stream wrapper has no ``close()`` and stops before the HTTP
-# body ends, so every stream must be closed explicitly, through the handles
-# the wrapper holds. ``test_stream_connection_release.py`` covers this against
-# a real socket.
+# Real-socket coverage: test_stream_connection_release.py.
 
 
 class _Closable:
@@ -234,6 +229,57 @@ def test_failed_close_is_logged_as_a_warning(caplog: pytest.LogCaptureFixture) -
     assert record.levelno == logging.WARNING
     assert "_Broken" in record.getMessage()
     assert record.exc_info is not None
+
+
+def test_failed_close_traceback_omits_the_propagating_provider_error(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """``close_stream`` runs in a ``finally`` while the provider error unwinds.
+
+    The warning must show the close failure alone, not the provider error
+    Python chains onto it as context; the caller logs that one itself.
+    """
+
+    class _Broken:
+        def close(self) -> None:
+            raise RuntimeError("torn down")
+
+    with caplog.at_level(logging.WARNING, logger=retry_utils.logger.name):
+        try:
+            raise ValueError("provider returned 429")
+        except ValueError:
+            retry_utils.close_stream(_Broken())
+
+    assert "torn down" in caplog.text
+    assert "provider returned 429" not in caplog.text
+
+
+def test_failed_close_names_the_adapter_on_the_callers_logger(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The retry helpers pass their logger and adapter description through."""
+    caller_log = logging.getLogger("tests.caller")
+
+    class _Stream:
+        def __iter__(self) -> Iterator[str]:
+            yield "c1"
+
+        def close(self) -> None:
+            raise RuntimeError("torn down")
+
+    with caplog.at_level(logging.WARNING, logger=caller_log.name):
+        collect_with_retry(
+            _Stream,
+            max_retries=0,
+            retry_predicate=lambda _: True,
+            is_content=_is_content,
+            description="anthropic/claude-sonnet-4-6",
+            logger_instance=caller_log,
+        )
+
+    [record] = caplog.records
+    assert record.name == caller_log.name
+    assert "anthropic/claude-sonnet-4-6" in record.getMessage()
 
 
 def test_close_stream_survives_a_close_attribute_that_raises(
@@ -336,11 +382,11 @@ def test_close_stream_closes_an_openai_sdk_shaped_stream() -> None:
 
 
 def test_close_stream_reaches_the_responses_api_response() -> None:
-    """The Responses-API bridge keeps the response two iterators down.
+    """The Responses-API bridge's response, reached through a non-closable iterator.
 
-    Shaped like litellm 1.104.0: the wrapper's ``completion_stream`` is the
-    bridge, whose ``streaming_response`` is an iterator with no ``close()``
-    holding ``response`` and ``stream_iterator``.
+    Shaped like litellm's Responses-API bridge: the response sits at wrapper
+    -> ``completion_stream`` -> ``streaming_response`` -> ``response``, and
+    ``streaming_response`` has no ``close()``.
     """
     log: list[str] = []
 
