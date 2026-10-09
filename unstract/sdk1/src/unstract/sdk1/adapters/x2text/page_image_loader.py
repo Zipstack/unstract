@@ -21,6 +21,8 @@ Failure modes are typed so callers can surface distinct, actionable errors:
   (post-write loss). Distinct from "not found" so remediation can differ.
 - ``PageCapExceededError`` — document larger than the page cap; callers
   must fail explicitly rather than silently truncate.
+- ``PageImageSetTooLargeError`` / ``PageImageTooLargeError`` — the page set,
+  or one page, breaks the request-size or per-image limits of the LLM.
 
 Concurrency contract (designed, accepted): the writer resets and rewrites
 the stable pages directory on re-extraction, so a read that overlaps a
@@ -38,9 +40,13 @@ import os
 import re
 from dataclasses import dataclass
 from pathlib import PurePosixPath
+from typing import TYPE_CHECKING
 
 from unstract.sdk1.adapters.x2text.constants import ImageOutputConstants
 from unstract.sdk1.file_storage import FileStorage
+
+if TYPE_CHECKING:
+    from unstract.sdk1.utils.image_limits.policy import ImageModePolicy
 
 logger = logging.getLogger(__name__)
 
@@ -80,10 +86,11 @@ logger = logging.getLogger(__name__)
 # what the budget allows means a document over the cap is refused before
 # any conversion is billed.
 #
-# It also sits under every provider's other ceilings: the strictest image
-# count (100 per request on Anthropic's 200K-context models) and context
-# window (~90 x 1,500 tokens per page = ~135K tokens). Raising it materially
-# needs windowing across multiple calls, not a bigger number.
+# NOTE: 90 is NOT under every provider's image-count limit — Azure OpenAI
+# (50), Bedrock Converse (20), Mistral (8) and Nova 2 (5) are stricter, and
+# OpenAI (1,500) / Gemini (3,600) are far looser. These fixed values are the
+# LEGACY path, used only when a caller passes no ``ImageModePolicy``; the
+# model-aware limits live in ``unstract.sdk1.utils.image_limits``.
 DEFAULT_PAGE_CAP = 90
 
 # Aggregate raw-byte budget across all loaded pages. The page cap bounds the
@@ -145,6 +152,34 @@ def configured_page_cap() -> int:
 def configured_max_total_bytes() -> int:
     """The effective byte budget: ``MAX_TOTAL_MB_ENV`` (in MB) or the default."""
     return _positive_int_env(MAX_TOTAL_MB_ENV, DEFAULT_MAX_TOTAL_BYTES, scale=1024 * 1024)
+
+
+def _optional_positive_int_env(name: str, *, scale: int = 1) -> int | None:
+    raw = os.getenv(name)
+    if raw is None:
+        return None
+    try:
+        value = int(raw)
+        if value <= 0:
+            raise ValueError("must be positive")
+    except (TypeError, ValueError):
+        logger.warning("Invalid %s value %r; ignoring it", name, raw)
+        return None
+    return value * scale
+
+
+def configured_page_ceiling() -> int | None:
+    """``PAGE_CAP_ENV`` read as an optional operator CEILING on the page budget.
+
+    Model-aware policies apply it with ``min()`` on top of the model's own
+    limits; unset means no ceiling beyond LLMWhisperer's 999.
+    """
+    return _optional_positive_int_env(PAGE_CAP_ENV)
+
+
+def configured_request_bytes_ceiling() -> int | None:
+    """``MAX_TOTAL_MB_ENV`` (MiB, as before) as an optional raw-byte ceiling."""
+    return _optional_positive_int_env(MAX_TOTAL_MB_ENV, scale=1024 * 1024)
 
 
 class _UseConfigured:
@@ -218,6 +253,32 @@ class PageImageSetTooLargeError(PageImageLoadError):
         super().__init__(message, page_store_dir=page_store_dir)
         self.total_bytes = total_bytes
         self.max_total_bytes = max_total_bytes
+
+
+class PageImageTooLargeError(PageImageLoadError):
+    """One page image breaks a per-image byte or pixel limit.
+
+    Distinct from ``PageImageSetTooLargeError``: splitting the document does
+    not help, the fix is a lower render resolution or a model with larger
+    per-image limits.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        page_store_dir: str,
+        page_number: int,
+        limit_kind: str,
+        actual: int,
+        limit: int,
+    ) -> None:
+        """Record the offending page and which per-image limit it broke."""
+        super().__init__(message, page_store_dir=page_store_dir)
+        self.page_number = page_number
+        self.limit_kind = limit_kind  # "bytes" | "pixels"
+        self.actual = actual
+        self.limit = limit
 
 
 @dataclass(frozen=True)
@@ -310,10 +371,12 @@ def discover_page_images(fs: FileStorage, page_store_dir: str) -> list[tuple[int
     return [(number, pages[number]) for number in found]
 
 
-def load_page_images(
+def load_page_images(  # noqa: C901 - legacy and policy paths share one bounded-read loop
     fs: FileStorage,
     page_store_dir: str,
     *,
+    limits: "ImageModePolicy | None" = None,
+    prompt_text_bytes: int | None = None,
     page_cap: int | None | _UseConfigured = USE_CONFIGURED,
     max_total_bytes: int | None | _UseConfigured = USE_CONFIGURED,
 ) -> list[LoadedPageImage]:
@@ -325,31 +388,59 @@ def load_page_images(
     remaining budget plus one byte, so no read — not even of a single
     pathological object — can ever allocate more than the budget in
     worker memory, regardless of the object's actual size or whether the
-    backend exposes size metadata. ``None`` disables either limit. Left
-    unset, each limit is read from ``configured_page_cap()`` /
-    ``configured_max_total_bytes()`` — the same values the extraction-time
-    checks use, so a document that passed indexing is not rejected here.
+    backend exposes size metadata.
+
+    ``limits`` is the model-aware ``ImageModePolicy`` for the LLM that will
+    consume the pages (see ``unstract.sdk1.utils.image_limits``): it supplies
+    the page budget, the raw-byte budget derived from the provider's
+    request-size limit (``prompt_text_bytes`` sizes the text share of that
+    request) and the per-image byte/pixel checks. Without it the legacy
+    fixed limits apply: ``None`` disables either; left unset, each is read
+    from ``configured_page_cap()`` / ``configured_max_total_bytes()``.
 
     Raises:
-        PageCapExceededError: more pages than ``page_cap`` allows.
-        PageImageSetTooLargeError: pages total more than ``max_total_bytes``.
+        PageCapExceededError: more pages than the budget allows.
+        PageImageSetTooLargeError: pages total more than the byte budget.
+        PageImageTooLargeError: one page breaks a per-image limit.
         (plus the discovery errors from ``discover_page_images``)
     """
-    if isinstance(page_cap, _UseConfigured):
-        page_cap = configured_page_cap()
-    if isinstance(max_total_bytes, _UseConfigured):
-        max_total_bytes = configured_max_total_bytes()
+    if limits is not None and not (
+        isinstance(page_cap, _UseConfigured)
+        and isinstance(max_total_bytes, _UseConfigured)
+    ):
+        raise ValueError("pass either limits= or the legacy page_cap/max_total_bytes")
+    if limits is None:
+        if isinstance(page_cap, _UseConfigured):
+            page_cap = configured_page_cap()
+        if isinstance(max_total_bytes, _UseConfigured):
+            max_total_bytes = configured_max_total_bytes()
     discovered = discover_page_images(fs, page_store_dir)
-    if page_cap is not None and len(discovered) > page_cap:
+    page_count = len(discovered)
+    if limits is not None:
+        # Imported here: the policy module imports this module's exceptions.
+        from unstract.sdk1.utils.image_limits import policy as _policy
+
+        page_cap = limits.page_budget.max_pages
+        max_total_bytes = limits.raw_byte_budget(
+            page_count=page_count, prompt_text_bytes=prompt_text_bytes
+        )
+        if page_count > page_cap:
+            raise PageCapExceededError(
+                _policy.page_cap_message(page_count, limits.page_budget, charged=None),
+                page_store_dir=page_store_dir,
+                page_count=page_count,
+                page_cap=page_cap,
+            )
+    elif page_cap is not None and page_count > page_cap:
         raise PageCapExceededError(
             "This document has too many pages for image output mode. It "
-            f"has {len(discovered)} pages, and the limit is {page_cap} "
+            f"has {page_count} pages, and the limit is {page_cap} "
             "because every page is sent to the LLM in one request. Split "
             "the document into smaller files, or use a text output mode "
             "instead. (The 'Pages to extract' setting does not apply in "
             "image output mode.)",
             page_store_dir=page_store_dir,
-            page_count=len(discovered),
+            page_count=page_count,
             page_cap=page_cap,
         )
 
@@ -378,17 +469,37 @@ def load_page_images(
                 missing_pages=[page_number],
             ) from e
         total_bytes += len(data)
+        if limits is not None:
+            _policy.check_page_image(
+                limits,
+                page_number=page_number,
+                page_count=page_count,
+                data=data,
+                page_store_dir=page_store_dir,
+            )
         if max_total_bytes is not None and total_bytes > max_total_bytes:
             # Stop before encoding/retaining more — the page cap bounds the
             # count, this bounds the payload.
+            if limits is not None:
+                message = _policy.request_too_large_message(
+                    limits,
+                    page_count=page_count,
+                    raw_total=total_bytes,
+                    prompt_text_bytes=prompt_text_bytes,
+                    charged=None,
+                )
+            else:
+                message = (
+                    "This document is too large for image output mode. Its "
+                    "page images go over the "
+                    f"{max_total_bytes // (1024 * 1024)} MB limit at page "
+                    f"{page_number} of {len(discovered)}, and image mode has to "
+                    "send every page to the LLM in one request. Split the "
+                    "document into smaller files, or use a text output mode "
+                    "instead."
+                )
             raise PageImageSetTooLargeError(
-                "This document is too large for image output mode. Its "
-                "page images go over the "
-                f"{max_total_bytes // (1024 * 1024)} MB limit at page "
-                f"{page_number} of {len(discovered)}, and image mode has to "
-                "send every page to the LLM in one request. Split the "
-                "document into smaller files, or use a text output mode "
-                "instead.",
+                message,
                 page_store_dir=page_store_dir,
                 total_bytes=total_bytes,
                 max_total_bytes=max_total_bytes,

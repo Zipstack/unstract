@@ -9,6 +9,7 @@ All tests are pure in-memory / temp-dir units: no network, no live service.
 
 import io
 import uuid
+from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 import pytest
@@ -30,6 +31,9 @@ from tests.llmw_image_fixtures import (
     make_page_zip,
     minimal_png,
 )
+
+if TYPE_CHECKING:
+    from unstract.sdk1.utils.image_limits import ImageModePolicy
 
 H = LLMWhispererHelper
 
@@ -640,3 +644,181 @@ class TestExtractionTimeByteBudget:
             answer_ok = False
 
         assert indexing_ok == answer_ok == (budget_mb == "2")
+
+
+def _bedrock_policy(**values: int | None) -> "ImageModePolicy":
+    import dataclasses
+
+    from unstract.sdk1.utils.image_limits import ImageModePolicy, resolve_image_limits
+
+    limits = resolve_image_limits("bedrock", "bedrock/anthropic.claude-sonnet-4-5-v1:0")
+    for name, value in values.items():
+        limits = dataclasses.replace(
+            limits, **{name: dataclasses.replace(getattr(limits, name), value=value)}
+        )
+    return ImageModePolicy.from_limits([limits])
+
+
+def _stub_flow(
+    monkeypatch: MonkeyPatch, pages: list[tuple[int, bytes]]
+) -> dict[str, MagicMock]:
+    submit = MagicMock(name="submit", return_value="hash-x")
+    persist = MagicMock(name="persist_page_images", return_value=[])
+    monkeypatch.setattr(H, "submit_pdf_to_images", staticmethod(submit))
+    monkeypatch.setattr(H, "poll_pdf_to_images_status", staticmethod(MagicMock()))
+    monkeypatch.setattr(H, "_download_and_extract", staticmethod(lambda **_k: pages))
+    monkeypatch.setattr(H, "persist_page_images", staticmethod(persist))
+    return {"submit": submit, "persist": persist}
+
+
+class TestModelAwarePreSubmit:
+    """With a policy, the pre-submit check uses the model's page budget."""
+
+    def test_over_model_budget_fails_before_submitting_with_a_code(
+        self, monkeypatch: MonkeyPatch
+    ) -> None:
+        from unstract.sdk1.adapters.exceptions import ImageLimitExceededError
+        from unstract.sdk1.utils.image_limits import codes
+
+        monkeypatch.setattr(H, "_safe_pdf_page_count", staticmethod(lambda _b: 25))
+        stubs = _stub_flow(monkeypatch, [])
+        fs = MagicMock(name="FileStorage")
+        fs.read.return_value = b"%PDF-1.7 fake"
+
+        with pytest.raises(ImageLimitExceededError) as excinfo:
+            H.get_page_images(
+                {}, "/in/doc.pdf", "/out/doc.txt", fs=fs, image_limits=_bedrock_policy()
+            )
+
+        err = excinfo.value
+        assert isinstance(err, ExtractorError)
+        assert err.error_code == codes.IMAGE_PAGE_CAP_EXCEEDED
+        assert err.charged is False
+        assert err.status_code == 400
+        msg = str(err)
+        assert "This document has 25 pages" in msg
+        assert "Amazon Bedrock" in msg and "20 page images" in msg
+        assert "No pages were converted or charged" in msg
+        stubs["submit"].assert_not_called()
+
+    def test_generous_model_passes_above_the_old_fixed_cap(
+        self, monkeypatch: MonkeyPatch
+    ) -> None:
+        from unstract.sdk1.utils.image_limits import ImageModePolicy, resolve_image_limits
+
+        openai = resolve_image_limits("openai", "openai/gpt-5.6")
+        policy = ImageModePolicy.from_limits([openai])
+        monkeypatch.setattr(H, "_safe_pdf_page_count", staticmethod(lambda _b: 150))
+        pages = [(n, minimal_png()) for n in range(1, 151)]
+        stubs = _stub_flow(monkeypatch, pages)
+        fs = MagicMock(name="FileStorage")
+        fs.read.return_value = b"%PDF-1.7 fake"
+
+        H.get_page_images({}, "/in/doc.pdf", "/out/doc.txt", fs=fs, image_limits=policy)
+
+        stubs["submit"].assert_called_once()
+        stubs["persist"].assert_called_once()
+
+    def test_legacy_env_cap_is_ignored_when_a_policy_is_given(
+        self, monkeypatch: MonkeyPatch
+    ) -> None:
+        from unstract.sdk1.utils.image_limits import ImageModePolicy, resolve_image_limits
+
+        monkeypatch.setenv("VLM_IMAGE_ANSWER_PAGE_CAP", "2")
+        openai = resolve_image_limits("openai", "openai/gpt-5.6")
+        monkeypatch.setattr(H, "_safe_pdf_page_count", staticmethod(lambda _b: 5))
+        stubs = _stub_flow(monkeypatch, [(n, minimal_png()) for n in range(1, 6)])
+        fs = MagicMock(name="FileStorage")
+        fs.read.return_value = b"%PDF-1.7 fake"
+
+        H.get_page_images(
+            {},
+            "/in/doc.pdf",
+            "/out/doc.txt",
+            fs=fs,
+            image_limits=ImageModePolicy.from_limits([openai]),
+        )
+        stubs["submit"].assert_called_once()
+
+    def test_size_advisory_is_logged_not_enforced(
+        self, monkeypatch: MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        from unstract.sdk1.utils.image_limits import ImageModePolicy, resolve_image_limits
+
+        gemma = resolve_image_limits("bedrock", "bedrock_mantle/google.gemma-4-31b")
+        monkeypatch.setattr(H, "_safe_pdf_page_count", staticmethod(lambda _b: 15))
+        stubs = _stub_flow(monkeypatch, [(n, minimal_png()) for n in range(1, 16)])
+        fs = MagicMock(name="FileStorage")
+        fs.read.return_value = b"%PDF-1.7 fake"
+
+        with caplog.at_level("WARNING"):
+            H.get_page_images(
+                {},
+                "/in/doc.pdf",
+                "/out/doc.txt",
+                fs=fs,
+                image_limits=ImageModePolicy.from_limits([gemma]),
+            )
+        assert any("may exceed" in r.message for r in caplog.records)
+        stubs["submit"].assert_called_once()
+
+
+class TestModelAwarePostDownload:
+    def test_over_request_bytes_fails_before_persisting_and_says_charged(
+        self, monkeypatch: MonkeyPatch
+    ) -> None:
+        from unstract.sdk1.adapters.exceptions import ImageLimitExceededError
+        from unstract.sdk1.utils.image_limits import codes
+
+        monkeypatch.setattr(H, "_safe_pdf_page_count", staticmethod(lambda _b: 2))
+        stubs = _stub_flow(monkeypatch, [(1, b"x" * 600_000), (2, b"x" * 600_000)])
+        fs = MagicMock(name="FileStorage")
+        fs.read.return_value = b"%PDF-1.7 fake"
+
+        with pytest.raises(ImageLimitExceededError) as excinfo:
+            H.get_page_images(
+                {},
+                "/in/doc.pdf",
+                "/out/doc.txt",
+                fs=fs,
+                image_limits=_bedrock_policy(max_request_bytes=1_000_000),
+            )
+        err = excinfo.value
+        assert err.error_code == codes.IMAGE_PAGES_TOO_LARGE
+        assert err.charged is True
+        assert "already been charged" in str(err)
+        stubs["persist"].assert_not_called()
+
+    def test_single_page_over_per_image_limit(self, monkeypatch: MonkeyPatch) -> None:
+        from unstract.sdk1.adapters.exceptions import ImageLimitExceededError
+        from unstract.sdk1.utils.image_limits import codes
+
+        monkeypatch.setattr(H, "_safe_pdf_page_count", staticmethod(lambda _b: 1))
+        stubs = _stub_flow(monkeypatch, [(1, b"x" * 200)])
+        fs = MagicMock(name="FileStorage")
+        fs.read.return_value = b"%PDF-1.7 fake"
+
+        with pytest.raises(ImageLimitExceededError) as excinfo:
+            H.get_page_images(
+                {},
+                "/in/doc.pdf",
+                "/out/doc.txt",
+                fs=fs,
+                image_limits=_bedrock_policy(max_image_bytes=100),
+            )
+        assert excinfo.value.error_code == codes.IMAGE_PAGE_TOO_LARGE
+        stubs["persist"].assert_not_called()
+
+    def test_legacy_byte_budget_untouched_without_a_policy(
+        self, monkeypatch: MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("VLM_IMAGE_ANSWER_MAX_TOTAL_MB", "1")
+        monkeypatch.setattr(H, "_safe_pdf_page_count", staticmethod(lambda _b: 2))
+        _stub_flow(monkeypatch, [(1, b"x" * 700_000), (2, b"x" * 700_000)])
+        fs = MagicMock(name="FileStorage")
+        fs.read.return_value = b"%PDF-1.7 fake"
+        with pytest.raises(ExtractorError) as excinfo:
+            H.get_page_images({}, "/in/doc.pdf", "/out/doc.txt", fs=fs)
+        assert (
+            not hasattr(excinfo.value, "error_code") or excinfo.value.error_code is None
+        )

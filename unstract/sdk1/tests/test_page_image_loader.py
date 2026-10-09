@@ -8,6 +8,7 @@ double and the real local-filesystem FileStorage backend.
 
 import base64
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 from unstract.sdk1.adapters.x2text.page_image_loader import (
@@ -26,6 +27,9 @@ from unstract.sdk1.adapters.x2text.page_image_loader import (
 from unstract.sdk1.file_storage import FileStorage, FileStorageProvider
 
 from tests.llmw_image_fixtures import InMemoryFileStorage, minimal_png
+
+if TYPE_CHECKING:
+    from unstract.sdk1.utils.image_limits import ImageModePolicy
 
 _DIR = "/data/extract/doc/pages"
 
@@ -428,3 +432,124 @@ class TestCapMatchesBudget:
         # Anthropic accepts at most 100 images per request on its
         # 200K-context models — the lowest image-count limit we target.
         assert DEFAULT_PAGE_CAP <= 100
+
+
+class TestModelAwareLimits:
+    """``limits=`` replaces the fixed cap/budget with the model's policy."""
+
+    @staticmethod
+    def _policy(**values: int | None) -> "ImageModePolicy":
+        import dataclasses
+
+        from unstract.sdk1.utils.image_limits import ImageModePolicy, resolve_image_limits
+
+        limits = resolve_image_limits(
+            "bedrock", "bedrock/anthropic.claude-sonnet-4-5-v1:0"
+        )
+        for name, value in values.items():
+            limits = dataclasses.replace(
+                limits, **{name: dataclasses.replace(getattr(limits, name), value=value)}
+            )
+        return ImageModePolicy.from_limits([limits])
+
+    def test_page_cap_from_policy_before_any_read(self) -> None:
+        fs = _store({n: minimal_png() for n in range(1, 22)})
+        reads: list[str] = []
+        original_read = fs.read
+
+        def recording_read(path: str, **kw: object) -> bytes | str:
+            reads.append(path)
+            return original_read(path, **kw)
+
+        fs.read = recording_read
+        with pytest.raises(PageCapExceededError) as excinfo:
+            load_page_images(fs, _DIR, limits=self._policy())
+        assert excinfo.value.page_cap == 20
+        assert "Amazon Bedrock" in str(excinfo.value)
+        assert reads == []
+
+    def test_byte_budget_from_policy_is_derived_from_the_wire_limit(self) -> None:
+        from unstract.sdk1.adapters.x2text.page_image_loader import (
+            PageImageSetTooLargeError,
+        )
+
+        policy = self._policy(max_request_bytes=1_000_000)
+        fs = _store({1: b"a" * 500_000, 2: b"b" * 500_000})
+        lengths: list[object] = []
+        original_read = fs.read
+
+        def recording_read(path: str, **kw: object) -> bytes | str:
+            lengths.append(kw.get("length"))
+            return original_read(path, **kw)
+
+        fs.read = recording_read
+        with pytest.raises(PageImageSetTooLargeError) as excinfo:
+            load_page_images(fs, _DIR, limits=policy, prompt_text_bytes=100)
+        budget = policy.raw_byte_budget(page_count=2, prompt_text_bytes=100)
+        assert excinfo.value.max_total_bytes == budget
+        # Bounded reads are sized from the derived budget.
+        assert lengths[0] == budget + 1
+        assert "once encoded" in str(excinfo.value)
+
+    def test_per_image_limit_from_policy(self) -> None:
+        from unstract.sdk1.adapters.x2text.page_image_loader import PageImageTooLargeError
+
+        fs = _store({1: b"a" * 10, 2: b"b" * 500})
+        with pytest.raises(PageImageTooLargeError) as excinfo:
+            load_page_images(fs, _DIR, limits=self._policy(max_image_bytes=100))
+        assert excinfo.value.page_number == 2
+
+    def test_within_policy_loads(self) -> None:
+        fs = _store({1: minimal_png(), 2: minimal_png()})
+        assert len(load_page_images(fs, _DIR, limits=self._policy())) == 2
+
+    def test_policy_and_legacy_kwargs_are_mutually_exclusive(self) -> None:
+        fs = _store({1: minimal_png()})
+        with pytest.raises(ValueError):
+            load_page_images(fs, _DIR, limits=self._policy(), page_cap=5)
+
+    def test_ceiling_only_policy_applies_operator_ceilings(self) -> None:
+        from unstract.sdk1.utils.image_limits import ImageModePolicy
+
+        fs = _store({n: minimal_png() for n in range(1, 4)})
+        policy = ImageModePolicy.ceiling_only(page_ceiling=2)
+        with pytest.raises(PageCapExceededError):
+            load_page_images(fs, _DIR, limits=policy)
+
+
+class TestConfiguredCeilings:
+    """The env vars read as optional ceilings (no value -> no ceiling)."""
+
+    def test_absent_env_is_no_ceiling(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from unstract.sdk1.adapters.x2text.page_image_loader import (
+            MAX_TOTAL_MB_ENV,
+            configured_page_ceiling,
+            configured_request_bytes_ceiling,
+        )
+
+        monkeypatch.delenv(PAGE_CAP_ENV, raising=False)
+        monkeypatch.delenv(MAX_TOTAL_MB_ENV, raising=False)
+        assert configured_page_ceiling() is None
+        assert configured_request_bytes_ceiling() is None
+
+    def test_env_values_are_ceilings_in_the_legacy_units(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from unstract.sdk1.adapters.x2text.page_image_loader import (
+            MAX_TOTAL_MB_ENV,
+            configured_page_ceiling,
+            configured_request_bytes_ceiling,
+        )
+
+        monkeypatch.setenv(PAGE_CAP_ENV, "40")
+        monkeypatch.setenv(MAX_TOTAL_MB_ENV, "3")
+        assert configured_page_ceiling() == 40
+        assert configured_request_bytes_ceiling() == 3 * 1024 * 1024
+
+    def test_unusable_value_is_no_ceiling(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from unstract.sdk1.adapters.x2text.page_image_loader import (
+            configured_page_ceiling,
+        )
+
+        monkeypatch.setenv(PAGE_CAP_ENV, "lots")
+        assert configured_page_ceiling() is None
