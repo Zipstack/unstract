@@ -8,6 +8,7 @@ All tests are pure in-memory / temp-dir units: no network, no live service.
 """
 
 import io
+import uuid
 from unittest.mock import MagicMock
 
 import pytest
@@ -25,6 +26,7 @@ from tests.llmw_image_fixtures import (
     CORRUPT_ZIP,
     FlakyFileStorage,
     InMemoryFileStorage,
+    ObjectStoreLikeMemoryFS,
     make_page_zip,
     minimal_png,
 )
@@ -199,30 +201,30 @@ class TestPersistence:
         fs = InMemoryFileStorage(provider=FileStorageProvider.S3)
         H.persist_page_images(fs, "doc/pages", [(1, b"a")])
 
-        def _rm_fails(path: str, recursive: bool = True) -> None:
+        def _rm_fails(path: str) -> None:
             raise OSError("permission denied")
 
-        fs.rm = _rm_fails  # type: ignore[method-assign]
+        fs.rm_exact = _rm_fails  # type: ignore[method-assign]
         with pytest.raises(ExtractorError, match="clear previous page images"):
             H.persist_page_images(fs, "doc/pages", [(1, b"x")])
 
     def test_silently_partial_delete_raises_instead_of_serving_stale_pages(
         self,
     ) -> None:
-        # FileStorage.rm's S3-compatibility fallback deletes objects one at a
-        # time and only WARNS on per-object failures — so rm can "succeed"
-        # while files survive. The writer must detect survivors and refuse to
-        # write, else the stale page joins the new set as a trailing page.
+        # The delete works from a listing, and a stale listing can omit
+        # objects — so it can "succeed" while files survive. The writer must
+        # detect survivors and refuse to write, else the stale page joins the
+        # new set as a trailing page.
         fs = InMemoryFileStorage(provider=FileStorageProvider.S3)
         H.persist_page_images(fs, "doc/pages", [(1, b"a"), (2, b"b"), (3, b"c")])
 
-        real_rm = type(fs).rm
+        real_rm_exact = type(fs).rm_exact
 
-        def _rm_leaves_survivor(path: str, recursive: bool = True) -> None:
-            real_rm(fs, path, recursive)
+        def _rm_leaves_survivor(path: str) -> None:
+            real_rm_exact(fs, path)
             fs._files["doc/pages/page_003.png"] = b"c"  # survived the delete
 
-        fs.rm = _rm_leaves_survivor  # type: ignore[method-assign]
+        fs.rm_exact = _rm_leaves_survivor  # type: ignore[method-assign]
         with pytest.raises(ExtractorError, match="survived the pre-write cleanup"):
             H.persist_page_images(fs, "doc/pages", [(1, b"x"), (2, b"y")])
 
@@ -233,7 +235,7 @@ class TestPersistence:
         fs = InMemoryFileStorage(provider=FileStorageProvider.S3)
         H.persist_page_images(fs, "doc/pages", [(1, b"a"), (2, b"b")])
 
-        fs.rm = lambda path, recursive=True: None  # type: ignore[method-assign]
+        fs.rm_exact = lambda path: None  # type: ignore[method-assign]
         with pytest.raises(ExtractorError, match="survived the pre-write cleanup"):
             H.persist_page_images(fs, "doc/pages", [(1, b"x")])
         assert fs.read(path="doc/pages/page_001.png", mode="rb") == b"a"  # untouched
@@ -404,3 +406,237 @@ class TestImageOutputWrite:
         summary = H.build_image_output_summary(refs)
         assert "1 page image" in summary
         assert "page_001.png" not in summary  # references never inlined
+
+
+class TestPreSubmitPageCap:
+    """The cap is checked BEFORE pdf-to-images is submitted.
+
+    pdf-to-images bills every converted page, and the answer-time cap would
+    reject the result anyway — so an over-cap document must fail before the
+    conversion is paid for, converting nothing.
+    """
+
+    @staticmethod
+    def _fs_with_pdf(monkeypatch: MonkeyPatch, page_count: int | None) -> MagicMock:
+        """FileStorage whose input PDF reports ``page_count`` pages."""
+        monkeypatch.setattr(
+            H, "_safe_pdf_page_count", staticmethod(lambda _b: page_count)
+        )
+        fs = MagicMock(name="FileStorage")
+        fs.read.return_value = b"%PDF-1.7 fake"
+        return fs
+
+    def test_over_cap_fails_before_submitting(self, monkeypatch: MonkeyPatch) -> None:
+        monkeypatch.setenv("VLM_IMAGE_ANSWER_PAGE_CAP", "20")
+        fs = self._fs_with_pdf(monkeypatch, 164)
+        submit = MagicMock(name="submit_pdf_to_images")
+        monkeypatch.setattr(H, "submit_pdf_to_images", staticmethod(submit))
+
+        with pytest.raises(ExtractorError) as excinfo:
+            H.get_page_images({}, "/in/doc.pdf", "/out/doc.txt", fs=fs)
+
+        msg = str(excinfo.value)
+        assert "too many pages for image output mode" in msg
+        assert "It has 164 pages, and the limit is 20" in msg
+        assert "No pages were converted or charged" in msg
+        assert "VLM_IMAGE_ANSWER_PAGE_CAP" not in msg
+        # The billed call never happened.
+        submit.assert_not_called()
+
+    def test_within_cap_proceeds_to_submit(self, monkeypatch: MonkeyPatch) -> None:
+        monkeypatch.setenv("VLM_IMAGE_ANSWER_PAGE_CAP", "20")
+        fs = self._fs_with_pdf(monkeypatch, 3)
+        submit = MagicMock(name="submit", return_value="hash-1")
+        monkeypatch.setattr(H, "submit_pdf_to_images", staticmethod(submit))
+        monkeypatch.setattr(H, "poll_pdf_to_images_status", staticmethod(MagicMock()))
+        pages = [(n, minimal_png()) for n in (1, 2, 3)]
+        monkeypatch.setattr(H, "_download_and_extract", staticmethod(lambda **_k: pages))
+        monkeypatch.setattr(H, "persist_page_images", staticmethod(lambda *_a: []))
+
+        whisper_hash, _ = H.get_page_images({}, "/in/doc.pdf", "/out/doc.txt", fs=fs)
+
+        assert whisper_hash == "hash-1"
+        submit.assert_called_once()
+
+    def test_unreadable_page_count_still_submits(self, monkeypatch: MonkeyPatch) -> None:
+        # Best-effort by design: a PDF we cannot count locally must not be
+        # blocked at extraction — the answer-time cap remains the backstop.
+        monkeypatch.setenv("VLM_IMAGE_ANSWER_PAGE_CAP", "1")
+        fs = self._fs_with_pdf(monkeypatch, None)
+        submit = MagicMock(name="submit", return_value="hash-2")
+        monkeypatch.setattr(H, "submit_pdf_to_images", staticmethod(submit))
+        monkeypatch.setattr(H, "poll_pdf_to_images_status", staticmethod(MagicMock()))
+        monkeypatch.setattr(
+            H, "_download_and_extract", staticmethod(lambda **_k: [(1, minimal_png())])
+        )
+        monkeypatch.setattr(H, "persist_page_images", staticmethod(lambda *_a: []))
+
+        H.get_page_images({}, "/in/doc.pdf", "/out/doc.txt", fs=fs)
+
+        submit.assert_called_once()
+
+
+def _glob_expanding_storage() -> FileStorage:
+    """A FileStorage on the delete semantics of GCS / S3 (see above)."""
+    storage = FileStorage(provider=FileStorageProvider.LOCAL)
+    storage.fs = ObjectStoreLikeMemoryFS()
+    return storage
+
+
+def _bracketed_page_dir() -> str:
+    # Mirrors the failing staging path: the directory is named after the
+    # uploaded document, here "... [CDIC] ...". Unique per test because the
+    # in-memory filesystem is process-global.
+    return f"/{uuid.uuid4().hex}/extract/Crystal Ball [CDIC] Feasibility/pages"
+
+
+class TestPageStoreWithGlobCharacters:
+    """Re-extraction must work when the document name contains [ ] * ?.
+
+    Regression: on GCS, re-extracting a document named with "[CDIC]" failed
+    with "Failed to clear previous page images" — fs.rm() read "[CDIC]" as a
+    glob character class, matched nothing, and raised FileNotFoundError.
+    """
+
+    def test_fixture_reproduces_the_globbing_delete(self) -> None:
+        # Guards the two tests below: if fsspec ever stops globbing here,
+        # they would pass without exercising the bug at all.
+        storage = _glob_expanding_storage()
+        page_dir = _bracketed_page_dir()
+        storage.fs.pipe(f"{page_dir}/page_001.png", b"old")
+        with pytest.raises(FileNotFoundError):
+            storage.fs.rm(page_dir, recursive=True)
+        # ...while a single exact-key delete works, as on gcsfs / s3fs.
+        storage.fs.rm_file(f"{page_dir}/page_001.png")
+        assert storage.fs.find(page_dir) == []
+
+    def test_reextraction_replaces_the_previous_page_set(self) -> None:
+        storage = _glob_expanding_storage()
+        page_dir = _bracketed_page_dir()
+        for n in (1, 2, 3):
+            storage.fs.pipe(f"{page_dir}/page_{n:03d}.png", b"old")
+
+        refs = H.persist_page_images(
+            storage, page_dir, [(1, minimal_png()), (2, minimal_png())]
+        )
+
+        assert [r.page_number for r in refs] == [1, 2]
+        names = sorted(p.rsplit("/", 1)[-1] for p in storage.fs.find(page_dir))
+        # The stale third page from the previous, longer run is gone.
+        assert names == ["page_001.png", "page_002.png"]
+        assert storage.fs.cat_file(f"{page_dir}/page_001.png") == minimal_png()
+
+    def test_answer_time_loader_reads_the_bracketed_set(self) -> None:
+        # Round trip: what extraction writes, the vision-answer path must be
+        # able to read back. Discovery uses ls() and reads use open(), neither
+        # of which globs — pinned so a future change to either can't quietly
+        # break documents with these names at prompt time instead.
+        from unstract.sdk1.adapters.x2text.page_image_loader import load_page_images
+
+        storage = _glob_expanding_storage()
+        page_dir = _bracketed_page_dir()
+        H.persist_page_images(storage, page_dir, [(1, minimal_png()), (2, minimal_png())])
+
+        loaded = load_page_images(storage, page_dir)
+
+        assert [p.page_number for p in loaded] == [1, 2]
+
+    def test_failed_write_cleans_up_partial_pages(self, monkeypatch: MonkeyPatch) -> None:
+        # The best-effort cleanup used the same globbing rm and only logged
+        # its failure — so for these names it silently left partial pages.
+        monkeypatch.setattr(helper_mod.WhispererDefaults, "RETRY_MIN_WAIT", 0.0)
+        monkeypatch.setattr(helper_mod.WhispererDefaults, "PAGE_STORE_MAX_RETRIES", 1)
+        storage = _glob_expanding_storage()
+        page_dir = _bracketed_page_dir()
+        real_write = H._write_single_page
+
+        def fail_on_page_two(fs, path, data):  # noqa: ANN001, ANN202
+            if path.endswith("page_002.png"):
+                raise OSError("simulated storage failure")
+            return real_write(fs=fs, path=path, data=data)
+
+        monkeypatch.setattr(H, "_write_single_page", staticmethod(fail_on_page_two))
+
+        pages = [(1, minimal_png()), (2, minimal_png())]
+
+        with pytest.raises(ExtractorError):
+            H.persist_page_images(storage, page_dir, pages)
+
+        assert storage.fs.find(page_dir) == []
+
+
+class TestExtractionTimeByteBudget:
+    """The byte budget is enforced at extraction, before anything is stored.
+
+    Previously only the answer-time check enforced it: a document indexed
+    successfully, then failed when the user ran a prompt — after they had
+    built their prompts around it.
+    """
+
+    def test_within_budget_passes(self, monkeypatch: MonkeyPatch) -> None:
+        monkeypatch.setenv("VLM_IMAGE_ANSWER_MAX_TOTAL_MB", "1")
+        H.verify_page_bytes([(1, b"x" * 400_000), (2, b"x" * 400_000)])
+
+    def test_over_budget_raises_a_clear_error(self, monkeypatch: MonkeyPatch) -> None:
+        monkeypatch.setenv("VLM_IMAGE_ANSWER_MAX_TOTAL_MB", "1")
+        with pytest.raises(ExtractorError) as excinfo:
+            H.verify_page_bytes([(1, b"x" * 700_000), (2, b"x" * 700_000)])
+        msg = str(excinfo.value)
+        assert msg.startswith("This document is too large for image output mode.")
+        assert "Its 2 page images total 1.3 MB, over the 1 MB limit" in msg
+        # Honest about cost: sizes are only known after the charged conversion.
+        assert "already been charged" in msg
+        assert "however many pages" not in msg
+
+    def test_extraction_fails_before_persisting(self, monkeypatch: MonkeyPatch) -> None:
+        monkeypatch.setenv("VLM_IMAGE_ANSWER_MAX_TOTAL_MB", "1")
+        monkeypatch.setattr(H, "_safe_pdf_page_count", staticmethod(lambda _b: 2))
+        monkeypatch.setattr(
+            H, "submit_pdf_to_images", staticmethod(MagicMock(return_value="h1"))
+        )
+        monkeypatch.setattr(H, "poll_pdf_to_images_status", staticmethod(MagicMock()))
+        big_pages = [(1, b"x" * 700_000), (2, b"x" * 700_000)]
+        monkeypatch.setattr(
+            H, "_download_and_extract", staticmethod(lambda **_k: big_pages)
+        )
+        persist = MagicMock(name="persist_page_images")
+        monkeypatch.setattr(H, "persist_page_images", staticmethod(persist))
+        fs = MagicMock(name="FileStorage")
+        fs.read.return_value = b"%PDF-1.7 fake"
+
+        with pytest.raises(ExtractorError):
+            H.get_page_images({}, "/in/doc.pdf", "/out/doc.txt", fs=fs)
+
+        persist.assert_not_called()
+
+    @pytest.mark.parametrize("budget_mb", ["1", "2"])
+    def test_extraction_and_answer_time_checks_agree(
+        self, budget_mb: str, monkeypatch: MonkeyPatch
+    ) -> None:
+        # Both checks must read the same override. A ~1.4 MB page set fails
+        # both under 1 MB and passes both under 2 MB; it must never pass
+        # indexing and then fail when a prompt runs.
+        from unstract.sdk1.adapters.x2text.page_image_loader import (
+            PageImageSetTooLargeError,
+            load_page_images,
+        )
+
+        monkeypatch.setenv("VLM_IMAGE_ANSWER_MAX_TOTAL_MB", budget_mb)
+        pages = [(1, b"x" * 700_000), (2, b"x" * 700_000)]
+        storage = InMemoryFileStorage()
+        page_dir = "/data/extract/doc/pages"
+        for number, data in pages:
+            storage.write(path=f"{page_dir}/page_{number:03d}.png", mode="wb", data=data)
+
+        try:
+            H.verify_page_bytes(pages)
+            indexing_ok = True
+        except ExtractorError:
+            indexing_ok = False
+        try:
+            load_page_images(storage, page_dir)  # no explicit budget
+            answer_ok = True
+        except PageImageSetTooLargeError:
+            answer_ok = False
+
+        assert indexing_ok == answer_ok == (budget_mb == "2")
