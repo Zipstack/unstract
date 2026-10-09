@@ -15,7 +15,7 @@ from unstract.sdk1.adapters.constants import Common
 from unstract.sdk1.adapters.llm1 import adapters
 from unstract.sdk1.constants import Common as SdkCommon
 from unstract.sdk1.constants import ToolEnv
-from unstract.sdk1.exceptions import LLMError, SdkError, strip_litellm_prefix
+from unstract.sdk1.exceptions import LLMError, SdkError, format_provider_error
 from unstract.sdk1.platform import PlatformHelper
 from unstract.sdk1.tool.base import BaseTool
 from unstract.sdk1.utils.common import (
@@ -443,6 +443,20 @@ class LLM:
         """
         return self._prompt_caching_active()
 
+    def _revalidate(self, kwargs: dict[str, Any]) -> dict[str, Any]:
+        """Re-validate the stored kwargs merged with per-call overrides.
+
+        ``cost_model`` was set aside at construction, so it is passed back here
+        -- after the per-call kwargs, so a caller cannot displace it. For
+        adapters whose routing id need not name the model (an Azure OpenAI
+        deployment name), it is the only surviving record of the real model id,
+        and the adapter needs it to decide which params the model accepts.
+        """
+        merged = {**self.kwargs, **kwargs}
+        if self._cost_model:
+            merged["cost_model"] = self._cost_model
+        return self.adapter.validate(merged)
+
     def _build_messages(
         self, prompt: str, cache_prefix: str | None = None
     ) -> list[dict[str, object]]:
@@ -614,7 +628,7 @@ class LLM:
                 f"[sdk1][LLM]Invoking {self.adapter.get_provider()} completion API"
             )
 
-            completion_kwargs = self.adapter.validate({**self.kwargs, **kwargs})
+            completion_kwargs = self._revalidate(kwargs)
             _inject_mock_response(completion_kwargs)
             completion_kwargs.pop("cost_model", None)
             completion_kwargs.pop("enable_prompt_caching", None)
@@ -701,7 +715,7 @@ class LLM:
 
             error_msg = (
                 f"Error from LLM adapter '{self._get_adapter_info()}': "
-                f"{strip_litellm_prefix(str(e))}"
+                f"{format_provider_error(e)}"
             )
 
             raise LLMError(
@@ -750,7 +764,7 @@ class LLM:
                 f"[sdk1][LLM]Invoking {self.adapter.get_provider()} vision completion API"
             )
 
-            completion_kwargs = self.adapter.validate({**self.kwargs, **kwargs})
+            completion_kwargs = self._revalidate(kwargs)
             _inject_mock_response(completion_kwargs)
             completion_kwargs.pop("cost_model", None)
             completion_kwargs.pop("enable_prompt_caching", None)
@@ -794,7 +808,7 @@ class LLM:
 
             error_msg = (
                 f"Error from LLM adapter '{self._get_adapter_info()}': "
-                f"{strip_litellm_prefix(str(e))}"
+                f"{format_provider_error(e)}"
             )
 
             raise LLMError(
@@ -820,7 +834,7 @@ class LLM:
                 f"[sdk1][LLM]Invoking {self.adapter.get_provider()} stream completion API"
             )
 
-            completion_kwargs = self.adapter.validate({**self.kwargs, **kwargs})
+            completion_kwargs = self._revalidate(kwargs)
             _inject_mock_response(completion_kwargs)
             completion_kwargs.pop("cost_model", None)
             completion_kwargs.pop("enable_prompt_caching", None)
@@ -876,7 +890,7 @@ class LLM:
 
             error_msg = (
                 f"Error from LLM adapter '{self._get_adapter_info()}': "
-                f"{strip_litellm_prefix(str(e))}"
+                f"{format_provider_error(e)}"
             )
 
             raise LLMError(
@@ -901,7 +915,7 @@ class LLM:
                 f"[sdk1][LLM]Invoking {self.adapter.get_provider()} async completion API"
             )
 
-            completion_kwargs = self.adapter.validate({**self.kwargs, **kwargs})
+            completion_kwargs = self._revalidate(kwargs)
             _inject_mock_response(completion_kwargs)
             completion_kwargs.pop("cost_model", None)
             completion_kwargs.pop("enable_prompt_caching", None)
@@ -956,7 +970,7 @@ class LLM:
 
             error_msg = (
                 f"Error from LLM adapter '{self._get_adapter_info()}': "
-                f"{strip_litellm_prefix(str(e))}"
+                f"{format_provider_error(e)}"
             )
 
             raise LLMError(

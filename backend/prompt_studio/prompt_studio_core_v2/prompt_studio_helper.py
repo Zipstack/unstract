@@ -8,6 +8,8 @@ from typing import Any
 
 from account_v2.constants import Common
 from account_v2.models import User
+from adapter_processor_v2.deprecated_adapters import is_adapter_selectable
+from adapter_processor_v2.image_output_gating import LLMWHISPERER_ADAPTER_PREFIX
 from adapter_processor_v2.models import AdapterInstance, UserDefaultAdapter
 from django.conf import settings
 from django.db import transaction
@@ -54,6 +56,7 @@ from prompt_studio.prompt_studio_core_v2.exceptions import (
     DefaultProfileError,
     EmptyPromptError,
     ExtractionAPIError,
+    ImageModePageLimitExceeded,
     IndexingAPIError,
     NoPromptsFound,
     OperationNotSupported,
@@ -79,6 +82,10 @@ from prompt_studio.prompt_studio_v2.models import ToolStudioPrompt
 from prompt_studio.vlm_utils import invalidate_vlm_answers_on_reextraction
 from unstract.core.pubsub_helper import LogPublisher
 from unstract.sdk1.adapters.x2text.constants import ImageOutputConstants
+from unstract.sdk1.adapters.x2text.llm_whisperer_v2.src.helper import (
+    LLMWhispererHelper,
+)
+from unstract.sdk1.adapters.x2text.page_image_loader import configured_page_cap
 from unstract.sdk1.constants import LogLevel
 from unstract.sdk1.exceptions import IndexingError, SdkError
 from unstract.sdk1.execution.context import ExecutionContext
@@ -145,8 +152,8 @@ class PromptStudioHelper:
             "vector_store": default_adapter.default_vector_db_adapter,
             "x2text": default_adapter.default_x2text_adapter,
         }
-        # A valid profile needs a usable default for every adapter type
-        if not all(adapter and adapter.is_usable for adapter in adapters.values()):
+        # A valid profile needs a selectable default for every adapter type
+        if not all(is_adapter_selectable(adapter) for adapter in adapters.values()):
             logger.info(
                 "Skipping default profile creation: "
                 "incomplete or unusable default adapters"
@@ -1428,7 +1435,7 @@ class PromptStudioHelper:
             return
         try:
             adapter_id = str(getattr(x2text, "adapter_id", "") or "")
-            if not adapter_id.startswith("llmwhisperer|"):
+            if not adapter_id.startswith(LLMWHISPERER_ADAPTER_PREFIX):
                 return
             metadata = x2text.metadata or {}
             output[TSPKeys.X2TEXT_OUTPUT_MODE] = metadata.get(
@@ -1436,6 +1443,73 @@ class PromptStudioHelper:
             )
         except Exception:
             logger.exception("Could not stamp x2text output mode; will resolve live")
+
+    @staticmethod
+    def _is_image_output_mode(profile_manager: ProfileManager | None) -> bool:
+        """True when the profile's x2text adapter is LLMWhisperer in image mode.
+
+        Gated on BOTH the LLMWhisperer adapter id and ``output_mode == image``:
+        ``output_mode`` is user-editable adapter metadata, so keying on it alone
+        would make any future x2text adapter that adopts the same key inherit
+        image-mode rules it never asked for.
+        """
+        x2text = getattr(profile_manager, "x2text", None)
+        if x2text is None:
+            return False
+        adapter_id = str(getattr(x2text, "adapter_id", "") or "")
+        if not adapter_id.startswith(LLMWHISPERER_ADAPTER_PREFIX):
+            return False
+        return (x2text.metadata or {}).get(
+            ImageOutputConstants.OUTPUT_MODE
+        ) == ImageOutputConstants.IMAGE_MODE
+
+    @staticmethod
+    def uploads_use_image_output_mode(profile_manager: ProfileManager | None) -> bool:
+        """Whether uploads to a project are checked against image-mode limits.
+
+        True when the project's default profile is LLMWhisperer in image mode:
+        an upload isn't tied to an output mode, and the same document is fine
+        in a text mode. Fails open — an unreadable adapter config (e.g. metadata
+        encrypted with an old key) must not block uploads; extraction still
+        enforces the limits.
+        """
+        try:
+            return PromptStudioHelper._is_image_output_mode(profile_manager)
+        except Exception:
+            logger.exception("Could not read the default profile's output mode")
+            return False
+
+    @staticmethod
+    def validate_upload_page_count_for_image_mode(file_data: Any, file_type: str) -> None:
+        """Reject, at upload, a PDF with more pages than image mode can answer.
+
+        Call only when ``uploads_use_image_output_mode`` is True. Image mode
+        sends every page to the LLM in one request, so a document over the
+        page cap can never be answered — and converting it would be billed.
+        Catching it at upload means the user never builds prompts around a
+        document that will fail at indexing.
+
+        Uses the SDK's own page counter and cap, so a document accepted here
+        also passes the extraction-time pre-check. The file is read in place,
+        not copied into memory. A PDF whose page count can't be read is let
+        through; extraction re-checks it.
+        """
+        if file_type != "application/pdf":
+            return
+        page_cap = configured_page_cap()
+        page_count = LLMWhispererHelper.pdf_page_count(file_data)
+        file_data.seek(0)
+        if page_count is None or page_count <= page_cap:
+            return
+        raise ImageModePageLimitExceeded(
+            detail=(
+                "This document has too many pages for image output mode. It "
+                f"has {page_count} pages, and the limit is {page_cap} because "
+                "every page is sent to the LLM in one request. Split the "
+                "document into smaller files, or switch the project's default "
+                "profile to a text output mode."
+            )
+        )
 
     @staticmethod
     def _validate_image_output_pdf_only(
@@ -1450,26 +1524,13 @@ class PromptStudioHelper:
         PDF-only message early. The message + PDF test come from the shared
         ``ImageOutputConstants`` so the two layers cannot drift.
 
-        Gated on BOTH the LLMWhisperer adapter id and ``output_mode == image``:
-        ``output_mode`` is user-editable adapter metadata, so keying on it alone
-        would make any future x2text adapter that adopts the same key inherit a
-        PDF-only rejection it never asked for.
+        Gated by ``_is_image_output_mode`` (adapter id AND output mode).
 
         Also rejects image-mode extraction outright when the cloud plugin
         package is present but its backend hooks are broken
         (``vlm_utils.VLM_HOOKS_BROKEN``) — see the inline comment below.
         """
-        x2text = profile_manager.x2text
-        if x2text is None:
-            return
-        adapter_id = getattr(x2text, "adapter_id", "") or ""
-        if not adapter_id.startswith("llmwhisperer|"):
-            return
-        metadata = x2text.metadata or {}
-        if (
-            metadata.get(ImageOutputConstants.OUTPUT_MODE)
-            != ImageOutputConstants.IMAGE_MODE
-        ):
+        if not PromptStudioHelper._is_image_output_mode(profile_manager):
             return
         # Fail-closed on a half-broken cloud install: with the plugin package
         # present but its backend hooks unimportable, a re-extraction would
@@ -2732,7 +2793,7 @@ class PromptStudioHelper:
                     EnvHelper.get_storage(
                         storage_type=StorageType.PERMANENT,
                         env_name=FileStorageKeys.PERMANENT_REMOTE_STORAGE,
-                    ).rm(extract_file_path, recursive=False)
+                    ).rm_exact(extract_file_path)
                 except Exception:
                     logger.exception(
                         f"Failed to remove {extract_file_path}; a retry may "
@@ -3289,7 +3350,7 @@ class PromptStudioHelper:
                 ]
 
                 for adapter in adapters_to_check:
-                    if not adapter or not adapter.is_usable:
+                    if not is_adapter_selectable(adapter):
                         warning_message = (
                             "Some adapters may need to be configured before you can use "
                             "this project. Please check the profile settings."
