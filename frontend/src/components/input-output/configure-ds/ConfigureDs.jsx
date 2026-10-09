@@ -3,7 +3,7 @@ import PropTypes from "prop-types";
 import { createRef, useEffect, useState } from "react";
 import { Col, Row } from "@/components/ui/shims/antd-layout";
 import { Popover } from "@/components/ui/shims/antd-overlays";
-import { isSaasProdDeployment } from "../../../helpers/PostHogDeployment";
+import { saasOnlyErrorProps } from "../../../helpers/PostHogDeployment";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
 import usePostHogEvents from "../../../hooks/usePostHogEvents.js";
@@ -53,7 +53,6 @@ function ConfigureDs({
 
   // The existing intent events fire on click; these record what the user
   // actually got back, so funnels can tell a failed add from an abandoned one.
-  // Error text can echo customer endpoints, so it only leaves SaaS.
   const captureAdapterResult = (eventName, result, errorMessage) => {
     if (isConnector) {
       return;
@@ -63,10 +62,7 @@ function ConfigureDs({
       adapter_name: selectedSourceName,
       is_edit: Boolean(editItemId),
       result,
-      ...(errorMessage &&
-        isSaasProdDeployment() && {
-          error: String(errorMessage).slice(0, 200),
-        }),
+      ...saasOnlyErrorProps(errorMessage),
     });
   };
 
