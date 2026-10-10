@@ -8,8 +8,11 @@ from prompt_studio.prompt_studio_registry_v2.models import PromptStudioRegistry
 from prompt_studio.prompt_studio_registry_v2.prompt_studio_registry_helper import (
     PromptStudioRegistryHelper,
 )
+from workflow_manager.workflow_v2.models.workflow import Workflow
 
+from tool_instance_v2.constants import ToolKey
 from tool_instance_v2.exceptions import ToolDoesNotExist
+from tool_instance_v2.models import ToolInstance
 from unstract.sdk1.constants import AdapterTypes
 from unstract.tool_registry.dto import Spec, Tool
 from unstract.tool_registry.tool_registry import ToolRegistry
@@ -130,13 +133,26 @@ class ToolProcessor:
         )
 
     @staticmethod
-    def get_tool_list(user: User) -> list[dict[str, Any]]:
+    def is_registry_tool(tool_uid: str) -> bool:
+        return ToolRegistry().get_tool_by_uid(tool_uid) is not None
+
+    @staticmethod
+    def get_tool_list(
+        user: User, workflow_id: uuid.UUID | None = None
+    ) -> list[dict[str, Any]]:
         """Function to get a list of tools."""
         tool_registry = ToolRegistry()
         prompt_studio_tools: list[dict[str, Any]] = (
             PromptStudioRegistryHelper.fetch_json_for_registry(user)
         )
-        tool_list: list[dict[str, Any]] = tool_registry.fetch_tools_descriptions()
+        # Registry tools run on the deprecated Docker runner, so they are only
+        # listed for a workflow that already uses one.
+        tool_ids_in_workflow = ToolProcessor._get_tool_ids_in_workflow(user, workflow_id)
+        tool_list: list[dict[str, Any]] = [
+            tool
+            for tool in tool_registry.fetch_tools_descriptions()
+            if tool.get(ToolKey.FUNCTION_NAME) in tool_ids_in_workflow
+        ]
         tool_list = tool_list + prompt_studio_tools
 
         # Add agentic studio tools if available (cloud-only feature)
@@ -163,3 +179,14 @@ class ToolProcessor:
                 continue
 
         return valid_tools
+
+    @staticmethod
+    def _get_tool_ids_in_workflow(user: User, workflow_id: uuid.UUID | None) -> set[str]:
+        if not workflow_id:
+            return set()
+        workflows = Workflow.objects.for_user(user).filter(pk=workflow_id)
+        return set(
+            ToolInstance.objects.filter(workflow__in=workflows).values_list(
+                "tool_id", flat=True
+            )
+        )
