@@ -42,8 +42,6 @@ from pipeline_v2.serializers.execute import (
 from pipeline_v2.serializers.sharing import SharedUserListSerializer
 
 notification_plugin = get_plugin("notification")
-if notification_plugin:
-    from plugins.notification.constants import ResourceType
 
 logger = logging.getLogger(__name__)
 
@@ -61,12 +59,13 @@ class PipelineViewSet(
     notification_resource_name_field = "pipeline_name"
 
     def get_notification_resource_type(self, resource: Any) -> str | None:
-        # Only ETL/TASK pipelines map to a notification ResourceType.
         if not notification_plugin:
             return None
-        if resource.pipeline_type in (ResourceType.ETL.value, ResourceType.TASK.value):
-            return resource.pipeline_type
-        return None
+        from tenant_account_v2.notification_resource_types import (
+            pipeline_notification_type,
+        )
+
+        return pipeline_notification_type(resource.pipeline_type)
 
     def get_permissions(self) -> list[Any]:
         # Enabling or disabling is use, not configuration, so it follows
@@ -193,60 +192,6 @@ class PipelineViewSet(
         pipeline = self.get_object()
         serializer = SharedUserListSerializer(pipeline)
         return Response(serializer.data, status=status.HTTP_200_OK)
-
-    def partial_update(self, request: Request, *args: Any, **kwargs: Any) -> Response:
-        """Override to handle sharing notifications."""
-        instance = self.get_object()
-        before = self.snapshot_share_axes(instance)
-
-        response = super().partial_update(request, *args, **kwargs)
-        if response.status_code == 200 and notification_plugin:
-            self._notify_shared_users(instance, before, request.data, request.user)
-        return response
-
-    def _notify_shared_users(
-        self,
-        instance: Pipeline,
-        before: dict[str, set[Any]],
-        request_data: dict[str, Any],
-        actor: Any,
-    ) -> None:
-        """Email users newly added to ``shared_users`` (best-effort).
-
-        Only ETL/TASK pipelines map to a notification ``ResourceType``;
-        DEFAULT/APP pipelines have no analogue and skip the fan-out.
-        """
-        users_diff = self.diff_share_axes(instance, before, request_data).get(
-            "shared_users"
-        )
-        if not (users_diff and users_diff.added):
-            return
-        if instance.pipeline_type not in (
-            ResourceType.ETL.value,
-            ResourceType.TASK.value,
-        ):
-            return
-        try:
-            service_class = notification_plugin["service_class"]
-            notification_service = service_class()
-            notification_service.send_sharing_notification(
-                resource_type=instance.pipeline_type,
-                resource_name=instance.pipeline_name,
-                resource_id=str(instance.id),
-                shared_by=actor,
-                shared_to=list(users_diff.added),
-                resource_instance=instance,
-            )
-            logger.info(
-                "Sent sharing notifications for %s to %d users",
-                instance.pipeline_type,
-                len(users_diff.added),
-            )
-        except Exception as e:
-            logger.exception(
-                "Failed to send sharing notification, continuing update though: %s",
-                str(e),
-            )
 
     @action(detail=True, methods=["get"])
     def download_postman_collection(
