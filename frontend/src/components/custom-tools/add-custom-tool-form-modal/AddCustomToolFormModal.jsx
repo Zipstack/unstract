@@ -184,6 +184,7 @@ function AddCustomToolFormModal({
               <EmojiPicker
                 previewConfig={{ showPreview: false }}
                 lazyLoadEmojis
+                emojiStyle="apple"
                 /*
                  * `height` is the picker's TOTAL height, and its search box,
                  * category bar and padding take ~132px of it — so at 320 the
