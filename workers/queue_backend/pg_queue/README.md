@@ -31,8 +31,8 @@ integers.
 | `SHUTDOWN_GRACE_SECONDS` | Graceful-drain budget (shared across all children) on SIGTERM before SIGKILL | `= VT` (floored at `30`) |
 | `QUEUE` | Queue name(s) this consumer polls (comma-separated) | `default` |
 | `BATCH` | Messages claimed per poll | `1` |
-| `POLL_INTERVAL` | Time between polls when the queue is empty | `0.1` |
-| `BACKOFF_MAX` | Max empty-queue poll backoff | `2.0` |
+| `POLL_INTERVAL` | First sleep after an empty poll (doubles up to `BACKOFF_MAX`; a claim resets it) | `0.5` |
+| `BACKOFF_MAX` | Max empty-queue poll backoff — also the worst-case pickup latency on an idle queue with a single poller. Keep well under `HEALTH_STALE_SECONDS` | `5.0` |
 | `MAX_ATTEMPTS` | Max deliveries before a message is dropped as **poison** | `5` |
 | `HEALTH_PORT` | Liveness HTTP port (unset → probe disabled) | unset |
 | `HEALTH_STALE_SECONDS` | A poll loop idle beyond this is reported unhealthy | `60` |
