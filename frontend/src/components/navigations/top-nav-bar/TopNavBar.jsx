@@ -1,4 +1,3 @@
-import axios from "axios";
 import {
   ChevronDown,
   LogIn,
@@ -23,6 +22,7 @@ import {
   onboardCompleted,
   THEME,
 } from "../../../helpers/GetStaticData.js";
+import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate.js";
 import useLogout from "../../../hooks/useLogout.js";
 import "../../../layouts/page-layout/PageLayout.css";
 import { useSessionStore } from "../../../store/session-store.js";
@@ -147,6 +147,7 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
   const baseUrl = getBaseUrl();
   const onBoardUrl = `${baseUrl}/${orgName}/onboard`;
   const logout = useLogout();
+  const axiosPrivate = useAxiosPrivate();
   const [showOnboardBanner, setShowOnboardBanner] = useState(false);
   const [reviewPageHeader, setReviewPageHeader] = useState("");
   const { setAlertDetails } = useAlertStore();
@@ -234,12 +235,9 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
     const requestOptions = {
       method: "POST",
       url: `/api/v1/organization/${selectedOrg}/set`,
-      headers: {
-        "X-CSRFToken": sessionDetails?.csrfToken,
-      },
     };
     try {
-      await axios(requestOptions);
+      await axiosPrivate(requestOptions);
       navigate("/");
       window.location.reload();
     } catch (err) {

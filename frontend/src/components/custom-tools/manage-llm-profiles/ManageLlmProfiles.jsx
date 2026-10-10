@@ -93,7 +93,6 @@ function ManageLlmProfiles() {
       method: "PATCH",
       url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt-studio-profile/${details?.tool_id}/`,
       headers: {
-        "X-CSRFToken": sessionDetails?.csrfToken,
         "Content-Type": "application/json",
       },
       data: body,
@@ -206,9 +205,6 @@ function ManageLlmProfiles() {
     const requestOptions = {
       method: "DELETE",
       url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/profile-manager/${profileId}/`,
-      headers: {
-        "X-CSRFToken": sessionDetails?.csrfToken,
-      },
     };
 
     axiosPrivate(requestOptions)

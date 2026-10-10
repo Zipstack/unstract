@@ -155,7 +155,6 @@ function CustomDataSettings() {
       method: "PATCH",
       url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/${details?.tool_id}/`,
       headers: {
-        "X-CSRFToken": sessionDetails?.csrfToken,
         "Content-Type": "application/json",
       },
       data: body,

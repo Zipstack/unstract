@@ -319,7 +319,6 @@ function AddLlmProfile({
       method,
       url,
       headers: {
-        "X-CSRFToken": sessionDetails?.csrfToken,
         "Content-Type": "application/json",
       },
       data: formDetails,
@@ -394,9 +393,6 @@ function AddLlmProfile({
     const requestOptions = {
       method: "GET",
       url: `/api/v1/unstract/${sessionDetails?.orgId}/adapter/info/${value}/`,
-      headers: {
-        "X-CSRFToken": sessionDetails?.csrfToken,
-      },
     };
 
     axiosPrivate(requestOptions)

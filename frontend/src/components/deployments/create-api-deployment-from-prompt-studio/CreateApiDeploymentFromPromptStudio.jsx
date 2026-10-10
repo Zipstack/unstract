@@ -132,7 +132,6 @@ const CreateApiDeploymentFromPromptStudio = ({
             method: "POST",
             url: getUrl(`prompt-studio/export/${toolDetails.tool_id}`),
             headers: {
-              "X-CSRFToken": sessionDetails?.csrfToken,
               "Content-Type": "application/json",
             },
             data: {
@@ -251,9 +250,6 @@ const CreateApiDeploymentFromPromptStudio = ({
         axiosPrivate({
           method: "DELETE",
           url: getUrl(`api_deployment/${createdResources.apiDeploymentId}/`),
-          headers: {
-            "X-CSRFToken": sessionDetails?.csrfToken,
-          },
         })
           .then(() => {
             cleanupResults.success.push("API deployment");
@@ -270,9 +266,6 @@ const CreateApiDeploymentFromPromptStudio = ({
         axiosPrivate({
           method: "DELETE",
           url: getUrl(`tool_instance/${createdResources.toolInstanceId}/`),
-          headers: {
-            "X-CSRFToken": sessionDetails?.csrfToken,
-          },
         })
           .then(() => {
             cleanupResults.success.push("Tool instance");
@@ -352,7 +345,6 @@ const CreateApiDeploymentFromPromptStudio = ({
         method: "POST",
         url: getUrl(`prompt-studio/export/${toolDetails?.tool_id}`),
         headers: {
-          "X-CSRFToken": sessionDetails?.csrfToken,
           "Content-Type": "application/json",
         },
         data: {
@@ -384,7 +376,6 @@ const CreateApiDeploymentFromPromptStudio = ({
         method: "POST",
         url: getUrl("tool_instance/"),
         headers: {
-          "X-CSRFToken": sessionDetails?.csrfToken,
           "Content-Type": "application/json",
         },
         data: {
@@ -412,7 +403,6 @@ const CreateApiDeploymentFromPromptStudio = ({
         method: "PATCH",
         url: getUrl(`tool_instance/${toolInstanceResponse.data.id}/`),
         headers: {
-          "X-CSRFToken": sessionDetails?.csrfToken,
           "Content-Type": "application/json",
         },
         data: {
@@ -506,7 +496,6 @@ const CreateApiDeploymentFromPromptStudio = ({
         method: "PATCH",
         url: getUrl(`workflow/endpoint/${endpoint.id}/`),
         headers: {
-          "X-CSRFToken": sessionDetails?.csrfToken,
           "Content-Type": "application/json",
         },
         data: {

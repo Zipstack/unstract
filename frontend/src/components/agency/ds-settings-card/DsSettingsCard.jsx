@@ -141,7 +141,6 @@ function DsSettingsCard({ connType, endpointDetails, message }) {
       method: "PATCH",
       url: getUrl(`workflow/endpoint/${destination?.id}/`),
       headers: {
-        "X-CSRFToken": sessionDetails?.csrfToken,
         "Content-Type": "application/json",
       },
       data: updatedData,
@@ -178,7 +177,6 @@ function DsSettingsCard({ connType, endpointDetails, message }) {
       method: "PATCH",
       url: getUrl(`workflow/endpoint/${endpointDetails?.id}/`),
       headers: {
-        "X-CSRFToken": sessionDetails?.csrfToken,
         "Content-Type": "application/json",
       },
       data: updatedData,
