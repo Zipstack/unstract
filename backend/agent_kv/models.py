@@ -1,0 +1,142 @@
+import uuid
+
+from account_v2.models import User
+from django.db import models
+from django.utils import timezone
+from utils.models.base_model import BaseModel
+from utils.models.organization_mixin import DefaultOrganizationMixin
+
+from agent_kv.constants import V1_EXTRACTOR_NAME
+
+
+class AgentKVKey(DefaultOrganizationMixin, BaseModel):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=128)
+    description = models.CharField(max_length=512, blank=True, default="")
+    key = models.UUIDField(default=uuid.uuid4, unique=True)
+    is_active = models.BooleanField(default=True)
+    created_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name="agent_kv_keys_created",
+    )
+    modified_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name="+",
+    )
+
+    class Meta:
+        db_table = "agent_kv_key"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["name", "organization"],
+                name="unique_agent_kv_key_name_per_org",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.name} ({self.organization})"
+
+
+class JobStatus(models.TextChoices):
+    PENDING = "PENDING"
+    DISPATCHED = "DISPATCHED"
+    RUNNING = "RUNNING"
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
+    CANCELLED = "CANCELLED"
+
+
+class AgentKVJob(DefaultOrganizationMixin, BaseModel):
+    TERMINAL = frozenset({JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.CANCELLED})
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    api_key = models.ForeignKey(
+        AgentKVKey,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name="jobs",
+    )
+    task_id = models.UUIDField(null=True, blank=True)
+    # Which extractor this job ran. v1 dispatches exactly one per job, but
+    # WHICH one is now a choice, and status/result key their payloads by it --
+    # without this column a table job's output would be filed under `kv`.
+    extractor = models.CharField(max_length=32, default=V1_EXTRACTOR_NAME)
+    status = models.CharField(
+        max_length=16,
+        choices=JobStatus.choices,
+        default=JobStatus.PENDING,
+    )
+    stage = models.CharField(max_length=32, blank=True, default="")
+    stages = models.JSONField(default=dict, blank=True)
+    pages_total = models.IntegerField(null=True, blank=True)
+    input_ref = models.CharField(max_length=512, blank=True, default="")
+    result_ref = models.CharField(max_length=512, blank=True, default="")
+    usage_summary = models.JSONField(null=True, blank=True)
+    error = models.TextField(blank=True, default="")
+    dispatched_at = models.DateTimeField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    expires_at = models.DateTimeField(null=True, blank=True)
+    # When TTL cleanup last failed to delete one of this job's files. NULL means
+    # "never attempted, or last attempt succeeded", and it is what separates
+    # the two lanes run_ttl_cleanup processes: NOT NULL rows are retries, which
+    # get a reserved slice of each batch, and NULL rows are new expirations,
+    # which get the rest. Capping both is what stops either side starving the
+    # other. See run_ttl_cleanup.
+    cleanup_failed_at = models.DateTimeField(null=True, blank=True)
+    tags = models.JSONField(default=list, blank=True)
+    custom_data = models.JSONField(null=True, blank=True)
+    webhook_url = models.URLField(max_length=1024, blank=True, default="")
+
+    class Meta:
+        db_table = "agent_kv_job"
+        indexes = [
+            models.Index(fields=["organization", "status"]),
+            models.Index(fields=["expires_at"]),
+            # Serves BOTH of run_ttl_cleanup's lanes, each of which sorts by a
+            # single column ascending behind a predicate on this index's
+            # leading column:
+            #   retries: WHERE cleanup_failed_at IS NOT NULL ORDER BY cleanup_failed_at
+            #   fresh:   WHERE cleanup_failed_at IS NULL     ORDER BY expires_at
+            # Deliberately a plain ascending index. The first version of that
+            # query asked for `cleanup_failed_at ASC NULLS FIRST`, which a
+            # btree index cannot serve (btree is NULLS LAST ascending), so
+            # Postgres sorted every matching expired row before applying the
+            # 500-row limit -- work that grew with the backlog. Splitting the
+            # query removed the NULLS FIRST rather than adding a second index
+            # with a non-default null order.
+            models.Index(fields=["cleanup_failed_at", "expires_at"]),
+        ]
+
+    @classmethod
+    def mark_terminal(
+        cls,
+        job_id,
+        organization_id,
+        new_status,
+        *,
+        error="",
+        result_ref="",
+        usage_summary=None,
+    ) -> bool:
+        """The ONLY way to reach a terminal state (spec §5.4 write guard).
+
+        Guarded UPDATE: at-least-once callbacks, cancel, and the sweep can all
+        race; whoever lands first wins and everyone else no-ops.
+        """
+        fields = {"status": new_status, "completed_at": timezone.now()}
+        if error:
+            fields["error"] = error
+        if result_ref:
+            fields["result_ref"] = result_ref
+        if usage_summary is not None:
+            fields["usage_summary"] = usage_summary
+        updated = (
+            cls.objects.filter(id=job_id, organization_id=organization_id)
+            .exclude(status__in=list(cls.TERMINAL))
+            .update(**fields)
+        )
+        return updated == 1
