@@ -1,0 +1,341 @@
+"""Fixtures and HTTP helpers shared by the Agent-KV e2e tests.
+
+This lane exercises the Agent-KV *product* API (``/agent-kv/...``, top-level,
+API-key authed -- not the tenant-scoped platform surface most other e2e
+lanes hit). It needs a deployment where the cloud ``agentic_kv`` executor
+plugin is installed (``plugins.get_plugin("agent_kv")`` truthy) -- an
+OSS-only build 501s every submit (see ``docs/agent-kv-api.md`` §11). The
+module-level skip in ``test_agent_kv_e2e.py`` keeps this lane from running
+by accident under a plain OSS e2e sweep; this conftest assumes that guard
+already passed by the time any fixture here actually executes.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import time
+import uuid
+from dataclasses import dataclass
+from pathlib import Path
+
+import pytest
+import requests
+
+from tests.e2e.conftest import _org_id
+from tests.rig.runtime import PlatformEndpoints
+
+FIXTURES_DIR = Path(__file__).parent / "fixtures"
+# A real, OCR-able 2-page invoice, generated for this lane with reportlab (the
+# checked-in backend/agent_kv/tests/fixtures/two_page.pdf has no extractable
+# text -- pdfplumber reads it as two blank pages -- so it can't stand in for
+# an extraction fixture). It's a static binary checked into the repo; the e2e
+# venv itself does not depend on reportlab to regenerate it at test time.
+INVOICE_PDF = FIXTURES_DIR / "invoice.pdf"
+# A small single-sheet invoice workbook (generated with openpyxl, checked in
+# as a static binary like invoice.pdf): Excel exercises the no-pre-OCR-page-
+# count path -- ``pages_total`` is None at submit and the engine enforces the
+# post-OCR virtual-page cap instead.
+INVOICE_XLSX = FIXTURES_DIR / "invoice.xlsx"
+
+# A real, OCR-able 2-page rent roll, generated for this lane with reportlab the
+# same way invoice.pdf was, and checked in as a static binary (the e2e venv
+# does not depend on reportlab to regenerate it at test time). The invoice
+# fixture cannot stand in: it has no tabular region, so a table extraction
+# against it would legitimately return no tables and the scenario would assert
+# nothing.
+RENT_ROLL_PDF = FIXTURES_DIR / "rent_roll.pdf"
+
+#: The table the rent-roll fixture contains, named the way the engine expects
+#: (`target_table` is its one required extraction parameter).
+RENT_ROLL_TABLE = "Rent roll"
+
+
+def table_keys(target_table: str = RENT_ROLL_TABLE) -> dict:
+    """The `table` extractor's `keys` member.
+
+    Every extractor entry carries `keys`; for the table extractor the thing
+    being asked for is a table, named by `target_table`.
+    """
+    return {"target_table": target_table}
+
+
+def table_result_body(resp: requests.Response) -> dict:
+    """The `table` extractor's own result out of an extractor-keyed payload."""
+    return resp.json()["extractors"]["table"]
+
+
+def table_stages(status_doc: dict) -> list[dict]:
+    """The `table` extractor's stage list out of an extractor-keyed status doc."""
+    return status_doc["extractors"]["table"]["stages"]
+
+
+# The 3 leaves the happy-path schema asks for; also used to build the schema.
+INVOICE_FIELDS = ("invoice_number", "vendor_name", "total_amount")
+
+_DEFAULT_TIMEOUT = 30
+
+
+@dataclass(frozen=True)
+class AgentKVAuth:
+    """A usable Agent-KV API key plus the backend root it's valid against."""
+
+    base: str  # backend root, e.g. http://localhost:8000 (no trailing slash)
+    key: str  # raw AgentKVKey UUID
+    org_id: str
+
+    @property
+    def headers(self) -> dict[str, str]:
+        return {"Authorization": f"Bearer {self.key}"}
+
+    @property
+    def exec_url(self) -> str:
+        return f"{self.base}/agent-kv/"
+
+    def job_url(self, job_id: str, suffix: str = "") -> str:
+        return f"{self.base}/agent-kv/{job_id}{suffix}"
+
+
+@pytest.fixture(scope="session")
+def agent_kv_key(
+    platform: PlatformEndpoints, authed_session: requests.Session
+) -> AgentKVAuth:
+    """Create a fresh AgentKVKey for this session via the tenant API.
+
+    Session-scoped: one key, reused by every test in the lane (mirrors
+    ``api_deployment``'s ``api_deployment`` fixture). Key management sits
+    under the tenant-scoped platform surface
+    (``{base}/api/v1/unstract/{org_id}/agent-kv/keys/``), unlike the
+    execution endpoints this key then authenticates against.
+    """
+    base = platform.backend_url.rstrip("/")
+    org_id = _org_id(authed_session, base)
+    prefix = f"{base}/api/v1/unstract/{org_id}"
+    name = f"e2e-agent-kv-{uuid.uuid4().hex[:8]}"
+    resp = authed_session.post(
+        f"{prefix}/agent-kv/keys/",
+        json={"name": name, "description": "agent-kv e2e lane"},
+        timeout=_DEFAULT_TIMEOUT,
+    )
+    assert resp.status_code == 201, f"create agent-kv key: {resp.text}"
+    body = resp.json()
+    return AgentKVAuth(base=base, key=body["key"], org_id=org_id)
+
+
+#: Submit fields that describe the REQUEST rather than one extractor (§7.1).
+#: The page range drives the shared OCR pass and the page cap, so it cannot be
+#: per-extractor.
+JOB_LEVEL_SUBMIT_FIELDS = frozenset(
+    {"page_start", "page_end", "timeout", "tags", "custom_data", "webhook_url"}
+)
+
+
+def kv_result_body(resp: requests.Response) -> dict:
+    """The `kv` extractor's own result out of an extractor-keyed payload (§7.3).
+
+    The result endpoint returns `{"extractors": {...}, "usage_summary": {...}}`,
+    so a test asserting on the engine's own fields has to reach through one
+    level. Centralised here so the reach is spelled out once.
+    """
+    return resp.json()["extractors"]["kv"]
+
+
+def kv_stages(status_doc: dict) -> list[dict]:
+    """The `kv` extractor's stage list out of an extractor-keyed status doc.
+
+    Stage reporting moved under `extractors.<name>` (spec §7.2) because stage
+    names are extractor-specific -- `qa`/`challenge`/`codegen` mean nothing to a
+    Table Extractor. Centralised here so the reach is spelled out once.
+    """
+    return status_doc["extractors"]["kv"]["stages"]
+
+
+#: The platform adapters an Agent-KV `table` submit must name, read from the
+#: environment because they are rows in the deployed stack's database -- an
+#: e2e client cannot mint them, and they carry real provider credentials.
+#:
+#: Unset by default, which makes every submit a 400. The `require_adapters`
+#: fixture is what turns that into an explicit skip instead of a confusing
+#: failure; scenarios that expect a rejection BEFORE the adapter gate (bad
+#: key, rate limit, absent `extractors`) do not need it.
+#:
+#: Create them once in the target org -- an LLM adapter, a second cheaper LLM
+#: adapter, and an LLMWhisperer X2TEXT adapter -- and export their ids.
+E2E_ADAPTER_ENV = {
+    "llm": "AGENT_KV_E2E_LLM_ADAPTER",
+    "lite_llm": "AGENT_KV_E2E_LITE_LLM_ADAPTER",
+    "x2text": "AGENT_KV_E2E_X2TEXT_ADAPTER",
+}
+
+
+def e2e_adapters() -> dict[str, str]:
+    """The configured adapter ids, by role; roles with no env var are omitted."""
+    return {
+        role: os.environ[var]
+        for role, var in E2E_ADAPTER_ENV.items()
+        if os.environ.get(var)
+    }
+
+
+def missing_adapter_env() -> list[str]:
+    """Which adapter env vars are unset, for a skip message that names them."""
+    return [var for var in E2E_ADAPTER_ENV.values() if not os.environ.get(var)]
+
+
+def submit_raw(
+    auth: AgentKVAuth,
+    file_bytes: bytes,
+    filename: str,
+    keys: dict | None,
+    *,
+    extractor: str = "table",
+    adapters: dict[str, str] | None = None,
+    **fields: object,
+) -> requests.Response:
+    """POST a submit request and return the raw response -- no assertions.
+
+    For tests that need to inspect a non-202 outcome (403, 400, 429, ...).
+    ``keys=None`` omits ``extractors`` entirely (covers submits that intend to
+    fail before schema validation is even reached).
+
+    Builds the extractor-scoped wire format (spec §7.0): per-extractor schema
+    and knobs go inside ``extractors``; only fields describing the request stay
+    top level. Callers keep passing knobs as plain kwargs and this routes them,
+    so a test still reads as "submit with this one thing changed".
+    """
+    data: dict[str, object] = {}
+    options: dict[str, object] = {}
+    for k, v in fields.items():
+        (data if str(k) in JOB_LEVEL_SUBMIT_FIELDS else options)[str(k)] = v
+    if keys is None:
+        # `extractors` is omitted entirely, so there is nowhere for per-extractor
+        # options to go. Silently dropping them would make a test look like it
+        # exercised a knob it never sent -- and it would still pass, because
+        # these submits are expected to fail on the missing field anyway.
+        assert not options, (
+            f"submit_raw(keys=None) cannot carry extractor options {sorted(options)}; "
+            f"pass a schema, or move the field to JOB_LEVEL_SUBMIT_FIELDS if it "
+            f"belongs there"
+        )
+    else:
+        entry: dict[str, object] = {
+            "name": extractor,
+            "keys": keys,
+            "options": options,
+        }
+        # `adapters` is REQUIRED for `table` -- the caller names the LLM and
+        # OCR adapters the extraction runs on. Defaults to whatever the
+        # environment configured; `{}` is sent as-is so a scenario can assert
+        # the 400 for an absent block.
+        #
+        # When the env vars are UNSET this omits the block, and the backend
+        # then refuses the submit at the adapter field validator -- before any
+        # file or page-cap check. That is correct behaviour but it is a trap
+        # for tests asserting a DIFFERENT 400: they still see a 400, then fail
+        # on the blamed attribute (`extractors`, not `file`). Red, not skipped.
+        # Every scenario that asserts a specific rejection attribute therefore
+        # takes `require_adapters`, which turns the unconfigured lane into an
+        # explicit skip naming the missing vars.
+        resolved = e2e_adapters() if adapters is None else adapters
+        if resolved:
+            entry["adapters"] = resolved
+        data["extractors"] = json.dumps([entry])
+    return requests.post(
+        auth.exec_url,
+        headers=auth.headers,
+        files={"file": (filename, file_bytes, "application/octet-stream")},
+        data=data,
+        timeout=60,
+    )
+
+
+def submit(
+    auth: AgentKVAuth,
+    file_bytes: bytes,
+    filename: str,
+    keys: dict,
+    *,
+    extractor: str = "table",
+    adapters: dict[str, str] | None = None,
+    **fields: object,
+) -> tuple[str, str]:
+    """POST a submit request expected to succeed; return (job_id, status_url).
+
+    Asserts the 202 handshake (spec §7.1 / docs §3) so every caller only ever
+    polls a genuinely dispatched job. A 501 here almost always means the
+    cloud ``agentic_table`` executor plugin isn't installed on this deployment
+    -- this whole lane requires it (docs §11). A 400 naming `adapters`
+    means the `AGENT_KV_E2E_*_ADAPTER` ids are unset or do not belong to this
+    key's organization -- gate such a scenario on `require_adapters`.
+    """
+    resp = submit_raw(
+        auth, file_bytes, filename, keys, extractor=extractor, adapters=adapters, **fields
+    )
+    assert resp.status_code == 202, (
+        f"submit: HTTP {resp.status_code} (expected 202; a 501 means the "
+        f"agentic_table executor plugin isn't installed on this deployment): {resp.text}"
+    )
+    body = resp.json()
+    job_id = body["job_id"]
+    status_url = body["status_url"]
+    assert job_id, body
+    return job_id, status_url
+
+
+TERMINAL_JOB_STATUSES = {"completed", "failed", "cancelled"}
+
+
+def poll(auth: AgentKVAuth, job_id: str, timeout_s: float = 600) -> dict:
+    """Poll the status document until the job reaches a terminal state.
+
+    Returns the last status document. Fails loudly (rather than looping
+    forever) once ``timeout_s`` elapses.
+    """
+    deadline = time.monotonic() + timeout_s
+    last: dict = {}
+    while time.monotonic() < deadline:
+        resp = requests.get(
+            auth.job_url(job_id), headers=auth.headers, timeout=_DEFAULT_TIMEOUT
+        )
+        assert resp.status_code == 200, f"status poll: {resp.status_code}: {resp.text}"
+        last = resp.json()
+        if last.get("status") in TERMINAL_JOB_STATUSES:
+            return last
+        time.sleep(2)
+    pytest.fail(f"job {job_id} not terminal within {timeout_s}s; last status: {last}")
+
+
+def result(auth: AgentKVAuth, job_id: str) -> requests.Response:
+    """GET the result endpoint and return the raw response (any status)."""
+    return requests.get(
+        auth.job_url(job_id, "/result"), headers=auth.headers, timeout=_DEFAULT_TIMEOUT
+    )
+
+
+def cancel(auth: AgentKVAuth, job_id: str) -> requests.Response:
+    return requests.post(
+        auth.job_url(job_id, "/cancel"), headers=auth.headers, timeout=_DEFAULT_TIMEOUT
+    )
+
+
+def delete(auth: AgentKVAuth, job_id: str) -> requests.Response:
+    return requests.delete(
+        auth.job_url(job_id), headers=auth.headers, timeout=_DEFAULT_TIMEOUT
+    )
+
+
+def invoice_schema() -> dict:
+    """A 3-leaf schema matching ``fixtures/invoice.pdf``'s obvious fields."""
+    return {
+        "invoice_number": {"description": "The invoice number", "required": True},
+        "vendor_name": {"description": "The vendor or supplier name issuing the invoice"},
+        "total_amount": {
+            "description": "The total amount due on the invoice",
+            "format": "currency",
+        },
+    }
+
+
+def invalid_schema() -> dict:
+    """A schema that fails to compile: a leaf missing the required 'description'."""
+    return {"total": {"format": "currency"}}

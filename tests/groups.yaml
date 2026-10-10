@@ -89,7 +89,8 @@ groups:
   unit-workers:
     tier: unit
     workdir: workers
-    paths: [tests, shared/tests]
+    paths: [tests, shared/tests, shared/infrastructure/config/tests,
+            ide_callback/tests]
     # Negative filter: worker unit tests aren't tagged `unit` (~1100 of them),
     # so select by exclusion. `conftest.py` marks real-Postgres tests
     # `integration` (routed to the `integration-workers` group); `slow` tests are
@@ -125,6 +126,25 @@ groups:
     workdir: unstract/core
     paths: [tests]
     # No `test` uv group in unstract/core today; rig still injects pytest plugins.
+    install_editable: true
+    coverage_source: src
+
+  # Both of these had tests but NO group, so nothing collected them. For
+  # agent-kv-schema that mattered specifically: test_compile.py is the
+  # regression net for the schema depth/ReDoS caps, so the caps were asserted
+  # only on a developer's machine. A PR reporting "165 passed" for this package
+  # was reporting a local figure, not a CI one.
+  unit-agent-kv-schema:
+    tier: unit
+    workdir: unstract/agent-kv-schema
+    paths: [tests]
+    install_editable: true
+    coverage_source: src
+
+  unit-filesystem:
+    tier: unit
+    workdir: unstract/filesystem
+    paths: [tests]
     install_editable: true
     coverage_source: src
 
@@ -262,6 +282,29 @@ groups:
     requires_platform: true
     depends_on: [e2e-smoke]
     optional: true
+
+  # Agent-KV product API (/agent-kv/...). Needs the cloud `agentic_kv`
+  # executor plugin installed (docs/agent-kv-api.md §11) -- an OSS-only image
+  # 501s every submit, so this is optional: an OSS-only CI run must not go
+  # red just because the plugin isn't there. The module itself additionally
+  # self-gates on AGENT_KV_E2E=1 so it never runs by accident even when the
+  # platform happens to be up (see tests/e2e/agent_kv/test_agent_kv_e2e.py).
+  # Longer budget than the other platform groups: the happy-path and delete
+  # scenarios poll a real extraction job through to COMPLETED.
+  e2e-agent-kv:
+    tier: e2e
+    paths: [tests/e2e/agent_kv]
+    requires_platform: true
+    depends_on: [e2e-smoke]
+    optional: true
+    timeout_seconds: 1200
+    # Serial, not xdist-parallel: the concurrency scenario deliberately
+    # saturates the org's AgentKVConcurrencyLimiter slots, which
+    # JobCancelView never releases (only a finalize callback does, by
+    # design -- see the scenario's own docstring). Running sibling
+    # submit-based tests on other xdist workers at the same moment would
+    # let that saturation 429 them too.
+    parallel: false
 
   ui:
     # Playwright browser e2e over the real UI. Scaffolding only for now — the

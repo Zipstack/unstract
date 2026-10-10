@@ -1608,6 +1608,124 @@ class InternalAPIClient(CachedAPIClientMixin):
                 error=str(e),
             )
 
+    # Agent-KV client methods (spec §5.3/§5.4)
+    def agent_kv_finalize(
+        self,
+        job_id: str,
+        org_id: str,
+        success: bool,
+        result: dict[str, Any] | None = None,
+        error: str = "",
+        usage_summary: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Terminalize an Agent-KV job via the internal finalize endpoint (Task 11).
+
+        Idempotent server-side: a job already in a terminal state short-circuits
+        to ``{"finalized": False, ...}`` instead of rewriting its result.
+
+        Args:
+            job_id: Agent-KV job ID.
+            org_id: Organization ID (required by the endpoint's body, not the
+                URL — mirrors ``StageReportView``/``FinalizeView``).
+            success: Whether the executor run succeeded. Must be a real bool —
+                the endpoint 400s on a non-bool value.
+            result: Engine result to persist as the job's output (success only).
+            error: Failure reason to persist (failure only).
+            usage_summary: Optional usage/cost summary to persist (success only).
+
+        Returns:
+            Backend response: ``{"finalized": bool, "webhook_url": str, "status": str}``.
+        """
+        payload: dict[str, Any] = {"org_id": org_id, "success": success}
+        if success:
+            payload["result"] = result or {}
+            if usage_summary is not None:
+                payload["usage_summary"] = usage_summary
+        else:
+            payload["error"] = error
+        return self.post(
+            f"v1/agent-kv/jobs/{job_id}/finalize/",
+            data=payload,
+            organization_id=org_id,
+        )
+
+    def agent_kv_stage_report(
+        self,
+        job_id: str,
+        org_id: str,
+        stage: str,
+        status: str,
+        seconds: float | None = None,
+        counters: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Report a pipeline stage for an Agent-KV job via the internal
+        stage-report endpoint (spec §5.3/§5.4).
+
+        Idempotent server-side, mirroring ``agent_kv_finalize``: a job already
+        in a terminal state short-circuits to ``{"ok": True, "noop": True}``
+        instead of recording the stage.
+
+        Args:
+            job_id: Agent-KV job ID.
+            org_id: Organization ID (required by the endpoint's body, not the
+                URL — mirrors ``StageReportView``/``FinalizeView``).
+            stage: Pipeline stage name. Must be one of the stage names the
+                job's extractor declares (``agent_kv.constants
+                .STAGE_NAMES_BY_EXTRACTOR``) -- ``"table_extraction"`` for
+                ``table``, one of ``STAGE_NAMES`` for ``kv``. The endpoint
+                only checks the name is non-empty, but ``_status_document``
+                filters a job's recorded stages through that list, so an
+                off-list name is stored and then dropped from every status
+                response.
+            status: Stage status -- ``"running"`` or ``"done"``, the only two
+                values ``StageReportView`` accepts. (These examples read
+                ``"started"``/``"completed"`` before review; both are 400s.)
+            seconds: Optional stage duration in seconds.
+            counters: Optional stage counters to record.
+
+        Returns:
+            Backend response: ``{"ok": True}`` or ``{"ok": True, "noop": True}``.
+        """
+        payload: dict[str, Any] = {"org_id": org_id, "stage": stage, "status": status}
+        if seconds is not None:
+            payload["seconds"] = seconds
+        if counters:
+            payload["counters"] = counters
+        return self.post(
+            f"v1/agent-kv/jobs/{job_id}/stage/",
+            data=payload,
+            organization_id=org_id,
+        )
+
+    def agent_kv_sweep(self) -> dict[str, Any]:
+        """Trigger the Agent-KV maintenance sweep via the internal endpoint
+        (spec §5.4, Fix 5/Fix 8).
+
+        Platform-wide, like the endpoint itself (``SweepView``): no
+        ``org_id`` -- it terminalizes never-dispatched ``PENDING`` jobs and
+        stuck ``DISPATCHED``/``RUNNING`` jobs across every org in one call.
+        Idempotent and batch-capped server-side, so safe to call on a tight
+        schedule.
+
+        Returns:
+            Backend response: ``{"swept": int, "timed_out": int}``.
+        """
+        return self.post("v1/agent-kv/sweep/", data={})
+
+    def agent_kv_ttl_cleanup(self) -> dict[str, Any]:
+        """Trigger the Agent-KV TTL cleanup via the internal endpoint
+        (spec §5.4, Fix 5).
+
+        Platform-wide, like the endpoint itself (``TTLCleanupView``): no
+        ``org_id`` -- it deletes staged input/result files for jobs past
+        ``expires_at`` and blanks their refs, across every org in one call.
+        Idempotent and batch-capped server-side.
+
+        Returns:
+            Backend response: ``{"cleaned": int}``.
+        """
+        return self.post("v1/agent-kv/ttl-cleanup/", data={})
+
     # Usage client methods (delegate to UsageAPIClient)
     def get_aggregated_token_count(
         self, file_execution_id: str, organization_id: str | None = None
