@@ -2,6 +2,7 @@ import json
 
 import pytest
 from unstract.sdk1.adapters.base1 import (
+    AtlasCloudLLMParameters,
     MiniMaxLLMParameters,
     NvidiaBuildEmbeddingParameters,
     NvidiaBuildLLMParameters,
@@ -15,10 +16,12 @@ from unstract.sdk1.adapters.embedding1.openai_compatible import (
     OpenAICompatibleEmbeddingAdapter,
 )
 from unstract.sdk1.adapters.llm1 import adapters as llm_adapters
+from unstract.sdk1.adapters.llm1.atlascloud import AtlasCloudLLMAdapter
 from unstract.sdk1.adapters.llm1.minimax import MiniMaxLLMAdapter
 from unstract.sdk1.adapters.llm1.nvidia_build import NvidiaBuildLLMAdapter
 from unstract.sdk1.adapters.llm1.openrouter import OpenRouterLLMAdapter
 
+_ATLASCLOUD_API_BASE = "https://api.atlascloud.ai/v1"
 _NVIDIA_BUILD_API_BASE = "https://integrate.api.nvidia.com/v1"
 _OPENROUTER_API_BASE = "https://openrouter.ai/api/v1"
 _MINIMAX_API_BASE = "https://api.minimax.io/v1"
@@ -32,7 +35,12 @@ _MINIMAX_CN_ANTHROPIC_API_BASE = "https://api.minimaxi.com/anthropic"
 
 @pytest.mark.parametrize(
     "adapter",
-    [MiniMaxLLMAdapter, NvidiaBuildLLMAdapter, OpenRouterLLMAdapter],
+    [
+        AtlasCloudLLMAdapter,
+        MiniMaxLLMAdapter,
+        NvidiaBuildLLMAdapter,
+        OpenRouterLLMAdapter,
+    ],
 )
 def test_branded_llm_adapter_is_registered(adapter: type) -> None:
     adapter_id = adapter.get_id()
@@ -45,6 +53,19 @@ def test_nvidia_llm_prefixes_model_via_custom_openai() -> None:
 
     assert validated["model"] == "custom_openai/some-model"
     assert validated["api_base"] == _NVIDIA_BUILD_API_BASE
+
+
+def test_atlascloud_llm_prefixes_model_via_custom_openai() -> None:
+    # Atlas Cloud's own model ids are already `vendor/model` (e.g.
+    # `openai/gpt-4.1-mini`), unlike LiteLLM's own provider prefixes, so it
+    # goes through the same generic `custom_openai/` routing as NVIDIA Build
+    # rather than a native LiteLLM provider prefix like OpenRouter's.
+    validated = AtlasCloudLLMParameters.validate(
+        {"model": "openai/gpt-4.1-mini", "api_key": "k"}
+    )
+
+    assert validated["model"] == "custom_openai/openai/gpt-4.1-mini"
+    assert validated["api_base"] == _ATLASCLOUD_API_BASE
 
 
 @pytest.mark.parametrize("model", ["MiniMax-M3", "MiniMax-M2.7"])
@@ -265,6 +286,7 @@ def test_openrouter_reasoning_survives_revalidation() -> None:
 @pytest.mark.parametrize(
     ("params", "default_base"),
     [
+        (AtlasCloudLLMParameters, _ATLASCLOUD_API_BASE),
         (MiniMaxLLMParameters, _MINIMAX_API_BASE),
         (NvidiaBuildLLMParameters, _NVIDIA_BUILD_API_BASE),
         (OpenRouterLLMParameters, _OPENROUTER_API_BASE),
@@ -280,7 +302,12 @@ def test_branded_llm_blank_api_base_falls_back_to_default(
 
 @pytest.mark.parametrize(
     "params",
-    [MiniMaxLLMParameters, NvidiaBuildLLMParameters, OpenRouterLLMParameters],
+    [
+        AtlasCloudLLMParameters,
+        MiniMaxLLMParameters,
+        NvidiaBuildLLMParameters,
+        OpenRouterLLMParameters,
+    ],
 )
 def test_branded_llm_honours_api_base_override(params: type) -> None:
     validated = params.validate(
@@ -293,6 +320,7 @@ def test_branded_llm_honours_api_base_override(params: type) -> None:
 @pytest.mark.parametrize(
     ("adapter", "default_base"),
     [
+        (AtlasCloudLLMAdapter, _ATLASCLOUD_API_BASE),
         (MiniMaxLLMAdapter, _MINIMAX_API_BASE),
         (NvidiaBuildLLMAdapter, _NVIDIA_BUILD_API_BASE),
         (OpenRouterLLMAdapter, _OPENROUTER_API_BASE),
