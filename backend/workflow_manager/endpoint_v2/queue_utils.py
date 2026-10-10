@@ -25,12 +25,13 @@ class QueueUtils:
     _hitl_connectors = {}
 
     @staticmethod
-    def get_queue_inst(connector_settings: dict[str, Any] = {}) -> UnstractQueue:
+    def get_queue_inst(connector_settings: dict[str, Any] | None = None) -> UnstractQueue:
         """Get queue connector instance based on configuration.
 
         For HITL operations, this can return PostgreSQL, Hybrid, or Redis connectors
         based on the HITL_QUEUE_BACKEND setting.
         """
+        connector_settings = connector_settings or {}
         # Check if caller explicitly wants the default (non-HITL) backend
         # This is used by HybridQueue to get the actual Redis connector without recursion
         force_default = connector_settings.get("force_default_backend", False)
@@ -73,7 +74,7 @@ class QueueUtils:
 
     @staticmethod
     def get_hitl_queue_inst(
-        backend: str, connector_settings: dict[str, Any] = {}
+        backend: str, connector_settings: dict[str, Any] | None = None
     ) -> UnstractQueue:
         """Get HITL-specific queue connector instance with dynamic imports.
 
@@ -91,6 +92,7 @@ class QueueUtils:
         Raises:
             UnstractQueueException: When HITL connectors are not available
         """
+        connector_settings = connector_settings or {}
         # For Redis backend, use default connector
         if backend == "redis":
             # Strip HITL flag to force default (non-HITL) connector path
