@@ -5,6 +5,7 @@ import { useAlertStore } from "../store/alert-store";
 import { useCustomToolStore } from "../store/custom-tool-store";
 import { usePromptRunStatusStore } from "../store/prompt-run-status-store";
 import { useExceptionHandler } from "./useExceptionHandler";
+import usePostHogEvents from "./usePostHogEvents";
 import usePromptOutput from "./usePromptOutput";
 
 const PROMPT_STUDIO_RESULT_EVENT = "prompt_studio_result";
@@ -25,6 +26,7 @@ const usePromptStudioSocket = () => {
   const { setAlertDetails } = useAlertStore();
   const handleException = useExceptionHandler();
   const { updatePromptOutputState } = usePromptOutput();
+  const { setPostHogCustomEvent } = usePostHogEvents();
 
   const clearPromptStatuses = useCallback(
     (promptIds, docId, profileId) => {
@@ -144,6 +146,20 @@ const usePromptStudioSocket = () => {
           return;
         }
 
+        // ps_prompt_run fires on click; this records what came back. Recorded
+        // before local handling so a handler throw doesn't hide the outcome.
+        // Error text can carry document or LLM content, so only the status
+        // is sent. Fires once per open app tab, except tabs showing another
+        // tool, so dedupe on task_id (when non-empty) to count runs.
+        setPostHogCustomEvent("ps_prompt_run_result", {
+          task_id: extra?.task_id,
+          operation,
+          status,
+          tool_id,
+          prompt_count: extra?.prompt_ids?.length,
+          elapsed_seconds: extra?.elapsed,
+        });
+
         if (status === "completed") {
           handleCompleted(operation, result, extra);
         } else if (status === "failed") {
@@ -155,7 +171,14 @@ const usePromptStudioSocket = () => {
         );
       }
     },
-    [handleCompleted, handleFailed, setAlertDetails, handleException, details],
+    [
+      handleCompleted,
+      handleFailed,
+      setAlertDetails,
+      handleException,
+      details,
+      setPostHogCustomEvent,
+    ],
   );
 
   useEffect(() => {
