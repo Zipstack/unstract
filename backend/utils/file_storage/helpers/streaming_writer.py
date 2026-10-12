@@ -49,8 +49,12 @@ def write_streaming(fs_instance: Any, file_path: str, file_data: Any) -> None:
 
 
 def _remove_file(fs_instance: Any, file_path: str) -> None:
+    # rm_file, not rm: the path carries the uploaded document's name, and rm
+    # expands it as a glob on GCS/S3 — "Report [Final].pdf" would miss itself
+    # (leaving the partial object) or delete "Report F.pdf" instead. rm_file
+    # deletes the one exact key on every fsspec backend.
     try:
-        fs_instance.fs.rm(file_path)
+        fs_instance.fs.rm_file(file_path)
     except FileNotFoundError:
         pass
     except Exception as e:

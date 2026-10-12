@@ -183,7 +183,7 @@ class TestInvalidationFailureClearsMarker:
         kwargs = index_helper.mark_extraction_status.call_args.kwargs
         assert kwargs["extracted"] is False
         assert "boom" in kwargs["error_message"]
-        storage.rm.assert_not_called()
+        storage.rm_exact.assert_not_called()
 
     def test_failed_marker_write_removes_extracted_text(
         self,
@@ -194,4 +194,4 @@ class TestInvalidationFailureClearsMarker:
         _, storage = self._run_with_failing_hook(
             monkeypatch, _psh_mod.ExtractionStatusResult.WRITE_FAILED
         )
-        storage.rm.assert_called_once_with("/data/extract/statement.txt", recursive=False)
+        storage.rm_exact.assert_called_once_with("/data/extract/statement.txt")
