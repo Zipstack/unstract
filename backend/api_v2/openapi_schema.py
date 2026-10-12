@@ -9,15 +9,18 @@ they are written for the caller rather than the maintainer.
 """
 
 from drf_spectacular.utils import (
+    OpenApiExample,
     OpenApiParameter,
     OpenApiResponse,
     extend_schema,
     extend_schema_serializer,
     extend_schema_view,
 )
+from drf_standardized_errors.openapi import AutoSchema as StandardizedErrorsAutoSchema
 from platform_api.openapi_schema import PlatformKeyError
 from rest_framework import serializers
 
+from api_v2.error_message import add_error_message
 from api_v2.models import API_NAME_MAX_LENGTH, DESCRIPTION_MAX_LENGTH
 from api_v2.serializers import (
     APIDeploymentListSerializer,
@@ -116,6 +119,42 @@ class ErrorResponse(serializers.Serializer):
     errors = ErrorDetail(many=True)
 
 
+class ErrorMessage(serializers.Serializer):
+    """The failure in the same place an execution reports its own."""
+
+    execution_status = serializers.CharField(help_text="Always `ERROR`.")
+    error = serializers.CharField(
+        help_text="Every problem in `errors`, as one readable string."
+    )
+
+
+class DeploymentErrorResponse(ErrorResponse):
+    """The body of a rejected request to an API deployment.
+
+    Carries `message.error` as well, so a client can read the failure from the
+    key an execution reports it in, whatever went wrong.
+    """
+
+    message = ErrorMessage()
+
+
+class DeploymentAutoSchema(StandardizedErrorsAutoSchema):
+    """Shows the injected handler examples with the `message` block the
+    deployment view adds, so they match `DeploymentErrorResponse`.
+    """
+
+    def _get_error_response_examples(self) -> list[OpenApiExample]:
+        return [
+            OpenApiExample(
+                example.name,
+                value=add_error_message(dict(example.value)),
+                response_only=example.response_only,
+                status_codes=example.status_codes,
+            )
+            for example in super()._get_error_response_examples()
+        ]
+
+
 # Restates the route's own pattern so a client rejects a mistyped identifier
 # without a round trip.
 PATH_SEGMENT = {"type": "string", "pattern": r"^[\w-]+$"}
@@ -143,15 +182,18 @@ DEPLOYMENT_AUTH = [{"deploymentKey": []}]
 # name what the caller can act on rather than a single cause, because a
 # document store consulted during the call can surface its own status here.
 DEPLOYMENT_ERRORS = {
-    400: OpenApiResponse(ErrorResponse, description="The request failed validation."),
+    400: OpenApiResponse(
+        DeploymentErrorResponse, description="The request failed validation."
+    ),
     401: OpenApiResponse(
-        ErrorResponse, description="No usable API key was supplied for the deployment."
+        DeploymentErrorResponse,
+        description="No usable API key was supplied for the deployment.",
     ),
     403: OpenApiResponse(
-        ErrorResponse, description="The request was refused as unauthorized."
+        DeploymentErrorResponse, description="The request was refused as unauthorized."
     ),
     404: OpenApiResponse(
-        ErrorResponse,
+        DeploymentErrorResponse,
         description="No active deployment, or a referenced document, was found.",
     ),
 }
@@ -160,16 +202,18 @@ DEPLOYMENT_ERRORS = {
 # these cannot arise on the status read.
 EXECUTE_ERRORS = {
     413: OpenApiResponse(
-        ErrorResponse, description="A referenced document is larger than the limit."
+        DeploymentErrorResponse,
+        description="A referenced document is larger than the limit.",
     ),
     429: OpenApiResponse(
-        ErrorResponse, description="Too many concurrent executions; retry later."
+        DeploymentErrorResponse,
+        description="Too many concurrent executions; retry later.",
     ),
     502: OpenApiResponse(
-        ErrorResponse, description="A referenced document could not be fetched."
+        DeploymentErrorResponse, description="A referenced document could not be fetched."
     ),
     504: OpenApiResponse(
-        ErrorResponse, description="Fetching a referenced document timed out."
+        DeploymentErrorResponse, description="Fetching a referenced document timed out."
     ),
 }
 
