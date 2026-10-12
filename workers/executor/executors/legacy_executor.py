@@ -22,6 +22,7 @@ from executor.executors.dto import (
 )
 from executor.executors.exceptions import ExtractionError, LegacyExecutorError
 from executor.executors.file_utils import FileUtils
+from executor.executors.image_limits import build_extraction_image_policy
 from executor.executors.lookup_enrichment import (
     run_lookup_enrichment,
     run_webhook_postprocessing,
@@ -32,7 +33,10 @@ from executor.executors.vlm_image_answer import (
 )
 
 from unstract.sdk1.adapters.exceptions import AdapterError
-from unstract.sdk1.adapters.x2text.constants import X2TextConstants
+from unstract.sdk1.adapters.x2text.constants import (
+    ImageOutputConstants,
+    X2TextConstants,
+)
 from unstract.sdk1.adapters.x2text.llm_whisperer_v2.src import LLMWhispererV2
 from unstract.sdk1.constants import LogLevel
 from unstract.sdk1.execution.context import ExecutionContext, Operation
@@ -247,6 +251,16 @@ class LegacyExecutor(BaseExecutor):
             context.run_id,
         )
         extractor_name = type(x2text.x2text_instance).__name__
+        # Image output mode: resolve the consuming LLM's limits BEFORE the
+        # adapter submits the per-page-billed conversion. Raises (nothing
+        # converted) when the supplied LLM ids cannot be resolved.
+        image_kwargs: dict[str, Any] = {}
+        if self._is_image_mode_extractor(x2text):
+            policy = build_extraction_image_policy(
+                shim, params.get(IKeys.LLM_INSTANCE_IDS) or []
+            )
+            shim.stream_log(policy.describe())
+            image_kwargs[X2TextConstants.IMAGE_LIMITS] = policy
         try:
             shim.stream_log(
                 f"Extracting text using `{extractor_name}`"
@@ -273,6 +287,7 @@ class LegacyExecutor(BaseExecutor):
                     output_file_path=output_file_path,
                     tags=tags,
                     fs=fs,
+                    **image_kwargs,
                 )
 
             has_metadata = bool(
@@ -319,7 +334,28 @@ class LegacyExecutor(BaseExecutor):
                 str(e),
             )
             msg = f"Error from text extractor '{name}'. {e}"
+            # Image-mode limit errors carry a stable code; prefix it (as the
+            # answer-time bridge does) so it survives the string-only error
+            # propagation to Prompt Studio and deployment responses.
+            error_code = getattr(e, "error_code", None)
+            if isinstance(error_code, str) and error_code:
+                raise ExtractionError(
+                    message=f"{error_code}: {msg}",
+                    code=getattr(e, "status_code", None) or 400,
+                ) from e
             raise ExtractionError(message=msg) from e
+
+    @staticmethod
+    def _is_image_mode_extractor(x2text: X2Text) -> bool:
+        """Whether this extraction produces page images (LLMWhisperer image mode)."""
+        instance = x2text.x2text_instance
+        if not isinstance(instance, LLMWhispererV2):
+            return False
+        config = getattr(instance, "config", None) or {}
+        return (
+            config.get(ImageOutputConstants.OUTPUT_MODE)
+            == ImageOutputConstants.IMAGE_MODE
+        )
 
     @staticmethod
     def _update_exec_metadata(
