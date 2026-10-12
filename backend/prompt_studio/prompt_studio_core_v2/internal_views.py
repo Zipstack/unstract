@@ -135,7 +135,7 @@ def prompt_output(request):
     Uses ``request.read()`` instead of ``request.body`` to bypass
     Django's ``DATA_UPLOAD_MAX_MEMORY_SIZE`` check.  Agentic table
     extraction output with highlight coordinates can exceed the default
-    2.5 MB limit; this view enforces its own 10 MB cap instead.
+    2.5 MB limit; this view enforces its own 50 MB cap instead.
     """
     content_length = int(request.META.get("CONTENT_LENGTH") or 0)
     if content_length > _PROMPT_OUTPUT_MAX_BODY:
