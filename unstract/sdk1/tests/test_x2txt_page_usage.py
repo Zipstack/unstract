@@ -20,7 +20,7 @@ from unstract.sdk1.x2txt import X2Text
 
 @pytest.fixture
 def x2text() -> X2Text:
-    """An X2Text with no adapter wired up — page usage needs neither."""
+    """An X2Text with no adapter configured; page usage does not need one."""
     tool = MagicMock()
     tool.get_env_or_die.return_value = "test-platform-api-key"
     return X2Text(tool=tool, usage_kwargs={"run_id": "test-run"})
@@ -28,7 +28,7 @@ def x2text() -> X2Text:
 
 @pytest.fixture
 def pdf_fs() -> MagicMock:
-    """A FileStorage standing in for a 199-page PDF."""
+    """A FileStorage returning placeholder PDF bytes; tests patch pdfplumber."""
     fs = MagicMock()
     fs.read.return_value = b"%PDF-1.4 fake"
     return fs
@@ -79,7 +79,7 @@ class TestPushUsageDetails:
 
         assert _pushed_page_count(audit) == 199
 
-    @pytest.mark.parametrize("bad_count", [0, -3])
+    @pytest.mark.parametrize("bad_count", [0, -3, True, 2.5])
     @patch("unstract.sdk1.x2txt.Audit")
     @patch("unstract.sdk1.x2txt.pdfplumber")
     @patch("unstract.sdk1.x2txt.ToolUtils.get_file_size", return_value=1234)
@@ -88,11 +88,11 @@ class TestPushUsageDetails:
         _size: MagicMock,
         pdfplumber: MagicMock,
         audit: MagicMock,
-        bad_count: int,
+        bad_count: float,
         x2text: X2Text,
         pdf_fs: MagicMock,
     ) -> None:
-        """A zero or negative count must never bill zero pages."""
+        """A count that is not a positive int falls back to the PDF's pages."""
         pdfplumber.open.return_value.__enter__.return_value.pages = [None] * 199
 
         x2text.push_usage_details("in.pdf", MimeType.PDF, fs=pdf_fs, page_count=bad_count)
@@ -138,6 +138,20 @@ class TestGetProcessedPageCount:
     ) -> None:
         assert LLMWhispererHelper.get_processed_page_count(response) == expected
 
+    def test_warns_when_count_unusable(self, caplog: pytest.LogCaptureFixture) -> None:
+        """A missing count must be visible, since billing then counts the file."""
+        with caplog.at_level("WARNING"):
+            LLMWhispererHelper.get_processed_page_count({"whisper_hash": "wh-1"})
+
+        assert "wh-1" in caplog.text
+
+    def test_silent_when_count_usable(self, caplog: pytest.LogCaptureFixture) -> None:
+        response = {"whisper_metadata": {"processed_page_count": 5}}
+        with caplog.at_level("WARNING"):
+            LLMWhispererHelper.get_processed_page_count(response)
+
+        assert caplog.text == ""
+
 
 class TestProcessForwardsPageCount:
     """The wiring: what the adapter reports is what gets billed."""
@@ -177,7 +191,7 @@ class TestProcessForwardsPageCount:
         x2text: X2Text,
         pdf_fs: MagicMock,
     ) -> None:
-        """LlamaParse, Unstructured and NoOp report no count — behaviour is unchanged."""
+        """Adapters that report no page count keep the existing PDF-count billing."""
         pdfplumber.open.return_value.__enter__.return_value.pages = [None] * 199
         pdf_fs.mime_type.return_value = MimeType.PDF
         x2text._x2text_instance = MagicMock()
@@ -199,7 +213,7 @@ class TestLLMWhispererV2ReportsPageCount:
         self, send: MagicMock, _extract: MagicMock
     ) -> None:
         send.return_value = {
-            "whisper_hash_v2": "hash-1",
+            "whisper_hash": "hash-1",
             "result_text": "text",
             "whisper_metadata": {
                 "processed_page_count": 5,
@@ -218,7 +232,7 @@ class TestLLMWhispererV2ReportsPageCount:
         self, send: MagicMock, _extract: MagicMock
     ) -> None:
         """Older LLMWhisperer deployments omit whisper_metadata entirely."""
-        send.return_value = {"whisper_hash_v2": "hash-1", "result_text": "text"}
+        send.return_value = {"whisper_hash": "hash-1", "result_text": "text"}
 
         result = LLMWhispererV2({}).process("in.pdf", fs=MagicMock())
 

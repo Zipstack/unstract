@@ -114,7 +114,7 @@ class X2Text:
         text_extraction_result = self._x2text_instance.process(
             input_file_path, output_file_path, fs, **kwargs
         )
-        # The will be executed each and every time text extraction takes place
+        # Usage is reported after every extraction.
         self.push_usage_details(
             input_file_path,
             mime_type,
@@ -136,9 +136,9 @@ class X2Text:
             input_file_path: File that was extracted.
             mime_type: MIME type of that file.
             fs: File storage to read the file through.
-            page_count: Pages the extractor actually processed, if reported.
-                Preferred over counting the PDF, which overcounts when only a
-                page range was extracted. None falls back to the file count.
+            page_count: Pages the extractor processed, if it reports them. Used
+                for PDFs only; when missing or not a positive int, the PDF's own
+                page count is used. Non-PDF inputs always bill one page.
         """
         if fs is None:
             fs = FileStorage(provider=FileStorageProvider.LOCAL)
@@ -147,15 +147,15 @@ class X2Text:
         if mime_type == MimeType.PDF:
             billable_pages = (
                 page_count
-                if page_count is not None and page_count > 0
+                # bool is a subclass of int, so it has to be rejected explicitly.
+                if isinstance(page_count, int)
+                and not isinstance(page_count, bool)
+                and page_count > 0
                 else self._get_pdf_page_count(input_file_path, fs)
             )
         else:
-            # TODO: Calculate page usage for other file types (3000 words = 1 page)
-            # We are allowing certain image types,and raw texts. We will consider them
-            # as single page documents as there in no concept of page numbers.
-            # The extractor's count is not used here: extractors may derive
-            # pages from word counts for non-PDFs, which would raise these bills.
+            # Non-PDF inputs bill one page. The extractor's count is ignored here
+            # because it may be derived from content length rather than pages.
             billable_pages = 1
 
         Audit().push_page_usage_data(

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from unstract.sdk1.adapters.exceptions import ExtractorError
 from unstract.sdk1.adapters.x2text.constants import (
@@ -25,9 +25,6 @@ from unstract.sdk1.adapters.x2text.llm_whisperer_v2.src.dto import (
 from unstract.sdk1.adapters.x2text.llm_whisperer_v2.src.helper import LLMWhispererHelper
 from unstract.sdk1.adapters.x2text.x2text_adapter import X2TextAdapter
 from unstract.sdk1.file_storage import FileStorage, FileStorageProvider
-
-if TYPE_CHECKING:
-    import requests
 
 logger = logging.getLogger(__name__)
 
@@ -166,7 +163,8 @@ class LLMWhispererV2(X2TextAdapter):
                 Defaults to None.
 
         Returns:
-            str: Extracted text
+            TextExtractionResult: Extracted text, metadata and the processed
+                page count.
         """
         if fs is None:
             fs = FileStorage(provider=FileStorageProvider.LOCAL)
@@ -202,7 +200,7 @@ class LLMWhispererV2(X2TextAdapter):
             tag=kwargs.get(X2TextConstants.TAGS),
             enable_highlight=enable_highlight,
         )
-        response: requests.Response = LLMWhispererHelper.send_whisper_request(
+        response: dict[str, Any] = LLMWhispererHelper.send_whisper_request(
             input_file_path=input_file_path,
             config=self.config,
             fs=fs,

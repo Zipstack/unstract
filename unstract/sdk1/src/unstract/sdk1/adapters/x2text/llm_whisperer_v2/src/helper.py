@@ -390,16 +390,26 @@ class LLMWhispererHelper:
 
         Returns:
             The processed page count, or None if the response does not carry a
-            usable one — callers fall back to counting the input file.
+            usable one.
         """
         metadata = response.get("whisper_metadata")
-        if not isinstance(metadata, dict):
-            return None
-        page_count = metadata.get("processed_page_count")
+        page_count = (
+            metadata.get("processed_page_count") if isinstance(metadata, dict) else None
+        )
         # bool is a subclass of int, so it has to be rejected explicitly.
-        if isinstance(page_count, bool) or not isinstance(page_count, int):
+        if (
+            isinstance(page_count, bool)
+            or not isinstance(page_count, int)
+            or page_count <= 0
+        ):
+            logger.warning(
+                "No usable processed_page_count in LLMWhisperer response "
+                "(whisper_hash=%s, value=%r); page usage will count the file",
+                response.get(X2TextConstants.WHISPER_HASH_V2),
+                page_count,
+            )
             return None
-        return page_count if page_count > 0 else None
+        return page_count
 
     @staticmethod
     def extract_text_from_response(
