@@ -129,7 +129,7 @@ class ErrorMessage(serializers.Serializer):
 
 
 class DeploymentErrorResponse(ErrorResponse):
-    """The body of a rejected request to an API deployment.
+    """The body of a rejected execute request.
 
     Carries `message.error` as well, so a client can read the failure from the
     key an execution reports it in, whatever went wrong.
@@ -139,11 +139,13 @@ class DeploymentErrorResponse(ErrorResponse):
 
 
 class DeploymentAutoSchema(StandardizedErrorsAutoSchema):
-    """Shows the injected handler examples with the `message` block the
-    deployment view adds, so they match `DeploymentErrorResponse`.
+    """Shows the injected handler examples on execute with the `message` block
+    the deployment view adds, so they match `DeploymentErrorResponse`.
     """
 
     def _get_error_response_examples(self) -> list[OpenApiExample]:
+        if self.method != "POST":
+            return super()._get_error_response_examples()
         return [
             OpenApiExample(
                 example.name,
@@ -182,20 +184,24 @@ DEPLOYMENT_AUTH = [{"deploymentKey": []}]
 # name what the caller can act on rather than a single cause, because a
 # document store consulted during the call can surface its own status here.
 DEPLOYMENT_ERRORS = {
-    400: OpenApiResponse(
-        DeploymentErrorResponse, description="The request failed validation."
-    ),
+    400: OpenApiResponse(ErrorResponse, description="The request failed validation."),
     401: OpenApiResponse(
-        DeploymentErrorResponse,
-        description="No usable API key was supplied for the deployment.",
+        ErrorResponse, description="No usable API key was supplied for the deployment."
     ),
     403: OpenApiResponse(
-        DeploymentErrorResponse, description="The request was refused as unauthorized."
+        ErrorResponse, description="The request was refused as unauthorized."
     ),
     404: OpenApiResponse(
-        DeploymentErrorResponse,
+        ErrorResponse,
         description="No active deployment, or a referenced document, was found.",
     ),
+}
+
+# The execute endpoint also mirrors each rejection into `message`; the status
+# read does not, because there `message` is the result.
+EXECUTE_REQUEST_ERRORS = {
+    code: OpenApiResponse(DeploymentErrorResponse, description=response.description)
+    for code, response in DEPLOYMENT_ERRORS.items()
 }
 
 # Only the execution endpoint fetches documents and takes a rate-limit slot, so
@@ -264,7 +270,7 @@ DEPLOYMENT_EXECUTION_SCHEMA = extend_schema_view(
                 description="The deployment could not be run; the body carries the "
                 "execution that failed.",
             ),
-            **DEPLOYMENT_ERRORS,
+            **EXECUTE_REQUEST_ERRORS,
             **EXECUTE_ERRORS,
         },
         description=EXECUTE_DESCRIPTION,

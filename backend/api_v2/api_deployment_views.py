@@ -79,7 +79,10 @@ class DeploymentExecution(views.APIView):
 
     def handle_exception(self, exc: Exception) -> Response:
         response = super().handle_exception(exc)
-        add_error_message(response.data)
+        # On the status read `message` is the result payload, and published
+        # clients copy it out as the extraction result without checking.
+        if self.request.method == "POST":
+            add_error_message(response.data)
         return response
 
     @DeploymentHelper.validate_api_key

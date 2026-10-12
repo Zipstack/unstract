@@ -132,7 +132,7 @@
         "type": "string"
       },
       "DeploymentErrorResponse": {
-        "description": "The body of a rejected request to an API deployment.\n\nCarries `message.error` as well, so a client can read the failure from the\nkey an execution reports it in, whatever went wrong.",
+        "description": "The body of a rejected execute request.\n\nCarries `message.error` as well, so a client can read the failure from the\nkey an execution reports it in, whatever went wrong.",
         "properties": {
           "errors": {
             "items": {
@@ -711,7 +711,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/DeploymentErrorResponse"
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             },
@@ -730,10 +730,6 @@
                           "detail": "Incorrect authentication credentials."
                         }
                       ],
-                      "message": {
-                        "error": "Incorrect authentication credentials.",
-                        "execution_status": "ERROR"
-                      },
                       "type": "client_error"
                     }
                   },
@@ -746,16 +742,12 @@
                           "detail": "Authentication credentials were not provided."
                         }
                       ],
-                      "message": {
-                        "error": "Authentication credentials were not provided.",
-                        "execution_status": "ERROR"
-                      },
                       "type": "client_error"
                     }
                   }
                 },
                 "schema": {
-                  "$ref": "#/components/schemas/DeploymentErrorResponse"
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             },
@@ -774,16 +766,12 @@
                           "detail": "You do not have permission to perform this action."
                         }
                       ],
-                      "message": {
-                        "error": "You do not have permission to perform this action.",
-                        "execution_status": "ERROR"
-                      },
                       "type": "client_error"
                     }
                   }
                 },
                 "schema": {
-                  "$ref": "#/components/schemas/DeploymentErrorResponse"
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             },
@@ -802,16 +790,12 @@
                           "detail": "Not found."
                         }
                       ],
-                      "message": {
-                        "error": "Not found.",
-                        "execution_status": "ERROR"
-                      },
                       "type": "client_error"
                     }
                   }
                 },
                 "schema": {
-                  "$ref": "#/components/schemas/DeploymentErrorResponse"
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             },
@@ -830,10 +814,6 @@
                           "detail": "Could not satisfy the request Accept header."
                         }
                       ],
-                      "message": {
-                        "error": "Could not satisfy the request Accept header.",
-                        "execution_status": "ERROR"
-                      },
                       "type": "client_error"
                     }
                   }
@@ -868,10 +848,6 @@
                           "detail": "A server error occurred."
                         }
                       ],
-                      "message": {
-                        "error": "A server error occurred.",
-                        "execution_status": "ERROR"
-                      },
                       "type": "server_error"
                     }
                   }
