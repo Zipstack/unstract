@@ -218,10 +218,8 @@ def _unified_api_execution(
         converted_files = FileProcessingUtils.convert_file_hash_data(hash_values_of_files)
 
         if not converted_files:
-            # convert_file_hash_data swallows per-file errors and returns only what
-            # converted, so {} means "nothing was dispatched" OR "every file failed
-            # to convert". Reporting the second as COMPLETED would turn a total
-            # failure into a silent success with no results and no error.
+            # An empty result means either nothing was dispatched or every file
+            # failed to convert; only the first is a success.
             if hash_values_of_files:
                 error_message = (
                     f"None of the {len(hash_values_of_files)} dispatched files could "
@@ -236,9 +234,6 @@ def _unified_api_execution(
                     successful_files=0,
                     failed_files=len(hash_values_of_files),
                 )
-                # The sibling empty-files branch notifies too; a status write
-                # alone leaves the pipeline's last run stale and tells no
-                # subscriber that the run failed.
                 if pipeline_id:
                     api_client.update_pipeline_status(
                         pipeline_id=pipeline_id,
@@ -247,23 +242,20 @@ def _unified_api_execution(
                 return {
                     "execution_id": execution_id,
                     "status": "ERROR",
-                    # "error", matching this function's other ERROR returns; a
-                    # consumer reading .get("error") to learn why gets None if
-                    # this one names it something else.
+                    # "error", matching this function's other ERROR returns.
                     "error": error_message,
                     "files_processed": 0,
                 }
 
             logger.warning("No files dispatched for this execution")
-            # Returning COMPLETED is not enough: without this write the row keeps
-            # whatever status it was dispatched with, and the caller polls forever.
+            # Without this write the row keeps its dispatch status and the caller
+            # polls forever.
             api_client.update_workflow_execution_status(
                 execution_id=execution_id,
                 status=ExecutionStatus.COMPLETED.value,
                 total_files=0,
-                # Written explicitly: a terminal row whose counters are NULL
-                # reads as a clean success, which is the shape update_execution_
-                # completed exists to avoid. Nothing ran, so both are zero.
+                # Explicit, because NULL counters on a terminal row read as a
+                # clean success.
                 successful_files=0,
                 failed_files=0,
             )

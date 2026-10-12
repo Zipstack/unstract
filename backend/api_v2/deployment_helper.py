@@ -313,12 +313,10 @@ class DeploymentHelper(BaseAPIKeyValidator):
                 )
             ).data
 
-        # Staging rejected every file, so there is nothing to dispatch. The worker
-        # short-circuits an empty file set without writing a status back, which
-        # would strand this execution in PENDING — terminalise it here instead.
+        # Nothing was staged, so nothing will be dispatched to write a status
+        # back. Terminalise here or the execution is stranded in PENDING.
         if not hash_values_of_files:
-            # Isolate the DB write the way the staging-failure path above does, so
-            # the rate limit slot and staging dir are released even if it raises.
+            # Isolated so the slot and staging dir are released even if it raises.
             execution = None
             terminalise_error: str | None = None
             try:
@@ -329,9 +327,7 @@ class DeploymentHelper(BaseAPIKeyValidator):
                 )
             except Exception as error:
                 logger.exception(f"Failed to mark execution {execution_id} as COMPLETED")
-                # Kept for the response: the sibling staging-failure path reports
-                # str(error), and without it the caller gets a bare 422 while the
-                # row is still PENDING, so a follow-up GET /status contradicts it.
+                # Reported, so the caller is not given a bare failure with no reason.
                 terminalise_error = str(error)
 
             APIDeploymentRateLimiter.release_slot(
@@ -344,13 +340,11 @@ class DeploymentHelper(BaseAPIKeyValidator):
                 workflow_id=str(workflow_id), execution_id=str(execution_id)
             )
             if execution is not None:
-                # Separate try blocks on purpose: these are independent obligations,
-                # and sharing one would let a failed acknowledgement silence the
-                # notification that subscribers depend on.
+                # Separate blocks: independent obligations, so a failure in one
+                # must not silence the other.
                 try:
-                    # This response carries the results, so mark them consumed the way
-                    # the synchronous dispatch path does — otherwise a follow-up
-                    # GET /status serves them a second time with 200 instead of 406.
+                    # This response carries the results, so mark them consumed or a
+                    # later GET /status serves them again.
                     WorkflowHelper.set_result_acknowledge(execution)
                 except Exception:
                     logger.exception(
@@ -358,9 +352,8 @@ class DeploymentHelper(BaseAPIKeyValidator):
                     )
 
                 try:
-                    # Terminalising here bypasses WorkflowHelper, which is what
-                    # normally notifies API deployment subscribers on a terminal
-                    # status. Without this an all-rejected run alerts nobody.
+                    # Terminalising here bypasses the usual notifier, so subscribers
+                    # would otherwise hear nothing.
                     PipelineUtils.update_pipeline_status(
                         pipeline_id=pipeline_id, workflow_execution=execution
                     )
@@ -369,10 +362,8 @@ class DeploymentHelper(BaseAPIKeyValidator):
                         f"Failed to notify subscribers for execution {execution_id}"
                     )
 
-            # Report the stored status rather than asserting COMPLETED: the row may
-            # be missing, or the terminal guard may have refused the change. Claiming
-            # success here would only hide the stranded execution behind a 200 that a
-            # follow-up GET /status then contradicts.
+            # The stored status, not an assumed COMPLETED: the row may be missing
+            # or the guard may have refused the change.
             return APIExecutionResponseSerializer(
                 ExecutionResponse(
                     workflow_id=workflow_id,

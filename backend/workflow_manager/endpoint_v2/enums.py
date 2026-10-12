@@ -14,12 +14,8 @@ class FileProcessingStatus(Enum):
 class AllowedFileTypes(Enum):
     """MIME types accepted into a workflow.
 
-    Mirrors LLMWhisperer's own gate, `Util.is_valid_file_type_from_path`
-    (unstract-llm-whisperer `backend/app/util/base.py`), member for member.
-    Accepting what it cannot read only defers the failure to extraction, and
-    rejecting what it can read loses a file that would have worked - so the two
-    sets have to move together. Keep in step with
-    workers/shared/enums/file_types.py.
+    Keep in sync with LLMWhisperer's supported types, and with the copy in the
+    workers package.
     """
 
     PLAIN_TEXT = "text/plain"
@@ -47,9 +43,8 @@ class AllowedFileTypes(Enum):
     def is_allowed(cls, mime_type: str) -> bool:
         """Whether LLMWhisperer would accept this type.
 
-        Any `text/*` passes, which is how html, xml, tsv, rtf and markdown are
-        handled - they reach the extractor as text rather than as a listed
-        format. The enum covers everything else.
+        Any `text/*` passes; html, xml, tsv and the like reach the extractor as
+        text rather than as listed formats.
         """
         if mime_type.startswith("text/"):
             return True

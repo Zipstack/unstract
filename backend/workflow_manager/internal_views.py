@@ -936,17 +936,8 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
     def _update_file_aggregates(execution, validated_data) -> None:
         """Persist total / failed / successful file counts when present.
 
-        The counts arrive from the worker's batch aggregate, which only knows
-        about files it was dispatched. Files rejected before dispatch have a
-        terminal ERROR row but appear in no batch, so taking the payload at face
-        value reports fewer failures than the database already holds - and
-        ``failed_files=0`` on a run that rejected something reads as a clean
-        success to ``is_failure_run``, silencing the subscribers who asked to
-        hear about failures.
-
-        So the stored counts are floored at what the file rows actually say.
-        This only ever corrects upward, and only to a number already true in the
-        database, so a run with nothing rejected is unaffected.
+        Floored at what the file rows say, because the worker's aggregate only
+        counts files it was dispatched and misses any rejected before that.
         """
         update_fields: list[str] = []
         for field in ("total_files", "successful_files", "failed_files"):

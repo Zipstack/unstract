@@ -402,20 +402,15 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         """
         try:
             execution = WorkflowExecution.objects.get(pk=execution_id)
-            # Same reason as update_execution_err: on the PG transport the model
-            # method owns the terminal-one-way guard, so a row the callback already
-            # finalized cannot be reverted. The legacy transport has no such guard.
+            # Routed through the model method so the PG terminal-one-way guard
+            # applies; the legacy transport has no such guard.
             execution.update_execution(status=ExecutionStatus.COMPLETED)
             execution.total_files = total_files
             execution.successful_files = 0
             execution.failed_files = failed_files
-            # Field-scoped, so the status column and anything a concurrent writer
-            # touched are left alone. Note this is scoped to the DB row only:
-            # WorkflowExecution.save() re-runs _handle_execution_cache() whatever
-            # update_fields says, republishing this object's in-memory status to
-            # the Redis cache — see the fuller account in
-            # update_execution_queue_message_id. Harmless here because the row is
-            # freshly created and undispatched, so no worker can have moved it on.
+            # Field-scoped for the columns, but save() still republishes this
+            # object's status to the execution cache. Safe only because the row is
+            # undispatched here, so no worker can have moved it on.
             execution.save(
                 update_fields=[
                     "total_files",

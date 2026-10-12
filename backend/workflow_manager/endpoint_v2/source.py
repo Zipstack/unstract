@@ -79,13 +79,9 @@ class SourceConnector(BaseConnector):
     """
 
     READ_CHUNK_SIZE = 4194304  # Chunk size for reading files
-    # Most formats are identifiable from their leading bytes, so a small sample
-    # keeps the common path cheap.
+    # Most formats are identifiable from their leading bytes.
     MIME_DETECT_CHUNK_SIZE = 8192
-    # A wrapper-only answer from the sample is never the verdict: OLE2 keeps its
-    # directory sector at the end of the file, and a zip container reads as
-    # octet-stream from any buffer. One shared set, so the API and connector
-    # paths cannot disagree about what counts as undecided.
+    # Shared, so the API and connector paths agree on what counts as undecided.
     CONTAINER_MIME_TYPES = INCONCLUSIVE_MIME_TYPES
 
     def __init__(
@@ -1219,9 +1215,7 @@ class SourceConnector(BaseConnector):
         sample = file.read(cls.MIME_DETECT_CHUNK_SIZE)
         file.seek(0)
         if not sample:
-            # libmagic reports "application/x-empty", which is in no allow-list and
-            # would surface as an unsupported-type error. An empty upload is a
-            # distinct failure, reported as such once staging hands off.
+            # An empty upload is its own failure downstream, not a type error.
             return None
 
         mime_type = magic.from_buffer(sample, mime=True)
@@ -1233,10 +1227,8 @@ class SourceConnector(BaseConnector):
     def _detect_container_mime_type(cls, file: UploadedFile, fallback: str) -> str:
         """Resolve a wrapper by classifying the file from a path.
 
-        Always a path, never a buffer: libmagic cannot name a zip container from
-        `from_buffer` even when handed every byte, so an in-memory upload is
-        spilled to a temporary file rather than classified in place. Django's
-        own ceiling bounds how large that copy can be.
+        A path rather than a buffer, because libmagic will not name a zip
+        container from one; an in-memory upload is spilled to a temp file.
         """
         temporary_file_path = getattr(file, "temporary_file_path", None)
         if temporary_file_path is not None:
@@ -1271,10 +1263,8 @@ class SourceConnector(BaseConnector):
     ) -> None:
         """Record a rejection for the caller without risking the whole request.
 
-        This runs inside the staging loop, and the cache write behind it does an
-        unguarded pipeline execute. Letting a transient Redis fault escape would
-        fail the entire execution over one bad file - and discard the good files
-        already staged alongside it.
+        Runs per file inside the staging loop, so nothing here may escape and
+        cost the caller the files already staged.
         """
         workflow_log.log_error(logger=logger, message=log_message)
         try:
@@ -1312,21 +1302,15 @@ class SourceConnector(BaseConnector):
     ) -> None:
         """Record a rejected file as a terminal ERROR file execution.
 
-        The cache entry above is deleted on the first status poll and expires
-        with the result TTL, so without a row there is nothing left to answer
-        "why was my file not processed?". It also keeps the rejection countable:
-        the execution serializer derives successful/failed from these rows, so a
-        run with a rejected file stops reading as a clean success.
+        The cached result is short-lived, so the row is what keeps the rejection
+        both auditable and countable.
         """
         workflow_execution = WorkflowExecution.objects.get(pk=execution_id)
 
-        # The row's identity rests entirely on this value: the API path has no
-        # file_path, so get_or_create would fold two rejected uploads into one
-        # row and under-count them. Content alone is not enough - the same bytes
-        # sent twice under different names are two rejections the caller needs
-        # told about separately - so the name is folded in. Deliberately not a
-        # plain content hash: a rejected file was never processed, and should
-        # not look to file history as though it had been.
+        # The row's identity rests on this alone, since the API path has no
+        # file_path. Content and name both, so the same bytes under two names
+        # stay two rejections. Not a plain content hash on purpose: this file was
+        # never processed and must not look to file history as though it were.
         digest = sha256()
         for chunk in file.chunks(chunk_size=cls.READ_CHUNK_SIZE):
             digest.update(chunk)
