@@ -218,7 +218,52 @@ def _unified_api_execution(
         converted_files = FileProcessingUtils.convert_file_hash_data(hash_values_of_files)
 
         if not converted_files:
-            logger.warning("No valid files to process after conversion")
+            # An empty result means either nothing was dispatched or every file
+            # failed to convert; only the first is a success.
+            if hash_values_of_files:
+                error_message = (
+                    f"None of the {len(hash_values_of_files)} dispatched files could "
+                    "be converted for processing"
+                )
+                logger.error(error_message)
+                api_client.update_workflow_execution_status(
+                    execution_id=execution_id,
+                    status=ExecutionStatus.ERROR.value,
+                    error_message=error_message,
+                    total_files=len(hash_values_of_files),
+                    successful_files=0,
+                    failed_files=len(hash_values_of_files),
+                )
+                if pipeline_id:
+                    api_client.update_pipeline_status(
+                        pipeline_id=pipeline_id,
+                        status=PipelineStatus.FAILURE.value,
+                    )
+                return {
+                    "execution_id": execution_id,
+                    "status": "ERROR",
+                    # "error", matching this function's other ERROR returns.
+                    "error": error_message,
+                    "files_processed": 0,
+                }
+
+            logger.warning("No files dispatched for this execution")
+            # Without this write the row keeps its dispatch status and the caller
+            # polls forever.
+            api_client.update_workflow_execution_status(
+                execution_id=execution_id,
+                status=ExecutionStatus.COMPLETED.value,
+                total_files=0,
+                # Explicit, because NULL counters on a terminal row read as a
+                # clean success.
+                successful_files=0,
+                failed_files=0,
+            )
+            if pipeline_id:
+                api_client.update_pipeline_status(
+                    pipeline_id=pipeline_id,
+                    status=PipelineStatus.SUCCESS.value,
+                )
             return {
                 "execution_id": execution_id,
                 "status": "COMPLETED",
