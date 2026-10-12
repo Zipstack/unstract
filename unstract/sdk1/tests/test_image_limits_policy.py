@@ -326,3 +326,68 @@ class TestMessages:
     def test_describe_summarises_the_policy(self) -> None:
         text = ImageModePolicy.from_limits([BEDROCK], token_budgets=[200_000]).describe()
         assert "Amazon Bedrock" in text and "20" in text and "20 MB" in text
+
+
+class TestRolloutBounds:
+    """Extraction stays within the plugin's fixed limits during rollout.
+
+    Until the cloud plugin answers with model-aware limits, extraction is
+    bounded by its fixed 90 pages / 14 MiB, so it can only get stricter,
+    never looser, than answer time.
+    """
+
+    def test_legacy_bounds_are_active_and_read_the_legacy_accessors(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("VLM_IMAGE_ANSWER_PAGE_CAP", raising=False)
+        monkeypatch.delenv("VLM_IMAGE_ANSWER_MAX_TOTAL_MB", raising=False)
+        assert policy_mod.LEGACY_ANSWER_BOUNDS_ACTIVE is True
+        kwargs = policy_mod.extraction_bound_kwargs()
+        assert kwargs == {
+            "page_ceiling": None,
+            "bytes_ceiling": 14 * 1024 * 1024,
+            "legacy_cap": 90,
+        }
+
+    def test_switch_off_leaves_only_operator_ceilings(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(policy_mod, "LEGACY_ANSWER_BOUNDS_ACTIVE", False)
+        monkeypatch.setenv("VLM_IMAGE_ANSWER_PAGE_CAP", "40")
+        monkeypatch.delenv("VLM_IMAGE_ANSWER_MAX_TOTAL_MB", raising=False)
+        assert policy_mod.extraction_bound_kwargs() == {
+            "page_ceiling": 40,
+            "bytes_ceiling": None,
+            "legacy_cap": None,
+        }
+
+    def test_generous_model_is_held_at_the_legacy_cap(self) -> None:
+        policy = ImageModePolicy.from_limits(
+            [OPENAI], **policy_mod.extraction_bound_kwargs()
+        )
+        assert policy.page_budget.max_pages == 90
+        assert policy.page_budget.binding == "legacy"
+
+    def test_strict_model_still_binds_below_the_legacy_cap(self) -> None:
+        policy = ImageModePolicy.from_limits(
+            [BEDROCK], **policy_mod.extraction_bound_kwargs()
+        )
+        assert policy.page_budget.max_pages == 20
+        assert policy.page_budget.binding == "images"
+
+    def test_legacy_page_message_does_not_blame_an_administrator(self) -> None:
+        budget = compute_page_budget(OPENAI, context_tokens=None, legacy_cap=90)
+        msg = policy_mod.page_cap_message(120, budget, charged=False)
+        assert "administrator" not in msg
+        assert "90" in msg
+
+    def test_ceiling_bound_bytes_message_names_the_ceiling_not_the_model(self) -> None:
+        # Bedrock allows 20 MB on the wire (~15 MB raw); a 1 MB ceiling binds.
+        policy = ImageModePolicy.from_limits([BEDROCK], bytes_ceiling=1_000_000)
+        with pytest.raises(PageImageSetTooLargeError) as excinfo:
+            check_page_set(
+                policy, [(1, b"x" * 600_000), (2, b"x" * 600_000)], page_store_dir=DIR
+            )
+        msg = str(excinfo.value)
+        assert "20 MB request limit" not in msg
+        assert "1 MB" in msg

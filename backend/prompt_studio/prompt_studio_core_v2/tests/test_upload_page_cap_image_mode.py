@@ -123,3 +123,74 @@ class TestCheckIsWiredIntoUpload:
         validate_at = source.index("validate_upload_page_count_for_image_mode")
         store_at = source.index("PromptStudioFileHelper.upload_for_ide")
         assert gate_at < validate_at < store_at
+
+
+_BEDROCK_ID = "bedrock|8d18571f-5e96-4505-bd28-ad0379c64064"
+_OPENAI_ID = "openai|502ecf49-e47c-445c-9907-6d4b90c5cd17"
+
+
+def _llm_profile(adapter_id: str, metadata: dict, name: str = "Default") -> MagicMock:
+    profile = _profile({"output_mode": "image"})
+    profile.profile_name = name
+    profile.llm.adapter_id = adapter_id
+    profile.llm.metadata = metadata
+    return profile
+
+
+_BEDROCK_META = {
+    "model": "anthropic.claude-sonnet-4-5-20250929-v1:0",
+    "aws_region_name": "us-east-1",
+}
+_OPENAI_META = {
+    "model": "gpt-5.6",
+    "api_key": "k",
+    "api_base": "https://api.openai.com/v1",
+}
+
+
+class TestModelAwareUploadCheck:
+    """With the default profile's LLM known, the cap is that model's (UN-4427)."""
+
+    @pytest.fixture(autouse=True)
+    def _no_env_cap(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("VLM_IMAGE_ANSWER_PAGE_CAP", raising=False)
+
+    def test_strict_provider_rejects_below_the_old_fixed_cap(self) -> None:
+        profile = _llm_profile(_BEDROCK_ID, _BEDROCK_META, name="Claude on Bedrock")
+        with pytest.raises(ImageModePageLimitExceeded) as excinfo:
+            check(_pdf(21), _PDF, profile)
+        msg = str(excinfo.value.detail)
+        assert "This document has 21 pages" in msg
+        assert "Amazon Bedrock" in msg and "20 page images" in msg
+        assert "default profile" in msg and "Claude on Bedrock" in msg
+
+    def test_strict_provider_accepts_at_its_limit(self) -> None:
+        check(_pdf(20), _PDF, _llm_profile(_BEDROCK_ID, _BEDROCK_META))
+
+    def test_generous_provider_is_held_at_the_rollout_cap(self) -> None:
+        # Until the cloud plugin answers with model-aware limits, 90 stays.
+        with pytest.raises(ImageModePageLimitExceeded):
+            check(_pdf(91), _PDF, _llm_profile(_OPENAI_ID, _OPENAI_META))
+
+    def test_unresolvable_llm_falls_back_to_the_fixed_cap(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("VLM_IMAGE_ANSWER_PAGE_CAP", "5")
+        profile = _llm_profile("nope|123", {"model": "x"})
+        with pytest.raises(ImageModePageLimitExceeded) as excinfo:
+            check(_pdf(6), _PDF, profile)
+        assert "the limit is 5" in str(excinfo.value.detail)
+
+    def test_profile_without_llm_uses_the_fixed_cap(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("VLM_IMAGE_ANSWER_PAGE_CAP", "5")
+        profile = _profile({"output_mode": "image"})
+        profile.llm = None
+        with pytest.raises(ImageModePageLimitExceeded):
+            check(_pdf(6), _PDF, profile)
+
+    def test_upload_passes_the_default_profile(self) -> None:
+        source = inspect.getsource(_views_mod.PromptStudioCoreView.upload_for_ide)
+        call = source[source.index("validate_upload_page_count_for_image_mode") :]
+        assert "default_profile" in call[: call.index(")")]
