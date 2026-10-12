@@ -136,11 +136,9 @@ class X2Text:
             input_file_path: File that was extracted.
             mime_type: MIME type of that file.
             fs: File storage to read the file through.
-            page_count: Pages the extractor actually processed, when it reports
-                them. Preferred over counting the input file, because an adapter
-                configured with a `pages_to_extract` range reads fewer pages than
-                the document holds (UN-4042). None for adapters that report no
-                count, which keeps the earlier file-based behaviour.
+            page_count: Pages the extractor actually processed, if reported.
+                Preferred over counting the PDF, which overcounts when only a
+                page range was extracted. None falls back to the file count.
         """
         if fs is None:
             fs = FileStorage(provider=FileStorageProvider.LOCAL)
@@ -156,9 +154,8 @@ class X2Text:
             # TODO: Calculate page usage for other file types (3000 words = 1 page)
             # We are allowing certain image types,and raw texts. We will consider them
             # as single page documents as there in no concept of page numbers.
-            # Deliberately not using the extractor's count here: LLMWhisperer
-            # applies the 3000-words rule to sheets and text, so adopting it would
-            # raise these bills. Tracked separately in UN-4043.
+            # The extractor's count is not used here: extractors may derive
+            # pages from word counts for non-PDFs, which would raise these bills.
             billable_pages = 1
 
         Audit().push_page_usage_data(

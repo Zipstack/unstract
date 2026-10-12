@@ -1,6 +1,6 @@
 """Tests for page usage accounting in X2Text.
 
-Regression cover for UN-4042: page usage was counted from the input file, so a
+Regression cover: page usage was counted from the input file, so a
 199-page PDF with ``pages_to_extract = "1-5"`` was billed 199 pages while
 LLMWhisperer billed the 5 it actually extracted.
 """
@@ -54,7 +54,7 @@ class TestPushUsageDetails:
         x2text: X2Text,
         pdf_fs: MagicMock,
     ) -> None:
-        """UN-4042: 5 pages extracted from a 199-page PDF bills 5, not 199."""
+        """5 pages extracted from a 199-page PDF bills 5, not 199."""
         pdfplumber.open.return_value.__enter__.return_value.pages = [None] * 199
 
         x2text.push_usage_details("in.pdf", MimeType.PDF, fs=pdf_fs, page_count=5)
@@ -72,7 +72,7 @@ class TestPushUsageDetails:
         x2text: X2Text,
         pdf_fs: MagicMock,
     ) -> None:
-        """Adapters that report nothing keep the pre-UN-4042 behaviour."""
+        """Adapters that report nothing keep counting the PDF."""
         pdfplumber.open.return_value.__enter__.return_value.pages = [None] * 199
 
         x2text.push_usage_details("in.pdf", MimeType.PDF, fs=pdf_fs, page_count=None)
@@ -107,7 +107,7 @@ class TestPushUsageDetails:
         audit: MagicMock,
         x2text: X2Text,
     ) -> None:
-        """Non-PDF counting is UN-4043; this fix must not raise those bills."""
+        """Non-PDF billing must not change with the reported count."""
         x2text.push_usage_details("in.txt", MimeType.TEXT, fs=MagicMock(), page_count=20)
 
         assert _pushed_page_count(audit) == 1

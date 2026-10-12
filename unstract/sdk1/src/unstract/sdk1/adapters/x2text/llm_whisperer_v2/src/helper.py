@@ -383,9 +383,7 @@ class LLMWhispererHelper:
     def get_processed_page_count(response: dict[str, Any]) -> int | None:
         """Pages LLMWhisperer actually processed for this extraction.
 
-        This is the same count LLMWhisperer bills, so reading it keeps Unstract's
-        page usage in step with a `pages_to_extract` range instead of counting
-        every page in the uploaded file (UN-4042).
+        This is the count LLMWhisperer bills, so it honours a page range.
 
         Args:
             response: Decoded `/whisper-retrieve` body returned by `make_request`.
