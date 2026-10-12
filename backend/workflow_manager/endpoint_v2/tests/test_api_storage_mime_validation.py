@@ -469,6 +469,91 @@ def test_a_recognised_wrapper_is_not_promoted_by_its_contents(
     assert result == {}
 
 
+def _ooxml_archive(content_types: str, rels: str, part: str) -> bytes:
+    """A repackaged archive with the three members set as given."""
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as archive:
+        # Ahead of the markers, so libmagic will only call this a zip and the
+        # archive has to be read to resolve it.
+        archive.writestr("junk.bin", bytes(range(256)) * 4)
+        archive.writestr("[Content_Types].xml", content_types)
+        archive.writestr("_rels/.rels", rels)
+        archive.writestr(part, "<document/>")
+    return buf.getvalue()
+
+
+@pytest.mark.parametrize(
+    "content_types, rels, part, why",
+    [
+        (
+            '<?xml version="1.0"?><Types><!-- main+xml --></Types>',
+            '<?xml version="1.0"?><Relationships/>',
+            "word/document.xml",
+            "carries the marker as stray text and relates nothing",
+        ),
+        (
+            _OOXML_CONTENT_TYPES,
+            '<?xml version="1.0"?><Relationships/>',
+            "word/document.xml",
+            "declares a main part that nothing relates",
+        ),
+        (
+            _OOXML_CONTENT_TYPES,
+            _OOXML_RELS.replace("word/document.xml", "word/other.xml"),
+            "word/document.xml",
+            "relates a different part than it declares",
+        ),
+        (
+            _OOXML_CONTENT_TYPES,
+            _OOXML_RELS,
+            "word/styles.xml",
+            "declares and relates a part the archive does not contain",
+        ),
+    ],
+    ids=["stray-marker", "unrelated", "disagrees", "part-absent"],
+)
+def test_an_archive_wearing_the_names_is_not_a_document(
+    collaborators, content_types: str, rels: str, part: str, why: str
+) -> None:
+    """Names and markers are not evidence; the declaration must hold together.
+
+    The package has to declare its main part, relate that same part from the
+    root, and actually contain it. Each case here satisfies some of that and is
+    still not openable, so accepting it would only move the failure to
+    extraction — which the live run of one of these shapes confirmed.
+    """
+    data = _ooxml_archive(content_types, rels, part)
+
+    result = _stage([_upload("spoof.pdf", data, "application/pdf")])
+
+    assert result == {}, f"accepted an archive that {why}"
+
+
+def test_attribute_order_and_quoting_do_not_matter(collaborators) -> None:
+    """A real package is still recognised however its XML is written."""
+    main = (
+        "application/vnd.openxmlformats-officedocument.wordprocessingml"
+        ".document.main+xml"
+    )
+    rel = (
+        "http://schemas.openxmlformats.org/officeDocument/2006/"
+        "relationships/officeDocument"
+    )
+    data = _ooxml_archive(
+        f"<?xml version='1.0'?><Types><Override ContentType='{main}' "
+        f"PartName='/word/document.xml'/></Types>",
+        f"<?xml version='1.0'?><Relationships><Relationship Type='{rel}' "
+        f"Target='word/document.xml' Id='rId1'/></Relationships>",
+        "word/document.xml",
+    )
+
+    result = _stage([_upload("report.docx", data, "application/pdf")])
+
+    assert result["report.docx"].mime_type == (
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    )
+
+
 def test_a_plain_zip_stays_rejected(collaborators) -> None:
     """Looking inside a zip widens recognition, not the allow-list."""
     buf = io.BytesIO()

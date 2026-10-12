@@ -50,33 +50,84 @@ OOXML_DIRECTORY_TYPES = (
     ),
 )
 
-# A package declares its main part's content type, so requiring that declaration
-# tells a real document from an archive that merely carries the right member
-# names — which the extractor cannot open. Matched as bytes rather than parsed:
-# this is an untrusted upload, and an XML parser is a larger attack surface than
-# the check is worth.
-OOXML_CONTENT_TYPES_LIMIT = 65536
-OOXML_MAIN_PART_MARKER = b"main+xml"
+# A package declares its main part and relates it from the root. Requiring the
+# two to agree, and to name a member that exists, is what separates a document
+# from an archive wearing its member names. Read as bytes with bounded reads
+# rather than parsed: the input is an untrusted upload, and an XML parser is far
+# more attack surface than this needs.
+OOXML_MEMBER_LIMIT = 65536
+
+# The content type a package declares for its main part, and the type we report.
+OOXML_MAIN_CONTENT_TYPES = {
+    b"application/vnd.openxmlformats-officedocument.wordprocessingml"
+    b".document.main+xml": (
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    ),
+    b"application/vnd.openxmlformats-officedocument.spreadsheetml" b".sheet.main+xml": (
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    ),
+    b"application/vnd.openxmlformats-officedocument.presentationml"
+    b".presentation.main+xml": (
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+    ),
+}
+
+_OVERRIDE_TAG = re.compile(rb"<Override\b[^>]*>", re.IGNORECASE)
+_RELATIONSHIP_TAG = re.compile(rb"<Relationship\b[^>]*>", re.IGNORECASE)
+_OFFICE_DOCUMENT_REL = b"/officeDocument"
+
+
+def _attribute(tag: bytes, name: bytes) -> bytes | None:
+    """One attribute off an XML start tag, quoted either way, any order."""
+    match = re.search(
+        rb"\b" + re.escape(name) + rb"\s*=\s*[\"']([^\"']*)[\"']",
+        tag,
+        re.IGNORECASE,
+    )
+    return match.group(1).strip() if match else None
+
+
+def _read_member(archive: zipfile.ZipFile, name: str) -> bytes | None:
+    """A member's bytes, bounded, or None if it is absent or oversized."""
+    try:
+        info = archive.getinfo(name)
+        if info.file_size > OOXML_MEMBER_LIMIT:
+            return None
+        with archive.open(info) as member:
+            return member.read(OOXML_MEMBER_LIMIT)
+    except (KeyError, OSError, zipfile.BadZipFile, ValueError):
+        return None
+
+
+def _normalise_part(part: bytes | None) -> str | None:
+    return part.lstrip(b"/").decode("utf-8", "ignore") or None if part else None
 
 
 def _identify_ooxml(archive: zipfile.ZipFile, names: "list[str]") -> str | None:
     """Name an OOXML package, or None if the archive only looks like one."""
-    try:
-        info = archive.getinfo("[Content_Types].xml")
-        if info.file_size > OOXML_CONTENT_TYPES_LIMIT:
-            return None
-        with archive.open(info) as member:
-            declared = member.read(OOXML_CONTENT_TYPES_LIMIT)
-    except (KeyError, OSError, zipfile.BadZipFile, ValueError):
+    content_types = _read_member(archive, "[Content_Types].xml")
+    rels = _read_member(archive, "_rels/.rels")
+    if content_types is None or rels is None:
         return None
 
-    # Member names say which format this claims to be; the declaration is what
-    # makes the claim credible.
-    if OOXML_MAIN_PART_MARKER not in declared:
+    declared_part = declared_type = None
+    for tag in _OVERRIDE_TAG.findall(content_types):
+        mime_type = OOXML_MAIN_CONTENT_TYPES.get(_attribute(tag, b"ContentType") or b"")
+        if mime_type:
+            declared_part = _normalise_part(_attribute(tag, b"PartName"))
+            declared_type = mime_type
+            break
+    if not declared_part:
         return None
-    for prefix, mime_type in OOXML_DIRECTORY_TYPES:
-        if any(name.startswith(prefix) for name in names):
-            return mime_type
+
+    for tag in _RELATIONSHIP_TAG.findall(rels):
+        relation = _attribute(tag, b"Type") or b""
+        if not relation.rstrip(b"/").endswith(_OFFICE_DOCUMENT_REL):
+            continue
+        # The relationship must point at the part the package declared, and that
+        # part must actually be in the archive.
+        if _normalise_part(_attribute(tag, b"Target")) == declared_part:
+            return declared_type if declared_part in names else None
     return None
 
 
