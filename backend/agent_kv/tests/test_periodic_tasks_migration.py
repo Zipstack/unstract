@@ -144,6 +144,30 @@ def test_the_migration_is_reversible():
     assert op.reverse_code is not migrations.RunPython.noop
 
 
+def test_the_removal_spares_a_schedule_the_operator_has_taken_OWNERSHIP_of():
+    """`pg_owned=True` means a self-hosted operator is relying on this row.
+
+    These rows are seeded inert, so deleting an inert one removes the
+    accidental second owner and nothing else. But a self-hosted operator
+    running the PG scheduler has every reason to flip `pg_owned: True` -- the
+    docs tell them to, and there is no CronJob outside the cloud chart to
+    replace it. Deleting by NAME alone would silently remove their only
+    maintenance mechanism: stuck jobs stop being swept and hold their
+    concurrency slots until the 6 h Redis TTL, and expired customer documents
+    stay in the bucket indefinitely, with nothing reporting either.
+
+    Verified end to end against a real database as well (flip one row to
+    `pg_owned=True`, migrate, and exactly that row survives); this pins the
+    predicate so the scope cannot quietly widen back to name-only.
+    """
+    source = inspect.getsource(MIGRATION.remove_pg_periodic_tasks)
+
+    assert "pg_owned=False" in source, (
+        "the delete must spare rows an operator has taken ownership of; "
+        "name-only scoping strands a self-hosted deployment's maintenance"
+    )
+
+
 def test_removal_is_idempotent_and_targets_only_the_two_seeded_names():
     """A fresh install has no such rows, and re-running must still succeed.
 

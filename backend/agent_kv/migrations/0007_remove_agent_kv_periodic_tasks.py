@@ -39,9 +39,26 @@ So: 0004 stays as it was, this removes. A fresh install seeds and then deletes
 (two trivial writes); an environment that already applied 0004 just deletes.
 Both land on the same state, which is the point.
 
-The delete is scoped BY NAME and is idempotent: a fresh install's 0004 created
-exactly these two rows, and an unscoped delete here would wipe the
+The delete is scoped by name AND by ``pg_owned=False``, and is idempotent.
+
+The name scope is the obvious one: an unscoped delete would wipe the
 dashboard_metrics periodics this table is shared with.
+
+The ``pg_owned=False`` scope is the important one. These rows are seeded inert,
+so deleting an inert row removes the accidental second owner and nothing else.
+But a self-hosted operator running the PG scheduler has every reason to flip
+``pg_owned: True`` on them -- that is exactly what the docs tell them to do, and
+there is no CronJob outside the cloud chart to replace it. Deleting by name
+alone would silently remove a LIVE schedule from such a deployment: stuck jobs
+would stop being swept (holding their concurrency slots until the 6 h Redis TTL)
+and expired customer documents would stay in the bucket indefinitely, with
+nothing reporting it.
+
+So a row the operator has taken ownership of is left alone. That is the correct
+reading of this migration's purpose: it removes a second owner that 0004 added
+by mistake, not any schedule that happens to carry these two names. The
+no-double-fire argument is unaffected -- the collision needs a ``pg_owned``
+row, and on cloud the chart is the owner and no row is ever flipped.
 
 **Self-hosted OSS operators who enable the Agent-KV API must schedule
 ``manage.py agent_kv_sweep`` and ``manage.py agent_kv_ttl_cleanup``
@@ -72,14 +89,22 @@ PG_PERIODIC_TASKS = importlib.import_module(
 
 
 def remove_pg_periodic_tasks(apps, schema_editor):
-    """Delete the seeded rows. Idempotent: a fresh install matches nothing."""
+    """Delete the seeded rows, but only while they are still inert.
+
+    Idempotent: a fresh install matches nothing.
+
+    `pg_owned=False` in the filter is load-bearing, not defensive. A
+    self-hosted operator who flipped these rows to `pg_owned: True` is running
+    the PG scheduler as their ONLY maintenance mechanism -- there is no CronJob
+    outside the cloud chart -- so deleting them by name would strand jobs and
+    retain expired documents silently. Their row is left exactly as they set it.
+    """
     # snake_case, not the usual `PgPeriodicTask = apps.get_model(...)` Django
     # idiom: it is a local variable, and sonar's S117 reads the CamelCase name
     # as a naming violation. The historical-model object is the same either way.
     periodic_task = apps.get_model("pg_queue", "PgPeriodicTask")
-    periodic_task.objects.filter(
-        name__in=[spec["name"] for spec in PG_PERIODIC_TASKS]
-    ).delete()
+    names = [spec["name"] for spec in PG_PERIODIC_TASKS]
+    periodic_task.objects.filter(name__in=names, pg_owned=False).delete()
 
 
 def restore_pg_periodic_tasks(apps, schema_editor):
