@@ -99,6 +99,12 @@ class ToolStudioPromptKeys:
     VARIABLE_MAP = "variable_map"
     RECORD = "record"
     FILE_PATH = "file_path"
+    # Extract-file path that never gets rewritten by summarize-as-source /
+    # smart-table overrides — the page-image reader keys on this.
+    EXTRACT_FILE_PATH = "extract_file_path"
+    # Per-prompt stamp of the x2text adapter's output mode (LLMWhisperer
+    # only), so the executor detects image mode without a platform call.
+    X2TEXT_OUTPUT_MODE = "x2text_output_mode"
     ENABLE_HIGHLIGHT = "enable_highlight"
     ENABLE_WORD_CONFIDENCE = "enable_word_confidence"
     REQUIRED = "required"

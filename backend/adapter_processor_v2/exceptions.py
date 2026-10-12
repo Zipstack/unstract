@@ -23,6 +23,11 @@ class InValidAdapterId(APIException):
     default_detail = "Adapter ID is not Valid."
 
 
+class DeprecatedAdapter(APIException):
+    status_code = 400
+    default_detail = "This adapter has been deprecated and can no longer be used."
+
+
 class InternalServiceError(APIException):
     status_code = 500
     default_detail = "Internal Service error"

@@ -131,7 +131,7 @@ The project uses [Biome](https://biomejs.dev/) for linting and formatting - a fa
 - `bun run lint:all` - Run all Biome checks with auto-fix on all files
 - `bun run lint:changed` - Run Biome checks only on changed files
 
-**Configuration:** Biome is configured via `biome.json` in the frontend directory.
+**Configuration:** Biome is configured via `biome.json` in the frontend directory. Rules with existing violations run as warnings until they are cleaned up — see [docs/biome-rule-ratchet.md](docs/biome-rule-ratchet.md).
 
 **Note:** Make sure to run `bun install` first to install the required dependencies.
 

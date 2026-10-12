@@ -48,9 +48,13 @@ def eager_app():
 
 
 def _register_legacy():
+    # Guarded because the import below may be the FIRST in the process, in which
+    # case ``@ExecutorRegistry.register`` fires on it and registering again
+    # raises a duplicate-name ValueError.
     from executor.executors.legacy_executor import LegacyExecutor
 
-    ExecutorRegistry.register(LegacyExecutor)
+    if "legacy" not in ExecutorRegistry.list_executors():
+        ExecutorRegistry.register(LegacyExecutor)
 
 
 # Mock cloud executors for multi-executor tests

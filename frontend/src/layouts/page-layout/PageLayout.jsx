@@ -24,7 +24,6 @@ try {
   // Missing plugin is the expected case; surface anything else so a
   // broken plugin doesn't silently unmount its UI.
   if (!isModuleMissing(err)) {
-    // eslint-disable-next-line no-console
     console.error(
       "[marketplace] MarketplacePendingBanner import failed unexpectedly",
       err,

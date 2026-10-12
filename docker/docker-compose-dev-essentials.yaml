@@ -29,9 +29,11 @@ services:
       - traefik.enable=false
 
   minio:
-    # Docker Hub minio/* images were removed upstream; quay.io is MinIO's own registry
-    # but frozen (RELEASE.2025-09-07) - pinned by digest so a tag deletion can't break us
-    image: "quay.io/minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e"
+    # Mirror of cgr.dev/chainguard/minio (upstream minio/* images are gone from Docker Hub
+    # and quay.io now requires auth) - pinned by digest so a tag change can't break us
+    image: "unstract/minio:RELEASE.2026-09-22T19-25-18Z@sha256:bd014394a80898e68c149f2311fdf8d5a2c2f3bb2c33b9327ae6d02b4b065ae1"
+    # Chainguard runs as uid 65532; keep root so existing root-owned minio_data volumes stay writable
+    user: root
     container_name: unstract-minio
     hostname: minio
     restart: unless-stopped
@@ -49,7 +51,8 @@ services:
       - traefik.http.services.minio.loadbalancer.server.port=9001
 
   minio-bootstrap:
-    image: "quay.io/minio/mc@sha256:a7fe349ef4bd8521fb8497f55c6042871b2ae640607cf99d9bede5e9bdf11727"
+    # Mirror of cgr.dev/chainguard/minio-client:latest-dev (-dev variant ships /bin/sh for the entrypoint)
+    image: "unstract/minio-client:2026-09-24-dev@sha256:f0dd93b48af1f8a641edcd3c64661c8dbe05189bd2ef2f8cea216eb18af10bf8"
     depends_on:
       - minio
     entrypoint: >

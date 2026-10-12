@@ -1066,7 +1066,7 @@ function matchesQuery(
     return filterOption(query, item.data);
   }
   const field = optionFilterProp
-    ? (item.data as Record<string, unknown>)[optionFilterProp]
+    ? (item.data as unknown as Record<string, unknown>)[optionFilterProp]
     : undefined;
   const haystack = optionFilterProp
     ? optionText(field as React.ReactNode)
