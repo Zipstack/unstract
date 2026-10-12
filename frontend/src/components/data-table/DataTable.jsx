@@ -413,6 +413,22 @@ function DataTable({
    * order-less state.
    */
   sortDirections,
+  /**
+   * antd's `expandable={{ expandedRowRender, expandedRowKeys, rowExpandable,
+   * showExpandColumn, onExpand, … }}` — a full-width extra row rendered under
+   * the record it belongs to.
+   *
+   * Declared for the same reason as `onRow`, `showHeader`, `scroll`,
+   * `bordered`, `locale` and `sortDirections` above, and it is the widest
+   * silent drop of the set: undeclared, the whole object fell into `...props`
+   * and onto the wrapper <div>, so `expandedRowRender` was never called and
+   * the table rendered as if the prop had not been passed. HITL's review
+   * editor is the visible casualty — an array or object inside a table cell
+   * shows a truncated JSON blob with an expand button beside it, and clicking
+   * that button did nothing at all, leaving nested values unreadable in Table
+   * view (UN-4124).
+   */
+  expandable,
   ...props
 }) {
   const empty = locale?.emptyText ?? emptyText;
@@ -420,10 +436,144 @@ function DataTable({
   const [selection, setSelection] = React.useState({});
 
   const rows = React.useMemo(() => dataSource ?? [], [dataSource]);
-  const cols = React.useMemo(
-    () => toColumns(columns, rowSelection),
-    [columns, rowSelection],
+
+  /*
+   * Expansion, in antd's shape. Keys are compared as strings because that is
+   * what TanStack's `getRowId` (and so `row.id`) produces from whatever
+   * `rowKey` resolves to — a call-site numbering its rows `key: index` passes
+   * numbers, and `[0].includes("0")` is false.
+   */
+  const expandedRowRender = expandable?.expandedRowRender;
+  const canExpand = typeof expandedRowRender === "function";
+  const controlledExpandedKeys = expandable?.expandedRowKeys;
+  const [ownExpandedKeys, setOwnExpandedKeys] = React.useState(
+    () => expandable?.defaultExpandedRowKeys ?? [],
   );
+  const expandedKeys = React.useMemo(
+    () => new Set((controlledExpandedKeys ?? ownExpandedKeys).map(String)),
+    [controlledExpandedKeys, ownExpandedKeys],
+  );
+
+  const isRowExpandable = React.useCallback(
+    (record) =>
+      canExpand &&
+      (typeof expandable?.rowExpandable === "function"
+        ? Boolean(expandable.rowExpandable(record))
+        : true),
+    [canExpand, expandable?.rowExpandable],
+  );
+
+  const onExpandCb = expandable?.onExpand;
+  const onExpandedRowsChange = expandable?.onExpandedRowsChange;
+  const toggleExpanded = React.useCallback(
+    (key, record, originalKey) => {
+      const willExpand = !expandedKeys.has(key);
+      /*
+       * Report the caller's own key values, never the normalized strings:
+       * normalization exists to match TanStack's `row.id` and must not leak
+       * out. A controlled caller that passed `[1]` and then tests
+       * `next.includes(1)` would never match `["1"]`.
+       */
+      const source = controlledExpandedKeys ?? ownExpandedKeys;
+      const next = willExpand
+        ? [...source, originalKey]
+        : source.filter((k) => String(k) !== key);
+      // A controlled `expandedRowKeys` belongs to the parent: report, never set.
+      if (controlledExpandedKeys === undefined) {
+        setOwnExpandedKeys(next);
+      }
+      onExpandCb?.(willExpand, record);
+      onExpandedRowsChange?.(next);
+    },
+    [
+      expandedKeys,
+      controlledExpandedKeys,
+      ownExpandedKeys,
+      onExpandCb,
+      onExpandedRowsChange,
+    ],
+  );
+
+  /*
+   * The untouched key behind `row.id`. `getRowId` stringifies whatever `rowKey`
+   * resolves to, so this is the only way back to the value the call-site
+   * actually holds — falling back to the row index, which is what `getRowId`
+   * itself uses when the record carries no key.
+   */
+  const originalRowKey = React.useCallback(
+    (record, index) => {
+      const raw =
+        typeof rowKey === "function" ? rowKey(record) : record?.[rowKey];
+      return raw === undefined || raw === null ? index : raw;
+    },
+    [rowKey],
+  );
+
+  /*
+   * antd hides the toggle column for `showExpandColumn: false` — the idiom for
+   * a table driven entirely by its own controls, which is how HITL opens a
+   * cell's nested table from a button inside the cell.
+   */
+  const showExpandColumn = canExpand && expandable?.showExpandColumn !== false;
+  const expandIcon = expandable?.expandIcon;
+  const cols = React.useMemo(() => {
+    const base = toColumns(columns, rowSelection);
+    if (!showExpandColumn) {
+      return base;
+    }
+    return [
+      {
+        id: "__expand",
+        header: () => null,
+        enableSorting: false,
+        size: 48,
+        cell: ({ row }) => {
+          const record = row.original;
+          if (!isRowExpandable(record)) {
+            return null;
+          }
+          const expanded = expandedKeys.has(row.id);
+          const onExpand = (event) => {
+            // The row itself may carry an onRow click handler.
+            event?.stopPropagation?.();
+            toggleExpanded(row.id, record, originalRowKey(record, row.index));
+          };
+          if (typeof expandIcon === "function") {
+            return expandIcon({
+              expanded,
+              record,
+              onExpand: (_record, event) => onExpand(event),
+            });
+          }
+          return (
+            <button
+              type="button"
+              aria-expanded={expanded}
+              aria-label={expanded ? "Collapse row" : "Expand row"}
+              onClick={onExpand}
+              className="ant-table-row-expand-icon inline-flex size-5 items-center justify-center rounded border text-muted-foreground hover:text-foreground"
+            >
+              {expanded ? (
+                <ChevronDown className="size-3" />
+              ) : (
+                <ChevronRight className="size-3" />
+              )}
+            </button>
+          );
+        },
+      },
+      ...base,
+    ];
+  }, [
+    columns,
+    rowSelection,
+    showExpandColumn,
+    expandIcon,
+    expandedKeys,
+    isRowExpandable,
+    toggleExpanded,
+    originalRowKey,
+  ]);
   const leaves = React.useMemo(() => leafColumns(columns), [columns]);
 
   /*
@@ -858,35 +1008,65 @@ function DataTable({
                 </TableCell>
               </TableRow>
             ) : table.getRowModel().rows.length ? (
-              table.getRowModel().rows.map((row) => (
-                <TableRow
-                  key={row.id}
-                  data-state={row.getIsSelected() ? "selected" : undefined}
-                  className={
-                    typeof rowClassName === "function"
-                      ? rowClassName(row.original, row.index)
-                      : rowClassName
-                  }
-                  {...(onRow ? onRow(row.original, row.index) : {})}
-                >
-                  {row.getVisibleCells().map((cell) => (
-                    <TableCell
-                      key={cell.id}
-                      className={cn(
-                        cell.column.columnDef.meta?.align === "center" &&
-                          "text-center",
-                        cell.column.columnDef.meta?.align === "right" &&
-                          "text-right",
-                      )}
+              table.getRowModel().rows.map((row) => {
+                const expanded =
+                  expandedKeys.has(row.id) && isRowExpandable(row.original);
+                return (
+                  /*
+                   * The expanded row is a SIBLING <tr>, not a nested one: a
+                   * table row may only contain cells, so antd's full-width
+                   * panel has to be its own row spanning every column.
+                   */
+                  <React.Fragment key={row.id}>
+                    <TableRow
+                      data-state={row.getIsSelected() ? "selected" : undefined}
+                      className={
+                        typeof rowClassName === "function"
+                          ? rowClassName(row.original, row.index)
+                          : rowClassName
+                      }
+                      {...(onRow ? onRow(row.original, row.index) : {})}
                     >
-                      {flexRender(
-                        cell.column.columnDef.cell,
-                        cell.getContext(),
-                      )}
-                    </TableCell>
-                  ))}
-                </TableRow>
-              ))
+                      {row.getVisibleCells().map((cell) => (
+                        <TableCell
+                          key={cell.id}
+                          className={cn(
+                            cell.column.columnDef.meta?.align === "center" &&
+                              "text-center",
+                            cell.column.columnDef.meta?.align === "right" &&
+                              "text-right",
+                          )}
+                        >
+                          {flexRender(
+                            cell.column.columnDef.cell,
+                            cell.getContext(),
+                          )}
+                        </TableCell>
+                      ))}
+                    </TableRow>
+                    {expanded ? (
+                      <TableRow
+                        className={cn(
+                          "ant-table-expanded-row hover:bg-transparent",
+                          typeof expandable?.expandedRowClassName === "function"
+                            ? expandable.expandedRowClassName(
+                                row.original,
+                                row.index,
+                              )
+                            : expandable?.expandedRowClassName,
+                        )}
+                      >
+                        <TableCell
+                          colSpan={table.getVisibleLeafColumns().length}
+                          className="p-2"
+                        >
+                          {expandedRowRender(row.original, row.index, 0, true)}
+                        </TableCell>
+                      </TableRow>
+                    ) : null}
+                  </React.Fragment>
+                );
+              })
             ) : (
               <TableRow className="hover:bg-transparent">
                 <TableCell

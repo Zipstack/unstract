@@ -196,7 +196,6 @@ try {
   PRODUCT_NAMES = mod.PRODUCT_NAMES ?? {};
 } catch (err) {
   if (!isModuleMissing(err)) {
-    // eslint-disable-next-line no-console
     console.error("[llm-whisperer] helper import failed unexpectedly", err);
   }
 }

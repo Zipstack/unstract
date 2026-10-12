@@ -172,7 +172,7 @@ class TestRegistryToolDeleteAuthorization:
         )
 
     def test_ownership_follows_the_parent_project_not_the_row(self) -> None:
-        """Ownership is inherited from ``custom_tool``, mirroring IsParentToolOwner.
+        """Ownership is inherited from ``custom_tool``.
 
         The row's own ``owner`` must be ignored while a parent exists, otherwise
         a stale export-time owner could outrank the project's current owner.

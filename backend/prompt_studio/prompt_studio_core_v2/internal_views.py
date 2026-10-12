@@ -20,6 +20,10 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 from rest_framework import status
 
+# 10 MB — agentic table extraction output with highlight coordinates
+# can exceed Django's default 2.5 MB DATA_UPLOAD_MAX_MEMORY_SIZE.
+_PROMPT_OUTPUT_MAX_BODY = 10 * 1024 * 1024
+
 logger = logging.getLogger(__name__)
 
 _ERR_INVALID_JSON = "Invalid JSON"
@@ -126,10 +130,31 @@ def prompt_output(request):
         "profile_manager_id": str | null,
         "metadata": dict
     }
+
+    Uses ``request.read()`` instead of ``request.body`` to bypass
+    Django's ``DATA_UPLOAD_MAX_MEMORY_SIZE`` check.  Agentic table
+    extraction output with highlight coordinates can exceed the default
+    2.5 MB limit; this view enforces its own 10 MB cap instead.
     """
-    data, err = _parse_json_body(request)
-    if err:
-        return err
+    content_length = int(request.META.get("CONTENT_LENGTH") or 0)
+    if content_length > _PROMPT_OUTPUT_MAX_BODY:
+        return JsonResponse(
+            {
+                "success": False,
+                "error": (
+                    f"Request body too large ({content_length} bytes, "
+                    f"limit {_PROMPT_OUTPUT_MAX_BODY})"
+                ),
+            },
+            status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+        )
+    try:
+        data = json.loads(request.read())
+    except json.JSONDecodeError:
+        return JsonResponse(
+            {"success": False, "error": _ERR_INVALID_JSON},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
 
     run_id = data.get("run_id", "")
     prompt_ids = data.get("prompt_ids", [])

@@ -46,12 +46,6 @@ class ToolsUtils:
         )
         self.x2text_host = ToolsUtils.get_env(ToolRV.X2TEXT_HOST, raise_exception=True)
         self.x2text_port = ToolsUtils.get_env(ToolRV.X2TEXT_PORT, raise_exception=True)
-        self.llmw_poll_interval = ToolsUtils.get_env(
-            ToolRV.ADAPTER_LLMW_POLL_INTERVAL, raise_exception=False
-        )
-        self.llmw_max_polls = ToolsUtils.get_env(
-            ToolRV.ADAPTER_LLMW_MAX_POLLS, raise_exception=False
-        )
         self.llmw_wait_timeout = ToolsUtils.get_env(
             ToolRV.ADAPTER_LLMW_WAIT_TIMEOUT, raise_exception=False
         )
@@ -240,12 +234,25 @@ class ToolsUtils:
             ToolRV.REDIS_SENTINEL_MODE: self.redis_sentinel_mode or "False",
             ToolRV.REDIS_SENTINEL_MASTER_NAME: self.redis_sentinel_master_name
             or "mymaster",
+            # UN-4123: only the keys actually set, so an unset var leaves the tool's
+            # environment unchanged instead of gaining an empty string that
+            # os.getenv() would read as configured.
+            **{
+                name: os.environ[name]
+                for name in (
+                    ToolRV.REDIS_DB,
+                    ToolRV.REDIS_SSL,
+                    ToolRV.REDIS_SSL_CERT_REQS,
+                    ToolRV.REDIS_SSL_CA_CERTS,
+                    ToolRV.REDIS_SSL_CHECK_HOSTNAME,
+                    ToolRV.REDIS_URL,
+                    ToolRV.REDIS_HEALTH_CHECK_INTERVAL,
+                    ToolRV.METRICS_REDIS_DB,
+                )
+                if os.environ.get(name)
+            },
         }
         # For async LLM Whisperer extraction
-        if self.llmw_poll_interval:
-            platform_vars[ToolRV.ADAPTER_LLMW_POLL_INTERVAL] = self.llmw_poll_interval
-        if self.llmw_max_polls:
-            platform_vars[ToolRV.ADAPTER_LLMW_MAX_POLLS] = self.llmw_max_polls
         if self.llmw_wait_timeout:
             platform_vars[ToolRV.ADAPTER_LLMW_WAIT_TIMEOUT] = self.llmw_wait_timeout
         return platform_vars

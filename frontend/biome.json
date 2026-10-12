@@ -17,8 +17,22 @@
   },
   "linter": {
     "enabled": true,
+    "domains": { "react": "recommended" },
     "rules": {
-      "recommended": false,
+      "recommended": true,
+      "a11y": {
+        "noLabelWithoutControl": "warn",
+        "noNoninteractiveElementInteractions": "warn",
+        "noRedundantRoles": "warn",
+        "noStaticElementInteractions": "warn",
+        "useAriaPropsSupportedByRole": "warn",
+        "useButtonType": "warn",
+        "useFocusableInteractive": "warn",
+        "useGenericFontNames": "warn",
+        "useKeyWithClickEvents": "warn",
+        "useSemanticElements": "warn",
+        "useValidAnchor": "warn"
+      },
       "complexity": {
         "noAdjacentSpacesInRegex": "error",
         "noArguments": "error",
@@ -45,15 +59,21 @@
         "noUnreachableSuper": "error",
         "noUnsafeFinally": "error",
         "noUnsafeOptionalChaining": "error",
+        "noUnusedImports": "warn",
         "noUnusedLabels": "error",
         "noUnusedVariables": "warn",
+        "useExhaustiveDependencies": "warn",
+        "useHookAtTopLevel": "warn",
         "useIsNan": "error",
         "useJsxKeyInIterable": "error",
         "useValidForDirection": "error",
         "useValidTypeof": "error",
         "useYield": "error"
       },
-      "security": { "noDangerouslySetInnerHtmlWithChildren": "error" },
+      "security": {
+        "noDangerouslySetInnerHtml": "warn",
+        "noDangerouslySetInnerHtmlWithChildren": "error"
+      },
       "style": {
         "useArrayLiterals": "error",
         "useBlockStatements": "warn",
@@ -62,6 +82,8 @@
         "useSingleVarDeclarator": "error"
       },
       "suspicious": {
+        "noArrayIndexKey": "warn",
+        "noAssignInExpressions": "warn",
         "noAsyncPromiseExecutor": "error",
         "noCatchAssign": "error",
         "noClassAssign": "error",
@@ -86,6 +108,7 @@
         "noPrototypeBuiltins": "error",
         "noRedeclare": "error",
         "noShadowRestrictedNames": "error",
+        "noShorthandPropertyOverrides": "warn",
         "noSparseArray": "error",
         "noUnsafeNegation": "error",
         "noUselessRegexBackrefs": "error",

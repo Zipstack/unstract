@@ -2,12 +2,13 @@
 routes to its own queue, and LegacyExecutor rejects the operation.
 """
 
-from unittest.mock import MagicMock
 
 from unstract.sdk1.execution.context import ExecutionContext
-from unstract.sdk1.execution.dispatcher import ExecutionDispatcher
 from unstract.sdk1.execution.registry import ExecutorRegistry
 from unstract.sdk1.execution.result import ExecutionResult
+from unstract.workflow_execution.executor_rpc import PgExecutionDispatcher
+
+from .executor_dispatch_fakes import FakeExecutorTransport, queue_for
 
 # ---------------------------------------------------------------------------
 # tasks.py log_component for table_extract
@@ -122,19 +123,17 @@ class TestTableExtractorExecutorRegistration:
 class TestTableQueueRouting:
     def test_table_executor_routes_to_correct_queue(self):
         """executor_name='table' routes to celery_executor_table queue."""
-        queue = ExecutionDispatcher._get_queue("table")
+        queue = queue_for("table")
         assert queue == "celery_executor_table"
 
     def test_dispatch_sends_to_table_queue(self):
-        """ExecutionDispatcher sends table_extract to correct queue."""
-        mock_app = MagicMock()
-        mock_result = MagicMock()
-        mock_result.get.return_value = ExecutionResult(
-            success=True, data={"output": "ok"}
-        ).to_dict()
-        mock_app.send_task.return_value = mock_result
-
-        dispatcher = ExecutionDispatcher(celery_app=mock_app)
+        """The dispatcher sends table_extract to the correct queue."""
+        transport = FakeExecutorTransport(
+            result=ExecutionResult(
+                success=True, data={"output": "ok"}
+            ).to_dict()
+        )
+        dispatcher = PgExecutionDispatcher(transport)
         ctx = ExecutionContext(
             executor_name="table",
             operation="table_extract",
@@ -144,9 +143,7 @@ class TestTableQueueRouting:
         )
         dispatcher.dispatch(ctx)
 
-        mock_app.send_task.assert_called_once()
-        call_kwargs = mock_app.send_task.call_args
-        assert call_kwargs.kwargs.get("queue") == "celery_executor_table"
+        assert transport.queue == "celery_executor_table"
 
 
 # ---------------------------------------------------------------------------
@@ -193,4 +190,4 @@ class TestEntryPointConfig:
         # This is a documentation/verification test — the entry point
         # in pyproject.toml maps 'table' to TableExtractorExecutor.
         # Verify the queue name matches.
-        assert ExecutionDispatcher._get_queue("table") == "celery_executor_table"
+        assert queue_for("table") == "celery_executor_table"

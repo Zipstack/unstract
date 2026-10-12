@@ -27,6 +27,9 @@ import {
   formattedDateTime,
   shortenApiEndpoint,
 } from "../../../helpers/GetStaticData";
+import { canEditResource } from "../../../helpers/resourceAccess";
+import { useSessionStore } from "../../../store/session-store";
+import { resolveOwnerDisplay } from "../owner-display";
 
 /**
  * Reusable action box with Edit, Share, Delete icons and kebab menu
@@ -47,6 +50,12 @@ function CardActionBox({
    */
   testIdPrefix,
 }) {
+  const { sessionDetails } = useSessionStore();
+  // Edit and delete are the owner's on every resource this renders. What
+  // else sharing allows differs per resource, so it is not stated here.
+  // Sharing onward stays available -- see the Share button below.
+  const canEdit = canEditResource(item, sessionDetails);
+  const lockedTitle = canEdit ? undefined : "Only the owner can change this";
   const testId = (suffix) =>
     testIdPrefix ? `${testIdPrefix}-${suffix}-${item?.id}` : undefined;
   const handleEditAction = (e) => {
@@ -63,13 +72,18 @@ function CardActionBox({
 
   return (
     <Space className="card-list-action-box">
-      <Button
-        type="text"
-        className="action-icon-btn edit-icon"
-        data-testid={testId("edit")}
-        icon={<Pencil />}
-        onClick={handleEditAction}
-      />
+      <Tooltip title={lockedTitle}>
+        <Button
+          type="text"
+          className="action-icon-btn edit-icon"
+          data-testid={testId("edit")}
+          icon={<Pencil />}
+          disabled={!canEdit}
+          onClick={handleEditAction}
+        />
+      </Tooltip>
+      {/* Sharing stays open to shared users: they may pass access on to a
+          group they belong to, or to a user in the same organisation. */}
       <Button
         type="text"
         className="action-icon-btn share-icon"
@@ -78,6 +92,7 @@ function CardActionBox({
         onClick={handleShareAction}
       />
       <Popconfirm
+        disabled={!canEdit}
         title={deleteTitle}
         description="This action cannot be undone."
         onConfirm={() => {
@@ -97,13 +112,16 @@ function CardActionBox({
           testIdPrefix ? `${testIdPrefix}-delete-confirm` : undefined
         }
       >
-        <Button
-          type="text"
-          className="action-icon-btn delete-icon"
-          data-testid={testId("delete")}
-          icon={<Trash2 />}
-          onClick={(e) => e.stopPropagation()}
-        />
+        <Tooltip title={lockedTitle}>
+          <Button
+            type="text"
+            className="action-icon-btn delete-icon"
+            data-testid={testId("delete")}
+            icon={<Trash2 />}
+            disabled={!canEdit}
+            onClick={(e) => e.stopPropagation()}
+          />
+        </Tooltip>
       </Popconfirm>
       <Dropdown
         menu={kebabMenuItems}
@@ -139,11 +157,7 @@ CardActionBox.propTypes = {
  * @return {JSX.Element} Rendered owner field row
  */
 function OwnerFieldRow({ item, sessionDetails, onManageCoOwners }) {
-  const isOwner = item?.is_owner ?? item.created_by === sessionDetails?.userId;
-  const email = item.created_by_email;
-  const name = isOwner ? "Me" : email?.split("@")[0] || "Unknown";
-  const extra =
-    item?.co_owners_count > 1 ? ` +${item.co_owners_count - 1}` : "";
+  const { email, name, extra } = resolveOwnerDisplay(item, sessionDetails);
   const ownerDisplay = `${name}${extra}`;
 
   const ownerContent = (
