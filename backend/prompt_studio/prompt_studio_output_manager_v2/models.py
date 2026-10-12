@@ -3,6 +3,7 @@ import uuid
 from account_v2.models import User
 from django.db import models
 from utils.models.base_model import BaseModel
+from utils.models.org_aware_manager import OrgAwareManager
 
 from prompt_studio.prompt_profile_manager_v2.models import ProfileManager
 from prompt_studio.prompt_studio_core_v2.models import CustomTool
@@ -15,6 +16,9 @@ class PromptStudioOutputManager(BaseModel):
 
     By default the tools will be added to private tool hub.
     """
+
+    # See DocumentManager.objects for why scoping lives at the manager.
+    objects = OrgAwareManager()
 
     prompt_output_id = models.UUIDField(
         primary_key=True, default=uuid.uuid4, editable=False

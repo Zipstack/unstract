@@ -78,8 +78,8 @@ const formatBytes = (bytes, decimals = 1) => {
   const i = Math.floor(Math.log(bytes) / Math.log(k));
 
   return sizes[i]
-    ? `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`
-    : `${bytes / Math.pow(k, i - 1)} ${sizes.at(-1)}`;
+    ? `${parseFloat((bytes / k ** i).toFixed(dm))} ${sizes[i]}`
+    : `${bytes / k ** (i - 1)} ${sizes.at(-1)}`;
 };
 
 const O_AUTH_PROVIDERS = {
@@ -380,6 +380,11 @@ const displayPromptResult = (
   return String(parsedData);
 };
 
+// Deprecated adapters stay listed so users can see what to migrate off, but
+// they cannot be selected or counted as configured.
+const usableAdapters = (adapters) =>
+  (adapters || []).filter((adapter) => !adapter?.is_deprecated);
+
 const onboardCompleted = (adaptersList) => {
   if (!Array.isArray(adaptersList)) {
     return false;
@@ -394,7 +399,6 @@ const onboardCompleted = (adaptersList) => {
 const formattedDateTime = (ISOdateTime) => {
   if (ISOdateTime) {
     const validIsoDate = moment.utc(ISOdateTime).toISOString();
-    // eslint-disable-next-line new-cap
     const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
     return momentTz.tz(validIsoDate, zone).format("lll z");
   } else {
@@ -476,6 +480,11 @@ const isNonNegativeNumber = (value) => {
   return typeof value === "number" && !isNaN(value) && value >= 0;
 };
 
+// Icons are image URLs; an unresolved adapter falls back to an emoji.
+// Detect the URL - compound (ZWJ) emoji break length heuristics.
+const isImageUrl = (value) =>
+  typeof value === "string" && /^(https?:\/\/|\/|data:image\/)/.test(value);
+
 // Default token usage object with all counts initialized to 0
 const defaultTokenUsage = {
   embedding_tokens: 0,
@@ -489,23 +498,6 @@ const generateUUID = () => {
   const uuid = uuidv4();
   return uuid;
 };
-
-function getLLMModelNamesForProfiles(profiles, adapters) {
-  // Create a mapping of adapter_ids to model names
-  const adapterMap = adapters.reduce((map, adapter) => {
-    map[adapter?.adapter_name] = adapter?.model;
-    return map;
-  }, {});
-
-  // Map through profiles and find corresponding model names using the adapterMap
-  return profiles.map((profile) => {
-    return {
-      profile_name: profile?.profile_name,
-      llm_model: adapterMap[profile?.llm],
-      profile_id: profile?.profile_id,
-    };
-  });
-}
 
 function getFormattedTotalCost(tokenUsageDetails) {
   const value = tokenUsageDetails?.cost_in_dollars ?? 0;
@@ -674,7 +666,6 @@ function formatSecondsToHMS(seconds) {
 
 const formattedDateTimeWithSeconds = (ISOdateTime) => {
   if (ISOdateTime) {
-    // eslint-disable-next-line new-cap
     const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
     const zonedDate = parseISO(ISOdateTime);
     return format(zonedDate, "MMM d, yyyy h:mm:ss a zzz", { timeZone: zone });
@@ -780,7 +771,6 @@ export {
   formatSecondsToHMS,
   formatTimeDisplay,
   formattedDateTime,
-  timeAgo,
   formattedDateTimeWithSeconds,
   generateApiRunStatusId,
   generateCoverageKey,
@@ -790,13 +780,13 @@ export {
   getDateTimeString,
   getDocIdFromKey,
   getFormattedTotalCost,
-  getLLMModelNamesForProfiles,
   getMenuItem,
   getOrgNameFromPathname,
   getReadableDateAndTime,
   getSequenceNumber,
   getTimeForLogs,
   homePagePath,
+  isImageUrl,
   isJson,
   isNonNegativeNumber,
   isValidJsonKey,
@@ -817,9 +807,11 @@ export {
   sourceTypes,
   THEME,
   TRIAL_PLAN,
+  timeAgo,
   titleCase,
   toolIdeOutput,
   UNSTRACT_ADMIN,
+  usableAdapters,
   wfExecutionTypes,
   workflowStatus,
 };

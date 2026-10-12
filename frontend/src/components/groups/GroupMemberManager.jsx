@@ -1,7 +1,11 @@
-import { DeleteOutlined, QuestionCircleOutlined } from "@ant-design/icons";
-import { Avatar, List, Modal, Popconfirm, Select } from "antd";
+import { CircleHelp, Trash2 } from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
+import { Button } from "@/components/ui/shims/antd-button";
+import { Select } from "@/components/ui/shims/antd-inputs";
+import { Avatar } from "@/components/ui/shims/antd-leaves";
+import { Modal, Popconfirm } from "@/components/ui/shims/antd-overlays";
+import { List } from "@/components/ui/shims/antd-structure";
 
 import { useExceptionHandler } from "../../hooks/useExceptionHandler.jsx";
 import { useAlertStore } from "../../store/alert-store";
@@ -48,12 +52,12 @@ function GroupMemberManager({ open, group, onClose }) {
       .finally(() => setLoading(false));
   };
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: loadMembers is recreated every render; reload only when the dialog opens or the group changes
   useEffect(() => {
     if (open) {
       loadMembers();
       setPendingAddIds([]);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, group?.id]);
 
   const memberIds = new Set(members.map((m) => m.user_id));
@@ -138,10 +142,20 @@ function GroupMemberManager({ open, group, onClose }) {
                     description={`Remove ${item.email} from this group?`}
                     okText="Remove"
                     cancelText="Cancel"
-                    icon={<QuestionCircleOutlined />}
+                    icon={<CircleHelp />}
                     onConfirm={() => handleRemove(item.user_id)}
                   >
-                    <DeleteOutlined style={{ cursor: "pointer" }} />
+                    {/*
+                     * A named button, not a bare icon: the icon alone is
+                     * absent from the accessibility tree, leaving no way to
+                     * remove a member except with a mouse.
+                     */}
+                    <Button
+                      type="text"
+                      size="small"
+                      icon={<Trash2 />}
+                      aria-label={`Remove ${item.email} from this group`}
+                    />
                   </Popconfirm>
                 }
               >

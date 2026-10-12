@@ -87,6 +87,7 @@ class ConsumerMetrics(_Exporter):
         freshness_fn: Callable[[], float],
         alive_children_fn: Callable[[], float] | None = None,
         concurrency_fn: Callable[[], float] | None = None,
+        watchdog_kills_fn: Callable[[], float] | None = None,
     ) -> None:
         super().__init__()
         self._function_gauge(
@@ -107,6 +108,36 @@ class ConsumerMetrics(_Exporter):
                 "Configured child-process concurrency of the supervisor fleet",
                 concurrency_fn,
             )
+        if watchdog_kills_fn is not None:
+            self.registry.register(
+                _FunctionCounter(
+                    "pg_consumer_child_watchdog_kills",
+                    "Children the supervisor SIGKILLed for going silent past "
+                    "HEALTH_STALE_SECONDS",
+                    watchdog_kills_fn,
+                )
+            )
+
+
+class _FunctionCounter:
+    """A counter read from a callable at scrape time (``Counter`` has no
+    ``set_function``). Exposed as ``<name>_total``.
+    """
+
+    def __init__(self, name: str, doc: str, fn: Callable[[], float]) -> None:
+        self._name = name
+        self._doc = doc
+        self._fn = fn
+
+    def describe(self) -> Iterable[Metric]:
+        from prometheus_client.core import CounterMetricFamily
+
+        return [CounterMetricFamily(self._name, self._doc)]
+
+    def collect(self) -> Iterable[Metric]:
+        from prometheus_client.core import CounterMetricFamily
+
+        yield CounterMetricFamily(self._name, self._doc, value=self._fn())
 
 
 @dataclass(frozen=True)
@@ -252,6 +283,20 @@ class ReaperMetrics(_Exporter):
             "faults that share pg_reaper_tick_failures_total)",
             registry=self.registry,
         )
+        self.queue_promoted = Counter(
+            "pg_reaper_queue_promoted_total",
+            "Due scheduled queue messages promoted to 'ready' (delayed-visibility "
+            "delivery for countdown/eta dispatches — the reaper is on the DELIVERY "
+            "path for these, not just recovery)",
+            registry=self.registry,
+        )
+        self.queue_promote_failures = Counter(
+            "pg_reaper_queue_promote_failures_total",
+            "Promotion sweep attempts that raised (delayed messages did not become "
+            "claimable this tick; alert on a sustained non-zero rate — the symptom is "
+            "silent non-delivery, not an error at the enqueue site)",
+            registry=self.registry,
+        )
         self.claim_recovered = Counter(
             "pg_reaper_claim_recovered_total",
             "Orphan orchestration claims recovered (crash-window execution "
@@ -266,6 +311,21 @@ class ReaperMetrics(_Exporter):
         self.claim_recovery_failures = Counter(
             "pg_reaper_claim_recovery_failures_total",
             "Orphan-claim recovery attempts that raised (row left for retry)",
+            registry=self.registry,
+        )
+        self.undispatched_swept = Counter(
+            "pg_reaper_undispatched_swept_total",
+            "Executions terminalised because they were created but never dispatched "
+            "(no task_id and no queue_message_id past the grace period). These have no "
+            "barrier, so barrier recovery cannot see them; a sustained non-zero rate "
+            "means requests are dying between create_workflow_execution and dispatch",
+            registry=self.registry,
+        )
+        self.undispatched_sweep_failures = Counter(
+            "pg_reaper_undispatched_sweep_failures_total",
+            "Undispatched-execution sweep calls that raised (swallowed so the tick "
+            "still dispatches schedules; a sustained non-zero rate means PENDING rows "
+            "are accumulating unrecovered)",
             registry=self.registry,
         )
         self.sweep_failures = Counter(

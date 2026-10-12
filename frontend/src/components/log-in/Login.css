@@ -265,7 +265,7 @@
 }
 
 .login-trial-info {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 400;
   line-height: 22px;
   text-align: center;
@@ -290,7 +290,7 @@
 }
 
 .login-trust-text {
-  font-size: 14px;
+  font-size: 13px;
   color: #282828;
 }
 
@@ -444,7 +444,7 @@
 }
 
 .llm-stat-label {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 500;
   color: #d1d5dc;
   text-align: center;
@@ -622,7 +622,7 @@
 }
 
 .unstract-stat-label {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 500;
   color: #d1d5dc;
   text-align: center;
@@ -977,7 +977,7 @@
 }
 
 .llm-left-subheading {
-  font-size: 14px !important;
+  font-size: 13px !important;
   line-height: 22px !important;
   color: #282828 !important;
   text-align: center;
@@ -1090,7 +1090,7 @@
 }
 
 .llm-light-stat-label {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 400;
   color: #545454;
   text-align: center;
@@ -1316,7 +1316,7 @@
 }
 
 .unstract-light-stat-label {
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 400;
   color: #545454;
   text-align: center;

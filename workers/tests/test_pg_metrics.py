@@ -401,6 +401,8 @@ class TestReaperTickWiring:
         with (
             patch.object(reaper_mod, "recover_expired_barriers", return_value=[]),
             patch.object(reaper_mod, "rearm_expired_claims", return_value=0),
+            patch.object(reaper_mod, "promote_due_scheduled", return_value=0),
+            patch.object(reaper_mod, "dispatch_due_periodic_tasks", return_value=0),
             patch.object(reaper_mod, "refresh_queue_gauges") as refresh,
         ):
             reaper.tick()
@@ -414,6 +416,8 @@ class TestReaperTickWiring:
         with (
             patch.object(reaper_mod, "recover_expired_barriers", return_value=[]),
             patch.object(reaper_mod, "rearm_expired_claims", return_value=0),
+            patch.object(reaper_mod, "promote_due_scheduled", return_value=0),
+            patch.object(reaper_mod, "dispatch_due_periodic_tasks", return_value=0),
             patch.object(reaper_mod, "refresh_queue_gauges") as refresh,
         ):
             reaper.tick()
@@ -432,6 +436,8 @@ class TestReaperTickWiring:
         with (
             patch.object(reaper_mod, "recover_expired_barriers", return_value=[]),
             patch.object(reaper_mod, "rearm_expired_claims", return_value=0),
+            patch.object(reaper_mod, "promote_due_scheduled", return_value=0),
+            patch.object(reaper_mod, "dispatch_due_periodic_tasks", return_value=0),
             patch.object(
                 reaper_mod, "refresh_queue_gauges", side_effect=RuntimeError("db")
             ) as refresh,
@@ -458,6 +464,8 @@ class TestReaperTickWiring:
         with (
             patch.object(reaper_mod, "recover_expired_barriers", return_value=[]),
             patch.object(reaper_mod, "rearm_expired_claims", return_value=0),
+            patch.object(reaper_mod, "promote_due_scheduled", return_value=0),
+            patch.object(reaper_mod, "dispatch_due_periodic_tasks", return_value=0),
             patch.object(reaper_mod, "refresh_queue_gauges") as refresh,
         ):
             reaper.tick()  # becomes leader, refresh #1
@@ -479,6 +487,8 @@ class TestReaperTickWiring:
         with (
             patch.object(reaper_mod, "recover_expired_barriers", return_value=[]),
             patch.object(reaper_mod, "rearm_expired_claims", return_value=0),
+            patch.object(reaper_mod, "promote_due_scheduled", return_value=0),
+            patch.object(reaper_mod, "dispatch_due_periodic_tasks", return_value=0),
             patch.object(reaper_mod, "refresh_queue_gauges"),
         ):
             reaper.tick()  # becomes leader
@@ -499,6 +509,8 @@ class TestReaperTickWiring:
         with (
             patch.object(reaper_mod, "recover_expired_barriers", return_value=[]),
             patch.object(reaper_mod, "rearm_expired_claims", return_value=0),
+            patch.object(reaper_mod, "promote_due_scheduled", return_value=0),
+            patch.object(reaper_mod, "dispatch_due_periodic_tasks", return_value=0),
             patch.object(reaper_mod, "refresh_queue_gauges"),
         ):
             reaper.tick()  # first leader tick sweeps immediately
@@ -513,6 +525,8 @@ class TestReaperTickWiring:
         with (
             patch.object(reaper_mod, "recover_expired_barriers", return_value=[]),
             patch.object(reaper_mod, "rearm_expired_claims", return_value=0),
+            patch.object(reaper_mod, "promote_due_scheduled", return_value=0),
+            patch.object(reaper_mod, "dispatch_due_periodic_tasks", return_value=0),
             patch.object(reaper_mod, "refresh_queue_gauges"),
         ):
             reaper.tick()
@@ -584,3 +598,15 @@ class TestSupervisorMetricsRoute:
             assert b"pg_consumer_configured_concurrency 2.0" in body
         finally:
             server.stop()
+
+
+def test_consumer_metrics_exports_watchdog_kills_as_a_counter():
+    # UN-4223: a slot killed and re-forked leaves alive_children unchanged, so
+    # the kill count is the only scrapeable trace of the watchdog acting.
+    from queue_backend.pg_queue.metrics import ConsumerMetrics
+
+    body = ConsumerMetrics(
+        freshness_fn=lambda: 0.0, watchdog_kills_fn=lambda: 3.0
+    ).render()
+    assert b"# TYPE pg_consumer_child_watchdog_kills_total counter" in body
+    assert b"pg_consumer_child_watchdog_kills_total 3.0" in body

@@ -1,8 +1,6 @@
-import { Typography } from "antd";
 import PropTypes from "prop-types";
 import { Component } from "react";
-
-const { Text } = Typography;
+import { Text } from "@/components/ui/shims/antd-typography";
 
 // Shallow element-wise compare; resetKeys are typically fresh arrays each
 // render (e.g. [location.pathname]), so a reference check would never match.

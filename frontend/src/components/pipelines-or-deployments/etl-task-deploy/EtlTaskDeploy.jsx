@@ -1,9 +1,14 @@
-import { ClockCircleOutlined, ScheduleOutlined } from "@ant-design/icons";
-import { Button, Form, Input, Modal, Select, Space, Typography } from "antd";
 import cronstrue from "cronstrue";
+import { CalendarClock, Clock } from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
-
+import { Button } from "@/components/ui/shims/antd-button";
+import { Form } from "@/components/ui/shims/antd-form";
+import { Input, Select } from "@/components/ui/shims/antd-inputs";
+import { Space } from "@/components/ui/shims/antd-layout";
+import { Modal } from "@/components/ui/shims/antd-overlays";
+import { Typography } from "@/components/ui/shims/antd-typography";
+import { canEditResource } from "../../../helpers/resourceAccess.js";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate.js";
 import { useAlertStore } from "../../../store/alert-store";
 import { usePromptStudioStore } from "../../../store/prompt-studio-store";
@@ -83,7 +88,11 @@ const EtlTaskDeploy = ({
     workflowApiService
       .getWorkflowList()
       .then((workflows) => {
-        setWorkflowList(workflows);
+        // Deploying is an owner act, and the serializer refuses the rest.
+        // Offering them anyway produces an unexplained rejection on save.
+        setWorkflowList(
+          workflows?.filter((wf) => canEditResource(wf, sessionDetails)) || [],
+        );
       })
       .catch(() => {
         console.error("Unable to get workflow list");
@@ -329,7 +338,7 @@ const EtlTaskDeploy = ({
               }
               help={getBackendErrorDetail("workflow", backendErrors)}
             >
-              <Select>
+              <Select showSearch>
                 {workflowList.map((workflow) => {
                   return (
                     <Option value={workflow.id} key={workflow.workflow_name}>
@@ -357,14 +366,14 @@ const EtlTaskDeploy = ({
               <Button
                 type="primary"
                 onClick={showCronGenerator}
-                icon={<ScheduleOutlined />}
+                icon={<CalendarClock />}
                 className="cron-string-btn"
               />
             </div>
           </Form.Item>
           <Space>
             <div className="cron-summary-div">
-              <ClockCircleOutlined />
+              <Clock />
             </div>
             <div>
               <Typography.Text className="summary-text">

@@ -3,8 +3,9 @@
 A quick-reference dictionary for the bespoke Postgres-backed work queue that can
 stand in for Celery/RabbitMQ. This file is the **terminology + config lookup**.
 
-The transport is chosen **per org** by the Flipt flag `pg_queue_enabled`
-(fail-closed to Celery), so the system runs **with and without** PG unchanged.
+PG is the **only** transport since UN-4046. There is no per-org flag and no Celery
+fallback: every dispatch is enqueued here, so a queue whose consumer is not running
+accepts work and never executes it — durably, and with no error at the producer.
 
 ---
 
@@ -35,6 +36,7 @@ integers.
 | `MAX_ATTEMPTS` | Max deliveries before a message is dropped as **poison** | `5` |
 | `HEALTH_PORT` | Liveness HTTP port (unset → probe disabled) | unset |
 | `HEALTH_STALE_SECONDS` | A poll loop idle beyond this is reported unhealthy | `60` |
+| `CHILD_WATCHDOG` | With `CONCURRENCY > 1`, SIGKILL and re-fork a child silent past `HEALTH_STALE_SECONDS` (requires it set above the longest legitimate task) | `false` |
 | `WORKER_TYPE` | Which source worker's tasks this consumer registers (bootstrap) | — |
 
 ### Reaper (`WORKER_PG_REAPER_*`)
@@ -52,11 +54,11 @@ integers.
 | `WORKER_PG_DEDUP_RETENTION_SECONDS` | Retention for `pg_batch_dedup` rows |
 | `WORKER_PG_QUEUE_CONNECT_RETRIES` / `_BACKOFF` | Reconnect attempts / backoff on a stale or broken DB connection |
 
-### Routing / flag
-| Env / flag | One-line |
-|---|---|
-| `pg_queue_enabled` (Flipt, `PG_QUEUE_FLAG_KEY`) | Per-org gate that routes dispatch to PG; **fail-closed to Celery** on any Flipt error |
-| `WORKER_PG_QUEUE_ENABLED_TASKS` | Comma-separated task names eligible for PG routing (empty → everything stays on Celery) |
+### Routing
+There are no routing knobs left. `select_backend()` returns PG unconditionally; the
+`pg_queue_enabled` Flipt flag and the `WORKER_PG_QUEUE_ENABLED_TASKS` allow-list were
+both removed in UN-4046. Which work reaches a given consumer is decided entirely by
+`WORKER_PG_QUEUE_CONSUMER_QUEUE` above.
 
 ---
 
@@ -75,8 +77,9 @@ keeps its claim; a **dead** worker's renewal stops, so its `vt` expires in ~`LEA
 redelivery in **minutes, not hours**. `VT_SECONDS` is retained as the *drain /
 max-runtime bound* (grace, health-stale), and the lease is clamped to it. Note the
 lease is **not** a hard cap on runtime — a live-but-hung task keeps renewing forever;
-the backstop for that is the liveness probe restarting the pod (process death stops
-renewal). The renewal owns its own DB connection (closed on exit) and is best-effort:
+the backstop is process death, which stops renewal: the supervisor's child watchdog
+(`CHILD_WATCHDOG`) kills a child silent past `HEALTH_STALE_SECONDS`; otherwise a
+liveness probe restarting the pod, where one exists. The renewal owns its own DB connection (closed on exit) and is best-effort:
 a connection death retries within the `~2×` slack the `LEASE/3` interval leaves before
 expiry, and escalates to an ERROR log once it keeps failing past `LEASE` (the lease is
 then genuinely lost and the message may double-run). Because renewal covers only the
@@ -111,6 +114,14 @@ deadline**, then SIGKILLs stragglers. Must be ≤ the pod's
 **Liveness / heartbeat** — each child stamps its last-poll time into a shared array;
 the supervisor reports the *oldest* child's staleness on `/health`. Frozen during a
 long task, so a wedged child goes stale and trips the probe.
+
+**Readiness** — `/ready` on the same port answers 200 only once **every** child has
+finished its `import worker` bootstrap and built its consumer (503 `starting` until
+then; the JSON carries `loaded_children`). It is for a k8s `startupProbe`: the N
+children import in parallel for a minute or two at multiple cores, and a pod that is
+not yet Ready has that CPU ignored by the HPA instead of read as load. Single-process
+consumers (`CONCURRENCY = 1`) answer 200 as soon as the port is up, since they bind it
+only after loading. The reaper serves no `/ready` (404).
 
 **Reaper** — a singleton (leader-elected) sweeper that recovers **stranded** work:
 fast-fails a barrier whose `last_progress_at` stalled, cascades a terminal

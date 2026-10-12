@@ -124,6 +124,10 @@ class PlatformEndpoints:
     platform_service_url: str
     runner_url: str
     x2text_url: str
+    # Served on its own origin, not behind the backend: compose publishes the
+    # frontend on :3000 and the backend on :8000. Browser-driven groups need
+    # this one — pointing them at `backend_url` lands on the API instead.
+    frontend_url: str = "http://localhost:3000"
     admin_user: str = "unstract"
     admin_password: str = "unstract"
     infra: InfraEndpoints = field(default_factory=InfraEndpoints)
@@ -145,6 +149,9 @@ class PlatformEndpoints:
             ),
             runner_url=os.environ.get("UNSTRACT_RUNNER_URL", "http://localhost:5002"),
             x2text_url=os.environ.get("UNSTRACT_X2TEXT_URL", "http://localhost:3004"),
+            frontend_url=os.environ.get(
+                "UNSTRACT_FRONTEND_URL", "http://localhost:3000"
+            ),
             admin_user=os.environ.get("UNSTRACT_ADMIN_USER", "unstract"),
             admin_password=os.environ.get("UNSTRACT_ADMIN_PASSWORD", "unstract"),
             infra=infra or InfraEndpoints(),
@@ -326,14 +333,22 @@ class TestcontainersRuntime:
         # __post_init__ invariant (host without port) is self-cleaning;
         # otherwise a partial spec leaks the four containers we just started.
         try:
-            pg = PostgresContainer("pgvector/pgvector:pg15")
+            # Every xdist worker migrates its own test database in one
+            # transaction, each holding a lock per table and constraint. The
+            # default of 64 overflows the shared lock table intermittently
+            # ("out of shared memory") and errors the whole backend group.
+            pg = PostgresContainer("pgvector/pgvector:pg15").with_command(
+                "postgres -c max_locks_per_transaction=256"
+            )
             pg.start()
             self._stack.append(pg)
             redis = RedisContainer("redis:7.2.3").start()
             self._stack.append(redis)
             rabbit = RabbitMqContainer("rabbitmq:3.13-management").start()
             self._stack.append(rabbit)
-            minio = MinioContainer("minio/minio:latest").start()
+            minio = MinioContainer(
+                "unstract/minio:RELEASE.2026-09-22T19-25-18Z@sha256:bd014394a80898e68c149f2311fdf8d5a2c2f3bb2c33b9327ae6d02b4b065ae1"
+            ).start()
             self._stack.append(minio)
 
             return PlatformEndpoints.from_env(
@@ -409,11 +424,18 @@ def health_targets(endpoints: PlatformEndpoints) -> list[tuple[str, str]]:
     and there is no standalone prompt-service (folded into workers). The runner
     is intentionally absent — container-based execution is being retired in
     favour of in-worker execution, so e2e must not depend on it being up.
+
+    The frontend probes ``/`` rather than a health path: it is nginx serving a
+    static SPA, so there is no health endpoint to hit and index.html answering
+    200 is exactly the liveness signal. Without it the browser-driven ``ui``
+    group would sail past ``_wait_ready`` with nothing serving on :3000 and
+    then skip itself, reporting success while never opening the app.
     """
     return [
         ("backend", endpoints.backend_url.rstrip("/") + "/health"),
         ("platform-service", endpoints.platform_service_url.rstrip("/") + "/health"),
         ("x2text-service", endpoints.x2text_url.rstrip("/") + "/api/v1/x2text/health"),
+        ("frontend", endpoints.frontend_url.rstrip("/") + "/"),
     ]
 
 

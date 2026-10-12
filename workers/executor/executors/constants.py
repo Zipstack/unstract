@@ -20,6 +20,12 @@ class PromptServiceConstants:
     VECTOR_DB = "vector-db"
     EMBEDDING = "embedding"
     X2TEXT_ADAPTER = "x2text_adapter"
+    # Extract-file path that is never rewritten by summarize-as-source /
+    # smart-table overrides — the page-image reader keys on this.
+    EXTRACT_FILE_PATH = "extract_file_path"
+    # Per-prompt stamp of the x2text adapter's output mode (LLMWhisperer
+    # only); lets image-mode detection skip the platform-service call.
+    X2TEXT_OUTPUT_MODE = "x2text_output_mode"
     CHUNK_OVERLAP = "chunk-overlap"
     LLM = "llm"
     IS_ASSERT = "is_assert"
@@ -51,6 +57,15 @@ class PromptServiceConstants:
     CHALLENGE = "challenge"
     ENABLE_CHALLENGE = "enable_challenge"
     EXTRACTION = "extraction"
+    # Reserved namespace for file-level (whole-document) metrics so they cannot
+    # collide with user-defined output/prompt names at the top level of the
+    # metrics dict. Mirrors the "file" key of the API response.
+    FILE = "_file"
+    # Text extraction (X2Text) of the source document. Named to stay distinct
+    # from "extraction_llm", the extraction-purpose LLM call beside it.
+    TEXT_EXTRACTION = "text_extraction"
+    # Wire-format key every metrics producer reports its duration under.
+    TIME_TAKEN = "time_taken(s)"
     SUMMARIZE = "summarize"
     SINGLE_PASS_EXTRACTION = "single-pass-extraction"
     SIMPLE_PROMPT_STUDIO = "simple-prompt-studio"

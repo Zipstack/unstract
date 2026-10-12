@@ -134,6 +134,13 @@ def test_openai_compatible_validate_auto_detects_reasoning_for_known_families() 
         "o3-mini",
         "o4-mini",
         "openai/gpt-5",
+        # GPT-6 rejects temperature outright (UN-4224); dotted point releases
+        # (gpt-5.6-terra, gpt-6.1-sol) are the same families.
+        "gpt-6-luna",
+        "gpt-6-sol",
+        "gpt-6.1-sol",
+        "openai/gpt-6-astra",
+        "gpt-5.6-terra",
     ]:
         validated = OpenAICompatibleLLMParameters.validate(
             {
@@ -150,6 +157,40 @@ def test_openai_compatible_validate_auto_detects_reasoning_for_known_families() 
             "reasoning_effort": "medium",
             "max_completion_tokens": 4096,
         }, f"{model} should route reasoning params via extra_body"
+
+
+def test_gpt_6_per_call_temperature_is_dropped() -> None:
+    # The cloud agentic workers pass `temperature=` per call; LLM re-validates
+    # that through this adapter, so it must not survive for GPT-6.
+    validated = OpenAICompatibleLLMParameters.validate(
+        {
+            "api_base": "https://api.openai.com/v1",
+            "api_key": "sk-test",
+            "model": "gpt-6-luna",
+            "temperature": 0.5,
+        }
+    )
+    assert "temperature" not in validated
+
+
+def test_gpt_6_gateway_alias_still_drops_temperature() -> None:
+    # A gateway alias the reasoning detector does not recognise still names the
+    # model, so the shared sampling strip removes temperature.
+    validated = OpenAICompatibleLLMParameters.validate(
+        {
+            "api_base": "https://gateway.example.com/v1",
+            "model": "my-org/gpt-6-luna-prod",
+        }
+    )
+    assert "temperature" not in validated
+
+
+def test_names_that_only_resemble_gpt_6_keep_temperature() -> None:
+    for model in ["gpt-60", "gpt-6x", "chat-gpt-4o"]:
+        validated = OpenAICompatibleLLMParameters.validate(
+            {"api_base": "https://gateway.example.com/v1", "model": model}
+        )
+        assert validated["temperature"] == _DEFAULT_TEMPERATURE, model
 
 
 def test_openai_compatible_validate_preserves_non_reasoning_models() -> None:

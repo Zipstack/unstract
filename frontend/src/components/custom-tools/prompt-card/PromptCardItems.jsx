@@ -1,17 +1,13 @@
-import { SearchOutlined } from "@ant-design/icons";
-import {
-  Button,
-  Card,
-  Collapse,
-  Divider,
-  Row,
-  Select,
-  Space,
-  Tag,
-  Typography,
-} from "antd";
+import { Search } from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useRef, useState } from "react";
+import { Button } from "@/components/ui/shims/antd-button";
+import { Select } from "@/components/ui/shims/antd-inputs";
+import { Row, Space } from "@/components/ui/shims/antd-layout";
+import { Divider, Tag } from "@/components/ui/shims/antd-leaves";
+import { Collapse } from "@/components/ui/shims/antd-overlays";
+import { Card } from "@/components/ui/shims/antd-structure";
+import { Typography } from "@/components/ui/shims/antd-typography";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
 import { EditableText } from "../editable-text/EditableText";
@@ -74,6 +70,7 @@ function PromptCardItems({
   coverageCountData,
   isChallenge,
   handleSelectHighlight,
+  fieldErrors,
 }) {
   const {
     llmProfiles,
@@ -83,7 +80,6 @@ function PromptCardItems({
     indexDocs,
     isSimplePromptStudio,
     isPublicSource,
-    adapters,
     selectedHighlight,
     details,
     singlePassExtractMode,
@@ -114,32 +110,6 @@ function PromptCardItems({
     );
   }, [allTableSettings]);
 
-  const getModelOrAdapterId = (profile, adapters) => {
-    const result = { conf: {} };
-    const keys = [
-      { key: "llm", label: "LLM" },
-      { key: "embedding_model", label: "Embedding Model" },
-      { key: "vector_store", label: "Vector Store" },
-      { key: "x2text", label: "Text Extractor" },
-    ];
-
-    keys.forEach((key) => {
-      const adapterName = profile[key.key];
-      const adapter = adapters?.find(
-        (adapter) => adapter?.adapter_name === adapterName,
-      );
-      if (adapter) {
-        result.conf[key.label] =
-          adapter?.model || adapter?.adapter_id?.split("|")[0];
-        if (adapter?.adapter_type === "LLM") {
-          result.icon = adapter?.icon;
-        }
-        result.conf["Profile Name"] = profile?.profile_name;
-      }
-    });
-    return result;
-  };
-
   const getUpdatedCoverage = (promptId, singlePass, promptOutputs) => {
     let updatedCoverage = null;
     Object.keys(promptOutputs).forEach((key) => {
@@ -166,18 +136,17 @@ function PromptCardItems({
     getUpdatedCoverage(promptId, singlePassExtractMode, promptOutputs) ||
     coverageCountData;
 
-  const getAdapterInfo = async (adapterData) => {
-    // If simple prompt studio, return early
+  useEffect(() => {
+    setExpandCard(true);
+  }, [isSinglePassExtractLoading]);
+
+  useEffect(() => {
     if (isSimplePromptStudio) {
       return;
     }
-
-    // Update llmProfiles with additional fields
-    const updatedProfiles = llmProfiles?.map((profile) => {
-      return { ...getModelOrAdapterId(profile, adapterData), ...profile };
-    });
+    // conf and icon come from the profile payload, not the viewer's adapters.
     setLlmProfileDetails(
-      updatedProfiles
+      (llmProfiles || [])
         .map((profile) => ({
           ...profile,
           isDefault: profile?.profile_id === selectedLlmProfileId,
@@ -192,15 +161,7 @@ function PromptCardItems({
           return 0;
         }),
     );
-  };
-
-  useEffect(() => {
-    setExpandCard(true);
-  }, [isSinglePassExtractLoading]);
-
-  useEffect(() => {
-    getAdapterInfo(adapters);
-  }, [llmProfiles, selectedLlmProfileId]);
+  }, [llmProfiles, selectedLlmProfileId, isSimplePromptStudio]);
 
   return (
     <Card
@@ -231,6 +192,7 @@ function PromptCardItems({
             handleSpsLoading={handleSpsLoading}
             enforceType={enforceType}
             isAgenticTableReady={isAgenticTableReady}
+            promptKeyError={fieldErrors?.prompt_key}
           />
         </Space>
       </div>
@@ -279,7 +241,11 @@ function PromptCardItems({
                           {isCoverageLoading ? (
                             <SpinnerLoader size="small" />
                           ) : (
-                            <SearchOutlined className="font-size-12" />
+                            // size-3 (12px), not `font-size-12`: that class is
+                            // a TEXT utility shared with the Typography.Link
+                            // below, and font-size does nothing to an SVG — the
+                            // icon fell back to lucide's 24px default.
+                            <Search className="size-3" />
                           )}
                           <Typography.Link className="font-size-12">
                             Coverage: {promptCoverage?.length || 0} of{" "}
@@ -319,7 +285,7 @@ function PromptCardItems({
                         className="prompt-card-select-type"
                         size="small"
                         placeholder="Enforce Type"
-                        optionFilterProp="children"
+                        showSearch
                         options={enforceTypeList}
                         value={promptDetails?.enforce_type || null}
                         disabled={
@@ -369,6 +335,7 @@ function PromptCardItems({
 }
 
 PromptCardItems.propTypes = {
+  fieldErrors: PropTypes.object,
   promptDetails: PropTypes.object.isRequired,
   enforceTypeList: PropTypes.array,
   allTableSettings: PropTypes.array,

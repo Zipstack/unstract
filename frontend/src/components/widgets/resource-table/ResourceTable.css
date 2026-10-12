@@ -103,6 +103,17 @@
   min-width: 0;
 }
 
+/* Under table-layout: fixed the column no longer grows to fit, so an
+   over-long title/description would spill across the neighbouring cell
+   instead. Clamp both to a single line — the Typography `ellipsis` prop
+   supplies the hover tooltip with the full text. */
+.resource-table-name-title,
+.resource-table-name-desc {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .resource-table-name-title {
   font-size: 15px;
 }

@@ -14,15 +14,13 @@ from unittest.mock import MagicMock, patch
 import pytest
 from queue_backend.pg_queue.executor_rpc import (
     PgClientQueueTransport,
-    RoutingExecutionDispatcher,
     get_executor_dispatcher,
-    resolve_executor_transport,
 )
+
 from unstract.core.execution_dispatch import DispatchHandle, signature_to_continuation
 from unstract.workflow_execution.executor_rpc import (
     ExecResultRow,
     PgExecutionDispatcher,
-    resolve_pg_transport,
 )
 
 _WMOD = "queue_backend.pg_queue.executor_rpc"
@@ -96,20 +94,31 @@ class TestSharedDispatchContract:
 
     def test_failed_row_returns_error(self):
         row = ExecResultRow(status="failed", result=None, error="boom")
-        res = PgExecutionDispatcher(_FakeTransport(wait_return=row)).dispatch(_ctx(), timeout=5)
+        res = PgExecutionDispatcher(_FakeTransport(wait_return=row)).dispatch(
+            _ctx(), timeout=5
+        )
         assert res.success is False and res.error == "boom"
 
     def test_failed_row_empty_error_falls_back(self):
         row = ExecResultRow(status="failed", result=None, error="")
-        res = PgExecutionDispatcher(_FakeTransport(wait_return=row)).dispatch(_ctx(), timeout=5)
+        res = PgExecutionDispatcher(_FakeTransport(wait_return=row)).dispatch(
+            _ctx(), timeout=5
+        )
         assert res.success is False and "executor task failed" in res.error
 
     def test_completed_but_result_none_is_failure(self):
         row = ExecResultRow(status="completed", result=None, error="")
-        assert PgExecutionDispatcher(_FakeTransport(wait_return=row)).dispatch(_ctx(), timeout=5).success is False
+        assert (
+            PgExecutionDispatcher(_FakeTransport(wait_return=row))
+            .dispatch(_ctx(), timeout=5)
+            .success
+            is False
+        )
 
     def test_malformed_completed_row_is_failure_not_raise(self):
-        d = PgExecutionDispatcher(_FakeTransport(wait_return=_completed({"bad": "shape"})))
+        d = PgExecutionDispatcher(
+            _FakeTransport(wait_return=_completed({"bad": "shape"}))
+        )
         res = d.dispatch(_ctx(), timeout=5)
         assert res.success is False and "Malformed" in res.error
 
@@ -152,15 +161,19 @@ class TestSharedDispatchContract:
     @staticmethod
     def _sig(task: str):
         return MagicMock(
-            task=task, args=(), kwargs={"callback_kwargs": {"room": "r1"}},
+            task=task,
+            args=(),
+            kwargs={"callback_kwargs": {"room": "r1"}},
             options={"queue": "ide_callback"},
         )
 
     def test_dispatch_with_callback_translates_both_signatures(self):
         t = _FakeTransport()
         handle = PgExecutionDispatcher(t).dispatch_with_callback(
-            _ctx(), on_success=self._sig("ide_prompt_complete"),
-            on_error=self._sig("ide_prompt_error"), task_id="tid-7",
+            _ctx(),
+            on_success=self._sig("ide_prompt_complete"),
+            on_error=self._sig("ide_prompt_error"),
+            task_id="tid-7",
         )
         assert handle.id == "tid-7"
         (kw,) = t.enqueue_calls
@@ -185,83 +198,7 @@ class TestSharedDispatchContract:
 # --- Shared gate: resolve_pg_transport (single Flipt flag, fail-closed) ---
 
 
-class TestResolvePgTransport:
-    def test_flipt_unavailable_is_celery(self, monkeypatch):
-        monkeypatch.setenv("FLIPT_SERVICE_AVAILABLE", "false")
-        with patch(f"{_SMOD}.check_feature_flag_status") as flag:
-            assert resolve_pg_transport(_ctx()) is False
-            flag.assert_not_called()
-
-    def test_flag_true_is_pg_keyed_on_org(self, monkeypatch):
-        monkeypatch.setenv("FLIPT_SERVICE_AVAILABLE", "true")
-        with patch(f"{_SMOD}.check_feature_flag_status", return_value=True) as flag:
-            assert resolve_pg_transport(_ctx("orgX")) is True
-            assert flag.call_args.kwargs["entity_id"] == "orgX"
-            assert flag.call_args.kwargs["flag_key"] == "pg_queue_enabled"
-
-    def test_flag_false_is_celery(self, monkeypatch):
-        monkeypatch.setenv("FLIPT_SERVICE_AVAILABLE", "true")
-        with patch(f"{_SMOD}.check_feature_flag_status", return_value=False):
-            assert resolve_pg_transport(_ctx()) is False
-
-    def test_flipt_error_fails_closed(self, monkeypatch):
-        monkeypatch.setenv("FLIPT_SERVICE_AVAILABLE", "true")
-        with patch(f"{_SMOD}.check_feature_flag_status", side_effect=RuntimeError("x")):
-            assert resolve_pg_transport(_ctx()) is False
-
-    def test_org_less_context_buckets_on_run_id(self, monkeypatch):
-        monkeypatch.setenv("FLIPT_SERVICE_AVAILABLE", "true")
-        with patch(f"{_SMOD}.check_feature_flag_status", return_value=True) as flag:
-            assert resolve_pg_transport(_ctx(org=None)) is True
-        assert flag.call_args.kwargs["entity_id"] == "run-1"
-        assert "organization_id" not in flag.call_args.kwargs["context"]
-
-
 # --- Shared routing: RoutingExecutionDispatcher (zero-regression) ---
-
-
-class TestRoutingDispatch:
-    @staticmethod
-    def _build(route_to_pg: bool):
-        celery, pg = MagicMock(), MagicMock()
-        d = RoutingExecutionDispatcher(
-            celery=celery, pg=pg, resolve=lambda _ctx: route_to_pg
-        )
-        return d, celery, pg
-
-    def test_gate_off_forwards_timeout_and_headers_to_celery(self):
-        d, celery, pg = self._build(route_to_pg=False)
-        ctx = _ctx()
-        hdrs = {"x-fairness-key": {"org_id": "o"}}
-        d.dispatch(ctx, timeout=9, headers=hdrs)
-        celery.dispatch.assert_called_once_with(ctx, timeout=9, headers=hdrs)
-        pg.dispatch.assert_not_called()
-
-    def test_gate_on_passes_timeout_to_pg_and_drops_headers(self):
-        d, celery, pg = self._build(route_to_pg=True)
-        ctx = _ctx()
-        d.dispatch(ctx, timeout=7, headers={"x-fairness-key": {"o": 1}})
-        pg.dispatch.assert_called_once_with(ctx, timeout=7)  # headers dropped
-        celery.dispatch.assert_not_called()
-
-    def test_async_and_callback_stay_celery_when_gate_off(self):
-        d, celery, pg = self._build(route_to_pg=False)
-        d.dispatch_async(_ctx(), headers={"h": 1})
-        d.dispatch_with_callback(_ctx(), on_success="s", on_error="e")
-        celery.dispatch_async.assert_called_once()
-        celery.dispatch_with_callback.assert_called_once()
-        pg.dispatch_async.assert_not_called()
-        pg.dispatch_with_callback.assert_not_called()
-
-    def test_async_and_callback_route_to_pg_when_gated(self):
-        d, celery, pg = self._build(route_to_pg=True)
-        d.dispatch_async(_ctx())
-        d.dispatch_with_callback(_ctx(), on_success="s", on_error="e", task_id="t")
-        pg.dispatch_async.assert_called_once()
-        pg.dispatch_with_callback.assert_called_once()
-        assert "headers" not in pg.dispatch_with_callback.call_args.kwargs
-        celery.dispatch_async.assert_not_called()
-        celery.dispatch_with_callback.assert_not_called()
 
 
 # --- Workers adapter: PgClientQueueTransport + env gate + factory wiring ---
@@ -286,8 +223,10 @@ class TestWorkersAdapter:
         client = self._client()
         with patch(f"{_WMOD}.PgQueueClient", return_value=client):
             PgClientQueueTransport().enqueue(
-                queue="celery_executor_legacy", context=self._ctx(),
-                org_id="org9", reply_key="rk1",
+                queue="celery_executor_legacy",
+                context=self._ctx(),
+                org_id="org9",
+                reply_key="rk1",
             )
         client.send.assert_called_once()
         queue_arg, payload_arg = client.send.call_args.args[:2]
@@ -302,8 +241,11 @@ class TestWorkersAdapter:
         spec = {"task_name": "ide_prompt_complete", "kwargs": {}, "queue": "ide_callback"}
         with patch(f"{_WMOD}.PgQueueClient", return_value=client):
             PgClientQueueTransport().enqueue(
-                queue="celery_executor_legacy", context=self._ctx(), org_id="o",
-                on_success=spec, task_id="tid-7",
+                queue="celery_executor_legacy",
+                context=self._ctx(),
+                org_id="o",
+                on_success=spec,
+                task_id="tid-7",
             )
         payload = client.send.call_args.args[1]
         assert payload["on_success"] == spec and payload["task_id"] == "tid-7"
@@ -312,7 +254,11 @@ class TestWorkersAdapter:
     def test_wait_for_result_folds_dict_to_row(self):
         rb = MagicMock()
         rb.__enter__.return_value = rb
-        rb.wait_for_result.return_value = {"status": "completed", "result": {"a": 1}, "error": ""}
+        rb.wait_for_result.return_value = {
+            "status": "completed",
+            "result": {"a": 1},
+            "error": "",
+        }
         with patch(f"{_WMOD}.PgResultBackend", return_value=rb):
             row = PgClientQueueTransport().wait_for_result("rk", 5)
         assert isinstance(row, ExecResultRow)
@@ -354,24 +300,12 @@ class TestWorkersAdapter:
             PgClientQueueTransport().wait_for_result("rk", 5)
         rb.forget.assert_not_called()
 
-    def test_resolve_delegates_to_shared_flipt_resolver_true(self):
-        with patch(f"{_WMOD}.resolve_pg_transport", return_value=True) as r:
-            assert resolve_executor_transport(self._ctx()) is True
-        r.assert_called_once()
-        # No env master-gate is threaded any more — Flipt is the sole gate.
-        assert "master_gate_enabled" not in r.call_args.kwargs
-
-    def test_resolve_delegates_to_shared_flipt_resolver_false(self):
-        with patch(f"{_WMOD}.resolve_pg_transport", return_value=False):
-            assert resolve_executor_transport(self._ctx()) is False
-
-    def test_factory_wires_routing_with_workers_transport(self):
-        d = get_executor_dispatcher(celery_app="app")
-        assert isinstance(d, RoutingExecutionDispatcher)
-        # The PG dispatcher is wired with the workers psycopg2 transport, and the gate
-        # is the workers' Flipt resolver.
-        assert isinstance(d._pg._transport, PgClientQueueTransport)
-        assert d._resolve is resolve_executor_transport
+    def test_factory_wires_the_workers_transport(self):
+        # The factory takes no arguments (UN-4046) and returns the PG dispatcher
+        # wired with the workers psycopg2 transport.
+        d = get_executor_dispatcher()
+        assert isinstance(d, PgExecutionDispatcher)
+        assert isinstance(d._transport, PgClientQueueTransport)
 
 
 # --- Core helpers (unchanged; the shared signature/handle primitives) ---
@@ -382,9 +316,12 @@ class TestSharedDispatchHelpers:
         assert signature_to_continuation(None) is None
 
     def test_signature_translates_task_kwargs_and_queue(self):
-        sig = MagicMock(task="ide_prompt_complete", args=(),
-                        kwargs={"callback_kwargs": {"room": "r1"}},
-                        options={"queue": "ide_callback"})
+        sig = MagicMock(
+            task="ide_prompt_complete",
+            args=(),
+            kwargs={"callback_kwargs": {"room": "r1"}},
+            options={"queue": "ide_callback"},
+        )
         assert signature_to_continuation(sig) == {
             "task_name": "ide_prompt_complete",
             "kwargs": {"callback_kwargs": {"room": "r1"}},
@@ -402,8 +339,12 @@ class TestSharedDispatchHelpers:
             signature_to_continuation(sig)
 
     def test_signature_with_positional_args_fails_fast(self):
-        sig = MagicMock(task="ide_prompt_complete", args=("pos",), kwargs={},
-                        options={"queue": "ide_callback"})
+        sig = MagicMock(
+            task="ide_prompt_complete",
+            args=("pos",),
+            kwargs={},
+            options={"queue": "ide_callback"},
+        )
         with pytest.raises(ValueError, match="positional args"):
             signature_to_continuation(sig)
 

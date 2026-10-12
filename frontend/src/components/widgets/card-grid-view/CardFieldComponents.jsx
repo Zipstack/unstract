@@ -1,33 +1,35 @@
 import {
-  ClockCircleOutlined,
-  CopyOutlined,
-  DeleteOutlined,
-  EditOutlined,
-  ExportOutlined,
-  HistoryOutlined,
-  MoreOutlined,
-  ShareAltOutlined,
-  UserOutlined,
-} from "@ant-design/icons";
-import {
-  Avatar,
-  Button,
-  Card,
-  Dropdown,
-  Flex,
-  Popconfirm,
-  Space,
-  Tooltip,
-  Typography,
-} from "antd";
+  Clock,
+  Copy,
+  EllipsisVertical,
+  ExternalLink,
+  History,
+  Pencil,
+  Share2,
+  Trash2,
+  User,
+} from "lucide-react";
 import PropTypes from "prop-types";
 import { Link } from "react-router-dom";
+import { Button } from "@/components/ui/shims/antd-button";
+import { Flex, Space } from "@/components/ui/shims/antd-layout";
+import { Avatar } from "@/components/ui/shims/antd-leaves";
+import {
+  Dropdown,
+  Popconfirm,
+  Tooltip,
+} from "@/components/ui/shims/antd-overlays";
+import { Card } from "@/components/ui/shims/antd-structure";
+import { Typography } from "@/components/ui/shims/antd-typography";
 import WorkflowIcon from "../../../assets/Workflows.svg";
 import {
   copyToClipboard,
   formattedDateTime,
   shortenApiEndpoint,
 } from "../../../helpers/GetStaticData";
+import { canEditResource } from "../../../helpers/resourceAccess";
+import { useSessionStore } from "../../../store/session-store";
+import { resolveOwnerDisplay } from "../owner-display";
 
 /**
  * Reusable action box with Edit, Share, Delete icons and kebab menu
@@ -41,7 +43,21 @@ function CardActionBox({
   onDelete,
   deleteTitle = "Delete item?",
   kebabMenuItems,
+  /**
+   * Names the kind of card this box sits on ("api-deployment", "pipeline").
+   * Combined with the item's id it yields `api-deployment-edit-<id>`, which is
+   * the only way to tell one card's Edit from another's.
+   */
+  testIdPrefix,
 }) {
+  const { sessionDetails } = useSessionStore();
+  // Edit and delete are the owner's on every resource this renders. What
+  // else sharing allows differs per resource, so it is not stated here.
+  // Sharing onward stays available -- see the Share button below.
+  const canEdit = canEditResource(item, sessionDetails);
+  const lockedTitle = canEdit ? undefined : "Only the owner can change this";
+  const testId = (suffix) =>
+    testIdPrefix ? `${testIdPrefix}-${suffix}-${item?.id}` : undefined;
   const handleEditAction = (e) => {
     e.stopPropagation();
     setSelectedItem(item);
@@ -56,19 +72,27 @@ function CardActionBox({
 
   return (
     <Space className="card-list-action-box">
-      <Button
-        type="text"
-        className="action-icon-btn edit-icon"
-        icon={<EditOutlined />}
-        onClick={handleEditAction}
-      />
+      <Tooltip title={lockedTitle}>
+        <Button
+          type="text"
+          className="action-icon-btn edit-icon"
+          data-testid={testId("edit")}
+          icon={<Pencil />}
+          disabled={!canEdit}
+          onClick={handleEditAction}
+        />
+      </Tooltip>
+      {/* Sharing stays open to shared users: they may pass access on to a
+          group they belong to, or to a user in the same organisation. */}
       <Button
         type="text"
         className="action-icon-btn share-icon"
-        icon={<ShareAltOutlined />}
+        data-testid={testId("share")}
+        icon={<Share2 />}
         onClick={handleShareAction}
       />
       <Popconfirm
+        disabled={!canEdit}
         title={deleteTitle}
         description="This action cannot be undone."
         onConfirm={() => {
@@ -79,23 +103,37 @@ function CardActionBox({
         okText="Delete"
         cancelText="Cancel"
         okButtonProps={{ danger: true }}
+        /*
+         * Not keyed by item: only one confirm panel can be open at a time, so
+         * the id identifies the KIND of thing being deleted, which is what a
+         * test needs to know before clicking through.
+         */
+        data-testid={
+          testIdPrefix ? `${testIdPrefix}-delete-confirm` : undefined
+        }
       >
-        <Button
-          type="text"
-          className="action-icon-btn delete-icon"
-          icon={<DeleteOutlined />}
-          onClick={(e) => e.stopPropagation()}
-        />
+        <Tooltip title={lockedTitle}>
+          <Button
+            type="text"
+            className="action-icon-btn delete-icon"
+            data-testid={testId("delete")}
+            icon={<Trash2 />}
+            disabled={!canEdit}
+            onClick={(e) => e.stopPropagation()}
+          />
+        </Tooltip>
       </Popconfirm>
       <Dropdown
         menu={kebabMenuItems}
         trigger={["click"]}
         placement="bottomRight"
+        data-testid={testId("kebab-menu")}
       >
         <Button
           type="text"
           className="card-kebab-menu"
-          icon={<MoreOutlined />}
+          data-testid={testId("kebab-btn")}
+          icon={<EllipsisVertical />}
           onClick={(e) => e.stopPropagation()}
         />
       </Dropdown>
@@ -111,6 +149,7 @@ CardActionBox.propTypes = {
   onDelete: PropTypes.func,
   deleteTitle: PropTypes.string,
   kebabMenuItems: PropTypes.object.isRequired,
+  testIdPrefix: PropTypes.string,
 };
 
 /**
@@ -118,16 +157,12 @@ CardActionBox.propTypes = {
  * @return {JSX.Element} Rendered owner field row
  */
 function OwnerFieldRow({ item, sessionDetails, onManageCoOwners }) {
-  const isOwner = item?.is_owner ?? item.created_by === sessionDetails?.userId;
-  const email = item.created_by_email;
-  const name = isOwner ? "Me" : email?.split("@")[0] || "Unknown";
-  const extra =
-    item?.co_owners_count > 1 ? ` +${item.co_owners_count - 1}` : "";
+  const { email, name, extra } = resolveOwnerDisplay(item, sessionDetails);
   const ownerDisplay = `${name}${extra}`;
 
   const ownerContent = (
     <Space size={10} className="card-list-field-value">
-      <UserOutlined />
+      <User />
       <Tooltip title={email}>
         <Typography.Text>{ownerDisplay}</Typography.Text>
       </Tooltip>
@@ -176,7 +211,7 @@ function LastRunFieldRow({ lastRunTime }) {
         Last Run
       </Typography.Text>
       <Space size={10} className="card-list-field-value">
-        <ClockCircleOutlined />
+        <Clock />
         <Typography.Text>
           {lastRunTime ? formattedDateTime(lastRunTime) : "Never"}
         </Typography.Text>
@@ -210,7 +245,7 @@ function Last5RunsFieldRow({
         Last 5 Runs
       </Typography.Text>
       <Space size={10} className="card-list-field-value">
-        <HistoryOutlined />
+        <History />
         <StatusPillsComponent
           statuses={statuses}
           executionType={executionType}
@@ -291,7 +326,7 @@ function WorkflowFieldRow({
           onClick={(e) => e.stopPropagation()}
         >
           {workflowName}
-          <ExportOutlined />
+          <ExternalLink />
         </Link>
       </Space>
     </Flex>
@@ -332,7 +367,7 @@ function ApiEndpointSection({ apiEndpoint }) {
             <Tooltip title="Copy endpoint">
               <Button
                 className="copy-btn-outlined"
-                icon={<CopyOutlined />}
+                icon={<Copy />}
                 size="small"
                 onClick={(e) => {
                   e.stopPropagation();

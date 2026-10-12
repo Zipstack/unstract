@@ -15,7 +15,6 @@ from permissions.permission import (
     IsOwnerOrSharedUserOrSharedToOrg,
 )
 from permissions.resource_share_views import ResourceShareManagementMixin
-from permissions.roles import ResourceRole
 from plugins import get_plugin
 from rest_framework import status
 from rest_framework.decorators import action
@@ -33,9 +32,14 @@ from utils.user_context import UserContext
 
 from adapter_processor_v2.adapter_processor import AdapterProcessor
 from adapter_processor_v2.constants import AdapterKeys
+from adapter_processor_v2.deprecated_adapters import (
+    get_deprecation_message,
+    is_adapter_deprecated,
+)
 from adapter_processor_v2.exceptions import (
     CannotDeleteDefaultAdapter,
     DeleteAdapterInUseError,
+    DeprecatedAdapter,
     DuplicateAdapterNameError,
     IdIsMandatory,
     InValidType,
@@ -130,6 +134,8 @@ class AdapterViewSet(GenericViewSet):
         serializer: AdapterInstanceSerializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         adapter_id = serializer.validated_data.get(AdapterKeys.ADAPTER_ID)
+        if is_adapter_deprecated(adapter_id):
+            raise DeprecatedAdapter(get_deprecation_message(adapter_id))
         adapter_metadata = serializer.validated_data.get(AdapterKeys.ADAPTER_METADATA)
         adapter_metadata[AdapterKeys.ADAPTER_TYPE] = serializer.validated_data.get(
             AdapterKeys.ADAPTER_TYPE
@@ -246,6 +252,8 @@ class AdapterInstanceViewSet(
         ):
             use_platform_unstract_key = True
 
+        # Deprecated adapter_ids are rejected in AdapterInstanceSerializer.validate,
+        # which also covers update/partial_update.
         serializer.is_valid(raise_exception=True)
         adapter_type = serializer.validated_data.get(AdapterKeys.ADAPTER_TYPE)
         self._enforce_llm_creation_restriction(request, adapter_type)
@@ -271,9 +279,7 @@ class AdapterInstanceViewSet(
             instance = serializer.save(organization=UserContext.get_organization())
             # ``created_by`` is audit-only; the creator's access flows through
             # an OWNER membership row (UN-2202 co-owners).
-            instance.memberships.get_or_create(
-                user_id=request.user.id, defaults={"role": ResourceRole.OWNER}
-            )
+            instance.grant_owner(request.user)
             organization_member = OrganizationMemberService.get_user_by_id(
                 request.user.id
             )

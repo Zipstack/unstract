@@ -1,7 +1,9 @@
-import { Col, Divider, Flex, Row, Space, Typography } from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
+import { Col, Flex, Row, Space } from "@/components/ui/shims/antd-layout";
+import { Divider } from "@/components/ui/shims/antd-leaves";
+import { Typography } from "@/components/ui/shims/antd-typography";
 
 import { base64toBlob } from "../../../helpers/GetStaticData";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";

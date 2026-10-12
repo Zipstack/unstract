@@ -18,5 +18,11 @@
 
 .input-header-text {
   font-weight: bold;
-  font-size: 14px;
+  font-size: 13px;
+}
+
+.editable-text-error-message {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
 }

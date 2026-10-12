@@ -1,13 +1,13 @@
-import {
-  CopyOutlined,
-  DeleteOutlined,
-  EditOutlined,
-  PlusOutlined,
-} from "@ant-design/icons";
-import { Input, Modal, Space, Switch, Table, Tooltip, Typography } from "antd";
+import { Copy, Pencil, Plus, Trash2 } from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
+import { Input, Switch } from "@/components/ui/shims/antd-inputs";
+import { Space } from "@/components/ui/shims/antd-layout";
+import { Modal, Tooltip } from "@/components/ui/shims/antd-overlays";
+import { Table } from "@/components/ui/shims/antd-structure";
+import { Typography } from "@/components/ui/shims/antd-typography";
 
+import { canEditResource } from "../../../helpers/resourceAccess";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useAlertStore } from "../../../store/alert-store";
 import { useSessionStore } from "../../../store/session-store";
@@ -28,6 +28,10 @@ const ManageKeys = ({
   type,
 }) => {
   const { sessionDetails } = useSessionStore();
+  // Keys are managed by the deployment's owner, so a shared user reads them
+  // but cannot add one or change its state (UN-2868).
+  const canEdit = canEditResource(selectedApiRow, sessionDetails);
+  const ownerOnlyTitle = canEdit ? "" : "Only the owner can change this";
   const axiosPrivate = useAxiosPrivate();
   const handleException = useExceptionHandler();
   const [isTableLoading, setIsTableLoading] = useState(false);
@@ -242,7 +246,7 @@ const ManageKeys = ({
               className="cursorPointer"
               onClick={() => copyText(record?.api_key)}
             >
-              <CopyOutlined />
+              <Copy />
             </Tooltip>
           </div>
           <div>
@@ -257,13 +261,16 @@ const ManageKeys = ({
       dataIndex: "is_active",
       align: "center",
       render: (_, record) => (
-        <Switch
-          size="small"
-          checked={record.is_active}
-          onChange={(e) => {
-            updateKeyStatus(record);
-          }}
-        />
+        <Tooltip title={ownerOnlyTitle}>
+          <Switch
+            size="small"
+            checked={record.is_active}
+            disabled={!canEdit}
+            onChange={(e) => {
+              updateKeyStatus(record);
+            }}
+          />
+        </Tooltip>
       ),
     },
     {
@@ -272,14 +279,25 @@ const ManageKeys = ({
       align: "center",
       render: (_, record) => (
         <>
-          <Space className="actions" onClick={() => openEditModal(record)}>
-            <Tooltip title="edit" className="cursorPointer">
-              <EditOutlined />
+          <Space
+            className="actions"
+            aria-disabled={!canEdit}
+            onClick={() => canEdit && openEditModal(record)}
+          >
+            <Tooltip title={ownerOnlyTitle || "edit"} className="cursorPointer">
+              <Pencil />
             </Tooltip>
           </Space>
-          <Space className="actions" onClick={() => showDeleteModal(record)}>
-            <Tooltip title="delete" className="cursorPointer">
-              <DeleteOutlined />
+          <Space
+            className="actions"
+            aria-disabled={!canEdit}
+            onClick={() => canEdit && showDeleteModal(record)}
+          >
+            <Tooltip
+              title={ownerOnlyTitle || "delete"}
+              className="cursorPointer"
+            >
+              <Trash2 />
             </Tooltip>
           </Space>
         </>
@@ -299,14 +317,17 @@ const ManageKeys = ({
         footer={null}
       >
         <div className="display-flex-right new-key-btn">
-          <CustomButton
-            type="primary"
-            size="small"
-            icon={<PlusOutlined />}
-            onClick={openAddModal}
-          >
-            New Key
-          </CustomButton>
+          <Tooltip title={ownerOnlyTitle}>
+            <CustomButton
+              type="primary"
+              size="small"
+              icon={<Plus />}
+              disabled={!canEdit}
+              onClick={openAddModal}
+            >
+              New Key
+            </CustomButton>
+          </Tooltip>
         </div>
         <div className="keys-table">
           <Table

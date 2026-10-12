@@ -276,6 +276,19 @@ class TestPostprocessor:
     PARSED = {"field": "original"}
     HIGHLIGHT = [{"page": 1, "spans": []}]
 
+    @pytest.fixture(autouse=True)
+    def _allow_webhook_url(self):
+        """Let the fictional test URL past the egress guard.
+
+        These tests exercise postprocessing behaviour, not URL safety, and
+        ``hook.example.com`` does not resolve. The guard itself is covered by
+        ``test_webhook_ssrf_sink`` and ``unstract/core``'s ``test_ssrf_guard``.
+        """
+        with patch(
+            "executor.executors.postprocessor.is_safe_webhook_url", return_value=True
+        ):
+            yield
+
     # --- disabled / no-op paths ---
 
     def test_disabled_returns_original(self):

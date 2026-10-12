@@ -1,6 +1,6 @@
-import { Modal } from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
+import { Modal } from "@/components/ui/shims/antd-overlays";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { useAlertStore } from "../../../store/alert-store";
 import { pipelineService } from "../pipeline-service";

@@ -1,13 +1,13 @@
-import {
-  FilePdfOutlined,
-  FileTextOutlined,
-  LeftOutlined,
-  RightOutlined,
-} from "@ant-design/icons";
+import { ChevronLeft, ChevronRight, FileText } from "lucide-react";
+import { Button } from "@/components/ui/shims/antd-button";
+import { Space } from "@/components/ui/shims/antd-layout";
+import { Tag } from "@/components/ui/shims/antd-leaves";
+import { Tooltip } from "@/components/ui/shims/antd-overlays";
+import { Tabs } from "@/components/ui/shims/antd-structure";
+import { Typography } from "@/components/ui/shims/antd-typography";
 import "@react-pdf-viewer/core/lib/styles/index.css";
 import "@react-pdf-viewer/default-layout/lib/styles/index.css";
 import "@react-pdf-viewer/page-navigation/lib/styles/index.css";
-import { Button, Space, Tabs, Tag, Tooltip, Typography } from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
@@ -116,7 +116,6 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
 
   useEffect(() => {
     // Convert blob URL to an object URL
-    console.log("here--->", fileData);
     if (fileData.blob) {
       const objectUrl = URL.createObjectURL(fileData.blob);
       setBlobFileUrl(objectUrl);
@@ -133,7 +132,7 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
           key: "1",
           label: (
             <Tooltip title="PDF View">
-              <FilePdfOutlined />
+              <FileText />
             </Tooltip>
           ),
         },
@@ -141,7 +140,7 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
           key: "2",
           label: (
             <Tooltip title="Raw View">
-              <FileTextOutlined />
+              <FileText />
             </Tooltip>
           ),
         },
@@ -164,7 +163,6 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
     Object.keys(viewTypes).forEach((item) => {
       handleFetchContent(viewTypes[item]);
     });
-    console.log(selectedDoc);
   }, [selectedDoc]);
 
   useEffect(() => {
@@ -252,13 +250,11 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
   };
 
   const processGetDocsResponse = (data, viewType, mimeType) => {
-    console.log("response-->", viewType, mimeType);
     if (viewType === viewTypes.original) {
       if (mimeType === "application/pdf") {
         // Existing flow: base64 → blob → PdfViewer
         const base64String = data || "";
         const blob = base64toBlobWithMime(base64String, mimeType);
-        console.log("blob-->", blob);
         setFileData({ blob, mimeType });
         const reader = new FileReader();
         reader.readAsDataURL(blob);
@@ -367,7 +363,6 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
 
   const renderDoc = (docName, fileUrl, highlightData) => {
     // Use mimeType from response for rendering decisions
-    console.log(fileData);
     if (fileData.mimeType === "application/pdf") {
       return <PdfViewer fileUrl={fileUrl} highlightData={highlightData} />;
     }
@@ -390,6 +385,7 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
             activeKey={activeKey}
             items={items}
             onChange={handleActiveKeyChange}
+            data-testid="doc-manager-tabs"
             moreIcon={<></>}
           />
         </div>
@@ -466,9 +462,10 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
                   isSinglePassExtractLoading ||
                   page <= 1
                 }
+                data-testid="doc-manager-prev-doc-btn"
                 onClick={handlePageLeft}
               >
-                <LeftOutlined className="doc-manager-paginate-icon" />
+                <ChevronLeft className="doc-manager-paginate-icon" />
               </Button>
               <Button
                 type="text"
@@ -479,9 +476,10 @@ function DocumentManager({ generateIndex, handleUpdateTool, handleDocChange }) {
                   isSinglePassExtractLoading ||
                   page >= listOfDocs?.length
                 }
+                data-testid="doc-manager-next-doc-btn"
                 onClick={handlePageRight}
               >
-                <RightOutlined className="doc-manager-paginate-icon" />
+                <ChevronRight className="doc-manager-paginate-icon" />
               </Button>
             </div>
           </Space>

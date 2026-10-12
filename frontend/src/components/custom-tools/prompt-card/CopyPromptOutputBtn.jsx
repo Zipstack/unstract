@@ -1,6 +1,7 @@
-import { CopyOutlined } from "@ant-design/icons";
-import { Button, Tooltip } from "antd";
+import { Copy } from "lucide-react";
 import PropTypes from "prop-types";
+import { Button } from "@/components/ui/shims/antd-button";
+import { Tooltip } from "@/components/ui/shims/antd-overlays";
 
 function CopyPromptOutputBtn({ isDisabled, copyToClipboard }) {
   return (
@@ -12,7 +13,7 @@ function CopyPromptOutputBtn({ isDisabled, copyToClipboard }) {
         onClick={copyToClipboard}
         disabled={isDisabled}
       >
-        <CopyOutlined className="prompt-card-actions-head" />
+        <Copy className="prompt-card-actions-head" />
       </Button>
     </Tooltip>
   );

@@ -38,17 +38,9 @@ class SummarizeMigrationUtils:
             )
             return False
 
-        # Check if there's a summarize profile before entering transaction
-        try:
-            summarize_profile = ProfileManager.objects.get(
-                prompt_studio_tool=tool_instance, is_summarize_llm=True
-            )
-        except ObjectDoesNotExist:
-            logger.info(
-                f"No summarize profile found for tool {tool_instance.tool_id}, skipping migration"
-            )
-            return False
-
+        # No pre-transaction lookup: the in-transaction fetch below repeats it
+        # exactly, and catching the miss up here short-circuited the diagnostic
+        # that tells the two miss reasons apart.
         try:
             with transaction.atomic():
                 # Re-fetch the instance within transaction to ensure fresh data
@@ -60,13 +52,34 @@ class SummarizeMigrationUtils:
 
                 # Re-fetch the summarize profile with lock within transaction
                 try:
-                    summarize_profile = ProfileManager.objects.select_for_update().get(
-                        prompt_studio_tool=tool_instance, is_summarize_llm=True
-                    )
+                    # of=("self",): the org-scoped manager joins through
+                    # AdapterInstance, which would otherwise be locked too.
+                    summarize_profile = ProfileManager.objects.select_for_update(
+                        of=("self",)
+                    ).get(prompt_studio_tool=tool_instance, is_summarize_llm=True)
                 except ObjectDoesNotExist:
-                    logger.info(
-                        f"No summarize profile found for tool {tool_instance.tool_id}, skipping migration"
-                    )
+                    # ProfileManager.objects is scoped through
+                    # vector_store__organization, so a miss means either the
+                    # profile does not exist or the org filter hides it. The
+                    # second never self-heals — this lazy migration re-runs and
+                    # re-skips on every invocation — so the two get different
+                    # log levels.
+                    exists_unscoped = ProfileManager._base_manager.filter(
+                        prompt_studio_tool=tool_instance, is_summarize_llm=True
+                    ).exists()
+                    if exists_unscoped:
+                        logger.error(
+                            "Summarize profile for tool %s exists but is not "
+                            "visible in the current organization context; "
+                            "migration skipped and will keep being skipped.",
+                            tool_instance.tool_id,
+                        )
+                    else:
+                        logger.info(
+                            "No summarize profile found for tool %s, skipping "
+                            "migration",
+                            tool_instance.tool_id,
+                        )
                     return False
 
                 # Check if profile has an LLM adapter

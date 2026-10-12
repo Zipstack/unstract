@@ -1,27 +1,29 @@
 import {
-  CaretDownOutlined,
-  CaretUpOutlined,
-  ClearOutlined,
-  DeleteOutlined,
-  EditOutlined,
-  QuestionCircleOutlined,
-  ShareAltOutlined,
-  SortAscendingOutlined,
-  SortDescendingOutlined,
-} from "@ant-design/icons";
-import {
-  Avatar,
-  Dropdown,
-  Popconfirm,
-  Space,
-  Table,
-  Tooltip,
-  Typography,
-} from "antd";
+  ArrowDownAZ,
+  ArrowUpAZ,
+  ChevronDown,
+  ChevronUp,
+  CircleHelp,
+  Eraser,
+  Pencil,
+  Share2,
+  Trash2,
+} from "lucide-react";
 import PropTypes from "prop-types";
 import { useNavigate } from "react-router-dom";
+import { Space } from "@/components/ui/shims/antd-layout";
+import { Avatar } from "@/components/ui/shims/antd-leaves";
+import {
+  Dropdown,
+  Popconfirm,
+  Tooltip,
+} from "@/components/ui/shims/antd-overlays";
+import { Table } from "@/components/ui/shims/antd-structure";
+import { Typography } from "@/components/ui/shims/antd-typography";
 
 import { formattedDateTime, timeAgo } from "../../../helpers/GetStaticData";
+import { canEditResource } from "../../../helpers/resourceAccess";
+import { resolveOwnerDisplay } from "../owner-display";
 import "./ResourceTable.css";
 
 // Stable, distinct avatar swatch per owner (seeded on email/name) like the
@@ -47,12 +49,12 @@ const colorForSeed = (seed = "") => {
 // Sort-menu wording differs for text vs date columns (per the design).
 const SORT_OPTIONS = {
   text: [
-    { key: "asc", label: "A-Z", icon: <SortAscendingOutlined /> },
-    { key: "desc", label: "Z-A", icon: <SortDescendingOutlined /> },
+    { key: "asc", label: "A-Z", icon: <ArrowUpAZ /> },
+    { key: "desc", label: "Z-A", icon: <ArrowDownAZ /> },
   ],
   date: [
-    { key: "asc", label: "Oldest First", icon: <SortAscendingOutlined /> },
-    { key: "desc", label: "Newest First", icon: <SortDescendingOutlined /> },
+    { key: "asc", label: "Oldest First", icon: <ArrowUpAZ /> },
+    { key: "desc", label: "Newest First", icon: <ArrowDownAZ /> },
   ],
 };
 
@@ -68,13 +70,14 @@ function SortHeader({
   sort,
   userSorted,
   onSortChange,
+  testId,
 }) {
   // Don't light up the default sort column on load — only once the user picks.
   const active = userSorted && sort?.sortBy === sortKey;
   const items = [
     ...SORT_OPTIONS[sortType],
     { type: "divider" },
-    { key: "clear", label: "Clear Sort", icon: <ClearOutlined /> },
+    { key: "clear", label: "Clear Sort", icon: <Eraser /> },
   ];
   const onClick = ({ key, domEvent }) => {
     domEvent?.stopPropagation();
@@ -85,18 +88,23 @@ function SortHeader({
     }
   };
   return (
+    // The menu is portalled and its entries repeat verbatim across the four
+    // sortable columns, so `${testId}-menu-item-asc` is the only thing that
+    // distinguishes "A-Z under Name" from "A-Z under Modified".
     <Dropdown
       trigger={["click"]}
       menu={{ items, onClick, selectedKeys: active ? [sort.order] : [] }}
+      data-testid={testId ? `${testId}-menu` : undefined}
     >
       <button
         type="button"
+        data-testid={testId}
         className={`resource-table-th${active ? " active" : ""}`}
       >
         <span>{label}</span>
         <span className="resource-table-sort-icon">
-          <CaretUpOutlined />
-          <CaretDownOutlined />
+          <ChevronUp />
+          <ChevronDown />
         </span>
       </button>
     </Dropdown>
@@ -110,6 +118,7 @@ SortHeader.propTypes = {
   sort: PropTypes.object,
   userSorted: PropTypes.bool,
   onSortChange: PropTypes.func,
+  testId: PropTypes.string,
 };
 
 /**
@@ -144,8 +153,25 @@ function ResourceTable({
   showOwner = true,
   isClickable = true,
   type,
+  /**
+   * Prefix for the `data-testid`s below. Every control in this table repeats
+   * once per row — the action buttons share an aria-label (`Edit Prompt
+   * Project`), and the rows themselves differ only by content — so a test
+   * needs the row id to address one of them. Callers pass a page-specific
+   * prefix (`prompt-studio-list`) so the resulting locators read as the screen
+   * they belong to rather than as this widget.
+   */
+  testIdPrefix = "resource-table",
 }) {
   const navigate = useNavigate();
+  /*
+   * Note the shape: the ROW is `<prefix>-row-<id>` and a control inside it is
+   * `<prefix>-<action>-<id>` — deliberately NOT `<prefix>-row-<action>-<id>`,
+   * which would make every action button a prefix-match for the row itself and
+   * leave `[data-testid^="…-row-"]` matching five elements per row.
+   */
+  const rowTestId = (item, action) =>
+    `${testIdPrefix}-${action}-${item?.[idProp]}`;
 
   const renderName = (item) => {
     const icon = iconProp ? item?.[iconProp] : null;
@@ -193,20 +219,11 @@ function ResourceTable({
   };
 
   const renderOwner = (item) => {
-    // owner_emails is earliest-first; [0] is the primary shown owner.
-    // Fall back to created_by_email so rows with no live OWNER membership
-    // (platform API-key sessions, pre-backfill rows) don't render "Unknown".
-    const ownerEmails = item?.[ownerEmailsProp];
-    const email =
-      (Array.isArray(ownerEmails) ? ownerEmails[0] : undefined) ??
-      item?.created_by_email;
-    // "Me" must track the DISPLAYED owner, not the viewer's own membership —
-    // else a co-owner sees "Me" over the primary owner's avatar/email. Match on
-    // the shown email so the creator viewing their own resource still reads "Me".
-    const isMe = Boolean(email) && email === sessionDetails?.email;
-    const name = isMe ? "Me" : email?.split("@")[0] || "Unknown";
-    const extra =
-      item?.co_owners_count > 1 ? ` +${item.co_owners_count - 1}` : "";
+    const { email, name, extra } = resolveOwnerDisplay(
+      item,
+      sessionDetails,
+      ownerEmailsProp,
+    );
     const initials = (email || name).slice(0, 2).toUpperCase();
     const swatch = colorForSeed(email || name);
 
@@ -247,6 +264,7 @@ function ResourceTable({
       <button
         type="button"
         className="resource-table-owner-btn"
+        data-testid={rowTestId(item, "owner")}
         onClick={(event) => {
           event.stopPropagation();
           handleCoOwner(event, item);
@@ -263,6 +281,16 @@ function ResourceTable({
   const renderActions = (item) => {
     const deprecated = item?.is_deprecated;
     const disabledTitle = deprecated ? "This adapter is deprecated" : "";
+    // Edit and delete are the owner's on every resource this renders. What
+    // else sharing allows differs per resource, so it is not stated here.
+    // Both controls stay on screen but disabled, so it is obvious they exist
+    // and why they are not available. Sharing onward stays open.
+    const canEdit = canEditResource(item, sessionDetails);
+    const locked = !canEdit;
+    // Frictionless adapters are platform-provisioned: any org member may
+    // delete them, so the ownership lock covers Edit but not Delete.
+    const deleteLocked = locked && !item?.is_friction_less;
+    const lockedTitle = "Only the owner can change this";
     return (
       <Space
         size={18}
@@ -270,15 +298,18 @@ function ResourceTable({
         onClick={(event) => event.stopPropagation()}
         role="none"
       >
-        <Tooltip title={disabledTitle}>
+        <Tooltip title={locked ? lockedTitle : disabledTitle}>
           <button
             type="button"
             className="action-icon-btn"
             aria-label={`Edit ${type}`}
-            aria-disabled={deprecated}
-            onClick={(event) => !deprecated && handleEdit?.(event, item)}
+            data-testid={rowTestId(item, "edit")}
+            aria-disabled={deprecated || locked}
+            onClick={(event) =>
+              !deprecated && canEdit && handleEdit?.(event, item)
+            }
           >
-            <EditOutlined className="action-icon-buttons edit-icon" />
+            <Pencil className="action-icon-buttons edit-icon" />
           </button>
         </Tooltip>
         {handleShare && (
@@ -287,27 +318,39 @@ function ResourceTable({
               type="button"
               className="action-icon-btn"
               aria-label={`Share ${type}`}
+              data-testid={rowTestId(item, "share")}
               aria-disabled={deprecated}
               onClick={(event) => !deprecated && handleShare(event, item, true)}
             >
-              <ShareAltOutlined className="action-icon-buttons share-icon" />
+              <Share2 className="action-icon-buttons share-icon" />
             </button>
           </Tooltip>
         )}
+        {/*
+         * The confirm panel is NOT keyed by row: only one can be open at a
+         * time, so a per-row id would just make the locator longer without
+         * making it more specific. The button that opens it is per-row,
+         * because every row has one.
+         */}
         <Popconfirm
+          disabled={deleteLocked}
           title={`Delete the ${type}`}
           description={`Are you sure to delete ${item?.[titleProp]}`}
           okText="Yes"
           cancelText="No"
-          icon={<QuestionCircleOutlined />}
+          icon={<CircleHelp />}
+          data-testid={`${testIdPrefix}-delete-confirm`}
           onConfirm={(event) => handleDelete?.(event, item)}
         >
           <button
             type="button"
             className="action-icon-btn"
             aria-label={`Delete ${type}`}
+            data-testid={rowTestId(item, "delete")}
+            aria-disabled={deleteLocked}
+            title={deleteLocked ? lockedTitle : undefined}
           >
-            <DeleteOutlined className="action-icon-buttons delete-icon" />
+            <Trash2 className="action-icon-buttons delete-icon" />
           </button>
         </Popconfirm>
       </Space>
@@ -318,6 +361,7 @@ function ResourceTable({
     {
       title: (
         <SortHeader
+          testId={`${testIdPrefix}-sort-name`}
           label="Name"
           sortKey={titleProp}
           sortType="text"
@@ -339,6 +383,7 @@ function ResourceTable({
     {
       title: (
         <SortHeader
+          testId={`${testIdPrefix}-sort-created`}
           label="Created"
           sortKey={dateProp}
           sortType="date"
@@ -354,6 +399,7 @@ function ResourceTable({
     {
       title: (
         <SortHeader
+          testId={`${testIdPrefix}-sort-modified`}
           label="Modified"
           sortKey={modifiedProp}
           sortType="date"
@@ -367,8 +413,16 @@ function ResourceTable({
       render: (_, item) => {
         const iso = item?.[modifiedProp];
         const rel = timeAgo(iso);
+        // The <span> is load-bearing: Tooltip renders a Radix trigger with
+        // `asChild`, which slots onto a single ELEMENT child. `timeAgo` returns
+        // a string, and slotting onto text throws "Primitive.button failed to
+        // slot onto its children" — taking down every route that renders this
+        // table with at least one row. antd's Tooltip accepted a bare string
+        // here, so the shape survived the conversion unnoticed.
         return rel ? (
-          <Tooltip title={formattedDateTime(iso)}>{rel}</Tooltip>
+          <Tooltip title={formattedDateTime(iso)}>
+            <span>{rel}</span>
+          </Tooltip>
         ) : (
           "-"
         );
@@ -395,6 +449,7 @@ function ResourceTable({
   return (
     <Table
       className="resource-table"
+      data-testid={testIdPrefix}
       rowKey={idProp}
       tableLayout="fixed"
       columns={columns}
@@ -403,6 +458,9 @@ function ResourceTable({
       onChange={handleChange}
       rowClassName={isClickable ? "resource-table-row-clickable" : ""}
       onRow={(item) => ({
+        // Whatever `onRow` returns is spread onto the <tr>, which is how the
+        // row gets an id at all — there is no other hook for it.
+        "data-testid": `${testIdPrefix}-row-${item?.[idProp]}`,
         // onRowClick lets callers override the default relative nav (e.g. an
         // absolute org-scoped path with router state).
         onClick: isClickable
@@ -452,6 +510,7 @@ ResourceTable.propTypes = {
   showOwner: PropTypes.bool,
   isClickable: PropTypes.bool,
   type: PropTypes.string,
+  testIdPrefix: PropTypes.string,
 };
 
 export { ResourceTable };

@@ -39,6 +39,17 @@ function apiDeploymentsService() {
       };
       return axiosPrivate(options);
     },
+    setApiDeploymentActive: (id, isActive) => {
+      // Only the flag: the gate admits shared users for an activation-only
+      // PATCH, and a full PUT would carry fields they may not change.
+      options = {
+        url: `${path}/api/deployment/${id}/`,
+        method: "PATCH",
+        headers: requestHeaders,
+        data: { is_active: isActive },
+      };
+      return axiosPrivate(options);
+    },
     updateApiDeployment: (record) => {
       options = {
         url: `${path}/api/deployment/${record?.id}/`,

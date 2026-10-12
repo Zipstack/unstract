@@ -16,6 +16,8 @@ class PromptStudioOutputSerializer(AuditSerializer):
     class Meta:
         model = PromptStudioOutputManager
         fields = "__all__"
+        # LLM output/context legitimately contains XML-like tags.
+        html_safe_fields = ("output", "context")
 
     def to_representation(self, instance):
         data = super().to_representation(instance)

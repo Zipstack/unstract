@@ -698,20 +698,22 @@ class TestSanityResponseContracts:
 
 
 class TestSanityDispatcher:
-    """Full-chain dispatcher tests with Celery eager mode."""
+    """Full-chain dispatcher tests, running the executor task in-process."""
 
     @patch(_PATCH_FS)
     @patch(_PATCH_X2TEXT)
     def test_dispatcher_dispatch_full_chain(
         self, mock_x2text_cls, mock_get_fs, eager_app
     ):
-        """ExecutionDispatcher dispatches through Celery and returns result.
+        """The dispatcher drives the executor task and returns its result.
 
-        Celery's ``send_task`` doesn't reliably use eager mode, so we
-        patch it to route through ``task.apply()`` instead — this still
-        exercises the full Dispatcher → task → orchestrator chain.
+        ``EagerExecutorTransport`` runs ``execute_extraction`` in-process rather
+        than enqueueing it, so this still exercises the full
+        dispatcher → task → orchestrator chain without a queue or a database.
         """
-        from unstract.sdk1.execution.dispatcher import ExecutionDispatcher
+        from unstract.workflow_execution.executor_rpc import PgExecutionDispatcher
+
+        from .executor_dispatch_fakes import EagerExecutorTransport
 
         mock_x2text = MagicMock()
         mock_x2text.process.return_value = _mock_process_response("dispatched")
@@ -719,29 +721,21 @@ class TestSanityDispatcher:
         mock_x2text_cls.return_value = mock_x2text
         mock_get_fs.return_value = MagicMock()
 
-        task = eager_app.tasks["execute_extraction"]
-
-        def eager_send_task(name, args=None, **kwargs):
-            return task.apply(args=args)
-
-        with patch.object(eager_app, "send_task", side_effect=eager_send_task):
-            dispatcher = ExecutionDispatcher(celery_app=eager_app)
-            ctx = _extract_ctx()
-            result = dispatcher.dispatch(ctx, timeout=10)
+        transport = EagerExecutorTransport(eager_app.tasks["execute_extraction"])
+        dispatcher = PgExecutionDispatcher(transport)
+        result = dispatcher.dispatch(_extract_ctx(), timeout=10)
 
         assert isinstance(result, ExecutionResult)
         assert result.success is True
         assert result.data[IKeys.EXTRACTED_TEXT] == "dispatched"
+        assert transport.queue == "celery_executor_legacy"
 
-    def test_dispatcher_no_app_raises(self):
-        """ExecutionDispatcher(celery_app=None).dispatch() → ValueError."""
-        from unstract.sdk1.execution.dispatcher import ExecutionDispatcher
-
-        dispatcher = ExecutionDispatcher(celery_app=None)
-        ctx = _extract_ctx()
-
-        with pytest.raises(ValueError, match="No Celery app"):
-            dispatcher.dispatch(ctx)
+    # ``test_dispatcher_no_app_raises`` is gone with the Celery dispatcher it
+    # characterised: ``PgExecutionDispatcher`` is transport-injected and never
+    # raises by contract — an enqueue failure becomes ``ExecutionResult.failure``.
+    # That contract is covered in ``test_executor_rpc.py``, which drives a
+    # transport whose ``enqueue`` raises; duplicating it here would assert the
+    # shared dispatcher's behaviour a second time in a suite about the pipeline.
 
 
 class TestSanityCrossCutting:

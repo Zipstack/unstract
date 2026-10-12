@@ -838,6 +838,84 @@ def test_failed_gate_blocks_dependents_and_cascades(tmp_path: Path, monkeypatch)
     assert (reports_dir / "e2e-leaf" / "junit.xml").exists()
 
 
+def test_node_command_vitest_points_reporter_at_group_junit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The whole reason `vitest` is a first-class runner rather than a synthetic
+    one-row wrapper: it writes real JUnit, so `parse_junit` reports per-test
+    counts. That only holds if the reporter is aimed at the group's junit.xml.
+    """
+    import tests.rig.cli as cli_mod
+    from tests.rig.groups import GroupDefinition
+
+    # Without this stub the test fails wherever npx is absent, because
+    # `_node_command` returns the exit-5 skip before building anything. That
+    # branch is `test_node_command_without_npx_collects_nothing`'s job; this
+    # one is about the command's shape. `npx` specifically, so a change to
+    # which binary the guard probes fails here rather than passing silently.
+    monkeypatch.setattr(
+        cli_mod.shutil, "which", lambda name: "/usr/bin/npx" if name == "npx" else None
+    )
+    group = GroupDefinition(
+        name="frontend", tier="unit", paths=("src",), runner="vitest",
+        workdir="frontend",
+    )
+    junit = tmp_path / "frontend" / "junit.xml"
+    cmd = cli_mod._node_command(group, junit=junit)
+
+    assert cmd[:4] == ["npx", "--no-install", "vitest", "run"]
+    assert "--reporter=junit" in cmd
+    assert f"--outputFile={junit}" in cmd
+    assert cmd[-1] == "src"
+
+
+def test_node_command_playwright_takes_junit_from_env_not_flag(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Playwright reads its reporter path from config (PLAYWRIGHT_JUNIT_OUTPUT_NAME),
+    not a CLI flag — passing --outputFile would make it fail to parse args.
+    """
+    import tests.rig.cli as cli_mod
+    from tests.rig.groups import GroupDefinition
+
+    # Without this stub the test fails wherever npx is absent, because
+    # `_node_command` returns the exit-5 skip before building anything. That
+    # branch is `test_node_command_without_npx_collects_nothing`'s job; this
+    # one is about the command's shape. `npx` specifically, so a change to
+    # which binary the guard probes fails here rather than passing silently.
+    monkeypatch.setattr(
+        cli_mod.shutil, "which", lambda name: "/usr/bin/npx" if name == "npx" else None
+    )
+    group = GroupDefinition(
+        name="ui", tier="e2e", paths=("tests/ui",), runner="playwright",
+        workdir="frontend",
+    )
+    cmd = cli_mod._node_command(group, junit=tmp_path / "junit.xml")
+
+    assert cmd[:4] == ["npx", "--no-install", "playwright", "test"]
+    assert not any(c.startswith("--outputFile") for c in cmd)
+    assert cmd[-1] == "tests/ui"
+
+
+def test_node_command_without_npx_collects_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A machine with no Node must SKIP these groups, not fail them: exit 5 is
+    the rig's "nothing collected" convention (same as an empty hurl group).
+    """
+    import tests.rig.cli as cli_mod
+    from tests.rig.groups import GroupDefinition
+
+    monkeypatch.setattr(cli_mod.shutil, "which", lambda _: None)
+    group = GroupDefinition(
+        name="frontend", tier="unit", paths=("src",), runner="vitest",
+        workdir="frontend",
+    )
+    assert cli_mod._node_command(group, junit=tmp_path / "junit.xml") == [
+        "sh", "-c", "exit 5",
+    ]
+
+
 def _make_group(name: str, workdir: str):
     from tests.rig.groups import GroupDefinition
 

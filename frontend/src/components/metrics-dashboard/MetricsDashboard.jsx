@@ -1,25 +1,21 @@
-import {
-  CreditCardOutlined,
-  DashboardOutlined,
-  FileSearchOutlined,
-  ReloadOutlined,
-  RocketOutlined,
-  SlackOutlined,
-  ThunderboltOutlined,
-} from "@ant-design/icons";
-import {
-  Alert,
-  Button,
-  Col,
-  DatePicker,
-  Row,
-  Space,
-  Tabs,
-  Typography,
-} from "antd";
 import dayjs from "dayjs";
+import {
+  CreditCard,
+  FileSearch,
+  Gauge,
+  MessagesSquare,
+  Rocket,
+  RotateCw,
+  Zap,
+} from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { Button } from "@/components/ui/shims/antd-button";
+import { DatePicker } from "@/components/ui/shims/antd-datetime";
+import { Col, Row, Space } from "@/components/ui/shims/antd-layout";
+import { Alert } from "@/components/ui/shims/antd-leaves";
+import { Tabs } from "@/components/ui/shims/antd-structure";
+import { Typography } from "@/components/ui/shims/antd-typography";
 
 import { EmptyPlaceholder } from "../../assets";
 import { evictExpiredCache } from "../../helpers/metricsCache";
@@ -65,7 +61,7 @@ function DashboardButtons() {
   return (
     <Space>
       <Button
-        icon={<FileSearchOutlined />}
+        icon={<FileSearch />}
         type="link"
         onClick={() =>
           window.open(
@@ -79,7 +75,7 @@ function DashboardButtons() {
         Documentation
       </Button>
       <Button
-        icon={<SlackOutlined />}
+        icon={<MessagesSquare />}
         type="link"
         onClick={() =>
           window.open(
@@ -195,7 +191,7 @@ function MetricsDashboard() {
       key: "overview",
       label: (
         <span>
-          <DashboardOutlined /> Overview
+          <Gauge /> Overview
         </span>
       ),
       children: hasNoData ? (
@@ -213,7 +209,7 @@ function MetricsDashboard() {
           <Space className="metrics-empty-state-actions">
             <Button
               type="primary"
-              icon={<RocketOutlined />}
+              icon={<Rocket />}
               onClick={() => navigate(`/${orgName}/workflows`)}
             >
               Create Workflow
@@ -249,7 +245,7 @@ function MetricsDashboard() {
       key: "llm-usage",
       label: (
         <span>
-          <ThunderboltOutlined /> Usage by Deployment
+          <Zap /> Usage by Deployment
         </span>
       ),
       children: (
@@ -272,7 +268,7 @@ function MetricsDashboard() {
       key: "subscription",
       label: (
         <span>
-          <CreditCardOutlined /> Subscription
+          <CreditCard /> Subscription
         </span>
       ),
       children: (
@@ -338,7 +334,7 @@ function MetricsDashboard() {
                     ]}
                   />
                 )}
-                <Button icon={<ReloadOutlined />} onClick={handleRefresh} />
+                <Button icon={<RotateCw />} onClick={handleRefresh} />
               </Space>
             }
           />

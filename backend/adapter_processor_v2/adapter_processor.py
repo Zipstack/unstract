@@ -10,11 +10,20 @@ from platform_settings_v2.platform_auth_service import PlatformAuthenticationSer
 from tenant_account_v2.organization_member_service import OrganizationMemberService
 
 from adapter_processor_v2.constants import AdapterKeys, AllowedDomains
+from adapter_processor_v2.deprecated_adapters import (
+    get_deprecation_message,
+    is_adapter_deprecated,
+)
 from adapter_processor_v2.exceptions import (
     AdapterNotFound,
+    DeprecatedAdapter,
     InternalServiceError,
     InValidAdapterId,
     TestAdapterError,
+)
+from adapter_processor_v2.image_output_gating import (
+    filter_image_output_mode,
+    validate_image_output_allowed,
 )
 from unstract.sdk1.adapters.adapterkit import Adapterkit
 from unstract.sdk1.adapters.base import Adapter
@@ -39,12 +48,15 @@ class AdapterProcessor:
     def get_json_schema(adapter_id: str) -> dict[str, Any]:
         """Function to return JSON Schema for Adapters."""
         schema_details: dict[str, Any] = {}
+        if is_adapter_deprecated(adapter_id):
+            raise DeprecatedAdapter(get_deprecation_message(adapter_id))
         updated_adapters = AdapterProcessor.__fetch_adapters_by_key_value(
             AdapterKeys.ID, adapter_id
         )
         if len(updated_adapters) != 0:
-            schema_details[AdapterKeys.JSON_SCHEMA] = json.loads(
-                updated_adapters[0].get(AdapterKeys.JSON_SCHEMA)
+            schema_details[AdapterKeys.JSON_SCHEMA] = filter_image_output_mode(
+                adapter_id,
+                json.loads(updated_adapters[0].get(AdapterKeys.JSON_SCHEMA)),
             )
         else:
             logger.error(f"Invalid adapter Id : {adapter_id} while fetching JSON Schema")
@@ -66,6 +78,8 @@ class AdapterProcessor:
         for each_adapter in updated_adapters:
             adapter_id = each_adapter.get(AdapterKeys.ID)
             if not is_special_user and adapter_id.startswith("noOp"):
+                continue
+            if is_adapter_deprecated(adapter_id):
                 continue
 
             supported_adapters.append(
@@ -110,7 +124,39 @@ class AdapterProcessor:
         return updated_adapters[0].get(key_value)
 
     @staticmethod
+    def get_icon(adapter: AdapterInstance) -> str:
+        """Registry icon for an adapter, or the warning icon if unresolvable."""
+        if not adapter.is_available or is_adapter_deprecated(adapter.adapter_id):
+            return AdapterKeys.UNAVAILABLE_ICON
+        try:
+            adapter_class = Adapterkit().get_adapter_class_by_adapter_id(
+                adapter.adapter_id
+            )
+        except Exception as e:
+            logger.warning(
+                "Adapter %s is not in the SDK registry: %s", adapter.adapter_id, e
+            )
+            return AdapterKeys.UNAVAILABLE_ICON
+        return adapter_class.get_icon() or AdapterKeys.UNAVAILABLE_ICON
+
+    @staticmethod
+    def get_model_label(adapter: AdapterInstance) -> str:
+        """Model name from the adapter metadata.
+
+        Adapters without a model use the adapter id's provider prefix.
+        """
+        try:
+            model = adapter.metadata.get("model")
+        except Exception as e:
+            logger.error(
+                "Could not read metadata for adapter %s: %s", adapter.adapter_id, e
+            )
+            model = None
+        return model or adapter.adapter_id.split("|")[0]
+
+    @staticmethod
     def test_adapter(adapter_id: str, adapter_metadata: dict[str, Any]) -> bool:
+        validate_image_output_allowed(adapter_metadata, adapter_id)
         try:
             adapter_type = adapter_metadata.get(AdapterKeys.ADAPTER_TYPE)
 
@@ -213,27 +259,6 @@ class AdapterProcessor:
                 raise e
             else:
                 raise InternalServiceError()
-
-    @staticmethod
-    def get_adapter_instance_by_id(adapter_instance_id: str) -> Adapter:
-        """Get the adapter instance by its ID.
-
-        Parameters:
-        - adapter_instance_id (str): The ID of the adapter instance.
-
-        Returns:
-        - Adapter: The adapter instance with the specified ID.
-
-        Raises:
-        - Exception: If there is an error while fetching the adapter instance.
-        """
-        try:
-            adapter = AdapterInstance.objects.get(id=adapter_instance_id)
-        except Exception as e:
-            logger.error(f"Unable to fetch adapter: {e}")
-        if not adapter:
-            logger.error("Unable to fetch adapter")
-        return adapter.adapter_name
 
     @staticmethod
     def get_adapters_by_type(

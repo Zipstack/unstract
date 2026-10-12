@@ -10,7 +10,6 @@ from django.views.decorators.csrf import csrf_exempt
 from permissions.membership_views import OwnerManagementMixin
 from permissions.permission import IsOwner, IsOwnerOrSharedUserOrSharedToOrg
 from permissions.resource_share_views import ResourceShareManagementMixin
-from permissions.roles import ResourceRole
 from pipeline_v2.models import Pipeline
 from pipeline_v2.pipeline_processor import PipelineProcessor
 from plugins import get_plugin
@@ -94,6 +93,7 @@ class WorkflowViewSet(
             "update",
             "add_co_owner",
             "remove_co_owner",
+            "clear_file_marker",
         ]:
             return [IsOwner()]
 
@@ -161,9 +161,7 @@ class WorkflowViewSet(
         )
         # ``created_by`` is audit-only; the creator's access flows through an
         # OWNER membership row (UN-2202 co-owners).
-        workflow.memberships.get_or_create(
-            user_id=self.request.user.id, defaults={"role": ResourceRole.OWNER}
-        )
+        workflow.grant_owner(self.request.user)
         try:
             # Create empty WorkflowEndpoints for UI compatibility
             # ConnectorInstances will be created when users actually configure connectors
@@ -352,7 +350,9 @@ class WorkflowViewSet(
         response: dict[str, Any] = WorkflowHelper.can_update_workflow(pk)
         return Response(response, status=status.HTTP_200_OK)
 
-    @action(detail=True, methods=["get"])
+    # POST, not GET: this clears execution markers, so a GET made it reachable
+    # by prefetch or a pasted URL with no CSRF in the way.
+    @action(detail=True, methods=["post"])
     def clear_file_marker(self, request: Request, *args: Any, **kwargs: Any) -> Response:
         workflow = self.get_object()
         response: dict[str, Any] = WorkflowHelper.clear_file_marker(
@@ -403,10 +403,9 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
 
     serializer_class = WorkflowExecutionSerializer
     lookup_field = "id"
-    # Backward compat: workers may call without X-Organization-ID during
-    # rolling deployments. Safe because internal APIs require service API key
-    # and get_queryset() applies org filtering when header is present.
-    # Remove once all workers reliably pass X-Organization-ID.
+    # OrganizationFilterBackend is off here; get_queryset() scopes instead, via
+    # filter_queryset_by_organization, which fails closed. X-Organization-ID is
+    # therefore required in practice: a worker that omits it gets zero rows.
     skip_org_filter = True
 
     def get_queryset(self):

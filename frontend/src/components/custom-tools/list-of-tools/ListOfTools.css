@@ -2,7 +2,19 @@
 
 .list-of-tools-layout {
   height: 100%;
-  background-color: var(--page-bg-2);
+  /*
+   * The island sits on this as a raised surface, so the trough has to be
+   * clearly darker than it. --background (#fafafa) is only two values off
+   * --card (#fcfcfc), so the well was invisible and the list read as
+   * floating on a flat page.
+   *
+   * --well resolves to a 23-value gap against --card in light mode, matching
+   * the reference's 22 (#e9e9e9 behind #fff) almost exactly. It is a semantic
+   * token rather than a raw palette step because the palette is shared
+   * between themes: hard-coding --neutral-200 would paint a LIGHT trough in
+   * dark mode. --well recesses in both directions.
+   */
+  background-color: var(--well);
   padding: 12px;
   overflow-y: auto;
 }
@@ -27,7 +39,7 @@
 }
 
 .list-of-tools-island {
-  background-color: var(--page-bg-1);
+  background-color: var(--card);
   height: 100%;
   padding: 20px;
   overflow-y: auto;

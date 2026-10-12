@@ -8,10 +8,12 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from unstract.sdk1.execution.context import ExecutionContext, Operation
-from unstract.sdk1.execution.dispatcher import ExecutionDispatcher
 from unstract.sdk1.execution.executor import BaseExecutor
 from unstract.sdk1.execution.registry import ExecutorRegistry
 from unstract.sdk1.execution.result import ExecutionResult
+from unstract.workflow_execution.executor_rpc import PgExecutionDispatcher
+
+from .executor_dispatch_fakes import FakeExecutorTransport, queue_for
 
 AGENTIC_OPERATIONS = [
     "agentic_extract",
@@ -108,19 +110,17 @@ class TestAgenticExecutorRegistration:
 
 class TestAgenticQueueRouting:
     def test_agentic_routes_to_correct_queue(self):
-        queue = ExecutionDispatcher._get_queue("agentic")
+        queue = queue_for("agentic")
         assert queue == "celery_executor_agentic"
 
     @pytest.mark.parametrize("op", AGENTIC_OPERATIONS)
     def test_dispatch_sends_to_agentic_queue(self, op):
-        mock_app = MagicMock()
-        mock_result = MagicMock()
-        mock_result.get.return_value = ExecutionResult(
-            success=True, data={"output": {}}
-        ).to_dict()
-        mock_app.send_task.return_value = mock_result
-
-        dispatcher = ExecutionDispatcher(celery_app=mock_app)
+        transport = FakeExecutorTransport(
+            result=ExecutionResult(
+                success=True, data={"output": {}}
+            ).to_dict()
+        )
+        dispatcher = PgExecutionDispatcher(transport)
         ctx = ExecutionContext(
             executor_name="agentic",
             operation=op,
@@ -130,9 +130,7 @@ class TestAgenticQueueRouting:
         )
         dispatcher.dispatch(ctx)
 
-        mock_app.send_task.assert_called_once()
-        call_kwargs = mock_app.send_task.call_args
-        assert call_kwargs.kwargs.get("queue") == "celery_executor_agentic"
+        assert transport.queue == "celery_executor_agentic"
 
 
 # ---------------------------------------------------------------------------
@@ -262,3 +260,140 @@ class TestTasksLogComponent:
             "table_extract",
             "smart_table_extract",
         )
+
+
+# ---------------------------------------------------------------------------
+# Agentic extraction timing (UN-2771)
+# ---------------------------------------------------------------------------
+
+
+class TestAgenticExtractionMetrics:
+    """The agentic executor's X2Text duration reaches the file-level metric.
+
+    The legacy pipeline times only its own extraction. Agentic prompts extract
+    the document inside their own executor, so without folding their reported
+    duration in, an agentic-only deployment reports no extraction time at all
+    and a mixed deployment under-reports it.
+    """
+
+    @staticmethod
+    def _agentic(seconds):
+        """One prompt's metrics as the executor reports them."""
+        return {"invoices": {"text_extraction": {"time_taken(s)": seconds}}}
+
+    def test_sums_across_prompts(self):
+        """Each agentic prompt extracts the file itself, so durations add."""
+        from file_processing.structure_tool_task import _agentic_extraction_seconds
+
+        metrics = {
+            "invoices": {"text_extraction": {"time_taken(s)": 1.5}},
+            "receipts": {"text_extraction": {"time_taken(s)": 2.25}},
+        }
+        assert _agentic_extraction_seconds(metrics) == pytest.approx(3.75)
+
+    @pytest.mark.parametrize(
+        "metrics",
+        [
+            {},
+            {"invoices": {}},
+            {"invoices": {"text_extraction": {}}},
+            {"invoices": {"text_extraction": {"time_taken(s)": None}}},
+            {"invoices": {"text_extraction": "not-a-dict"}},
+            {"invoices": "not-a-dict"},
+            # bool is an int subclass; True must not count as 1 second
+            {"invoices": {"text_extraction": {"time_taken(s)": True}}},
+        ],
+    )
+    def test_missing_or_malformed_timing_yields_zero(self, metrics):
+        """A plugin that reports no duration must not fabricate one."""
+        from file_processing.structure_tool_task import _agentic_extraction_seconds
+
+        assert _agentic_extraction_seconds(metrics) == 0.0
+
+    def test_all_agentic_run_reports_the_file_metric(self):
+        """The agentic-only path has no legacy pipeline, so it starts empty."""
+        from file_processing.structure_tool_task import _merge_agentic_metrics
+
+        structured_output = {"output": {}, "metadata": {"agentic_only": True}}
+        _merge_agentic_metrics(structured_output, self._agentic(4.0))
+
+        metrics = structured_output["metrics"]
+        assert metrics["_file"]["text_extraction"]["time_taken(s)"] == pytest.approx(4.0)
+
+    def test_mixed_run_adds_to_the_legacy_duration(self):
+        """The under-reporting case: both extractors ran, both must count."""
+        from file_processing.structure_tool_task import _merge_agentic_metrics
+
+        structured_output = {
+            "metrics": {"_file": {"text_extraction": {"time_taken(s)": 1.0}}}
+        }
+        _merge_agentic_metrics(structured_output, self._agentic(2.5))
+
+        total = structured_output["metrics"]["_file"]["text_extraction"]["time_taken(s)"]
+        assert total == pytest.approx(3.5)
+
+    def test_per_prompt_metrics_land_beside_the_legacy_ones(self):
+        """Same shape LegacyExecutor._run_table_extraction uses."""
+        from file_processing.structure_tool_task import _merge_agentic_metrics
+
+        structured_output = {"metrics": {"field_a": {"llm": {"time_taken(s)": 2.0}}}}
+        _merge_agentic_metrics(structured_output, self._agentic(1.0))
+
+        metrics = structured_output["metrics"]
+        assert metrics["field_a"] == {"llm": {"time_taken(s)": 2.0}}
+        assert metrics["invoices"]["table_extraction"] == {
+            "text_extraction": {"time_taken(s)": 1.0}
+        }
+
+    def test_no_agentic_prompts_changes_nothing(self):
+        """A purely legacy run must not grow an empty metrics dict."""
+        from file_processing.structure_tool_task import _merge_agentic_metrics
+
+        structured_output = {"output": {}}
+        _merge_agentic_metrics(structured_output, {})
+
+        assert "metrics" not in structured_output
+
+    def test_executor_reporting_no_timing_leaves_the_bucket_absent(self):
+        """Per-prompt metrics still surface; a zero duration is not written."""
+        from file_processing.structure_tool_task import _merge_agentic_metrics
+
+        structured_output = {}
+        _merge_agentic_metrics(
+            structured_output, {"invoices": {"table_rows": {"count": 12}}}
+        )
+
+        metrics = structured_output["metrics"]
+        assert metrics["invoices"]["table_extraction"] == {"table_rows": {"count": 12}}
+        assert "_file" not in metrics
+
+    def test_prompt_named_file_gets_a_de_collided_key(self):
+        """`_file` is reserved, so a prompt with that name moves aside.
+
+        Neither outcome the two namespaces could otherwise produce is
+        acceptable: merging into the reserved bucket conflates per-prompt with
+        file-level figures, and dropping the entry loses every other metric the
+        prompt reported. It is rehomed instead, and nothing is lost.
+        """
+        from file_processing.structure_tool_task import _merge_agentic_metrics
+
+        structured_output = {}
+        _merge_agentic_metrics(
+            structured_output,
+            {"_file": {"text_extraction": {"time_taken(s)": 3.0}, "rows": 12}},
+        )
+
+        metrics = structured_output["metrics"]
+        # The reserved bucket carries file-level metrics only...
+        assert metrics["_file"] == {"text_extraction": {"time_taken(s)": 3.0}}
+        # ...and the prompt keeps everything it reported, under its own key.
+        assert metrics["_file (prompt)"]["table_extraction"] == {
+            "text_extraction": {"time_taken(s)": 3.0},
+            "rows": 12,
+        }
+
+    def test_de_collided_key_cannot_alias_the_reserved_one(self):
+        """The rehomed key is distinct from the reserved key by construction."""
+        from executor.executors.constants import PromptServiceConstants as PSKeys
+
+        assert " " not in PSKeys.FILE

@@ -1,4 +1,4 @@
-import { PlusOutlined } from "@ant-design/icons";
+import { Plus } from "lucide-react";
 import PropTypes from "prop-types";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -35,9 +35,9 @@ const titles = {
 };
 
 const btnText = {
-  llm: "New LLM Profile",
-  vector_db: "New Vector DB Profile",
-  embedding: "New Embedding Profile",
+  llm: "New LLM",
+  vector_db: "New Vector DB",
+  embedding: "New Embedding",
   x2text: "New Text Extractor",
   ocr: "New OCR",
 };
@@ -196,6 +196,7 @@ function ToolSettings({ type }) {
   );
   fetchRef.current = getAdapters;
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reset only when the adapter type changes, not when resetList's identity does
   useEffect(() => {
     setDisplayList(undefined);
     if (!type) {
@@ -205,7 +206,6 @@ function ToolSettings({ type }) {
     // together so the new type starts clean and later refreshes don't replay
     // the previous type's view.
     resetList();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [type]);
 
   // New/edited adapters land on some page under the active sort — refetch the
@@ -361,10 +361,13 @@ function ToolSettings({ type }) {
         searchKey={type}
         onSearch={(value) => handleSearch(value)}
         customButtons={
+          // The label is `btnText[type]` — "New LLM" on one route and
+          // "New Text Extractor" on another — so it is not a stable handle.
           <CustomButton
             type="primary"
+            data-testid={`${type}-adapter-add-btn`}
             onClick={handleOpenAddSourceModal}
-            icon={<PlusOutlined />}
+            icon={<Plus />}
           >
             {btnText[type]}
           </CustomButton>
@@ -393,6 +396,7 @@ function ToolSettings({ type }) {
             )}
             {!loadError && displayList?.length > 0 && (
               <ResourceTable
+                testIdPrefix="adapter-list"
                 dataSource={displayList}
                 loading={isLoading}
                 pagination={pagination}

@@ -1,16 +1,21 @@
-import { Divider, Form, Modal, Select, Space, Typography } from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
+import { Form } from "@/components/ui/shims/antd-form";
+import { Select } from "@/components/ui/shims/antd-inputs";
+import { Space } from "@/components/ui/shims/antd-layout";
+import { Divider } from "@/components/ui/shims/antd-leaves";
+import { Modal } from "@/components/ui/shims/antd-overlays";
+import { Text, Title } from "@/components/ui/shims/antd-typography";
 
 import "./AdapterSelectionModal.css";
 
+import { usableAdapters } from "../../../helpers/GetStaticData";
 import { fetchAllPages } from "../../../helpers/pagination";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import { useAlertStore } from "../../../store/alert-store";
 import { useSessionStore } from "../../../store/session-store";
 
-const { Text, Title } = Typography;
 const { Option } = Select;
 
 function AdapterSelectionModal({
@@ -59,7 +64,12 @@ function AdapterSelectionModal({
 
       const [llm, embedding, vectorDb, x2text] = await Promise.all(requests);
 
-      setAdapters({ llm, embedding, vectorDb, x2text });
+      setAdapters({
+        llm: usableAdapters(llm),
+        embedding: usableAdapters(embedding),
+        vectorDb: usableAdapters(vectorDb),
+        x2text: usableAdapters(x2text),
+      });
     } catch (err) {
       setAlertDetails(
         handleException(err, "Failed to fetch available adapters"),
