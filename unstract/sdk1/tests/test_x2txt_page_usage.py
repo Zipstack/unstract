@@ -1,8 +1,7 @@
 """Tests for page usage accounting in X2Text.
 
-Regression cover: page usage was counted from the input file, so a
-199-page PDF with ``pages_to_extract = "1-5"`` was billed 199 pages while
-LLMWhisperer billed the 5 it actually extracted.
+PDF page usage follows the extractor's processed page count, so a page range
+is billed for the pages extracted, not the whole file.
 """
 
 from typing import Any
@@ -83,12 +82,12 @@ class TestPushUsageDetails:
     @patch("unstract.sdk1.x2txt.Audit")
     @patch("unstract.sdk1.x2txt.pdfplumber")
     @patch("unstract.sdk1.x2txt.ToolUtils.get_file_size", return_value=1234)
-    def test_pdf_rejects_non_positive_count(
+    def test_pdf_rejects_unusable_count(
         self,
         _size: MagicMock,
         pdfplumber: MagicMock,
         audit: MagicMock,
-        bad_count: float,
+        bad_count: object,
         x2text: X2Text,
         pdf_fs: MagicMock,
     ) -> None:
@@ -191,7 +190,7 @@ class TestProcessForwardsPageCount:
         x2text: X2Text,
         pdf_fs: MagicMock,
     ) -> None:
-        """Adapters that report no page count keep the existing PDF-count billing."""
+        """Adapters that report no page count fall back to the PDF's own page count."""
         pdfplumber.open.return_value.__enter__.return_value.pages = [None] * 199
         pdf_fs.mime_type.return_value = MimeType.PDF
         x2text._x2text_instance = MagicMock()

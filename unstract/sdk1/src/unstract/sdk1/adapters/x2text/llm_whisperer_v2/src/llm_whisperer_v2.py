@@ -163,8 +163,9 @@ class LLMWhispererV2(X2TextAdapter):
                 Defaults to None.
 
         Returns:
-            TextExtractionResult: Extracted text, metadata and the processed
-                page count.
+            TextExtractionResult: Extracted text, metadata and, when
+                LLMWhisperer reports it, the processed page count (None in
+                image output mode).
         """
         if fs is None:
             fs = FileStorage(provider=FileStorageProvider.LOCAL)
@@ -200,7 +201,7 @@ class LLMWhispererV2(X2TextAdapter):
             tag=kwargs.get(X2TextConstants.TAGS),
             enable_highlight=enable_highlight,
         )
-        response: dict[str, Any] = LLMWhispererHelper.send_whisper_request(
+        response = LLMWhispererHelper.send_whisper_request(
             input_file_path=input_file_path,
             config=self.config,
             fs=fs,

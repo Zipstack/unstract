@@ -381,7 +381,7 @@ class LLMWhispererHelper:
 
     @staticmethod
     def get_processed_page_count(response: dict[str, Any]) -> int | None:
-        """Pages LLMWhisperer actually processed for this extraction.
+        """Billable page count LLMWhisperer reports for this extraction.
 
         This is the count LLMWhisperer bills, so it honours a page range.
 
@@ -404,8 +404,9 @@ class LLMWhispererHelper:
         ):
             logger.warning(
                 "No usable processed_page_count in LLMWhisperer response "
-                "(whisper_hash=%s, value=%r); page usage will count the file",
+                "(whisper_hash=%s, whisper_metadata_present=%s, value=%r)",
                 response.get(X2TextConstants.WHISPER_HASH_V2),
+                isinstance(metadata, dict),
                 page_count,
             )
             return None

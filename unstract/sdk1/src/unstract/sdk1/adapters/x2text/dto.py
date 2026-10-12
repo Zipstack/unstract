@@ -23,8 +23,9 @@ class TextExtractionResult:
     Attributes:
         extracted_text: The text the extractor produced.
         extraction_metadata: Extractor-specific metadata, if any.
-        page_count: Pages the extractor actually processed, or None when the
-            adapter does not report it.
+        page_count: Billable page count the extractor reports, or None when it
+            reports none. For non-PDF inputs this may be derived from content
+            length rather than pages.
     """
 
     extracted_text: str
