@@ -72,7 +72,13 @@ removes all of them. Reaching the cloud double-fire case takes a deliberate
 manual flip on a deployment whose chart already runs the CronJobs -- and
 silently deleting an operator's explicit configuration during an unrelated
 migration is not the remedy for that. It is visible in
-``SELECT name, pg_owned FROM pg_periodic_schedule WHERE name LIKE 'agent_kv%'``
+``SELECT name, pg_owned FROM pg_periodic_task WHERE name LIKE 'agent_kv%'``
+
+(``pg_periodic_task`` -- the table ``PgPeriodicTask`` maps to, which is what
+0004 seeded. NOT ``pg_periodic_schedule``: that is the separate
+``PgPeriodicSchedule`` model, which also carries a ``pg_owned`` column but has
+no ``name`` at all -- it keys on ``pipeline_id``/``workflow_id`` -- so the
+query named there failed outright with "column name does not exist".)
 and belongs in the cloud runbook, not in a guess made here.
 
 Choosing the other way round -- delete by name regardless of ownership -- trades
