@@ -75,7 +75,10 @@ def identify_zip_container(path: str) -> str | None:
                 declared = raw.decode("ascii", "ignore").strip()
                 if declared in ODF_MIME_TYPES:
                     return declared
-            if "[Content_Types].xml" in names:
+            # A real package carries its relationships too. Without them the
+            # archive is not loadable, so naming it an Office document here only
+            # moves the failure to extraction.
+            if {"[Content_Types].xml", "_rels/.rels"} <= set(names):
                 for prefix, mime_type in OOXML_DIRECTORY_TYPES:
                     if any(name.startswith(prefix) for name in names):
                         return mime_type

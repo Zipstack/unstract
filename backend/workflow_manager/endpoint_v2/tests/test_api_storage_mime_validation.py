@@ -246,6 +246,7 @@ def _docx_bytes(pad_first_member: bool) -> bytes:
         if pad_first_member:
             archive.writestr("junk.bin", bytes(range(256)) * 4)
         archive.writestr("[Content_Types].xml", '<?xml version="1.0"?><Types/>')
+        archive.writestr("_rels/.rels", '<?xml version="1.0"?><Relationships/>')
         archive.writestr("word/document.xml", '<?xml version="1.0"?><document/>')
     return buf.getvalue()
 
@@ -373,6 +374,30 @@ def test_a_zip_carrying_a_pdf_marker_is_still_a_zip(collaborators, stored: bool)
 
     assert result == {}
     collaborators["storage"].write.assert_not_called()
+
+
+def test_an_incomplete_ooxml_package_is_rejected(collaborators) -> None:
+    """Marker directories alone are not a document.
+
+    Scoped to the repackaged shape, which is the one resolved by reading the
+    archive: with `[Content_Types].xml` first, libmagic names the package itself
+    and this code never runs. An archive with the markers but no relationships
+    is not loadable, so naming it a document would only move the failure to
+    extraction — verified live, where one of exactly this shape was accepted
+    here and then rejected by the extractor.
+    """
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as archive:
+        # Ahead of the markers, so libmagic will only call this a zip.
+        archive.writestr("junk.bin", bytes(range(256)) * 4)
+        archive.writestr("[Content_Types].xml", '<?xml version="1.0"?><Types/>')
+        archive.writestr("word/document.xml", '<?xml version="1.0"?><document/>')
+    data = buf.getvalue()
+    assert src_mod.magic.from_buffer(data, mime=True) == "application/octet-stream"
+
+    result = _stage([_upload("partial.pdf", data, "application/pdf")])
+
+    assert result == {}
 
 
 def test_a_plain_zip_stays_rejected(collaborators) -> None:
