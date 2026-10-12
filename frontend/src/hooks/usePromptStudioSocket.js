@@ -146,11 +146,7 @@ const usePromptStudioSocket = () => {
           return;
         }
 
-        // ps_prompt_run fires on click; this records what came back. Recorded
-        // before local handling so a handler throw doesn't hide the outcome.
-        // Error text can carry document or LLM content, so only the status
-        // is sent. Fires once per open app tab, except tabs showing another
-        // tool, so dedupe on task_id (when non-empty) to count runs.
+        // Captured before handling so a handler throw doesn't hide the outcome.
         setPostHogCustomEvent("ps_prompt_run_result", {
           task_id: extra?.task_id,
           operation,

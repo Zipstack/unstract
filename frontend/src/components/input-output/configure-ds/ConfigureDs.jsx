@@ -51,8 +51,6 @@ function ConfigureDs({
   } = usePostHogEvents();
   const { getUrl } = useRequestUrl();
 
-  // The existing intent events fire on click; these record what the user
-  // actually got back, so funnels can tell a failed add from an abandoned one.
   const captureAdapterResult = (eventName, result, errorMessage) => {
     if (isConnector) {
       return;
