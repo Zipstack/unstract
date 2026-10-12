@@ -412,13 +412,21 @@ def test_finalize_success_deletes_input_and_blanks_ref(
 # cancel raced in between the read and mark_terminal's guarded UPDATE) --
 # the just-written result file has no ref anywhere pointing at it, so it's
 # cleaned up immediately rather than orphaned forever.
+# `attach_result_to_cancelled` is patched to False here, which is what the real
+# DB returns for these jobs: its filter is `status=CANCELLED, result_ref=""`,
+# and the rows in these two cases are RUNNING and COMPLETED. Without the patch
+# the mocked `AgentKVJob.objects` makes its `.update()` return a Mock, which is
+# truthy, so the salvage would appear to win and the orphan delete these tests
+# exist to assert would silently stop being called. The salvage path itself is
+# covered DB-backed in `test_adapter_scoping.py`.
 @mock.patch.object(iv.AgentKVConcurrencyLimiter, "release")
 @mock.patch.object(iv, "delete_result_file")
+@mock.patch.object(AgentKVJob, "attach_result_to_cancelled", return_value=False)
 @mock.patch.object(AgentKVJob, "mark_terminal", return_value=False)
 @mock.patch.object(iv, "write_result")
 @mock.patch.object(AgentKVJob, "objects")
 def test_finalize_success_guard_loss_deletes_orphaned_result(
-    m_jobs, m_write, m_mark_terminal, m_delete_result, m_release
+    m_jobs, m_write, m_mark_terminal, m_salvage, m_delete_result, m_release
 ):
     job = AgentKVJob(status=JobStatus.RUNNING, webhook_url="")
     m_jobs.filter.return_value.first.return_value = job
@@ -436,6 +444,52 @@ def test_finalize_success_guard_loss_deletes_orphaned_result(
     assert resp.status_code == 200
     assert resp.data["finalized"] is False
     m_delete_result.assert_called_once_with("org/o/agent_kv/j/result.json")
+
+
+# (7c-ii) the case (7c) above must NOT catch: the guard was lost to a CANCEL,
+# and the run had already finished and been billed. Deleting the result there
+# charged the customer for an answer and then destroyed it, with `GET result`
+# reporting only `{"success": false, "status": "cancelled"}`. The result is
+# salvaged onto the cancelled row instead.
+@mock.patch.object(iv.AgentKVConcurrencyLimiter, "release")
+@mock.patch.object(iv, "delete_result_file")
+@mock.patch.object(AgentKVJob, "attach_result_to_cancelled", return_value=True)
+@mock.patch.object(AgentKVJob, "mark_terminal", return_value=False)
+@mock.patch.object(iv, "write_result")
+@mock.patch.object(AgentKVJob, "objects")
+def test_finalize_guard_lost_to_a_cancel_salvages_the_paid_for_result(
+    m_jobs, m_write, m_mark_terminal, m_salvage, m_delete_result, m_release
+):
+    job = AgentKVJob(status=JobStatus.RUNNING, webhook_url="")
+    m_jobs.filter.return_value.first.return_value = job
+    m_write.return_value = "org/o/agent_kv/j/result.json"
+
+    job_id = uuid.uuid4()
+    resp = iv.FinalizeView.as_view()(
+        _post(
+            "/x",
+            {
+                "org_id": "org1",
+                "success": True,
+                "result": {"tables": []},
+                "usage_summary": {"pages": 3},
+            },
+        ),
+        job_id=job_id,
+    )
+
+    assert resp.status_code == 200
+    # Still not "finalized": the cancel won the status, and this must not
+    # pretend otherwise.
+    assert resp.data["finalized"] is False
+    m_salvage.assert_called_once()
+    kwargs = m_salvage.call_args.kwargs
+    assert kwargs["result_ref"] == "org/o/agent_kv/j/result.json"
+    assert kwargs["usage_summary"] == {"pages": 3}
+    assert not m_delete_result.called, (
+        "the result was deleted after the customer had already been billed "
+        "for it; a cancelled job keeps a result it paid for"
+    )
 
 
 # (7d) success finalize that WINS the guard never deletes the result it just
@@ -472,10 +526,14 @@ def test_finalize_success_guard_win_does_not_delete_result(
 # result.json path let the loser delete the winner's live result).
 @mock.patch.object(storage, "FileSystem")
 @mock.patch.object(iv.AgentKVConcurrencyLimiter, "release")
+# False for the same reason as the guard-loss case above: the row the loser
+# finds is COMPLETED, not CANCELLED, so the real filter matches nothing and the
+# loser must still delete the file it just wrote.
+@mock.patch.object(AgentKVJob, "attach_result_to_cancelled", return_value=False)
 @mock.patch.object(AgentKVJob, "mark_terminal", side_effect=[True, False])
 @mock.patch.object(AgentKVJob, "objects")
 def test_finalize_duplicate_success_race_loser_deletes_only_its_own_result(
-    m_jobs, m_mark, m_release, m_fs
+    m_jobs, m_mark, m_salvage, m_release, m_fs
 ):
     # Two separate reads that both observed the job as still RUNNING (the race
     # window before either guarded UPDATE ran).

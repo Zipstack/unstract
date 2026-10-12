@@ -483,7 +483,24 @@ Re-readable until `expires_at` (D11), plus explicit `DELETE`.
   finalize call sent).
 - **`FAILED`**: `200` with
   `{"success": false, "status": "failed", "error": "<user-safe message>"}`.
-- **`CANCELLED`**: `200` with `{"success": false, "status": "cancelled"}`.
+- **`CANCELLED`**: `200` with `{"success": false, "status": "cancelled"}` — the
+  ordinary case, where nothing ran or the run was stopped mid-flight.
+  - **Exception: a cancel that lost a race to a finished extraction keeps its
+    result.** The window is narrow but the money is already gone when it opens:
+    the engine flushes OCR and LLM usage *before* the executor's final stage
+    report, so a cancel colliding with that report arrives after the customer
+    has been billed. Such a job returns `200` with
+    `{"success": true, "status": "cancelled", "extractors": {...}, "usage_summary": {...}}`
+    — the full result, with `status` still `cancelled` because the cancel *was*
+    honoured. Branch on `success` for "is there data"; branch on `status` for
+    "was it cancelled". Previously the result was written and then deleted, so
+    the caller paid for an answer and received
+    `{"success": false, "status": "cancelled"}` with no indication it had ever
+    existed. The job is **not** reported as `completed` — the cancel still owns
+    the status — and the result rides the same `AGENT_KV_RESULT_TTL_DAYS` window
+    as any other, after which this degrades back to the ordinary shape. It is
+    also refused outright if you called `DELETE` on the job: the purge wins, and
+    a late result is not resurrected.
 
 **Calculation result shape** (when `calculations` is supplied and
 `AGENT_KV_CALCULATIONS_ENABLED=true`): a `COMPLETED` result adds these fields to the
@@ -636,24 +653,24 @@ the engine's own progress points (rate-limited, so detection can lag by a few se
 and the job then terminates as `cancelled`. Work already done is still billed and
 metered; work not yet started is not.
 
-> **Known gap: a job that finishes before the cancel is noticed has its result
-> discarded on arrival, and you are still billed for it.** The engine flushes OCR
-> and LLM usage *before* the executor's final stage report, so a cancel colliding
-> with that report lands after the work is paid for. `FinalizeView` then writes
-> the result, its `mark_terminal` guard correctly declines to restatus a terminal
-> row, and the file is deleted — `GET result` reports
-> `{"success": false, "status": "cancelled"}` with no indication that a
-> fully-computed answer existed.
->
-> This is not an oversight, it is an unresolved trade. Keeping the result was
-> tried and reverted: `DELETE /agent-kv/{job_id}/` relies on exactly that
-> self-cleanup (see the comment at the top of `JobStatusView.delete`) to
-> guarantee a purged job cannot be resurrected by a late finalize, so storing
-> the result instead reopened both a purged-data-returns path and a storage
-> orphan. Closing it properly needs an explicit "files purged" marker that
-> `DELETE`, TTL cleanup and finalize all agree on, rather than inferring it from
-> blank refs. Tracked separately; the window is narrow, and the caller did ask
-> to cancel.
+**A job that finishes before the cancel is noticed KEEPS its result.** This used
+to say the result was "discarded on arrival", which was accurate and was the
+problem: the engine flushes OCR and LLM usage before the executor's final stage
+report, so the customer had already been billed for an answer that was then
+written and deleted. Such a job stays `cancelled` — the cancel is honoured and
+visible — but `GET /agent-kv/{job_id}/result/` serves the result with
+`success: true` (see [§5](#7-get-result)). Fetch it; you have paid for it.
+
+Two cases where it genuinely is gone, both deliberate:
+
+- You called `DELETE /agent-kv/{job_id}/` — the purge wins, by two independent
+  mechanisms: `DELETE` re-reads the row immediately before deleting files, so a
+  result that landed mid-flight is deleted along with everything else; and once
+  it has blanked the input ref, no later callback can attach one at all. A
+  result is never resurrected on a job you purged.
+- The job passed `AGENT_KV_RESULT_TTL_DAYS` and TTL cleanup swept it, after
+  which the endpoint reports the ordinary
+  `{"success": false, "status": "cancelled"}`.
 
 - Won the race (job was non-terminal): `200` `{"status": "cancelled"}`.
 - Already terminal: `409` `{"status": "<job.status>"}`, lowercased (e.g.

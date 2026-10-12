@@ -431,3 +431,259 @@ class TestNeverDispatchedAgainstRealRows(TestCase):
         job.dispatched_at = None
 
         assert _never_dispatched(job) is False
+
+
+class TestACancelThatLostTheRaceKeepsItsResult(TestCase):
+    """A cancel landing after extraction finished must not destroy the answer.
+
+    The window is real and the money is already gone when it opens: the engine
+    flushes OCR and LLM usage before the executor's final stage report, so by
+    the time a cancel can collide with that report the customer has been
+    billed. `FinalizeView` then wrote the result, `mark_terminal` correctly
+    declined to restatus a terminal row, and the file was DELETED -- so
+    `GET result` returned `{"success": false, "status": "cancelled"}` with no
+    sign that a paid-for result had existed.
+
+    DB-backed because the whole mechanism is a guarded UPDATE racing another
+    guarded UPDATE; a mock would just agree with whichever one I wrote.
+    """
+
+    def setUp(self):
+        self.org = Organization.objects.create(
+            display_name="Acme", organization_id="org_acme", name="acme"
+        )
+        UserContext.set_organization_identifier(None)
+
+    def _job(self, **kwargs):
+        from agent_kv.models import AgentKVJob, JobExtractor
+
+        # `input_ref` defaults to a live staged input: a cancelled job keeps
+        # its input until TTL, and a BLANK one is the purge marker the salvage
+        # must refuse (see `test_a_purged_job_does_not_get_its_result_back`).
+        kwargs.setdefault("input_ref", "org/o/agent_kv/j/input.pdf")
+        job = AgentKVJob(
+            organization_id=self.org.id, extractor=JobExtractor.TABLE, **kwargs
+        )
+        job.save()
+        return job
+
+    def test_the_result_is_attached_to_a_cancelled_job(self):
+        from agent_kv.models import AgentKVJob, JobStatus
+
+        job = self._job(status=JobStatus.CANCELLED)
+
+        attached = AgentKVJob.attach_result_to_cancelled(
+            job.id, self.org.id, result_ref="r/1.json", usage_summary={"pages": 3}
+        )
+        job.refresh_from_db()
+
+        assert attached is True
+        assert job.result_ref == "r/1.json"
+        assert job.usage_summary == {"pages": 3}
+
+    def test_it_never_changes_status_or_completed_at(self):
+        """The cancel stays won, and stays visible.
+
+        If this ever starts flipping `status`, a cancelled job would read as
+        completed and the guard `mark_terminal` exists to enforce would have
+        been bypassed by the back door.
+        """
+        from agent_kv.models import AgentKVJob, JobStatus
+        from django.utils import timezone
+
+        stamped = timezone.now()
+        job = self._job(status=JobStatus.CANCELLED, completed_at=stamped)
+
+        AgentKVJob.attach_result_to_cancelled(
+            job.id, self.org.id, result_ref="r/2.json"
+        )
+        job.refresh_from_db()
+
+        assert job.status == JobStatus.CANCELLED
+        assert job.completed_at == stamped
+
+    def test_a_completed_or_failed_job_is_left_alone(self):
+        """Scoped to CANCELLED on purpose.
+
+        A COMPLETED or FAILED row already has its own outcome; grafting a late
+        callback's result onto it would overwrite a real one (COMPLETED) or
+        invent one for a run that failed.
+        """
+        from agent_kv.models import AgentKVJob, JobStatus
+
+        for status in (JobStatus.COMPLETED, JobStatus.FAILED):
+            job = self._job(status=status)
+            attached = AgentKVJob.attach_result_to_cancelled(
+                job.id, self.org.id, result_ref="r/nope.json"
+            )
+            job.refresh_from_db()
+            assert attached is False, status
+            assert job.result_ref == "", status
+
+    def test_a_second_callback_does_not_overwrite_the_first(self):
+        """At-least-once delivery means this runs twice.
+
+        The second call must report False so its caller deletes its own freshly
+        written file rather than orphaning it -- `result_ref=""` in the filter
+        is what makes that happen.
+        """
+        from agent_kv.models import AgentKVJob, JobStatus
+
+        job = self._job(status=JobStatus.CANCELLED)
+
+        first = AgentKVJob.attach_result_to_cancelled(
+            job.id, self.org.id, result_ref="r/first.json"
+        )
+        second = AgentKVJob.attach_result_to_cancelled(
+            job.id, self.org.id, result_ref="r/second.json"
+        )
+        job.refresh_from_db()
+
+        assert (first, second) == (True, False)
+        assert job.result_ref == "r/first.json"
+
+    def test_a_blank_ref_is_refused_so_the_caller_keeps_its_delete(self):
+        from agent_kv.models import AgentKVJob, JobStatus
+
+        job = self._job(status=JobStatus.CANCELLED)
+
+        assert (
+            AgentKVJob.attach_result_to_cancelled(job.id, self.org.id, result_ref="")
+            is False
+        )
+
+    def test_another_org_cannot_attach_a_result(self):
+        from agent_kv.models import AgentKVJob, JobStatus
+
+        other = Organization.objects.create(
+            display_name="Other", organization_id="org_other", name="other"
+        )
+        job = self._job(status=JobStatus.CANCELLED)
+
+        assert (
+            AgentKVJob.attach_result_to_cancelled(
+                job.id, other.id, result_ref="r/x.json"
+            )
+            is False
+        )
+
+    def test_the_result_payload_serves_it_while_still_reporting_cancelled(self):
+        """The read half. `status` must stay `cancelled` -- the cancel WAS
+        honoured and a client has to be able to see that -- while `success` is
+        True because there is a real, paid-for result to hand over.
+        """
+        from agent_kv.execution_views_result import result_payload
+        from agent_kv.models import JobStatus
+        from unittest import mock
+
+        job = self._job(status=JobStatus.CANCELLED, result_ref="r/3.json")
+
+        with mock.patch(
+            "agent_kv.execution_views_result.read_result",
+            return_value={"tables": [], "row_count": 0},
+        ):
+            payload = result_payload(job)
+
+        assert payload["status"] == "cancelled"
+        assert payload["success"] is True
+        assert payload["extractors"]["table"] == {"tables": [], "row_count": 0}
+
+    def test_an_ordinary_cancel_is_byte_identical_to_before(self):
+        """The common path -- cancelled mid-run, nothing computed -- must not
+        change shape just because the salvage path exists.
+        """
+        from agent_kv.execution_views_result import result_payload
+        from agent_kv.models import JobStatus
+
+        job = self._job(status=JobStatus.CANCELLED)
+
+        assert result_payload(job) == {"success": False, "status": "cancelled"}
+
+
+class TestThePurgeGuardOnTheSalvage(TestCase):
+    """A result the caller DELETEd must not come back.
+
+    `result_ref=""` alone cannot distinguish "cancelled, nothing stored yet"
+    from "cancelled and explicitly purged": `JobDeleteView` deletes the files
+    and blanks BOTH refs, which is exactly the row the salvage filter matched.
+    A late finalize would then re-attach a newly written result to a job whose
+    data the caller asked to have destroyed.
+
+    `input_ref` is the discriminator: a cancelled job keeps its staged input
+    (only a WINNING finalize drops it, and the salvage path is by definition a
+    losing one), while DELETE and TTL cleanup both blank it.
+    """
+
+    def setUp(self):
+        self.org = Organization.objects.create(
+            display_name="Acme", organization_id="org_acme", name="acme"
+        )
+        UserContext.set_organization_identifier(None)
+
+    def _cancelled(self, **kwargs):
+        from agent_kv.models import AgentKVJob, JobExtractor, JobStatus
+
+        job = AgentKVJob(
+            organization_id=self.org.id,
+            extractor=JobExtractor.TABLE,
+            status=JobStatus.CANCELLED,
+            **kwargs,
+        )
+        job.save()
+        return job
+
+    def test_a_purged_job_does_not_get_its_result_back(self):
+        """The deletion violation. Both refs blank = the caller purged it."""
+        from agent_kv.models import AgentKVJob
+
+        job = self._cancelled(input_ref="", result_ref="")
+
+        attached = AgentKVJob.attach_result_to_cancelled(
+            job.id, self.org.id, result_ref="org/o/agent_kv/j/result.json"
+        )
+        job.refresh_from_db()
+
+        assert attached is False, (
+            "re-attached a result to a job the caller DELETEd; purged data "
+            "must not become readable again"
+        )
+        assert job.result_ref == ""
+
+    def test_a_live_cancelled_job_still_gets_its_result(self):
+        """The other half: the guard must not refuse the case it exists for."""
+        from agent_kv.models import AgentKVJob
+
+        job = self._cancelled(input_ref="org/o/agent_kv/j/input.pdf", result_ref="")
+
+        attached = AgentKVJob.attach_result_to_cancelled(
+            job.id, self.org.id, result_ref="org/o/agent_kv/j/result.json"
+        )
+        job.refresh_from_db()
+
+        assert attached is True
+        assert job.result_ref == "org/o/agent_kv/j/result.json"
+
+    def test_a_ttl_swept_job_does_not_get_a_result_grafted_on(self):
+        """TTL cleanup blanks both refs, same shape as DELETE.
+
+        Re-attaching there would put a result on a job past its retention
+        window, which `JobResultView`'s expiry gate would then 404 anyway --
+        but the file would exist, unreferenced-but-reachable, after the
+        retention window the customer was promised.
+        """
+        from agent_kv.models import AgentKVJob
+        from django.utils import timezone
+        from datetime import timedelta
+
+        job = self._cancelled(
+            input_ref="",
+            result_ref="",
+            expires_at=timezone.now() - timedelta(days=1),
+        )
+
+        assert (
+            AgentKVJob.attach_result_to_cancelled(
+                job.id, self.org.id, result_ref="org/o/agent_kv/j/late.json"
+            )
+            is False
+        )

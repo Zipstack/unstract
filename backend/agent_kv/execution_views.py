@@ -659,15 +659,24 @@ class JobStatusView(APIView):
     @AgentKVKeyValidator.validate_api_key
     def delete(self, request, *args, job_id=None, agent_kv_key=None, **kwargs):
         job = _get_job(agent_kv_key, job_id)
+        won = False
+        reread = False
         if job.status not in AgentKVJob.TERMINAL:
             # Cancel BEFORE deleting files: a still-running job would
             # otherwise keep running after its files are gone, and its
             # eventual finalize call would write a fresh result_ref onto a
             # job the caller already asked to delete -- resurrecting a
             # result they explicitly discarded. Terminalizing first closes
-            # that window; a finalize call that still lands late loses the
-            # terminal-state guard and, on the success path, cleans up its
-            # own now-orphaned write (FinalizeView, storage.delete_result_file).
+            # that window.
+            #
+            # This used to add "and a finalize call that still lands late
+            # cleans up its own now-orphaned write". That is no longer the
+            # mechanism: a losing finalize on a CANCELLED row now ATTACHES its
+            # result instead of deleting it, so the purge is enforced by the
+            # unconditional `refresh_from_db()` before `delete_job_files`
+            # below, plus the `input_ref__gt=""` guard in
+            # `AgentKVJob.attach_result_to_cancelled`. Read both before
+            # changing either.
             won = AgentKVJob.mark_terminal(
                 job.id, job.organization_id, JobStatus.CANCELLED
             )
@@ -725,6 +734,46 @@ class JobStatusView(APIView):
                 # back. Deleting is still the caller's intent; it just has to
                 # act on the refs that actually exist now.
                 job.refresh_from_db()
+                reread = True
+        # Re-read before deleting files, not just on the lost-race branch above.
+        #
+        # This is what lets a cancelled job keep a result it paid for
+        # (`AgentKVJob.attach_result_to_cancelled`) without that result
+        # outliving a DELETE. The comment at the top of this method used to be
+        # able to say "a late finalize cleans up its own orphaned write" --
+        # that stopped being true when a losing finalize started ATTACHING its
+        # result to a cancelled row instead of deleting it. So the cleanup has
+        # to happen here, from the row as it actually is now.
+        #
+        # Without this, the interleaving is:
+        #   DELETE reads the row       -> result_ref ""
+        #   cancel wins, job CANCELLED
+        #   late finalize attaches     -> result_ref set, file written
+        #   DELETE deletes files from its STALE copy -> input only
+        #   DELETE blanks input_ref
+        # leaving a job the caller purged still serving a result. The re-read
+        # closes that: DELETE sees the attached ref and deletes that file too.
+        #
+        # Residual is a storage orphan only, never a disclosure: a finalize
+        # landing between this re-read and the blanking save sets a ref DELETE
+        # then clears without deleting its file. `attach_result_to_cancelled`'s
+        # `input_ref__gt=""` guard closes the other side -- once DELETE has
+        # blanked the input, no later finalize can attach at all.
+        #
+        # Scoped to the CANCELLED case, which is the only status a salvage can
+        # attach to (see that method's filter). A COMPLETED or FAILED row owns
+        # its outcome and nothing can write a result to it, so the extra query
+        # would be waste on the common path -- which is what the
+        # lost-race-only refresh above was originally reasoning about.
+        #
+        # `won` is in the condition and NOT just `job.status`: `mark_terminal`
+        # is a queryset UPDATE and does not touch the in-memory row, so after
+        # this request wins the cancel `job.status` is still RUNNING/PENDING.
+        # Testing only the attribute skipped the re-read on exactly the path
+        # that needs it -- and the DB-free unit tests agreed, because their
+        # mocked `mark_terminal` leaves the row unmutated in the same way.
+        if not reread and (won or job.status == JobStatus.CANCELLED):
+            job.refresh_from_db()
         # Blank only the refs whose files are confirmed gone, so a ref whose
         # delete failed survives as the handle TTL cleanup retries from. 204
         # either way: the job IS terminal and the caller's intent is recorded,
