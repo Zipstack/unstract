@@ -90,6 +90,11 @@ class APIDeploymentAuthTest(TestCase):
             with self.subTest(label):
                 response = self._post(api_name, auth, org)
                 assert response.status_code == expected, response.data
+                assert response.data["type"] == "client_error", response.data
+                assert response.data["message"] == {
+                    "execution_status": "ERROR",
+                    "error": response.data["errors"][0]["detail"],
+                }
 
         execute_workflow.assert_not_called()
 
