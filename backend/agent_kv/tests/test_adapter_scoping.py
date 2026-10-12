@@ -457,6 +457,10 @@ class TestACancelThatLostTheRaceKeepsItsResult(TestCase):
     def _job(self, **kwargs):
         from agent_kv.models import AgentKVJob, JobExtractor
 
+        # `input_ref` defaults to a live staged input: a cancelled job keeps
+        # its input until TTL, and a BLANK one is the purge marker the salvage
+        # must refuse (see `test_a_purged_job_does_not_get_its_result_back`).
+        kwargs.setdefault("input_ref", "org/o/agent_kv/j/input.pdf")
         job = AgentKVJob(
             organization_id=self.org.id, extractor=JobExtractor.TABLE, **kwargs
         )
@@ -594,3 +598,92 @@ class TestACancelThatLostTheRaceKeepsItsResult(TestCase):
         job = self._job(status=JobStatus.CANCELLED)
 
         assert result_payload(job) == {"success": False, "status": "cancelled"}
+
+
+class TestThePurgeGuardOnTheSalvage(TestCase):
+    """A result the caller DELETEd must not come back.
+
+    `result_ref=""` alone cannot distinguish "cancelled, nothing stored yet"
+    from "cancelled and explicitly purged": `JobDeleteView` deletes the files
+    and blanks BOTH refs, which is exactly the row the salvage filter matched.
+    A late finalize would then re-attach a newly written result to a job whose
+    data the caller asked to have destroyed.
+
+    `input_ref` is the discriminator: a cancelled job keeps its staged input
+    (only a WINNING finalize drops it, and the salvage path is by definition a
+    losing one), while DELETE and TTL cleanup both blank it.
+    """
+
+    def setUp(self):
+        self.org = Organization.objects.create(
+            display_name="Acme", organization_id="org_acme", name="acme"
+        )
+        UserContext.set_organization_identifier(None)
+
+    def _cancelled(self, **kwargs):
+        from agent_kv.models import AgentKVJob, JobExtractor, JobStatus
+
+        job = AgentKVJob(
+            organization_id=self.org.id,
+            extractor=JobExtractor.TABLE,
+            status=JobStatus.CANCELLED,
+            **kwargs,
+        )
+        job.save()
+        return job
+
+    def test_a_purged_job_does_not_get_its_result_back(self):
+        """The deletion violation. Both refs blank = the caller purged it."""
+        from agent_kv.models import AgentKVJob
+
+        job = self._cancelled(input_ref="", result_ref="")
+
+        attached = AgentKVJob.attach_result_to_cancelled(
+            job.id, self.org.id, result_ref="org/o/agent_kv/j/result.json"
+        )
+        job.refresh_from_db()
+
+        assert attached is False, (
+            "re-attached a result to a job the caller DELETEd; purged data "
+            "must not become readable again"
+        )
+        assert job.result_ref == ""
+
+    def test_a_live_cancelled_job_still_gets_its_result(self):
+        """The other half: the guard must not refuse the case it exists for."""
+        from agent_kv.models import AgentKVJob
+
+        job = self._cancelled(input_ref="org/o/agent_kv/j/input.pdf", result_ref="")
+
+        attached = AgentKVJob.attach_result_to_cancelled(
+            job.id, self.org.id, result_ref="org/o/agent_kv/j/result.json"
+        )
+        job.refresh_from_db()
+
+        assert attached is True
+        assert job.result_ref == "org/o/agent_kv/j/result.json"
+
+    def test_a_ttl_swept_job_does_not_get_a_result_grafted_on(self):
+        """TTL cleanup blanks both refs, same shape as DELETE.
+
+        Re-attaching there would put a result on a job past its retention
+        window, which `JobResultView`'s expiry gate would then 404 anyway --
+        but the file would exist, unreferenced-but-reachable, after the
+        retention window the customer was promised.
+        """
+        from agent_kv.models import AgentKVJob
+        from django.utils import timezone
+        from datetime import timedelta
+
+        job = self._cancelled(
+            input_ref="",
+            result_ref="",
+            expires_at=timezone.now() - timedelta(days=1),
+        )
+
+        assert (
+            AgentKVJob.attach_result_to_cancelled(
+                job.id, self.org.id, result_ref="org/o/agent_kv/j/late.json"
+            )
+            is False
+        )

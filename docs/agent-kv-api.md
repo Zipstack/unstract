@@ -498,7 +498,9 @@ Re-readable until `expires_at` (D11), plus explicit `DELETE`.
     `{"success": false, "status": "cancelled"}` with no indication it had ever
     existed. The job is **not** reported as `completed` — the cancel still owns
     the status — and the result rides the same `AGENT_KV_RESULT_TTL_DAYS` window
-    as any other, after which this degrades back to the ordinary shape.
+    as any other, after which this degrades back to the ordinary shape. It is
+    also refused outright if you called `DELETE` on the job: the purge wins, and
+    a late result is not resurrected.
 
 **Calculation result shape** (when `calculations` is supplied and
 `AGENT_KV_CALCULATIONS_ENABLED=true`): a `COMPLETED` result adds these fields to the
@@ -649,8 +651,23 @@ which the internal endpoint answers as a no-op once the row is terminal. Both ex
 check at their engine's progress points — `kv` at every graph-node boundary, `table` at
 the engine's own progress points (rate-limited, so detection can lag by a few seconds) —
 and the job then terminates as `cancelled`. Work already done is still billed and
-metered; work not yet started is not. A job that finishes before the cancel is noticed
-simply has its result discarded on arrival.
+metered; work not yet started is not.
+
+**A job that finishes before the cancel is noticed KEEPS its result.** This used
+to say the result was "discarded on arrival", which was accurate and was the
+problem: the engine flushes OCR and LLM usage before the executor's final stage
+report, so the customer had already been billed for an answer that was then
+written and deleted. Such a job stays `cancelled` — the cancel is honoured and
+visible — but `GET /agent-kv/{job_id}/result/` serves the result with
+`success: true` (see [§5](#7-get-result)). Fetch it; you have paid for it.
+
+Two cases where it genuinely is gone, both deliberate:
+
+- You called `DELETE /agent-kv/{job_id}/` — the purge wins, and a late result is
+  refused rather than resurrected.
+- The job passed `AGENT_KV_RESULT_TTL_DAYS` and TTL cleanup swept it, after
+  which the endpoint reports the ordinary
+  `{"success": false, "status": "cancelled"}`.
 
 - Won the race (job was non-terminal): `200` `{"status": "cancelled"}`.
 - Already terminal: `409` `{"status": "<job.status>"}`, lowercased (e.g.

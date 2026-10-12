@@ -192,6 +192,33 @@ class AgentKVJob(DefaultOrganizationMixin, BaseModel):
         callback finds the ref already set, matches zero rows, and its own
         freshly written file is deleted by the caller rather than orphaned.
 
+        **`input_ref__gt=""` is the purge guard, and it is the important one.**
+        `result_ref=""` alone cannot tell "cancelled, nothing stored yet" from
+        "cancelled and the caller explicitly DELETEd it" -- `JobDeleteView`
+        purges the files and blanks both refs, leaving exactly the row this
+        filter was matching. A late finalize would then have attached a newly
+        written result to a job whose data the caller had asked to be destroyed,
+        making it readable again. That is a deletion violation, not a
+        correctness nit, and it is strictly worse than the billing problem the
+        salvage exists to fix.
+
+        `input_ref` discriminates them because a cancelled job KEEPS its staged
+        input (it rides `AGENT_KV_RESULT_TTL_DAYS`; only a winning finalize
+        drops it, via `_drop_staged_input`, which runs only when `finalized` is
+        True). So:
+
+        * cancelled mid-flight, not deleted -> `input_ref` set    -> salvage
+        * DELETEd by the caller              -> `input_ref` blank -> refused
+        * swept by TTL cleanup               -> `input_ref` blank -> refused
+
+        Residual, stated rather than papered over: TTL cleanup can select this
+        row (its filter is `Q(input_ref__gt="") | Q(result_ref__gt="")`), read
+        an empty `result_ref`, and blank the refs after this update has set one
+        -- leaving the new result file orphaned in the bucket. A storage leak,
+        the same class the `JobDeleteView` refresh already documents, bounded by
+        the width of that one sweep, and strictly better than the alternative it
+        replaces, which was destroying a result the customer had paid for.
+
         Returns True when this call attached the result (and the caller must
         therefore keep the file), False when it did not (caller deletes it).
         """
@@ -206,6 +233,10 @@ class AgentKVJob(DefaultOrganizationMixin, BaseModel):
                 organization_id=organization_id,
                 status=JobStatus.CANCELLED,
                 result_ref="",
+                # See the purge guard in the docstring: a blank `input_ref`
+                # means the caller DELETEd this job or TTL cleanup swept it.
+                # Re-attaching a result there resurrects purged data.
+                input_ref__gt="",
             ).update(**fields)
         )
 
