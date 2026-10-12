@@ -33,6 +33,25 @@ WAV_BYTES = b"RIFF\x24\x08\x00\x00WAVEfmt \x10\x00\x00\x00\x01\x00\x02\x00"
 HTML_BYTES = b"<!DOCTYPE html><html><body>hello</body></html>"
 
 
+# A package declares its main part and relates it from the root; an archive
+# carrying only the member names is what the extractor cannot open.
+_OOXML_MAIN = (
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    ".main+xml"
+)
+_OOXML_CONTENT_TYPES = (
+    '<?xml version="1.0"?><Types>'
+    f'<Override PartName="/word/document.xml" ContentType="{_OOXML_MAIN}"/>'
+    "</Types>"
+)
+_OOXML_RELS = (
+    '<?xml version="1.0"?><Relationships>'
+    '<Relationship Id="rId1" Target="word/document.xml" '
+    'Type="http://schemas.openxmlformats.org/officeDocument/2006/'
+    'relationships/officeDocument"/>'
+    "</Relationships>"
+)
+
 API_STORAGE_DIR = "/api-storage/exec-1"
 
 
@@ -182,6 +201,27 @@ def test_two_rejected_files_get_two_rows(collaborators) -> None:
     assert len(hashes) == 2
 
 
+def test_two_identical_same_named_rejections_get_two_rows(collaborators) -> None:
+    """Every rejected part is its own record.
+
+    Same bytes under the same name is the case content and name alone cannot
+    separate, so the counts would be short by one for each repeat.
+    """
+    _stage(
+        [
+            _upload("same.pdf", WAV_BYTES, "application/pdf"),
+            _upload("same.pdf", WAV_BYTES, "application/pdf"),
+        ]
+    )
+
+    manager = collaborators["WorkflowFileExecution"].objects
+    identities = {
+        call.kwargs["file_hash"].file_hash
+        for call in manager.get_or_create_file_execution.call_args_list
+    }
+    assert len(identities) == 2
+
+
 def test_a_failed_row_write_does_not_fail_the_request(collaborators) -> None:
     """Bookkeeping must not cost the caller their good files."""
     collaborators[
@@ -245,8 +285,8 @@ def _docx_bytes(pad_first_member: bool) -> bytes:
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as archive:
         if pad_first_member:
             archive.writestr("junk.bin", bytes(range(256)) * 4)
-        archive.writestr("[Content_Types].xml", '<?xml version="1.0"?><Types/>')
-        archive.writestr("_rels/.rels", '<?xml version="1.0"?><Relationships/>')
+        archive.writestr("[Content_Types].xml", _OOXML_CONTENT_TYPES)
+        archive.writestr("_rels/.rels", _OOXML_RELS)
         archive.writestr("word/document.xml", '<?xml version="1.0"?><document/>')
     return buf.getvalue()
 
@@ -390,7 +430,9 @@ def test_an_incomplete_ooxml_package_is_rejected(collaborators) -> None:
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as archive:
         # Ahead of the markers, so libmagic will only call this a zip.
         archive.writestr("junk.bin", bytes(range(256)) * 4)
+        # Every member name a package has, but nothing declaring a main part.
         archive.writestr("[Content_Types].xml", '<?xml version="1.0"?><Types/>')
+        archive.writestr("_rels/.rels", '<?xml version="1.0"?><Relationships/>')
         archive.writestr("word/document.xml", '<?xml version="1.0"?><document/>')
     data = buf.getvalue()
     # Which wrapper libmagic names here differs between builds - octet-stream on

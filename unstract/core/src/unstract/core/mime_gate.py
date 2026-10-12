@@ -50,6 +50,35 @@ OOXML_DIRECTORY_TYPES = (
     ),
 )
 
+# A package declares its main part's content type, so requiring that declaration
+# tells a real document from an archive that merely carries the right member
+# names — which the extractor cannot open. Matched as bytes rather than parsed:
+# this is an untrusted upload, and an XML parser is a larger attack surface than
+# the check is worth.
+OOXML_CONTENT_TYPES_LIMIT = 65536
+OOXML_MAIN_PART_MARKER = b"main+xml"
+
+
+def _identify_ooxml(archive: zipfile.ZipFile, names: "list[str]") -> str | None:
+    """Name an OOXML package, or None if the archive only looks like one."""
+    try:
+        info = archive.getinfo("[Content_Types].xml")
+        if info.file_size > OOXML_CONTENT_TYPES_LIMIT:
+            return None
+        with archive.open(info) as member:
+            declared = member.read(OOXML_CONTENT_TYPES_LIMIT)
+    except (KeyError, OSError, zipfile.BadZipFile, ValueError):
+        return None
+
+    # Member names say which format this claims to be; the declaration is what
+    # makes the claim credible.
+    if OOXML_MAIN_PART_MARKER not in declared:
+        return None
+    for prefix, mime_type in OOXML_DIRECTORY_TYPES:
+        if any(name.startswith(prefix) for name in names):
+            return mime_type
+    return None
+
 
 def identify_zip_container(path: str) -> str | None:
     """Name the document inside a zip, or None if it is just a zip.
@@ -74,13 +103,10 @@ def identify_zip_container(path: str) -> str | None:
                 declared = raw.decode("ascii", "ignore").strip()
                 if declared in ODF_MIME_TYPES:
                     return declared
-            # A real package carries its relationships too. Without them the
-            # archive is not loadable, so naming it an Office document here only
-            # moves the failure to extraction.
+            # Relationships and a declared main part, or the archive only looks
+            # like a document and naming it one moves the failure to extraction.
             if {"[Content_Types].xml", "_rels/.rels"} <= set(names):
-                for prefix, mime_type in OOXML_DIRECTORY_TYPES:
-                    if any(name.startswith(prefix) for name in names):
-                        return mime_type
+                return _identify_ooxml(archive, names)
     except (zipfile.BadZipFile, OSError, KeyError, ValueError):
         return None
     return None

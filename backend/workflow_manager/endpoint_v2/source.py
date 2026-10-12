@@ -1260,6 +1260,7 @@ class SourceConnector(BaseConnector):
         file_name: str,
         mime_type: str | None,
         log_message: str,
+        position: int,
     ) -> None:
         """Record a rejection for the caller without risking the whole request.
 
@@ -1285,6 +1286,7 @@ class SourceConnector(BaseConnector):
                 file_name=file_name,
                 mime_type=mime_type,
                 log_message=log_message,
+                position=position,
             )
         except Exception:
             logger.exception(
@@ -1299,6 +1301,7 @@ class SourceConnector(BaseConnector):
         file_name: str,
         mime_type: str | None,
         log_message: str,
+        position: int,
     ) -> None:
         """Record a rejected file as a terminal ERROR file execution.
 
@@ -1308,14 +1311,18 @@ class SourceConnector(BaseConnector):
         workflow_execution = WorkflowExecution.objects.get(pk=execution_id)
 
         # The row's identity rests on this alone, since the API path has no
-        # file_path. Content and name both, so the same bytes under two names
-        # stay two rejections. Not a plain content hash on purpose: this file was
-        # never processed and must not look to file history as though it were.
+        # file_path to tell two rejections apart. Content, name and the upload's
+        # position in the request, so every rejected part gets its own record
+        # even when two are byte-identical and share a name. Not a plain content
+        # hash on purpose: this file was never processed and must not look to
+        # file history as though it were.
         digest = sha256()
         for chunk in file.chunks(chunk_size=cls.READ_CHUNK_SIZE):
             digest.update(chunk)
         file.seek(0)
-        row_identity = sha256(digest.digest() + file_name.encode("utf-8")).hexdigest()
+        row_identity = sha256(
+            digest.digest() + file_name.encode("utf-8") + str(position).encode("ascii")
+        ).hexdigest()
 
         file_execution = WorkflowFileExecution.objects.get_or_create_file_execution(
             workflow_execution=workflow_execution,
@@ -1370,7 +1377,7 @@ class SourceConnector(BaseConnector):
         file_hashes: dict[str, FileHash] = {}
         unique_file_hashes: set[str] = set()
         connection_type = WorkflowEndpoint.ConnectionType.API
-        for file in file_objs:
+        for position, file in enumerate(file_objs):
             file_name = file.name
             destination_path = os.path.join(api_storage_dir, file_name)
 
@@ -1394,6 +1401,7 @@ class SourceConnector(BaseConnector):
                     file_name,
                     None,
                     log_message,
+                    position,
                 )
                 continue
 
@@ -1414,6 +1422,7 @@ class SourceConnector(BaseConnector):
                     file_name,
                     mime_type,
                     log_message,
+                    position,
                 )
                 continue
 
