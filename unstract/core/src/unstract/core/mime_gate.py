@@ -5,6 +5,7 @@ identically. Keep in sync with LLMWhisperer's supported types.
 """
 
 import re
+import xml.etree.ElementTree as ElementTree
 import zipfile
 
 import magic
@@ -22,12 +23,28 @@ PDF_HEADER_SCAN_BYTES = 1024
 # carries a version, so require one before promoting anything on its strength.
 PDF_HEADER_PATTERN = re.compile(rb"%PDF-\d\.\d")
 
-# The member holds one media type string; bounding the read keeps a hostile
-# archive from expanding through this check.
-MIMETYPE_MEMBER_LIMIT = 256
+# A package's declaration members are small; anything larger is not one.
+PACKAGE_MEMBER_LIMIT = 65536
 
-# The member is archive-controlled, so it may identify which ODF document this
-# is but never nominate some other format.
+# Those members never carry a DTD, so refusing one keeps entity expansion away
+# from the parser rather than trusting the parser to be safe about it.
+DTD_MARKERS = (b"<!DOCTYPE", b"<!ENTITY")
+
+# The content type a package declares for its main part, and what we report.
+OOXML_MAIN_CONTENT_TYPES = {
+    "application/vnd.openxmlformats-officedocument.wordprocessingml"
+    ".document.main+xml": (
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    ),
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml": (
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    ),
+    "application/vnd.openxmlformats-officedocument.presentationml"
+    ".presentation.main+xml": (
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+    ),
+}
+
 ODF_MIME_TYPES = frozenset(
     {
         "application/vnd.oasis.opendocument.text",
@@ -36,98 +53,106 @@ ODF_MIME_TYPES = frozenset(
     }
 )
 
-# Marker directories that identify a zip-based document when libmagic will only
-# call it a zip.
-OOXML_DIRECTORY_TYPES = (
-    (
-        "word/",
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    ),
-    ("xl/", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
-    (
-        "ppt/",
-        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-    ),
-)
-
-# A package declares its main part and relates it from the root. Requiring the
-# two to agree, and to name a member that exists, is what separates a document
-# from an archive wearing its member names. Read as bytes with bounded reads
-# rather than parsed: the input is an untrusted upload, and an XML parser is far
-# more attack surface than this needs.
-OOXML_MEMBER_LIMIT = 65536
-
-# The content type a package declares for its main part, and the type we report.
-OOXML_MAIN_CONTENT_TYPES = {
-    b"application/vnd.openxmlformats-officedocument.wordprocessingml"
-    b".document.main+xml": (
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-    ),
-    b"application/vnd.openxmlformats-officedocument.spreadsheetml" b".sheet.main+xml": (
-        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    ),
-    b"application/vnd.openxmlformats-officedocument.presentationml"
-    b".presentation.main+xml": (
-        "application/vnd.openxmlformats-officedocument.presentationml.presentation"
-    ),
-}
-
-_OVERRIDE_TAG = re.compile(rb"<Override\b[^>]*>", re.IGNORECASE)
-_RELATIONSHIP_TAG = re.compile(rb"<Relationship\b[^>]*>", re.IGNORECASE)
-_OFFICE_DOCUMENT_REL = b"/officeDocument"
+OFFICE_DOCUMENT_RELATION = "/officeDocument"
 
 
-def _attribute(tag: bytes, name: bytes) -> bytes | None:
-    """One attribute off an XML start tag, quoted either way, any order."""
-    match = re.search(
-        rb"\b" + re.escape(name) + rb"\s*=\s*[\"']([^\"']*)[\"']",
-        tag,
-        re.IGNORECASE,
-    )
-    return match.group(1).strip() if match else None
+def _local_name(tag: str) -> str:
+    """A tag or attribute name without its namespace."""
+    return tag.rsplit("}", 1)[-1]
+
+
+def _attribute(element, name: str) -> str | None:
+    """An attribute by local name, whatever prefix it carries."""
+    for key, value in element.attrib.items():
+        if _local_name(key) == name:
+            return value.strip()
+    return None
 
 
 def _read_member(archive: zipfile.ZipFile, name: str) -> bytes | None:
-    """A member's bytes, bounded, or None if it is absent or oversized."""
+    """A declaration member's bytes, bounded, or None if unusable."""
     try:
         info = archive.getinfo(name)
-        if info.file_size > OOXML_MEMBER_LIMIT:
+        if info.file_size > PACKAGE_MEMBER_LIMIT:
             return None
         with archive.open(info) as member:
-            return member.read(OOXML_MEMBER_LIMIT)
+            return member.read(PACKAGE_MEMBER_LIMIT)
     except (KeyError, OSError, zipfile.BadZipFile, ValueError):
         return None
 
 
-def _normalise_part(part: bytes | None) -> str | None:
-    return part.lstrip(b"/").decode("utf-8", "ignore") or None if part else None
+def _parse_member(archive: zipfile.ZipFile, name: str):
+    """Parse a declaration member, or None if it is unusable.
+
+    Parsed rather than pattern-matched because the archive is untrusted: a
+    comment, a namespace prefix or an escaped attribute each defeat matching on
+    raw bytes, and each was a way past this check.
+    """
+    raw = _read_member(archive, name)
+    if raw is None:
+        return None
+    upper = raw.upper()
+    if any(marker in upper for marker in DTD_MARKERS):
+        return None
+    try:
+        return ElementTree.fromstring(raw)
+    except ElementTree.ParseError:
+        return None
+
+
+def _normalise_part(part: str | None) -> str | None:
+    return part.lstrip("/") or None if part else None
 
 
 def _identify_ooxml(archive: zipfile.ZipFile, names: "list[str]") -> str | None:
-    """Name an OOXML package, or None if the archive only looks like one."""
-    content_types = _read_member(archive, "[Content_Types].xml")
-    rels = _read_member(archive, "_rels/.rels")
-    if content_types is None or rels is None:
+    """Name an OOXML package, or None if the archive only looks like one.
+
+    The package must declare its main part, relate that same part from the root,
+    and contain it. Any of those alone is satisfied by an archive the extractor
+    cannot open.
+    """
+    content_types = _parse_member(archive, "[Content_Types].xml")
+    relationships = _parse_member(archive, "_rels/.rels")
+    if content_types is None or relationships is None:
         return None
 
     declared_part = declared_type = None
-    for tag in _OVERRIDE_TAG.findall(content_types):
-        mime_type = OOXML_MAIN_CONTENT_TYPES.get(_attribute(tag, b"ContentType") or b"")
+    for element in content_types.iter():
+        if _local_name(element.tag) != "Override":
+            continue
+        content_type = _attribute(element, "ContentType") or ""
+        mime_type = OOXML_MAIN_CONTENT_TYPES.get(content_type)
         if mime_type:
-            declared_part = _normalise_part(_attribute(tag, b"PartName"))
+            declared_part = _normalise_part(_attribute(element, "PartName"))
             declared_type = mime_type
             break
-    if not declared_part:
+    if not declared_part or declared_part not in names:
         return None
 
-    for tag in _RELATIONSHIP_TAG.findall(rels):
-        relation = _attribute(tag, b"Type") or b""
-        if not relation.rstrip(b"/").endswith(_OFFICE_DOCUMENT_REL):
+    for element in relationships.iter():
+        if _local_name(element.tag) != "Relationship":
             continue
-        # The relationship must point at the part the package declared, and that
-        # part must actually be in the archive.
-        if _normalise_part(_attribute(tag, b"Target")) == declared_part:
-            return declared_type if declared_part in names else None
+        relation = _attribute(element, "Type") or ""
+        if not relation.rstrip("/").endswith(OFFICE_DOCUMENT_RELATION):
+            continue
+        if _normalise_part(_attribute(element, "Target")) == declared_part:
+            return declared_type
+    return None
+
+
+def _identify_odf(archive: zipfile.ZipFile, declared: str) -> str | None:
+    """Confirm the manifest agrees with what the mimetype member claims."""
+    manifest = _parse_member(archive, "META-INF/manifest.xml")
+    if manifest is None:
+        return None
+    for element in manifest.iter():
+        if _local_name(element.tag) != "file-entry":
+            continue
+        if (
+            _attribute(element, "full-path") == "/"
+            and _attribute(element, "media-type") == declared
+        ):
+            return declared
     return None
 
 
@@ -140,22 +165,19 @@ def identify_zip_container(path: str) -> str | None:
     try:
         with zipfile.ZipFile(path) as archive:
             names = archive.namelist()
-            # ODF requires this member to be first and stored uncompressed, so
-            # holding it to those conditions is what makes it evidence.
+            # ODF requires this member to be first and stored uncompressed, and
+            # its manifest to declare the same type for the package root.
             info = archive.infolist()[0] if names else None
             if (
                 info is not None
                 and info.filename == "mimetype"
                 and info.compress_type == zipfile.ZIP_STORED
-                and info.file_size <= MIMETYPE_MEMBER_LIMIT
+                and info.file_size <= PACKAGE_MEMBER_LIMIT
             ):
-                with archive.open(info) as member:
-                    raw = member.read(MIMETYPE_MEMBER_LIMIT)
+                raw = _read_member(archive, "mimetype") or b""
                 declared = raw.decode("ascii", "ignore").strip()
                 if declared in ODF_MIME_TYPES:
-                    return declared
-            # Relationships and a declared main part, or the archive only looks
-            # like a document and naming it one moves the failure to extraction.
+                    return _identify_odf(archive, declared)
             if {"[Content_Types].xml", "_rels/.rels"} <= set(names):
                 return _identify_ooxml(archive, names)
     except (zipfile.BadZipFile, OSError, KeyError, ValueError):
@@ -167,7 +189,7 @@ def resolve_inconclusive_mime_type(mime_type: str, head: bytes) -> str:
     """Give a wrapper-only classification a second chance from the leading bytes.
 
     This promotes a file into the allow-list, so it stays narrow: a recognised
-    zip is left alone, and the marker must look like a real header.
+    wrapper keeps its own answer, and the marker must look like a real header.
     """
     if mime_type not in INCONCLUSIVE_MIME_TYPES:
         return mime_type

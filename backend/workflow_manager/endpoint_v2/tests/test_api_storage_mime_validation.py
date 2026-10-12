@@ -554,6 +554,110 @@ def test_attribute_order_and_quoting_do_not_matter(collaborators) -> None:
     )
 
 
+_ODT = "application/vnd.oasis.opendocument.text"
+
+
+def _odf_archive(declared: str, manifest: str | None) -> bytes:
+    """An ODF-shaped archive: mimetype first and stored, as the spec requires."""
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr(
+            zipfile.ZipInfo("mimetype"), declared, compress_type=zipfile.ZIP_STORED
+        )
+        if manifest is not None:
+            archive.writestr("META-INF/manifest.xml", manifest)
+        archive.writestr("content.xml", "<office/>")
+    return buf.getvalue()
+
+
+def _odf_manifest(media_type: str) -> str:
+    return (
+        '<?xml version="1.0"?><manifest:manifest xmlns:manifest="urn:m">'
+        f'<manifest:file-entry manifest:full-path="/" '
+        f'manifest:media-type="{media_type}"/></manifest:manifest>'
+    )
+
+
+@pytest.mark.parametrize(
+    "manifest, expected, why",
+    [
+        (_odf_manifest(_ODT), _ODT, "manifest agrees with the mimetype member"),
+        (None, None, "there is no manifest"),
+        (
+            "<?xml version='1.0'?><manifest:manifest xmlns:manifest='urn:m'/>",
+            None,
+            "the manifest declares nothing",
+        ),
+        (_odf_manifest("application/zip"), None, "the manifest disagrees"),
+    ],
+    ids=["agrees", "no-manifest", "empty-manifest", "disagrees"],
+)
+def test_odf_is_recognised_only_when_its_manifest_agrees(
+    tmp_path, manifest: str | None, expected: str | None, why: str
+) -> None:
+    """The mimetype member is archive-controlled, so it needs corroborating.
+
+    Exercised against the helper directly: libmagic names this archive shape
+    itself, so staging never escalates it and the branch would otherwise go
+    untested — and libmagic's container verdicts differ between builds, so the
+    branch is reachable even though it is not on this one.
+    """
+    archive = tmp_path / "candidate.zip"
+    archive.write_bytes(_odf_archive(_ODT, manifest))
+
+    assert src_mod.identify_zip_container(str(archive)) == expected, why
+
+
+@pytest.mark.parametrize(
+    "content_types, why",
+    [
+        (
+            '<?xml version="1.0"?><Types><!-- ' + _OOXML_CONTENT_TYPES + " --></Types>",
+            "declares its main part only inside a comment",
+        ),
+        (
+            '<?xml version="1.0"?><!DOCTYPE t [<!ENTITY a "aa">]><Types>&a;</Types>',
+            "carries a DTD, which is never parsed",
+        ),
+    ],
+    ids=["commented-out", "dtd"],
+)
+def test_a_declaration_must_survive_parsing(
+    collaborators, content_types: str, why: str
+) -> None:
+    """Matching raw bytes accepted things parsing does not.
+
+    A comment satisfied a pattern looking for the Override tag, and a DTD is an
+    expansion risk rather than a declaration, so both are read by parsing the
+    member instead.
+    """
+    data = _ooxml_archive(content_types, _OOXML_RELS, "word/document.xml")
+
+    result = _stage([_upload("spoof.pdf", data, "application/pdf")])
+
+    assert result == {}, f"accepted an archive that {why}"
+
+
+def test_a_namespaced_declaration_is_still_recognised(collaborators) -> None:
+    """Prefixes are a presentation detail, not a different document."""
+    main = (
+        "application/vnd.openxmlformats-officedocument.wordprocessingml"
+        ".document.main+xml"
+    )
+    data = _ooxml_archive(
+        '<?xml version="1.0"?><ct:Types xmlns:ct="urn:x"><ct:Override '
+        f'PartName="/word/document.xml" ContentType="{main}"/></ct:Types>',
+        _OOXML_RELS,
+        "word/document.xml",
+    )
+
+    result = _stage([_upload("report.docx", data, "application/pdf")])
+
+    assert result["report.docx"].mime_type == (
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    )
+
+
 def test_a_plain_zip_stays_rejected(collaborators) -> None:
     """Looking inside a zip widens recognition, not the allow-list."""
     buf = io.BytesIO()
