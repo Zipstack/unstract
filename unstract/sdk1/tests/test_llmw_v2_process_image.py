@@ -49,6 +49,8 @@ class TestTextModeRegression:
         assert result.extracted_text == "hello text"
         assert result.extraction_metadata.whisper_hash == "wh1"
         assert result.extraction_metadata.page_images is None
+        # Responses without whisper_metadata report no page count.
+        assert result.page_count is None
         assert image_called["hit"] is False  # image path never touched
 
     def test_text_mode_error_path_propagates(self, monkeypatch: MonkeyPatch) -> None:

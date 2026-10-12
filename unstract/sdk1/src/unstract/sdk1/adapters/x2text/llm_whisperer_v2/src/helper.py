@@ -393,9 +393,8 @@ class LLMWhispererHelper:
             usable one.
         """
         metadata = response.get("whisper_metadata")
-        page_count = (
-            metadata.get("processed_page_count") if isinstance(metadata, dict) else None
-        )
+        has_metadata = isinstance(metadata, dict)
+        page_count = metadata.get("processed_page_count") if has_metadata else None
         # bool is a subclass of int, so it has to be rejected explicitly.
         if (
             isinstance(page_count, bool)
@@ -406,7 +405,7 @@ class LLMWhispererHelper:
                 "No usable processed_page_count in LLMWhisperer response "
                 "(whisper_hash=%s, whisper_metadata_present=%s, value=%r)",
                 response.get(X2TextConstants.WHISPER_HASH_V2),
-                isinstance(metadata, dict),
+                has_metadata,
                 page_count,
             )
             return None
