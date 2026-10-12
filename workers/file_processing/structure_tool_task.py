@@ -109,6 +109,14 @@ class _SK:
 # -----------------------------------------------------------------------
 
 
+def _image_mode_llm_ids(
+    tool_settings: dict[str, Any], outputs: list[dict[str, Any]]
+) -> list[str]:
+    """Distinct LLM adapter ids of the tool and of each prompt run here."""
+    ids = {tool_settings.get(_SK.LLM)} | {o.get(_SK.LLM) for o in outputs}
+    return sorted(str(i) for i in ids if i)
+
+
 def _apply_profile_overrides(tool_metadata: dict, profile_data: dict) -> list[str]:
     """Apply profile overrides to tool metadata.
 
@@ -465,6 +473,9 @@ def _execute_structure_tool_impl(params: dict) -> dict:
 
     extract_params = {
         "x2text_instance_id": tool_settings[_SK.X2TEXT_ADAPTER],
+        # Every LLM that will read an image-mode document, so the extraction
+        # checks their image-request limits before the billed conversion.
+        "llm_instance_ids": _image_mode_llm_ids(tool_settings, outputs),
         "file_path": input_file_path,
         "enable_highlight": is_highlight_enabled,
         "output_file_path": str(execution_run_data_folder / _SK.EXTRACT),

@@ -23,6 +23,7 @@ Tunables are module constants so a product decision is one edit.
 
 from __future__ import annotations
 
+import dataclasses
 import logging
 import struct
 from dataclasses import dataclass, field
@@ -33,6 +34,10 @@ from unstract.sdk1.adapters.x2text.page_image_loader import (
     PageCapExceededError,
     PageImageSetTooLargeError,
     PageImageTooLargeError,
+    configured_max_total_bytes,
+    configured_page_cap,
+    configured_page_ceiling,
+    configured_request_bytes_ceiling,
 )
 
 if TYPE_CHECKING:
@@ -59,9 +64,42 @@ PAGE_LABEL_OVERHEAD_BYTES = 64
 # Median raw size of a 150-DPI page PNG (354-PDF sample); used ONLY for the
 # pre-conversion size advisory, never to reject.
 ASSUMED_PAGE_BYTES = 250_000
+# TEMPORARY rollout bound (UN-4427). The cloud vlm-image-answer plugin still
+# answers with the fixed legacy limits (90 pages / 14 MiB, or their env
+# overrides). Until it switches to model-aware limits, extraction is bounded
+# by the same values so a document can never pass extraction (and be billed)
+# and then be rejected at answer time by the plugin. Set to False — and
+# delete with the legacy accessors — once the cloud change is released.
+LEGACY_ANSWER_BOUNDS_ACTIVE = True
 # base64 inflates 3 raw bytes to 4 characters.
 _B64_NUM, _B64_DEN = 4, 3
 _MB = 1_000_000  # the table's byte limits are decimal
+
+
+# --- Bounds shared by every caller -------------------------------------------
+
+
+def extraction_bound_kwargs() -> dict[str, int | None]:
+    """Ceilings every image-mode policy applies on top of the model's limits.
+
+    Operator ceilings (``VLM_IMAGE_ANSWER_PAGE_CAP`` /
+    ``VLM_IMAGE_ANSWER_MAX_TOTAL_MB``) always apply; while
+    ``LEGACY_ANSWER_BOUNDS_ACTIVE`` the legacy 90-page / 14 MiB answer-time
+    limits are used instead, so extraction is never looser than the plugin.
+    Pass the result to ``ImageModePolicy.from_limits`` / ``ceiling_only``.
+    """
+    if LEGACY_ANSWER_BOUNDS_ACTIVE:
+        # The legacy accessors already fold the same env vars in.
+        return {
+            "page_ceiling": None,
+            "bytes_ceiling": configured_max_total_bytes(),
+            "legacy_cap": configured_page_cap(),
+        }
+    return {
+        "page_ceiling": configured_page_ceiling(),
+        "bytes_ceiling": configured_request_bytes_ceiling(),
+        "legacy_cap": None,
+    }
 
 
 # --- Page budget -----------------------------------------------------------
@@ -100,7 +138,7 @@ class PageBudget:
             return (
                 f"the platform limit set by your administrator is {self.max_pages} pages"
             )
-        return f"the limit is {self.max_pages} pages"
+        return f"image output mode currently accepts at most {self.max_pages} pages"
 
 
 def compute_page_budget(
@@ -611,6 +649,12 @@ def request_too_large_message(
         raw_total, page_count=page_count, prompt_text_bytes=prompt_text_bytes
     )
     limit = policy.request_bytes
+    if limit is not None and policy.bytes_ceiling is not None:
+        model_budget = dataclasses.replace(policy, bytes_ceiling=None).raw_byte_budget(
+            page_count=page_count, prompt_text_bytes=prompt_text_bytes
+        )
+        if model_budget is not None and policy.bytes_ceiling < model_budget:
+            limit = None  # the ceiling bound, not the model's limit
     limits = next(
         (
             lim
@@ -627,7 +671,7 @@ def request_too_large_message(
         )
     else:
         ceiling = policy.bytes_ceiling or 0
-        bound = f"over the {ceiling / _MB:.0f} MB limit set by your administrator"
+        bound = f"over the {ceiling / _MB:.0f} MB limit for one image-mode request"
     return (
         f"The {page_count} page images of this document total {raw_total / _MB:.1f} MB "
         f"({wire / _MB:.1f} MB once encoded), {bound}, and image output mode sends "
