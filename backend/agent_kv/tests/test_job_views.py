@@ -412,19 +412,14 @@ def test_delete_calls_delete_job_files_and_blanks_refs(
 # files are deleted -- a still-running job that finalizes late would
 # otherwise write a fresh result onto a job the caller just deleted.
 # ---------------------------------------------------------------------------
-# `refresh_from_db` is patched because DELETE now re-reads the row before
-# deleting files whenever it has just cancelled the job -- a late finalize can
-# attach a result to a CANCELLED row, and deleting from the pre-cancel snapshot
-# would leave that result on a purged job. This suite is DB-free, so the real
-# query raises; the behaviour itself is asserted in
-# `test_delete_DOES_refresh_when_it_wins_the_cancel`.
-@mock.patch.object(AgentKVJob, "refresh_from_db")
 @mock.patch.object(AgentKVJob, "save")
 @mock.patch.object(ev, "delete_job_files")
 @mock.patch.object(AgentKVJob, "mark_terminal", return_value=True)
 @mock.patch.object(AgentKVJob, "objects")
 @mock.patch.object(AgentKVKey, "objects")
-def test_delete_on_running_job_cancels_before_deleting_files(m_keys, m_jobs, m_mark_terminal, m_delete_files, m_save, m_refresh):
+def test_delete_on_running_job_cancels_before_deleting_files(
+    m_keys, m_jobs, m_mark_terminal, m_delete_files, m_save
+):
     m_keys.get.return_value = kv_key()
     job = AgentKVJob(status=JobStatus.RUNNING)
     job.organization_id = "org1"
@@ -452,20 +447,15 @@ def test_delete_on_running_job_cancels_before_deleting_files(m_keys, m_jobs, m_m
 # leaked a slot until the 6h TTL, and enough of them exhaust the org's
 # allowance and start rejecting new submits.
 # ---------------------------------------------------------------------------
-# `refresh_from_db` is patched because DELETE now re-reads the row before
-# deleting files whenever it has just cancelled the job -- a late finalize can
-# attach a result to a CANCELLED row, and deleting from the pre-cancel snapshot
-# would leave that result on a purged job. This suite is DB-free, so the real
-# query raises; the behaviour itself is asserted in
-# `test_delete_DOES_refresh_when_it_wins_the_cancel`.
-@mock.patch.object(AgentKVJob, "refresh_from_db")
 @mock.patch.object(ev.AgentKVConcurrencyLimiter, "release")
 @mock.patch.object(AgentKVJob, "save")
 @mock.patch.object(ev, "delete_job_files", return_value=["input_ref", "result_ref"])
 @mock.patch.object(AgentKVJob, "mark_terminal", return_value=True)
 @mock.patch.object(AgentKVJob, "objects")
 @mock.patch.object(AgentKVKey, "objects")
-def test_delete_on_a_running_job_does_NOT_release_the_slot(m_keys, m_jobs, m_mark_terminal, m_delete_files, m_save, m_release, m_refresh):
+def test_delete_on_a_running_job_does_NOT_release_the_slot(
+    m_keys, m_jobs, m_mark_terminal, m_delete_files, m_save, m_release
+):
     """Inverted: this used to assert the release, which was the bug.
 
     Nothing revokes a running executor -- `job.task_id` is written at dispatch
@@ -493,13 +483,6 @@ def test_delete_on_a_running_job_does_NOT_release_the_slot(m_keys, m_jobs, m_mar
     )
 
 
-# `refresh_from_db` is patched because DELETE now re-reads the row before
-# deleting files whenever it has just cancelled the job -- a late finalize can
-# attach a result to a CANCELLED row, and deleting from the pre-cancel snapshot
-# would leave that result on a purged job. This suite is DB-free, so the real
-# query raises; the behaviour itself is asserted in
-# `test_delete_DOES_refresh_when_it_wins_the_cancel`.
-@mock.patch.object(AgentKVJob, "refresh_from_db")
 @mock.patch.object(ev, "dispatch_cancelled_webhook")
 @mock.patch.object(ev.AgentKVConcurrencyLimiter, "release")
 @mock.patch.object(AgentKVJob, "save")
@@ -507,7 +490,9 @@ def test_delete_on_a_running_job_does_NOT_release_the_slot(m_keys, m_jobs, m_mar
 @mock.patch.object(AgentKVJob, "mark_terminal", return_value=True)
 @mock.patch.object(AgentKVJob, "objects")
 @mock.patch.object(AgentKVKey, "objects")
-def test_delete_on_a_never_dispatched_job_DOES_release_the_slot(m_keys, m_jobs, m_mark_terminal, m_delete_files, m_save, m_release, m_hook, m_refresh):
+def test_delete_on_a_never_dispatched_job_DOES_release_the_slot(
+    m_keys, m_jobs, m_mark_terminal, m_delete_files, m_save, m_release, m_hook
+):
     """The case the release exists for, and the only one.
 
     A job cancelled before dispatch gets no finalize callback, and the sweep's
@@ -704,52 +689,14 @@ def test_delete_refreshes_the_job_when_it_loses_the_terminal_race(
 @mock.patch.object(AgentKVJob, "mark_terminal", return_value=True)
 @mock.patch.object(AgentKVJob, "objects")
 @mock.patch.object(AgentKVKey, "objects")
-def test_delete_DOES_refresh_when_it_wins_the_cancel(
+def test_delete_does_not_refresh_when_it_wins_the_terminal_race(
     m_keys, m_jobs, m_mark_terminal, m_delete_files, m_save, m_release
 ):
-    """Winning the cancel is exactly when the re-read is needed.
-
-    This test used to assert the opposite, on the reasoning that "winning means
-    nothing else wrote to the row, so the in-memory copy is current". That
-    stopped being true when a losing finalize started ATTACHING its result to a
-    CANCELLED row instead of deleting it: after this request wins the cancel, a
-    late finalize can still write a `result_ref`, and deleting files from the
-    stale copy would leave that result on a job the caller purged.
-
-    Note `won` is what drives the re-read, not `job.status`. `mark_terminal` is
-    a queryset UPDATE and never touches the in-memory row, so `job.status` is
-    still RUNNING here -- a condition testing only the attribute would skip the
-    re-read on precisely this path, and this mock reproduces that faithfully
-    (which is how the first cut of the fix passed while being wrong).
+    """Winning means nothing else wrote to the row, so the in-memory copy is
+    current and the extra query would be waste on the common path.
     """
     m_keys.get.return_value = kv_key()
     job = AgentKVJob(status=JobStatus.RUNNING)
-    job.organization_id = "org1"
-    m_jobs.get.return_value = job
-
-    with mock.patch.object(AgentKVJob, "refresh_from_db") as m_refresh:
-        resp = ev.JobDeleteView.as_view()(_authed(method="delete"), job_id=uuid.uuid4())
-
-    assert resp.status_code == 204
-    assert m_refresh.called, (
-        "DELETE deleted files from a pre-cancel snapshot; a result attached by "
-        "a late finalize would survive the purge"
-    )
-
-
-@mock.patch.object(ev.AgentKVConcurrencyLimiter, "release")
-@mock.patch.object(AgentKVJob, "save")
-@mock.patch.object(ev, "delete_job_files", return_value=["input_ref"])
-@mock.patch.object(AgentKVJob, "objects")
-@mock.patch.object(AgentKVKey, "objects")
-def test_delete_on_a_completed_job_skips_the_extra_query(
-    m_keys, m_jobs, m_delete_files, m_save, m_release
-):
-    """The other side: nothing can attach a result to a COMPLETED or FAILED
-    row, so the re-read would be waste on the common path.
-    """
-    m_keys.get.return_value = kv_key()
-    job = AgentKVJob(status=JobStatus.COMPLETED)
     job.organization_id = "org1"
     m_jobs.get.return_value = job
 
@@ -816,13 +763,6 @@ def test_cancel_that_loses_does_not_queue_a_webhook(
     assert not m_hook.called
 
 
-# `refresh_from_db` is patched because DELETE now re-reads the row before
-# deleting files whenever it has just cancelled the job -- a late finalize can
-# attach a result to a CANCELLED row, and deleting from the pre-cancel snapshot
-# would leave that result on a purged job. This suite is DB-free, so the real
-# query raises; the behaviour itself is asserted in
-# `test_delete_DOES_refresh_when_it_wins_the_cancel`.
-@mock.patch.object(AgentKVJob, "refresh_from_db")
 @mock.patch.object(ev, "dispatch_cancelled_webhook")
 @mock.patch.object(ev.AgentKVConcurrencyLimiter, "release")
 @mock.patch.object(AgentKVJob, "save")
@@ -830,7 +770,9 @@ def test_cancel_that_loses_does_not_queue_a_webhook(
 @mock.patch.object(AgentKVJob, "mark_terminal", return_value=True)
 @mock.patch.object(AgentKVJob, "objects")
 @mock.patch.object(AgentKVKey, "objects")
-def test_delete_that_cancels_a_running_job_also_queues_the_webhook(m_keys, m_jobs, m_mark_terminal, m_delete_files, m_save, m_release, m_hook, m_refresh):
+def test_delete_that_cancels_a_running_job_also_queues_the_webhook(
+    m_keys, m_jobs, m_mark_terminal, m_delete_files, m_save, m_release, m_hook
+):
     """DELETE on a non-terminal job cancels it first; that cancellation is just
     as terminal, and just as invisible to the caller without this.
     """
