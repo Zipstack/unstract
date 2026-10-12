@@ -164,6 +164,52 @@ class AgentKVJob(DefaultOrganizationMixin, BaseModel):
         ]
 
     @classmethod
+    def attach_result_to_cancelled(
+        cls, job_id, organization_id, *, result_ref, usage_summary=None
+    ) -> bool:
+        """Keep a paid-for result on a job that was CANCELLED mid-flight.
+
+        The race this exists for: extraction completes -- OCR and LLM already
+        spent and flushed by the engine -- and only then does the executor's
+        final stage report land, by which time a cancel has terminalized the
+        row. The executor returns success with the full output, `FinalizeView`
+        writes it, and `mark_terminal` correctly declines to restatus a
+        terminal row. Before this, the written result was then DELETED: the
+        customer was billed for an answer and the answer was destroyed, with
+        `GET result` reporting only `{"success": false, "status": "cancelled"}`.
+
+        Deliberately NOT part of `mark_terminal`, and deliberately unable to
+        change `status` or `completed_at`: the cancel stays won and stays
+        visible. This adds a pointer to work that was already paid for, nothing
+        more. `result_payload` then serves the data alongside
+        `status: "cancelled"`.
+
+        Scoped to CANCELLED only. A COMPLETED or FAILED row already has its own
+        outcome and must not have a late callback's result grafted onto it --
+        which is why this is not simply "attach to any terminal row".
+
+        `result_ref=""` is the idempotency guard: a second at-least-once
+        callback finds the ref already set, matches zero rows, and its own
+        freshly written file is deleted by the caller rather than orphaned.
+
+        Returns True when this call attached the result (and the caller must
+        therefore keep the file), False when it did not (caller deletes it).
+        """
+        if not result_ref:
+            return False
+        fields = {"result_ref": result_ref}
+        if usage_summary is not None:
+            fields["usage_summary"] = usage_summary
+        return bool(
+            cls.objects.filter(
+                id=job_id,
+                organization_id=organization_id,
+                status=JobStatus.CANCELLED,
+                result_ref="",
+            ).update(**fields)
+        )
+
+    @classmethod
     def mark_terminal(
         cls,
         job_id,

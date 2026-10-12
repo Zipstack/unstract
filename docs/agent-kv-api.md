@@ -483,7 +483,22 @@ Re-readable until `expires_at` (D11), plus explicit `DELETE`.
   finalize call sent).
 - **`FAILED`**: `200` with
   `{"success": false, "status": "failed", "error": "<user-safe message>"}`.
-- **`CANCELLED`**: `200` with `{"success": false, "status": "cancelled"}`.
+- **`CANCELLED`**: `200` with `{"success": false, "status": "cancelled"}` — the
+  ordinary case, where nothing ran or the run was stopped mid-flight.
+  - **Exception: a cancel that lost a race to a finished extraction keeps its
+    result.** The window is narrow but the money is already gone when it opens:
+    the engine flushes OCR and LLM usage *before* the executor's final stage
+    report, so a cancel colliding with that report arrives after the customer
+    has been billed. Such a job returns `200` with
+    `{"success": true, "status": "cancelled", "extractors": {...}, "usage_summary": {...}}`
+    — the full result, with `status` still `cancelled` because the cancel *was*
+    honoured. Branch on `success` for "is there data"; branch on `status` for
+    "was it cancelled". Previously the result was written and then deleted, so
+    the caller paid for an answer and received
+    `{"success": false, "status": "cancelled"}` with no indication it had ever
+    existed. The job is **not** reported as `completed` — the cancel still owns
+    the status — and the result rides the same `AGENT_KV_RESULT_TTL_DAYS` window
+    as any other, after which this degrades back to the ordinary shape.
 
 **Calculation result shape** (when `calculations` is supplied and
 `AGENT_KV_CALCULATIONS_ENABLED=true`): a `COMPLETED` result adds these fields to the
