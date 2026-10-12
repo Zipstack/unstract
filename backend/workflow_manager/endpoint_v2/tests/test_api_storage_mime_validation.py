@@ -658,6 +658,42 @@ def test_a_namespaced_declaration_is_still_recognised(collaborators) -> None:
     )
 
 
+@pytest.mark.parametrize(
+    "encoding", ["utf-8", "utf-16", "utf-32"], ids=["utf-8", "utf-16", "utf-32"]
+)
+def test_a_dtd_is_refused_whatever_it_is_encoded_in(
+    collaborators, encoding: str
+) -> None:
+    """The parser detects the encoding, so the guard has to as well.
+
+    A DTD written in UTF-16 is invisible to a search for ASCII markers but is
+    still expanded once parsing starts, which is a compact upload turning into
+    real work during staging.
+    """
+    main = (
+        "application/vnd.openxmlformats-officedocument.wordprocessingml"
+        ".document.main+xml"
+    )
+    declaration = (
+        f'<?xml version="1.0" encoding="{encoding.upper()}"?>'
+        '<!DOCTYPE Types [<!ENTITY a "aaaaaaaaaa">'
+        '<!ENTITY b "&a;&a;&a;&a;&a;&a;&a;&a;&a;&a;">]>'
+        f'<Types><Override PartName="/word/document.xml" ContentType="{main}"/>'
+        "<X>&b;</X></Types>"
+    )
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("junk.bin", bytes(range(256)) * 4)
+        archive.writestr("[Content_Types].xml", declaration.encode(encoding))
+        archive.writestr("_rels/.rels", _OOXML_RELS)
+        archive.writestr("word/document.xml", "<document/>")
+
+    result = _stage([_upload("bomb.pdf", buf.getvalue(), "application/pdf")])
+
+    assert result == {}
+
+
 def test_a_plain_zip_stays_rejected(collaborators) -> None:
     """Looking inside a zip widens recognition, not the allow-list."""
     buf = io.BytesIO()

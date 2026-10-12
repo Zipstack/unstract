@@ -28,7 +28,19 @@ PACKAGE_MEMBER_LIMIT = 65536
 
 # Those members never carry a DTD, so refusing one keeps entity expansion away
 # from the parser rather than trusting the parser to be safe about it.
-DTD_MARKERS = (b"<!DOCTYPE", b"<!ENTITY")
+DTD_MARKERS = ("<!DOCTYPE", "<!ENTITY")
+
+# The parser detects the document's encoding, so the check has to look past the
+# raw bytes: a DTD written in UTF-16 is invisible to an ASCII search but is
+# still expanded once parsing starts.
+DTD_SEARCH_ENCODINGS = (
+    "utf-8",
+    "utf-16",
+    "utf-16-be",
+    "utf-16-le",
+    "utf-32-be",
+    "utf-32-le",
+)
 
 # The content type a package declares for its main part, and what we report.
 OOXML_MAIN_CONTENT_TYPES = {
@@ -81,6 +93,15 @@ def _read_member(archive: zipfile.ZipFile, name: str) -> bytes | None:
         return None
 
 
+def _declares_dtd(raw: bytes) -> bool:
+    """Whether these bytes carry a DTD under any encoding the parser accepts."""
+    for encoding in DTD_SEARCH_ENCODINGS:
+        text = raw.decode(encoding, "ignore").upper()
+        if any(marker in text for marker in DTD_MARKERS):
+            return True
+    return False
+
+
 def _parse_member(archive: zipfile.ZipFile, name: str):
     """Parse a declaration member, or None if it is unusable.
 
@@ -89,10 +110,7 @@ def _parse_member(archive: zipfile.ZipFile, name: str):
     raw bytes, and each was a way past this check.
     """
     raw = _read_member(archive, name)
-    if raw is None:
-        return None
-    upper = raw.upper()
-    if any(marker in upper for marker in DTD_MARKERS):
+    if raw is None or _declares_dtd(raw):
         return None
     try:
         return ElementTree.fromstring(raw)
