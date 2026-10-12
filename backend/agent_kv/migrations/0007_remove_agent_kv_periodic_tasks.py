@@ -56,9 +56,28 @@ nothing reporting it.
 
 So a row the operator has taken ownership of is left alone. That is the correct
 reading of this migration's purpose: it removes a second owner that 0004 added
-by mistake, not any schedule that happens to carry these two names. The
-no-double-fire argument is unaffected -- the collision needs a ``pg_owned``
-row, and on cloud the chart is the owner and no row is ever flipped.
+by mistake, not any schedule that happens to carry these two names.
+
+**The limit of that, stated plainly: a migration cannot tell a cloud
+deployment from a self-hosted one, and ``pg_owned=True`` means opposite things
+in the two.** Self-hosted, it is the operator's only maintenance mechanism and
+must survive. On cloud, where the chart's CronJobs are the owner, it would be a
+second owner and the collision this migration exists to remove.
+
+The reason inert-only is still right: nothing automated ever sets
+``pg_owned=True``. The per-schedule ramp control that would is explicitly not
+built yet (``pg_queue/models.py`` -- "that's the ramp control, which does not
+exist yet"), so on cloud these rows are inert as seeded and this migration
+removes all of them. Reaching the cloud double-fire case takes a deliberate
+manual flip on a deployment whose chart already runs the CronJobs -- and
+silently deleting an operator's explicit configuration during an unrelated
+migration is not the remedy for that. It is visible in
+``SELECT name, pg_owned FROM pg_periodic_schedule WHERE name LIKE 'agent_kv%'``
+and belongs in the cloud runbook, not in a guess made here.
+
+Choosing the other way round -- delete by name regardless of ownership -- trades
+a manual-only cloud misconfiguration for silently stranding every self-hosted
+deployment that followed the documented instructions. That is the worse trade.
 
 **Self-hosted OSS operators who enable the Agent-KV API must schedule
 ``manage.py agent_kv_sweep`` and ``manage.py agent_kv_ttl_cleanup``
@@ -108,14 +127,22 @@ def remove_pg_periodic_tasks(apps, schema_editor):
 
 
 def restore_pg_periodic_tasks(apps, schema_editor):
-    """Reverse only. Restores 0004's rows, still inert (`pg_owned: False`).
+    """Reverse only. Re-create 0004's rows if they are MISSING -- nothing more.
 
-    A reverse that restored them ENABLED would turn a rollback into the
-    double-fire this migration exists to prevent.
+    `get_or_create`, deliberately not `update_or_create`. Forward leaves a row
+    alone when the operator has adopted it (`pg_owned=True`), so on a rollback
+    that row is still there -- and an `update_or_create` whose defaults carry
+    `pg_owned: False` would reset it, silently disabling the self-hosted
+    operator's only maintenance mechanism as a side effect of rolling back an
+    unrelated release. The reverse must restore what forward removed, not
+    normalize what it preserved.
+
+    New rows are created inert. A reverse that restored them ENABLED would turn
+    a rollback into the double-fire this migration exists to prevent.
     """
     periodic_task = apps.get_model("pg_queue", "PgPeriodicTask")
     for spec in PG_PERIODIC_TASKS:
-        periodic_task.objects.update_or_create(
+        periodic_task.objects.get_or_create(
             name=spec["name"],
             defaults={
                 "task_name": spec["task_name"],

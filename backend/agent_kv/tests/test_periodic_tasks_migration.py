@@ -217,6 +217,36 @@ def test_cron_strings_are_five_field_and_parseable(name):
     assert len(fields) == 5, _specs()[name]["cron_string"]
 
 
+def test_the_reverse_does_not_overwrite_a_row_it_finds():
+    """`get_or_create`, never `update_or_create`.
+
+    Forward leaves a row alone when the operator has adopted it
+    (`pg_owned=True`), so on a rollback that row is still present. An
+    `update_or_create` whose defaults carry `pg_owned: False` would reset it --
+    silently disabling a self-hosted operator's only maintenance mechanism as a
+    side effect of rolling back an unrelated release.
+
+    The reverse's job is to restore what forward REMOVED, not to normalize what
+    it deliberately preserved.
+
+    Verified end to end against a real database too: adopt one row, migrate
+    forward (it survives), roll back, and it is still `pg_owned=True` while the
+    deleted sibling comes back inert.
+    """
+    # The CALL, not the prose: the docstring names `update_or_create` to
+    # explain why it is not used, so a bare substring check on the source
+    # fails on its own explanation.
+    source = inspect.getsource(MIGRATION.restore_pg_periodic_tasks)
+
+    assert ".objects.get_or_create(" in source, (
+        "the reverse must not overwrite an existing row's ownership"
+    )
+    assert ".objects.update_or_create(" not in source, (
+        "`update_or_create` resets `pg_owned` on a row forward deliberately "
+        "preserved, disabling a self-hosted operator's maintenance on rollback"
+    )
+
+
 def test_the_restored_rows_are_inert():
     """`pg_owned: False` on the reverse path too.
 
