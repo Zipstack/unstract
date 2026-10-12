@@ -109,10 +109,17 @@ class TestGetProcessedPageCount:
     ) -> None:
         assert LLMWhispererHelper.get_processed_page_count(response) == expected
 
-    def test_warns_when_count_unusable(self, caplog: pytest.LogCaptureFixture) -> None:
-        """A missing count must be visible, since billing then counts the file."""
+    @pytest.mark.parametrize(
+        "metadata", [{}, {"whisper_metadata": {"processed_page_count": 0}}]
+    )
+    def test_warns_when_count_unusable(
+        self, metadata: dict[str, Any], caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """An unusable count must be visible, since billing then counts the file."""
         with caplog.at_level("WARNING"):
-            LLMWhispererHelper.get_processed_page_count({"whisper_hash": "wh-1"})
+            LLMWhispererHelper.get_processed_page_count(
+                {"whisper_hash": "wh-1", **metadata}
+            )
 
         assert "wh-1" in caplog.text
 
