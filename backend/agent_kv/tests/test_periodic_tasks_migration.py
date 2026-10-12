@@ -1,7 +1,7 @@
 """One owner for the two maintenance schedules, and it is the CronJob.
 
-History, because the test's shape only makes sense with it: an earlier revision
-of migration 0004 SEEDED two ``PgPeriodicTask`` rows to fire
+History, because the test's shape only makes sense with it: migration 0004
+SEEDS two ``PgPeriodicTask`` rows to fire
 ``agent_kv.sweep`` and ``agent_kv.ttl_cleanup``, answering a review finding
 about the sweep never running. The finding was real; the fix was redundant.
 ``templates/backend/agent-kv-cronjobs.yaml`` in the cloud chart already ran the
@@ -15,10 +15,20 @@ dangerous kind of correct: the flag exists to be flipped, and a flip would have
 put a ``*/10`` sweep against the chart's ``*/15`` -- colliding at ``:30``,
 contending on the same job rows -- with TTL cadences disagreeing 24x.
 
-So 0004 now DELETES those rows and the CronJob is the sole owner. What these
-tests defend is that decision, in the two ways it can be undone: someone
-re-pointing the forward operation at the seeding function, or someone dropping
-the reverse and making the migration one-way.
+So **0007** deletes those rows and the CronJob is the sole owner. 0004 is left
+seeding, deliberately: Django records a migration as applied and never re-runs
+it, so editing 0004 would have had no effect in the environments that actually
+have the rows (every dev namespace that applied it) while silently rewriting
+history for fresh ones. The first cut of this fix did exactly that and claimed
+in its own docstring to clean up environments it could not reach. Verified both
+ways against a real database -- a fresh install seeds then deletes, an
+already-seeded one just deletes, and both land on zero rows with the five
+dashboard_metrics periodics untouched.
+
+What these tests defend is that arrangement, in the three ways it can be
+undone: someone pointing 0007's forward operation at the restore function,
+someone dropping its reverse and making it one-way, or someone "simplifying"
+the removal back into an edit of 0004.
 
 The name/queue assertions are kept rather than deleted -- they still guard the
 reverse path, and the same wire names are what the CronJob's management
@@ -32,7 +42,10 @@ import pytest
 from django.db import migrations
 
 # The module name starts with a digit, so it cannot be a plain `import`.
-MIGRATION = importlib.import_module("agent_kv.migrations.0004_pg_periodic_tasks")
+SEEDER = importlib.import_module("agent_kv.migrations.0004_pg_periodic_tasks")
+MIGRATION = importlib.import_module(
+    "agent_kv.migrations.0007_remove_agent_kv_periodic_tasks"
+)
 
 #: Wire names registered by `@worker_task(name=...)` in
 #: `workers/scheduler/agent_kv_tasks.py`. Duplicated as literals on purpose:
@@ -73,12 +86,49 @@ def test_the_migration_still_has_a_runpython_operation():
 def test_the_forward_operation_removes_the_rows_rather_than_seeding_them():
     """The decision itself.
 
-    If this fails, someone has re-pointed forward at `create_pg_periodic_tasks`
-    and there are two owners for one schedule again. Read the migration's
-    docstring before changing it: the collision is at `:30`, and only the
-    CronJob side carries `concurrencyPolicy: Forbid` and a deadline.
+    If this fails, someone has re-pointed forward at the restore function and
+    there are two owners for one schedule again. Read the migration's docstring
+    before changing it: the collision is at `:30`, and only the CronJob side
+    carries `concurrencyPolicy: Forbid` and a deadline.
     """
     assert _run_python_ops()[0].code is MIGRATION.remove_pg_periodic_tasks
+
+
+def test_the_removal_is_its_own_migration_not_an_edit_to_the_seeder():
+    """Django never re-runs an applied migration.
+
+    0004 is recorded as applied in every environment that has these rows, so
+    rewriting ITS forward operation cleans up nothing there -- it only changes
+    what a fresh install does. That was the first cut of this fix, and its
+    docstring claimed to clean environments it could not reach.
+
+    So 0004 must still seed, and the removal must live in a later migration
+    that those environments have yet to apply.
+    """
+    seeder_ops = [
+        op
+        for op in SEEDER.Migration.operations
+        if isinstance(op, migrations.RunPython)
+    ]
+
+    assert len(seeder_ops) == 1
+    assert seeder_ops[0].code is SEEDER.create_pg_periodic_tasks, (
+        "0004 must keep SEEDING. If the removal was folded back into it, every "
+        "environment that already applied 0004 keeps its rows forever and this "
+        "fix reaches none of them."
+    )
+    assert MIGRATION is not SEEDER
+    assert ("agent_kv", "0006_agentkvjob_adapters") in MIGRATION.Migration.dependencies
+
+
+def test_the_removal_targets_exactly_what_the_seeder_created():
+    """One source of truth for the row names.
+
+    0007 reads `PG_PERIODIC_TASKS` out of 0004 rather than re-declaring it, so
+    the two cannot drift into deleting a different set than was seeded. If
+    someone copies the list instead, this fails.
+    """
+    assert MIGRATION.PG_PERIODIC_TASKS is SEEDER.PG_PERIODIC_TASKS
 
 
 def test_the_migration_is_reversible():
@@ -90,7 +140,7 @@ def test_the_migration_is_reversible():
     """
     op = _run_python_ops()[0]
 
-    assert op.reverse_code is MIGRATION.create_pg_periodic_tasks
+    assert op.reverse_code is MIGRATION.restore_pg_periodic_tasks
     assert op.reverse_code is not migrations.RunPython.noop
 
 
@@ -149,7 +199,7 @@ def test_the_restored_rows_are_inert():
     A reverse that restored them ENABLED would turn a rollback into the
     double-fire this migration exists to prevent.
     """
-    source = inspect.getsource(MIGRATION.create_pg_periodic_tasks)
+    source = inspect.getsource(MIGRATION.restore_pg_periodic_tasks)
 
     assert '"pg_owned": False' in source
     assert "update_or_create" in source, "re-running must stay idempotent"
@@ -160,7 +210,7 @@ def test_restored_rows_are_platform_wide():
     non-empty `org_id` would scope them to one tenant and silently leave every
     other org unswept.
     """
-    source = inspect.getsource(MIGRATION.create_pg_periodic_tasks)
+    source = inspect.getsource(MIGRATION.restore_pg_periodic_tasks)
 
     assert '"org_id": ""' in source
     assert '"enabled": True' in source

@@ -216,6 +216,13 @@ def _reject_unsafe_regex(path: str, pattern: str) -> None:
 #: and got none, with no error anywhere to find it by.
 _KNOWN_FORMATS = frozenset({"string", "number", "date", "currency", "enum", "regex"})
 
+#: The only two formats that take an ARGUMENT, written `enum:a,b` / `regex:^x$`.
+#: Everything else in `_KNOWN_FORMATS` is a bare name, so `"number: of items"`
+#: cannot be a mis-cased format -- there is no such thing as `number:` -- and
+#: must stay a free-text hint. Scoping the colon check to these two is what
+#: keeps the `Enum:`/`REGEX:` guard from rejecting ordinary prose.
+_ARGUMENT_FORMATS = frozenset({"enum", "regex"})
+
 
 def _reject_unusable_formats(key_specs, array_specs) -> None:
     """Refuse declared formats that can never validate anything, or always fail.
@@ -234,6 +241,12 @@ def _reject_unusable_formats(key_specs, array_specs) -> None:
       they arrive as the whole raw string, which no bare-name comparison
       matches. Validation was silently off for the key -- the precise outcome
       the first bullet exists to prevent, reached by a route it did not cover.
+
+      Only ``enum`` and ``regex`` are checked this way (``_ARGUMENT_FORMATS``).
+      Checking every known name against the pre-colon segment rejected
+      ordinary prose -- ``"number: of items"``, ``"date: of issue"`` -- which
+      is a worse failure than the one being fixed, because free text is a
+      SUPPORTED way to describe a key.
     * ``format: "enum:"`` -- no values, so ``_check_one`` tests membership of
       the empty set and EVERY non-empty value fails QA for the life of the job.
     * ``format: "regex:"`` -- empty pattern, so ``re.fullmatch("", v)`` matches
@@ -247,7 +260,7 @@ def _reject_unusable_formats(key_specs, array_specs) -> None:
     for kspec in _every_leaf(key_specs, array_specs):
         fmt = kspec.format
         lowered = fmt.casefold()
-        # `lowered` catches a bare case variant (`"Number"`). `kind_only`
+        # `lowered` catches a bare case variant (`"Number"`). The colon arm
         # catches the two formats that take an ARGUMENT, which the bare check
         # misses entirely: `_parse_format` matches the `enum:` / `regex:`
         # prefix case-SENSITIVELY, so `"Enum:paid,unpaid"` never becomes kind
@@ -258,8 +271,15 @@ def _reject_unusable_formats(key_specs, array_specs) -> None:
         # for that key -- exactly the failure this function closes for bare
         # formats.
         #
-        # Splitting on the colon is safe for genuine free text: a hint like
-        # `"customer:id"` yields `"customer"`, which is not a known format.
+        # Scoped to `_ARGUMENT_FORMATS`, NOT all of `_KNOWN_FORMATS`. Comparing
+        # the pre-colon segment against every known name rejected ordinary
+        # prose: `"number: of items"`, `"date: of issue"`, `"currency: USD"`
+        # and `"string: free text"` all split to a known name and all raised,
+        # forcing authors to reword valid hints. None of those four formats
+        # takes an argument, so `"number:"` is not a spelling of anything and
+        # the hint is simply free text -- which this function must keep
+        # accepting, since free text is how a schema author gives the model a
+        # plain-language description.
         #
         # Rejected rather than auto-corrected, to match the bare case above: a
         # schema author who meant the format gets told the spelling, and one
@@ -267,7 +287,7 @@ def _reject_unusable_formats(key_specs, array_specs) -> None:
         # would make case significant in one direction only.
         kind_only = lowered.split(":", 1)[0]
         if fmt not in _KNOWN_FORMATS and (
-            lowered in _KNOWN_FORMATS or kind_only in _KNOWN_FORMATS
+            lowered in _KNOWN_FORMATS or (":" in fmt and kind_only in _ARGUMENT_FORMATS)
         ):
             raise SchemaError(
                 f"'{kspec.path}' declares format {fmt!r}, which is not a known "

@@ -113,23 +113,42 @@ def _never_dispatched(job) -> bool:
     a smaller version of the original over-release bug this narrowing was
     written to fix, reintroduced by trusting the pre-cancel snapshot.
 
-    Only `dispatched_at` is consulted, and `status` deliberately is not: by the
+    TWO durable markers are consulted, and `status` is not one of them. By the
     time this runs the cancel has already rewritten `status` to CANCELLED, so
-    the old `status == PENDING` test could only ever be answered from the stale
-    object. `dispatched_at` is the durable marker of "an executor may exist"
-    and the cancel never touches it.
+    the original `status == PENDING` test could only ever be answered from the
+    stale object -- which is what made it unsafe to keep. But dropping it
+    outright (the first cut of this fix) lost a case it had been covering:
 
-    **Residual window, stated rather than papered over.** `dispatch_job`
-    enqueues and only then writes `dispatched_at` (`_record_dispatch`). A cancel
-    landing between those two still sees NULL and still releases early. The
-    consequence is bounded and self-correcting: one extra concurrent slot for
-    the remainder of that one run, after which the executor's finalize releases
-    again (`release` is an idempotent zrem). Closing it completely means
-    stamping a dispatch-intent marker before the enqueue, which changes what
-    `dispatched_at` means to both sweep phases -- a larger change than the
-    defect warrants.
+    * `dispatched_at` -- written by post-enqueue bookkeeping.
+    * `stage` -- written by `StageReportView` on the executor's FIRST progress
+      report, which also promotes PENDING/DISPATCHED to RUNNING
+      (`internal_views.py:152-156`). The cancel never touches it.
+
+    The second is load-bearing because the bookkeeping can legitimately fail:
+    `dispatch_job` wraps `_record_dispatch` in a try/except precisely so a
+    failure there cannot be reported as a failed dispatch (the task is already
+    queued). A job can therefore be RUNNING, with an executor spending money,
+    while `dispatched_at` is still NULL -- and the stage report is the only
+    thing that recorded it. Checking `dispatched_at` alone released that slot;
+    the old `status == PENDING` arm had been catching it by accident, off the
+    stale row.
+
+    So: no executor can exist only if NEITHER marker is set, read fresh.
+
+    **Residual window, stated rather than papered over.** A cancel landing
+    between the enqueue and the first of either write still sees both unset and
+    still releases early. Bounded and self-correcting: one extra concurrent slot
+    for the remainder of that one run, after which the executor's finalize
+    releases again (`release` is an idempotent zrem). Closing it completely
+    means stamping a dispatch-intent marker before the enqueue, which changes
+    what `dispatched_at` means to both sweep phases -- a larger change than the
+    residue warrants.
     """
-    return not AgentKVJob.objects.filter(id=job.id, dispatched_at__isnull=False).exists()
+    return not (
+        AgentKVJob.objects.filter(id=job.id)
+        .exclude(dispatched_at__isnull=True, stage="")
+        .exists()
+    )
 
 
 def _fail_job_response(job, org_id: str, message: str, *, job_saved: bool) -> Response:

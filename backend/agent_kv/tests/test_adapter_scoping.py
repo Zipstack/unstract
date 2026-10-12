@@ -321,3 +321,113 @@ class TestTheJobRowRecordsWhatItSpent(TestCase):
             assert isinstance(value, str), (role, value)
             # A bare UUID string, not a serialized adapter.
             uuid.UUID(value)
+
+
+class TestNeverDispatchedAgainstRealRows(TestCase):
+    """`_never_dispatched` against the database, because mocks hid it twice.
+
+    Round-2 C1 was "it read the stale in-memory row". The first fix for that
+    dropped the `status == PENDING` arm and lost a second case: a job RUNNING
+    with `dispatched_at` still NULL, which happens whenever post-enqueue
+    bookkeeping fails (`dispatch_job` deliberately swallows that -- the task is
+    already queued, so a failure there must not be reported as a failed
+    dispatch).
+
+    Both fixes were written against patched managers, which is why neither
+    caught the other. These use real rows.
+    """
+
+    def setUp(self):
+        self.org = Organization.objects.create(
+            display_name="Acme", organization_id="org_acme", name="acme"
+        )
+        UserContext.set_organization_identifier(None)
+
+    def _job(self, **kwargs):
+        from agent_kv.models import AgentKVJob, JobExtractor
+
+        job = AgentKVJob(
+            organization_id=self.org.id, extractor=JobExtractor.TABLE, **kwargs
+        )
+        job.save()
+        return job
+
+    def test_a_pristine_pending_job_has_no_executor(self):
+        """The one case the slot release exists for."""
+        from agent_kv.execution_views import _never_dispatched
+        from agent_kv.models import JobStatus
+
+        job = self._job(status=JobStatus.PENDING)
+
+        assert _never_dispatched(job) is True
+
+    def test_a_dispatched_job_has_an_executor(self):
+        from agent_kv.execution_views import _never_dispatched
+        from agent_kv.models import JobStatus
+        from django.utils import timezone
+
+        job = self._job(status=JobStatus.DISPATCHED, dispatched_at=timezone.now())
+
+        assert _never_dispatched(job) is False
+
+    def test_a_job_with_a_reported_stage_has_an_executor_even_with_no_dispatched_at(
+        self,
+    ):
+        """The hole the first fix opened.
+
+        `dispatched_at` NULL and a stage recorded: bookkeeping failed, the
+        executor ran anyway and reported progress. Releasing here hands a live
+        executor's slot to the next submit.
+        """
+        from agent_kv.execution_views import _never_dispatched
+        from agent_kv.models import JobStatus
+
+        job = self._job(
+            status=JobStatus.RUNNING,
+            dispatched_at=None,
+            stage="table_extraction",
+            stages={"table_extraction": {"status": "running"}},
+        )
+
+        assert _never_dispatched(job) is False, (
+            "a RUNNING job with a reported stage has a live executor; its slot "
+            "belongs to the finalize callback"
+        )
+
+    def test_the_cancel_rewriting_status_does_not_resurrect_the_release(self):
+        """Why `status` is not one of the markers.
+
+        By the time this runs the cancel has already written CANCELLED, so a
+        status-based test could only be answered from the stale object. The two
+        durable markers must still say "executor exists".
+        """
+        from agent_kv.execution_views import _never_dispatched
+        from agent_kv.models import JobStatus
+
+        job = self._job(
+            status=JobStatus.CANCELLED, dispatched_at=None, stage="table_extraction"
+        )
+
+        assert _never_dispatched(job) is False
+
+    def test_a_stale_in_memory_row_cannot_override_the_database(self):
+        """The original C1 interleaving, end to end.
+
+        The in-memory object is doctored to look pristine -- exactly what the
+        cancel path holds, having fetched it before `mark_terminal` -- while the
+        row in the database carries the dispatch.
+        """
+        from agent_kv.execution_views import _never_dispatched
+        from agent_kv.models import AgentKVJob, JobStatus
+        from django.utils import timezone
+
+        job = self._job(status=JobStatus.PENDING)
+        AgentKVJob.objects.filter(id=job.id).update(
+            status=JobStatus.DISPATCHED, dispatched_at=timezone.now()
+        )
+
+        # The snapshot the cancel path is holding.
+        job.status = JobStatus.PENDING
+        job.dispatched_at = None
+
+        assert _never_dispatched(job) is False

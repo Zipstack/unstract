@@ -47,18 +47,33 @@ Test order matters: the concurrency scenario is deliberately defined LAST
 (see its own docstring) and ``tests/groups.yaml``'s ``e2e-agent-kv`` entry
 pins ``parallel: false`` for the same reason -- see that scenario for why.
 
-**A third, operator-driven gate: ``AGENT_KV_E2E_BAD_KEY_JOB=1``.** One
-scenario here (``test_bad_llm_key_ends_failed``) needs a *dispatched* job to
-end FAILED, which no request-time check can produce -- the only deterministic
-way to get there is to run the platform with a deliberately invalid
-``AGENT_KV_LLM_API_KEY`` so the executor's LLM calls all fail. That is a
-whole-stack configuration, not something a test can arrange, so the scenario
-skips unless an operator sets ``AGENT_KV_E2E_BAD_KEY_JOB=1`` to declare "this
-stack is running with a bad Agent-KV LLM key on purpose". Note that every
-other scenario in this module that needs a job to COMPLETE will (correctly)
-fail on such a stack -- run this one on its own, e.g.::
+**A third, operator-driven gate: ``AGENT_KV_E2E_BAD_LLM_ADAPTER``.** One
+scenario here (``test_a_bad_adapter_credential_ends_failed``) needs a
+*dispatched* job to end FAILED, which no request-time check can produce -- the
+only deterministic way there is a credential the executor's LLM calls cannot
+use. That is a platform-side arrangement, not something a test can mint, so
+the scenario skips unless an operator exports the id of an LLM adapter in the
+key's organization carrying a deliberately invalid provider credential::
 
-    AGENT_KV_E2E=1 AGENT_KV_E2E_BAD_KEY_JOB=1 pytest tests/e2e/agent_kv -k bad_llm_key
+    AGENT_KV_E2E=1 \
+      AGENT_KV_E2E_LLM_ADAPTER=... \
+      AGENT_KV_E2E_LITE_LLM_ADAPTER=... \
+      AGENT_KV_E2E_X2TEXT_ADAPTER=... \
+      AGENT_KV_E2E_BAD_LLM_ADAPTER=... \
+      pytest tests/e2e/agent_kv -k bad_adapter_credential
+
+Unlike the arrangement this replaces, it needs no special stack and can run
+alongside every other scenario: the bad credential is swapped in for the
+``llm`` ROLE on that one submit, so the other two roles stay valid and the rest
+of the module still completes normally.
+
+It replaces ``AGENT_KV_E2E_BAD_KEY_JOB=1`` plus an invalid
+``AGENT_KV_LLM_API_KEY``, which stopped working when the table path moved onto
+caller-supplied adapters -- that variable is not read on this path at all, so
+an operator following those instructions got a job that ran on the VALID
+adapter credential, reached ``completed``, and failed the test's own
+``status == "failed"`` assertion. The old selector ``-k bad_llm_key`` also no
+longer matches anything.
 
 What it asserts is the *shape* of the failure, not its text: the job reaches
 ``failed`` and the ``error`` the customer sees is user-safe -- no filesystem

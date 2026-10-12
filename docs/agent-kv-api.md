@@ -1055,8 +1055,19 @@ beyond `docker compose up`:
     `UNSTRACT_BACKEND_URL`, `AGENT_KV_E2E=1` and the `AGENT_KV_*` keys exported:
     `AGENT_KV_E2E=1 UNSTRACT_BACKEND_URL=http://localhost:8000 pytest tests/e2e/agent_kv`.
 
-    Two scenarios are operator-gated on top of that: the bad-LLM-key scenario
-    (`AGENT_KV_E2E_BAD_KEY_JOB=1`, see the test module docstring) and the
+    Every scenario whose submit must be ACCEPTED also needs the three adapter
+    ids exported — `AGENT_KV_E2E_LLM_ADAPTER`, `AGENT_KV_E2E_LITE_LLM_ADAPTER`,
+    `AGENT_KV_E2E_X2TEXT_ADAPTER` — since `table` submits name the caller's own
+    platform adapters (§3a) and the API validates each against the Bearer key's
+    organization. Create them once in the target org (an LLM adapter, a cheaper
+    LLM adapter, and an LLMWhisperer X2TEXT adapter). Without them those
+    scenarios skip rather than fail.
+
+    Two scenarios are operator-gated on top of that: the bad-credential
+    scenario (`AGENT_KV_E2E_BAD_LLM_ADAPTER`, the id of an LLM adapter
+    deliberately carrying an invalid provider credential — see the test module
+    docstring; it replaces the removed `AGENT_KV_E2E_BAD_KEY_JOB`, which this
+    path no longer reads) and the
     completion-webhook scenario, which needs
     `AGENT_KV_WEBHOOK_INSECURE_ALLOW_HTTP_PRIVATE=1` set BOTH on the
     ide-callback worker (it waives the webhook SSRF guards — https scheme +

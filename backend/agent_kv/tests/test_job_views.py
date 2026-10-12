@@ -308,7 +308,7 @@ def test_cancel_win_releases_concurrency_slot(m_keys, m_jobs, m_mark_terminal, m
     job = AgentKVJob(status=JobStatus.PENDING)
     job.organization_id = "org1"
     m_jobs.get.return_value = job
-    _dispatched_in_db(m_jobs, False)
+    _executor_may_exist_in_db(m_jobs, False)
 
     resp = ev.JobCancelView.as_view()(_authed(method="post"), job_id=uuid.uuid4())
 
@@ -316,16 +316,20 @@ def test_cancel_win_releases_concurrency_slot(m_keys, m_jobs, m_mark_terminal, m
     m_release.assert_called_once_with("org1", str(job.id))
 
 
-def _dispatched_in_db(m_jobs, dispatched: bool) -> None:
+def _executor_may_exist_in_db(m_jobs, may_exist: bool) -> None:
     """Wire the DB re-read `_never_dispatched` performs.
 
     It no longer reads `job.dispatched_at` off the in-memory row -- that row
     predates `mark_terminal`, and a dispatch completing in that gap made the
     cancel release a slot whose executor was still running (round-2 C1). It now
-    asks the database, so these tests have to say what the database would
-    answer.
+    asks the database for EITHER durable marker (`dispatched_at` set, or a
+    `stage` recorded by the executor's first progress report), so these tests
+    have to say what the database would answer.
+
+    `may_exist=True` means the DB has evidence of an executor, so the slot must
+    NOT be released.
     """
-    m_jobs.filter.return_value.exists.return_value = dispatched
+    m_jobs.filter.return_value.exclude.return_value.exists.return_value = may_exist
 
 # ---------------------------------------------------------------------------
 # (6c) cancel that LOSES the guard (job already terminal) must NOT release --
@@ -500,7 +504,7 @@ def test_delete_on_a_never_dispatched_job_DOES_release_the_slot(
     job.organization_id = "org1"
     job.dispatched_at = None
     m_jobs.get.return_value = job
-    _dispatched_in_db(m_jobs, False)
+    _executor_may_exist_in_db(m_jobs, False)
 
     resp = ev.JobDeleteView.as_view()(_authed(method="delete"), job_id=uuid.uuid4())
 
@@ -819,7 +823,7 @@ def test_cancel_on_a_never_dispatched_job_DOES_release_the_slot(
     job.organization_id = "org1"
     job.dispatched_at = None
     m_jobs.get.return_value = job
-    _dispatched_in_db(m_jobs, False)
+    _executor_may_exist_in_db(m_jobs, False)
 
     resp = ev.JobCancelView.as_view()(_authed(method="post"), job_id=uuid.uuid4())
 
@@ -853,7 +857,7 @@ def test_a_cancel_that_raced_a_dispatch_does_NOT_release_the_slot(
     job.organization_id = "org1"
     job.dispatched_at = None  # the stale snapshot, as the cancel path sees it
     m_jobs.get.return_value = job
-    _dispatched_in_db(m_jobs, True)  # what actually happened meanwhile
+    _executor_may_exist_in_db(m_jobs, True)  # what actually happened meanwhile
 
     resp = ev.JobCancelView.as_view()(_authed(method="post"), job_id=uuid.uuid4())
 
@@ -876,9 +880,35 @@ def test_the_undispatched_check_asks_the_database_not_the_row(m_jobs):
     """
     job = AgentKVJob(status=JobStatus.CANCELLED)
     job.dispatched_at = timezone.now()
-    _dispatched_in_db(m_jobs, False)
+    _executor_may_exist_in_db(m_jobs, False)
 
     assert ev._never_dispatched(job) is True
 
-    _dispatched_in_db(m_jobs, True)
+    _executor_may_exist_in_db(m_jobs, True)
     assert ev._never_dispatched(job) is False
+
+
+@mock.patch.object(AgentKVJob, "objects")
+def test_a_reported_stage_counts_as_evidence_of_an_executor(m_jobs):
+    """The case dropping the `status` condition lost, pinned on the query.
+
+    `dispatch_job` wraps `_record_dispatch` in a try/except so a bookkeeping
+    failure cannot be reported as a failed dispatch -- the task is already
+    queued. So a job can be RUNNING, with an executor spending money, while
+    `dispatched_at` is still NULL; the executor's first stage report is the only
+    thing that recorded it (`internal_views.py:152-156` writes `stage` and
+    promotes the status).
+
+    Checking `dispatched_at` alone released that slot. The old
+    `status == PENDING` arm had been catching it by accident, off the stale row.
+    This asserts the query consults BOTH markers, so neither can be dropped
+    again: a filter on one field only would not produce this `exclude` call.
+    """
+    job = AgentKVJob(status=JobStatus.CANCELLED)
+    job.dispatched_at = None
+    _executor_may_exist_in_db(m_jobs, True)
+
+    assert ev._never_dispatched(job) is False
+
+    excluded = m_jobs.filter.return_value.exclude.call_args.kwargs
+    assert excluded == {"dispatched_at__isnull": True, "stage": ""}, excluded

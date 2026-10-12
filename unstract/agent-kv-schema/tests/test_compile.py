@@ -355,6 +355,35 @@ def test_free_text_containing_a_colon_is_not_mistaken_for_a_format(fmt):
     compile_schema(_one_key(fmt))
 
 
+@pytest.mark.parametrize(
+    "fmt",
+    [
+        "number: of items",
+        "date: of issue",
+        "currency: USD",
+        "string: free text",
+        "Number: of items",
+    ],
+)
+def test_a_known_NAME_before_a_colon_is_still_free_text_when_it_takes_no_argument(
+    fmt,
+):
+    """The over-rejection the first cut of the `Enum:` fix introduced.
+
+    Comparing the pre-colon segment against every name in `_KNOWN_FORMATS`
+    rejected all of these -- ordinary prose a schema author is entitled to
+    write, since free text IS a supported way to describe a key. That is a
+    worse failure than the one being fixed: the `Enum:` bug silently disabled
+    validation for one key, this refused to compile the schema at all and made
+    authors reword valid hints.
+
+    Only `enum` and `regex` take an argument (`_ARGUMENT_FORMATS`), so only
+    those can legitimately appear as `name:arg`. There is no such thing as
+    `number:`, which is exactly why these must stay free text.
+    """
+    compile_schema(_one_key(fmt))
+
+
 @pytest.mark.parametrize("fmt", ["number", "date", "currency", "string"])
 def test_the_known_formats_still_compile(fmt):
     compile_schema(_one_key(fmt))
