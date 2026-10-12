@@ -11,9 +11,8 @@ import magic
 
 # libmagic reports these when it recognises a wrapper but not its contents, so
 # they are never a verdict on their own.
-INCONCLUSIVE_MIME_TYPES = frozenset(
-    {"application/octet-stream", "application/zip", "application/x-ole-storage"}
-)
+RECOGNISED_WRAPPERS = frozenset({"application/zip", "application/x-ole-storage"})
+INCONCLUSIVE_MIME_TYPES = RECOGNISED_WRAPPERS | {"application/octet-stream"}
 
 # libmagic matches the PDF header only at offset 0, while extractors tolerate
 # bytes before it, so a wrapped PDF needs the header looked for.
@@ -95,7 +94,9 @@ def resolve_inconclusive_mime_type(mime_type: str, head: bytes) -> str:
     """
     if mime_type not in INCONCLUSIVE_MIME_TYPES:
         return mime_type
-    if mime_type == "application/zip":
+    # A wrapper libmagic positively identified keeps its own answer; only bytes
+    # it could not name at all are open to being read this way.
+    if mime_type in RECOGNISED_WRAPPERS:
         return mime_type
     match = PDF_HEADER_PATTERN.search(head[:PDF_HEADER_SCAN_BYTES])
     if match is None:

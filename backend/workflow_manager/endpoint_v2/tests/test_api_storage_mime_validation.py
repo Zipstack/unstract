@@ -393,9 +393,36 @@ def test_an_incomplete_ooxml_package_is_rejected(collaborators) -> None:
         archive.writestr("[Content_Types].xml", '<?xml version="1.0"?><Types/>')
         archive.writestr("word/document.xml", '<?xml version="1.0"?><document/>')
     data = buf.getvalue()
-    assert src_mod.magic.from_buffer(data, mime=True) == "application/octet-stream"
+    # Which wrapper libmagic names here differs between builds - octet-stream on
+    # some, application/zip on others - so assert only the property the test
+    # depends on: it is not named a document, so the archive gets inspected.
+    assert src_mod.magic.from_buffer(data, mime=True) in src_mod.INCONCLUSIVE_MIME_TYPES
 
     result = _stage([_upload("partial.pdf", data, "application/pdf")])
+
+    assert result == {}
+
+
+@pytest.mark.parametrize(
+    "wrapper", ["application/zip", "application/x-ole-storage"]
+)
+def test_a_recognised_wrapper_is_not_promoted_by_its_contents(
+    collaborators, wrapper: str
+) -> None:
+    """A wrapper libmagic named keeps its own answer.
+
+    Both wrappers, because excluding only one leaves the other able to be
+    reclassified as a PDF by a marker sitting in its payload.
+    """
+    payload = b"\x00" * 64 + b"%PDF-1.7 not a pdf" + b"\x00" * 512
+
+    # First call classifies the sample; a second would only happen if the rescue
+    # ran, and it answers application/pdf so a promotion would be visible as an
+    # accepted file rather than hidden behind the same wrapper verdict.
+    with mock.patch.object(
+        src_mod.magic, "from_buffer", side_effect=[wrapper, "application/pdf"]
+    ), mock.patch.object(src_mod.magic, "from_file", return_value=wrapper):
+        result = _stage([_upload("wrapped.pdf", payload, "application/pdf")])
 
     assert result == {}
 
