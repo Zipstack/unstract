@@ -20,9 +20,10 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 from rest_framework import status
 
-# 10 MB — agentic table extraction output with highlight coordinates
+# 50 MB — agentic table extraction output with highlight coordinates
 # can exceed Django's default 2.5 MB DATA_UPLOAD_MAX_MEMORY_SIZE.
-_PROMPT_OUTPUT_MAX_BODY = 10 * 1024 * 1024
+# Dense tables (1000+ rows with per-cell coordinates) can reach 10-20 MB.
+_PROMPT_OUTPUT_MAX_BODY = 50 * 1024 * 1024
 
 logger = logging.getLogger(__name__)
 
