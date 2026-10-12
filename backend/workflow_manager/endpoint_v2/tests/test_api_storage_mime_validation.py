@@ -149,7 +149,8 @@ def test_rejection_is_persisted_as_a_failed_file_execution(collaborators) -> Non
     assert recorded.mime_type == "audio/x-wav"
     # An opaque identity, not the raw name: the API path has no file_path, so
     # this value is the only thing keeping two rejections apart.
-    assert recorded.file_hash and recorded.file_hash != "evil.pdf"
+    assert recorded.file_hash
+    assert recorded.file_hash != "evil.pdf"
 
     created = manager.get_or_create_file_execution.return_value
     created.update_status.assert_called_once()
