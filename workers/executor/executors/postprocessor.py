@@ -8,7 +8,6 @@ import logging
 from typing import Any
 
 import requests
-
 from unstract.core.network.ssrf import is_safe_webhook_url
 
 logger = logging.getLogger(__name__)

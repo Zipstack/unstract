@@ -13,6 +13,7 @@ each.
 import logging
 
 import pytest
+
 from unstract.sdk1.adapters.base1 import (
     AWSBedrockEmbeddingParameters,
     AWSBedrockLLMParameters,

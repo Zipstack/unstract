@@ -17,8 +17,9 @@ from typing import Any
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../unstract/core/src"))
 
-from unstract.core import ExecutionStatus, serialize_dataclass_to_dict
 from unstract.core.worker_models import FileExecutionResult
+
+from unstract.core import ExecutionStatus, serialize_dataclass_to_dict
 
 logger = logging.getLogger(__name__)
 

@@ -1,6 +1,5 @@
-from rest_framework.exceptions import APIException
-
 from backend.exceptions import UnstractBaseException
+from rest_framework.exceptions import APIException
 from unstract.connectors.exceptions import ConnectorError
 
 
