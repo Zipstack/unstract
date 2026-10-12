@@ -10,7 +10,7 @@ import time
 from typing import Any
 
 import magic
-from shared.enums.file_types import AllowedFileTypes
+from shared.enums.file_types import AllowedFileTypes, resolve_inconclusive_mime_type
 from shared.exceptions.execution_exceptions import (
     NotFoundDestinationConfiguration,
     NotFoundSourceConfiguration,
@@ -1219,7 +1219,9 @@ class WorkerWorkflowExecutionService:
             while chunk := source_file.read(self.READ_CHUNK_SIZE):
                 # MIME type detection and validation on first chunk
                 if first_chunk:
-                    mime_type = magic.from_buffer(chunk, mime=True)
+                    mime_type = resolve_inconclusive_mime_type(
+                        magic.from_buffer(chunk, mime=True), chunk
+                    )
                     logger.info(f"Detected MIME type: {mime_type} for file {file_path}")
 
                     if not AllowedFileTypes.is_allowed(mime_type):
