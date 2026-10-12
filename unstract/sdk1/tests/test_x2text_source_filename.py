@@ -3,14 +3,21 @@
 Execution streams the document from its internal copy (``INFILE``), so the path
 that reaches the adapter carries no usable name and LLMWhisperer's reports had
 nothing to identify the call by. The real name travels in ``usage_kwargs``,
-which every caller already populates, and is forwarded as the client's
-``filename`` param.
+which every caller already populates, and is carried by the client's
+existing ``file_name`` param.
+
+``file_name`` must stay the only name param on the request: llmwhisperer-client
+(2.8.1) rejects ``filename`` and ``file_name`` together with "use 'file_name'
+only", which fails the extraction outright. An earlier revision of this change
+added ``filename`` alongside it and broke every LLMWhisperer V2 extraction —
+invisible here until a real call was made, because these tests mock the client.
 
 Pins:
 - ``X2Text.process`` injects the name from ``usage_kwargs``
 - an explicit ``file_name`` kwarg wins over ``usage_kwargs``
 - the adapter forwards it into ``WhispererRequestParams``
-- ``get_whisperer_params`` emits it as ``filename``, defaulting to empty
+- ``send_whisper_request`` puts it in ``file_name``, falling back to the path name
+- ``get_whisperer_params`` emits NO ``filename`` param (the collision guard)
 - injecting it does not disturb the existing ``tag`` behaviour
 """
 
@@ -121,21 +128,55 @@ class TestAdapterForwardsFilename:
         assert captured["params"].filename == "statement.pdf"
 
 
+def _sent_params(filename: str | None, path: str = "/data/execution/INFILE") -> dict:
+    """Params as actually sent, i.e. after send_whisper_request fills file_name."""
+    fs = MagicMock()
+    fs.read.return_value = b"%PDF-1.4"
+    with patch.object(LLMWhispererHelper, "make_request") as req:
+        LLMWhispererHelper.send_whisper_request(
+            input_file_path=path,
+            config={},
+            extra_params=WhispererRequestParams(filename=filename),
+            fs=fs,
+        )
+    return req.call_args.kwargs["params"]
+
+
+class TestSentFileName:
+    """What actually goes on the wire."""
+
+    def test_source_name_is_sent_as_file_name(self) -> None:
+        params = _sent_params("invoice-2024.pdf")
+
+        assert params[WhispererConfig.FILE_NAME] == "invoice-2024.pdf"
+
+    def test_falls_back_to_the_path_name_when_unknown(self) -> None:
+        """Pre-change behaviour: INFILE, useless but not a regression."""
+        params = _sent_params(None)
+
+        assert params[WhispererConfig.FILE_NAME] == "INFILE"
+
+    def test_exactly_one_name_param_reaches_the_request(self) -> None:
+        """The regression guard for the bug that broke every extraction."""
+        params = _sent_params("invoice-2024.pdf")
+
+        name_keys = {
+            k
+            for k in params
+            if k in (WhispererConfig.FILE_NAME, WhispererConfig.FILENAME)
+        }
+        assert name_keys == {WhispererConfig.FILE_NAME}, params
+
+
 class TestWhispererParams:
-    def test_filename_included_in_query_params(self) -> None:
+    def test_no_filename_param_is_ever_emitted(self) -> None:
+        """The collision guard. Sending both fails the extraction outright."""
         params = LLMWhispererHelper.get_whisperer_params(
             config={},
             extra_params=WhispererRequestParams(filename="contract.pdf"),
         )
 
-        assert params[WhispererConfig.FILENAME] == "contract.pdf"
-
-    def test_filename_defaults_to_empty_when_unknown(self) -> None:
-        params = LLMWhispererHelper.get_whisperer_params(
-            config={}, extra_params=WhispererRequestParams()
-        )
-
-        assert params[WhispererConfig.FILENAME] == ""
+        assert WhispererConfig.FILENAME not in params
 
     def test_tag_behaviour_unchanged(self) -> None:
         """Filename must not disturb the tag, which carries customer tags."""
@@ -145,4 +186,4 @@ class TestWhispererParams:
         )
 
         assert params[WhispererConfig.TAG] == "customer-tag"
-        assert params[WhispererConfig.FILENAME] == "doc.pdf"
+        assert WhispererConfig.FILENAME not in params
