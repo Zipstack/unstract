@@ -198,25 +198,6 @@ class FinalizeView(APIView):
     def _complete(job, job_id, org_id: str, body) -> bool:
         """Persist the result and terminalize as COMPLETED. True if the guard won.
 
-        **A cancel that lost the race does not forfeit the result.** The window
-        is real: the executor can finish extraction -- spending OCR and LLM --
-        and only then try its final stage report, which gets a ``noop`` because
-        a cancel terminalized the row in the meantime. The executor returns
-        success with the full output, this method writes it, and the guard below
-        correctly declines to change a terminal row's status. Deleting the file
-        at that point billed the customer for an answer and then destroyed it:
-        usage is flushed by the engine before any of this runs, so the money is
-        already spent either way, and `GET result` reported
-        ``{"success": false, "status": "cancelled"}`` with no indication that a
-        paid-for result had existed and been discarded.
-
-        So a CANCELLED row keeps the result instead: ``result_ref`` and
-        ``usage_summary`` are attached WITHOUT touching ``status`` or
-        ``completed_at``, the cancel stays honoured, and ``result_payload``
-        serves the data alongside ``status: "cancelled"``. The terminal guard
-        still owns the status transition -- this only adds a pointer to work
-        that was already paid for.
-
         ``write_result`` unavoidably runs *before* the ``mark_terminal`` guard
         (the result has to exist to get a ``result_ref`` to pass in), so a
         guard-loss right after the write -- a concurrent cancel or duplicate
@@ -235,9 +216,7 @@ class FinalizeView(APIView):
         )
         if finalized:
             job.status = JobStatus.COMPLETED
-        elif not AgentKVJob.attach_result_to_cancelled(
-            job_id, org_id, result_ref=result_ref, usage_summary=body.get("usage_summary")
-        ):
+        else:
             delete_result_file(result_ref)
         return finalized
 
