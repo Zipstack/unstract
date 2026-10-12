@@ -295,11 +295,9 @@ class DeploymentHelper(BaseAPIKeyValidator):
                 logger.exception(f"Failed to mark execution {execution_id} as ERROR")
 
             # Async job never started — release the rate limit slot and clean up.
-            # str(...organization_id), NOT the model instance: release_slot formats
-            # its argument into the Redis key, and acquire_slot built that key from
-            # str(organization.organization_id). Passing the instance ZREMs a
-            # non-member — it returns 0 and raises nothing, so the slot silently
-            # stays held for the full TTL. Same trap as undispatched_sweep.py:245.
+            # The id string, never the model instance: release_slot builds its
+            # Redis key from what it is passed, so an instance silently removes
+            # nothing and leaves the slot held for its full TTL.
             APIDeploymentRateLimiter.release_slot(
                 str(api.organization.organization_id), str(execution_id)
             )
