@@ -801,6 +801,28 @@ def _run_agentic_extraction(
     )
     document_text = extraction_result.extracted_text
 
+    # The whisper hash identifies the LLMWhisperer call behind this extraction.
+    # The legacy path records it in ``LegacyExecutor._handle_extract``, but the
+    # agentic path reaches X2Text directly and so bypasses that entirely —
+    # without this, every agentic execution is missing the hash from both
+    # METADATA.json and the customer-facing log, which is the whole point of
+    # UN-3142. Not shared with the legacy helper on purpose: importing
+    # ``legacy_executor`` here drags the x2text adapter stack into the
+    # file_processing worker, which ``test_executor_import_isolation`` forbids.
+    whisper_hash = (
+        extraction_result.extraction_metadata.whisper_hash
+        if extraction_result.extraction_metadata
+        else None
+    )
+    if whisper_hash:
+        _record_whisper_hash(fs, execution_data_dir, whisper_hash)
+    # Surfaced to the user so an execution can be matched to the LLMWhisperer
+    # call behind it without digging through service logs.
+    shim.stream_log(
+        "Text extraction completed"
+        + (f" (whisper hash: {whisper_hash})" if whisper_hash else "")
+    )
+
     # Parse json_schema if stored as string
     if isinstance(json_schema, str):
         json_schema = json.loads(json_schema)
@@ -911,6 +933,44 @@ def _write_pipeline_outputs(
     except Exception as e:
         logger.error("Failed to write %s output files: %s", label, e, exc_info=True)
         return str(e)
+
+
+def _record_whisper_hash(fs: Any, execution_data_dir: str, whisper_hash: str) -> None:
+    """Merge the whisper hash into METADATA.json.
+
+    METADATA.json is shared across the execution — ``source_name``,
+    ``source_hash`` and tool results are written to it before and after
+    extraction — so this merges rather than overwrites. A failure here must not
+    fail the extraction: the hash is a correlation aid, not a result.
+    """
+    if not execution_data_dir:
+        return
+    from unstract.sdk1.adapters.x2text.constants import X2TextConstants
+
+    metadata_path: Path | None = None
+    try:
+        metadata_path = Path(execution_data_dir) / "METADATA.json"
+        existing: dict = {}
+        if fs.exists(metadata_path):
+            try:
+                existing_raw = fs.read(path=metadata_path, mode="r")
+                if existing_raw:
+                    existing = json.loads(existing_raw)
+            except Exception:
+                pass
+        existing[X2TextConstants.WHISPER_HASH] = whisper_hash
+        fs.write(
+            path=metadata_path,
+            mode="w",
+            data=json.dumps(existing, indent=2),
+        )
+    except Exception as e:
+        logger.error(
+            "Failed to write whisper hash to METADATA.json at '%s': %s",
+            metadata_path,
+            e,
+            exc_info=True,
+        )
 
 
 def _write_tool_result(

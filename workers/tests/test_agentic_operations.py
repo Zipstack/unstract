@@ -4,9 +4,11 @@ dispatches agentic extract to it (not legacy). Also guards that the old
 AGENTIC_EXTRACTION enum stays removed.
 """
 
+import json
 from unittest.mock import MagicMock, patch
 
 import pytest
+
 from unstract.sdk1.execution.context import ExecutionContext, Operation
 from unstract.sdk1.execution.executor import BaseExecutor
 from unstract.sdk1.execution.registry import ExecutorRegistry
@@ -116,9 +118,7 @@ class TestAgenticQueueRouting:
     @pytest.mark.parametrize("op", AGENTIC_OPERATIONS)
     def test_dispatch_sends_to_agentic_queue(self, op):
         transport = FakeExecutorTransport(
-            result=ExecutionResult(
-                success=True, data={"output": {}}
-            ).to_dict()
+            result=ExecutionResult(success=True, data={"output": {}}).to_dict()
         )
         dispatcher = PgExecutionDispatcher(transport)
         ctx = ExecutionContext(
@@ -227,6 +227,104 @@ class TestStructureToolAgenticRouting:
         assert dispatched_ctx.executor_name == "agentic"
         assert dispatched_ctx.operation == "agentic_extract"
         assert dispatched_ctx.organization_id == "org-001"
+
+
+# ---------------------------------------------------------------------------
+# 5b. Agentic path carries the whisper hash (UN-3142)
+# ---------------------------------------------------------------------------
+
+
+class _FakeFs:
+    """Minimal FileStorage stand-in backed by a dict."""
+
+    def __init__(self, files: dict | None = None, fail_write: bool = False):
+        self.files = dict(files or {})
+        self.fail_write = fail_write
+
+    def exists(self, path):
+        return str(path) in self.files
+
+    def read(self, path, mode="r", **kwargs):
+        return self.files[str(path)]
+
+    def write(self, path, mode="w", data=None, **kwargs):
+        if self.fail_write:
+            raise OSError("disk on fire")
+        self.files[str(path)] = data
+
+    def json_dump(self, path, data=None, **kwargs):
+        self.files[str(path)] = json.dumps(data)
+
+    def mkdir(self, *args, **kwargs):
+        return None
+
+
+def _run_agentic(tmp_path, fs, shim, whisper_hash="wh-agentic|deadbeef"):
+    from file_processing.structure_tool_task import _run_agentic_extraction
+
+    dispatcher = MagicMock()
+    dispatcher.dispatch.return_value = ExecutionResult(
+        success=True, data={"output": {"field": "value"}}
+    )
+    metadata = MagicMock()
+    metadata.whisper_hash = whisper_hash
+    with patch("unstract.sdk1.x2txt.X2Text") as cls:
+        cls.return_value.process.return_value = MagicMock(
+            extracted_text="text", extraction_metadata=metadata
+        )
+        return _run_agentic_extraction(
+            tool_metadata={"name": "test"},
+            input_file_path=str(tmp_path / "test.pdf"),
+            output_dir_path=str(tmp_path / "output"),
+            tool_instance_metadata={},
+            dispatcher=dispatcher,
+            shim=shim,
+            file_execution_id="exec-001",
+            execution_id="exec-parent-001",
+            organization_id="org-001",
+            source_file_name="test.pdf",
+            fs=fs,
+            execution_data_dir=str(tmp_path),
+        )
+
+
+class TestAgenticWhisperHash:
+    """The agentic path reaches X2Text directly, bypassing the legacy
+    executor's capture — so it needs its own, or UN-3142 is only half done.
+    """
+
+    def test_hash_is_merged_into_metadata_without_dropping_existing_keys(self, tmp_path):
+        meta = str(tmp_path / "METADATA.json")
+        fs = _FakeFs({meta: json.dumps({"source_name": "invoice.pdf", "tags": ["a"]})})
+        _run_agentic(tmp_path, fs, MagicMock())
+        written = json.loads(fs.files[meta])
+        assert written["whisper-hash"] == "wh-agentic|deadbeef"
+        # The clobbering bug this PR fixed on the legacy path must not be
+        # reintroduced here.
+        assert written["source_name"] == "invoice.pdf"
+        assert written["tags"] == ["a"]
+
+    def test_hash_reaches_the_customer_facing_log(self, tmp_path):
+        shim = MagicMock()
+        _run_agentic(tmp_path, _FakeFs(), shim)
+        messages = [str(c.args[0]) for c in shim.stream_log.call_args_list]
+        assert any("wh-agentic|deadbeef" in m for m in messages), messages
+
+    def test_no_hash_writes_nothing_and_logs_no_hash(self, tmp_path):
+        """Non-LLMWhisperer extractors return no hash."""
+        meta = str(tmp_path / "METADATA.json")
+        fs = _FakeFs({meta: json.dumps({"source_name": "invoice.pdf"})})
+        shim = MagicMock()
+        _run_agentic(tmp_path, fs, shim, whisper_hash=None)
+        assert "whisper-hash" not in json.loads(fs.files[meta])
+        messages = [str(c.args[0]) for c in shim.stream_log.call_args_list]
+        assert any("Text extraction completed" in m for m in messages)
+        assert not any("whisper hash" in m for m in messages)
+
+    def test_metadata_write_failure_does_not_fail_the_extraction(self, tmp_path):
+        """The hash is a correlation aid, not a result."""
+        result = _run_agentic(tmp_path, _FakeFs(fail_write=True), MagicMock())
+        assert result["success"] is True
 
 
 # ---------------------------------------------------------------------------
