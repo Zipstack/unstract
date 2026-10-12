@@ -104,6 +104,32 @@ def _normalise_part(part: str | None) -> str | None:
     return part.lstrip("/") or None if part else None
 
 
+def _declared_main_part(content_types) -> "tuple[str, str] | None":
+    """The part a package declares as its main one, and the type that implies."""
+    for element in content_types.iter():
+        if _local_name(element.tag) != "Override":
+            continue
+        mime_type = OOXML_MAIN_CONTENT_TYPES.get(_attribute(element, "ContentType") or "")
+        if not mime_type:
+            continue
+        part = _normalise_part(_attribute(element, "PartName"))
+        return (part, mime_type) if part else None
+    return None
+
+
+def _relates_main_part(relationships, part: str) -> bool:
+    """Whether the package root relates `part` as its office document."""
+    for element in relationships.iter():
+        if _local_name(element.tag) != "Relationship":
+            continue
+        relation = _attribute(element, "Type") or ""
+        if not relation.rstrip("/").endswith(OFFICE_DOCUMENT_RELATION):
+            continue
+        if _normalise_part(_attribute(element, "Target")) == part:
+            return True
+    return False
+
+
 def _identify_ooxml(archive: zipfile.ZipFile, names: "list[str]") -> str | None:
     """Name an OOXML package, or None if the archive only looks like one.
 
@@ -116,28 +142,13 @@ def _identify_ooxml(archive: zipfile.ZipFile, names: "list[str]") -> str | None:
     if content_types is None or relationships is None:
         return None
 
-    declared_part = declared_type = None
-    for element in content_types.iter():
-        if _local_name(element.tag) != "Override":
-            continue
-        content_type = _attribute(element, "ContentType") or ""
-        mime_type = OOXML_MAIN_CONTENT_TYPES.get(content_type)
-        if mime_type:
-            declared_part = _normalise_part(_attribute(element, "PartName"))
-            declared_type = mime_type
-            break
-    if not declared_part or declared_part not in names:
+    declared = _declared_main_part(content_types)
+    if declared is None:
         return None
-
-    for element in relationships.iter():
-        if _local_name(element.tag) != "Relationship":
-            continue
-        relation = _attribute(element, "Type") or ""
-        if not relation.rstrip("/").endswith(OFFICE_DOCUMENT_RELATION):
-            continue
-        if _normalise_part(_attribute(element, "Target")) == declared_part:
-            return declared_type
-    return None
+    part, mime_type = declared
+    if part not in names:
+        return None
+    return mime_type if _relates_main_part(relationships, part) else None
 
 
 def _identify_odf(archive: zipfile.ZipFile, declared: str) -> str | None:
