@@ -1,9 +1,10 @@
-"""Tests for the Claude sampling-parameter strip.
+"""Tests for the sampling-parameter strip.
 
 Covers Claude Opus 4.7 and every model released since (Opus 4.8, Sonnet 5,
 Fable 5, Mythos 5), all of which reject `temperature`/`top_p`/`top_k`. Sonnet 5
 is the model behind the reported Azure AI Foundry `temperature is deprecated`
-failure.
+failure. Also covers OpenAI's GPT-6 family, which rejects `temperature` on AWS
+Bedrock while GPT-5.6 still accepts it.
 
 Pins the detection regex and the four-adapter wiring against the failure
 modes that surfaced in PR #1934 review:
@@ -14,19 +15,24 @@ modes that surfaced in PR #1934 review:
 - every adapter calls the strip on its return path
 """
 
+import asyncio
 import logging
 from typing import Any
 
+import litellm
 import pytest
 from unstract.sdk1.adapters.base1 import (
     _DEPRECATED_SAMPLING_PARAMS,
     AnthropicLLMParameters,
     AWSBedrockLLMParameters,
     AzureAIFoundryLLMParameters,
+    AzureOpenAILLMParameters,
+    OpenAILLMParameters,
     VertexAILLMParameters,
     _has_deprecated_sampling_params,
     _strip_deprecated_sampling_params,
 )
+from unstract.sdk1.llm import LLM
 
 # ── detection: positives ────────────────────────────────────────────────────
 
@@ -106,6 +112,24 @@ def test_has_deprecated_sampling_params_positive_post_opus_47(model: str) -> Non
     assert _has_deprecated_sampling_params(model)
 
 
+# OpenAI's GPT-6 family rejects `temperature`, so the strip must fire for every
+# encoding Bedrock (Mantle and Converse) and Azure AI Foundry hand us.
+GPT6_POSITIVES: list[str] = [
+    "openai.gpt-6-luna",
+    "bedrock_mantle/openai.gpt-6-luna",
+    "bedrock/openai.gpt-6-sol",
+    "us.openai.gpt-6-astra",
+    "bedrock/global.openai.gpt-6.1-sol",  # `.1` point release normalizes to `-1`
+    "azure_ai/gpt-6-sol",
+    "gpt-6-luna",
+]
+
+
+@pytest.mark.parametrize("model", GPT6_POSITIVES)
+def test_has_deprecated_sampling_params_positive_gpt_6(model: str) -> None:
+    assert _has_deprecated_sampling_params(model)
+
+
 # ── detection: negatives ────────────────────────────────────────────────────
 
 NEGATIVES: list[str | None] = [
@@ -129,6 +153,14 @@ NEGATIVES: list[str | None] = [
     "claude-fable-50",
     # Non-Anthropic providers
     "gpt-4o",
+    # GPT-5.x still accepts temperature; `gpt-5.6-*` normalizes to `gpt-5-6-*`
+    # and must NOT match the `gpt-6` stem
+    "openai.gpt-5.6-luna",
+    "bedrock_mantle/openai.gpt-5.6-terra",
+    "bedrock_mantle/openai.gpt-5.5",
+    "openai.gpt-oss-120b",
+    # Prefix collision for the `gpt-6` stem
+    "gpt-60",
     "gemini-2.0-flash",
     "mistral-large-latest",
     # Prefix collisions — lock the trailing-edge anchor against future
@@ -377,3 +409,220 @@ def test_validate_retains_temperature_for_opus_4_6(
 def test_vertex_validate_retains_temperature_for_gemini() -> None:
     result = VertexAILLMParameters.validate(_vertex_metadata("gemini-2.0-flash"))
     assert result["temperature"] == pytest.approx(0.5)
+
+
+# ── Bedrock GPT-6 (Mantle and Converse routes) ──────────────────────────────
+
+_BEDROCK_EXTRA: dict[str, Any] = {"aws_region_name": "us-east-1"}
+
+
+@pytest.mark.parametrize(
+    "model",
+    ["openai.gpt-6-luna", "bedrock_mantle/openai.gpt-6-luna", "bedrock/openai.gpt-6-sol"],
+)
+def test_bedrock_validate_strips_temperature_for_gpt_6(model: str) -> None:
+    """GPT-6 on Bedrock 400s with `temperature not permitted` on any value.
+
+    Covers the unprefixed id as well as both explicit routes: whether an
+    unprefixed GPT-6 id lands on Mantle or Converse depends on the LiteLLM
+    registry loaded, and the strip has to hold on either.
+    """
+    result = AWSBedrockLLMParameters.validate(
+        {"model": model, "temperature": 0.5, **_BEDROCK_EXTRA}
+    )
+    for param in _DEPRECATED_SAMPLING_PARAMS:
+        assert param not in result, f"{model}: {param} should be stripped"
+
+
+def test_bedrock_validate_strips_reasoning_temperature_for_gpt_6() -> None:
+    """The reasoning config's `temperature = 1` write is stripped too.
+
+    `_apply_bedrock_reasoning_config` forces `temperature = 1` when Extended
+    Thinking is on; that must not reach GPT-6, while `reasoning_effort` must.
+    """
+    result = AWSBedrockLLMParameters.validate(
+        {
+            "model": "bedrock_mantle/openai.gpt-6-luna",
+            "enable_thinking": True,
+            **_BEDROCK_EXTRA,
+        }
+    )
+    assert "temperature" not in result
+    assert result["reasoning_effort"] == "medium"
+
+
+def test_bedrock_validate_gpt_6_strip_survives_revalidation() -> None:
+    """`LLM.complete()` re-validates the stored kwargs on every call.
+
+    The absent `temperature` key must not be refilled by Pydantic's 0.1
+    default on the second pass.
+    """
+    first = AWSBedrockLLMParameters.validate(
+        {
+            "model": "bedrock_mantle/openai.gpt-6-luna",
+            "enable_thinking": True,
+            **_BEDROCK_EXTRA,
+        }
+    )
+    second = AWSBedrockLLMParameters.validate(dict(first))
+    assert "temperature" not in second
+    assert second["reasoning_effort"] == "medium"
+    assert second["model"] == "bedrock_mantle/openai.gpt-6-luna"
+
+
+def test_bedrock_validate_retains_temperature_for_gpt_5_6() -> None:
+    """GPT-5.6 accepts temperature, so the GPT-6 stem must leave it alone."""
+    result = AWSBedrockLLMParameters.validate(
+        {"model": "openai.gpt-5.6-terra", "temperature": 0.5, **_BEDROCK_EXTRA}
+    )
+    assert result["temperature"] == pytest.approx(0.5)
+
+
+# ── GPT-6 on native OpenAI, Azure OpenAI and Azure AI Foundry ───────────────
+
+_OPENAI_EXTRA: dict[str, Any] = {"api_key": "k", "api_base": "https://api.openai.com/v1"}
+
+
+@pytest.mark.parametrize("enable_reasoning", [False, True])
+def test_openai_validate_strips_temperature_for_gpt_6(enable_reasoning: bool) -> None:
+    """Reasoning forces `temperature = 1`; GPT-6 must get no temperature at all."""
+    first = OpenAILLMParameters.validate(
+        {"model": "gpt-6-luna", "enable_reasoning": enable_reasoning, **_OPENAI_EXTRA}
+    )
+    assert "temperature" not in first
+    # `LLM.complete()` re-validates the stored kwargs; the model id still names
+    # GPT-6, so the strip fires again rather than the 0.1 default leaking back.
+    second = OpenAILLMParameters.validate(dict(first))
+    assert "temperature" not in second
+    if enable_reasoning:
+        assert second["reasoning_effort"] == "medium"
+
+
+def test_openai_validate_retains_temperature_for_gpt_5() -> None:
+    result = OpenAILLMParameters.validate(
+        {"model": "gpt-5", "enable_reasoning": True, **_OPENAI_EXTRA}
+    )
+    assert result["temperature"] == 1
+
+
+def _azure_metadata(**overrides: str | bool) -> dict[str, Any]:
+    return {
+        "api_key": "k",
+        "azure_endpoint": "https://x.openai.azure.com/",
+        "api_version": "2024-10-21",
+        **overrides,
+    }
+
+
+# ── Azure OpenAI through the real LLM completion paths ──────────────────────
+#
+# A deployment name need not name the model, so the Azure adapter detects GPT-6
+# from `cost_model`, which `LLM` sets aside at construction and feeds back via
+# `LLM._revalidate` on every call. These tests drive a real `LLM` through all
+# four completion methods and capture what reaches LiteLLM, so a call site that
+# stops using `_revalidate`, or a merge order that lets a per-call kwarg
+# displace `cost_model`, fails here.
+
+_AZURE_ADAPTER_ID = "azureopenai|592d84b9-fe03-4102-a17e-6b391f32850b"
+_REAL_COMPLETION = litellm.completion
+_REAL_ACOMPLETION = litellm.acompletion
+
+
+def _azure_llm(model: str) -> LLM:
+    return LLM(
+        adapter_id=_AZURE_ADAPTER_ID,
+        adapter_metadata=_azure_metadata(model=model, deployment_name="prod-chat"),
+    )
+
+
+@pytest.fixture
+def litellm_calls(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, Any]]:
+    """Record every kwargs LiteLLM receives and answer from its mock path."""
+    calls: list[dict[str, Any]] = []
+
+    def completion(**kwargs: Any) -> Any:  # noqa: ANN401
+        calls.append(kwargs)
+        return _REAL_COMPLETION(**{**kwargs, "mock_response": "ok"})
+
+    async def acompletion(**kwargs: Any) -> Any:  # noqa: ANN401
+        calls.append(kwargs)
+        return await _REAL_ACOMPLETION(**{**kwargs, "mock_response": "ok"})
+
+    monkeypatch.setattr(litellm, "completion", completion)
+    monkeypatch.setattr(litellm, "acompletion", acompletion)
+    return calls
+
+
+def _run_every_completion_path(llm: LLM, **kwargs: Any) -> None:  # noqa: ANN401
+    llm.complete("hi", **kwargs)
+    llm.complete_vision([{"role": "user", "content": "hi"}], **kwargs)
+    list(llm.stream_complete("hi", **kwargs))
+    asyncio.run(llm.acomplete("hi", **kwargs))
+
+
+def test_azure_gpt_6_behind_opaque_deployment_gets_no_temperature_on_any_path(
+    litellm_calls: list[dict[str, Any]],
+) -> None:
+    """Default and per-call temperatures never reach GPT-6, on any method."""
+    llm = _azure_llm("gpt-6-luna")
+    _run_every_completion_path(llm)
+    _run_every_completion_path(llm, temperature=0.5)
+
+    assert len(litellm_calls) == 8
+    for call in litellm_calls:
+        assert call["model"] == "azure/prod-chat"
+        assert "temperature" not in call
+
+
+def test_azure_per_call_cost_model_cannot_displace_the_stored_one(
+    litellm_calls: list[dict[str, Any]],
+) -> None:
+    """`_revalidate` applies the stored `cost_model` after per-call kwargs."""
+    llm = _azure_llm("gpt-6-luna")
+    _run_every_completion_path(llm, cost_model="azure/gpt-4o", temperature=0.5)
+
+    assert len(litellm_calls) == 4
+    assert all("temperature" not in call for call in litellm_calls)
+
+
+def test_azure_other_models_keep_per_call_temperature_on_every_path(
+    litellm_calls: list[dict[str, Any]],
+) -> None:
+    llm = _azure_llm("gpt-4o")
+    _run_every_completion_path(llm, temperature=0.5)
+
+    assert len(litellm_calls) == 4
+    assert all(call["temperature"] == pytest.approx(0.5) for call in litellm_calls)
+
+
+def test_azure_validate_drops_temperature_when_deployment_names_gpt_6() -> None:
+    validated = AzureOpenAILLMParameters.validate(
+        _azure_metadata(deployment_name="gpt-6-sol")
+    )
+    assert "temperature" not in validated
+
+
+@pytest.mark.parametrize("enable_reasoning", [False, True])
+def test_azure_validate_retains_temperature_for_other_models(
+    enable_reasoning: bool,
+) -> None:
+    validated = AzureOpenAILLMParameters.validate(
+        _azure_metadata(
+            model="gpt-5",
+            deployment_name="prod-chat",
+            enable_reasoning=enable_reasoning,
+        )
+    )
+    assert validated["temperature"] == 1
+
+
+def test_azure_ai_foundry_validate_strips_temperature_for_gpt_6() -> None:
+    result = AzureAIFoundryLLMParameters.validate(
+        {
+            "model": "gpt-6-sol",
+            "api_key": "k",
+            "api_base": "https://x.services.ai.azure.com/models",
+            "temperature": 0.5,
+        }
+    )
+    assert "temperature" not in result

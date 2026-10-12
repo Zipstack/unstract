@@ -27,7 +27,6 @@ from queue_backend.pg_barrier import (
     _barrier_pg_decrement,
     _fire_barrier_callback,
     barrier_pg_abort,
-    _barrier_pg_decrement,
     claim_batch,
     run_batch_with_barrier,
     try_claim_orchestration,
@@ -850,13 +849,14 @@ class TestPgBarrierEnqueue:
         # expired nor stale. (UN-3661)
         monkeypatch.setenv("WORKER_BARRIER_KEY_TTL_SECONDS", "600")
         task, _ = _mock_header_task()
-        PgBarrier().enqueue(
-            [task],
-            callback_task_name="cb",
-            callback_kwargs={"execution_id": "exec-SD"},
-            callback_queue="general",
-            app_instance=None,
-        )
+        with patch("queue_backend.dispatch.dispatch"):
+            PgBarrier().enqueue(
+                [task],
+                callback_task_name="cb",
+                callback_kwargs={"execution_id": "exec-SD"},
+                callback_queue="general",
+                app_instance=None,
+            )
         assert 590 <= _expires_in_seconds(barrier_db, "exec-SD") <= 600  # ~ttl cap
         assert _last_progress_age_seconds(barrier_db, "exec-SD") < 5  # fresh
 
@@ -920,34 +920,37 @@ class TestPgBarrierEnqueue:
                 "        now() + interval '1h', now())"
             )
         task, _ = _mock_header_task()
-        PgBarrier().enqueue(
-            [task, _mock_header_task()[0]],
-            callback_task_name="cb",
-            callback_kwargs={"execution_id": "exec-R"},
-            callback_queue="general",
-            app_instance=None,
-        )
+        with patch("queue_backend.dispatch.dispatch"):
+            PgBarrier().enqueue(
+                [task, _mock_header_task()[0]],
+                callback_task_name="cb",
+                callback_kwargs={"execution_id": "exec-R"},
+                callback_queue="general",
+                app_instance=None,
+            )
         assert _row(barrier_db, "exec-R") == (2, [])
 
     def test_enqueue_stamps_organization_id(self, barrier_db):
         # The whole reason the org column + migration exist (reaper recovery).
-        PgBarrier().enqueue(
-            [_mock_header_task()[0]],
-            callback_task_name="cb",
-            callback_kwargs={"execution_id": "exec-ORG", "organization_id": "org-42"},
-            callback_queue="general",
-            app_instance=None,
-        )
+        with patch("queue_backend.dispatch.dispatch"):
+            PgBarrier().enqueue(
+                [_mock_header_task()[0]],
+                callback_task_name="cb",
+                callback_kwargs={"execution_id": "exec-ORG", "organization_id": "org-42"},
+                callback_queue="general",
+                app_instance=None,
+            )
         assert _org(barrier_db, "exec-ORG") == "org-42"
 
     def test_enqueue_defaults_org_to_empty_when_absent(self, barrier_db):
-        PgBarrier().enqueue(
-            [_mock_header_task()[0]],
-            callback_task_name="cb",
-            callback_kwargs={"execution_id": "exec-NOORG"},  # no organization_id
-            callback_queue="general",
-            app_instance=None,
-        )
+        with patch("queue_backend.dispatch.dispatch"):
+            PgBarrier().enqueue(
+                [_mock_header_task()[0]],
+                callback_task_name="cb",
+                callback_kwargs={"execution_id": "exec-NOORG"},  # no organization_id
+                callback_queue="general",
+                app_instance=None,
+            )
         assert _org(barrier_db, "exec-NOORG") == ""
 
     def test_upsert_refreshes_org_on_reenqueue(self, barrier_db):
@@ -960,13 +963,14 @@ class TestPgBarrierEnqueue:
                 "VALUES ('exec-REORG', 'old-org', 1, '[]'::jsonb, now(), "
                 "        now() + interval '1h', now())"
             )
-        PgBarrier().enqueue(
-            [_mock_header_task()[0]],
-            callback_task_name="cb",
-            callback_kwargs={"execution_id": "exec-REORG", "organization_id": "new-org"},
-            callback_queue="general",
-            app_instance=None,
-        )
+        with patch("queue_backend.dispatch.dispatch"):
+            PgBarrier().enqueue(
+                [_mock_header_task()[0]],
+                callback_task_name="cb",
+                callback_kwargs={"execution_id": "exec-REORG", "organization_id": "new-org"},
+                callback_queue="general",
+                app_instance=None,
+            )
         assert _org(barrier_db, "exec-REORG") == "new-org"
 
     def test_mid_loop_dispatch_failure_deletes_row(self, barrier_db):

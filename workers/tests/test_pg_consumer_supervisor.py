@@ -18,14 +18,19 @@ from pg_queue_consumer.supervisor import (
     _CRASH_LOOP_THRESHOLD,
     _DEFAULT_SHUTDOWN_GRACE_SECONDS,
     _MAX_CONCURRENCY,
+    _MIN_BOOTSTRAP_BUDGET_SECONDS,
     _MIN_HEALTHY_UPTIME_SECONDS,
     _Fleet,
     _child_after_fork,
     _join_children,
+    _kill_stale_children,
+    _monitor_tick,
     _reap_dead,
     _restart_due_children,
+    _run_child,
     _try_fork_child,
     _wait_for_exit,
+    child_watchdog_from_env,
     concurrency_from_env,
     shutdown_grace_from_env,
 )
@@ -184,6 +189,222 @@ class TestFleet:
         clock[0] += 100.0  # well past any backoff
         assert f.due_restarts() == [0]
 
+    # --- readiness (UN-4136) ---------------------------------------------------
+
+    def test_fresh_fleet_is_not_loaded(self):
+        # Unlike the heartbeats (seeded fresh), nothing is loaded at construction:
+        # a pod must not go Ready before its children have imported.
+        f = _Fleet(3)
+        assert f.loaded_count() == 0
+        assert f.all_loaded() is False
+
+    def test_all_loaded_only_when_every_slot_has_loaded(self):
+        f = _Fleet(3)
+        f.loaded[0] = 1
+        f.loaded[2] = 1
+        assert f.loaded_count() == 2
+        assert f.all_loaded() is False  # slot 1 still importing
+        f.loaded[1] = 1
+        assert f.all_loaded() is True
+
+    def test_reap_clears_the_slot_loaded_flag(self):
+        # A dead child's replacement must bootstrap again before the fleet counts
+        # as loaded; the stale flag must not carry over.
+        f = _Fleet(2)
+        f.loaded[0] = f.loaded[1] = 1
+        f.record_fork(1, 111)
+        f.reap(1)
+        assert list(f.loaded) == [1, 0]
+        assert f.all_loaded() is False
+
+
+_STALE = "WORKER_PG_QUEUE_CONSUMER_HEALTH_STALE_SECONDS"
+_WATCHDOG = "WORKER_PG_QUEUE_CONSUMER_CHILD_WATCHDOG"
+
+
+class TestChildWatchdogFromEnv:
+    """UN-4223: opt-in, because it turns HEALTH_STALE into a hard per-task cap —
+    which docker-compose (no healthcheck) has never enforced.
+    """
+
+    def test_off_by_default_even_with_health_stale(self, monkeypatch):
+        monkeypatch.delenv(_WATCHDOG, raising=False)
+        monkeypatch.setenv(_STALE, "3720")
+        assert child_watchdog_from_env() is None
+
+    @pytest.mark.parametrize("on", ["true", "1", "yes", "ON"])
+    def test_enabled_tracks_health_stale(self, monkeypatch, on):
+        monkeypatch.setenv(_WATCHDOG, on)
+        monkeypatch.setenv(_STALE, "7260")
+        assert child_watchdog_from_env() == pytest.approx(7260.0)
+
+    @pytest.mark.parametrize("off", ["false", "0", "no", "OFF"])
+    def test_explicitly_off(self, monkeypatch, off):
+        monkeypatch.setenv(_STALE, "7260")
+        monkeypatch.setenv(_WATCHDOG, off)
+        assert child_watchdog_from_env() is None
+
+    def test_enabled_without_health_stale_raises(self, monkeypatch):
+        # The 60s code default would kill any task longer than a minute.
+        monkeypatch.setenv(_WATCHDOG, "true")
+        monkeypatch.delenv(_STALE, raising=False)
+        with pytest.raises(ValueError, match=_STALE):
+            child_watchdog_from_env()
+
+    def test_malformed_switch_raises(self, monkeypatch):
+        monkeypatch.setenv(_STALE, "600")
+        monkeypatch.setenv(_WATCHDOG, "maybe")
+        with pytest.raises(ValueError, match=_WATCHDOG):
+            child_watchdog_from_env()
+
+    @pytest.mark.parametrize("bad", ["0", "-5", "inf", "nan"])
+    def test_non_positive_or_non_finite_stale_raises(self, monkeypatch, bad):
+        monkeypatch.setenv(_WATCHDOG, "true")
+        monkeypatch.setenv(_STALE, bad)
+        with pytest.raises(ValueError, match=_STALE):
+            child_watchdog_from_env()
+
+
+class TestKillStaleChildren:
+    """UN-4223: one hung child is killed on its own instead of a liveness kill
+    draining every sibling with it.
+    """
+
+    @staticmethod
+    def _fleet(ages: list[float], loaded: list[int]) -> _Fleet:
+        f = _Fleet(len(ages))
+        now = time.time()
+        for slot, age in enumerate(ages):
+            f._heartbeats[slot] = now - age
+            f.loaded[slot] = loaded[slot]
+            f.record_fork(slot, 100 + slot)
+        return f
+
+    def test_only_the_stale_child_is_sigkilled(self):
+        import signal as _signal
+
+        f = self._fleet([5, 9000, 5], loaded=[1, 1, 1])
+        killed: set[int] = set()
+        with patch(f"{_MOD}.os.kill") as kill:
+            _kill_stale_children(f, stale_after=7260, killed=killed)
+        kill.assert_called_once_with(101, _signal.SIGKILL)
+        assert killed == {101}
+
+    def test_bootstrapping_child_is_judged_by_fork_age_not_heartbeat(self):
+        # A re-forked slot keeps its predecessor's old heartbeat until it loads,
+        # so a recent fork is spared however stale that heartbeat looks.
+        f = self._fleet([9000], loaded=[0])
+        with patch(f"{_MOD}.os.kill") as kill:
+            _kill_stale_children(f, stale_after=7260, killed=set())
+        kill.assert_not_called()
+
+    def test_child_hung_in_bootstrap_is_killed(self):
+        import signal as _signal
+
+        f = self._fleet([0], loaded=[0])
+        f._last_fork[0] -= 7300  # forked long ago, never loaded
+        with patch(f"{_MOD}.os.kill") as kill:
+            _kill_stale_children(f, stale_after=7260, killed=set())
+        kill.assert_called_once_with(100, _signal.SIGKILL)
+
+    def test_slow_bootstrap_gets_at_least_the_bootstrap_floor(self):
+        # A short task threshold (ide-callback: 180s) must not cut off an import
+        # that is merely slow, e.g. under a CPU cap.
+        f = self._fleet([0], loaded=[0])
+        f._last_fork[0] -= _MIN_BOOTSTRAP_BUDGET_SECONDS - 60
+        with patch(f"{_MOD}.os.kill") as kill:
+            _kill_stale_children(f, stale_after=180, killed=set())
+        kill.assert_not_called()
+        f._last_fork[0] -= 120  # now past the floor
+        with patch(f"{_MOD}.os.kill") as kill:
+            _kill_stale_children(f, stale_after=180, killed=set())
+        kill.assert_called_once()
+
+    def test_age_at_threshold_is_spared(self):
+        f = self._fleet([60], loaded=[1])
+        with (
+            patch(f"{_MOD}.time.time", return_value=f._heartbeats[0] + 60),
+            patch(f"{_MOD}.os.kill") as kill,
+        ):
+            _kill_stale_children(f, stale_after=60, killed=set())
+        kill.assert_not_called()
+
+    def test_already_signalled_child_is_not_killed_again(self):
+        f = self._fleet([9000], loaded=[1])
+        with patch(f"{_MOD}.os.kill") as kill:
+            _kill_stale_children(f, stale_after=7260, killed={100})
+        kill.assert_not_called()
+
+    def test_vanished_child_is_tolerated_and_not_counted(self):
+        f = self._fleet([9000], loaded=[1])
+        killed: set[int] = set()
+        with patch(f"{_MOD}.os.kill", side_effect=ProcessLookupError):
+            _kill_stale_children(f, stale_after=7260, killed=killed)
+        assert killed == {100}  # not signalled again before the reap
+        assert f.watchdog_kills == 0  # the metric counts kills that happened
+
+    def test_kill_is_counted_for_metrics(self):
+        f = self._fleet([9000, 9000], loaded=[1, 1])
+        with patch(f"{_MOD}.os.kill"):
+            _kill_stale_children(f, stale_after=7260, killed=set())
+        assert f.watchdog_kills == 2
+
+
+class TestMonitorTick:
+    """The loop wiring: reap, trim ``killed``, re-fork, then the watchdog."""
+
+    @staticmethod
+    def _stale_fleet() -> _Fleet:
+        f = _Fleet(1)
+        f._heartbeats[0] = time.time() - 9000
+        f.loaded[0] = 1
+        f.record_fork(0, 100)
+        return f
+
+    def test_watchdog_runs_when_enabled(self):
+        f = self._stale_fleet()
+        with (
+            patch(f"{_MOD}.os.waitpid", return_value=(0, 0)),
+            patch(f"{_MOD}.os.kill") as kill,
+        ):
+            _monitor_tick(f, threading.Event(), 7260, set())
+        kill.assert_called_once()
+
+    def test_watchdog_skipped_when_disabled(self):
+        f = self._stale_fleet()
+        with (
+            patch(f"{_MOD}.os.waitpid", return_value=(0, 0)),
+            patch(f"{_MOD}.os.kill") as kill,
+        ):
+            _monitor_tick(f, threading.Event(), None, set())
+        kill.assert_not_called()
+
+    def test_watchdog_skipped_while_stopping(self):
+        # Draining children must not be SIGKILLed during shutdown.
+        f = self._stale_fleet()
+        stopping = threading.Event()
+        stopping.set()
+        with (
+            patch(f"{_MOD}.os.waitpid", return_value=(0, 0)),
+            patch(f"{_MOD}.os.kill") as kill,
+        ):
+            _monitor_tick(f, stopping, 7260, set())
+        kill.assert_not_called()
+
+    def test_reaped_pid_leaves_killed_and_slot_is_scheduled(self):
+        f = self._stale_fleet()
+        f._last_fork[0] -= _MIN_HEALTHY_UPTIME_SECONDS + 100
+        killed = {100}
+        with (
+            patch(f"{_MOD}.os.waitpid", return_value=(100, 9)),
+            patch(f"{_MOD}.os.kill"),
+            patch(f"{_MOD}._try_fork_child"),
+        ):
+            _monitor_tick(f, threading.Event(), 7260, killed)
+        assert killed == set()  # a recycled pid can't inherit the mark
+        assert 0 in f._restart_due  # re-fork scheduled
+        assert f._consecutive_crashes[0] == 0  # a long-lived child, not a crash
+
 
 class TestReapDead:
     def test_dead_child_reaped_and_rescheduled(self):
@@ -258,19 +479,32 @@ class TestTryForkChild:
             assert _try_fork_child(f, 0) is True
         assert f.alive_items() == [(0, 222)]
 
+    def test_child_is_handed_the_shared_heartbeat_and_loaded_arrays(self):
+        # The child writes its own slot in BOTH arrays; handing it a copy (or not
+        # handing over `loaded` at all) would leave /ready stuck at 503.
+        f = _Fleet(1)
+        with (
+            patch(f"{_MOD}.os.fork", return_value=0),  # we are the child
+            patch(f"{_MOD}._child_after_fork", side_effect=SystemExit) as child,
+        ):
+            with pytest.raises(SystemExit):
+                _try_fork_child(f, 0)
+        child.assert_called_once_with(0, f.heartbeats, f.loaded)
+
 
 class TestChildAfterFork:
     def test_resets_signals_and_exits_zero_on_clean_run(self):
         with (
             patch(f"{_MOD}.signal.signal") as sig,
-            patch(f"{_MOD}._run_child"),
+            patch(f"{_MOD}._run_child") as run,
             patch(f"{_MOD}.os._exit", side_effect=SystemExit) as exit_,
         ):
-            queue = MagicMock()
+            heartbeats, loaded = MagicMock(), MagicMock()
             with pytest.raises(SystemExit):
-                _child_after_fork(0, queue)
+                _child_after_fork(0, heartbeats, loaded)
         # SIGTERM + SIGINT reset to default before running.
         assert sig.call_count == 2
+        run.assert_called_once_with(0, heartbeats, loaded)
         exit_.assert_called_once_with(0)
 
     def test_hard_exits_one_when_run_raises(self):
@@ -279,10 +513,62 @@ class TestChildAfterFork:
             patch(f"{_MOD}._run_child", side_effect=RuntimeError("boom")),
             patch(f"{_MOD}.os._exit", side_effect=SystemExit) as exit_,
         ):
-            queue = MagicMock()
             with pytest.raises(SystemExit):
-                _child_after_fork(0, queue)
+                _child_after_fork(0, MagicMock(), MagicMock())
         exit_.assert_called_once_with(1)
+
+
+class TestRunChildLoaded:
+    """The child marks itself loaded only after the bootstrap, and before it
+    starts polling (UN-4136).
+    """
+
+    @staticmethod
+    def _run_slot_1(fleet: _Fleet, build) -> None:  # noqa: ANN001
+        # No real `import worker` bootstrap and no real heartbeat thread.
+        with (
+            patch.dict("sys.modules", {"worker": MagicMock()}),
+            patch("pg_queue_consumer._bootstrap.select_source_worker_type"),
+            patch(
+                "queue_backend.pg_queue.consumer.build_consumer_from_env",
+                side_effect=build,
+            ),
+            patch(f"{_MOD}.threading.Thread"),
+        ):
+            _run_child(1, fleet.heartbeats, fleet.loaded)
+
+    def test_marks_its_slot_loaded_before_polling(self):
+        f = _Fleet(2)
+        seen: list[list[int]] = []
+        consumer = MagicMock()
+        # Snapshot the flags at the moment polling would begin.
+        consumer.run.side_effect = lambda: seen.append(list(f.loaded))
+        self._run_slot_1(f, lambda: consumer)
+        assert seen == [[0, 1]]  # own slot only, and set before run()
+
+    def test_heartbeat_is_fresh_by_the_time_the_slot_is_loaded(self):
+        # UN-4223: the publisher thread is patched out here, so only the
+        # synchronous publish can refresh the predecessor's stale heartbeat.
+        f = _Fleet(2)
+        f._heartbeats[1] = time.time() - 9000
+        consumer = MagicMock()
+        consumer.seconds_since_last_poll.return_value = 0.0
+        ages: list[float] = []
+        consumer.run.side_effect = lambda: ages.append(f.slot_age(1))
+        self._run_slot_1(f, lambda: consumer)
+        assert len(ages) == 1
+        assert ages[0] < 5
+
+    def test_not_marked_loaded_when_the_build_fails(self):
+        # A child that cannot finish its bootstrap must never count as loaded.
+        f = _Fleet(2)
+
+        def _boom():  # noqa: ANN202
+            raise RuntimeError("cannot build")
+
+        with pytest.raises(RuntimeError, match="cannot build"):
+            self._run_slot_1(f, _boom)
+        assert list(f.loaded) == [0, 0]
 
 
 class TestWaitForExit:
@@ -385,3 +671,43 @@ class TestSupervisorHealth:
         ):
             # Must not propagate — the consumer keeps draining without a probe.
             assert sup._maybe_start_supervisor_health(_Fleet(1)) is None
+
+    def test_ready_is_503_until_every_child_loads_while_health_stays_200(
+        self, monkeypatch
+    ):
+        # UN-4136: the whole point. /health is fresh from construction (liveness
+        # must not trip during the import), so only /ready can hold the pod
+        # NotReady while the children import.
+        import json
+        import urllib.error
+        import urllib.request
+
+        monkeypatch.setenv("WORKER_PG_QUEUE_CONSUMER_HEALTH_PORT", "0")  # OS picks
+        fleet = _Fleet(2)
+        server = sup._maybe_start_supervisor_health(fleet)
+        assert server is not None
+        base = f"http://127.0.0.1:{server.bound_port}"
+
+        def _ready() -> tuple[int, dict]:
+            try:
+                with urllib.request.urlopen(f"{base}/ready", timeout=5) as resp:
+                    return resp.status, json.loads(resp.read())
+            except urllib.error.HTTPError as exc:
+                return exc.code, json.loads(exc.read())
+
+        try:
+            with urllib.request.urlopen(f"{base}/health", timeout=5) as resp:
+                assert resp.status == 200  # alive, but...
+
+            code, body = _ready()
+            assert (code, body["status"], body["loaded_children"]) == (503, "starting", 0)
+
+            fleet.loaded[0] = 1
+            code, body = _ready()
+            assert (code, body["loaded_children"]) == (503, 1)  # one still importing
+
+            fleet.loaded[1] = 1
+            code, body = _ready()
+            assert (code, body["status"], body["loaded_children"]) == (200, "ready", 2)
+        finally:
+            server.stop()

@@ -1,6 +1,7 @@
 import http
 import logging
 import os
+import uuid
 from typing import Any
 
 import socketio
@@ -35,6 +36,23 @@ sio = socketio.Server(
     always_connect=True,
     client_manager=socketio.KombuManager(**_kombu_kwargs),
 )
+
+
+def _reset_pubsub_host_id() -> None:
+    """Give each forked worker its own pub/sub identity.
+
+    python-socketio (5.11+) drops pub/sub messages carrying its own
+    ``host_id``, on the assumption the publisher already delivered them
+    locally. With ``gunicorn --preload`` this module runs once in the master,
+    so every forked worker would inherit the same ``host_id`` and silently
+    discard events published by a sibling worker — e.g. a Prompt Studio result
+    whose ``/internal/emit-websocket/`` call landed on the other worker than
+    the browser's socket.
+    """
+    sio.manager.host_id = uuid.uuid4().hex
+
+
+os.register_at_fork(after_in_child=_reset_pubsub_host_id)
 
 _redis_conn = None
 

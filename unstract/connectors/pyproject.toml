@@ -25,15 +25,15 @@ dependencies = [
     # google-auth >= 2.53 no longer depends on urllib3 (2.20 did) — that's what unblocks urllib3 2.x
     "google-auth>=2.22.0,<3",
     "google-cloud-secret-manager==2.16.1",
-    "google-cloud-storage==2.9.0",
+    "google-cloud-storage==3.16.0",
     # Filesystem connectors
-    "s3fs[boto3]==2024.10.0",   # For Minio
+    "s3fs==2026.9.0",           # For Minio
     "PyDrive2[fsspec]==1.15.4", # For GDrive
     "oauth2client==4.1.3",      # For GDrive
     "dropboxdrivefs==1.4.1",    # For Dropbox
     "boxfs==0.2.1",             # For Box
-    "gcsfs==2024.10.0",         # For GoogleCloudStorage
-    "adlfs~=2024.7.0",          # For AzureCloudStorage
+    "gcsfs==2026.10.0",         # For GoogleCloudStorage
+    "adlfs~=2026.8.0",          # For AzureCloudStorage
     "Office365-REST-Python-Client~=2.6.0",  # For SharePoint/OneDrive
     # Database connectors
     "psycopg2-binary==2.9.9",                     # For Postgres, Redshift
@@ -42,7 +42,7 @@ dependencies = [
     "pymssql==2.3.4",                             # For MSSQL
     "PyMySQL==1.1.1",                             # For MySQL
     "oracledb==2.4.0",                            # For OracleDB
-    "fsspec[sftp]~=2024.10.0",                    # For SFTP
+    "fsspec[sftp]~=2026.9.0",                     # For SFTP
 ]
 
 # [build-system]

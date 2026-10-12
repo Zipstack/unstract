@@ -9,7 +9,10 @@ import { Collapse } from "@/components/ui/shims/antd-overlays";
 import { Typography } from "@/components/ui/shims/antd-typography";
 import { cn } from "@/lib/utils";
 
-import { getBackendErrorDetail } from "../../../helpers/GetStaticData";
+import {
+  getBackendErrorDetail,
+  usableAdapters,
+} from "../../../helpers/GetStaticData";
 import { fetchAllPages } from "../../../helpers/pagination";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
@@ -191,7 +194,7 @@ function AddLlmProfile({
         const embedding = [];
         const x2Text = [];
 
-        data.forEach((item) => {
+        usableAdapters(data).forEach((item) => {
           const option = { value: item?.id, label: item?.adapter_name };
           if (item?.adapter_type === "LLM") {
             llm.push(option);
@@ -337,10 +340,23 @@ function AddLlmProfile({
           llmProfiles: newLlmProfiles,
         };
         updateCustomTool(updatedState);
-        setAlertDetails({
-          type: "success",
-          content: "Saved successfully",
-        });
+        // Single alert: the store holds one alertDetails object, so two
+        // synchronous calls would batch and only the last would render.
+        // vision_warning is a backend-computed advisory (image output
+        // mode with an LLM that may not support vision); absent in OSS.
+        if (data?.vision_warning) {
+          setAlertDetails({
+            type: "warning",
+            title: "Saved — check LLM compatibility",
+            content: data.vision_warning,
+            duration: 10,
+          });
+        } else {
+          setAlertDetails({
+            type: "success",
+            content: "Saved successfully",
+          });
+        }
 
         if (newLlmProfiles?.length === 1) {
           // Set the first LLM profile as default
