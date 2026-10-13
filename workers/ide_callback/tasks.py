@@ -435,7 +435,7 @@ def ide_prompt_complete(
         )
 
         # Persist outputs via internal API
-        resp = api.update_prompt_output(
+        api.update_prompt_output(
             run_id=run_id,
             prompt_ids=prompt_ids,
             outputs=outputs,
@@ -445,8 +445,6 @@ def ide_prompt_complete(
             profile_manager_id=profile_manager_id,
             organization_id=org_id,
         )
-        response = resp.get("data", []) if resp.get("success") else []
-
         _track_subscription_usage(org_id, run_id)
 
         # Fire HubSpot event if applicable
@@ -476,7 +474,9 @@ def ide_prompt_complete(
                 "elapsed": int(time.time() - dispatch_time) if dispatch_time else 0,
             },
             status="completed",
-            result=response,
+            # result intentionally omitted — output already persisted via
+            # update_prompt_output(); frontend refetches via promptOutputApi
+            # to avoid DATA_UPLOAD_MAX_MEMORY_SIZE on emit-websocket endpoint.
         )
         # Return minimal status to avoid logging sensitive extracted data
         return {"status": "completed", "operation": operation}

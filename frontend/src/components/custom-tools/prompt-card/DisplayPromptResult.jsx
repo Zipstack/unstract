@@ -1,6 +1,6 @@
 import { Info } from "lucide-react";
 import PropTypes from "prop-types";
-import { useEffect, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { Space } from "@/components/ui/shims/antd-layout";
 import { Spin } from "@/components/ui/shims/antd-leaves";
 import { Typography } from "@/components/ui/shims/antd-typography";
@@ -8,56 +8,61 @@ import { Typography } from "@/components/ui/shims/antd-typography";
 import {
   displayPromptResult,
   generateApiRunStatusId,
-  generateUUID,
   PROMPT_RUN_API_STATUSES,
 } from "../../../helpers/GetStaticData";
 import "./PromptCard.css";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
 
-const BATCH_SIZE = 100;
+const RENDER_CAP = 50;
 
-/**
- * Renders a large JSON array in batches to avoid a single-frame DOM spike.
- * The first BATCH_SIZE items render immediately; remaining items are added
- * automatically via requestAnimationFrame so the browser never blocks.
- * All items are rendered — nothing is hidden or requires user interaction.
- *
- * Highlight data indexing is preserved because the slice always starts
- * from index 0 and the original array index is used throughout.
- */
-function BatchedArray({ data, renderItem, totalCount }) {
-  const [renderedCount, setRenderedCount] = useState(
-    Math.min(BATCH_SIZE, totalCount),
+function CappedArray({ data, renderItem, totalCount }) {
+  const [visibleCount, setVisibleCount] = useState(
+    Math.min(RENDER_CAP, totalCount),
   );
 
-  useEffect(() => {
-    if (renderedCount >= totalCount) {
-      return;
-    }
-    const id = requestAnimationFrame(() => {
-      setRenderedCount((prev) => Math.min(prev + BATCH_SIZE, totalCount));
-    });
-    return () => cancelAnimationFrame(id);
-  }, [renderedCount, totalCount]);
+  const remaining = totalCount - visibleCount;
+
+  const showMoreLink = remaining > 0 && (
+    <Typography.Link
+      className="font-size-12"
+      onClick={() =>
+        setVisibleCount((prev) => Math.min(prev + RENDER_CAP, totalCount))
+      }
+    >
+      ...show more ({remaining} remaining)
+    </Typography.Link>
+  );
 
   return (
     <>
       {"["}
       <div style={{ paddingLeft: "20px" }}>
-        {data?.slice(0, renderedCount).map((item, index) => (
+        {remaining > 0 && (
+          <div
+            className="font-size-12"
+            style={{
+              color: "var(--text-tertiary, #888)",
+              padding: "2px 0 4px",
+            }}
+          >
+            Showing {visibleCount} of {totalCount} items — {showMoreLink}
+          </div>
+        )}
+        {data.slice(0, visibleCount).map((item, index) => (
           <div key={index}>
             {renderItem(item, index)}
             {index < totalCount - 1 ? "," : ""}
           </div>
         ))}
+        {showMoreLink}
       </div>
       {"]"}
     </>
   );
 }
 
-BatchedArray.propTypes = {
+CappedArray.propTypes = {
   data: PropTypes.array.isRequired,
   renderItem: PropTypes.func.isRequired,
   totalCount: PropTypes.number.isRequired,
@@ -79,8 +84,6 @@ function DisplayPromptResult({
   },
   progressMsg,
 }) {
-  const [isLoading, setIsLoading] = useState(false);
-  const [parsedOutput, setParsedOutput] = useState(null);
   const [selectedKey, setSelectedKey] = useState(null);
   const {
     singlePassExtractMode,
@@ -89,34 +92,23 @@ function DisplayPromptResult({
     selectedHighlight,
   } = useCustomToolStore();
 
-  useEffect(() => {
-    if (singlePassExtractMode && isSinglePassExtractLoading) {
-      setIsLoading(true);
-      return;
-    }
+  // Derived — no state updates, so no render-loop risk.
+  const statusKey = generateApiRunStatusId(docId, profileId);
+  const isLoading =
+    (singlePassExtractMode && isSinglePassExtractLoading) ||
+    promptRunStatus?.[statusKey] === PROMPT_RUN_API_STATUSES.RUNNING;
 
-    const key = generateApiRunStatusId(docId, profileId);
-    if (promptRunStatus?.[key] === PROMPT_RUN_API_STATUSES.RUNNING) {
-      setIsLoading(true);
-      return;
+  const parsedOutput = useMemo(() => {
+    if (isLoading || output === undefined || output === null) {
+      return null;
     }
-
-    setIsLoading(false);
-    const isFormattingRequired = isTable ? false : true;
-    setParsedOutput(
-      displayPromptResult(
-        output,
-        isFormattingRequired,
-        details?.enable_highlight,
-      ),
+    const isFormattingRequired = !isTable;
+    return displayPromptResult(
+      output,
+      isFormattingRequired,
+      details?.enable_highlight,
     );
-  }, [
-    promptRunStatus,
-    isSinglePassExtractLoading,
-    details?.enable_highlight,
-    output,
-    isTable,
-  ]);
+  }, [output, isTable, details?.enable_highlight, isLoading]);
 
   if (isLoading) {
     return (
@@ -264,142 +256,150 @@ function DisplayPromptResult({
     path = "",
     isTable = false,
   ) => {
-    if (isTable) {
-      const stringData =
-        typeof data === "string" ? data : JSON.stringify(data, null, 4);
-      const lines = stringData.split("\n");
-      const truncated = lines.slice(0, 25).join("\n");
-      return (
-        <div>
-          {truncated}
-          {lines.length > 25 && (
-            <Typography.Link
-              className="font-size-12"
-              onClick={() => {
-                setOpenExpandModal(true);
-              }}
-            >
-              ...show more
-            </Typography.Link>
-          )}
-        </div>
-      );
-    }
-    if (typeof data === "object" && !details?.enable_highlight) {
-      return JSON.stringify(data, null, 4);
-    }
-
-    if (typeof data === "string") {
-      return `"${data}"`;
-    }
-
-    if (typeof data === "number" || typeof data === "boolean") {
-      return data.toString();
-    }
-
-    if (Array.isArray(data)) {
-      const renderArrayItem = (item, index) =>
-        renderJson(
-          item,
-          highlightData?.[index],
-          confidenceData?.[index],
-          wordConfidenceData?.[index],
-          indent + 1,
-          `${path}[${index}]`,
-          isTable,
-        );
-
-      if (data.length > BATCH_SIZE) {
+    try {
+      if (isTable) {
+        const stringData =
+          typeof data === "string" ? data : JSON.stringify(data, null, 4);
+        const lines = stringData.split("\n");
+        const truncated = lines.slice(0, 25).join("\n");
         return (
-          <BatchedArray
-            data={data}
-            totalCount={data.length}
-            renderItem={renderArrayItem}
-          />
+          <div>
+            {truncated}
+            {lines.length > 25 && (
+              <Typography.Link
+                className="font-size-12"
+                onClick={() => {
+                  setOpenExpandModal(true);
+                }}
+              >
+                ...show more
+              </Typography.Link>
+            )}
+          </div>
         );
       }
-      return (
-        <>
-          {"["}
-          <div style={{ paddingLeft: "20px" }}>
-            {data?.map((item, index) => (
-              <div key={index}>
-                {renderArrayItem(item, index)}
-                {index < data.length - 1 ? "," : ""}
-              </div>
-            ))}
-          </div>
-          {"]"}
-        </>
-      );
-    }
+      if (typeof data === "object" && !details?.enable_highlight) {
+        return JSON.stringify(data, null, 4);
+      }
 
-    if (isObject(data)) {
-      return (
-        <>
-          {"{"}
-          <div style={{ paddingLeft: "20px" }}>
-            {Object.entries(data).map(([key, value], index, array) => {
-              const isClickable = !isObject(value) && !Array.isArray(value); // Only primitive values should be clickable
-              const newPath = path ? `${path}.${key}` : key;
-              const isSelected = selectedKey === newPath;
-              return (
-                <div key={key}>
-                  <Space wrap className="json-key">
-                    {key}
-                  </Space>
-                  {": "}
-                  <Typography.Text
-                    className={`prompt-output-result json-value ${
-                      isClickable && highlightData?.[key] ? "clickable" : ""
-                    } ${isSelected ? "selected" : ""}`}
-                    onClick={() => {
-                      if (isClickable && highlightData?.[key]) {
-                        handleClick(
-                          highlightData,
-                          confidenceData,
-                          wordConfidenceData,
-                          key,
-                          newPath,
-                        );
-                      }
-                    }}
-                  >
-                    {renderJson(
-                      value,
-                      highlightData?.[key],
-                      confidenceData?.[key],
-                      wordConfidenceData?.[key],
-                      indent + 1,
-                      newPath,
-                      isTable,
-                    )}
-                  </Typography.Text>
-                  {index < array.length - 1 ? "," : ""}
+      if (typeof data === "string") {
+        return `"${data}"`;
+      }
+
+      if (typeof data === "number" || typeof data === "boolean") {
+        return data.toString();
+      }
+
+      if (Array.isArray(data)) {
+        const renderArrayItem = (item, index) =>
+          renderJson(
+            item,
+            highlightData?.[index],
+            confidenceData?.[index],
+            wordConfidenceData?.[index],
+            indent + 1,
+            `${path}[${index}]`,
+            isTable,
+          );
+
+        if (data.length > RENDER_CAP) {
+          return (
+            <CappedArray
+              data={data}
+              totalCount={data.length}
+              renderItem={renderArrayItem}
+            />
+          );
+        }
+        return (
+          <>
+            {"["}
+            <div style={{ paddingLeft: "20px" }}>
+              {data?.map((item, index) => (
+                <div key={index}>
+                  {renderArrayItem(item, index)}
+                  {index < data.length - 1 ? "," : ""}
                 </div>
-              );
-            })}
-          </div>
-          {"}"}
-        </>
+              ))}
+            </div>
+            {"]"}
+          </>
+        );
+      }
+
+      if (isObject(data)) {
+        return (
+          <>
+            {"{"}
+            <div style={{ paddingLeft: "20px" }}>
+              {Object.entries(data).map(([key, value], index, array) => {
+                const isClickable = !isObject(value) && !Array.isArray(value); // Only primitive values should be clickable
+                const newPath = path ? `${path}.${key}` : key;
+                const isSelected = selectedKey === newPath;
+                return (
+                  <div key={key}>
+                    <Space wrap className="json-key">
+                      {key}
+                    </Space>
+                    {": "}
+                    <Typography.Text
+                      className={`prompt-output-result json-value ${
+                        isClickable && highlightData?.[key] ? "clickable" : ""
+                      } ${isSelected ? "selected" : ""}`}
+                      onClick={() => {
+                        if (isClickable && highlightData?.[key]) {
+                          handleClick(
+                            highlightData,
+                            confidenceData,
+                            wordConfidenceData,
+                            key,
+                            newPath,
+                          );
+                        }
+                      }}
+                    >
+                      {renderJson(
+                        value,
+                        highlightData?.[key],
+                        confidenceData?.[key],
+                        wordConfidenceData?.[key],
+                        indent + 1,
+                        newPath,
+                        isTable,
+                      )}
+                    </Typography.Text>
+                    {index < array.length - 1 ? "," : ""}
+                  </div>
+                );
+              })}
+            </div>
+            {"}"}
+          </>
+        );
+      }
+
+      return String(data);
+    } catch {
+      return (
+        <Typography.Text type="danger">Unable to render output</Typography.Text>
       );
     }
-
-    return String(data);
   };
 
   return (
     <Typography.Paragraph className="prompt-card-display-output font-size-12">
       {parsedOutput && typeof parsedOutput === "object" ? (
-        renderJson(
-          parsedOutput,
-          highlightData,
-          confidenceData,
-          wordConfidenceData,
-          0,
-          "",
-          isTable,
-        )
+        <Fragment key={`${docId}-${profileId}`}>
+          {renderJson(
+            parsedOutput,
+            highlightData,
+            confidenceData,
+            wordConfidenceData,
+            0,
+            "",
+            isTable,
+          )}
+        </Fragment>
       ) : (
         <TextResult
           enableHighlight={details?.enable_highlight}
