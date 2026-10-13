@@ -1,6 +1,6 @@
 import { Info } from "lucide-react";
 import PropTypes from "prop-types";
-import { useEffect, useState } from "react";
+import { Fragment, startTransition, useEffect, useState } from "react";
 import { Space } from "@/components/ui/shims/antd-layout";
 import { Spin } from "@/components/ui/shims/antd-leaves";
 import { Typography } from "@/components/ui/shims/antd-typography";
@@ -15,49 +15,44 @@ import "./PromptCard.css";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
 
-const BATCH_SIZE = 100;
+const RENDER_CAP = 50;
 
-/**
- * Renders a large JSON array in batches to avoid a single-frame DOM spike.
- * The first BATCH_SIZE items render immediately; remaining items are added
- * automatically via requestAnimationFrame so the browser never blocks.
- * All items are rendered — nothing is hidden or requires user interaction.
- *
- * Highlight data indexing is preserved because the slice always starts
- * from index 0 and the original array index is used throughout.
- */
-function BatchedArray({ data, renderItem, totalCount }) {
-  const [renderedCount, setRenderedCount] = useState(
-    Math.min(BATCH_SIZE, totalCount),
+function CappedArray({ data, renderItem, totalCount }) {
+  const [visibleCount, setVisibleCount] = useState(
+    Math.min(RENDER_CAP, totalCount),
   );
 
-  useEffect(() => {
-    if (renderedCount >= totalCount) {
-      return;
-    }
-    const id = requestAnimationFrame(() => {
-      setRenderedCount((prev) => Math.min(prev + BATCH_SIZE, totalCount));
-    });
-    return () => cancelAnimationFrame(id);
-  }, [renderedCount, totalCount]);
+  const remaining = totalCount - visibleCount;
 
   return (
     <>
       {"["}
       <div style={{ paddingLeft: "20px" }}>
-        {data?.slice(0, renderedCount).map((item, index) => (
+        {data.slice(0, visibleCount).map((item, index) => (
           <div key={index}>
             {renderItem(item, index)}
             {index < totalCount - 1 ? "," : ""}
           </div>
         ))}
+        {remaining > 0 && (
+          <Typography.Link
+            className="font-size-12"
+            onClick={() =>
+              setVisibleCount((prev) =>
+                Math.min(prev + RENDER_CAP, totalCount),
+              )
+            }
+          >
+            ...show more ({remaining} remaining)
+          </Typography.Link>
+        )}
       </div>
       {"]"}
     </>
   );
 }
 
-BatchedArray.propTypes = {
+CappedArray.propTypes = {
   data: PropTypes.array.isRequired,
   renderItem: PropTypes.func.isRequired,
   totalCount: PropTypes.number.isRequired,
@@ -103,13 +98,15 @@ function DisplayPromptResult({
 
     setIsLoading(false);
     const isFormattingRequired = isTable ? false : true;
-    setParsedOutput(
-      displayPromptResult(
-        output,
-        isFormattingRequired,
-        details?.enable_highlight,
-      ),
-    );
+    startTransition(() => {
+      setParsedOutput(
+        displayPromptResult(
+          output,
+          isFormattingRequired,
+          details?.enable_highlight,
+        ),
+      );
+    });
   }, [
     promptRunStatus,
     isSinglePassExtractLoading,
@@ -264,6 +261,7 @@ function DisplayPromptResult({
     path = "",
     isTable = false,
   ) => {
+    try {
     if (isTable) {
       const stringData =
         typeof data === "string" ? data : JSON.stringify(data, null, 4);
@@ -309,9 +307,9 @@ function DisplayPromptResult({
           isTable,
         );
 
-      if (data.length > BATCH_SIZE) {
+      if (data.length > RENDER_CAP) {
         return (
-          <BatchedArray
+          <CappedArray
             data={data}
             totalCount={data.length}
             renderItem={renderArrayItem}
@@ -386,20 +384,29 @@ function DisplayPromptResult({
     }
 
     return String(data);
+    } catch {
+      return (
+        <Typography.Text type="danger">
+          Unable to render output
+        </Typography.Text>
+      );
+    }
   };
 
   return (
     <Typography.Paragraph className="prompt-card-display-output font-size-12">
       {parsedOutput && typeof parsedOutput === "object" ? (
-        renderJson(
-          parsedOutput,
-          highlightData,
-          confidenceData,
-          wordConfidenceData,
-          0,
-          "",
-          isTable,
-        )
+        <Fragment key={`${docId}-${profileId}`}>
+          {renderJson(
+            parsedOutput,
+            highlightData,
+            confidenceData,
+            wordConfidenceData,
+            0,
+            "",
+            isTable,
+          )}
+        </Fragment>
       ) : (
         <TextResult
           enableHighlight={details?.enable_highlight}
