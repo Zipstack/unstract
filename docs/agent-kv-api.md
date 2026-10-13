@@ -65,6 +65,15 @@ The split exists because `list` backs a table of every key in the organization:
 returning real values there puts the whole set on screen to read one of them. The
 three single-key responses each answer a deliberate request for one key.
 
+**Getting the adapter ids**: each adapter card under *Settings → LLMs /
+X2Text* has **Copy ID** in its kebab menu
+(`frontend/src/components/tool-settings/list-of-items/ListOfItems.jsx`). That
+copies the instance UUID this API expects — not `adapter_id`, which is the
+provider descriptor (`anthropic|90ebd4cd-…`) shared by every instance of that
+provider and rejected here as "no such adapter in this organization". The same
+ids are listable at
+`GET {PATH_PREFIX}/unstract/{org}/adapter/?adapter_type=LLM`.
+
 **Browser UI**: *Settings → Agent-KV API Keys*
 (`frontend/src/components/settings/agent-kv-keys/AgentKvKeys.jsx`, routed at
 `settings/agent-kv-keys` behind `RequireAdmin`). It is a thin wrapper over the shared
