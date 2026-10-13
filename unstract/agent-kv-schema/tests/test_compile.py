@@ -313,14 +313,14 @@ def test_a_case_variant_of_an_ARGUMENT_taking_format_is_refused(fmt, intended):
     reported `{"valid": true}`, and the enum was never enforced -- identical to
     the `"Number"` failure, through the one gap the fix for it did not close.
     """
-    with pytest.raises(SchemaError, match="Did you mean"):
-        compile_schema(_one_key(fmt))
+    schema = _one_key(fmt)
+
+    with pytest.raises(SchemaError, match="Did you mean") as caught:
+        compile_schema(schema)
 
     # And the suggestion has to be the usable spelling, argument included --
     # `"enum"` alone would be rejected by the no-values check one line later,
     # sending the author in a circle.
-    with pytest.raises(SchemaError) as caught:
-        compile_schema(_one_key(fmt))
     assert intended in str(caught.value)
 
 

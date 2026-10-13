@@ -411,8 +411,8 @@ class TestAgentKvError:
                 {"success": True, "data": {"output": {}}, "error": None}, cb_kwargs
             )
 
-        with pytest.raises(RuntimeError):
-            with patch(_PATCH_ASYNC_RESULT, return_value=MagicMock(result="boom")):
+        with patch(_PATCH_ASYNC_RESULT, return_value=MagicMock(result="boom")):
+            with pytest.raises(RuntimeError):
                 agent_kv_error.run("failed-task-posture", cb_kwargs)
 
         # And neither may fire a webhook off a finalize that did not happen --
