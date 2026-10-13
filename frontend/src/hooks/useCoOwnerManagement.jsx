@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState } from "react";
 
+import { useSessionStore } from "../store/session-store";
 import { useExceptionHandler } from "./useExceptionHandler";
 
 /**
@@ -44,6 +45,15 @@ function buildApplyAlert(
 }
 
 /**
+ * Move the caller to the end: once their own removal lands they are no longer
+ * an owner, and the backend rejects every removal they send after it.
+ */
+function selfLast(users, selfId) {
+  const isSelf = (user) => String(user?.id) === String(selfId);
+  return [...users.filter((user) => !isSelf(user)), ...users.filter(isSelf)];
+}
+
+/**
  * Run one Apply's add/remove calls. Attempts every user independently --
  * one rejection must not drop the rest or leave the modal contradicting the
  * server.
@@ -53,13 +63,14 @@ async function applyCoOwnerMutations(
   resourceId,
   addUsers,
   removeUsers,
+  selfId,
 ) {
   const failed = [];
   let lastError = null;
   const run = async (users, call) => {
     for (const user of users) {
       try {
-        await call(user.id);
+        await call(user.id); // NOSONAR - one call at a time so the caller's own removal lands last
       } catch (err) {
         failed.push(user);
         lastError = err;
@@ -74,13 +85,16 @@ async function applyCoOwnerMutations(
     // swap was meant to replace. Report them rather than attempt them.
     failed.push(...removeUsers);
   } else {
-    await run(removeUsers, (id) => service.removeCoOwner(resourceId, id));
+    await run(selfLast(removeUsers, selfId), (id) =>
+      service.removeCoOwner(resourceId, id),
+    );
   }
   return { failed, lastError };
 }
 
 function useCoOwnerManagement({ service, setAlertDetails, onListRefresh }) {
   const handleException = useExceptionHandler();
+  const selfId = useSessionStore((state) => state.sessionDetails?.id);
 
   const [coOwnerOpen, setCoOwnerOpen] = useState(false);
   const [coOwnerData, setCoOwnerData] = useState({ coOwners: [] });
@@ -183,6 +197,7 @@ function useCoOwnerManagement({ service, setAlertDetails, onListRefresh }) {
         resourceId,
         addUsers,
         removeUsers,
+        selfId,
       );
       // Reconverge on true server state regardless of partial outcome.
       const outcome = await refreshCoOwnerData(resourceId, requestId);
@@ -195,7 +210,7 @@ function useCoOwnerManagement({ service, setAlertDetails, onListRefresh }) {
       if (outcome === "gone") {
         return true; // refresh already closed the modal and alerted
       }
-      // "ok" and "error" both fall through: the mutations landed either way.
+      // Mutations landed either way; "error" closes so retries reload first.
       setAlertDetails(
         buildApplyAlert(
           addUsers,
@@ -205,10 +220,11 @@ function useCoOwnerManagement({ service, setAlertDetails, onListRefresh }) {
           handleException,
         ),
       );
-      return failed.length === 0;
+      return failed.length === 0 || outcome === "error";
     },
     [
       service,
+      selfId,
       refreshCoOwnerData,
       onListRefresh,
       setAlertDetails,

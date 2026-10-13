@@ -111,7 +111,7 @@ function CoOwnerManagement({
       onOk={handleApply}
       okText={"Apply"}
       confirmLoading={applying}
-      okButtonProps={{ disabled: !hasChanges }}
+      okButtonProps={{ disabled: !hasChanges || loading }}
       maskClosable={false}
       centered
       closable={true}
