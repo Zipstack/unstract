@@ -15,12 +15,12 @@ import re
 from pathlib import Path
 from urllib.parse import quote
 
-import httpx
 from django.core.validators import URLValidator
 from dotenv import find_dotenv, load_dotenv
 from utils.common_utils import CommonUtils
 from utils.cors_origin import normalize_web_app_origin
 
+from backend.celery_broker import build_broker_url, required_broker_settings
 from unstract.core.cache.redis_client import (
     apply_url_credentials,
     build_socketio_redis_url,
@@ -71,19 +71,21 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # Load default log from env
 DEFAULT_LOG_LEVEL = os.environ.get("DEFAULT_LOG_LEVEL", "INFO")
 
-# Celery Broker Configuration
-CELERY_BROKER_BASE_URL = get_required_setting("CELERY_BROKER_BASE_URL")
-CELERY_BROKER_USER = get_required_setting("CELERY_BROKER_USER")
-CELERY_BROKER_PASS = get_required_setting("CELERY_BROKER_PASS")
-CELERY_BROKER_URL = str(
-    httpx.URL(CELERY_BROKER_BASE_URL).copy_with(
-        username=CELERY_BROKER_USER, password=CELERY_BROKER_PASS
-    )
-)
-
 ENV_FILE = find_dotenv()
 if ENV_FILE:
     load_dotenv(ENV_FILE)
+
+# Celery Broker Configuration (read after the .env load so it can set LOG_TRANSPORT)
+# Required on the Celery log transport; optional on Redis, which never dials the
+# broker (an unset base URL leaves the URL empty and Celery connects lazily).
+for _broker_setting in required_broker_settings(os.environ):
+    get_required_setting(_broker_setting)
+CELERY_BROKER_BASE_URL = os.environ.get("CELERY_BROKER_BASE_URL")
+CELERY_BROKER_USER = os.environ.get("CELERY_BROKER_USER")
+CELERY_BROKER_PASS = os.environ.get("CELERY_BROKER_PASS")
+CELERY_BROKER_URL = build_broker_url(
+    CELERY_BROKER_BASE_URL, CELERY_BROKER_USER, CELERY_BROKER_PASS
+)
 
 # Loading environment variables
 
@@ -1020,13 +1022,10 @@ SOCIAL_AUTH_JSONFIELD_ENABLED = True
 SOCIAL_AUTH_FIELDS_STORED_IN_SESSION = ["oauth-key", "connector-guid"]
 SOCIAL_AUTH_TRAILING_SLASH = False
 
-for key in [
-    "GOOGLE_OAUTH2_KEY",
-    "GOOGLE_OAUTH2_SECRET",
-    "AZUREAD_TENANT_OAUTH2_KEY",
-    "AZUREAD_TENANT_OAUTH2_SECRET",
-]:
-    exec(f"SOCIAL_AUTH_{key} = os.environ.get('{key}')")
+SOCIAL_AUTH_GOOGLE_OAUTH2_KEY = os.environ.get("GOOGLE_OAUTH2_KEY")
+SOCIAL_AUTH_GOOGLE_OAUTH2_SECRET = os.environ.get("GOOGLE_OAUTH2_SECRET")
+SOCIAL_AUTH_AZUREAD_TENANT_OAUTH2_KEY = os.environ.get("AZUREAD_TENANT_OAUTH2_KEY")
+SOCIAL_AUTH_AZUREAD_TENANT_OAUTH2_SECRET = os.environ.get("AZUREAD_TENANT_OAUTH2_SECRET")
 
 SOCIAL_AUTH_PIPELINE = (
     # Checks if user is authenticated

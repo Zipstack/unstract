@@ -32,6 +32,7 @@ from api_v2.api_deployment_dto_registry import ApiDeploymentDTORegistry
 from api_v2.constants import ApiExecution
 from api_v2.deployment_helper import DeploymentHelper
 from api_v2.dto import DeploymentExecutionDTO
+from api_v2.error_message import add_error_message
 from api_v2.exceptions import (
     NoActiveAPIKeyError,
     RateLimitExceeded,
@@ -41,6 +42,7 @@ from api_v2.models import APIDeployment
 from api_v2.openapi_schema import (
     API_DEPLOYMENT_LIST_SCHEMA,
     DEPLOYMENT_EXECUTION_SCHEMA,
+    DeploymentAutoSchema,
 )
 from api_v2.rate_limiter import APIDeploymentRateLimiter
 from api_v2.serializers import (
@@ -61,6 +63,8 @@ logger = logging.getLogger(__name__)
 
 @DEPLOYMENT_EXECUTION_SCHEMA
 class DeploymentExecution(views.APIView):
+    schema = DeploymentAutoSchema()
+
     def initialize_request(self, request: Request, *args: Any, **kwargs: Any) -> Request:
         """To remove csrf request for public API.
 
@@ -72,6 +76,14 @@ class DeploymentExecution(views.APIView):
         """
         request.csrf_processing_done = True
         return super().initialize_request(request, *args, **kwargs)
+
+    def handle_exception(self, exc: Exception) -> Response:
+        response = super().handle_exception(exc)
+        # On the status read `message` is the result payload, and published
+        # clients copy it out as the extraction result without checking.
+        if self.request.method == "POST":
+            add_error_message(response.data)
+        return response
 
     @DeploymentHelper.validate_api_key
     def post(
