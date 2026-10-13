@@ -1,6 +1,6 @@
 import { Info } from "lucide-react";
 import PropTypes from "prop-types";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Space } from "@/components/ui/shims/antd-layout";
 import { Spin } from "@/components/ui/shims/antd-leaves";
 import { Typography } from "@/components/ui/shims/antd-typography";
@@ -14,6 +14,54 @@ import {
 import "./PromptCard.css";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
+
+const ARRAY_PAGE_SIZE = 50;
+
+/**
+ * Renders a JSON array with progressive expansion.
+ * Shows the first ARRAY_PAGE_SIZE items, then a "show more" link
+ * that reveals the next batch. Highlight data indexing is preserved
+ * because the original array index is always used.
+ */
+function ExpandableArray({ data, renderItem, totalCount }) {
+  const [visibleCount, setVisibleCount] = useState(ARRAY_PAGE_SIZE);
+
+  const handleShowMore = useCallback(() => {
+    setVisibleCount((prev) => Math.min(prev + ARRAY_PAGE_SIZE, totalCount));
+  }, [totalCount]);
+
+  const remaining = totalCount - visibleCount;
+
+  return (
+    <>
+      {"["}
+      <div style={{ paddingLeft: "20px" }}>
+        {data?.slice(0, visibleCount).map((item, sliceIndex) => (
+          <div key={sliceIndex}>
+            {renderItem(item, sliceIndex)}
+            {sliceIndex < totalCount - 1 ? "," : ""}
+          </div>
+        ))}
+        {remaining > 0 && (
+          <Typography.Link
+            className="font-size-12"
+            onClick={handleShowMore}
+          >
+            ...show {Math.min(remaining, ARRAY_PAGE_SIZE)} more (
+            {remaining} remaining)
+          </Typography.Link>
+        )}
+      </div>
+      {"]"}
+    </>
+  );
+}
+
+ExpandableArray.propTypes = {
+  data: PropTypes.array.isRequired,
+  renderItem: PropTypes.func.isRequired,
+  totalCount: PropTypes.number.isRequired,
+};
 
 function DisplayPromptResult({
   output,
@@ -250,6 +298,25 @@ function DisplayPromptResult({
     }
 
     if (Array.isArray(data)) {
+      if (data.length > ARRAY_PAGE_SIZE) {
+        return (
+          <ExpandableArray
+            data={data}
+            totalCount={data.length}
+            renderItem={(item, index) =>
+              renderJson(
+                item,
+                highlightData?.[index],
+                confidenceData?.[index],
+                wordConfidenceData?.[index],
+                indent + 1,
+                `${path}[${index}]`,
+                isTable,
+              )
+            }
+          />
+        );
+      }
       return (
         <>
           {"["}
