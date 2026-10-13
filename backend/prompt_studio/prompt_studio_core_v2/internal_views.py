@@ -20,9 +20,10 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 from rest_framework import status
 
-# 10 MB — agentic table extraction output with highlight coordinates
+# 50 MB — agentic table extraction output with highlight coordinates
 # can exceed Django's default 2.5 MB DATA_UPLOAD_MAX_MEMORY_SIZE.
-_PROMPT_OUTPUT_MAX_BODY = 10 * 1024 * 1024
+# Dense tables (1000+ rows with per-cell coordinates) can reach 10-20 MB.
+_PROMPT_OUTPUT_MAX_BODY = 50 * 1024 * 1024
 
 logger = logging.getLogger(__name__)
 
@@ -134,7 +135,7 @@ def prompt_output(request):
     Uses ``request.read()`` instead of ``request.body`` to bypass
     Django's ``DATA_UPLOAD_MAX_MEMORY_SIZE`` check.  Agentic table
     extraction output with highlight coordinates can exceed the default
-    2.5 MB limit; this view enforces its own 10 MB cap instead.
+    2.5 MB limit; this view enforces its own 50 MB cap instead.
     """
     content_length = int(request.META.get("CONTENT_LENGTH") or 0)
     if content_length > _PROMPT_OUTPUT_MAX_BODY:
