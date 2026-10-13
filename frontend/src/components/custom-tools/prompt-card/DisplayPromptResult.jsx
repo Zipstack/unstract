@@ -123,8 +123,10 @@ function DisplayPromptResult({
       console.log(
         "[DisplayPromptResult] parsed output:",
         Array.isArray(parsed) ? "array" : "object",
-        "entries:", count,
-        "highlight:", !!details?.enable_highlight,
+        "entries:",
+        count,
+        "highlight:",
+        !!details?.enable_highlight,
       );
     }
 
