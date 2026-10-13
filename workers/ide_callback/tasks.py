@@ -476,7 +476,9 @@ def ide_prompt_complete(
                 "elapsed": int(time.time() - dispatch_time) if dispatch_time else 0,
             },
             status="completed",
-            result=response,
+            # result intentionally omitted — output already persisted via
+            # update_prompt_output(); frontend refetches via promptOutputApi
+            # to avoid DATA_UPLOAD_MAX_MEMORY_SIZE on emit-websocket endpoint.
         )
         # Return minimal status to avoid logging sensitive extracted data
         return {"status": "completed", "operation": operation}

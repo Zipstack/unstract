@@ -25,7 +25,7 @@ const usePromptStudioSocket = () => {
     useCustomToolStore();
   const { setAlertDetails } = useAlertStore();
   const handleException = useExceptionHandler();
-  const { updatePromptOutputState } = usePromptOutput();
+  const { updatePromptOutputState, promptOutputApi } = usePromptOutput();
   const { setPostHogCustomEvent } = usePostHogEvents();
 
   const clearPromptStatuses = useCallback(
@@ -42,10 +42,33 @@ const usePromptStudioSocket = () => {
   );
 
   const handleCompleted = useCallback(
-    (operation, result, extra) => {
-      if (operation === "fetch_response") {
-        const data = Array.isArray(result) ? result : [];
+    async (operation, result, extra) => {
+      if (
+        operation === "fetch_response" ||
+        operation === "single_pass_extraction"
+      ) {
+        // Use inline result if present (backward compat with old backend),
+        // otherwise refetch via API to avoid DATA_UPLOAD_MAX_MEMORY_SIZE.
+        let data = Array.isArray(result) ? result : [];
+        if (data.length === 0) {
+          try {
+            const res = await promptOutputApi(
+              details?.tool_id,
+              extra?.document_id,
+              null,
+              extra?.profile_manager_id,
+              operation === "single_pass_extraction",
+            );
+            data = Array.isArray(res?.data) ? res.data : [];
+          } catch {
+            // API fetch failed — proceed with empty data
+          }
+        }
         updatePromptOutputState(data, false, extra?.elapsed || 0);
+
+        if (operation === "single_pass_extraction") {
+          updateCustomTool({ isSinglePassExtractLoading: false });
+        }
         clearPromptStatuses(
           extra?.prompt_ids,
           extra?.document_id,
@@ -53,20 +76,10 @@ const usePromptStudioSocket = () => {
         );
         setAlertDetails({
           type: "success",
-          content: "Prompt execution completed successfully.",
-        });
-      } else if (operation === "single_pass_extraction") {
-        const data = Array.isArray(result) ? result : [];
-        updatePromptOutputState(data, false, extra?.elapsed || 0);
-        updateCustomTool({ isSinglePassExtractLoading: false });
-        clearPromptStatuses(
-          extra?.prompt_ids,
-          extra?.document_id,
-          extra?.profile_manager_id,
-        );
-        setAlertDetails({
-          type: "success",
-          content: "Single pass extraction completed successfully.",
+          content:
+            operation === "single_pass_extraction"
+              ? "Single pass extraction completed successfully."
+              : "Prompt execution completed successfully.",
         });
       } else if (operation === "index_document") {
         const docId = result?.document_id;
@@ -81,11 +94,13 @@ const usePromptStudioSocket = () => {
     },
     [
       updatePromptOutputState,
+      promptOutputApi,
       clearPromptStatuses,
       updateCustomTool,
       setAlertDetails,
       deleteIndexDoc,
       selectedDoc,
+      details,
     ],
   );
 
