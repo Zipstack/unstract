@@ -572,3 +572,128 @@ class TestWebhookDeliveryResult:
                 },
                 throw=True,
             )
+
+
+class TestTheResultAvailableFollowUp:
+    """A cancellation notification that turns out to be incomplete.
+
+    The job was cancelled while its extraction was finishing, so the engine had
+    already flushed its OCR and LLM usage and the backend keeps the paid-for
+    result on the cancelled row rather than discarding it
+    (`AgentKVJob.attach_result_to_cancelled`). The cancellation webhook went out
+    the moment that cancel won and nothing follows it -- so a webhook-driven
+    caller, who has no reason to poll a job they were told was cancelled, would
+    never learn the answer is there. `result_attached` is the one case where a
+    NON-fresh finalize still owes a notification.
+    """
+
+    @patch(_PATCH_SEND_WEBHOOK, return_value=True)
+    def test_a_salvaged_result_notifies_even_though_finalized_is_false(self, mock_send):
+        from ide_callback import agent_kv_tasks as akt
+
+        akt._maybe_webhook(
+            {
+                "finalized": False,
+                "result_attached": True,
+                "webhook_url": "https://hook.example/x",
+                "status": "cancelled",
+            },
+            "job-1",
+        )
+
+        # `result_available` is what distinguishes this from the cancellation
+        # POST the caller already got. A bare duplicate would carry no
+        # information at all -- same job_id, same status.
+        mock_send.assert_called_once_with(
+            "https://hook.example/x",
+            {"job_id": "job-1", "status": "cancelled", "result_available": True},
+            allow_insecure=False,
+        )
+
+    @patch(_PATCH_SEND_WEBHOOK, return_value=True)
+    def test_an_ordinary_non_fresh_finalize_still_notifies_nobody(self, mock_send):
+        """The guard the flag replaces must not widen: a duplicate finalize, or
+        a cancel with nothing salvaged, is already accounted for by whoever won.
+        """
+        from ide_callback import agent_kv_tasks as akt
+
+        akt._maybe_webhook(
+            {
+                "finalized": False,
+                "result_attached": False,
+                "webhook_url": "https://hook.example/x",
+                "status": "completed",
+            },
+            "job-1",
+        )
+        # And a response from a backend that predates the flag entirely.
+        akt._maybe_webhook(
+            {
+                "finalized": False,
+                "webhook_url": "https://hook.example/x",
+                "status": "completed",
+            },
+            "job-1",
+        )
+
+        assert not mock_send.called
+
+    @patch(_PATCH_SEND_WEBHOOK, return_value=True)
+    def test_no_webhook_url_means_no_follow_up(self, mock_send):
+        from ide_callback import agent_kv_tasks as akt
+
+        akt._maybe_webhook(
+            {"finalized": False, "result_attached": True, "webhook_url": ""},
+            "job-1",
+        )
+
+        assert not mock_send.called
+
+    @patch(_PATCH_SEND_WEBHOOK, return_value=False)
+    def test_an_undelivered_follow_up_is_logged_not_raised(self, mock_send, caplog):
+        """Logged for the same reason as the fresh-finalize branch: the job is
+        already terminal and its result already stored, so raising would only
+        re-run work that is done. The result stays readable either way -- the
+        notification saves the caller a poll, it does not make the answer
+        available.
+        """
+        import logging
+
+        from ide_callback import agent_kv_tasks as akt
+
+        with caplog.at_level(logging.ERROR, logger="ide_callback.agent_kv_tasks"):
+            akt._maybe_webhook(
+                {
+                    "finalized": False,
+                    "result_attached": True,
+                    "webhook_url": "https://hook.example/x",
+                    "status": "cancelled",
+                },
+                "job-1",
+            )
+
+        assert "not delivered" in caplog.text
+        assert "job-1" in caplog.text
+
+    @patch(_PATCH_SEND_WEBHOOK, return_value=True)
+    def test_the_fixed_payload_is_unchanged_for_every_other_notification(self, mock_send):
+        """`result_available` is additive and appears on exactly one
+        notification. Every other POST keeps the frozen `{job_id, status}`
+        shape (spec section 6.7/7.1).
+        """
+        from ide_callback import agent_kv_tasks as akt
+
+        akt._maybe_webhook(
+            {
+                "finalized": True,
+                "webhook_url": "https://hook.example/x",
+                "status": "completed",
+            },
+            "job-1",
+        )
+
+        mock_send.assert_called_once_with(
+            "https://hook.example/x",
+            {"job_id": "job-1", "status": "completed"},
+            allow_insecure=False,
+        )

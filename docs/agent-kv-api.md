@@ -475,7 +475,11 @@ Re-readable until `expires_at` (D11), plus explicit `DELETE`.
 
 - **Non-terminal job** (`PENDING`/`DISPATCHED`/`RUNNING`): `409` with
   `{"status": "<lowercased status>"}`.
-- **Expired, or `COMPLETED` with an already-swept/blank `result_ref`**: `404`.
+- **Expired, `COMPLETED` with an already-swept/blank `result_ref`, or purged by
+  `DELETE`/TTL cleanup**: `404`. The purge case is keyed off the job's
+  `files_purged` marker, not off a blank ref — `DELETE` deliberately keeps a ref
+  whose object delete failed so TTL cleanup can retry it, so a surviving ref is
+  not evidence that the data is still yours to read ([§7](#7-delete--delete-agent-kvjob_id)).
 - **`COMPLETED`**: `200` with the engine's full result object, unchanged (record,
   normalized_record, per-field audit trail, `qa_passed`, `challenge_passed`,
   `consistency_violations`, `cost_summary`, `timing` — spec §4; this repo does not
@@ -483,7 +487,14 @@ Re-readable until `expires_at` (D11), plus explicit `DELETE`.
   finalize call sent).
 - **`FAILED`**: `200` with
   `{"success": false, "status": "failed", "error": "<user-safe message>"}`.
-- **`CANCELLED`**: `200` with `{"success": false, "status": "cancelled"}`.
+- **`CANCELLED`**: `200` with `{"success": false, "status": "cancelled"}` — unless
+  the cancel lost a race to an extraction that had already finished, in which case
+  the result is served: `200` with `{"success": true, "status": "cancelled",
+  "extractors": {...}, "usage_summary": {...}}`. The status stays `cancelled`
+  because the cancel *was* honoured; `success` is `true` because there is a real
+  result and it was already billed. Branch on `success` for "is there data",
+  on `status` for "was this cancelled" — see
+  [§6](#6-cancel--post-agent-kvjob_idcancel).
 
 **Calculation result shape** (when `calculations` is supplied and
 `AGENT_KV_CALCULATIONS_ENABLED=true`): a `COMPLETED` result adds these fields to the
@@ -636,37 +647,73 @@ the engine's own progress points (rate-limited, so detection can lag by a few se
 and the job then terminates as `cancelled`. Work already done is still billed and
 metered; work not yet started is not.
 
-> **Known gap: a job that finishes before the cancel is noticed has its result
-> discarded on arrival, and you are still billed for it.** The engine flushes OCR
-> and LLM usage *before* the executor's final stage report, so a cancel colliding
-> with that report lands after the work is paid for. `FinalizeView` then writes
-> the result, its `mark_terminal` guard correctly declines to restatus a terminal
-> row, and the file is deleted — `GET result` reports
-> `{"success": false, "status": "cancelled"}` with no indication that a
-> fully-computed answer existed.
+**A job that finishes before the cancel is noticed keeps its result.** The
+engine flushes OCR and LLM usage *before* the executor's final stage report, so
+a cancel colliding with that report lands after the work is paid for. The
+extraction is complete and the output fully computed; what used to happen to it
+was nothing good, in either of two ways:
+
+- **The ordinary case.** The executor learns of the cancel *from* that final
+  stage report (answered as a no-op once the row is terminal) and returns
+  success with the full output anyway. By the time the callback worker calls
+  finalize, the row has read `CANCELLED` for a whole round trip, so
+  `FinalizeView.post` short-circuited on "already terminal" and the output was
+  dropped without even being written.
+- **The narrow case.** The cancel lands between finalize's own read and its
+  `mark_terminal`, so the result *was* written and the guard then correctly
+  declined to restatus a terminal row — and the file was deleted as an orphan.
+
+Either way `GET result` reported `{"success": false, "status": "cancelled"}` and
+the customer had paid for an answer that no longer existed. Both paths now
+attach it to the cancelled row instead
+(`FinalizeView._salvage` / `AgentKVJob.attach_result_to_cancelled`) and it is
+served as described in [§5](#5-result--get-agent-kvjob_idresult).
+
+A success callback for an already-terminal job is therefore the one case where
+finalize writes a result for a row it read as terminal. It is `CANCELLED`-only
+and guarded in SQL on a blank `result_ref`, so a duplicate callback still
+attaches nothing and deletes its own write — the idempotency the short-circuit
+protected is unchanged. A **failure** callback for a cancelled job salvages
+nothing (there is no result), and a `COMPLETED` or `FAILED` row is never given a
+second look.
+
+What does *not* change: `status` stays `cancelled`, `completed_at` is untouched,
+and `mark_terminal` remains the only way a job reaches a terminal state. The
+salvage adds a pointer to work that was already billed; it cannot restatus
+anything, and it only ever applies to a `CANCELLED` row (a `COMPLETED` or
+`FAILED` row owns its own outcome).
+
+A caller who supplied `webhook_url` has already been sent `cancelled` by then,
+so a **follow-up notification** carrying `result_available: true` is delivered
+when this happens — see [§8](#8-webhook-delivery).
+
+> **This was reverted three times before it shipped, and the reason is worth
+> knowing before you touch it.** `DELETE /agent-kv/{job_id}/` guarantees that a
+> purged job cannot be resurrected, and it used to guarantee that *by relying on*
+> the late finalize deleting its own orphaned write. Keeping the result removes
+> exactly that cleanup, and every attempt to rebuild the guarantee from the job's
+> own ref columns failed review:
 >
-> This is not an oversight, it is an unresolved trade, and keeping the result
-> was tried three times and reverted each time. The obstacle is that
-> `DELETE /agent-kv/{job_id}/` guarantees a purged job cannot be resurrected
-> precisely BY relying on a late finalize deleting its own write (see the
-> comment opening `JobStatusView.delete`). Storing the result instead removes
-> that cleanup, and every attempt to re-establish the guarantee from the job's
-> own fields failed review:
+> 1. Gate the attach on `result_ref=""` — a purged job could still serve a late
+>    result, because `DELETE` blanks both refs and leaves precisely the row that
+>    filter matches.
+> 2. Also gate on a non-blank `input_ref` — **unsound.** `delete_job_files`
+>    deliberately *keeps* a ref whose object delete failed, so TTL cleanup has a
+>    handle to retry from; a non-blank `input_ref` therefore does not prove the
+>    job was never purged.
+> 3. Also re-read the row inside `DELETE` — narrowed the window but left a
+>    storage orphan (cleanup can clear a ref it never deleted, and later sweeps
+>    select only jobs that still have one, so extracted data outlives its
+>    retention window) and left the cancellation webhook un-followed-up.
 >
-> - Gating on `result_ref` alone let a purged job serve a late result.
-> - Gating additionally on a non-blank `input_ref` did not help: `DELETE`
->   deliberately KEEPS a ref whose file delete failed, so that it can be
->   retried — meaning a non-blank `input_ref` does not prove the job was never
->   deleted.
-> - Re-reading the row inside `DELETE` narrowed the window but left a storage
->   orphan (cleanup can clear a ref it never deleted, and later sweeps only
->   select jobs that still have one), and left the cancellation webhook
->   un-followed-up, so a webhook-driven caller never learns the answer arrived.
->
-> Closing it needs an explicit "files purged" marker that `DELETE`, TTL cleanup
-> and finalize all agree on, written unconditionally rather than inferred from
-> refs, plus a follow-up notification. Tracked separately. The window is narrow,
-> and the caller did ask to cancel.
+> The common thread: `result_ref`/`input_ref` carry **three** meanings — never
+> set, purged, and purge-attempted-delete-failed-retry-later — so purge state
+> cannot be inferred from them. What shipped records it instead, on the
+> `files_purged` column: written unconditionally by `DELETE` and by TTL cleanup
+> before either attempts a delete, read by the attach (which refuses a purged
+> row) and by the result endpoint (which refuses to *serve* one, covering the
+> surviving-ref case no ref check can see), and both sides take the row lock so
+> cleanup cannot interleave between its read and its blanking write.
 
 - Won the race (job was non-terminal): `200` `{"status": "cancelled"}`.
 - Already terminal: `409` `{"status": "<job.status>"}`, lowercased (e.g.
@@ -686,9 +733,32 @@ curl -X POST https://api.unstract.example/agent-kv/5b6e9b0a-.../cancel \
 
 ## 7. Delete — `DELETE /agent-kv/{job_id}`
 
-Deletes the result and any residual staged input immediately, and blanks both refs
-(`204`, no body). The job row itself is retained (audit trail); a later `result` fetch
-404s (blank `result_ref`), and status still works.
+Deletes the result and any residual staged input immediately, blanks the refs whose
+objects are confirmed gone, and marks the job `files_purged` (`204`, no body). The job
+row itself is retained (audit trail); a later `result` fetch 404s, and status still
+works.
+
+A few details that matter if you are changing this endpoint:
+
+- **On a non-terminal job it cancels first**, then purges. Cancelling before the
+  deletes is what stops a still-running job from carrying on after its files are
+  gone, and from writing a fresh result onto a job the caller has asked to destroy.
+- **The `files_purged` marker is written unconditionally** — on every `DELETE`,
+  whatever the job's status, and *before* the object deletes are attempted, so a
+  delete that fails cannot leave it unset. It records the caller's intent, not the
+  outcome. It is what makes "this job was purged" answerable at all: a blank ref
+  can equally mean "nothing was ever staged", and a *non*-blank ref can mean
+  "purged, but the object delete failed and the ref is kept so TTL cleanup can
+  retry" (`storage.delete_job_files`). Nothing downstream may infer purge state
+  from the ref columns — see the note in [§6](#6-cancel--post-agent-kvjob_idcancel).
+- **A ref whose object delete failed is kept**, deliberately, as that retry handle.
+  The response is still `204`: the job is terminal, the intent is recorded, and a
+  `5xx` here would only invite a retry of a `DELETE` that already did everything it
+  could. The result endpoint refuses such a job on the marker, so a surviving ref
+  never becomes a surviving read.
+- **It re-reads the row under a lock** (`AgentKVJob.mark_files_purged`) immediately
+  before deleting, so a result attached by a late finalize in the meantime is purged
+  along with everything else, and one attempted afterwards is refused outright.
 
 ```bash
 curl -X DELETE https://api.unstract.example/agent-kv/5b6e9b0a-.../ \
@@ -697,11 +767,35 @@ curl -X DELETE https://api.unstract.example/agent-kv/5b6e9b0a-.../ \
 
 ## 8. Webhook delivery
 
-`webhook_url` (if given at submit) receives exactly one terminal-state POST:
+`webhook_url` (if given at submit) receives one terminal-state POST:
 `{"job_id": "...", "status": "completed"|"failed"|"cancelled"}` — a fixed payload
 shape, no result content (spec §6.7, §7.1). Delivered from the `ide_callback` worker
 (`workers/ide_callback/agent_kv_tasks.py::_maybe_webhook`) only on a *fresh* finalize
-(a duplicate/late finalize for an already-terminal job never re-fires it).
+(a duplicate/late finalize for an already-terminal job does not re-fire it, with the
+one exception below), or from `agent_kv_cancelled` when a cancel won the race
+instead.
+
+**There is exactly one case of a second POST**, and it is additive:
+
+```json
+{"job_id": "...", "status": "cancelled", "result_available": true}
+```
+
+It is sent when a cancel that had already been notified turns out to have lost the
+race to a finished extraction, so the result was kept and is now readable
+([§6](#6-cancel--post-agent-kvjob_idcancel)). Without it a webhook-driven caller —
+who has no reason to poll a job they were told was cancelled — would never learn the
+answer arrived. `result_available` is the only thing distinguishing it from the
+cancellation POST they already have; a bare duplicate would carry no information at
+all. It appears on no other notification, so a receiver that ignores unknown keys
+simply sees a repeat of the cancellation.
+
+Nothing orders the two POSTs. The cancellation one is queued by the backend the
+moment its cancel wins and delivered by a worker; the follow-up is sent inline by
+the finalize callback. A receiver can therefore see the follow-up first and then the
+plain `cancelled` — treat `result_available` as sticky, not as the state of the
+world at delivery time. The result's readability does not depend on either POST
+landing: `GET result` is the authority, and this notification only saves a poll.
 
 **SSRF controls, as actually implemented** (`workers/shared/utils/webhook_notify.py`,
 function `send_webhook`) — this corrects an earlier draft of this document, which
@@ -725,8 +819,9 @@ own module docstring says so:
   elsewhere), but the Agent-KV caller (`_maybe_webhook`) never passes it — every
   Agent-KV webhook is https-only in practice.
 - **No redirects** (`allow_redirects=False`).
-- **Fixed, minimal payload** (`{job_id, status}` only — see above) and the
-  **response body is never read** — only the status code is inspected.
+- **Fixed, minimal payload** (`{job_id, status}`, plus `result_available` on the
+  one follow-up described above — never result content) and the **response body is
+  never read** — only the status code is inspected.
 - **Short timeout** (10 seconds).
 - **No retries.** One POST attempt only; any failure (host refused by the
   pre-check, timeout, connection error, non-2xx status) is logged and swallowed —
@@ -751,10 +846,12 @@ production.
 - **Cancelled jobs' inputs intentionally ride TTL instead.** `JobCancelView` marks a
   job `CANCELLED` directly via `AgentKVJob.mark_terminal`, not through `FinalizeView`
   — so cancellation never triggers the completion-time delete above. A late finalize
-  call against an already-`CANCELLED` job also no-ops (it loses the terminal guard,
-  same as any duplicate). A cancelled job's staged input is therefore cleaned up the
-  ordinary way: by the TTL sweep once `expires_at` passes, or by an explicit
-  `DELETE /agent-kv/{job_id}`.
+  against an already-`CANCELLED` job does not trigger it either: it never wins the
+  terminal guard, and `_drop_staged_input` stays gated on a won guard, so even the
+  success callback that *does* store a result there
+  ([§6](#6-cancel--post-agent-kvjob_idcancel)) leaves the input alone. A cancelled
+  job's staged input is therefore cleaned up the ordinary way: by the TTL sweep once
+  `expires_at` passes, or by an explicit `DELETE /agent-kv/{job_id}`.
 - **Result retention**: `AGENT_KV_RESULT_TTL_DAYS` (default **7** days, D10's
   engineering default) — results are re-readable until then, then swept by the
   internal `ttl-cleanup` endpoint ([§6](#11-deploy-checklist)), which blanks
@@ -762,6 +859,21 @@ production.
   defensively for any input that somehow outlives completion). The job row itself is
   never deleted (audit trail persists past TTL, only the object-store payloads are
   dropped).
+- **TTL cleanup marks every row it processes `files_purged`**, on the same terms as
+  `DELETE` ([§7](#7-delete--delete-agent-kvjob_id)): before the deletes are
+  attempted, and whether or not they succeed. The sweep *is* a purge, so it owes
+  that marker — and without it, a result attached to a cancelled row by a late
+  finalize could land after the sweep had read the row and before it blanked the
+  refs, leaving the object in storage with its ref cleared. Since the sweep's own
+  candidate filter is `input_ref > "" OR result_ref > ""`, a row blanked that way
+  can never be reconsidered: extracted customer data past its retention window with
+  nothing pointing at it. The marker plus the row lock
+  (`AgentKVJob.mark_files_purged`) is what closes that.
+- **A row whose object delete failed keeps its ref and is retried** from a reserved
+  slice of each later batch (`cleanup_failed_at`, see `maintenance.run_ttl_cleanup`).
+  Such a row is already `files_purged`, so the API treats it as purged while cleanup
+  is still working on the bucket — which is the point: the two facts are separate and
+  are recorded separately.
 - **`expires_at` is stamped at submit time**, not at completion —
   `SubmitView.post` sets `expires_at = timezone.now() + timedelta(days=AGENT_KV_RESULT_TTL_DAYS)`
   before dispatch even runs. **This is a real divergence from spec D10's framing**
@@ -814,8 +926,15 @@ On `noop: true`, the executor **must**:
 
 1. Stop doing any further work on that job immediately.
 2. **Still call `FinalizeView`** (`POST .../jobs/{job_id}/finalize/`) with whatever
-   outcome it has — success or failure, it does not matter which, since the write is
-   going to no-op either way.
+   outcome it has — success or failure, it does not matter which: at pickup there is
+   no result yet, so the status write no-ops either way.
+
+   *A `noop` on a LATER stage report is a different situation and the executor should
+   not conflate them.* By the final report the work is done and paid for, and a
+   success body carrying the full output is then stored on the cancelled job rather
+   than discarded ([§6](#6-cancel--post-agent-kvjob_idcancel)). So "report whatever
+   you have" is right at both ends of the run, but for different reasons: at pickup
+   because nothing can be lost, and at the end because something can.
 
 Step 2 is not optional. `FinalizeView`'s terminal-state guard (spec §5.4) correctly
 no-ops the status write for an already-terminal job — but its concurrency-slot

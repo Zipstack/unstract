@@ -1634,7 +1634,13 @@ class InternalAPIClient(CachedAPIClientMixin):
             usage_summary: Optional usage/cost summary to persist (success only).
 
         Returns:
-            Backend response: ``{"finalized": bool, "webhook_url": str, "status": str}``.
+            Backend response: ``{"finalized": bool, "webhook_url": str,
+            "status": str, "reason": str, "result_attached": bool}``.
+            ``result_attached`` is True only when ``finalized`` is False because
+            a cancel won the race, and the finished extraction's result was kept
+            on the cancelled row rather than discarded -- the one non-fresh
+            finalize that still owes the caller a notification (see
+            ``ide_callback.agent_kv_tasks._maybe_webhook``).
         """
         payload: dict[str, Any] = {"org_id": org_id, "success": success}
         if success:

@@ -380,12 +380,23 @@ def test_cancel_on_completed_is_409_and_result_untouched(
 # ---------------------------------------------------------------------------
 # (8) delete calls delete_job_files and blanks both refs.
 # ---------------------------------------------------------------------------
+# `mark_files_purged` is stubbed to None throughout this DB-free suite. DELETE
+# calls it on EVERY request now -- it writes the `files_purged` marker and hands
+# back the row read under a lock -- and the real method opens a transaction, so
+# the request would 500 here. Returning None exercises the view's documented
+# fallback (`... or job`), which keeps these cases asserting exactly what they
+# were written to assert: the files the caller's own row points at. The claim's
+# real return value is honoured in
+# `test_delete_acts_on_the_row_the_purge_claim_returns`, that it happens at all
+# in `test_delete_claims_the_purge_even_when_it_wins_the_cancel`, and the marker
+# itself DB-backed in `test_models.py`.
+@mock.patch.object(AgentKVJob, "mark_files_purged", return_value=None)
 @mock.patch.object(AgentKVJob, "save")
 @mock.patch.object(ev, "delete_job_files")
 @mock.patch.object(AgentKVJob, "objects")
 @mock.patch.object(AgentKVKey, "objects")
 def test_delete_calls_delete_job_files_and_blanks_refs(
-    m_keys, m_jobs, m_delete_files, m_save
+    m_keys, m_jobs, m_delete_files, m_save, m_purge
 ):
     m_keys.get.return_value = kv_key()
     job = AgentKVJob(
@@ -412,13 +423,15 @@ def test_delete_calls_delete_job_files_and_blanks_refs(
 # files are deleted -- a still-running job that finalizes late would
 # otherwise write a fresh result onto a job the caller just deleted.
 # ---------------------------------------------------------------------------
+# See the note on `mark_files_purged` at (8); stubbed for the same reason.
+@mock.patch.object(AgentKVJob, "mark_files_purged", return_value=None)
 @mock.patch.object(AgentKVJob, "save")
 @mock.patch.object(ev, "delete_job_files")
 @mock.patch.object(AgentKVJob, "mark_terminal", return_value=True)
 @mock.patch.object(AgentKVJob, "objects")
 @mock.patch.object(AgentKVKey, "objects")
 def test_delete_on_running_job_cancels_before_deleting_files(
-    m_keys, m_jobs, m_mark_terminal, m_delete_files, m_save
+    m_keys, m_jobs, m_mark_terminal, m_delete_files, m_save, m_purge
 ):
     m_keys.get.return_value = kv_key()
     job = AgentKVJob(status=JobStatus.RUNNING)
@@ -447,6 +460,8 @@ def test_delete_on_running_job_cancels_before_deleting_files(
 # leaked a slot until the 6h TTL, and enough of them exhaust the org's
 # allowance and start rejecting new submits.
 # ---------------------------------------------------------------------------
+# See the note on `mark_files_purged` at (8); stubbed for the same reason.
+@mock.patch.object(AgentKVJob, "mark_files_purged", return_value=None)
 @mock.patch.object(ev.AgentKVConcurrencyLimiter, "release")
 @mock.patch.object(AgentKVJob, "save")
 @mock.patch.object(ev, "delete_job_files", return_value=["input_ref", "result_ref"])
@@ -454,7 +469,7 @@ def test_delete_on_running_job_cancels_before_deleting_files(
 @mock.patch.object(AgentKVJob, "objects")
 @mock.patch.object(AgentKVKey, "objects")
 def test_delete_on_a_running_job_does_NOT_release_the_slot(
-    m_keys, m_jobs, m_mark_terminal, m_delete_files, m_save, m_release
+    m_keys, m_jobs, m_mark_terminal, m_delete_files, m_save, m_release, m_purge
 ):
     """Inverted: this used to assert the release, which was the bug.
 
@@ -483,6 +498,8 @@ def test_delete_on_a_running_job_does_NOT_release_the_slot(
     )
 
 
+# See the note on `mark_files_purged` at (8); stubbed for the same reason.
+@mock.patch.object(AgentKVJob, "mark_files_purged", return_value=None)
 @mock.patch.object(ev, "dispatch_cancelled_webhook")
 @mock.patch.object(ev.AgentKVConcurrencyLimiter, "release")
 @mock.patch.object(AgentKVJob, "save")
@@ -491,7 +508,8 @@ def test_delete_on_a_running_job_does_NOT_release_the_slot(
 @mock.patch.object(AgentKVJob, "objects")
 @mock.patch.object(AgentKVKey, "objects")
 def test_delete_on_a_never_dispatched_job_DOES_release_the_slot(
-    m_keys, m_jobs, m_mark_terminal, m_delete_files, m_save, m_release, m_hook
+    m_keys, m_jobs, m_mark_terminal, m_delete_files, m_save, m_release, m_hook,
+    m_purge,
 ):
     """The case the release exists for, and the only one.
 
@@ -519,15 +537,16 @@ def test_delete_on_a_never_dispatched_job_DOES_release_the_slot(
 # ---------------------------------------------------------------------------
 @mock.patch.object(ev.AgentKVConcurrencyLimiter, "release")
 @mock.patch.object(AgentKVJob, "save")
-# A lost race re-reads the row before cleanup (see 8i); this suite touches no
-# database, so the read itself is stubbed out here.
-@mock.patch.object(AgentKVJob, "refresh_from_db")
+# DELETE re-reads the row before cleanup (see 8i) -- now through the purge claim
+# rather than a bare `refresh_from_db`. This suite touches no database, so the
+# claim is stubbed out here; see the note at (8).
+@mock.patch.object(AgentKVJob, "mark_files_purged", return_value=None)
 @mock.patch.object(ev, "delete_job_files", return_value=["input_ref", "result_ref"])
 @mock.patch.object(AgentKVJob, "mark_terminal", return_value=False)
 @mock.patch.object(AgentKVJob, "objects")
 @mock.patch.object(AgentKVKey, "objects")
 def test_delete_does_not_release_the_slot_when_it_loses_the_terminal_race(
-    m_keys, m_jobs, m_mark_terminal, m_delete_files, m_refresh, m_save, m_release
+    m_keys, m_jobs, m_mark_terminal, m_delete_files, m_purge, m_save, m_release
 ):
     m_keys.get.return_value = kv_key()
     job = AgentKVJob(status=JobStatus.RUNNING)
@@ -547,12 +566,14 @@ def test_delete_does_not_release_the_slot_when_it_loses_the_terminal_race(
 # still in the bucket orphans that object permanently. Still 204 -- the job is
 # terminal and the caller's intent is recorded.
 # ---------------------------------------------------------------------------
+# See the note on `mark_files_purged` at (8); stubbed for the same reason.
+@mock.patch.object(AgentKVJob, "mark_files_purged", return_value=None)
 @mock.patch.object(AgentKVJob, "save")
 @mock.patch.object(ev, "delete_job_files")
 @mock.patch.object(AgentKVJob, "objects")
 @mock.patch.object(AgentKVKey, "objects")
 def test_delete_keeps_the_ref_whose_file_delete_failed(
-    m_keys, m_jobs, m_delete_files, m_save
+    m_keys, m_jobs, m_delete_files, m_save, m_purge
 ):
     m_keys.get.return_value = kv_key()
     job = AgentKVJob(
@@ -576,13 +597,15 @@ def test_delete_keeps_the_ref_whose_file_delete_failed(
 # (8c) delete on an already-terminal job never attempts to cancel it again --
 # unchanged behavior for the terminal case.
 # ---------------------------------------------------------------------------
+# See the note on `mark_files_purged` at (8); stubbed for the same reason.
+@mock.patch.object(AgentKVJob, "mark_files_purged", return_value=None)
 @mock.patch.object(AgentKVJob, "save")
 @mock.patch.object(ev, "delete_job_files")
 @mock.patch.object(AgentKVJob, "mark_terminal")
 @mock.patch.object(AgentKVJob, "objects")
 @mock.patch.object(AgentKVKey, "objects")
 def test_delete_on_terminal_job_does_not_call_mark_terminal(
-    m_keys, m_jobs, m_mark_terminal, m_delete_files, m_save
+    m_keys, m_jobs, m_mark_terminal, m_delete_files, m_save, m_purge
 ):
     m_keys.get.return_value = kv_key()
     job = AgentKVJob(status=JobStatus.COMPLETED)
@@ -625,18 +648,21 @@ def test_all_job_views_401_without_key():
 
 
 # ---------------------------------------------------------------------------
-# (8i) Losing the terminal race must RE-READ the job before touching its files.
+# (8i) DELETE must act on the row the purge claim returns, not on its own
+# earlier read.
 #
 # The race: DELETE reads a RUNNING job (result_ref ""), the finalize callback
 # wins the guarded UPDATE in between and writes COMPLETED + a real result_ref,
-# and `mark_terminal` here returns False. Without a refresh the cleanup below
-# runs against the stale copy: `delete_job_files` reports an already-empty
-# `result_ref` as "cleared" (there was nothing to delete), and the save then
-# writes "" OVER the winner's real ref. The job stays COMPLETED, its result
-# 404s, and the object is orphaned -- TTL cleanup selects on `result_ref > ""`,
-# so a blanked row never comes back.
+# and `mark_terminal` here returns False. Acting on the stale copy,
+# `delete_job_files` reports an already-empty `result_ref` as "cleared" (there
+# was nothing to delete), and the save then writes "" OVER the winner's real
+# ref. The job stays COMPLETED, its result 404s, and the object is orphaned --
+# TTL cleanup selects on `result_ref > ""`, so a blanked row never comes back.
 #
-# Reported by Greptile on PR #2317.
+# Originally reported by Greptile on PR #2317 against a bare `refresh_from_db`
+# on the lost-race branch. `AgentKVJob.mark_files_purged` now owns that re-read
+# (it has to: it must also be ordered against a concurrent salvage), so this
+# pins the row it hands back actually being the one that gets cleaned up.
 # ---------------------------------------------------------------------------
 @mock.patch.object(ev.AgentKVConcurrencyLimiter, "release")
 @mock.patch.object(AgentKVJob, "save")
@@ -644,7 +670,7 @@ def test_all_job_views_401_without_key():
 @mock.patch.object(AgentKVJob, "mark_terminal", return_value=False)
 @mock.patch.object(AgentKVJob, "objects")
 @mock.patch.object(AgentKVKey, "objects")
-def test_delete_refreshes_the_job_when_it_loses_the_terminal_race(
+def test_delete_acts_on_the_row_the_purge_claim_returns(
     m_keys, m_jobs, m_mark_terminal, m_delete_files, m_save, m_release
 ):
     m_keys.get.return_value = kv_key()
@@ -652,17 +678,18 @@ def test_delete_refreshes_the_job_when_it_loses_the_terminal_race(
     job.organization_id = "org1"
     m_jobs.get.return_value = job
 
-    # The winner's write, applied by refresh_from_db: COMPLETED + a real ref.
-    def _win_the_race():
-        job.status = JobStatus.COMPLETED
-        job.result_ref = "org1/job/result.json"
+    # What the claim reads back under its lock: the winner's write.
+    fresh = AgentKVJob(
+        status=JobStatus.COMPLETED, result_ref="org1/job/result.json", files_purged=True
+    )
+    fresh.organization_id = "org1"
 
     with mock.patch.object(
-        AgentKVJob, "refresh_from_db", side_effect=_win_the_race
-    ) as m_refresh:
+        AgentKVJob, "mark_files_purged", return_value=fresh
+    ) as m_purge:
         # Capture what the cleanup actually SAW. `call_args` would be useless
-        # here: it records a reference to the same job object the view then
-        # blanks, so by assertion time it reads "" whether the fix works or not.
+        # here: it records a reference to the object the view then blanks, so by
+        # assertion time it reads "" whether the fix works or not.
         seen: list[str] = []
 
         def _record(j):
@@ -673,38 +700,62 @@ def test_delete_refreshes_the_job_when_it_loses_the_terminal_race(
         resp = ev.JobDeleteView.as_view()(_authed(method="delete"), job_id=uuid.uuid4())
 
     assert resp.status_code == 204
-    assert m_refresh.called, (
-        "a lost terminal race must re-read the job; acting on the stale copy "
-        "blanks the winner's result_ref and orphans the result file"
+    assert m_purge.called, (
+        "DELETE skipped the purge claim; acting on its own stale copy blanks "
+        "the winner's result_ref and orphans the result file"
     )
     # The file helper saw the winner's ref, so the real object is deleted...
     assert seen == ["org1/job/result.json"]
     # ...and the blanking is of a ref that was genuinely cleared, not a stale "".
     assert m_save.call_args.kwargs["update_fields"] == ["input_ref", "result_ref"]
+    assert fresh.result_ref == ""
 
 
+# ---------------------------------------------------------------------------
+# (8i-ii) The claim is made on EVERY delete, including one that wins the cancel.
+#
+# This replaces `test_delete_does_not_refresh_when_it_wins_the_terminal_race`,
+# whose premise -- "winning means nothing else wrote to the row, so the extra
+# query is waste" -- the salvage invalidates: a late finalize can still ATTACH a
+# result to the row this request just cancelled, and the marker that stops it
+# serving one has to be written here.
+#
+# Note what makes a conditional version of this quietly wrong. `mark_terminal`
+# is a queryset UPDATE and never touches the in-memory row, so `job.status` is
+# still RUNNING below even though this request won the cancel -- a re-read
+# gated on `job.status == CANCELLED` would skip precisely the path that needs
+# it, and this mock reproduces the un-mutated row faithfully, so it would agree
+# with that mistake. The claim is unconditional, so there is no condition to get
+# wrong.
+# ---------------------------------------------------------------------------
+@mock.patch.object(ev, "dispatch_cancelled_webhook")
 @mock.patch.object(ev.AgentKVConcurrencyLimiter, "release")
 @mock.patch.object(AgentKVJob, "save")
 @mock.patch.object(ev, "delete_job_files", return_value=["input_ref", "result_ref"])
 @mock.patch.object(AgentKVJob, "mark_terminal", return_value=True)
 @mock.patch.object(AgentKVJob, "objects")
 @mock.patch.object(AgentKVKey, "objects")
-def test_delete_does_not_refresh_when_it_wins_the_terminal_race(
-    m_keys, m_jobs, m_mark_terminal, m_delete_files, m_save, m_release
+def test_delete_claims_the_purge_even_when_it_wins_the_cancel(
+    m_keys, m_jobs, m_mark_terminal, m_delete_files, m_save, m_release, m_hook
 ):
-    """Winning means nothing else wrote to the row, so the in-memory copy is
-    current and the extra query would be waste on the common path.
-    """
     m_keys.get.return_value = kv_key()
     job = AgentKVJob(status=JobStatus.RUNNING)
+    job.id = uuid.uuid4()
     job.organization_id = "org1"
     m_jobs.get.return_value = job
 
-    with mock.patch.object(AgentKVJob, "refresh_from_db") as m_refresh:
-        resp = ev.JobDeleteView.as_view()(_authed(method="delete"), job_id=uuid.uuid4())
+    with mock.patch.object(
+        AgentKVJob, "mark_files_purged", return_value=None
+    ) as m_purge:
+        resp = ev.JobDeleteView.as_view()(_authed(method="delete"), job_id=job.id)
 
     assert resp.status_code == 204
-    assert not m_refresh.called
+    assert job.status == JobStatus.RUNNING, (
+        "guard for the trap this test exists for: if mark_terminal ever starts "
+        "mutating the in-memory row, a status-gated re-read would start passing "
+        "here for the wrong reason"
+    )
+    m_purge.assert_called_once_with(job.id, "org1")
 
 
 # ---------------------------------------------------------------------------
@@ -763,6 +814,8 @@ def test_cancel_that_loses_does_not_queue_a_webhook(
     assert not m_hook.called
 
 
+# See the note on `mark_files_purged` at (8); stubbed for the same reason.
+@mock.patch.object(AgentKVJob, "mark_files_purged", return_value=None)
 @mock.patch.object(ev, "dispatch_cancelled_webhook")
 @mock.patch.object(ev.AgentKVConcurrencyLimiter, "release")
 @mock.patch.object(AgentKVJob, "save")
@@ -771,7 +824,8 @@ def test_cancel_that_loses_does_not_queue_a_webhook(
 @mock.patch.object(AgentKVJob, "objects")
 @mock.patch.object(AgentKVKey, "objects")
 def test_delete_that_cancels_a_running_job_also_queues_the_webhook(
-    m_keys, m_jobs, m_mark_terminal, m_delete_files, m_save, m_release, m_hook
+    m_keys, m_jobs, m_mark_terminal, m_delete_files, m_save, m_release, m_hook,
+    m_purge,
 ):
     """DELETE on a non-terminal job cancels it first; that cancellation is just
     as terminal, and just as invisible to the caller without this.

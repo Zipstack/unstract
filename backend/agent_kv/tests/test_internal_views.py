@@ -366,6 +366,10 @@ def test_finalize_success_writes_result_then_marks_terminal(
         "webhook_url": "https://example.com/hook",
         "status": "completed",
         "reason": "ok",
+        # Additive, and False on every path but one: the result was
+        # kept on a row a cancel had already terminalized. See
+        # `test_finalize_guard_lost_to_a_cancel_keeps_the_paid_for_result`.
+        "result_attached": False,
     }
     assert [c[0] for c in manager.mock_calls] == ["write_result", "mark_terminal"]
     m_write.assert_called_once_with("org1", str(job_id), {"foo": "bar"})
@@ -412,13 +416,22 @@ def test_finalize_success_deletes_input_and_blanks_ref(
 # cancel raced in between the read and mark_terminal's guarded UPDATE) --
 # the just-written result file has no ref anywhere pointing at it, so it's
 # cleaned up immediately rather than orphaned forever.
+# `attach_result_to_cancelled` is pinned to False because that is what the real
+# query returns for this row: its guard is `status=CANCELLED`, and this job is
+# RUNNING. The patch is not cosmetic -- this suite is DB-free and the real
+# method opens a transaction, so without it the request 500s and the orphan
+# delete asserted below is never reached. Pinning it True instead would make
+# this test assert the opposite behaviour, which is
+# `test_finalize_guard_lost_to_a_cancel_keeps_the_paid_for_result` below. The
+# salvage path itself is covered DB-backed in `test_models.py`.
 @mock.patch.object(iv.AgentKVConcurrencyLimiter, "release")
 @mock.patch.object(iv, "delete_result_file")
+@mock.patch.object(AgentKVJob, "attach_result_to_cancelled", return_value=False)
 @mock.patch.object(AgentKVJob, "mark_terminal", return_value=False)
 @mock.patch.object(iv, "write_result")
 @mock.patch.object(AgentKVJob, "objects")
 def test_finalize_success_guard_loss_deletes_orphaned_result(
-    m_jobs, m_write, m_mark_terminal, m_delete_result, m_release
+    m_jobs, m_write, m_mark_terminal, m_salvage, m_delete_result, m_release
 ):
     job = AgentKVJob(status=JobStatus.RUNNING, webhook_url="")
     m_jobs.filter.return_value.first.return_value = job
@@ -436,6 +449,185 @@ def test_finalize_success_guard_loss_deletes_orphaned_result(
     assert resp.status_code == 200
     assert resp.data["finalized"] is False
     m_delete_result.assert_called_once_with("org/o/agent_kv/j/result.json")
+
+
+# (7c-ii) the one case (7c) must NOT catch: the guard was lost to a CANCEL, and
+# the run had already finished -- so the engine had already flushed its OCR and
+# LLM usage and the customer had already been billed. Deleting the result there
+# charged them for an answer and then destroyed it, with `GET result` reporting
+# only `{"success": false, "status": "cancelled"}`. It is attached to the
+# cancelled row instead, and the caller is owed a follow-up notification because
+# the cancellation webhook has already gone out.
+@mock.patch.object(iv.AgentKVConcurrencyLimiter, "release")
+@mock.patch.object(iv, "delete_result_file")
+@mock.patch.object(AgentKVJob, "attach_result_to_cancelled", return_value=True)
+@mock.patch.object(AgentKVJob, "mark_terminal", return_value=False)
+@mock.patch.object(iv, "write_result")
+@mock.patch.object(AgentKVJob, "objects")
+def test_finalize_guard_lost_to_a_cancel_keeps_the_paid_for_result(
+    m_jobs, m_write, m_mark_terminal, m_salvage, m_delete_result, m_release
+):
+    job = AgentKVJob(status=JobStatus.RUNNING, webhook_url="https://example.com/hook")
+    m_jobs.filter.return_value.first.return_value = job
+    m_write.return_value = "org/o/agent_kv/j/result.json"
+
+    job_id = uuid.uuid4()
+    resp = iv.FinalizeView.as_view()(
+        _post(
+            "/x",
+            {
+                "org_id": "org1",
+                "success": True,
+                "result": {"tables": []},
+                "usage_summary": {"pages": 3},
+            },
+        ),
+        job_id=job_id,
+    )
+
+    assert resp.status_code == 200
+    # Still not "finalized": the cancel won the status and this must not pretend
+    # otherwise -- `mark_terminal` stays the only route to a terminal state.
+    assert resp.data["finalized"] is False
+    # The flag the callback worker needs: `finalized` False would otherwise mean
+    # "someone else already notified", and for this path nobody has.
+    assert resp.data["result_attached"] is True
+    m_salvage.assert_called_once()
+    kwargs = m_salvage.call_args.kwargs
+    assert kwargs["result_ref"] == "org/o/agent_kv/j/result.json"
+    assert kwargs["usage_summary"] == {"pages": 3}
+    assert not m_delete_result.called, (
+        "deleted a result the customer had already been billed for; a cancel "
+        "that lost the race keeps its answer"
+    )
+
+
+# (7c-iii) the attach is what decides, not the guard loss. A salvage that is
+# REFUSED -- a purged job, a COMPLETED row, a duplicate callback -- must still
+# leave no orphan behind, which is the invariant (7c) protects and the reason
+# `_complete` branches on the attach's return value rather than on `finalized`.
+@mock.patch.object(iv.AgentKVConcurrencyLimiter, "release")
+@mock.patch.object(iv, "delete_result_file")
+@mock.patch.object(AgentKVJob, "attach_result_to_cancelled", return_value=False)
+@mock.patch.object(AgentKVJob, "mark_terminal", return_value=False)
+@mock.patch.object(iv, "write_result")
+@mock.patch.object(AgentKVJob, "objects")
+def test_finalize_refused_salvage_still_deletes_its_own_write(
+    m_jobs, m_write, m_mark_terminal, m_salvage, m_delete_result, m_release
+):
+    job = AgentKVJob(status=JobStatus.RUNNING, webhook_url="https://example.com/hook")
+    m_jobs.filter.return_value.first.return_value = job
+    m_write.return_value = "org/o/agent_kv/j/result.json"
+
+    resp = iv.FinalizeView.as_view()(
+        _post("/x", {"org_id": "org1", "success": True, "result": {"tables": []}}),
+        job_id=uuid.uuid4(),
+    )
+
+    assert resp.data["result_attached"] is False
+    m_delete_result.assert_called_once_with("org/o/agent_kv/j/result.json")
+
+
+# (7c-iv) THE case the gap was actually about, and the one (7c-ii) cannot reach.
+#
+# `post` only calls a handler when the row it read was still non-terminal, so
+# `_complete`'s salvage covers a window of microseconds. The real race is wider:
+# the executor only learns of a cancel from its FINAL stage report, so by the
+# time the callback worker calls finalize the row has read CANCELLED for a whole
+# round trip. `post` short-circuited there and the fully computed, already-billed
+# output was dropped without even being written -- which is why a salvage that
+# lives only in `_complete` fixes almost nothing.
+@mock.patch.object(iv.AgentKVConcurrencyLimiter, "release")
+@mock.patch.object(iv, "delete_result_file")
+@mock.patch.object(AgentKVJob, "attach_result_to_cancelled", return_value=True)
+@mock.patch.object(AgentKVJob, "mark_terminal")
+@mock.patch.object(iv, "write_result")
+@mock.patch.object(AgentKVJob, "objects")
+def test_finalize_for_an_already_cancelled_job_keeps_its_result(
+    m_jobs, m_write, m_mark_terminal, m_salvage, m_delete_result, m_release
+):
+    job = AgentKVJob(
+        status=JobStatus.CANCELLED, webhook_url="https://example.com/hook"
+    )
+    m_jobs.filter.return_value.first.return_value = job
+    m_write.return_value = "org/o/agent_kv/j/result.json"
+
+    job_id = uuid.uuid4()
+    resp = iv.FinalizeView.as_view()(
+        _post(
+            "/x",
+            {
+                "org_id": "org1",
+                "success": True,
+                "result": {"tables": [{"rows": 12}]},
+                "usage_summary": {"pages": 3},
+            },
+        ),
+        job_id=job_id,
+    )
+
+    assert resp.status_code == 200
+    m_write.assert_called_once_with("org1", str(job_id), {"tables": [{"rows": 12}]})
+    m_salvage.assert_called_once()
+    assert m_salvage.call_args.kwargs["result_ref"] == "org/o/agent_kv/j/result.json"
+    assert m_salvage.call_args.kwargs["usage_summary"] == {"pages": 3}
+    assert not m_delete_result.called
+    # The cancel keeps the status, so this stays False -- and the attach is what
+    # tells the callback worker a notification is still owed.
+    assert resp.data["finalized"] is False
+    assert resp.data["result_attached"] is True
+    assert not m_mark_terminal.called, (
+        "a salvage must not attempt the terminal guard; mark_terminal stays the "
+        "only route to a terminal state and this row already reached one"
+    )
+
+
+# (7c-v) ...and nothing else gets a second look. A success callback for an
+# already-COMPLETED or already-FAILED row must still write NOTHING -- that is
+# the idempotency the short-circuit protects, and widening the salvage past
+# CANCELLED would overwrite a real result or invent one for a failed run.
+@mock.patch.object(iv.AgentKVConcurrencyLimiter, "release")
+@mock.patch.object(AgentKVJob, "attach_result_to_cancelled")
+@mock.patch.object(iv, "write_result")
+@mock.patch.object(AgentKVJob, "objects")
+def test_finalize_for_a_completed_or_failed_job_writes_nothing(
+    m_jobs, m_write, m_salvage, m_release
+):
+    for status in (JobStatus.COMPLETED, JobStatus.FAILED):
+        job = AgentKVJob(status=status, webhook_url="")
+        m_jobs.filter.return_value.first.return_value = job
+
+        resp = iv.FinalizeView.as_view()(
+            _post("/x", {"org_id": "org1", "success": True, "result": {"foo": "bar"}}),
+            job_id=uuid.uuid4(),
+        )
+
+        assert resp.data["finalized"] is False, status
+        assert resp.data["result_attached"] is False, status
+        assert not m_write.called, status
+        assert not m_salvage.called, status
+
+
+# (7c-vi) a FAILURE callback for an already-cancelled job keeps the old
+# short-circuit: there is no result to salvage, so nothing is written.
+@mock.patch.object(iv.AgentKVConcurrencyLimiter, "release")
+@mock.patch.object(AgentKVJob, "attach_result_to_cancelled")
+@mock.patch.object(iv, "write_result")
+@mock.patch.object(AgentKVJob, "objects")
+def test_failure_finalize_for_a_cancelled_job_salvages_nothing(
+    m_jobs, m_write, m_salvage, m_release
+):
+    job = AgentKVJob(status=JobStatus.CANCELLED, webhook_url="")
+    m_jobs.filter.return_value.first.return_value = job
+
+    resp = iv.FinalizeView.as_view()(
+        _post("/x", {"org_id": "org1", "success": False, "error": "boom"}),
+        job_id=uuid.uuid4(),
+    )
+
+    assert resp.data["result_attached"] is False
+    assert not m_write.called
+    assert not m_salvage.called
 
 
 # (7d) success finalize that WINS the guard never deletes the result it just
@@ -472,10 +664,15 @@ def test_finalize_success_guard_win_does_not_delete_result(
 # result.json path let the loser delete the winner's live result).
 @mock.patch.object(storage, "FileSystem")
 @mock.patch.object(iv.AgentKVConcurrencyLimiter, "release")
+# False for the same reason as the guard-loss case above: the row the loser
+# raced is COMPLETED, not CANCELLED, so the real guard matches nothing and the
+# loser must still delete the file it just wrote. Also keeps this DB-free test
+# out of the real method's transaction.
+@mock.patch.object(AgentKVJob, "attach_result_to_cancelled", return_value=False)
 @mock.patch.object(AgentKVJob, "mark_terminal", side_effect=[True, False])
 @mock.patch.object(AgentKVJob, "objects")
 def test_finalize_duplicate_success_race_loser_deletes_only_its_own_result(
-    m_jobs, m_mark, m_release, m_fs
+    m_jobs, m_mark, m_salvage, m_release, m_fs
 ):
     # Two separate reads that both observed the job as still RUNNING (the race
     # window before either guarded UPDATE ran).
@@ -534,6 +731,10 @@ def test_finalize_duplicate_does_not_rewrite_result(
         "webhook_url": "https://example.com/hook",
         "status": "completed",
         "reason": "ok",
+        # Additive, and False on every path but one: the result was
+        # kept on a row a cancel had already terminalized. See
+        # `test_finalize_guard_lost_to_a_cancel_keeps_the_paid_for_result`.
+        "result_attached": False,
     }
     assert not m_write.called
     assert not m_mark_terminal.called
@@ -591,6 +792,10 @@ def test_finalize_failure_records_error(m_jobs, m_write, m_mark_terminal, m_rele
         "webhook_url": "",
         "status": "failed",
         "reason": "ok",
+        # Additive, and False on every path but one: the result was
+        # kept on a row a cancel had already terminalized. See
+        # `test_finalize_guard_lost_to_a_cancel_keeps_the_paid_for_result`.
+        "result_attached": False,
     }
     assert not m_write.called
     m_mark_terminal.assert_called_once_with(

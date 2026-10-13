@@ -272,22 +272,32 @@ def agent_kv_cancelled(
     return {"job_id": job_id, "status": "cancelled"}
 
 
-def _send_webhook(url: str, job_id: str, status: str) -> bool:
+def _send_webhook(
+    url: str, job_id: str, status: str, *, result_available: bool = False
+) -> bool:
     """Deliver one terminal notification.
 
     Single place the SSRF waiver is read, so the cancel path cannot drift from
     the finalize path on what it permits.
+
+    ``result_available`` adds one key to the otherwise fixed ``{job_id,
+    status}`` payload, and is set on exactly one notification: the follow-up for
+    a job cancelled after its extraction had already finished, whose result is
+    therefore readable even though the status is ``cancelled``. It is additive
+    -- a receiver that ignores unknown keys sees a repeat of the cancellation it
+    already got -- and it is the only thing that distinguishes the follow-up
+    from that first notification, which is why it is sent rather than a bare
+    duplicate: an identical second POST would carry no information at all.
     """
     # Test/dev stacks only (e2e lane): waive the SSRF guards so a receiver on
     # the compose host is reachable. Unset/false in production.
     allow_insecure = os.environ.get(
         "AGENT_KV_WEBHOOK_INSECURE_ALLOW_HTTP_PRIVATE", ""
     ).lower() in ("1", "true", "yes")
-    return send_webhook(
-        url,
-        {"job_id": job_id, "status": status},
-        allow_insecure=allow_insecure,
-    )
+    payload: dict[str, Any] = {"job_id": job_id, "status": status}
+    if result_available:
+        payload["result_available"] = True
+    return send_webhook(url, payload, allow_insecure=allow_insecure)
 
 
 def _maybe_webhook(finalize_response: dict[str, Any], job_id: str) -> None:
@@ -301,10 +311,21 @@ def _maybe_webhook(finalize_response: dict[str, Any], job_id: str) -> None:
     A job cancelled through the API is the "already terminal" case, and its
     notification is owned by ``agent_kv_cancelled``, enqueued by the backend at
     the moment its guarded cancel won.
+
+    **One non-fresh finalize does still notify**, and it is the exception that
+    the ``result_attached`` flag exists for: the job was cancelled after its
+    extraction had already finished, so the backend kept the paid-for result on
+    the cancelled row instead of discarding it. The cancellation webhook went
+    out the moment that cancel won, and nothing follows it -- so a
+    webhook-driven caller, who has no reason to poll a job they were told was
+    cancelled, would never learn the answer is there to read. See
+    ``AgentKVJob.attach_result_to_cancelled``.
     """
-    if not finalize_response.get("finalized"):
-        return
     url = finalize_response.get("webhook_url") or ""
+    if not finalize_response.get("finalized"):
+        if url and finalize_response.get("result_attached"):
+            _notify_result_available(url, job_id)
+        return
     if not url:
         return
     status = finalize_response.get("status", "")
@@ -323,4 +344,27 @@ def _maybe_webhook(finalize_response: dict[str, Any], job_id: str) -> None:
             "was not notified and nothing will retry",
             job_id,
             status,
+        )
+
+
+def _notify_result_available(url: str, job_id: str) -> None:
+    """Follow up a cancellation notification that is now out of date.
+
+    Sent only when ``FinalizeView`` reports ``result_attached``: the job was
+    cancelled while its extraction was finishing, the usage was already flushed
+    and billed, and the result is therefore kept and served by
+    ``GET /agent-kv/{job_id}/result`` alongside ``status: "cancelled"``.
+
+    Logged at ERROR rather than raised on failure, matching the fresh-finalize
+    branch above and for the same reason: the job is already terminal and its
+    result already stored, so raising would only re-run a finalize whose work is
+    done. The result stays readable either way -- this notification is what
+    saves the caller a poll, not what makes the answer available.
+    """
+    if not _send_webhook(url, job_id, "cancelled", result_available=True):
+        logger.error(
+            "agent-kv result-available follow-up not delivered for job %s; the "
+            "caller was told `cancelled` and will not learn that the result was "
+            "kept unless they poll the result endpoint",
+            job_id,
         )

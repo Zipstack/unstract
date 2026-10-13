@@ -457,10 +457,19 @@ def test_ttl_cleanup_fresh_lane_gets_the_whole_batch_when_nothing_is_retrying(
 # leave their files in storage indefinitely. Both orderings tried before this
 # starved one side: oldest-expiry-first starved fresh work, NULLS FIRST starved
 # retries.
+# `mark_files_purged` is stubbed to None throughout the DB-free TTL cases.
+# Cleanup claims the purge on every row it processes -- the marker has to be
+# written whether or not the deletes below succeed, and the row it reads back
+# under the lock is what the deletes then act on -- and the real method opens
+# a transaction, which this suite has no database for. None exercises the
+# documented `... or job` fallback, so these cases keep asserting exactly what
+# they were written to assert. The claim itself is covered DB-backed in
+# `test_models.py::TestTheTtlSweepClaimsThePurge`.
+@mock.patch.object(AgentKVJob, "mark_files_purged", return_value=None)
 @mock.patch.object(maintenance, "delete_job_files", return_value=["input_ref"])
 @mock.patch.object(AgentKVJob, "objects")
 def test_ttl_cleanup_reserves_capacity_for_retries_under_a_flood_of_new_expiries(
-    m_objects, m_delete
+    m_objects, m_delete, m_purge
 ):
     retries = [
         AgentKVJob(id=uuid.uuid4(), input_ref=f"r{i}", cleanup_failed_at=timezone.now())
@@ -481,9 +490,11 @@ def test_ttl_cleanup_reserves_capacity_for_retries_under_a_flood_of_new_expiries
 
 # (7) files are deleted BEFORE the refs are blanked -- order matters: a
 # delete failure must not blank a ref pointing at a file that's still there.
+# Stubbed for the same reason as (6d); see the note there.
+@mock.patch.object(AgentKVJob, "mark_files_purged", return_value=None)
 @mock.patch.object(maintenance, "delete_job_files")
 @mock.patch.object(AgentKVJob, "objects")
-def test_ttl_cleanup_deletes_files_before_blanking_refs(m_objects, m_delete):
+def test_ttl_cleanup_deletes_files_before_blanking_refs(m_objects, m_delete, m_purge):
     job_id = uuid.uuid4()
     job = AgentKVJob(
         id=job_id, input_ref="org/o/j/input.pdf", result_ref="org/o/j/result.json"
@@ -507,9 +518,11 @@ def test_ttl_cleanup_deletes_files_before_blanking_refs(m_objects, m_delete):
 # (8) both refs are blanked via `.update()` (not `job.save()`), targeting
 # exactly this job's row, and the row itself is left in place (no .delete()
 # call is ever made on the queryset).
+# Stubbed for the same reason as (6d); see the note there.
+@mock.patch.object(AgentKVJob, "mark_files_purged", return_value=None)
 @mock.patch.object(maintenance, "delete_job_files")
 @mock.patch.object(AgentKVJob, "objects")
-def test_ttl_cleanup_blanks_both_refs_for_the_job_row(m_objects, m_delete):
+def test_ttl_cleanup_blanks_both_refs_for_the_job_row(m_objects, m_delete, m_purge):
     job_id = uuid.uuid4()
     job = AgentKVJob(id=job_id, input_ref="org/o/j/input.pdf", result_ref="")
     m_delete.return_value = ["input_ref", "result_ref"]
@@ -527,9 +540,11 @@ def test_ttl_cleanup_blanks_both_refs_for_the_job_row(m_objects, m_delete):
 
 # (9) `cleaned` counts jobs actually processed this call, across multiple
 # candidates.
+# Stubbed for the same reason as (6d); see the note there.
+@mock.patch.object(AgentKVJob, "mark_files_purged", return_value=None)
 @mock.patch.object(maintenance, "delete_job_files")
 @mock.patch.object(AgentKVJob, "objects")
-def test_ttl_cleanup_returns_count_of_jobs_cleaned(m_objects, m_delete):
+def test_ttl_cleanup_returns_count_of_jobs_cleaned(m_objects, m_delete, m_purge):
     job1 = AgentKVJob(id=uuid.uuid4(), input_ref="a", result_ref="")
     job2 = AgentKVJob(id=uuid.uuid4(), input_ref="", result_ref="b")
     m_delete.return_value = ["input_ref", "result_ref"]
@@ -575,9 +590,11 @@ def test_ttl_cleanup_with_no_candidates_is_a_pure_noop(m_objects, m_delete):
 # called with both refs blanked and the still-present result file loses its only
 # handle, since the candidate query below matches only rows with a non-blank
 # ref.
+# Stubbed for the same reason as (6d); see the note there.
+@mock.patch.object(AgentKVJob, "mark_files_purged", return_value=None)
 @mock.patch.object(maintenance, "delete_job_files")
 @mock.patch.object(AgentKVJob, "objects")
-def test_ttl_cleanup_keeps_the_ref_whose_file_delete_failed(m_objects, m_delete):
+def test_ttl_cleanup_keeps_the_ref_whose_file_delete_failed(m_objects, m_delete, m_purge):
     job_id = uuid.uuid4()
     job = AgentKVJob(
         id=job_id, input_ref="org/o/j/input.pdf", result_ref="org/o/j/result.json"
@@ -607,9 +624,11 @@ def test_ttl_cleanup_keeps_the_ref_whose_file_delete_failed(m_objects, m_delete)
 # a NULL sorts FIRST under the candidate ordering -- so the row would hold the
 # head of every batch indefinitely, which is the starvation this ordering
 # exists to prevent.
+# Stubbed for the same reason as (6d); see the note there.
+@mock.patch.object(AgentKVJob, "mark_files_purged", return_value=None)
 @mock.patch.object(maintenance, "delete_job_files")
 @mock.patch.object(AgentKVJob, "objects")
-def test_ttl_cleanup_blanks_no_ref_but_still_stamps_the_failure(m_objects, m_delete):
+def test_ttl_cleanup_blanks_no_ref_but_still_stamps_the_failure(m_objects, m_delete, m_purge):
     job = AgentKVJob(
         id=uuid.uuid4(), input_ref="org/o/j/input.pdf", result_ref="org/o/j/r.json"
     )
@@ -631,9 +650,11 @@ def test_ttl_cleanup_blanks_no_ref_but_still_stamps_the_failure(m_objects, m_del
 # marker cleared. It drops out of the candidate filter anyway (both refs blank),
 # so this matters for the audit trail and for anything reading
 # cleanup_failed_at as "currently failing" rather than "failed once".
+# Stubbed for the same reason as (6d); see the note there.
+@mock.patch.object(AgentKVJob, "mark_files_purged", return_value=None)
 @mock.patch.object(maintenance, "delete_job_files")
 @mock.patch.object(AgentKVJob, "objects")
-def test_ttl_cleanup_clears_a_stale_failure_marker_on_success(m_objects, m_delete):
+def test_ttl_cleanup_clears_a_stale_failure_marker_on_success(m_objects, m_delete, m_purge):
     job = AgentKVJob(
         id=uuid.uuid4(),
         input_ref="org/o/j/input.pdf",

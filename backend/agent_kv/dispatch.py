@@ -34,6 +34,14 @@ def dispatch_cancelled_webhook(job) -> None:
     paths mutually exclusive: a cancel that lost means a finalize won and will
     send, and a cancel that won means no fresh finalize can.
 
+    One thing a late callback CAN now add, and it is additive to this rather
+    than a competitor for it: if the cancelled job's extraction had already
+    finished, its result is attached to the row and a ``result_available``
+    follow-up is sent (``ide_callback.agent_kv_tasks._maybe_webhook``), because
+    this notification has already told the caller the job was cancelled and
+    nothing else would ever correct that. The TERMINAL notification is still
+    this one, sent exactly once.
+
     Best-effort by design. The job is already cancelled and the caller already
     has their 200; failing their request because a notification could not be
     QUEUED would be the wrong trade, so this logs and returns rather than

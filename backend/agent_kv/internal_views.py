@@ -51,6 +51,43 @@ def _sanitize_counters(counters) -> dict:
     }
 
 
+def _attach_or_discard(job_id, org_id: str, result_ref: str, usage_summary) -> bool:
+    """Keep a just-written result on a CANCELLED job, or delete it.
+
+    Shared by the two ways a finalize can arrive for a job a cancel has already
+    terminalized, which are NOT the same race and need to be told apart:
+
+    * the cancel landed between this finalize's read and its ``mark_terminal``
+      (``FinalizeView._complete`` lost the guard), and
+    * the cancel landed earlier, so the row already read as CANCELLED and the
+      finalize never attempted the guard at all
+      (``FinalizeView._salvage``) -- which is the ORDINARY shape of this race,
+      since the executor only learns of a cancel from its final stage report
+      and then reports success with the full output anyway.
+
+    Either way the engine has already flushed the run's OCR and LLM usage, so
+    the customer has paid; the only question is whether the answer survives.
+
+    Returns whether the result was kept. A refusal is the normal outcome for a
+    duplicate callback (the row already carries a ``result_ref``) or a purged
+    job, and the file written for THIS attempt is deleted so nothing is
+    orphaned.
+    """
+    if AgentKVJob.attach_result_to_cancelled(
+        job_id, org_id, result_ref=result_ref, usage_summary=usage_summary
+    ):
+        logger.info(
+            "agent-kv job %s (org=%s) was cancelled after its extraction had "
+            "finished; its usage was already flushed, so the paid-for result is "
+            "KEPT and served alongside status=cancelled",
+            job_id,
+            org_id,
+        )
+        return True
+    delete_result_file(result_ref)
+    return False
+
+
 def _stage_merge_expression(stage: str, entry: dict) -> CombinedExpression:
     """Build a DB-side jsonb merge expression for one stage's entry.
 
@@ -166,9 +203,11 @@ class FinalizeView(APIView):
     """Terminalize a job: write its result (on success) then mark it done.
 
     Idempotent: a job already in a terminal state short-circuits before any
-    write -- ``write_result`` is only ever called for a job that is still
-    non-terminal at read time, so a duplicate/late finalize call can never
-    rewrite an already-written result. The concurrency slot is always
+    write, with ONE exception -- a success callback for an already-``CANCELLED``
+    job, which writes its result and attaches it (``_salvage``). A duplicate or
+    late finalize still cannot rewrite an already-written result: the attach's
+    guard requires a blank ``result_ref``, and a refused attach deletes the file
+    that attempt wrote. The concurrency slot is always
     released, in a ``finally``, on every path that actually attempts to
     finalize (success, duplicate no-op, or an exception raised while
     finalizing) -- but never on a 400 for a malformed body, since nothing
@@ -181,6 +220,16 @@ class FinalizeView(APIView):
     no ref anywhere pointing at it. That orphan is cleaned up immediately via
     ``storage.delete_result_file`` rather than left to leak past even TTL
     cleanup (which only ever acts on a job's *stored* ``result_ref``).
+
+    With ONE exception, and it is the reason this class changed: when the guard
+    was lost to a CANCEL and the extraction had already finished, the result is
+    attached to the cancelled row instead of deleted
+    (``AgentKVJob.attach_result_to_cancelled``). The engine flushes its OCR and
+    LLM usage before the executor's final stage report, so by then the customer
+    has been billed -- deleting the file charged them for an answer and then
+    destroyed it. The status stays ``cancelled``; only a pointer to paid-for
+    work is added. Every other guard loss still deletes its own orphan, and the
+    attach's own return value is what distinguishes them.
 
     Also deletes the staged input the moment ``mark_terminal`` actually
     wins (spec D10: "uploaded document deleted on job completion") -- the
@@ -195,8 +244,12 @@ class FinalizeView(APIView):
     permission_classes: list = []
 
     @staticmethod
-    def _complete(job, job_id, org_id: str, body) -> bool:
-        """Persist the result and terminalize as COMPLETED. True if the guard won.
+    def _complete(job, job_id, org_id: str, body) -> tuple[bool, bool]:
+        """Persist the result and terminalize as COMPLETED.
+
+        Returns ``(finalized, result_attached)``: whether the terminal-state
+        guard was won, and -- when it was NOT -- whether the result was
+        nevertheless kept on a cancelled row.
 
         ``write_result`` unavoidably runs *before* the ``mark_terminal`` guard
         (the result has to exist to get a ``result_ref`` to pass in), so a
@@ -205,6 +258,25 @@ class FinalizeView(APIView):
         pointing at it. That orphan is deleted here rather than left to leak
         past even TTL cleanup, which only ever acts on a job's *stored*
         ``result_ref``. Best-effort; never blocks the response.
+
+        **A cancel that lost the race does not forfeit the result.** The window
+        is real: the executor can finish extraction -- spending OCR and LLM,
+        both already flushed by the engine before its final stage report -- and
+        only then try that report, which is answered as a no-op because a cancel
+        terminalized the row in the meantime. The executor returns success with
+        the full output, this method writes it, and the guard below correctly
+        declines to change a terminal row's status. Deleting the file at that
+        point billed the customer for an answer and then destroyed it, with
+        ``GET result`` reporting only ``{"success": false, "status":
+        "cancelled"}``.
+
+        So a CANCELLED row keeps it instead: ``attach_result_to_cancelled``
+        attaches ``result_ref`` and ``usage_summary`` WITHOUT touching
+        ``status`` or ``completed_at``, so the cancel stays honoured and
+        ``mark_terminal`` remains the only way to reach a terminal state. The
+        orphan delete still runs for every other guard loss -- a duplicate
+        finalize against a COMPLETED row, say -- which is why the attach's
+        return value decides, rather than the fact that the guard was lost.
         """
         result_ref = write_result(org_id, str(job_id), body.get("result") or {})
         finalized = AgentKVJob.mark_terminal(
@@ -216,19 +288,65 @@ class FinalizeView(APIView):
         )
         if finalized:
             job.status = JobStatus.COMPLETED
-        else:
-            delete_result_file(result_ref)
-        return finalized
+            return True, False
+        return False, _attach_or_discard(
+            job_id, org_id, result_ref, body.get("usage_summary")
+        )
 
     @staticmethod
-    def _fail(job, job_id, org_id: str, body) -> bool:
-        """Terminalize as FAILED. True if the guard won."""
+    def _fail(job, job_id, org_id: str, body) -> tuple[bool, bool]:
+        """Terminalize as FAILED. ``(guard won, False)``.
+
+        The second element is always False: there is no result to attach to
+        anything on a failure. It exists so both handlers share one shape and
+        ``post`` can call whichever it picked without knowing which it got.
+        """
         finalized = AgentKVJob.mark_terminal(
             job_id, org_id, JobStatus.FAILED, error=body.get("error") or ""
         )
         if finalized:
             job.status = JobStatus.FAILED
-        return finalized
+        return finalized, False
+
+    @staticmethod
+    def _salvage(job_id, org_id: str, body) -> bool:
+        """Store a finished extraction's result on an ALREADY-cancelled job.
+
+        **This is the ordinary shape of the cancelled-after-completion race, and
+        the one `_complete` cannot reach.** `post` only calls a handler when the
+        row it read was still non-terminal, so `_complete`'s own salvage covers
+        a window of microseconds: the cancel landing between that read and
+        `mark_terminal`. The real race is wider and earlier. The executor learns
+        of a cancel from its final stage report, which the backend answers as a
+        no-op once the row is terminal -- so by the time the callback worker
+        calls finalize, the row has read CANCELLED for however long that round
+        trip took, and `post` short-circuited before writing anything at all.
+        The fully computed, already-billed output was simply dropped on the
+        floor, and the one log line said "cancelled".
+
+        So this writes it and attaches it. Deliberately narrow:
+
+        * **success only.** A failed run has no result to keep.
+        * **CANCELLED only.** A COMPLETED row already has its own result and a
+          FAILED one legitimately has none; grafting a late callback's output
+          onto either is the overwrite the terminal guard exists to prevent.
+          `post` enforces the status, and
+          `AgentKVJob.attach_result_to_cancelled` enforces it again in SQL.
+        * **`status` and `completed_at` are never touched**, so the cancel stays
+          won and `mark_terminal` remains the only route to a terminal state.
+          This reports False as `finalized` for exactly that reason.
+        * **The staged input is NOT dropped.** A cancelled job's input rides the
+          TTL sweep (docs section 9), and `_drop_staged_input` stays gated on a
+          won guard.
+
+        Note that this writes a result for a job that was ALREADY terminal at
+        read time, which the rest of this class is careful never to do. The
+        idempotency that rule protected is preserved by the attach instead: its
+        guard requires a blank `result_ref`, so a duplicate callback attaches
+        nothing and `_attach_or_discard` deletes the file this attempt wrote.
+        """
+        result_ref = write_result(org_id, str(job_id), body.get("result") or {})
+        return _attach_or_discard(job_id, org_id, result_ref, body.get("usage_summary"))
 
     @staticmethod
     def _drop_staged_input(job, job_id, org_id: str) -> None:
@@ -265,12 +383,22 @@ class FinalizeView(APIView):
 
         job = AgentKVJob.objects.filter(id=job_id, organization_id=org_id).first()
         finalized = False
+        result_attached = False
         try:
             if job is not None and job.status not in AgentKVJob.TERMINAL:
                 handler = self._complete if success else self._fail
-                finalized = handler(job, job_id, org_id, body)
+                finalized, result_attached = handler(job, job_id, org_id, body)
                 if finalized:
                     self._drop_staged_input(job, job_id, org_id)
+            elif job is not None and success and job.status == JobStatus.CANCELLED:
+                # The job was already CANCELLED when this request read it, and
+                # the executor still reported success with a full output --
+                # which is what the cancelled-after-completion race actually
+                # looks like, since a cancel is only noticed at the final stage
+                # report. Keeping the result is the whole point of `_salvage`;
+                # see it for why this is the only terminal status that gets a
+                # second look, and why it still reports `finalized: False`.
+                result_attached = self._salvage(job_id, org_id, body)
         finally:
             AgentKVConcurrencyLimiter.release(org_id, str(job_id))
 
@@ -292,6 +420,13 @@ class FinalizeView(APIView):
                 # Lets the callback worker tell "already terminal" (ordinary)
                 # from "no such job" (a wiring fault) -- they were byte-identical.
                 "reason": "ok" if job else "unknown_job",
+                # True only on the one path where `finalized` is False and the
+                # caller still needs telling: the job was CANCELLED after its
+                # extraction had finished, and the result was kept rather than
+                # discarded. The cancellation webhook has already gone out by
+                # then, so the callback worker sends a follow-up (see
+                # `_maybe_webhook`). Additive: every other path reports False.
+                "result_attached": result_attached,
             }
         )
 

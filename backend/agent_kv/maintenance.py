@@ -254,6 +254,13 @@ def run_ttl_cleanup() -> dict:
 
     Platform-wide by design, same as :func:`run_sweep`.
 
+    **Every row this touches is stamped ``files_purged``**, before its deletes
+    are attempted and whether or not they succeed. The sweep is a purge, so it
+    is one of the two paths that owe that marker -- the other being
+    ``JobStatusView.delete`` -- and
+    ``AgentKVJob.attach_result_to_cancelled`` refuses to graft a late result
+    onto a row carrying it. See ``AgentKVJob.mark_files_purged``.
+
     **Two queries, not one ordering.** Retaining a ref whose delete failed is
     what makes a retry possible at all, but it also means failed rows compete
     with new expirations for a capped batch, and either side can starve the
@@ -319,7 +326,23 @@ def run_ttl_cleanup() -> dict:
         # unconditionally, so a transient object-store failure orphaned the file
         # permanently (the candidate filters above only match rows that still
         # carry a non-blank ref, so a blanked row can never be reconsidered).
-        cleared = delete_job_files(job)
+        #
+        # `mark_files_purged` first, for the same two reasons `JobStatusView.
+        # delete` calls it: it records the purge UNCONDITIONALLY (a failed
+        # delete below must not leave the marker False -- it says the files are
+        # being destroyed, not that they are gone), and it returns the row read
+        # under a lock so the deletes act on the refs that exist NOW.
+        #
+        # The lock is what stops `AgentKVJob.attach_result_to_cancelled`
+        # interleaving between this read and the blanking update below. Without
+        # it, an attach landing in that window sets a `result_ref` this pass has
+        # already read as blank, the blanking write then clears it without the
+        # file ever having been deleted, and the candidate filters above
+        # (`input_ref > "" OR result_ref > ""`) can never select the row again:
+        # extracted customer data left in the bucket past its retention window,
+        # with nothing pointing at it. See that method's docstring.
+        row = AgentKVJob.mark_files_purged(job.id, job.organization_id) or job
+        cleared = delete_job_files(row)
         fields: dict = dict.fromkeys(cleared, "")
         if len(cleared) == 2:
             cleaned += 1

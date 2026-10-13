@@ -260,6 +260,15 @@ def _sync_wait_response(job, wait: float) -> Response | None:
     while time.monotonic() < deadline:
         job.refresh_from_db()
         if job.status in AgentKVJob.TERMINAL:
+            # A concurrent `DELETE /agent-kv/{job_id}` while this request is
+            # still waiting purges the job, and this is the second reader of a
+            # stored result -- so it owes the same answer `JobResultView` gives
+            # a purged job, for the same reason. Without it, the one caller who
+            # cannot poll (they are still holding the submit open) is the one
+            # caller who could still be handed data they asked to have
+            # destroyed.
+            if job.files_purged:
+                raise JobNotFound()
             from agent_kv.execution_views_result import result_payload
 
             return Response(result_payload(job), status=200)
@@ -665,9 +674,18 @@ class JobStatusView(APIView):
             # eventual finalize call would write a fresh result_ref onto a
             # job the caller already asked to delete -- resurrecting a
             # result they explicitly discarded. Terminalizing first closes
-            # that window; a finalize call that still lands late loses the
-            # terminal-state guard and, on the success path, cleans up its
-            # own now-orphaned write (FinalizeView, storage.delete_result_file).
+            # that window.
+            #
+            # This comment used to continue "and a finalize call that still
+            # lands late loses the terminal-state guard and cleans up its own
+            # now-orphaned write". That is NO LONGER the mechanism, and it is
+            # worth saying why: a losing finalize on a CANCELLED row now
+            # ATTACHES its result rather than deleting it (the customer has
+            # already been billed for it -- see
+            # `AgentKVJob.attach_result_to_cancelled`), so delegating the purge
+            # to that cleanup would silently stop working. The purge is
+            # enforced HERE instead, by `AgentKVJob.mark_files_purged` below.
+            # Read both before changing either.
             won = AgentKVJob.mark_terminal(
                 job.id, job.organization_id, JobStatus.CANCELLED
             )
@@ -707,34 +725,68 @@ class JobStatusView(APIView):
                     )
                 # This request owns the terminal notification: no fresh finalize
                 # can follow a cancel that won, so nothing else will send it.
+                # (A later finalize that SALVAGES a finished extraction's result
+                # onto this now-cancelled row sends a `result_available`
+                # follow-up -- see `_maybe_webhook` in the callback worker. That
+                # is an addition to this notification, not a competitor for it.)
                 dispatch_cancelled_webhook(job)
-            else:
-                # Lost the race: a finalize or cancel terminalized this job
-                # between our read above and the guarded UPDATE. `job` is now
-                # STALE, and `result_ref` is the field that matters -- a winning
-                # finalize has just written one.
-                #
-                # Without this refresh the cleanup below runs against the stale
-                # copy, where `result_ref` is still "". `delete_job_files`
-                # reports an already-empty ref as "cleared" (nothing to delete),
-                # so the save then writes "" OVER the winner's real ref. The job
-                # stays COMPLETED, its result 404s (`JobResultView` treats
-                # COMPLETED-without-a-ref as swept), and the object is orphaned
-                # in the bucket with nothing left pointing at it -- TTL cleanup
-                # selects on `result_ref > ""`, so a blanked row never comes
-                # back. Deleting is still the caller's intent; it just has to
-                # act on the refs that actually exist now.
-                job.refresh_from_db()
+        # Claim the purge, then act on the row as it ACTUALLY IS -- not on the
+        # copy read at the top of this method.
+        #
+        # Unconditional, on every DELETE, for two independent reasons.
+        #
+        # 1. `files_purged` records the caller's intent, so it must be written
+        #    whatever the row's status and whatever the deletes below go on to
+        #    do. It is what `attach_result_to_cancelled` and `JobResultView`
+        #    consult to refuse a purged job, and inferring it later from the ref
+        #    columns is exactly the mistake that sank three earlier attempts at
+        #    this fix (see the field's comment in models.py).
+        #
+        # 2. The row must be re-read, for the same reason the lost-race branch
+        #    above used to re-read it, plus a new one:
+        #
+        #    * lost race -- a finalize or cancel terminalized this job between
+        #      the read above and the guarded UPDATE, so `result_ref` on the
+        #      local copy is still "". `delete_job_files` reports an
+        #      already-empty ref as "cleared" (nothing to delete), so the save
+        #      would write "" OVER the winner's real ref: its result 404s and
+        #      the object is orphaned with nothing pointing at it, since TTL
+        #      cleanup selects on `result_ref > ""` and a blanked row never
+        #      comes back.
+        #    * won the cancel -- a late finalize can still ATTACH a result to
+        #      the row we just cancelled. Deleting from the pre-cancel snapshot
+        #      would leave that result in place, readable, on a job the caller
+        #      purged.
+        #
+        #    The second case is why this is not conditioned on `won`:
+        #    `mark_terminal` is a queryset UPDATE and never touches the
+        #    in-memory row, so after winning a cancel `job.status` still reads
+        #    RUNNING. Any condition built from that attribute skips the re-read
+        #    on precisely the path that needs it -- and the DB-free tests in
+        #    this suite reproduce the un-mutated row faithfully, so they would
+        #    agree with the mistake. Not having a condition cannot get that
+        #    wrong.
+        #
+        # `mark_files_purged` takes the row lock for its marker write, so a
+        # concurrent attach either committed before this read (its ref is in
+        # `purged` and its file is deleted below) or is refused outright. The
+        # `or job` fallback is for a row that no longer exists at all, which
+        # the retained-audit-trail design does not produce.
+        purged = AgentKVJob.mark_files_purged(job.id, job.organization_id) or job
         # Blank only the refs whose files are confirmed gone, so a ref whose
         # delete failed survives as the handle TTL cleanup retries from. 204
         # either way: the job IS terminal and the caller's intent is recorded,
         # and a sync 5xx here would only invite a retry of a DELETE that already
         # did everything it could.
-        cleared = delete_job_files(job)
+        #
+        # The claim above is the opposite case and is deliberately NOT guarded:
+        # if it raises, nothing has been destroyed and nothing recorded, so the
+        # 500 is accurate and a retry is exactly the right response.
+        cleared = delete_job_files(purged)
         if cleared:
             for field in cleared:
-                setattr(job, field, "")
-            job.save(update_fields=cleared)
+                setattr(purged, field, "")
+            purged.save(update_fields=cleared)
         return Response(status=204)
 
 
@@ -755,8 +807,19 @@ class JobResultView(APIView):
         # A job's row outlives its result by design (audit trail after TTL
         # cleanup blanks the refs) -- expired or a COMPLETED job whose
         # result was already swept both mean "nothing left to serve".
-        if (job.expires_at and job.expires_at < timezone.now()) or (
-            job.status == JobStatus.COMPLETED and not job.result_ref
+        #
+        # `files_purged` is the third of those, and it is NOT redundant with the
+        # blank-ref check: `delete_job_files` deliberately KEEPS a ref whose
+        # object delete failed, so that TTL cleanup has a handle to retry from.
+        # Without this clause a DELETE whose result-file delete failed left the
+        # ref set and the object in the bucket -- and this endpoint went on
+        # serving it, reading the very file the caller asked to have destroyed.
+        # A ref-based check cannot see that case at all, which is the whole
+        # reason purge state is recorded on its own column.
+        if (
+            job.files_purged
+            or (job.expires_at and job.expires_at < timezone.now())
+            or (job.status == JobStatus.COMPLETED and not job.result_ref)
         ):
             raise JobNotFound()
         return Response(result_payload(job), status=200)
@@ -798,6 +861,12 @@ class JobCancelView(APIView):
             # reaches finalize -- so this path has to send it. Guarded on `won`
             # so a cancel that LOST leaves the notification to the finalize that
             # beat it, and the caller is told exactly once.
+            #
+            # "Once" is about the TERMINAL notification. A finalize arriving
+            # afterwards with a finished extraction's result attaches it to this
+            # cancelled row and sends a `result_available` follow-up, because
+            # this POST has already told the caller the job was cancelled and
+            # nothing else would ever correct that.
             dispatch_cancelled_webhook(job)
             return Response({"status": "cancelled"}, status=200)
         # Lowercased for cross-endpoint consistency (spec §7.2).
