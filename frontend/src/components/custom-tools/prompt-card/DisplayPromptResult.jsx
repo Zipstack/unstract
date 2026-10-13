@@ -1,6 +1,6 @@
 import { Info } from "lucide-react";
 import PropTypes from "prop-types";
-import { Fragment, startTransition, useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { Space } from "@/components/ui/shims/antd-layout";
 import { Spin } from "@/components/ui/shims/antd-leaves";
 import { Typography } from "@/components/ui/shims/antd-typography";
@@ -109,15 +109,26 @@ function DisplayPromptResult({
 
     setIsLoading(false);
     const isFormattingRequired = isTable ? false : true;
-    startTransition(() => {
-      setParsedOutput(
-        displayPromptResult(
-          output,
-          isFormattingRequired,
-          details?.enable_highlight,
-        ),
+    const parsed = displayPromptResult(
+      output,
+      isFormattingRequired,
+      details?.enable_highlight,
+    );
+
+    // Diagnostic: log data shape to identify missing-pages root cause
+    if (parsed && typeof parsed === "object") {
+      const count = Array.isArray(parsed)
+        ? parsed.length
+        : Object.keys(parsed).length;
+      console.log(
+        "[DisplayPromptResult] parsed output:",
+        Array.isArray(parsed) ? "array" : "object",
+        "entries:", count,
+        "highlight:", !!details?.enable_highlight,
       );
-    });
+    }
+
+    setParsedOutput(parsed);
   }, [
     promptRunStatus,
     isSinglePassExtractLoading,
