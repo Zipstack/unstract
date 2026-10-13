@@ -50,10 +50,29 @@ as-is rather than adding a new exception class) for both a missing/malformed
 
 Key management (`backend/agent_kv/views.py`, `AgentKVKeyViewSet`) is a standard DRF
 `ModelViewSet` scoped by the global `OrganizationFilterBackend` and gated by
-`IsOrganizationAdmin` (`backend/agent_kv/permissions.py`). Fields returned:
-`id, name, description, key, is_active, created_at`; write-side fields are
-`name, description, is_active` only (`key` and `id` are server-generated). Routes
-(`backend/agent_kv/urls.py`, mounted at `agent-kv/` under
+`IsOrganizationAdmin` (`backend/agent_kv/permissions.py`). It is shaped on
+`platform_api.views.PlatformApiKeyViewSet`, including **where the plaintext key is
+and is not returned**:
+
+| action | serializer | `key` |
+|---|---|---|
+| `list` | `AgentKVKeyListSerializer` | masked, `****-<last 4>`; adds `created_by_email` |
+| `retrieve` / `create` / `rotate` | `AgentKVKeyDetailSerializer` | **full value** |
+| `create` (request) | `AgentKVKeyCreateSerializer` | `name`, `description`, both required and sanitised |
+| `partial_update` (request) | `AgentKVKeyUpdateSerializer` | `description`, `is_active` |
+
+The split exists because `list` backs a table of every key in the organization:
+returning real values there puts the whole set on screen to read one of them. The
+three single-key responses each answer a deliberate request for one key.
+
+**Browser UI**: *Settings → Agent-KV API Keys*
+(`frontend/src/components/settings/agent-kv-keys/AgentKvKeys.jsx`, routed at
+`settings/agent-kv-keys` behind `RequireAdmin`). It is a thin wrapper over the shared
+`ApiKeyManager` screen that also backs Platform API keys and Global API deployment
+keys — create, copy, rotate, enable/disable and delete. Admin-only, matching
+`IsOrganizationAdmin` on the viewset.
+
+Routes (`backend/agent_kv/urls.py`, mounted at `agent-kv/` under
 `backend/backend/urls_v2.py`):
 
 ```
