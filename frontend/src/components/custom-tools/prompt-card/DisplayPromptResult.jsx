@@ -8,7 +8,6 @@ import { Typography } from "@/components/ui/shims/antd-typography";
 import {
   displayPromptResult,
   generateApiRunStatusId,
-  generateUUID,
   PROMPT_RUN_API_STATUSES,
 } from "../../../helpers/GetStaticData";
 import "./PromptCard.css";
@@ -108,7 +107,7 @@ function DisplayPromptResult({
     }
 
     setIsLoading(false);
-    const isFormattingRequired = isTable ? false : true;
+    const isFormattingRequired = !isTable;
     const parsed = displayPromptResult(
       output,
       isFormattingRequired,

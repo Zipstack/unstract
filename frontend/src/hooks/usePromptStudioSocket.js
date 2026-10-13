@@ -50,6 +50,7 @@ const usePromptStudioSocket = () => {
         // Use inline result if present (backward compat with old backend),
         // otherwise refetch via API to avoid DATA_UPLOAD_MAX_MEMORY_SIZE.
         let data = Array.isArray(result) ? result : [];
+        const hadInlineResult = data.length > 0;
         if (data.length === 0) {
           try {
             const res = await promptOutputApi(
@@ -64,7 +65,17 @@ const usePromptStudioSocket = () => {
             // API fetch failed — proceed with empty data
           }
         }
-        updatePromptOutputState(data, false, extra?.elapsed || 0);
+        console.log(
+          "[Socket] handleCompleted:",
+          operation,
+          "inline:",
+          hadInlineResult,
+          "items:",
+          data.length,
+        );
+        // Replace the store fully so a refetch with all pages cannot
+        // lose entries via the merge/updateCoverage path.
+        updatePromptOutputState(data, true, extra?.elapsed || 0);
 
         if (operation === "single_pass_extraction") {
           updateCustomTool({ isSinglePassExtractLoading: false });
