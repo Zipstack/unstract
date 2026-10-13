@@ -692,7 +692,14 @@ class TestThePreflightAgreesWithTheGuard(_Rows):
 
     def test_a_non_cancelled_job_is_refused_by_both(self):
         for status in (JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.RUNNING):
-            with self.subTest(status=status):
+            # `str(status)`, not the enum: pytest-xdist ships a failing
+            # subTest's parameters back to the controller through execnet,
+            # which cannot serialize a `TextChoices` member -- the test then
+            # dies with `DumpError: can't serialize <enum 'JobStatus'>`
+            # instead of reporting whatever it actually found. Invisible
+            # locally (no xdist, nothing is serialized) and only ever seen in
+            # CI, which is the worst place to debug it.
+            with self.subTest(status=str(status)):
                 assert self._agree(self._job(status=status)) is False
 
     def test_another_org_is_refused_by_both(self):
