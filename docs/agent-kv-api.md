@@ -633,6 +633,8 @@ under `extractors.table`:
       "table_pages": [1, 2],
       "headers": ["unit", "rent"],
       "row_count": 1,
+      "detected": true,
+      "reason": "",
       "timing": {"document_processing": 6.2, "total": 41.7}
     }
   },
@@ -648,7 +650,25 @@ under `extractors.table`:
 `tables` carries one object per extracted row; `headers` is the canonical column list
 the engine settled on; `table_pages` are the 1-based pages the rows came from; and
 `row_count` is the number of rows extracted. `timing` rides inside the extractor block,
-and `parse_failures` appears only when some page failed to parse. There is **no
+and `parse_failures` appears only when some page failed to parse.
+
+**`detected` / `reason` — why an empty result is empty.** A run that finds nothing is
+a *successful* run, and it bills: the detection agents have already been paid for by
+the time the pipeline gives up. Two quite different outcomes used to arrive looking
+identical — `tables: []`, `row_count: 0`, `success: true`:
+
+* `detected: false` — no page contained a table matching `target_table`, so the run
+  stopped **before** extraction. `reason` names the input to change, e.g.
+  `"no page contained a table matching target_table='Rent roll'"`. Describe the table
+  rather than labelling it: the string is fed to the agent that writes the detection
+  prompt, so `"Rent roll with unit, tenant, lease start and monthly rent"` detects far
+  more reliably than `"Rent roll"`.
+* `detected: true` with `row_count: 0` — the table WAS found and extraction returned
+  no rows. `target_table` is not the thing to change here.
+
+Both keys are always present, including on a successful extraction (`reason` is then
+`""`). The distinction was previously only inferable from which keys were *missing*
+from `timing`, which is an internal structure rather than a contract. There is **no
 `cost_summary`** on this extractor — the table engine has no per-agent cost tracker — so
 `usage_summary` is the only billing figure, as it is for `kv`.
 
