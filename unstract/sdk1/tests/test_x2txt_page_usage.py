@@ -66,7 +66,7 @@ class TestPushUsageDetails:
 
         assert _pushed_page_count(audit) == 5
 
-    @pytest.mark.parametrize("bad_count", [None, 0, -3, True, 2.5])
+    @pytest.mark.parametrize("bad_count", [None, 0, -3, True, 2.5, "5", 5.0])
     def test_pdf_rejects_unusable_count(
         self, audit: MagicMock, bad_count: object, x2text: X2Text, pdf_fs: MagicMock
     ) -> None:
@@ -112,16 +112,60 @@ class TestGetProcessedPageCount:
     @pytest.mark.parametrize(
         "metadata", [{}, {"whisper_metadata": {"processed_page_count": 0}}]
     )
-    def test_warns_when_count_unusable(
+    def test_logs_info_when_count_unusable(
         self, metadata: dict[str, Any], caplog: pytest.LogCaptureFixture
     ) -> None:
-        """An unusable count must be visible, since billing then counts the file."""
-        with caplog.at_level("WARNING"):
+        """INFO, not WARNING: old LLMWhisperer versions send no count."""
+        with caplog.at_level("INFO"):
             LLMWhispererHelper.get_processed_page_count(
                 {"whisper_hash": "wh-1", **metadata}
             )
 
-        assert "wh-1" in caplog.text
+        (record,) = caplog.records
+        assert record.levelname == "INFO"
+        assert "wh-1" in record.getMessage()
+        assert "falls back" in record.getMessage()
+
+    def test_warns_when_fewer_pages_processed_than_requested(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Pages that failed to extract are not billed, so the gap must be logged."""
+        response = {
+            "whisper_hash": "wh-2",
+            "whisper_metadata": {
+                "processed_page_count": 159,
+                "requested_page_count": 199,
+            },
+        }
+        with caplog.at_level("WARNING"):
+            count = LLMWhispererHelper.get_processed_page_count(response)
+
+        assert count == 159
+        (record,) = caplog.records
+        assert record.levelname == "WARNING"
+        assert "159" in record.getMessage()
+        assert "199" in record.getMessage()
+        assert "wh-2" in record.getMessage()
+
+    @pytest.mark.parametrize(
+        "metadata",
+        [
+            # Full extraction.
+            {"processed_page_count": 5, "requested_page_count": 5},
+            # Text input: 1 page requested, word-derived count can be higher.
+            {"processed_page_count": 3, "requested_page_count": 1},
+            # Older LLMWhisperer without requested_page_count.
+            {"processed_page_count": 5},
+            {"processed_page_count": 5, "requested_page_count": None},
+        ],
+    )
+    def test_no_shortfall_warning(
+        self, metadata: dict[str, Any], caplog: pytest.LogCaptureFixture
+    ) -> None:
+        with caplog.at_level("WARNING"):
+            LLMWhispererHelper.get_processed_page_count({"whisper_metadata": metadata})
+
+        assert caplog.text == ""
 
     def test_silent_when_count_usable(self, caplog: pytest.LogCaptureFixture) -> None:
         response = {"whisper_metadata": {"processed_page_count": 5}}

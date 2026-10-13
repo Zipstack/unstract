@@ -137,7 +137,7 @@ class LLMWhispererHelper:
         params: dict[str, Any] | None = None,
         data: BytesIO | None = None,
         type: str = "whisper",
-    ) -> Response:
+    ) -> dict[str, Any]:
         """Makes a request to LLMWhisperer service.
 
         Args:
@@ -152,7 +152,7 @@ class LLMWhispererHelper:
                 Defaults to "whisper".
 
         Returns:
-            Response: Response from the request
+            dict[str, Any]: Decoded LLMWhisperer response body
         """
         llm_whisperer_svc_url = f"{config.get(WhispererConfig.URL)}/api/v2"
         if not headers:
@@ -318,7 +318,7 @@ class LLMWhispererHelper:
         config: dict[str, Any],
         extra_params: WhispererRequestParams,
         fs: FileStorage | None = None,
-    ) -> requests.Response:
+    ) -> dict[str, Any]:
         if fs is None:
             fs = FileStorage(provider=FileStorageProvider.LOCAL)
         params = LLMWhispererHelper.get_whisperer_params(
@@ -326,7 +326,7 @@ class LLMWhispererHelper:
         )
         # Recorded against the extraction for cross referencing in usage reports
         params[WhispererConfig.FILE_NAME] = Path(input_file_path).name
-        response: requests.Response
+        response: dict[str, Any]
         try:
             input_file_data = BytesIO(fs.read(path=input_file_path, mode="rb"))
             enable_highlight = extra_params.enable_highlight
@@ -401,14 +401,30 @@ class LLMWhispererHelper:
             or not isinstance(page_count, int)
             or page_count <= 0
         ):
-            logger.warning(
-                "No usable processed_page_count in LLMWhisperer response "
+            logger.info(
+                "No usable processed_page_count in LLMWhisperer response; PDF "
+                "billing falls back to the file's page count "
                 "(whisper_hash=%s, whisper_metadata_present=%s, value=%r)",
                 response.get(X2TextConstants.WHISPER_HASH_V2),
                 has_metadata,
                 page_count,
             )
             return None
+        requested = metadata.get("requested_page_count")
+        if (
+            isinstance(requested, int)
+            and not isinstance(requested, bool)
+            and page_count < requested
+        ):
+            # Pages that failed to extract are dropped and not billed.
+            logger.warning(
+                "LLMWhisperer extracted %d of %d requested pages; billing %d "
+                "(whisper_hash=%s)",
+                page_count,
+                requested,
+                page_count,
+                response.get(X2TextConstants.WHISPER_HASH_V2),
+            )
         return page_count
 
     @staticmethod
