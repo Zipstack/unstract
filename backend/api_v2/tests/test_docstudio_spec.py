@@ -61,6 +61,10 @@ _KNOWN_EXAMPLE_DIVERGENCES = {
     ("execute", "500", "APIException", "ExecuteResponse"),
 }
 
+#: The bodies the exception handler produces, and so the only ones whose
+#: injected handler example is correct for them.
+_HANDLER_SHAPED_SCHEMAS = {"ErrorResponse", "DeploymentErrorResponse"}
+
 #: The operations served by an API deployment, as opposed to the platform-key
 #: operations that describe the account. They authenticate differently and can
 #: fail differently, so several checks below split on this.
@@ -529,14 +533,14 @@ def test_no_published_example_contradicts_its_own_schema() -> None:
     replaced, and the artifact contradicts itself in one media-type object.
 
     Checked structurally rather than by name: any response declaring a body
-    other than `ErrorResponse` must carry no handler-shaped example.
+    other than a handler-shaped one must carry no handler-shaped example.
     """
     matched: set[tuple[str, str, str, str]] = set()
     for path, method, operation in _operations(_committed()):
         for code, response in operation["responses"].items():
             media = response.get("content", {}).get("application/json", {})
             ref = media.get("schema", {}).get("$ref", "")
-            if ref.endswith("/ErrorResponse"):
+            if ref.split("/")[-1] in _HANDLER_SHAPED_SCHEMAS:
                 continue
             for name, example in media.get("examples", {}).items():
                 key = (operation["operationId"], code, name, ref.split("/")[-1])
@@ -570,7 +574,8 @@ def test_the_example_contradiction_check_actually_fires() -> None:
     offending = [
         name
         for name, example in media["examples"].items()
-        if not ref.endswith("/ErrorResponse") and "errors" in example.get("value", {})
+        if ref.split("/")[-1] not in _HANDLER_SHAPED_SCHEMAS
+        and "errors" in example.get("value", {})
     ]
     assert offending == ["Handler"]
 
