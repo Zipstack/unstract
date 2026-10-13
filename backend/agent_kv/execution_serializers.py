@@ -406,6 +406,20 @@ class SubmitSerializer(serializers.Serializer):
             entries = json.loads(raw)
         except (ValueError, TypeError) as e:
             raise serializers.ValidationError(f"extractors is not valid JSON: {e}")
+        except RecursionError:
+            # NOT a ValueError, so the clause above does not catch it: it is a
+            # RuntimeError subclass, and an uncaught one here is a 500 on a
+            # request the caller controls entirely. `[` repeated a few thousand
+            # times exhausts the decoder's recursion limit while occupying a
+            # tiny fraction of AGENT_KV_MAX_SCHEMA_BYTES (256 KiB), so the byte
+            # cap above is no defence at all -- the cheapest possible input
+            # reaches it (Greptile P2).
+            #
+            # Reported as a validation error rather than re-raised, because it
+            # IS one: the payload is malformed for this endpoint's purposes,
+            # and the caller can act on the message. Depth is not named as a
+            # number because the limit is the interpreter's, not ours.
+            raise serializers.ValidationError("extractors is nested too deeply to parse")
         if not isinstance(entries, list) or not entries:
             raise serializers.ValidationError("extractors must be a non-empty JSON array")
         if len(entries) > 1:

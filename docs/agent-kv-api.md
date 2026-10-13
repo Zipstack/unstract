@@ -978,21 +978,33 @@ beyond `docker compose up`:
    The marker the probe keys off is the mere presence of
    `backend/plugins/agent_kv/__init__.py` — a cloud image ships it (via the
    plugin-copy step), an OSS-only build does not.
-2. **Executor worker fleet queue**: the executor dispatch derives its Celery queue name
-   from the executor name as `celery_executor_{executor_name}` — for Agent-KV that's
-   **`celery_executor_agentic_kv`** (`unstract/sdk1/src/unstract/sdk1/execution/dispatcher.py`).
-   `workers/run-worker.sh`'s executor role default queue list
-   (`celery_executor_legacy,celery_executor_agentic,celery_executor_agentic_table`)
-   does **not** include it — a self-hosted/OSS-only deployment running the cloud
-   `agentic_kv` executor plugin must add `celery_executor_agentic_kv` to that worker's
-   consumed queues (`CELERY_QUEUES_EXECUTOR` on the Docker path, or the equivalent
-   `run-worker.sh` queue map entry) or dispatched jobs will never be picked up.
-   **The cloud Helm chart already wires this**: both `workerExecutorV2.args`
-   (`--queues=...,celery_executor_agentic_kv`) and
-   `workerPgExecutor.env.WORKER_PG_QUEUE_CONSUMER_QUEUE` include it, and both fleets
-   carry `additionalConfigs: [..., agentKv]` (`charts/unstract-platform/values.yaml`,
-   cloud repo) so the executor pods get the `AGENT_KV_*` LLM/LLMWhisperer env alongside
-   the queue wiring.
+2. **Executor worker fleet queue — nothing to add for this release.** The dispatcher
+   derives the queue name from the EXECUTOR name as `celery_executor_{executor_name}`
+   (`unstract/sdk1/src/unstract/sdk1/execution/dispatcher.py`), and this deployment
+   routes `table` only, to the **`agentic_table`** executor
+   (`EXTRACTOR_ROUTES`, `backend/agent_kv/constants.py`). So the queue this API
+   actually uses is **`celery_executor_agentic_table`**, which every fleet already
+   drains: it is in `workers/run-worker.sh`'s executor default list, and in
+   `workerPgExecutor.env.WORKER_PG_QUEUE_CONSUMER_QUEUE` in the cloud chart.
+
+   > **Do not add `celery_executor_agentic_kv`.** Earlier revisions of this checklist
+   > told operators to, and it is wrong in this release: `kv` is not routable
+   > (§1), nothing produces to that queue, and nothing consumes it. The chart asserts
+   > its absence deliberately — `AKV-Q5b` in
+   > `charts/unstract-platform/unittests/agent_kv_wiring_test.yaml` fails the build if
+   > the name appears anywhere in the chart, because a queue with a consumer and no
+   > producer wastes a fleet lane, and one with a producer and no consumer accepts
+   > work and drains nothing with no error anywhere. It becomes the right queue only
+   > when `kv` is re-enabled in `EXTRACTOR_ROUTES`, and
+   > `backend/agent_kv/tests/test_queue_wiring_is_derived.py` derives the expectation
+   > from that constant so the two cannot disagree.
+
+   Note the knob name too: since Celery was removed (UN-4078) the deployed fleet is
+   the PostgreSQL queue consumer, so the setting that matters is
+   **`WORKER_PG_QUEUE_CONSUMER_QUEUE`**, not `CELERY_QUEUES_EXECUTOR`. Both fleets
+   also carry `additionalConfigs: [..., agentKv]`
+   (`charts/unstract-platform/values.yaml`, cloud repo) so the executor pods get the
+   `AGENT_KV_*` LLM/LLMWhisperer env alongside the queue wiring.
 3. **Callback queue**: the `ide_callback` worker must consume `agent_kv_callback`
    alongside its own `ide_callback` queue, or jobs dispatch but never finalize. This is
    already the hardcoded default in both `workers/run-worker-docker.sh` and

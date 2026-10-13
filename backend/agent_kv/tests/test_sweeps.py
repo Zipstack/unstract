@@ -36,11 +36,14 @@ os.environ.setdefault("DJANGO_SETTINGS_MODULE", "backend.settings.test")
 if not apps.ready:
     django.setup()
 
+from account_v2.models import Organization  # noqa: E402
 from django.conf import settings  # noqa: E402
 from django.db.models import Q  # noqa: E402
 from django.db.models.functions import Coalesce  # noqa: E402
+from django.test import TestCase  # noqa: E402
 from django.utils import timezone  # noqa: E402
 from rest_framework.test import APIRequestFactory  # noqa: E402
+from utils.user_context import UserContext  # noqa: E402
 
 from agent_kv import internal_views as iv  # noqa: E402
 from agent_kv import maintenance  # noqa: E402
@@ -138,7 +141,16 @@ def test_sweep_terminalizes_each_candidate_as_failed_never_dispatched(
 
     assert resp.status_code == 200
     m_mark_terminal.assert_called_once_with(
-        job.id, "org1", JobStatus.FAILED, error="Job was never dispatched"
+        job.id,
+        "org1",
+        JobStatus.FAILED,
+        error="Job was never dispatched",
+        # The selection predicate, restated in the guarded UPDATE so a
+        # dispatch landing between the two statements wins instead of being
+        # overwritten. See TestTheSweepLosesTheRaceRatherThanTheJob, which
+        # exercises the race itself against a real database -- a mock cannot,
+        # since it replays whatever predicate is written.
+        require=maintenance._NEVER_DISPATCHED,
     )
 
 
@@ -863,3 +875,127 @@ def test_phase_three_takes_the_newest_eligible_rows_first():
         maintenance.run_sweep()
 
     phase3.order_by.assert_called_once_with("-completed_at")
+
+
+# ---------------------------------------------------------------------------
+# The select-then-write race, against a real database.
+# ---------------------------------------------------------------------------
+#
+# Everything above mocks `AgentKVJob.objects` and asserts the filter kwargs the
+# queries are built with. That style cannot see this class of defect at all: a
+# mock replays whatever predicate is written, so a SELECT and an UPDATE that
+# disagree agree perfectly in a mock. The bug below -- the sweep failing a job
+# that was dispatched between the two statements -- was found by review, not by
+# the 20 tests above it, which is the honest reason this section exists and is
+# DB-backed.
+
+
+class TestTheSweepLosesTheRaceRatherThanTheJob(TestCase):
+    """Phase 1 picks long-PENDING rows, then terminalizes them in a second
+    statement. A dispatch landing in between must not be overwritten.
+
+    What it would cost: the executor is running and spending, the row says
+    FAILED and its concurrency slot has been handed to someone else, and the
+    finalize that eventually arrives cannot rescue the output -- only a
+    CANCELLED row gets a second look, so the result is written and deleted.
+    """
+
+    def setUp(self):
+        self.org = Organization.objects.create(
+            display_name="Sweep", organization_id="org_sweep", name="sweep"
+        )
+        UserContext.set_organization_identifier(None)
+        self.stale = timezone.now() - timedelta(
+            seconds=settings.AGENT_KV_SWEEP_GRACE_SECONDS + 600
+        )
+
+    def _pending_job(self):
+        job = AgentKVJob(
+            organization_id=self.org.id,
+            status=JobStatus.PENDING,
+            extractor="table",
+        )
+        job.save()
+        # `created_at` is auto_now_add, so it has to be backdated after the
+        # insert for the row to be a sweep candidate at all.
+        AgentKVJob.objects.filter(id=job.id).update(created_at=self.stale)
+        return job
+
+    def _sweep_with_a_dispatch_landing_mid_flight(self, job):
+        """Run the real sweep, dispatching `job` between SELECT and UPDATE.
+
+        Patching `mark_terminal` to mutate the row and then delegate to the
+        real classmethod reproduces the window exactly: the candidate query has
+        already run and returned a snapshot, and the guarded UPDATE is about to
+        run against a row that no longer matches it.
+        """
+        original = AgentKVJob.mark_terminal.__func__
+
+        def dispatch_then_terminalize(job_id, org_id, new_status, **kwargs):
+            AgentKVJob.objects.filter(id=job_id).update(
+                status=JobStatus.DISPATCHED, dispatched_at=timezone.now()
+            )
+            return original(AgentKVJob, job_id, org_id, new_status, **kwargs)
+
+        with mock.patch.object(
+            AgentKVJob, "mark_terminal", side_effect=dispatch_then_terminalize
+        ):
+            with mock.patch.object(maintenance.AgentKVConcurrencyLimiter, "release"):
+                return maintenance.run_sweep()
+
+    def test_a_job_dispatched_mid_sweep_is_left_alone(self):
+        job = self._pending_job()
+
+        result = self._sweep_with_a_dispatch_landing_mid_flight(job)
+        job.refresh_from_db()
+
+        assert job.status == JobStatus.DISPATCHED, (
+            "the sweep overwrote a job that was dispatched after it was "
+            "selected -- the executor is still running and spending"
+        )
+        assert not job.completed_at
+        assert result["swept"] == 0, "a job it did not terminalize must not be counted"
+
+    def test_its_concurrency_slot_is_not_released(self):
+        """The slot belongs to the live run now. Releasing it lets another
+        submit in over the org's limit while this one is still holding real
+        executor capacity -- and nothing ever reclaims the double-booking.
+        """
+        self._pending_job()
+        original = AgentKVJob.mark_terminal.__func__
+
+        def dispatch_then_terminalize(job_id, org_id, new_status, **kwargs):
+            AgentKVJob.objects.filter(id=job_id).update(
+                status=JobStatus.DISPATCHED, dispatched_at=timezone.now()
+            )
+            return original(AgentKVJob, job_id, org_id, new_status, **kwargs)
+
+        with mock.patch.object(
+            AgentKVJob, "mark_terminal", side_effect=dispatch_then_terminalize
+        ):
+            with mock.patch.object(
+                maintenance.AgentKVConcurrencyLimiter, "release"
+            ) as m_release:
+                maintenance.run_sweep()
+
+        assert not m_release.called
+
+    def test_an_undisturbed_candidate_is_still_swept(self):
+        """The guard must not cost the sweep its actual job."""
+        job = self._pending_job()
+
+        with mock.patch.object(maintenance.AgentKVConcurrencyLimiter, "release"):
+            result = maintenance.run_sweep()
+        job.refresh_from_db()
+
+        assert job.status == JobStatus.FAILED
+        assert result["swept"] == 1
+
+    def test_the_predicate_is_declared_once_for_both_statements(self):
+        """The candidate query and the guarded UPDATE must not drift apart --
+        that drift IS the bug. Both read `_NEVER_DISPATCHED`.
+        """
+        assert maintenance._NEVER_DISPATCHED == {
+            "status": JobStatus.PENDING,
+            "dispatched_at__isnull": True,
+        }

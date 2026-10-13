@@ -40,6 +40,25 @@ _MAINTENANCE_BATCH_LIMIT = 500
 # the implementation starving each side in turn when one ordering tried to do
 # both. 20% leaves 400 slots for the normal case, where nothing is retrying.
 _TTL_RETRY_RESERVE = 100
+#: What "never dispatched" means, declared once because it is applied TWICE:
+#: as the sweep's candidate query and again inside the guarded UPDATE that
+#: terminalizes each candidate (`mark_terminal(require=...)`).
+#:
+#: Selecting and writing are two statements, and a delayed dispatch landing
+#: between them turns a long-PENDING row into a live DISPATCHED one. Failing
+#: it then would kill a job whose executor is still running and spending, and
+#: release its concurrency slot -- and the executor's finalize could not
+#: recover it either, because the row reads FAILED by then and only a
+#: CANCELLED row is given a second look (`FinalizeView._salvage`). Re-stating
+#: the predicate in the write makes the sweep lose that race instead of the
+#: job (Greptile P1).
+#:
+#: The age cutoff is deliberately NOT in here: `created_at` never changes, so
+#: re-checking it would be noise. Only the two columns a dispatch mutates are.
+_NEVER_DISPATCHED = {
+    "status": JobStatus.PENDING,
+    "dispatched_at__isnull": True,
+}
 _NEVER_DISPATCHED_ERROR = "Job was never dispatched"
 _STUCK_JOB_ERROR = "Job timed out"
 
@@ -95,9 +114,8 @@ def run_sweep() -> dict:
         seconds=settings.AGENT_KV_SWEEP_GRACE_SECONDS
     )
     never_dispatched_candidates = AgentKVJob.objects.filter(
-        status=JobStatus.PENDING,
         created_at__lt=never_dispatched_cutoff,
-        dispatched_at__isnull=True,
+        **_NEVER_DISPATCHED,
     ).order_by("created_at")[:_MAINTENANCE_BATCH_LIMIT]
 
     swept = 0
@@ -113,6 +131,9 @@ def run_sweep() -> dict:
             org_id,
             JobStatus.FAILED,
             error=_NEVER_DISPATCHED_ERROR,
+            # Re-checked in the UPDATE, not just in the SELECT above. See
+            # `_NEVER_DISPATCHED`.
+            require=_NEVER_DISPATCHED,
         )
         if won:
             swept += 1

@@ -23,6 +23,7 @@ os.environ.setdefault("DJANGO_SETTINGS_MODULE", "backend.settings.test")
 if not apps.ready:
     django.setup()
 
+from django.conf import settings  # noqa: E402
 from django.core.files.uploadedfile import SimpleUploadedFile  # noqa: E402
 from rest_framework import serializers  # noqa: E402
 
@@ -240,6 +241,37 @@ def test_page_start_past_the_end_of_the_document_is_rejected():
 
 def test_extractors_not_json_rejected():
     s = SubmitSerializer(data=_data(extractors="{not json"))
+    assert not s.is_valid()
+    assert "extractors" in s.errors
+
+
+#: Nesting depth that makes CPython's JSON scanner give up. NOT
+#: `sys.getrecursionlimit()`: the C scanner keeps its own accounting and
+#: swallows 2000 levels without complaint -- a first cut of the test below
+#: used that and passed against the UNFIXED code, which is the whole failure
+#: mode these tests exist to catch. 100k levels is 200 KB, comfortably inside
+#: the 256 KiB `AGENT_KV_MAX_SCHEMA_BYTES` cap, and the test asserts both of
+#: those facts rather than trusting this comment.
+_JSON_OVERFLOW_DEPTH = 100_000
+
+
+def test_deeply_nested_extractors_is_a_400_not_a_500():
+    """`RecursionError` is a RuntimeError, so the ValueError/TypeError clause
+    around `json.loads` never caught it and the request 500'd on an input the
+    caller controls entirely. Reported by Greptile on PR #2317.
+    """
+    nested = "[" * _JSON_OVERFLOW_DEPTH + "]" * _JSON_OVERFLOW_DEPTH
+
+    # The payload has to stay INSIDE the byte cap, or this proves only that
+    # the cap works -- which it already did.
+    assert len(nested.encode()) < settings.AGENT_KV_MAX_SCHEMA_BYTES
+    # And it has to actually trip the decoder, or the test passes for the
+    # wrong reason on a future interpreter that parses it happily.
+    with pytest.raises(RecursionError):
+        json.loads(nested)
+
+    s = SubmitSerializer(data=_data(extractors=nested))
+
     assert not s.is_valid()
     assert "extractors" in s.errors
 

@@ -245,8 +245,39 @@ def submit_raw(
         headers=auth.headers,
         files={"file": (filename, file_bytes, "application/octet-stream")},
         data=data,
-        timeout=60,
+        timeout=_http_timeout(data.get("timeout")),
     )
+
+
+#: Client read timeout for a submit that does NOT ask the backend to sync-wait.
+_HTTP_TIMEOUT = 60
+
+#: Added on top of a requested sync-wait so the CLIENT always outlives the
+#: SERVER's own deadline.
+_HTTP_TIMEOUT_MARGIN = 30
+
+
+def _http_timeout(server_wait: object) -> int:
+    """Seconds to let the HTTP request run for, given the sync-wait asked for.
+
+    `timeout` in the submit body is the SERVER's wait: the backend holds the
+    request open that long for a terminal state before falling back to the 202
+    handshake. The client's own read timeout has to outlast it, or a job that
+    finishes inside the window the test asked for still fails the test -- with
+    a `requests.ReadTimeout` from the harness, which reads as a product bug and
+    is not one. `test_sync_wait_submit_returns_result_inline` asked for 120 s
+    against a fixed 60 s client timeout, so any run slower than a warm cache
+    was a coin flip (Greptile P2).
+
+    The margin covers the handshake and the response body on top of the
+    backend's own deadline, so the SERVER is always the side that gives up
+    first and the test sees the documented fallback rather than an exception.
+    """
+    try:
+        wait = int(server_wait)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return _HTTP_TIMEOUT
+    return max(_HTTP_TIMEOUT, wait + _HTTP_TIMEOUT_MARGIN)
 
 
 def submit(

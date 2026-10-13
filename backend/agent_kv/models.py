@@ -371,11 +371,23 @@ class AgentKVJob(DefaultOrganizationMixin, BaseModel):
         error="",
         result_ref="",
         usage_summary=None,
+        require=None,
     ) -> bool:
         """The ONLY way to reach a terminal state (spec §5.4 write guard).
 
         Guarded UPDATE: at-least-once callbacks, cancel, and the sweep can all
         race; whoever lands first wins and everyone else no-ops.
+
+        ``require`` adds caller-supplied filter kwargs to that same UPDATE, for
+        a caller whose decision rests on MORE than "the row is not terminal".
+        The sweep is the case: it picks candidates with one query and
+        terminalizes them with another, and between the two a delayed dispatch
+        can turn a long-PENDING row into a live DISPATCHED one. Without the
+        extra clauses this would fail a running job and release its slot while
+        the executor carries on spending -- and its finalize could not save the
+        result, because the row is FAILED by then and only a CANCELLED row gets
+        a second look. Re-stating the selection predicate in the write is what
+        closes that window; it costs nothing when nothing raced.
 
         The `.exclude(status__in=TERMINAL)` below guards the ROW, not the
         argument -- so without the check that opens this method,
@@ -398,9 +410,8 @@ class AgentKVJob(DefaultOrganizationMixin, BaseModel):
             fields["result_ref"] = result_ref
         if usage_summary is not None:
             fields["usage_summary"] = usage_summary
-        updated = (
-            cls.objects.filter(id=job_id, organization_id=organization_id)
-            .exclude(status__in=list(cls.TERMINAL))
-            .update(**fields)
-        )
+        rows = cls.objects.filter(id=job_id, organization_id=organization_id)
+        if require:
+            rows = rows.filter(**require)
+        updated = rows.exclude(status__in=list(cls.TERMINAL)).update(**fields)
         return updated == 1
