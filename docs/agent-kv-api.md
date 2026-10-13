@@ -65,9 +65,10 @@ The split exists because `list` backs a table of every key in the organization:
 returning real values there puts the whole set on screen to read one of them. The
 three single-key responses each answer a deliberate request for one key.
 
-**Getting the adapter ids**: each adapter card under *Settings → LLMs /
-X2Text* has **Copy ID** in its kebab menu
-(`frontend/src/components/tool-settings/list-of-items/ListOfItems.jsx`). That
+**Getting the adapter ids**: each adapter row under *Settings → LLMs /
+X2Text* has a **Copy ID** button in its action column
+(`ResourceTable`'s opt-in `handleCopyId`, wired by
+`frontend/src/components/tool-settings/tool-settings/ToolSettings.jsx`). That
 copies the instance UUID this API expects — not `adapter_id`, which is the
 provider descriptor (`anthropic|90ebd4cd-…`) shared by every instance of that
 provider and rejected here as "no such adapter in this organization". The same
