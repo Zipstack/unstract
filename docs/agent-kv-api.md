@@ -1021,18 +1021,46 @@ beyond `docker compose up`:
    of registering a `PgPeriodicTask` row.
 
    **The CronJob is the only owner.** Migration `0004_pg_periodic_tasks` once also
-   seeded two `PgPeriodicTask` rows for the same two tasks; it now removes them.
-   They were seeded `pg_owned: False` so nothing double-fired, but the flag exists
-   to be flipped, and a flip would have run a `*/10` sweep against the chart's
-   `*/15` — colliding at `:30` on the same rows — with TTL cadences disagreeing 24x.
-   Only the CronJob side carries `concurrencyPolicy: Forbid` and a deadline.
+   seeded two `PgPeriodicTask` rows for the same two tasks. `0007` deletes them and
+   `0009` finishes the job; the paragraph below is why it takes two.
+
+   The rows were seeded `pg_owned: False`, and `0007` scoped its delete to that flag
+   so a self-hosted operator who had deliberately adopted them was not stranded. The
+   premise was that only a human ever sets `pg_owned: True`. **It is not.** The cloud
+   chart's `backend.pgScheduleMirror` hook runs `converge_pg_scheduler --periodics` on
+   every install, upgrade *and* rollback; that calls `mirror_pg_periodic_tasks --adopt`
+   with no names, which is `PgPeriodicTask.objects.all()`; and
+   `templates/validate-pg-worker-fleet.yaml` refuses to render with the hook off, so
+   it is not optional. Putting a row in `pg_periodic_task` on a chart-managed
+   deployment *is* asking the PG scheduler to own it — which is the mechanism
+   `dashboard_metrics` relies on, and the reason `0004` should never have used it for
+   schedules the chart was already running as CronJobs.
+
+   Deploying snapshot.415 to a dev namespace found both halves live: `agent_kv_sweep`
+   at `pg_owned=t` with `last_run 11:00:02 / next_run 11:10` under the PG scheduler,
+   alongside the CronJob's `*/15` tick — the `:30` collision the chart's offset comment
+   says it avoids, and ttl-cleanup disagreeing with itself 24x (daily on the row,
+   hourly on the CronJob). `0007`'s guard spares precisely the rows that are
+   double-firing, so `0009` repeats the delete by name alone. It has to be a new
+   migration: `0007` is recorded as applied wherever the problem exists, and Django
+   never re-runs it.
+
+   Note also that `pg_owned: False` is not a stable state on a chart-managed
+   deployment — the next `helm upgrade` adopts the row again — so deleting the row is
+   the only end state that holds. Only the CronJob side carries
+   `concurrencyPolicy: Forbid` and a deadline.
 
    > **Self-hosted OSS: you must schedule these two yourself.** There is no CronJob
    > outside the cloud chart and no migration registers them any more. Run
    > `manage.py agent_kv_sweep` and `manage.py agent_kv_ttl_cleanup` from cron, a
    > systemd timer, or your own `PgPeriodicTask` rows with `pg_owned: True` — the
    > scheduler proxy tasks `agent_kv.sweep`/`agent_kv.ttl_cleanup` are still
-   > registered and still work. Without them a stranded job holds its concurrency
+   > registered and still work. `0009` cannot delete rows you create, because it is
+   > already recorded as applied by the time you create them; and on an on-prem helm
+   > install (`agentKvCronJobs.enabled: false`) the schedule-mirror hook adopting them
+   > is exactly what you want, since nothing else fires them. Create them under your
+   > own names if you would rather not share names with a retired migration.
+   > Without them a stranded job holds its concurrency
    > slot until the 6 h Redis TTL, and `AGENT_KV_RESULT_TTL_DAYS` is advisory:
    > staged documents and results stay in the bucket indefinitely, which is a
    > retention failure, not just a disk-usage one.

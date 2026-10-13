@@ -1,5 +1,25 @@
 """Remove the Agent-KV maintenance periodics -- the CronJob owns the schedule.
 
+**The ``pg_owned=False`` scope below is wrong on cloud, and
+``0009_drop_agent_kv_periodic_tasks`` finishes the job. Read that first.** In
+short: the premise this file argues from -- "nothing automated ever sets
+``pg_owned=True``" -- is false. The chart's ``backend.pgScheduleMirror`` hook
+runs ``converge_pg_scheduler --periodics`` on every install, upgrade and
+rollback, and its blanket ``--adopt`` flips every row in ``pg_periodic_task``,
+these two included. So on cloud the guard spares exactly the rows that are
+double-firing, which was then observed live on a dev namespace. 0009 deletes
+by name alone, and explains why the self-hosted operator this guard protects
+cannot exist at the point either migration runs.
+
+This file is left as it was, for the same reason it exists rather than being
+an edit to 0004: it is recorded as applied in every environment that has the
+problem, so changing its predicate would reach none of them.
+
+Everything below is the original reasoning, kept for the record.
+
+----
+
+
 Migration 0004 seeded two ``PgPeriodicTask`` rows (``agent_kv.sweep`` at
 ``*/10``, ``agent_kv.ttl_cleanup`` at ``17 3 * * *``) on the stated premise
 that nothing anywhere fired the two maintenance commands -- "no

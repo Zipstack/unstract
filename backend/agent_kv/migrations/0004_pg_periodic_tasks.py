@@ -1,12 +1,15 @@
-"""Schedule the two Agent-KV maintenance periodics. **SUPERSEDED by 0007.**
+"""Schedule the two Agent-KV maintenance periodics. **SUPERSEDED by 0007/0009.**
 
-Read `0007_remove_agent_kv_periodic_tasks.py` before acting on anything here.
+Read `0007_remove_agent_kv_periodic_tasks.py` and
+`0009_drop_agent_kv_periodic_tasks.py` before acting on anything here.
 In short: the premise stated below -- that nothing anywhere fired these two
 tasks, "no ``PgPeriodicTask``, no beat entry, no CronJob" -- was already false
 when it was written. The cloud chart's `backend.agentKvCronJobs` ran the same
 two management commands, added earlier on this same branch, so this migration
 registered a SECOND owner for one schedule. 0007 deletes these rows and the
-CronJob is the sole owner.
+CronJob is the sole owner -- except that 0007 spares rows the chart's
+schedule-mirror hook has already adopted, which on cloud is both of them, so
+0009 repeats the delete without the ownership scope.
 
 This file is deliberately left seeding rather than rewritten into a no-op.
 Django records a migration as applied and never re-runs it, so editing this
