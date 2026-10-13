@@ -20,6 +20,7 @@ past the queue's visibility timeout.
 
 from __future__ import annotations
 
+import logging
 from unittest.mock import MagicMock, patch
 
 import httpx
@@ -83,6 +84,30 @@ def _run(outcomes, endpoint="resource-shared", payload=None):
     return client, raised, sleep
 
 
+_DROP_PAYLOAD = {"group_ids": [7], "resource_id": "res-1", "share_action": "revoked"}
+
+
+def _run_and_capture_drop(
+    caplog: pytest.LogCaptureFixture, outcomes: list[object]
+) -> tuple[_Client, Exception | None, MagicMock]:
+    """``_run`` with ERROR logs captured, for the paths that drop the job."""
+    with caplog.at_level(logging.ERROR, logger="notification.tasks"):
+        client, raised, sleep = _run(outcomes, payload=_DROP_PAYLOAD)
+    return client, raised, sleep
+
+
+def _assert_drop_logged(caplog: pytest.LogCaptureFixture) -> None:
+    """A dropped job is acked and deleted, so this log line is its only record."""
+    dropped = [
+        r.getMessage()
+        for r in caplog.records
+        if r.levelno == logging.ERROR
+        and "metric=group_notification_dropped_total" in r.getMessage()
+    ]
+    assert len(dropped) == 1, dropped
+    assert str(_DROP_PAYLOAD) in dropped[0], "payload missing from the drop log line"
+
+
 class TestRetryClassification:
     def test_success_posts_once_and_returns(self):
         client, raised, _ = _run([_response(200)])
@@ -95,14 +120,15 @@ class TestRetryClassification:
         assert len(client.calls) == _GROUP_NOTIFICATION_ATTEMPTS
         assert sleep.call_count == _GROUP_NOTIFICATION_ATTEMPTS - 1
 
-    def test_client_error_is_dropped_without_raising(self):
+    def test_client_error_is_dropped_without_raising(self, caplog):
         # A rejected payload will be rejected again; retrying only burns
         # budget, and raising would trigger queue redelivery of a message
         # that can never succeed.
-        client, raised, sleep = _run([_response(400)])
+        client, raised, sleep = _run_and_capture_drop(caplog, [_response(400)])
         assert raised is None
         assert len(client.calls) == 1
         assert sleep.call_count == 0
+        _assert_drop_logged(caplog)
 
     @pytest.mark.parametrize(
         "exc",
@@ -114,7 +140,7 @@ class TestRetryClassification:
             httpx.RemoteProtocolError("server disconnected"),
         ],
     )
-    def test_request_sent_outcome_unknown_is_never_re_posted(self, exc):
+    def test_request_sent_outcome_unknown_is_never_re_posted(self, exc, caplog):
         """Each of these means the backend already has the request.
 
         Re-posting would re-mail every group that already succeeded, so the
@@ -122,10 +148,11 @@ class TestRetryClassification:
         raise either, or queue redelivery does the exact re-post this guards
         against.
         """
-        client, raised, sleep = _run([exc])
+        client, raised, sleep = _run_and_capture_drop(caplog, [exc])
         assert raised is None
         assert len(client.calls) == 1, f"{type(exc).__name__} was re-posted"
         assert sleep.call_count == 0
+        _assert_drop_logged(caplog)
 
     @pytest.mark.parametrize(
         "exc",
@@ -146,15 +173,18 @@ class TestRetryClassification:
         assert raised is None
         assert len(client.calls) == 2
 
-    def test_retryable_then_terminal_stops_and_drops_not_raises(self):
+    def test_retryable_then_terminal_stops_and_drops_not_raises(self, caplog):
         # A transient 503 retries once, then a 400 on that retry is terminal --
         # the loop must stop there (not spend the 3rd attempt) and the final
         # classification (400 -> not retryable) decides drop-without-raising,
         # not the classification of the earlier, already-superseded attempt.
-        client, raised, sleep = _run([_response(503), _response(400)])
+        client, raised, sleep = _run_and_capture_drop(
+            caplog, [_response(503), _response(400)]
+        )
         assert raised is None
         assert len(client.calls) == 2
         assert sleep.call_count == 1
+        _assert_drop_logged(caplog)
 
 
 class TestRequestShape:

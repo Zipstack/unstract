@@ -87,7 +87,7 @@ def _send_share_notification(
 
     Sent inline, matching every other direct-share call site in the codebase
     (pipelines, API deployments, connectors, ...). Group shares, by contrast,
-    dispatch through PGMQ (see ``share_notifications.notify_resource_group_share_changed``)
+    dispatch through PGQueue (see ``share_notifications.notify_resource_group_share_changed``)
     because a group's member count -- and so its send time -- is unbounded in
     a way a handful of direct users is not.
     """
