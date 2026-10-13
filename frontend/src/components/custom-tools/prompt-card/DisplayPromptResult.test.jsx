@@ -83,9 +83,7 @@ describe("CappedArray rendering", () => {
     render(<DisplayPromptResult {...baseProps} output={largeArray} />);
 
     // Top indicator shows count
-    expect(
-      screen.getByText(/Showing 50 of 200 items/),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/Showing 50 of 200 items/)).toBeInTheDocument();
 
     // "show more" links should appear (top + bottom)
     expect(screen.getAllByText(/show more \(150 remaining\)/).length).toBe(2);

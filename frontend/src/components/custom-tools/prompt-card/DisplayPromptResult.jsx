@@ -40,7 +40,13 @@ function CappedArray({ data, renderItem, totalCount }) {
       {"["}
       <div style={{ paddingLeft: "20px" }}>
         {remaining > 0 && (
-          <div className="font-size-12" style={{ color: "var(--text-tertiary, #888)", padding: "2px 0 4px" }}>
+          <div
+            className="font-size-12"
+            style={{
+              color: "var(--text-tertiary, #888)",
+              padding: "2px 0 4px",
+            }}
+          >
             Showing {visibleCount} of {totalCount} items — {showMoreLink}
           </div>
         )}
@@ -267,133 +273,131 @@ function DisplayPromptResult({
     isTable = false,
   ) => {
     try {
-    if (isTable) {
-      const stringData =
-        typeof data === "string" ? data : JSON.stringify(data, null, 4);
-      const lines = stringData.split("\n");
-      const truncated = lines.slice(0, 25).join("\n");
-      return (
-        <div>
-          {truncated}
-          {lines.length > 25 && (
-            <Typography.Link
-              className="font-size-12"
-              onClick={() => {
-                setOpenExpandModal(true);
-              }}
-            >
-              ...show more
-            </Typography.Link>
-          )}
-        </div>
-      );
-    }
-    if (typeof data === "object" && !details?.enable_highlight) {
-      return JSON.stringify(data, null, 4);
-    }
-
-    if (typeof data === "string") {
-      return `"${data}"`;
-    }
-
-    if (typeof data === "number" || typeof data === "boolean") {
-      return data.toString();
-    }
-
-    if (Array.isArray(data)) {
-      const renderArrayItem = (item, index) =>
-        renderJson(
-          item,
-          highlightData?.[index],
-          confidenceData?.[index],
-          wordConfidenceData?.[index],
-          indent + 1,
-          `${path}[${index}]`,
-          isTable,
-        );
-
-      if (data.length > RENDER_CAP) {
+      if (isTable) {
+        const stringData =
+          typeof data === "string" ? data : JSON.stringify(data, null, 4);
+        const lines = stringData.split("\n");
+        const truncated = lines.slice(0, 25).join("\n");
         return (
-          <CappedArray
-            data={data}
-            totalCount={data.length}
-            renderItem={renderArrayItem}
-          />
+          <div>
+            {truncated}
+            {lines.length > 25 && (
+              <Typography.Link
+                className="font-size-12"
+                onClick={() => {
+                  setOpenExpandModal(true);
+                }}
+              >
+                ...show more
+              </Typography.Link>
+            )}
+          </div>
         );
       }
-      return (
-        <>
-          {"["}
-          <div style={{ paddingLeft: "20px" }}>
-            {data?.map((item, index) => (
-              <div key={index}>
-                {renderArrayItem(item, index)}
-                {index < data.length - 1 ? "," : ""}
-              </div>
-            ))}
-          </div>
-          {"]"}
-        </>
-      );
-    }
+      if (typeof data === "object" && !details?.enable_highlight) {
+        return JSON.stringify(data, null, 4);
+      }
 
-    if (isObject(data)) {
-      return (
-        <>
-          {"{"}
-          <div style={{ paddingLeft: "20px" }}>
-            {Object.entries(data).map(([key, value], index, array) => {
-              const isClickable = !isObject(value) && !Array.isArray(value); // Only primitive values should be clickable
-              const newPath = path ? `${path}.${key}` : key;
-              const isSelected = selectedKey === newPath;
-              return (
-                <div key={key}>
-                  <Space wrap className="json-key">
-                    {key}
-                  </Space>
-                  {": "}
-                  <Typography.Text
-                    className={`prompt-output-result json-value ${
-                      isClickable && highlightData?.[key] ? "clickable" : ""
-                    } ${isSelected ? "selected" : ""}`}
-                    onClick={() => {
-                      if (isClickable && highlightData?.[key]) {
-                        handleClick(
-                          highlightData,
-                          confidenceData,
-                          wordConfidenceData,
-                          key,
-                          newPath,
-                        );
-                      }
-                    }}
-                  >
-                    {renderJson(
-                      value,
-                      highlightData?.[key],
-                      confidenceData?.[key],
-                      wordConfidenceData?.[key],
-                      indent + 1,
-                      newPath,
-                      isTable,
-                    )}
-                  </Typography.Text>
-                  {index < array.length - 1 ? "," : ""}
+      if (typeof data === "string") {
+        return `"${data}"`;
+      }
+
+      if (typeof data === "number" || typeof data === "boolean") {
+        return data.toString();
+      }
+
+      if (Array.isArray(data)) {
+        const renderArrayItem = (item, index) =>
+          renderJson(
+            item,
+            highlightData?.[index],
+            confidenceData?.[index],
+            wordConfidenceData?.[index],
+            indent + 1,
+            `${path}[${index}]`,
+            isTable,
+          );
+
+        if (data.length > RENDER_CAP) {
+          return (
+            <CappedArray
+              data={data}
+              totalCount={data.length}
+              renderItem={renderArrayItem}
+            />
+          );
+        }
+        return (
+          <>
+            {"["}
+            <div style={{ paddingLeft: "20px" }}>
+              {data?.map((item, index) => (
+                <div key={index}>
+                  {renderArrayItem(item, index)}
+                  {index < data.length - 1 ? "," : ""}
                 </div>
-              );
-            })}
-          </div>
-          {"}"}
-        </>
-      );
-    }
+              ))}
+            </div>
+            {"]"}
+          </>
+        );
+      }
 
-    return String(data);
+      if (isObject(data)) {
+        return (
+          <>
+            {"{"}
+            <div style={{ paddingLeft: "20px" }}>
+              {Object.entries(data).map(([key, value], index, array) => {
+                const isClickable = !isObject(value) && !Array.isArray(value); // Only primitive values should be clickable
+                const newPath = path ? `${path}.${key}` : key;
+                const isSelected = selectedKey === newPath;
+                return (
+                  <div key={key}>
+                    <Space wrap className="json-key">
+                      {key}
+                    </Space>
+                    {": "}
+                    <Typography.Text
+                      className={`prompt-output-result json-value ${
+                        isClickable && highlightData?.[key] ? "clickable" : ""
+                      } ${isSelected ? "selected" : ""}`}
+                      onClick={() => {
+                        if (isClickable && highlightData?.[key]) {
+                          handleClick(
+                            highlightData,
+                            confidenceData,
+                            wordConfidenceData,
+                            key,
+                            newPath,
+                          );
+                        }
+                      }}
+                    >
+                      {renderJson(
+                        value,
+                        highlightData?.[key],
+                        confidenceData?.[key],
+                        wordConfidenceData?.[key],
+                        indent + 1,
+                        newPath,
+                        isTable,
+                      )}
+                    </Typography.Text>
+                    {index < array.length - 1 ? "," : ""}
+                  </div>
+                );
+              })}
+            </div>
+            {"}"}
+          </>
+        );
+      }
+
+      return String(data);
     } catch {
       return (
-        <Typography.Text type="danger">
-          Unable to render output
-        </Typography.Text>
+        <Typography.Text type="danger">Unable to render output</Typography.Text>
       );
     }
   };
