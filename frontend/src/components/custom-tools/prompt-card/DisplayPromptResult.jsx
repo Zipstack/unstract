@@ -1,6 +1,6 @@
 import { Info } from "lucide-react";
 import PropTypes from "prop-types";
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { Space } from "@/components/ui/shims/antd-layout";
 import { Spin } from "@/components/ui/shims/antd-leaves";
 import { Typography } from "@/components/ui/shims/antd-typography";
@@ -15,46 +15,49 @@ import "./PromptCard.css";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
 
-const ARRAY_PAGE_SIZE = 50;
+const BATCH_SIZE = 100;
 
 /**
- * Renders a JSON array with progressive expansion.
- * Shows the first ARRAY_PAGE_SIZE items, then a "show more" link
- * that reveals the next batch. Highlight data indexing is preserved
- * because the original array index is always used.
+ * Renders a large JSON array in batches to avoid a single-frame DOM spike.
+ * The first BATCH_SIZE items render immediately; remaining items are added
+ * automatically via requestAnimationFrame so the browser never blocks.
+ * All items are rendered — nothing is hidden or requires user interaction.
+ *
+ * Highlight data indexing is preserved because the slice always starts
+ * from index 0 and the original array index is used throughout.
  */
-function ExpandableArray({ data, renderItem, totalCount }) {
-  const [visibleCount, setVisibleCount] = useState(ARRAY_PAGE_SIZE);
+function BatchedArray({ data, renderItem, totalCount }) {
+  const [renderedCount, setRenderedCount] = useState(
+    Math.min(BATCH_SIZE, totalCount),
+  );
 
-  const handleShowMore = useCallback(() => {
-    setVisibleCount((prev) => Math.min(prev + ARRAY_PAGE_SIZE, totalCount));
-  }, [totalCount]);
-
-  const remaining = totalCount - visibleCount;
+  useEffect(() => {
+    if (renderedCount >= totalCount) {
+      return;
+    }
+    const id = requestAnimationFrame(() => {
+      setRenderedCount((prev) => Math.min(prev + BATCH_SIZE, totalCount));
+    });
+    return () => cancelAnimationFrame(id);
+  }, [renderedCount, totalCount]);
 
   return (
     <>
       {"["}
       <div style={{ paddingLeft: "20px" }}>
-        {data?.slice(0, visibleCount).map((item, sliceIndex) => (
-          <div key={sliceIndex}>
-            {renderItem(item, sliceIndex)}
-            {sliceIndex < totalCount - 1 ? "," : ""}
+        {data?.slice(0, renderedCount).map((item, index) => (
+          <div key={index}>
+            {renderItem(item, index)}
+            {index < totalCount - 1 ? "," : ""}
           </div>
         ))}
-        {remaining > 0 && (
-          <Typography.Link className="font-size-12" onClick={handleShowMore}>
-            ...show {Math.min(remaining, ARRAY_PAGE_SIZE)} more ({remaining}{" "}
-            remaining)
-          </Typography.Link>
-        )}
       </div>
       {"]"}
     </>
   );
 }
 
-ExpandableArray.propTypes = {
+BatchedArray.propTypes = {
   data: PropTypes.array.isRequired,
   renderItem: PropTypes.func.isRequired,
   totalCount: PropTypes.number.isRequired,
@@ -295,22 +298,23 @@ function DisplayPromptResult({
     }
 
     if (Array.isArray(data)) {
-      if (data.length > ARRAY_PAGE_SIZE) {
+      const renderArrayItem = (item, index) =>
+        renderJson(
+          item,
+          highlightData?.[index],
+          confidenceData?.[index],
+          wordConfidenceData?.[index],
+          indent + 1,
+          `${path}[${index}]`,
+          isTable,
+        );
+
+      if (data.length > BATCH_SIZE) {
         return (
-          <ExpandableArray
+          <BatchedArray
             data={data}
             totalCount={data.length}
-            renderItem={(item, index) =>
-              renderJson(
-                item,
-                highlightData?.[index],
-                confidenceData?.[index],
-                wordConfidenceData?.[index],
-                indent + 1,
-                `${path}[${index}]`,
-                isTable,
-              )
-            }
+            renderItem={renderArrayItem}
           />
         );
       }
@@ -319,16 +323,8 @@ function DisplayPromptResult({
           {"["}
           <div style={{ paddingLeft: "20px" }}>
             {data?.map((item, index) => (
-              <div key={generateUUID()}>
-                {renderJson(
-                  item,
-                  highlightData?.[index],
-                  confidenceData?.[index],
-                  wordConfidenceData?.[index],
-                  indent + 1,
-                  `${path}[${index}]`,
-                  isTable,
-                )}
+              <div key={index}>
+                {renderArrayItem(item, index)}
                 {index < data.length - 1 ? "," : ""}
               </div>
             ))}
