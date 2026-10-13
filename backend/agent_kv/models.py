@@ -255,6 +255,39 @@ class AgentKVJob(DefaultOrganizationMixin, BaseModel):
             row.files_purged = True
             return row
 
+    #: Every condition a late result must still satisfy to be grafted onto a
+    #: cancelled job. Declared once and used twice: by the authoritative
+    #: filtered UPDATE in :meth:`attach_result_to_cancelled`, and by
+    #: :meth:`can_attach_result`, which ``FinalizeView._salvage`` calls BEFORE
+    #: it writes anything to object storage.
+    #:
+    #: One definition because the two must not drift. A pre-flight looser than
+    #: the guard writes files the guard then refuses -- the orphan path. One
+    #: tighter silently drops results the guard would have kept, which is the
+    #: bug this whole salvage exists to fix.
+    ATTACH_GUARD = {
+        "status": JobStatus.CANCELLED,
+        "result_ref": "",
+        "files_purged": False,
+    }
+
+    @classmethod
+    def can_attach_result(cls, job_id, organization_id) -> bool:
+        """Whether :meth:`attach_result_to_cancelled` could succeed right now.
+
+        Advisory, never authoritative: the row can change between this read
+        and the guarded UPDATE, which is why the UPDATE keeps its own copy of
+        every clause. What this buys is not correctness but restraint -- a
+        callback redelivered after the result is already attached, or arriving
+        for a job the caller has DELETEd, is refused before a result file is
+        written for it. Those are the ordinary cases under at-least-once
+        delivery, and each one used to write a file to object storage and then
+        rely on a best-effort delete to take it back out again.
+        """
+        return cls.objects.filter(
+            id=job_id, organization_id=organization_id, **cls.ATTACH_GUARD
+        ).exists()
+
     @classmethod
     def attach_result_to_cancelled(
         cls, job_id, organization_id, *, result_ref, usage_summary=None
@@ -324,11 +357,7 @@ class AgentKVJob(DefaultOrganizationMixin, BaseModel):
                 return False
             return bool(
                 cls.objects.filter(
-                    id=job_id,
-                    organization_id=organization_id,
-                    status=JobStatus.CANCELLED,
-                    result_ref="",
-                    files_purged=False,
+                    id=job_id, organization_id=organization_id, **cls.ATTACH_GUARD
                 ).update(**fields)
             )
 

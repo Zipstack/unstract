@@ -488,12 +488,14 @@ class TestTheFinalizeCallbackEndToEnd(_Rows):
         from agent_kv import internal_views as iv
 
         request = APIRequestFactory().post("/x", body, format="json")
-        with mock.patch.object(iv.AgentKVConcurrencyLimiter, "release"):
-            with mock.patch.object(iv, "write_result", return_value=_RESULT):
-                with mock.patch.object(iv, "delete_input", return_value=True):
-                    with mock.patch.object(iv, "delete_result_file") as m_del:
-                        resp = iv.FinalizeView.as_view()(request, job_id=job.id)
-        return resp, m_del
+        with (
+            mock.patch.object(iv.AgentKVConcurrencyLimiter, "release"),
+            mock.patch.object(iv, "write_result", return_value=_RESULT) as m_write,
+            mock.patch.object(iv, "delete_input", return_value=True),
+            mock.patch.object(iv, "delete_result_file") as m_del,
+        ):
+            resp = iv.FinalizeView.as_view()(request, job_id=job.id)
+        return resp, m_del, m_write
 
     def _body(self, **extra):
         body = {
@@ -508,7 +510,7 @@ class TestTheFinalizeCallbackEndToEnd(_Rows):
     def test_a_success_callback_for_a_cancelled_job_stores_its_result(self):
         job = self._job(status=JobStatus.CANCELLED)
 
-        resp, m_del = self._finalize(job, self._body())
+        resp, m_del, m_write = self._finalize(job, self._body())
         job.refresh_from_db()
 
         assert resp.status_code == 200
@@ -531,28 +533,45 @@ class TestTheFinalizeCallbackEndToEnd(_Rows):
 
         assert job.input_ref == _INPUT
 
-    def test_a_duplicate_callback_deletes_its_own_write(self):
+    def test_a_duplicate_callback_writes_NOTHING_to_storage(self):
+        """Redelivery is the ordinary case, so it must not touch the bucket.
+
+        It used to write a fresh result file, have the guard refuse it on the
+        blank-`result_ref` clause, and then rely on `delete_result_file` to
+        take it back out -- a best-effort delete that logs and returns, with
+        no ref persisted anywhere to retry from. One failed delete left the
+        customer's extracted output in the bucket, unreferenced and invisible
+        to TTL cleanup. `can_attach_result` now reads the same guard first, so
+        there is no file to clean up and nothing to get wrong (Greptile P1).
+        """
         job = self._job(status=JobStatus.CANCELLED)
 
         self._finalize(job, self._body())
-        resp, m_del = self._finalize(job, self._body())
+        resp, m_del, m_write = self._finalize(job, self._body())
         job.refresh_from_db()
 
         assert resp.data["result_attached"] is False
-        m_del.assert_called_once_with(_RESULT)
+        assert not m_write.called, "a doomed attach must not write a result file"
+        assert not m_del.called, "nothing was written, so nothing needs deleting"
         assert job.result_ref == _RESULT, "the first write must stand"
 
-    def test_a_callback_for_a_purged_job_deletes_its_own_write(self):
-        """The invariant three attempts broke: a purged job serves nothing, and
-        a late callback must not leave its file behind either.
+    def test_a_callback_for_a_purged_job_writes_NOTHING_to_storage(self):
+        """The invariant three attempts broke, now enforced before the write.
+
+        A purged job serves nothing, and a late callback must not leave its
+        file behind either -- which previously depended on a delete that is
+        allowed to fail. After DELETE this is the path that could put customer
+        data back into the bucket with no row referencing it, which is the
+        retention failure rather than a disk-usage one.
         """
         job = self._job(status=JobStatus.CANCELLED, files_purged=True)
 
-        resp, m_del = self._finalize(job, self._body())
+        resp, m_del, m_write = self._finalize(job, self._body())
         job.refresh_from_db()
 
         assert resp.data["result_attached"] is False
-        m_del.assert_called_once_with(_RESULT)
+        assert not m_write.called
+        assert not m_del.called
         assert job.result_ref == ""
 
 
@@ -627,3 +646,74 @@ class TestWhatTheResultEndpointServes(_Rows):
 
         with self.assertRaises(JobNotFound):
             self._get_result(job)
+
+
+class TestThePreflightAgreesWithTheGuard(_Rows):
+    """One definition of "may this result be attached", read twice.
+
+    `attach_result_to_cancelled` decides; `can_attach_result` is the cheap
+    read `FinalizeView._salvage` takes BEFORE writing a result file, so an
+    attempt that is already doomed never touches object storage. Both apply
+    `AgentKVJob.ATTACH_GUARD`, and these tests pin that they cannot disagree.
+
+    Why it matters that they cannot drift: a pre-flight LOOSER than the guard
+    writes files the guard then refuses, which is the orphan path the
+    pre-flight exists to close. One TIGHTER silently drops a paid-for result
+    the guard would have kept -- the original defect, re-introduced from the
+    other side and invisible, since the refusal looks exactly like a duplicate.
+    """
+
+    def _agree(self, job) -> bool:
+        """Assert the two answers match, and return what they said."""
+        preflight = AgentKVJob.can_attach_result(job.id, self.org.id)
+        attached = AgentKVJob.attach_result_to_cancelled(
+            job.id, self.org.id, result_ref=_RESULT
+        )
+
+        assert preflight == attached, (
+            f"pre-flight said {preflight} and the guard said {attached} for "
+            f"status={job.status} result_ref={job.result_ref!r} "
+            f"files_purged={job.files_purged}"
+        )
+        return attached
+
+    def test_an_eligible_cancelled_job_passes_both(self):
+        assert self._agree(self._job(status=JobStatus.CANCELLED)) is True
+
+    def test_a_purged_job_is_refused_by_both(self):
+        job = self._job(status=JobStatus.CANCELLED, files_purged=True)
+
+        assert self._agree(job) is False
+
+    def test_a_job_that_already_has_a_result_is_refused_by_both(self):
+        job = self._job(status=JobStatus.CANCELLED, result_ref=_RESULT)
+
+        assert self._agree(job) is False
+
+    def test_a_non_cancelled_job_is_refused_by_both(self):
+        for status in (JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.RUNNING):
+            with self.subTest(status=status):
+                assert self._agree(self._job(status=status)) is False
+
+    def test_another_org_is_refused_by_both(self):
+        job = self._job(status=JobStatus.CANCELLED)
+        other = Organization.objects.create(
+            display_name="Other", organization_id="org_other", name="other"
+        )
+
+        assert AgentKVJob.can_attach_result(job.id, other.id) is False
+        assert (
+            AgentKVJob.attach_result_to_cancelled(job.id, other.id, result_ref=_RESULT)
+            is False
+        )
+
+    def test_the_guard_is_one_dict_and_covers_every_clause(self):
+        """Guards the guard. Every test above would still pass if a clause were
+        dropped from `ATTACH_GUARD` *and* from both readers -- they would agree
+        on the wrong answer. This pins the clauses themselves.
+        """
+        assert AgentKVJob.ATTACH_GUARD == {
+            "status": JobStatus.CANCELLED,
+            "result_ref": "",
+            "files_purged": False,
+        }

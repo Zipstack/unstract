@@ -344,7 +344,37 @@ class FinalizeView(APIView):
         idempotency that rule protected is preserved by the attach instead: its
         guard requires a blank `result_ref`, so a duplicate callback attaches
         nothing and `_attach_or_discard` deletes the file this attempt wrote.
+
+        **The eligibility check runs BEFORE the write, not only after it.**
+        `AgentKVJob.ATTACH_GUARD` is the one definition of what may be
+        attached, and `can_attach_result` applies it as a read first. Without
+        that, every redelivered callback for a job that already has its result
+        -- and every callback that arrives after the caller DELETEd the job --
+        wrote a fresh result file to object storage, had the guard refuse it,
+        and then depended on `delete_result_file` to take it back out. That
+        delete is best-effort by construction: it logs and returns, and the
+        ref it would need to retry from was never persisted anywhere, so a
+        single failed delete left a customer's extracted output sitting in the
+        bucket with nothing pointing at it -- after a DELETE, or past the
+        retention window. Those two cases are the ordinary ones under
+        at-least-once delivery, and they no longer touch storage at all.
+
+        The read is advisory, not a replacement for the guard: a cancel or a
+        competing callback can still land between it and the UPDATE, and the
+        UPDATE is what decides. What is left after this is the genuine race,
+        and it is the same one `_complete` has always had -- see
+        `storage.delete_job_files`, which reaps a job's directory so an orphan
+        from either path is collected when the job is deleted or expires.
         """
+        if not AgentKVJob.can_attach_result(job_id, org_id):
+            logger.info(
+                "agent-kv finalize for cancelled job %s (org=%s) has nothing to "
+                "salvage -- the job already carries a result or its files have "
+                "been purged; no result file was written",
+                job_id,
+                org_id,
+            )
+            return False
         result_ref = write_result(org_id, str(job_id), body.get("result") or {})
         return _attach_or_discard(job_id, org_id, result_ref, body.get("usage_summary"))
 

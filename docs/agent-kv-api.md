@@ -670,12 +670,32 @@ attach it to the cancelled row instead
 served as described in [§5](#5-result--get-agent-kvjob_idresult).
 
 A success callback for an already-terminal job is therefore the one case where
-finalize writes a result for a row it read as terminal. It is `CANCELLED`-only
-and guarded in SQL on a blank `result_ref`, so a duplicate callback still
-attaches nothing and deletes its own write — the idempotency the short-circuit
-protected is unchanged. A **failure** callback for a cancelled job salvages
-nothing (there is no result), and a `COMPLETED` or `FAILED` row is never given a
-second look.
+finalize writes a result for a row it read as terminal. It is `CANCELLED`-only,
+and the conditions are declared once as `AgentKVJob.ATTACH_GUARD` — status
+`CANCELLED`, blank `result_ref`, `files_purged` false — then applied twice: as
+the filtered `UPDATE` that decides (`attach_result_to_cancelled`), and as a
+read `_salvage` takes *first* (`can_attach_result`). The idempotency the
+short-circuit protected is unchanged: a duplicate callback attaches nothing.
+
+**The pre-flight read is why a doomed attempt no longer touches storage.**
+Writing first and cleaning up afterwards made every redelivered callback — and
+every callback arriving after a `DELETE` — write a result file, have the guard
+refuse it, and then depend on `delete_result_file`, which is best-effort by
+construction: it logs and returns, and no ref is persisted anywhere to retry
+from. A single failed delete therefore left extracted customer output in the
+bucket with nothing pointing at it, after a purge or past the retention window.
+Those cases now read the guard before writing anything.
+
+The read is advisory, not authoritative — a cancel or a competing callback can
+still land between it and the `UPDATE`, which is what decides. For that genuine
+race, `delete_job_files` reaps the job's own directory once both named files
+are confirmed gone, so an unreferenced leftover is collected when the job is
+deleted or expires. What that still cannot reach is an orphan created *after*
+the row left the TTL candidate set (candidacy comes from the ref columns);
+closing that needs a durable marker that outlives the refs.
+
+A **failure** callback for a cancelled job salvages nothing (there is no
+result), and a `COMPLETED` or `FAILED` row is never given a second look.
 
 What does *not* change: `status` stays `cancelled`, `completed_at` is untouched,
 and `mark_terminal` remains the only way a job reaches a terminal state. The
