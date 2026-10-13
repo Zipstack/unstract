@@ -43,12 +43,9 @@ function ExpandableArray({ data, renderItem, totalCount }) {
           </div>
         ))}
         {remaining > 0 && (
-          <Typography.Link
-            className="font-size-12"
-            onClick={handleShowMore}
-          >
-            ...show {Math.min(remaining, ARRAY_PAGE_SIZE)} more (
-            {remaining} remaining)
+          <Typography.Link className="font-size-12" onClick={handleShowMore}>
+            ...show {Math.min(remaining, ARRAY_PAGE_SIZE)} more ({remaining}{" "}
+            remaining)
           </Typography.Link>
         )}
       </div>
