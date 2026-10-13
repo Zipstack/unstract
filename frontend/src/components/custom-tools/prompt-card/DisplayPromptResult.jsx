@@ -24,28 +24,33 @@ function CappedArray({ data, renderItem, totalCount }) {
 
   const remaining = totalCount - visibleCount;
 
+  const showMoreLink = remaining > 0 && (
+    <Typography.Link
+      className="font-size-12"
+      onClick={() =>
+        setVisibleCount((prev) => Math.min(prev + RENDER_CAP, totalCount))
+      }
+    >
+      ...show more ({remaining} remaining)
+    </Typography.Link>
+  );
+
   return (
     <>
       {"["}
       <div style={{ paddingLeft: "20px" }}>
+        {remaining > 0 && (
+          <div className="font-size-12" style={{ color: "var(--text-tertiary, #888)", padding: "2px 0 4px" }}>
+            Showing {visibleCount} of {totalCount} items — {showMoreLink}
+          </div>
+        )}
         {data.slice(0, visibleCount).map((item, index) => (
           <div key={index}>
             {renderItem(item, index)}
             {index < totalCount - 1 ? "," : ""}
           </div>
         ))}
-        {remaining > 0 && (
-          <Typography.Link
-            className="font-size-12"
-            onClick={() =>
-              setVisibleCount((prev) =>
-                Math.min(prev + RENDER_CAP, totalCount),
-              )
-            }
-          >
-            ...show more ({remaining} remaining)
-          </Typography.Link>
-        )}
+        {showMoreLink}
       </div>
       {"]"}
     </>

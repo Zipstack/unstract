@@ -80,18 +80,15 @@ describe("CappedArray rendering", () => {
     storeOverride = { ...defaultStore, details: { enable_highlight: true } };
 
     const largeArray = Array.from({ length: 200 }, (_, i) => `item-${i}`);
-    const { container } = render(
-      <DisplayPromptResult {...baseProps} output={largeArray} />,
-    );
+    render(<DisplayPromptResult {...baseProps} output={largeArray} />);
 
-    // Count rendered items — each array item is a div inside the padded container
-    const paddedDiv = container.querySelector('div[style*="padding-left"]');
-    // Items are divs, the "show more" link is an <a>/<span> — count only divs
-    const itemDivs = paddedDiv.querySelectorAll(":scope > div");
-    expect(itemDivs.length).toBe(50);
+    // Top indicator shows count
+    expect(
+      screen.getByText(/Showing 50 of 200 items/),
+    ).toBeInTheDocument();
 
-    // "show more" link should appear with remaining count
-    expect(screen.getByText(/show more \(150 remaining\)/)).toBeInTheDocument();
+    // "show more" links should appear (top + bottom)
+    expect(screen.getAllByText(/show more \(150 remaining\)/).length).toBe(2);
 
     // Item 50 text should NOT be in the document
     expect(screen.queryByText(/item-50/)).not.toBeInTheDocument();
@@ -101,28 +98,24 @@ describe("CappedArray rendering", () => {
     storeOverride = { ...defaultStore, details: { enable_highlight: true } };
 
     const largeArray = Array.from({ length: 120 }, (_, i) => `item-${i}`);
-    const { container } = render(
-      <DisplayPromptResult {...baseProps} output={largeArray} />,
-    );
-
-    const paddedDiv = container.querySelector('div[style*="padding-left"]');
+    render(<DisplayPromptResult {...baseProps} output={largeArray} />);
 
     // Initially 50 visible
-    expect(paddedDiv.querySelectorAll(":scope > div").length).toBe(50);
-    expect(screen.getByText(/show more \(70 remaining\)/)).toBeInTheDocument();
+    expect(screen.getByText(/Showing 50 of 120/)).toBeInTheDocument();
+    expect(screen.getAllByText(/show more \(70 remaining\)/).length).toBe(2);
 
-    // Click "show more"
-    fireEvent.click(screen.getByText(/show more/));
+    // Click the first "show more" (top indicator)
+    fireEvent.click(screen.getAllByText(/show more/)[0]);
 
     // Now 100 items visible
-    expect(paddedDiv.querySelectorAll(":scope > div").length).toBe(100);
-    expect(screen.getByText(/show more \(20 remaining\)/)).toBeInTheDocument();
+    expect(screen.getByText(/Showing 100 of 120/)).toBeInTheDocument();
+    expect(screen.getAllByText(/show more \(20 remaining\)/).length).toBe(2);
 
     // Click again to show the rest
-    fireEvent.click(screen.getByText(/show more/));
+    fireEvent.click(screen.getAllByText(/show more/)[0]);
 
-    // All 120 items visible, no "show more" link
-    expect(paddedDiv.querySelectorAll(":scope > div").length).toBe(120);
+    // All 120 items visible, no "show more" link or indicator
     expect(screen.queryByText(/show more/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Showing/)).not.toBeInTheDocument();
   });
 });
