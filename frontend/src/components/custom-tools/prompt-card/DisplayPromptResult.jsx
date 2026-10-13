@@ -15,6 +15,54 @@ import "./PromptCard.css";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
 import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader";
 
+const BATCH_SIZE = 100;
+
+/**
+ * Renders a large JSON array in batches to avoid a single-frame DOM spike.
+ * The first BATCH_SIZE items render immediately; remaining items are added
+ * automatically via requestAnimationFrame so the browser never blocks.
+ * All items are rendered — nothing is hidden or requires user interaction.
+ *
+ * Highlight data indexing is preserved because the slice always starts
+ * from index 0 and the original array index is used throughout.
+ */
+function BatchedArray({ data, renderItem, totalCount }) {
+  const [renderedCount, setRenderedCount] = useState(
+    Math.min(BATCH_SIZE, totalCount),
+  );
+
+  useEffect(() => {
+    if (renderedCount >= totalCount) {
+      return;
+    }
+    const id = requestAnimationFrame(() => {
+      setRenderedCount((prev) => Math.min(prev + BATCH_SIZE, totalCount));
+    });
+    return () => cancelAnimationFrame(id);
+  }, [renderedCount, totalCount]);
+
+  return (
+    <>
+      {"["}
+      <div style={{ paddingLeft: "20px" }}>
+        {data?.slice(0, renderedCount).map((item, index) => (
+          <div key={index}>
+            {renderItem(item, index)}
+            {index < totalCount - 1 ? "," : ""}
+          </div>
+        ))}
+      </div>
+      {"]"}
+    </>
+  );
+}
+
+BatchedArray.propTypes = {
+  data: PropTypes.array.isRequired,
+  renderItem: PropTypes.func.isRequired,
+  totalCount: PropTypes.number.isRequired,
+};
+
 function DisplayPromptResult({
   output,
   profileId,
@@ -250,21 +298,33 @@ function DisplayPromptResult({
     }
 
     if (Array.isArray(data)) {
+      const renderArrayItem = (item, index) =>
+        renderJson(
+          item,
+          highlightData?.[index],
+          confidenceData?.[index],
+          wordConfidenceData?.[index],
+          indent + 1,
+          `${path}[${index}]`,
+          isTable,
+        );
+
+      if (data.length > BATCH_SIZE) {
+        return (
+          <BatchedArray
+            data={data}
+            totalCount={data.length}
+            renderItem={renderArrayItem}
+          />
+        );
+      }
       return (
         <>
           {"["}
           <div style={{ paddingLeft: "20px" }}>
             {data?.map((item, index) => (
-              <div key={generateUUID()}>
-                {renderJson(
-                  item,
-                  highlightData?.[index],
-                  confidenceData?.[index],
-                  wordConfidenceData?.[index],
-                  indent + 1,
-                  `${path}[${index}]`,
-                  isTable,
-                )}
+              <div key={index}>
+                {renderArrayItem(item, index)}
                 {index < data.length - 1 ? "," : ""}
               </div>
             ))}
