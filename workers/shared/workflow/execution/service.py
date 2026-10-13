@@ -17,6 +17,10 @@ from shared.exceptions.execution_exceptions import (
 )
 from shared.exceptions.file_exceptions import EmptyFileError, UnsupportedMimeTypeError
 from shared.models.file_processing import FileProcessingContext
+from shared.workflow.execution.stage_timings import (
+    StageTimingCollector,
+    WorkflowStage,
+)
 
 # Import shared dataclasses for type safety and consistency
 from unstract.core.data_models import (
@@ -35,6 +39,7 @@ from unstract.core.file_execution_tracker import (
     FileExecutionStageStatus,
     FileExecutionStatusTracker,
 )
+from unstract.core.stage_timings import AGENTIC_EXTRACTION_SECONDS_KEY
 from unstract.core.tool_execution_status import (
     ToolExecutionData,
     ToolExecutionTracker,
@@ -86,6 +91,15 @@ class WorkerWorkflowExecutionService:
         start_time = time.time()
         file_hash = file_processing_context.file_hash
         file_name = file_hash.file_name
+        # Anchor on the context's reading, not on `start_time`: the backend
+        # derives queue_wait from this and the persisted execution_time comes
+        # from the same anchor (see _update_file_execution_status). Anchoring
+        # here instead would double-count the gap between the two readings —
+        # which includes a synchronous internal-API call — reporting it in both
+        # queue_wait and unaccounted.
+        stage_timings = StageTimingCollector(
+            started_at=getattr(file_processing_context, "file_start_time", start_time)
+        )
 
         # Initialize result tracking variables
         workflow_success = False
@@ -154,11 +168,17 @@ class WorkerWorkflowExecutionService:
             if not self.api_client:
                 raise ValueError("API client required for workflow execution")
 
-            execution_context, tool_instances_data = self._get_workflow_execution_context(
-                execution_id, workflow_id, organization_id
-            )
+            # Timed as a block, not from two readings: setup is where a slow
+            # or failing internal-API call shows up, and a stage that raised
+            # part-way still took the time it took.
+            with stage_timings.stage(WorkflowStage.SETUP):
+                execution_context, tool_instances_data = (
+                    self._get_workflow_execution_context(
+                        execution_id, workflow_id, organization_id
+                    )
+                )
 
-            workflow_context = self._get_workflow(workflow_id, organization_id)
+                workflow_context = self._get_workflow(workflow_id, organization_id)
 
             context_setup_time = time.time()
             logger.info(
@@ -196,6 +216,7 @@ class WorkerWorkflowExecutionService:
                 workflow_file_execution_id=workflow_file_execution_id,
                 execution_id=execution_id,
                 workflow_id=workflow_id,
+                stage_timings=stage_timings,
             )
 
             if not workflow_success:
@@ -344,6 +365,11 @@ class WorkerWorkflowExecutionService:
                 )
             finally:
                 destination_end_time = time.time()
+                stage_timings.record_span(
+                    WorkflowStage.DESTINATION,
+                    destination_start_time,
+                    destination_end_time,
+                )
                 logger.info(
                     f"TIMING: Destination processing END for {file_name} at {destination_end_time:.6f} (took {destination_end_time - destination_start_time:.3f}s)"
                 )
@@ -473,6 +499,14 @@ class WorkerWorkflowExecutionService:
 
             except Exception as tracker_error:
                 logger.warning(f"Failed to track final completion stage: {tracker_error}")
+
+        # Everything after the destination span is finalization: the METADATA
+        # timing write and the tracker stage updates above.
+        stage_timings.record(WorkflowStage.FINALIZATION, time.time() - final_time)
+        # `total`/`unaccounted` here cover only this method's span. The backend
+        # restates them against the persisted execution_time and adds
+        # queue_wait, which it alone can derive from created_at.
+        result.stage_timings = stage_timings.to_dict()
 
         return result
 
@@ -775,21 +809,24 @@ class WorkerWorkflowExecutionService:
         workflow_file_execution_id: str,
         execution_id: str,
         workflow_id: str,
+        stage_timings: StageTimingCollector | None = None,
     ) -> bool:
         """Execute workflow using WorkflowExecutionService following backend pattern."""
+        timings = stage_timings or StageTimingCollector()
         try:
             # Step 1: Compile workflow
             if not self._compile_workflow(execution_service, execution_id, file_name):
                 return False
 
             # Step 2: Prepare input file and metadata
-            computed_hash = self._prepare_workflow_input_file(
-                execution_service=execution_service,
-                file_processing_context=file_processing_context,
-                workflow_id=workflow_id,
-                execution_id=execution_id,
-                workflow_file_execution_id=workflow_file_execution_id,
-            )
+            with timings.stage(WorkflowStage.SOURCE_FETCH):
+                computed_hash = self._prepare_workflow_input_file(
+                    execution_service=execution_service,
+                    file_processing_context=file_processing_context,
+                    workflow_id=workflow_id,
+                    execution_id=execution_id,
+                    workflow_file_execution_id=workflow_file_execution_id,
+                )
 
             # Update file_hash object with computed hash if empty
             # This handles the race condition where Worker 2 retrieves the hash from
@@ -847,7 +884,10 @@ class WorkerWorkflowExecutionService:
                     # Continue with normal execution if check fails
 
             # Step 3: Build and execute workflow
-            self._build_and_execute_workflow(execution_service, file_name)
+            with timings.stage(WorkflowStage.TOOL_EXECUTION):
+                self._build_and_execute_workflow(
+                    execution_service, file_name, stage_timings=timings
+                )
 
             return True
 
@@ -969,7 +1009,10 @@ class WorkerWorkflowExecutionService:
             raise file_prep_error
 
     def _build_and_execute_workflow(
-        self, execution_service: WorkflowExecutionService, file_name: str
+        self,
+        execution_service: WorkflowExecutionService,
+        file_name: str,
+        stage_timings: StageTimingCollector | None = None,
     ) -> None:
         """Build and execute the workflow.
 
@@ -977,7 +1020,9 @@ class WorkerWorkflowExecutionService:
         execute_structure_tool task instead of the Docker container flow.
         """
         if self._is_structure_tool_workflow(execution_service):
-            self._execute_structure_tool_workflow(execution_service, file_name)
+            self._execute_structure_tool_workflow(
+                execution_service, file_name, stage_timings=stage_timings
+            )
         else:
             # Original Docker-based flow (unchanged)
             execution_service.build_workflow()
@@ -1015,7 +1060,10 @@ class WorkerWorkflowExecutionService:
         return False
 
     def _execute_structure_tool_workflow(
-        self, execution_service: WorkflowExecutionService, file_name: str
+        self,
+        execution_service: WorkflowExecutionService,
+        file_name: str,
+        stage_timings: StageTimingCollector | None = None,
     ) -> None:
         """Execute structure tool as a task instead of a Docker container.
 
@@ -1065,6 +1113,20 @@ class WorkerWorkflowExecutionService:
 
         # Call synchronously (same process, in-band)
         result = _execute_structure_tool(params)
+
+        # Split the tool span into extraction / indexing / prompts. Read before
+        # the failure check so a partially-timed failure still reports where it
+        # got to.
+        if stage_timings is not None:
+            tool_data = result.get("data")
+            if isinstance(tool_data, dict):
+                tool_meta = tool_data.get("metadata")
+                folded = 0.0
+                if isinstance(tool_meta, dict):
+                    folded = tool_meta.get(AGENTIC_EXTRACTION_SECONDS_KEY) or 0.0
+                stage_timings.set_tool_split(
+                    tool_data.get("metrics"), agentic_extraction_seconds=folded
+                )
 
         if not result.get("success"):
             raise RuntimeError(

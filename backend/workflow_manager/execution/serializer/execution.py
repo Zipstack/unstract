@@ -2,6 +2,7 @@ import logging
 
 from rest_framework import serializers
 
+from unstract.core.stage_timings import aggregate_stage_timings
 from workflow_manager.workflow_v2.enums import ExecutionStatus
 from workflow_manager.workflow_v2.models import WorkflowExecution
 
@@ -15,6 +16,7 @@ class ExecutionSerializer(serializers.ModelSerializer):
     successful_files = serializers.SerializerMethodField()
     failed_files = serializers.SerializerMethodField()
     aggregated_total_pages_processed = serializers.SerializerMethodField()
+    aggregated_stage_timings = serializers.SerializerMethodField()
     execution_time = serializers.ReadOnlyField(source="pretty_execution_time")
 
     class Meta:
@@ -86,3 +88,32 @@ class ExecutionSerializer(serializers.ModelSerializer):
     def get_aggregated_total_pages_processed(self, obj: WorkflowExecution) -> int | None:
         """Return the total pages processed across all file executions."""
         return obj.aggregated_total_pages_processed
+
+    def get_aggregated_stage_timings(self, obj: WorkflowExecution) -> dict | None:
+        """Per-stage time summed across this execution's files (UN-3451).
+
+        Detail views only. The list endpoint serializes many executions per
+        response, and this reads every file row's JSON payload — one such scan
+        per row would turn the list into an N+1.
+
+        Gated on the view's ``detail`` flag rather than ``action ==
+        "retrieve"``, so a future ``@action(detail=True)`` route gets the
+        breakdown instead of silently receiving ``None``.
+        """
+        view = self.context.get("view")
+        if not getattr(view, "detail", False):
+            return None
+        try:
+            payloads = (
+                obj.file_executions.filter(stage_timings__isnull=False)
+                .values_list("stage_timings", flat=True)
+                .iterator()
+            )
+            return aggregate_stage_timings(payloads) or None
+        except Exception:
+            logger.warning(
+                "Failed to aggregate stage timings for execution %s",
+                obj.id,
+                exc_info=True,
+            )
+            return None

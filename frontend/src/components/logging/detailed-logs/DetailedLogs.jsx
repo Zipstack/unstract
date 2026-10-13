@@ -33,6 +33,7 @@ import useRequestUrl from "../../../hooks/useRequestUrl";
 import { FilterIcon } from "../filter-dropdown/FilterDropdown";
 import { LogModal } from "../log-modal/LogModal";
 import { LogsRefreshControls } from "../logs-refresh-controls/LogsRefreshControls";
+import { StageTimings } from "../stage-timings/StageTimings";
 
 // Component for status message with conditional tooltip (only when truncated)
 const StatusMessageCell = ({ text }) => {
@@ -137,6 +138,7 @@ const DetailedLogs = () => {
         successfulFiles: item?.successful_files,
         failedFiles: item?.failed_files,
         totalFiles: item?.total_files,
+        stageTimings: item?.aggregated_stage_timings,
       };
 
       setExecutionDetails(formattedData);
@@ -162,6 +164,7 @@ const DetailedLogs = () => {
           executionId: item?.id,
           executedAtWithSeconds: formattedDateTimeWithSeconds(item?.created_at),
           filePath: item?.file_path,
+          stageTimings: item?.stage_timings,
         };
       });
 
@@ -539,6 +542,22 @@ const DetailedLogs = () => {
               </div>
             </Flex>
           </Card>
+          {executionDetails?.stageTimings && (
+            <Card className="logs-details-card stage-timings-card">
+              <Flex justify="flex-start" align="center">
+                <Hourglass className="logging-card-icons" />
+                <div className="stage-timings-card-body">
+                  <Typography className="logging-card-title">
+                    Time split
+                  </Typography>
+                  <StageTimings
+                    timings={executionDetails.stageTimings}
+                    compact
+                  />
+                </div>
+              </Flex>
+            </Card>
+          )}
         </Flex>
         <Button
           className="view-log-button"
@@ -564,6 +583,19 @@ const DetailedLogs = () => {
           loading={loading}
           onChange={handleTableChange}
           sortDirections={["ascend", "descend", "ascend"]}
+          expandable={{
+            // Only files whose worker reported a breakdown can expand; older
+            // rows and duplicate-skipped files have none.
+            rowExpandable: (record) => Boolean(record?.stageTimings),
+            expandedRowRender: (record) => (
+              <div className="file-stage-timings">
+                <StageTimings
+                  timings={record.stageTimings}
+                  title="Time spent per stage"
+                />
+              </div>
+            ),
+          }}
         />
       </div>
       <LogModal

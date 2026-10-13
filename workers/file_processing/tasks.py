@@ -2334,15 +2334,27 @@ def _update_file_execution_status(
 
         combined_error = "; ".join(error_messages) if error_messages else None
 
+        # Prefer the result's own duration: it and the stage timings share one
+        # anchor (FileProcessingContext.file_start_time), so queue_wait and
+        # execution_time partition the file's lifetime exactly. `file_start_time`
+        # here is read a moment earlier, which would leave that gap counted
+        # twice. Falls back for the cache/history paths, which leave it at 0.0.
+        reported_time = (
+            file_execution_result.execution_time
+            if file_execution_result.execution_time
+            else file_execution_time
+        )
+
         # Update database
         api_client.update_file_execution_status(
             file_execution_id=file_execution_id,
             status=final_status,
-            execution_time=file_execution_time,
+            execution_time=reported_time,
             error_message=combined_error,
+            stage_timings=file_execution_result.stage_timings,
         )
         logger.info(
-            f"Updated file execution {file_execution_id} with status {final_status} and time {file_execution_time:.2f}s"
+            f"Updated file execution {file_execution_id} with status {final_status} and time {reported_time:.2f}s"
         )
     except Exception as update_error:
         logger.warning(
