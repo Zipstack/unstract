@@ -435,7 +435,7 @@ def ide_prompt_complete(
         )
 
         # Persist outputs via internal API
-        resp = api.update_prompt_output(
+        api.update_prompt_output(
             run_id=run_id,
             prompt_ids=prompt_ids,
             outputs=outputs,

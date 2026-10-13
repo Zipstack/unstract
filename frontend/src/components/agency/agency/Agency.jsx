@@ -94,6 +94,7 @@ function Agency() {
 
   const { setPostHogCustomEvent } = usePostHogEvents();
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: mount-only initialisation — these callbacks are stable refs and re-running on every render would duplicate network requests
   useEffect(() => {
     const abortController = new AbortController();
     const signal = abortController.signal;
@@ -147,7 +148,7 @@ function Agency() {
     }
 
     setPrevLoadingType(loadingType);
-  }, [workflowStore]);
+  }, [loadingType, prevLoadingType]);
 
   useEffect(() => {
     if (!isUpdateSteps) {
