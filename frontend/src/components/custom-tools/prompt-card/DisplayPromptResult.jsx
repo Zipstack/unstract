@@ -1,6 +1,6 @@
 import { Info } from "lucide-react";
 import PropTypes from "prop-types";
-import { Fragment, useEffect, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { Space } from "@/components/ui/shims/antd-layout";
 import { Spin } from "@/components/ui/shims/antd-leaves";
 import { Typography } from "@/components/ui/shims/antd-typography";
@@ -84,8 +84,6 @@ function DisplayPromptResult({
   },
   progressMsg,
 }) {
-  const [isLoading, setIsLoading] = useState(false);
-  const [parsedOutput, setParsedOutput] = useState(null);
   const [selectedKey, setSelectedKey] = useState(null);
   const {
     singlePassExtractMode,
@@ -94,49 +92,23 @@ function DisplayPromptResult({
     selectedHighlight,
   } = useCustomToolStore();
 
-  useEffect(() => {
-    if (singlePassExtractMode && isSinglePassExtractLoading) {
-      setIsLoading(true);
-      return;
-    }
+  // Derived — no state updates, so no render-loop risk.
+  const statusKey = generateApiRunStatusId(docId, profileId);
+  const isLoading =
+    (singlePassExtractMode && isSinglePassExtractLoading) ||
+    promptRunStatus?.[statusKey] === PROMPT_RUN_API_STATUSES.RUNNING;
 
-    const key = generateApiRunStatusId(docId, profileId);
-    if (promptRunStatus?.[key] === PROMPT_RUN_API_STATUSES.RUNNING) {
-      setIsLoading(true);
-      return;
+  const parsedOutput = useMemo(() => {
+    if (isLoading || output === undefined || output === null) {
+      return null;
     }
-
-    setIsLoading(false);
     const isFormattingRequired = !isTable;
-    const parsed = displayPromptResult(
+    return displayPromptResult(
       output,
       isFormattingRequired,
       details?.enable_highlight,
     );
-
-    // Diagnostic: log data shape to identify missing-pages root cause
-    if (parsed && typeof parsed === "object") {
-      const count = Array.isArray(parsed)
-        ? parsed.length
-        : Object.keys(parsed).length;
-      console.log(
-        "[DisplayPromptResult] parsed output:",
-        Array.isArray(parsed) ? "array" : "object",
-        "entries:",
-        count,
-        "highlight:",
-        !!details?.enable_highlight,
-      );
-    }
-
-    setParsedOutput(parsed);
-  }, [
-    promptRunStatus,
-    isSinglePassExtractLoading,
-    details?.enable_highlight,
-    output,
-    isTable,
-  ]);
+  }, [output, isTable, details?.enable_highlight, isLoading]);
 
   if (isLoading) {
     return (
