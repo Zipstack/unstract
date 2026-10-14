@@ -148,18 +148,26 @@ def _write(fields: dict[str, Any]) -> None:
         with transaction.atomic():
             PlatformAuditEvent.objects.create(**fields)
     except Exception:
-        # Enough to tell which change went unaudited; never changes or metadata.
+        # Enough to tell which change went unaudited. Never changes, metadata
+        # or an e-mail: an invitation's target id is the invitee's address.
         logger.exception(
-            "Platform audit: failed to write %r (org=%s target_type=%s actor=%s:%s "
+            "Platform audit: failed to write %r (org=%s target=%s:%s actor=%s:%s "
             "key=%s request_id=%s)",
             fields.get("action"),
             getattr(fields.get("organization"), "organization_id", None),
             fields.get("target_type"),
+            _loggable_id(fields.get("target_id")),
             fields.get("actor_type"),
             getattr(fields.get("actor"), "pk", None),
             fields.get("actor_key_id"),
             fields.get("request_id"),
         )
+
+
+def _loggable_id(value: Any) -> str:
+    """The id, unless it is an e-mail address (an invitation's target id)."""
+    value = "" if value is None else str(value)
+    return "<redacted>" if "@" in value else value
 
 
 def _normalise_changes(changes: Mapping[str, Any] | None, action: str) -> dict:
@@ -239,10 +247,10 @@ def record_key_update(
     ``key.enabled``/``key.disabled``, so filtering by those actions finds it.
     If the request set any other field, ``key.changed`` records the current
     values of every audited field except ``is_active`` (a snapshot, not a
-    diff). With no ``after`` there is nothing to describe. Because the gate is
-    what the request sent, a field the server changes on its own (a global
-    key's ``api_deployments`` cleared for an allow-all key) goes unrecorded on
-    a flip-only request.
+    diff). With no ``after`` there is nothing to describe. Because this branch
+    gates on what the request sent, a field the server changes on its own (a
+    global key's ``api_deployments`` cleared for an allow-all key) goes
+    unrecorded on a flip-only request whose ``before`` could not be read.
     """
     from platform_audit.actions import Action
 

@@ -293,7 +293,7 @@ def _record_removals(
             record_platform_event(
                 action=Action.MEMBER_REMOVED,
                 target_type=TargetType.MEMBER,
-                # Lower-cased like stored actor e-mails, for a consistent display.
+                # Lower-cased to match the stored actor_email.
                 target_name=email.strip().lower(),
                 summary=f"membership not confirmed {BEFORE_UNAVAILABLE}",
                 request=request,

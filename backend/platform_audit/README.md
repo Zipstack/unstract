@@ -104,7 +104,7 @@ occurred_at, actor_type, actor_email, actor_name, actor_key_name, action,
 action_label, target_type, target_id, target_name, summary, changes, request_id
 ```
 
-`changes` is the JSON object as a string. A cell that starts with `=`, `+`,
+`changes` is the JSON object as a string, or an empty cell when it is empty. A cell that starts with `=`, `+`,
 `-`, `@`, tab or carriage return is prefixed with `'` so spreadsheets do not run
 it as a formula. More than **10,000** matching rows is a **413**; narrow the
 filter.

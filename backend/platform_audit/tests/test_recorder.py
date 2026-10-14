@@ -121,7 +121,20 @@ class RecorderTests(AuditTestBase):
         ):
             with self.assertLogs("platform_audit.recorder", "ERROR") as logs:
                 self._record()
-        self.assertIn("org=org-a target_type=group", logs.output[0])
+        self.assertIn("org=org-a target=group:7", logs.output[0])
+
+    def test_write_failure_log_redacts_an_email_target(self) -> None:
+        with patch.object(
+            PlatformAuditEvent.objects, "create", side_effect=RuntimeError("db down")
+        ):
+            with self.assertLogs("platform_audit.recorder", "ERROR") as logs:
+                self._record(
+                    action=Action.MEMBER_INVITED,
+                    target_type=TargetType.INVITATION,
+                    target_id="invitee@example.com",
+                )
+        self.assertNotIn("invitee@example.com", logs.output[0])
+        self.assertIn("target=invitation:<redacted>", logs.output[0])
         self.assertIn(f"actor=user:{self.admin.pk}", logs.output[0])
         self.assertNotIn("admin@example.com", logs.output[0])
 
