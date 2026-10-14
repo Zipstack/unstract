@@ -911,8 +911,19 @@ own module docstring says so:
 - **No redirects** (`allow_redirects=False`).
 - **Fixed, minimal payload** (`{job_id, status}`, plus `result_available` on the
   one follow-up described above — never result content) and the **response body is
-  never read** — only the status code is inspected.
-- **Short timeout** (10 seconds).
+  never read**: the POST is made with `stream=True` and the response closed in a
+  `finally`, so only the status line and headers are consumed. Before that the
+  claim was aspirational — `requests` reads the body before returning unless you
+  ask it not to — and since this runs inline on the `ide_callback` consumer
+  (concurrency 2, shared with Prompt Studio), a receiver returning a huge or
+  trickled body could hold one of those slots indefinitely.
+- **Timeouts are per-socket-operation, not total** — 5 s connect, 10 s read. That
+  is a `requests` property, not a choice: a peer that keeps trickling resets the
+  read budget on every chunk. The body is never read (above), which removes the
+  unbounded case; a server that trickles *headers* can still extend one delivery.
+  The structural fix is to move delivery onto the `notifications_webhook` worker
+  the way pipeline notifications do, so a slow receiver cannot occupy an
+  `ide_callback` slot at all — not done here, because it is a queue change.
 - **No retries.** One POST attempt only; any failure (host refused by the
   pre-check, timeout, connection error, non-2xx status) is logged and swallowed —
   there is no retry loop anywhere in this delivery path.
