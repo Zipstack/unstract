@@ -1,5 +1,5 @@
 import PropTypes from "prop-types";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/shims/antd-button";
 import { Form } from "@/components/ui/shims/antd-form";
 import { Checkbox, Input, Select } from "@/components/ui/shims/antd-inputs";
@@ -68,23 +68,11 @@ function CreateNotification({
   editDetails,
 }) {
   const [form] = Form.useForm();
-  const [formDetails, setFormDetails] = useState(DEFAULT_FORM_DETAILS);
+  // Lazy init: the Form shim seeds initialValues only on first mount.
+  const [formDetails, setFormDetails] = useState(
+    () => editDetails ?? DEFAULT_FORM_DETAILS,
+  );
   const [backendErrors, setBackendErrors] = useState(null);
-  const [resetForm, setResetForm] = useState(false);
-
-  useEffect(() => {
-    if (editDetails) {
-      setFormDetails(editDetails);
-      setResetForm(true);
-    }
-  }, [editDetails]);
-
-  useEffect(() => {
-    if (resetForm) {
-      form.resetFields();
-      setResetForm(false);
-    }
-  }, [formDetails]);
 
   const handleInputChange = (changedValues, allValues) => {
     const nextValues = { ...formDetails, ...allValues };
