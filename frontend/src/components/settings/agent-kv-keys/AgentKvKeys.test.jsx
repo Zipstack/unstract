@@ -55,8 +55,6 @@ describe("AgentKvKeys", () => {
   it("is titled for the API the key is used against", async () => {
     render(<AgentKvKeys />);
 
-    await waitFor(() =>
-      expect(screen.getByText("Agent-KV API Keys")).toBeInTheDocument(),
-    );
+    expect(await screen.findByText("Agent-KV API Keys")).toBeInTheDocument();
   });
 });
