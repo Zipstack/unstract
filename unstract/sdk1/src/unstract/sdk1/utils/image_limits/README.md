@@ -53,13 +53,42 @@ Operator ceilings: `VLM_IMAGE_ANSWER_PAGE_CAP` and
 `configured_page_ceiling()` / `configured_request_bytes_ceiling()` and only
 ever tighten a model's limits.
 
-## Patching without a release
+## Where the table comes from
 
-`VLM_IMAGE_LIMITS_FILE=/path/to/override.json` names a file in the same
-schema. A provider present in it replaces the shipped entry wholesale (no
-deep merge); a `default` block replaces the default; `sources` are merged.
-A malformed file is logged and ignored. This is the hook a future per-org
-override would plug into (override → shipped → default).
+The source of truth is `limits.json` in this directory on the `main`
+branch of Zipstack/unstract. Each process uses, highest precedence first:
+
+1. `VLM_IMAGE_LIMITS_FILE=/path/to/override.json` — an operator file in the
+   same schema, applied on top of the base table. A provider present in it
+   replaces that entry wholesale (no deep merge); a `default` block replaces
+   the default; `sources` are merged. A malformed file is logged and
+   ignored. A future per-org override would plug in here.
+2. The remote copy — `VLM_IMAGE_LIMITS_URL`, default
+   `https://raw.githubusercontent.com/Zipstack/unstract/main/unstract/sdk1/src/unstract/sdk1/utils/image_limits/limits.json`.
+   Set it to an empty string to turn fetching off (air-gapped on-prem).
+3. The copy bundled in this package, always available.
+
+Fetching (`source.py`) is bounded so image mode never waits on GitHub:
+
+- at most one attempt per process per `VLM_IMAGE_LIMITS_REFRESH_SECONDS`
+  (default 3600, floor 60), and a failed attempt also waits for the next
+  window;
+- a 3-second budget for the whole download (`FETCH_TIMEOUT_SECONDS`) and a
+  1 MB size cap (`MAX_REMOTE_BYTES`);
+- while one thread fetches, other threads keep serving the last good table.
+
+The remote file must pass the same strict validation as the bundled one,
+including `_meta.schema_version` equal to the version this sdk1 reads and
+override patterns of at most 300 characters (`MAX_PATTERN_LENGTH`) that
+compile. A timeout, HTTP error, invalid JSON or rejected file logs a
+warning and keeps the last good copy (the previous remote table, else the
+bundled one); nothing in the fetch path raises.
+
+Every table records its origin. The log says which copy is in use
+(source, URL or path, schema version, `_meta.verified_on`, sha256 prefix),
+and `ImageRequestLimits.table_version` (e.g. `2026-10-09 remote
+1a2b3c4d5e6f`) is appended by `format_limit_source` to user-facing errors
+and to the run-log summary.
 
 ## Maintaining the data
 
@@ -75,3 +104,14 @@ override would plug into (override → shipped → default).
 5. The dataset's research and verification log live outside the repo
    (`claudedocs/vlm-consumer/model-limits/`); `_meta.source_dataset`
    points at them.
+6. Merging a change to `main` publishes it: every install with fetching
+   on picks it up within one refresh window, without a release. Review a
+   data change as you would a deploy.
+7. Keep the schema backward compatible. Older installs reject any file
+   they cannot read and stay on their bundled copy, so a key they do not
+   know (a new limit field, a new field attribute) cuts them off from
+   every later data fix. Data-only edits (numbers, sources, notes, new
+   providers or overrides using existing fields) keep
+   `_meta.schema_version` unchanged. A change that needs a new key or a
+   new meaning bumps `schema_version` and ships in an sdk1 release that
+   reads it; until installs upgrade they keep using their bundled table.

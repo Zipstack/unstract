@@ -14,9 +14,13 @@ Note: backend tests do not run under tox in CI today (no ``backend``
 testenv); this file only takes effect in local/IDE runs.
 """
 
+import os
 from pathlib import Path
 
 from dotenv import load_dotenv
+
+# Keep image-limits lookups on the bundled table (no fetch from GitHub).
+os.environ.setdefault("VLM_IMAGE_LIMITS_URL", "")
 
 # `-s` is set in pyproject so prints surface — log when test.env is absent
 # to make a mis-located file debuggable instead of silently empty.
