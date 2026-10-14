@@ -69,3 +69,7 @@ class SearchGroupSerializer(serializers.Serializer):
 class SearchResponseSerializer(serializers.Serializer):
     query = serializers.CharField(allow_blank=True)
     groups = SearchGroupSerializer(many=True)
+    failed_types = serializers.ListField(
+        child=serializers.CharField(),
+        help_text="Types whose search failed; their groups are missing.",
+    )

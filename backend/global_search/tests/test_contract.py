@@ -1,13 +1,14 @@
 """The published contract matches what the endpoint serves.
 
 * Real responses validate against the committed JSON Schema.
-* Each OSS type's context line and route params are what the README's
-  type table documents; its order, type, label and route key columns are
-  checked against the registered providers.
+* Each OSS type's context line and route params match values copied from
+  the README's type table; the table's order, type, label and route key
+  columns are checked against the registered providers.
 * The endpoint is mounted on the tenant path.
 """
 
 import json
+from datetime import timedelta
 from pathlib import Path
 from unittest.mock import patch
 
@@ -79,8 +80,14 @@ class SearchContractTests(CoOwnerOrgTestMixin, TestCase):
     def test_owner_context_skips_service_accounts_and_takes_the_earliest(self) -> None:
         workflow = OSS_BUILDERS[T.WORKFLOW](self.org, self.owner, "theta-owned")
         service = make_user("svc-owner@example.com", is_service_account=True)
-        for user in (service, self.owner, self.coowner):
+        # Inserted out of order so heap order alone would pick the co-owner;
+        # only the subquery's created_at ordering picks the owner.
+        for user in (service, self.coowner, self.owner):
             workflow.memberships.create(user=user, role=ResourceRole.OWNER)
+        earliest = workflow.memberships.order_by("created_at").first().created_at
+        workflow.memberships.filter(user=self.owner).update(
+            created_at=earliest - timedelta(minutes=1)
+        )
         (group,) = search(self.admin, q="theta", types=T.WORKFLOW).data["groups"]
         self.assertEqual(group["results"][0]["context"], self.owner.email)
         # Same rule as the list's "Owned By" column.
@@ -101,8 +108,9 @@ class SearchContractTests(CoOwnerOrgTestMixin, TestCase):
             "global_search.views.get_providers",
             return_value=[Broken(), WorkflowProvider()],
         ):
-            response = search(self.admin, q="theta")
+            response = search(self.admin, allow_failures=True, q="theta")
         self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["failed_types"], ["broken"])
         self.assertEqual(
             [r["id"] for g in response.data["groups"] for r in g["results"]],
             [str(workflow.pk)],

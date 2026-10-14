@@ -1,8 +1,9 @@
 """Response-time budget on a large organisation.
 
 The contract budget is p95 <= 300 ms server time for all types at limit=5.
-The merge gate is structural: a bounded number of SQL queries per type, and
-the same number whatever the result count. Wall-clock time depends on the
+The merge gate is structural: a bounded total of SQL queries (at most three
+per type, summed) that does not change with the result count, and every
+type answering without failure. Wall-clock time depends on the
 runner, so the p95 is always printed but asserted only on request
 (``GLOBAL_SEARCH_ASSERT_P95=1``, against ``GLOBAL_SEARCH_CEILING_MS``).
 
@@ -189,7 +190,12 @@ class SearchBudgetTests(TestCase):
         with CaptureQueriesContext(connection) as ctx:
             response = search(user, q="inv", types=OSS_TYPES, limit=limit)
         self.assertEqual(response.status_code, 200)
-        self.assertTrue(response.data["groups"])
+        # search() already asserts no type failed; every type also matches,
+        # so a type that silently returned nothing would show here.
+        self.assertEqual(
+            {g["type"] for g in response.data["groups"]},
+            {p.type_key for p in OSS_PROVIDERS},
+        )
         return [
             q["sql"]
             for q in ctx.captured_queries

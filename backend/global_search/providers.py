@@ -23,9 +23,13 @@ class SearchHit:
     id: str
     name: str
     match: MatchTier
-    # Required: every route needs at least the id the frontend opens.
+    # No default, and it must carry the ``id`` the frontend opens.
     route_params: dict[str, str]
     context: str | None = None
+
+    def __post_init__(self) -> None:
+        if "id" not in self.route_params:
+            raise ValueError(f"SearchHit {self.id!r} has no route id")
 
 
 class SearchProvider(ABC):
