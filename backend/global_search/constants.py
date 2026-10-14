@@ -34,7 +34,7 @@ class MatchTier(IntEnum):
 
 
 class OSSSearchType:
-    """Type keys contributed by OSS. ``order`` leaves gaps for cloud types."""
+    """Type keys contributed by OSS."""
 
     PROMPT_STUDIO_PROJECT = "prompt_studio_project"
     WORKFLOW = "workflow"

@@ -62,10 +62,14 @@ class GlobalSearchView(APIView):
         limit: int = params.validated_data["limit"]
 
         groups = []
+        failed_types: list[str] = []
+        attempted = 0
+        last_error: Exception | None = None
         if len(query) >= SearchParams.MIN_QUERY_LENGTH:
             for provider in get_providers():
                 if wanted and provider.type_key not in wanted:
                     continue
+                attempted += 1
                 # Under ATOMIC_REQUESTS a failed query aborts the request's
                 # transaction; a savepoint keeps it from poisoning the next type.
                 guard = (
@@ -74,14 +78,25 @@ class GlobalSearchView(APIView):
                 try:
                     with guard:
                         group = _group(provider, request.user, query, limit)
-                except Exception:
+                except Exception as error:
+                    # The savepoint could not be rolled back (e.g. the
+                    # connection dropped): every later type would fail too,
+                    # so fail the request instead of blaming healthy types.
+                    if connection.needs_rollback:
+                        raise
                     # Providers can come from other apps (cloud); one failing
-                    # type drops its own group rather than the whole search.
+                    # type drops its own group and is named in failed_types.
                     logger.exception(
                         "Global search provider '%s' failed", provider.type_key
                     )
+                    failed_types.append(provider.type_key)
+                    last_error = error
                     continue
                 if group:
                     groups.append(group)
 
-        return Response({"query": query, "groups": groups})
+        # Every type failing is an outage, not "no matches".
+        if last_error is not None and len(failed_types) == attempted:
+            raise last_error
+
+        return Response({"query": query, "groups": groups, "failed_types": failed_types})

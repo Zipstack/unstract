@@ -5,8 +5,8 @@ file is the published contract for consumers: P2-T10, the top-bar search
 panel, and PB-T18, the portal search, which shares the envelope. The
 response JSON Schema is
 [`contract/search-response.schema.json`](contract/search-response.schema.json);
-tests validate real responses against it and check the type table below
-against the registered providers.
+tests validate real responses against it and check the type table's order,
+type, label and route.key columns against the registered providers.
 
 ## Endpoint
 
@@ -51,7 +51,8 @@ changes.
         }
       ]
     }
-  ]
+  ],
+  "failed_types": []
 }
 ```
 
@@ -67,6 +68,11 @@ changes.
   strings.
 - `type` is an open string. A client should render an unknown type with its
   `label`, or skip it.
+- `failed_types` lists types whose search failed; their groups are missing
+  even if they have matches, so a client can say "some results could not be
+  loaded". It is empty on a normal response. When every searched type fails,
+  the request fails with a 500 instead.
+- `route.params` always includes `id`.
 
 Errors use the standard error envelope:
 `400 {"type": "validation_error", "errors": [{"code", "detail", "attr"}]}`.
@@ -92,7 +98,7 @@ repo.
 
 Each type starts from the same `for_user()` queryset its list view uses.
 That covers owners, co-owners, direct viewers, group shares, org shares,
-admins and service accounts. Search then narrows further, never wider:
+admins and service accounts. Search rules:
 
 - Names matched: `tool_name`, `workflow_name`, `display_name` and
   `api_name`, `pipeline_name`, `adapter_name`, `connector_name`.
@@ -112,15 +118,15 @@ of the largest current size. The fixture used is 2,000 rows per type, 200
 users and 20 groups; it will be updated when real largest-org counts are
 available.
 
-`tests/test_budget.py` enforces this structurally. Each type is allowed
-three SQL queries: one ranked search, plus the organisation point lookups
-that the existing `for_user()` makes. A small fixed overhead is allowed per
-request, and the count must not change between `limit=1` and `limit=20`, so
-an N+1 query pattern fails the test. The measured p95 is printed on every
-run. It is asserted only with `GLOBAL_SEARCH_ASSERT_P95=1`, against
-`GLOBAL_SEARCH_CEILING_MS` (default 300), because CI runners are shared.
-No trigram index is used: every query is
-filtered by organisation first.
+CI does not gate on latency, because runners are shared. `tests/test_budget.py`
+gates on query count instead: a request may issue at most three SQL queries
+per type in total (one ranked search per type, plus the organisation point
+lookups the existing `for_user()` makes) plus a small fixed overhead, and
+the count must not change between `limit=1` and `limit=20`, so an N+1 query
+pattern fails the test. The measured p95 is printed on every run and is
+asserted only with `GLOBAL_SEARCH_ASSERT_P95=1`, against
+`GLOBAL_SEARCH_CEILING_MS` (default 300). No trigram index is used: every
+query is filtered by organisation first.
 
 ## Adding a type
 

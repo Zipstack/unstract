@@ -5,7 +5,7 @@ Providers are faked so the envelope is exercised without the ORM.
 
 import json
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import jsonschema
 import pytest
@@ -74,10 +74,49 @@ def test_a_failing_provider_drops_only_its_own_group(user, providers, caplog):
         "global_search.views.get_providers",
         return_value=[providers[1], Broken("broken", 15, []), providers[0]],
     ):
-        response = search(user, q="alpha")
+        response = search(user, allow_failures=True, q="alpha")
     assert response.status_code == 200
     assert [g["type"] for g in response.data["groups"]] == ["alpha", "beta"]
+    assert response.data["failed_types"] == ["broken"]
+    jsonschema.validate(response.data, SCHEMA)
     assert "Global search provider 'broken' failed" in caplog.text
+
+
+def _status(user, **params) -> int:
+    """The view's status; the project's exception handler may render an
+    unhandled error as a 500 response or let it propagate."""
+    try:
+        return search(user, **params).status_code
+    except RuntimeError:
+        return 500
+
+
+class _Broken(FakeProvider):
+    def search(self, user, query, limit):
+        raise RuntimeError("boom")
+
+
+def test_every_type_failing_is_an_error_not_an_empty_result(user):
+    # An outage must not read as "no matches".
+    with patch(
+        "global_search.views.get_providers",
+        return_value=[_Broken("a", 1, []), _Broken("b", 2, [])],
+    ):
+        assert _status(user, q="alpha") == 500
+
+
+def test_a_failure_that_breaks_the_transaction_fails_the_request(user, providers):
+    # A failed savepoint rollback leaves needs_rollback set; later types
+    # would all fail, so the error must surface rather than be logged per type.
+    connection = MagicMock(in_atomic_block=False, needs_rollback=True)
+    with (
+        patch("global_search.views.connection", connection),
+        patch(
+            "global_search.views.get_providers",
+            return_value=[_Broken("a", 1, []), providers[0]],
+        ),
+    ):
+        assert _status(user, q="alpha") == 500
 
 
 def test_limit_and_has_more(user, providers):
@@ -96,7 +135,7 @@ def test_types_filter_ignores_unknown_keys(user, providers):
 def test_short_query_returns_no_groups(user, providers, q):
     response = search(user, q=q)
     assert response.status_code == 200
-    assert response.data == {"query": q.strip(), "groups": []}
+    assert response.data == {"query": q.strip(), "groups": [], "failed_types": []}
 
 
 def test_missing_query_returns_no_groups(user, providers):
@@ -174,3 +213,8 @@ def test_rank_items_orders_by_tier_then_sort_key():
     items = [("b", "zz invoice"), ("a", "invoice"), ("c", "invoice")]
     ranked = rank_items(items, "inv", names=lambda i: [i[1]], sort_key=lambda i: i[0])
     assert [i[0] for i, _ in ranked] == ["a", "c", "b"]
+
+
+def test_a_hit_must_carry_a_route_id():
+    with pytest.raises(ValueError):
+        SearchHit(id="x", name="x", match=MatchTier.NAME, route_params={})

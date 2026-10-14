@@ -4,7 +4,8 @@
   "type": "object",
   "required": [
     "query",
-    "groups"
+    "groups",
+    "failed_types"
   ],
   "additionalProperties": false,
   "properties": {
@@ -15,6 +16,12 @@
       "type": "array",
       "items": {
         "$ref": "#/$defs/group"
+      }
+    },
+    "failed_types": {
+      "type": "array",
+      "items": {
+        "type": "string"
       }
     }
   },
@@ -100,7 +107,10 @@
               "type": "object",
               "additionalProperties": {
                 "type": "string"
-              }
+              },
+              "required": [
+                "id"
+              ]
             }
           }
         }

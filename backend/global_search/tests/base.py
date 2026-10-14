@@ -106,10 +106,15 @@ DESCRIBED_TYPES = {
 }
 
 
-def search(user: User, **params: Any) -> Response:
+def search(user: User, allow_failures: bool = False, **params: Any) -> Response:
+    """Call the view. Unless ``allow_failures``, a 200 must report no failed
+    types, so a crashing provider is never mistaken for one that filtered."""
     request = APIRequestFactory().get("/search/", params)
     force_authenticate(request, user=user)
-    return GlobalSearchView.as_view()(request)
+    response = GlobalSearchView.as_view()(request)
+    if response.status_code == 200 and not allow_failures:
+        assert response.data["failed_types"] == [], response.data["failed_types"]
+    return response
 
 
 def result_ids(response: Response, type_key: str | None = None) -> list[str]:
