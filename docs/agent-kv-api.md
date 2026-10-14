@@ -328,15 +328,25 @@ Not exposed (D6): model choice, challenger model, `parallel_pages`, thinking bud
   `pdfplumber` and rejected over `AGENT_KV_MAX_PAGES` before any paid work runs. Excel
   has no pre-OCR page concept — it is capped by file size only at submit time (the
   engine enforces a post-OCR virtual-page cap).
-  - **The cap bounds the pages this request will PROCESS, not the document's
-    length.** It is checked against `pages_selected` — the count after
-    `page_start` / `page_end` are applied — not against `pages_total`. So pages
-    1–50 of a 400-page PDF is accepted under a 100-page cap, while the same
-    document submitted without a page range is refused. That is the intended
-    reading: the cap exists to bound paid work per job, and a page range is the
-    caller declaring how much work they are asking for. `pages_total` is still
-    recorded on the job and returned in the status document, so the document's
-    real length is never lost.
+  - **The cap is on the DOCUMENT, and a page range does not reduce it.** It is
+    checked against `pages_total`, so pages 1–50 of a 400-page PDF is refused
+    under a 100-page cap exactly as the whole document would be.
+
+    This reads as unfriendly until you look at what a range actually costs. The
+    engine renders every page and OCRs the whole file — `X2Text.process` is
+    given the input path and no range — and `page_start`/`page_end` then choose
+    which of the rendered pages the extraction agents read. So pages 1–5 of a
+    400-page document costs 400 pages of OCR and is billed for 400. Capping the
+    range would let a caller buy 400 pages of OCR under a 100-page limit.
+
+    The worker refuses on the same quantity (cloud `api_binding.py`), which is
+    the other half of the reason: a submit cap on anything else accepts
+    requests the worker then fails — after the 202, after the concurrency slot
+    and after the upload.
+
+    `pages_selected` is still computed and reported; it is the honest count of
+    what will be EXTRACTED, and the refusal message uses it. If OCR ever honours
+    the range, this is the line to revisit.
   - Images (`.png .jpg .jpeg .tiff`) are **not** accepted, and no longer count as
     1 page. The engine treats only `.pdf/.xlsx/.xls` as a document and
     `ImageLoader.load_pages` has no call site, so an accepted image returned
@@ -1398,7 +1408,7 @@ with the default shown:
 |---|---|---|
 | `AGENT_KV_PATH_PREFIX` | `agent-kv` | Top-level public URL prefix (whitelisted past tenant middleware). |
 | `AGENT_KV_MAX_FILE_SIZE_MB` | `50` | Submit-time file size cap. |
-| `AGENT_KV_MAX_PAGES` | `100` | Pre-OCR cap on the pages a request will PROCESS for PDFs — checked against `pages_selected` (after `page_start`/`page_end`), not the document's `pages_total` (§6.1). Excel has no pre-OCR page concept, so it takes the engine's post-OCR virtual-page cap instead; images are not accepted. |
+| `AGENT_KV_MAX_PAGES` | `100` | Pre-OCR cap on the pages of the DOCUMENT for PDFs — checked against `pages_total`, **not** against the `page_start`/`page_end` range (§6.1), because the whole file is OCR'd and billed whatever the range. The cloud worker refuses on the same quantity. Excel has no pre-OCR page concept, so it takes the engine's post-OCR virtual-page cap instead; images are not accepted. |
 | `AGENT_KV_MAX_CALCULATIONS_BYTES` | `20000` | Byte cap on the optional `calculations` field. |
 | `AGENT_KV_MAX_SCHEMA_BYTES` | `262144` | Byte cap on the raw `keys` JSON document (256 KiB). |
 | `AGENT_KV_RESULT_TTL_DAYS` | `7` | Result retention window (and a cancelled job's input, which rides the same TTL — a completed/failed job's input is deleted immediately at finalize instead), stamped at submit time (see [§6](#9-retention-and-ttl)). |

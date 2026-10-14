@@ -195,41 +195,64 @@ def test_page_cap_rejected():
         assert "pages" in str(s.errors).lower()
 
 
-def test_page_cap_counts_the_selected_range_not_the_whole_document():
-    """The cap bounds the work the job will DO, not the size of the file.
+def test_the_cap_counts_the_WHOLE_document_even_for_a_one_page_range():
+    """A page range does not reduce what is OCR'd, so it must not reduce the cap.
 
-    A caller asking for one page of a two-page document is requesting one page
-    of OCR and extraction. Counting the whole document rejected requests that
-    were inside the documented limit. Reported by Greptile on #2317.
+    This test previously asserted the opposite, on the premise that "one page
+    of a two-page document is one page of OCR". The engine disagrees: it
+    renders every page (`convert_pdf_to_images(file_content, dir)`) and OCRs
+    the whole file -- `X2Text.process` takes `input_file_path` and no range --
+    then `load_pages(starting_page=, ending_page=)` filters which rendered
+    pages the agents read. A range selects what is EXTRACTED, never what is
+    scanned or billed.
+
+    It also disagreed with the worker, which refuses on `pages_total`, so the
+    caller got a 202, a slot and a staged upload before being failed anyway.
+    Caught in review on #2317 / unstract-cloud#1828; the Greptile finding the
+    old version cited had the same false premise.
     """
     with mock.patch("agent_kv.execution_serializers.settings") as m:
         _defaults(m)
         m.AGENT_KV_MAX_PAGES = 1
         s = SubmitSerializer(data=_data(page_start=1, page_end=1))
-        assert s.is_valid(), s.errors
-        assert s.pages_selected == 1
-        # The measured document count is unchanged -- it is what metering and
-        # the status document report, and only the cap comparison moved.
-        assert s.pages_total == 2
+
+        assert not s.is_valid()
+        assert "Document has 2 pages" in _errs(s)
+        assert "does not reduce this" in _errs(s)
 
 
 def test_an_open_ended_range_is_capped_at_the_last_page():
-    """`page_end` past the end selects to the end, it does not inflate the count."""
+    """`page_end` past the end selects to the end, it does not inflate the count.
+
+    `pages_selected` is still computed and still correct -- it is the honest
+    count of what will be extracted, and the refusal message uses it. It is
+    simply not what the cap compares against.
+    """
     with mock.patch("agent_kv.execution_serializers.settings") as m:
         _defaults(m)
         m.AGENT_KV_MAX_PAGES = 2
         s = SubmitSerializer(data=_data(page_start=2, page_end=999))
         assert s.is_valid(), s.errors
         assert s.pages_selected == 1
+        assert s.pages_total == 2
 
 
-def test_a_selected_range_over_the_cap_is_still_rejected():
+def test_the_submit_cap_and_the_worker_cap_compare_the_same_quantity():
+    """The cross-repo half of the bug, pinned so the two cannot drift again.
+
+    `dispatch.py` sends `pages_total` and `max_pages`; the cloud worker
+    refuses when `pages_total > max_pages`. If this side ever caps something
+    else, a submit it accepts is one the worker rejects -- after the 202,
+    after the slot, after the upload.
+    """
     with mock.patch("agent_kv.execution_serializers.settings") as m:
         _defaults(m)
         m.AGENT_KV_MAX_PAGES = 1
         s = SubmitSerializer(data=_data(page_start=1, page_end=2))
+
         assert not s.is_valid()
-        assert "Requested 2 pages" in _errs(s)
+        # Same comparison the worker makes: measured document pages vs the cap.
+        assert "Document has 2 pages" in _errs(s)
 
 
 def test_page_start_past_the_end_of_the_document_is_rejected():

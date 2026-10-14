@@ -473,23 +473,38 @@ class SubmitSerializer(serializers.Serializer):
                         f"{self.pages_total}-page document"
                     }
                 )
-            # The cap bounds the work the job will DO, not the size of the file
-            # it was handed. A caller asking for pages 1-5 of a 400-page PDF is
-            # requesting five pages of OCR and extraction; refusing that against
-            # a 100-page cap rejected a request that was inside the documented
-            # limit. `pages_total` stays the measured document count -- it is
-            # what metering and the status document report -- and only the cap
-            # comparison moves to the selected range.
+            # The cap is on the DOCUMENT, not on the selected range, and the
+            # reason is billing rather than tidiness.
+            #
+            # This briefly compared `pages_selected` instead, on the premise
+            # that "pages 1-5 of a 400-page PDF is five pages of OCR". That
+            # premise is false. The engine renders EVERY page
+            # (`convert_pdf_to_images(file_content, dir)`) and OCRs the whole
+            # file -- `X2Text.process` takes `input_file_path` and no range at
+            # all -- and `load_pages(starting_page=, ending_page=)` filters
+            # afterwards, choosing only which rendered pages the agents look
+            # at. So pages 1-5 of a 400-page document costs 400 pages of OCR
+            # and is billed for 400.
+            #
+            # It also disagreed with the worker, which has always refused on
+            # `pages_total` (cloud `api_binding.py`). The caller got a 202,
+            # a concurrency slot and a staged upload, and then a failure --
+            # the worst of both, since the refusal still arrived but only
+            # after the request looked accepted. Caught in review on #2317 /
+            # unstract-cloud#1828.
+            #
+            # `pages_selected` is still computed: it is the honest count of
+            # what will be EXTRACTED, and the message below uses it to explain
+            # why a small range was refused anyway.
             last_page = self.pages_total if end is None else min(end, self.pages_total)
             self.pages_selected = last_page - start + 1
-            if self.pages_selected > settings.AGENT_KV_MAX_PAGES:
+            if self.pages_total > settings.AGENT_KV_MAX_PAGES:
                 raise serializers.ValidationError(
                     {
-                        "file": f"Requested {self.pages_selected} pages "
-                        f"(page_start={start}, page_end="
-                        f"{end if end is not None else self.pages_total}) of a "
-                        f"{self.pages_total}-page document; max is "
-                        f"{settings.AGENT_KV_MAX_PAGES} (§6.1)"
+                        "file": f"Document has {self.pages_total} pages; max is "
+                        f"{settings.AGENT_KV_MAX_PAGES} (§6.1). A page range does "
+                        "not reduce this: the whole document is OCR'd and billed "
+                        "regardless of page_start/page_end"
                     }
                 )
         # Excel: no page concept pre-OCR (spec §6.1); pages_total stays None,
