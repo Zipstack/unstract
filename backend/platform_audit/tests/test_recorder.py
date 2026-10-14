@@ -2,11 +2,12 @@ import uuid
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from django.db import IntegrityError, connection, transaction
+from django.db import connection, transaction
+from django.utils import timezone
 
 from platform_audit.actions import Action, TargetType
 from platform_audit.models import PlatformAuditEvent
-from platform_audit.recorder import best_effort, record_platform_event
+from platform_audit.recorder import _write, best_effort, record_platform_event
 from platform_audit.tests.base import AuditTestBase, make_user
 
 
@@ -135,18 +136,49 @@ class RecorderTests(AuditTestBase):
                 )
         self.assertNotIn("invitee@example.com", logs.output[0])
         self.assertIn("target=invitation:<redacted>", logs.output[0])
+        self.assertIn(f"actor=user:{self.admin.pk}", logs.output[0])
+        self.assertNotIn("admin@example.com", logs.output[0])
 
-    def test_write_failure_log_leaves_out_the_database_error_text(self) -> None:
-        """A database error can echo the rejected row; only its type is logged."""
-        error = IntegrityError('Failing row contains (..., "invitee@example.com", ...)')
-        with patch.object(PlatformAuditEvent.objects, "create", side_effect=error):
+    def test_a_real_database_error_logs_sqlstate_not_the_row(self) -> None:
+        """Postgres echoes a rejected row ("Failing row contains ...")."""
+        fields = {
+            "organization": None,  # NOT NULL: 23502
+            "occurred_at": timezone.now(),
+            "action": Action.MEMBER_INVITED,
+            "target_type": TargetType.INVITATION,
+            "target_id": "invitee@example.com",
+            "actor_type": "system",
+            "summary": "as invitee@example.com",
+        }
+        with self.assertLogs("platform_audit.recorder", "ERROR") as logs:
+            _write(fields)
+        output = "\n".join(logs.output)
+        self.assertIn("IntegrityError, sqlstate=23502", output)
+        self.assertNotIn("invitee@example.com", output)
+        self.assertNotIn("Failing row", output)
+
+    def test_a_non_database_error_logs_where_it_was_raised(self) -> None:
+        with patch.object(
+            PlatformAuditEvent.objects,
+            "create",
+            side_effect=TypeError("Object of type set is not JSON serializable"),
+        ):
             with self.assertLogs("platform_audit.recorder", "ERROR") as logs:
                 self._record()
         output = "\n".join(logs.output)
-        self.assertNotIn("invitee@example.com", output)
-        self.assertIn("IntegrityError", output)
-        self.assertIn(f"actor=user:{self.admin.pk}", logs.output[0])
-        self.assertNotIn("admin@example.com", logs.output[0])
+        self.assertIn("TypeError, sqlstate=None, at ", output)
+        self.assertIn("recorder.py:", output)
+        self.assertNotIn("JSON serializable", output)
+
+    def test_helper_failures_leave_out_the_message_too(self) -> None:
+        @best_effort
+        def lookup() -> None:
+            raise RuntimeError("no member invitee@example.com")
+
+        with self.assertLogs("platform_audit.recorder", "ERROR") as logs:
+            lookup()
+        self.assertIn("RuntimeError", logs.output[0])
+        self.assertNotIn("invitee@example.com", logs.output[0])
 
     def test_long_values_are_clipped_to_the_column(self) -> None:
         self._record(target_name="x" * 400)

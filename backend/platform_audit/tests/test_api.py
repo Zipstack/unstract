@@ -241,7 +241,8 @@ class AuditReadApiTests(AuditTestBase):
             "group.changed",
             days_ago=0,
             target_name="With changes",
-            changes={"after": {"name": "B"}, "before": {"name": "A"}},
+            # jsonb stores shorter keys first; sort_keys must reorder them.
+            changes={"after": {"name": "B", "is_active": True}},
         )
         response = self._get(EXPORT, {"action": ["group.created", "group.changed"]})
         rows = list(csv.reader(io.StringIO(response.content.decode())))
@@ -253,7 +254,7 @@ class AuditReadApiTests(AuditTestBase):
         }
         self.assertEqual(cells["Finance"], "")
         self.assertEqual(
-            cells["With changes"], '{"after": {"name": "B"}, "before": {"name": "A"}}'
+            cells["With changes"], '{"after": {"is_active": true, "name": "B"}}'
         )
 
     def test_export_neutralises_formulas(self) -> None:

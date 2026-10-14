@@ -2,7 +2,10 @@
 
 :func:`record_platform_event` is the only way an event is written, and it is
 best-effort by contract: it never raises and never fails the request that
-called it. A failure is logged with ``logger.exception`` and the event is lost.
+called it. A failure is logged and the event is lost. Failures are logged by
+:func:`describe_exception`: type, SQLSTATE and where it was raised, never the
+exception's message, which can echo the values (e-mails, row data) it was
+given.
 
 The write is deferred with ``transaction.on_commit``, so an event is stored only
 if the change it describes is committed. When the caller is not inside a
@@ -24,6 +27,8 @@ Call it after the change has succeeded, never before::
 """
 
 import logging
+import os
+import traceback
 from collections.abc import Callable, Mapping
 from functools import partial, wraps
 from typing import Any, ParamSpec, TypeVar
@@ -103,8 +108,10 @@ def record_platform_event(
             **_resolve_actor(request=request, actor=actor),
         }
         transaction.on_commit(partial(_write, fields), robust=True)
-    except Exception:
-        logger.exception("Platform audit: failed to record %r", action)
+    except Exception as exc:
+        logger.error(
+            "Platform audit: failed to record %r (%s)", action, describe_exception(exc)
+        )
 
 
 def best_effort(fn: Callable[P, T]) -> Callable[P, T | None]:
@@ -127,8 +134,12 @@ def best_effort(fn: Callable[P, T]) -> Callable[P, T | None]:
             # connection across any network call it makes.
             with transaction.atomic():
                 return fn(*args, **kwargs)
-        except Exception:
-            logger.exception("Platform audit: %s failed", fn.__qualname__)
+        except Exception as exc:
+            logger.error(
+                "Platform audit: %s failed (%s)",
+                fn.__qualname__,
+                describe_exception(exc),
+            )
             return None
 
     return wrapper
@@ -148,17 +159,13 @@ def _write(fields: dict[str, Any]) -> None:
         with transaction.atomic():
             PlatformAuditEvent.objects.create(**fields)
     except Exception as exc:
-        # Enough to tell which change went unaudited, and nothing from the row:
-        # no changes, metadata or e-mail. The exception's message is left out
-        # too, because a database error can echo the row it rejected; its type
-        # and SQLSTATE say what went wrong.
-        cause = exc.__cause__ or exc
+        # Enough to tell which change went unaudited: no changes, metadata or
+        # e-mail, and not the exception's message (see describe_exception).
         logger.error(
-            "Platform audit: failed to write %r (%s, sqlstate=%s; org=%s "
+            "Platform audit: failed to write %r (%s; org=%s "
             "target=%s:%s actor=%s:%s key=%s request_id=%s)",
             fields.get("action"),
-            type(exc).__name__,
-            getattr(cause, "pgcode", None),
+            describe_exception(exc),
             getattr(fields.get("organization"), "organization_id", None),
             fields.get("target_type"),
             _loggable_id(fields.get("target_id")),
@@ -167,6 +174,25 @@ def _write(fields: dict[str, Any]) -> None:
             fields.get("actor_key_id"),
             fields.get("request_id"),
         )
+
+
+def describe_exception(exc: BaseException) -> str:
+    """Type, SQLSTATE and the frames that raised it, without the message.
+
+    A database error's message can echo the row it rejected ("Failing row
+    contains ..."), and an identity-provider error can echo the e-mail it was
+    sent, so the message is never logged. Django raises database errors
+    ``from`` the driver's, which carries the SQLSTATE as ``pgcode``.
+    """
+    cause = exc.__cause__ or exc
+    frames = traceback.extract_tb(exc.__traceback__)[-_LOGGED_FRAMES:]
+    where = " <- ".join(
+        f"{os.path.basename(f.filename)}:{f.lineno} {f.name}" for f in reversed(frames)
+    )
+    return f"{type(exc).__name__}, sqlstate={getattr(cause, 'pgcode', None)}, at {where}"
+
+
+_LOGGED_FRAMES = 6
 
 
 def _loggable_id(value: Any) -> str:
