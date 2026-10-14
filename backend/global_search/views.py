@@ -3,7 +3,7 @@ from contextlib import nullcontext
 from typing import Any
 
 from django.db import (
-    DatabaseError,
+    Error,
     InterfaceError,
     OperationalError,
     connection,
@@ -37,7 +37,9 @@ def _connection_unusable(error: Exception) -> bool:
     """
     if connection.needs_rollback:
         return True
-    if not isinstance(error, DatabaseError):
+    # django.db.Error, not DatabaseError: InterfaceError ("connection
+    # already closed") derives from Error only.
+    if not isinstance(error, Error):
         return False
     if connection.connection is None:
         # No open connection after a connection-class error: connecting
@@ -79,12 +81,18 @@ class GlobalSearchView(APIView):
             200: SearchResponseSerializer,
             400: OpenApiResponse(description="Invalid parameters (validation_error)."),
             500: OpenApiResponse(
-                description="search_failed: every searched type failed with a bug."
+                description=(
+                    "search_failed: every searched type failed, not all with "
+                    "retryable database errors (a bug). Retrying will not help."
+                )
             ),
             503: OpenApiResponse(
                 description=(
-                    "search_unavailable: a database error a retry may clear "
-                    "(unreachable, timed out, locked). Never show as 'no results'."
+                    "search_unavailable: every searched type failed with a "
+                    "database error a retry may clear (unreachable, timed out, "
+                    "locked), or a failure left the connection unusable. A "
+                    "single failure on a healthy connection is a 200 with "
+                    "failed_types instead. Retry; never show as 'no results'."
                 )
             ),
         },
