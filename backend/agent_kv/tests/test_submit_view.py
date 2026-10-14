@@ -12,6 +12,8 @@ if not apps.ready:
 
 from django.conf import settings  # noqa: E402
 from django.utils import timezone  # noqa: E402
+from rest_framework.parsers import MultiPartParser  # noqa: E402
+from rest_framework.request import Request  # noqa: E402
 from rest_framework.test import APIRequestFactory  # noqa: E402
 
 from agent_kv import execution_views as ev  # noqa: E402
@@ -1144,3 +1146,61 @@ def test_a_deprecated_adapter_is_refused_at_submit(
     assert "deprecated" in str(resp.data), resp.data
     assert not m_dispatch.called
     assert not m_stage.called
+
+
+# ---------------------------------------------------------------------------
+# Uploads bigger than Django's in-memory threshold.
+# ---------------------------------------------------------------------------
+
+
+def test_an_upload_over_the_memory_threshold_is_not_a_500():
+    """`QueryDict.copy()` is `__deepcopy__`, and a disk-backed upload cannot be
+    deep-copied.
+
+    Django switches an upload to `TemporaryUploadedFile` above
+    `FILE_UPLOAD_MAX_MEMORY_SIZE` (2.5 MB by default). Its handle is a
+    `BufferedRandom`, so `copy.deepcopy` raises
+    `TypeError: cannot pickle 'BufferedRandom' instances` -- before any
+    validation runs, as a 500, on an endpoint that advertises
+    `AGENT_KV_MAX_FILE_SIZE_MB` = 50.
+
+    Every test and every e2e run used a 2.5 KB fixture, a factor of a thousand
+    below the threshold, so nothing ever saw it (Greptile P1).
+
+    The payload has to be REAL bytes. A first cut declared a 3 MB
+    `TemporaryUploadedFile` but wrote twelve bytes into the request, and the
+    upload handler -- which cares about what arrives, not what is claimed --
+    kept it in memory. The test passed against the unfixed code. Hence the
+    explicit type assertion below: if the threshold, the handlers or the
+    factory ever change, this fails rather than quietly testing the in-memory
+    path again.
+    """
+    from django.conf import settings
+    from django.core.files.uploadedfile import TemporaryUploadedFile
+
+    from agent_kv.execution_views import _request_data_with_extractors_inlined
+
+    payload = b"%PDF-1.4\n" + b"0" * (settings.FILE_UPLOAD_MAX_MEMORY_SIZE + 4096)
+    request = APIRequestFactory().post(
+        "/agent-kv/",
+        {
+            "file": SimpleUploadedFile("big.pdf", payload, "application/pdf"),
+            "extractors": '[{"name": "table"}]',
+            "tags": ["a", "b"],
+        },
+        format="multipart",
+    )
+    drf_request = Request(request, parsers=[MultiPartParser()])
+
+    assert isinstance(drf_request.data["file"], TemporaryUploadedFile), (
+        "the upload must be DISK-backed for this test to exercise anything; "
+        "an in-memory one deep-copies fine"
+    )
+
+    data = _request_data_with_extractors_inlined(drf_request)
+
+    # The handle must survive, not a copy of it: `stage_input` reads it later.
+    assert data["file"].size == len(payload)
+    # And the multi-valued field must still be multi-valued -- a plain
+    # `dict(request.data)` would keep only the last `tags` entry.
+    assert data.getlist("tags") == ["a", "b"]

@@ -667,6 +667,13 @@ identical — `tables: []`, `row_count: 0`, `success: true`:
 * `detected: true` with `row_count: 0` — the table WAS found and extraction returned
   no rows. `target_table` is not the thing to change here.
 
+A third shape sits between them: detection may have been **incomplete**. A page
+whose presence-detection response fails to parse does not abort the run, so
+`reason` then reads `detection did not complete: presence detection failed on
+page(s) 2; …`, and `parse_failures` is carried out alongside it naming those
+pages. Treat that as "unknown", not as "absent" — the table may well be on a page
+that was never read.
+
 Both keys are always present, including on a successful extraction (`reason` is then
 `""`). The distinction was previously only inferable from which keys were *missing*
 from `timing`, which is an internal structure rather than a contract. There is **no

@@ -3,6 +3,7 @@ import time
 from datetime import timedelta
 
 from django.conf import settings
+from django.http import QueryDict
 from django.utils import timezone
 from plugins import get_plugin
 from rest_framework.exceptions import ValidationError
@@ -276,6 +277,34 @@ def _sync_wait_response(job, wait: float) -> Response | None:
     return None
 
 
+def _shallow_mutable(source):
+    """A mutable copy of the request data that does NOT copy the uploads.
+
+    `QueryDict.copy()` is `__deepcopy__` (Django's own one-line definition),
+    and an upload above `FILE_UPLOAD_MAX_MEMORY_SIZE` -- 2.5 MB by default --
+    is a `TemporaryUploadedFile` whose handle is a `BufferedRandom`. Deep
+    copying one raises `TypeError: cannot pickle 'BufferedRandom' instances`,
+    so every submit over 2.5 MB died as a 500 before validation ran, on an
+    endpoint that advertises `AGENT_KV_MAX_FILE_SIZE_MB` = 50 (Greptile P1).
+
+    `setlist` per key rather than `dict(source)`, because `tags` is a
+    `ListField`: flattening a QueryDict to a plain dict keeps only the last
+    value of a repeated form field, which would silently drop every tag but
+    one. The values -- including the upload objects -- are carried by
+    reference, which is the point.
+
+    A non-form request (no `getlist`) is already a plain mutable dict of
+    JSON-decoded values with nothing to preserve, so it is simply shallow
+    copied.
+    """
+    if not hasattr(source, "getlist"):
+        return dict(source)
+    data = QueryDict(mutable=True)
+    for key in source:
+        data.setlist(key, source.getlist(key))
+    return data
+
+
 def _request_data_with_extractors_inlined(request):
     """A mutable copy of the request data with a file-part `extractors` read in.
 
@@ -289,7 +318,7 @@ def _request_data_with_extractors_inlined(request):
     the ``str``) before being rejected at 256 KiB. One such request per worker
     process OOMs the pod, which makes it a cheap denial of service.
     """
-    data = request.data.copy()
+    data = _shallow_mutable(request.data)
     part = data.get("extractors")
     if not hasattr(part, "read"):  # not a file part (§7.1); nothing to inline
         return data
