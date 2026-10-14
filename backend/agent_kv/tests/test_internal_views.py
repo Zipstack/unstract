@@ -370,6 +370,7 @@ def test_finalize_success_writes_result_then_marks_terminal(
         # kept on a row a cancel had already terminalized. See
         # `test_finalize_guard_lost_to_a_cancel_keeps_the_paid_for_result`.
         "result_attached": False,
+        "webhook_enqueued": False,
     }
     assert [c[0] for c in manager.mock_calls] == ["write_result", "mark_terminal"]
     m_write.assert_called_once_with("org1", str(job_id), {"foo": "bar"})
@@ -735,6 +736,7 @@ def test_finalize_duplicate_does_not_rewrite_result(
         # kept on a row a cancel had already terminalized. See
         # `test_finalize_guard_lost_to_a_cancel_keeps_the_paid_for_result`.
         "result_attached": False,
+        "webhook_enqueued": False,
     }
     assert not m_write.called
     assert not m_mark_terminal.called
@@ -796,6 +798,7 @@ def test_finalize_failure_records_error(m_jobs, m_write, m_mark_terminal, m_rele
         # kept on a row a cancel had already terminalized. See
         # `test_finalize_guard_lost_to_a_cancel_keeps_the_paid_for_result`.
         "result_attached": False,
+        "webhook_enqueued": False,
     }
     assert not m_write.called
     m_mark_terminal.assert_called_once_with(
@@ -1151,3 +1154,53 @@ def test_the_notification_does_not_depend_on_the_response_being_delivered(
 
     assert queued_before_response == [True]
     assert resp.status_code == 200
+
+
+@mock.patch.object(iv.AgentKVConcurrencyLimiter, "release")
+@mock.patch.object(iv, "dispatch_terminal_webhook", return_value=True)
+@mock.patch.object(AgentKVJob, "mark_terminal", return_value=True)
+@mock.patch.object(iv, "write_result", return_value="ref")
+@mock.patch.object(AgentKVJob, "objects")
+def test_a_queued_webhook_tells_the_worker_not_to_send_one(
+    m_jobs, m_write, m_mark, m_dispatch, m_release
+):
+    """`webhook_enqueued: true` is how the worker learns delivery is not its
+    job. Without it a worker that has stopped sending inline, talking to a
+    backend that does not enqueue, drops the notification entirely."""
+    job = AgentKVJob(status=JobStatus.RUNNING, webhook_url="https://example.com/hook")
+    m_jobs.filter.return_value.first.return_value = job
+
+    resp = iv.FinalizeView.as_view()(
+        _post("/x", {"org_id": "org1", "success": True, "result": {}}),
+        job_id=uuid.uuid4(),
+    )
+
+    assert resp.data["webhook_enqueued"] is True
+
+
+@mock.patch.object(iv.AgentKVConcurrencyLimiter, "release")
+@mock.patch.object(iv, "dispatch_terminal_webhook", return_value=False)
+@mock.patch.object(AgentKVJob, "mark_terminal", return_value=True)
+@mock.patch.object(iv, "write_result", return_value="ref")
+@mock.patch.object(AgentKVJob, "objects")
+def test_an_enqueue_that_failed_hands_delivery_back_to_the_worker(
+    m_jobs, m_write, m_mark, m_dispatch, m_release
+):
+    """The flag reports what the enqueue DID, not whether the job has a
+    webhook.
+
+    The enqueue is best-effort and swallows its exception, so a queue that is
+    down returns False. Reporting True there would tell the worker to stand
+    down when nothing had been queued -- neither side sends, which is the
+    exact loss this change exists to remove. Fails back to the inline path
+    instead.
+    """
+    job = AgentKVJob(status=JobStatus.RUNNING, webhook_url="https://example.com/hook")
+    m_jobs.filter.return_value.first.return_value = job
+
+    resp = iv.FinalizeView.as_view()(
+        _post("/x", {"org_id": "org1", "success": True, "result": {}}),
+        job_id=uuid.uuid4(),
+    )
+
+    assert resp.data["webhook_enqueued"] is False

@@ -455,11 +455,58 @@ class TestWebhookFiring:
             "finalized": True,
             "webhook_url": "https://example.com/hook",
             "status": "completed",
+            "webhook_enqueued": True,
         }
 
         self._call_complete(cb_kwargs, api)
 
         mock_send_webhook.assert_not_called()
+
+    @patch(_PATCH_SEND_WEBHOOK)
+    def test_a_backend_that_did_not_queue_one_still_gets_an_inline_send(
+        self, mock_send_webhook, cb_kwargs
+    ):
+        """The rollout case: this worker has stopped sending inline, but the
+        backend answering it is old enough not to enqueue.
+
+        Without the gate BOTH sides stay silent and the notification is lost
+        outright -- the job finishes, the callback is acknowledged, nothing is
+        delivered. `webhook_enqueued` absent is exactly how an older backend's
+        response reads, so no version check is involved.
+        """
+        api = MagicMock()
+        api.agent_kv_finalize.return_value = {
+            "finalized": True,
+            "webhook_url": "https://example.com/hook",
+            "status": "completed",
+            # note: no `webhook_enqueued`
+        }
+
+        self._call_complete(cb_kwargs, api)
+
+        mock_send_webhook.assert_called_once_with(
+            "https://example.com/hook",
+            {"job_id": "job-1", "status": "completed"},
+            allow_insecure=False,
+        )
+
+    @patch(_PATCH_SEND_WEBHOOK)
+    def test_an_explicit_false_is_treated_the_same_as_absent(
+        self, mock_send_webhook, cb_kwargs
+    ):
+        """A job with no `webhook_url` reports False, but so would a backend
+        that tried to queue one and could not. Both mean "still yours"."""
+        api = MagicMock()
+        api.agent_kv_finalize.return_value = {
+            "finalized": True,
+            "webhook_url": "https://example.com/hook",
+            "status": "completed",
+            "webhook_enqueued": False,
+        }
+
+        self._call_complete(cb_kwargs, api)
+
+        assert mock_send_webhook.call_count == 1
 
     @patch(_PATCH_SEND_WEBHOOK)
     def test_webhook_not_fired_on_duplicate_finalize_false(
@@ -508,6 +555,7 @@ class TestWebhookFiring:
             "finalized": True,
             "webhook_url": "https://example.com/hook",
             "status": "failed",
+            "webhook_enqueued": True,
         }
 
         with (

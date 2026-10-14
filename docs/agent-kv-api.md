@@ -873,6 +873,12 @@ the permanently-undeliverable case belong to the `ide_callback` worker.
 > indistinguishable from the ordinary duplicate callback whose webhook already went
 > out. The effect was that the caller was never notified and nothing recorded the
 > miss.
+>
+> The finalize response carries `webhook_enqueued` so the worker never has to
+> *assume* which side owns delivery: absent or `false` — which is exactly how a
+> backend predating this field answers, and also how a backend whose enqueue
+> failed answers — means the worker still sends inline. Transitional, and removable
+> once no such backend can be running.
 
 **There is exactly one case of a second POST**, and it is additive:
 

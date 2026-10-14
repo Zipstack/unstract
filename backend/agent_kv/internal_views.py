@@ -415,6 +415,7 @@ class FinalizeView(APIView):
         job = AgentKVJob.objects.filter(id=job_id, organization_id=org_id).first()
         finalized = False
         result_attached = False
+        webhook_enqueued = False
         try:
             if job is not None and job.status not in AgentKVJob.TERMINAL:
                 handler = self._complete if success else self._fail
@@ -430,7 +431,12 @@ class FinalizeView(APIView):
                     # whose webhook already went out. Mirrors what the cancel
                     # path has always done, so exactly one of the two owns the
                     # notification for any job.
-                    dispatch_terminal_webhook(job, job.status.lower())
+                    # The flag is what the enqueue ACTUALLY did, not merely
+                    # whether the job has a webhook: a queue that is down
+                    # returns False, and the worker then falls back to
+                    # sending inline. Reporting True on a swallowed enqueue
+                    # failure would leave neither side sending.
+                    webhook_enqueued = dispatch_terminal_webhook(job, job.status.lower())
                     self._drop_staged_input(job, job_id, org_id)
             elif job is not None and success and job.status == JobStatus.CANCELLED:
                 # The job was already CANCELLED when this request read it, and
@@ -469,6 +475,21 @@ class FinalizeView(APIView):
                 # then, so the callback worker sends a follow-up (see
                 # `_maybe_webhook`). Additive: every other path reports False.
                 "result_attached": result_attached,
+                # Says "I have queued the terminal webhook; do not send one".
+                #
+                # Exists so the callback worker does not have to ASSUME which
+                # side owns delivery. A worker new enough to have stopped
+                # sending inline, talking to a backend old enough not to
+                # enqueue, would otherwise drop the notification entirely:
+                # neither side sends and the callback is acknowledged. Absent
+                # or False means the worker still owns it, which is exactly
+                # how an older backend's response reads.
+                #
+                # Transitional. Once no backend predating this field can be
+                # running -- it ships with the feature, so that is the first
+                # release carrying agent_kv at all -- this and the worker's
+                # fallback can both go.
+                "webhook_enqueued": webhook_enqueued,
             }
         )
 

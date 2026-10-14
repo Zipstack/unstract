@@ -20,7 +20,7 @@ class DispatchError(Exception):
     """Enqueue failed; the caller terminalizes the job (spec §5.3)."""
 
 
-def _enqueue_webhook(task_name: str, job, status: str) -> None:
+def _enqueue_webhook(task_name: str, job, status: str) -> bool:
     """Queue a terminal-webhook task for ``job``, best-effort.
 
     Shared by the cancel and finalize paths so the two cannot drift: both
@@ -32,9 +32,16 @@ def _enqueue_webhook(task_name: str, job, status: str) -> None:
     already terminal and the caller already has their response, so failing
     that request because a notification could not be QUEUED would be the
     wrong trade. Logs and returns.
+
+    Returns whether a task was actually queued, which is NOT the same as
+    "this job has a webhook". A queue that is down returns False, and
+    finalize reports that to the callback worker as `webhook_enqueued:
+    false` so the worker falls back to sending inline. Reporting True on a
+    swallowed failure would mean neither side sends -- the exact loss this
+    whole change exists to remove.
     """
     if not job.webhook_url:
-        return
+        return False
     try:
         from pg_queue.producer import enqueue_task
 
@@ -58,9 +65,11 @@ def _enqueue_webhook(task_name: str, job, status: str) -> None:
             job.id,
             status,
         )
+        return False
+    return True
 
 
-def dispatch_terminal_webhook(job, status: str) -> None:
+def dispatch_terminal_webhook(job, status: str) -> bool:
     """Queue the terminal webhook for a job finalize just terminalized.
 
     Call ONLY when ``mark_terminal`` actually won, which is what makes this
@@ -84,11 +93,14 @@ def dispatch_terminal_webhook(job, status: str) -> None:
     trip. Closing that too would mean enqueuing inside ``mark_terminal``'s
     transaction; it is not done here because the enqueue is deliberately
     best-effort and must not be able to roll back a terminal state.
+
+    Returns whether the task was queued, which finalize passes to the
+    callback worker so it knows whether delivery is still its own.
     """
-    _enqueue_webhook("agent_kv_finalized", job, status)
+    return _enqueue_webhook("agent_kv_finalized", job, status)
 
 
-def dispatch_cancelled_webhook(job) -> None:
+def dispatch_cancelled_webhook(job) -> bool:
     """Queue the terminal webhook for a job the API just cancelled.
 
     Cancellation never reaches finalize -- ``JobCancelView`` and DELETE
@@ -115,7 +127,7 @@ def dispatch_cancelled_webhook(job) -> None:
     QUEUED would be the wrong trade, so this logs and returns rather than
     raising. Delivery itself is the worker's problem.
     """
-    _enqueue_webhook("agent_kv_cancelled", job, "cancelled")
+    return _enqueue_webhook("agent_kv_cancelled", job, "cancelled")
 
 
 def _dispatcher():

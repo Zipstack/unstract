@@ -376,29 +376,65 @@ def _send_webhook(
 
 
 def _maybe_webhook(finalize_response: dict[str, Any], job_id: str) -> None:
-    """Send the ONE follow-up the backend cannot queue for itself.
+    """Send whichever notifications the BACKEND did not take ownership of.
 
-    The terminal notification is no longer sent here. The backend queues it
-    (`agent_kv_finalized`) from the request whose `mark_terminal` won, exactly
-    as it has always done for cancellation (`agent_kv_cancelled`). Sending it
-    here meant it rode on the finalize RESPONSE surviving: if that response was
-    lost, this worker retried, the replay reported `finalized: False`, and the
-    send was skipped -- correctly, because from out here a non-fresh finalize
-    is indistinguishable from the ordinary duplicate-callback case where the
-    webhook already went out. The caller was never told and nothing recorded
-    the miss.
+    Normally that is just one: the `result_available` follow-up. The terminal
+    notification is queued by the backend (`agent_kv_finalized`) from the
+    request whose `mark_terminal` won, exactly as it has always been for
+    cancellation (`agent_kv_cancelled`).
 
-    What remains is the one case the backend genuinely cannot queue, because
-    it is not a terminal transition at all: the job was CANCELLED after its
-    extraction had already finished, so the backend kept the paid-for result
-    on the cancelled row. The cancellation webhook went out the moment that
-    cancel won and nothing follows it -- so a webhook-driven caller, who has
-    no reason to poll a job they were told was cancelled, would never learn
-    the answer is there to read. `result_attached` is set only on that path;
-    see `AgentKVJob.attach_result_to_cancelled`.
+    It used to be sent from here, which tied it to the finalize RESPONSE
+    surviving: lose that response and this worker retried, the replay reported
+    `finalized: False`, and the send was skipped -- correctly, because from out
+    here a non-fresh finalize is indistinguishable from the ordinary duplicate
+    whose webhook already went out. The caller was never told and nothing
+    recorded the miss.
+
+    **The inline send is kept as a fallback, gated on the backend saying it
+    did NOT queue one.** Which side owns delivery is now stated in the
+    response rather than assumed: a worker that stopped sending inline,
+    talking to a backend that does not yet enqueue, would drop the
+    notification entirely -- neither side sends, and the callback is
+    acknowledged. `webhook_enqueued` absent or False means delivery is still
+    this worker's, which is exactly how an older backend's response reads, so
+    no version check is needed.
+
+    Transitional, and worth deleting: once no backend predating
+    `webhook_enqueued` can be running, this branch and the field go together.
+    The fallback carries the original defect by construction -- it is the old
+    code path -- but a notification that can be lost on a replay beats one
+    that is never sent at all.
     """
     url = finalize_response.get("webhook_url") or ""
-    if url and finalize_response.get("result_attached"):
+    if not url:
+        return
+
+    if finalize_response.get("finalized"):
+        if finalize_response.get("webhook_enqueued"):
+            return
+        logger.warning(
+            "agent-kv: finalize for job %s did not queue a terminal webhook "
+            "(backend predates `webhook_enqueued`); sending it inline. This "
+            "delivery is lost if the finalize response does not survive",
+            job_id,
+        )
+        status = finalize_response.get("status", "")
+        if not _send_webhook(url, job_id, status):
+            logger.error(
+                "agent-kv webhook not delivered for job %s (status=%s); the "
+                "caller was not notified and nothing will retry",
+                job_id,
+                status,
+            )
+        return
+
+    # Not a terminal transition, so there is no guard for the backend to hang
+    # it on: the job was CANCELLED after its extraction had already finished,
+    # so the backend kept the paid-for result on the cancelled row. The
+    # cancellation webhook went out when that cancel won and nothing follows
+    # it -- a webhook-driven caller, with no reason to poll a job they were
+    # told was cancelled, would never learn the answer is there to read.
+    if finalize_response.get("result_attached"):
         _notify_result_available(url, job_id)
 
 
