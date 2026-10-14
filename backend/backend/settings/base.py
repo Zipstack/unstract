@@ -15,6 +15,7 @@ import re
 from pathlib import Path
 from urllib.parse import quote
 
+from django.core.exceptions import ImproperlyConfigured
 from django.core.validators import URLValidator
 from dotenv import find_dotenv, load_dotenv
 from utils.common_utils import CommonUtils
@@ -206,8 +207,57 @@ API_DEPLOYMENT_RATE_LIMIT_LOCK_BLOCKING_TIMEOUT = int(
     os.environ.get("API_DEPLOYMENT_RATE_LIMIT_LOCK_BLOCKING_TIMEOUT", 5)
 )
 
+
 # Agent-KV API
-AGENT_KV_PATH_PREFIX = os.environ.get("AGENT_KV_PATH_PREFIX", "agent-kv")
+#
+# Validated at import, because this value is added to `WHITELISTED_PATHS` and
+# `CustomAuthMiddleware` matches that list with `startswith`. An empty or
+# whitespace-only value makes the entry `/`, which is a prefix of every path on
+# the service -- authentication would be skipped for ALL of them. A value that
+# collides with another mounted prefix (`api`, `api/v1`, `deployment`) exempts
+# that whole surface instead. Both are operator mistakes rather than attacks,
+# and both are silent: the server starts, every request succeeds, and nothing
+# in any log says the API is now unauthenticated.
+#
+# Refused loudly at startup instead. `ImproperlyConfigured` is Django's own
+# signal for this and aborts the boot, which is the only outcome that cannot
+# be missed.
+def validate_agent_kv_path_prefix(raw, path_prefix, deployment_prefix):
+    """Normalise and refuse an unsafe `AGENT_KV_PATH_PREFIX`.
+
+    A function rather than inline statements so it is testable without
+    re-importing the settings module under a patched environment -- the
+    behaviour being guarded is an auth bypass, and it deserves a test that
+    enumerates the bad values rather than one that can only check the good one.
+    """
+    prefix = (raw or "").strip().strip("/")
+    if not prefix:
+        raise ImproperlyConfigured(
+            "AGENT_KV_PATH_PREFIX must not be empty: it is whitelisted out of "
+            "authentication by prefix match, so an empty value exempts every "
+            "path on this service."
+        )
+    for other_name, other in (
+        ("PATH_PREFIX", path_prefix),
+        ("API_DEPLOYMENT_PATH_PREFIX", deployment_prefix),
+    ):
+        # Equal, or an ancestor of the other: either way one whitelist entry
+        # swallows the other surface.
+        if prefix == other or other.startswith(f"{prefix}/"):
+            raise ImproperlyConfigured(
+                f"AGENT_KV_PATH_PREFIX={prefix!r} collides with "
+                f"{other_name}={other!r}. It is whitelisted out of "
+                "authentication by prefix match, so this would exempt that "
+                "surface too."
+            )
+    return prefix
+
+
+AGENT_KV_PATH_PREFIX = validate_agent_kv_path_prefix(
+    os.environ.get("AGENT_KV_PATH_PREFIX", "agent-kv"),
+    PATH_PREFIX,
+    API_DEPLOYMENT_PATH_PREFIX,
+)
 # Bucket-rooted object-store root for staged inputs/results, mirroring
 # WORKFLOW_EXECUTION_DIR_PREFIX / API_EXECUTION_DIR_PREFIX: the FIRST segment is
 # the bucket (s3fs/gcsfs treat it that way), so it must already exist. MUST match
