@@ -45,8 +45,18 @@ def result_payload(job) -> dict:
             # `success`/`status` stay at TOP level on every terminal payload --
             # completed, failed and cancelled alike -- so a client branches on
             # one key rather than having to know that only the failure shapes
-            # carry it. They describe the JOB; each extractor keeps its own
-            # `success` inside its own block.
+            # carry it. This is the ONLY `success` describing the job.
+            #
+            # This used to add "each extractor keeps its own `success` inside
+            # its own block". No extractor does: `table` writes `tables`,
+            # `page_count`, `table_pages`, `headers`, `row_count`, `detected`
+            # and `reason`, and the sole nested `success` belongs to
+            # `code_execution`, describing that step rather than the
+            # extraction. The claim read as a contract and cost real time --
+            # an e2e scenario asserted it and would have failed a successful
+            # Excel run. A per-extractor `success` can be added if a
+            # multi-extractor job ever needs partial failure; until then do
+            # not document one.
             "success": True,
             "status": JobStatus.COMPLETED.lower(),
             "extractors": {job.extractor: read_result(job.result_ref)},

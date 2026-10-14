@@ -528,13 +528,18 @@ def test_page_cap_rejects_oversized_document(
     ``AGENT_KV_MAX_PAGES`` skip below usually fires first, so it would only
     have gone red on a lane that configured the cap.
     """
-    fixture_pages = 2  # fixtures/invoice.pdf
+    fixture_pages = 2  # fixtures/rent_roll.pdf, the document submitted below
     cap_raw = os.environ.get("AGENT_KV_MAX_PAGES")
-    if cap_raw is None or int(cap_raw) > fixture_pages:
+    # The serializer refuses `pages_total > cap`, so a cap EQUAL to the page
+    # count accepts the document. Skipping only on `>` left `cap == 2` running
+    # a scenario whose premise is false: the submit is correctly accepted and
+    # the 400 assert reports a defect that is not there.
+    if cap_raw is None or int(cap_raw) >= fixture_pages:
         pytest.skip(
-            f"AGENT_KV_MAX_PAGES={cap_raw!r} exceeds the fixture's "
-            f"{fixture_pages} pages; set AGENT_KV_MAX_PAGES<={fixture_pages} "
-            "on the backend service to exercise the cap"
+            f"AGENT_KV_MAX_PAGES={cap_raw!r} does not refuse the fixture's "
+            f"{fixture_pages} pages (the cap refuses pages_total > cap, so "
+            f"equality passes); set AGENT_KV_MAX_PAGES<{fixture_pages} on the "
+            "backend service to exercise the cap"
         )
     resp = submit_raw(agent_kv_key, _RENT_ROLL_BYTES, "rent_roll.pdf", table_keys())
     assert resp.status_code == 400, resp.text
@@ -667,8 +672,12 @@ def test_excel_submit_extracts(
     )
     doc = poll(agent_kv_key, job_id)
     assert doc["status"] == "completed", doc
-    body = table_result_body(result(agent_kv_key, job_id))
-    assert body.get("success") is True, body
+    resp = result(agent_kv_key, job_id)
+    # `success` is top level, NOT inside the extractor's own record -- the
+    # same shape the sync-wait scenario above asserts (spec §7.3). Reading it
+    # off `table_result_body()` found None and failed a successful run.
+    assert resp.json().get("success") is True, resp.json()
+    body = table_result_body(resp)
     assert isinstance(body["tables"], list), body
     assert "page_count" in body, body
 
