@@ -2,7 +2,7 @@ import logging
 from contextlib import nullcontext
 from typing import Any
 
-from django.db import connection, transaction
+from django.db import InterfaceError, OperationalError, connection, transaction
 from drf_spectacular.utils import extend_schema
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
@@ -10,6 +10,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from global_search.constants import SearchParams
+from global_search.exceptions import SearchUnavailable
 from global_search.providers import SearchProvider
 from global_search.registry import get_providers
 from global_search.serializers import SearchQuerySerializer, SearchResponseSerializer
@@ -79,11 +80,14 @@ class GlobalSearchView(APIView):
                     with guard:
                         group = _group(provider, request.user, query, limit)
                 except Exception as error:
-                    # The savepoint could not be rolled back (e.g. the
-                    # connection dropped): every later type would fail too,
-                    # so fail the request instead of blaming healthy types.
-                    if connection.needs_rollback:
-                        raise
+                    # A lost connection (autocommit), or a savepoint that
+                    # could not be rolled back (ATOMIC_REQUESTS), means every
+                    # later type would fail too: fail the request instead of
+                    # blaming healthy types.
+                    if connection.needs_rollback or isinstance(
+                        error, (InterfaceError, OperationalError)
+                    ):
+                        raise SearchUnavailable() from error
                     # Providers can come from other apps (cloud); one failing
                     # type drops its own group and is named in failed_types.
                     logger.exception(
@@ -95,8 +99,9 @@ class GlobalSearchView(APIView):
                 if group:
                     groups.append(group)
 
-        # Every type failing is an outage, not "no matches".
+        # Every type failing is an outage, not "no matches". Each cause was
+        # logged above, so do not chain it into the handler's log again.
         if last_error is not None and len(failed_types) == attempted:
-            raise last_error
+            raise SearchUnavailable() from None
 
         return Response({"query": query, "groups": groups, "failed_types": failed_types})

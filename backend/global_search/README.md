@@ -70,13 +70,18 @@ changes.
   `label`, or skip it.
 - `failed_types` lists types whose search failed; their groups are missing
   even if they have matches, so a client can say "some results could not be
-  loaded". It is empty on a normal response. When every searched type fails,
-  the request fails with a 500 instead.
+  loaded". It is empty on a normal response.
 - `route.params` always includes `id`.
 
 Errors use the standard error envelope:
-`400 {"type": "validation_error", "errors": [{"code", "detail", "attr"}]}`.
-401 and 403 behave as on every tenant endpoint.
+
+- `400 {"type": "validation_error", "errors": [{"code", "detail", "attr"}]}`
+  for bad parameters.
+- `503` with code `search_unavailable` when search cannot answer at all:
+  every searched type failed, or the database connection was lost or left
+  unusable by a failure (even if other types had already answered). Safe to
+  retry; never show it as "no results".
+- 401 and 403 behave as on every tenant endpoint.
 
 ## Types
 
