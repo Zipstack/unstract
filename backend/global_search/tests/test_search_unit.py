@@ -93,6 +93,8 @@ class _Broken(FakeProvider):
         raise RuntimeError("boom")
 
 
+# The project's error handler reads the DB while rendering a 5xx.
+@pytest.mark.django_db
 def test_every_type_failing_is_an_error_not_an_empty_result(user):
     # An outage must not read as "no matches".
     with patch(
@@ -102,6 +104,8 @@ def test_every_type_failing_is_an_error_not_an_empty_result(user):
         _assert_unavailable(search(user, q="alpha"))
 
 
+# The project's error handler reads the DB while rendering a 5xx.
+@pytest.mark.django_db
 def test_a_failure_that_breaks_the_transaction_fails_the_request(user, providers):
     # A failed savepoint rollback leaves needs_rollback set; later types
     # would all fail, so the error must surface rather than be logged per type.
@@ -116,6 +120,8 @@ def test_a_failure_that_breaks_the_transaction_fails_the_request(user, providers
         _assert_unavailable(search(user, q="alpha"))
 
 
+# The project's error handler reads the DB while rendering a 5xx.
+@pytest.mark.django_db
 def test_a_lost_connection_fails_the_request_even_if_others_answered(user, providers):
     # In autocommit nothing marks the connection broken; the error class does.
     class Lost(FakeProvider):
