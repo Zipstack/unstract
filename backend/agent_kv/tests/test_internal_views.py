@@ -1039,3 +1039,115 @@ def test_an_overlong_stage_name_is_rejected(m_objects):
 
     assert resp.status_code == 400
     assert "too long" in str(resp.data)
+
+
+# ---------------------------------------------------------------------------
+# The terminal webhook is queued by the request that WON the guard
+# ---------------------------------------------------------------------------
+# Regression cover for the finalize-replay notification loss reported on
+# #2317. The worker used to send the terminal webhook inline, after this view
+# answered. If that RESPONSE was lost -- a timeout, or a 5xx -- the worker
+# retried, the replay found an already-terminal row and was told
+# `finalized: False`, and the worker declined to send: from out there a
+# non-fresh finalize is indistinguishable from the ordinary duplicate
+# callback whose webhook already went out. The caller was never notified and
+# nothing recorded the miss.
+#
+# Tying the enqueue to the guard rather than to the response is the fix, so
+# what these pin is: exactly one enqueue, on the winning request, whatever
+# happens to the reply.
+
+
+@mock.patch.object(iv.AgentKVConcurrencyLimiter, "release")
+@mock.patch.object(iv, "dispatch_terminal_webhook")
+@mock.patch.object(AgentKVJob, "mark_terminal", return_value=True)
+@mock.patch.object(iv, "write_result", return_value="ref")
+@mock.patch.object(AgentKVJob, "objects")
+def test_a_won_finalize_queues_the_terminal_webhook(
+    m_jobs, m_write, m_mark, m_dispatch, m_release
+):
+    job = AgentKVJob(status=JobStatus.RUNNING, webhook_url="https://example.com/hook")
+    m_jobs.filter.return_value.first.return_value = job
+
+    iv.FinalizeView.as_view()(
+        _post("/x", {"org_id": "org1", "success": True, "result": {}}),
+        job_id=uuid.uuid4(),
+    )
+
+    m_dispatch.assert_called_once_with(job, "completed")
+
+
+@mock.patch.object(iv.AgentKVConcurrencyLimiter, "release")
+@mock.patch.object(iv, "dispatch_terminal_webhook")
+@mock.patch.object(AgentKVJob, "mark_terminal", return_value=True)
+@mock.patch.object(AgentKVJob, "objects")
+def test_a_won_failure_finalize_queues_failed_not_completed(
+    m_jobs, m_mark, m_dispatch, m_release
+):
+    """The status is read off the row the view just terminalized, so the
+    caller is told `failed` rather than a hardcoded `completed`."""
+    job = AgentKVJob(status=JobStatus.RUNNING, webhook_url="https://example.com/hook")
+    m_jobs.filter.return_value.first.return_value = job
+
+    iv.FinalizeView.as_view()(
+        _post("/x", {"org_id": "org1", "success": False, "error": "boom"}),
+        job_id=uuid.uuid4(),
+    )
+
+    m_dispatch.assert_called_once_with(job, "failed")
+
+
+@mock.patch.object(iv.AgentKVConcurrencyLimiter, "release")
+@mock.patch.object(iv, "dispatch_terminal_webhook")
+@mock.patch.object(iv, "delete_result_file")
+@mock.patch.object(AgentKVJob, "mark_terminal", return_value=False)
+@mock.patch.object(iv, "write_result", return_value="ref")
+@mock.patch.object(AgentKVJob, "objects")
+def test_a_replay_that_loses_the_guard_queues_nothing(
+    m_jobs, m_write, m_mark, m_del, m_dispatch, m_release
+):
+    """The retry after a lost response must NOT queue a second notification.
+
+    This is the other half of the fix: the first (winning) call already
+    queued it, so re-queuing here would double-notify the caller -- trading
+    the old lost-webhook bug for a duplicate-webhook one.
+    """
+    job = AgentKVJob(status=JobStatus.RUNNING, webhook_url="https://example.com/hook")
+    m_jobs.filter.return_value.first.return_value = job
+
+    iv.FinalizeView.as_view()(
+        _post("/x", {"org_id": "org1", "success": True, "result": {}}),
+        job_id=uuid.uuid4(),
+    )
+
+    m_dispatch.assert_not_called()
+
+
+@mock.patch.object(iv.AgentKVConcurrencyLimiter, "release")
+@mock.patch.object(iv, "dispatch_terminal_webhook")
+@mock.patch.object(AgentKVJob, "mark_terminal", return_value=True)
+@mock.patch.object(iv, "write_result", return_value="ref")
+@mock.patch.object(AgentKVJob, "objects")
+def test_the_notification_does_not_depend_on_the_response_being_delivered(
+    m_jobs, m_write, m_mark, m_dispatch, m_release
+):
+    """The actual reported failure, expressed directly.
+
+    The enqueue must already have happened by the time this view produces a
+    response, so a response that never reaches the worker cannot take the
+    notification with it. Asserting ordering rather than just "it was called"
+    is what distinguishes the fix from the bug: the old code called out only
+    AFTER the reply had made it back to the caller.
+    """
+    job = AgentKVJob(status=JobStatus.RUNNING, webhook_url="https://example.com/hook")
+    m_jobs.filter.return_value.first.return_value = job
+    queued_before_response = []
+    m_dispatch.side_effect = lambda *a, **k: queued_before_response.append(True)
+
+    resp = iv.FinalizeView.as_view()(
+        _post("/x", {"org_id": "org1", "success": True, "result": {}}),
+        job_id=uuid.uuid4(),
+    )
+
+    assert queued_before_response == [True]
+    assert resp.status_code == 200

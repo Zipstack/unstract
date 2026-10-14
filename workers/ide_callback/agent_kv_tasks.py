@@ -223,43 +223,30 @@ def agent_kv_error(
         raise
 
 
-@worker_task(
-    bind=True,
-    name="agent_kv_cancelled",
-    autoretry_for=(Exception,),
-    max_retries=3,
-    retry_backoff=True,
-    retry_backoff_max=300,
-    retry_jitter=True,
-)
-def agent_kv_cancelled(
-    self,
-    callback_kwargs: dict[str, Any] | None = None,
-) -> dict[str, Any] | None:
-    """Fire the terminal webhook for a job cancelled by the API.
+def _deliver_terminal_webhook(task, callback_kwargs, default_status: str) -> dict | None:
+    """Deliver one terminal webhook, with the retry policy both tasks share.
 
-    Cancellation does not go through finalize: ``JobCancelView`` (and DELETE on
-    a non-terminal job) terminalizes the row directly, releases the slot and
-    returns. So nothing in the finalize path ever fired a webhook for it, and a
-    late executor callback cannot either -- it loses the terminal guard and
-    ``_maybe_webhook`` correctly declines a non-fresh finalize. The caller who
-    supplied ``webhook_url`` was simply never told, despite docs §8 promising
-    delivery on terminal states.
-
-    Enqueued by the backend ONLY when its guarded cancel actually won, which is
-    what keeps this from double-notifying: if the cancel lost to a finalize, the
-    backend does not enqueue and the finalize callback sends instead. Exactly
-    one of the two paths owns the notification for any given job.
+    Extracted so `agent_kv_cancelled` and `agent_kv_finalized` cannot drift:
+    they differ only in which terminal state they announce, and the hard part
+    -- telling a retryable failure from a permanently undeliverable URL -- is
+    identical and worth having in one place.
     """
     cb = callback_kwargs or {}
     job_id = cb.get("job_id", "")
     url = cb.get("webhook_url", "")
+    # The backend sends the status it actually terminalized the row to, so a
+    # finalize announces `completed` or `failed` from the row itself rather
+    # than this worker guessing. `default_status` covers an enqueue from an
+    # older producer that did not send one.
+    status = cb.get("status") or default_status
     if not url:
         return None
     try:
-        delivered = _send_webhook(url, job_id, "cancelled")
+        delivered = _send_webhook(url, job_id, status)
     except Exception:
-        logger.exception("agent_kv_cancelled webhook failed: job_id=%s", job_id)
+        logger.exception(
+            "agent_kv terminal webhook failed: job_id=%s status=%s", job_id, status
+        )
         raise
     if not delivered:
         # `send_webhook` returns False for THREE different things: a non-2xx
@@ -279,20 +266,85 @@ def agent_kv_cancelled(
             # message is acknowledged, because nothing about repeating this
             # will change the outcome.
             logger.error(
-                "agent_kv_cancelled: webhook_url for job %s is permanently "
-                "undeliverable (%s); not retrying",
+                "agent-kv: webhook_url for job %s is permanently undeliverable "
+                "(%s); not retrying",
                 job_id,
                 reason,
             )
-            return {"job_id": job_id, "status": "cancelled", "webhook_skipped": reason}
+            return {"job_id": job_id, "status": status, "webhook_skipped": reason}
         logger.error(
-            "agent_kv_cancelled: webhook not delivered for job %s (retry %s of %s)",
+            "agent-kv: %s webhook not delivered for job %s (retry %s of %s)",
+            status,
             job_id,
-            self.request.retries,
-            self.max_retries,
+            task.request.retries,
+            task.max_retries,
         )
-        raise RuntimeError(f"cancellation webhook not delivered for job {job_id}")
-    return {"job_id": job_id, "status": "cancelled"}
+        raise RuntimeError(f"{status} webhook not delivered for job {job_id}")
+    return {"job_id": job_id, "status": status}
+
+
+@worker_task(
+    bind=True,
+    name="agent_kv_cancelled",
+    autoretry_for=(Exception,),
+    max_retries=3,
+    retry_backoff=True,
+    retry_backoff_max=300,
+    retry_jitter=True,
+)
+def agent_kv_cancelled(
+    self,
+    callback_kwargs: dict[str, Any] | None = None,
+) -> dict[str, Any] | None:
+    """Fire the terminal webhook for a job cancelled by the API.
+
+    Cancellation does not go through finalize: ``JobCancelView`` (and DELETE
+    on a non-terminal job) terminalizes the row directly, releases the slot
+    and returns. So nothing in the finalize path ever fired a webhook for it,
+    and a late executor callback cannot either -- it loses the terminal guard
+    and ``_maybe_webhook`` correctly declines a non-fresh finalize. The caller
+    who supplied ``webhook_url`` was simply never told, despite docs §8
+    promising delivery on terminal states.
+
+    Enqueued by the backend ONLY when its guarded cancel actually won, which
+    is what keeps this from double-notifying: if the cancel lost to a
+    finalize, the backend does not enqueue and ``agent_kv_finalized`` is
+    queued instead. Exactly one of the two paths owns the notification for any
+    given job.
+    """
+    return _deliver_terminal_webhook(self, callback_kwargs, "cancelled")
+
+
+@worker_task(
+    bind=True,
+    name="agent_kv_finalized",
+    autoretry_for=(Exception,),
+    max_retries=3,
+    retry_backoff=True,
+    retry_backoff_max=300,
+    retry_jitter=True,
+)
+def agent_kv_finalized(
+    self,
+    callback_kwargs: dict[str, Any] | None = None,
+) -> dict[str, Any] | None:
+    """Fire the terminal webhook for a job that finalize just terminalized.
+
+    The counterpart to ``agent_kv_cancelled``, and enqueued the same way: by
+    the backend, from the request whose ``mark_terminal`` actually won. The
+    two are mutually exclusive, so a job gets exactly one terminal
+    notification.
+
+    This used to be sent inline by ``_maybe_webhook`` right after the finalize
+    call returned. That lost the notification whenever the finalize RESPONSE
+    was lost: the worker retried, the replay found an already-terminal row and
+    reported ``finalized: False``, and the worker declined to send -- correctly,
+    because out here a non-fresh finalize is indistinguishable from the
+    ordinary duplicate-callback case where the webhook already went out.
+    Queuing it from the backend instead ties the notification to the guard
+    rather than to the survival of an HTTP response.
+    """
+    return _deliver_terminal_webhook(self, callback_kwargs, "completed")
 
 
 def _send_webhook(
@@ -324,50 +376,30 @@ def _send_webhook(
 
 
 def _maybe_webhook(finalize_response: dict[str, Any], job_id: str) -> None:
-    """Fire the completion webhook, but only for a fresh finalize.
+    """Send the ONE follow-up the backend cannot queue for itself.
 
-    ``finalized`` is ``False`` for a duplicate/late finalize call (the job
-    was already terminal) as well as for an unknown job -- either way the
-    webhook already fired (or never should), so firing again here would
-    double-notify the caller.
+    The terminal notification is no longer sent here. The backend queues it
+    (`agent_kv_finalized`) from the request whose `mark_terminal` won, exactly
+    as it has always done for cancellation (`agent_kv_cancelled`). Sending it
+    here meant it rode on the finalize RESPONSE surviving: if that response was
+    lost, this worker retried, the replay reported `finalized: False`, and the
+    send was skipped -- correctly, because from out here a non-fresh finalize
+    is indistinguishable from the ordinary duplicate-callback case where the
+    webhook already went out. The caller was never told and nothing recorded
+    the miss.
 
-    A job cancelled through the API is the "already terminal" case, and its
-    notification is owned by ``agent_kv_cancelled``, enqueued by the backend at
-    the moment its guarded cancel won.
-
-    **One non-fresh finalize does still notify**, and it is the exception that
-    the ``result_attached`` flag exists for: the job was cancelled after its
-    extraction had already finished, so the backend kept the paid-for result on
-    the cancelled row instead of discarding it. The cancellation webhook went
-    out the moment that cancel won, and nothing follows it -- so a
-    webhook-driven caller, who has no reason to poll a job they were told was
-    cancelled, would never learn the answer is there to read. See
-    ``AgentKVJob.attach_result_to_cancelled``.
+    What remains is the one case the backend genuinely cannot queue, because
+    it is not a terminal transition at all: the job was CANCELLED after its
+    extraction had already finished, so the backend kept the paid-for result
+    on the cancelled row. The cancellation webhook went out the moment that
+    cancel won and nothing follows it -- so a webhook-driven caller, who has
+    no reason to poll a job they were told was cancelled, would never learn
+    the answer is there to read. `result_attached` is set only on that path;
+    see `AgentKVJob.attach_result_to_cancelled`.
     """
     url = finalize_response.get("webhook_url") or ""
-    if not finalize_response.get("finalized"):
-        if url and finalize_response.get("result_attached"):
-            _notify_result_available(url, job_id)
-        return
-    if not url:
-        return
-    status = finalize_response.get("status", "")
-    if not _send_webhook(url, job_id, status):
-        # `send_webhook` returns False for a non-2xx or a connection failure.
-        # Discarding that meant a terminal notification could fail to land with
-        # no retry, no record on the job, and -- for a non-2xx -- not even a log
-        # line. Logged at ERROR here rather than raised: unlike the cancellation
-        # task, this runs AFTER finalize has already terminalized the job, so
-        # raising would re-run a finalize that is no longer idempotent-free.
-        #
-        # Durable delivery (attempt counts, a `webhook_delivered_at` the status
-        # document can expose) is the open design question in 2.10.
-        logger.error(
-            "agent-kv webhook not delivered for job %s (status=%s); the caller "
-            "was not notified and nothing will retry",
-            job_id,
-            status,
-        )
+    if url and finalize_response.get("result_attached"):
+        _notify_result_available(url, job_id)
 
 
 def _notify_result_available(url: str, job_id: str) -> None:

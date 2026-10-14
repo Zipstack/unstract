@@ -161,10 +161,17 @@ class WorkerRegistry:
                 TaskRoute("ide_callback.tasks.*", QueueName.IDE_CALLBACK),
                 TaskRoute("agent_kv_complete", QueueName.AGENT_KV_CALLBACK),
                 TaskRoute("agent_kv_error", QueueName.AGENT_KV_CALLBACK),
-                # Cancellation does not go through finalize, so its terminal
-                # webhook has no callback to ride on; the backend enqueues this
-                # directly when its guarded cancel wins.
+                # Both terminal webhooks are enqueued by the BACKEND, from
+                # whichever request won the terminal guard, and are mutually
+                # exclusive: a cancel that won means no finalize did.
+                #
+                # Cancellation does not go through finalize at all, so its
+                # notification has no callback to ride on. Finalize's used to
+                # ride on one and was lost whenever the finalize response was
+                # lost -- the retry saw an already-terminal row, reported
+                # `finalized: False`, and the worker declined to send.
                 TaskRoute("agent_kv_cancelled", QueueName.AGENT_KV_CALLBACK),
+                TaskRoute("agent_kv_finalized", QueueName.AGENT_KV_CALLBACK),
             ],
         ),
     }

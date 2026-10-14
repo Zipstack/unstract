@@ -437,9 +437,19 @@ class TestWebhookFiring:
             return agent_kv_complete(result_dict, callback_kwargs)
 
     @patch(_PATCH_SEND_WEBHOOK)
-    def test_webhook_fires_when_finalized_true_and_url_present(
+    def test_a_fresh_finalize_sends_nothing_from_here(
         self, mock_send_webhook, cb_kwargs
     ):
+        """The terminal webhook is the BACKEND's to queue, not this worker's.
+
+        It used to be sent right here, which tied the notification to the
+        finalize RESPONSE surviving: lose that response and the retry saw an
+        already-terminal row, reported `finalized: False`, and this declined
+        to send -- correctly, since a non-fresh finalize is indistinguishable
+        from the ordinary duplicate whose webhook already went out. The caller
+        was never told. `FinalizeView` now enqueues `agent_kv_finalized` on
+        the request that won the guard instead.
+        """
         api = MagicMock()
         api.agent_kv_finalize.return_value = {
             "finalized": True,
@@ -449,11 +459,7 @@ class TestWebhookFiring:
 
         self._call_complete(cb_kwargs, api)
 
-        mock_send_webhook.assert_called_once_with(
-            "https://example.com/hook",
-            {"job_id": "job-1", "status": "completed"},
-            allow_insecure=False,
-        )
+        mock_send_webhook.assert_not_called()
 
     @patch(_PATCH_SEND_WEBHOOK)
     def test_webhook_not_fired_on_duplicate_finalize_false(
@@ -488,7 +494,13 @@ class TestWebhookFiring:
         mock_send_webhook.assert_not_called()
 
     @patch(_PATCH_SEND_WEBHOOK)
-    def test_webhook_fires_from_error_link_too(self, mock_send_webhook, cb_kwargs):
+    def test_the_error_link_sends_nothing_from_here_either(
+        self, mock_send_webhook, cb_kwargs
+    ):
+        """Same ownership change as the success path: a FAILED job's terminal
+        webhook is queued by the backend, which knows it terminalized the row
+        to `failed`, rather than sent from here on the finalize response.
+        """
         from ide_callback.agent_kv_tasks import agent_kv_error
 
         api = MagicMock()
@@ -504,59 +516,72 @@ class TestWebhookFiring:
         ):
             agent_kv_error("failed-task-5", cb_kwargs)
 
-        mock_send_webhook.assert_called_once_with(
-            "https://example.com/hook",
-            {"job_id": "job-1", "status": "failed"},
-            allow_insecure=False,
-        )
+        mock_send_webhook.assert_not_called()
 
 
 class TestWebhookDeliveryResult:
     """A webhook that does not land must not pass silently.
 
     `send_webhook` returns False for a non-2xx response or a connection
-    failure, and both call sites used to discard it. The cancellation task now
-    raises (so its retry budget applies); the finalize path logs, because it
-    runs after the job is already terminalized and re-running finalize is not
-    free. Reported as 2.10 in the branch review and by Greptile on #2317.
+    failure, and both call sites used to discard it. BOTH terminal
+    notifications are now queued tasks, so both raise and both get a retry
+    budget -- the finalize one used to only be able to log, because it ran
+    inline after the job was already terminalized and re-running finalize is
+    not free. Moving it onto the queue is what gave it somewhere to fail to.
+    Reported as 2.10 in the branch review and by Greptile on #2317.
     """
 
     @patch(_PATCH_SEND_WEBHOOK, return_value=False)
-    def test_a_failed_finalize_webhook_is_logged(self, mock_send, caplog):
-        import logging
+    def test_an_undelivered_finalize_webhook_retries(self, mock_send):
+        """The finalize notification is now a queued task, so an undelivered
+        one RAISES and the retry budget applies -- it no longer just logs.
 
-        from ide_callback import agent_kv_tasks as akt
+        That was the whole point of moving it off the inline path: logging was
+        the best it could do there, because it ran after the job was already
+        terminal and re-running finalize is not free. A task has somewhere to
+        fail to.
+        """
+        from ide_callback.agent_kv_tasks import agent_kv_finalized
 
-        with caplog.at_level(logging.ERROR, logger="ide_callback.agent_kv_tasks"):
-            akt._maybe_webhook(
-                {
-                    "finalized": True,
-                    "webhook_url": "https://hook.example/x",
-                    "status": "completed",
-                },
-                "job-1",
-            )
-
-        assert "not delivered" in caplog.text
-        assert "job-1" in caplog.text
+        with pytest.raises(RuntimeError, match="webhook not delivered for job job-1"):
+            agent_kv_finalized.apply(
+                kwargs={
+                    "callback_kwargs": {
+                        "job_id": "job-1",
+                        "webhook_url": "https://hook.example/x",
+                        "status": "completed",
+                    }
+                }
+            ).get()
 
     @patch(_PATCH_SEND_WEBHOOK, return_value=True)
-    def test_a_delivered_finalize_webhook_is_quiet(self, mock_send, caplog):
-        import logging
+    def test_a_delivered_finalize_webhook_announces_the_backend_s_status(
+        self, mock_send
+    ):
+        """The status comes from the backend, which knows what it terminalized
+        the row to -- this worker does not guess. `failed` proves it is read
+        from the payload rather than defaulted to `completed`.
+        """
+        from ide_callback.agent_kv_tasks import agent_kv_finalized
 
-        from ide_callback import agent_kv_tasks as akt
-
-        with caplog.at_level(logging.ERROR, logger="ide_callback.agent_kv_tasks"):
-            akt._maybe_webhook(
-                {
-                    "finalized": True,
+        out = agent_kv_finalized.apply(
+            kwargs={
+                "callback_kwargs": {
+                    "job_id": "job-1",
                     "webhook_url": "https://hook.example/x",
-                    "status": "completed",
-                },
-                "job-1",
-            )
+                    "status": "failed",
+                }
+            }
+        ).get()
 
-        assert caplog.records == []
+        # The frozen `{job_id, status}` shape (spec 6.7/7.1) -- the terminal
+        # notification carries no `result_available`.
+        mock_send.assert_called_once_with(
+            "https://hook.example/x",
+            {"job_id": "job-1", "status": "failed"},
+            allow_insecure=False,
+        )
+        assert out == {"job_id": "job-1", "status": "failed"}
 
     @patch(_PATCH_SEND_WEBHOOK, return_value=False)
     def test_a_failed_cancellation_webhook_raises_so_it_retries(self, mock_send):
@@ -676,24 +701,32 @@ class TestTheResultAvailableFollowUp:
         assert "job-1" in caplog.text
 
     @patch(_PATCH_SEND_WEBHOOK, return_value=True)
-    def test_the_fixed_payload_is_unchanged_for_every_other_notification(self, mock_send):
-        """`result_available` is additive and appears on exactly one
-        notification. Every other POST keeps the frozen `{job_id, status}`
+    def test_result_available_is_the_only_notification_carrying_it(self, mock_send):
+        """`result_available` is additive and appears on exactly ONE
+        notification; every other POST keeps the frozen `{job_id, status}`
         shape (spec section 6.7/7.1).
+
+        The fresh-finalize half of this assertion moved to
+        `TestWebhookDeliveryResult`, where the terminal notification now
+        lives. Keeping it here would have asserted nothing: this path no
+        longer sends on a fresh finalize, so a `mock_send.assert_not_called()`
+        would pass whether or not the payload were right.
         """
         from ide_callback import agent_kv_tasks as akt
 
         akt._maybe_webhook(
             {
-                "finalized": True,
+                "finalized": False,
+                "result_attached": True,
                 "webhook_url": "https://hook.example/x",
-                "status": "completed",
+                "status": "cancelled",
             },
             "job-1",
         )
 
-        mock_send.assert_called_once_with(
-            "https://hook.example/x",
-            {"job_id": "job-1", "status": "completed"},
-            allow_insecure=False,
-        )
+        payload = mock_send.call_args[0][1]
+        assert payload == {
+            "job_id": "job-1",
+            "status": "cancelled",
+            "result_available": True,
+        }

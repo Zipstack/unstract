@@ -15,6 +15,7 @@ from django.db.models.expressions import CombinedExpression
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from agent_kv.dispatch import dispatch_terminal_webhook
 from agent_kv.maintenance import run_sweep, run_ttl_cleanup
 from agent_kv.models import AgentKVJob, JobStatus
 from agent_kv.rate_limiter import AgentKVConcurrencyLimiter
@@ -419,6 +420,17 @@ class FinalizeView(APIView):
                 handler = self._complete if success else self._fail
                 finalized, result_attached = handler(job, job_id, org_id, body)
                 if finalized:
+                    # Queue the terminal webhook HERE, on the request that won
+                    # the guard -- not in the callback worker after this
+                    # response gets back to it. A lost response (timeout, 5xx)
+                    # used to lose the notification outright: the worker
+                    # retried, the replay reported `finalized: False`, and the
+                    # worker declined to send because a non-fresh finalize is
+                    # indistinguishable from the ordinary duplicate callback
+                    # whose webhook already went out. Mirrors what the cancel
+                    # path has always done, so exactly one of the two owns the
+                    # notification for any job.
+                    dispatch_terminal_webhook(job, job.status.lower())
                     self._drop_staged_input(job, job_id, org_id)
             elif job is not None and success and job.status == JobStatus.CANCELLED:
                 # The job was already CANCELLED when this request read it, and

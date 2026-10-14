@@ -383,3 +383,97 @@ def test_the_terminal_check_reads_the_row_rather_than_the_in_memory_copy(
     dispatch.dispatch_job(job, extractor=TABLE_EXTRACTOR_NAME, schema={}, options={})
 
     assert _filtered_with(m_objects, id=job.id, status__in=list(AgentKVJob.TERMINAL))
+
+
+# ---------------------------------------------------------------------------
+# Terminal-webhook enqueue (both paths share one helper)
+# ---------------------------------------------------------------------------
+
+
+class _FakeJob:
+    """Just the three attributes the enqueue reads."""
+
+    def __init__(self, webhook_url="https://hook.example/x"):
+        self.id = uuid.uuid4()
+        self.organization_id = uuid.uuid4()
+        self.webhook_url = webhook_url
+
+
+def _patch_producer(monkeypatch):
+    """Stand in for `pg_queue.producer`, which `_enqueue_webhook` imports
+    lazily inside the call."""
+    import sys
+    import types
+
+    calls = []
+    mod = types.ModuleType("pg_queue.producer")
+    mod.enqueue_task = lambda **kw: calls.append(kw)
+    pkg = sys.modules.get("pg_queue") or types.ModuleType("pg_queue")
+    monkeypatch.setitem(sys.modules, "pg_queue", pkg)
+    monkeypatch.setitem(sys.modules, "pg_queue.producer", mod)
+    return calls
+
+
+def test_finalize_enqueues_the_terminal_webhook_with_the_backend_s_status(monkeypatch):
+    """The status rides on the message, so the worker announces what the
+    backend actually terminalized the row to rather than guessing."""
+    calls = _patch_producer(monkeypatch)
+    job = _FakeJob()
+
+    dispatch.dispatch_terminal_webhook(job, "failed")
+
+    assert len(calls) == 1
+    assert calls[0]["task_name"] == "agent_kv_finalized"
+    assert calls[0]["queue"] == dispatch.CALLBACK_QUEUE
+    assert calls[0]["kwargs"]["callback_kwargs"] == {
+        "job_id": str(job.id),
+        "webhook_url": "https://hook.example/x",
+        "status": "failed",
+    }
+    assert calls[0]["org_id"] == str(job.organization_id)
+
+
+def test_cancel_still_enqueues_its_own_task_through_the_same_helper(monkeypatch):
+    """Sharing the helper must not have collapsed the two task names into
+    one: they are separate consumers and separate notifications."""
+    calls = _patch_producer(monkeypatch)
+    job = _FakeJob()
+
+    dispatch.dispatch_cancelled_webhook(job)
+
+    assert len(calls) == 1
+    assert calls[0]["task_name"] == "agent_kv_cancelled"
+    assert calls[0]["kwargs"]["callback_kwargs"]["status"] == "cancelled"
+
+
+def test_no_webhook_url_enqueues_nothing(monkeypatch):
+    calls = _patch_producer(monkeypatch)
+
+    dispatch.dispatch_terminal_webhook(_FakeJob(webhook_url=""), "completed")
+    dispatch.dispatch_cancelled_webhook(_FakeJob(webhook_url=""))
+
+    assert calls == []
+
+
+def test_a_failed_enqueue_is_logged_not_raised(monkeypatch, caplog):
+    """Best-effort by design: the job is already terminal and the caller
+    already has their response, so failing that request because a
+    NOTIFICATION could not be queued would be the wrong trade."""
+    import logging
+    import sys
+    import types
+
+    mod = types.ModuleType("pg_queue.producer")
+
+    def _boom(**kw):
+        raise RuntimeError("queue down")
+
+    mod.enqueue_task = _boom
+    pkg = sys.modules.get("pg_queue") or types.ModuleType("pg_queue")
+    monkeypatch.setitem(sys.modules, "pg_queue", pkg)
+    monkeypatch.setitem(sys.modules, "pg_queue.producer", mod)
+
+    with caplog.at_level(logging.ERROR, logger="agent_kv.dispatch"):
+        dispatch.dispatch_terminal_webhook(_FakeJob(), "completed")
+
+    assert "could not queue the completed webhook" in caplog.text

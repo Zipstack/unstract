@@ -856,11 +856,23 @@ curl -X DELETE https://api.unstract.example/agent-kv/5b6e9b0a-.../ \
 
 `webhook_url` (if given at submit) receives one terminal-state POST:
 `{"job_id": "...", "status": "completed"|"failed"|"cancelled"}` — a fixed payload
-shape, no result content (spec §6.7, §7.1). Delivered from the `ide_callback` worker
-(`workers/ide_callback/agent_kv_tasks.py::_maybe_webhook`) only on a *fresh* finalize
-(a duplicate/late finalize for an already-terminal job does not re-fire it, with the
-one exception below), or from `agent_kv_cancelled` when a cancel won the race
-instead.
+shape, no result content (spec §6.7, §7.1).
+
+**The backend owns the terminal notification**, on both paths, and queues it from
+whichever request won the terminal guard: `agent_kv_finalized` when a finalize won,
+`agent_kv_cancelled` when a cancel did. The two are mutually exclusive, so a job
+gets exactly one — and because the enqueue is tied to the guard rather than to an
+HTTP reply, losing a response cannot lose the notification. Delivery, retries and
+the permanently-undeliverable case belong to the `ide_callback` worker.
+
+> This changed. The finalize notification used to be sent inline by the callback
+> worker (`_maybe_webhook`) right after finalize answered. If that *response* was
+> lost — a timeout, or a 5xx — the worker retried, the replay found an
+> already-terminal row and was told `finalized: false`, and the worker declined to
+> send. That was the correct call from where it stood: a non-fresh finalize is
+> indistinguishable from the ordinary duplicate callback whose webhook already went
+> out. The effect was that the caller was never notified and nothing recorded the
+> miss.
 
 **There is exactly one case of a second POST**, and it is additive:
 
@@ -879,7 +891,9 @@ simply sees a repeat of the cancellation.
 
 Nothing orders the two POSTs. The cancellation one is queued by the backend the
 moment its cancel wins and delivered by a worker; the follow-up is sent inline by
-the finalize callback. A receiver can therefore see the follow-up first and then the
+the finalize callback, which is the one notification that is still sent from there
+— it is not a terminal transition, so there is no guard for the backend to hang it
+on. A receiver can therefore see the follow-up first and then the
 plain `cancelled` — treat `result_available` as sticky, not as the state of the
 world at delivery time. The result's readability does not depend on either POST
 landing: `GET result` is the authority, and this notification only saves a poll.

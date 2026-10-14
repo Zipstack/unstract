@@ -20,6 +20,74 @@ class DispatchError(Exception):
     """Enqueue failed; the caller terminalizes the job (spec §5.3)."""
 
 
+def _enqueue_webhook(task_name: str, job, status: str) -> None:
+    """Queue a terminal-webhook task for ``job``, best-effort.
+
+    Shared by the cancel and finalize paths so the two cannot drift: both
+    terminal notifications are OWNED BY THE BACKEND and queued by whichever
+    request won the terminal guard. Delivery, retries and the permanently-
+    undeliverable case are the worker's problem.
+
+    Best-effort by design, as the cancel path has always been: the job is
+    already terminal and the caller already has their response, so failing
+    that request because a notification could not be QUEUED would be the
+    wrong trade. Logs and returns.
+    """
+    if not job.webhook_url:
+        return
+    try:
+        from pg_queue.producer import enqueue_task
+
+        enqueue_task(
+            task_name=task_name,
+            queue=CALLBACK_QUEUE,
+            kwargs={
+                "callback_kwargs": {
+                    "job_id": str(job.id),
+                    "webhook_url": job.webhook_url,
+                    "status": status,
+                }
+            },
+            org_id=str(job.organization_id),
+        )
+    except Exception:
+        logger.exception(
+            "agent-kv: could not queue the %s webhook for job %s; the job IS "
+            "%s, only the notification was lost",
+            status,
+            job.id,
+            status,
+        )
+
+
+def dispatch_terminal_webhook(job, status: str) -> None:
+    """Queue the terminal webhook for a job finalize just terminalized.
+
+    Call ONLY when ``mark_terminal`` actually won, which is what makes this
+    mutually exclusive with ``dispatch_cancelled_webhook``: a finalize that
+    won means no cancel did, and vice versa. Exactly one path notifies.
+
+    **Why the backend owns this rather than the callback worker.** The worker
+    used to send it inline after finalize returned. If that HTTP response was
+    lost -- a timeout, or a 5xx -- the worker retried, the replay found an
+    already-terminal row and reported ``finalized: False``, and the worker
+    correctly declined to send, because from out there a non-fresh finalize is
+    indistinguishable from the ordinary duplicate-callback case where the
+    webhook already went out. The caller was never told and nothing recorded
+    the miss. Queuing here instead means the notification is committed by the
+    one request that won the guard, so losing the response to that request no
+    longer loses the notification: the queued task has its own retry budget
+    and a visible failure.
+
+    The residual window is a process death between the guard-winning UPDATE
+    and this enqueue, which is microseconds rather than a whole HTTP round
+    trip. Closing that too would mean enqueuing inside ``mark_terminal``'s
+    transaction; it is not done here because the enqueue is deliberately
+    best-effort and must not be able to roll back a terminal state.
+    """
+    _enqueue_webhook("agent_kv_finalized", job, status)
+
+
 def dispatch_cancelled_webhook(job) -> None:
     """Queue the terminal webhook for a job the API just cancelled.
 
@@ -47,28 +115,7 @@ def dispatch_cancelled_webhook(job) -> None:
     QUEUED would be the wrong trade, so this logs and returns rather than
     raising. Delivery itself is the worker's problem.
     """
-    if not job.webhook_url:
-        return
-    try:
-        from pg_queue.producer import enqueue_task
-
-        enqueue_task(
-            task_name="agent_kv_cancelled",
-            queue=CALLBACK_QUEUE,
-            kwargs={
-                "callback_kwargs": {
-                    "job_id": str(job.id),
-                    "webhook_url": job.webhook_url,
-                }
-            },
-            org_id=str(job.organization_id),
-        )
-    except Exception:
-        logger.exception(
-            "agent-kv: could not queue the cancellation webhook for job %s; "
-            "the job IS cancelled, only the notification was lost",
-            job.id,
-        )
+    _enqueue_webhook("agent_kv_cancelled", job, "cancelled")
 
 
 def _dispatcher():
