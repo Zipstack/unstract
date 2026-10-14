@@ -206,10 +206,12 @@ const usePromptOutput = () => {
         updatedPromptOutputs = { ...updatedPromptOutputs, ...currentOutput };
       }
       Object.keys(updatedPromptOutputs).forEach((innerKey) => {
-        const [existingPromptId, , , existingIsSinglePass] =
-          innerKey.split("__"); // Extract promptId from key
+        const [existingPromptId, , existingProfile, existingIsSinglePass] =
+          innerKey.split("__");
+        const [, , keyProfile] = key.split("__");
         if (
           keyPromptId === existingPromptId &&
+          keyProfile === existingProfile &&
           keyIsSinglePass === existingIsSinglePass
         ) {
           updatedPromptOutputs[innerKey].coverage = outputs[key]?.coverage;
