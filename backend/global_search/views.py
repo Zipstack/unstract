@@ -90,9 +90,8 @@ class GlobalSearchView(APIView):
                 description=(
                     "search_unavailable: every searched type failed with a "
                     "database error a retry may clear (unreachable, timed out, "
-                    "locked), or a failure left the connection unusable. A "
-                    "single failure on a healthy connection is a 200 with "
-                    "failed_types instead. Retry; never show as 'no results'."
+                    "locked), or a failure left the connection unusable. "
+                    "Retry; never show as 'no results'."
                 )
             ),
         },
