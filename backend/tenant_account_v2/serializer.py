@@ -7,10 +7,10 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.serializers import ModelSerializer
 
 from tenant_account_v2.capabilities import (
+    CAPABILITY_KEY_VALUES,
     CAPABILITY_SETTING_VALUES,
     SPECS,
     SPECS_BY_KEY,
-    Capability,
     CapabilitySetting,
 )
 from tenant_account_v2.models import OrganizationMember
@@ -171,13 +171,14 @@ class UpdateFlagSerializer(ModelSerializer):
 
 
 class CapabilitySerializer(serializers.Serializer):
-    key = serializers.ChoiceField(choices=[c.value for c in Capability])
+    key = serializers.ChoiceField(choices=CAPABILITY_KEY_VALUES)
     label = serializers.CharField()
     description = serializers.CharField()
     setting = serializers.ChoiceField(choices=CAPABILITY_SETTING_VALUES)
     allowed_for_me = serializers.BooleanField(
-        help_text="The setting does not block the caller. Object-level rules, "
-        "such as owning what is being deleted, still apply."
+        help_text="The setting does not block the caller. The endpoint's own "
+        "rules (admin checks, platform-key permission level, ownership) still "
+        "apply. Always true for admins and service accounts."
     )
 
 

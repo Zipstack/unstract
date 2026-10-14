@@ -40,8 +40,9 @@ class CapabilitySetting(StrEnum):
     ANY_MEMBER = "any_member"
 
 
-# The serializers' choices, and the target of the schema's enum-name override
+# The serializers' choices, and the targets of the schema's enum-name overrides
 # (drf-spectacular matches overrides on the choice set, not on the Enum).
+CAPABILITY_KEY_VALUES = [capability.value for capability in Capability]
 CAPABILITY_SETTING_VALUES = [setting.value for setting in CapabilitySetting]
 
 

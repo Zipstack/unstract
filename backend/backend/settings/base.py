@@ -954,6 +954,7 @@ SPECTACULAR_SETTINGS = {
     "ENUM_NAME_OVERRIDES": {
         "ErrorType": "api_v2.openapi_schema.ERROR_TYPES",
         "ApiKeyPermission": "platform_api.models.ApiKeyPermission.choices",
+        "CapabilityKey": "tenant_account_v2.capabilities.CAPABILITY_KEY_VALUES",
         "CapabilitySetting": "tenant_account_v2.capabilities.CAPABILITY_SETTING_VALUES",
     },
     # Group descriptions generated clients show in their help; without this

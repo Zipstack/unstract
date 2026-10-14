@@ -78,22 +78,26 @@ class CapabilityRegistryTests(SimpleTestCase):
                     Organization._meta.get_field(column).default,
                 )
 
-    def test_schema_names_the_setting_enum_once(self) -> None:
+    def test_schema_names_the_capability_enums_as_the_contract_does(self) -> None:
         schema = SchemaGenerator(patterns=tenant_urls.urlpatterns).get_schema(
             request=None, public=True
         )
         components = schema["components"]["schemas"]
         self.assertEqual(
+            components["CapabilityKey"]["enum"], [c.value for c in Capability]
+        )
+        self.assertEqual(
             components["CapabilitySetting"]["enum"], ["admins_only", "any_member"]
         )
-        self.assertFalse(
-            [
-                name
-                for name in components
-                if name.endswith("Enum")
-                and components[name].get("enum") == ["admins_only", "any_member"]
-            ]
-        )
+        # No field-named duplicate (KeyEnum, SettingEnum) of either.
+        duplicated = [
+            name
+            for name, component in components.items()
+            if name.endswith("Enum")
+            and component.get("enum")
+            in ([c.value for c in Capability], ["admins_only", "any_member"])
+        ]
+        self.assertEqual(duplicated, [])
 
 
 class CapabilityTestBase(AuditTestBase):
