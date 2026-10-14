@@ -83,8 +83,9 @@ Results are always newest first; an `ordering` parameter is ignored.
 - `actor.id` is `null` once the user is deleted; `email` and `name` are copied
   onto the event and survive.
 - `changes` holds only what changed. Either side may be absent: a create has
-  only `after`, a delete only `before`, and a side whose value could not be
-  read at the time of the change is left out.
+  only `after`, a delete only `before`. When the previous value could not be
+  read, `before` is absent, `after` holds what the request set (not a diff),
+  and the summary ends with `(previous value unavailable)`.
 - `role` values are whatever the deployment's auth plugin uses (`user`/`admin`
   in OSS, `unstract_user`/`unstract_admin` in cloud); do not hard-code them.
 - `action_label` falls back to the raw key for an action that is no longer
@@ -136,7 +137,7 @@ Errors use the project's standard envelope (drf-standardized-errors):
 
 | Status | When |
 |---|---|
-| 400 | Invalid filter (unknown action, unparsable date, `from` after `to`); `attr` is the parameter name, or `action.<n>` for one bad `action` value |
+| 400 | Invalid filter (unknown action, unparsable date, `from` after `to`); `attr` is the parameter name (`action` for an unknown action), or `action.<n>` when one `action` value is over 64 characters |
 | 403 | Not an organisation admin, or called with a platform API key |
 | 404 | List only: `page` is out of range or not a number (`code: not_found`) |
 | 413 | Export matches more than 10,000 rows (`code: export_too_large`) |
@@ -183,7 +184,9 @@ Rules for emitters:
 5. `target_type` is free text; reuse a `TargetType` value where one fits.
 6. For a key edit, `record_key_update(target_type=..., key=..., before=...,
    after=..., request=...)` records `key.enabled`/`key.disabled` for an
-   `is_active` flip and `key.changed` for any other changed field.
+   `is_active` flip and `key.changed` for any other changed field. With
+   `before=None` it records the fields the request set, still filing an
+   `is_active` the request set as `key.enabled`/`key.disabled`.
 
 Expected emitters outside this PR:
 
@@ -228,7 +231,9 @@ Per-deployment API keys (`api_v2`) are not recorded.
 
 `PLATFORM_AUDIT_RETENTION_DAYS` (env, default **90**) is the default; an
 organisation can override it with the `PLATFORM_AUDIT_RETENTION_DAYS`
-configuration key (1–3650). Every read hides events older than the cutoff.
+configuration key (1–3650). An env value outside 1–3650 is treated as 3650
+(fail closed). An override outside the range is ignored in favour of the env
+default. Every read hides events older than the cutoff.
 Rows are physically deleted by
 
 ```
@@ -244,10 +249,15 @@ made any other way are not recorded: identity-provider or SCIM changes, cloud
 staff and admin routes, Django admin, invitation acceptance, and cloud-only
 features (until cloud code emits them).
 
-Three side effects change a member's default adapter without an event:
-creating an adapter when the member has no default of that type makes it the
-default, revoking a share clears the default for members who lose access, and
-removing a co-owner clears theirs.
+Side effects that change a member's default adapter are not recorded. Among
+them: creating an adapter when the member has no default of that type makes it
+the default; revoking a share, or removing a co-owner who loses all access,
+clears the default that pointed at that adapter; deleting an adapter clears it
+for every member who had it as a default.
+
+Activating a legacy platform key records `key.disabled` for the keys that were
+active a moment before; two admins toggling keys at the same instant can make
+that list miss or name the wrong key.
 
 Revoking an invitation makes one extra identity-provider call to resolve the
 invitee e-mail; if it fails, or the invitation is not in the first page the

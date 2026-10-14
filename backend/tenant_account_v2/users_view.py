@@ -3,11 +3,16 @@ import logging
 from account_v2.authentication_controller import AuthenticationController
 from account_v2.exceptions import BadRequestException
 from platform_audit.actions import Action, TargetType
-from platform_audit.recorder import best_effort, record_platform_event
+from platform_audit.recorder import (
+    BEFORE_UNAVAILABLE,
+    best_effort,
+    record_platform_event,
+)
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.request import Request
 from rest_framework.response import Response
+from utils.user_context import UserContext
 from utils.user_session import UserSessionUtils
 
 from tenant_account_v2.models import OrganizationMember
@@ -241,7 +246,9 @@ def _record_role_change(
             "before": {"role": old_role} if old_role else None,
             "after": {"role": new_role},
         },
-        summary=f"{old_role or 'unknown'} → {new_role}",
+        summary=f"{old_role} → {new_role}"
+        if old_role
+        else f"→ {new_role} {BEFORE_UNAVAILABLE}",
         request=request,
     )
 
@@ -249,6 +256,7 @@ def _record_role_change(
 @best_effort
 def _record_invites(request: Request, user_list: list, invite_response: list) -> None:
     roles = {item.get("email"): item.get("role") for item in user_list}
+    organization = UserContext.get_organization()  # once, not per event
     for invite in invite_response or []:
         if invite.status != "success":
             continue
@@ -261,11 +269,13 @@ def _record_invites(request: Request, user_list: list, invite_response: list) ->
             changes={"after": {"role": role}},
             summary=f"as {role}" if role else "",
             request=request,
+            organization=organization,
         )
 
 
 @best_effort
 def _record_removals(request: Request, members_before: list[dict]) -> None:
+    organization = UserContext.get_organization()  # once, not per event
     for member in members_before:
         record_platform_event(
             action=Action.MEMBER_REMOVED,
@@ -275,4 +285,5 @@ def _record_removals(request: Request, members_before: list[dict]) -> None:
             changes={"before": {"role": member["role"]}},
             summary=f"was {member['role']}",
             request=request,
+            organization=organization,
         )

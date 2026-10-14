@@ -193,7 +193,8 @@ class PlatformAuditEventListView(_AuditBaseView):
             ),
             **_ERRORS,
             404: OpenApiResponse(
-                ErrorResponse404Serializer, description="`page` is out of range."
+                ErrorResponse404Serializer,
+                description="`page` is out of range or not a number.",
             ),
         },
         examples=[
@@ -303,20 +304,19 @@ class PlatformAuditActorListView(_AuditBaseView):
                 "actor_key_name",
             )
         )
-        data = sorted(
-            (
-                {
-                    "id": row["actor_id"],
-                    "email": row["actor_email"],
-                    "name": row["actor_name"],
-                    "type": row["actor_type"],
-                    "key_id": row["actor_key_id"],
-                    "key_name": row["actor_key_name"],
-                }
-                for row in rows[:MAX_ACTORS]
-            ),
-            key=lambda actor: (actor["email"], actor["key_name"]),
-        )
+        # Already in e-mail order (the database's collation); re-sorting here
+        # in Python's order could disagree with which rows the cap kept.
+        data = [
+            {
+                "id": row["actor_id"],
+                "email": row["actor_email"],
+                "name": row["actor_name"],
+                "type": row["actor_type"],
+                "key_id": row["actor_key_id"],
+                "key_name": row["actor_key_name"],
+            }
+            for row in rows[:MAX_ACTORS]
+        ]
         return Response(AuditActorSerializer(data, many=True).data)
 
 

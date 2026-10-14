@@ -7,9 +7,9 @@ called it. A failure is logged with ``logger.exception`` and the event is lost.
 The write is deferred with ``transaction.on_commit``, so an event is stored only
 if the change it describes is committed. When the caller is not inside a
 transaction (the default here: ``ATOMIC_REQUESTS`` is off) ``on_commit`` runs the
-write straight away. Under ``ATOMIC_REQUESTS`` an event recorded from a
-``best_effort`` helper is dropped if that helper later raises, because its
-savepoint rolls back. Everything the write needs is resolved at call time, so
+write straight away. Inside a transaction (``ATOMIC_REQUESTS``, or a view's own
+``atomic()``) an event recorded from a ``best_effort`` helper is dropped if that
+helper later raises, because its savepoint rolls back. Everything the write needs is resolved at call time, so
 the deferred write does not depend on request state that may be gone by then.
 
 Call it after the change has succeeded, never before::
@@ -38,6 +38,10 @@ from platform_audit.actions import get_action
 from platform_audit.models import ActorType, PlatformAuditEvent
 
 logger = logging.getLogger(__name__)
+
+#: Appended to a summary when the previous value could not be read, so an
+#: event with no ``before`` reads the same whichever emitter wrote it.
+BEFORE_UNAVAILABLE = "(previous value unavailable)"
 
 P = ParamSpec("P")
 T = TypeVar("T")
@@ -232,8 +236,10 @@ def record_key_update(
     flip, and ``key.changed`` for any other field that changed.
 
     ``before`` is ``None`` when it could not be read: what changed is then
-    unknown, so one ``key.changed`` carries the full ``after`` and no
-    ``before``. With no ``after`` there is nothing to describe.
+    unknown, so the events cover the fields the request set, with no
+    ``before``. An ``is_active`` the request set is still filed as
+    ``key.enabled``/``key.disabled``, so filtering by those actions finds it.
+    With no ``after`` there is nothing to describe.
     """
     from platform_audit.actions import Action
 
@@ -241,15 +247,29 @@ def record_key_update(
         logger.error("Platform audit: key %s update not recorded, no after", key.id)
         return
     if before is None:
-        record_platform_event(
-            action=Action.KEY_CHANGED,
-            target_type=target_type,
-            target_id=key.id,
-            target_name=key.name,
-            changes={"after": dict(after)},
-            summary="previous values unavailable",
-            request=request,
-        )
+        sent = set(getattr(request, "data", None) or {})
+        requested = {k: v for k, v in after.items() if k in sent}
+        if "is_active" in requested:
+            is_active = requested.pop("is_active")
+            record_platform_event(
+                action=Action.KEY_ENABLED if is_active else Action.KEY_DISABLED,
+                target_type=target_type,
+                target_id=key.id,
+                target_name=key.name,
+                changes={"after": {"is_active": is_active}},
+                summary=BEFORE_UNAVAILABLE,
+                request=request,
+            )
+        if requested:
+            record_platform_event(
+                action=Action.KEY_CHANGED,
+                target_type=target_type,
+                target_id=key.id,
+                target_name=key.name,
+                changes={"after": requested},
+                summary=f"changed {', '.join(sorted(requested))} {BEFORE_UNAVAILABLE}",
+                request=request,
+            )
         return
     changes = diff(before, after)
     flipped = "is_active" in changes["after"]

@@ -288,6 +288,7 @@ def _record_membership(
 ) -> None:
     """One event per user, so the Audit log can be searched by their e-mail."""
     emails = dict(User.objects.filter(id__in=user_ids).values_list("id", "email"))
+    organization = group.organization  # once, not per event
     for user_id in user_ids:
         email = emails.get(user_id, str(user_id))
         record_platform_event(
@@ -298,6 +299,7 @@ def _record_membership(
             summary=email,
             metadata={"user_id": user_id, "email": email},
             request=request,
+            organization=organization,
         )
 
 

@@ -12,11 +12,14 @@ logger = logging.getLogger(__name__)
 def retention_days(organization: Organization | None) -> int:
     """The organisation's override of PLATFORM_AUDIT_RETENTION_DAYS, else the default.
 
-    Overrides are validated against the key's 1-3650 bounds, but the env
-    default is not, so it is checked here and fails closed: a value outside
-    the bounds (``0`` is often meant as "keep forever") becomes the maximum.
-    Hiding too little is reversible; a purge acting on a too-short retention
-    is not.
+    The env default is not validated by ``Configuration``, so it is checked
+    here and fails closed: a value outside 1-3650 (``0`` is often meant as
+    "keep forever") becomes the maximum. Hiding too little is reversible; a
+    purge acting on a too-short retention is not.
+
+    An org override outside the bounds never reaches this check:
+    ``Configuration`` rejects it and returns the env default instead, which may
+    be shorter than the operator meant.
     """
     spec = ConfigKey.PLATFORM_AUDIT_RETENTION_DAYS.value
     days = int(

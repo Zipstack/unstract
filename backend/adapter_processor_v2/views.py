@@ -16,7 +16,12 @@ from permissions.permission import (
 )
 from permissions.resource_share_views import ResourceShareManagementMixin
 from platform_audit.actions import Action, TargetType
-from platform_audit.recorder import best_effort, diff, record_platform_event
+from platform_audit.recorder import (
+    BEFORE_UNAVAILABLE,
+    best_effort,
+    diff,
+    record_platform_event,
+)
 from plugins import get_plugin
 from rest_framework import status
 from rest_framework.decorators import action
@@ -597,10 +602,16 @@ def _record_defaults_changed(request: Request, before: dict | None) -> None:
     if after is None:
         return
     if before is None:
-        # Previous defaults unreadable: record what they are now.
-        changes = {"after": after}
+        # Previous defaults unreadable: record the slots that are set now.
+        changes = {"after": {slot: name for slot, name in after.items() if name}}
+        summary = "; ".join(f"{slot} → {name}" for slot, name in changes["after"].items())
+        summary = f"{summary} {BEFORE_UNAVAILABLE}"
     else:
         changes = diff(before, after)
+        summary = "; ".join(
+            f"{slot}: {changes['before'][slot] or 'none'} → {name or 'none'}"
+            for slot, name in changes["after"].items()
+        )
     if not changes["after"]:
         return
     record_platform_event(
@@ -609,10 +620,6 @@ def _record_defaults_changed(request: Request, before: dict | None) -> None:
         target_id=request.user.id,
         target_name=request.user.email,
         changes=changes,
-        summary="; ".join(
-            f"{slot}: {(changes.get('before') or {}).get(slot, '?') or 'none'}"
-            f" → {name or 'none'}"
-            for slot, name in changes["after"].items()
-        ),
+        summary=summary,
         request=request,
     )

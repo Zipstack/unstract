@@ -25,6 +25,7 @@ from tenant_account_v2.users_view import OrganizationUserViewSet
 from tenant_account_v2.views import organization_settings
 
 from platform_audit.models import PlatformAuditEvent
+from utils.user_context import UserContext
 from platform_audit.tests.base import AuditTestBase, make_user
 
 _CONTROLLER = "account_v2.authentication_controller.AuthenticationController"
@@ -80,7 +81,7 @@ class MemberEventTests(AuditTestBase):
                 self.call(view, "post", data={"email": "member@example.com", "role": "admin"})
         event = self.only_event(action="member.role_changed")
         self.assertEqual(event.changes, {"after": {"role": "admin"}})
-        self.assertEqual(event.summary, "unknown → admin")
+        self.assertEqual(event.summary, "→ admin (previous value unavailable)")
 
     def test_failed_or_unchanged_role_records_nothing(self) -> None:
         view = OrganizationUserViewSet.as_view({"post": "assign_organization_role_to_user"})
@@ -228,11 +229,33 @@ class GroupEventTests(AuditTestBase):
             added.metadata, {"user_id": self.member.id, "email": "member@example.com"}
         )
 
+        # Bulk adds resolve the organisation once, not once per event: adding
+        # two users costs no more lookups than adding one.
+        lookups = []
+        for emails in (["one@example.com"], ["two@example.com", "three@example.com"]):
+            users = [make_user(email) for email in emails]
+            for user in users:
+                OrganizationMember.objects.create(
+                    organization=self.org, user=user, role="user"
+                )
+            with patch(
+                "utils.user_context.UserContext.get_organization",
+                wraps=UserContext.get_organization,
+            ) as spy:
+                self.call(
+                    add, "post", data={"user_ids": [u.id for u in users]}, pk=self.group.pk
+                )
+            lookups.append(spy.call_count)
+        self.assertEqual(lookups[0], lookups[1])
+        self.assertEqual(len(self.events(action="group.member_added")), 4)
+
         remove = OrganizationGroupViewSet.as_view({"delete": "remove_member"})
         self.call(remove, "delete", pk=self.group.pk, user_id=str(self.member.id))
         removed = self.only_event(action="group.member_removed")
         self.assertEqual(removed.summary, "member@example.com")
-        self.assertFalse(GroupMembership.objects.filter(group=self.group).exists())
+        self.assertFalse(
+            GroupMembership.objects.filter(group=self.group, user=self.member).exists()
+        )
 
 
 class PlatformApiKeyEventTests(AuditTestBase):
@@ -316,14 +339,24 @@ class PlatformApiKeyEventTests(AuditTestBase):
         self.assert_admin_actor(event)
         self.assertEqual((event.target_id, event.target_name), (str(key_id), "ci"))
 
-    def test_unreadable_before_still_records_the_update(self) -> None:
+    def test_unreadable_before_still_files_the_flip_and_the_other_fields(self) -> None:
         view = PlatformApiKeyViewSet.as_view({"patch": "partial_update"})
-        after = {"description": "d", "is_active": False, "permission": "read_write"}
+        after = {"description": "new", "is_active": False, "permission": "read_write"}
         with patch("platform_api.views._key_fields", side_effect=[None, after]):
-            self.call(view, "patch", data={"is_active": False}, pk=self.key.pk)
-        event = self.only_event(action="key.changed")
-        self.assertEqual(event.changes, {"after": after})
-        self.assertEqual(event.summary, "previous values unavailable")
+            self.call(
+                view,
+                "patch",
+                data={"is_active": False, "description": "new"},
+                pk=self.key.pk,
+            )
+        disabled = self.only_event(action="key.disabled")
+        self.assertEqual(disabled.changes, {"after": {"is_active": False}})
+        self.assertEqual(disabled.summary, "(previous value unavailable)")
+        changed = self.only_event(action="key.changed")
+        self.assertEqual(changed.changes, {"after": {"description": "new"}})
+        self.assertEqual(
+            changed.summary, "changed description (previous value unavailable)"
+        )
 
     def test_a_failing_audit_write_does_not_change_the_response(self) -> None:
         view = PlatformApiKeyViewSet.as_view({"post": "rotate"})
@@ -511,7 +544,8 @@ class DefaultProfileEventTests(AuditTestBase):
             with patch("adapter_processor_v2.views.AdapterProcessor.set_default_triad"):
                 self.call(view, "post", data={})
         event = self.only_event(action="default_profile.changed")
-        self.assertEqual(event.changes, {"after": now})
+        self.assertEqual(event.changes, {"after": {"llm": "gpt"}})
+        self.assertEqual(event.summary, "llm → gpt (previous value unavailable)")
 
 
 class PlatformSettingEventTests(AuditTestBase):
@@ -569,3 +603,6 @@ class PlatformSettingEventTests(AuditTestBase):
                 self.call(view, "patch", data={"club_interval_seconds": 600})
         event = self.only_event(action="platform_setting.changed")
         self.assertEqual(event.changes, {"after": {"club_interval_seconds": 600}})
+        self.assertEqual(
+            event.summary, "club_interval_seconds → 600 (previous value unavailable)"
+        )

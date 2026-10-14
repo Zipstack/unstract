@@ -9,7 +9,11 @@ from pipeline_v2.models import Pipeline
 from pipeline_v2.pipeline_processor import PipelineProcessor
 from platform_api.permissions import IsOrganizationAdmin
 from platform_audit.actions import Action, TargetType
-from platform_audit.recorder import best_effort, record_platform_event
+from platform_audit.recorder import (
+    BEFORE_UNAVAILABLE,
+    best_effort,
+    record_platform_event,
+)
 from rest_framework import status, viewsets
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
@@ -111,8 +115,9 @@ class NotificationSettingsView(APIView):
                     else {"club_interval_seconds": before},
                     "after": {"club_interval_seconds": int(new_value)},
                 },
-                summary=f"club_interval_seconds: {before if before is not None else '?'}"
-                f" → {int(new_value)}",
+                summary=f"club_interval_seconds: {before} → {int(new_value)}"
+                if before is not None
+                else f"club_interval_seconds → {int(new_value)} {BEFORE_UNAVAILABLE}",
                 request=request,
             )
         return Response({"club_interval_seconds": int(new_value)})
