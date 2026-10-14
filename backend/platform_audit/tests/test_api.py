@@ -320,7 +320,10 @@ class AuditReadApiTests(AuditTestBase):
         self.assertEqual(self._get(LIST, {"page": 99}).status_code, 404)
 
     def test_actors_cap_keeps_the_first_by_email(self) -> None:
-        self._event("key.rotated", days_ago=1, actor_type="api_key", actor_email="aaa@example.com")
+        # An api_key actor sorting last by e-mail: a type-first cap would keep it.
+        self._event(
+            "key.rotated", days_ago=1, actor_type="api_key", actor_email="zzz@example.com"
+        )
         with patch("platform_audit.views.MAX_ACTORS", 2):
             emails = [row["email"] for row in self._get(ACTORS).data]
-        self.assertEqual(emails, ["aaa@example.com", "admin@example.com"])
+        self.assertEqual(emails, ["admin@example.com", "bot@example.com"])
