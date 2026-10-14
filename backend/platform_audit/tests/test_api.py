@@ -236,6 +236,26 @@ class AuditReadApiTests(AuditTestBase):
         self.assertEqual(record["action_label"], "Key rotated")
         self.assertEqual(record["target_name"], "ci-key")
 
+    def test_export_changes_cell(self) -> None:
+        self._event(
+            "group.changed",
+            days_ago=0,
+            target_name="With changes",
+            changes={"after": {"name": "B"}, "before": {"name": "A"}},
+        )
+        response = self._get(EXPORT, {"action": ["group.created", "group.changed"]})
+        rows = list(csv.reader(io.StringIO(response.content.decode())))
+        cells = {
+            dict(zip(CSV_COLUMNS, row, strict=True))["target_name"]: dict(
+                zip(CSV_COLUMNS, row, strict=True)
+            )["changes"]
+            for row in rows[1:]
+        }
+        self.assertEqual(cells["Finance"], "")
+        self.assertEqual(
+            cells["With changes"], '{"after": {"name": "B"}, "before": {"name": "A"}}'
+        )
+
     def test_export_neutralises_formulas(self) -> None:
         self._event(
             "group.created", days_ago=0, target_name="=HYPERLINK(1)", summary="-2+3"

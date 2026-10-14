@@ -2,7 +2,7 @@ import uuid
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from django.db import connection, transaction
+from django.db import IntegrityError, connection, transaction
 
 from platform_audit.actions import Action, TargetType
 from platform_audit.models import PlatformAuditEvent
@@ -135,6 +135,16 @@ class RecorderTests(AuditTestBase):
                 )
         self.assertNotIn("invitee@example.com", logs.output[0])
         self.assertIn("target=invitation:<redacted>", logs.output[0])
+
+    def test_write_failure_log_leaves_out_the_database_error_text(self) -> None:
+        """A database error can echo the rejected row; only its type is logged."""
+        error = IntegrityError('Failing row contains (..., "invitee@example.com", ...)')
+        with patch.object(PlatformAuditEvent.objects, "create", side_effect=error):
+            with self.assertLogs("platform_audit.recorder", "ERROR") as logs:
+                self._record()
+        output = "\n".join(logs.output)
+        self.assertNotIn("invitee@example.com", output)
+        self.assertIn("IntegrityError", output)
         self.assertIn(f"actor=user:{self.admin.pk}", logs.output[0])
         self.assertNotIn("admin@example.com", logs.output[0])
 

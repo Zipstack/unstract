@@ -147,13 +147,18 @@ def _write(fields: dict[str, Any]) -> None:
     try:
         with transaction.atomic():
             PlatformAuditEvent.objects.create(**fields)
-    except Exception:
-        # Enough to tell which change went unaudited. Never changes, metadata
-        # or an e-mail: an invitation's target id is the invitee's address.
-        logger.exception(
-            "Platform audit: failed to write %r (org=%s target=%s:%s actor=%s:%s "
-            "key=%s request_id=%s)",
+    except Exception as exc:
+        # Enough to tell which change went unaudited, and nothing from the row:
+        # no changes, metadata or e-mail. The exception's message is left out
+        # too, because a database error can echo the row it rejected; its type
+        # and SQLSTATE say what went wrong.
+        cause = exc.__cause__ or exc
+        logger.error(
+            "Platform audit: failed to write %r (%s, sqlstate=%s; org=%s "
+            "target=%s:%s actor=%s:%s key=%s request_id=%s)",
             fields.get("action"),
+            type(exc).__name__,
+            getattr(cause, "pgcode", None),
             getattr(fields.get("organization"), "organization_id", None),
             fields.get("target_type"),
             _loggable_id(fields.get("target_id")),
@@ -165,7 +170,7 @@ def _write(fields: dict[str, Any]) -> None:
 
 
 def _loggable_id(value: Any) -> str:
-    """The id, unless it is an e-mail address (an invitation's target id)."""
+    """The id, unless it contains an e-mail address."""
     value = "" if value is None else str(value)
     return "<redacted>" if "@" in value else value
 
