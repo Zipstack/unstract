@@ -152,6 +152,11 @@ class AuditReadApiTests(AuditTestBase):
         page2 = self._get(LIST, {"page_size": 2, "page": 2})
         self.assertEqual(self._ids(page2), [str(self.group.id)])
 
+    def test_blank_filters_are_ignored(self) -> None:
+        response = self._get(LIST, {"from": "", "to": " ", "action": ["", "key.rotated"]})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(self._ids(response), [str(self.rotate.id)])
+
     def test_invalid_filters_are_400(self) -> None:
         for params in (
             {"action": "nope.unknown"},

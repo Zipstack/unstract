@@ -39,8 +39,8 @@ from platform_audit.models import ActorType, PlatformAuditEvent
 
 logger = logging.getLogger(__name__)
 
-#: Appended to a summary when the previous value could not be read, so an
-#: event with no ``before`` reads the same whichever emitter wrote it.
+#: Appended to a summary when the previous value could not be read, so such an
+#: event reads the same whichever emitter wrote it.
 BEFORE_UNAVAILABLE = "(previous value unavailable)"
 
 P = ParamSpec("P")
@@ -236,10 +236,10 @@ def record_key_update(
     flip, and ``key.changed`` for any other field that changed.
 
     ``before`` is ``None`` when it could not be read: what changed is then
-    unknown, so the events cover the fields the request set, with no
-    ``before``. An ``is_active`` the request set is still filed as
-    ``key.enabled``/``key.disabled``, so filtering by those actions finds it.
-    With no ``after`` there is nothing to describe.
+    unknown, so ``key.changed`` records the current values of every audited
+    field (a snapshot, not a diff). An ``is_active`` the request set is still
+    filed as ``key.enabled``/``key.disabled``, so filtering by those actions
+    finds it. With no ``after`` there is nothing to describe.
     """
     from platform_audit.actions import Action
 
@@ -247,10 +247,9 @@ def record_key_update(
         logger.error("Platform audit: key %s update not recorded, no after", key.id)
         return
     if before is None:
-        sent = set(getattr(request, "data", None) or {})
-        requested = {k: v for k, v in after.items() if k in sent}
-        if "is_active" in requested:
-            is_active = requested.pop("is_active")
+        snapshot = dict(after)
+        if "is_active" in set(getattr(request, "data", None) or {}):
+            is_active = snapshot.pop("is_active", None)
             record_platform_event(
                 action=Action.KEY_ENABLED if is_active else Action.KEY_DISABLED,
                 target_type=target_type,
@@ -260,14 +259,14 @@ def record_key_update(
                 summary=BEFORE_UNAVAILABLE,
                 request=request,
             )
-        if requested:
+        if snapshot:
             record_platform_event(
                 action=Action.KEY_CHANGED,
                 target_type=target_type,
                 target_id=key.id,
                 target_name=key.name,
-                changes={"after": requested},
-                summary=f"changed {', '.join(sorted(requested))} {BEFORE_UNAVAILABLE}",
+                changes={"after": snapshot},
+                summary=f"current values {BEFORE_UNAVAILABLE}",
                 request=request,
             )
         return

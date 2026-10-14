@@ -602,9 +602,9 @@ def _record_defaults_changed(request: Request, before: dict | None) -> None:
     if after is None:
         return
     if before is None:
-        # Previous defaults unreadable: record the slots that are set now.
-        changes = {"after": {slot: name for slot, name in after.items() if name}}
-        summary = "; ".join(f"{slot} → {name}" for slot, name in changes["after"].items())
+        # Previous defaults unreadable: record all of them as they now stand.
+        changes = {"after": after}
+        summary = "; ".join(f"{slot} → {name or 'none'}" for slot, name in after.items())
         summary = f"{summary} {BEFORE_UNAVAILABLE}"
     else:
         changes = diff(before, after)

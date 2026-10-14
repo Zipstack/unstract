@@ -81,7 +81,7 @@ class MemberEventTests(AuditTestBase):
                 self.call(view, "post", data={"email": "member@example.com", "role": "admin"})
         event = self.only_event(action="member.role_changed")
         self.assertEqual(event.changes, {"after": {"role": "admin"}})
-        self.assertEqual(event.summary, "→ admin (previous value unavailable)")
+        self.assertEqual(event.summary, "role → admin (previous value unavailable)")
 
     def test_failed_or_unchanged_role_records_nothing(self) -> None:
         view = OrganizationUserViewSet.as_view({"post": "assign_organization_role_to_user"})
@@ -132,6 +132,30 @@ class MemberEventTests(AuditTestBase):
         self.assertEqual(event.target_name, "member@example.com")
         self.assertEqual(event.changes, {"before": {"role": "user"}})
         self.assertEqual(event.summary, "was user")
+
+    def test_removal_with_an_unreadable_snapshot_is_still_recorded(self) -> None:
+        view = OrganizationUserViewSet.as_view({"delete": "remove_members_from_organization"})
+        with (
+            patch(
+                "tenant_account_v2.users_view.OrganizationMemberService.get_user_by_email",
+                side_effect=RuntimeError("db"),
+            ),
+            patch(f"{_CONTROLLER}.remove_users_from_organization", return_value=True),
+        ):
+            with self.assertLogs("platform_audit.recorder", "ERROR"):
+                self.call(view, "delete", data={"emails": ["member@example.com"]})
+        event = self.only_event(action="member.removed")
+        self.assertEqual(
+            (event.target_id, event.target_name, event.changes),
+            ("", "member@example.com", {}),
+        )
+        self.assertEqual(event.summary, "(previous value unavailable)")
+
+    def test_removing_a_non_member_records_nothing(self) -> None:
+        view = OrganizationUserViewSet.as_view({"delete": "remove_members_from_organization"})
+        with patch(f"{_CONTROLLER}.remove_users_from_organization", return_value=True):
+            self.call(view, "delete", data={"emails": ["stranger@example.com"]})
+        self.assertEqual(self.events(), [])
 
     def test_invitation_revoked_resolves_the_email(self) -> None:
         view = InvitationViewSet.as_view({"delete": "delete_invitation"})
@@ -339,24 +363,39 @@ class PlatformApiKeyEventTests(AuditTestBase):
         self.assert_admin_actor(event)
         self.assertEqual((event.target_id, event.target_name), (str(key_id), "ci"))
 
-    def test_unreadable_before_still_files_the_flip_and_the_other_fields(self) -> None:
+    def test_unreadable_before_records_a_snapshot_and_files_the_flip(self) -> None:
         view = PlatformApiKeyViewSet.as_view({"patch": "partial_update"})
-        after = {"description": "new", "is_active": False, "permission": "read_write"}
-        with patch("platform_api.views._key_fields", side_effect=[None, after]):
-            self.call(
-                view,
-                "patch",
-                data={"is_active": False, "description": "new"},
-                pk=self.key.pk,
-            )
-        disabled = self.only_event(action="key.disabled")
-        self.assertEqual(disabled.changes, {"after": {"is_active": False}})
-        self.assertEqual(disabled.summary, "(previous value unavailable)")
-        changed = self.only_event(action="key.changed")
-        self.assertEqual(changed.changes, {"after": {"description": "new"}})
-        self.assertEqual(
-            changed.summary, "changed description (previous value unavailable)"
+        cases = (
+            # (request body, expected flip action or None)
+            ({"is_active": False, "description": "new"}, "key.disabled"),
+            ({"is_active": True}, "key.enabled"),
+            ({"description": "new"}, None),
         )
+        for body, flip in cases:
+            with self.subTest(body=str(body)):
+                PlatformAuditEvent.objects.purge(PlatformAuditEvent.objects.all())
+                after = {
+                    "description": body.get("description", "d"),
+                    "is_active": body.get("is_active", True),
+                    "permission": "read_write",
+                }
+                with patch("platform_api.views._key_fields", side_effect=[None, after]):
+                    self.call(view, "patch", data=body, pk=self.key.pk)
+                if flip:
+                    event = self.only_event(action=flip)
+                    self.assertEqual(
+                        event.changes, {"after": {"is_active": after["is_active"]}}
+                    )
+                    self.assertEqual(event.summary, "(previous value unavailable)")
+                else:
+                    self.assertEqual(self.events(action="key.enabled"), [])
+                    self.assertEqual(self.events(action="key.disabled"), [])
+                snapshot = {k: v for k, v in after.items() if not flip or k != "is_active"}
+                changed = self.only_event(action="key.changed")
+                self.assertEqual(changed.changes, {"after": snapshot})
+                self.assertEqual(
+                    changed.summary, "current values (previous value unavailable)"
+                )
 
     def test_a_failing_audit_write_does_not_change_the_response(self) -> None:
         view = PlatformApiKeyViewSet.as_view({"post": "rotate"})
@@ -544,8 +583,12 @@ class DefaultProfileEventTests(AuditTestBase):
             with patch("adapter_processor_v2.views.AdapterProcessor.set_default_triad"):
                 self.call(view, "post", data={})
         event = self.only_event(action="default_profile.changed")
-        self.assertEqual(event.changes, {"after": {"llm": "gpt"}})
-        self.assertEqual(event.summary, "llm → gpt (previous value unavailable)")
+        self.assertEqual(event.changes, {"after": now})
+        self.assertEqual(
+            event.summary,
+            "llm → gpt; embedding → none; vector_db → none; x2text → none "
+            "(previous value unavailable)",
+        )
 
 
 class PlatformSettingEventTests(AuditTestBase):

@@ -75,10 +75,14 @@ class AuditEventQuerySerializer(serializers.Serializer):
 
     @classmethod
     def from_query_params(cls, query_params: Any) -> "AuditEventQuerySerializer":
-        data: dict[str, Any] = {"action": query_params.getlist("action")}
+        # A blank value (a cleared date picker, ``?action=``) means "no filter".
+        data: dict[str, Any] = {
+            "action": [a for a in query_params.getlist("action") if a.strip()]
+        }
         for param in ("actor", "from", "to", "search"):
-            if param in query_params:
-                data[param] = query_params.get(param)
+            value = query_params.get(param)
+            if value is not None and value.strip():
+                data[param] = value
         return cls(data=data)
 
     def validate_action(self, value: list[str]) -> list[str]:

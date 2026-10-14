@@ -166,7 +166,7 @@ class OrganizationUserViewSet(viewsets.ViewSet):
         organization_id: str = UserSessionUtils.get_organization_id(request)
 
         auth_controller = AuthenticationController()
-        members_before = [m for e in user_emails if (m := _member_snapshot(e))]
+        members_before = [(e, _member_snapshot(e)) for e in user_emails]
         is_updated = auth_controller.remove_users_from_organization(
             request=request,
             organization_id=organization_id,
@@ -222,11 +222,16 @@ class OrganizationUserViewSet(viewsets.ViewSet):
         )
 
 
+# Returned for an e-mail with no membership, so that ``None`` (from
+# ``best_effort``) means only "the lookup failed".
+_NOT_A_MEMBER: dict = {}
+
+
 @best_effort
 def _member_snapshot(email: str) -> dict | None:
     member = OrganizationMemberService.get_user_by_email(email=email)
     if member is None:
-        return None
+        return _NOT_A_MEMBER
     return {"user_id": member.user_id, "email": member.user.email, "role": member.role}
 
 
@@ -248,7 +253,7 @@ def _record_role_change(
         },
         summary=f"{old_role} → {new_role}"
         if old_role
-        else f"→ {new_role} {BEFORE_UNAVAILABLE}",
+        else f"role → {new_role} {BEFORE_UNAVAILABLE}",
         request=request,
     )
 
@@ -274,9 +279,26 @@ def _record_invites(request: Request, user_list: list, invite_response: list) ->
 
 
 @best_effort
-def _record_removals(request: Request, members_before: list[dict]) -> None:
+def _record_removals(
+    request: Request, members_before: list[tuple[str, dict | None]]
+) -> None:
+    """One event per removed member. A member whose snapshot could not be read
+    is still recorded, by e-mail and without ``before``.
+    """
     organization = UserContext.get_organization()  # once, not per event
-    for member in members_before:
+    for email, member in members_before:
+        if member is _NOT_A_MEMBER:
+            continue
+        if member is None:
+            record_platform_event(
+                action=Action.MEMBER_REMOVED,
+                target_type=TargetType.MEMBER,
+                target_name=email,
+                summary=BEFORE_UNAVAILABLE,
+                request=request,
+                organization=organization,
+            )
+            continue
         record_platform_event(
             action=Action.MEMBER_REMOVED,
             target_type=TargetType.MEMBER,
