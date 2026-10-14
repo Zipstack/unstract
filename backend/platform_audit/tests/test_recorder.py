@@ -122,6 +122,8 @@ class RecorderTests(AuditTestBase):
             with self.assertLogs("platform_audit.recorder", "ERROR") as logs:
                 self._record()
         self.assertIn("org=org-a target=group:7", logs.output[0])
+        self.assertIn(f"actor=user:{self.admin.pk}", logs.output[0])
+        self.assertNotIn("admin@example.com", logs.output[0])
 
     def test_long_values_are_clipped_to_the_column(self) -> None:
         self._record(target_name="x" * 400)
@@ -187,3 +189,23 @@ class BestEffortSavepointTests(AuditTestBase):
             self.assertIsNone(broken_lookup())
         # Without a savepoint Postgres refuses every further statement here.
         self.assertFalse(PlatformAuditEvent.objects.exists())
+
+    def test_outside_a_transaction_no_transaction_is_opened(self) -> None:
+        """Outside ATOMIC_REQUESTS a helper must not defer its on_commit writes."""
+
+        @best_effort
+        def helper() -> int:
+            return 5
+
+        not_atomic = type("Conn", (), {"in_atomic_block": False})()
+        with (
+            patch(
+                "platform_audit.recorder.transaction.get_connection",
+                return_value=not_atomic,
+            ),
+            patch(
+                "platform_audit.recorder.transaction.atomic",
+                side_effect=AssertionError("opened a transaction"),
+            ),
+        ):
+            self.assertEqual(helper(), 5)

@@ -34,7 +34,7 @@ class SchemaContractTests(SimpleTestCase):
             {"action", "actor", "from", "to", "search", "page", "page_size"} <= params
         )
         self.assertNotIn("ordering", params)
-        self.assertTrue({"200", "400", "403"} <= set(list_op["responses"]))
+        self.assertTrue({"200", "400", "403", "404"} <= set(list_op["responses"]))
         export = schema["paths"]["/export/"]["get"]["responses"]
         self.assertTrue({"200", "400", "403", "413"} <= set(export))
         self.assertIn("application/json", export["413"]["content"])

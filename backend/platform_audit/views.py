@@ -17,6 +17,7 @@ from drf_spectacular.utils import (
 )
 from drf_standardized_errors.openapi_serializers import (
     ErrorResponse403Serializer,
+    ErrorResponse404Serializer,
     ValidationErrorResponseSerializer,
 )
 from platform_api.permissions import IsOrganizationAdmin
@@ -135,12 +136,14 @@ _FILTER_PARAMETERS = [
     ),
 ]
 
-# drf-standardized-errors does not add these for query-parameter GET views.
+# EXCEPTION_HANDLER wraps drf-standardized-errors rather than being its handler,
+# so its AutoSchema documents no error responses; declare them here.
 _ERRORS = {
     400: ValidationErrorResponseSerializer,
     403: ErrorResponse403Serializer,
 }
-# Every view reads the default ordering filter; none takes ?ordering=.
+# Every view inherits DEFAULT_FILTER_BACKENDS, so the schema would advertise
+# ?ordering=; none honours it.
 _NO_ORDERING = OpenApiParameter("ordering", exclude=True)
 
 _EXAMPLE_EVENT = {
@@ -189,6 +192,9 @@ class PlatformAuditEventListView(_AuditBaseView):
                 },
             ),
             **_ERRORS,
+            404: OpenApiResponse(
+                ErrorResponse404Serializer, description="`page` is out of range."
+            ),
         },
         examples=[
             OpenApiExample(
@@ -281,7 +287,8 @@ class PlatformAuditActorListView(_AuditBaseView):
         # One row per identity (type, e-mail, key), named as on its newest event,
         # so a renamed member or key appears once. Rows without an e-mail (the
         # system actor) are left out: the ``actor`` filter cannot select them.
-        identity = ("actor_type", "actor_email", "actor_key_id")
+        # E-mail leads, so the cap keeps the first actors by e-mail.
+        identity = ("actor_email", "actor_type", "actor_key_id")
         rows = (
             self.get_queryset()
             .exclude(actor_email="")

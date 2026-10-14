@@ -67,6 +67,21 @@ class MemberEventTests(AuditTestBase):
             event.changes, {"before": {"role": "admin"}, "after": {"role": "user"}}
         )
 
+    def test_role_change_with_unknown_previous_role_omits_before(self) -> None:
+        view = OrganizationUserViewSet.as_view({"post": "assign_organization_role_to_user"})
+        with (
+            patch(
+                "tenant_account_v2.users_view.OrganizationMemberService.get_user_by_email",
+                side_effect=RuntimeError("db"),
+            ),
+            patch(f"{_CONTROLLER}.add_user_role", return_value="admin"),
+        ):
+            with self.assertLogs("platform_audit.recorder", "ERROR"):
+                self.call(view, "post", data={"email": "member@example.com", "role": "admin"})
+        event = self.only_event(action="member.role_changed")
+        self.assertEqual(event.changes, {"after": {"role": "admin"}})
+        self.assertEqual(event.summary, "unknown → admin")
+
     def test_failed_or_unchanged_role_records_nothing(self) -> None:
         view = OrganizationUserViewSet.as_view({"post": "assign_organization_role_to_user"})
         with patch(f"{_CONTROLLER}.add_user_role", return_value=None):
@@ -301,6 +316,15 @@ class PlatformApiKeyEventTests(AuditTestBase):
         self.assert_admin_actor(event)
         self.assertEqual((event.target_id, event.target_name), (str(key_id), "ci"))
 
+    def test_unreadable_before_still_records_the_update(self) -> None:
+        view = PlatformApiKeyViewSet.as_view({"patch": "partial_update"})
+        after = {"description": "d", "is_active": False, "permission": "read_write"}
+        with patch("platform_api.views._key_fields", side_effect=[None, after]):
+            self.call(view, "patch", data={"is_active": False}, pk=self.key.pk)
+        event = self.only_event(action="key.changed")
+        self.assertEqual(event.changes, {"after": after})
+        self.assertEqual(event.summary, "previous values unavailable")
+
     def test_a_failing_audit_write_does_not_change_the_response(self) -> None:
         view = PlatformApiKeyViewSet.as_view({"post": "rotate"})
         with patch.object(
@@ -415,6 +439,14 @@ class PlatformKeyEventTests(AuditTestBase):
         self.call(view, "post", data={"action": "DEACTIVATE"}, pk=key.pk)
         self.assertEqual(len(self.events()), 1)
 
+    def test_reactivating_an_active_key_records_the_keys_it_deactivates(self) -> None:
+        other = self._key("other", is_active=True)
+        key = self._key("k", is_active=True)
+        view = PlatformKeyViewSet.as_view({"post": "toggle_platform_key"})
+        self.call(view, "post", data={"action": "ACTIVATE"}, pk=key.pk)
+        event = self.only_event()
+        self.assertEqual((event.action, event.target_id), ("key.disabled", str(other.id)))
+
     def test_refresh_and_destroy(self) -> None:
         key = self._key("k", is_active=False)
         refresh = PlatformKeyViewSet.as_view({"put": "refresh"})
@@ -469,6 +501,17 @@ class DefaultProfileEventTests(AuditTestBase):
             event.changes, {"before": {"llm": "sonnet"}, "after": {"llm": "gpt"}}
         )
         self.assertEqual(event.summary, "llm: sonnet → gpt")
+
+    def test_unreadable_previous_defaults_record_the_current_ones(self) -> None:
+        view = DefaultAdapterViewSet.as_view({"post": "configure_default_triad"})
+        now = {"llm": "gpt", "embedding": None, "vector_db": None, "x2text": None}
+        with patch(
+            "adapter_processor_v2.views._default_adapter_names", side_effect=[None, now]
+        ):
+            with patch("adapter_processor_v2.views.AdapterProcessor.set_default_triad"):
+                self.call(view, "post", data={})
+        event = self.only_event(action="default_profile.changed")
+        self.assertEqual(event.changes, {"after": now})
 
 
 class PlatformSettingEventTests(AuditTestBase):

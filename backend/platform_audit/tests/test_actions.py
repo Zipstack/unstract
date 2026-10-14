@@ -11,7 +11,7 @@ class ActionRegistryTests(SimpleTestCase):
 
     def test_every_oss_action_is_registered(self) -> None:
         for key in Action:
-            with self.subTest(key=key):
+            with self.subTest(key=str(key)):  # xdist cannot serialise the enum
                 self.assertIsNotNone(get_action(key))
 
     def test_reregistering_the_same_action_is_a_noop(self) -> None:

@@ -12,9 +12,11 @@ logger = logging.getLogger(__name__)
 def retention_days(organization: Organization | None) -> int:
     """The organisation's override of PLATFORM_AUDIT_RETENTION_DAYS, else the default.
 
-    Clamped to the key's 1-3650 bounds. Overrides are validated against them,
-    but the env default is not: ``0`` (often meant as "keep forever") would
-    otherwise make the purge delete every organisation's history.
+    Overrides are validated against the key's 1-3650 bounds, but the env
+    default is not, so it is checked here and fails closed: a value outside
+    the bounds (``0`` is often meant as "keep forever") becomes the maximum.
+    Hiding too little is reversible; a purge acting on a too-short retention
+    is not.
     """
     spec = ConfigKey.PLATFORM_AUDIT_RETENTION_DAYS.value
     days = int(
@@ -22,7 +24,7 @@ def retention_days(organization: Organization | None) -> int:
             ConfigKey.PLATFORM_AUDIT_RETENTION_DAYS, organization
         )
     )
-    clamped = min(max(days, spec.min_value), spec.max_value)
+    clamped = days if spec.min_value <= days <= spec.max_value else spec.max_value
     if clamped != days:
         logger.error(
             "PLATFORM_AUDIT_RETENTION_DAYS=%s is outside %s-%s; using %s",

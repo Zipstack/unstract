@@ -594,9 +594,13 @@ def _default_adapter_names(user: User) -> dict[str, str | None]:
 def _record_defaults_changed(request: Request, before: dict | None) -> None:
     """Defaults are stored per member, so the member is both actor and target."""
     after = _default_adapter_names(request.user)
-    if before is None or after is None:
+    if after is None:
         return
-    changes = diff(before, after)
+    if before is None:
+        # Previous defaults unreadable: record what they are now.
+        changes = {"after": after}
+    else:
+        changes = diff(before, after)
     if not changes["after"]:
         return
     record_platform_event(
@@ -606,7 +610,8 @@ def _record_defaults_changed(request: Request, before: dict | None) -> None:
         target_name=request.user.email,
         changes=changes,
         summary="; ".join(
-            f"{slot}: {changes['before'][slot] or 'none'} → {name or 'none'}"
+            f"{slot}: {(changes.get('before') or {}).get(slot, '?') or 'none'}"
+            f" → {name or 'none'}"
             for slot, name in changes["after"].items()
         ),
         request=request,

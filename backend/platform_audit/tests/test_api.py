@@ -8,6 +8,7 @@ from unittest.mock import patch
 
 from configuration.enums import ConfigKey
 from configuration.models import Configuration
+from django.test import override_settings
 from django.utils import timezone
 
 from platform_audit.models import PlatformAuditEvent
@@ -273,12 +274,13 @@ class AuditReadApiTests(AuditTestBase):
         self.assertEqual(emails, ["admin@example.com", "bot@example.com", "gone@example.com"])
         self.assertIsNone(response.data[2]["id"])
 
+    @override_settings(TIME_ZONE="Asia/Kolkata")
     def test_naive_datetime_is_read_in_server_time(self) -> None:
         query = AuditEventQuerySerializer(data={"from": "2026-01-01T09:00:00"})
         self.assertTrue(query.is_valid(), query.errors)
         self.assertEqual(
             query.validated_data["start"],
-            datetime(2026, 1, 1, 9, 0, tzinfo=dt_timezone.utc),
+            datetime(2026, 1, 1, 3, 30, tzinfo=dt_timezone.utc),
         )
 
     def test_invalid_from_reports_the_parameter_name(self) -> None:
@@ -302,12 +304,23 @@ class AuditReadApiTests(AuditTestBase):
             [str(self.role.id), str(self.rotate.id), str(self.group.id)],
         )
 
-    def test_retention_default_out_of_range_is_clamped(self) -> None:
-        with patch(
-            "platform_audit.retention.Configuration.get_value_by_organization",
-            return_value=0,
-        ):
-            with self.assertLogs("platform_audit.retention", "ERROR"):
-                response = self._get(LIST)
-        self.assertEqual(response.data["retention_days"], 1)
-        self.assertNotIn(str(self.rotate.id), self._ids(response))
+    def test_retention_default_out_of_range_fails_closed(self) -> None:
+        for bad in (0, -5, 99999):
+            with self.subTest(value=bad):
+                with patch(
+                    "platform_audit.retention.Configuration.get_value_by_organization",
+                    return_value=bad,
+                ):
+                    with self.assertLogs("platform_audit.retention", "ERROR"):
+                        response = self._get(LIST)
+                self.assertEqual(response.data["retention_days"], 3650)
+                self.assertIn(str(self.expired.id), self._ids(response))
+
+    def test_page_out_of_range_is_404(self) -> None:
+        self.assertEqual(self._get(LIST, {"page": 99}).status_code, 404)
+
+    def test_actors_cap_keeps_the_first_by_email(self) -> None:
+        self._event("key.rotated", days_ago=1, actor_type="api_key", actor_email="aaa@example.com")
+        with patch("platform_audit.views.MAX_ACTORS", 2):
+            emails = [row["email"] for row in self._get(ACTORS).data]
+        self.assertEqual(emails, ["aaa@example.com", "admin@example.com"])

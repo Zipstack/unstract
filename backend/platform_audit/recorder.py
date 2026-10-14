@@ -7,8 +7,10 @@ called it. A failure is logged with ``logger.exception`` and the event is lost.
 The write is deferred with ``transaction.on_commit``, so an event is stored only
 if the change it describes is committed. When the caller is not inside a
 transaction (the default here: ``ATOMIC_REQUESTS`` is off) ``on_commit`` runs the
-write straight away. Everything the write needs is resolved at call time, so the
-deferred write does not depend on request state that may be gone by then.
+write straight away. Under ``ATOMIC_REQUESTS`` an event recorded from a
+``best_effort`` helper is dropped if that helper later raises, because its
+savepoint rolls back. Everything the write needs is resolved at call time, so
+the deferred write does not depend on request state that may be gone by then.
 
 Call it after the change has succeeded, never before::
 
@@ -112,8 +114,13 @@ def best_effort(fn: Callable[P, T]) -> Callable[P, T | None]:
     @wraps(fn)
     def wrapper(*args: P.args, **kwargs: P.kwargs) -> T | None:
         try:
-            # A savepoint, so a failed query here cannot leave an outer
-            # transaction (ATOMIC_REQUESTS) aborted for the view's own writes.
+            if not transaction.get_connection().in_atomic_block:
+                return fn(*args, **kwargs)
+            # Inside a transaction (ATOMIC_REQUESTS): a savepoint, so a failed
+            # query here cannot leave the view's own transaction aborted.
+            # Outside one there is nothing to protect, and opening a
+            # transaction would defer the helper's on_commit writes and hold a
+            # connection across any network call it makes.
             with transaction.atomic():
                 return fn(*args, **kwargs)
         except Exception:
@@ -140,13 +147,14 @@ def _write(fields: dict[str, Any]) -> None:
         # Enough to tell which change went unaudited; never changes or metadata.
         logger.exception(
             "Platform audit: failed to write %r (org=%s target=%s:%s actor=%s:%s "
-            "request_id=%s)",
+            "key=%s request_id=%s)",
             fields.get("action"),
             getattr(fields.get("organization"), "organization_id", None),
             fields.get("target_type"),
             fields.get("target_id"),
             fields.get("actor_type"),
-            fields.get("actor_email"),
+            getattr(fields.get("actor"), "pk", None),
+            fields.get("actor_key_id"),
             fields.get("request_id"),
         )
 
@@ -216,15 +224,33 @@ def record_key_update(
     *,
     target_type: str,
     key: Any,
-    before: Mapping[str, Any],
-    after: Mapping[str, Any],
+    before: Mapping[str, Any] | None,
+    after: Mapping[str, Any] | None,
     request: Any,
 ) -> None:
     """Record a key edit: ``key.enabled``/``key.disabled`` for an ``is_active``
     flip, and ``key.changed`` for any other field that changed.
+
+    ``before`` is ``None`` when it could not be read: what changed is then
+    unknown, so one ``key.changed`` carries the full ``after`` and no
+    ``before``. With no ``after`` there is nothing to describe.
     """
     from platform_audit.actions import Action
 
+    if after is None:
+        logger.error("Platform audit: key %s update not recorded, no after", key.id)
+        return
+    if before is None:
+        record_platform_event(
+            action=Action.KEY_CHANGED,
+            target_type=target_type,
+            target_id=key.id,
+            target_name=key.name,
+            changes={"after": dict(after)},
+            summary="previous values unavailable",
+            request=request,
+        )
+        return
     changes = diff(before, after)
     flipped = "is_active" in changes["after"]
     if flipped:

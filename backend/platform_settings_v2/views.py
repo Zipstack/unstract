@@ -177,10 +177,11 @@ def _active_keys(exclude: PlatformKey) -> list[tuple]:
 def _record_toggle(
     request: Request, key: PlatformKey, was_active: bool, others_active: list | None
 ):
-    if key.is_active == was_active:
-        return
     if key.is_active:
-        _record_key_event(request, Action.KEY_ENABLED, key.id, key.key_name)
+        if not was_active:
+            _record_key_event(request, Action.KEY_ENABLED, key.id, key.key_name)
+        # Activating deactivates every other active key, even when this key
+        # was already active.
         for other_id, other_name in others_active or []:
             _record_key_event(
                 request,
@@ -189,5 +190,5 @@ def _record_toggle(
                 other_name,
                 summary=f"deactivated when {key.key_name} was activated",
             )
-    else:
+    elif was_active:
         _record_key_event(request, Action.KEY_DISABLED, key.id, key.key_name)

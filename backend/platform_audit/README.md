@@ -82,9 +82,9 @@ Results are always newest first; an `ordering` parameter is ignored.
   service account and `name` is the key name.
 - `actor.id` is `null` once the user is deleted; `email` and `name` are copied
   onto the event and survive.
-- `changes` holds only what changed; either side may be absent (`after` only on
-  create, `before` only on delete, and `before` when the value could not be
-  read at the time of the change).
+- `changes` holds only what changed. Either side may be absent: a create has
+  only `after`, a delete only `before`, and a side whose value could not be
+  read at the time of the change is left out.
 - `role` values are whatever the deployment's auth plugin uses (`user`/`admin`
   in OSS, `unstract_user`/`unstract_admin` in cloud); do not hard-code them.
 - `action_label` falls back to the raw key for an action that is no longer
@@ -136,8 +136,9 @@ Errors use the project's standard envelope (drf-standardized-errors):
 
 | Status | When |
 |---|---|
-| 400 | Invalid filter (unknown action, unparsable date, `from` after `to`); `attr` is the parameter name |
+| 400 | Invalid filter (unknown action, unparsable date, `from` after `to`); `attr` is the parameter name, or `action.<n>` for one bad `action` value |
 | 403 | Not an organisation admin, or called with a platform API key |
+| 404 | List only: `page` is out of range or not a number (`code: not_found`) |
 | 413 | Export matches more than 10,000 rows (`code: export_too_large`) |
 
 ## Recording events
@@ -243,9 +244,10 @@ made any other way are not recorded: identity-provider or SCIM changes, cloud
 staff and admin routes, Django admin, invitation acceptance, and cloud-only
 features (until cloud code emits them).
 
-Two side effects change a member's default adapter without an event: creating
-the first adapter of a type makes it that member's default, and revoking a
-share clears the default for members who lose access.
+Three side effects change a member's default adapter without an event:
+creating an adapter when the member has no default of that type makes it the
+default, revoking a share clears the default for members who lose access, and
+removing a co-owner clears theirs.
 
 Revoking an invitation makes one extra identity-provider call to resolve the
 invitee e-mail; if it fails, or the invitation is not in the first page the
