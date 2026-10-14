@@ -87,8 +87,12 @@ class CapabilityRegistryTests(SimpleTestCase):
             components["CapabilitySetting"]["enum"], ["admins_only", "any_member"]
         )
         self.assertFalse(
-            [name for name in components if name.endswith("Enum")
-             and components[name].get("enum") == ["admins_only", "any_member"]]
+            [
+                name
+                for name in components
+                if name.endswith("Enum")
+                and components[name].get("enum") == ["admins_only", "any_member"]
+            ]
         )
 
 
@@ -141,7 +145,10 @@ class CapabilitiesApiTests(CapabilityTestBase):
         with patch(
             "tenant_account_v2.views.UserContext.get_organization", return_value=None
         ):
-            for method, data in (("get", None), ("patch", {"create_connectors": "admins_only"})):
+            for method, data in (
+                ("get", None),
+                ("patch", {"create_connectors": "admins_only"}),
+            ):
                 with self.subTest(method=method):
                     response = self.call(
                         organization_capabilities, method, user=self.admin, data=data
