@@ -151,11 +151,16 @@ class MemberEventTests(AuditTestBase):
         )
         self.assertEqual(event.summary, "(previous value unavailable)")
 
-    def test_removing_a_non_member_records_nothing(self) -> None:
+    def test_a_non_member_in_the_list_is_skipped_not_fatal(self) -> None:
         view = OrganizationUserViewSet.as_view({"delete": "remove_members_from_organization"})
         with patch(f"{_CONTROLLER}.remove_users_from_organization", return_value=True):
-            self.call(view, "delete", data={"emails": ["stranger@example.com"]})
-        self.assertEqual(self.events(), [])
+            self.call(
+                view,
+                "delete",
+                data={"emails": ["stranger@example.com", "member@example.com"]},
+            )
+        event = self.only_event(action="member.removed")
+        self.assertEqual(event.target_name, "member@example.com")
 
     def test_invitation_revoked_resolves_the_email(self) -> None:
         view = InvitationViewSet.as_view({"delete": "delete_invitation"})
