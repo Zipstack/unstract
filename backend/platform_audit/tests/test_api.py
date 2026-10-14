@@ -157,6 +157,11 @@ class AuditReadApiTests(AuditTestBase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(self._ids(response), [str(self.rotate.id)])
 
+    def test_a_trailing_blank_repeat_keeps_the_real_bound(self) -> None:
+        day = self.rotate.occurred_at.date().isoformat()
+        response = self._get(LIST, {"from": [day, ""], "to": [day, " "]})
+        self.assertEqual(self._ids(response), [str(self.rotate.id)])
+
     def test_invalid_filters_are_400(self) -> None:
         for params in (
             {"action": "nope.unknown"},

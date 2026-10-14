@@ -84,9 +84,11 @@ Results are always newest first; an `ordering` parameter is ignored.
   onto the event and survive.
 - `changes` holds only what changed. Either side may be absent: a create has
   only `after`, a delete only `before`. When the previous value could not be
-  read, `before` is absent, `after` holds the current values of the audited
-  fields (a snapshot, not a diff), and the summary ends with
-  `(previous value unavailable)`.
+  read, `before` is absent and the summary ends with
+  `(previous value unavailable)`; `after`, when present, is a snapshot of the
+  current values, not a diff. A `member.removed` whose member could not be
+  read has an empty `target.id`, no `changes`, and the summary
+  `membership not confirmed (previous value unavailable)`.
 - `role` values are whatever the deployment's auth plugin uses (`user`/`admin`
   in OSS, `unstract_user`/`unstract_admin` in cloud); do not hard-code them.
 - `action_label` falls back to the raw key for an action that is no longer
@@ -138,7 +140,7 @@ Errors use the project's standard envelope (drf-standardized-errors):
 
 | Status | When |
 |---|---|
-| 400 | Invalid filter (unknown action, unparsable date, `from` after `to`); `attr` is the parameter name (`action` for an unknown action), or `action.<n>` when one `action` value is over 64 characters. Blank values of `action`, `from` and `to` are ignored |
+| 400 | Invalid filter (unknown action, unparsable date, `from` after `to`); `attr` is the parameter name (`action` for an unknown action), or `action.<n>` when one `action` value is over 64 characters (`<n>` counts non-blank values). Blank filter values are ignored; for a repeated parameter the last non-blank value wins |
 | 403 | Not an organisation admin, or called with a platform API key |
 | 404 | List only: `page` is out of range or not a number (`code: not_found`) |
 | 413 | Export matches more than 10,000 rows (`code: export_too_large`) |
@@ -174,8 +176,9 @@ Rules for emitters:
    value for an event should be wrapped with `platform_audit.recorder.best_effort`
    so that read cannot fail the request either. If it fails, pass `None` for
    that side of `changes` (the side is left out rather than stored as `null`,
-   which would read as "the value was unset"), record the current values as
-   `after`, and end the summary with `recorder.BEFORE_UNAVAILABLE`.
+   which would read as "the value was unset"); for an update, record the
+   current values as `after`; end the summary with
+   `recorder.BEFORE_UNAVAILABLE`.
 3. **Never put secrets in `changes`, `summary` or `metadata`** — key values,
    tokens, passwords.
 4. **Use a registered action.** An unregistered key is logged and dropped.
@@ -186,10 +189,8 @@ Rules for emitters:
 5. `target_type` is free text; reuse a `TargetType` value where one fits.
 6. For a key edit, `record_key_update(target_type=..., key=..., before=...,
    after=..., request=...)` records `key.enabled`/`key.disabled` for an
-   `is_active` flip and `key.changed` for any other changed field. With
-   `before=None`, `key.changed` carries a snapshot of every audited field,
-   and an `is_active` the request set is still filed as
-   `key.enabled`/`key.disabled`.
+   `is_active` flip and `key.changed` for any other changed field. For
+   `before=None`, see its docstring.
 
 Expected emitters outside this PR:
 
@@ -206,7 +207,7 @@ Expected emitters outside this PR:
 | `member.role_changed` | Role changed | members | `users/role/` POST (assign) and DELETE (remove) |
 | `member.invited` | Member invited | members | `users/invite/` (successful e-mails only); target `invitation`, id = e-mail |
 | `invitation.revoked` | Invitation revoked | members | `invitation/<id>/` DELETE; target name is the invitee e-mail when the IdP returns it |
-| `member.removed` | Member removed | members | `users/` DELETE; summary `was <role>` |
+| `member.removed` | Member removed | members | `users/` DELETE; summary `was <role>` (or the unconfirmed form above) |
 | `group.created` | Group created | groups | `groups/` POST |
 | `group.changed` | Group changed | groups | `groups/<id>/` PUT/PATCH (name or description) |
 | `group.deleted` | Group deleted | groups | `groups/<id>/` DELETE |

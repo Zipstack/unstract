@@ -236,10 +236,11 @@ def record_key_update(
     flip, and ``key.changed`` for any other field that changed.
 
     ``before`` is ``None`` when it could not be read: what changed is then
-    unknown, so ``key.changed`` records the current values of every audited
-    field (a snapshot, not a diff). An ``is_active`` the request set is still
-    filed as ``key.enabled``/``key.disabled``, so filtering by those actions
-    finds it. With no ``after`` there is nothing to describe.
+    unknown. An ``is_active`` the request set is filed as
+    ``key.enabled``/``key.disabled``, so filtering by those actions finds it.
+    If the request set any other field, ``key.changed`` records the current
+    values of every audited field except ``is_active`` (a snapshot, not a
+    diff). With no ``after`` there is nothing to describe.
     """
     from platform_audit.actions import Action
 
@@ -247,9 +248,10 @@ def record_key_update(
         logger.error("Platform audit: key %s update not recorded, no after", key.id)
         return
     if before is None:
-        snapshot = dict(after)
-        if "is_active" in set(getattr(request, "data", None) or {}):
-            is_active = snapshot.pop("is_active", None)
+        sent = set(getattr(request, "data", None) or {})
+        snapshot = {k: v for k, v in after.items() if k != "is_active"}
+        if "is_active" in sent:
+            is_active = after.get("is_active")
             record_platform_event(
                 action=Action.KEY_ENABLED if is_active else Action.KEY_DISABLED,
                 target_type=target_type,
@@ -259,7 +261,7 @@ def record_key_update(
                 summary=BEFORE_UNAVAILABLE,
                 request=request,
             )
-        if snapshot:
+        if snapshot and sent - {"is_active"}:
             record_platform_event(
                 action=Action.KEY_CHANGED,
                 target_type=target_type,

@@ -293,8 +293,9 @@ def _record_removals(
             record_platform_event(
                 action=Action.MEMBER_REMOVED,
                 target_type=TargetType.MEMBER,
-                target_name=email,
-                summary=BEFORE_UNAVAILABLE,
+                # Lower-cased like actor e-mails, so a search finds it.
+                target_name=email.strip().lower(),
+                summary=f"membership not confirmed {BEFORE_UNAVAILABLE}",
                 request=request,
                 organization=organization,
             )

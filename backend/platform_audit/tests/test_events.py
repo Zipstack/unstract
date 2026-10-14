@@ -143,13 +143,15 @@ class MemberEventTests(AuditTestBase):
             patch(f"{_CONTROLLER}.remove_users_from_organization", return_value=True),
         ):
             with self.assertLogs("platform_audit.recorder", "ERROR"):
-                self.call(view, "delete", data={"emails": ["member@example.com"]})
+                self.call(view, "delete", data={"emails": ["Member@Example.com"]})
         event = self.only_event(action="member.removed")
         self.assertEqual(
             (event.target_id, event.target_name, event.changes),
             ("", "member@example.com", {}),
         )
-        self.assertEqual(event.summary, "(previous value unavailable)")
+        self.assertEqual(
+            event.summary, "membership not confirmed (previous value unavailable)"
+        )
 
     def test_a_non_member_in_the_list_is_skipped_not_fatal(self) -> None:
         view = OrganizationUserViewSet.as_view({"delete": "remove_members_from_organization"})
@@ -395,7 +397,11 @@ class PlatformApiKeyEventTests(AuditTestBase):
                 else:
                     self.assertEqual(self.events(action="key.enabled"), [])
                     self.assertEqual(self.events(action="key.disabled"), [])
-                snapshot = {k: v for k, v in after.items() if not flip or k != "is_active"}
+                if set(body) == {"is_active"}:
+                    # A flip-only request changed nothing else.
+                    self.assertEqual(self.events(action="key.changed"), [])
+                    continue
+                snapshot = {k: v for k, v in after.items() if k != "is_active"}
                 changed = self.only_event(action="key.changed")
                 self.assertEqual(changed.changes, {"after": snapshot})
                 self.assertEqual(

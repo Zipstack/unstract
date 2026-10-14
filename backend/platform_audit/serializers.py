@@ -80,9 +80,11 @@ class AuditEventQuerySerializer(serializers.Serializer):
             "action": [a for a in query_params.getlist("action") if a.strip()]
         }
         for param in ("actor", "from", "to", "search"):
-            value = query_params.get(param)
-            if value is not None and value.strip():
-                data[param] = value
+            # The last non-blank value: ``?from=X&from=`` keeps X rather than
+            # silently dropping the bound.
+            values = [v for v in query_params.getlist(param) if v.strip()]
+            if values:
+                data[param] = values[-1]
         return cls(data=data)
 
     def validate_action(self, value: list[str]) -> list[str]:
