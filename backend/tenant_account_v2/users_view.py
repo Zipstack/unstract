@@ -2,6 +2,8 @@ import logging
 
 from account_v2.authentication_controller import AuthenticationController
 from account_v2.exceptions import BadRequestException
+from platform_audit.actions import Action, TargetType
+from platform_audit.recorder import best_effort, record_platform_event
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.request import Request
@@ -36,8 +38,10 @@ class OrganizationUserViewSet(viewsets.ViewSet):
         auth_controller = AuthenticationController()
 
         auth_controller = AuthenticationController()
+        member_before = _member_snapshot(user_email)
         update_status = auth_controller.add_user_role(request, org_id, user_email, role)
         if update_status:
+            _record_role_change(request, user_email, member_before, update_status)
             return Response(
                 status=status.HTTP_200_OK,
                 data={"status": "success", "message": "success"},
@@ -60,10 +64,12 @@ class OrganizationUserViewSet(viewsets.ViewSet):
         auth_controller = AuthenticationController()
 
         auth_controller = AuthenticationController()
+        member_before = _member_snapshot(user_email)
         update_status = auth_controller.remove_user_role(
             request, org_id, user_email, role
         )
         if update_status:
+            _record_role_change(request, user_email, member_before, update_status)
             return Response(
                 status=status.HTTP_200_OK,
                 data={"status": "success", "message": "success"},
@@ -131,6 +137,7 @@ class OrganizationUserViewSet(viewsets.ViewSet):
             request=request,
         )
 
+        _record_invites(request, user_list, invite_response)
         response_serializer = UserInviteResponseSerializer(invite_response, many=True)
 
         if invite_response and len(invite_response) != 0:
@@ -154,12 +161,14 @@ class OrganizationUserViewSet(viewsets.ViewSet):
         organization_id: str = UserSessionUtils.get_organization_id(request)
 
         auth_controller = AuthenticationController()
+        members_before = [m for e in user_emails if (m := _member_snapshot(e))]
         is_updated = auth_controller.remove_users_from_organization(
             request=request,
             organization_id=organization_id,
             user_emails=user_emails,
         )
         if is_updated:
+            _record_removals(request, members_before)
             return Response(
                 status=status.HTTP_200_OK,
                 data={"status": "success", "message": "success"},
@@ -205,4 +214,62 @@ class OrganizationUserViewSet(viewsets.ViewSet):
         return Response(
             status=status.HTTP_200_OK,
             data={"status": "success", "message": "success"},
+        )
+
+
+@best_effort
+def _member_snapshot(email: str) -> dict | None:
+    member = OrganizationMemberService.get_user_by_email(email=email)
+    if member is None:
+        return None
+    return {"user_id": member.user_id, "email": member.user.email, "role": member.role}
+
+
+@best_effort
+def _record_role_change(
+    request: Request, email: str, member_before: dict | None, new_role: str
+) -> None:
+    old_role = member_before["role"] if member_before else None
+    if old_role == new_role:
+        return
+    record_platform_event(
+        action=Action.MEMBER_ROLE_CHANGED,
+        target_type=TargetType.MEMBER,
+        target_id=member_before["user_id"] if member_before else "",
+        target_name=member_before["email"] if member_before else email,
+        changes={"before": {"role": old_role}, "after": {"role": new_role}},
+        summary=f"{old_role or 'unknown'} → {new_role}",
+        request=request,
+    )
+
+
+@best_effort
+def _record_invites(request: Request, user_list: list, invite_response: list) -> None:
+    roles = {item.get("email"): item.get("role") for item in user_list}
+    for invite in invite_response or []:
+        if invite.status != "success":
+            continue
+        role = roles.get(invite.email)
+        record_platform_event(
+            action=Action.MEMBER_INVITED,
+            target_type=TargetType.INVITATION,
+            target_id=invite.email,
+            target_name=invite.email,
+            changes={"after": {"role": role}},
+            summary=f"as {role}" if role else "",
+            request=request,
+        )
+
+
+@best_effort
+def _record_removals(request: Request, members_before: list[dict]) -> None:
+    for member in members_before:
+        record_platform_event(
+            action=Action.MEMBER_REMOVED,
+            target_type=TargetType.MEMBER,
+            target_id=member["user_id"],
+            target_name=member["email"],
+            changes={"before": {"role": member["role"]}},
+            summary=f"was {member['role']}",
+            request=request,
         )

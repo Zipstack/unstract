@@ -1,0 +1,218 @@
+"""Record platform audit events.
+
+:func:`record_platform_event` is the only way an event is written, and it is
+best-effort by contract: it never raises and never fails the request that
+called it. A failure is logged with ``logger.exception`` and the event is lost.
+
+The write is deferred with ``transaction.on_commit``, so an event is stored only
+if the change it describes is committed. When the caller is not inside a
+transaction (the default here: ``ATOMIC_REQUESTS`` is off) ``on_commit`` runs the
+write straight away. Everything the write needs is resolved at call time, so the
+deferred write does not depend on request state that may be gone by then.
+
+Call it after the change has succeeded, never before::
+
+    record_platform_event(
+        action=Action.KEY_ROTATED,
+        target_type=TargetType.PLATFORM_API_KEY,
+        target_id=key.id,
+        target_name=key.name,
+        request=request,
+    )
+"""
+
+import logging
+from collections.abc import Callable, Mapping
+from functools import partial, wraps
+from typing import Any, ParamSpec, TypeVar
+
+from account_v2.models import Organization, User
+from django.db import transaction
+from log_request_id import local as request_id_local
+from utils.user_context import UserContext
+
+from platform_audit.actions import get_action
+from platform_audit.models import ActorType, PlatformAuditEvent
+
+logger = logging.getLogger(__name__)
+
+P = ParamSpec("P")
+T = TypeVar("T")
+
+
+def record_platform_event(
+    *,
+    action: str,
+    target_type: str,
+    target_id: Any = "",
+    target_name: str = "",
+    request: Any = None,
+    actor: User | None = None,
+    changes: Mapping[str, Any] | None = None,
+    summary: str = "",
+    metadata: Mapping[str, Any] | None = None,
+    organization: Organization | None = None,
+) -> None:
+    """Record one platform event. Never raises.
+
+    Args:
+        action: A registered key (see ``platform_audit.actions``).
+        target_type: What was changed, e.g. ``TargetType.GROUP``.
+        target_id: Its id; stored as a string.
+        target_name: Its display name at the time of the change.
+        request: The request that made the change. Supplies the actor
+            (including the platform API key, when one was used), the request
+            id and, through ``UserContext``, the organisation.
+        actor: The acting user when there is no request (or to override it).
+            With neither, the actor is ``system``.
+        changes: ``{"before": {...}, "after": {...}}``. Never put secrets here.
+        summary: One line for the Audit log row, e.g. ``"was unstract_user"``.
+        metadata: Extra detail kept on the row but not part of the read API.
+        organization: Defaults to the organisation in ``UserContext``.
+    """
+    try:
+        action = str(action)
+        if get_action(action) is None:
+            logger.warning("Platform audit: unregistered action %r not recorded", action)
+            return
+        organization = organization or UserContext.get_organization()
+        if organization is None:
+            logger.warning(
+                "Platform audit: no organisation in context, %r not recorded", action
+            )
+            return
+        fields = {
+            "organization": organization,
+            "action": action,
+            "target_type": _clip(target_type, 64),
+            "target_id": _clip(target_id, 255),
+            "target_name": _clip(target_name, 255),
+            "summary": str(summary or ""),
+            "changes": dict(changes or {}),
+            "metadata": dict(metadata or {}),
+            "request_id": _clip(_request_id(request), 64),
+            **_resolve_actor(request=request, actor=actor),
+        }
+        transaction.on_commit(partial(_write, fields), robust=True)
+    except Exception:
+        logger.exception("Platform audit: failed to record %r", action)
+
+
+def best_effort(fn: Callable[P, T]) -> Callable[P, T | None]:
+    """Make an audit helper unable to fail the request that calls it.
+
+    Instrumented views read "before" values ahead of the change they audit and
+    build events after it. Decorate those helpers: an error is logged and the
+    helper returns ``None``.
+    """
+
+    @wraps(fn)
+    def wrapper(*args: P.args, **kwargs: P.kwargs) -> T | None:
+        try:
+            return fn(*args, **kwargs)
+        except Exception:
+            logger.exception("Platform audit: %s failed", fn.__qualname__)
+            return None
+
+    return wrapper
+
+
+def diff(before: Mapping[str, Any], after: Mapping[str, Any]) -> dict[str, dict]:
+    """Keep only the keys whose value changed, as ``{"before", "after"}``."""
+    changed = [k for k in after if before.get(k) != after.get(k)]
+    return {
+        "before": {k: before.get(k) for k in changed},
+        "after": {k: after.get(k) for k in changed},
+    }
+
+
+def _write(fields: dict[str, Any]) -> None:
+    try:
+        with transaction.atomic():
+            PlatformAuditEvent.objects.create(**fields)
+    except Exception:
+        logger.exception("Platform audit: failed to write %r", fields.get("action"))
+
+
+def _resolve_actor(*, request: Any, actor: User | None) -> dict[str, Any]:
+    user = actor
+    if user is None and request is not None:
+        user = getattr(request, "user", None)
+    if user is not None and not getattr(user, "is_authenticated", False):
+        user = None
+    key = getattr(request, "platform_api_key", None) if request is not None else None
+
+    if key is not None:
+        return {
+            "actor": user,
+            "actor_type": ActorType.API_KEY,
+            "actor_email": _clip((getattr(user, "email", "") or "").lower(), 254),
+            "actor_name": _clip(key.name, 255),
+            "actor_key_id": str(key.id),
+            "actor_key_name": _clip(key.name, 255),
+        }
+    if user is None:
+        return {"actor": None, "actor_type": ActorType.SYSTEM}
+    actor_type = (
+        ActorType.API_KEY
+        if getattr(user, "is_service_account", False)
+        else ActorType.USER
+    )
+    return {
+        "actor": user,
+        "actor_type": actor_type,
+        "actor_email": _clip((user.email or "").lower(), 254),
+        "actor_name": _clip(user.get_full_name() or "", 255),
+    }
+
+
+def _request_id(request: Any) -> str:
+    value = getattr(request, "id", None) if request is not None else None
+    return str(value or getattr(request_id_local, "request_id", "") or "")
+
+
+def _clip(value: Any, limit: int) -> str:
+    return ("" if value is None else str(value))[:limit]
+
+
+def record_key_update(
+    *,
+    target_type: str,
+    key: Any,
+    before: Mapping[str, Any],
+    after: Mapping[str, Any],
+    request: Any,
+) -> None:
+    """Record a key edit: ``key.enabled``/``key.disabled`` for an ``is_active``
+    flip, and ``key.changed`` for any other field that changed.
+    """
+    from platform_audit.actions import Action
+
+    changes = diff(before, after)
+    flipped = "is_active" in changes["after"]
+    if flipped:
+        record_platform_event(
+            action=Action.KEY_ENABLED if after["is_active"] else Action.KEY_DISABLED,
+            target_type=target_type,
+            target_id=key.id,
+            target_name=key.name,
+            changes={
+                "before": {"is_active": before.get("is_active")},
+                "after": {"is_active": after["is_active"]},
+            },
+            request=request,
+        )
+    other = {k: v for k, v in changes["after"].items() if k != "is_active"}
+    if other:
+        record_platform_event(
+            action=Action.KEY_CHANGED,
+            target_type=target_type,
+            target_id=key.id,
+            target_name=key.name,
+            changes={
+                "before": {k: changes["before"][k] for k in other},
+                "after": other,
+            },
+            summary="changed " + ", ".join(sorted(other)),
+            request=request,
+        )

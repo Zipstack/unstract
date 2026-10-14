@@ -8,6 +8,8 @@ from pipeline_v2.exceptions import PipelineNotFound
 from pipeline_v2.models import Pipeline
 from pipeline_v2.pipeline_processor import PipelineProcessor
 from platform_api.permissions import IsOrganizationAdmin
+from platform_audit.actions import Action, TargetType
+from platform_audit.recorder import best_effort, record_platform_event
 from rest_framework import status, viewsets
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
@@ -89,9 +91,32 @@ class NotificationSettingsView(APIView):
             ConfigKey.NOTIFICATION_CLUB_INTERVAL.cast_value(new_value)
         except ValueError as exc:
             return Response({"detail": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        before = _club_interval(organization)
         Configuration.objects.update_or_create(
             organization=organization,
             key=ConfigKey.NOTIFICATION_CLUB_INTERVAL.name,
             defaults={"value": str(new_value), "enabled": True},
         )
+        if before != int(new_value):
+            record_platform_event(
+                action=Action.PLATFORM_SETTING_CHANGED,
+                target_type=TargetType.PLATFORM_SETTING,
+                target_id="club_interval_seconds",
+                target_name="club_interval_seconds",
+                changes={
+                    "before": {"club_interval_seconds": before},
+                    "after": {"club_interval_seconds": int(new_value)},
+                },
+                summary=f"club_interval_seconds: {before} → {int(new_value)}",
+                request=request,
+            )
         return Response({"club_interval_seconds": int(new_value)})
+
+
+@best_effort
+def _club_interval(organization) -> int:
+    return int(
+        Configuration.get_value_by_organization(
+            ConfigKey.NOTIFICATION_CLUB_INTERVAL, organization
+        )
+    )

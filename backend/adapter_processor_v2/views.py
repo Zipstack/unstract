@@ -15,6 +15,8 @@ from permissions.permission import (
     IsOwnerOrSharedUserOrSharedToOrg,
 )
 from permissions.resource_share_views import ResourceShareManagementMixin
+from platform_audit.actions import Action, TargetType
+from platform_audit.recorder import best_effort, diff, record_platform_event
 from plugins import get_plugin
 from rest_framework import status
 from rest_framework.decorators import action
@@ -73,7 +75,9 @@ class DefaultAdapterViewSet(ModelViewSet):
         serializer.is_valid(raise_exception=True)
         # Convert request data to json
         default_triad = request.data
+        before = _default_adapter_names(request.user)
         AdapterProcessor.set_default_triad(default_triad, request.user)
+        _record_defaults_changed(request, before)
         return Response(status=status.HTTP_200_OK)
 
     def get_default_triad(
@@ -560,3 +564,50 @@ class AdapterInstanceViewSet(
         serialized_instances = AdapterInfoSerializer(adapter).data
 
         return Response(serialized_instances)
+
+
+_DEFAULT_SLOTS = {
+    "llm": "default_llm_adapter",
+    "embedding": "default_embedding_adapter",
+    "vector_db": "default_vector_db_adapter",
+    "x2text": "default_x2text_adapter",
+}
+
+
+@best_effort
+def _default_adapter_names(user: User) -> dict[str, str | None]:
+    """The member's default adapter per slot, by name."""
+    member = OrganizationMemberService.get_user_by_id(user.id)
+    defaults = (
+        UserDefaultAdapter.objects.filter(organization_member=member)
+        .select_related(*_DEFAULT_SLOTS.values())
+        .first()
+    )
+    names: dict[str, str | None] = {}
+    for slot, field in _DEFAULT_SLOTS.items():
+        adapter = getattr(defaults, field, None) if defaults else None
+        names[slot] = adapter.adapter_name if adapter else None
+    return names
+
+
+@best_effort
+def _record_defaults_changed(request: Request, before: dict | None) -> None:
+    """Defaults are stored per member, so the member is both actor and target."""
+    after = _default_adapter_names(request.user)
+    if before is None or after is None:
+        return
+    changes = diff(before, after)
+    if not changes["after"]:
+        return
+    record_platform_event(
+        action=Action.DEFAULT_PROFILE_CHANGED,
+        target_type=TargetType.DEFAULT_PROFILE,
+        target_id=request.user.id,
+        target_name=request.user.email,
+        changes=changes,
+        summary="; ".join(
+            f"{slot}: {changes['before'][slot] or 'none'} → {name or 'none'}"
+            for slot, name in changes["after"].items()
+        ),
+        request=request,
+    )
