@@ -380,9 +380,11 @@ def _parse_table(  # noqa: C901 - one check per schema rule
 
 
 def _check_inheritance(providers: dict[str, ProviderEntry]) -> None:
-    """Enforce one-level ``inherit``: the target exists, is not the provider
-    itself, and does not inherit in turn. This rules out every cycle, which the
-    resolver would otherwise follow until ``RecursionError``.
+    """Enforce one-level ``inherit``.
+
+    The target must exist, must not be the provider itself, and must not
+    inherit in turn. This rules out every cycle, which the resolver would
+    otherwise follow until ``RecursionError``.
     """
     for entry in providers.values():
         for override in entry.overrides:
