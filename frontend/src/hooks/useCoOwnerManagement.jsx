@@ -36,27 +36,23 @@ function buildApplyAlert(
     return { type: "success", content: summary };
   }
   const failedNames = failed.map((user) => user?.email || user?.id).join(", ");
-  // "Not applied" rather than "Failed": this list also carries removals that
-  // were deliberately skipped because an addition failed first.
+  // "Not applied" rather than "Failed": this list also carries changes that
+  // were deliberately skipped because an earlier step failed.
   return {
     type: "warning",
     content: `${summary}. Not applied for: ${failedNames}`,
   };
 }
 
-/**
- * Move the caller to the end: once their own removal lands they are no longer
- * an owner, and the backend rejects every removal they send after it.
- */
-function selfLast(users, selfId) {
+/** Split ``users`` into everyone else and the caller. */
+function splitSelf(users, selfId) {
   const isSelf = (user) => String(user?.id) === String(selfId);
-  return [...users.filter((user) => !isSelf(user)), ...users.filter(isSelf)];
+  return [users.filter((user) => !isSelf(user)), users.filter(isSelf)];
 }
 
 /**
- * Run one Apply's add/remove calls. Attempts every user independently --
- * one rejection must not drop the rest or leave the modal contradicting the
- * server.
+ * Run one Apply's add/remove calls in steps. Within a step every user is
+ * attempted independently; a step runs only if every earlier one landed.
  */
 async function applyCoOwnerMutations(
   service,
@@ -67,27 +63,29 @@ async function applyCoOwnerMutations(
 ) {
   const failed = [];
   let lastError = null;
-  const run = async (users, call) => {
+  const add = (id) => service.addCoOwner(resourceId, id);
+  const remove = (id) => service.removeCoOwner(resourceId, id);
+  const [otherRemovals, selfRemoval] = splitSelf(removeUsers, selfId);
+  // Adds first: the backend rejects removing the last owner. The caller's own
+  // removal last: after it they can no longer retry anything that failed.
+  const steps = [
+    [addUsers, add],
+    [otherRemovals, remove],
+    [selfRemoval, remove],
+  ];
+  for (const [users, call] of steps) {
+    if (failed.length) {
+      failed.push(...users); // reported, not attempted
+      continue;
+    }
     for (const user of users) {
       try {
-        await call(user.id); // NOSONAR - one call at a time so the caller's own removal lands last
+        await call(user.id); // NOSONAR - one call at a time, in step order
       } catch (err) {
         failed.push(user);
         lastError = err;
       }
     }
-  };
-  // Adds first: the backend rejects removing the last owner, so a one-shot
-  // owner swap has to grow the roster before it shrinks it.
-  await run(addUsers, (id) => service.addCoOwner(resourceId, id));
-  if (failed.length) {
-    // The roster never grew, so removing now can strip the very owner the
-    // swap was meant to replace. Report them rather than attempt them.
-    failed.push(...removeUsers);
-  } else {
-    await run(selfLast(removeUsers, selfId), (id) =>
-      service.removeCoOwner(resourceId, id),
-    );
   }
   return { failed, lastError };
 }
