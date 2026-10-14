@@ -80,14 +80,16 @@ class SearchContractTests(CoOwnerOrgTestMixin, TestCase):
     def test_owner_context_skips_service_accounts_and_takes_the_earliest(self) -> None:
         workflow = OSS_BUILDERS[T.WORKFLOW](self.org, self.owner, "theta-owned")
         service = make_user("svc-owner@example.com", is_service_account=True)
-        # Inserted out of order so heap order alone would pick the co-owner;
-        # only the subquery's created_at ordering picks the owner.
+        # The service account is the earliest owner, so only the exclusion
+        # skips it; the co-owner is inserted before the owner, so only the
+        # created_at ordering (not heap order) picks the owner over it.
         for user in (service, self.coowner, self.owner):
             workflow.memberships.create(user=user, role=ResourceRole.OWNER)
-        earliest = workflow.memberships.order_by("created_at").first().created_at
-        workflow.memberships.filter(user=self.owner).update(
-            created_at=earliest - timedelta(minutes=1)
-        )
+        base = workflow.memberships.order_by("created_at").first().created_at
+        for user, minutes in ((service, -2), (self.owner, -1), (self.coowner, 0)):
+            workflow.memberships.filter(user=user).update(
+                created_at=base + timedelta(minutes=minutes)
+            )
         (group,) = search(self.admin, q="theta", types=T.WORKFLOW).data["groups"]
         self.assertEqual(group["results"][0]["context"], self.owner.email)
         # Same rule as the list's "Owned By" column.

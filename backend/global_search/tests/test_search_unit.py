@@ -10,6 +10,7 @@ from unittest.mock import MagicMock, patch
 import jsonschema
 import pytest
 from account_v2.models import User
+from django.db import OperationalError
 
 from global_search.constants import MatchTier
 from global_search.providers import SearchHit, SearchProvider
@@ -82,13 +83,9 @@ def test_a_failing_provider_drops_only_its_own_group(user, providers, caplog):
     assert "Global search provider 'broken' failed" in caplog.text
 
 
-def _status(user, **params) -> int:
-    """The view's status; the project's exception handler may render an
-    unhandled error as a 500 response or let it propagate."""
-    try:
-        return search(user, **params).status_code
-    except RuntimeError:
-        return 500
+def _assert_unavailable(response) -> None:
+    assert response.status_code == 503
+    assert [e["code"] for e in response.data["errors"]] == ["search_unavailable"]
 
 
 class _Broken(FakeProvider):
@@ -102,7 +99,7 @@ def test_every_type_failing_is_an_error_not_an_empty_result(user):
         "global_search.views.get_providers",
         return_value=[_Broken("a", 1, []), _Broken("b", 2, [])],
     ):
-        assert _status(user, q="alpha") == 500
+        _assert_unavailable(search(user, q="alpha"))
 
 
 def test_a_failure_that_breaks_the_transaction_fails_the_request(user, providers):
@@ -116,7 +113,20 @@ def test_a_failure_that_breaks_the_transaction_fails_the_request(user, providers
             return_value=[_Broken("a", 1, []), providers[0]],
         ),
     ):
-        assert _status(user, q="alpha") == 500
+        _assert_unavailable(search(user, q="alpha"))
+
+
+def test_a_lost_connection_fails_the_request_even_if_others_answered(user, providers):
+    # In autocommit nothing marks the connection broken; the error class does.
+    class Lost(FakeProvider):
+        def search(self, user, query, limit):
+            raise OperationalError("server closed the connection unexpectedly")
+
+    with patch(
+        "global_search.views.get_providers",
+        return_value=[providers[1], Lost("lost", 15, [])],
+    ):
+        _assert_unavailable(search(user, q="alpha"))
 
 
 def test_limit_and_has_more(user, providers):
