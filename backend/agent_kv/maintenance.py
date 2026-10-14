@@ -214,13 +214,36 @@ def run_sweep() -> dict:
     # below `now - SLOT_TTL`). A job submitted seven hours ago and cancelled a
     # minute ago has a recent `completed_at` and no slot left to release, and
     # the old bound would have selected it every sweep.
+    # The floor is time since the CANCEL; the ceiling is the age of the slot.
+    # Two different clocks, and the first correction here got that half right
+    # and half wrong.
+    #
+    # Measuring the floor from `dispatched_at` was wrong for the reason review
+    # gave: that column records ENQUEUEING, not when the executor picked the
+    # job up. A queue backlog of more than the grace means a job can satisfy a
+    # dispatch-age test while its executor has only just started -- so
+    # cancelling it would make it eligible on the next sweep and the sweep
+    # would free a slot that is still in use, letting another submit exceed
+    # AGENT_KV_CONCURRENT_LIMIT while the executor bills on.
+    #
+    # Time since the cancel is the quantity that actually answers "has a live
+    # executor had its chance to notice and finalize?", because noticing is
+    # what a cancel triggers. So the floor is `completed_at`.
+    #
+    # The ceiling stays on `dispatched_at`: it asks whether Redis still holds
+    # the slot, and slots are scored by acquisition at submit
+    # (`check_and_acquire` zadds `now` and trims below `now - SLOT_TTL`).
+    # Asking that question of the cancel time was the original bug.
+    #
+    # Different columns, so the window cannot collapse the way it did when
+    # both bounds were `completed_at` with equal constants.
     abandoned_grace = getattr(settings, "AGENT_KV_ABANDONED_SLOT_GRACE_SECONDS", 3600)
-    abandoned_floor = now - timedelta(seconds=abandoned_grace)
+    cancelled_floor = now - timedelta(seconds=abandoned_grace)
     slot_ttl_floor = now - timedelta(seconds=SLOT_TTL_SECONDS)
     abandoned_cancelled = AgentKVJob.objects.filter(
         status=JobStatus.CANCELLED,
         dispatched_at__isnull=False,
-        dispatched_at__lt=abandoned_floor,
+        completed_at__lt=cancelled_floor,
         dispatched_at__gt=slot_ttl_floor,
         # NEWEST first, the opposite of the other two phases and deliberate.
         # Releasing a slot does not remove its row from this query -- there is
@@ -236,9 +259,10 @@ def run_sweep() -> dict:
         # `_MAINTENANCE_BATCH_LIMIT` become eligible inside one sweep interval
         # -- and the TTL remains the backstop for that.
         #
-        # Ordered by the same column the window filters on, so "newest" means
-        # the same thing in both.
-    ).order_by("-dispatched_at")[:_MAINTENANCE_BATCH_LIMIT]
+        # Ordered by the CANCEL time, the column the floor filters on: the
+        # rows at risk of ageing out of the window are the ones cancelled
+        # longest ago.
+    ).order_by("-completed_at")[:_MAINTENANCE_BATCH_LIMIT]
 
     released = 0
     for job in abandoned_cancelled:

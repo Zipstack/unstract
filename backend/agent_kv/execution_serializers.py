@@ -388,6 +388,13 @@ class SubmitSerializer(serializers.Serializer):
         """
         if not value:
             return value
+        if settings.AGENT_KV_WEBHOOK_INSECURE_ALLOW_HTTP_PRIVATE:
+            # The same test/dev waiver the delivery sink reads. Both sides
+            # must honour it or they disagree: with the check only at submit,
+            # the e2e webhook scenario 400s before a job exists; with it only
+            # at the sink, this validation is the thing that breaks it. Unset
+            # in production.
+            return value
         reason = webhook_url_refusal(value, allowed_schemes=("https",), resolve=False)
         if reason is not None:
             raise serializers.ValidationError(

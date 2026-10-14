@@ -344,9 +344,10 @@ Not exposed (D6): model choice, challenger model, `parallel_pages`, thinking bud
     requests the worker then fails — after the 202, after the concurrency slot
     and after the upload.
 
-    `pages_selected` is still computed and reported; it is the honest count of
-    what will be EXTRACTED, and the refusal message uses it. If OCR ever honours
-    the range, this is the line to revisit.
+    `pages_selected` is computed internally but is **not** returned anywhere:
+    the status document and the page-limit error both report `pages_total`. If
+    OCR ever honours the range, this is the line to revisit — and the count
+    the cap checks is what would change.
   - Images (`.png .jpg .jpeg .tiff`) are **not** accepted, and no longer count as
     1 page. The engine treats only `.pdf/.xlsx/.xls` as a document and
     `ImageLoader.load_pages` has no call site, so an accepted image returned
@@ -1423,7 +1424,7 @@ with the default shown:
 |---|---|---|
 | `AGENT_KV_PATH_PREFIX` | `agent-kv` | Top-level public URL prefix (whitelisted past tenant middleware). |
 | `AGENT_KV_MAX_FILE_SIZE_MB` | `50` | Submit-time file size cap. |
-| `AGENT_KV_ABANDONED_SLOT_GRACE_SECONDS` | `3600` | How long after DISPATCH a cancelled job's executor is presumed dead, so the sweep's phase 3 may release the concurrency slot it still holds. Must stay **below** `rate_limiter.SLOT_TTL_SECONDS` (6 h) or the window is empty and the phase silently releases nothing. |
+| `AGENT_KV_ABANDONED_SLOT_GRACE_SECONDS` | `3600` | How long after CANCELLATION a cancelled job's executor is presumed dead, so the sweep's phase 3 may release the concurrency slot it still holds. Must stay **below** `rate_limiter.SLOT_TTL_SECONDS` (6 h) or the window is empty and the phase silently releases nothing. |
 | `AGENT_KV_MAX_PAGES` | `100` | Pre-OCR cap on the pages of the DOCUMENT for PDFs — checked against `pages_total`, **not** against the `page_start`/`page_end` range (§6.1), because the whole file is OCR'd and billed whatever the range. The cloud worker refuses on the same quantity. Excel has no pre-OCR page concept, so it takes the engine's post-OCR virtual-page cap instead; images are not accepted. |
 | `AGENT_KV_MAX_CALCULATIONS_BYTES` | `20000` | Byte cap on the optional `calculations` field. |
 | `AGENT_KV_MAX_SCHEMA_BYTES` | `262144` | Byte cap on the raw `keys` JSON document (256 KiB). |

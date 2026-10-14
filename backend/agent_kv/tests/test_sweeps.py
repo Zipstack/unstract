@@ -848,7 +848,10 @@ def test_phase_three_is_bounded_on_both_sides(m_objects, m_release):
     kwargs = m_objects.filter.call_args_list[2].kwargs
     assert kwargs["status"] == JobStatus.CANCELLED
     assert kwargs["dispatched_at__isnull"] is False
-    assert kwargs["dispatched_at__lt"] == frozen_now - timedelta(
+    # Floor on the CANCEL time, ceiling on the SLOT's age. Two different
+    # columns, which is also what stops the window collapsing the way it did
+    # when both were `completed_at` with equal constants.
+    assert kwargs["completed_at__lt"] == frozen_now - timedelta(
         seconds=settings.AGENT_KV_ABANDONED_SLOT_GRACE_SECONDS
     )
     assert kwargs["dispatched_at__gt"] == frozen_now - timedelta(
@@ -883,7 +886,7 @@ def test_phase_three_takes_the_newest_eligible_rows_first():
         m_objects.filter.side_effect = [phase1, phase2_status, phase3]
         maintenance.run_sweep()
 
-    phase3.order_by.assert_called_once_with("-dispatched_at")
+    phase3.order_by.assert_called_once_with("-completed_at")
 
 
 # ---------------------------------------------------------------------------
@@ -1057,7 +1060,7 @@ class TestPhaseThreeActuallySelectsSomething(TestCase):
 
     def test_an_abandoned_cancelled_job_has_its_slot_released(self):
         """The whole point of the phase, and it had never once happened."""
-        job = self._cancelled(dispatched_ago=2 * 3600)
+        job = self._cancelled(dispatched_ago=4 * 3600, completed_ago=2 * 3600)
 
         result, m_release = self._sweep()
 
@@ -1065,8 +1068,8 @@ class TestPhaseThreeActuallySelectsSomething(TestCase):
         m_release.assert_called_once_with(str(self.org.id), str(job.id))
 
     def test_a_job_dispatched_moments_ago_is_left_alone(self):
-        """The floor still protects a live executor."""
-        self._cancelled(dispatched_ago=60)
+        """A job dispatched and cancelled moments ago keeps its slot."""
+        self._cancelled(dispatched_ago=60, completed_ago=30)
 
         result, m_release = self._sweep()
 
@@ -1077,24 +1080,46 @@ class TestPhaseThreeActuallySelectsSomething(TestCase):
         """Past the slot TTL there is nothing to release, so selecting it would
         mean re-releasing the same rows on every sweep forever.
         """
-        self._cancelled(dispatched_ago=SLOT_TTL_SECONDS + 3600)
+        self._cancelled(
+            dispatched_ago=SLOT_TTL_SECONDS + 3600, completed_ago=2 * 3600
+        )
 
         result, m_release = self._sweep()
 
         assert result["released"] == 0
 
-    def test_the_window_is_measured_from_dispatch_not_from_the_cancel(self):
+    def test_the_slot_age_is_measured_from_dispatch_not_from_the_cancel(self):
         """Submitted long ago, cancelled a minute ago: the slot is gone.
 
-        The old ceiling read `completed_at`, so this row looked eligible --
-        recent cancel, inside the TTL -- when its slot had expired hours
+        The original ceiling read `completed_at`, so this row looked eligible
+        -- recent cancel, inside the TTL -- when its slot had expired hours
         earlier. It would have been re-selected every sweep.
         """
-        self._cancelled(dispatched_ago=SLOT_TTL_SECONDS + 3600, completed_ago=60)
+        self._cancelled(
+            dispatched_ago=SLOT_TTL_SECONDS + 3600, completed_ago=2 * 3600
+        )
 
         result, _ = self._sweep()
 
         assert result["released"] == 0
+
+    def test_a_job_cancelled_moments_ago_keeps_its_slot(self):
+        """The floor is time since the CANCEL, not since dispatch.
+
+        `dispatched_at` records ENQUEUEING. Under a queue backlog longer than
+        the grace, a job can be an hour past dispatch with an executor that
+        has only just started -- so a dispatch-age floor would free a slot
+        that is still in use, and another submit could then exceed
+        AGENT_KV_CONCURRENT_LIMIT while the executor bills on. Cancelling is
+        what makes a live executor stop, so the grace has to run from there.
+        Reported by Greptile on #2317, against this phase's first fix.
+        """
+        self._cancelled(dispatched_ago=4 * 3600, completed_ago=30)
+
+        result, m_release = self._sweep()
+
+        assert result["released"] == 0
+        assert not m_release.called
 
     def test_the_grace_is_its_own_setting_and_shorter_than_the_slot_ttl(self):
         """The invariant that keeps the window non-empty. If these ever meet

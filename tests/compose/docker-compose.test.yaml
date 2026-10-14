@@ -86,6 +86,14 @@ services:
     environment:
       - AGENT_KV_WEBHOOK_INSECURE_ALLOW_HTTP_PRIVATE=${AGENT_KV_WEBHOOK_INSECURE_ALLOW_HTTP_PRIVATE:-}
 
+  # The BACKEND needs the same waiver, because the https-and-public-host rule
+  # is now applied at SUBMIT as well as at delivery. Without it here the e2e
+  # webhook scenario is refused with a 400 before a job is ever created, and
+  # the worker-side waiver above never gets a chance to matter.
+  backend:
+    environment:
+      - AGENT_KV_WEBHOOK_INSECURE_ALLOW_HTTP_PRIVATE=${AGENT_KV_WEBHOOK_INSECURE_ALLOW_HTTP_PRIVATE:-}
+
   # The `ui` Playwright group drives a browser at the frontend's OWN origin, and
   # the app derives every API URL from window.location.origin. The production
   # nginx config serves only static files plus an SPA fallback, so `/api/v1/*`

@@ -268,6 +268,18 @@ AGENT_KV_STORAGE_DIR_PREFIX = (
     or "unstract/agent_kv"
 )  # same normalisation as the cloud executor's reader (whitespace, edge slashes)
 AGENT_KV_MAX_FILE_SIZE_MB = int(os.environ.get("AGENT_KV_MAX_FILE_SIZE_MB", 50))
+
+#: Test/dev only: waive the https-and-public-host rule on `webhook_url` at
+#: SUBMIT, matching the waiver `workers/ide_callback/agent_kv_tasks.py` already
+#: reads at delivery. One switch, honoured on both sides.
+#:
+#: Needed because submit-side validation and the delivery guard have to agree:
+#: with the check only at the sink, the e2e webhook scenario could post to a
+#: receiver on the compose host; with it only at submit, that scenario 400s
+#: before a job exists. Unset in production, where both guards stay mandatory.
+AGENT_KV_WEBHOOK_INSECURE_ALLOW_HTTP_PRIVATE = os.environ.get(
+    "AGENT_KV_WEBHOOK_INSECURE_ALLOW_HTTP_PRIVATE", ""
+).lower() in ("1", "true", "yes")
 AGENT_KV_MAX_PAGES = int(os.environ.get("AGENT_KV_MAX_PAGES", 100))
 AGENT_KV_MAX_CALCULATIONS_BYTES = int(
     os.environ.get("AGENT_KV_MAX_CALCULATIONS_BYTES", 20_000)
@@ -301,9 +313,15 @@ AGENT_KV_STUCK_JOB_GRACE_SECONDS = int(
 #: and empty for ANY grace >= TTL. The phase could never select a row, and
 #: `released` was always 0.
 #:
-#: One hour rather than six because the job is already CANCELLED: a live
-#: executor learns of that at its next stage report and stops, so an hour of
-#: silence after dispatch is already strong evidence that nothing is coming.
+#: Measured from the CANCEL, not from dispatch. `dispatched_at` records
+#: enqueueing, so under a queue backlog a job can be an hour past dispatch
+#: with an executor that has only just started -- releasing then would free a
+#: slot still in use. Cancelling is what makes a live executor stop, so the
+#: grace runs from there.
+#:
+#: One hour rather than six because a live executor learns of the cancel at
+#: its next stage report, so an hour of silence after it is already strong
+#: evidence that nothing is coming.
 #: Waiting the full six hours is indistinguishable from waiting for Redis to
 #: expire the slot on its own, which is the behaviour this phase exists to
 #: improve on.
