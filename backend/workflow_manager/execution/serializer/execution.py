@@ -96,12 +96,19 @@ class ExecutionSerializer(serializers.ModelSerializer):
         response, and this reads every file row's JSON payload — one such scan
         per row would turn the list into an N+1.
 
-        Gated on the view's ``detail`` flag rather than ``action ==
-        "retrieve"``, so a future ``@action(detail=True)`` route gets the
-        breakdown instead of silently receiving ``None``.
+        Both signals are checked because neither alone is sufficient here:
+        ``ViewSetMixin.as_view`` sets ``cls.detail = None`` and only a router
+        (or an explicit ``detail=True`` initkwarg) overrides it, and this
+        viewset is wired up by hand as ``as_view({"get": "retrieve"})`` — so
+        ``detail`` is None on the live route. ``action`` covers that; ``detail``
+        covers a future ``@action(detail=True)`` route whose action name we
+        cannot predict.
         """
         view = self.context.get("view")
-        if not getattr(view, "detail", False):
+        is_detail = bool(getattr(view, "detail", False)) or (
+            getattr(view, "action", None) == "retrieve"
+        )
+        if not is_detail:
             return None
         try:
             payloads = (

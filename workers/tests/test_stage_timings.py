@@ -250,6 +250,28 @@ class TestAggregateStageTimings:
         assert result["tool_split"][ToolStage.EXTRACTION] == 8.0
         assert result["total"] == 17.5
 
+    def test_unaccounted_survives_aggregation(self):
+        """Dropping it leaves the aggregate's rows not explaining its total.
+
+        Each per-file payload satisfies sum(stages) + unaccounted == total; the
+        aggregate has to keep that relation or the chart it feeds is drawn
+        against a total its segments cannot reach.
+        """
+        payloads = [
+            {"stages": {"tool_execution": 8.0}, "total": 10.0, "unaccounted": 2.0},
+            {"stages": {"tool_execution": 3.0}, "total": 5.0, "unaccounted": 2.0},
+        ]
+
+        result = aggregate_stage_timings(payloads)
+
+        assert result["unaccounted"] == 4.0
+        assert sum(result["stages"].values()) + result["unaccounted"] == result["total"]
+
+    def test_unaccounted_is_zero_not_missing_when_nothing_is_unaccounted(self):
+        result = aggregate_stage_timings([{"stages": {"setup": 1.0}, "total": 1.0}])
+
+        assert result["unaccounted"] == 0.0
+
     def test_malformed_payloads_are_skipped(self):
         result = aggregate_stage_timings(
             [None, "nope", {}, {"stages": {"setup": 1.0}}, {"stages": "bad"}]

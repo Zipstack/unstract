@@ -119,6 +119,15 @@ describe("StageTimings", () => {
     expect(screen.queryByText("Queued to complete")).not.toBeInTheDocument();
   });
 
+  it("shows the aggregate's unaccounted time, so the rows reach the total", () => {
+    // The backend sums each file's unaccounted into the aggregate; without
+    // that row the segments cannot add up to the total they are drawn against.
+    render(<StageTimings timings={payload({ files: 3, unaccounted: 4 })} />);
+
+    expect(screen.getByText("Unaccounted")).toBeInTheDocument();
+    expect(screen.getByText("4.00s")).toBeInTheDocument();
+  });
+
   it("explains the unaccounted remainder on hover", () => {
     render(<StageTimings timings={payload({ unaccounted: 1 })} />);
 

@@ -120,13 +120,17 @@ def aggregate_stage_timings(payloads) -> dict:
             are missing or malformed are skipped.
 
     Returns:
-        ``{"version", "files", "stages", "tool_split", "total"}``, or ``{}``
-        when no payload carried any timing.
+        ``{"version", "files", "stages", "total", "unaccounted", "tool_split"}``,
+        or ``{}`` when no payload carried any timing. ``unaccounted`` is summed
+        with the rest so the aggregate keeps the same
+        ``sum(stages) + unaccounted == total`` relation each per-file payload
+        has — drop it and the rows stop explaining the total they are drawn
+        against.
     """
     stages: dict = {}
     tool_split: dict = {}
+    totals: dict = {}
     files = 0
-    total = 0.0
 
     for payload in payloads or ():
         if not isinstance(payload, dict):
@@ -142,13 +146,8 @@ def aggregate_stage_timings(payloads) -> dict:
         if isinstance(payload_split, dict):
             for key, value in payload_split.items():
                 _add_seconds(tool_split, key, value)
-        payload_total = payload.get("total")
-        if (
-            isinstance(payload_total, (int, float))
-            and not isinstance(payload_total, bool)
-            and payload_total > 0
-        ):
-            total += float(payload_total)
+        _add_seconds(totals, "total", payload.get("total"))
+        _add_seconds(totals, "unaccounted", payload.get("unaccounted"))
 
     if not files:
         return {}
@@ -157,7 +156,8 @@ def aggregate_stage_timings(payloads) -> dict:
         "version": STAGE_TIMINGS_VERSION,
         "files": files,
         "stages": {k: round(v, 3) for k, v in stages.items()},
-        "total": round(total, 3),
+        "total": round(totals.get("total", 0.0), 3),
+        "unaccounted": round(totals.get("unaccounted", 0.0), 3),
     }
     if tool_split:
         result["tool_split"] = {k: round(v, 3) for k, v in tool_split.items()}
