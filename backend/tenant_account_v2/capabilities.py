@@ -6,8 +6,9 @@ use it. Each setting is a ``restrict_<...>`` boolean on ``Organization``
 the first two capabilities, so ``organization/settings`` and
 ``organization/capabilities/`` stay in step by construction.
 
-Service accounts (platform API keys) are never subject to a capability check:
-each endpoint keeps its existing service-account behaviour.
+Service accounts (platform API keys) are never subject to a capability
+setting. That is all a capability decides: each endpoint's own rules (admin
+checks, key permission levels, ownership) still apply on top, unchanged.
 """
 
 from dataclasses import dataclass
@@ -37,6 +38,11 @@ class Capability(StrEnum):
 class CapabilitySetting(StrEnum):
     ADMINS_ONLY = "admins_only"
     ANY_MEMBER = "any_member"
+
+
+# The serializers' choices, and the target of the schema's enum-name override
+# (drf-spectacular matches overrides on the choice set, not on the Enum).
+CAPABILITY_SETTING_VALUES = [setting.value for setting in CapabilitySetting]
 
 
 @dataclass(frozen=True)
@@ -131,14 +137,10 @@ def setting_of(organization: Organization, spec: CapabilitySpec) -> CapabilitySe
 def is_allowed(user: Any, organization: Organization | None, key: Capability) -> bool:
     """Whether the setting lets ``user`` use the capability.
 
-    It says only that the setting does not block them: object-level rules
-    (for example, deleting needs ownership) still apply on top.
+    It says only that the setting does not block them: the endpoint's own
+    rules (for example, deleting needs ownership) still apply on top.
     """
     spec = SPECS_BY_KEY[key]
-    if not spec.enforced:
-        # Nothing enforces it yet: its endpoints are admin-only today and
-        # refuse service accounts, which the admin check also does.
-        return OrganizationMemberService.is_user_organization_admin(user)
     if getattr(user, "is_service_account", False) or organization is None:
         return True
     if setting_of(organization, spec) == CapabilitySetting.ANY_MEMBER:

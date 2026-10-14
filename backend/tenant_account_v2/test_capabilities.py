@@ -4,6 +4,8 @@ The OSS auth service treats the ``admin`` role as admin, so the fixtures'
 roles drive ``is_user_organization_admin`` directly.
 """
 
+import importlib
+import re
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -13,6 +15,7 @@ from adapter_processor_v2.views import AdapterInstanceViewSet
 from api_v2.api_deployment_views import APIDeploymentViewSet
 from connector_v2.views import ConnectorInstanceViewSet
 from django.test import SimpleTestCase
+from drf_spectacular.generators import SchemaGenerator
 from permissions.permission import IsOwner
 from permissions.roles import ResourceRole
 from pipeline_v2.views import PipelineViewSet
@@ -21,6 +24,7 @@ from rest_framework.exceptions import PermissionDenied
 from workflow_manager.workflow_v2.models.workflow import Workflow
 from workflow_manager.workflow_v2.views import WorkflowViewSet
 
+from tenant_account_v2 import urls as tenant_urls
 from tenant_account_v2.capabilities import (
     SPECS,
     Capability,
@@ -45,6 +49,46 @@ class CapabilityRegistryTests(SimpleTestCase):
         spec = next(s for s in SPECS if s.key == Capability.CREATE_OTHER_ADAPTERS)
         self.assertEqual(
             spec.message(), "Create other adapters is restricted to organisation admins."
+        )
+
+    def test_migration_database_defaults_match_the_model(self) -> None:
+        # Django drops a column's database default after AddField, so the
+        # migration sets them by hand; they must agree with the model.
+        migration = importlib.import_module(
+            "account_v2.migrations.0008_organization_capability_settings"
+        ).Migration
+        sql = " ".join(
+            statement
+            for op in migration.operations
+            if op.__class__.__name__ == "RunSQL"
+            for statement in op.sql
+        )
+        found = dict(re.findall(r"ALTER COLUMN (\w+) SET DEFAULT (true|false)", sql))
+        new_fields = {
+            spec.field
+            for spec in SPECS
+            if spec.field
+            not in ("restrict_llm_adapter_creation", "restrict_connector_creation")
+        }
+        self.assertEqual(set(found), new_fields)
+        for column, default in found.items():
+            with self.subTest(column=column):
+                self.assertEqual(
+                    default == "true",
+                    Organization._meta.get_field(column).default,
+                )
+
+    def test_schema_names_the_setting_enum_once(self) -> None:
+        schema = SchemaGenerator(patterns=tenant_urls.urlpatterns).get_schema(
+            request=None, public=True
+        )
+        components = schema["components"]["schemas"]
+        self.assertEqual(
+            components["CapabilitySetting"]["enum"], ["admins_only", "any_member"]
+        )
+        self.assertFalse(
+            [name for name in components if name.endswith("Enum")
+             and components[name].get("enum") == ["admins_only", "any_member"]]
         )
 
 
@@ -87,11 +131,23 @@ class CapabilitiesApiTests(CapabilityTestBase):
         rows = self.capabilities(self.admin)
         self.assertTrue(all(r["allowed_for_me"] for r in rows.values()))
 
-    def test_service_accounts_are_allowed_only_what_is_enforced(self) -> None:
-        rows = self.capabilities(self.service_account)
+    def test_no_setting_blocks_service_accounts(self) -> None:
         for spec in SPECS:
-            with self.subTest(key=spec.key.value):
-                self.assertEqual(rows[spec.key.value]["allowed_for_me"], spec.enforced)
+            self.restrict(spec.key, True)
+        rows = self.capabilities(self.service_account)
+        self.assertTrue(all(r["allowed_for_me"] for r in rows.values()))
+
+    def test_no_organization_is_a_404_in_the_standard_envelope(self) -> None:
+        with patch(
+            "tenant_account_v2.views.UserContext.get_organization", return_value=None
+        ):
+            for method, data in (("get", None), ("patch", {"create_connectors": "admins_only"})):
+                with self.subTest(method=method):
+                    response = self.call(
+                        organization_capabilities, method, user=self.admin, data=data
+                    )
+                    self.assertEqual(response.status_code, 404)
+                    self.assertEqual(response.data["type"], "client_error")
 
     def test_service_account_cannot_patch(self) -> None:
         response = self.call(
@@ -294,6 +350,25 @@ class EnforcementMatrixTests(CapabilityTestBase):
         self.assertEqual(response.status_code, 403)
         self.assertEqual(
             AdapterInstance.objects.get(pk=created.data["id"]).adapter_type, "EMBEDDING"
+        )
+
+    def test_editing_an_adapter_without_changing_its_type_stays_allowed(self) -> None:
+        # The frontend always sends adapter_type on an edit.
+        created = self._create_adapter(self.member, "LLM")
+        self.assertEqual(created.status_code, 201, created.data)
+        self.restrict(Capability.CREATE_LLM_ADAPTERS, True)
+        view = AdapterInstanceViewSet.as_view({"patch": "partial_update"})
+        with patch.object(AdapterInstance, "get_context_window_size", return_value=4096):
+            response = self.call(
+                view,
+                "patch",
+                user=self.member,
+                data={"adapter_type": "LLM", "adapter_name": "renamed"},
+                pk=created.data["id"],
+            )
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(
+            AdapterInstance.objects.get(pk=created.data["id"]).adapter_name, "renamed"
         )
 
     def test_deleting_still_needs_ownership(self) -> None:

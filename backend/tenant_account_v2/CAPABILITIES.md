@@ -42,13 +42,20 @@ Always all seven, in this order:
 | `change_platform_defaults` | `admins_only` | organisation-wide platform settings — **not yet enforced** |
 | `delete_workflows_and_deployments` | `any_member` | deleting a workflow, API deployment or pipeline |
 
-`allowed_for_me` means *the setting does not block you*. It is always true for
-admins. For service accounts it is true for the enforced capabilities and false
-for the three not yet enforced, whose endpoints refuse service accounts today.
-Changing an adapter's type counts as creating one of the new type. Object
-rules still apply on top: with
-`any_member`, deleting still needs the caller to own (or co-own) the resource,
-exactly as before; with `admins_only`, owners who are not admins are refused.
+`allowed_for_me` means *the setting does not block you* — nothing more. It is
+always true for admins and for service accounts (platform API keys), which no
+capability setting governs. The endpoint's own rules still apply on top and
+can refuse a caller this reports as allowed: deleting needs the caller to own
+(or co-own) the resource; the key, member and settings endpoints keep their
+existing admin and key-permission checks (for example, a `full_access`
+platform key can rotate keys, a lower-tier key cannot). With `admins_only`,
+owners who are not admins are refused.
+
+Only creation is governed for adapters. Changing an existing adapter's type
+counts as creating one of the new type, and that check runs before the request
+is validated, so a refused type change answers 403 even when the body has
+other errors. Any other edit of an existing adapter, including pointing it at
+a different provider of the same type, is not governed.
 
 ### PATCH
 
@@ -64,12 +71,13 @@ standard envelope (`{type, errors[{code, detail, attr}]}`):
 |---|---|
 | 400 | unknown key (`attr` = the key), bad value, empty body, or `any_member` for a capability that is not enforced yet |
 | 403 | not an organisation admin, or a service account |
-| 404 | no organisation in the request context |
+| 404 | no organisation in the request context (GET too) |
 
 `manage_api_keys`, `manage_members` and `change_platform_defaults` accept only
 `admins_only` until their enforcement lands (PR-2 of UN-4399, which waits on
 the product decision about what "any member" may do there). Their endpoints
-are admin-only today, so storing `any_member` would make `allowed_for_me` lie.
+are admin-only today, so storing `any_member` would promise members something
+nothing grants.
 
 ## Refusals
 
@@ -117,5 +125,5 @@ type CapabilitiesPatchRequest = Partial<Record<CapabilityKey, CapabilitySetting>
 
 `tenant_account_v2.capabilities.enforce_capability(request, Capability.X)`
 raises the refusal; `RequiresCapability(Capability.X)` is the DRF permission
-form. Both skip service accounts. Set the spec's `enforced=True` in the same
+form. Neither applies to service accounts. Set the spec's `enforced=True` in the same
 change that adds the enforcement.

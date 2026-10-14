@@ -7,6 +7,7 @@ from rest_framework.exceptions import ValidationError
 from rest_framework.serializers import ModelSerializer
 
 from tenant_account_v2.capabilities import (
+    CAPABILITY_SETTING_VALUES,
     SPECS,
     SPECS_BY_KEY,
     Capability,
@@ -173,7 +174,7 @@ class CapabilitySerializer(serializers.Serializer):
     key = serializers.ChoiceField(choices=[c.value for c in Capability])
     label = serializers.CharField()
     description = serializers.CharField()
-    setting = serializers.ChoiceField(choices=[s.value for s in CapabilitySetting])
+    setting = serializers.ChoiceField(choices=CAPABILITY_SETTING_VALUES)
     allowed_for_me = serializers.BooleanField(
         help_text="The setting does not block the caller. Object-level rules, "
         "such as owning what is being deleted, still apply."
@@ -194,7 +195,7 @@ class CapabilitiesPatchSerializer(serializers.Serializer):
     def get_fields(self) -> dict[str, serializers.Field]:
         return {
             spec.key.value: serializers.ChoiceField(
-                choices=[s.value for s in CapabilitySetting], required=False
+                choices=CAPABILITY_SETTING_VALUES, required=False
             )
             for spec in SPECS
         }
