@@ -169,9 +169,16 @@ def _match_override(
 
 
 def _resolve_fields(
-    table: LimitsTable, provider: ProviderEntry, candidates: Sequence[str]
+    table: LimitsTable,
+    provider: ProviderEntry,
+    candidates: Sequence[str],
+    _seen: frozenset[str] = frozenset(),
 ) -> tuple[dict[str, FieldValue], str | None, str | None, str]:
-    """Return (fields, matched_override_label, inherited_from, layer)."""
+    """Return (fields, matched_override_label, inherited_from, layer).
+
+    ``_seen`` guards against inheritance cycles. The loader already rejects
+    them; this keeps a lookup from recursing forever if one slips through.
+    """
     fields = dict(provider.defaults)
     override, candidate = _match_override(provider, candidates)
     inherited_from = None
@@ -179,14 +186,14 @@ def _resolve_fields(
     layer = provider.layer
     if override is not None:
         label = override.description or override.pattern
-        if override.inherit:
+        if override.inherit and override.inherit not in (_seen | {provider.key}):
             parent = table.providers[override.inherit]
             # Match the parent's overrides on what follows the matched slug.
             assert candidate is not None
             match = override.regex.search(candidate)
             remainder = candidate[match.end() :] if match else candidate
             parent_fields, _, _, parent_layer = _resolve_fields(
-                table, parent, [remainder, candidate]
+                table, parent, [remainder, candidate], _seen | {provider.key}
             )
             fields.update(parent_fields)
             inherited_from = override.inherit

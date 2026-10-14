@@ -367,13 +367,7 @@ def _parse_table(  # noqa: C901 - one check per schema rule
         key: _parse_provider(key, raw, sources, layer)
         for key, raw in providers_raw.items()
     }
-    for entry in providers.values():
-        for override in entry.overrides:
-            if override.inherit is not None and override.inherit not in providers:
-                raise _fail(
-                    f"providers.{entry.key}",
-                    f"inherit target '{override.inherit}' is not a provider key",
-                )
+    _check_inheritance(providers)
     return LimitsTable(
         schema_version=SCHEMA_VERSION,
         sources=sources,
@@ -383,6 +377,29 @@ def _parse_table(  # noqa: C901 - one check per schema rule
         default_layer=layer,
         meta=meta,
     )
+
+
+def _check_inheritance(providers: dict[str, ProviderEntry]) -> None:
+    """Enforce one-level ``inherit``: the target exists, is not the provider
+    itself, and does not inherit in turn. This rules out every cycle, which the
+    resolver would otherwise follow until ``RecursionError``.
+    """
+    for entry in providers.values():
+        for override in entry.overrides:
+            target = override.inherit
+            if target is None:
+                continue
+            where = f"providers.{entry.key}"
+            if target not in providers:
+                raise _fail(where, f"inherit target '{target}' is not a provider key")
+            if target == entry.key:
+                raise _fail(where, f"override '{override.pattern}' inherits itself")
+            if any(o.inherit for o in providers[target].overrides):
+                raise _fail(
+                    where,
+                    f"inherit target '{target}' itself inherits; only one level "
+                    "of inheritance is supported",
+                )
 
 
 def _read_json(path: Path) -> object:
@@ -437,9 +454,24 @@ def apply_override_file(table: LimitsTable, path: str | Path) -> LimitsTable:
     an override can cite its own evidence. The override must resolve on its
     own (its ``inherit`` targets may name shipped providers).
     """
-    data = _read_json(Path(path))
+    try:
+        data = _read_json(Path(path))
+    except ValueError as e:
+        raise LimitsSchemaError(f"{path}: not valid JSON: {e}") from e
     if not isinstance(data, dict):
         raise LimitsSchemaError(f"{path}: override must be an object")
+    # Check the shapes this function merges before touching them, so a
+    # malformed override is a schema error (logged and ignored), never an
+    # AttributeError / TypeError that escapes the fallback.
+    override_sources = data.get("sources")
+    if override_sources is not None and (
+        not isinstance(override_sources, dict)
+        or not all(isinstance(v, dict) for v in override_sources.values())
+    ):
+        raise LimitsSchemaError(f"{path}: 'sources' must be an object of objects")
+    override_providers = data.get("providers")
+    if override_providers is not None and not isinstance(override_providers, dict):
+        raise LimitsSchemaError(f"{path}: 'providers' must be an object")
     # Validate the override against the union of sources, and let its
     # inherit targets point at shipped providers.
     merged_sources = {
@@ -466,6 +498,9 @@ def apply_override_file(table: LimitsTable, path: str | Path) -> LimitsTable:
     providers = dict(table.providers)
     for key in data.get("providers") or {}:
         providers[key] = parsed.providers[key]
+    # The override may combine with shipped entries into a chain or a cycle
+    # (e.g. its anthropic inheriting the shipped openrouter): check the result.
+    _check_inheritance(providers)
     default = parsed.default if data.get("default") is not None else table.default
     default_layer: Layer = (
         "override" if data.get("default") is not None else table.default_layer

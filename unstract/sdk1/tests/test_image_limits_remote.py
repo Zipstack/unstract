@@ -252,7 +252,18 @@ def _invalid_regex() -> dict:
     return data
 
 
+def _inherit_cycle() -> dict:
+    # Greptile #2341: an override that inherits its own provider passed
+    # loading and then recursed until RecursionError at lookup time.
+    data = _bundled_data()
+    data["providers"]["openai"].setdefault("model_overrides", []).insert(
+        0, {"pattern": ".*", "description": "loop", "inherit": "openai"}
+    )
+    return data
+
+
 _BAD_FILES = {
+    "inherit_cycle": _inherit_cycle,
     "schema_invalid": _schema_invalid,
     "incompatible_schema_version": _newer_schema,
     "oversized_regex": _long_pattern,
