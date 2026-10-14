@@ -48,6 +48,7 @@ from utils.user_context import UserContext  # noqa: E402
 from agent_kv import internal_views as iv  # noqa: E402
 from agent_kv import maintenance  # noqa: E402
 from agent_kv.models import AgentKVJob, JobStatus  # noqa: E402
+from agent_kv.rate_limiter import SLOT_TTL_SECONDS  # noqa: E402
 
 
 def _post(path, body=None):
@@ -828,10 +829,15 @@ def test_a_quiet_sweep_still_records_that_it_RAN(
 @mock.patch.object(maintenance.AgentKVConcurrencyLimiter, "release")
 @mock.patch.object(AgentKVJob, "objects")
 def test_phase_three_is_bounded_on_both_sides(m_objects, m_release):
-    """Older than the stuck grace, so a live executor is not cut short; and
-    newer than the slot TTL, past which Redis has already dropped the entry and
-    there is nothing left to release. Without the second bound this would
-    rescan every cancelled job ever, forever.
+    """Old enough that the executor is presumed dead, young enough that Redis
+    still holds the slot -- and BOTH bounds read `dispatched_at`.
+
+    This test used to assert the stuck grace against `completed_at`, which was
+    wrong twice over and could not notice either: the two constants were equal
+    so the window was empty, and the ceiling asked about slot age using the
+    cancel time when slots are scored from acquisition at submit. Asserting
+    kwargs cannot see an empty window, which is why
+    `TestPhaseThreeActuallySelectsSomething` exists below.
     """
     frozen_now = timezone.now()
     _wire_sweep_phases(m_objects)
@@ -842,12 +848,15 @@ def test_phase_three_is_bounded_on_both_sides(m_objects, m_release):
     kwargs = m_objects.filter.call_args_list[2].kwargs
     assert kwargs["status"] == JobStatus.CANCELLED
     assert kwargs["dispatched_at__isnull"] is False
-    stuck_cutoff = frozen_now - timedelta(
-        seconds=settings.AGENT_KV_STUCK_JOB_GRACE_SECONDS
+    assert kwargs["dispatched_at__lt"] == frozen_now - timedelta(
+        seconds=settings.AGENT_KV_ABANDONED_SLOT_GRACE_SECONDS
     )
-    assert kwargs["completed_at__lt"] == stuck_cutoff
-    assert kwargs["completed_at__gt"] == frozen_now - timedelta(
+    assert kwargs["dispatched_at__gt"] == frozen_now - timedelta(
         seconds=maintenance.SLOT_TTL_SECONDS
+    )
+    # The bound that makes the window non-empty at all.
+    assert (
+        settings.AGENT_KV_ABANDONED_SLOT_GRACE_SECONDS < maintenance.SLOT_TTL_SECONDS
     )
 
 
@@ -874,7 +883,7 @@ def test_phase_three_takes_the_newest_eligible_rows_first():
         m_objects.filter.side_effect = [phase1, phase2_status, phase3]
         maintenance.run_sweep()
 
-    phase3.order_by.assert_called_once_with("-completed_at")
+    phase3.order_by.assert_called_once_with("-dispatched_at")
 
 
 # ---------------------------------------------------------------------------
@@ -999,3 +1008,97 @@ class TestTheSweepLosesTheRaceRatherThanTheJob(TestCase):
             "status": JobStatus.PENDING,
             "dispatched_at__isnull": True,
         }
+
+
+class TestPhaseThreeActuallySelectsSomething(TestCase):
+    """Phase 3 against a real database, because a mock cannot see an empty window.
+
+    The mocked tests above assert the filter KWARGS the query is built with.
+    That is blind to whether those kwargs can ever match: phase 3 bounded
+    `completed_at` below by `AGENT_KV_STUCK_JOB_GRACE_SECONDS` and above by
+    `SLOT_TTL_SECONDS`, both 21600, so the window was
+    `completed_at < now-21600 AND completed_at > now-21600` -- empty for any
+    grace >= TTL. The phase could never release a slot and `released` was
+    always 0, while every mocked assertion stayed green. Caught in review by
+    @athul-rs on #2317.
+
+    The second bug the same tests could not see: the ceiling asked whether
+    Redis still holds the slot, but read the CANCEL time. Slots are scored by
+    acquisition, at submit, so a job submitted long ago and cancelled a moment
+    ago looked eligible and had nothing left to release.
+    """
+
+    def setUp(self):
+        self.org = Organization.objects.create(
+            display_name="Sweep3", organization_id="org_sweep3", name="sweep3"
+        )
+        UserContext.set_organization_identifier(None)
+
+    def _cancelled(self, *, dispatched_ago, completed_ago=60):
+        job = AgentKVJob(
+            organization_id=self.org.id,
+            status=JobStatus.CANCELLED,
+            extractor="table",
+        )
+        job.save()
+        now = timezone.now()
+        AgentKVJob.objects.filter(id=job.id).update(
+            dispatched_at=now - timedelta(seconds=dispatched_ago),
+            completed_at=now - timedelta(seconds=completed_ago),
+        )
+        return job
+
+    def _sweep(self):
+        with mock.patch.object(
+            maintenance.AgentKVConcurrencyLimiter, "release"
+        ) as m_release:
+            result = maintenance.run_sweep()
+        return result, m_release
+
+    def test_an_abandoned_cancelled_job_has_its_slot_released(self):
+        """The whole point of the phase, and it had never once happened."""
+        job = self._cancelled(dispatched_ago=2 * 3600)
+
+        result, m_release = self._sweep()
+
+        assert result["released"] == 1, result
+        m_release.assert_called_once_with(str(self.org.id), str(job.id))
+
+    def test_a_job_dispatched_moments_ago_is_left_alone(self):
+        """The floor still protects a live executor."""
+        self._cancelled(dispatched_ago=60)
+
+        result, m_release = self._sweep()
+
+        assert result["released"] == 0
+        assert not m_release.called
+
+    def test_a_job_whose_slot_redis_has_already_dropped_is_left_alone(self):
+        """Past the slot TTL there is nothing to release, so selecting it would
+        mean re-releasing the same rows on every sweep forever.
+        """
+        self._cancelled(dispatched_ago=SLOT_TTL_SECONDS + 3600)
+
+        result, m_release = self._sweep()
+
+        assert result["released"] == 0
+
+    def test_the_window_is_measured_from_dispatch_not_from_the_cancel(self):
+        """Submitted long ago, cancelled a minute ago: the slot is gone.
+
+        The old ceiling read `completed_at`, so this row looked eligible --
+        recent cancel, inside the TTL -- when its slot had expired hours
+        earlier. It would have been re-selected every sweep.
+        """
+        self._cancelled(dispatched_ago=SLOT_TTL_SECONDS + 3600, completed_ago=60)
+
+        result, _ = self._sweep()
+
+        assert result["released"] == 0
+
+    def test_the_grace_is_its_own_setting_and_shorter_than_the_slot_ttl(self):
+        """The invariant that keeps the window non-empty. If these ever meet
+        again, phase 3 silently stops working and every test above still
+        passes except the first.
+        """
+        assert settings.AGENT_KV_ABANDONED_SLOT_GRACE_SECONDS < SLOT_TTL_SECONDS

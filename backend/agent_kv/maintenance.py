@@ -194,15 +194,34 @@ def run_sweep() -> dict:
     # The slot then sits occupied until Redis expires it.
     #
     # Bounded on BOTH sides, which is what keeps this from rescanning the same
-    # ancient rows forever: older than the stuck grace (so a live executor is
-    # not cut short) and newer than the slot TTL (past which Redis has already
-    # dropped the entry, so there is nothing left to release).
+    # ancient rows forever: old enough that the executor is presumed dead (so a
+    # live one is not cut short) and young enough that Redis still holds the
+    # slot (past the TTL there is nothing left to release).
+    #
+    # Both bounds read `dispatched_at`, and both of those are corrections.
+    #
+    # The floor used `AGENT_KV_STUCK_JOB_GRACE_SECONDS` against the slot TTL
+    # ceiling. Both default to 21600, so the window was
+    # `completed_at < now-21600 AND completed_at > now-21600` -- EMPTY, and
+    # empty for any grace >= TTL. This phase could never select a row and
+    # `released` was always 0, so an abandoned cancelled job held its org's
+    # slot for the full six hours exactly as it would have with no phase 3 at
+    # all. Hence the dedicated, shorter grace.
+    #
+    # The ceiling used `completed_at`, the CANCEL time, to decide whether Redis
+    # still holds the slot -- but the slot is scored by when it was ACQUIRED,
+    # at submit (`rate_limiter.check_and_acquire` zadds with `now` and trims
+    # below `now - SLOT_TTL`). A job submitted seven hours ago and cancelled a
+    # minute ago has a recent `completed_at` and no slot left to release, and
+    # the old bound would have selected it every sweep.
+    abandoned_grace = getattr(settings, "AGENT_KV_ABANDONED_SLOT_GRACE_SECONDS", 3600)
+    abandoned_floor = now - timedelta(seconds=abandoned_grace)
     slot_ttl_floor = now - timedelta(seconds=SLOT_TTL_SECONDS)
     abandoned_cancelled = AgentKVJob.objects.filter(
         status=JobStatus.CANCELLED,
         dispatched_at__isnull=False,
-        completed_at__lt=stuck_cutoff,
-        completed_at__gt=slot_ttl_floor,
+        dispatched_at__lt=abandoned_floor,
+        dispatched_at__gt=slot_ttl_floor,
         # NEWEST first, the opposite of the other two phases and deliberate.
         # Releasing a slot does not remove its row from this query -- there is
         # no "released" marker -- so oldest-first would re-select the same 500
@@ -216,7 +235,10 @@ def run_sweep() -> dict:
         # while its release still matters, unless more than
         # `_MAINTENANCE_BATCH_LIMIT` become eligible inside one sweep interval
         # -- and the TTL remains the backstop for that.
-    ).order_by("-completed_at")[:_MAINTENANCE_BATCH_LIMIT]
+        #
+        # Ordered by the same column the window filters on, so "newest" means
+        # the same thing in both.
+    ).order_by("-dispatched_at")[:_MAINTENANCE_BATCH_LIMIT]
 
     released = 0
     for job in abandoned_cancelled:

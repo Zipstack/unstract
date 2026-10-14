@@ -241,6 +241,25 @@ AGENT_KV_SWEEP_GRACE_SECONDS = int(os.environ.get("AGENT_KV_SWEEP_GRACE_SECONDS"
 AGENT_KV_STUCK_JOB_GRACE_SECONDS = int(
     os.environ.get("AGENT_KV_STUCK_JOB_GRACE_SECONDS", 21600)
 )
+#: How long after DISPATCH a cancelled job's executor is presumed dead, so the
+#: sweep may release the concurrency slot it still holds.
+#:
+#: Its own setting, and deliberately shorter than both the stuck grace and
+#: `rate_limiter.SLOT_TTL_SECONDS`. Phase 3 of the sweep used the stuck grace
+#: as its floor and the slot TTL as its ceiling; both default to 21600, so the
+#: window was `completed_at < now-21600 AND completed_at > now-21600` -- empty,
+#: and empty for ANY grace >= TTL. The phase could never select a row, and
+#: `released` was always 0.
+#:
+#: One hour rather than six because the job is already CANCELLED: a live
+#: executor learns of that at its next stage report and stops, so an hour of
+#: silence after dispatch is already strong evidence that nothing is coming.
+#: Waiting the full six hours is indistinguishable from waiting for Redis to
+#: expire the slot on its own, which is the behaviour this phase exists to
+#: improve on.
+AGENT_KV_ABANDONED_SLOT_GRACE_SECONDS = int(
+    os.environ.get("AGENT_KV_ABANDONED_SLOT_GRACE_SECONDS", 3600)
+)
 AGENT_KV_CALCULATIONS_ENABLED = (
     os.environ.get("AGENT_KV_CALCULATIONS_ENABLED", "false").lower() == "true"
 )
