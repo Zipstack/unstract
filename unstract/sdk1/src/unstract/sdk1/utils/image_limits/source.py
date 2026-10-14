@@ -229,6 +229,14 @@ def _apply_override(base: LimitsTable, path: str) -> LimitsTable:
             e,
         )
         merged = base
+    except Exception:  # a bad override must never break image mode
+        logger.error(
+            "Ignoring image-limits override file %s (%s): unexpected error",
+            path,
+            LIMITS_OVERRIDE_FILE_ENV,
+            exc_info=True,
+        )
+        merged = base
     _with_override[path] = (base, merged)
     return merged
 

@@ -296,3 +296,88 @@ class TestOverrideFile:
 
     def test_table_is_cached_per_process(self) -> None:
         assert get_limits_table() is get_limits_table()
+
+
+class TestInheritanceIsOneLevel:
+    """``inherit`` loops passed loading and recursed forever at lookup."""
+
+    def _write(self, tmp_path: Path, data: dict) -> Path:
+        path = tmp_path / "limits.json"
+        path.write_text(json.dumps(data))
+        return path
+
+    def test_self_inheritance_is_rejected(self, tmp_path: Path) -> None:
+        data = _minimal_table(
+            openai=_provider(
+                model_overrides=[{"pattern": ".*", "inherit": "openai"}]
+            )
+        )
+        with pytest.raises(LimitsSchemaError, match="inherits itself"):
+            load_limits_table(self._write(tmp_path, data))
+
+    def test_chained_inheritance_is_rejected(self, tmp_path: Path) -> None:
+        data = _minimal_table(
+            a=_provider(model_overrides=[{"pattern": "x", "inherit": "b"}]),
+            b=_provider(model_overrides=[{"pattern": "y", "inherit": "c"}]),
+            c=_provider(),
+        )
+        with pytest.raises(LimitsSchemaError, match="only one level"):
+            load_limits_table(self._write(tmp_path, data))
+
+    def test_override_creating_a_cross_layer_cycle_is_ignored(
+        self, tmp_path: Path, monkeypatch: MonkeyPatch
+    ) -> None:
+        # The shipped openrouter inherits anthropic; an override making
+        # anthropic inherit openrouter closes the loop across layers.
+        bundled = json.loads(BUNDLED.read_text())
+        anthropic = dict(bundled["providers"]["anthropic"])
+        anthropic["model_overrides"] = [
+            {"pattern": ".*", "inherit": "openrouter"},
+            *anthropic.get("model_overrides", []),
+        ]
+        override = {"_meta": {"schema_version": 1}, "providers": {"anthropic": anthropic}}
+        path = tmp_path / "override.json"
+        path.write_text(json.dumps(override))
+        monkeypatch.setenv(LIMITS_OVERRIDE_FILE_ENV, str(path))
+
+        table = get_limits_table()
+        assert table.providers["anthropic"].layer == "shipped"
+        limits = resolve_image_limits(
+            "openrouter", "openrouter/anthropic/claude-haiku-4-5", table=table
+        )
+        assert limits.max_images_per_request.value is not None
+
+
+class TestMalformedOverrideFallsBack:
+    """A malformed override must be logged and ignored, never raise past the
+    fallback (Greptile #2341: AttributeError / TypeError escaped).
+    """
+
+    @pytest.mark.parametrize(
+        "override",
+        [
+            {"sources": [{"url": "x"}]},
+            {"sources": {"X": "not-an-object"}},
+            {"providers": ["openai"]},
+            "not-an-object",
+        ],
+    )
+    def test_shipped_table_is_kept(
+        self, tmp_path: Path, monkeypatch: MonkeyPatch, override: object
+    ) -> None:
+        path = tmp_path / "override.json"
+        path.write_text(json.dumps(override))
+        monkeypatch.setenv(LIMITS_OVERRIDE_FILE_ENV, str(path))
+
+        table = get_limits_table()
+        assert all(p.layer == "shipped" for p in table.providers.values())
+        assert resolve_image_limits("azure", "azure/my-dep", table=table)
+
+    def test_invalid_json_is_ignored(
+        self, tmp_path: Path, monkeypatch: MonkeyPatch
+    ) -> None:
+        path = tmp_path / "override.json"
+        path.write_text("{not json")
+        monkeypatch.setenv(LIMITS_OVERRIDE_FILE_ENV, str(path))
+        table = get_limits_table()
+        assert all(p.layer == "shipped" for p in table.providers.values())
