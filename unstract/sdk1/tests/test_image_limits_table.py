@@ -308,9 +308,7 @@ class TestInheritanceIsOneLevel:
 
     def test_self_inheritance_is_rejected(self, tmp_path: Path) -> None:
         data = _minimal_table(
-            openai=_provider(
-                model_overrides=[{"pattern": ".*", "inherit": "openai"}]
-            )
+            openai=_provider(model_overrides=[{"pattern": ".*", "inherit": "openai"}])
         )
         with pytest.raises(LimitsSchemaError, match="inherits itself"):
             load_limits_table(self._write(tmp_path, data))
