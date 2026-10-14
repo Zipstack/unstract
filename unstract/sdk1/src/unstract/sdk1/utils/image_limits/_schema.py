@@ -6,32 +6,40 @@ A typo must never silently disable a limit. Documentation-only keys that
 the data owners keep for maintainers (routing notes, model family counts)
 are allowed and ignored.
 
-Layers: the shipped file is loaded first; an operator override file named
-by ``VLM_IMAGE_LIMITS_FILE`` may replace whole provider entries and/or the
-``default`` block. Replacement is per provider, never a deep merge, so the
-effective entry is always one file's text. Every entry records the layer
-it came from so messages and logs can say where a number originated.
+The same contract applies to every copy of the table: the bundled file,
+the copy fetched from GitHub (``source.py``) and an operator override file.
+
+Layers: the base table (remote copy, else bundled) is loaded first; an
+operator override file named by ``VLM_IMAGE_LIMITS_FILE`` may replace whole
+provider entries and/or the ``default`` block. Replacement is per provider,
+never a deep merge, so the effective entry is always one file's text. Every
+entry records the layer it came from, and the table records its origin
+(source, location, version), so messages and logs can say where a number
+originated.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
-import logging
-import os
 import re
-from dataclasses import dataclass, field
-from functools import cache
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Literal
 
-logger = logging.getLogger(__name__)
-
+# The schema this sdk1 reads. Data-only edits keep it; any new key or
+# changed meaning bumps it, and older installs then skip the remote copy.
 SCHEMA_VERSION = 1
 BUNDLED_LIMITS_PATH = Path(__file__).with_name("limits.json")
 # Operator override: absolute path to a JSON file in the same schema.
 LIMITS_OVERRIDE_FILE_ENV = "VLM_IMAGE_LIMITS_FILE"
 
+# Longest accepted override regex. Patterns run against every lookup, and
+# a remote copy must not be able to ship a pathological one.
+MAX_PATTERN_LENGTH = 300
+
 Layer = Literal["shipped", "override"]
+TableSource = Literal["bundled", "remote"]
 Confidence = Literal["verified", "unverified"]
 
 LIMIT_FIELDS: tuple[str, ...] = (
@@ -83,6 +91,30 @@ class LimitsSchemaError(ValueError):
     """The limits file does not satisfy the schema contract."""
 
 
+class IncompatibleSchemaError(LimitsSchemaError):
+    """The file is written in a schema version this sdk1 does not read."""
+
+
+@dataclass(frozen=True)
+class TableOrigin:
+    """Where the effective table came from, for logs and error messages."""
+
+    source: TableSource
+    location: str  # file path or URL
+    schema_version: int
+    verified_on: str | None  # the file's ``_meta.verified_on``
+    sha256: str  # first 12 hex digits of the file's bytes
+    override_file: str | None = None
+
+    @property
+    def version(self) -> str:
+        """Short label such as ``2026-10-09 remote 1a2b3c4d5e6f``."""
+        label = f"{self.verified_on or 'undated'} {self.source} {self.sha256}"
+        if self.override_file:
+            label += " + override file"
+        return label
+
+
 @dataclass(frozen=True)
 class SourceEntry:
     key: str
@@ -131,6 +163,7 @@ class LimitsTable:
     layer: Layer = "shipped"
     default_layer: Layer = "shipped"
     meta: dict[str, Any] = field(default_factory=dict)
+    origin: TableOrigin | None = None
 
 
 def _fail(where: str, message: str) -> LimitsSchemaError:
@@ -249,6 +282,12 @@ def _parse_provider(  # noqa: C901 - one check per schema rule
         pattern = override_raw.get("pattern")
         if not isinstance(pattern, str) or not pattern:
             raise _fail(owhere, "'pattern' must be a non-empty string")
+        if len(pattern) > MAX_PATTERN_LENGTH:
+            raise _fail(
+                owhere,
+                f"pattern is {len(pattern)} characters, over the "
+                f"{MAX_PATTERN_LENGTH}-character limit",
+            )
         try:
             regex = re.compile(pattern)
         except re.error as e:
@@ -291,10 +330,16 @@ def _parse_table(  # noqa: C901 - one check per schema rule
     meta = data.get("_meta", {})
     if not isinstance(meta, dict):
         raise _fail("_meta", "must be an object")
-    if meta.get("schema_version") != SCHEMA_VERSION:
+    version = meta.get("schema_version")
+    if version != SCHEMA_VERSION:
+        if isinstance(version, int) and not isinstance(version, bool):
+            raise IncompatibleSchemaError(
+                f"_meta.schema_version: file is schema_version {version}; this "
+                f"sdk1 reads schema_version {SCHEMA_VERSION}"
+            )
         raise _fail(
             "_meta.schema_version",
-            f"expected {SCHEMA_VERSION}, got {meta.get('schema_version')!r}",
+            f"expected {SCHEMA_VERSION}, got {version!r}",
         )
     sources = _parse_sources(data.get("sources", {}))
     default_raw = data.get("default")
@@ -345,6 +390,31 @@ def _read_json(path: Path) -> object:
         return json.load(f)
 
 
+def parse_limits_bytes(raw: bytes, *, source: TableSource, location: str) -> LimitsTable:
+    """Validate a whole limits file given as bytes and record its origin.
+
+    Raises ``LimitsSchemaError`` (``IncompatibleSchemaError`` for a schema
+    version this sdk1 does not read) on any contract violation.
+    """
+    try:
+        data = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, ValueError) as e:
+        raise LimitsSchemaError(f"{location}: not valid JSON: {e}") from e
+    table = _parse_table(data, layer="shipped")
+    origin = TableOrigin(
+        source=source,
+        location=location,
+        schema_version=table.schema_version,
+        verified_on=_str_or_none(table.meta.get("verified_on")),
+        sha256=hashlib.sha256(raw).hexdigest()[:12],
+    )
+    return replace(table, origin=origin)
+
+
+def _str_or_none(value: object) -> str | None:
+    return value if isinstance(value, str) else None
+
+
 def load_limits_table(path: str | Path | None = None) -> LimitsTable:
     """Load and validate a limits file (the bundled one by default).
 
@@ -353,10 +423,10 @@ def load_limits_table(path: str | Path | None = None) -> LimitsTable:
     """
     target = Path(path) if path is not None else BUNDLED_LIMITS_PATH
     try:
-        data = _read_json(target)
-    except (OSError, ValueError) as e:
+        raw = target.read_bytes()
+    except OSError as e:
         raise LimitsSchemaError(f"{target}: cannot read limits file: {e}") from e
-    return _parse_table(data, layer="shipped")
+    return parse_limits_bytes(raw, source="bundled", location=str(target))
 
 
 def apply_override_file(table: LimitsTable, path: str | Path) -> LimitsTable:
@@ -402,6 +472,11 @@ def apply_override_file(table: LimitsTable, path: str | Path) -> LimitsTable:
     )
     sources = dict(table.sources)
     sources.update(parsed.sources)
+    origin = (
+        replace(table.origin, override_file=str(path))
+        if table.origin is not None
+        else None
+    )
     return LimitsTable(
         schema_version=SCHEMA_VERSION,
         sources=sources,
@@ -410,32 +485,5 @@ def apply_override_file(table: LimitsTable, path: str | Path) -> LimitsTable:
         layer="override",
         default_layer=default_layer,
         meta=table.meta,
+        origin=origin,
     )
-
-
-@cache
-def _cached_table(override_path: str | None) -> LimitsTable:
-    table = load_limits_table()
-    if override_path:
-        try:
-            table = apply_override_file(table, override_path)
-            logger.info("Applied image-limits override file %s", override_path)
-        except (OSError, ValueError, LimitsSchemaError) as e:
-            logger.error(
-                "Ignoring image-limits override file %s (%s): %s",
-                override_path,
-                LIMITS_OVERRIDE_FILE_ENV,
-                e,
-            )
-    return table
-
-
-def get_limits_table() -> LimitsTable:
-    """The effective table for this process: bundled file + optional override."""
-    override = os.getenv(LIMITS_OVERRIDE_FILE_ENV) or None
-    return _cached_table(override)
-
-
-def clear_limits_cache() -> None:
-    """Drop the cached table (tests)."""
-    _cached_table.cache_clear()

@@ -34,8 +34,8 @@ from unstract.sdk1.utils.image_limits._schema import (
     LimitsTable,
     OverrideEntry,
     ProviderEntry,
-    get_limits_table,
 )
+from unstract.sdk1.utils.image_limits.source import get_limits_table
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
@@ -88,6 +88,8 @@ class ImageRequestLimits:
     max_image_patches: LimitValue
     tokens_per_image: LimitValue
     max_input_tokens: LimitValue
+    # Which table answered: e.g. "2026-10-09 remote 1a2b3c4d5e6f".
+    table_version: str = ""
 
     def field(self, name: str) -> LimitValue:
         return getattr(self, name)
@@ -256,6 +258,7 @@ def resolve_image_limits(
         matched_override=label,
         inherited_from=inherited_from,
         is_default_provider=provider is None,
+        table_version=table.origin.version if table.origin else "",
         **resolved,
     )
 
