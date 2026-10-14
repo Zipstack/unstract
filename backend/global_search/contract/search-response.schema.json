@@ -1,0 +1,110 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "unstract/global-search/response/v1",
+  "type": "object",
+  "required": [
+    "query",
+    "groups"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "query": {
+      "type": "string"
+    },
+    "groups": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/group"
+      }
+    }
+  },
+  "$defs": {
+    "group": {
+      "type": "object",
+      "required": [
+        "type",
+        "label",
+        "has_more",
+        "results"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$"
+        },
+        "label": {
+          "type": "string"
+        },
+        "has_more": {
+          "type": "boolean"
+        },
+        "results": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 20,
+          "items": {
+            "$ref": "#/$defs/result"
+          }
+        }
+      }
+    },
+    "result": {
+      "type": "object",
+      "required": [
+        "type",
+        "id",
+        "name",
+        "context",
+        "match",
+        "route"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "context": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "match": {
+          "enum": [
+            "name_prefix",
+            "name",
+            "description_prefix",
+            "description"
+          ]
+        },
+        "route": {
+          "type": "object",
+          "required": [
+            "key",
+            "params"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "key": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$"
+            },
+            "params": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
