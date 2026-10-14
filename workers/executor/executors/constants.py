@@ -66,6 +66,9 @@ class PromptServiceConstants:
     TEXT_EXTRACTION = "text_extraction"
     # Wire-format key every metrics producer reports its duration under.
     TIME_TAKEN = "time_taken(s)"
+    # Per-prompt indexing/embedding sub-bucket of the metrics dict. Named so
+    # the stage-timing split can pin against it rather than a bare literal.
+    INDEXING_METRICS = "indexing"
     SUMMARIZE = "summarize"
     SINGLE_PASS_EXTRACTION = "single-pass-extraction"
     SIMPLE_PROMPT_STUDIO = "simple-prompt-studio"

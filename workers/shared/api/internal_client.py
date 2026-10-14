@@ -958,10 +958,16 @@ class InternalAPIClient(CachedAPIClientMixin):
         execution_time: float | None = None,
         error_message: str | None = None,
         organization_id: str | None = None,
+        stage_timings: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Update workflow file execution status with execution time."""
         return self.file_client.update_file_execution_status(
-            file_execution_id, status, execution_time, error_message, organization_id
+            file_execution_id,
+            status,
+            execution_time,
+            error_message,
+            organization_id,
+            stage_timings=stage_timings,
         )
 
     def update_workflow_file_execution_status(

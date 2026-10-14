@@ -879,6 +879,10 @@ class WorkflowExecutionResult:
     execution_time: float | None = None
     metadata: WorkflowExecutionMetadata | None = None
     destination_output: Any | None = None
+    # Per-stage durations for this file (UN-3451). None when the execution was
+    # skipped as a duplicate or resumed from a completed tracker stage, where
+    # no stage was actually run.
+    stage_timings: dict[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for backward compatibility."""
@@ -896,6 +900,9 @@ class WorkflowExecutionResult:
 
         if self.destination_output is not None:
             base_dict["destination_output"] = self.destination_output
+
+        if self.stage_timings:
+            base_dict["stage_timings"] = self.stage_timings
 
         return base_dict
 
@@ -916,6 +923,7 @@ class WorkflowExecutionResult:
             execution_time=data.get("execution_time"),
             metadata=metadata,
             destination_output=data.get("destination_output"),
+            stage_timings=data.get("stage_timings"),
         )
 
     def is_successful(self) -> bool:
@@ -954,6 +962,10 @@ class FileProcessingResult:
     # Duplicate detection indicator
     is_duplicate_skip: bool = False  # True when file skipped due to duplicate detection
 
+    # Per-stage durations for this file (UN-3451), forwarded to the backend with
+    # the terminal status update.
+    stage_timings: dict[str, Any] | None = None
+
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for backward compatibility."""
         return serialize_dataclass_to_dict(self)
@@ -976,6 +988,7 @@ class FileProcessingResult:
             destination_processed=data.get("destination_processed", True),
             destination_error=data.get("destination_error"),
             is_duplicate_skip=data.get("is_duplicate_skip", False),
+            stage_timings=data.get("stage_timings"),
         )
 
     def is_successful(self) -> bool:
