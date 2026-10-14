@@ -3,8 +3,9 @@ from rest_framework.exceptions import APIException
 
 
 class SearchUnavailable(APIException):
-    """Search cannot answer because the database is unreachable or the
-    connection is unusable. The client may retry; never "no matches".
+    """Search cannot answer because of database errors a retry may clear
+    (unreachable, timed out, locked) or an unusable connection. The client
+    may retry; never "no matches".
     """
 
     status_code = status.HTTP_503_SERVICE_UNAVAILABLE
@@ -13,8 +14,8 @@ class SearchUnavailable(APIException):
 
 
 class SearchFailed(APIException):
-    """Every searched type failed for a reason other than the database being
-    unreachable -- most likely a bug, so retrying will not help.
+    """Every searched type failed, and not all with retryable database
+    errors -- most likely a bug, so retrying will not help.
     """
 
     status_code = status.HTTP_500_INTERNAL_SERVER_ERROR

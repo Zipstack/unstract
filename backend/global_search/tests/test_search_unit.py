@@ -1,6 +1,5 @@
-"""Parameters, envelope shape, failure handling, registry and in-memory
-ranking, with faked providers. Most tests need no database; the 5xx tests
-are marked ``django_db`` (see the comment above the first of them).
+"""DB-free tests: parameters, envelope shape, failure handling, registry and
+in-memory ranking, with faked providers.
 """
 
 import json
@@ -10,6 +9,7 @@ from unittest.mock import MagicMock, patch
 import jsonschema
 import pytest
 from account_v2.models import User
+from utils.user_context import UserContext
 from django.db import OperationalError
 
 from global_search.constants import MatchTier
@@ -36,6 +36,20 @@ class FakeProvider(SearchProvider):
             SearchHit(id=name, name=name, match=tier, context=None, route_params={"id": name})
             for name, tier in ranked[: limit + 1]
         ]
+
+
+@pytest.fixture(autouse=True)
+def no_organization_context():
+    """A 5xx makes Django's error reporter import the URLconf. If an earlier
+    test on the same worker left an organisation in UserContext, the
+    org-scoped managers behind class-level querysets (e.g.
+    ``pipeline_v2.views``) would look it up during that import -- a DB query
+    these tests must not make.
+    """
+    previous = UserContext.get_organization_identifier()
+    UserContext.set_organization_identifier(None)
+    yield
+    UserContext.set_organization_identifier(previous)
 
 
 @pytest.fixture
@@ -114,23 +128,16 @@ def _run(user, providers_list, conn=None, **params):
         return search(user, allow_failures=True, **{"q": "alpha", **params})
 
 
-# A 5xx makes Django's error reporter resolve the URLconf, whose first import
-# on a fresh worker runs a module-level ORM query (pipeline_v2/views.py).
-@pytest.mark.django_db
 def test_every_type_failing_with_a_bug_is_a_500(user):
     response = _run(user, [_Broken("a", 1, []), _Broken("b", 2, [])])
     _assert_error(response, 500, "search_failed")
 
 
-# See test_every_type_failing_with_a_bug_is_a_500 for why this needs the DB.
-@pytest.mark.django_db
 def test_every_type_failing_on_the_database_is_a_retryable_503(user):
     response = _run(user, [_DbError("a", 1, []), _DbError("b", 2, [])])
     _assert_error(response, 503, "search_unavailable")
 
 
-# See test_every_type_failing_with_a_bug_is_a_500 for why this needs the DB.
-@pytest.mark.django_db
 def test_a_failure_that_breaks_the_transaction_fails_the_request(user, providers):
     # A failed savepoint rollback leaves needs_rollback set; later types
     # would all fail, so the error must surface rather than be logged per type.
@@ -139,8 +146,6 @@ def test_a_failure_that_breaks_the_transaction_fails_the_request(user, providers
     _assert_error(response, 503, "search_unavailable")
 
 
-# See test_every_type_failing_with_a_bug_is_a_500 for why this needs the DB.
-@pytest.mark.django_db
 def test_a_lost_connection_fails_the_request_even_if_others_answered(
     user, providers, caplog
 ):
@@ -150,6 +155,22 @@ def test_a_lost_connection_fails_the_request_even_if_others_answered(
     _assert_error(response, 503, "search_unavailable")
     # The 503 itself names no type; the log must.
     assert "Global search provider 'lost' failed" in caplog.text
+
+
+def test_a_failed_connect_fails_the_request_without_probing_it(user, providers):
+    # Connecting failed, so no connection is open: every later type would
+    # dial the dead database too. is_usable() needs an open connection.
+    conn = _connection()
+    conn.connection = None
+    response = _run(user, [_DbError("down", 5, []), providers[1]], conn)
+    _assert_error(response, 503, "search_unavailable")
+    conn.is_usable.assert_not_called()
+
+
+def test_a_bug_alongside_database_errors_is_a_500(user):
+    # Only an all-retryable failure is worth retrying.
+    response = _run(user, [_DbError("a", 1, []), _Broken("b", 2, [])])
+    _assert_error(response, 500, "search_failed")
 
 
 def test_a_db_error_on_a_healthy_connection_drops_only_its_type(user, providers):

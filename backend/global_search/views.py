@@ -23,8 +23,9 @@ from global_search.serializers import SearchQuerySerializer, SearchResponseSeria
 
 logger = logging.getLogger(__name__)
 
-# Errors that mean the database could not be reached, as opposed to a bug.
-_UNREACHABLE = (InterfaceError, OperationalError)
+# Database errors a retry may clear (unreachable, timed out, locked,
+# deadlocked), as opposed to a bug.
+_RETRYABLE = (InterfaceError, OperationalError)
 
 
 def _connection_unusable(error: Exception) -> bool:
@@ -36,8 +37,12 @@ def _connection_unusable(error: Exception) -> bool:
     """
     if connection.needs_rollback:
         return True
-    if not isinstance(error, DatabaseError) or connection.connection is None:
+    if not isinstance(error, DatabaseError):
         return False
+    if connection.connection is None:
+        # No open connection after a connection-class error: connecting
+        # failed, so every later type would dial a dead database too.
+        return isinstance(error, _RETRYABLE)
     return not connection.is_usable()
 
 
@@ -78,8 +83,8 @@ class GlobalSearchView(APIView):
             ),
             503: OpenApiResponse(
                 description=(
-                    "search_unavailable: the database is unreachable; retry. "
-                    "Never show as 'no results'."
+                    "search_unavailable: a database error a retry may clear "
+                    "(unreachable, timed out, locked). Never show as 'no results'."
                 )
             ),
         },
@@ -132,9 +137,9 @@ class GlobalSearchView(APIView):
                     groups.append(group)
 
         # Every type failing is never "no matches". Each cause is logged
-        # above; only an unreachable database is worth retrying.
+        # above; only database errors a retry may clear are worth retrying.
         if errors and len(errors) == attempted:
-            if all(isinstance(e, _UNREACHABLE) for e in errors):
+            if all(isinstance(e, _RETRYABLE) for e in errors):
                 raise SearchUnavailable() from None
             raise SearchFailed() from None
 
