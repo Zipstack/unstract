@@ -1,6 +1,6 @@
-"""DB-free tests: parameters, envelope shape, registry and in-memory ranking.
-
-Providers are faked so the envelope is exercised without the ORM.
+"""Parameters, envelope shape, failure handling, registry and in-memory
+ranking, with faked providers. Most tests need no database; the 5xx tests
+are marked ``django_db`` (see the comment above the first of them).
 """
 
 import json
@@ -83,9 +83,9 @@ def test_a_failing_provider_drops_only_its_own_group(user, providers, caplog):
     assert "Global search provider 'broken' failed" in caplog.text
 
 
-def _assert_unavailable(response) -> None:
-    assert response.status_code == 503
-    assert [e["code"] for e in response.data["errors"]] == ["search_unavailable"]
+def _assert_error(response, status: int, code: str) -> None:
+    assert response.status_code == status
+    assert [e["code"] for e in response.data["errors"]] == [code]
 
 
 class _Broken(FakeProvider):
@@ -93,46 +93,72 @@ class _Broken(FakeProvider):
         raise RuntimeError("boom")
 
 
-# The project's error handler reads the DB while rendering a 5xx.
-@pytest.mark.django_db
-def test_every_type_failing_is_an_error_not_an_empty_result(user):
-    # An outage must not read as "no matches".
-    with patch(
-        "global_search.views.get_providers",
-        return_value=[_Broken("a", 1, []), _Broken("b", 2, [])],
+class _DbError(FakeProvider):
+    def search(self, user, query, limit):
+        raise OperationalError("canceling statement due to statement timeout")
+
+
+def _connection(*, usable: bool = True, needs_rollback: bool = False) -> MagicMock:
+    """The view's DB connection, in autocommit (the default) with a chosen
+    health, so the escalation rules run without a real failure."""
+    conn = MagicMock(in_atomic_block=False, needs_rollback=needs_rollback)
+    conn.is_usable.return_value = usable
+    return conn
+
+
+def _run(user, providers_list, conn=None, **params):
+    with (
+        patch("global_search.views.connection", conn or _connection()),
+        patch("global_search.views.get_providers", return_value=providers_list),
     ):
-        _assert_unavailable(search(user, q="alpha"))
+        return search(user, allow_failures=True, **{"q": "alpha", **params})
 
 
-# The project's error handler reads the DB while rendering a 5xx.
+# A 5xx makes Django's error reporter resolve the URLconf, whose first import
+# on a fresh worker runs a module-level ORM query (pipeline_v2/views.py).
+@pytest.mark.django_db
+def test_every_type_failing_with_a_bug_is_a_500(user):
+    response = _run(user, [_Broken("a", 1, []), _Broken("b", 2, [])])
+    _assert_error(response, 500, "search_failed")
+
+
+# See test_every_type_failing_with_a_bug_is_a_500 for why this needs the DB.
+@pytest.mark.django_db
+def test_every_type_failing_on_the_database_is_a_retryable_503(user):
+    response = _run(user, [_DbError("a", 1, []), _DbError("b", 2, [])])
+    _assert_error(response, 503, "search_unavailable")
+
+
+# See test_every_type_failing_with_a_bug_is_a_500 for why this needs the DB.
 @pytest.mark.django_db
 def test_a_failure_that_breaks_the_transaction_fails_the_request(user, providers):
     # A failed savepoint rollback leaves needs_rollback set; later types
     # would all fail, so the error must surface rather than be logged per type.
-    connection = MagicMock(in_atomic_block=False, needs_rollback=True)
-    with (
-        patch("global_search.views.connection", connection),
-        patch(
-            "global_search.views.get_providers",
-            return_value=[_Broken("a", 1, []), providers[0]],
-        ),
-    ):
-        _assert_unavailable(search(user, q="alpha"))
+    conn = _connection(needs_rollback=True)
+    response = _run(user, [_Broken("a", 1, []), providers[0]], conn)
+    _assert_error(response, 503, "search_unavailable")
 
 
-# The project's error handler reads the DB while rendering a 5xx.
+# See test_every_type_failing_with_a_bug_is_a_500 for why this needs the DB.
 @pytest.mark.django_db
-def test_a_lost_connection_fails_the_request_even_if_others_answered(user, providers):
-    # In autocommit nothing marks the connection broken; the error class does.
-    class Lost(FakeProvider):
-        def search(self, user, query, limit):
-            raise OperationalError("server closed the connection unexpectedly")
+def test_a_lost_connection_fails_the_request_even_if_others_answered(
+    user, providers, caplog
+):
+    # In autocommit nothing marks the connection broken; is_usable() does.
+    conn = _connection(usable=False)
+    response = _run(user, [providers[1], _DbError("lost", 15, [])], conn)
+    _assert_error(response, 503, "search_unavailable")
+    # The 503 itself names no type; the log must.
+    assert "Global search provider 'lost' failed" in caplog.text
 
-    with patch(
-        "global_search.views.get_providers",
-        return_value=[providers[1], Lost("lost", 15, [])],
-    ):
-        _assert_unavailable(search(user, q="alpha"))
+
+def test_a_db_error_on_a_healthy_connection_drops_only_its_type(user, providers):
+    # A statement timeout, lock timeout or deadlock leaves the connection
+    # usable: the other types still answer.
+    response = _run(user, [providers[1], _DbError("slow", 15, [])])
+    assert response.status_code == 200
+    assert [g["type"] for g in response.data["groups"]] == ["alpha"]
+    assert response.data["failed_types"] == ["slow"]
 
 
 def test_limit_and_has_more(user, providers):

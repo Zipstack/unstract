@@ -2,20 +2,43 @@ import logging
 from contextlib import nullcontext
 from typing import Any
 
-from django.db import InterfaceError, OperationalError, connection, transaction
-from drf_spectacular.utils import extend_schema
+from django.db import (
+    DatabaseError,
+    InterfaceError,
+    OperationalError,
+    connection,
+    transaction,
+)
+from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from global_search.constants import SearchParams
-from global_search.exceptions import SearchUnavailable
+from global_search.exceptions import SearchFailed, SearchUnavailable
 from global_search.providers import SearchProvider
 from global_search.registry import get_providers
 from global_search.serializers import SearchQuerySerializer, SearchResponseSerializer
 
 logger = logging.getLogger(__name__)
+
+# Errors that mean the database could not be reached, as opposed to a bug.
+_UNREACHABLE = (InterfaceError, OperationalError)
+
+
+def _connection_unusable(error: Exception) -> bool:
+    """Whether later types would fail too: a savepoint that could not be
+    rolled back (ATOMIC_REQUESTS), or a database error after which the
+    connection no longer answers. A statement timeout, lock timeout or
+    deadlock is an OperationalError on a healthy connection, so the class
+    alone does not decide; ``is_usable()`` runs only on this error path.
+    """
+    if connection.needs_rollback:
+        return True
+    if not isinstance(error, DatabaseError) or connection.connection is None:
+        return False
+    return not connection.is_usable()
 
 
 def _group(provider: SearchProvider, user: Any, query: str, limit: int) -> dict | None:
@@ -47,7 +70,19 @@ class GlobalSearchView(APIView):
 
     @extend_schema(
         parameters=[SearchQuerySerializer],
-        responses=SearchResponseSerializer,
+        responses={
+            200: SearchResponseSerializer,
+            400: OpenApiResponse(description="Invalid parameters (validation_error)."),
+            500: OpenApiResponse(
+                description="search_failed: every searched type failed with a bug."
+            ),
+            503: OpenApiResponse(
+                description=(
+                    "search_unavailable: the database is unreachable; retry. "
+                    "Never show as 'no results'."
+                )
+            ),
+        },
         description=(
             "Groups come back in rail order with empty groups omitted. Each "
             "type applies its own list's visibility rule. See "
@@ -65,7 +100,7 @@ class GlobalSearchView(APIView):
         groups = []
         failed_types: list[str] = []
         attempted = 0
-        last_error: Exception | None = None
+        errors: list[Exception] = []
         if len(query) >= SearchParams.MIN_QUERY_LENGTH:
             for provider in get_providers():
                 if wanted and provider.type_key not in wanted:
@@ -80,28 +115,27 @@ class GlobalSearchView(APIView):
                     with guard:
                         group = _group(provider, request.user, query, limit)
                 except Exception as error:
-                    # A lost connection (autocommit), or a savepoint that
-                    # could not be rolled back (ATOMIC_REQUESTS), means every
-                    # later type would fail too: fail the request instead of
-                    # blaming healthy types.
-                    if connection.needs_rollback or isinstance(
-                        error, (InterfaceError, OperationalError)
-                    ):
-                        raise SearchUnavailable() from error
-                    # Providers can come from other apps (cloud); one failing
-                    # type drops its own group and is named in failed_types.
                     logger.exception(
                         "Global search provider '%s' failed", provider.type_key
                     )
+                    # Every later type would fail too: fail the request
+                    # instead of blaming healthy types. The cause is logged
+                    # above, so it is not chained into the handler's log.
+                    if _connection_unusable(error):
+                        raise SearchUnavailable() from None
+                    # Providers can come from other apps (cloud); one failing
+                    # type drops its own group and is named in failed_types.
                     failed_types.append(provider.type_key)
-                    last_error = error
+                    errors.append(error)
                     continue
                 if group:
                     groups.append(group)
 
-        # Every type failing is an outage, not "no matches". Each cause was
-        # logged above, so do not chain it into the handler's log again.
-        if last_error is not None and len(failed_types) == attempted:
-            raise SearchUnavailable() from None
+        # Every type failing is never "no matches". Each cause is logged
+        # above; only an unreachable database is worth retrying.
+        if errors and len(errors) == attempted:
+            if all(isinstance(e, _UNREACHABLE) for e in errors):
+                raise SearchUnavailable() from None
+            raise SearchFailed() from None
 
         return Response({"query": query, "groups": groups, "failed_types": failed_types})

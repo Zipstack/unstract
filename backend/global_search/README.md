@@ -77,10 +77,13 @@ Errors use the standard error envelope:
 
 - `400 {"type": "validation_error", "errors": [{"code", "detail", "attr"}]}`
   for bad parameters.
-- `503` with code `search_unavailable` when search cannot answer at all:
-  every searched type failed, or the database connection was lost or left
-  unusable by a failure (even if other types had already answered). Safe to
-  retry; never show it as "no results".
+- `503` with code `search_unavailable` when the database cannot be used:
+  every searched type failed because the database was unreachable, or a
+  failure left the connection unusable (even if other types had already
+  answered). Safe to retry; never show it as "no results". A slow or locked
+  query on a healthy connection only drops its own type into `failed_types`.
+- `500` with code `search_failed` when every searched type failed for any
+  other reason (a bug). Retrying will not help.
 - 401 and 403 behave as on every tenant endpoint.
 
 ## Types
