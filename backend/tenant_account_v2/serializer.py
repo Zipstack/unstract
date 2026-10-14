@@ -6,6 +6,12 @@ from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
 from rest_framework.serializers import ModelSerializer
 
+from tenant_account_v2.capabilities import (
+    SPECS,
+    SPECS_BY_KEY,
+    Capability,
+    CapabilitySetting,
+)
 from tenant_account_v2.models import OrganizationMember
 
 
@@ -161,3 +167,52 @@ class UpdateFlagSerializer(ModelSerializer):
     class Meta:
         model = OrganizationMember
         fields = ("is_login_onboarding_msg", "is_prompt_studio_onboarding_msg")
+
+
+class CapabilitySerializer(serializers.Serializer):
+    key = serializers.ChoiceField(choices=[c.value for c in Capability])
+    label = serializers.CharField()
+    description = serializers.CharField()
+    setting = serializers.ChoiceField(choices=[s.value for s in CapabilitySetting])
+    allowed_for_me = serializers.BooleanField(
+        help_text="The setting does not block the caller. Object-level rules, "
+        "such as owning what is being deleted, still apply."
+    )
+
+
+class CapabilitiesResponseSerializer(serializers.Serializer):
+    capabilities = CapabilitySerializer(many=True)
+
+
+class CapabilitiesPatchSerializer(serializers.Serializer):
+    """A ``{capability: setting}`` map; any subset, at least one key.
+
+    Every key and value is checked before anything is saved. A capability
+    whose endpoints do not enforce it yet only accepts ``admins_only``.
+    """
+
+    def get_fields(self) -> dict[str, serializers.Field]:
+        return {
+            spec.key.value: serializers.ChoiceField(
+                choices=[s.value for s in CapabilitySetting], required=False
+            )
+            for spec in SPECS
+        }
+
+    def validate(self, attrs: dict[str, Any]) -> dict[str, Any]:
+        unknown = sorted(set(self.initial_data or {}) - set(SPECS_BY_KEY))
+        if unknown:
+            raise ValidationError({key: "Unknown capability." for key in unknown})
+        if not attrs:
+            raise ValidationError("Provide at least one capability.")
+        not_yet = {
+            key: (
+                "Not configurable yet: the endpoints it governs still allow "
+                "only organisation admins."
+            )
+            for key, value in attrs.items()
+            if value == CapabilitySetting.ANY_MEMBER and not SPECS_BY_KEY[key].enforced
+        }
+        if not_yet:
+            raise ValidationError(not_yet)
+        return attrs

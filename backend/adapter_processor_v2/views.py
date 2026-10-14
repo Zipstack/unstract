@@ -25,12 +25,12 @@ from platform_audit.recorder import (
 from plugins import get_plugin
 from rest_framework import status
 from rest_framework.decorators import action
-from rest_framework.exceptions import PermissionDenied
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.serializers import ModelSerializer
 from rest_framework.versioning import URLPathVersioning
 from rest_framework.viewsets import GenericViewSet, ModelViewSet
+from tenant_account_v2.capabilities import Capability, enforce_capability
 from tenant_account_v2.organization_member_service import OrganizationMemberService
 from tool_instance_v2.models import ToolInstance
 from utils.filtering import FilterHelper
@@ -227,26 +227,17 @@ class AdapterInstanceViewSet(
         return AdapterInstanceSerializer
 
     @staticmethod
-    def _enforce_llm_creation_restriction(request: Any, adapter_type: str) -> None:
-        """Controlled mode (UN-3584): only org admins may create LLM adapters
-        when the org has enabled the restriction. Service accounts (platform
-        API-key sessions) and non-LLM adapter types bypass; the default
-        (flag off) keeps creation open for everyone.
+    def _enforce_adapter_creation_capability(request: Any, adapter_type: str) -> None:
+        """Capability permissions (UN-3584, UN-4399): LLM adapters fall under
+        "Create LLM adapters", every other type under "Create other adapters".
+        Service accounts bypass; the defaults keep creation open for everyone.
         """
-        if adapter_type != AdapterKeys.LLM:
-            return
-        if getattr(request.user, "is_service_account", False):
-            return
-        organization = UserContext.get_organization()
-        if (
-            organization
-            and organization.restrict_llm_adapter_creation
-            and not OrganizationMemberService.is_user_organization_admin(request.user)
-        ):
-            raise PermissionDenied(
-                "LLM adapter creation is restricted to organization admins. "
-                "Please contact your organization admin."
-            )
+        enforce_capability(
+            request,
+            Capability.CREATE_LLM_ADAPTERS
+            if adapter_type == AdapterKeys.LLM
+            else Capability.CREATE_OTHER_ADAPTERS,
+        )
 
     def create(self, request: Any) -> Response:
         serializer = self.get_serializer(data=request.data)
@@ -262,7 +253,7 @@ class AdapterInstanceViewSet(
         # which also covers update/partial_update.
         serializer.is_valid(raise_exception=True)
         adapter_type = serializer.validated_data.get(AdapterKeys.ADAPTER_TYPE)
-        self._enforce_llm_creation_restriction(request, adapter_type)
+        self._enforce_adapter_creation_capability(request, adapter_type)
 
         try:
             if adapter_type == AdapterKeys.X2TEXT and use_platform_unstract_key:

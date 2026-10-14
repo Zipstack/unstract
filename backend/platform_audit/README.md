@@ -196,7 +196,7 @@ Expected emitters outside this PR:
 
 | Task | Action | Notes |
 |---|---|---|
-| PB-T04 (UN-4399) | `capability.changed` | target `capability`, id = capability key, `changes` before/after audience |
+| PB-T04 (UN-4399) | `capability.changed` | emitted; see the table below |
 | PB-T05 (UN-4360) | `key.expiry_set` | target per key type; cloud review keys may register their own `review_key.*` actions |
 | PB-T08 (UN-4318) | `execution.aborted` | target `execution`; actor is the owner or admin who aborted |
 
@@ -221,8 +221,8 @@ Expected emitters outside this PR:
 | `key.changed` | Key changed | keys | any other key field |
 | `key.expiry_set` | Key expiry set | keys | PB-T05 |
 | `default_profile.changed` | Default changed | defaults | `adapter/default_triad/`; per member, before→after adapter names per slot |
-| `platform_setting.changed` | Setting changed | settings | `organization/settings` PATCH and `notifications/settings/` PATCH, one event per changed setting |
-| `capability.changed` | Capability changed | capabilities | PB-T04 |
+| `platform_setting.changed` | Setting changed | settings | `notifications/settings/` PATCH |
+| `capability.changed` | Capability changed | capabilities | `organization/capabilities/` PATCH and `organization/settings` PATCH (its two flags are the storage of two capabilities), one event per changed capability; target `capability`, id = capability key, name = label, `changes` `{"setting": "admins_only"\|"any_member"}` |
 | `execution.aborted` | Execution aborted | executions | PB-T08 |
 
 Target types: `member`, `invitation`, `group`, `platform_api_key`,
