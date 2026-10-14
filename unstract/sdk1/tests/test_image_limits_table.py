@@ -347,8 +347,9 @@ class TestInheritanceIsOneLevel:
 
 
 class TestMalformedOverrideFallsBack:
-    """A malformed override must be logged and ignored, never raise past the
-    fallback (Greptile #2341: AttributeError / TypeError escaped).
+    """A malformed override must be logged and ignored.
+
+    Greptile #2341: AttributeError / TypeError escaped the fallback.
     """
 
     @pytest.mark.parametrize(
