@@ -1,5 +1,8 @@
+import logging
+from contextlib import nullcontext
 from typing import Any
 
+from django.db import connection, transaction
 from drf_spectacular.utils import extend_schema
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
@@ -10,6 +13,8 @@ from global_search.constants import SearchParams
 from global_search.providers import SearchProvider
 from global_search.registry import get_providers
 from global_search.serializers import SearchQuerySerializer, SearchResponseSerializer
+
+logger = logging.getLogger(__name__)
 
 
 def _group(provider: SearchProvider, user: Any, query: str, limit: int) -> dict | None:
@@ -61,7 +66,21 @@ class GlobalSearchView(APIView):
             for provider in get_providers():
                 if wanted and provider.type_key not in wanted:
                     continue
-                group = _group(provider, request.user, query, limit)
+                # Under ATOMIC_REQUESTS a failed query aborts the request's
+                # transaction; a savepoint keeps it from poisoning the next type.
+                guard = (
+                    transaction.atomic() if connection.in_atomic_block else nullcontext()
+                )
+                try:
+                    with guard:
+                        group = _group(provider, request.user, query, limit)
+                except Exception:
+                    # Providers can come from other apps (cloud); one failing
+                    # type drops its own group rather than the whole search.
+                    logger.exception(
+                        "Global search provider '%s' failed", provider.type_key
+                    )
+                    continue
                 if group:
                     groups.append(group)
 

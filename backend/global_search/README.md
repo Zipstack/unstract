@@ -3,8 +3,10 @@
 One endpoint that finds anything the caller can open, grouped by type. This
 file is the published contract for consumers: P2-T10, the top-bar search
 panel, and PB-T18, the portal search, which shares the envelope. The
-contract tests keep it in sync with the code. The response JSON Schema is
-[`contract/search-response.schema.json`](contract/search-response.schema.json).
+response JSON Schema is
+[`contract/search-response.schema.json`](contract/search-response.schema.json);
+tests validate real responses against it and check the type table below
+against the registered providers.
 
 ## Endpoint
 
@@ -90,7 +92,7 @@ repo.
 
 Each type starts from the same `for_user()` queryset its list view uses.
 That covers owners, co-owners, direct viewers, group shares, org shares,
-admins and service accounts. The list's fixed filters are applied on top:
+admins and service accounts. Search then narrows further, never wider:
 
 - Names matched: `tool_name`, `workflow_name`, `display_name` and
   `api_name`, `pipeline_name`, `adapter_name`, `connector_name`.
@@ -99,8 +101,9 @@ admins and service accounts. The list's fixed filters are applied on top:
 - Pipelines: ETL and Task only. DEFAULT and APP pipelines are excluded.
 - Adapters: platform-provided (frictionless) adapters are visible to every
   member, as in the adapter list. No Op adapters are never returned.
-- Owner e-mail is not matched. The list `search` parameters do match it, so
-  the panel and the filtered list can differ slightly.
+- Owner e-mail is not matched. The workflow, Prompt Studio, adapter and
+  connector list `search` parameters do match it, so the panel and those
+  filtered lists can differ slightly.
 
 ## Response-time budget
 
@@ -111,10 +114,12 @@ available.
 
 `tests/test_budget.py` enforces this structurally. Each type is allowed
 three SQL queries: one ranked search, plus the organisation point lookups
-that the existing `for_user()` makes. A small fixed overhead is allowed per request, so
-an N+1 query pattern fails the test. Wall-clock time is checked against a generous ceiling
-(`GLOBAL_SEARCH_CEILING_MS`, default 1500) because CI runners are shared,
-and the measured p95 is printed. No trigram index is used: every query is
+that the existing `for_user()` makes. A small fixed overhead is allowed per
+request, and the count must not change between `limit=1` and `limit=20`, so
+an N+1 query pattern fails the test. The measured p95 is printed on every
+run. It is asserted only with `GLOBAL_SEARCH_ASSERT_P95=1`, against
+`GLOBAL_SEARCH_CEILING_MS` (default 300), because CI runners are shared.
+No trigram index is used: every query is
 filtered by organisation first.
 
 ## Adding a type

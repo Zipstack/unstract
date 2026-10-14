@@ -1,8 +1,8 @@
 """OSS result types.
 
 Each provider starts from the same ``Model.objects.for_user(user)`` its list
-view uses, plus that list's own fixed filters, so search never returns a row
-the caller could not open from the list.
+view uses, so search never returns a row the caller could not open from the
+list. Search may narrow further (pipeline type, No Op adapters), never widen.
 """
 
 from __future__ import annotations
@@ -27,7 +27,8 @@ from global_search.providers import ModelSearchProvider
 OWNER_EMAIL = "_search_owner_email"
 PARENT_NAME = "_search_parent_name"
 
-# D12 retires the No Op adapters in v1; their ids share this prefix.
+# Frontend v1 retires the No Op adapters (spec decision D12, UN-4257);
+# their ids share this prefix.
 NO_OP_ADAPTER_PREFIX = "noOp"
 
 
@@ -99,6 +100,8 @@ class APIDeploymentProvider(WorkflowChildProvider):
     type_key = OSSSearchType.API_DEPLOYMENT
     label = "API deployments"
     order = 40
+    # A match on api_name alone still shows display_name: that is the name
+    # users see everywhere else.
     name_fields = ("display_name", "api_name")
     description_field = "description"
 

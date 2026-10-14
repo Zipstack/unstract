@@ -1,8 +1,6 @@
-"""Contract constants for the global search endpoint.
-
-Everything a client depends on (type keys, parameter bounds, match tiers)
-lives here so the agreed response shape touches one module. Cloud-only type
-keys are deliberately absent: cloud apps define and register their own.
+"""Contract constants for the global search endpoint: parameter bounds,
+match tiers and the OSS type keys. Cloud-only type keys are deliberately
+absent: cloud apps define and register their own.
 """
 
 from enum import IntEnum
