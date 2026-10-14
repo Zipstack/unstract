@@ -10,7 +10,7 @@ import jsonschema
 import pytest
 from account_v2.models import User
 from utils.user_context import UserContext
-from django.db import OperationalError
+from django.db import InterfaceError, OperationalError
 
 from global_search.constants import MatchTier
 from global_search.providers import SearchHit, SearchProvider
@@ -165,6 +165,21 @@ def test_a_failed_connect_fails_the_request_without_probing_it(user, providers):
     response = _run(user, [_DbError("down", 5, []), providers[1]], conn)
     _assert_error(response, 503, "search_unavailable")
     conn.is_usable.assert_not_called()
+
+
+def test_a_closed_connection_interface_error_fails_the_request(user, providers):
+    # InterfaceError ("connection already closed") is not a DatabaseError in
+    # Django, but it is the canonical unusable-connection error.
+    class Closed(FakeProvider):
+        def search(self, user, query, limit):
+            raise InterfaceError("connection already closed")
+
+    later = MagicMock(wraps=providers[0])
+    later.type_key, later.label, later.order = "alpha", "Alpha", 10
+    conn = _connection(usable=False)
+    response = _run(user, [Closed("closed", 5, []), later], conn)
+    _assert_error(response, 503, "search_unavailable")
+    later.search.assert_not_called()
 
 
 def test_a_bug_alongside_database_errors_is_a_500(user):
