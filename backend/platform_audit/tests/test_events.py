@@ -9,6 +9,7 @@ from unittest.mock import patch
 
 from account_v2.dto import MemberInvitation, UserInviteResponse
 from account_v2.models import PlatformKey
+from django.conf import settings
 from adapter_processor_v2.models import AdapterInstance, UserDefaultAdapter
 from adapter_processor_v2.views import DefaultAdapterViewSet
 from global_api_deployment_key.models import GlobalApiDeploymentKey
@@ -404,6 +405,16 @@ class PlatformKeyEventTests(AuditTestBase):
         self.assertEqual(disabled.target_id, str(old.id))
         self.assertEqual(disabled.summary, "deactivated when new was activated")
 
+    def test_deactivate(self) -> None:
+        key = self._key("k", is_active=True)
+        view = PlatformKeyViewSet.as_view({"post": "toggle_platform_key"})
+        self.call(view, "post", data={"action": "DEACTIVATE"}, pk=key.pk)
+        event = self.only_event()
+        self.assertEqual((event.action, event.target_id), ("key.disabled", str(key.id)))
+        # Deactivating an already inactive key is not a change.
+        self.call(view, "post", data={"action": "DEACTIVATE"}, pk=key.pk)
+        self.assertEqual(len(self.events()), 1)
+
     def test_refresh_and_destroy(self) -> None:
         key = self._key("k", is_active=False)
         refresh = PlatformKeyViewSet.as_view({"put": "refresh"})
@@ -494,5 +505,24 @@ class PlatformSettingEventTests(AuditTestBase):
         event = self.only_event(action="platform_setting.changed")
         self.assert_admin_actor(event)
         self.assertEqual(event.target_id, "club_interval_seconds")
-        self.assertEqual(event.changes["after"], {"club_interval_seconds": 600})
-        self.assertIn("before", event.changes)
+        self.assertEqual(
+            event.changes,
+            {
+                "before": {"club_interval_seconds": settings.NOTIFICATION_CLUB_INTERVAL},
+                "after": {"club_interval_seconds": 600},
+            },
+        )
+        # Re-sending the same value is not a change.
+        self.call(view, "patch", data={"club_interval_seconds": 600})
+        self.assertEqual(len(self.events()), 1)
+
+    def test_unreadable_before_value_is_left_out(self) -> None:
+        view = NotificationSettingsView.as_view()
+        with patch(
+            "notification_v2.views.Configuration.get_value_by_organization",
+            side_effect=RuntimeError("db"),
+        ):
+            with self.assertLogs("platform_audit.recorder", "ERROR"):
+                self.call(view, "patch", data={"club_interval_seconds": 600})
+        event = self.only_event(action="platform_setting.changed")
+        self.assertEqual(event.changes, {"after": {"club_interval_seconds": 600}})

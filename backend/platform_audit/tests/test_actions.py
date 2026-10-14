@@ -26,3 +26,7 @@ class ActionRegistryTests(SimpleTestCase):
     def test_extension_registers_a_new_action(self) -> None:
         register_action("review_key.created", "Review key created", "keys")
         self.assertEqual(get_action("review_key.created").label, "Review key created")
+
+    def test_key_longer_than_the_column_is_refused(self) -> None:
+        with self.assertRaises(ValueError):
+            register_action("x" * 65, "Too long", "keys")

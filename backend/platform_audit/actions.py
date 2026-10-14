@@ -75,6 +75,9 @@ class Action(StrEnum):
     EXECUTION_ABORTED = "execution.aborted"
 
 
+# The width of PlatformAuditEvent.action; a longer key could never be stored.
+ACTION_KEY_MAX_LENGTH = 64
+
 _REGISTRY: dict[str, AuditAction] = {}
 
 
@@ -87,6 +90,11 @@ def register_action(key: str, label: str, category: str) -> AuditAction:
     then disagree about what the key means.
     """
     action = AuditAction(key=str(key), label=label, category=str(category))
+    if not action.key or len(action.key) > ACTION_KEY_MAX_LENGTH:
+        raise ValueError(
+            f"Audit action key must be 1-{ACTION_KEY_MAX_LENGTH} characters: "
+            f"{action.key!r}"
+        )
     existing = _REGISTRY.get(action.key)
     if existing is not None and existing != action:
         raise ValueError(

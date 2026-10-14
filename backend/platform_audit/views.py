@@ -15,6 +15,10 @@ from drf_spectacular.utils import (
     extend_schema,
     inline_serializer,
 )
+from drf_standardized_errors.openapi_serializers import (
+    ErrorResponse403Serializer,
+    ValidationErrorResponseSerializer,
+)
 from platform_api.permissions import IsOrganizationAdmin
 from rest_framework import serializers, status
 from rest_framework.exceptions import APIException, PermissionDenied
@@ -32,6 +36,7 @@ from platform_audit.serializers import (
     AuditActionSerializer,
     AuditActorSerializer,
     AuditEventQuerySerializer,
+    ExportTooLargeResponseSerializer,
     PlatformAuditEventSerializer,
     action_label,
 )
@@ -79,7 +84,8 @@ class _AuditBaseView(GenericAPIView):
     permission_classes = [IsAuthenticated, IsPlatformAuditReader]
     serializer_class = PlatformAuditEventSerializer
     ordering = ["-occurred_at"]
-    ordering_fields = ["occurred_at"]
+    # Newest first is the contract; ?ordering= is ignored rather than honoured.
+    ordering_fields: list[str] = []
 
     def get_queryset(self) -> QuerySet[PlatformAuditEvent]:
         organization = UserContext.get_organization()
@@ -129,9 +135,17 @@ _FILTER_PARAMETERS = [
     ),
 ]
 
+# drf-standardized-errors does not add these for query-parameter GET views.
+_ERRORS = {
+    400: ValidationErrorResponseSerializer,
+    403: ErrorResponse403Serializer,
+}
+# Every view reads the default ordering filter; none takes ?ordering=.
+_NO_ORDERING = OpenApiParameter("ordering", exclude=True)
+
 _EXAMPLE_EVENT = {
     "id": "3f0d6c1e-5a0b-4a39-9a7e-0d6f3c2b1a90",
-    "occurred_at": "2026-10-15T09:30:12.481Z",
+    "occurred_at": "2026-10-15T09:30:12.481000Z",
     "actor": {
         "id": 42,
         "email": "priya@acme.com",
@@ -143,8 +157,8 @@ _EXAMPLE_EVENT = {
     "action": "member.role_changed",
     "action_label": "Role changed",
     "target": {"type": "member", "id": "57", "name": "sam@acme.com"},
-    "summary": "unstract_user → unstract_admin",
-    "changes": {"before": {"role": "unstract_user"}, "after": {"role": "unstract_admin"}},
+    "summary": "user → admin",
+    "changes": {"before": {"role": "user"}, "after": {"role": "admin"}},
     "request_id": "6c1f0f2e-8d0e-4b8e-9a51-1b2f3e4d5c6a",
 }
 
@@ -161,6 +175,7 @@ class PlatformAuditEventListView(_AuditBaseView):
             OpenApiParameter(
                 "page_size", OpenApiTypes.INT, description="Default 50, max 1000."
             ),
+            _NO_ORDERING,
         ],
         responses={
             200: inline_serializer(
@@ -173,6 +188,7 @@ class PlatformAuditEventListView(_AuditBaseView):
                     "results": PlatformAuditEventSerializer(many=True),
                 },
             ),
+            **_ERRORS,
         },
         examples=[
             OpenApiExample(
@@ -202,14 +218,17 @@ class PlatformAuditEventExportView(_AuditBaseView):
     @extend_schema(
         operation_id="platform_audit_events_export",
         tags=["platform-audit"],
-        parameters=_FILTER_PARAMETERS,
+        parameters=[*_FILTER_PARAMETERS, _NO_ORDERING],
         responses={
             (200, "text/csv"): OpenApiResponse(
                 OpenApiTypes.STR,
                 description="CSV attachment; columns: " + ", ".join(CSV_COLUMNS),
             ),
+            **_ERRORS,
             413: OpenApiResponse(
-                description=f"More than {MAX_EXPORT_ROWS} rows match the filter."
+                ExportTooLargeResponseSerializer,
+                description=f"More than {MAX_EXPORT_ROWS} rows match the filter "
+                "(code export_too_large).",
             ),
         },
         description="The list filter as a CSV download, newest first.",
@@ -234,7 +253,8 @@ class PlatformAuditActionListView(_AuditBaseView):
     @extend_schema(
         operation_id="platform_audit_actions_list",
         tags=["platform-audit"],
-        responses={200: AuditActionSerializer(many=True)},
+        parameters=[_NO_ORDERING],
+        responses={200: AuditActionSerializer(many=True), 403: _ERRORS[403]},
         description="The action vocabulary: every key an event can carry.",
     )
     def get(self, request: Request) -> Response:
@@ -251,14 +271,22 @@ class PlatformAuditActorListView(_AuditBaseView):
     @extend_schema(
         operation_id="platform_audit_actors_list",
         tags=["platform-audit"],
-        responses={200: AuditActorSerializer(many=True)},
-        description="Distinct actors in the retention window, including removed "
-        f"members and deleted keys. At most {MAX_ACTORS}.",
+        parameters=[_NO_ORDERING],
+        responses={200: AuditActorSerializer(many=True), 403: _ERRORS[403]},
+        description="Actors with an event in the retention window, one per "
+        "identity (type, e-mail, key), including removed members and deleted "
+        f"keys. At most {MAX_ACTORS}, sorted by e-mail.",
     )
     def get(self, request: Request) -> Response:
+        # One row per identity (type, e-mail, key), named as on its newest event,
+        # so a renamed member or key appears once. Rows without an e-mail (the
+        # system actor) are left out: the ``actor`` filter cannot select them.
+        identity = ("actor_type", "actor_email", "actor_key_id")
         rows = (
             self.get_queryset()
-            .order_by("actor_email", "actor_key_name", "actor_type")
+            .exclude(actor_email="")
+            .order_by(*identity, "-occurred_at")
+            .distinct(*identity)
             .values(
                 "actor_id",
                 "actor_email",
@@ -267,19 +295,21 @@ class PlatformAuditActorListView(_AuditBaseView):
                 "actor_key_id",
                 "actor_key_name",
             )
-            .distinct()[:MAX_ACTORS]
         )
-        data = [
-            {
-                "id": row["actor_id"],
-                "email": row["actor_email"],
-                "name": row["actor_name"],
-                "type": row["actor_type"],
-                "key_id": row["actor_key_id"],
-                "key_name": row["actor_key_name"],
-            }
-            for row in rows
-        ]
+        data = sorted(
+            (
+                {
+                    "id": row["actor_id"],
+                    "email": row["actor_email"],
+                    "name": row["actor_name"],
+                    "type": row["actor_type"],
+                    "key_id": row["actor_key_id"],
+                    "key_name": row["actor_key_name"],
+                }
+                for row in rows[:MAX_ACTORS]
+            ),
+            key=lambda actor: (actor["email"], actor["key_name"]),
+        )
         return Response(AuditActorSerializer(data, many=True).data)
 
 

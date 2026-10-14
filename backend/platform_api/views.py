@@ -109,6 +109,7 @@ class PlatformApiKeyViewSet(viewsets.ModelViewSet):
         return Response(response_serializer.data)
 
 
+@best_effort
 def _key_fields(key: PlatformApiKey) -> dict:
     """The audited fields. Never the key value itself."""
     return {

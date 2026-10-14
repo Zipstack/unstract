@@ -237,7 +237,10 @@ def _record_role_change(
         target_type=TargetType.MEMBER,
         target_id=member_before["user_id"] if member_before else "",
         target_name=member_before["email"] if member_before else email,
-        changes={"before": {"role": old_role}, "after": {"role": new_role}},
+        changes={
+            "before": {"role": old_role} if old_role else None,
+            "after": {"role": new_role},
+        },
         summary=f"{old_role or 'unknown'} → {new_role}",
         request=request,
     )

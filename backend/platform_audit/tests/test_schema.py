@@ -30,4 +30,15 @@ class SchemaContractTests(SimpleTestCase):
         self.assertIn("retention_days", page["properties"])
         list_op = schema["paths"]["/"]["get"]
         params = {p["name"] for p in list_op["parameters"]}
-        self.assertTrue({"action", "actor", "from", "to", "search", "page", "page_size"} <= params)
+        self.assertTrue(
+            {"action", "actor", "from", "to", "search", "page", "page_size"} <= params
+        )
+        self.assertNotIn("ordering", params)
+        self.assertTrue({"200", "400", "403"} <= set(list_op["responses"]))
+        export = schema["paths"]["/export/"]["get"]["responses"]
+        self.assertTrue({"200", "400", "403", "413"} <= set(export))
+        self.assertIn("application/json", export["413"]["content"])
+        for path in ("/actions/", "/actors/"):
+            op = schema["paths"][path]["get"]
+            self.assertIn("403", op["responses"])
+            self.assertNotIn("ordering", {p["name"] for p in op.get("parameters", [])})

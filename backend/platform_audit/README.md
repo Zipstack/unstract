@@ -43,7 +43,8 @@ the caller's organisation and to the retention window.
 | `page`, `page_size` | int | List only. Default 50, max 1000. |
 
 With no `from`, the window starts at the retention cutoff; a `from` earlier
-than the cutoff does not reveal expired events. `from` must be before `to`.
+than the cutoff does not reveal expired events. `from` must not be after `to`.
+Results are always newest first; an `ordering` parameter is ignored.
 
 ### `GET platform/audit/`
 
@@ -82,7 +83,10 @@ than the cutoff does not reveal expired events. `from` must be before `to`.
 - `actor.id` is `null` once the user is deleted; `email` and `name` are copied
   onto the event and survive.
 - `changes` holds only what changed; either side may be absent (`after` only on
-  create, `before` only on delete).
+  create, `before` only on delete, and `before` when the value could not be
+  read at the time of the change).
+- `role` values are whatever the deployment's auth plugin uses (`user`/`admin`
+  in OSS, `unstract_user`/`unstract_admin` in cloud); do not hard-code them.
 - `action_label` falls back to the raw key for an action that is no longer
   registered.
 
@@ -116,9 +120,11 @@ than hard-coding keys; cloud deployments register more.
 [{"id": null, "email": "gone@acme.com", "name": "", "type": "user", "key_id": "", "key_name": ""}]
 ```
 
-Distinct actors with an event inside the retention window, including removed
-members and deleted keys, so the "Anyone" filter can still find them. At most
-1,000, sorted by e-mail.
+Actors with an event inside the retention window, including removed members
+and deleted keys, so the "Anyone" filter can still find them. One entry per
+identity (type, e-mail, key), named as on its newest event, so a renamed member
+or key appears once. Actors without an e-mail (`system`) are left out, because
+the `actor` filter cannot select them. At most 1,000, sorted by e-mail.
 
 ### Errors
 
@@ -130,7 +136,7 @@ Errors use the project's standard envelope (drf-standardized-errors):
 
 | Status | When |
 |---|---|
-| 400 | Invalid filter (unknown action, unparsable date, `from` not before `to`) |
+| 400 | Invalid filter (unknown action, unparsable date, `from` after `to`); `attr` is the parameter name |
 | 403 | Not an organisation admin, or called with a platform API key |
 | 413 | Export matches more than 10,000 rows (`code: export_too_large`) |
 
@@ -163,7 +169,9 @@ Rules for emitters:
 2. **It never raises.** A failure is logged (`logger.exception`) and the event
    is lost; the caller's request is unaffected. Code that reads a *before*
    value for an event should be wrapped with `platform_audit.recorder.best_effort`
-   so that read cannot fail the request either.
+   so that read cannot fail the request either. If it fails, pass `None` for
+   that side of `changes`: the side is left out rather than stored as `null`,
+   which would read as "the value was unset".
 3. **Never put secrets in `changes`, `summary` or `metadata`** — key values,
    tokens, passwords.
 4. **Use a registered action.** An unregistered key is logged and dropped.
@@ -233,5 +241,17 @@ which is not scheduled by this app; run it from cron if storage matters.
 Events are recorded in the OSS views where the change already succeeds. Changes
 made any other way are not recorded: identity-provider or SCIM changes, cloud
 staff and admin routes, Django admin, invitation acceptance, and cloud-only
-features (until cloud code emits them). Events are immutable: the model refuses
-update and delete outside the purge command.
+features (until cloud code emits them).
+
+Two side effects change a member's default adapter without an event: creating
+the first adapter of a type makes it that member's default, and revoking a
+share clears the default for members who lose access.
+
+Revoking an invitation makes one extra identity-provider call to resolve the
+invitee e-mail; if it fails, or the invitation is not in the first page the
+provider returns, the event names the invitation id instead.
+
+The ORM refuses to update or delete an event, but foreign-key cascades still
+apply (deleting a user nulls `actor.id`; deleting an organisation deletes its
+events), and so does the purge. Treat this as a guard against accidental
+edits, not as tamper evidence.

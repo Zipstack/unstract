@@ -8,7 +8,7 @@ from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from platform_audit.actions import get_action
-from platform_audit.models import PlatformAuditEvent
+from platform_audit.models import ActorType, PlatformAuditEvent
 
 SEARCH_MAX_LENGTH = 200
 
@@ -53,8 +53,9 @@ class AuditEventQuerySerializer(serializers.Serializer):
     """Validates the filters shared by the list and export endpoints.
 
     Build it with :meth:`from_query_params`, which reads the repeatable
-    ``action`` parameter and maps ``from``/``to`` (Python keywords) onto
-    ``from_``/``to``.
+    ``action`` parameter. ``from`` is a Python keyword, so the field is
+    declared as ``from_`` and renamed in :meth:`get_fields`; errors then
+    report ``attr: "from"``, the parameter's real name.
     """
 
     action = serializers.ListField(
@@ -67,17 +68,17 @@ class AuditEventQuerySerializer(serializers.Serializer):
         max_length=SEARCH_MAX_LENGTH, required=False, allow_blank=True
     )
 
+    def get_fields(self) -> dict[str, serializers.Field]:
+        fields = super().get_fields()
+        fields["from"] = fields.pop("from_")
+        return fields
+
     @classmethod
     def from_query_params(cls, query_params: Any) -> "AuditEventQuerySerializer":
         data: dict[str, Any] = {"action": query_params.getlist("action")}
-        for param, field in (
-            ("actor", "actor"),
-            ("from", "from_"),
-            ("to", "to"),
-            ("search", "search"),
-        ):
+        for param in ("actor", "from", "to", "search"):
             if param in query_params:
-                data[field] = query_params.get(param)
+                data[param] = query_params.get(param)
         return cls(data=data)
 
     def validate_action(self, value: list[str]) -> list[str]:
@@ -91,7 +92,7 @@ class AuditEventQuerySerializer(serializers.Serializer):
     def validate(self, attrs: dict[str, Any]) -> dict[str, Any]:
         start, end = self._window(attrs)
         if start is not None and end is not None and start >= end:
-            raise serializers.ValidationError({"from": "Must be earlier than 'to'."})
+            raise serializers.ValidationError({"from": "Must not be after 'to'."})
         attrs["start"], attrs["end"] = start, end
         return attrs
 
@@ -103,14 +104,17 @@ class AuditEventQuerySerializer(serializers.Serializer):
 
         A date ``to`` covers that whole day; a datetime ``to`` is inclusive.
         """
-        start = attrs.get("from_")
+        start = attrs.get("from")
         if isinstance(start, date) and not isinstance(start, datetime):
             start = _start_of(start)
         end = attrs.get("to")
-        if isinstance(end, datetime):
-            end = end + timedelta(microseconds=1)
-        elif isinstance(end, date):
-            end = _start_of(end + timedelta(days=1))
+        try:
+            if isinstance(end, datetime):
+                end = end + timedelta(microseconds=1)
+            elif isinstance(end, date):
+                end = _start_of(end + timedelta(days=1))
+        except OverflowError:
+            end = None  # the end of the calendar: no upper bound
         return start, end
 
     def apply(self, queryset: QuerySet[PlatformAuditEvent]) -> QuerySet:
@@ -140,7 +144,7 @@ class AuditActorSerializer(serializers.Serializer):
     id = serializers.IntegerField(allow_null=True, help_text="Null once deleted.")
     email = serializers.CharField(allow_blank=True)
     name = serializers.CharField(allow_blank=True)
-    type = serializers.ChoiceField(choices=["user", "api_key", "system"])
+    type = serializers.ChoiceField(choices=ActorType.choices)
     key_id = serializers.CharField(allow_blank=True)
     key_name = serializers.CharField(allow_blank=True)
 
@@ -210,3 +214,16 @@ class AuditActionSerializer(serializers.Serializer):
     key = serializers.CharField()
     label = serializers.CharField()
     category = serializers.CharField()
+
+
+class ClientErrorSerializer(serializers.Serializer):
+    code = serializers.CharField()
+    detail = serializers.CharField()
+    attr = serializers.CharField(allow_null=True)
+
+
+class ExportTooLargeResponseSerializer(serializers.Serializer):
+    """Schema only: the 413 body, in the project's standard error envelope."""
+
+    type = serializers.ChoiceField(choices=["client_error"])
+    errors = ClientErrorSerializer(many=True)

@@ -28,6 +28,7 @@ from typing import Any, ParamSpec, TypeVar
 
 from account_v2.models import Organization, User
 from django.db import transaction
+from django.utils import timezone
 from log_request_id import local as request_id_local
 from utils.user_context import UserContext
 
@@ -73,7 +74,8 @@ def record_platform_event(
     try:
         action = str(action)
         if get_action(action) is None:
-            logger.warning("Platform audit: unregistered action %r not recorded", action)
+            # A programming error, and it drops every event from that emitter.
+            logger.error("Platform audit: unregistered action %r not recorded", action)
             return
         organization = organization or UserContext.get_organization()
         if organization is None:
@@ -83,12 +85,13 @@ def record_platform_event(
             return
         fields = {
             "organization": organization,
+            "occurred_at": timezone.now(),
             "action": action,
             "target_type": _clip(target_type, 64),
             "target_id": _clip(target_id, 255),
             "target_name": _clip(target_name, 255),
             "summary": str(summary or ""),
-            "changes": dict(changes or {}),
+            "changes": _normalise_changes(changes, action),
             "metadata": dict(metadata or {}),
             "request_id": _clip(_request_id(request), 64),
             **_resolve_actor(request=request, actor=actor),
@@ -109,7 +112,10 @@ def best_effort(fn: Callable[P, T]) -> Callable[P, T | None]:
     @wraps(fn)
     def wrapper(*args: P.args, **kwargs: P.kwargs) -> T | None:
         try:
-            return fn(*args, **kwargs)
+            # A savepoint, so a failed query here cannot leave an outer
+            # transaction (ATOMIC_REQUESTS) aborted for the view's own writes.
+            with transaction.atomic():
+                return fn(*args, **kwargs)
         except Exception:
             logger.exception("Platform audit: %s failed", fn.__qualname__)
             return None
@@ -131,7 +137,38 @@ def _write(fields: dict[str, Any]) -> None:
         with transaction.atomic():
             PlatformAuditEvent.objects.create(**fields)
     except Exception:
-        logger.exception("Platform audit: failed to write %r", fields.get("action"))
+        # Enough to tell which change went unaudited; never changes or metadata.
+        logger.exception(
+            "Platform audit: failed to write %r (org=%s target=%s:%s actor=%s:%s "
+            "request_id=%s)",
+            fields.get("action"),
+            getattr(fields.get("organization"), "organization_id", None),
+            fields.get("target_type"),
+            fields.get("target_id"),
+            fields.get("actor_type"),
+            fields.get("actor_email"),
+            fields.get("request_id"),
+        )
+
+
+def _normalise_changes(changes: Mapping[str, Any] | None, action: str) -> dict:
+    """Keep only ``before`` and ``after``; the read API returns nothing else.
+
+    A side whose value is ``None`` is dropped: that is how a caller says the
+    value could not be read (a failed ``best_effort`` snapshot), and storing
+    ``null`` would read as "the value was unset".
+    """
+    changes = dict(changes or {})
+    extra = sorted(set(changes) - {"before", "after"})
+    if extra:
+        logger.warning(
+            "Platform audit: %r changes keys %s ignored; use before/after", action, extra
+        )
+    return {
+        side: changes[side]
+        for side in ("before", "after")
+        if changes.get(side) is not None
+    }
 
 
 def _resolve_actor(*, request: Any, actor: User | None) -> dict[str, Any]:

@@ -8,7 +8,7 @@ not scheduled; run it from cron or by hand::
 """
 
 from account_v2.models import Organization
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 from django.utils import timezone
 
@@ -34,8 +34,7 @@ class Command(BaseCommand):
 
     def handle(self, *args, dry_run: bool = False, batch_size: int = 5000, **options):
         if batch_size < 1:
-            self.stderr.write("--batch-size must be at least 1.")
-            return
+            raise CommandError("--batch-size must be at least 1.")
         now = timezone.now()
         org_ids = (
             PlatformAuditEvent.objects.values_list("organization_id", flat=True)

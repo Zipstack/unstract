@@ -30,7 +30,7 @@ class PlatformAuditEventManager(models.Manager.from_queryset(ImmutableQuerySet))
         raise PermissionError(IMMUTABLE_MESSAGE)
 
     def purge(self, queryset: models.QuerySet) -> int:
-        """Physically delete ``queryset``. Only the retention purge calls this."""
+        """Physically delete ``queryset``. Meant only for the retention purge."""
         deleted, _ = models.QuerySet.delete(queryset)
         return deleted
 
@@ -38,10 +38,16 @@ class PlatformAuditEventManager(models.Manager.from_queryset(ImmutableQuerySet))
 class PlatformAuditEvent(models.Model):
     """One admin-visible change to an organisation's platform settings.
 
-    Rows are written only through :func:`platform_audit.recorder.record_platform_event`
-    and never changed afterwards. The actor's identity is copied onto the row,
-    so an event still reads correctly after the member is removed or the key
-    deleted; ``actor`` itself is kept only as a convenience link.
+    Rows are written only through :func:`platform_audit.recorder.record_platform_event`.
+    The ORM refuses to update or delete one (``save()`` of an existing row,
+    ``delete()``, queryset ``update()``/``delete()``); foreign-key cascades
+    still apply (deleting the actor nulls ``actor``, deleting the organisation
+    deletes its events), and so does ``objects.purge()``. This is a guard
+    against accidental edits, not tamper evidence.
+
+    The actor's identity is copied onto the row, so an event still reads
+    correctly after the member is removed or the key deleted; ``actor`` itself
+    is kept only as a convenience link.
     """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

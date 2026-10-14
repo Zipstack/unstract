@@ -2,8 +2,7 @@ import uuid
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from django.db import transaction
-from django.test import SimpleTestCase
+from django.db import connection, transaction
 
 from platform_audit.actions import Action, TargetType
 from platform_audit.models import PlatformAuditEvent
@@ -67,7 +66,7 @@ class RecorderTests(AuditTestBase):
         self.assertEqual(self.only_event().organization, self.other_org)
 
     def test_unregistered_action_is_logged_not_stored(self) -> None:
-        with self.assertLogs("platform_audit.recorder", "WARNING"):
+        with self.assertLogs("platform_audit.recorder", "ERROR"):
             self._record(action="nope.unknown")
         self.assertEqual(self.events(), [])
 
@@ -111,6 +110,19 @@ class RecorderTests(AuditTestBase):
                 pass
         self.assertEqual(self.events(), [])
 
+    def test_changes_keep_only_before_and_after_and_drop_unknown_sides(self) -> None:
+        with self.assertLogs("platform_audit.recorder", "WARNING"):
+            self._record(changes={"before": None, "after": {"a": 1}, "old": 2})
+        self.assertEqual(self.only_event().changes, {"after": {"a": 1}})
+
+    def test_write_failure_log_names_the_change(self) -> None:
+        with patch.object(
+            PlatformAuditEvent.objects, "create", side_effect=RuntimeError("db down")
+        ):
+            with self.assertLogs("platform_audit.recorder", "ERROR") as logs:
+                self._record()
+        self.assertIn("org=org-a target=group:7", logs.output[0])
+
     def test_long_values_are_clipped_to_the_column(self) -> None:
         self._record(target_name="x" * 400)
         self.assertEqual(len(self.only_event().target_name), 255)
@@ -149,7 +161,7 @@ class ImmutabilityTests(AuditTestBase):
         self.assertFalse(PlatformAuditEvent.objects.exists())
 
 
-class BestEffortTests(SimpleTestCase):
+class BestEffortTests(AuditTestBase):
     def test_returns_none_and_logs_on_error(self) -> None:
         @best_effort
         def broken() -> int:
@@ -160,3 +172,18 @@ class BestEffortTests(SimpleTestCase):
 
     def test_passes_the_result_through(self) -> None:
         self.assertEqual(best_effort(lambda: 3)(), 3)
+
+
+class BestEffortSavepointTests(AuditTestBase):
+    """TestCase runs inside a transaction, like a request under ATOMIC_REQUESTS."""
+
+    def test_a_failed_query_does_not_abort_the_outer_transaction(self) -> None:
+        @best_effort
+        def broken_lookup() -> None:
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT 1 / 0")
+
+        with self.assertLogs("platform_audit.recorder", "ERROR"):
+            self.assertIsNone(broken_lookup())
+        # Without a savepoint Postgres refuses every further statement here.
+        self.assertFalse(PlatformAuditEvent.objects.exists())

@@ -97,6 +97,8 @@ class NotificationSettingsView(APIView):
             key=ConfigKey.NOTIFICATION_CLUB_INTERVAL.name,
             defaults={"value": str(new_value), "enabled": True},
         )
+        # ``before`` is None only when it could not be read: record the change
+        # without a before side rather than claim the setting was unset.
         if before != int(new_value):
             record_platform_event(
                 action=Action.PLATFORM_SETTING_CHANGED,
@@ -104,10 +106,13 @@ class NotificationSettingsView(APIView):
                 target_id="club_interval_seconds",
                 target_name="club_interval_seconds",
                 changes={
-                    "before": {"club_interval_seconds": before},
+                    "before": None
+                    if before is None
+                    else {"club_interval_seconds": before},
                     "after": {"club_interval_seconds": int(new_value)},
                 },
-                summary=f"club_interval_seconds: {before} → {int(new_value)}",
+                summary=f"club_interval_seconds: {before if before is not None else '?'}"
+                f" → {int(new_value)}",
                 request=request,
             )
         return Response({"club_interval_seconds": int(new_value)})
