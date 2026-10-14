@@ -123,7 +123,11 @@ class PageBudget:
         if self.binding == "images" and limits is not None:
             return (
                 f"{label} accepts up to {self.max_pages} page images in one "
-                f"request ({format_limit_source(limits.max_images_per_request, limits)})"
+                "request ("
+                + format_limit_source(
+                    limits.max_images_per_request, limits, with_table_version=False
+                )
+                + ")"
             )
         if self.binding == "tokens" and limits is not None:
             per_page = limits.tokens_per_image.value or 0
@@ -411,10 +415,14 @@ class ImageModePolicy:
         limits = self.page_budget.limits
         parts = [self.page_budget.describe()]
         if self.request_bytes and self.request_bytes.value and limits is not None:
-            parts.append(
-                f"{self.request_bytes.value / _MB:.0f} MB per request "
-                f"({format_limit_source(self.request_bytes, limits)})"
+            source = format_limit_source(
+                self.request_bytes, limits, with_table_version=False
             )
+            parts.append(
+                f"{self.request_bytes.value / _MB:.0f} MB per request ({source})"
+            )
+        if limits is not None and limits.table_version:
+            parts.append(f"limits table {limits.table_version}")
         return "Image mode limits: " + "; ".join(parts)
 
 
@@ -570,20 +578,32 @@ def _model_label(limits: ImageRequestLimits | None) -> str:
     return f"`{limits.model}` on {limits.provider_label}"
 
 
-def format_limit_source(limit: LimitValue, limits: ImageRequestLimits) -> str:
-    """Provenance clause for a limit: documented, unverified, or a default."""
+def format_limit_source(
+    limit: LimitValue, limits: ImageRequestLimits, *, with_table_version: bool = True
+) -> str:
+    """Provenance clause for a limit: documented, unverified, or a default.
+
+    Ends with the limits-table version (date, bundled/remote, hash) so a
+    reported error says which copy of the table produced the number.
+    """
     checked = f", checked {limit.verified_on}" if limit.verified_on else ""
     if limit.from_default:
-        return (
+        clause = (
             f"no published limit is known for this model on {limits.provider_label}, "
             "so Unstract applies a conservative default"
         )
-    if limit.confidence == "verified":
-        return f"documented by {limits.provider_label}{checked}"
-    return (
-        f"not confirmed by {limits.provider_label}'s documentation; "
-        f"Unstract's best estimate{checked}"
-    )
+    elif limit.confidence == "verified":
+        clause = f"documented by {limits.provider_label}{checked}"
+    else:
+        clause = (
+            f"not confirmed by {limits.provider_label}'s documentation; "
+            f"Unstract's best estimate{checked}"
+        )
+    if limit.layer == "override":
+        clause += "; set by this installation's limits override file"
+    if with_table_version and limits.table_version:
+        clause += f"; limits table {limits.table_version}"
+    return clause
 
 
 _SPLIT_ADVICE = (

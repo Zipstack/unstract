@@ -12,6 +12,8 @@ Public surface:
 - ``compute_page_budget`` / ``ImageModePolicy`` / ``check_page_set`` — turn
   limits into the checks the extraction and answer paths run (see
   ``policy``).
+- ``get_limits_table`` — the effective table: override file, else the copy
+  fetched from GitHub, else the bundled copy (see ``source``).
 - ``codes`` — the stable error-code strings.
 """
 
@@ -20,8 +22,7 @@ from unstract.sdk1.utils.image_limits._schema import (
     LIMITS_OVERRIDE_FILE_ENV,
     LimitsSchemaError,
     LimitsTable,
-    clear_limits_cache,
-    get_limits_table,
+    TableOrigin,
     load_limits_table,
 )
 from unstract.sdk1.utils.image_limits.policy import (
@@ -44,10 +45,21 @@ from unstract.sdk1.utils.image_limits.resolve import (
     resolve_image_limits,
     resolve_image_limits_for_adapter,
 )
+from unstract.sdk1.utils.image_limits.source import (
+    DEFAULT_LIMITS_URL,
+    LIMITS_REFRESH_ENV,
+    LIMITS_URL_ENV,
+    clear_limits_cache,
+    get_limits_table,
+)
 
 __all__ = [
     "BUNDLED_LIMITS_PATH",
+    "DEFAULT_LIMITS_URL",
     "LIMITS_OVERRIDE_FILE_ENV",
+    "LIMITS_REFRESH_ENV",
+    "LIMITS_URL_ENV",
+    "TableOrigin",
     "ImageModePolicy",
     "ImageRequestLimits",
     "LimitValue",
