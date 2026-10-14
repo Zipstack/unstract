@@ -22,6 +22,13 @@ services:
       # Flips on the Agent-KV calc e2e lane (Task 12); unset/empty (the
       # default) keeps it off so other lanes are unaffected.
       - AGENT_KV_CALCULATIONS_ENABLED=${AGENT_KV_CALCULATIONS_ENABLED:-}
+      # The webhook SSRF waiver, which the backend needs as well as
+      # worker-pg-ide-callback below: the https-and-public-host rule is
+      # applied at SUBMIT as well as at delivery, so without it here the
+      # webhook e2e scenario is refused with a 400 before a job exists and
+      # the worker-side waiver never gets a chance to matter. Both services
+      # read the same variable; unset (the default) keeps both guards on.
+      - AGENT_KV_WEBHOOK_INSECURE_ALLOW_HTTP_PRIVATE=${AGENT_KV_WEBHOOK_INSECURE_ALLOW_HTTP_PRIVATE:-}
 
   platform-service:
     image: unstract/platform-service:${UNSTRACT_TEST_VERSION:-latest}
@@ -83,14 +90,6 @@ services:
   # host) so a receiver on the compose host is reachable. Empty/unset (the
   # default) keeps the guards mandatory; the gated webhook scenario skips.
   worker-pg-ide-callback:
-    environment:
-      - AGENT_KV_WEBHOOK_INSECURE_ALLOW_HTTP_PRIVATE=${AGENT_KV_WEBHOOK_INSECURE_ALLOW_HTTP_PRIVATE:-}
-
-  # The BACKEND needs the same waiver, because the https-and-public-host rule
-  # is now applied at SUBMIT as well as at delivery. Without it here the e2e
-  # webhook scenario is refused with a 400 before a job is ever created, and
-  # the worker-side waiver above never gets a chance to matter.
-  backend:
     environment:
       - AGENT_KV_WEBHOOK_INSECURE_ALLOW_HTTP_PRIVATE=${AGENT_KV_WEBHOOK_INSECURE_ALLOW_HTTP_PRIVATE:-}
 
