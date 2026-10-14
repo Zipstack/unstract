@@ -23,8 +23,9 @@ class SearchRankingTests(CoOwnerOrgTestMixin, TestCase):
     def test_name_prefix_before_name_substring(self) -> None:
         for type_key, build in OSS_BUILDERS.items():
             with self.subTest(type=type_key):
-                inner = build(self.org, self.owner, f"old-kappa-{type_key}")
+                # Best tier created first: recency alone would order it last.
                 prefix = build(self.org, self.owner, f"kappa-{type_key}")
+                inner = build(self.org, self.owner, f"old-kappa-{type_key}")
                 results = self._results(type_key, "kappa")
                 self.assertEqual(
                     [r["id"] for r in results], [str(prefix.pk), str(inner.pk)]
@@ -37,13 +38,14 @@ class SearchRankingTests(CoOwnerOrgTestMixin, TestCase):
         for type_key in sorted(DESCRIBED_TYPES):
             build = OSS_BUILDERS[type_key]
             with self.subTest(type=type_key):
-                desc_inner = build(
-                    self.org, self.owner, f"d2-{type_key}", "about lambda things"
-                )
+                # Best tier created first: recency alone would reverse it.
+                name_inner = build(self.org, self.owner, f"x-lambda-{type_key}")
                 desc_prefix = build(
                     self.org, self.owner, f"d1-{type_key}", "lambda first"
                 )
-                name_inner = build(self.org, self.owner, f"x-lambda-{type_key}")
+                desc_inner = build(
+                    self.org, self.owner, f"d2-{type_key}", "about lambda things"
+                )
                 results = self._results(type_key, "LAMBDA")
                 self.assertEqual(
                     [r["id"] for r in results],
@@ -80,8 +82,10 @@ class SearchRankingTests(CoOwnerOrgTestMixin, TestCase):
     def test_wildcards_are_literal(self) -> None:
         build = OSS_BUILDERS["workflow"]
         build(self.org, self.owner, "plain-name")
+        # Matches "_100" only if "_" were a single-character wildcard.
+        build(self.org, self.owner, "rateX100")
         literal = build(self.org, self.owner, "rate_100%")
-        response = search(self.admin, q="_100%", types="workflow")
+        response = search(self.admin, q="_100", types="workflow")
         self.assertEqual(
             [r["id"] for r in response.data["groups"][0]["results"]], [str(literal.pk)]
         )

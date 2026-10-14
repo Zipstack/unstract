@@ -9,7 +9,7 @@ see :mod:`global_search.ranking`.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 from django.db.models import Model, QuerySet
@@ -23,8 +23,9 @@ class SearchHit:
     id: str
     name: str
     match: MatchTier
+    # Required: every route needs at least the id the frontend opens.
+    route_params: dict[str, str]
     context: str | None = None
-    route_params: dict[str, str] = field(default_factory=dict)
 
 
 class SearchProvider(ABC):
@@ -72,7 +73,7 @@ class ModelSearchProvider(SearchProvider):
 
     @abstractmethod
     def context(self, obj: Model) -> str | None:
-        """One display line: owner or parent."""
+        """One display-only line, or ``None``."""
 
     def route_params(self, obj: Model) -> dict[str, str]:
         return {"id": str(obj.pk)}

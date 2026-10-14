@@ -8,12 +8,16 @@ its app is installed and OSS never names a cloud type.
 from __future__ import annotations
 
 import logging
+import re
 
 from global_search.providers import SearchProvider
 
 logger = logging.getLogger(__name__)
 
 _providers: dict[str, SearchProvider] = {}
+
+# Same pattern the published JSON Schema requires of ``type``.
+_TYPE_KEY = re.compile(r"^[a-z][a-z0-9_]*$")
 
 
 def register_provider(provider: SearchProvider) -> None:
@@ -22,6 +26,8 @@ def register_provider(provider: SearchProvider) -> None:
     Re-registering the same class is a no-op, so a repeated ``ready()`` is
     harmless; a different class claiming a taken key is a wiring bug.
     """
+    if not _TYPE_KEY.fullmatch(provider.type_key):
+        raise ValueError(f"Invalid search type key '{provider.type_key}'")
     existing = _providers.get(provider.type_key)
     if existing is not None:
         if type(existing) is type(provider):

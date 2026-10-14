@@ -1,7 +1,7 @@
-"""Request validation and the response envelope.
+"""Request validation, and the response envelope for drf-spectacular.
 
-The response serializers are the contract (see README.md); they exist for
-drf-spectacular and for the shape test, while the view builds plain dicts.
+The view builds plain dicts; the tested contract is
+``contract/search-response.schema.json``.
 """
 
 from rest_framework import serializers
@@ -51,9 +51,9 @@ class SearchRouteSerializer(serializers.Serializer):
 class SearchResultSerializer(serializers.Serializer):
     type = serializers.CharField()
     id = serializers.CharField()
-    name = serializers.CharField()
+    name = serializers.CharField(allow_blank=True)
     context = serializers.CharField(
-        allow_null=True, help_text="One display line: owner or parent."
+        allow_null=True, help_text="One display-only line; see README for each type."
     )
     match = serializers.ChoiceField(choices=[tier.label for tier in MatchTier])
     route = SearchRouteSerializer()

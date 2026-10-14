@@ -65,6 +65,21 @@ def test_groups_in_rail_order_with_empty_groups_omitted(user, providers):
     assert beta["results"][0]["route"] == {"key": "beta.detail", "params": {"id": "alpha one"}}
 
 
+def test_a_failing_provider_drops_only_its_own_group(user, providers, caplog):
+    class Broken(FakeProvider):
+        def search(self, user, query, limit):
+            raise RuntimeError("boom")
+
+    with patch(
+        "global_search.views.get_providers",
+        return_value=[providers[1], Broken("broken", 15, []), providers[0]],
+    ):
+        response = search(user, q="alpha")
+    assert response.status_code == 200
+    assert [g["type"] for g in response.data["groups"]] == ["alpha", "beta"]
+    assert "Global search provider 'broken' failed" in caplog.text
+
+
 def test_limit_and_has_more(user, providers):
     beta = search(user, q="alpha", types="beta", limit=2).data["groups"][0]
     assert len(beta["results"]) == 2
@@ -121,6 +136,12 @@ class TestRegistry:
         finally:
             unregister_provider("zz_a")
             unregister_provider("zz_b")
+
+    @pytest.mark.parametrize("bad_key", ["agenticProject", "1abc", "a-b", "", "a.b"])
+    def test_type_key_must_match_the_schema_pattern(self, bad_key):
+        with pytest.raises(ValueError):
+            register_provider(FakeProvider(bad_key, 1, []))
+        assert bad_key not in [p.type_key for p in get_providers()]
 
     def test_conflicting_class_for_a_key_raises(self):
         class Other(FakeProvider):

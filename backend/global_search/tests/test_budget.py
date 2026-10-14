@@ -1,9 +1,10 @@
 """Response-time budget on a large organisation.
 
 The contract budget is p95 <= 300 ms server time for all types at limit=5.
-CI runners are shared, so this asserts the structural guarantee strictly
-(a fixed number of SQL queries per type, independent of result count) and wall-clock only against
-a generous ceiling. The measured p95 is printed for the record.
+The merge gate is structural: a bounded number of SQL queries per type, and
+the same number whatever the result count. Wall-clock time depends on the
+runner, so the p95 is always printed but asserted only on request
+(``GLOBAL_SEARCH_ASSERT_P95=1``, against ``GLOBAL_SEARCH_CEILING_MS``).
 
 The fixture size stands in for the largest current organisation until real
 counts are available: 2,000 rows per type, 200 users, 20 groups.
@@ -43,8 +44,8 @@ ROWS_PER_TYPE = 2_000
 USERS = 200
 GROUPS = 20
 BUDGET_MS = 300
-# Shared CI runners are noisy; the strict guarantee is the query bound.
-CEILING_MS = int(os.environ.get("GLOBAL_SEARCH_CEILING_MS", "1500"))
+ASSERT_P95 = os.environ.get("GLOBAL_SEARCH_ASSERT_P95") == "1"
+CEILING_MS = int(os.environ.get("GLOBAL_SEARCH_CEILING_MS", str(BUDGET_MS)))
 # Each type costs one ranked search query plus the organisation point
 # lookups the existing ``for_user()`` makes (the org-scoped manager, and the
 # membership subquery on the non-admin path). Anything per result -- an
@@ -182,17 +183,30 @@ class SearchBudgetTests(TestCase):
         patcher.start()
         self.addCleanup(patcher.stop)
 
-    def _assert_bounded(self, user: User) -> None:
-        search(user, q="warm", types=OSS_TYPES)  # content-type cache warm-up
+    def _queries(self, user: User, limit: int) -> list[str]:
+        """SQL issued for one search, minus the per-provider savepoints the
+        view opens inside a transaction (TestCase always has one)."""
         with CaptureQueriesContext(connection) as ctx:
-            response = search(user, q="inv", types=OSS_TYPES)
+            response = search(user, q="inv", types=OSS_TYPES, limit=limit)
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.data["groups"])
+        return [
+            q["sql"]
+            for q in ctx.captured_queries
+            if not q["sql"].startswith(("SAVEPOINT", "RELEASE SAVEPOINT"))
+        ]
+
+    def _assert_bounded(self, user: User) -> None:
+        search(user, q="warm", types=OSS_TYPES)  # content-type cache warm-up
+        few = self._queries(user, limit=1)
+        many = self._queries(user, limit=20)
         self.assertLessEqual(
-            len(ctx.captured_queries),
+            len(many),
             QUERIES_PER_TYPE * len(OSS_PROVIDERS) + FIXED_OVERHEAD_QUERIES,
-            "\n".join(q["sql"][:200] for q in ctx.captured_queries),
+            "\n".join(sql[:200] for sql in many),
         )
+        # An N+1 shows up as more queries for more results.
+        self.assertEqual(len(many), len(few))
 
     def _p95_ms(self, user: User) -> float:
         timings = []
@@ -208,9 +222,10 @@ class SearchBudgetTests(TestCase):
             with self.subTest(user=user.email):
                 self._assert_bounded(user)
 
-    def test_p95_within_ceiling(self) -> None:
+    def test_p95_is_measured(self) -> None:
         for user in (self.member, self.admin):
             with self.subTest(user=user.email):
                 p95 = self._p95_ms(user)
                 print(f"[global_search budget] {user.email} p95={p95:.1f}ms (budget {BUDGET_MS}ms)")
-                self.assertLessEqual(p95, CEILING_MS)
+                if ASSERT_P95:
+                    self.assertLessEqual(p95, CEILING_MS)
