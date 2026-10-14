@@ -150,12 +150,11 @@ def _write(fields: dict[str, Any]) -> None:
     except Exception:
         # Enough to tell which change went unaudited; never changes or metadata.
         logger.exception(
-            "Platform audit: failed to write %r (org=%s target=%s:%s actor=%s:%s "
+            "Platform audit: failed to write %r (org=%s target_type=%s actor=%s:%s "
             "key=%s request_id=%s)",
             fields.get("action"),
             getattr(fields.get("organization"), "organization_id", None),
             fields.get("target_type"),
-            fields.get("target_id"),
             fields.get("actor_type"),
             getattr(fields.get("actor"), "pk", None),
             fields.get("actor_key_id"),
@@ -240,7 +239,10 @@ def record_key_update(
     ``key.enabled``/``key.disabled``, so filtering by those actions finds it.
     If the request set any other field, ``key.changed`` records the current
     values of every audited field except ``is_active`` (a snapshot, not a
-    diff). With no ``after`` there is nothing to describe.
+    diff). With no ``after`` there is nothing to describe. Because the gate is
+    what the request sent, a field the server changes on its own (a global
+    key's ``api_deployments`` cleared for an allow-all key) goes unrecorded on
+    a flip-only request.
     """
     from platform_audit.actions import Action
 

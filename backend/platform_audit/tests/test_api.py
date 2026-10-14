@@ -157,6 +157,14 @@ class AuditReadApiTests(AuditTestBase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(self._ids(response), [str(self.rotate.id)])
 
+    def test_a_repeated_bound_uses_its_last_non_blank_value(self) -> None:
+        group_day = self.group.occurred_at.date().isoformat()
+        rotate_day = self.rotate.occurred_at.date().isoformat()
+        response = self._get(
+            LIST, {"from": [group_day, rotate_day, ""], "to": [rotate_day]}
+        )
+        self.assertEqual(self._ids(response), [str(self.rotate.id)])
+
     def test_a_trailing_blank_repeat_keeps_the_real_bound(self) -> None:
         day = self.rotate.occurred_at.date().isoformat()
         response = self._get(LIST, {"from": [day, ""], "to": [day, " "]})

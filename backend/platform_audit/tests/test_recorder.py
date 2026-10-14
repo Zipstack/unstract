@@ -121,7 +121,7 @@ class RecorderTests(AuditTestBase):
         ):
             with self.assertLogs("platform_audit.recorder", "ERROR") as logs:
                 self._record()
-        self.assertIn("org=org-a target=group:7", logs.output[0])
+        self.assertIn("org=org-a target_type=group", logs.output[0])
         self.assertIn(f"actor=user:{self.admin.pk}", logs.output[0])
         self.assertNotIn("admin@example.com", logs.output[0])
 

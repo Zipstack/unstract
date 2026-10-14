@@ -87,7 +87,7 @@ Results are always newest first; an `ordering` parameter is ignored.
   read, `before` is absent and the summary ends with
   `(previous value unavailable)`; `after`, when present, is a snapshot of the
   current values, not a diff. A `member.removed` whose member could not be
-  read has an empty `target.id`, no `changes`, and the summary
+  read has an empty `target.id`, empty `changes` (`{}`), and the summary
   `membership not confirmed (previous value unavailable)`.
 - `role` values are whatever the deployment's auth plugin uses (`user`/`admin`
   in OSS, `unstract_user`/`unstract_admin` in cloud); do not hard-code them.
@@ -140,7 +140,7 @@ Errors use the project's standard envelope (drf-standardized-errors):
 
 | Status | When |
 |---|---|
-| 400 | Invalid filter (unknown action, unparsable date, `from` after `to`); `attr` is the parameter name (`action` for an unknown action), or `action.<n>` when one `action` value is over 64 characters (`<n>` counts non-blank values). Blank filter values are ignored; for a repeated parameter the last non-blank value wins |
+| 400 | Invalid filter (unknown action, unparsable date, `from` after `to`); `attr` is the parameter name (`action` for an unknown action), or `action.<n>` when one `action` value is over 64 characters (`<n>` counts non-blank values). Blank filter values are ignored; if `actor`, `from`, `to` or `search` is repeated, its last non-blank value wins |
 | 403 | Not an organisation admin, or called with a platform API key |
 | 404 | List only: `page` is out of range or not a number (`code: not_found`) |
 | 413 | Export matches more than 10,000 rows (`code: export_too_large`) |
