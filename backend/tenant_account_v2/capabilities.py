@@ -91,7 +91,8 @@ SPECS: tuple[CapabilitySpec, ...] = (
     CapabilitySpec(
         Capability.MANAGE_API_KEYS,
         "Manage API keys",
-        "Create and rotate platform keys and global deployment keys.",
+        "Create and rotate platform keys and global deployment keys "
+        "(not per-deployment keys, which their owners manage).",
         "restrict_api_key_management",
         enforced=False,
     ),
@@ -133,9 +134,13 @@ def is_allowed(user: Any, organization: Organization | None, key: Capability) ->
     It says only that the setting does not block them: object-level rules
     (for example, deleting needs ownership) still apply on top.
     """
+    spec = SPECS_BY_KEY[key]
+    if not spec.enforced:
+        # Nothing enforces it yet: its endpoints are admin-only today and
+        # refuse service accounts, which the admin check also does.
+        return OrganizationMemberService.is_user_organization_admin(user)
     if getattr(user, "is_service_account", False) or organization is None:
         return True
-    spec = SPECS_BY_KEY[key]
     if setting_of(organization, spec) == CapabilitySetting.ANY_MEMBER:
         return True
     return OrganizationMemberService.is_user_organization_admin(user)

@@ -66,7 +66,8 @@ class Organization(models.Model):
         default=True,
         db_comment=(
             "Capability: when True, only organization admins may create and "
-            "rotate API keys. Default True is today's admin-only behaviour."
+            "rotate platform and global deployment keys. Default True is "
+            "today's admin-only behaviour."
         ),
     )
     restrict_member_management = models.BooleanField(

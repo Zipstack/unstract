@@ -954,6 +954,7 @@ SPECTACULAR_SETTINGS = {
     "ENUM_NAME_OVERRIDES": {
         "ErrorType": "api_v2.openapi_schema.ERROR_TYPES",
         "ApiKeyPermission": "platform_api.models.ApiKeyPermission.choices",
+        "CapabilitySetting": "tenant_account_v2.capabilities.CapabilitySetting",
     },
     # Group descriptions generated clients show in their help; without this
     # the spec has no root `tags` array for the text to live in.

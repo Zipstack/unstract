@@ -7,6 +7,7 @@ from account_v2.models import Organization
 from drf_spectacular.utils import extend_schema
 from drf_standardized_errors.openapi_serializers import (
     ErrorResponse403Serializer,
+    ErrorResponse404Serializer,
     ValidationErrorResponseSerializer,
 )
 from platform_api.permissions import IsOrganizationAdmin
@@ -14,7 +15,7 @@ from platform_audit.actions import Action, TargetType
 from platform_audit.recorder import best_effort, record_platform_event
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
-from rest_framework.exceptions import PermissionDenied
+from rest_framework.exceptions import NotFound, PermissionDenied
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
@@ -192,7 +193,11 @@ def _capabilities_payload(request: Request, organization: Organization) -> dict:
     methods=["GET"],
     operation_id="organization_capabilities_retrieve",
     tags=["organization-capabilities"],
-    responses={200: CapabilitiesResponseSerializer, 403: ErrorResponse403Serializer},
+    responses={
+        200: CapabilitiesResponseSerializer,
+        403: ErrorResponse403Serializer,
+        404: ErrorResponse404Serializer,
+    },
     description="Every capability, its setting, and whether it lets the caller "
     "use it. Any member may read it.",
 )
@@ -205,6 +210,7 @@ def _capabilities_payload(request: Request, organization: Organization) -> dict:
         200: CapabilitiesResponseSerializer,
         400: ValidationErrorResponseSerializer,
         403: ErrorResponse403Serializer,
+        404: ErrorResponse404Serializer,
     },
     description="Set any subset of capabilities. Organisation admins only. "
     "Every key and value is validated before anything is saved.",
@@ -215,10 +221,7 @@ def organization_capabilities(request: Request) -> Response:
     """Read capability settings (any member) or change them (admins only)."""
     organization = UserContext.get_organization()
     if not organization:
-        return Response(
-            status=status.HTTP_404_NOT_FOUND,
-            data={"message": "Org Not Found"},
-        )
+        raise NotFound("Organization not found.")
     if request.method == "PATCH":
         if not IsOrganizationAdmin().has_permission(request, None):
             raise PermissionDenied(

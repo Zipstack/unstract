@@ -8,12 +8,15 @@ class Migration(migrations.Migration):
         ("account_v2", "0007_organization_restrict_connector_creation"),
     ]
 
+    # Django 4.2 drops a column's database default after backfilling it. Keep
+    # one, so an older image still running during a rollout (or after an
+    # image-only rollback) can insert organizations without these columns.
     operations = [
         migrations.AddField(
             model_name="organization",
             name="restrict_api_key_management",
             field=models.BooleanField(
-                db_comment="Capability: when True, only organization admins may create and rotate API keys. Default True is today's admin-only behaviour.",
+                db_comment="Capability: when True, only organization admins may create and rotate platform and global deployment keys. Default True is today's admin-only behaviour.",
                 default=True,
             ),
         ),
@@ -48,5 +51,15 @@ class Migration(migrations.Migration):
                 db_comment="Capability: when True, only organization admins may delete workflows, API deployments and pipelines. Default False keeps today's owner-or-admin rule.",
                 default=False,
             ),
+        ),
+        migrations.RunSQL(
+            sql=[
+                "ALTER TABLE organization ALTER COLUMN restrict_other_adapter_creation SET DEFAULT false",
+                "ALTER TABLE organization ALTER COLUMN restrict_api_key_management SET DEFAULT true",
+                "ALTER TABLE organization ALTER COLUMN restrict_member_management SET DEFAULT true",
+                "ALTER TABLE organization ALTER COLUMN restrict_platform_defaults SET DEFAULT true",
+                "ALTER TABLE organization ALTER COLUMN restrict_resource_deletion SET DEFAULT false",
+            ],
+            reverse_sql=migrations.RunSQL.noop,
         ),
     ]

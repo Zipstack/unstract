@@ -523,6 +523,11 @@ class AdapterInstanceViewSet(
 
         # Get the adapter instance for update
         adapter = self.get_object()
+        # Changing an adapter's type amounts to creating one of the new type,
+        # so it needs the same capability as creating it would.
+        new_type = request.data.get(AdapterKeys.ADAPTER_TYPE)
+        if new_type and new_type != adapter.adapter_type:
+            self._enforce_adapter_creation_capability(request, new_type)
 
         if use_platform_unstract_key:
             logger.error("Processing adapter with platform key")

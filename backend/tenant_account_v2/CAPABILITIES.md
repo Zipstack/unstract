@@ -37,13 +37,16 @@ Always all seven, in this order:
 | `create_llm_adapters` | `any_member` | creating an LLM adapter |
 | `create_connectors` | `any_member` | creating a connector |
 | `create_other_adapters` | `any_member` | creating any non-LLM adapter (embedding, vector DB, text extractor, OCR) |
-| `manage_api_keys` | `admins_only` | creating and rotating API keys — **not yet enforced, see below** |
+| `manage_api_keys` | `admins_only` | creating and rotating platform keys and global deployment keys (not per-deployment keys, which their owners manage) — **not yet enforced, see below** |
 | `manage_members` | `admins_only` | inviting members and changing roles — **not yet enforced** |
 | `change_platform_defaults` | `admins_only` | organisation-wide platform settings — **not yet enforced** |
 | `delete_workflows_and_deployments` | `any_member` | deleting a workflow, API deployment or pipeline |
 
 `allowed_for_me` means *the setting does not block you*. It is always true for
-admins and service accounts. Object rules still apply on top: with
+admins. For service accounts it is true for the enforced capabilities and false
+for the three not yet enforced, whose endpoints refuse service accounts today.
+Changing an adapter's type counts as creating one of the new type. Object
+rules still apply on top: with
 `any_member`, deleting still needs the caller to own (or co-own) the resource,
 exactly as before; with `admins_only`, owners who are not admins are refused.
 
@@ -61,6 +64,7 @@ standard envelope (`{type, errors[{code, detail, attr}]}`):
 |---|---|
 | 400 | unknown key (`attr` = the key), bad value, empty body, or `any_member` for a capability that is not enforced yet |
 | 403 | not an organisation admin, or a service account |
+| 404 | no organisation in the request context |
 
 `manage_api_keys`, `manage_members` and `change_platform_defaults` accept only
 `admins_only` until their enforcement lands (PR-2 of UN-4399, which waits on
@@ -79,7 +83,8 @@ admins. …").
 
 Each capability is a `restrict_*` boolean on `Organization` (True = admins
 only). `restrict_llm_adapter_creation` and `restrict_connector_creation` are the
-storage for the first two, so `organization/settings` (unchanged) and this
+storage for the first two, so `organization/settings` (its request and
+response unchanged; its audit events are now `capability.changed`) and this
 endpoint always agree.
 
 ## Audit
@@ -104,6 +109,7 @@ interface Capability {
   allowed_for_me: boolean;
 }
 interface CapabilitiesResponse { capabilities: Capability[] }
+// At least one key; an empty object is a 400.
 type CapabilitiesPatchRequest = Partial<Record<CapabilityKey, CapabilitySetting>>;
 ```
 
