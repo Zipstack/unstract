@@ -225,7 +225,7 @@ The request is **extractor-scoped**: a per-extractor schema and its knobs live i
 | `page_start`, `page_end` | no | 1-based inclusive range. **Job-level, not per-extractor**: the range drives the shared OCR pass and the page cap, so it cannot differ between extractors reading the same document. |
 | `timeout` | no | Omitted or `0` = pure async (immediate 202). `1–300`: the view polls the job row up to the deadline and returns the result inline if the job completes, else 202 with the job id. |
 | `tags`, `custom_data` | no | Echoed through. |
-| `webhook_url` | no | Terminal-state POST `{job_id, status}` only — no result payload. |
+| `webhook_url` | no | Terminal-state POST `{job_id, status}` only — no result payload. **https, public host**; anything the delivery guard would refuse is a 400 at submit (§8). |
 
 **Each `extractors` entry:**
 
@@ -900,10 +900,14 @@ own module docstring says so:
   second) slips through this gap. The module's own docstring names this as a known,
   accepted risk. **Fast-follow, not shipped:** IP-pinning the validated address into
   the actual connection, so the two resolutions can never disagree.
-- **Scheme: https-only**, in this feature's actual usage. `send_webhook` exposes a
-  generic `allow_http` escape hatch (for explicitly configured dev environments
-  elsewhere), but the Agent-KV caller (`_maybe_webhook`) never passes it — every
-  Agent-KV webhook is https-only in practice.
+- **Scheme: https-only**, and now refused at SUBMIT rather than only at delivery.
+  `send_webhook` exposes a generic `allow_http` escape hatch (for explicitly
+  configured dev environments elsewhere), but the Agent-KV caller
+  (`_maybe_webhook`) never passes it, so the sink allows https to public hosts
+  only. `SubmitSerializer.validate_webhook_url` applies the same rule up front
+  with `resolve=False` — a URL the sink could never dial is a 400 on the submit
+  instead of a 202 followed by silence. DNS stays off the request thread, so a
+  hostname that resolves inward is still caught at the sink rather than here.
 - **No redirects** (`allow_redirects=False`).
 - **Fixed, minimal payload** (`{job_id, status}`, plus `result_available` on the
   one follow-up described above — never result content) and the **response body is

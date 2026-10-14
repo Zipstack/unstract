@@ -8,6 +8,7 @@ from rest_framework import serializers
 
 from agent_kv.constants import EXTRACTOR_ROUTES, TABLE_EXTRACTOR_NAME, V1_EXTRACTOR_NAME
 from unstract.agent_kv_schema import SchemaError, compile_schema
+from unstract.core.network.ssrf import webhook_url_refusal
 from unstract.sdk1.constants import AdapterTypes
 
 # Images are deliberately ABSENT, and that is a cross-repo contract, not an
@@ -366,6 +367,33 @@ class SubmitSerializer(serializers.Serializer):
     webhook_url = serializers.URLField(
         required=False, allow_blank=True, default="", max_length=1024
     )
+
+    def validate_webhook_url(self, value):
+        """Refuse at submit what the sink will refuse at delivery.
+
+        `URLField` alone accepts `http://`, `localhost` and private address
+        literals, none of which this API will ever dial: `send_webhook` is
+        called without `allow_http`, so the sink allows https to public hosts
+        only. The caller therefore got a 202 and a webhook that never arrived,
+        with nothing in the response contradicting the "https-only" promise in
+        the docs -- and on the cancel path `agent_kv_cancelled` treats the
+        refusal as a delivery failure and burns its whole retry budget on a
+        URL that cannot work.
+
+        `resolve=False`, matching `notification_v2.serializers`: DNS has no
+        timeout and this runs on the request thread, so a hostname pointing
+        inward is accepted here and refused at the sink, which does resolve.
+        The syntactic checks -- scheme, credentials in the URL, parser
+        disagreement, address literals -- all still run.
+        """
+        if not value:
+            return value
+        reason = webhook_url_refusal(value, allowed_schemes=("https",), resolve=False)
+        if reason is not None:
+            raise serializers.ValidationError(
+                "webhook_url must be an https URL on a public host " f"({reason})"
+            )
+        return value
 
     #: Measured page count of the uploaded document. None for Excel, which has
     #: no pre-OCR page concept. This is what metering and the status document

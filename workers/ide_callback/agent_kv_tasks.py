@@ -18,6 +18,11 @@ from typing import Any
 from queue_backend import worker_task
 from shared.utils.webhook_notify import send_webhook
 
+from unstract.core.network.ssrf import (
+    is_retryable_refusal,
+    webhook_url_refusal,
+)
+
 logger = logging.getLogger(__name__)
 
 _UNKNOWN = "Executor failed without an error message"
@@ -257,11 +262,29 @@ def agent_kv_cancelled(
         logger.exception("agent_kv_cancelled webhook failed: job_id=%s", job_id)
         raise
     if not delivered:
-        # `send_webhook` returns False for a non-2xx response or a connection
-        # failure. Returning success here acknowledged the queue message, so
-        # the caller simply never received the terminal notification this task
-        # exists to deliver -- and nothing retried or recorded it. Raise so the
-        # retry budget applies, exactly as a transport exception would.
+        # `send_webhook` returns False for THREE different things: a non-2xx
+        # response, a connection failure, and a URL its SSRF guard refuses.
+        # Only the first two are worth retrying.
+        #
+        # Retrying a refused URL cannot ever succeed -- the reason is a
+        # property of the URL, not of the network -- so it burned the full
+        # retry budget (~20 attempts) and ended in a poison drop, for a
+        # caller who simply gave an `http://` or private-host webhook. Submit
+        # now refuses those up front, but a key created before that, or a
+        # resolver that starts answering differently, can still reach here.
+        reason = webhook_url_refusal(url, allowed_schemes=("https",))
+        if reason is not None and not is_retryable_refusal(reason):
+            # Logged at ERROR, not swallowed quietly: the caller still did not
+            # get their notification, and that is worth seeing. But the queue
+            # message is acknowledged, because nothing about repeating this
+            # will change the outcome.
+            logger.error(
+                "agent_kv_cancelled: webhook_url for job %s is permanently "
+                "undeliverable (%s); not retrying",
+                job_id,
+                reason,
+            )
+            return {"job_id": job_id, "status": "cancelled", "webhook_skipped": reason}
         logger.error(
             "agent_kv_cancelled: webhook not delivered for job %s (retry %s of %s)",
             job_id,

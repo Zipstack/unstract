@@ -605,3 +605,60 @@ def test_neither_serializer_still_carries_a_compiled_attribute():
             f"{cls.__name__}.compiled was dead: `dispatch_job` sends the raw "
             "keys dict, and the compiled form cannot cross the queue anyway"
         )
+
+
+# ---------------------------------------------------------------------------
+# webhook_url: refuse at submit what the sink refuses at delivery.
+# ---------------------------------------------------------------------------
+#
+# `URLField` alone accepts `http://`, `localhost` and private literals, and
+# `send_webhook` is called without `allow_http`, so the sink allows https to
+# public hosts only. The caller got a 202 and a webhook that never arrived —
+# and on the cancel path the refusal looked like a delivery failure, so
+# `agent_kv_cancelled` retried a URL that could never work until it poisoned.
+# Reported by @athul-rs on #2317.
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://example.com/hook",  # scheme the sink will not dial
+        "https://localhost/hook",
+        "https://127.0.0.1/hook",
+        "https://10.0.0.5/hook",
+        "https://user:pw@example.com/hook",  # credentials in the URL
+    ],
+)
+def test_a_webhook_url_the_sink_would_refuse_is_rejected_at_submit(url):
+    s = SubmitSerializer(data=_data(webhook_url=url))
+
+    assert not s.is_valid()
+    assert "webhook_url" in s.errors
+
+
+@pytest.mark.parametrize("url", ["https://example.com/hook", ""])
+def test_a_deliverable_webhook_url_is_accepted(url):
+    """Including the empty string: the field is optional and blank means
+    "do not notify", which must not become a validation error.
+    """
+    s = SubmitSerializer(data=_data(webhook_url=url))
+
+    assert s.is_valid(), s.errors
+
+
+def test_the_submit_check_matches_what_the_sink_allows():
+    """Guards the pair. The sink calls `send_webhook` with no `allow_http`, so
+    it permits https only; if this side ever widened to http the caller would
+    be back to a 202 and silence.
+    """
+    import inspect
+
+    from agent_kv import execution_serializers
+
+    source = inspect.getsource(
+        execution_serializers.SubmitSerializer.validate_webhook_url
+    )
+
+    assert 'allowed_schemes=("https",)' in source
+    # DNS stays off the request thread; `getaddrinfo` honours no timeout.
+    assert "resolve=False" in source
