@@ -236,8 +236,10 @@ Per-deployment API keys (`api_v2`) are not recorded.
 `PLATFORM_AUDIT_RETENTION_DAYS` (env, default **90**) is the default; an
 organisation can override it with the `PLATFORM_AUDIT_RETENTION_DAYS`
 configuration key (1–3650). An env value outside 1–3650 is treated as 3650
-(fail closed). An override outside the range is ignored in favour of the env
-default. Every read hides events older than the cutoff.
+(fail closed). Reads ignore an override outside the range in favour of the env
+default; the purge instead skips that organisation and exits non-zero, as it
+does when it cannot read the override. Every read hides events older than the
+cutoff.
 Rows are physically deleted by
 
 ```
