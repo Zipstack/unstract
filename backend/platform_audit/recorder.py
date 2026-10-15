@@ -28,6 +28,7 @@ Call it after the change has succeeded, never before::
 
 import logging
 import os
+import sysconfig
 import traceback
 from collections.abc import Callable, Mapping
 from functools import partial, wraps
@@ -177,7 +178,7 @@ def _write(fields: dict[str, Any]) -> None:
 
 
 def describe_exception(exc: BaseException) -> str:
-    """Type, SQLSTATE and the frames that raised it, without the message.
+    """Type, SQLSTATE and the app frames that raised it, without the message.
 
     A database error's message can echo the row it rejected ("Failing row
     contains ..."), and an identity-provider error can echo the e-mail it was
@@ -185,7 +186,11 @@ def describe_exception(exc: BaseException) -> str:
     ``from`` the driver's, which carries the SQLSTATE as ``pgcode``.
     """
     cause = exc.__cause__ or exc
-    frames = traceback.extract_tb(exc.__traceback__)[-_LOGGED_FRAMES:]
+    frames = traceback.extract_tb(exc.__traceback__)
+    # Library frames (Django, the driver) say little about which change
+    # failed; keep the app's own, innermost last, unless there are none.
+    frames = [f for f in frames if not _is_library(f.filename)] or frames
+    frames = frames[-_LOGGED_FRAMES:]
     where = " <- ".join(
         f"{os.path.basename(f.filename)}:{f.lineno} {f.name}" for f in reversed(frames)
     )
@@ -193,6 +198,16 @@ def describe_exception(exc: BaseException) -> str:
 
 
 _LOGGED_FRAMES = 6
+_LIBRARY_PATHS = tuple(
+    {
+        os.path.realpath(sysconfig.get_path(name)) + os.sep
+        for name in ("stdlib", "platstdlib", "purelib", "platlib")
+    }
+)
+
+
+def _is_library(filename: str) -> bool:
+    return os.path.realpath(filename).startswith(_LIBRARY_PATHS)
 
 
 def _loggable_id(value: Any) -> str:

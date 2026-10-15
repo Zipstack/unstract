@@ -171,7 +171,7 @@ Rules for emitters:
 1. **Call it after the change succeeded**, never before. The write is deferred
    with `transaction.on_commit`, so an event inside a transaction that rolls
    back is never stored.
-2. **It never raises.** A failure is logged (`logger.exception`) and the event
+2. **It never raises.** A failure is logged, without the exception's message, and the event
    is lost; the caller's request is unaffected. Code that reads a *before*
    value for an event should be wrapped with `platform_audit.recorder.best_effort`
    so that read cannot fail the request either. If it fails, pass `None` for

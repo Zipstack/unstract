@@ -1,3 +1,4 @@
+import json
 import uuid
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -169,6 +170,28 @@ class RecorderTests(AuditTestBase):
         self.assertIn("TypeError, sqlstate=None, at ", output)
         self.assertIn("recorder.py:", output)
         self.assertNotIn("JSON serializable", output)
+
+    def test_a_recording_failure_logs_no_message(self) -> None:
+        with patch(
+            "platform_audit.recorder._resolve_actor",
+            side_effect=RuntimeError("no user invitee@example.com"),
+        ):
+            with self.assertLogs("platform_audit.recorder", "ERROR") as logs:
+                self._record()
+        self.assertIn("failed to record", logs.output[0])
+        self.assertIn("RuntimeError", logs.output[0])
+        self.assertNotIn("invitee@example.com", logs.output[0])
+
+    def test_the_log_names_the_app_frame_that_raised_not_library_frames(self) -> None:
+        @best_effort
+        def snapshot() -> None:
+            json.dumps({1, 2})  # raises inside the stdlib encoder
+
+        with self.assertLogs("platform_audit.recorder", "ERROR") as logs:
+            snapshot()
+        self.assertIn("test_recorder.py:", logs.output[0])
+        self.assertIn(" snapshot", logs.output[0])
+        self.assertNotIn("encoder.py", logs.output[0])
 
     def test_helper_failures_leave_out_the_message_too(self) -> None:
         @best_effort
