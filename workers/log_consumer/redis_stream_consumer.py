@@ -31,9 +31,12 @@ import os
 import signal
 import socket
 import sys
+import time
 from types import FrameType
 from typing import Any
 
+from redis.exceptions import ConnectionError as RedisConnectionError
+from redis.exceptions import TimeoutError as RedisTimeoutError
 from shared.enums.worker_enums import WorkerType
 from shared.infrastructure.config.builder import WorkerBuilder
 from shared.infrastructure.logging import WorkerLogger
@@ -62,6 +65,16 @@ _BLOCK_TIMEOUT_SECONDS = int(os.getenv("LOG_STREAM_BLOCK_TIMEOUT", "5"))
 # reached the client. Identical trap to the one documented at
 # ``workers/queue_backend/pg_queue/result_backend.py:152``.
 _SOCKET_TIMEOUT_SECONDS = _BLOCK_TIMEOUT_SECONDS + 5
+# Wait after a connection-level BLMOVE failure, doubling per consecutive failure up to
+# the cap and reset by the next reply. A refused or unresolvable connect fails at once,
+# so without this the loop spun at up to ~1.2k iterations/s in staging, each logging a
+# ~35-line traceback — ~0.8 GiB of Cloud Logging per minute of Redis downtime, per pod.
+_RECONNECT_BACKOFF_INITIAL_SECONDS = 1.0
+_RECONNECT_BACKOFF_MAX_SECONDS = 30.0
+# How often a backoff wait re-checks for a shutdown signal. Polling the flag rather than
+# waiting on a threading.Event is deliberate: calling Event.set() from _handle_signal
+# can, in a narrow race, deadlock against Event.wait() on this same thread.
+_SHUTDOWN_POLL_SECONDS = 0.5
 
 _shutdown = False
 
@@ -76,6 +89,21 @@ def _handle_signal(signum: int, _frame: FrameType | None) -> None:
     global _shutdown
     _shutdown = True
     logger.info("Signal %s received; finishing current log then shutting down", signum)
+
+
+def _wait_before_reconnect(seconds: float) -> None:
+    """Sleep up to ``seconds``, returning early once a shutdown signal has arrived.
+
+    A plain ``time.sleep(seconds)`` would not do: since PEP 475 a sleep interrupted by a
+    signal resumes once the handler returns, so SIGTERM mid-backoff would hold the pod
+    for up to the full cap.
+    """
+    deadline = time.monotonic() + seconds
+    while not _shutdown:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return
+        time.sleep(min(remaining, _SHUTDOWN_POLL_SECONDS))
 
 
 def _recover_in_flight(redis_client: Any, processing: str) -> None:
@@ -129,16 +157,36 @@ def run() -> int:
     )
     _recover_in_flight(redis_client, processing)
 
+    backoff = _RECONNECT_BACKOFF_INITIAL_SECONDS
     while not _shutdown:
         try:
             raw = redis_client.blmove(
                 _QUEUE_NAME, processing, _BLOCK_TIMEOUT_SECONDS, "LEFT", "RIGHT"
             )
+        except (RedisConnectionError, RedisTimeoutError):
+            # Redis unavailable: refused, reset, DNS failure, auth, LOADING, or Sentinel
+            # with no master (MasterNotFoundError) — all ConnectionError subclasses — or a
+            # connect/read timeout. Must not kill the pod, and must not be retried
+            # immediately: create_redis_client gives the client no retry (redis-py's
+            # default Retry(NoBackoff(), 0)), and a refused connect returns at once, so
+            # BLMOVE never gets to block. The next call reconnects on its own.
+            logger.error(
+                "Log stream read failed: Redis unavailable; backing off %.0fs before "
+                "retrying",
+                backoff,
+                exc_info=True,
+            )
+            _wait_before_reconnect(backoff)
+            backoff = min(backoff * 2, _RECONNECT_BACKOFF_MAX_SECONDS)
+            continue
         except Exception:
-            # Connection blips must not kill the pod — the next iteration reconnects via
-            # the client's own retry. Sleeping is unnecessary: BLMOVE already blocks.
+            # Anything else (e.g. a ResponseError from a server that did answer) is
+            # outside the backoff and keeps the immediate retry.
             logger.error("Log stream read failed; retrying", exc_info=True)
             continue
+
+        # Any reply, including an idle block's None, means Redis is reachable again.
+        backoff = _RECONNECT_BACKOFF_INITIAL_SECONDS
 
         if raw is None:  # timeout, no work — loop so shutdown can be observed
             continue
