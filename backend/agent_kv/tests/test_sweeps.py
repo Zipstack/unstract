@@ -1127,3 +1127,99 @@ class TestPhaseThreeActuallySelectsSomething(TestCase):
         passes except the first.
         """
         assert settings.AGENT_KV_ABANDONED_SLOT_GRACE_SECONDS < SLOT_TTL_SECONDS
+
+
+# ---------------------------------------------------------------------------
+# The sweep owes a terminal notification too
+# ---------------------------------------------------------------------------
+# Mock-backed rather than `TestCase`, deliberately: these assert which calls
+# `run_sweep` makes, not what the database ends up holding, and keeping them
+# off the DB means they run anywhere.
+#
+# Reported by Greptile on #2317. The sweep is the THIRD route to a terminal
+# state, after finalize and cancel, and docs §8 promises a POST on every one.
+# It sent nothing, and no later callback could cover for it: a callback
+# arriving after the sweep finds an already-terminal row, reports
+# `finalized: False`, and correctly declines to send. A caller whose job timed
+# out was simply never told.
+
+
+def _qs(rows):
+    """A queryset stand-in whose `.order_by(...)[:n]` yields `rows`."""
+    qs = mock.MagicMock()
+    qs.order_by.return_value.__getitem__.return_value = rows
+    return qs
+
+
+def _job(**kw):
+    j = mock.MagicMock()
+    j.id = uuid.uuid4()
+    j.organization_id = uuid.uuid4()
+    j.webhook_url = kw.get("webhook_url", "https://hook.example/x")
+    return j
+
+
+def _run_sweep_with(phase1, phase2, phase3):
+    """Drive `run_sweep` with a fixed candidate list per phase.
+
+    `objects.filter` is called once per phase, except phase 2 which chains a
+    second `.filter(...)` onto the first.
+    """
+    qs2_outer = mock.MagicMock()
+    qs2_outer.filter.return_value = _qs(phase2)
+    with (
+        mock.patch.object(maintenance.AgentKVJob, "objects") as m_objects,
+        mock.patch.object(
+            maintenance.AgentKVJob, "mark_terminal", return_value=True
+        ) as m_mark,
+        mock.patch.object(maintenance.AgentKVConcurrencyLimiter, "release"),
+        mock.patch.object(maintenance, "dispatch_terminal_webhook") as m_hook,
+    ):
+        m_objects.filter.side_effect = [_qs(phase1), qs2_outer, _qs(phase3)]
+        maintenance.run_sweep()
+    return m_hook, m_mark
+
+
+def test_a_never_dispatched_job_the_sweep_fails_gets_its_webhook():
+    job = _job()
+    m_hook, _ = _run_sweep_with([job], [], [])
+
+    m_hook.assert_called_once_with(job, "failed")
+
+
+def test_a_stuck_job_the_sweep_times_out_gets_its_webhook():
+    job = _job()
+    m_hook, _ = _run_sweep_with([], [job], [])
+
+    m_hook.assert_called_once_with(job, "failed")
+
+
+def test_an_abandoned_cancelled_slot_release_notifies_nobody():
+    """Phase 3 frees a slot on a row that is ALREADY cancelled; its
+    notification went out when the cancel won. A second POST would repeat
+    what the caller was told and carry nothing new."""
+    m_hook, _ = _run_sweep_with([], [], [_job()])
+
+    m_hook.assert_not_called()
+
+
+def test_a_job_the_sweep_did_not_terminalize_gets_no_webhook():
+    """The guard is what decides, not the SELECT. A row a concurrent
+    finalize or cancel won in the meantime is not this call's to announce --
+    whoever won it already queued one."""
+    job = _job()
+    qs2_outer = mock.MagicMock()
+    qs2_outer.filter.return_value = _qs([])
+    with (
+        mock.patch.object(maintenance.AgentKVJob, "objects") as m_objects,
+        # The guarded UPDATE matched nothing: someone else got there first.
+        mock.patch.object(maintenance.AgentKVJob, "mark_terminal", return_value=False),
+        mock.patch.object(maintenance.AgentKVConcurrencyLimiter, "release") as m_rel,
+        mock.patch.object(maintenance, "dispatch_terminal_webhook") as m_hook,
+    ):
+        m_objects.filter.side_effect = [_qs([job]), qs2_outer, _qs([])]
+        maintenance.run_sweep()
+
+    m_hook.assert_not_called()
+    # And the slot is not released either -- the winner released its own.
+    m_rel.assert_not_called()

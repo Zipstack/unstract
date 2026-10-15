@@ -1204,3 +1204,49 @@ def test_an_upload_over_the_memory_threshold_is_not_a_500():
     # And the multi-valued field must still be multi-valued -- a plain
     # `dict(request.data)` would keep only the last `tags` entry.
     assert data.getlist("tags") == ["a", "b"]
+
+
+# ---------------------------------------------------------------------------
+# Sync-wait must not run inside the request transaction
+# ---------------------------------------------------------------------------
+
+
+def test_submit_is_exempt_from_atomic_requests():
+    """A sync-wait submit polls for the job to terminalize while still inside
+    the request. Under `DJANGO_ATOMIC_REQUESTS=True` the job row and the queue
+    insert would stay uncommitted for that whole poll, so no worker could see
+    the work, the job could never start, and every positive `timeout` would
+    burn its full duration and return 202 -- silently, with the caller simply
+    never getting the inline result.
+
+    Django reads this marker off the view callable that `as_view()` produced,
+    so it has to be applied in the URLconf; asserting on the imported class
+    would pass while the routed view stayed atomic. Reported by Greptile on
+    #2317.
+    """
+    from django.urls import get_resolver, reverse
+
+    match = get_resolver().resolve(reverse("agent_kv_submit"))
+
+    assert getattr(match.func, "_non_atomic_requests", set()), (
+        "the routed submit view is not exempt from ATOMIC_REQUESTS; a "
+        "sync-wait submit would always time out if the flag were enabled"
+    )
+
+
+def test_the_other_agent_kv_routes_are_not_exempted():
+    """Scoped to submit. Status/result/cancel do no in-request waiting, so
+    they have no reason to opt out of a transaction the deployment may want.
+    """
+    from django.urls import get_resolver, reverse
+
+    resolver = get_resolver()
+    for name, kwargs in (
+        ("agent_kv_status", {"job_id": "00000000-0000-0000-0000-000000000001"}),
+        ("agent_kv_result", {"job_id": "00000000-0000-0000-0000-000000000001"}),
+        ("agent_kv_cancel", {"job_id": "00000000-0000-0000-0000-000000000001"}),
+    ):
+        match = resolver.resolve(reverse(name, kwargs=kwargs))
+        assert not getattr(match.func, "_non_atomic_requests", set()), (
+            f"{name} is exempt from ATOMIC_REQUESTS but has no in-request wait"
+        )

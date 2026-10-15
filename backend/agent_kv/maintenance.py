@@ -27,6 +27,7 @@ from django.db.models import Q
 from django.db.models.functions import Coalesce
 from django.utils import timezone
 
+from agent_kv.dispatch import dispatch_terminal_webhook
 from agent_kv.models import AgentKVJob, JobStatus
 from agent_kv.rate_limiter import SLOT_TTL_SECONDS, AgentKVConcurrencyLimiter
 from agent_kv.storage import delete_job_files
@@ -141,6 +142,15 @@ def run_sweep() -> dict:
             # worth releasing here -- one a concurrent finalize/cancel
             # won instead already released its own slot on that path.
             AgentKVConcurrencyLimiter.release(str(org_id), str(job.id))
+            # ...and only such a job owes a terminal notification. The sweep
+            # is a THIRD path to a terminal state, alongside finalize and
+            # cancel, and docs §8 promises a POST on every one of them. It
+            # used to send nothing: a job whose dispatch was lost reached
+            # FAILED in silence, and no later callback could cover for it --
+            # it would find an already-terminal row, report `finalized:
+            # False`, and correctly decline to send. The caller simply never
+            # heard again about a job they were told was accepted.
+            dispatch_terminal_webhook(job, "failed")
 
     stuck_cutoff = now - timedelta(seconds=settings.AGENT_KV_STUCK_JOB_GRACE_SECONDS)
     # `dispatched_at__lt` OR `dispatched_at IS NULL`, not just the former.
@@ -182,6 +192,10 @@ def run_sweep() -> dict:
         if won:
             timed_out += 1
             AgentKVConcurrencyLimiter.release(str(org_id), str(job.id))
+            # Same as phase 1: this call terminalized the job, so this call
+            # owes the notification. Best-effort, like every other enqueue
+            # site -- a queue failure must not abort the rest of the batch.
+            dispatch_terminal_webhook(job, "failed")
 
     # Phase 3: release slots still held by jobs that were CANCELLED after being
     # dispatched.
@@ -266,6 +280,14 @@ def run_sweep() -> dict:
 
     released = 0
     for job in abandoned_cancelled:
+        # No `dispatch_terminal_webhook` here, unlike phases 1 and 2, and that
+        # asymmetry is deliberate rather than an omission. This phase does not
+        # TERMINALIZE anything -- it only frees a slot on a row that is already
+        # CANCELLED, and whose notification `agent_kv_cancelled` sent the
+        # moment that cancel won. Sending another would be a duplicate telling
+        # the caller nothing new; the one follow-up a cancelled job can still
+        # owe is `result_available`, which the callback worker handles.
+        #
         # `release` is an idempotent zrem, so re-releasing a slot the callback
         # already freed costs nothing and is not worth a guard.
         AgentKVConcurrencyLimiter.release(str(job.organization_id), str(job.id))
