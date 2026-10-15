@@ -24,7 +24,7 @@ There are two independent auth schemes on two different URL prefixes:
 | Surface | Prefix | Auth |
 |---|---|---|
 | Public execution API (submit/status/result/cancel) | `/api/v1/agent-kv/…` (under the platform API prefix, beside the tenant subfolder rather than inside it) | `Authorization: Bearer <AgentKVKey>` — a dedicated per-organization key, validated by the view itself |
-| Key management (create/list/rotate/revoke) | `{PATH_PREFIX}/unstract/…/api/v1/agent-kv/keys/…` (tenant-scoped, alongside Platform API key management) | Session auth, `IsOrganizationAdmin` only |
+| Key management (create/list/rotate/revoke) | `{PATH_PREFIX}/unstract/…/agent-kv/keys/…` (tenant-scoped, alongside Platform API key management) | Session auth, `IsOrganizationAdmin` only |
 
 The execution prefix (`AGENT_KV_PATH_PREFIX`, default `api/v1/agent-kv`) sits **outside** the
 tenant-subfolder/organization-middleware chain — it is added to `WHITELISTED_PATHS` in
@@ -86,9 +86,9 @@ Routes (`backend/agent_kv/urls.py`, mounted at `agent-kv/` under
 `backend/backend/urls_v2.py`):
 
 ```
-GET/POST    .../api/v1/agent-kv/keys/
-GET/PATCH/DELETE .../api/v1/agent-kv/keys/<uuid:pk>/
-POST        .../api/v1/agent-kv/keys/<uuid:pk>/rotate/     # replaces `key` with a new UUID
+GET/POST    .../agent-kv/keys/
+GET/PATCH/DELETE .../agent-kv/keys/<uuid:pk>/
+POST        .../agent-kv/keys/<uuid:pk>/rotate/     # replaces `key` with a new UUID
 ```
 
 Key storage follows the same conventions as Platform API key management (D5) —
