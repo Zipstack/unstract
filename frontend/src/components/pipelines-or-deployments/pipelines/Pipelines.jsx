@@ -69,8 +69,7 @@ function Pipelines({ type }) {
     coOwnerAllUsers,
     coOwnerResourceId,
     handleCoOwner: handleCoOwnerAction,
-    onAddCoOwner,
-    onRemoveCoOwner,
+    onApplyCoOwners,
   } = useCoOwnerManagement({
     service: pipelineApiService,
     setAlertDetails,
@@ -487,10 +486,8 @@ function Pipelines({ type }) {
           resourceType="Pipeline"
           allUsers={coOwnerAllUsers}
           coOwners={coOwnerData.coOwners}
-          createdBy={coOwnerData.createdBy}
           loading={coOwnerLoading}
-          onAddCoOwner={onAddCoOwner}
-          onRemoveCoOwner={onRemoveCoOwner}
+          onApplyCoOwners={onApplyCoOwners}
         />
       )}
     </div>
