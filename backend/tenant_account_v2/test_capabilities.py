@@ -13,6 +13,7 @@ from account_v2.models import Organization
 from adapter_processor_v2.models import AdapterInstance
 from adapter_processor_v2.views import AdapterInstanceViewSet
 from api_v2.api_deployment_views import APIDeploymentViewSet
+from connector_v2.models import ConnectorInstance
 from connector_v2.views import ConnectorInstanceViewSet
 from django.test import SimpleTestCase
 from drf_spectacular.generators import SchemaGenerator
@@ -265,6 +266,33 @@ class CapabilitiesApiTests(CapabilityTestBase):
             {"before": {"setting": "any_member"}, "after": {"setting": "admins_only"}},
         )
 
+    def test_before_is_read_from_the_row_not_the_requests_copy(self) -> None:
+        # A concurrent request saved admins_only after this one loaded the
+        # org, so this one's copy is stale. Lifting the restriction must still
+        # be audited, from both endpoints.
+        lifted = {
+            "before": {"setting": "admins_only"},
+            "after": {"setting": "any_member"},
+        }
+        for count, (view, data) in enumerate(
+            (
+                (organization_capabilities, {"create_connectors": "any_member"}),
+                (organization_settings, {"restrict_connector_creation": False}),
+            ),
+            start=1,
+        ):
+            with self.subTest(view=view.__name__):
+                stale = Organization.objects.get(pk=self.org.pk)
+                self.restrict(Capability.CREATE_CONNECTORS, True)
+                with patch(
+                    "tenant_account_v2.views.UserContext.get_organization",
+                    return_value=stale,
+                ):
+                    response = self.call(view, "patch", data=data)
+                self.assertEqual(response.status_code, 200)
+                events = self.events(action="capability.changed")
+                self.assertEqual([e.changes for e in events], [lifted] * count)
+
 
 class EnforcementMatrixTests(CapabilityTestBase):
     """Each enforced capability x {admins_only, any_member} x {admin, member,
@@ -273,10 +301,11 @@ class EnforcementMatrixTests(CapabilityTestBase):
 
     def _allowed(self, key: Capability, user) -> bool:
         if key == Capability.CREATE_CONNECTORS:
-            view = ConnectorInstanceViewSet.as_view({"post": "create"})
-            # Refusal happens before payload validation, so any body will do.
-            response = self.call(view, "post", user=user, data={})
-            return response.status_code != 403
+            response = self._create_connector(user)
+            if response.status_code == 403:
+                return False
+            self.assertEqual(response.status_code, 201, response.data)
+            return True
         if key in (Capability.CREATE_LLM_ADAPTERS, Capability.CREATE_OTHER_ADAPTERS):
             adapter_type = "LLM" if key == Capability.CREATE_LLM_ADAPTERS else "EMBEDDING"
             response = self._create_adapter(user, adapter_type)
@@ -285,6 +314,25 @@ class EnforcementMatrixTests(CapabilityTestBase):
             self.assertEqual(response.status_code, 201, response.data)
             return True
         return self._may_delete_owned_workflow(user)
+
+    def _create_connector(self, user):
+        # The connector and payload shape of connector_v2's register test.
+        # Creating stores the metadata without contacting the storage.
+        view = ConnectorInstanceViewSet.as_view({"post": "create"})
+        payload = {
+            "connector_id": "minio|c799f6e3-2b57-434e-aaac-b5daa415da19",
+            "connector_name": f"minio-{user.pk}-{ConnectorInstance.objects.count()}",
+            "connector_metadata": {
+                "connectorName": "minio",
+                "key": "access-key",
+                "secret": "secret-key",
+                "endpoint_url": "http://minio.invalid:9000",
+                "region_name": "",
+                "bucket": "bucket",
+                "path": "/",
+            },
+        }
+        return self.call(view, "post", user=user, data=payload)
 
     def _create_adapter(self, user, adapter_type: str):
         view = AdapterInstanceViewSet.as_view({"post": "create"})

@@ -4,6 +4,7 @@ from typing import Any
 from account_v2.authentication_controller import AuthenticationController
 from account_v2.dto import UserRoleData
 from account_v2.models import Organization
+from django.db import transaction
 from drf_spectacular.utils import extend_schema
 from drf_standardized_errors.openapi_serializers import (
     ErrorResponse403Serializer,
@@ -121,11 +122,7 @@ def organization_settings(request: Request) -> Response:
                     status=status.HTTP_400_BAD_REQUEST,
                     data={"message": f"{flag} must be a boolean"},
                 )
-        before = {flag: getattr(organization, flag) for flag in provided}
-        for flag, value in provided.items():
-            setattr(organization, flag, value)
-        organization.modified_by = request.user
-        organization.save(update_fields=[*provided, "modified_by", "modified_at"])
+        organization, before = _save_restrictions(request, organization, provided)
         # These flags are the storage of two capabilities, so a change here is
         # recorded as that capability changing, once, as from the new endpoint.
         _record_capability_changes(request, organization, before)
@@ -233,15 +230,30 @@ def organization_capabilities(request: Request) -> Response:
             SPECS_BY_KEY[key].field: value == CapabilitySetting.ADMINS_ONLY
             for key, value in serializer.validated_data.items()
         }
-        before = {field: getattr(organization, field) for field in changed}
-        for field, restricted in changed.items():
-            setattr(organization, field, restricted)
-        organization.modified_by = request.user
-        organization.save(update_fields=[*changed, "modified_by", "modified_at"])
+        organization, before = _save_restrictions(request, organization, changed)
         _record_capability_changes(request, organization, before)
     return Response(
         status=status.HTTP_200_OK, data=_capabilities_payload(request, organization)
     )
+
+
+def _save_restrictions(
+    request: Request, organization: Organization, values: dict[str, bool]
+) -> tuple[Organization, dict[str, bool]]:
+    """Save ``restrict_*`` fields and return the row with its values before.
+
+    The row is locked while it is read and written, so of two concurrent
+    changes the second sees the first's result as its "before" and the audit
+    records every change. Both settings endpoints write through here.
+    """
+    with transaction.atomic():
+        locked = Organization.objects.select_for_update().get(pk=organization.pk)
+        before = {field: getattr(locked, field) for field in values}
+        for field, value in values.items():
+            setattr(locked, field, value)
+        locked.modified_by = request.user
+        locked.save(update_fields=[*values, "modified_by", "modified_at"])
+    return locked, before
 
 
 @best_effort
