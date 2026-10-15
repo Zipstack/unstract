@@ -8,7 +8,7 @@ Two entry point groups are used:
 
 - ``unstract.executor.executors``
     Executor classes that self-register via ``@ExecutorRegistry.register``.
-    Loaded eagerly at worker startup from ``executors/__init__.py``.
+    Loaded when ``executor.executors.register_all()`` runs at worker startup.
 """
 
 import logging

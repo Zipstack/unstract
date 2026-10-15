@@ -65,6 +65,14 @@
             "readOnly": true,
             "type": "string"
           },
+          "owner_emails": {
+            "description": "Email of each owner, earliest first. Empty if none is a person.",
+            "items": {
+              "type": "string"
+            },
+            "readOnly": true,
+            "type": "array"
+          },
           "run_count": {
             "readOnly": true,
             "type": "integer"
@@ -91,6 +99,7 @@
           "is_owner",
           "last_5_run_statuses",
           "last_run_time",
+          "owner_emails",
           "run_count",
           "workflow",
           "workflow_name"
@@ -122,6 +131,29 @@
         ],
         "type": "string"
       },
+      "DeploymentErrorResponse": {
+        "description": "The body of a rejected execute request.\n\nCarries `message.error` as well, so a client can read the failure from the\nkey an execution reports it in, whatever went wrong.",
+        "properties": {
+          "errors": {
+            "items": {
+              "$ref": "#/components/schemas/ErrorDetail"
+            },
+            "type": "array"
+          },
+          "message": {
+            "$ref": "#/components/schemas/ErrorMessage"
+          },
+          "type": {
+            "$ref": "#/components/schemas/ErrorType"
+          }
+        },
+        "required": [
+          "errors",
+          "message",
+          "type"
+        ],
+        "type": "object"
+      },
       "ErrorDetail": {
         "description": "One problem found with the request.",
         "properties": {
@@ -143,6 +175,24 @@
           "attr",
           "code",
           "detail"
+        ],
+        "type": "object"
+      },
+      "ErrorMessage": {
+        "description": "The failure in the same place an execution reports its own.",
+        "properties": {
+          "error": {
+            "description": "Every problem in `errors`, as one readable string.",
+            "type": "string"
+          },
+          "execution_status": {
+            "description": "Always `ERROR`.",
+            "type": "string"
+          }
+        },
+        "required": [
+          "error",
+          "execution_status"
         ],
         "type": "object"
       },
@@ -230,10 +280,6 @@
             "maximum": 300,
             "minimum": -1,
             "type": "integer"
-          },
-          "use_file_history": {
-            "default": false,
-            "type": "boolean"
           }
         },
         "type": "object"
@@ -873,7 +919,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/DeploymentErrorResponse"
                 }
               }
             },
@@ -892,6 +938,10 @@
                           "detail": "Incorrect authentication credentials."
                         }
                       ],
+                      "message": {
+                        "error": "Incorrect authentication credentials.",
+                        "execution_status": "ERROR"
+                      },
                       "type": "client_error"
                     }
                   },
@@ -904,12 +954,16 @@
                           "detail": "Authentication credentials were not provided."
                         }
                       ],
+                      "message": {
+                        "error": "Authentication credentials were not provided.",
+                        "execution_status": "ERROR"
+                      },
                       "type": "client_error"
                     }
                   }
                 },
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/DeploymentErrorResponse"
                 }
               }
             },
@@ -928,12 +982,16 @@
                           "detail": "You do not have permission to perform this action."
                         }
                       ],
+                      "message": {
+                        "error": "You do not have permission to perform this action.",
+                        "execution_status": "ERROR"
+                      },
                       "type": "client_error"
                     }
                   }
                 },
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/DeploymentErrorResponse"
                 }
               }
             },
@@ -952,12 +1010,16 @@
                           "detail": "Not found."
                         }
                       ],
+                      "message": {
+                        "error": "Not found.",
+                        "execution_status": "ERROR"
+                      },
                       "type": "client_error"
                     }
                   }
                 },
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/DeploymentErrorResponse"
                 }
               }
             },
@@ -967,7 +1029,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/DeploymentErrorResponse"
                 }
               }
             },
@@ -996,12 +1058,16 @@
                           "detail": "Request was throttled."
                         }
                       ],
+                      "message": {
+                        "error": "Request was throttled.",
+                        "execution_status": "ERROR"
+                      },
                       "type": "client_error"
                     }
                   }
                 },
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/DeploymentErrorResponse"
                 }
               }
             },
@@ -1020,6 +1086,10 @@
                           "detail": "A server error occurred."
                         }
                       ],
+                      "message": {
+                        "error": "A server error occurred.",
+                        "execution_status": "ERROR"
+                      },
                       "type": "server_error"
                     }
                   }
@@ -1035,7 +1105,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/DeploymentErrorResponse"
                 }
               }
             },
@@ -1045,7 +1115,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ErrorResponse"
+                  "$ref": "#/components/schemas/DeploymentErrorResponse"
                 }
               }
             },

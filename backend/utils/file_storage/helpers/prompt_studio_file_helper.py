@@ -1,4 +1,5 @@
 import base64
+import glob
 import logging
 import os
 from pathlib import Path
@@ -218,9 +219,12 @@ class PromptStudioFileHelper:
         # path that is no longer there, and a bare rm() raises FileNotFoundError
         # on the usual fsspec backends. That turned the retry into a permanent
         # 400 and left the row undeletable through the endpoint.
+        # rm_exact, not rm: these paths carry the uploaded document's name, and
+        # rm expands it as a glob on GCS/S3 — "Report [Final].pdf" would miss
+        # itself and delete "Report F.pdf" (another document) instead.
         source_file = str(Path(file_system_path) / file_name)
         if fs_instance.exists(source_file):
-            fs_instance.rm(source_file)
+            fs_instance.rm_exact(source_file)
         # Delete all related files for cascade delete
         directories = ["extract/", "extract/metadata/", "summarize/", "converted/"]
         base_file_name, _ = os.path.splitext(file_name)
@@ -232,7 +236,7 @@ class PromptStudioFileHelper:
             directories=directories,
         )
         for file_path in file_paths:
-            fs_instance.rm(file_path)
+            fs_instance.rm_exact(file_path)
         return True
 
     @staticmethod
@@ -245,7 +249,8 @@ class PromptStudioFileHelper:
         for a specific prompt studio project.
         """
         file_paths = []
-        pattern = f"{base_file_name}.*"
+        # Escape the document's name so only the extension is a wildcard.
+        pattern = f"{glob.escape(base_file_name)}.*"
         for directory in directories:
             directory_path = str(Path(base_path) / directory)
             for file in fs.glob(f"{directory_path}/{pattern}"):

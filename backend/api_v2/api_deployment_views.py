@@ -7,9 +7,12 @@ from django.db.models import Count, F, IntegerField, OuterRef, QuerySet, Subquer
 from django.db.models.functions import Coalesce
 from django.http import HttpResponse
 from permissions.membership_views import OwnerManagementMixin
-from permissions.permission import IsOwner, IsOwnerOrSharedUserOrSharedToOrg
+from permissions.permission import (
+    IsOwner,
+    IsOwnerOrSharedUserOrSharedToOrg,
+    is_activation_only_patch,
+)
 from permissions.resource_share_views import ResourceShareManagementMixin
-from permissions.roles import ResourceRole
 from platform_api.openapi_schema import PlatformKeyAutoSchema
 from plugins import get_plugin
 from prompt_studio.prompt_studio_registry_v2.models import PromptStudioRegistry
@@ -29,6 +32,7 @@ from api_v2.api_deployment_dto_registry import ApiDeploymentDTORegistry
 from api_v2.constants import ApiExecution
 from api_v2.deployment_helper import DeploymentHelper
 from api_v2.dto import DeploymentExecutionDTO
+from api_v2.error_message import add_error_message
 from api_v2.exceptions import (
     NoActiveAPIKeyError,
     RateLimitExceeded,
@@ -38,6 +42,7 @@ from api_v2.models import APIDeployment
 from api_v2.openapi_schema import (
     API_DEPLOYMENT_LIST_SCHEMA,
     DEPLOYMENT_EXECUTION_SCHEMA,
+    DeploymentAutoSchema,
 )
 from api_v2.rate_limiter import APIDeploymentRateLimiter
 from api_v2.serializers import (
@@ -58,6 +63,8 @@ logger = logging.getLogger(__name__)
 
 @DEPLOYMENT_EXECUTION_SCHEMA
 class DeploymentExecution(views.APIView):
+    schema = DeploymentAutoSchema()
+
     def initialize_request(self, request: Request, *args: Any, **kwargs: Any) -> Request:
         """To remove csrf request for public API.
 
@@ -69,6 +76,14 @@ class DeploymentExecution(views.APIView):
         """
         request.csrf_processing_done = True
         return super().initialize_request(request, *args, **kwargs)
+
+    def handle_exception(self, exc: Exception) -> Response:
+        response = super().handle_exception(exc)
+        # On the status read `message` is the result payload, and published
+        # clients copy it out as the extraction result without checking.
+        if self.request.method == "POST":
+            add_error_message(response.data)
+        return response
 
     @DeploymentHelper.validate_api_key
     def post(
@@ -270,6 +285,12 @@ class APIDeploymentViewSet(
         return ResourceType.API_DEPLOYMENT.value
 
     def get_permissions(self) -> list[Any]:
+        # Enabling or disabling is use, not configuration, so it follows
+        # sharing. Everything else on these verbs stays with the owner.
+        if self.action == "partial_update" and is_activation_only_patch(
+            self.request, flag="is_active"
+        ):
+            return [IsOwnerOrSharedUserOrSharedToOrg()]
         if self.action in [
             "destroy",
             "partial_update",
@@ -360,9 +381,7 @@ class APIDeploymentViewSet(
         self.perform_create(serializer)
         # ``created_by`` is audit-only; the creator's access flows through an
         # OWNER membership row (UN-2202 co-owners).
-        serializer.instance.memberships.get_or_create(
-            user_id=request.user.id, defaults={"role": ResourceRole.OWNER}
-        )
+        serializer.instance.grant_owner(request.user)
         api_key = DeploymentHelper.create_api_key(serializer=serializer, request=request)
         response_serializer = DeploymentResponseSerializer(
             {"api_key": api_key.api_key, **serializer.data}
@@ -406,8 +425,11 @@ class APIDeploymentViewSet(
             # Get API deployments for these workflows the user can access —
             # ``created_by`` is audit-only; access flows through memberships,
             # sharing, and the admin/SA bypasses (UN-2202).
-            deployments = APIDeployment.objects.for_user(request.user).filter(
-                workflow_id__in=workflow_ids
+            deployments = (
+                APIDeployment.objects.for_user(request.user)
+                .select_related("created_by")
+                .prefetch_related("memberships__user")
+                .filter(workflow_id__in=workflow_ids)
             )
 
             serializer = APIDeploymentListSerializer(deployments, many=True)

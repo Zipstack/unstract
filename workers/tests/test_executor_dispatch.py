@@ -1,22 +1,20 @@
-"""Tests for the file_processing → executor boundary: header forwarding
-through ExecutionDispatcher and inventory canary for raw send_task calls.
+"""Tests for the file_processing → executor boundary: payload/queue routing
+through the PG executor dispatcher, and an inventory canary for raw send_task calls.
 """
 
 from __future__ import annotations
 
 import ast
 from typing import Any
-from unittest.mock import MagicMock
 
 import pytest
-from celery import Celery
-
 from queue_backend import FairnessKey
 from queue_backend.fairness import WorkloadType
 from unstract.sdk1.execution.context import ExecutionContext, Operation
-from unstract.sdk1.execution.dispatcher import ExecutionDispatcher
+from unstract.workflow_execution.executor_rpc import PgExecutionDispatcher
 
 from .canary_helpers import iter_production_trees
+from .executor_dispatch_fakes import FakeExecutorTransport, callback_signature
 
 # Promote ``UserWarning`` from ``iter_production_trees`` (emitted on
 # unparseable production files) to a test failure. Without this an
@@ -43,85 +41,71 @@ def _make_context(**overrides: Any) -> ExecutionContext:
     return ExecutionContext(**defaults)
 
 
-class TestExecutionDispatcherForwardsHeaders:
-    """``ExecutionDispatcher`` propagates the ``headers`` kwarg to Celery."""
+class TestPgDispatchCarriesOrgInPayload:
+    """Org routing rides the enqueue payload, and ``headers=`` is rejected.
 
-    def _patched_app(self) -> tuple[ExecutionDispatcher, MagicMock]:
-        app = MagicMock(spec=Celery)
-        async_result = MagicMock()
-        async_result.id = "task-1"
-        async_result.get.return_value = {"success": True, "data": {}}
-        app.send_task.return_value = async_result
-        return ExecutionDispatcher(celery_app=app), app
+    This replaces the old ``ExecutionDispatcher`` header-forwarding suite. That
+    contract is deliberately gone, not merely relocated: the PG dispatch methods
+    take **no** ``headers`` argument and carry org/routing in the payload instead
+    (``transport.enqueue(..., org_id=...)``). Locking the absence matters —
+    three call sites kept passing ``headers=`` after the routing dispatcher was
+    removed in UN-4046 and every extraction raised ``TypeError`` until they were
+    found. A test that only checked the happy path would not have caught it.
+    """
 
-    # The three dispatch entry points share the same header-forwarding
-    # contract via ``_build_send_kwargs``; parametrize over them so a
-    # divergence (e.g. one method dropping ``headers=``) surfaces with
-    # per-method failure granularity via the parametrize IDs.
-    @pytest.mark.parametrize(
-        "method", ["dispatch", "dispatch_async", "dispatch_with_callback"]
-    )
-    def test_forwards_headers(self, method):
-        # Use ``FairnessKey.as_header()`` as the fixture rather than
-        # hand-built dicts so the test exercises the exact wire shape
-        # real producers emit (including ``pipeline_priority``).
-        headers = FairnessKey(
-            org_id="org-1", workload_type=WorkloadType.NON_API
-        ).as_header()
-        d, app = self._patched_app()
-        getattr(d, method)(_make_context(), headers=headers)
-        assert app.send_task.call_args.kwargs["headers"] == headers
+    def _dispatcher(self) -> tuple[PgExecutionDispatcher, FakeExecutorTransport]:
+        transport = FakeExecutorTransport(result={"success": True, "data": {}})
+        return PgExecutionDispatcher(transport), transport
 
     @pytest.mark.parametrize(
         "method", ["dispatch", "dispatch_async", "dispatch_with_callback"]
     )
-    def test_omits_headers_when_none(self, method):
-        # Caller passes no headers ⇒ ``headers`` kwarg not forwarded
-        # to send_task (preserves the call shape Celery's link /
-        # link_error handling expects).
-        d, app = self._patched_app()
-        getattr(d, method)(_make_context())
-        assert "headers" not in app.send_task.call_args.kwargs
+    def test_org_id_travels_in_the_payload(self, method):
+        d, transport = self._dispatcher()
+        getattr(d, method)(_make_context(organization_id="org-1"))
+        assert transport.only_call["org_id"] == "org-1"
 
     @pytest.mark.parametrize(
         "method", ["dispatch", "dispatch_async", "dispatch_with_callback"]
     )
-    def test_omits_headers_when_empty_dict(self, method):
-        """Empty header dicts are dropped (treated as a no-headers
-        call). ``FairnessKey.as_header()`` can never legitimately
-        return ``{}`` — forwarding it would document a producer-side
-        build bug rather than catch it.
+    def test_no_headers_kwarg_accepted(self, method):
+        """Passing ``headers=`` must fail loudly, not be silently absorbed."""
+        d, _ = self._dispatcher()
+        with pytest.raises(TypeError):
+            getattr(d, method)(_make_context(), headers={"x-fairness-key": {}})
+
+    @pytest.mark.parametrize(
+        "method", ["dispatch", "dispatch_async", "dispatch_with_callback"]
+    )
+    def test_queue_derives_from_executor_name(self, method):
+        d, transport = self._dispatcher()
+        getattr(d, method)(_make_context(executor_name="table"))
+        assert transport.queue == "celery_executor_table"
+
+    def test_dispatch_with_callback_carries_continuations_and_task_id(self):
+        """Callbacks ride the payload as continuations, not Celery link kwargs.
+
+        The signatures are built with a real name/queue and no positional args
+        because ``signature_to_continuation`` rejects all three otherwise — PG
+        self-chaining routes by the row's queue and supports kwargs-only
+        callbacks. A bare ``MagicMock`` passes none of those checks, so shaping
+        them here is what makes the assertion meaningful.
         """
-        d, app = self._patched_app()
-        getattr(d, method)(_make_context(), headers={})
-        assert "headers" not in app.send_task.call_args.kwargs
-
-    def test_dispatch_with_callback_combines_headers_and_callbacks(self):
-        """All four optional kwargs (headers, on_success, on_error,
-        task_id) land on the same ``send_task`` call. A merge bug in
-        ``_build_send_kwargs`` would slip through the single-kwarg
-        forwarding tests above.
-        """
-        from celery.canvas import Signature
-
-        d, app = self._patched_app()
-        headers = FairnessKey(
-            org_id="org-1", workload_type=WorkloadType.NON_API
-        ).as_header()
-        on_success = MagicMock(spec=Signature)
-        on_error = MagicMock(spec=Signature)
-        d.dispatch_with_callback(
+        d, transport = self._dispatcher()
+        on_success = callback_signature("cb.success", queue="celery_callback")
+        on_error = callback_signature("cb.error", queue="celery_callback")
+        handle = d.dispatch_with_callback(
             _make_context(),
             on_success=on_success,
             on_error=on_error,
             task_id="t-1",
-            headers=headers,
         )
-        kwargs = app.send_task.call_args.kwargs
-        assert kwargs["headers"] == headers
-        assert kwargs["link"] is on_success
-        assert kwargs["link_error"] is on_error
-        assert kwargs["task_id"] == "t-1"
+        call = transport.only_call
+        assert call["task_id"] == "t-1"
+        assert handle.id == "t-1"
+        assert call["on_success"]["task_name"] == "cb.success"
+        assert call["on_error"]["task_name"] == "cb.error"
+        assert "link" not in call and "link_error" not in call
 
 
 class TestFairnessKeyComposesWithHeaders:
@@ -154,7 +138,7 @@ class TestFairnessKeyComposesWithHeaders:
 
 class TestExecuteExtractionDispatchInventory:
     """Canary: ``execute_extraction`` must only be dispatched via
-    ``ExecutionDispatcher``. Raw **string-literal**
+    ``PgExecutionDispatcher``. Raw **string-literal**
     ``*.send_task("execute_extraction", ...)`` elsewhere is forbidden.
 
     Known blind spots (deliberate — widening adds AST resolution cost
@@ -174,9 +158,10 @@ class TestExecuteExtractionDispatchInventory:
         ]
         assert offenders == [], (
             "Production code calls ``*.send_task(\"execute_extraction\", ...)`` "
-            "outside ``ExecutionDispatcher``. Use "
-            "``ExecutionDispatcher.dispatch(...)`` instead so fairness "
-            "headers and queue routing stay consistent. (Detection "
+            "outside ``PgExecutionDispatcher``. Use "
+            "``get_executor_dispatcher().dispatch(...)`` instead so queue routing "
+            "and the reply-key contract stay consistent — and because a raw "
+            "send_task publishes to a broker nothing drains. (Detection "
             "covers string-literal task names only; constant references, "
             "f-strings, and apply_async are blind spots.) Found:\n  "
             + "\n  ".join(offenders)

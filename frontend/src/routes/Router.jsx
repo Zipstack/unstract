@@ -131,7 +131,6 @@ try {
   llmWhispererRouter = mod.useLlmWhispererRoutes;
 } catch (err) {
   if (!isModuleMissing(err)) {
-    // eslint-disable-next-line no-console
     console.error("[llm-whisperer] routes import failed unexpectedly", err);
   }
 }
@@ -142,7 +141,6 @@ try {
   verticalsRouter = mod.useVerticalsRoutes;
 } catch (err) {
   if (!isModuleMissing(err)) {
-    // eslint-disable-next-line no-console
     console.error("[verticals] routes import failed unexpectedly", err);
   }
 }

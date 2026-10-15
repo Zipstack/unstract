@@ -37,7 +37,15 @@ const CustomMarkdown = ({
       case "tripleCode":
         return (
           <Paragraph style={{ margin: 0 }}>
-            <pre style={{ margin: 0 }}>{content}</pre>
+            <pre
+              style={{
+                margin: 0,
+                whiteSpace: "pre-wrap",
+                overflowWrap: "anywhere",
+              }}
+            >
+              {content}
+            </pre>
           </Paragraph>
         );
       case "inlineCode":

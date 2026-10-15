@@ -8,11 +8,13 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from unstract.sdk1.execution.context import ExecutionContext, Operation
-from unstract.sdk1.execution.dispatcher import ExecutionDispatcher
 from unstract.sdk1.execution.executor import BaseExecutor
 from unstract.sdk1.execution.orchestrator import ExecutionOrchestrator
 from unstract.sdk1.execution.registry import ExecutorRegistry
 from unstract.sdk1.execution.result import ExecutionResult
+from unstract.workflow_execution.executor_rpc import PgExecutionDispatcher
+
+from .executor_dispatch_fakes import FakeExecutorTransport, queue_for
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -46,9 +48,13 @@ def eager_app():
 
 
 def _register_legacy():
+    # Guarded because the import below may be the FIRST in the process, in which
+    # case ``@ExecutorRegistry.register`` fires on it and registering again
+    # raises a duplicate-name ValueError.
     from executor.executors.legacy_executor import LegacyExecutor
 
-    ExecutorRegistry.register(LegacyExecutor)
+    if "legacy" not in ExecutorRegistry.list_executors():
+        ExecutorRegistry.register(LegacyExecutor)
 
 
 # Mock cloud executors for multi-executor tests
@@ -436,15 +442,13 @@ class TestPluginDiscoveryToDispatchFlow:
         # Step 2: Verify registration
         assert "discovered" in ExecutorRegistry.list_executors()
 
-        # Step 3: Dispatch via mock Celery
-        mock_app = MagicMock()
-        mock_result = MagicMock()
-        mock_result.get.return_value = ExecutionResult(
-            success=True, data={"output": "discovered_result"}
-        ).to_dict()
-        mock_app.send_task.return_value = mock_result
-
-        dispatcher = ExecutionDispatcher(celery_app=mock_app)
+        # Step 3: Dispatch via a fake executor transport
+        transport = FakeExecutorTransport(
+            result=ExecutionResult(
+                success=True, data={"output": "discovered_result"}
+            ).to_dict()
+        )
+        dispatcher = PgExecutionDispatcher(transport)
         ctx = ExecutionContext(
             executor_name="discovered",
             operation="custom_op",
@@ -458,8 +462,7 @@ class TestPluginDiscoveryToDispatchFlow:
         assert result.data["output"] == "discovered_result"
 
         # Step 5: Verify queue routing
-        call_kwargs = mock_app.send_task.call_args
-        assert call_kwargs.kwargs["queue"] == "celery_executor_discovered"
+        assert transport.queue == "celery_executor_discovered"
 
 
 # ---------------------------------------------------------------------------
@@ -481,7 +484,7 @@ class TestQueueRoutingAllExecutors:
         list(EXECUTOR_QUEUE_MAP.items()),
     )
     def test_queue_name_for_executor(self, executor_name, expected_queue):
-        assert ExecutionDispatcher._get_queue(executor_name) == expected_queue
+        assert queue_for(executor_name) == expected_queue
 
 
 # ---------------------------------------------------------------------------

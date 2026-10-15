@@ -405,10 +405,11 @@ class TestLineItemEndToEnd:
         """Push a LINE_ITEM payload through the full Celery eager chain
         with a fake line_item plugin registered.
         """
-        # Re-register LegacyExecutor since the autouse fixture cleared it
-        from executor.executors.legacy_executor import LegacyExecutor
-
-        ExecutorRegistry.register(LegacyExecutor)
+        # Re-register LegacyExecutor since the autouse fixture cleared it.
+        # Via the module's guarded helper: a bare register() raises a
+        # duplicate-name ValueError when this test's import is the first in the
+        # process, because the decorator then fires after the fixture's clear.
+        _get_legacy_executor()
 
         # Register fake line_item plugin
         plugin_cls = _make_success_plugin(

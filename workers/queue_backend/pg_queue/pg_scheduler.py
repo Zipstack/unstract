@@ -30,7 +30,6 @@ connection or blocking the other rows.
 from __future__ import annotations
 
 import contextlib
-import json
 import logging
 import uuid
 from datetime import datetime
@@ -39,6 +38,7 @@ from typing import TYPE_CHECKING, NamedTuple
 from croniter import croniter
 
 from unstract.core.data_models import TaskPayload
+from unstract.core.jsonb import dumps_for_jsonb
 
 from ..fairness import DEFAULT_PRIORITY
 from .client import insert_message_sql
@@ -203,7 +203,7 @@ def dispatch_due_schedules(conn: PgConnection) -> int:
                     insert_message_sql(),
                     (
                         SCHEDULER_QUEUE_NAME,
-                        json.dumps(payload),
+                        dumps_for_jsonb(payload),
                         schedule.organization_id or "",
                         DEFAULT_PRIORITY,
                     ),
@@ -355,7 +355,7 @@ def dispatch_due_periodic_tasks(conn: PgConnection) -> int:
                     insert_message_sql(),
                     (
                         row.queue,
-                        json.dumps(payload),
+                        dumps_for_jsonb(payload),
                         row.org_id or "",
                         DEFAULT_PRIORITY,
                     ),

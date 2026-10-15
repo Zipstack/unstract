@@ -390,6 +390,11 @@ def adapter_instance() -> Any:
             f"{adapter_instance_id}, Error: {msg}"
         )
         raise APIError(message=msg, code=403)
+    except APIError:
+        # Already carries its own status and user-facing message (adapter not
+        # found, adapter deprecated); re-wrapping would report it as a 500 and
+        # log a traceback for what is a client-side condition.
+        raise
     except Exception as e:
         msg = f"Error while getting db adapter settings for {adapter_instance_id}: {e}"
         raise APIError(message=msg)

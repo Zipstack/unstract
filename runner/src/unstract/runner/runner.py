@@ -242,9 +242,6 @@ class UnstractRunner:
             "FILE_EXECUTION_ID": file_execution_id,
             "MESSAGING_CHANNEL": messaging_channel,
             "LOG_LEVEL": os.getenv(Env.LOG_LEVEL, "INFO"),
-            "CELERY_BROKER_BASE_URL": os.getenv(Env.CELERY_BROKER_BASE_URL),
-            "CELERY_BROKER_USER": os.getenv(Env.CELERY_BROKER_USER),
-            "CELERY_BROKER_PASS": os.getenv(Env.CELERY_BROKER_PASS),
             # Log transport (UN-3755). The sidecar is a LogPublisher producer
             # (log_processor.py:165), so it must agree with every other publisher or
             # its tool logs go to RabbitMQ while the rest go to Redis — and with the
@@ -257,6 +254,40 @@ class UnstractRunner:
             ),
             "CONTAINER_NAME": container_name,
         }
+        # UN-4123: TLS and db settings for the sidecar's OWN Redis client. It
+        # publishes tool logs through LogPublisher and tracks tool status in Redis,
+        # and this dict is a hand-picked allowlist rather than inherited env — the
+        # same trap that made LOG_TRANSPORT above necessary. Without these the
+        # sidecar would keep connecting in plaintext to db 0 after everything else
+        # moved to TLS.
+        #
+        # Set only when present, so an unset var leaves the sidecar's environment
+        # exactly as it is today rather than introducing an empty-string value —
+        # which os.getenv() in the sidecar would treat as configured.
+        for _redis_env in (
+            Env.REDIS_DB,
+            Env.REDIS_SSL,
+            Env.REDIS_SSL_CERT_REQS,
+            Env.REDIS_SSL_CA_CERTS,
+            Env.REDIS_SSL_CHECK_HOSTNAME,
+            Env.REDIS_URL,
+            Env.REDIS_HEALTH_CHECK_INTERVAL,
+        ):
+            _redis_value = os.getenv(_redis_env)
+            if _redis_value:
+                sidecar_env[_redis_env] = _redis_value
+
+        # The broker is needed only on the Celery log transport, so it is forwarded
+        # only when present in the runner's own environment.
+        for _broker_env in (
+            Env.CELERY_BROKER_BASE_URL,
+            Env.CELERY_BROKER_USER,
+            Env.CELERY_BROKER_PASS,
+        ):
+            _broker_value = os.getenv(_broker_env)
+            if _broker_value is not None:
+                sidecar_env[_broker_env] = _broker_value
+
         sidecar_config = self.client.get_container_run_config(
             command=[],
             file_execution_id=file_execution_id,

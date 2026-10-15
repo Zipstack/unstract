@@ -701,6 +701,7 @@ CLAUDE.md
 !.claude/skills/
 .claude/skills/*
 !.claude/skills/worktree/
+!.claude/skills/csp-check/
 CONTRIBUTION_GUIDE.md
 .mcp.json
 
