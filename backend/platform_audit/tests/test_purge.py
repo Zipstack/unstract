@@ -1,10 +1,12 @@
 from datetime import timedelta
 from io import StringIO
+from unittest.mock import patch
 
 from configuration.enums import ConfigKey
 from configuration.models import Configuration
 from django.core.management import call_command
 from django.core.management.base import CommandError
+from django.db import OperationalError
 from django.utils import timezone
 
 from platform_audit.models import PlatformAuditEvent
@@ -55,6 +57,27 @@ class PurgeCommandTests(AuditTestBase):
             for e in PlatformAuditEvent.objects.all()
         )
         self.assertEqual(remaining, [(False, 200), (True, 1)])
+
+    def test_an_unreadable_retention_skips_that_organisation(self) -> None:
+        # Below the minimum: Configuration would fall back to the 90-day
+        # default and delete the 100-day event this org may mean to keep.
+        self._override(self.org, "0")
+        with self.assertRaises(CommandError):
+            self._run()
+        remaining = sorted(
+            (e.organization_id == self.org.id, round(self._age(e)))
+            for e in PlatformAuditEvent.objects.all()
+        )
+        self.assertEqual(remaining, [(True, 1), (True, 100)])
+
+    def test_a_failed_retention_query_skips_that_organisation(self) -> None:
+        with patch(
+            "platform_audit.retention.Configuration.objects.filter",
+            side_effect=OperationalError("timeout"),
+        ):
+            with self.assertRaises(CommandError):
+                self._run()
+        self.assertEqual(PlatformAuditEvent.objects.count(), 3)
 
     def test_bad_batch_size_is_an_error(self) -> None:
         with self.assertRaises(CommandError):

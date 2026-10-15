@@ -501,6 +501,14 @@ class PlatformKeyEventTests(AuditTestBase):
         )
         self.assertEqual(event.changes, {"after": {"is_active": False}})
 
+    def test_created_inactive_from_a_string_is_recorded_inactive(self) -> None:
+        view = PlatformKeyViewSet.as_view({"post": "create"})
+        response = self.call(view, "post", data={"key_name": "k2", "is_active": "False"})
+        self.assertEqual(response.status_code, 201, response.data)
+        self.assertFalse(PlatformKey.objects.get(key_name="k2").is_active)
+        event = self.only_event(action="key.created")
+        self.assertEqual(event.changes, {"after": {"is_active": False}})
+
     def test_activate_records_the_keys_it_deactivates(self) -> None:
         old = self._key("old", is_active=True)
         new = self._key("new", is_active=False)

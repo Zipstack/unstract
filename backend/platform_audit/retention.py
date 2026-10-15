@@ -39,6 +39,24 @@ def retention_days(organization: Organization | None) -> int:
     return clamped
 
 
+def purge_retention_days(organization: Organization) -> int:
+    """The retention to delete by. Raises where ``retention_days`` falls back.
+
+    ``Configuration.get_value_by_organization`` returns the env default on any
+    error, a failed query included; a purge acting on that would delete events
+    the organisation chose to keep longer.
+    """
+    override = Configuration.objects.filter(
+        organization=organization, key=ConfigKey.PLATFORM_AUDIT_RETENTION_DAYS.name
+    ).first()
+    if override is None or not override.enabled:
+        return retention_days(None)
+    days = override.typed_value
+    if days is None:
+        raise ValueError("PLATFORM_AUDIT_RETENTION_DAYS override is not valid")
+    return days
+
+
 def retention_cutoff(
     organization: Organization | None, now: datetime | None = None
 ) -> datetime:

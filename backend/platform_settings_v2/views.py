@@ -129,7 +129,7 @@ class PlatformKeyViewSet(viewsets.ModelViewSet):
             request,
             Action.KEY_CREATED,
             platform_key,
-            changes={"after": {"is_active": bool(is_active)}},
+            changes={"after": {"is_active": serializer.validated_data["is_active"]}},
         )
         serialized_data = self.serializer_class(platform_key).data
         return Response(

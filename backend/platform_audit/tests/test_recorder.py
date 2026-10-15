@@ -268,6 +268,21 @@ class BestEffortSavepointTests(AuditTestBase):
         # Without a savepoint Postgres refuses every further statement here.
         self.assertFalse(PlatformAuditEvent.objects.exists())
 
+    def test_a_failed_read_in_the_recorder_does_not_abort_it_either(self) -> None:
+        def broken_organisation_lookup():
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT 1 / 0")
+
+        with patch(
+            "platform_audit.recorder.UserContext.get_organization",
+            side_effect=broken_organisation_lookup,
+        ):
+            with self.assertLogs("platform_audit.recorder", "ERROR"):
+                record_platform_event(
+                    action=Action.GROUP_CREATED, target_type=TargetType.GROUP
+                )
+        self.assertFalse(PlatformAuditEvent.objects.exists())
+
     def test_outside_a_transaction_no_transaction_is_opened(self) -> None:
         """Outside ATOMIC_REQUESTS a helper must not defer its on_commit writes."""
 

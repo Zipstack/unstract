@@ -26,6 +26,7 @@ Call it after the change has succeeded, never before::
     )
 """
 
+import contextlib
 import logging
 import os
 import sysconfig
@@ -84,35 +85,46 @@ def record_platform_event(
         organization: Defaults to the organisation in ``UserContext``.
     """
     try:
-        action = str(action)
-        if get_action(action) is None:
-            # A programming error, and it drops every event from that emitter.
-            logger.error("Platform audit: unregistered action %r not recorded", action)
-            return
-        organization = organization or UserContext.get_organization()
-        if organization is None:
-            logger.warning(
-                "Platform audit: no organisation in context, %r not recorded", action
-            )
-            return
-        fields = {
-            "organization": organization,
-            "occurred_at": timezone.now(),
-            "action": action,
-            "target_type": _clip(target_type, 64),
-            "target_id": _clip(target_id, 255),
-            "target_name": _clip(target_name, 255),
-            "summary": str(summary or ""),
-            "changes": _normalise_changes(changes, action),
-            "metadata": dict(metadata or {}),
-            "request_id": _clip(_request_id(request), 64),
-            **_resolve_actor(request=request, actor=actor),
-        }
-        transaction.on_commit(partial(_write, fields), robust=True)
+        # Its reads (organisation, actor, key) run in the caller's transaction;
+        # a savepoint keeps a failed one from aborting it (see best_effort).
+        with _savepoint():
+            action = str(action)
+            if get_action(action) is None:
+                # A programming error, and it drops every event from that emitter.
+                logger.error(
+                    "Platform audit: unregistered action %r not recorded", action
+                )
+                return
+            organization = organization or UserContext.get_organization()
+            if organization is None:
+                logger.warning(
+                    "Platform audit: no organisation in context, %r not recorded", action
+                )
+                return
+            fields = {
+                "organization": organization,
+                "occurred_at": timezone.now(),
+                "action": action,
+                "target_type": _clip(target_type, 64),
+                "target_id": _clip(target_id, 255),
+                "target_name": _clip(target_name, 255),
+                "summary": str(summary or ""),
+                "changes": _normalise_changes(changes, action),
+                "metadata": dict(metadata or {}),
+                "request_id": _clip(_request_id(request), 64),
+                **_resolve_actor(request=request, actor=actor),
+            }
+            transaction.on_commit(partial(_write, fields), robust=True)
     except Exception as exc:
         logger.error(
             "Platform audit: failed to record %r (%s)", action, describe_exception(exc)
         )
+
+
+def _savepoint() -> contextlib.AbstractContextManager:
+    if transaction.get_connection().in_atomic_block:
+        return transaction.atomic()
+    return contextlib.nullcontext()
 
 
 def best_effort(fn: Callable[P, T]) -> Callable[P, T | None]:

@@ -7,13 +7,15 @@ not scheduled; run it from cron or by hand::
     python manage.py purge_platform_audit_events --batch-size 5000
 """
 
+from datetime import timedelta
+
 from account_v2.models import Organization
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 from django.utils import timezone
 
 from platform_audit.models import PlatformAuditEvent
-from platform_audit.retention import retention_cutoff
+from platform_audit.retention import purge_retention_days
 
 
 class Command(BaseCommand):
@@ -42,10 +44,21 @@ class Command(BaseCommand):
             .distinct()
         )
         total = 0
+        skipped = []
         for organization in Organization.objects.filter(id__in=list(org_ids)):
+            try:
+                days = purge_retention_days(organization)
+            except Exception as exc:
+                # Deleting by a guessed retention cannot be undone; skip it.
+                skipped.append(organization.organization_id)
+                self.stderr.write(
+                    f"{organization.organization_id}: retention unreadable "
+                    f"({type(exc).__name__}), skipped"
+                )
+                continue
             expired = PlatformAuditEvent.objects.filter(
                 organization=organization,
-                occurred_at__lt=retention_cutoff(organization, now=now),
+                occurred_at__lt=now - timedelta(days=days),
             )
             if dry_run:
                 count = expired.count()
@@ -56,6 +69,8 @@ class Command(BaseCommand):
                 self.stdout.write(f"{organization.organization_id}: {count}")
         verb = "would delete" if dry_run else "deleted"
         self.stdout.write(self.style.SUCCESS(f"Platform audit purge {verb} {total}."))
+        if skipped:
+            raise CommandError(f"Retention unreadable, skipped: {', '.join(skipped)}")
 
     @staticmethod
     def _purge(expired, batch_size: int) -> int:
