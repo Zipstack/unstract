@@ -253,8 +253,17 @@ def validate_agent_kv_path_prefix(raw, path_prefix, deployment_prefix):
     return prefix
 
 
+# Under PATH_PREFIX, not beside it: `/api/v1/agent-kv/`. It is a product API
+# like every other one the platform serves, and sharing the prefix means the
+# LB rule that already routes `/api/v1` covers it -- no dedicated ingress
+# entry to add, and nothing to keep in step with this value. That coupling
+# was a real gap: on-prem values files replace `ingress.hosts` wholesale and
+# carried no `/agent-kv`, so the API answered the SPA's HTML there.
+#
+# It is NOT under TENANT_SUBFOLDER_PREFIX (`api/v1/unstract`), because it
+# resolves its organisation from the Bearer key rather than a URL segment.
 AGENT_KV_PATH_PREFIX = validate_agent_kv_path_prefix(
-    os.environ.get("AGENT_KV_PATH_PREFIX", "agent-kv"),
+    os.environ.get("AGENT_KV_PATH_PREFIX", f"{PATH_PREFIX}/agent-kv"),
     PATH_PREFIX,
     API_DEPLOYMENT_PATH_PREFIX,
 )

@@ -263,17 +263,21 @@ def test_run_worker_pg_ide_callback_role_drains_the_callback_queue():
 # is up, the route looks configured, and the request lands somewhere that
 # cannot serve it.
 #
-# `/agent-kv/` is mounted by `backend/backend/base_urls.py`, but traefik's
-# backend rule matched only `/api/v1`, `/deployment` and `/public`, and the
-# frontend rule is the negation of exactly those -- so every Agent-KV request
-# through the compose stack was served by the SPA's nginx and never reached
-# Django. The e2e lane did not catch it because it talks to
-# `UNSTRACT_BACKEND_URL` (port 8000) directly, bypassing traefik entirely.
+# The Agent-KV API is mounted under `AGENT_KV_PATH_PREFIX`, which defaults to
+# `api/v1/agent-kv` -- inside the `/api/v1` prefix traefik already routes to
+# the backend. It used to sit at `/agent-kv`, needing its own term in BOTH the
+# backend rule and the frontend's negation of it; miss either and every
+# request was served by the SPA's nginx and never reached Django. The e2e lane
+# could not catch that, because it talks to `UNSTRACT_BACKEND_URL` directly
+# and bypasses traefik.
 #
-# Reported as 2.2 in the branch review.
+# Sharing the prefix is what removes the failure mode rather than guarding it,
+# so this asserts the coupling is gone: the prefix must stay under a path
+# traefik already sends to the backend.
+#
+# Reported as 2.2 in the branch review; the prefix move came from review of
+# unstract-cloud#1828.
 # --------------------------------------------------------------------------
-
-AGENT_KV_PREFIX = "/agent-kv"
 
 
 def _router_rule(compose_path: Path, router: str) -> str:
@@ -287,23 +291,18 @@ def _router_rule(compose_path: Path, router: str) -> str:
     pytest.fail(f"no traefik rule for router {router!r} in {compose_path.name}")
 
 
-def test_traefik_routes_agent_kv_to_the_backend():
-    rule = _router_rule(DEV_COMPOSE, "backend")
-    assert f"PathPrefix(`{AGENT_KV_PREFIX}`)" in rule, (
-        "traefik does not route /agent-kv to the backend; the request is served "
-        "by the frontend SPA and never reaches Django"
-    )
-
-
-def test_traefik_excludes_agent_kv_from_the_frontend():
-    """The frontend rule is a negation list, so a prefix missing from it is
-    claimed by the SPA even once the backend also matches -- whichever router
-    wins, one of them is wrong.
+def test_agent_kv_rides_a_prefix_traefik_already_routes_to_the_backend():
+    """No dedicated `/agent-kv` term, because the prefix lives under one that
+    is already routed. If the prefix is ever moved back outside `/api/v1`,
+    both the backend rule and the frontend's negation need a term again --
+    and missing the second one is silent.
     """
-    rule = _router_rule(DEV_COMPOSE, "frontend")
-    assert f"!PathPrefix(`{AGENT_KV_PREFIX}`)" in rule, (
-        "the frontend router still claims /agent-kv; it must be excluded "
-        "explicitly, exactly as /api/v1, /deployment and /public are"
+    rule = _router_rule(DEV_COMPOSE, "backend")
+
+    assert "PathPrefix(`/api/v1`)" in rule, rule
+    assert "/agent-kv" not in rule, (
+        "a dedicated /agent-kv term is back in the traefik rule; either the "
+        "prefix moved out of /api/v1, or this term is now dead weight"
     )
 
 

@@ -88,12 +88,16 @@ class AgentKVAuth:
     def headers(self) -> dict[str, str]:
         return {"Authorization": f"Bearer {self.key}"}
 
+    #: Mounted under the platform's own API prefix, so it rides the `/api/v1`
+    #: route every deployment already has rather than needing its own.
+    PREFIX = "api/v1/agent-kv"
+
     @property
     def exec_url(self) -> str:
-        return f"{self.base}/agent-kv/"
+        return f"{self.base}/{self.PREFIX}/"
 
     def job_url(self, job_id: str, suffix: str = "") -> str:
-        return f"{self.base}/agent-kv/{job_id}{suffix}"
+        return f"{self.base}/{self.PREFIX}/{job_id}{suffix}"
 
 
 @pytest.fixture(scope="session")

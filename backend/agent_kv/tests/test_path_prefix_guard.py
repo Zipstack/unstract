@@ -81,5 +81,5 @@ def test_the_default_is_safe():
     """
     from django.conf import settings
 
-    assert settings.AGENT_KV_PATH_PREFIX == "agent-kv"
+    assert settings.AGENT_KV_PATH_PREFIX == "api/v1/agent-kv"
     assert f"/{settings.AGENT_KV_PATH_PREFIX}" in settings.WHITELISTED_PATHS
