@@ -929,14 +929,21 @@ class TestMultiQueue:
         assert [c.kwargs["start"] for c in client.read_any.call_args_list] == [0, 0, 1]
         assert consumer._next_queue == 2  # empty cycle moves on by one
 
-    def test_handler_failure_stops_the_batch_and_counts_the_work_done(self):
+    @pytest.mark.parametrize(
+        ("failing", "expected_done", "unstarted"),
+        [(1, 0, [2, 3]), (2, 1, [3]), (3, 2, [])],
+    )
+    def test_handler_failure_stops_the_batch_and_counts_the_work_done(
+        self, caplog, failing, expected_done, unstarted
+    ):
         # Running the rest after a failure could, in a DB outage, run work whose
-        # ack cannot land; so the batch stops, but work done still counts.
+        # ack cannot land; so the batch stops, but work done still counts (0 on
+        # a first-message failure, so run() backs off).
         client = MagicMock()
         client.read_any.return_value = [
-            _msg(1, _ok_payload(1)),
-            _msg(2, _ok_payload(2)),
-            _msg(3, _ok_payload(3)),
+            _msg(1, _ok_payload(1), queue_name="qa"),
+            _msg(2, _ok_payload(2), queue_name="qa"),
+            _msg(3, _ok_payload(3), queue_name="qb"),
         ]
         consumer = PgQueueConsumer(
             ["qa", "qb"], client=client, batch_size=3, lease_seconds=60, vt_seconds=60
@@ -944,13 +951,36 @@ class TestMultiQueue:
         handled: list[int] = []
 
         def _handle(message):
-            if message.msg_id == 2:
+            if message.msg_id == failing:
                 raise RuntimeError("boom")
             handled.append(message.msg_id)
 
         consumer._handle = _handle
-        assert consumer.poll_once() == 1  # msg 1 counted, so run() won't back off
-        assert handled == [1]  # msg 3 left claimed, not started
+        with caplog.at_level(logging.ERROR):
+            assert consumer.poll_once() == expected_done
+        assert handled == list(range(1, failing))
+        assert f"msg_id={failing} " in caplog.text
+        if unstarted:
+            assert f"unstarted msg_ids {unstarted}" in caplog.text
+        else:
+            assert "unstarted" not in caplog.text
+        # Rotation follows the claim, not what ran: the batch ended on qb.
+        assert consumer._next_queue == 0
+
+    def test_non_object_payload_is_dropped_not_raised(self):
+        # A non-dict payload must not raise out of _handle (it would stop its
+        # batch on every delivery); it is dropped and acked like any malformed one.
+        client = MagicMock()
+        client.read_any.return_value = [
+            _msg(1, ["not", "an", "object"]),
+            _msg(2, _ok_payload(7)),
+        ]
+        consumer = PgQueueConsumer(
+            ["qa", "qb"], client=client, batch_size=2, lease_seconds=60, vt_seconds=60
+        )
+        assert consumer.poll_once() == 2
+        assert (7, 0) in _calls  # the batch-mate still ran
+        assert [c.args[0] for c in client.delete.call_args_list] == [1, 2]
 
     def test_rotation_follows_the_last_message_of_a_batch(self):
         client = MagicMock()

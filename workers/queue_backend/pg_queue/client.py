@@ -287,10 +287,9 @@ class PgQueueClient:
             # needless reconnect.
             # NOTE: ``send()``'s retry deliberately catches only
             # ``_CONN_DEAD_ERRORS``; a server death that surfaces as a *bare*
-            # ``psycopg2.DatabaseError`` is still dropped here (above, or via
-            # the failed-rollback branch on an injected connection) but is
-            # intentionally NOT retried by ``send()`` — it's left to the next
-            # call's reconnect.
+            # ``psycopg2.DatabaseError`` is still dropped here when we own the
+            # connection (an injected one is never dropped) but is intentionally
+            # NOT retried by ``send()`` — it's left to the next call's reconnect.
             conn_dead = is_connection_dead(exc) or type(exc) is psycopg2.DatabaseError
             try:
                 conn.rollback()

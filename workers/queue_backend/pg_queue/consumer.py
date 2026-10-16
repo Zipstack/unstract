@@ -406,11 +406,13 @@ class PgQueueConsumer:
             try:
                 self._handle(message)
             except Exception:
+                unstarted = [m.msg_id for m in messages[handled + 1 :]]
                 logger.exception(
-                    "PG-queue consumer: handling msg_id=%s failed; left claimed "
-                    "until their lease lapses: %s",
+                    "PG-queue consumer: handling msg_id=%s (queue=%r) failed; it "
+                    "redelivers when its lease lapses%s",
                     message.msg_id,
-                    [m.msg_id for m in messages[handled + 1 :]],
+                    message.queue_name,
+                    f", as do the unstarted msg_ids {unstarted}" if unstarted else "",
                 )
                 return handled
         return len(messages)
@@ -590,6 +592,17 @@ class PgQueueConsumer:
 
     def _handle(self, message: QueueMessage) -> None:
         payload = message.message
+        if not isinstance(payload, dict):
+            # A raw writer can store any JSON; a non-object would raise below on
+            # every delivery and stop its batch each time, so drop it as malformed.
+            logger.error(
+                "PG-queue consumer: payload is not a JSON object (msg_id=%s) — "
+                "dropping malformed message: %r",
+                message.msg_id,
+                payload,
+            )
+            self._client.delete(message.msg_id)
+            return
         task_name = payload.get("task_name")
         # Request-reply (executor RPC): a unique key the dispatching caller is
         # blocking on. Read up front so the drop branches below can store a
