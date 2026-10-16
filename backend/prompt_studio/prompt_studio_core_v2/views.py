@@ -19,6 +19,8 @@ from file_management.exceptions import FileNotFound
 from permissions.membership_views import OwnerManagementMixin
 from permissions.permission import IsOwner, IsOwnerOrSharedUserOrSharedToOrg
 from permissions.resource_share_views import ResourceShareManagementMixin
+from platform_audit.actions import Action
+from platform_audit.resources import record_resource_event, resource_ref
 from plugins import get_plugin
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -219,6 +221,7 @@ class PromptStudioCoreView(
         PromptStudioHelper.create_default_profile_manager(
             request.user, serializer.data["tool_id"]
         )
+        record_resource_event(request, Action.RESOURCE_CREATED, serializer.instance)
 
         # Notify HubSpot if this is the first Prompt Studio project for the org
         # (count == 1 means the one we just created is the first)
@@ -233,7 +236,9 @@ class PromptStudioCoreView(
 
     def perform_destroy(self, instance: CustomTool) -> None:
         organization_id = UserSessionUtils.get_organization_id(self.request)
+        deleted = resource_ref(instance)
         instance.delete(organization_id)
+        record_resource_event(self.request, Action.RESOURCE_DELETED, deleted)
 
     def _check_tool_usage_in_workflows(self, instance: CustomTool) -> tuple[bool, set]:
         """Whether ``instance``'s exported tool is in use, and by which workflows.

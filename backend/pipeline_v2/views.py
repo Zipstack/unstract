@@ -16,6 +16,8 @@ from permissions.permission import (
     is_activation_only_patch,
 )
 from permissions.resource_share_views import ResourceShareManagementMixin
+from platform_audit.actions import Action
+from platform_audit.resources import record_resource_event, resource_ref
 from plugins import get_plugin
 from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action
@@ -179,11 +181,14 @@ class PipelineViewSet(
             raise DuplicateData(
                 f"{PipelineErrors.PIPELINE_EXISTS}, {PipelineErrors.DUPLICATE_API}"
             )
+        record_resource_event(request, Action.RESOURCE_CREATED, pipeline_instance)
         return Response(data=serializer.data, status=status.HTTP_201_CREATED)
 
     def perform_destroy(self, instance: Pipeline) -> None:
         pipeline_to_remove = str(instance.pk)
+        deleted = resource_ref(instance)
         super().perform_destroy(instance)
+        record_resource_event(self.request, Action.RESOURCE_DELETED, deleted)
         return SchedulerHelper.remove_job(pipeline_to_remove)
 
     @action(detail=True, methods=["get"], url_path="users")
