@@ -99,8 +99,8 @@ class TestBackoffSchedule:
             OutOfMemoryError("command not allowed when used memory > 'maxmemory'."),
             ReadOnlyError("You can't write against a read only replica."),
             ResponseError("MISCONF Redis is configured to save RDB snapshots"),
-            # Not a RedisError: raised by the ssl module while wrapping the socket, e.g.
-            # a TLS misconfiguration.
+            # Not a RedisError: raised by the ssl module while redis-py configures the
+            # SSL context, e.g. a TLS misconfiguration.
             ValueError(
                 "Cannot set verify_mode to CERT_NONE when check_hostname is enabled."
             ),
@@ -110,6 +110,7 @@ class TestBackoffSchedule:
     def test_every_failure_class_backs_off(self, consumer, error):
         redis = _scripted_redis(consumer, [error])
         assert _run_recording_waits(consumer, redis) == [1]
+        redis.connection_pool.disconnect.assert_called_once()
 
     def test_an_idle_none_reply_resets_the_backoff(self, consumer):
         # BLMOVE timing out with no work is a successful call: the streak is over.
@@ -166,9 +167,48 @@ class TestReconnectAfterFailure:
         assert order == ["drop", ("wait", 1.0), "drop", ("wait", 2.0)]
 
     def test_a_successful_read_does_not_drop_the_pool(self, consumer):
-        redis = _scripted_redis(consumer, [None, None])
+        # Both success paths: a delivered envelope and an idle block.
+        raw = _envelope(event="logs:c1", user_session_id="c1")
+        redis = _scripted_redis(consumer, [raw, None])
         _run_recording_waits(consumer, redis)
+        consumer._test_logs_consumer.assert_called_once()
         redis.connection_pool.disconnect.assert_not_called()
+
+
+class TestGivingUp:
+    def _run(self, consumer, redis):
+        waits = []
+        with (
+            patch.object(consumer, "create_redis_client", return_value=redis),
+            patch.object(consumer, "_wait_before_reconnect", side_effect=waits.append),
+        ):
+            code = consumer.run()
+        return code, waits
+
+    def test_exits_non_zero_after_ten_waits_at_the_cap(self, consumer):
+        # 5 waits below the cap, 10 at it, then the 16th failure gives up.
+        redis = _scripted_redis(consumer, [_REFUSED] * 16 + [None])
+
+        code, waits = self._run(consumer, redis)
+
+        assert code == 1
+        assert waits == [1, 2, 4, 8, 16] + [30] * 10
+        assert redis.blmove.call_count == 16
+        last = consumer.logger.error.call_args_list[-1]
+        assert last.args[0] % last.args[1:] == (
+            "Log stream read still failing after 10 waits at the 30s cap; "
+            "exiting so the container restarts"
+        )
+
+    def test_a_successful_read_resets_the_count(self, consumer):
+        # 9 waits at the cap, a reply, then another full streak short of giving up.
+        streak = [_REFUSED] * 14
+        redis = _scripted_redis(consumer, streak + [None] + streak)
+
+        code, waits = self._run(consumer, redis)
+
+        assert code == 0
+        assert waits == ([1, 2, 4, 8, 16] + [30] * 9) * 2
 
 
 class TestMixedFailures:

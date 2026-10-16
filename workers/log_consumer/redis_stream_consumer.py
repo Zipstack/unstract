@@ -51,8 +51,8 @@ app, config = WorkerBuilder.build_celery_app(WorkerType.LOG_CONSUMER)
 from log_consumer.tasks import logs_consumer  # noqa: E402
 
 _QUEUE_NAME = os.getenv("LOG_STREAM_QUEUE_NAME", "log_stream_queue")
-# BLMOVE blocks up to this long before returning None, which is the loop's only chance to
-# notice a shutdown signal. Keep it well under the pod's terminationGracePeriodSeconds.
+# BLMOVE blocks up to this long before returning None. Keep it well under the pod's
+# terminationGracePeriodSeconds.
 _BLOCK_TIMEOUT_SECONDS = int(os.getenv("LOG_STREAM_BLOCK_TIMEOUT", "5"))
 # redis-py enforces ``socket_timeout`` on the BLMOVE read itself, so it MUST exceed the
 # server-side block or every call aborts mid-block with ``redis.TimeoutError``.
@@ -70,6 +70,11 @@ _SOCKET_TIMEOUT_SECONDS = _BLOCK_TIMEOUT_SECONDS + 5
 # (staging, Oct 2026).
 _RECONNECT_BACKOFF_INITIAL_SECONDS = 1.0
 _RECONNECT_BACKOFF_MAX_SECONDS = 30.0
+# Waits at the cap before run() gives up and exits non-zero (~5 min of continuous
+# failure). Some failures never clear in-process — a rotated password read once at
+# start, an ACL or TLS misconfiguration — and a restart re-reads them, and shows up as
+# CrashLoopBackOff rather than one quiet ERROR line every 30s.
+_MAX_WAITS_AT_BACKOFF_CAP = 10
 # How often a backoff wait re-checks for a shutdown signal. Polling the flag rather than
 # waiting on a threading.Event is deliberate: calling Event.set() from _handle_signal
 # can, in a narrow race, deadlock against Event.wait() on this same thread.
@@ -157,6 +162,7 @@ def run() -> int:
     _recover_in_flight(redis_client, processing)
 
     backoff = _RECONNECT_BACKOFF_INITIAL_SECONDS
+    waits_at_cap = 0
     while not _shutdown:
         try:
             raw = redis_client.blmove(
@@ -168,22 +174,34 @@ def run() -> int:
             # (redis-py's default Retry(NoBackoff(), 0)), a refused connect returns
             # without BLMOVE ever blocking, and an error reply (OOM, READONLY, MISCONF,
             # NOPERM) is just as instant.
+            if waits_at_cap >= _MAX_WAITS_AT_BACKOFF_CAP:
+                logger.error(
+                    "Log stream read still failing after %d waits at the %.0fs cap; "
+                    "exiting so the container restarts",
+                    waits_at_cap,
+                    _RECONNECT_BACKOFF_MAX_SECONDS,
+                    exc_info=True,
+                )
+                return 1
             logger.error(
                 "Log stream read failed; backing off %.0fs before retrying",
                 backoff,
                 exc_info=True,
             )
-            # redis-py drops the socket only on a connection error or timeout; after an
-            # error reply it reuses it, so a standalone client left on a demoted primary
-            # would get READONLY forever. Dropping the pool makes the next attempt open
-            # a fresh connection and re-resolve the host.
+            # redis-py keeps the socket after an error reply, so a standalone client left
+            # on a demoted primary would get READONLY forever. Disconnecting the pool's
+            # connections makes the next attempt open a fresh one and re-resolve the
+            # host.
             redis_client.connection_pool.disconnect()
             _wait_before_reconnect(backoff)
+            if backoff >= _RECONNECT_BACKOFF_MAX_SECONDS:
+                waits_at_cap += 1
             backoff = min(backoff * 2, _RECONNECT_BACKOFF_MAX_SECONDS)
             continue
 
         # A successful BLMOVE, including an idle block's None, ends the failure streak.
         backoff = _RECONNECT_BACKOFF_INITIAL_SECONDS
+        waits_at_cap = 0
 
         if raw is None:  # timeout, no work — loop so shutdown can be observed
             continue
