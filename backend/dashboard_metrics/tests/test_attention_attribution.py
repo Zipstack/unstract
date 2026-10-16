@@ -142,11 +142,11 @@ class FailingStreakTests(_Seed, TestCase):
             with self.subTest(name):
                 pipeline = self._pipeline(name)
                 self._runs(pipeline, before + [ERROR] * 5)
-                (streak,) = [
+                (streak,) = (
                     s
                     for s in failing_streaks(Pipeline.objects.all())
                     if s.row == pipeline
-                ]
+                )
                 self.assertEqual(streak.failures_in_a_row, 5)
                 self.assertEqual(streak.failing_since, self.now - timedelta(hours=7))
 
