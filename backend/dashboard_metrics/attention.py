@@ -116,9 +116,9 @@ def collect_attention(
     """Every provider's items, serialized, and the kinds whose provider failed.
 
     A provider fails when it raises, or returns an item that is not of its own
-    kind or whose fields do not have the contract's types (``_serialize``). It is
-    logged and named, never shown as
-    "nothing needs attention", and the other providers' items still return.
+    kind or whose fields do not have the contract's types (``_serialize``). It
+    is logged and named, never shown as "nothing needs attention", and the
+    other providers' items still return.
     """
     items: list[dict[str, Any]] = []
     failed: list[str] = []
@@ -148,7 +148,10 @@ def _serialize(provider: AttentionProvider, item: AttentionItem) -> dict[str, An
     if not _is_int(item.count) or item.count < 0:
         raise ValueError(f"Item count must be a non-negative int, got {item.count!r}")
     if not isinstance(item.id, str) or not isinstance(item.name, str | None):
-        raise ValueError(f"Item id and name must be strings, got {item.id!r}")
+        raise ValueError(
+            f"Item id must be a string and name a string or None, "
+            f"got {item.id!r} and {item.name!r}"
+        )
     if not isinstance(item.since, datetime | None):
         raise ValueError(f"Item since must be a datetime, got {item.since!r}")
     return item.to_dict()
