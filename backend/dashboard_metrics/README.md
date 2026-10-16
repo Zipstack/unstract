@@ -613,6 +613,8 @@ Base URL: `/api/v1/unstract/<org_id>/metrics/`
 | `/series/` | GET | Time series for date range | Auto-selected table |
 | `/live-summary/` | GET | Summary from source tables | Source tables directly |
 | `/live-series/` | GET | Time series from source tables | Source tables directly |
+| `/attention/` | GET | Open items that need attention | Source tables directly |
+| `/attribution/` | GET | Failed pages by source and by day | Source tables directly |
 | `/health/` | GET | Health check | DB + Cache |
 
 ### Auto Source Selection
@@ -683,6 +685,84 @@ Override with `?source=hourly|daily|monthly`
   ]
 }
 ```
+
+### Attention and attribution (PB-T14)
+
+Both take only `start_date` and `end_date` (same defaults and 365-day cap as
+above), are read live and are not cached. JSON Schemas for both responses are in
+[`contract/`](contract/); tests validate real responses against them.
+
+#### `/attention/`
+
+```json
+{
+  "start_date": "2026-09-16T00:00:00+00:00",
+  "end_date": "2026-10-16T00:00:00+00:00",
+  "items": [
+    {
+      "kind": "failing_pipeline",
+      "id": "6f1c2a4e-1d1b-4c8e-9a51-0c7b2f1e9d10",
+      "name": "Nightly invoices",
+      "count": 7,
+      "since": "2026-10-10T02:00:00+00:00",
+      "route": {"key": "etl_pipeline.detail", "params": {"id": "6f1c2a4e-…"}},
+      "details": {
+        "last_failure": "2026-10-15T02:00:00+00:00",
+        "last_success": "2026-10-09T02:00:00+00:00",
+        "pipeline_type": "ETL"
+      }
+    }
+  ],
+  "failed_kinds": []
+}
+```
+
+| kind | where | item | `count` | `since` |
+|---|---|---|---|---|
+| `failing_pipeline` | OSS | one per active ETL or Task pipeline | failures in a row | first failure of the streak |
+| `failing_deployment` | OSS | one per active API deployment | failures in a row | first failure of the streak |
+| `reviews_waiting`, `challenges_unresolved` | cloud | defined by the cloud apps that register them | | |
+
+- A row is failing when every one of its last five runs failed — the same five
+  runs the lists draw as status dots — and the latest of them is in the range.
+  The rule lives in `workflow_manager/workflow_v2/failing_streaks.py`, shared
+  with the list aggregates (PB-T13).
+- `route` uses the global-search route-registry keys, or is `null`.
+  `details` is kind-specific.
+- Items are in provider order (`failing_pipeline`, `failing_deployment`, then
+  cloud kinds), newest failure first within a kind.
+- `failed_kinds` names kinds whose provider raised; never show those as
+  "nothing needs attention".
+- A cloud app adds a kind by subclassing `attention.AttentionProvider` and
+  calling `register_attention_provider()` from its `AppConfig.ready()`.
+
+#### `/attribution/`
+
+```json
+{
+  "start_date": "2026-09-16T00:00:00+00:00",
+  "end_date": "2026-10-16T00:00:00+00:00",
+  "total_failed_pages": 708,
+  "sources": [
+    {"id": "6f1c…", "name": "Nightly invoices", "type": "etl_pipeline",
+     "failed_pages": 512, "share": 0.7232}
+  ],
+  "days": [
+    {"date": "2026-08-10", "failed_pages": 610,
+     "sources": [{"id": "6f1c…", "failed_pages": 512}]}
+  ]
+}
+```
+
+- Built from the same queryset as the `failed_pages` metric
+  (`MetricsQueryService.failed_file_executions_with_pages`), so
+  `total_failed_pages` and each day's `failed_pages` equal that series for the
+  same range.
+- A source is the pipeline or API deployment that ran the file; a run with no
+  pipeline is attributed to its workflow (`type: workflow`), and a pipeline
+  that no longer exists has `type: deleted` and `name: null`.
+- Sources are ordered by failed pages, most first; `share` is the fraction of
+  `total_failed_pages`, rounded to 4 places.
 
 ---
 
