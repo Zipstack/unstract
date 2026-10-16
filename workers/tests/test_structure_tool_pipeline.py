@@ -1019,3 +1019,50 @@ class TestHelperFunctions:
             }
         ]
         assert _should_skip_extraction_for_smart_table(outputs) is True
+
+
+class TestStructureToolImageLimitLlms:
+    """Extraction receives every LLM that will read the pages (UN-4427)."""
+
+    @patch(_PATCH_SHIM)
+    @patch(_PATCH_FILE_STORAGE)
+    @patch(_PATCH_PLATFORM_HELPER)
+    @patch(_PATCH_DISPATCHER)
+    def test_extract_params_carry_the_distinct_prompt_llms(
+        self,
+        mock_get_executor_dispatcher,
+        mock_create_ph,
+        mock_get_fs,
+        mock_shim_cls,
+        base_params,
+        tool_metadata_regular,
+        mock_fs,
+        mock_platform_helper,
+    ):
+        from file_processing.structure_tool_task import (
+            _execute_structure_tool_impl as execute_structure_tool,
+        )
+
+        second = dict(tool_metadata_regular["outputs"][0], name="field_b", llm="llm-2")
+        no_llm = dict(tool_metadata_regular["outputs"][0], name="field_c", llm="")
+        tool_metadata_regular["outputs"].extend([second, no_llm])
+        mock_get_fs.return_value = mock_fs
+        mock_create_ph.return_value = mock_platform_helper
+        mock_platform_helper.get_prompt_studio_tool.return_value = {
+            "tool_metadata": tool_metadata_regular,
+        }
+        dispatcher_instance = create_autospec(PgExecutionDispatcher, instance=True)
+        mock_get_executor_dispatcher.return_value = dispatcher_instance
+        dispatcher_instance.dispatch.return_value = _make_pipeline_result()
+
+        execute_structure_tool(base_params)
+
+        pipeline_ctx = next(
+            call.args[0]
+            for call in dispatcher_instance.dispatch.call_args_list
+            if "extract_params" in call.args[0].executor_params
+        )
+        ids = pipeline_ctx.executor_params["extract_params"]["llm_instance_ids"]
+        # tool-level LLM + each prompt's LLM, de-duplicated and sorted;
+        # blanks are dropped.
+        assert ids == ["llm-1", "llm-2"]

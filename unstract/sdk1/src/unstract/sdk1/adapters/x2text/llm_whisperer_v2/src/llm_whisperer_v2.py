@@ -28,6 +28,7 @@ from unstract.sdk1.file_storage import FileStorage, FileStorageProvider
 
 if TYPE_CHECKING:
     import requests
+    from unstract.sdk1.utils.image_limits.policy import ImageModePolicy
 
 logger = logging.getLogger(__name__)
 
@@ -105,6 +106,7 @@ class LLMWhispererV2(X2TextAdapter):
         output_file_path: str | None,
         fs: FileStorage,
         tag: str | list[str] | None = None,
+        image_limits: ImageModePolicy | None = None,
     ) -> TextExtractionResult:
         """Image output mode branch of ``process()``.
 
@@ -116,7 +118,9 @@ class LLMWhispererV2(X2TextAdapter):
         cache from re-submitting the remote conversion on a re-run and keeps the
         indexed document meaningful. The per-page references live in
         ``extraction_metadata.page_images`` — never inside ``extracted_text``.
-        ``tag`` is forwarded for service-side usage reporting.
+        ``tag`` is forwarded for service-side usage reporting; ``image_limits``
+        (an ``ImageModePolicy`` for the consuming LLM, or None) drives the
+        page-budget and size checks in the helper.
         """
         logger.info("Image mode: processing %s in image output mode", input_file_path)
         self._validate_pdf_only(input_file_path, fs=fs)
@@ -126,6 +130,7 @@ class LLMWhispererV2(X2TextAdapter):
             output_file_path=output_file_path,
             fs=fs,
             tag=tag,
+            image_limits=image_limits,
         )
         summary = LLMWhispererHelper.build_image_output_summary(page_images)
         # Persist the summary to the extract file so the extraction is
@@ -192,6 +197,7 @@ class LLMWhispererV2(X2TextAdapter):
                 output_file_path,
                 fs,
                 tag=kwargs.get(X2TextConstants.TAGS),
+                image_limits=kwargs.get(X2TextConstants.IMAGE_LIMITS),
             )
 
         logger.info(

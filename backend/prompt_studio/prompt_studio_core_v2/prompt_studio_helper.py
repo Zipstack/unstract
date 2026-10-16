@@ -91,6 +91,12 @@ from unstract.sdk1.exceptions import IndexingError, SdkError
 from unstract.sdk1.execution.context import ExecutionContext
 from unstract.sdk1.file_storage.constants import StorageType
 from unstract.sdk1.file_storage.env_helper import EnvHelper
+from unstract.sdk1.llm import LLM
+from unstract.sdk1.utils.image_limits import (
+    compute_page_budget,
+    extraction_bound_kwargs,
+    page_cap_message,
+)
 from unstract.sdk1.utils.indexing import IndexingUtils
 from unstract.sdk1.utils.tool import ToolUtils
 
@@ -654,6 +660,9 @@ class PromptStudioHelper:
 
         extract_params = {
             IKeys.X2TEXT_INSTANCE_ID: str(default_profile.x2text.id),
+            IKeys.LLM_INSTANCE_IDS: PromptStudioHelper._image_limit_llm_ids(
+                default_profile
+            ),
             IKeys.FILE_PATH: file_path,
             IKeys.ENABLE_HIGHLIGHT: tool.enable_highlight,
             IKeys.OUTPUT_FILE_PATH: extract_file_path,
@@ -1480,26 +1489,82 @@ class PromptStudioHelper:
             return False
 
     @staticmethod
-    def validate_upload_page_count_for_image_mode(file_data: Any, file_type: str) -> None:
+    def _image_limit_llm_ids(profile_manager: ProfileManager | None) -> list[str]:
+        """The LLM ids whose image limits apply to this profile's extraction."""
+        llm = getattr(profile_manager, "llm", None)
+        llm_id = getattr(llm, "id", None)
+        return [str(llm_id)] if llm_id else []
+
+    @staticmethod
+    def _upload_page_budget(profile_manager: ProfileManager | None) -> Any:
+        """The default profile LLM's page budget, or None to use the fixed cap.
+
+        Resolution is local (the adapter's own validation, no network). Any
+        failure falls back to the fixed cap rather than blocking the upload:
+        extraction re-checks against the LLM before anything is converted.
+        """
+        llm = getattr(profile_manager, "llm", None)
+        if llm is None:
+            return None
+        try:
+            limits, tokens = LLM.image_input_limits_for(
+                str(llm.adapter_id), llm.metadata or {}
+            )
+        except Exception:
+            logger.warning(
+                "Could not resolve image limits for the default profile's LLM; "
+                "using the fixed page cap for the upload check",
+                exc_info=True,
+            )
+            return None
+        bounds = extraction_bound_kwargs()
+        return compute_page_budget(
+            limits,
+            context_tokens=tokens,
+            page_ceiling=bounds["page_ceiling"],
+            legacy_cap=bounds["legacy_cap"],
+        )
+
+    @staticmethod
+    def validate_upload_page_count_for_image_mode(
+        file_data: Any, file_type: str, profile_manager: ProfileManager | None = None
+    ) -> None:
         """Reject, at upload, a PDF with more pages than image mode can answer.
 
         Call only when ``uploads_use_image_output_mode`` is True. Image mode
         sends every page to the LLM in one request, so a document over the
-        page cap can never be answered — and converting it would be billed.
-        Catching it at upload means the user never builds prompts around a
-        document that will fail at indexing.
+        LLM's page budget can never be answered — and converting it would be
+        billed. Catching it at upload means the user never builds prompts
+        around a document that will fail at indexing.
 
-        Uses the SDK's own page counter and cap, so a document accepted here
-        also passes the extraction-time pre-check. The file is read in place,
-        not copied into memory. A PDF whose page count can't be read is let
-        through; extraction re-checks it.
+        ``profile_manager`` is the project's default profile: its LLM's
+        image-request limits set the budget (the same computation the
+        extraction-time pre-check runs). Without a resolvable LLM the fixed
+        cap applies. The file is read in place, not copied into memory. A
+        PDF whose page count can't be read is let through; extraction
+        re-checks it.
         """
         if file_type != "application/pdf":
             return
-        page_cap = configured_page_cap()
         page_count = LLMWhispererHelper.pdf_page_count(file_data)
         file_data.seek(0)
-        if page_count is None or page_count <= page_cap:
+        if page_count is None:
+            return
+        budget = PromptStudioHelper._upload_page_budget(profile_manager)
+        if budget is not None:
+            if page_count <= budget.max_pages:
+                return
+            profile_name = getattr(profile_manager, "profile_name", "") or "default"
+            raise ImageModePageLimitExceeded(
+                detail=(
+                    page_cap_message(page_count, budget, charged=None)
+                    + " This check uses the project's default profile "
+                    f"('{profile_name}'); other profiles may allow a different "
+                    "number of pages."
+                )
+            )
+        page_cap = configured_page_cap()
+        if page_count <= page_cap:
             return
         raise ImageModePageLimitExceeded(
             detail=(
@@ -2712,6 +2777,9 @@ class PromptStudioHelper:
                 extracted_text = None
         payload = {
             IKeys.X2TEXT_INSTANCE_ID: x2text,
+            IKeys.LLM_INSTANCE_IDS: PromptStudioHelper._image_limit_llm_ids(
+                profile_manager
+            ),
             IKeys.FILE_PATH: file_path,
             IKeys.ENABLE_HIGHLIGHT: enable_highlight,
             IKeys.USAGE_KWARGS: usage_kwargs.copy(),
