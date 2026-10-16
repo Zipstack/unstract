@@ -13,13 +13,15 @@ from api_v2.models import APIDeployment
 from connector_v2.models import ConnectorInstance
 from connector_v2.views import ConnectorInstanceViewSet
 from django.core.files.uploadedfile import SimpleUploadedFile
+from permissions.membership_serializers import AddOwnerSerializer, RemoveOwnerSerializer
+from permissions.roles import ResourceRole
 from pipeline_v2.models import Pipeline
 from pipeline_v2.views import PipelineViewSet
 from prompt_studio.prompt_studio_core_v2.models import CustomTool
 from prompt_studio.prompt_studio_core_v2.prompt_studio_helper import PromptStudioHelper
 from prompt_studio.prompt_studio_core_v2.views import PromptStudioCoreView
 from rest_framework.test import force_authenticate
-from tenant_account_v2.models import OrganizationGroup
+from tenant_account_v2.models import OrganizationGroup, OrganizationMember
 from workflow_manager.endpoint_v2.models import WorkflowEndpoint
 from workflow_manager.workflow_v2.models.workflow import Workflow
 from workflow_manager.workflow_v2.views import WorkflowViewSet
@@ -383,6 +385,56 @@ class SharingTests(ResourceEventTestBase):
         self.assert_resource_event(
             Action.RESOURCE_CO_OWNER_REMOVED, "workflow", self.workflow.id, "wf", "co@example.com"
         )
+
+
+class CoOwnerRaceTests(ResourceEventTestBase):
+    """Two requests can pass validation for the same change; only one makes it."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.workflow = self.create_workflow()
+        self.coowner = make_user("co@example.com")
+        OrganizationMember.objects.create(
+            organization=self.org, user=self.coowner, role="user"
+        )
+
+    def _context(self) -> dict:
+        request = self.factory.post("/")
+        request.user = self.admin
+        return {"request": request, "resource": self.workflow}
+
+    def test_an_add_another_request_already_made_changes_nothing(self) -> None:
+        serializer = AddOwnerSerializer(
+            data={"user_id": self.coowner.id}, context=self._context()
+        )
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        self.workflow.memberships.create(user=self.coowner, role=ResourceRole.OWNER)
+        self.assertFalse(serializer.save())
+        self.assertEqual(
+            self.workflow.memberships.filter(user=self.coowner).count(), 1
+        )
+
+    def test_a_remove_another_request_already_made_changes_nothing(self) -> None:
+        self.workflow.memberships.create(user=self.coowner, role=ResourceRole.OWNER)
+        serializer = RemoveOwnerSerializer(
+            data={}, context={**self._context(), "user_to_remove": self.coowner}
+        )
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        self.workflow.memberships.filter(user=self.coowner).delete()
+        self.assertFalse(serializer.save())
+
+    def test_a_save_that_changed_nothing_records_nothing(self) -> None:
+        with patch(
+            "permissions.membership_views.AddOwnerSerializer.save", return_value=False
+        ):
+            response = self.call(
+                WorkflowViewSet.as_view({"post": "add_co_owner"}),
+                "post",
+                data={"user_id": self.coowner.id},
+                pk=str(self.workflow.id),
+            )
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(self.events(action=Action.RESOURCE_CO_OWNER_ADDED), [])
 
 
 class OrgScopingTests(ResourceEventTestBase):

@@ -42,9 +42,12 @@ class OwnerManagementMixin:
             data=request.data, context={"request": request, "resource": resource}
         )
         serializer.is_valid(raise_exception=True)
-        serializer.save()
+        changed = serializer.save()
         added_user = User.objects.get(id=serializer.validated_data["user_id"])
-        _record_co_owner(request, Action.RESOURCE_CO_OWNER_ADDED, resource, added_user)
+        if changed:
+            _record_co_owner(
+                request, Action.RESOURCE_CO_OWNER_ADDED, resource, added_user
+            )
         self._notify_owner_added(resource, added_user, request.user)
         return Response(
             {"id": str(resource.pk), "co_owners": self._owner_refs(resource)},
@@ -66,10 +69,10 @@ class OwnerManagementMixin:
             },
         )
         serializer.is_valid(raise_exception=True)
-        serializer.save()
-        _record_co_owner(
-            request, Action.RESOURCE_CO_OWNER_REMOVED, resource, user_to_remove
-        )
+        if serializer.save():
+            _record_co_owner(
+                request, Action.RESOURCE_CO_OWNER_REMOVED, resource, user_to_remove
+            )
         self.on_owner_removed(resource, user_to_remove)
         self._notify_owner_removed(resource, user_to_remove, request.user)
         return Response(status=status.HTTP_204_NO_CONTENT)
