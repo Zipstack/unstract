@@ -14,6 +14,7 @@ import threading
 import time
 from unittest.mock import MagicMock, patch
 
+import psycopg2
 import pytest
 from celery import shared_task
 from queue_backend.fairness import FAIRNESS_HEADER_NAME
@@ -872,8 +873,8 @@ class TestConsumerIntegration:
             pg_client.conn.commit()
 
     def test_busy_queues_take_equal_turns_around_an_empty_one(self, pg_client):
-        # An empty queue between two busy ones used to hand the queue after it a
-        # second turn (2:1). Claims must now alternate.
+        # An empty queue between two busy ones must not give the queue after it
+        # an extra turn: claims alternate.
         base = f"test_consumer_rr_{os.getpid()}"
         queues = [f"{base}_a", f"{base}_empty", f"{base}_b"]
         try:
@@ -929,7 +930,9 @@ class TestMultiQueue:
         assert [c.kwargs["start"] for c in client.read_any.call_args_list] == [0, 0, 1]
         assert consumer._next_queue == 2  # empty cycle moves on by one
 
-    def test_handler_failure_counts_the_messages_already_processed(self):
+    def test_handler_failure_skips_only_the_failed_message(self):
+        # A deterministic failure must not strand its batch-mates: they would
+        # otherwise pay a read_ct attempt on every redelivery.
         client = MagicMock()
         client.read_any.return_value = [
             _msg(1, _ok_payload(1)),
@@ -947,8 +950,64 @@ class TestMultiQueue:
             handled.append(message.msg_id)
 
         consumer._handle = _handle
-        assert consumer.poll_once() == 1  # msg 1 counted, so run() won't back off
-        assert handled == [1]  # msg 3 left claimed, not started
+        assert consumer.poll_once() == 2  # msgs 1 and 3 handled
+        assert handled == [1, 3]
+
+    def test_connection_loss_stops_the_batch(self):
+        # Once the connection is gone the rest could not be acked either, so
+        # running them would only run them twice.
+        client = MagicMock()
+        client.read_any.return_value = [
+            _msg(1, _ok_payload(1)),
+            _msg(2, _ok_payload(2)),
+            _msg(3, _ok_payload(3)),
+        ]
+        consumer = PgQueueConsumer(
+            ["qa", "qb"], client=client, batch_size=3, lease_seconds=60, vt_seconds=60
+        )
+        handled: list[int] = []
+
+        def _handle(message):
+            if message.msg_id == 2:
+                raise psycopg2.OperationalError("server closed the connection")
+            handled.append(message.msg_id)
+
+        consumer._handle = _handle
+        assert consumer.poll_once() == 1
+        assert handled == [1]
+
+    def test_rotation_follows_the_last_message_of_a_batch(self):
+        client = MagicMock()
+        client.read_any.side_effect = [
+            [
+                _msg(1, _ok_payload(1), queue_name="qa"),
+                _msg(2, _ok_payload(2), queue_name="qc"),
+            ],
+            [],
+        ]
+        consumer = PgQueueConsumer(
+            ["qa", "qb", "qc"],
+            client=client,
+            batch_size=3,
+            lease_seconds=60,
+            vt_seconds=60,
+        )
+        consumer._handle = lambda m: None
+        consumer.poll_once()
+        consumer.poll_once()
+        # Batch ended on qc (index 2), so the next claim starts at qa (0).
+        assert [c.kwargs["start"] for c in client.read_any.call_args_list] == [0, 0]
+
+    def test_unknown_queue_name_rotates_by_one_and_warns(self, caplog):
+        client = MagicMock()
+        client.read_any.side_effect = [[], [_msg(1, _ok_payload(1), queue_name="??")]]
+        consumer = PgQueueConsumer(["qa", "qb", "qc"], client=client)
+        consumer._handle = lambda m: None
+        consumer.poll_once()  # empty: start 0 -> 1
+        with caplog.at_level(logging.WARNING):
+            consumer.poll_once()  # start 1, unknown name -> 2
+        assert consumer._next_queue == 2
+        assert "unknown queue_name" in caplog.text
 
     def test_start_queue_rotates_every_cycle(self):
         # With nothing claimed the start still moves on, so every queue gets to

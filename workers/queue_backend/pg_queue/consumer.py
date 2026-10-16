@@ -42,7 +42,7 @@ from unstract.core.jsonb import dumps_for_jsonb
 from ..barrier import callback_recovery_identity
 from ..fairness import FAIRNESS_HEADER_NAME
 from .client import PgQueueClient
-from .connection import CONN_DEAD_ERRORS
+from .connection import CONN_DEAD_ERRORS, is_connection_dead
 from .liveness import LivenessServer as _BaseLivenessServer
 from .result_backend import PgResultBackend
 from .task_payload import to_payload
@@ -96,9 +96,10 @@ _DEFAULT_POISON_REPARK_BUDGET = 5
 # response, and the row is TTL'd.
 _TASK_STATUS_RETENTION_SECONDS = 86400
 # Liveness: a poll loop that hasn't cycled in this many seconds is reported
-# unhealthy. The heartbeat is stamped before each claim and frozen during
-# task execution, so this threshold doubles as an UPPER BOUND on a single task's
-# wall-clock: a task running longer than it trips the probe → pod restart (or,
+# unhealthy. The heartbeat is stamped before each claim and frozen while the
+# claimed batch runs, so this threshold doubles as an UPPER BOUND on a batch's
+# wall-clock (one task at the default batch_size=1): a batch running longer than
+# it trips the probe → pod restart (or,
 # under the prefork supervisor with CHILD_WATCHDOG on, a SIGKILL of just that
 # child) → the in-flight task is killed and (at-least-once) redelivered. 60s suits the
 # current sub-second leaf (send_webhook_notification); for longer-running tasks,
@@ -381,10 +382,14 @@ class PgQueueConsumer:
         next claim starts one past the queue just served (or one further along
         after an empty cycle), so busy queues take equal turns and none starves.
 
-        A failed claim is logged and returns 0, so run() backs off. A failure
-        while handling stops the batch: it is logged with the msg_ids left
-        unstarted (they stay claimed until their lease lapses, then the reaper
-        re-arms them) and the messages already processed are still counted.
+        A failed claim is logged and returns 0, so run() backs off. A message
+        whose handling fails is logged and skipped; the rest of the batch still
+        runs, so a deterministic failure cannot strand its batch-mates (each
+        redelivery costs them a ``read_ct`` attempt toward the poison cap). The
+        exception: a connection-dead failure stops the batch — the remaining
+        messages could not be acked either, so running them would only run them
+        twice; they stay claimed until their lease lapses and the reaper
+        re-arms them. Returns the number handled successfully.
         """
         # HEALTH_STALE is sized for one batch (see the constant).
         self._last_poll_monotonic = time.monotonic()
@@ -395,18 +400,27 @@ class PgQueueConsumer:
                 "PG-queue consumer: claim failed for queues %r", self.queue_names
             )
             return 0
-        for done, message in enumerate(messages):
+        handled = 0
+        for i, message in enumerate(messages):
             try:
                 self._handle(message)
-            except Exception:
+            except Exception as exc:
+                if is_connection_dead(exc):
+                    logger.exception(
+                        "PG-queue consumer: connection lost handling msg_id=%s; "
+                        "left claimed until their lease lapses: %s",
+                        message.msg_id,
+                        [m.msg_id for m in messages[i + 1 :]],
+                    )
+                    return handled
                 logger.exception(
-                    "PG-queue consumer: handling msg_id=%s failed; unstarted in "
-                    "this batch: %s",
+                    "PG-queue consumer: handling msg_id=%s failed; continuing "
+                    "with the rest of the batch",
                     message.msg_id,
-                    [m.msg_id for m in messages[done + 1 :]],
                 )
-                return done
-        return len(messages)
+                continue
+            handled += 1
+        return handled
 
     def _claim(self) -> list[QueueMessage]:
         """One claim for this cycle, advancing the multi-queue rotation."""
@@ -422,9 +436,19 @@ class PgQueueConsumer:
         )
         # One past the queue served last, so the queues after it go first next
         # time; an empty cycle just moves on by one.
-        if messages and messages[-1].queue_name in self.queue_names:
+        if not messages:
+            served = self._next_queue
+        elif messages[-1].queue_name in self.queue_names:
             served = self.queue_names.index(messages[-1].queue_name)
         else:
+            # read_any always fills queue_name; reaching here means a client that
+            # doesn't, which would quietly bring back unequal turns.
+            logger.warning(
+                "PG-queue consumer: claimed msg_id=%s has unknown queue_name %r; "
+                "rotating by one",
+                messages[-1].msg_id,
+                messages[-1].queue_name,
+            )
             served = self._next_queue
         self._next_queue = (served + 1) % len(self.queue_names)
         return messages

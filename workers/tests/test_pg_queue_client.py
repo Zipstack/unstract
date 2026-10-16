@@ -983,7 +983,8 @@ class TestReadAnyIntegration:
     def test_held_claim_is_skipped_not_waited_on(self, pg_conn, queue_names):
         # Reader A's claim transaction is still open — its probe locks are held —
         # when reader B claims. B must neither block on those rows (lock_timeout
-        # turns a wait into an error) nor return one: it takes the next message.
+        # turns a wait into an error) nor return a row reader A has locked: it
+        # takes the next message.
         client = PgQueueClient(conn=pg_conn)
         ids = [client.send(name, {"q": name}) for name in queue_names for _ in range(2)]
         n = len(queue_names)
@@ -1070,9 +1071,9 @@ class TestReadAnyIntegration:
     def test_owned_connection_reconnects_after_backend_termination(
         self, pg_conn, queue_names, monkeypatch
     ):
-        # Autocommit rollback() cannot fail, so recovery rests on the
-        # termination surfacing as a connection-dead error: the next call
-        # raises, drops the handle, and the call after reconnects.
+        # On an owned autocommit connection rollback() sends nothing, so recovery
+        # rests on the termination surfacing as a connection-dead error: the
+        # next call raises, drops the handle, and the call after reconnects.
         monkeypatch.setattr(
             "queue_backend.pg_queue.client.create_pg_connection",
             lambda: create_pg_connection(env_prefix="TEST_DB_"),

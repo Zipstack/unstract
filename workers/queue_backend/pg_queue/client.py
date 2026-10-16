@@ -284,10 +284,10 @@ class PgQueueClient:
             # the discard below checks too.
             # NOTE: ``send()``'s retry deliberately catches only
             # ``_CONN_DEAD_ERRORS``; a server death that surfaces as a *bare*
-            # ``psycopg2.DatabaseError`` is still treated as dead here (via the
-            # failed-rollback branch below, which drops the handle) but is
-            # intentionally NOT retried by ``send()`` — it's left to the next
-            # call's reconnect.
+            # ``psycopg2.DatabaseError`` is intentionally NOT retried by
+            # ``send()``. On an owned (autocommit) connection it is dropped here
+            # only if ``conn.closed`` is set; otherwise the next call reuses it
+            # and, if it is dead, fails with a classified error and is dropped.
             conn_dead = is_connection_dead(exc)
             try:
                 conn.rollback()
@@ -341,7 +341,10 @@ class PgQueueClient:
         targets) is indistinguishable here from an idle reap, so the retry would
         re-insert an already-committed row. The enqueue is therefore
         **at-least-once**: the ``reused`` gate removes the *common* duplicate
-        (idle reap) but cannot remove the *rare* one (post-commit death). That
+        (idle reap) but cannot remove the *rare* one (post-commit death). On a
+        client-owned (autocommit) connection the INSERT commits at statement end,
+        so that ambiguous window is the INSERT's own reply rather than a separate
+        COMMIT's — the same class of case, still rare. That
         residual duplicate leans on the module's at-least-once / idempotent-
         consumer contract (see the module docstring header) as the GENERAL
         backstop — every consumer here must already tolerate redelivery.
@@ -486,6 +489,14 @@ class PgQueueClient:
         poll back-off (starting at ``poll_interval``) instead of a message. This
         only happens while several consumers contend for the last rows; idle
         polls lock nothing.
+
+        Accepted trade-off (autocommit): on a client-owned connection the claim
+        commits at statement end. If the connection dies after that but before
+        the rows are read back, the claim stands with nobody running it — the
+        messages stay ``claimed`` until their lease lapses (``vt_seconds``) and
+        the reaper re-arms them, and that delivery counts toward ``read_ct``. The
+        caller sees the connection error (the consumer logs it as a failed
+        claim).
         """
         if vt_seconds <= 0:
             raise ValueError(f"vt_seconds must be positive, got {vt_seconds}")
