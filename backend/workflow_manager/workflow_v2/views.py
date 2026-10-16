@@ -12,6 +12,8 @@ from permissions.permission import IsOwner, IsOwnerOrSharedUserOrSharedToOrg
 from permissions.resource_share_views import ResourceShareManagementMixin
 from pipeline_v2.models import Pipeline
 from pipeline_v2.pipeline_processor import PipelineProcessor
+from platform_audit.actions import Action
+from platform_audit.resources import record_resource_event, resource_ref
 from plugins import get_plugin
 from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action, api_view
@@ -175,7 +177,13 @@ class WorkflowViewSet(
         except Exception as e:
             logger.error(f"Error creating workflow endpoints: {e}")
             raise WorkflowGenerationError
+        record_resource_event(self.request, Action.RESOURCE_CREATED, workflow)
         return workflow
+
+    def perform_destroy(self, instance: Workflow) -> None:
+        deleted = resource_ref(instance)
+        super().perform_destroy(instance)
+        record_resource_event(self.request, Action.RESOURCE_DELETED, deleted)
 
     def get_execution(self, request: Request, pk: str) -> Response:
         execution = WorkflowHelper.get_current_execution(pk)

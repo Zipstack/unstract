@@ -33,6 +33,7 @@ class ActionCategory(StrEnum):
     SETTINGS = "settings"
     CAPABILITIES = "capabilities"
     EXECUTIONS = "executions"
+    RESOURCES = "resources"
 
 
 class TargetType(StrEnum):
@@ -73,6 +74,12 @@ class Action(StrEnum):
     PLATFORM_SETTING_CHANGED = "platform_setting.changed"
     CAPABILITY_CHANGED = "capability.changed"
     EXECUTION_ABORTED = "execution.aborted"
+    # Target: the resource, typed by its SHAREABLE_RESOURCES kind.
+    RESOURCE_CREATED = "resource.created"
+    RESOURCE_DELETED = "resource.deleted"
+    RESOURCE_SHARING_CHANGED = "resource.sharing_changed"
+    RESOURCE_CO_OWNER_ADDED = "resource.co_owner_added"
+    RESOURCE_CO_OWNER_REMOVED = "resource.co_owner_removed"
 
 
 # The width of PlatformAuditEvent.action; a longer key could never be stored.
@@ -133,5 +140,10 @@ for _key, _label, _category in (
     (Action.PLATFORM_SETTING_CHANGED, "Setting changed", ActionCategory.SETTINGS),
     (Action.CAPABILITY_CHANGED, "Capability changed", ActionCategory.CAPABILITIES),
     (Action.EXECUTION_ABORTED, "Execution aborted", ActionCategory.EXECUTIONS),
+    (Action.RESOURCE_CREATED, "Resource created", ActionCategory.RESOURCES),
+    (Action.RESOURCE_DELETED, "Resource deleted", ActionCategory.RESOURCES),
+    (Action.RESOURCE_SHARING_CHANGED, "Sharing changed", ActionCategory.RESOURCES),
+    (Action.RESOURCE_CO_OWNER_ADDED, "Co-owner added", ActionCategory.RESOURCES),
+    (Action.RESOURCE_CO_OWNER_REMOVED, "Co-owner removed", ActionCategory.RESOURCES),
 ):
     register_action(_key, _label, _category)
