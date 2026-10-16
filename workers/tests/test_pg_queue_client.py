@@ -24,7 +24,7 @@ import psycopg2
 import pytest
 from queue_backend.fairness import DEFAULT_PRIORITY, MAX_PRIORITY, MIN_PRIORITY
 from queue_backend.pg_queue import PgQueueClient, QueueMessage
-from queue_backend.pg_queue.client import _SEND_RETRY_BACKOFF_SECONDS
+from queue_backend.pg_queue.client import _SEND_RETRY_BACKOFF_SECONDS, _dequeue_any_sql
 from queue_backend.pg_queue.connection import create_pg_connection
 from queue_backend.pg_queue.reaper import promote_due_scheduled, rearm_expired_claims
 from queue_backend.pg_queue.schema import qualified
@@ -963,41 +963,74 @@ class TestReadAnyIntegration:
         pg_conn.commit()
         assert sorted(states.values()) == ["claimed", "ready", "ready"]
 
-    def test_concurrent_readers_never_double_claim(self, pg_conn, queue_names):
-        import threading
-
-        client_a = PgQueueClient(conn=pg_conn)
-        for i in range(60):
-            client_a.send(queue_names[i % 3], {"i": i})
+    def test_held_claim_is_skipped_not_waited_on(self, pg_conn, queue_names):
+        # Reader A's claim transaction is still open — its probe locks are held —
+        # when reader B claims. B must neither block on those rows (lock_timeout
+        # turns a wait into an error) nor return one: it takes the next message.
+        client = PgQueueClient(conn=pg_conn)
+        ids = [client.send(name, {"q": name}) for name in queue_names for _ in range(2)]
+        n = len(queue_names)
+        conn_a = create_pg_connection(env_prefix="TEST_DB_")
         conn_b = create_pg_connection(env_prefix="TEST_DB_")
-        seen: list[list[int]] = [[], []]
-        violations: list[int] = []
+        try:
+            with conn_a.cursor() as cur:
+                # Same params read_any(start=0, qty=1, vt_seconds=30) sends,
+                # but left uncommitted so A's locks stay held.
+                cur.execute(
+                    _dequeue_any_sql(),
+                    (list(queue_names), 1, 0, n, n, 1, 30, 0, n, n),
+                )
+                a_ids = [r[0] for r in cur.fetchall()]
+            with conn_b.cursor() as cur:
+                cur.execute("SET lock_timeout = '2s'")
+            conn_b.commit()
+            b_ids = [
+                m.msg_id
+                for m in PgQueueClient(conn=conn_b).read_any(
+                    queue_names, vt_seconds=30, start=0
+                )
+            ]
+            conn_a.commit()
+        finally:
+            conn_a.close()
+            conn_b.close()
+        # Both start at queue 0: A holds its head, so B gets that queue's second.
+        assert a_ids == [ids[0]]
+        assert b_ids == [ids[1]]
 
-        def drain(client, out, start):
-            while True:
-                msgs = client.read_any(queue_names, vt_seconds=30, start=start)
-                if not msgs:
-                    return
-                if len(msgs) > 1:
-                    violations.append(len(msgs))
-                out.extend(m.msg_id for m in msgs)
+    def test_concurrent_readers_never_double_claim(self, pg_conn, queue_names):
+        # Released together by a barrier; results come back through futures so a
+        # reader's exception fails the test instead of dying in its thread. The
+        # interleaving itself is not guaranteed — the test above pins the
+        # contended claim deterministically.
+        import threading
+        from concurrent.futures import ThreadPoolExecutor
+
+        client = PgQueueClient(conn=pg_conn)
+        for i in range(60):
+            client.send(queue_names[i % 3], {"i": i})
+        conns = [create_pg_connection(env_prefix="TEST_DB_") for _ in range(2)]
+        barrier = threading.Barrier(2)
+
+        def drain(conn, start):
+            reader = PgQueueClient(conn=conn)
+            claimed: list[list[int]] = []
+            barrier.wait(timeout=10)
+            while msgs := reader.read_any(queue_names, vt_seconds=30, start=start):
+                claimed.append([m.msg_id for m in msgs])
                 start += 1
+            return claimed
 
         try:
-            threads = [
-                threading.Thread(target=drain, args=(client_a, seen[0], 0)),
-                threading.Thread(
-                    target=drain, args=(PgQueueClient(conn=conn_b), seen[1], 1)
-                ),
-            ]
-            for t in threads:
-                t.start()
-            for t in threads:
-                t.join(timeout=60)
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                futures = [pool.submit(drain, conn, s) for s, conn in enumerate(conns)]
+                batches = [f.result(timeout=60) for f in futures]
         finally:
-            conn_b.close()
-        assert violations == []
-        assert set(seen[0]).isdisjoint(seen[1])
+            for conn in conns:
+                conn.close()
+        assert all(len(b) == 1 for reader in batches for b in reader)  # qty=1
+        seen = [{mid for b in reader for mid in b} for reader in batches]
+        assert seen[0].isdisjoint(seen[1])
         assert len(seen[0]) + len(seen[1]) == 60
 
     def test_owned_connection_claims_without_a_transaction(
