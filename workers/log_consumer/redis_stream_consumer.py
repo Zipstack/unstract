@@ -35,7 +35,6 @@ import time
 from types import FrameType
 from typing import Any
 
-from redis.exceptions import AuthenticationError, NoPermissionError
 from shared.enums.worker_enums import WorkerType
 from shared.infrastructure.config.builder import WorkerBuilder
 from shared.infrastructure.logging import WorkerLogger
@@ -68,20 +67,11 @@ _SOCKET_TIMEOUT_SECONDS = _BLOCK_TIMEOUT_SECONDS + 5
 # the next successful BLMOVE (an envelope or an idle None). Without it, a failure that
 # returns at once — a refused connect, or an OOM/READONLY/MISCONF reply — spun the loop,
 # logging a traceback each time: 0.7-1.7 GiB of Cloud Logging per minute, per pod
-# (staging, Oct 2026).
+# (staging, Oct 2026). The loop never gives up, so a failure only a restart can fix —
+# the client reads its credentials once, so a rotated password is one — keeps logging
+# an ERROR every 30s until the pod is restarted.
 _RECONNECT_BACKOFF_INITIAL_SECONDS = 1.0
 _RECONNECT_BACKOFF_MAX_SECONDS = 30.0
-# Failures a restart can fix but waiting cannot: credentials read once at start (a
-# rotated password, or a user without permission on the queue keys) and local client
-# config such as TLS. After this many consecutive waits at the cap on one of these —
-# at least ~5.5 min — run() exits non-zero; on Kubernetes the restarted container
-# re-reads its Secrets and shows up as CrashLoopBackOff instead of one quiet ERROR line
-# every 30s (docker-compose restarts keep the old env until the container is
-# recreated). Outages — refused, timeout, LOADING, READONLY, OOM, no master — never
-# count: they keep backing off in-process, so the consumer resumes within one wait of
-# Redis returning.
-_RESTART_FIXABLE_ERRORS = (AuthenticationError, NoPermissionError, ValueError)
-_MAX_WAITS_AT_BACKOFF_CAP = 10
 # How often a backoff wait re-checks for a shutdown signal. Polling the flag rather than
 # waiting on a threading.Event is deliberate: calling Event.set() from _handle_signal
 # can, in a narrow race, deadlock against Event.wait() on this same thread.
@@ -168,37 +158,25 @@ def run() -> int:
     )
 
     backoff = _RECONNECT_BACKOFF_INITIAL_SECONDS
-    waits_at_cap = 0
     recovered = False
     while not _shutdown:
         try:
-            # Inside the backoff so a restart during an outage waits here rather than
-            # crashing back into the kubelet's restart back-off.
+            # Inside the try, so a failing startup LMOVE backs off like a failing BLMOVE.
             if not recovered:
                 _recover_in_flight(redis_client, processing)
                 recovered = True
             raw = redis_client.blmove(
                 _QUEUE_NAME, processing, _BLOCK_TIMEOUT_SECONDS, "LEFT", "RIGHT"
             )
-        except Exception as exc:
-            # Must not be retried immediately: most such failures recur at once. create_redis_client gives the client no retry
+        except Exception:
+            # Must not kill the pod, and must not be retried immediately: most such
+            # failures recur at once. create_redis_client gives the client no retry
             # (redis-py's default Retry(NoBackoff(), 0)), a refused connect returns
             # without BLMOVE ever blocking, and an error reply (OOM, READONLY, MISCONF,
             # NOPERM) is just as instant.
-            restart_fixable = isinstance(exc, _RESTART_FIXABLE_ERRORS)
-            if not restart_fixable:
-                waits_at_cap = 0
-            elif waits_at_cap >= _MAX_WAITS_AT_BACKOFF_CAP:
-                logger.error(
-                    "Log stream read still failing after %d waits at the %.0fs cap; "
-                    "exiting so the container restarts",
-                    waits_at_cap,
-                    _RECONNECT_BACKOFF_MAX_SECONDS,
-                    exc_info=True,
-                )
-                return 1
             logger.error(
-                "Log stream read failed; backing off %.0fs before retrying",
+                "Log stream %s failed; backing off %.0fs before retrying",
+                "read" if recovered else "recovery",
                 backoff,
                 exc_info=True,
             )
@@ -208,14 +186,11 @@ def run() -> int:
             # host.
             redis_client.connection_pool.disconnect()
             _wait_before_reconnect(backoff)
-            if restart_fixable and backoff >= _RECONNECT_BACKOFF_MAX_SECONDS:
-                waits_at_cap += 1
             backoff = min(backoff * 2, _RECONNECT_BACKOFF_MAX_SECONDS)
             continue
 
         # A successful BLMOVE, including an idle block's None, ends the failure streak.
         backoff = _RECONNECT_BACKOFF_INITIAL_SECONDS
-        waits_at_cap = 0
 
         if raw is None:  # timeout, no work — loop so shutdown can be observed
             continue

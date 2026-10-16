@@ -35,7 +35,6 @@ from redis.sentinel import MasterNotFoundError
 from .test_log_stream_consumer import _envelope, _load
 
 _REFUSED = RedisConnectionError("Error 111 connecting to redis:6379. Connection refused.")
-_AUTH = AuthenticationError("invalid username-password pair")
 
 
 @pytest.fixture
@@ -101,11 +100,8 @@ class TestBackoffSchedule:
             OutOfMemoryError("command not allowed when used memory > 'maxmemory'."),
             ReadOnlyError("You can't write against a read only replica."),
             ResponseError("MISCONF Redis is configured to save RDB snapshots"),
-            # Not a RedisError: raised by the ssl module while redis-py configures the
-            # SSL context, e.g. a TLS misconfiguration.
-            ValueError(
-                "Cannot set verify_mode to CERT_NONE when check_hostname is enabled."
-            ),
+            # Not a RedisError at all.
+            ValueError("not a redis error at all"),
         ],
         ids=lambda e: type(e).__name__,
     )
@@ -177,70 +173,26 @@ class TestReconnectAfterFailure:
         redis.connection_pool.disconnect.assert_not_called()
 
 
-class TestGivingUp:
-    def _run(self, consumer, redis):
-        waits = []
-        with (
-            patch.object(consumer, "create_redis_client", return_value=redis),
-            patch.object(consumer, "_wait_before_reconnect", side_effect=waits.append),
-        ):
-            code = consumer.run()
-        return code, waits
-
+class TestNeverGivesUp:
     @pytest.mark.parametrize(
         "error",
         [
+            _REFUSED,
+            RedisTimeoutError("Timeout connecting to server"),
             AuthenticationError("invalid username-password pair"),
+            BusyLoadingError("Redis is loading the dataset in memory"),
+            MasterNotFoundError("No master found for 'mymaster'"),
+            OutOfMemoryError("command not allowed when used memory > 'maxmemory'."),
+            ReadOnlyError("You can't write against a read only replica."),
             NoPermissionError("NOPERM User has no permissions to run 'blmove'"),
-            ValueError(
-                "Cannot set verify_mode to CERT_NONE when check_hostname is enabled."
-            ),
+            ValueError("not a redis error at all"),
         ],
         ids=lambda e: type(e).__name__,
     )
-    def test_exits_non_zero_after_ten_waits_at_the_cap(self, consumer, error):
-        # 5 waits below the cap, 10 at it, then the 16th failure gives up.
-        redis = _scripted_redis(consumer, [error] * 16 + [None])
-
-        code, waits = self._run(consumer, redis)
-
-        assert code == 1
-        assert waits == [1, 2, 4, 8, 16] + [30] * 10
-        assert redis.blmove.call_count == 16
-        last = consumer.logger.error.call_args_list[-1]
-        assert last.args[0] % last.args[1:] == (
-            "Log stream read still failing after 10 waits at the 30s cap; "
-            "exiting so the container restarts"
-        )
-        assert last.kwargs.get("exc_info") is True
-
-    def test_an_outage_never_gives_up(self, consumer):
-        # Refused connects well past the give-up point: an outage keeps waiting
-        # in-process, so the consumer resumes as soon as Redis is back.
-        redis = _scripted_redis(consumer, [_REFUSED] * 40 + [None])
-
-        code, waits = self._run(consumer, redis)
-
-        assert code == 0
-        assert waits == [1, 2, 4, 8, 16] + [30] * 35
-
-    def test_a_successful_read_resets_the_count(self, consumer):
-        # 9 waits at the cap, a reply, then another full streak short of giving up.
-        streak = [_AUTH] * 14
-        redis = _scripted_redis(consumer, streak + [None] + streak)
-
-        code, waits = self._run(consumer, redis)
-
-        assert code == 0
-        assert waits == ([1, 2, 4, 8, 16] + [30] * 9) * 2
-
-    def test_an_outage_in_between_resets_the_count(self, consumer):
-        # Auth failures interrupted by a refused connect start counting again.
-        redis = _scripted_redis(consumer, [_AUTH] * 14 + [_REFUSED] + [_AUTH] * 10)
-
-        code, _waits = self._run(consumer, redis)
-
-        assert code == 0
+    def test_keeps_backing_off_at_the_cap_for_any_failure(self, consumer, error):
+        # Far past any plausible give-up point: run() still only returns when told to.
+        redis = _scripted_redis(consumer, [error] * 40 + [None])
+        assert _run_recording_waits(consumer, redis) == [1, 2, 4, 8, 16] + [30] * 35
 
 
 class TestStartupRecovery:
@@ -254,6 +206,11 @@ class TestStartupRecovery:
         assert waits == [1, 2]
         assert redis.lmove.call_count == 3
         assert redis.blmove.call_count == 2
+        calls = consumer.logger.error.call_args_list
+        assert [c.args[0] % c.args[1:] for c in calls] == [
+            "Log stream recovery failed; backing off 1s before retrying",
+            "Log stream recovery failed; backing off 2s before retrying",
+        ]
 
 
 class TestMixedFailures:
