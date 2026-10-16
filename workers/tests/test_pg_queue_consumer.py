@@ -14,7 +14,6 @@ import threading
 import time
 from unittest.mock import MagicMock, patch
 
-import psycopg2
 import pytest
 from celery import shared_task
 from queue_backend.fairness import FAIRNESS_HEADER_NAME
@@ -930,9 +929,9 @@ class TestMultiQueue:
         assert [c.kwargs["start"] for c in client.read_any.call_args_list] == [0, 0, 1]
         assert consumer._next_queue == 2  # empty cycle moves on by one
 
-    def test_handler_failure_skips_only_the_failed_message(self):
-        # A deterministic failure must not strand its batch-mates: they would
-        # otherwise pay a read_ct attempt on every redelivery.
+    def test_handler_failure_stops_the_batch_and_counts_the_work_done(self):
+        # Running the rest after a failure could, in a DB outage, run work whose
+        # ack cannot land; so the batch stops, but work done still counts.
         client = MagicMock()
         client.read_any.return_value = [
             _msg(1, _ok_payload(1)),
@@ -950,31 +949,8 @@ class TestMultiQueue:
             handled.append(message.msg_id)
 
         consumer._handle = _handle
-        assert consumer.poll_once() == 2  # msgs 1 and 3 handled
-        assert handled == [1, 3]
-
-    def test_connection_error_does_not_stop_the_batch(self):
-        # The client drops a dead handle and reconnects for the next ack, so a
-        # connection error is no reason to strand the rest of the batch.
-        client = MagicMock()
-        client.read_any.return_value = [
-            _msg(1, _ok_payload(1)),
-            _msg(2, _ok_payload(2)),
-            _msg(3, _ok_payload(3)),
-        ]
-        consumer = PgQueueConsumer(
-            ["qa", "qb"], client=client, batch_size=3, lease_seconds=60, vt_seconds=60
-        )
-        handled: list[int] = []
-
-        def _handle(message):
-            if message.msg_id == 2:
-                raise psycopg2.OperationalError("server closed the connection")
-            handled.append(message.msg_id)
-
-        consumer._handle = _handle
-        assert consumer.poll_once() == 2
-        assert handled == [1, 3]
+        assert consumer.poll_once() == 1  # msg 1 counted, so run() won't back off
+        assert handled == [1]  # msg 3 left claimed, not started
 
     def test_rotation_follows_the_last_message_of_a_batch(self):
         client = MagicMock()

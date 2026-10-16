@@ -218,7 +218,7 @@ class TestConnectionLifecycle:
 
     def test_owned_conn_dropped_on_bare_database_error(self, monkeypatch):
         # Autocommit rollback() sends nothing, so it can't prove the connection
-        # dead; a bare DatabaseError (no SQLSTATE subclass) is treated as dead.
+        # dead; a bare DatabaseError is treated as dead (a heuristic).
         client, conn, factory = self._owned_client(
             monkeypatch, execute_raises=psycopg2.DatabaseError("server gone")
         )
@@ -228,7 +228,7 @@ class TestConnectionLifecycle:
         assert client._conn is None
 
     def test_owned_conn_kept_on_statement_error(self, monkeypatch):
-        # A statement error (SQLSTATE subclass) leaves the connection usable.
+        # A statement error mapped to a SQLSTATE subclass keeps the connection.
         client, conn, factory = self._owned_client(
             monkeypatch, execute_raises=psycopg2.IntegrityError("dup")
         )

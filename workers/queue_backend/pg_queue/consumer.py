@@ -382,12 +382,16 @@ class PgQueueConsumer:
         next claim starts one past the queue just served (or one further along
         after an empty cycle), so busy queues take equal turns and none starves.
 
-        A failed claim is logged and returns 0, so run() backs off. A message
-        whose handling fails is logged and skipped; the rest of the batch still
-        runs, so a deterministic failure cannot strand its batch-mates (each
-        redelivery costs them a ``read_ct`` attempt toward the poison cap), and
-        the client reconnects for their acks if the failure was a dropped
-        connection. Returns the number handled successfully.
+        A failed claim is logged and returns 0, so run() backs off. A failure
+        while handling stops the batch, as each queue's batch did before this
+        loop claimed across queues: it is logged with the msg_ids left unstarted
+        and the messages already handled are still counted (so run() does not
+        back off after real work). Accepted trade-off, ``batch_size > 1`` only
+        (it is forced to 1 unless the lease equals the max runtime): the
+        unstarted messages stay claimed until their lease lapses and the reaper
+        re-arms them, costing each a ``read_ct`` attempt toward the poison cap.
+        Running them instead would, during a DB outage, run work whose ack
+        cannot land, so it would run twice.
         """
         # HEALTH_STALE is sized for one batch (see the constant).
         self._last_poll_monotonic = time.monotonic()
@@ -398,19 +402,18 @@ class PgQueueConsumer:
                 "PG-queue consumer: claim failed for queues %r", self.queue_names
             )
             return 0
-        handled = 0
-        for message in messages:
+        for handled, message in enumerate(messages):
             try:
                 self._handle(message)
             except Exception:
                 logger.exception(
-                    "PG-queue consumer: handling msg_id=%s failed; continuing "
-                    "with the rest of the batch",
+                    "PG-queue consumer: handling msg_id=%s failed; left claimed "
+                    "until their lease lapses: %s",
                     message.msg_id,
+                    [m.msg_id for m in messages[handled + 1 :]],
                 )
-                continue
-            handled += 1
-        return handled
+                return handled
+        return len(messages)
 
     def _claim(self) -> list[QueueMessage]:
         """One claim for this cycle, advancing the multi-queue rotation."""

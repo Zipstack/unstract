@@ -281,8 +281,10 @@ class PgQueueClient:
             # of which psycopg2 error subclass was raised (a server-side
             # termination mid-statement can surface as a bare DatabaseError).
             # On an owned autocommit connection rollback() sends nothing, so it
-            # proves nothing there: a bare DatabaseError (no SQLSTATE subclass,
-            # so not a statement error) is treated as dead directly instead.
+            # proves nothing there. As a heuristic, a bare DatabaseError is
+            # treated as dead directly instead: statement errors normally map
+            # to a SQLSTATE subclass, and a rare unmapped one costs only a
+            # needless reconnect.
             # NOTE: ``send()``'s retry deliberately catches only
             # ``_CONN_DEAD_ERRORS``; a server death that surfaces as a *bare*
             # ``psycopg2.DatabaseError`` is still dropped here (above, or via
