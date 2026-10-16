@@ -42,7 +42,7 @@ from unstract.core.jsonb import dumps_for_jsonb
 from ..barrier import callback_recovery_identity
 from ..fairness import FAIRNESS_HEADER_NAME
 from .client import PgQueueClient
-from .connection import CONN_DEAD_ERRORS, is_connection_dead
+from .connection import CONN_DEAD_ERRORS
 from .liveness import LivenessServer as _BaseLivenessServer
 from .result_backend import PgResultBackend
 from .task_payload import to_payload
@@ -385,11 +385,9 @@ class PgQueueConsumer:
         A failed claim is logged and returns 0, so run() backs off. A message
         whose handling fails is logged and skipped; the rest of the batch still
         runs, so a deterministic failure cannot strand its batch-mates (each
-        redelivery costs them a ``read_ct`` attempt toward the poison cap). The
-        exception: a connection-dead failure stops the batch — the remaining
-        messages could not be acked either, so running them would only run them
-        twice; they stay claimed until their lease lapses and the reaper
-        re-arms them. Returns the number handled successfully.
+        redelivery costs them a ``read_ct`` attempt toward the poison cap), and
+        the client reconnects for their acks if the failure was a dropped
+        connection. Returns the number handled successfully.
         """
         # HEALTH_STALE is sized for one batch (see the constant).
         self._last_poll_monotonic = time.monotonic()
@@ -401,18 +399,10 @@ class PgQueueConsumer:
             )
             return 0
         handled = 0
-        for i, message in enumerate(messages):
+        for message in messages:
             try:
                 self._handle(message)
-            except Exception as exc:
-                if is_connection_dead(exc):
-                    logger.exception(
-                        "PG-queue consumer: connection lost handling msg_id=%s; "
-                        "left claimed until their lease lapses: %s",
-                        message.msg_id,
-                        [m.msg_id for m in messages[i + 1 :]],
-                    )
-                    return handled
+            except Exception:
                 logger.exception(
                     "PG-queue consumer: handling msg_id=%s failed; continuing "
                     "with the rest of the batch",

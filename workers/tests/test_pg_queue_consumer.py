@@ -953,9 +953,9 @@ class TestMultiQueue:
         assert consumer.poll_once() == 2  # msgs 1 and 3 handled
         assert handled == [1, 3]
 
-    def test_connection_loss_stops_the_batch(self):
-        # Once the connection is gone the rest could not be acked either, so
-        # running them would only run them twice.
+    def test_connection_error_does_not_stop_the_batch(self):
+        # The client drops a dead handle and reconnects for the next ack, so a
+        # connection error is no reason to strand the rest of the batch.
         client = MagicMock()
         client.read_any.return_value = [
             _msg(1, _ok_payload(1)),
@@ -973,8 +973,8 @@ class TestMultiQueue:
             handled.append(message.msg_id)
 
         consumer._handle = _handle
-        assert consumer.poll_once() == 1
-        assert handled == [1]
+        assert consumer.poll_once() == 2
+        assert handled == [1, 3]
 
     def test_rotation_follows_the_last_message_of_a_batch(self):
         client = MagicMock()

@@ -216,6 +216,37 @@ class TestConnectionLifecycle:
         conn.close.assert_called_once()
         assert client._conn is None
 
+    def test_owned_conn_dropped_on_bare_database_error(self, monkeypatch):
+        # Autocommit rollback() sends nothing, so it can't prove the connection
+        # dead; a bare DatabaseError (no SQLSTATE subclass) is treated as dead.
+        client, conn, factory = self._owned_client(
+            monkeypatch, execute_raises=psycopg2.DatabaseError("server gone")
+        )
+        with pytest.raises(psycopg2.DatabaseError):
+            client.read("q")
+        conn.close.assert_called_once()
+        assert client._conn is None
+
+    def test_owned_conn_kept_on_statement_error(self, monkeypatch):
+        # A statement error (SQLSTATE subclass) leaves the connection usable.
+        client, conn, factory = self._owned_client(
+            monkeypatch, execute_raises=psycopg2.IntegrityError("dup")
+        )
+        with pytest.raises(psycopg2.IntegrityError):
+            client.read("q")
+        conn.close.assert_not_called()
+        assert client._conn is conn
+
+    def test_injected_conn_kept_on_bare_database_error(self):
+        cur = MagicMock()
+        cur.execute.side_effect = psycopg2.DatabaseError("server gone")
+        conn = MagicMock(closed=0)
+        conn.cursor.return_value = _CursorCtx(cur)
+        client = PgQueueClient(conn=conn)
+        with pytest.raises(psycopg2.DatabaseError):
+            client.read("q")
+        conn.close.assert_not_called()
+
     def test_owned_conn_is_autocommit(self, monkeypatch):
         # One statement per operation: an explicit transaction would only add a
         # BEGIN + COMMIT round trip to each claim (UN-4176).
@@ -1071,9 +1102,10 @@ class TestReadAnyIntegration:
     def test_owned_connection_reconnects_after_backend_termination(
         self, pg_conn, queue_names, monkeypatch
     ):
-        # On an owned autocommit connection rollback() sends nothing, so recovery
-        # rests on the termination surfacing as a connection-dead error: the
-        # next call raises, drops the handle, and the call after reconnects.
+        # On an owned autocommit connection rollback() sends nothing, so it can't
+        # prove the connection dead; here the termination surfaces as a
+        # connection-dead error: the next call raises, drops the handle, and the
+        # call after reconnects.
         monkeypatch.setattr(
             "queue_backend.pg_queue.client.create_pg_connection",
             lambda: create_pg_connection(env_prefix="TEST_DB_"),

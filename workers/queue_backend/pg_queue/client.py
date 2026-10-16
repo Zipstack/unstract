@@ -39,6 +39,8 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Final, Self
 
+import psycopg2
+
 from unstract.core.data_models import QueueMessageState
 from unstract.core.jsonb import dumps_for_jsonb
 
@@ -265,8 +267,8 @@ class PgQueueClient:
         Keeps the cached connection usable. On an injected connection a failed
         statement leaves an aborted transaction, so we always roll back. On an
         owned connection (autocommit) each statement already committed or failed
-        on its own, so keep every operation to ONE statement; commit/rollback are
-        no-ops there. A dead connection can't be reused, so (when we own it) we
+        on its own, so keep every operation to ONE statement; commit/rollback
+        send nothing there. A dead connection can't be reused, so (when we own it) we
         drop the cached handle and the next call reconnects.
         """
         conn = self.conn
@@ -278,17 +280,16 @@ class PgQueueClient:
             # A failed rollback proves the connection is unusable, regardless
             # of which psycopg2 error subclass was raised (a server-side
             # termination mid-statement can surface as a bare DatabaseError).
-            # On an owned autocommit connection rollback() sends nothing and
-            # cannot fail; there a server termination surfaces as
-            # OperationalError (is_connection_dead) and sets conn.closed, which
-            # the discard below checks too.
+            # On an owned autocommit connection rollback() sends nothing, so it
+            # proves nothing there: a bare DatabaseError (no SQLSTATE subclass,
+            # so not a statement error) is treated as dead directly instead.
             # NOTE: ``send()``'s retry deliberately catches only
             # ``_CONN_DEAD_ERRORS``; a server death that surfaces as a *bare*
-            # ``psycopg2.DatabaseError`` is intentionally NOT retried by
-            # ``send()``. On an owned (autocommit) connection it is dropped here
-            # only if ``conn.closed`` is set; otherwise the next call reuses it
-            # and, if it is dead, fails with a classified error and is dropped.
-            conn_dead = is_connection_dead(exc)
+            # ``psycopg2.DatabaseError`` is still dropped here (above, or via
+            # the failed-rollback branch on an injected connection) but is
+            # intentionally NOT retried by ``send()`` — it's left to the next
+            # call's reconnect.
+            conn_dead = is_connection_dead(exc) or type(exc) is psycopg2.DatabaseError
             try:
                 conn.rollback()
             except Exception:
@@ -484,11 +485,12 @@ class PgQueueClient:
         Accepted trade-off: the probe locks up to ``qty`` ready rows in EVERY
         queue (``FOR UPDATE SKIP LOCKED``), and only the chosen ones are claimed;
         the rest stay ``ready`` and are unlocked when the statement commits. A
-        reader racing that statement skips the locked rows, so if each queue's
-        only ready row is locked it gets ``[]`` and takes the consumer's empty-
-        poll back-off (starting at ``poll_interval``) instead of a message. This
-        only happens while several consumers contend for the last rows; idle
-        polls lock nothing.
+        reader racing that statement — another multi-queue consumer, or a
+        single-queue consumer of one of these queues — skips the locked rows, so
+        if the only ready rows it wants are locked it gets ``[]`` and takes the
+        consumer's empty-poll back-off (starting at ``poll_interval``) instead of
+        a message. This only happens while consumers contend for the last rows;
+        idle polls lock nothing.
 
         Accepted trade-off (autocommit): on a client-owned connection the claim
         commits at statement end. If the connection dies after that but before
