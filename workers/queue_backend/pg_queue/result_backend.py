@@ -305,11 +305,20 @@ class PgResultBackend:
     def conn(self) -> PgConnection:
         if self._conn is None:
             self._conn = create_pg_connection()
+            # Every write and read here is ONE idempotent statement, so run in
+            # autocommit and skip psycopg2's BEGIN … COMMIT round trips (UN-4254;
+            # same reasoning as PgQueueClient.conn). Owned connections only.
+            self._conn.autocommit = True
         return self._conn
 
     @contextlib.contextmanager
     def _cursor(self) -> Iterator[Any]:
-        """Yield a cursor; commit on success, roll back + recover on error."""
+        """Yield a cursor; commit on success, roll back + recover on error.
+
+        On the owned autocommit connection ``commit()`` / ``rollback()`` send
+        nothing to the server; ``rollback()`` still raises on a closed
+        connection, which is what flags it as dead below.
+        """
         conn = self.conn
         try:
             with conn.cursor() as cur:

@@ -584,6 +584,28 @@ class TestStoreResultReconnectRetry:
         sleep.assert_not_called()
         conn.close.assert_not_called()  # caller's connection untouched
 
+    def test_owned_conn_runs_in_autocommit(self, monkeypatch):
+        # Single-statement writes/reads skip psycopg2's BEGIN/COMMIT (UN-4254),
+        # including on the connection the retry reconnects to.
+        dead, _ = self._conn(execute_side_effect=psycopg2.OperationalError("reap"))
+        fresh, _ = self._conn()
+        fresh.autocommit = False
+        monkeypatch.setattr(
+            "queue_backend.pg_queue.result_backend.create_pg_connection",
+            MagicMock(return_value=fresh),
+        )
+        self._no_sleep(monkeypatch)
+        rb = PgResultBackend()
+        rb._conn = dead
+
+        rb.store_result("k", result={"ok": True})
+        assert fresh.autocommit is True
+
+    def test_injected_conn_keeps_callers_mode(self):
+        conn, _ = self._conn()
+        conn.autocommit = False
+        assert PgResultBackend(conn=conn).conn.autocommit is False
+
     @pytest.mark.parametrize(
         "exc_type", [psycopg2.OperationalError, psycopg2.InterfaceError]
     )
