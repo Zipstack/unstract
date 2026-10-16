@@ -10,11 +10,15 @@ class WhispererRequestParams:
             List[str] or str.
              Will be converted to str or None after initialization.
         enable_highlight (bool): Whether to enable highlighting. Defaults to False.
+        filename (Optional[str]): Original name of the document being extracted.
+            Sent to LLMWhisperer so its reports identify the source file instead
+            of the execution's internal filename.
     """
 
     # TODO: Extend this DTO to include all Whisperer API parameters
     tag: str | list[str] | None = None
     enable_highlight: bool = False
+    filename: str | None = None
 
     def __post_init__(self) -> None:
         """Post-initialization processing for LLMWhisperer V2 request data."""

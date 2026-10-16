@@ -324,8 +324,15 @@ class LLMWhispererHelper:
         params = LLMWhispererHelper.get_whisperer_params(
             config=config, extra_params=extra_params
         )
-        # Recorded against the extraction for cross referencing in usage reports
-        params[WhispererConfig.FILE_NAME] = Path(input_file_path).name
+        # Recorded against the extraction for cross referencing in usage reports.
+        # Prefer the real source document name: the upload is streamed from the
+        # execution's internal copy, so ``input_file_path`` is ``INFILE`` and
+        # identifies nothing. Must stay the ONLY name param on the request —
+        # llmwhisperer-client (2.8.1) rejects ``filename`` and ``file_name``
+        # together with "use 'file_name' only", which fails the extraction.
+        params[WhispererConfig.FILE_NAME] = (
+            extra_params.filename or Path(input_file_path).name
+        )
         response: requests.Response
         try:
             input_file_data = BytesIO(fs.read(path=input_file_path, mode="rb"))
