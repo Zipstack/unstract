@@ -136,6 +136,45 @@ SELECT msg_id, message, read_ct
 """
 
 
+def _dequeue_any_sql() -> str:
+    """Multi-queue variant of :func:`_dequeue_sql` (see :meth:`PgQueueClient.read_any`).
+
+    ``WITH ORDINALITY`` numbers the queues 1..n; the outer ORDER BY rotates
+    that numbering by the caller's ``start`` so the first queue probed changes
+    each cycle. Within a queue the order is the same ``priority DESC, msg_id``
+    top-N the single-queue claim uses, on the same partial index.
+    """
+    msg = qualified("pg_queue_message")
+    return f"""
+WITH locked AS (
+    SELECT c.msg_id, q.ord, c.priority
+      FROM unnest(%s::text[]) WITH ORDINALITY AS q(name, ord)
+     CROSS JOIN LATERAL (
+        SELECT m.msg_id, m.priority
+          FROM {msg} m
+         WHERE m.queue_name = q.name
+           AND m.state = '{_READY}'
+         ORDER BY m.priority DESC, m.msg_id
+           FOR UPDATE SKIP LOCKED
+         LIMIT %s
+     ) c
+     ORDER BY (q.ord - 1 - %s + %s) %% %s, c.priority DESC, c.msg_id
+     LIMIT %s
+), claimed AS (
+    UPDATE {msg} q
+       SET state = '{_CLAIMED}',
+           vt = now() + make_interval(secs => %s),
+           read_ct = read_ct + 1
+      FROM locked
+     WHERE q.msg_id = locked.msg_id
+    RETURNING q.msg_id, q.message, q.read_ct, locked.ord, q.priority
+)
+SELECT msg_id, message, read_ct
+  FROM claimed
+ ORDER BY (ord - 1 - %s + %s) %% %s, priority DESC, msg_id
+"""
+
+
 @dataclass(frozen=True, slots=True)
 class QueueMessage:
     """A claimed queue message.
@@ -200,7 +239,16 @@ class PgQueueClient:
     @property
     def conn(self) -> PgConnection:
         if self._conn is None:
-            self._conn = create_pg_connection()
+            conn = create_pg_connection()
+            # Every operation here is ONE statement, so an explicit transaction
+            # only adds a BEGIN + COMMIT round trip to each (3 statements per
+            # claim instead of 1 — most of the idle-poll load on the DB).
+            # Autocommit is set only on a connection this client creates: an
+            # injected one may be the caller's open transaction (the agentic
+            # fan-out outbox), and create_pg_connection itself stays
+            # non-autocommit for pg_barrier, which relies on that.
+            conn.autocommit = True
+            self._conn = conn
         return self._conn
 
     @contextlib.contextmanager
@@ -386,6 +434,52 @@ class PgQueueClient:
             # Param order matches the %s positions in _dequeue_sql():
             # queue_name (locked CTE), qty (LIMIT), vt_seconds (UPDATE SET).
             cur.execute(_dequeue_sql(), (queue_name, qty, vt_seconds))
+            rows = cur.fetchall()
+        return [
+            QueueMessage(msg_id=int(r[0]), message=r[1], read_ct=int(r[2])) for r in rows
+        ]
+
+    def read_any(
+        self,
+        queue_names: list[str],
+        *,
+        vt_seconds: int = 30,
+        qty: int = 1,
+        start: int = 0,
+    ) -> list[QueueMessage]:
+        """Claim up to ``qty`` ready messages from several queues in ONE statement.
+
+        Same claim contract as :meth:`read`; replaces one :meth:`read` per queue
+        per poll cycle, so an idle multi-queue consumer costs one statement per
+        cycle instead of one per queue. Each queue is probed with its own
+        indexed top-N (a ``LATERAL`` per queue on the partial claim index), so
+        cost does not grow with the backlog.
+
+        Queue order is round-robin from ``start`` (an index into
+        ``queue_names``), NOT priority: the caller advances ``start`` each cycle
+        so every non-empty queue keeps getting a turn, as with the per-queue
+        loop this replaces. ``priority`` still orders messages within a queue.
+
+        The per-queue probe locks up to ``qty`` rows in each queue, and only the
+        chosen ones are claimed; the rest stay ``ready`` and are unlocked when
+        the statement commits, so a concurrent reader skips them for those few
+        milliseconds at most.
+        """
+        if vt_seconds <= 0:
+            raise ValueError(f"vt_seconds must be positive, got {vt_seconds}")
+        if qty <= 0:
+            raise ValueError(f"qty must be positive, got {qty}")
+        if not queue_names:
+            raise ValueError("queue_names must be non-empty")
+        n = len(queue_names)
+        rotate = (start % n, n, n)
+        with self._cursor() as cur:
+            # Param order matches the %s positions in _dequeue_any_sql():
+            # queues, per-queue LIMIT, rotation, LIMIT, vt, rotation again.
+            cur.execute(
+                _dequeue_any_sql(),
+                (list(queue_names), qty, *rotate, qty, vt_seconds, *rotate),
+            )
             rows = cur.fetchall()
         return [
             QueueMessage(msg_id=int(r[0]), message=r[1], read_ct=int(r[2])) for r in rows

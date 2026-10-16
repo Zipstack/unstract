@@ -311,14 +311,15 @@ class PgQueueConsumer:
         if not queue_names:
             raise ValueError("queue_names must be a non-empty list")
         # One process can drain several queues (9f) — e.g. a file_processing
-        # consumer drains both file_processing and api_file_processing. Each is
-        # read once per cycle in list order (poll_once): this prevents starvation
-        # (every queue gets a read each cycle) but does NOT equalize throughput —
-        # an always-full queue_names[0] claims its full batch and runs it before
-        # later queues. Copy + de-dup (order-preserving): a duplicate would
+        # consumer drains both file_processing and api_file_processing. All are
+        # claimed from in one statement per cycle, starting from a queue that
+        # rotates each cycle (poll_once): every non-empty queue gets a turn, so
+        # none starves. Copy + de-dup (order-preserving): a duplicate would
         # double-read a queue per cycle, and storing the caller's list by
         # reference would let a later mutation bypass the non-empty validation.
         self.queue_names = list(dict.fromkeys(queue_names))
+        # Round-robin start for the multi-queue claim (see poll_once).
+        self._next_queue = 0
         self._client = client if client is not None else PgQueueClient()
         self._app = app if app is not None else current_app
         # Lazily built the first time a poison drop needs to mark an execution
@@ -366,40 +367,47 @@ class PgQueueConsumer:
         self._result_backend: PgResultBackend | None = None
         # Heartbeat for the liveness probe: monotonic timestamp of the most
         # recent poll attempt. Seeded at construction so a just-started consumer
-        # reads healthy. Updated before EACH queue read in poll_once, so a loop
+        # reads healthy. Updated before each claim in poll_once, so a loop
         # wedged on a long-running task goes stale and is caught —
         # something pgrep-based --status and the launch-time check cannot see.
         self._last_poll_monotonic = time.monotonic()
 
     def poll_once(self) -> int:
-        """Claim + process one batch per queue (read once each, in list order);
-        returns the total number of messages claimed across all queues this cycle.
+        """Claim + process one batch; returns the number of messages claimed.
 
-        Each queue is isolated: a read/handle failure on one queue is logged and
-        skipped so the others still get their turn, and the work already done this
-        cycle still counts (so run() doesn't take the empty-queue backoff path
-        after a partial failure).
+        A single-queue consumer reads its queue. A multi-queue consumer claims
+        across all its queues in ONE statement (:meth:`PgQueueClient.read_any`)
+        rather than one read per queue, so an idle cycle costs one statement
+        however many queues it drains. The queue probed first rotates every
+        cycle, so each non-empty queue still gets a turn (no starvation), as it
+        did when every queue was read once per cycle. A read/handle failure is
+        logged and the cycle counts as empty, as a failed queue did before.
         """
-        total = 0
-        for queue_name in self.queue_names:
-            # Per queue, not per cycle: a cycle runs one task from EACH queue, and
-            # HEALTH_STALE is sized for one task, so a per-cycle stamp would let
-            # two legitimate long tasks add up to a false "stale".
-            self._last_poll_monotonic = time.monotonic()
-            try:
+        # HEALTH_STALE is sized for one task, and a cycle now runs one batch.
+        self._last_poll_monotonic = time.monotonic()
+        try:
+            if len(self.queue_names) == 1:
                 messages = self._client.read(
-                    queue_name, vt_seconds=self.lease_seconds, qty=self.batch_size
+                    self.queue_names[0],
+                    vt_seconds=self.lease_seconds,
+                    qty=self.batch_size,
                 )
-                for message in messages:
-                    self._handle(message)
-                total += len(messages)
-            except Exception:
-                logger.exception(
-                    "PG-queue consumer: poll failed for queue %r; "
-                    "continuing with the other queues",
-                    queue_name,
+            else:
+                messages = self._client.read_any(
+                    self.queue_names,
+                    vt_seconds=self.lease_seconds,
+                    qty=self.batch_size,
+                    start=self._next_queue,
                 )
-        return total
+                self._next_queue = (self._next_queue + 1) % len(self.queue_names)
+            for message in messages:
+                self._handle(message)
+        except Exception:
+            logger.exception(
+                "PG-queue consumer: poll failed for queues %r", self.queue_names
+            )
+            return 0
+        return len(messages)
 
     @contextlib.contextmanager
     def _lease_renewal(self, msg_id: int) -> Iterator[None]:

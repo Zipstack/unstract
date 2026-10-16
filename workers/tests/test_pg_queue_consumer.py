@@ -681,23 +681,19 @@ class TestPollHeartbeat:
         consumer.poll_once()
         assert seen["during"] > before  # refreshed BEFORE read ran, not after
 
-    def test_heartbeat_restamped_before_each_queue_read(self):
-        # UN-4223: a cycle runs one task per queue and HEALTH_STALE is sized for
-        # one task, so each queue's read must start from a fresh stamp — a single
-        # per-cycle stamp would add two long tasks into a false "stale".
+    def test_heartbeat_stamped_before_multi_queue_claim(self):
+        # The multi-queue path claims once per cycle (read_any); the stamp must
+        # still land before that claim, not after the task it returns.
         client = MagicMock()
         consumer = PgQueueConsumer(["q1", "q2"], client=client)
-        seen: list[float] = []
-
-        def _read(*_a, **_k):
-            seen.append(consumer._last_poll_monotonic)
-            consumer._last_poll_monotonic -= 5000  # the first queue's long task
-            return []
-
-        client.read.side_effect = _read
+        before = consumer._last_poll_monotonic
+        seen: dict[str, float] = {}
+        client.read_any.side_effect = lambda *a, **k: (
+            seen.setdefault("during", consumer._last_poll_monotonic),
+            [],
+        )[1]
         consumer.poll_once()
-        assert len(seen) == 2
-        assert seen[1] > seen[0] - 1  # re-stamped, not inherited from queue 1
+        assert seen["during"] > before
 
     def test_health_server_disabled_without_port(self):
         # No port configured → no server bound (opt-in).
@@ -875,47 +871,55 @@ class TestConsumerIntegration:
 
 
 class TestMultiQueue:
-    """9f: one consumer drains several queues round-robin."""
+    """9f: one consumer drains several queues — one claim per cycle (UN-4176)."""
 
-    def test_round_robin_reads_each_queue_and_aggregates(self):
+    def test_multi_queue_claims_once_per_cycle(self):
         client = MagicMock()
-        # qa → 2 msgs, qb → 1 msg; poll_once returns the total across both.
-        client.read.side_effect = [
-            [_msg(1, _ok_payload(1)), _msg(2, _ok_payload(2))],
-            [_msg(3, _ok_payload(3))],
-        ]
+        client.read_any.return_value = [_msg(1, _ok_payload(1))]
         claimed = PgQueueConsumer(["qa", "qb"], client=client).poll_once()
-        assert claimed == 3
-        # Read once per queue, in order.
-        assert [c.args[0] for c in client.read.call_args_list] == ["qa", "qb"]
+        assert claimed == 1
+        client.read_any.assert_called_once()
+        client.read.assert_not_called()  # never one statement per queue
+        assert client.read_any.call_args.args[0] == ["qa", "qb"]
 
-    def test_empty_queue_does_not_starve_the_others(self):
+    def test_single_queue_keeps_the_single_queue_claim(self):
         client = MagicMock()
-        client.read.side_effect = [[], [_msg(1, _ok_payload(1))]]
-        assert PgQueueConsumer(["empty", "busy"], client=client).poll_once() == 1
+        client.read.return_value = []
+        PgQueueConsumer(["q"], client=client).poll_once()
+        client.read.assert_called_once()
+        client.read_any.assert_not_called()
+
+    def test_start_queue_rotates_every_cycle(self):
+        # The rotating start is what keeps an always-full first queue from
+        # starving the rest.
+        client = MagicMock()
+        client.read_any.return_value = []
+        consumer = PgQueueConsumer(["qa", "qb", "qc"], client=client)
+        for _ in range(4):
+            consumer.poll_once()
+        assert [c.kwargs["start"] for c in client.read_any.call_args_list] == [
+            0,
+            1,
+            2,
+            0,
+        ]
 
     def test_rejects_empty_queue_list(self):
         client = MagicMock()
         with pytest.raises(ValueError, match="queue_names"):
             PgQueueConsumer([], client=client)
 
-    def test_one_queue_failing_does_not_abort_the_others(self):
-        """A read failure on one queue is isolated: the already-acked work this
-        cycle still counts (so run() doesn't take the empty backoff path), and
-        the failure doesn't propagate out of poll_once.
-        """
+    def test_claim_failure_counts_as_an_empty_cycle(self):
+        """A failed claim is logged, not raised, and returns 0 so run() backs off."""
         client = MagicMock()
-        client.read.side_effect = [[_msg(1, _ok_payload(1))], RuntimeError("boom")]
-        claimed = PgQueueConsumer(["qa", "qb"], client=client).poll_once()
-        assert claimed == 1  # qa's message counted despite qb raising
-        assert _calls == [(1, 0)]  # qa task body ran
-        client.delete.assert_called_once_with(1)  # qa acked
+        client.read_any.side_effect = RuntimeError("boom")
+        assert PgQueueConsumer(["qa", "qb"], client=client).poll_once() == 0
 
-    def test_read_uses_batch_size_qty_per_queue(self):
+    def test_claim_uses_batch_size_qty(self):
         client = MagicMock()
-        client.read.return_value = []
+        client.read_any.return_value = []
         PgQueueConsumer(["qa", "qb"], client=client, batch_size=2).poll_once()
-        assert [c.kwargs["qty"] for c in client.read.call_args_list] == [2, 2]
+        assert client.read_any.call_args.kwargs["qty"] == 2
 
     def test_duplicate_queues_are_deduped(self):
         """A duplicate (e.g. env "q,q") must not double-read the same queue."""

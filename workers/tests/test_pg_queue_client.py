@@ -214,6 +214,23 @@ class TestConnectionLifecycle:
         conn.close.assert_called_once()
         assert client._conn is None
 
+    def test_owned_conn_is_autocommit(self, monkeypatch):
+        # One statement per operation: an explicit transaction would only add a
+        # BEGIN + COMMIT round trip to each claim (UN-4176).
+        conn = MagicMock(closed=0, autocommit=False)
+        monkeypatch.setattr(
+            "queue_backend.pg_queue.client.create_pg_connection", lambda: conn
+        )
+        PgQueueClient().conn
+        assert conn.autocommit is True
+
+    def test_injected_conn_autocommit_untouched(self):
+        # An injected conn may be the caller's open transaction (the agentic
+        # fan-out outbox) — flipping it would commit that transaction early.
+        conn = MagicMock(closed=0, autocommit=False)
+        PgQueueClient(conn=conn).conn
+        assert conn.autocommit is False
+
     def test_injected_conn_never_closed_on_error(self):
         cur = MagicMock()
         cur.execute.side_effect = psycopg2.OperationalError("dead")
@@ -865,6 +882,149 @@ class TestPgQueueClientIntegration:
             assert len(ids_a) + len(ids_b) == 5  # all delivered exactly once
         finally:
             conn_b.close()
+
+
+@pytest.fixture
+def queue_names(pg_conn, queue_name):
+    """Three sibling queues for the multi-queue claim; cleaned up by prefix."""
+    names = [f"{queue_name}_{s}" for s in ("a", "b", "c")]
+    yield names
+    pg_conn.rollback()
+    with pg_conn.cursor() as cur:
+        cur.execute("DELETE FROM pg_queue_message WHERE queue_name = ANY(%s)", (names,))
+    pg_conn.commit()
+
+
+class TestReadAnyIntegration:
+    """``read_any``: one claim across several queues (UN-4176)."""
+
+    def test_empty_queues_claim_nothing(self, pg_conn, queue_names):
+        assert PgQueueClient(conn=pg_conn).read_any(queue_names, vt_seconds=30) == []
+
+    def test_claims_from_whichever_queue_has_work(self, pg_conn, queue_names):
+        client = PgQueueClient(conn=pg_conn)
+        mid = client.send(queue_names[2], {"n": "c"})
+        msgs = client.read_any(queue_names, vt_seconds=30, start=0)
+        assert [m.msg_id for m in msgs] == [mid]
+        assert msgs[0].read_ct == 1
+        with pg_conn.cursor() as cur:
+            cur.execute("SELECT state FROM pg_queue_message WHERE msg_id = %s", (mid,))
+            assert cur.fetchone()[0] == "claimed"
+        pg_conn.commit()
+
+    def test_start_picks_the_first_queue_probed(self, pg_conn, queue_names):
+        # Every queue has work; the rotating start decides which is served, so
+        # no queue starves behind an always-full one.
+        client = PgQueueClient(conn=pg_conn)
+        for name in queue_names:
+            client.send(name, {"q": name})
+        served = [
+            client.read_any(queue_names, vt_seconds=30, start=s)[0].message["q"]
+            for s in (1, 2, 0)
+        ]
+        assert served == [queue_names[1], queue_names[2], queue_names[0]]
+
+    def test_start_wraps_and_skips_empty_queues(self, pg_conn, queue_names):
+        client = PgQueueClient(conn=pg_conn)
+        client.send(queue_names[0], {"q": "a"})
+        client.send(queue_names[1], {"q": "b"})
+        # start=2 → c (empty) is skipped, wraps to a.
+        msgs = client.read_any(queue_names, vt_seconds=30, start=2)
+        assert [m.message["q"] for m in msgs] == ["a"]
+
+    def test_priority_orders_within_a_queue(self, pg_conn, queue_names):
+        client = PgQueueClient(conn=pg_conn)
+        client.send(queue_names[0], {"n": "low"}, priority=1)
+        client.send(queue_names[0], {"n": "high"}, priority=9)
+        msgs = client.read_any(queue_names, vt_seconds=30)
+        assert [m.message["n"] for m in msgs] == ["high"]
+
+    def test_batch_spans_queues_in_rotation_order(self, pg_conn, queue_names):
+        client = PgQueueClient(conn=pg_conn)
+        client.send(queue_names[0], {"n": "a1"})
+        client.send(queue_names[1], {"n": "b1"})
+        client.send(queue_names[1], {"n": "b2"})
+        msgs = client.read_any(queue_names, vt_seconds=30, qty=3, start=1)
+        assert [m.message["n"] for m in msgs] == ["b1", "b2", "a1"]
+
+    def test_unchosen_candidates_stay_ready(self, pg_conn, queue_names):
+        # The per-queue probe locks a candidate in every queue; only the chosen
+        # one may be claimed — the others must still be claimable afterwards.
+        client = PgQueueClient(conn=pg_conn)
+        ids = [client.send(name, {"q": name}) for name in queue_names]
+        claimed = client.read_any(queue_names, vt_seconds=30, qty=1)
+        assert len(claimed) == 1
+        with pg_conn.cursor() as cur:
+            cur.execute(
+                "SELECT msg_id, state FROM pg_queue_message WHERE msg_id = ANY(%s)",
+                (ids,),
+            )
+            states = dict(cur.fetchall())
+        pg_conn.commit()
+        assert sorted(states.values()) == ["claimed", "ready", "ready"]
+
+    def test_concurrent_readers_never_double_claim(self, pg_conn, queue_names):
+        import threading
+
+        client_a = PgQueueClient(conn=pg_conn)
+        for i in range(60):
+            client_a.send(queue_names[i % 3], {"i": i})
+        conn_b = create_pg_connection(env_prefix="TEST_DB_")
+        seen: list[list[int]] = [[], []]
+        violations: list[int] = []
+
+        def drain(client, out, start):
+            while True:
+                msgs = client.read_any(queue_names, vt_seconds=30, start=start)
+                if not msgs:
+                    return
+                if len(msgs) > 1:
+                    violations.append(len(msgs))
+                out.extend(m.msg_id for m in msgs)
+                start += 1
+
+        try:
+            threads = [
+                threading.Thread(target=drain, args=(client_a, seen[0], 0)),
+                threading.Thread(
+                    target=drain, args=(PgQueueClient(conn=conn_b), seen[1], 1)
+                ),
+            ]
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join(timeout=60)
+        finally:
+            conn_b.close()
+        assert violations == []
+        assert set(seen[0]).isdisjoint(seen[1])
+        assert len(seen[0]) + len(seen[1]) == 60
+
+    def test_owned_connection_claims_without_a_transaction(
+        self, pg_conn, queue_names, monkeypatch
+    ):
+        # The autocommit claim must still persist (no COMMIT is sent).
+        monkeypatch.setattr(
+            "queue_backend.pg_queue.client.create_pg_connection",
+            lambda: create_pg_connection(env_prefix="TEST_DB_"),
+        )
+        with PgQueueClient() as owned:
+            mid = owned.send(queue_names[0], {"n": 1})
+            assert [m.msg_id for m in owned.read_any(queue_names, vt_seconds=30)] == [mid]
+            assert owned.conn.autocommit is True
+        with pg_conn.cursor() as cur:
+            cur.execute("SELECT state FROM pg_queue_message WHERE msg_id = %s", (mid,))
+            assert cur.fetchone()[0] == "claimed"
+        pg_conn.commit()
+
+    def test_rejects_bad_args(self, pg_conn):
+        client = PgQueueClient(conn=pg_conn)
+        with pytest.raises(ValueError):
+            client.read_any([], vt_seconds=30)
+        with pytest.raises(ValueError):
+            client.read_any(["q"], vt_seconds=0)
+        with pytest.raises(ValueError):
+            client.read_any(["q"], vt_seconds=30, qty=0)
 
 
 if __name__ == "__main__":
