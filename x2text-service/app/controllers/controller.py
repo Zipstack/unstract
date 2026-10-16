@@ -26,6 +26,7 @@ UNSTRUCTURED_API_KEY = "unstructured-api-key"
 
 @basic.route("/health", methods=["GET"])
 def health() -> str:
+    """Check the health status of the service."""
     logging.info("Checking health from : %s", request.remote_addr)
     return "OK"
 
@@ -33,6 +34,7 @@ def health() -> str:
 @basic.route("/test-connection", methods=["POST"])
 @authentication_middleware
 def test_connection() -> Any:
+    """Test the connection to the Unstructured API."""
     logging.info("Received a test connection request from %s", request.remote_addr)
     form_data = dict(request.form)
     unstructured_api_key = X2TextUtil.get_value_for_key(UNSTRUCTURED_API_KEY, form_data)
@@ -54,7 +56,7 @@ def test_connection() -> Any:
             headers=headers,
             data=None,
             files=files,
-            timeout=None,
+            timeout=60,
         )
 
         if response.status_code == 400:
@@ -76,6 +78,7 @@ def test_connection() -> Any:
 @basic.route("/process", methods=["POST"])
 @authentication_middleware
 def process() -> Any:
+    """Process a document for text extraction."""
     logging.info("Received a doc processing request from %s", request.remote_addr)
     form_data = dict(request.form)
     url = X2TextUtil.get_value_for_key(UNSTRUCTURED_URL, form_data)
@@ -116,14 +119,21 @@ def process() -> Any:
     }
     payload = form_data
 
-    response = requests.request(
-        "POST",
-        url,
-        headers=headers,
-        data=payload,
-        files=files,
-        timeout=None,
-    )
+    try:
+        response = requests.request(
+            "POST",
+            url,
+            headers=headers,
+            data=payload,
+            files=files,
+            timeout=60,
+        )
+    except requests.exceptions.RequestException as e:
+        logging.error("Text extraction request failed: %s", e)
+        x2_text_audit.status = "Failed"
+        x2_text_audit.save()
+        return {"message": "Text extraction request failed"}, 502
+
     if response.ok:
         json_response = response.json()
         response_text = X2TextUtil.get_text_content(json_response)
