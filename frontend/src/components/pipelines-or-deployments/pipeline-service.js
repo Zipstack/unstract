@@ -5,11 +5,9 @@ function pipelineService() {
   const axiosPrivate = useAxiosPrivate();
   const { sessionDetails } = useSessionStore();
   const path = `/api/v1/unstract/${sessionDetails?.orgId.replaceAll('"', "")}`;
-  const csrfToken = sessionDetails.csrfToken;
 
   const requestHeaders = {
     "Content-Type": "application/json",
-    "X-CSRFToken": csrfToken,
   };
 
   return {

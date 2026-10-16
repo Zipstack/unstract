@@ -46,7 +46,6 @@ const usePromptRun = () => {
       method: "POST",
       url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/fetch_response/${details?.tool_id}`,
       headers: {
-        "X-CSRFToken": sessionDetails?.csrfToken,
         "Content-Type": "application/json",
       },
       data: body,
@@ -115,7 +114,6 @@ const usePromptRun = () => {
       method: "POST",
       url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/bulk_fetch_response/${details?.tool_id}`,
       headers: {
-        "X-CSRFToken": sessionDetails?.csrfToken,
         "Content-Type": "application/json",
       },
       data: body,

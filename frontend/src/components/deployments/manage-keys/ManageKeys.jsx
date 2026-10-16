@@ -190,9 +190,6 @@ const ManageKeys = ({
     const requestOptions = {
       method: "PUT",
       url: `/api/v1/unstract/${sessionDetails?.orgId}/api/keys/${record?.id}/`,
-      headers: {
-        "X-CSRFToken": sessionDetails?.csrfToken,
-      },
       data: record,
     };
 

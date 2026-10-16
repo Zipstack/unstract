@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Outlet } from "react-router-dom";
 
+import { orgApi } from "../../../helpers/orgApi";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useSessionStore } from "../../../store/session-store";
 import { NotFound } from "../../error/NotFound/NotFound.jsx";
@@ -17,10 +18,7 @@ const RequireAdmin = () => {
   useEffect(() => {
     const verifyAdminStatus = async () => {
       try {
-        const res = await axiosPrivate.get(
-          `/api/v1/unstract/${orgId}/users/profile/`,
-          { headers: { "X-CSRFToken": sessionDetails?.csrfToken } },
-        );
+        const res = await axiosPrivate.get(orgApi("users/profile/"));
         const currentIsAdmin = res?.data?.user?.is_admin;
         const currentRole = res?.data?.user?.role;
         const updates = {};

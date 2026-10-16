@@ -53,9 +53,6 @@ function AdapterSelectionModal({
       const requests = adapterTypes.map((type) =>
         fetchAllPages(axiosPrivate, {
           url: `/api/v1/unstract/${sessionDetails?.orgId}/adapter/`,
-          headers: {
-            "X-CSRFToken": sessionDetails?.csrfToken,
-          },
           params: {
             adapter_type: type,
           },

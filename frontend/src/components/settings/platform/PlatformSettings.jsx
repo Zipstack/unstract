@@ -167,7 +167,6 @@ function PlatformSettings() {
       method: "PATCH",
       url: `/api/v1/unstract/${sessionDetails?.orgId}/organization/settings`,
       headers: {
-        "X-CSRFToken": sessionDetails?.csrfToken,
         "Content-Type": "application/json",
       },
       data: { restrict_llm_adapter_creation: checked },
@@ -198,7 +197,6 @@ function PlatformSettings() {
       method: "PATCH",
       url: `/api/v1/unstract/${sessionDetails?.orgId}/organization/settings`,
       headers: {
-        "X-CSRFToken": sessionDetails?.csrfToken,
         "Content-Type": "application/json",
       },
       data: { restrict_connector_creation: checked },
@@ -238,7 +236,6 @@ function PlatformSettings() {
       method: "PATCH",
       url: `/api/v1/unstract/${sessionDetails?.orgId}/notifications/settings/`,
       headers: {
-        "X-CSRFToken": sessionDetails?.csrfToken,
         "Content-Type": "application/json",
       },
       data: { club_interval_seconds: batchIntervalMinutes * 60 },
@@ -348,7 +345,6 @@ function PlatformSettings() {
       method,
       url,
       headers: {
-        "X-CSRFToken": sessionDetails?.csrfToken,
         "Content-Type": "application/json",
       },
       data: body,
@@ -381,9 +377,6 @@ function PlatformSettings() {
     const requestOptions = {
       method: "DELETE",
       url: `/api/v1/unstract/${sessionDetails?.orgId}/platform/keys/${keyDetails?.id}/`,
-      headers: {
-        "X-CSRFToken": sessionDetails?.csrfToken,
-      },
     };
 
     setDeletingIndex(index);
@@ -419,7 +412,6 @@ function PlatformSettings() {
       method: "PUT",
       url: `/api/v1/unstract/${sessionDetails?.orgId}/platform/keys/${keyDetails?.id}/`,
       headers: {
-        "X-CSRFToken": sessionDetails?.csrfToken,
         "Content-Type": "application/json",
       },
       data: body,

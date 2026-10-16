@@ -1,6 +1,5 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import axios from "axios";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -8,7 +7,10 @@ import { useSessionStore } from "../../../store/session-store.js";
 import { ConfirmHost } from "../../widgets/confirm-modal/ConfirmHost.jsx";
 import { resetConfirm } from "../../widgets/confirm-modal/confirmStore.js";
 
-vi.mock("axios");
+const axiosPrivate = vi.fn();
+vi.mock("../../../hooks/useAxiosPrivate.js", () => ({
+  useAxiosPrivate: () => axiosPrivate,
+}));
 
 /*
  * The logos are `*.svg?react` imports, which only become components once
@@ -94,7 +96,7 @@ describe("TopNavBar Switch Org", () => {
   });
 
   it("switches to the organization picked from the list", async () => {
-    axios.mockResolvedValue({});
+    axiosPrivate.mockResolvedValue({});
     const user = userEvent.setup();
     renderTopNavBar();
 
@@ -105,7 +107,7 @@ describe("TopNavBar Switch Org", () => {
     ).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Confirm" }));
 
-    expect(axios).toHaveBeenCalledWith(
+    expect(axiosPrivate).toHaveBeenCalledWith(
       expect.objectContaining({
         method: "POST",
         url: "/api/v1/organization/org-b/set",
