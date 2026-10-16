@@ -23,6 +23,7 @@ import pytest
 from redis.exceptions import (
     AuthenticationError,
     BusyLoadingError,
+    NoPermissionError,
     OutOfMemoryError,
     ReadOnlyError,
     ResponseError,
@@ -34,6 +35,7 @@ from redis.sentinel import MasterNotFoundError
 from .test_log_stream_consumer import _envelope, _load
 
 _REFUSED = RedisConnectionError("Error 111 connecting to redis:6379. Connection refused.")
+_AUTH = AuthenticationError("invalid username-password pair")
 
 
 @pytest.fixture
@@ -185,9 +187,20 @@ class TestGivingUp:
             code = consumer.run()
         return code, waits
 
-    def test_exits_non_zero_after_ten_waits_at_the_cap(self, consumer):
+    @pytest.mark.parametrize(
+        "error",
+        [
+            AuthenticationError("invalid username-password pair"),
+            NoPermissionError("NOPERM User has no permissions to run 'blmove'"),
+            ValueError(
+                "Cannot set verify_mode to CERT_NONE when check_hostname is enabled."
+            ),
+        ],
+        ids=lambda e: type(e).__name__,
+    )
+    def test_exits_non_zero_after_ten_waits_at_the_cap(self, consumer, error):
         # 5 waits below the cap, 10 at it, then the 16th failure gives up.
-        redis = _scripted_redis(consumer, [_REFUSED] * 16 + [None])
+        redis = _scripted_redis(consumer, [error] * 16 + [None])
 
         code, waits = self._run(consumer, redis)
 
@@ -199,16 +212,48 @@ class TestGivingUp:
             "Log stream read still failing after 10 waits at the 30s cap; "
             "exiting so the container restarts"
         )
+        assert last.kwargs.get("exc_info") is True
+
+    def test_an_outage_never_gives_up(self, consumer):
+        # Refused connects well past the give-up point: an outage keeps waiting
+        # in-process, so the consumer resumes as soon as Redis is back.
+        redis = _scripted_redis(consumer, [_REFUSED] * 40 + [None])
+
+        code, waits = self._run(consumer, redis)
+
+        assert code == 0
+        assert waits == [1, 2, 4, 8, 16] + [30] * 35
 
     def test_a_successful_read_resets_the_count(self, consumer):
         # 9 waits at the cap, a reply, then another full streak short of giving up.
-        streak = [_REFUSED] * 14
+        streak = [_AUTH] * 14
         redis = _scripted_redis(consumer, streak + [None] + streak)
 
         code, waits = self._run(consumer, redis)
 
         assert code == 0
         assert waits == ([1, 2, 4, 8, 16] + [30] * 9) * 2
+
+    def test_an_outage_in_between_resets_the_count(self, consumer):
+        # Auth failures interrupted by a refused connect start counting again.
+        redis = _scripted_redis(consumer, [_AUTH] * 14 + [_REFUSED] + [_AUTH] * 10)
+
+        code, _waits = self._run(consumer, redis)
+
+        assert code == 0
+
+
+class TestStartupRecovery:
+    def test_recovery_failures_back_off_instead_of_crashing(self, consumer):
+        # A restart during an outage must wait in-process, not crash-loop.
+        redis = _scripted_redis(consumer, [None])
+        redis.lmove.side_effect = [_REFUSED, _REFUSED, None]
+
+        waits = _run_recording_waits(consumer, redis)
+
+        assert waits == [1, 2]
+        assert redis.lmove.call_count == 3
+        assert redis.blmove.call_count == 2
 
 
 class TestMixedFailures:
