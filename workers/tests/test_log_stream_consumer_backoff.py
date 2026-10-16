@@ -1,13 +1,13 @@
-"""Tests for the log-stream consumer's backoff while Redis is unreachable.
+"""Tests for the log-stream consumer's backoff when BLMOVE fails.
 
-A refused or unresolvable connect makes BLMOVE raise at once, so BLMOVE's own block
-never happens. Retrying immediately spun the loop at ~1k iterations/s, each writing a
-traceback. These pin the wait schedule, the length of each wait, its reset on the next
-reply, prompt shutdown during a wait, and that errors from a server that did answer
-keep today's behaviour.
+A refused connect, or an error reply such as OOM or READONLY, makes BLMOVE raise at
+once, so BLMOVE's own block never happens and an immediate retry spins the loop, each
+pass writing a traceback. These pin the wait schedule for every failure class, the
+length of each wait, its reset on the next successful BLMOVE, and prompt shutdown
+during a wait.
 
 Loaded over the same faked worker-framework imports as ``test_log_stream_consumer.py``;
-the redis exception classes are the real ones, since they decide which branch runs.
+the redis exception classes are the real ones the client raises.
 """
 
 from __future__ import annotations
@@ -23,6 +23,7 @@ import pytest
 from redis.exceptions import (
     AuthenticationError,
     BusyLoadingError,
+    OutOfMemoryError,
     ReadOnlyError,
     ResponseError,
 )
@@ -88,20 +89,29 @@ class TestBackoffSchedule:
         [
             _REFUSED,
             RedisTimeoutError("Timeout connecting to server"),
-            # Subclasses of ConnectionError that reach BLMOVE in production: a rotated
-            # password, a replica still loading its RDB, and Sentinel with no master.
+            # ConnectionError subclasses: a rotated password, a restarted Redis still
+            # loading its dataset, and Sentinel with no master.
             AuthenticationError("invalid username-password pair"),
             BusyLoadingError("Redis is loading the dataset in memory"),
             MasterNotFoundError("No master found for 'mymaster'"),
+            # Error replies that recur until Redis changes state: maxmemory reached,
+            # a standalone client left on a demoted primary, a failed RDB save.
+            OutOfMemoryError("command not allowed when used memory > 'maxmemory'."),
+            ReadOnlyError("You can't write against a read only replica."),
+            ResponseError("MISCONF Redis is configured to save RDB snapshots"),
+            # Raised locally before any round trip, e.g. a TLS misconfiguration.
+            ValueError(
+                "Cannot set verify_mode to CERT_NONE when check_hostname is enabled."
+            ),
         ],
         ids=lambda e: type(e).__name__,
     )
-    def test_every_connection_level_error_backs_off(self, consumer, error):
+    def test_every_failure_class_backs_off(self, consumer, error):
         redis = _scripted_redis(consumer, [error])
         assert _run_recording_waits(consumer, redis) == [1]
 
     def test_an_idle_none_reply_resets_the_backoff(self, consumer):
-        # BLMOVE timing out with no work is still a round trip: Redis is back.
+        # BLMOVE timing out with no work is a successful call: the streak is over.
         redis = _scripted_redis(consumer, [_REFUSED] * 3 + [None] + [_REFUSED] * 2)
         assert _run_recording_waits(consumer, redis) == [1, 2, 4, 1, 2]
 
@@ -111,8 +121,8 @@ class TestBackoffSchedule:
 
         calls = consumer.logger.error.call_args_list
         assert [c.args[0] % c.args[1:] for c in calls] == [
-            "Log stream read failed: Redis unavailable; backing off 1s before retrying",
-            "Log stream read failed: Redis unavailable; backing off 2s before retrying",
+            "Log stream read failed; backing off 1s before retrying",
+            "Log stream read failed; backing off 2s before retrying",
         ]
         assert all(c.kwargs.get("exc_info") is True for c in calls)
 
@@ -132,23 +142,19 @@ class TestRecovery:
         assert waits == [1, 2, 1]
 
 
-class TestErrorsFromAServerThatAnswered:
-    """Out of scope for the backoff: still logged and retried at once, as before."""
-
-    def test_are_logged_and_retried_without_waiting(self, consumer):
+class TestMixedFailures:
+    def test_error_replies_and_connection_errors_share_one_streak(self, consumer):
+        # A failover can alternate refused connects with READONLY replies; each
+        # consecutive failure still doubles the wait rather than restarting it.
         errors = [
+            _REFUSED,
             ReadOnlyError("You can't write against a read only replica."),
             ResponseError("WRONGTYPE Operation against a key holding the wrong kind"),
-            ValueError("not a redis error at all"),
         ]
         redis = _scripted_redis(consumer, errors)
 
-        assert _run_recording_waits(consumer, redis) == []
+        assert _run_recording_waits(consumer, redis) == [1, 2, 4]
         assert redis.blmove.call_count == len(errors) + 1
-        assert consumer.logger.error.call_count == len(errors)
-        for call in consumer.logger.error.call_args_list:
-            assert call.args == ("Log stream read failed; retrying",)
-            assert call.kwargs == {"exc_info": True}
 
 
 class TestShutdownDuringBackoff:
@@ -183,9 +189,9 @@ class TestShutdownDuringBackoff:
 
         assert handler_installed, "run() did not install its SIGTERM handler"
         # 0.2s until the signal, plus the rest of the slice it landed in (PEP 475 resumes
-        # that sleep). A fixed bound, not one built from _SHUTDOWN_POLL_SECONDS: raising
-        # that constant is the very regression this guards. Generous for slow CI, and
-        # far below the 30s wait it interrupted.
+        # that sleep). Catches an uninterruptible or full-length wait; the slice length
+        # itself is pinned by TestTheWaitItself. Generous for slow CI, and far below the
+        # 30s wait it interrupted.
         assert elapsed < 2.0
         # Shutdown was noticed without another attempt at Redis.
         assert redis.blmove.call_count == 1
