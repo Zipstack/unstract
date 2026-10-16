@@ -14,6 +14,8 @@ class Account:
     CREATED_BY = "created_by"
     MODIFIED_BY = "modified_by"
     ORGANIZATION_ID = "organization_id"
+    # (organization_id, Organization) resolved for the current request or task.
+    ORGANIZATION_CACHE = "organization_cache"
 
 
 class Common:
