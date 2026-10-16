@@ -298,6 +298,14 @@ class _Malformed(AttentionProvider):
         return [AttentionItem(kind=self.kind, id="x", name=None, count=1, since="now")]
 
 
+class _First(AttentionProvider):
+    kind = "test_first"
+    order = 5
+
+    def items(self, organization, start_date, end_date):
+        return []
+
+
 class AttentionProviderRegistryTests(_Seed, TestCase):
     """Test-only kinds on a copy of the registry, restored after each test."""
 
@@ -306,7 +314,8 @@ class AttentionProviderRegistryTests(_Seed, TestCase):
         patcher = mock.patch.dict(attention._providers)
         patcher.start()
         self.addCleanup(patcher.stop)
-        for provider in (_Reviews(), _Broken(), _Malformed()):
+        # Registered out of order: _First sorts before the OSS providers.
+        for provider in (_Broken(), _Reviews(), _Malformed(), _First()):
             register_attention_provider(provider)
 
     def test_contributed_kinds_and_failures(self) -> None:
@@ -327,9 +336,12 @@ class AttentionProviderRegistryTests(_Seed, TestCase):
             "negative count": {**good, "count": -1},
             "bool count": {**good, "count": True},
             "since not a datetime": {**good, "count": 1, "since": "now"},
+            "since a date": {**good, "count": 1, "since": self.now.date()},
+            "id not a string": {**good, "count": 1, "id": 7},
+            "name not a string": {**good, "count": 1, "name": 7},
         }
         for name, fields in cases.items():
-            with self.subTest(name), self.assertRaises((ValueError, AttributeError)):
+            with self.subTest(name), self.assertRaises(ValueError):
                 attention._serialize(_Reviews(), AttentionItem(**fields))
         self.assertEqual(
             attention._serialize(_Reviews(), AttentionItem(**good, count=0))["count"], 0
@@ -337,6 +349,7 @@ class AttentionProviderRegistryTests(_Seed, TestCase):
 
     def test_display_order(self) -> None:
         kinds = [p.kind for p in get_attention_providers()]
+        self.assertEqual(kinds[0], "test_first")
         self.assertLess(
             kinds.index("failing_pipeline"), kinds.index("failing_deployment")
         )
