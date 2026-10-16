@@ -99,7 +99,8 @@ class TestBackoffSchedule:
             OutOfMemoryError("command not allowed when used memory > 'maxmemory'."),
             ReadOnlyError("You can't write against a read only replica."),
             ResponseError("MISCONF Redis is configured to save RDB snapshots"),
-            # Raised locally before any round trip, e.g. a TLS misconfiguration.
+            # Not a RedisError: raised by the ssl module while wrapping the socket, e.g.
+            # a TLS misconfiguration.
             ValueError(
                 "Cannot set verify_mode to CERT_NONE when check_hostname is enabled."
             ),
@@ -140,6 +141,34 @@ class TestRecovery:
         redis.lrem.assert_called_once_with("log_stream_queue:processing:pod-abc", 1, raw)
         # The delivered envelope reset the schedule for the next outage.
         assert waits == [1, 2, 1]
+
+
+class TestReconnectAfterFailure:
+    def test_every_failure_drops_the_pool_before_waiting(self, consumer):
+        # An error reply leaves redis-py's socket in place; without this a client left
+        # on a demoted primary would retry the same replica forever.
+        order = []
+        redis = _scripted_redis(
+            consumer,
+            [ReadOnlyError("You can't write against a read only replica."), _REFUSED],
+        )
+        redis.connection_pool.disconnect.side_effect = lambda: order.append("drop")
+        with (
+            patch.object(consumer, "create_redis_client", return_value=redis),
+            patch.object(
+                consumer,
+                "_wait_before_reconnect",
+                side_effect=lambda s: order.append(("wait", s)),
+            ),
+        ):
+            assert consumer.run() == 0
+
+        assert order == ["drop", ("wait", 1.0), "drop", ("wait", 2.0)]
+
+    def test_a_successful_read_does_not_drop_the_pool(self, consumer):
+        redis = _scripted_redis(consumer, [None, None])
+        _run_recording_waits(consumer, redis)
+        redis.connection_pool.disconnect.assert_not_called()
 
 
 class TestMixedFailures:
@@ -189,9 +218,9 @@ class TestShutdownDuringBackoff:
 
         assert handler_installed, "run() did not install its SIGTERM handler"
         # 0.2s until the signal, plus the rest of the slice it landed in (PEP 475 resumes
-        # that sleep). Catches an uninterruptible or full-length wait; the slice length
-        # itself is pinned by TestTheWaitItself. Generous for slow CI, and far below the
-        # 30s wait it interrupted.
+        # that sleep). Catches an uninterruptible or full-length wait; TestTheWaitItself
+        # bounds each slice at 1s. Generous for slow CI, and far below the 30s wait it
+        # interrupted.
         assert elapsed < 2.0
         # Shutdown was noticed without another attempt at Redis.
         assert redis.blmove.call_count == 1

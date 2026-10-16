@@ -66,7 +66,8 @@ _SOCKET_TIMEOUT_SECONDS = _BLOCK_TIMEOUT_SECONDS + 5
 # Wait after a failed BLMOVE, doubling per consecutive failure up to the cap and reset by
 # the next successful BLMOVE (an envelope or an idle None). Without it, a failure that
 # returns at once — a refused connect, or an OOM/READONLY/MISCONF reply — spun the loop,
-# logging a traceback each time: ~0.7-1.7 GiB of Cloud Logging per minute, per pod.
+# logging a traceback each time: 0.7-1.7 GiB of Cloud Logging per minute, per pod
+# (staging, Oct 2026).
 _RECONNECT_BACKOFF_INITIAL_SECONDS = 1.0
 _RECONNECT_BACKOFF_MAX_SECONDS = 30.0
 # How often a backoff wait re-checks for a shutdown signal. Polling the flag rather than
@@ -162,17 +163,21 @@ def run() -> int:
                 _QUEUE_NAME, processing, _BLOCK_TIMEOUT_SECONDS, "LEFT", "RIGHT"
             )
         except Exception:
-            # Must not kill the pod, and must not be retried immediately: such failures
-            # recur at once until Redis changes state. create_redis_client gives the
-            # client no retry (redis-py's default Retry(NoBackoff(), 0)), a refused
-            # connect returns without BLMOVE ever blocking, and an error reply (OOM,
-            # READONLY, MISCONF, NOPERM) is just as instant. The next call reconnects on
-            # its own.
+            # Must not kill the pod, and must not be retried immediately: most such
+            # failures recur at once. create_redis_client gives the client no retry
+            # (redis-py's default Retry(NoBackoff(), 0)), a refused connect returns
+            # without BLMOVE ever blocking, and an error reply (OOM, READONLY, MISCONF,
+            # NOPERM) is just as instant.
             logger.error(
                 "Log stream read failed; backing off %.0fs before retrying",
                 backoff,
                 exc_info=True,
             )
+            # redis-py drops the socket only on a connection error or timeout; after an
+            # error reply it reuses it, so a standalone client left on a demoted primary
+            # would get READONLY forever. Dropping the pool makes the next attempt open
+            # a fresh connection and re-resolve the host.
+            redis_client.connection_pool.disconnect()
             _wait_before_reconnect(backoff)
             backoff = min(backoff * 2, _RECONNECT_BACKOFF_MAX_SECONDS)
             continue
