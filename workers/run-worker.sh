@@ -24,6 +24,10 @@ ENV_FILE="$WORKERS_DIR/.env"
 # Worker type constant for the executor worker
 readonly EXECUTOR_WORKER_TYPE="executor"
 readonly IDE_CALLBACK_WORKER_TYPE="ide_callback"
+# Canonical name of the codegen sandbox worker. Same reason as the two above:
+# it keys several maps and a couple of dispatch cases, and a typo in any one of
+# them is a silently unstarted worker rather than an error.
+readonly SANDBOX_WORKER_TYPE="sandbox"
 # Canonical name of the PG-queue consumer worker (referenced in several maps
 # and special-cases below; a constant keeps them in sync).
 readonly PG_QUEUE_CONSUMER_TYPE="pg_queue_consumer"
@@ -60,6 +64,7 @@ readonly PG_ROLE_EXECUTOR="pg-executor"
 readonly PG_ROLE_METRICS="pg-metrics"
 readonly PG_ROLE_NOTIFICATION="pg-notification"
 readonly PG_ROLE_IDE_CALLBACK="pg-ide-callback"
+readonly PG_ROLE_SANDBOX="pg-sandbox"
 declare -rA PG_CONSUMER_ROLES=(
     ["$PG_ROLE_ORCH_API"]="api_deployment;celery_api_deployments"
     ["$PG_ROLE_ORCH_GENERAL"]="general;celery"
@@ -72,7 +77,7 @@ declare -rA PG_CONSUMER_ROLES=(
     # Runs execute_extraction (the executor RPC) over PG — request-reply: writes
     # the result to pg_task_result for the blocking caller. Queues mirror the
     # Celery executor's CELERY_QUEUES_EXECUTOR.
-    ["$PG_ROLE_EXECUTOR"]="executor;celery_executor_legacy,celery_executor_agentic,celery_executor_table,celery_executor_smart_table,celery_executor_simple_prompt_studio,celery_executor_agentic_table,celery_executor_lookup_test"
+    ["$PG_ROLE_EXECUTOR"]="executor;celery_executor_legacy,celery_executor_agentic,celery_executor_table,celery_executor_smart_table,celery_executor_simple_prompt_studio,celery_executor_agentic_table,celery_executor_lookup_test,celery_executor_agentic_kv"
     # Runs the dashboard_metrics.* periodics fired by the PG scheduler tick,
     # replacing the Celery 'workerMetrics' (-Q dashboard_metric_events). Its own
     # role rather than a queue bolted onto pg-scheduler: the consumer's health
@@ -87,7 +92,14 @@ declare -rA PG_CONSUMER_ROLES=(
     # succeeds, so nothing errors at the producer.
     ["$PG_ROLE_NOTIFICATION"]="notification;notifications,notifications_webhook,notifications_email,notifications_sms,notifications_priority"
     # Prompt Studio IDE callbacks (ide_index_*/ide_prompt_*/extraction_*).
-    ["$PG_ROLE_IDE_CALLBACK"]="ide_callback;ide_callback"
+    ["$PG_ROLE_IDE_CALLBACK"]="ide_callback;ide_callback,agent_kv_callback"
+    # Codegen sandbox (execute_sandboxed_code). Runs the SAME hardened
+    # workers/sandbox/tasks.py as the Celery `sandbox` worker -- only the
+    # transport differs, so every §6.3 layer (AST gate, scrubbed subprocess,
+    # rlimits) is enforced identically. On PG rather than the broker because
+    # UN-4046 retired the broker as a task transport: a broker-only consumer
+    # would drain nothing once the fleet flips.
+    ["$PG_ROLE_SANDBOX"]="sandbox;sandbox_codegen"
 )
 declare -rA PG_QUEUE_MEMBERS=(
     ["$PG_QUEUE_CONSUMER_TYPE"]=1
@@ -101,6 +113,7 @@ declare -rA PG_QUEUE_MEMBERS=(
     ["$PG_ROLE_METRICS"]=1
     ["$PG_ROLE_NOTIFICATION"]=1
     ["$PG_ROLE_IDE_CALLBACK"]=1
+    ["$PG_ROLE_SANDBOX"]=1
 )
 # The Celery transport set: every worker EXCEPT the PG-queue members — the
 # *complement* of the 'pg-queue' set, so the two transports' logs can be tailed
@@ -128,6 +141,7 @@ declare -A WORKERS=(
     ["${EXECUTOR_WORKER_TYPE}"]="${EXECUTOR_WORKER_TYPE}"
     ["ide-callback"]="${IDE_CALLBACK_WORKER_TYPE}"
     ["${IDE_CALLBACK_WORKER_TYPE}"]="${IDE_CALLBACK_WORKER_TYPE}"
+    ["$SANDBOX_WORKER_TYPE"]="$SANDBOX_WORKER_TYPE"
     # PG Queue consumer — polls Postgres (SKIP LOCKED), not RabbitMQ via Celery
     ["pg-queue-consumer"]="$PG_QUEUE_CONSUMER_TYPE"
     ["$PG_QUEUE_CONSUMER_TYPE"]="$PG_QUEUE_CONSUMER_TYPE"
@@ -168,7 +182,12 @@ declare -A WORKER_QUEUES=(
     ["notification"]="notifications,notifications_webhook,notifications_email,notifications_sms,notifications_priority"
     ["scheduler"]="scheduler"
     ["${EXECUTOR_WORKER_TYPE}"]="celery_executor_legacy"
-    ["${IDE_CALLBACK_WORKER_TYPE}"]="${IDE_CALLBACK_WORKER_TYPE}"
+    # agent_kv_callback carries the Agent-KV terminal callbacks
+    # (agent_kv_complete/agent_kv_error, spec §5.3) dispatched by
+    # backend/agent_kv/dispatch.py; ide_callback owns both queues.
+    ["${IDE_CALLBACK_WORKER_TYPE}"]="${IDE_CALLBACK_WORKER_TYPE},agent_kv_callback"
+    # Codegen sandbox worker (WorkerType.SANDBOX) — sandboxed code execution.
+    ["$SANDBOX_WORKER_TYPE"]="sandbox_codegen"
     # The PG queue (in pg_queue_message) this consumer polls — exported as
     # WORKER_PG_QUEUE_CONSUMER_QUEUE, not a Celery --queues value.
     ["$PG_QUEUE_CONSUMER_TYPE"]="notifications"
@@ -185,6 +204,10 @@ declare -A WORKER_HEALTH_PORTS=(
     ["scheduler"]="8087"
     ["${EXECUTOR_WORKER_TYPE}"]="8088"
     ["${IDE_CALLBACK_WORKER_TYPE}"]="8089"
+    # sandbox: 8092 — 8090/8091 are reserved below for pg_queue_consumer /
+    # pluggable-worker auto-discovery; 8092 is the sandbox worker's fixed slot
+    # (WorkerType.to_health_port() reads SANDBOX_HEALTH_PORT first).
+    ["$SANDBOX_WORKER_TYPE"]="8092"
     # pg_queue_consumer: 8090 — reserved here, just past the 8080-8089 core
     # range and just below where pluggable-worker discovery starts allocating
     # (8091+, see below), so it collides with neither. The consumer binds it
@@ -224,6 +247,7 @@ WORKER_TYPE:
     scheduler, schedule   Run scheduler worker (scheduled pipeline tasks)
     executor              Run executor worker (extraction execution tasks)
     ide-callback          Run IDE callback worker (Prompt Studio post-execution callbacks)
+    sandbox               Run codegen sandbox worker (sandboxed code execution; scrubbed-env subprocess)
     pg-queue-consumer     Run a generic PG-queue poll-loop consumer (env-configured; opt-in)
     pg-orchestrator-api   Run the PG orchestrator consumer for API execs (celery_api_deployments)
     pg-orchestrator-general Run the PG orchestrator consumer for ETL/general execs (celery)
@@ -807,6 +831,9 @@ run_worker() {
             "${IDE_CALLBACK_WORKER_TYPE}")
                 export IDE_CALLBACK_HEALTH_PORT="$health_port"
                 ;;
+            "${SANDBOX_WORKER_TYPE}")
+                export SANDBOX_HEALTH_PORT="$health_port"
+                ;;
             *)
                 # Handle pluggable workers dynamically
                 if [[ -n "${PLUGGABLE_WORKERS[$worker_type]:-}" ]]; then
@@ -884,6 +911,9 @@ run_worker() {
                 cmd_args+=("--concurrency=2")
                 ;;
             "${IDE_CALLBACK_WORKER_TYPE}")
+                cmd_args+=("--concurrency=2")
+                ;;
+            "${SANDBOX_WORKER_TYPE}")
                 cmd_args+=("--concurrency=2")
                 ;;
             *)

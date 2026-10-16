@@ -99,9 +99,17 @@ class TestTheMetricQueriesCanUseTheIndex(TestCase):
         # Scoped to this fixture's own execution: an unqualified UPDATE would rewrite
         # created_at for every row in whatever database this happens to run against.
         with connection.cursor() as cur:
+            # Multiply an interval rather than building one from text. `random()`
+            # is float8 and is evaluated PER ROW, so `random() * 60 || ' days'`
+            # went through float8's text form -- which switches to exponential
+            # notation below 1e-4, and `'9.59e-06 days'::interval` is a DataError
+            # that aborts the whole UPDATE. One unlucky row out of 4000 was enough:
+            # measured at 6 failures per 400 batches of this size, and it did fail
+            # a CI run. `float8 * interval` never round-trips through text, and is
+            # exactly equal to the old form everywhere the old form parsed.
             cur.execute(
                 "UPDATE workflow_file_execution SET created_at = %s::timestamptz"
-                " - (random() * %s || ' days')::interval"
+                " - (random() * %s) * interval '1 day'"
                 " WHERE workflow_execution_id = %s",
                 [now.isoformat(), _SPAN_DAYS, str(execution.id)],
             )

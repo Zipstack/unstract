@@ -25,6 +25,7 @@ class WorkerType(str, Enum):
     SCHEDULER = "scheduler"
     EXECUTOR = "executor"
     IDE_CALLBACK = "ide_callback"
+    SANDBOX = "sandbox"
 
     @classmethod
     def from_directory_name(cls, name: str) -> "WorkerType":
@@ -184,6 +185,13 @@ class QueueName(str, Enum):
 
     # IDE callback queue (prompt studio post-execution callbacks)
     IDE_CALLBACK = "ide_callback"
+
+    # Agent-KV terminal-callback queue (agent_kv_complete / agent_kv_error;
+    # spec §5.3). Consumed by the IDE_CALLBACK worker alongside IDE_CALLBACK.
+    AGENT_KV_CALLBACK = "agent_kv_callback"
+
+    # Sandbox codegen queue (sandboxed code execution)
+    SANDBOX_CODEGEN = "sandbox_codegen"
 
     def to_env_var_name(self) -> str:
         """Convert queue name to environment variable name.

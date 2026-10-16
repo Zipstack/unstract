@@ -24,6 +24,8 @@ ENV_FILE="/app/.env"
 
 # Worker type constant for the executor worker
 readonly EXECUTOR_WORKER_TYPE="executor"
+# Canonical name of the codegen sandbox worker -- keys the three maps below.
+readonly SANDBOX_WORKER_TYPE="sandbox"
 
 # Python interpreter for PG-queue components (consumer / reaper). Unlike Celery
 # workers, these launch a dedicated module rather than a `celery ... worker`
@@ -45,6 +47,7 @@ declare -A WORKERS=(
     ["schedule"]="scheduler"
     ["${EXECUTOR_WORKER_TYPE}"]="${EXECUTOR_WORKER_TYPE}"
     ["ide-callback"]="ide_callback"
+    ["$SANDBOX_WORKER_TYPE"]="$SANDBOX_WORKER_TYPE"
     ["all"]="all"
 )
 
@@ -62,7 +65,12 @@ declare -A WORKER_QUEUES=(
     ["log_consumer"]="celery_log_task_queue"
     ["scheduler"]="scheduler"
     ["${EXECUTOR_WORKER_TYPE}"]="celery_executor_legacy"
-    ["ide_callback"]="ide_callback"
+    # agent_kv_callback carries the Agent-KV terminal callbacks
+    # (agent_kv_complete/agent_kv_error, spec §5.3) dispatched by
+    # backend/agent_kv/dispatch.py; ide_callback owns both queues.
+    ["ide_callback"]="ide_callback,agent_kv_callback"
+    # Codegen sandbox worker (WorkerType.SANDBOX) — sandboxed code execution.
+    ["$SANDBOX_WORKER_TYPE"]="sandbox_codegen"
 )
 
 # Worker health ports
@@ -76,6 +84,11 @@ declare -A WORKER_HEALTH_PORTS=(
     ["scheduler"]="8087"
     ["${EXECUTOR_WORKER_TYPE}"]="8088"
     ["ide_callback"]="8089"
+    # 8090/8091 are reserved for pg_queue_consumer / pluggable-worker
+    # auto-discovery (see run-worker.sh); 8092 is the sandbox worker's fixed
+    # slot (WorkerType.to_health_port() reads SANDBOX_HEALTH_PORT first, so
+    # this map entry only supplies the default when that env var is unset).
+    ["$SANDBOX_WORKER_TYPE"]="8092"
 )
 
 # Function to print colored output

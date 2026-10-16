@@ -1,0 +1,280 @@
+"""Cap-enforcing, syntax-validating wrapper over the ported compiler.
+
+This is the entry point the API uses for submit-time validation. Anything
+``compile_schema`` accepts, the engine must execute; anything it rejects never
+reaches OCR or an LLM.
+
+It is NOT, despite what this docstring said before, "the single entry point
+both the API and the cloud engine use". The engine calls the raw
+``kv_schema.compile``/``compile_arrays`` directly (see the import note in the
+cloud plugin's ``engine/kv_extractor.py``), so the caps below are enforced on
+the submit path only. That is sound while the backend is the sole producer of a
+compiled schema -- which it is today -- but it means the caps are a gate, not
+an invariant the engine itself re-checks. Anything that ever hands the engine a
+schema from another source has to apply them, or this module has to become what
+it claimed to be.
+"""
+
+import ast
+import re
+from dataclasses import dataclass, field
+
+from . import kv_schema
+from .dataclasses import ArraySpec, KeySpec
+
+
+class SchemaError(ValueError):
+    """User-facing schema rejection; message is safe to return in a 400."""
+
+
+@dataclass(frozen=True)
+class SchemaCaps:
+    max_leaves: int = 200
+    max_arrays: int = 20
+    max_columns_per_array: int = 40
+    max_depth: int = 6
+    max_regex_len: int = 200
+    max_aliases: int = 10
+    max_description_len: int = 500
+    max_constraints: int = 30
+
+
+@dataclass(frozen=True)
+class CompiledSchema:
+    key_specs: list[KeySpec] = field(default_factory=list)
+    array_specs: list[ArraySpec] = field(default_factory=list)
+    constraints: list[str] = field(default_factory=list)
+
+
+_ALLOWED_CALLS = {"sum", "count", "min", "max", "avg"}
+_ALLOWED_NODES = (
+    ast.Expression,
+    ast.BoolOp,
+    ast.And,
+    ast.Or,
+    ast.UnaryOp,
+    ast.Not,
+    ast.USub,
+    ast.Compare,
+    ast.Eq,
+    ast.NotEq,
+    ast.Lt,
+    ast.LtE,
+    ast.Gt,
+    ast.GtE,
+    ast.BinOp,
+    ast.Add,
+    ast.Sub,
+    ast.Mult,
+    ast.Div,
+    ast.Call,
+    ast.Name,
+    ast.Attribute,
+    ast.Constant,
+    ast.Load,
+)
+
+
+def _check_constraint_syntax(expr: str) -> None:
+    """Static allowlist mirroring constraints._evaluate_one's grammar."""
+    try:
+        tree = ast.parse(expr, mode="eval")
+    except SyntaxError as e:
+        raise SchemaError(f"constraint does not parse: {expr!r} ({e.msg})") from e
+    for node in ast.walk(tree):
+        if not isinstance(node, _ALLOWED_NODES):
+            raise SchemaError(
+                f"constraint uses disallowed syntax ({type(node).__name__}): {expr!r}"
+            )
+        if isinstance(node, ast.Call):
+            if not isinstance(node.func, ast.Name) or node.func.id not in _ALLOWED_CALLS:
+                raise SchemaError(f"constraint calls a disallowed function: {expr!r}")
+            if (
+                node.keywords
+                or len(node.args) != 1
+                or not isinstance(node.args[0], ast.Constant)
+                or not isinstance(node.args[0].value, str)
+            ):
+                raise SchemaError(
+                    f"constraint aggregate needs one string literal arg: {expr!r}"
+                )
+
+
+def _max_depth(node: object, max_depth: int, depth: int = 0) -> int:
+    # HARD ceiling FIRST -- before the `_array` short-circuit and before any
+    # further recursion. Two bugs this closes: (a) a pathologically deep plain
+    # schema (256 KiB of JSON nests ~40k deep, far past Python's ~1000
+    # recursion limit) used to raise an uncaught RecursionError (500) here;
+    # now it fails fast as a clean SchemaError (400). (b) The `_array`
+    # short-circuit below cannot be reached to bypass the cap once `depth`
+    # has already blown past it.
+    if depth > max_depth:
+        raise SchemaError(f"schema exceeds max_depth={max_depth}")
+    if not isinstance(node, dict):
+        return depth
+    if "_array" in node:
+        return depth + 1  # array columns are row-local, not nesting
+    child = [v for v in node.values() if isinstance(v, dict)]
+    if not child:
+        return depth + 1
+    return max(_max_depth(v, max_depth, depth + 1) for v in child)
+
+
+# Quantified groups that themselves contain a quantifier, e.g. `(a+)+`, `(a*)*`,
+# `(.+)*`, `(?:x+)+`. This is the shape behind catastrophic backtracking.
+_NESTED_QUANTIFIER = re.compile(
+    r"\((?:\?[:=!]|\?<[=!]|\?P<[^>]+>)?"  # group open, incl. non-capturing/named
+    r"[^()]*[+*}]\??"  # ...containing a quantifier
+    r"[^()]*\)"  # ...group close
+    r"\s*[+*]|\)\s*\{\d+,\d*\}"  # ...itself quantified
+)
+
+
+# A quantified group whose alternatives OVERLAP, e.g. `(a|aa)+`. Found in
+# review after the nested-quantifier check shipped: `^(a|aa)+$` passes that
+# check and still backtracks catastrophically, because at each position the
+# engine can consume one `a` or two and must try both on failure.
+#
+# Only LITERAL branches are compared, and only by the prefix relation: if one
+# branch is a prefix of another (`a` of `aa`), the group is ambiguous and
+# refused. `(foo|bar)+` is left alone -- distinct first characters mean no
+# position admits two parses, so it is linear. Branches containing
+# metacharacters are not analysed (`.`/classes/nested groups need real regex
+# analysis, which is what UN-4225 is for); this closes the demonstrated family
+# without pretending to be a decision procedure.
+_QUANTIFIED_GROUP = re.compile(r"\((\?:)?([^()]*)\)\s*(?:[+*]|\{\d+,\d*\})")
+_LITERAL_BRANCH = re.compile(r"^[\w\-/ ]*$")
+
+
+def _overlapping_alternation(pattern: str) -> str | None:
+    """Return a human-readable overlap if a quantified group is ambiguous."""
+    for match in _QUANTIFIED_GROUP.finditer(pattern):
+        body = match.group(2)
+        if "|" not in body:
+            continue
+        branches = body.split("|")
+        if not all(_LITERAL_BRANCH.match(b) for b in branches):
+            continue
+        for i, a in enumerate(branches):
+            for j, b in enumerate(branches):
+                if i != j and a and b.startswith(a):
+                    return f"{a!r} is a prefix of {b!r}"
+    return None
+
+
+def _reject_unsafe_regex(path: str, pattern: str) -> None:
+    """Refuse an author-supplied pattern at SUBMIT rather than at match time.
+
+    Two separate problems, both found in review:
+
+    1. The pattern was never compiled here, so a syntactically invalid one was
+       accepted and only discovered per-value in the engine's QA pass -- where
+       ``_check_one`` swallows ``re.error`` and returns True, silently passing
+       validation the author thought they had configured.
+    2. ``validate_format`` runs the pattern against extracted values with no
+       time budget, so a catastrophically-backtracking pattern is a DoS. The
+       length cap is NOT a mitigation: ``^(a+)+$`` is 7 characters and takes
+       ~1.9s on 26 ``a``s, ~4x per character added (measured), so a 40-char
+       value runs for hours. With ``AGENT_KV_CONCURRENT_LIMIT=5`` one org can
+       pin five shared worker slots from a single submit.
+
+    The nested-quantifier check is a CONSERVATIVE HEURISTIC, not a proof. It
+    rejects the shape responsible for the realistic cases (a quantified group
+    whose body is itself quantified) and will reject some safe patterns that
+    happen to look like it -- an explicit trade, since the author gets an
+    immediate, actionable error instead of a job that hangs. It does not catch
+    every pathological pattern; the complete fix is a linear-time engine (RE2),
+    which cannot be added here because this package deliberately has zero
+    dependencies and is installed by both repos. Tracked as UN-4225.
+    """
+    try:
+        re.compile(pattern)
+    except re.error as e:
+        raise SchemaError(f"'{path}' has an invalid regex: {e}") from None
+    if _NESTED_QUANTIFIER.search(pattern):
+        raise SchemaError(
+            f"'{path}' regex has a nested quantifier (e.g. '(a+)+'), which can "
+            "backtrack catastrophically and stall extraction. Rewrite it "
+            "without a quantifier inside a quantified group."
+        )
+    overlap = _overlapping_alternation(pattern)
+    if overlap:
+        raise SchemaError(
+            f"'{path}' regex quantifies a group whose alternatives overlap "
+            f"({overlap}), e.g. '(a|aa)+', which can backtrack "
+            "catastrophically and stall extraction. Make the alternatives "
+            "mutually exclusive, or use a character class."
+        )
+
+
+def _check_shape_caps(key_specs: list, array_specs: list, caps: SchemaCaps) -> None:
+    """Leaf, array and per-array-column counts."""
+    if len(key_specs) > caps.max_leaves:
+        raise SchemaError(f"schema exceeds max_leaves={caps.max_leaves}")
+    if len(array_specs) > caps.max_arrays:
+        raise SchemaError(f"schema exceeds max_arrays={caps.max_arrays}")
+    for aspec in array_specs:
+        if len(aspec.item_specs) > caps.max_columns_per_array:
+            raise SchemaError(
+                f"array '{aspec.path}' exceeds "
+                f"max_columns_per_array={caps.max_columns_per_array}"
+            )
+
+
+def _check_per_key_caps(key_specs: list, array_specs: list, caps: SchemaCaps) -> None:
+    """Regex safety and per-key length caps, for scalar and array columns alike."""
+    for kspec in key_specs + [s for a in array_specs for s in a.item_specs]:
+        _reject_unsafe_regex(kspec.path, kspec.regex_pattern)
+        if len(kspec.regex_pattern) > caps.max_regex_len:
+            raise SchemaError(
+                f"'{kspec.path}' regex exceeds max_regex_len={caps.max_regex_len}"
+            )
+        if len(kspec.aliases) > caps.max_aliases:
+            raise SchemaError(f"'{kspec.path}' exceeds max_aliases={caps.max_aliases}")
+        if len(kspec.effective_description) > caps.max_description_len:
+            raise SchemaError(
+                f"'{kspec.path}' description exceeds "
+                f"max_description_len={caps.max_description_len}"
+            )
+
+
+def _validated_constraints(spec: dict, caps: SchemaCaps) -> list:
+    """The `_constraints` list, checked for type, count and expression syntax."""
+    constraints = spec.get("_constraints", [])
+    if not isinstance(constraints, list) or not all(
+        isinstance(c, str) for c in constraints
+    ):
+        raise SchemaError("_constraints must be a list of strings")
+    if len(constraints) > caps.max_constraints:
+        raise SchemaError(f"schema exceeds max_constraints={caps.max_constraints}")
+    for expr in constraints:
+        _check_constraint_syntax(expr)
+    return constraints
+
+
+def compile_schema(spec: dict, caps: SchemaCaps | None = None) -> CompiledSchema:
+    caps = caps or SchemaCaps()
+    if not isinstance(spec, dict):
+        raise SchemaError("Top-level key schema must be a JSON object")
+    cleaned = {k: v for k, v in spec.items() if k != "_constraints"}
+    if _max_depth(cleaned, caps.max_depth) > caps.max_depth:
+        raise SchemaError(f"schema exceeds max_depth={caps.max_depth}")
+    # The compile.py `_max_depth` pre-check does not count array-column
+    # nesting (arrays are row-local there, by design) and cannot see a decoy
+    # top-level `_array` field's real nesting -- so the actual recursive walk
+    # (`kv_schema._walk`) carries its own max_depth ceiling too, both to close
+    # that bypass and to guarantee a clean SchemaError instead of an uncaught
+    # RecursionError on a deeply-nested input.
+    try:
+        key_specs = kv_schema.compile(spec, max_depth=caps.max_depth)
+        array_specs = kv_schema.compile_arrays(spec, max_depth=caps.max_depth)
+    except ValueError as e:
+        raise SchemaError(str(e)) from e
+
+    _check_shape_caps(key_specs, array_specs, caps)
+    _check_per_key_caps(key_specs, array_specs, caps)
+    constraints = _validated_constraints(spec, caps)
+
+    return CompiledSchema(
+        key_specs=key_specs, array_specs=array_specs, constraints=list(constraints)
+    )
