@@ -1382,6 +1382,12 @@ class PromptStudioCoreView(
             backup_tool = PromptStudioHelper.create_tool_from_import_data(
                 export_data, backup_name, organization, request.user
             )
+            record_resource_event(
+                request,
+                Action.RESOURCE_CREATED,
+                backup_tool,
+                summary=f"backup of {tool.tool_name}",
+            )
             # Copy profiles from original to backup
             for profile in ProfileManager.objects.filter(prompt_studio_tool=tool):
                 profile.pk = None

@@ -16,6 +16,7 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from pipeline_v2.models import Pipeline
 from pipeline_v2.views import PipelineViewSet
 from prompt_studio.prompt_studio_core_v2.models import CustomTool
+from prompt_studio.prompt_studio_core_v2.prompt_studio_helper import PromptStudioHelper
 from prompt_studio.prompt_studio_core_v2.views import PromptStudioCoreView
 from rest_framework.test import force_authenticate
 from tenant_account_v2.models import OrganizationGroup
@@ -192,7 +193,7 @@ class CreateAndDeleteTests(ResourceEventTestBase):
             Action.RESOURCE_DELETED, "custom_tool", tool.tool_id, "invoice-parser"
         )
 
-    def test_prompt_studio_import(self) -> None:
+    def _import_project(self):
         # The export's top-level shape (prompt_studio_helper.validate_import_file).
         export = {
             "tool_metadata": {"tool_name": "imported", "author": "a", "description": "d"},
@@ -208,16 +209,67 @@ class CreateAndDeleteTests(ResourceEventTestBase):
         helper = "prompt_studio.prompt_studio_core_v2.views.PromptStudioHelper"
         # The steps after the project row exists are not under test.
         with (
-            patch(f"{helper}.create_profile_manager"),
             patch(f"{helper}.import_prompts"),
             patch(f"{helper}.validate_adapter_configuration", return_value=(False, "")),
             self.captureOnCommitCallbacks(execute=True),
         ):
-            response = PromptStudioCoreView.as_view({"post": "import_project"})(request)
+            return PromptStudioCoreView.as_view({"post": "import_project"})(request)
+
+    def test_prompt_studio_import(self) -> None:
+        with patch(
+            "prompt_studio.prompt_studio_core_v2.views.PromptStudioHelper"
+            ".create_profile_manager"
+        ):
+            response = self._import_project()
         self.assertEqual(response.status_code, 201, response.data)
         tool = CustomTool.objects.get(tool_id=response.data["tool_id"])
         self.assert_resource_event(
             Action.RESOURCE_CREATED, "custom_tool", tool.tool_id, tool.tool_name
+        )
+
+    def test_a_failed_import_still_records_the_project_it_left(self) -> None:
+        # The view has no transaction: a later failure leaves the project row.
+        with patch(
+            "prompt_studio.prompt_studio_core_v2.views.PromptStudioHelper"
+            ".create_profile_manager",
+            side_effect=ValueError("adapter not found"),
+        ):
+            response = self._import_project()
+        self.assertEqual(response.status_code, 400, response.data)
+        tool = CustomTool.objects.get()
+        self.assert_resource_event(
+            Action.RESOURCE_CREATED, "custom_tool", tool.tool_id, tool.tool_name
+        )
+
+    def test_a_sync_prompts_backup_copy_is_recorded(self) -> None:
+        self.call(
+            PromptStudioCoreView.as_view({"post": "create"}),
+            "post",
+            data={"tool_name": "source", "description": "d", "author": "test"},
+        )
+        source = CustomTool.objects.get(tool_name="source")
+        export = PromptStudioHelper.export_project_settings(source)
+        # Syncing into the source needs its default profile; the backup is
+        # made before that and is what is under test.
+        with patch(
+            "prompt_studio.prompt_studio_core_v2.views.PromptStudioHelper.sync_prompts",
+            return_value={"prompts_created": 0},
+        ):
+            response = self.call(
+                PromptStudioCoreView.as_view({"post": "sync_prompts"}),
+                "post",
+                data={"data": export, "create_copy": True},
+                pk=str(source.tool_id),
+            )
+        self.assertEqual(response.status_code, 200, response.data)
+        backup = CustomTool.objects.get(tool_id=response.data["backup_tool_id"])
+        event = self.only_event(
+            action=Action.RESOURCE_CREATED, target_id=str(backup.tool_id)
+        )
+        self.assert_admin_actor(event)
+        self.assertEqual(
+            (event.target_type, event.target_name, event.summary),
+            ("custom_tool", backup.tool_name, "backup of source"),
         )
 
     def test_an_in_use_connector_is_not_recorded_deleted(self) -> None:
