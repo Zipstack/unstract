@@ -1,0 +1,210 @@
+"""The dashboard's "needs attention" feed (PB-T14).
+
+Each kind of item comes from a provider. OSS registers the failing pipeline and
+failing deployment providers from ``DashboardMetricsConfig.ready()``; cloud apps
+register theirs (reviews waiting, unresolved challenges) from their own
+``ready()``, so a kind exists exactly where its app is installed and OSS never
+names a cloud kind. The response contract is ``contract/attention-response.schema.json``.
+"""
+
+from __future__ import annotations
+
+import logging
+import re
+from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
+from datetime import datetime
+from typing import Any
+
+from api_v2.models import APIDeployment
+from django.db.models import QuerySet
+from pipeline_v2.models import Pipeline
+from workflow_manager.workflow_v2.failing_streaks import FailingStreak, failing_streaks
+
+logger = logging.getLogger(__name__)
+
+# Same pattern the published JSON Schema requires of ``kind``.
+_KIND = re.compile(r"^[a-z][a-z0-9_]*$")
+
+
+@dataclass(frozen=True)
+class AttentionItem:
+    """One open item.
+
+    ``since`` is when the item began: the first failure of a streak, or the
+    oldest wait. ``route`` names a frontend route-registry key and its params,
+    as in the global search contract.
+    """
+
+    kind: str
+    id: str
+    name: str | None
+    count: int
+    since: datetime | None
+    route_key: str | None = None
+    route_params: dict[str, str] = field(default_factory=dict)
+    details: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "kind": self.kind,
+            "id": self.id,
+            "name": self.name,
+            "count": self.count,
+            "since": self.since.isoformat() if self.since else None,
+            "route": (
+                {"key": self.route_key, "params": self.route_params}
+                if self.route_key
+                else None
+            ),
+            "details": self.details,
+        }
+
+
+class AttentionProvider(ABC):
+    """Source of one kind of attention item."""
+
+    kind: str
+    order: int
+
+    @abstractmethod
+    def items(
+        self, organization: Any, start_date: datetime, end_date: datetime
+    ) -> list[AttentionItem]:
+        """Open items of this kind for ``organization`` in the range."""
+
+
+_providers: dict[str, AttentionProvider] = {}
+
+
+def register_attention_provider(provider: AttentionProvider) -> None:
+    """Register ``provider`` under its ``kind``.
+
+    Re-registering the same class is a no-op, so a repeated ``ready()`` is
+    harmless; a different class claiming a taken kind is a wiring bug.
+    """
+    if not _KIND.fullmatch(provider.kind):
+        raise ValueError(f"Invalid attention kind '{provider.kind}'")
+    existing = _providers.get(provider.kind)
+    if existing is not None:
+        if type(existing) is type(provider):
+            return
+        raise ValueError(
+            f"Attention kind '{provider.kind}' is already registered by "
+            f"{type(existing).__name__}"
+        )
+    _providers[provider.kind] = provider
+
+
+def unregister_attention_provider(kind: str) -> None:
+    _providers.pop(kind, None)
+
+
+def get_attention_providers() -> list[AttentionProvider]:
+    """Registered providers in display order."""
+    return sorted(_providers.values(), key=lambda p: (p.order, p.kind))
+
+
+def collect_attention(
+    organization: Any, start_date: datetime, end_date: datetime
+) -> tuple[list[AttentionItem], list[str]]:
+    """Every provider's items, and the kinds whose provider failed.
+
+    A failing provider is logged and named, never shown as "nothing needs
+    attention".
+    """
+    items: list[AttentionItem] = []
+    failed: list[str] = []
+    for provider in get_attention_providers():
+        try:
+            items.extend(provider.items(organization, start_date, end_date))
+        except Exception:
+            logger.exception("Attention provider '%s' failed", provider.kind)
+            failed.append(provider.kind)
+    return items, failed
+
+
+class _FailingRowsProvider(AttentionProvider):
+    """Rows whose last five runs all failed, with the latest failure in range.
+
+    Inactive rows are left out: nothing runs them, so nothing needs doing.
+    """
+
+    @abstractmethod
+    def _rows(self, organization: Any) -> QuerySet[Any]:
+        """The org's active rows of this kind."""
+
+    @abstractmethod
+    def _item(self, streak: FailingStreak) -> AttentionItem:
+        """The item for one failing row."""
+
+    def items(
+        self, organization: Any, start_date: datetime, end_date: datetime
+    ) -> list[AttentionItem]:
+        return [
+            self._item(streak)
+            for streak in failing_streaks(self._rows(organization))
+            if start_date <= streak.last_failure <= end_date
+        ]
+
+    def _base_item(
+        self, streak: FailingStreak, name: str, route_key: str, **details
+    ) -> AttentionItem:
+        return AttentionItem(
+            kind=self.kind,
+            id=str(streak.row.pk),
+            name=name,
+            count=streak.failures_in_a_row,
+            since=streak.failing_since,
+            route_key=route_key,
+            route_params={"id": str(streak.row.pk)},
+            details={
+                "last_failure": streak.last_failure.isoformat(),
+                "last_success": (
+                    streak.last_success.isoformat() if streak.last_success else None
+                ),
+                **details,
+            },
+        )
+
+
+class FailingPipelineProvider(_FailingRowsProvider):
+    kind = "failing_pipeline"
+    order = 10
+
+    _ROUTE_KEYS = {
+        Pipeline.PipelineType.ETL: "etl_pipeline.detail",
+        Pipeline.PipelineType.TASK: "task_pipeline.detail",
+    }
+
+    def _rows(self, organization: Any) -> QuerySet[Any]:
+        return Pipeline._base_manager.filter(
+            organization=organization,
+            active=True,
+            pipeline_type__in=list(self._ROUTE_KEYS),
+        )
+
+    def _item(self, streak: FailingStreak) -> AttentionItem:
+        pipeline = streak.row
+        return self._base_item(
+            streak,
+            pipeline.pipeline_name,
+            self._ROUTE_KEYS[pipeline.pipeline_type],
+            pipeline_type=pipeline.pipeline_type,
+        )
+
+
+class FailingDeploymentProvider(_FailingRowsProvider):
+    kind = "failing_deployment"
+    order = 20
+
+    def _rows(self, organization: Any) -> QuerySet[Any]:
+        return APIDeployment._base_manager.filter(
+            organization=organization, is_active=True
+        )
+
+    def _item(self, streak: FailingStreak) -> AttentionItem:
+        return self._base_item(streak, streak.row.display_name, "api_deployment.detail")
+
+
+OSS_PROVIDERS = (FailingPipelineProvider(), FailingDeploymentProvider())
