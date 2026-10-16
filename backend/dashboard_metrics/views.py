@@ -977,7 +977,7 @@ class DashboardMetricsViewSet(viewsets.ReadOnlyModelViewSet):
             {
                 "start_date": params["start_date"].isoformat(),
                 "end_date": params["end_date"].isoformat(),
-                "items": [item.to_dict() for item in items],
+                "items": items,
                 "failed_kinds": failed_kinds,
             }
         )

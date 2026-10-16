@@ -1,7 +1,7 @@
 """Dashboard attention feed and failure attribution (PB-T14).
 
 * Each OSS attention kind appears with seeded data, and only when the row's
-  last five runs all failed within the range.
+  last five finished runs all ended in ERROR, the latest within the range.
 * Attribution per day and per source sums to the ``failed_pages`` metric for
   the same range.
 * Both responses validate against the committed JSON Schemas.
@@ -13,6 +13,7 @@ import json
 import uuid
 from datetime import timedelta
 from pathlib import Path
+from unittest import mock
 
 import jsonschema
 from account_usage.models import PageUsage
@@ -30,13 +31,13 @@ from workflow_manager.workflow_v2.failing_streaks import failing_streaks
 from workflow_manager.workflow_v2.models.execution import WorkflowExecution
 from workflow_manager.workflow_v2.models.workflow import Workflow
 
+from dashboard_metrics import attention
 from dashboard_metrics.attention import (
     AttentionItem,
     AttentionProvider,
     FailingPipelineProvider,
     get_attention_providers,
     register_attention_provider,
-    unregister_attention_provider,
 )
 from dashboard_metrics.models import Granularity
 from dashboard_metrics.services import MetricsQueryService
@@ -50,6 +51,8 @@ ATTRIBUTION_SCHEMA = json.loads(
 
 ERROR = ExecutionStatus.ERROR.value
 COMPLETED = ExecutionStatus.COMPLETED.value
+STOPPED = ExecutionStatus.STOPPED.value
+FORMATS = jsonschema.FormatChecker()
 
 
 class _Seed(CoOwnerOrgTestMixin):
@@ -85,7 +88,9 @@ class _Seed(CoOwnerOrgTestMixin):
             **fields,
         )
 
-    def _run(self, row, status: str, hours_ago: float, workflow=None) -> WorkflowExecution:
+    def _run(
+        self, row, status: str, hours_ago: float, workflow=None
+    ) -> WorkflowExecution:
         execution = WorkflowExecution.objects.create(
             workflow=workflow or row.workflow,
             pipeline_id=row.pk if row is not None else None,
@@ -128,11 +133,52 @@ class FailingStreakTests(_Seed, TestCase):
         self.assertEqual(streak.failures_in_a_row, 5)
         self.assertEqual(streak.failing_since, self.now - timedelta(hours=10))
 
+    def test_streak_starts_after_the_last_run_that_did_not_fail(self) -> None:
+        cases = {
+            "errors before the last success": [ERROR, ERROR, COMPLETED],
+            "a stop": [COMPLETED, ERROR, STOPPED],
+        }
+        for name, before in cases.items():
+            with self.subTest(name):
+                pipeline = self._pipeline(name)
+                self._runs(pipeline, before + [ERROR] * 5)
+                (streak,) = [
+                    s
+                    for s in failing_streaks(Pipeline.objects.all())
+                    if s.row == pipeline
+                ]
+                self.assertEqual(streak.failures_in_a_row, 5)
+                self.assertEqual(streak.failing_since, self.now - timedelta(hours=7))
+
+    def test_unfinished_runs_are_skipped(self) -> None:
+        pipeline = self._pipeline("retrying")
+        self._runs(pipeline, [ERROR] * 5 + ["PENDING", "EXECUTING"])
+
+        (streak,) = failing_streaks(Pipeline.objects.all())
+        self.assertEqual(streak.failures_in_a_row, 5)
+        self.assertEqual(streak.last_failure, self.now - timedelta(hours=6))
+
+    def test_range_bounds_the_latest_failure(self) -> None:
+        pipeline = self._pipeline("nightly")
+        self._runs(pipeline, [ERROR] * 5)  # latest failure 6 hours ago
+        hours = lambda h: self.now - timedelta(hours=h)  # noqa: E731
+        cases = {
+            "inside": (hours(7), hours(5), [pipeline]),
+            "start after it": (hours(5), None, []),
+            "end before it": (None, hours(7), []),
+        }
+        for name, (start, end, expected) in cases.items():
+            with self.subTest(name):
+                rows = [
+                    s.row for s in failing_streaks(Pipeline.objects.all(), start, end)
+                ]
+                self.assertEqual(rows, expected)
+
     def test_not_failing(self) -> None:
         cases = {
             "four failures": [ERROR] * 4,
             "a success among the last five": [ERROR, ERROR, COMPLETED, ERROR, ERROR],
-            "latest run still executing": [ERROR] * 5 + ["EXECUTING"],
+            "a stop among the last five": [ERROR, ERROR, STOPPED, ERROR, ERROR],
         }
         for name, statuses in cases.items():
             with self.subTest(name):
@@ -153,11 +199,12 @@ class AttentionTests(_Seed, TestCase):
         task = self._pipeline("cleanup", pipeline_type="TASK")
         self._runs(task, [ERROR] * 5, start_hours_ago=20)
         deployment = self._deployment("Invoices API")
-        self._runs(deployment, [ERROR] * 5, start_hours_ago=30)
+        # The newest failure of all, yet listed after the pipelines.
+        self._runs(deployment, [ERROR] * 5, start_hours_ago=8)
 
         response = self._get("attention")
         self.assertEqual(response.status_code, 200)
-        jsonschema.validate(response.data, ATTENTION_SCHEMA)
+        jsonschema.validate(response.data, ATTENTION_SCHEMA, format_checker=FORMATS)
         self.assertEqual(response.data["failed_kinds"], [])
         by_id = {item["id"]: item for item in response.data["items"]}
 
@@ -220,14 +267,14 @@ class AttentionTests(_Seed, TestCase):
 
 
 class _Reviews(AttentionProvider):
-    kind = "reviews_waiting"
+    kind = "test_reviews"
     order = 30
 
     def items(self, organization, start_date, end_date):
         return [
             AttentionItem(
                 kind=self.kind,
-                id="reviews_waiting",
+                id="test_reviews",
                 name=None,
                 count=4,
                 since=start_date,
@@ -236,38 +283,65 @@ class _Reviews(AttentionProvider):
 
 
 class _Broken(AttentionProvider):
-    kind = "challenges_unresolved"
+    kind = "test_broken"
     order = 40
 
     def items(self, organization, start_date, end_date):
         raise RuntimeError("source unavailable")
 
 
+class _Malformed(AttentionProvider):
+    kind = "test_malformed"
+    order = 50
+
+    def items(self, organization, start_date, end_date):
+        return [AttentionItem(kind=self.kind, id="x", name=None, count=1, since="now")]
+
+
 class AttentionProviderRegistryTests(_Seed, TestCase):
+    """Test-only kinds on a copy of the registry, restored after each test."""
+
     def setUp(self) -> None:
         super().setUp()
-        for provider in (_Reviews(), _Broken()):
+        patcher = mock.patch.dict(attention._providers)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        for provider in (_Reviews(), _Broken(), _Malformed()):
             register_attention_provider(provider)
-            self.addCleanup(unregister_attention_provider, provider.kind)
 
     def test_contributed_kinds_and_failures(self) -> None:
         response = self._get("attention")
-        jsonschema.validate(response.data, ATTENTION_SCHEMA)
+        jsonschema.validate(response.data, ATTENTION_SCHEMA, format_checker=FORMATS)
         (item,) = response.data["items"]
-        self.assertEqual((item["kind"], item["count"], item["route"]), ("reviews_waiting", 4, None))
-        # A broken provider is named, never shown as "nothing needs attention".
-        self.assertEqual(response.data["failed_kinds"], ["challenges_unresolved"])
+        self.assertEqual(
+            (item["kind"], item["count"], item["route"]), ("test_reviews", 4, None)
+        )
+        # A provider that raises, or returns an item that cannot be serialized,
+        # is named, never shown as "nothing needs attention".
+        self.assertEqual(response.data["failed_kinds"], ["test_broken", "test_malformed"])
+
+    def test_malformed_items_are_refused(self) -> None:
+        good = {"kind": "test_reviews", "id": "x", "name": None, "since": None}
+        cases = {
+            "another kind": {**good, "kind": "test_broken", "count": 1},
+            "negative count": {**good, "count": -1},
+            "bool count": {**good, "count": True},
+            "since not a datetime": {**good, "count": 1, "since": "now"},
+        }
+        for name, fields in cases.items():
+            with self.subTest(name), self.assertRaises((ValueError, AttributeError)):
+                attention._serialize(_Reviews(), AttentionItem(**fields))
+        self.assertEqual(
+            attention._serialize(_Reviews(), AttentionItem(**good, count=0))["count"], 0
+        )
 
     def test_display_order(self) -> None:
-        self.assertEqual(
-            [p.kind for p in get_attention_providers()],
-            [
-                "failing_pipeline",
-                "failing_deployment",
-                "reviews_waiting",
-                "challenges_unresolved",
-            ],
+        kinds = [p.kind for p in get_attention_providers()]
+        self.assertLess(
+            kinds.index("failing_pipeline"), kinds.index("failing_deployment")
         )
+        self.assertLess(kinds.index("failing_deployment"), kinds.index("test_reviews"))
+        self.assertLess(kinds.index("test_reviews"), kinds.index("test_broken"))
 
     def test_registration_rules(self) -> None:
         register_attention_provider(_Reviews())  # same class again: no-op
@@ -279,10 +353,17 @@ class AttentionProviderRegistryTests(_Seed, TestCase):
             register_attention_provider(_Other())
 
         class _BadKind(_Reviews):
-            kind = "Reviews-Waiting"
+            kind = "Test-Reviews"
 
         with self.assertRaisesRegex(ValueError, "Invalid attention kind"):
             register_attention_provider(_BadKind())
+
+        class _BadOrder(_Reviews):
+            kind = "test_bad_order"
+            order = "30"
+
+        with self.assertRaisesRegex(ValueError, "needs an int order"):
+            register_attention_provider(_BadOrder())
 
     def test_oss_providers_are_registered_by_the_app(self) -> None:
         kinds = {p.kind for p in get_attention_providers()}
@@ -346,7 +427,7 @@ class AttributionTests(_Seed, TestCase):
         ids = self._seed()
         response = self._get("attribution")
         self.assertEqual(response.status_code, 200)
-        jsonschema.validate(response.data, ATTRIBUTION_SCHEMA)
+        jsonschema.validate(response.data, ATTRIBUTION_SCHEMA, format_checker=FORMATS)
         data = response.data
 
         self.assertEqual(data["total_failed_pages"], 66)
@@ -355,8 +436,12 @@ class AttributionTests(_Seed, TestCase):
             [
                 (ids["etl"], "nightly-etl", "etl_pipeline", 50),
                 (ids["api"], "Invoices API", "api_deployment", 10),
-                (ids["manual"], Workflow.objects.get(pk=ids["manual"]).workflow_name,
-                 "workflow", 5),
+                (
+                    ids["manual"],
+                    Workflow.objects.get(pk=ids["manual"]).workflow_name,
+                    "workflow",
+                    5,
+                ),
                 (ids["gone"], None, "deleted", 1),
             ],
         )
@@ -394,9 +479,13 @@ class AttributionTests(_Seed, TestCase):
 
     def test_empty_range(self) -> None:
         response = self._get("attribution")
-        jsonschema.validate(response.data, ATTRIBUTION_SCHEMA)
+        jsonschema.validate(response.data, ATTRIBUTION_SCHEMA, format_checker=FORMATS)
         self.assertEqual(
-            (response.data["total_failed_pages"], response.data["sources"], response.data["days"]),
+            (
+                response.data["total_failed_pages"],
+                response.data["sources"],
+                response.data["days"],
+            ),
             (0, [], []),
         )
 

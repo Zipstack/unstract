@@ -688,8 +688,8 @@ Override with `?source=hourly|daily|monthly`
 
 ### Attention and attribution (PB-T14)
 
-Both take only `start_date` and `end_date` (same defaults and 365-day cap as
-above), are read live and are not cached. JSON Schemas for both responses are in
+Both take only `start_date` and `end_date` (ISO 8601; default the last 30
+days, at most 365 days apart), are read live and are not cached. JSON Schemas for both responses are in
 [`contract/`](contract/); tests validate real responses against them.
 
 #### `/attention/`
@@ -719,15 +719,16 @@ above), are read live and are not cached. JSON Schemas for both responses are in
 
 | kind | where | item | `count` | `since` |
 |---|---|---|---|---|
-| `failing_pipeline` | OSS | one per active ETL or Task pipeline | failures in a row | first failure of the streak |
-| `failing_deployment` | OSS | one per active API deployment | failures in a row | first failure of the streak |
-| `reviews_waiting`, `challenges_unresolved` | cloud | defined by the cloud apps that register them | | |
+| `failing_pipeline` | OSS | one per active ETL or Task pipeline | finished runs failed in a row | first failure of the streak |
+| `failing_deployment` | OSS | one per active API deployment | finished runs failed in a row | first failure of the streak |
+| others | cloud | defined by the cloud app that registers the kind | | |
 
-- A row is failing when every one of its last five runs failed — the same five
-  runs the lists draw as status dots — and the latest of them is in the range.
-  The rule lives in `workflow_manager/workflow_v2/failing_streaks.py`, shared
-  with the list aggregates (PB-T13).
-- `route` uses the global-search route-registry keys, or is `null`.
+- A row is failing when each of its last five finished runs ended in ERROR and
+  the latest of them is in the range. Runs still pending or executing are
+  skipped; a STOPPED or COMPLETED run ends the streak. The rule and why it is
+  ERROR only are in `workflow_manager/workflow_v2/failing_streaks.py`.
+- `route` uses the route-registry keys proposed for global search (#2343, not
+  yet merged), or is `null`.
   `details` is kind-specific.
 - Items are in provider order (`failing_pipeline`, `failing_deployment`, then
   cloud kinds), newest failure first within a kind.
@@ -748,7 +749,7 @@ above), are read live and are not cached. JSON Schemas for both responses are in
      "failed_pages": 512, "share": 0.7232}
   ],
   "days": [
-    {"date": "2026-08-10", "failed_pages": 610,
+    {"date": "2026-10-10", "failed_pages": 610,
      "sources": [{"id": "6f1c…", "failed_pages": 512}]}
   ]
 }
