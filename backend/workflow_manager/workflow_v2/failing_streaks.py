@@ -1,12 +1,15 @@
 """Which pipelines and API deployments are failing right now.
 
-A row is failing when every one of its last five runs failed (the same five
-runs the lists draw as status dots, see ``WorkflowExecution.get_last_run_statuses``).
-For each failing row this reports how many runs in a row have failed, when that
-streak began and when the row last succeeded.
+A row is failing when each of its last five finished runs ended in ERROR.
+Runs still PENDING or EXECUTING are skipped, so a queued retry does not hide a
+row that keeps failing. For each failing row this reports how many finished
+runs in a row have failed, when that streak began and when the row last
+succeeded.
 
-Shared by the dashboard attention feed (PB-T14) and the list aggregates (PB-T13),
-so both name the same rows.
+This is the list status dots' rule (ERROR is the red dot), not
+``unstract.core.data_models.is_failure_run``: that one also counts STOPPED and
+partly failed runs, which suits failure notifications but would list a pipeline
+someone stopped on purpose as broken.
 """
 
 from __future__ import annotations
@@ -26,6 +29,7 @@ FAILING_STREAK_RUNS = 5
 
 _FAILED = ExecutionStatus.ERROR.value
 _SUCCEEDED = ExecutionStatus.COMPLETED.value
+_FINISHED = sorted(ExecutionStatus.terminal_values())
 _EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
 
 
@@ -40,35 +44,49 @@ class FailingStreak:
     last_success: datetime | None
 
 
-def _runs(pipeline_id: Any) -> QuerySet[WorkflowExecution]:
-    return WorkflowExecution.objects.filter(pipeline_id=pipeline_id)
+def _finished_runs() -> QuerySet[WorkflowExecution]:
+    """The outer row's finished runs, newest first."""
+    return WorkflowExecution.objects.filter(
+        pipeline_id=OuterRef("pk"), status__in=_FINISHED
+    ).order_by("-created_at")
 
 
-def failing_streaks(rows: QuerySet[Any]) -> list[FailingStreak]:
+def failing_streaks(
+    rows: QuerySet[Any],
+    start_date: datetime | None = None,
+    end_date: datetime | None = None,
+) -> list[FailingStreak]:
     """Return the failing rows of ``rows``, newest failure first.
 
     ``rows`` is a queryset of ``Pipeline`` or ``APIDeployment``; executions are
-    matched on ``WorkflowExecution.pipeline_id``. Rows with fewer than five runs
-    are never failing. One query, whatever the number of rows: each row's
-    lookups are correlated subqueries on the ``(pipeline_id, -created_at)``
-    index.
+    matched on ``WorkflowExecution.pipeline_id``. Rows with fewer than five
+    finished runs are never failing. ``start_date`` and ``end_date``, when
+    given, bound the latest failure.
+
+    One query, whatever the number of rows. The failing test and the range run
+    in SQL first, so the streak lookups, which can read a row's whole history,
+    are computed only for rows that are failing.
     """
-    recent = _runs(OuterRef("pk")).order_by("-created_at")
-    last_success = Subquery(
-        _runs(OuterRef("pk"))
-        .filter(status=_SUCCEEDED)
-        .order_by("-created_at")
-        .values("created_at")[:1]
-    )
-    # Failures since the last success; a row that never succeeded counts all.
-    streak = _runs(OuterRef("pk")).filter(
+    finished = _finished_runs()
+    rows = rows.annotate(
+        _recent_statuses=ArraySubquery(finished.values("status")[:FAILING_STREAK_RUNS]),
+        _last_failure=Subquery(finished.values("created_at")[:1]),
+    ).filter(_recent_statuses=[_FAILED] * FAILING_STREAK_RUNS)
+    if start_date is not None:
+        rows = rows.filter(_last_failure__gte=start_date)
+    if end_date is not None:
+        rows = rows.filter(_last_failure__lte=end_date)
+
+    # The streak is the ERRORs since the newest finished run that was not one.
+    streak = _finished_runs().filter(
         status=_FAILED,
-        created_at__gt=Coalesce(OuterRef("_last_success"), Value(_EPOCH)),
+        created_at__gt=Coalesce(OuterRef("_streak_break"), Value(_EPOCH)),
     )
     annotated = rows.annotate(
-        _recent_statuses=ArraySubquery(recent.values("status")[:FAILING_STREAK_RUNS]),
-        _last_failure=Subquery(recent.values("created_at")[:1]),
-        _last_success=last_success,
+        _last_success=Subquery(
+            finished.filter(status=_SUCCEEDED).values("created_at")[:1]
+        ),
+        _streak_break=Subquery(finished.exclude(status=_FAILED).values("created_at")[:1]),
     ).annotate(
         _failing_since=Subquery(streak.order_by("created_at").values("created_at")[:1]),
         _failures_in_a_row=Coalesce(
@@ -82,19 +100,15 @@ def failing_streaks(rows: QuerySet[Any]) -> list[FailingStreak]:
         ),
     )
 
-    streaks = []
-    for row in annotated:
-        statuses = row._recent_statuses
-        if len(statuses) < FAILING_STREAK_RUNS or any(s != _FAILED for s in statuses):
-            continue
-        streaks.append(
-            FailingStreak(
-                row=row,
-                failures_in_a_row=row._failures_in_a_row,
-                failing_since=row._failing_since,
-                last_failure=row._last_failure,
-                last_success=row._last_success,
-            )
+    streaks = [
+        FailingStreak(
+            row=row,
+            failures_in_a_row=row._failures_in_a_row,
+            failing_since=row._failing_since,
+            last_failure=row._last_failure,
+            last_success=row._last_success,
         )
+        for row in annotated
+    ]
     streaks.sort(key=lambda s: (s.last_failure, str(s.row.pk)), reverse=True)
     return streaks

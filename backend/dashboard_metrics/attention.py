@@ -1,10 +1,9 @@
 """The dashboard's "needs attention" feed (PB-T14).
 
 Each kind of item comes from a provider. OSS registers the failing pipeline and
-failing deployment providers from ``DashboardMetricsConfig.ready()``; cloud apps
-register theirs (reviews waiting, unresolved challenges) from their own
-``ready()``, so a kind exists exactly where its app is installed and OSS never
-names a cloud kind. The response contract is ``contract/attention-response.schema.json``.
+failing deployment providers from ``DashboardMetricsConfig.ready()``; a cloud
+app registers its own kinds from its own ``ready()``, so a kind exists exactly
+where its app is installed and OSS never names a cloud kind. The response contract is ``contract/attention-response.schema.json``.
 """
 
 from __future__ import annotations
@@ -32,8 +31,8 @@ class AttentionItem:
     """One open item.
 
     ``since`` is when the item began: the first failure of a streak, or the
-    oldest wait. ``route`` names a frontend route-registry key and its params,
-    as in the global search contract.
+    oldest wait. ``route`` names a frontend route-registry key and its params;
+    the keys are proposed by the global search work (#2343) and not yet merged.
     """
 
     kind: str
@@ -77,6 +76,10 @@ class AttentionProvider(ABC):
 _providers: dict[str, AttentionProvider] = {}
 
 
+def _is_int(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
 def register_attention_provider(provider: AttentionProvider) -> None:
     """Register ``provider`` under its ``kind``.
 
@@ -85,6 +88,8 @@ def register_attention_provider(provider: AttentionProvider) -> None:
     """
     if not _KIND.fullmatch(provider.kind):
         raise ValueError(f"Invalid attention kind '{provider.kind}'")
+    if not _is_int(provider.order):
+        raise ValueError(f"Attention kind '{provider.kind}' needs an int order")
     existing = _providers.get(provider.kind)
     if existing is not None:
         if type(existing) is type(provider):
@@ -107,21 +112,41 @@ def get_attention_providers() -> list[AttentionProvider]:
 
 def collect_attention(
     organization: Any, start_date: datetime, end_date: datetime
-) -> tuple[list[AttentionItem], list[str]]:
-    """Every provider's items, and the kinds whose provider failed.
+) -> tuple[list[dict[str, Any]], list[str]]:
+    """Every provider's items, serialized, and the kinds whose provider failed.
 
-    A failing provider is logged and named, never shown as "nothing needs
-    attention".
+    A provider fails when it raises or returns an item it cannot serialize or
+    that is not of its own kind. It is logged and named, never shown as
+    "nothing needs attention", and the other providers' items still return.
     """
-    items: list[AttentionItem] = []
+    items: list[dict[str, Any]] = []
     failed: list[str] = []
     for provider in get_attention_providers():
         try:
-            items.extend(provider.items(organization, start_date, end_date))
+            provided = [
+                _serialize(provider, item)
+                for item in provider.items(organization, start_date, end_date)
+            ]
         except Exception:
-            logger.exception("Attention provider '%s' failed", provider.kind)
+            logger.exception(
+                "Attention provider '%s' failed for organization %s (%s to %s)",
+                provider.kind,
+                getattr(organization, "organization_id", organization),
+                start_date.isoformat(),
+                end_date.isoformat(),
+            )
             failed.append(provider.kind)
+        else:
+            items.extend(provided)
     return items, failed
+
+
+def _serialize(provider: AttentionProvider, item: AttentionItem) -> dict[str, Any]:
+    if item.kind != provider.kind:
+        raise ValueError(f"Item of kind '{item.kind}' from provider '{provider.kind}'")
+    if not _is_int(item.count) or item.count < 0:
+        raise ValueError(f"Item count must be a non-negative int, got {item.count!r}")
+    return item.to_dict()
 
 
 class _FailingRowsProvider(AttentionProvider):
@@ -141,11 +166,8 @@ class _FailingRowsProvider(AttentionProvider):
     def items(
         self, organization: Any, start_date: datetime, end_date: datetime
     ) -> list[AttentionItem]:
-        return [
-            self._item(streak)
-            for streak in failing_streaks(self._rows(organization))
-            if start_date <= streak.last_failure <= end_date
-        ]
+        streaks = failing_streaks(self._rows(organization), start_date, end_date)
+        return [self._item(streak) for streak in streaks]
 
     def _base_item(
         self, streak: FailingStreak, name: str, route_key: str, **details
