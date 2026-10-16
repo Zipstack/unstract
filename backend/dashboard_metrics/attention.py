@@ -115,8 +115,9 @@ def collect_attention(
 ) -> tuple[list[dict[str, Any]], list[str]]:
     """Every provider's items, serialized, and the kinds whose provider failed.
 
-    A provider fails when it raises or returns an item it cannot serialize or
-    that is not of its own kind. It is logged and named, never shown as
+    A provider fails when it raises, or returns an item that is not of its own
+    kind or whose fields do not have the contract's types (``_serialize``). It is
+    logged and named, never shown as
     "nothing needs attention", and the other providers' items still return.
     """
     items: list[dict[str, Any]] = []
@@ -146,11 +147,15 @@ def _serialize(provider: AttentionProvider, item: AttentionItem) -> dict[str, An
         raise ValueError(f"Item of kind '{item.kind}' from provider '{provider.kind}'")
     if not _is_int(item.count) or item.count < 0:
         raise ValueError(f"Item count must be a non-negative int, got {item.count!r}")
+    if not isinstance(item.id, str) or not isinstance(item.name, str | None):
+        raise ValueError(f"Item id and name must be strings, got {item.id!r}")
+    if not isinstance(item.since, datetime | None):
+        raise ValueError(f"Item since must be a datetime, got {item.since!r}")
     return item.to_dict()
 
 
 class _FailingRowsProvider(AttentionProvider):
-    """Rows whose last five runs all failed, with the latest failure in range.
+    """Rows that ``failing_streaks`` finds failing, latest failure in range.
 
     Inactive rows are left out: nothing runs them, so nothing needs doing.
     """
