@@ -424,6 +424,27 @@ class CoOwnerRaceTests(ResourceEventTestBase):
             self.workflow.memberships.get(user=self.coowner).role, ResourceRole.OWNER
         )
 
+    def test_an_add_racing_an_unshare_still_makes_the_user_an_owner(self) -> None:
+        self.workflow.memberships.create(user=self.coowner, role=ResourceRole.VIEWER)
+        serializer = AddOwnerSerializer(
+            data={"user_id": self.coowner.id}, context=self._context()
+        )
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        manager_cls = type(self.workflow.memberships)
+        real_get_or_create = manager_cls.get_or_create
+
+        def unshare_lands_after(manager, *args, **kwargs):
+            membership, created = real_get_or_create(manager, *args, **kwargs)
+            # A concurrent share/ removes the viewer row just after the read.
+            manager.filter(pk=membership.pk).delete()
+            return membership, created
+
+        with patch.object(manager_cls, "get_or_create", unshare_lands_after):
+            self.assertTrue(serializer.save())
+        self.assertEqual(
+            self.workflow.memberships.get(user=self.coowner).role, ResourceRole.OWNER
+        )
+
     def test_an_add_another_request_already_made_changes_nothing(self) -> None:
         serializer = AddOwnerSerializer(
             data={"user_id": self.coowner.id}, context=self._context()

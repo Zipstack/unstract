@@ -42,20 +42,26 @@ class AddOwnerSerializer(serializers.Serializer):
         A concurrent request may have made the user an owner since validation.
         """
         resource = self.context["resource"]
-        # Reverse manager auto-scopes to this resource.
-        membership, created = resource.memberships.get_or_create(
-            user_id=self.validated_data["user_id"],
-            defaults={"role": ResourceRole.OWNER},
-        )
-        if created:
+        user_id = self.validated_data["user_id"]
+        with transaction.atomic():
+            # Reverse manager auto-scopes to this resource.
+            membership, created = resource.memberships.get_or_create(
+                user_id=user_id, defaults={"role": ResourceRole.OWNER}
+            )
+            if created:
+                return True
+            # Promote the existing row (e.g. a viewer, possibly added by a
+            # concurrent share) under a lock, as update_or_create did.
+            row = (
+                resource.memberships.select_for_update().filter(pk=membership.pk).first()
+            )
+            if row is None:  # a concurrent unshare removed it
+                resource.memberships.create(user_id=user_id, role=ResourceRole.OWNER)
+                return True
+            if row.role == ResourceRole.OWNER:
+                return False
+            resource.memberships.filter(pk=row.pk).update(role=ResourceRole.OWNER)
             return True
-        # An existing row (e.g. a viewer, possibly added concurrently) is
-        # promoted; the conditional update makes only one request see a change.
-        return bool(
-            resource.memberships.filter(pk=membership.pk)
-            .exclude(role=ResourceRole.OWNER)
-            .update(role=ResourceRole.OWNER)
-        )
 
 
 class RemoveOwnerSerializer(serializers.Serializer):
