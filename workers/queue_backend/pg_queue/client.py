@@ -143,9 +143,9 @@ SELECT msg_id, message, read_ct
 def _dequeue_any_sql() -> str:
     """Multi-queue variant of :func:`_dequeue_sql` (see :meth:`PgQueueClient.read_any`).
 
-    The caller binds the queue list already rotated, so ``WITH ORDINALITY``
-    numbers the queues in serving order and ``ord`` alone decides which queue is
-    served first (every queue is still probed on every call). Within a queue the
+    ``WITH ORDINALITY`` numbers the queues 1..n; the outer ORDER BY rotates
+    that numbering by the caller's ``start`` so the queue served first changes
+    each cycle (every queue is still probed on every call). Within a queue the
     order is the same ``priority DESC, msg_id`` top-N the single-queue claim
     uses, on the same partial index.
     """
@@ -163,7 +163,7 @@ WITH locked AS (
            FOR UPDATE SKIP LOCKED
          LIMIT %s
      ) c
-     ORDER BY q.ord, c.priority DESC, c.msg_id
+     ORDER BY (q.ord - 1 - %s + %s) %% %s, c.priority DESC, c.msg_id
      LIMIT %s
 ), claimed AS (
     UPDATE {msg} q
@@ -176,7 +176,7 @@ WITH locked AS (
 )
 SELECT msg_id, message, read_ct, queue_name
   FROM claimed
- ORDER BY ord, priority DESC, msg_id
+ ORDER BY (ord - 1 - %s + %s) %% %s, priority DESC, msg_id
 """
 
 
@@ -184,10 +184,9 @@ SELECT msg_id, message, read_ct, queue_name
 class QueueMessage:
     """A claimed queue message.
 
-    ``message`` is the already-decoded JSONB payload: a ``dict`` for every
-    message ``send()`` writes, but any JSON value if a raw writer inserted it
-    (the consumer drops non-objects as malformed). ``frozen`` freezes the
-    binding only — the payload itself is mutable, so treat it as read-only by
+    ``message`` is the already-decoded JSONB payload (psycopg2 parses
+    ``jsonb`` to a Python ``dict``). ``frozen`` freezes the binding only —
+    the ``dict`` itself is mutable, so treat the payload as read-only by
     convention. ``read_ct`` is the post-claim delivery count — always ``>= 1``
     from the dequeue (``read_ct = read_ct + 1 RETURNING``), so consumers can
     cap redelivery of a poison message. No default: a ``0`` ("never claimed")
@@ -197,7 +196,7 @@ class QueueMessage:
     """
 
     msg_id: int
-    message: Any
+    message: dict[str, Any]
     read_ct: int
     queue_name: str
 
@@ -282,10 +281,10 @@ class PgQueueClient:
             # of which psycopg2 error subclass was raised (a server-side
             # termination mid-statement can surface as a bare DatabaseError).
             # On an owned autocommit connection rollback() sends nothing, so it
-            # can't detect a dead server connection there. As a heuristic, a bare DatabaseError is
-            # treated as dead directly instead: statement errors normally map
-            # to a SQLSTATE subclass, and a rare unmapped one costs only a
-            # needless reconnect.
+            # can't detect a dead server connection there. As a heuristic, a
+            # bare DatabaseError is treated as dead directly instead: statement
+            # errors normally map to a SQLSTATE subclass, and a rare unmapped
+            # one costs only a needless reconnect.
             # NOTE: ``send()``'s retry deliberately catches only
             # ``_CONN_DEAD_ERRORS``; a server death that surfaces as a *bare*
             # ``psycopg2.DatabaseError`` is still dropped here when we own the
@@ -509,17 +508,17 @@ class PgQueueClient:
             raise ValueError(f"qty must be positive, got {qty}")
         if not queue_names:
             raise ValueError("queue_names must be non-empty")
-        # A repeated name would be probed twice, and both probes can pick the
-        # same row (SKIP LOCKED doesn't skip this statement's own locks), which
-        # would return fewer than qty messages.
+        # A repeated name would be probed twice and its rows would take batch
+        # slots twice, crowding other queues out (fewer than qty returned).
         queues = list(dict.fromkeys(queue_names))
-        k = start % len(queues)
+        n = len(queues)
+        rotate = (start % n, n, n)
         with self._cursor() as cur:
             # Param order matches the %s positions in _dequeue_any_sql():
-            # queues in serving order, per-queue LIMIT, LIMIT, vt.
+            # queues, per-queue LIMIT, rotation, LIMIT, vt, rotation again.
             cur.execute(
                 _dequeue_any_sql(),
-                (queues[k:] + queues[:k], qty, qty, vt_seconds),
+                (queues, qty, *rotate, qty, vt_seconds, *rotate),
             )
             rows = cur.fetchall()
         return [

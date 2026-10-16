@@ -1031,13 +1031,17 @@ class TestReadAnyIntegration:
         # takes the next message.
         client = PgQueueClient(conn=pg_conn)
         ids = [client.send(name, {"q": name}) for name in queue_names for _ in range(2)]
+        n = len(queue_names)
         conn_a = create_pg_connection(env_prefix="TEST_DB_")
         conn_b = create_pg_connection(env_prefix="TEST_DB_")
         try:
             with conn_a.cursor() as cur:
                 # Same params read_any(start=0, qty=1, vt_seconds=30) sends,
                 # but left uncommitted so A's locks stay held.
-                cur.execute(_dequeue_any_sql(), (list(queue_names), 1, 1, 30))
+                cur.execute(
+                    _dequeue_any_sql(),
+                    (list(queue_names), 1, 0, n, n, 1, 30, 0, n, n),
+                )
                 a_ids = [r[0] for r in cur.fetchall()]
             with conn_b.cursor() as cur:
                 cur.execute("SET lock_timeout = '2s'")
