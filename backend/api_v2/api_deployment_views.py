@@ -21,6 +21,7 @@ from rest_framework.decorators import action
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.serializers import Serializer
+from tenant_account_v2.capabilities import Capability, RequiresCapability
 from tool_instance_v2.models import ToolInstance
 from utils.enums import CeleryTaskState
 from utils.hubspot_notify import notify_hubspot_event
@@ -291,8 +292,13 @@ class APIDeploymentViewSet(
             self.request, flag="is_active"
         ):
             return [IsOwnerOrSharedUserOrSharedToOrg()]
+        if self.action == "destroy":
+            # Ownership as before, narrowed by the org's deletion capability.
+            return [
+                IsOwner(),
+                RequiresCapability(Capability.DELETE_WORKFLOWS_AND_DEPLOYMENTS),
+            ]
         if self.action in [
-            "destroy",
             "partial_update",
             "update",
             "add_co_owner",

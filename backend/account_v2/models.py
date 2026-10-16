@@ -53,6 +53,46 @@ class Organization(models.Model):
             "connectors in this org. Default False preserves open creation."
         ),
     )
+    # Capability permissions (UN-4399): True means admins only. Defaults keep
+    # today's behaviour for each capability.
+    restrict_other_adapter_creation = models.BooleanField(
+        default=False,
+        db_comment=(
+            "Capability: when True, only organization admins may create non-LLM "
+            "adapters. Default False preserves open creation."
+        ),
+    )
+    restrict_api_key_management = models.BooleanField(
+        default=True,
+        db_comment=(
+            "Capability: when True, only organization admins may create and "
+            "rotate platform and global deployment keys. Default True is "
+            "today's admin-only behaviour."
+        ),
+    )
+    restrict_member_management = models.BooleanField(
+        default=True,
+        db_comment=(
+            "Capability: when True, only organization admins may invite members "
+            "and change roles. Default True is today's admin-only behaviour."
+        ),
+    )
+    restrict_platform_defaults = models.BooleanField(
+        default=True,
+        db_comment=(
+            "Capability: when True, only organization admins may change "
+            "organization-wide platform settings. Default True is today's "
+            "behaviour."
+        ),
+    )
+    restrict_resource_deletion = models.BooleanField(
+        default=False,
+        db_comment=(
+            "Capability: when True, only organization admins may delete "
+            "workflows, API deployments and pipelines. Default False keeps "
+            "today's owner-or-admin rule."
+        ),
+    )
 
     class Meta:
         verbose_name = "Organization"

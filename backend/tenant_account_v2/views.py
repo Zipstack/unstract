@@ -4,19 +4,36 @@ from typing import Any
 from account_v2.authentication_controller import AuthenticationController
 from account_v2.dto import UserRoleData
 from account_v2.models import Organization
+from django.db import transaction
+from drf_spectacular.utils import extend_schema
+from drf_standardized_errors.openapi_serializers import (
+    ErrorResponse403Serializer,
+    ErrorResponse404Serializer,
+    ValidationErrorResponseSerializer,
+)
 from platform_api.permissions import IsOrganizationAdmin
 from platform_audit.actions import Action, TargetType
-from platform_audit.recorder import record_platform_event
+from platform_audit.recorder import best_effort, record_platform_event
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
+from rest_framework.exceptions import NotFound, PermissionDenied
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
 from utils.user_context import UserContext
 from utils.user_session import UserSessionUtils
 
+from tenant_account_v2.capabilities import (
+    SPECS,
+    SPECS_BY_KEY,
+    CapabilitySetting,
+    is_allowed,
+    setting_of,
+)
 from tenant_account_v2.dto import OrganizationLoginResponse, ResetUserPasswordDto
 from tenant_account_v2.serializer import (
+    CapabilitiesPatchSerializer,
+    CapabilitiesResponseSerializer,
     GetRolesResponseSerializer,
     OrganizationLoginResponseSerializer,
 )
@@ -105,22 +122,10 @@ def organization_settings(request: Request) -> Response:
                     status=status.HTTP_400_BAD_REQUEST,
                     data={"message": f"{flag} must be a boolean"},
                 )
-        before = {flag: getattr(organization, flag) for flag in provided}
-        for flag, value in provided.items():
-            setattr(organization, flag, value)
-        organization.modified_by = request.user
-        organization.save(update_fields=[*provided, "modified_by", "modified_at"])
-        for flag, value in provided.items():
-            if before[flag] != value:
-                record_platform_event(
-                    action=Action.PLATFORM_SETTING_CHANGED,
-                    target_type=TargetType.PLATFORM_SETTING,
-                    target_id=flag,
-                    target_name=flag,
-                    changes={"before": {flag: before[flag]}, "after": {flag: value}},
-                    summary=f"{flag}: {before[flag]} → {value}",
-                    request=request,
-                )
+        organization, before = _save_restrictions(request, organization, provided)
+        # These flags are the storage of two capabilities, so a change here is
+        # recorded as that capability changing, once, as from the new endpoint.
+        _record_capability_changes(request, organization, before)
 
     return Response(
         status=status.HTTP_200_OK,
@@ -164,3 +169,118 @@ def makeSignupResponse(
             organization.created_at,
         )
     ).data
+
+
+def _capabilities_payload(request: Request, organization: Organization) -> dict:
+    return {
+        "capabilities": [
+            {
+                "key": spec.key.value,
+                "label": spec.label,
+                "description": spec.description,
+                "setting": setting_of(organization, spec).value,
+                "allowed_for_me": is_allowed(request.user, organization, spec.key),
+            }
+            for spec in SPECS
+        ]
+    }
+
+
+@extend_schema(
+    methods=["GET"],
+    operation_id="organization_capabilities_retrieve",
+    tags=["organization-capabilities"],
+    responses={
+        200: CapabilitiesResponseSerializer,
+        403: ErrorResponse403Serializer,
+        404: ErrorResponse404Serializer,
+    },
+    description="Every capability, its setting, and whether it lets the caller "
+    "use it. Any member may read it.",
+)
+@extend_schema(
+    methods=["PATCH"],
+    operation_id="organization_capabilities_partial_update",
+    tags=["organization-capabilities"],
+    request=CapabilitiesPatchSerializer,
+    responses={
+        200: CapabilitiesResponseSerializer,
+        400: ValidationErrorResponseSerializer,
+        403: ErrorResponse403Serializer,
+        404: ErrorResponse404Serializer,
+    },
+    description="Set any subset of capabilities. Organisation admins only. "
+    "Every key and value is validated before anything is saved.",
+)
+@api_view(["GET", "PATCH"])
+@permission_classes([IsAuthenticated])
+def organization_capabilities(request: Request) -> Response:
+    """Read capability settings (any member) or change them (admins only)."""
+    organization = UserContext.get_organization()
+    if not organization:
+        raise NotFound("Organization not found.")
+    if request.method == "PATCH":
+        if not IsOrganizationAdmin().has_permission(request, None):
+            raise PermissionDenied(
+                "Only organization admins can change capability settings."
+            )
+        serializer = CapabilitiesPatchSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        changed = {
+            SPECS_BY_KEY[key].field: value == CapabilitySetting.ADMINS_ONLY
+            for key, value in serializer.validated_data.items()
+        }
+        organization, before = _save_restrictions(request, organization, changed)
+        _record_capability_changes(request, organization, before)
+    return Response(
+        status=status.HTTP_200_OK, data=_capabilities_payload(request, organization)
+    )
+
+
+def _save_restrictions(
+    request: Request, organization: Organization, values: dict[str, bool]
+) -> tuple[Organization, dict[str, bool]]:
+    """Save ``restrict_*`` fields and return the row with its values before.
+
+    The row is locked while it is read and written, so of two concurrent
+    changes the second sees the first's result as its "before" and the audit
+    records every change. Both settings endpoints write through here.
+    """
+    with transaction.atomic():
+        locked = Organization.objects.select_for_update().get(pk=organization.pk)
+        before = {field: getattr(locked, field) for field in values}
+        for field, value in values.items():
+            setattr(locked, field, value)
+        locked.modified_by = request.user
+        locked.save(update_fields=[*values, "modified_by", "modified_at"])
+    return locked, before
+
+
+@best_effort
+def _record_capability_changes(
+    request: Request, organization: Organization, before: dict[str, bool]
+) -> None:
+    """One ``capability.changed`` per capability whose setting changed."""
+    for spec in SPECS:
+        if spec.field not in before:
+            continue
+        old = _as_setting(before[spec.field])
+        new = setting_of(organization, spec).value
+        if old == new:
+            continue
+        record_platform_event(
+            action=Action.CAPABILITY_CHANGED,
+            target_type=TargetType.CAPABILITY,
+            target_id=spec.key.value,
+            target_name=spec.label,
+            changes={"before": {"setting": old}, "after": {"setting": new}},
+            summary=f"{old} → {new}",
+            request=request,
+            organization=organization,
+        )
+
+
+def _as_setting(restricted: bool) -> str:
+    return (
+        CapabilitySetting.ADMINS_ONLY if restricted else CapabilitySetting.ANY_MEMBER
+    ).value
