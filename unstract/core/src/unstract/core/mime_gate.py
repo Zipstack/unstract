@@ -44,8 +44,7 @@ DTD_SEARCH_ENCODINGS = (
 
 # The content type a package declares for its main part, and what we report.
 OOXML_MAIN_CONTENT_TYPES = {
-    "application/vnd.openxmlformats-officedocument.wordprocessingml"
-    ".document.main+xml": (
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml": (
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
     ),
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml": (

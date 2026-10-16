@@ -55,7 +55,7 @@ class Command(BaseCommand):
             usage = APIDeploymentRateLimiter.get_current_usage(organization)
             self.stdout.write(
                 self.style.WARNING(
-                    f'Current usage: {usage["org_count"]}/{limit} concurrent requests'
+                    f"Current usage: {usage['org_count']}/{limit} concurrent requests"
                 )
             )
 

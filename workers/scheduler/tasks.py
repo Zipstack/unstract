@@ -37,7 +37,6 @@ from shared.models.scheduler_models import (
 )
 from shared.patterns.notification.helper import trigger_notification
 from shared.utils.api_client_singleton import get_singleton_api_client
-
 from unstract.core.data_models import (
     LEGACY_TRANSPORT_KEY,
     LEGACY_TRANSPORT_VALUE,

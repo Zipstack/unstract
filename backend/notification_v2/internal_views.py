@@ -11,6 +11,7 @@ from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from unstract.core.network.ssrf import is_safe_webhook_url
 from utils.organization_utils import organization_from_request
 
 from notification_v2.enums import AuthorizationType, NotificationType, PlatformType
@@ -23,7 +24,6 @@ from notification_v2.internal_serializers import (
     WebhookTestSerializer,
 )
 from notification_v2.models import Notification
-from unstract.core.network.ssrf import is_safe_webhook_url
 
 logger = logging.getLogger(__name__)
 

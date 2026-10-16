@@ -72,7 +72,6 @@ from typing import TYPE_CHECKING, Any, Final, NamedTuple
 import psycopg2
 import psycopg2.errors
 import psycopg2.extensions
-
 from unstract.core.data_models import LEGACY_TRANSPORT_KEY, LEGACY_TRANSPORT_VALUE
 from unstract.core.jsonb import dumps_for_jsonb
 
