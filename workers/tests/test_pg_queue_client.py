@@ -119,7 +119,9 @@ class TestPgQueueClientUnit:
         assert "ORDER BY priority DESC" in sql  # fairness L3 claim order
         # Param order follows the %s positions: queue_name, qty, vt_seconds.
         assert params == ("q1", 3, 15)
-        assert msgs == [QueueMessage(msg_id=7, message={"k": "v"}, read_ct=1)]
+        assert msgs == [
+            QueueMessage(msg_id=7, message={"k": "v"}, read_ct=1, queue_name="q1")
+        ]
         conn.commit.assert_called_once()
 
     def test_delete_returns_true_when_row_removed(self):
@@ -551,6 +553,7 @@ class TestPgQueueClientIntegration:
         msgs = client.read(queue_name, vt_seconds=30, qty=10)
         assert [m.msg_id for m in msgs] == [msg_id]
         assert msgs[0].message == {"hello": "world"}
+        assert msgs[0].queue_name == queue_name
         assert client.delete(msg_id) is True
         assert client.read(queue_name, vt_seconds=30, qty=10) == []  # gone
 
@@ -886,7 +889,7 @@ class TestPgQueueClientIntegration:
 
 @pytest.fixture
 def queue_names(pg_conn, queue_name):
-    """Three sibling queues for the multi-queue claim; cleaned up by prefix."""
+    """Three sibling queues for the multi-queue claim; cleaned up by name."""
     names = [f"{queue_name}_{s}" for s in ("a", "b", "c")]
     yield names
     pg_conn.rollback()
@@ -907,10 +910,17 @@ class TestReadAnyIntegration:
         msgs = client.read_any(queue_names, vt_seconds=30, start=0)
         assert [m.msg_id for m in msgs] == [mid]
         assert msgs[0].read_ct == 1
+        assert msgs[0].queue_name == queue_names[2]
         with pg_conn.cursor() as cur:
-            cur.execute("SELECT state FROM pg_queue_message WHERE msg_id = %s", (mid,))
-            assert cur.fetchone()[0] == "claimed"
+            # The lease must hold: vt pushed ~vt_seconds out, not left at now().
+            cur.execute(
+                "SELECT state, vt > now() + interval '20 seconds' "
+                "FROM pg_queue_message WHERE msg_id = %s",
+                (mid,),
+            )
+            assert cur.fetchone() == ("claimed", True)
         pg_conn.commit()
+        assert client.read_any(queue_names, vt_seconds=30) == []
 
     def test_start_picks_the_first_queue_probed(self, pg_conn, queue_names):
         # Every queue has work; the rotating start decides which is served, so
@@ -938,6 +948,13 @@ class TestReadAnyIntegration:
         client.send(queue_names[0], {"n": "high"}, priority=9)
         msgs = client.read_any(queue_names, vt_seconds=30)
         assert [m.message["n"] for m in msgs] == ["high"]
+
+    def test_batch_orders_by_priority_within_a_queue(self, pg_conn, queue_names):
+        client = PgQueueClient(conn=pg_conn)
+        client.send(queue_names[0], {"n": "low"}, priority=1)
+        client.send(queue_names[0], {"n": "high"}, priority=9)
+        msgs = client.read_any(queue_names, vt_seconds=30, qty=2)
+        assert [m.message["n"] for m in msgs] == ["high", "low"]
 
     def test_batch_spans_queues_in_rotation_order(self, pg_conn, queue_names):
         client = PgQueueClient(conn=pg_conn)
@@ -1050,8 +1067,30 @@ class TestReadAnyIntegration:
             assert cur.fetchone()[0] == "claimed"
         pg_conn.commit()
 
-    def test_rejects_bad_args(self, pg_conn):
-        client = PgQueueClient(conn=pg_conn)
+    def test_owned_connection_reconnects_after_backend_termination(
+        self, pg_conn, queue_names, monkeypatch
+    ):
+        # Autocommit rollback() cannot fail, so recovery rests on the
+        # termination surfacing as a connection-dead error: the next call
+        # raises, drops the handle, and the call after reconnects.
+        monkeypatch.setattr(
+            "queue_backend.pg_queue.client.create_pg_connection",
+            lambda: create_pg_connection(env_prefix="TEST_DB_"),
+        )
+        with PgQueueClient() as owned:
+            owned.read_any(queue_names, vt_seconds=30)
+            old_pid = owned.conn.get_backend_pid()
+            with pg_conn.cursor() as cur:
+                cur.execute("SELECT pg_terminate_backend(%s)", (old_pid,))
+            pg_conn.commit()
+            with pytest.raises(psycopg2.OperationalError):
+                owned.read_any(queue_names, vt_seconds=30)
+            assert owned.read_any(queue_names, vt_seconds=30) == []
+            assert owned.conn.get_backend_pid() != old_pid
+
+    def test_rejects_bad_args(self):
+        # Validation runs before any SQL, so no database is needed.
+        client = PgQueueClient(conn=MagicMock())
         with pytest.raises(ValueError):
             client.read_any([], vt_seconds=30)
         with pytest.raises(ValueError):

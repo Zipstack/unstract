@@ -22,10 +22,12 @@ is the reaper's job now — not implicit in the claim, which keys off
 place; the schema (``pg_queue_message`` table + partial claim index) is a
 plain Django migration with no DB-side function.
 
-The cached connection is kept usable across calls: every operation rolls
-back on error, and a connection that goes bad (dropped socket / PgBouncer
-recycle) is discarded so the next call reconnects — so one blip can't
-permanently wedge the consumer.
+The cached connection is kept usable across calls: a connection that goes bad
+(dropped socket / PgBouncer recycle) is discarded so the next call reconnects —
+so one blip can't permanently wedge the consumer. A connection the client opens
+itself runs in autocommit, so every operation must stay ONE statement (each
+commits on its own); an injected connection keeps the caller's transaction
+semantics and is committed or rolled back per operation.
 """
 
 from __future__ import annotations
@@ -140,9 +142,10 @@ def _dequeue_any_sql() -> str:
     """Multi-queue variant of :func:`_dequeue_sql` (see :meth:`PgQueueClient.read_any`).
 
     ``WITH ORDINALITY`` numbers the queues 1..n; the outer ORDER BY rotates
-    that numbering by the caller's ``start`` so the first queue probed changes
-    each cycle. Within a queue the order is the same ``priority DESC, msg_id``
-    top-N the single-queue claim uses, on the same partial index.
+    that numbering by the caller's ``start`` so the queue served first changes
+    each cycle (every queue is still probed on every call). Within a queue the
+    order is the same ``priority DESC, msg_id`` top-N the single-queue claim
+    uses, on the same partial index.
     """
     msg = qualified("pg_queue_message")
     return f"""
@@ -167,9 +170,9 @@ WITH locked AS (
            read_ct = read_ct + 1
       FROM locked
      WHERE q.msg_id = locked.msg_id
-    RETURNING q.msg_id, q.message, q.read_ct, locked.ord, q.priority
+    RETURNING q.msg_id, q.message, q.read_ct, q.queue_name, locked.ord, q.priority
 )
-SELECT msg_id, message, read_ct
+SELECT msg_id, message, read_ct, queue_name
   FROM claimed
  ORDER BY (ord - 1 - %s + %s) %% %s, priority DESC, msg_id
 """
@@ -186,11 +189,14 @@ class QueueMessage:
     from the dequeue (``read_ct = read_ct + 1 RETURNING``), so consumers can
     cap redelivery of a poison message. No default: a ``0`` ("never claimed")
     can't come from the dequeue and would silently bypass the poison guard.
+    ``queue_name`` is the queue the message was claimed from; the multi-queue
+    consumer uses it to rotate past the queue it just served.
     """
 
     msg_id: int
     message: dict[str, Any]
     read_ct: int
+    queue_name: str = ""
 
 
 # The whole enqueue contract (columns + their defaults) in one place. `send()`
@@ -240,13 +246,14 @@ class PgQueueClient:
     def conn(self) -> PgConnection:
         if self._conn is None:
             conn = create_pg_connection()
-            # Every operation here is ONE statement, so an explicit transaction
-            # only adds a BEGIN + COMMIT round trip to each (3 statements per
-            # claim instead of 1 — most of the idle-poll load on the DB).
+            # Every operation here is ONE statement, so on a connection this
+            # client owns an explicit transaction only adds a BEGIN + COMMIT
+            # round trip to each (3 statements per claim instead of 1).
             # Autocommit is set only on a connection this client creates: an
-            # injected one may be the caller's open transaction (the agentic
-            # fan-out outbox), and create_pg_connection itself stays
-            # non-autocommit for pg_barrier, which relies on that.
+            # injected one may carry the caller's open transaction (unstract-
+            # cloud's agentic fan-out claim relies on send() committing its
+            # claim INSERT together with the enqueue), and create_pg_connection
+            # itself stays non-autocommit for pg_barrier, which relies on that.
             conn.autocommit = True
             self._conn = conn
         return self._conn
@@ -255,10 +262,12 @@ class PgQueueClient:
     def _cursor(self) -> Iterator[Any]:
         """Yield a cursor; commit on success, roll back + recover on error.
 
-        Keeps the cached connection usable: a failed statement leaves the
-        connection in an aborted transaction, so we always roll back; a
-        dead connection can't be reused, so (when we own it) we drop the
-        cached handle and the next call reconnects.
+        Keeps the cached connection usable. On an injected connection a failed
+        statement leaves an aborted transaction, so we always roll back. On an
+        owned connection (autocommit) each statement already committed or failed
+        on its own, so keep every operation to ONE statement; commit/rollback are
+        no-ops there. A dead connection can't be reused, so (when we own it) we
+        drop the cached handle and the next call reconnects.
         """
         conn = self.conn
         try:
@@ -269,6 +278,10 @@ class PgQueueClient:
             # A failed rollback proves the connection is unusable, regardless
             # of which psycopg2 error subclass was raised (a server-side
             # termination mid-statement can surface as a bare DatabaseError).
+            # On an owned autocommit connection rollback() sends nothing and
+            # cannot fail; there a server termination surfaces as
+            # OperationalError (is_connection_dead) and sets conn.closed, which
+            # the discard below checks too.
             # NOTE: ``send()``'s retry deliberately catches only
             # ``_CONN_DEAD_ERRORS``; a server death that surfaces as a *bare*
             # ``psycopg2.DatabaseError`` is still treated as dead here (via the
@@ -436,7 +449,10 @@ class PgQueueClient:
             cur.execute(_dequeue_sql(), (queue_name, qty, vt_seconds))
             rows = cur.fetchall()
         return [
-            QueueMessage(msg_id=int(r[0]), message=r[1], read_ct=int(r[2])) for r in rows
+            QueueMessage(
+                msg_id=int(r[0]), message=r[1], read_ct=int(r[2]), queue_name=queue_name
+            )
+            for r in rows
         ]
 
     def read_any(
@@ -449,21 +465,27 @@ class PgQueueClient:
     ) -> list[QueueMessage]:
         """Claim up to ``qty`` ready messages from several queues in ONE statement.
 
-        Same claim contract as :meth:`read`; replaces one :meth:`read` per queue
-        per poll cycle, so an idle multi-queue consumer costs one statement per
-        cycle instead of one per queue. Each queue is probed with its own
-        indexed top-N (a ``LATERAL`` per queue on the partial claim index), so
-        cost does not grow with the backlog.
+        Same claim contract as :meth:`read`, but one statement covers every
+        queue — on a client-owned (autocommit) connection an idle multi-queue
+        consumer costs one statement per cycle. Each queue is probed with its
+        own indexed top-N (a ``LATERAL`` per queue on the partial claim index),
+        so cost does not grow with the backlog.
 
         Queue order is round-robin from ``start`` (an index into
-        ``queue_names``), NOT priority: the caller advances ``start`` each cycle
-        so every non-empty queue keeps getting a turn, as with the per-queue
-        loop this replaces. ``priority`` still orders messages within a queue.
+        ``queue_names``), NOT priority: messages come from the first non-empty
+        queue at or after ``start``, then the next, and so on. The caller should
+        pass ``start`` = one past the queue it served last (each message's
+        ``queue_name``), so every busy queue gets an equal turn. ``priority``
+        orders messages within a queue.
 
-        The per-queue probe locks up to ``qty`` rows in each queue, and only the
-        chosen ones are claimed; the rest stay ``ready`` and are unlocked when
-        the statement commits, so a concurrent reader skips them for those few
-        milliseconds at most.
+        Accepted trade-off: the probe locks up to ``qty`` ready rows in EVERY
+        queue (``FOR UPDATE SKIP LOCKED``), and only the chosen ones are claimed;
+        the rest stay ``ready`` and are unlocked when the statement commits. A
+        reader racing that statement skips the locked rows, so if each queue's
+        only ready row is locked it gets ``[]`` and takes the consumer's empty-
+        poll back-off (starting at ``poll_interval``) instead of a message. This
+        only happens while several consumers contend for the last rows; idle
+        polls lock nothing.
         """
         if vt_seconds <= 0:
             raise ValueError(f"vt_seconds must be positive, got {vt_seconds}")
@@ -482,7 +504,10 @@ class PgQueueClient:
             )
             rows = cur.fetchall()
         return [
-            QueueMessage(msg_id=int(r[0]), message=r[1], read_ct=int(r[2])) for r in rows
+            QueueMessage(
+                msg_id=int(r[0]), message=r[1], read_ct=int(r[2]), queue_name=r[3]
+            )
+            for r in rows
         ]
 
     def set_vt(self, msg_id: int, vt_seconds: int) -> bool:

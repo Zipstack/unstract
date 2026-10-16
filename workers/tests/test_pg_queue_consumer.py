@@ -51,8 +51,10 @@ def _clear_calls():
     _calls.clear()
 
 
-def _msg(msg_id, payload, *, read_ct=1):
-    return QueueMessage(msg_id=msg_id, message=payload, read_ct=read_ct)
+def _msg(msg_id, payload, *, read_ct=1, queue_name=""):
+    return QueueMessage(
+        msg_id=msg_id, message=payload, read_ct=read_ct, queue_name=queue_name
+    )
 
 
 def _ok_payload(x, y=0):
@@ -666,7 +668,7 @@ class TestPollHeartbeat:
         assert consumer.seconds_since_last_poll() < 1.0
 
     def test_heartbeat_stamped_before_read(self):
-        # Pins the headline design: the stamp lands before each queue read (not
+        # Pins the headline design: the stamp lands before each claim (not
         # after it), so a task running longer than the threshold still trips
         # the probe. A bottom-of-poll stamp would pass test_poll_once_refreshes
         # but fail here.
@@ -869,6 +871,28 @@ class TestConsumerIntegration:
                 )
             pg_client.conn.commit()
 
+    def test_busy_queues_take_equal_turns_around_an_empty_one(self, pg_client):
+        # An empty queue between two busy ones used to hand the queue after it a
+        # second turn (2:1). Claims must now alternate.
+        base = f"test_consumer_rr_{os.getpid()}"
+        queues = [f"{base}_a", f"{base}_empty", f"{base}_b"]
+        try:
+            for _ in range(3):
+                pg_client.send(queues[0], to_payload("test_pg_consumer.ok", args=[1]))
+                pg_client.send(queues[2], to_payload("test_pg_consumer.ok", args=[1]))
+            consumer = PgQueueConsumer(queues, client=pg_client)
+            served: list[str] = []
+            consumer._handle = lambda m: served.append(m.queue_name)
+            for _ in range(6):
+                consumer.poll_once()
+            assert served == [queues[0], queues[2]] * 3
+        finally:
+            with pg_client.conn.cursor() as cur:
+                cur.execute(
+                    "DELETE FROM pg_queue_message WHERE queue_name = ANY(%s)", (queues,)
+                )
+            pg_client.conn.commit()
+
 
 class TestMultiQueue:
     """9f: one consumer drains several queues — one claim per cycle (UN-4176)."""
@@ -889,9 +913,46 @@ class TestMultiQueue:
         client.read.assert_called_once()
         client.read_any.assert_not_called()
 
+    def test_next_claim_starts_past_the_queue_served(self):
+        # Rotating by one regardless of what was served would hand a busy queue
+        # an extra turn for every empty queue before it; starting one past the
+        # queue actually served keeps busy queues on equal turns.
+        client = MagicMock()
+        client.read_any.side_effect = [
+            [_msg(1, _ok_payload(1), queue_name="qc")],  # start 0 fell through to qc
+            [_msg(2, _ok_payload(2), queue_name="qa")],
+            [],
+        ]
+        consumer = PgQueueConsumer(["qa", "qb", "qc"], client=client)
+        for _ in range(3):
+            consumer.poll_once()
+        assert [c.kwargs["start"] for c in client.read_any.call_args_list] == [0, 0, 1]
+        assert consumer._next_queue == 2  # empty cycle moves on by one
+
+    def test_handler_failure_counts_the_messages_already_processed(self):
+        client = MagicMock()
+        client.read_any.return_value = [
+            _msg(1, _ok_payload(1)),
+            _msg(2, _ok_payload(2)),
+            _msg(3, _ok_payload(3)),
+        ]
+        consumer = PgQueueConsumer(
+            ["qa", "qb"], client=client, batch_size=3, lease_seconds=60, vt_seconds=60
+        )
+        handled: list[int] = []
+
+        def _handle(message):
+            if message.msg_id == 2:
+                raise RuntimeError("boom")
+            handled.append(message.msg_id)
+
+        consumer._handle = _handle
+        assert consumer.poll_once() == 1  # msg 1 counted, so run() won't back off
+        assert handled == [1]  # msg 3 left claimed, not started
+
     def test_start_queue_rotates_every_cycle(self):
-        # The rotating start is what keeps an always-full first queue from
-        # starving the rest.
+        # With nothing claimed the start still moves on, so every queue gets to
+        # be probed first in turn.
         client = MagicMock()
         client.read_any.return_value = []
         consumer = PgQueueConsumer(["qa", "qb", "qc"], client=client)
