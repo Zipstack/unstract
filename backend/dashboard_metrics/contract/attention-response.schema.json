@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "unstract/dashboard-metrics/attention-response/v1",
+  "type": "object",
+  "required": ["start_date", "end_date", "items", "failed_kinds"],
+  "additionalProperties": false,
+  "properties": {
+    "start_date": {"type": "string", "format": "date-time"},
+    "end_date": {"type": "string", "format": "date-time"},
+    "items": {"type": "array", "items": {"$ref": "#/$defs/item"}},
+    "failed_kinds": {"type": "array", "items": {"type": "string"}}
+  },
+  "$defs": {
+    "item": {
+      "type": "object",
+      "required": ["kind", "id", "name", "count", "since", "route", "details"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"},
+        "id": {"type": "string"},
+        "name": {"type": ["string", "null"]},
+        "count": {"type": "integer", "minimum": 0},
+        "since": {"type": ["string", "null"], "format": "date-time"},
+        "route": {
+          "oneOf": [
+            {"type": "null"},
+            {
+              "type": "object",
+              "required": ["key", "params"],
+              "additionalProperties": false,
+              "properties": {
+                "key": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9_]*\\.[a-z][a-z0-9_]*$"
+                },
+                "params": {
+                  "type": "object",
+                  "additionalProperties": {"type": "string"}
+                }
+              }
+            }
+          ]
+        },
+        "details": {"type": "object"}
+      }
+    }
+  }
+}
