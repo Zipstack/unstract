@@ -456,6 +456,7 @@ SHARED_APPS = (
     "dashboard_metrics",
     "platform_api",
     "global_api_deployment_key",
+    "global_search",
 )
 TENANT_APPS = []
 
