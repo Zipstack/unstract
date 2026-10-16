@@ -403,6 +403,27 @@ class CoOwnerRaceTests(ResourceEventTestBase):
         request.user = self.admin
         return {"request": request, "resource": self.workflow}
 
+    def test_an_add_racing_a_share_still_makes_the_user_an_owner(self) -> None:
+        serializer = AddOwnerSerializer(
+            data={"user_id": self.coowner.id}, context=self._context()
+        )
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        manager_cls = type(self.workflow.memberships)
+        real_get_or_create = manager_cls.get_or_create
+
+        def share_lands_first(manager, *args, **kwargs):
+            # A concurrent share/ makes them a viewer just before this write.
+            real_get_or_create(
+                manager, user_id=kwargs["user_id"], defaults={"role": ResourceRole.VIEWER}
+            )
+            return real_get_or_create(manager, *args, **kwargs)
+
+        with patch.object(manager_cls, "get_or_create", share_lands_first):
+            self.assertTrue(serializer.save())
+        self.assertEqual(
+            self.workflow.memberships.get(user=self.coowner).role, ResourceRole.OWNER
+        )
+
     def test_an_add_another_request_already_made_changes_nothing(self) -> None:
         serializer = AddOwnerSerializer(
             data={"user_id": self.coowner.id}, context=self._context()
