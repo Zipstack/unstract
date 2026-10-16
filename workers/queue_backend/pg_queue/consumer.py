@@ -383,10 +383,9 @@ class PgQueueConsumer:
         after an empty cycle), so busy queues take equal turns and none starves.
 
         A failed claim is logged and returns 0, so run() backs off. A failure
-        while handling stops the batch, as each queue's batch did before this
-        loop claimed across queues: it is logged with the msg_ids left unstarted
-        and the messages already handled are still counted (so run() does not
-        back off after real work). Accepted trade-off, ``batch_size > 1`` only
+        while handling stops the batch: it is logged with the msg_ids left
+        unstarted, and the messages already handled are still counted (so run()
+        does not back off after real work). Accepted trade-off, ``batch_size > 1`` only
         (it is forced to 1 unless the lease equals the max runtime): the
         unstarted messages stay claimed until their lease lapses and the reaper
         re-arms them, costing each a ``read_ct`` attempt toward the poison cap.
@@ -431,19 +430,9 @@ class PgQueueConsumer:
         )
         # One past the queue served last, so the queues after it go first next
         # time; an empty cycle just moves on by one.
-        if not messages:
-            served = self._next_queue
-        elif messages[-1].queue_name in self.queue_names:
+        if messages:
             served = self.queue_names.index(messages[-1].queue_name)
         else:
-            # read_any always fills queue_name; reaching here means a client that
-            # doesn't, which would quietly bring back unequal turns.
-            logger.warning(
-                "PG-queue consumer: claimed msg_id=%s has unknown queue_name %r; "
-                "rotating by one",
-                messages[-1].msg_id,
-                messages[-1].queue_name,
-            )
             served = self._next_queue
         self._next_queue = (served + 1) % len(self.queue_names)
         return messages

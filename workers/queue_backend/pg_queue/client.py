@@ -143,9 +143,9 @@ SELECT msg_id, message, read_ct
 def _dequeue_any_sql() -> str:
     """Multi-queue variant of :func:`_dequeue_sql` (see :meth:`PgQueueClient.read_any`).
 
-    ``WITH ORDINALITY`` numbers the queues 1..n; the outer ORDER BY rotates
-    that numbering by the caller's ``start`` so the queue served first changes
-    each cycle (every queue is still probed on every call). Within a queue the
+    The caller binds the queue list already rotated, so ``WITH ORDINALITY``
+    numbers the queues in serving order and ``ord`` alone decides which queue is
+    served first (every queue is still probed on every call). Within a queue the
     order is the same ``priority DESC, msg_id`` top-N the single-queue claim
     uses, on the same partial index.
     """
@@ -163,7 +163,7 @@ WITH locked AS (
            FOR UPDATE SKIP LOCKED
          LIMIT %s
      ) c
-     ORDER BY (q.ord - 1 - %s + %s) %% %s, c.priority DESC, c.msg_id
+     ORDER BY q.ord, c.priority DESC, c.msg_id
      LIMIT %s
 ), claimed AS (
     UPDATE {msg} q
@@ -176,7 +176,7 @@ WITH locked AS (
 )
 SELECT msg_id, message, read_ct, queue_name
   FROM claimed
- ORDER BY (ord - 1 - %s + %s) %% %s, priority DESC, msg_id
+ ORDER BY ord, priority DESC, msg_id
 """
 
 
@@ -184,21 +184,22 @@ SELECT msg_id, message, read_ct, queue_name
 class QueueMessage:
     """A claimed queue message.
 
-    ``message`` is the already-decoded JSONB payload (psycopg2 parses
-    ``jsonb`` to a Python ``dict``). ``frozen`` freezes the binding only —
-    the ``dict`` itself is mutable, so treat the payload as read-only by
+    ``message`` is the already-decoded JSONB payload: a ``dict`` for every
+    message ``send()`` writes, but any JSON value if a raw writer inserted it
+    (the consumer drops non-objects as malformed). ``frozen`` freezes the
+    binding only — the payload itself is mutable, so treat it as read-only by
     convention. ``read_ct`` is the post-claim delivery count — always ``>= 1``
     from the dequeue (``read_ct = read_ct + 1 RETURNING``), so consumers can
     cap redelivery of a poison message. No default: a ``0`` ("never claimed")
     can't come from the dequeue and would silently bypass the poison guard.
-    ``queue_name`` is the queue the message was claimed from; the multi-queue
-    consumer uses it to rotate past the queue it just served.
+    ``queue_name`` is the queue the message was claimed from (also no default);
+    the multi-queue consumer uses it to rotate past the queue it just served.
     """
 
     msg_id: int
-    message: dict[str, Any]
+    message: Any
     read_ct: int
-    queue_name: str = ""
+    queue_name: str
 
 
 # The whole enqueue contract (columns + their defaults) in one place. `send()`
@@ -281,7 +282,7 @@ class PgQueueClient:
             # of which psycopg2 error subclass was raised (a server-side
             # termination mid-statement can surface as a bare DatabaseError).
             # On an owned autocommit connection rollback() sends nothing, so it
-            # proves nothing there. As a heuristic, a bare DatabaseError is
+            # can't detect a dead server connection there. As a heuristic, a bare DatabaseError is
             # treated as dead directly instead: statement errors normally map
             # to a SQLSTATE subclass, and a rare unmapped one costs only a
             # needless reconnect.
@@ -485,7 +486,8 @@ class PgQueueClient:
 
         Accepted trade-off: the probe locks up to ``qty`` ready rows in EVERY
         queue (``FOR UPDATE SKIP LOCKED``), and only the chosen ones are claimed;
-        the rest stay ``ready`` and are unlocked when the statement commits. A
+        the rest stay ``ready`` and are unlocked when the claim commits (at
+        statement end on a client-owned autocommit connection). A
         reader racing that statement — another multi-queue consumer, or a
         single-queue consumer of one of these queues — skips the locked rows, so
         if the only ready rows it wants are locked it gets ``[]`` and takes the
@@ -507,14 +509,17 @@ class PgQueueClient:
             raise ValueError(f"qty must be positive, got {qty}")
         if not queue_names:
             raise ValueError("queue_names must be non-empty")
-        n = len(queue_names)
-        rotate = (start % n, n, n)
+        # A repeated name would be probed twice, and both probes can pick the
+        # same row (SKIP LOCKED doesn't skip this statement's own locks), which
+        # would return fewer than qty messages.
+        queues = list(dict.fromkeys(queue_names))
+        k = start % len(queues)
         with self._cursor() as cur:
             # Param order matches the %s positions in _dequeue_any_sql():
-            # queues, per-queue LIMIT, rotation, LIMIT, vt, rotation again.
+            # queues in serving order, per-queue LIMIT, LIMIT, vt.
             cur.execute(
                 _dequeue_any_sql(),
-                (list(queue_names), qty, *rotate, qty, vt_seconds, *rotate),
+                (queues[k:] + queues[:k], qty, qty, vt_seconds),
             )
             rows = cur.fetchall()
         return [

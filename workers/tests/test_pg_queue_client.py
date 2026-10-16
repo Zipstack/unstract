@@ -987,6 +987,19 @@ class TestReadAnyIntegration:
         msgs = client.read_any(queue_names, vt_seconds=30, qty=2)
         assert [m.message["n"] for m in msgs] == ["high", "low"]
 
+    def test_duplicate_queue_names_still_fill_the_batch(self, pg_conn, queue_names):
+        # Probed twice, a repeated queue could hand both probes the same row and
+        # return fewer than qty messages.
+        # A repeated queue's second probe returns the same rows again and takes
+        # batch slots, crowding out the next queue's message.
+        client = PgQueueClient(conn=pg_conn)
+        client.send(queue_names[0], {"n": 1})
+        client.send(queue_names[0], {"n": 2})
+        client.send(queue_names[1], {"n": 3})
+        queues = [queue_names[0], queue_names[0], queue_names[1]]
+        msgs = client.read_any(queues, vt_seconds=30, qty=3)
+        assert [m.message["n"] for m in msgs] == [1, 2, 3]
+
     def test_batch_spans_queues_in_rotation_order(self, pg_conn, queue_names):
         client = PgQueueClient(conn=pg_conn)
         client.send(queue_names[0], {"n": "a1"})
@@ -1018,17 +1031,13 @@ class TestReadAnyIntegration:
         # takes the next message.
         client = PgQueueClient(conn=pg_conn)
         ids = [client.send(name, {"q": name}) for name in queue_names for _ in range(2)]
-        n = len(queue_names)
         conn_a = create_pg_connection(env_prefix="TEST_DB_")
         conn_b = create_pg_connection(env_prefix="TEST_DB_")
         try:
             with conn_a.cursor() as cur:
                 # Same params read_any(start=0, qty=1, vt_seconds=30) sends,
                 # but left uncommitted so A's locks stay held.
-                cur.execute(
-                    _dequeue_any_sql(),
-                    (list(queue_names), 1, 0, n, n, 1, 30, 0, n, n),
-                )
+                cur.execute(_dequeue_any_sql(), (list(queue_names), 1, 1, 30))
                 a_ids = [r[0] for r in cur.fetchall()]
             with conn_b.cursor() as cur:
                 cur.execute("SET lock_timeout = '2s'")
@@ -1114,7 +1123,9 @@ class TestReadAnyIntegration:
             owned.read_any(queue_names, vt_seconds=30)
             old_pid = owned.conn.get_backend_pid()
             with pg_conn.cursor() as cur:
-                cur.execute("SELECT pg_terminate_backend(%s)", (old_pid,))
+                # Wait (up to 5 s) for the backend to exit, so the next call
+                # can't race ahead of the termination (PG14+).
+                cur.execute("SELECT pg_terminate_backend(%s, 5000)", (old_pid,))
             pg_conn.commit()
             with pytest.raises(psycopg2.OperationalError):
                 owned.read_any(queue_names, vt_seconds=30)

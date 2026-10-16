@@ -51,7 +51,7 @@ def _clear_calls():
     _calls.clear()
 
 
-def _msg(msg_id, payload, *, read_ct=1, queue_name=""):
+def _msg(msg_id, payload, *, read_ct=1, queue_name="qa"):
     return QueueMessage(
         msg_id=msg_id, message=payload, read_ct=read_ct, queue_name=queue_name
     )
@@ -871,6 +871,26 @@ class TestConsumerIntegration:
                 )
             pg_client.conn.commit()
 
+    def test_multi_queue_poll_executes_and_acks_on_postgres(self, pg_client):
+        # The multi-queue claim end to end: real read_any rows feed the real
+        # dispatch and the delete() ack, which the stubbed tests can't see.
+        base = f"test_consumer_mq_{os.getpid()}"
+        queues = [f"{base}_a", f"{base}_empty", f"{base}_b"]
+        try:
+            pg_client.send(queues[0], to_payload("test_pg_consumer.ok", args=[11]))
+            pg_client.send(queues[2], to_payload("test_pg_consumer.ok", args=[22]))
+            consumer = PgQueueConsumer(queues, client=pg_client)
+            claimed = [consumer.poll_once() for _ in range(3)]
+            assert claimed == [1, 1, 0]
+            assert (11, 0) in _calls and (22, 0) in _calls
+            assert pg_client.read_any(queues, vt_seconds=30, qty=10) == []  # acked
+        finally:
+            with pg_client.conn.cursor() as cur:
+                cur.execute(
+                    "DELETE FROM pg_queue_message WHERE queue_name = ANY(%s)", (queues,)
+                )
+            pg_client.conn.commit()
+
     def test_busy_queues_take_equal_turns_around_an_empty_one(self, pg_client):
         # An empty queue between two busy ones must not give the queue after it
         # an extra turn: claims alternate.
@@ -1003,17 +1023,6 @@ class TestMultiQueue:
         consumer.poll_once()
         # Batch ended on qc (index 2), so the next claim starts at qa (0).
         assert [c.kwargs["start"] for c in client.read_any.call_args_list] == [0, 0]
-
-    def test_unknown_queue_name_rotates_by_one_and_warns(self, caplog):
-        client = MagicMock()
-        client.read_any.side_effect = [[], [_msg(1, _ok_payload(1), queue_name="??")]]
-        consumer = PgQueueConsumer(["qa", "qb", "qc"], client=client)
-        consumer._handle = lambda m: None
-        consumer.poll_once()  # empty: start 0 -> 1
-        with caplog.at_level(logging.WARNING):
-            consumer.poll_once()  # start 1, unknown name -> 2
-        assert consumer._next_queue == 2
-        assert "unknown queue_name" in caplog.text
 
     def test_start_queue_rotates_every_cycle(self):
         # With nothing claimed the start still moves on, so every queue gets to
