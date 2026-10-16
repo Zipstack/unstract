@@ -213,6 +213,13 @@ DB_HOST = os.environ.get("DB_HOST", "backend-db-1")
 DB_PASSWORD = os.environ.get("DB_PASSWORD", "unstract_pass")
 DB_PORT = os.environ.get("DB_PORT", 5432)
 DB_SCHEMA = os.environ.get("DB_SCHEMA", "unstract")
+# Seconds a request thread keeps its DB connection for reuse. 0 (Django's default)
+# reconnects on every request; each reconnect costs pgbouncer a DISCARD ALL and us a
+# SET search_path. Sizing caveat before raising it: connections are per thread, and
+# gunicorn runs GUNICORN_WORKERS x GUNICORN_THREADS of them per pod. An idle thread
+# keeps its connection until it next serves a request, and in pgbouncer session mode
+# each held client connection pins a server one — size the pool for that.
+DB_CONN_MAX_AGE = int(os.environ.get("DB_CONN_MAX_AGE", "0"))
 
 # Celery Backend Database Name (falls back to main DB when unset or empty)
 CELERY_BACKEND_DB_NAME = os.environ.get("CELERY_BACKEND_DB_NAME") or DB_NAME
@@ -507,6 +514,10 @@ DATABASES = {
         "PASSWORD": f"{DB_PASSWORD}",
         "PORT": f"{DB_PORT}",
         "ATOMIC_REQUESTS": ATOMIC_REQUESTS,
+        "CONN_MAX_AGE": DB_CONN_MAX_AGE,
+        # Ping a reused connection before its request so one the server or pooler
+        # dropped is replaced instead of failing the request. No-op at age 0.
+        "CONN_HEALTH_CHECKS": True,
         "OPTIONS": {
             "application_name": os.environ.get("APPLICATION_NAME", ""),
         },
