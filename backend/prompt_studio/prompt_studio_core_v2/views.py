@@ -1303,6 +1303,8 @@ class PromptStudioCoreView(
             new_tool = PromptStudioHelper.create_tool_from_import_data(
                 import_data, tool_name, organization, request.user
             )
+            # Recorded now: the project exists even if a later step fails.
+            record_resource_event(request, Action.RESOURCE_CREATED, new_tool)
 
             try:
                 PromptStudioHelper.create_profile_manager(

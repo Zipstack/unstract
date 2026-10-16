@@ -3,6 +3,7 @@
 Every flow goes through the real viewset, so each emit site is exercised.
 """
 
+import json
 from unittest.mock import MagicMock, patch
 
 from adapter_processor_v2.models import AdapterInstance
@@ -11,10 +12,12 @@ from api_v2.api_deployment_views import APIDeploymentViewSet
 from api_v2.models import APIDeployment
 from connector_v2.models import ConnectorInstance
 from connector_v2.views import ConnectorInstanceViewSet
+from django.core.files.uploadedfile import SimpleUploadedFile
 from pipeline_v2.models import Pipeline
 from pipeline_v2.views import PipelineViewSet
 from prompt_studio.prompt_studio_core_v2.models import CustomTool
 from prompt_studio.prompt_studio_core_v2.views import PromptStudioCoreView
+from rest_framework.test import force_authenticate
 from tenant_account_v2.models import OrganizationGroup
 from workflow_manager.endpoint_v2.models import WorkflowEndpoint
 from workflow_manager.workflow_v2.models.workflow import Workflow
@@ -59,6 +62,29 @@ class ResourceEventTestBase(AuditTestBase):
         self.assertEqual(response.status_code, 201, response.data)
         return AdapterInstance.objects.get(adapter_name=name)
 
+    def create_connector(self) -> ConnectorInstance:
+        # The connector and payload of connector_v2's register test; creating
+        # stores the metadata without contacting the storage.
+        response = self.call(
+            ConnectorInstanceViewSet.as_view({"post": "create"}),
+            "post",
+            data={
+                "connector_id": "minio|c799f6e3-2b57-434e-aaac-b5daa415da19",
+                "connector_name": "minio-in",
+                "connector_metadata": {
+                    "connectorName": "minio",
+                    "key": "access-key",
+                    "secret": "secret-key",
+                    "endpoint_url": "http://minio.invalid:9000",
+                    "region_name": "",
+                    "bucket": "bucket",
+                    "path": "/",
+                },
+            },
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+        return ConnectorInstance.objects.get(connector_name="minio-in")
+
 
 class CreateAndDeleteTests(ResourceEventTestBase):
     def _delete(self, viewset, resource, pk) -> None:
@@ -83,27 +109,7 @@ class CreateAndDeleteTests(ResourceEventTestBase):
         self.assertTrue(AdapterInstance.objects.filter(id=adapter_id).exists())
 
     def test_connector(self) -> None:
-        # The connector and payload of connector_v2's register test; creating
-        # stores the metadata without contacting the storage.
-        response = self.call(
-            ConnectorInstanceViewSet.as_view({"post": "create"}),
-            "post",
-            data={
-                "connector_id": "minio|c799f6e3-2b57-434e-aaac-b5daa415da19",
-                "connector_name": "minio-in",
-                "connector_metadata": {
-                    "connectorName": "minio",
-                    "key": "access-key",
-                    "secret": "secret-key",
-                    "endpoint_url": "http://minio.invalid:9000",
-                    "region_name": "",
-                    "bucket": "bucket",
-                    "path": "/",
-                },
-            },
-        )
-        self.assertEqual(response.status_code, 201, response.data)
-        connector = ConnectorInstance.objects.get(connector_name="minio-in")
+        connector = self.create_connector()
         self.assert_resource_event(
             Action.RESOURCE_CREATED, "connector_instance", connector.id, "minio-in"
         )
@@ -185,6 +191,49 @@ class CreateAndDeleteTests(ResourceEventTestBase):
         self.assert_resource_event(
             Action.RESOURCE_DELETED, "custom_tool", tool.tool_id, "invoice-parser"
         )
+
+    def test_prompt_studio_import(self) -> None:
+        # The export's top-level shape (prompt_studio_helper.validate_import_file).
+        export = {
+            "tool_metadata": {"tool_name": "imported", "author": "a", "description": "d"},
+            "tool_settings": {},
+            "prompts": [],
+        }
+        upload = SimpleUploadedFile(
+            "project.json", json.dumps(export).encode(), content_type="application/json"
+        )
+        request = self.factory.post("/", {"file": upload}, format="multipart")
+        request.id = "req-123"  # as self.call sets it
+        force_authenticate(request, user=self.admin)
+        helper = "prompt_studio.prompt_studio_core_v2.views.PromptStudioHelper"
+        # The steps after the project row exists are not under test.
+        with (
+            patch(f"{helper}.create_profile_manager"),
+            patch(f"{helper}.import_prompts"),
+            patch(f"{helper}.validate_adapter_configuration", return_value=(False, "")),
+            self.captureOnCommitCallbacks(execute=True),
+        ):
+            response = PromptStudioCoreView.as_view({"post": "import_project"})(request)
+        self.assertEqual(response.status_code, 201, response.data)
+        tool = CustomTool.objects.get(tool_id=response.data["tool_id"])
+        self.assert_resource_event(
+            Action.RESOURCE_CREATED, "custom_tool", tool.tool_id, tool.tool_name
+        )
+
+    def test_an_in_use_connector_is_not_recorded_deleted(self) -> None:
+        connector = self.create_connector()
+        workflow = self.create_workflow()
+        WorkflowEndpoint.objects.filter(workflow=workflow).update(
+            connector_instance=connector
+        )
+        response = self.call(
+            ConnectorInstanceViewSet.as_view({"delete": "destroy"}),
+            "delete",
+            pk=str(connector.id),
+        )
+        self.assertGreaterEqual(response.status_code, 400)
+        self.assertTrue(ConnectorInstance.objects.filter(id=connector.id).exists())
+        self.assertEqual(self.events(action=Action.RESOURCE_DELETED), [])
 
     def test_a_refused_delete_records_nothing(self) -> None:
         adapter = self.create_adapter()  # the creator's default LLM

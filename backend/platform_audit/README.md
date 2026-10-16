@@ -237,7 +237,9 @@ sharing is recorded through the same endpoints. The summary is the adapter type
 
 Target types: `member`, `invitation`, `group`, `platform_api_key`,
 `global_api_deployment_key`, `platform_key`, `default_profile`,
-`platform_setting`, `capability`, `execution`.
+`platform_setting`, `capability`, `execution`, and the resource kinds
+`adapter_instance`, `connector_instance`, `workflow`, `api_deployment`,
+`pipeline`, `custom_tool`, `agentic_project`, `lookup`.
 
 Per-deployment API keys (`api_v2`) are not recorded.
 
@@ -277,7 +279,8 @@ that list miss or name the wrong key, and if reading that list fails, the
 deactivated keys are not recorded.
 
 Editing a resource (renaming it, changing its settings) is not recorded. Nor is
-anything a resource delete removes with it, such as an API deployment's keys.
+anything a resource delete removes with it: deleting a workflow also deletes its
+pipelines and API deployments, with no event of their own.
 
 Deleting a group records `group.deleted` only; the memberships it removes do
 not get their own `group.member_removed` events.
