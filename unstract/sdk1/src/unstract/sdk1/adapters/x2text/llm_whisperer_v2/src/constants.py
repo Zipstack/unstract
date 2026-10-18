@@ -95,6 +95,11 @@ class WhispererConfig:
     PAGE_SEPARATOR_PARAM = "page_separator"
     URL_IN_POST = "url_in_post"
     TAG = "tag"
+    # NOT a param to send. llmwhisperer-client (2.8.1) rejects `filename` and
+    # `file_name` together — "use 'file_name' only" — and `file_name` is always
+    # set, so emitting this fails the extraction. Kept so the guard test can
+    # assert its absence; put the source name in FILE_NAME instead.
+    FILENAME = "filename"
     USE_WEBHOOK = "use_webhook"
     WEBHOOK_METADATA = "webhook_metadata"
     TEXT_ONLY = "text_only"
