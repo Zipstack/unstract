@@ -13,7 +13,6 @@ from notification.providers.base_provider import (
     ValidationError,
 )
 from shared.infrastructure.logging import WorkerLogger
-
 from unstract.core.notification_utils import (
     build_webhook_headers,
     send_webhook_request,

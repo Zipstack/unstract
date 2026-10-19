@@ -36,7 +36,6 @@ from datetime import datetime
 from typing import TYPE_CHECKING, NamedTuple
 
 from croniter import croniter
-
 from unstract.core.data_models import TaskPayload
 from unstract.core.jsonb import dumps_for_jsonb
 

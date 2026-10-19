@@ -318,8 +318,7 @@ def close_stream(
             # close failure (the provider error is logged by the caller).
             close_err.__suppress_context__ = True
             log.warning(
-                "Failed to close %s%s; its pooled HTTP connection may stay "
-                "checked out",
+                "Failed to close %s%s; its pooled HTTP connection may stay checked out",
                 type(target).__name__,
                 source,
                 exc_info=close_err,

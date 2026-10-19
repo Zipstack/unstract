@@ -62,7 +62,7 @@ def _load_execution(execution_id: str | None) -> WorkflowExecution | None:
     if not execution_id:
         return None
     try:
-        return cast(WorkflowExecution, WorkflowExecution.objects.get(id=execution_id))
+        return cast("WorkflowExecution", WorkflowExecution.objects.get(id=execution_id))
     except WorkflowExecution.DoesNotExist:
         # Catch ONLY DoesNotExist: a missing row is the fail-closed case
         # (_apply_failure_filter then drops notify_on_failures rows). A malformed
