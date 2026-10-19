@@ -7,7 +7,6 @@ from unittest.mock import patch
 import httpx
 import litellm
 import pytest
-
 import unstract.sdk1.llm  # noqa: F401 - applies production LiteLLM settings
 from unstract.sdk1.adapters.base1 import MiniMaxLLMParameters
 

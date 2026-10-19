@@ -1,7 +1,6 @@
 import json
 
 import pytest
-
 from unstract.sdk1.adapters.base1 import (
     MiniMaxLLMParameters,
     NvidiaBuildEmbeddingParameters,
