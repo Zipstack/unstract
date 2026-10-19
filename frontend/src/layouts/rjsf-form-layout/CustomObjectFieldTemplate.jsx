@@ -1,5 +1,5 @@
-import { Col, Row } from "antd";
 import PropTypes from "prop-types";
+import { Col, Row } from "@/components/ui/shims/antd-layout";
 import "./CustomFieldTemplate.css";
 
 const CustomObjectFieldTemplate = (props) => {
@@ -26,7 +26,7 @@ const CustomObjectFieldTemplate = (props) => {
 
   // Auto-detect if we have file expiry fields that should be rendered side-by-side
   const hasFileExpiryFields =
-    propertyMap["reprocessInterval"] && propertyMap["intervalUnit"];
+    propertyMap.reprocessInterval && propertyMap.intervalUnit;
 
   // Filter fields based on conditions
   const shouldShowConditionalFields =
@@ -61,8 +61,8 @@ const CustomObjectFieldTemplate = (props) => {
             fieldName === "reprocessInterval" &&
             shouldShowConditionalFields
           ) {
-            const intervalProperty = propertyMap["reprocessInterval"];
-            const unitProperty = propertyMap["intervalUnit"];
+            const intervalProperty = propertyMap.reprocessInterval;
+            const unitProperty = propertyMap.intervalUnit;
 
             if (intervalProperty && unitProperty) {
               return (

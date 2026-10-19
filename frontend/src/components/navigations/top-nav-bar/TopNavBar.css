@@ -1,24 +1,49 @@
 /* Styles for TopNavBar */
 
 .top-navbar-dp {
-  height: 25px;
-  width: 25px;
+  height: 32px;
+  width: 32px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background-color: #184772;
-  border-radius: 5px;
+  /* Was #184772 -- a navy chip left over from the navy top bar, and already
+   * an orphan colour once that bar went violet. On the light bar it needs to
+   * be the one that carries white initials, so it tracks the brand token. */
+  background-color: var(--primary);
+  border-radius: 8px;
   cursor: pointer;
 }
 
 .top-navbar-dp .navbar-img {
-  border-radius: 5px;
+  border-radius: 8px;
 }
 
 .top-navbar-dp .initials {
-  font-size: 12px;
-  font-weight: bold;
-  color: white;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 20px;
+  color: var(--primary-foreground);
+}
+
+/* Avatar + chevron as one 40px target, per the Figma top bar (1638-44737). */
+.top-navbar-avatar-menu {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  padding-inline: 4px 6px;
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+}
+
+.top-navbar-avatar-menu:hover {
+  background-color: var(--accent);
+}
+
+.top-navbar-avatar-chevron {
+  width: 13px;
+  height: 13px;
+  color: var(--muted-foreground);
 }
 
 .topbar-logo {
@@ -81,13 +106,38 @@
   background-color: rgba(0, 0, 0, 0.04);
 }
 
+/*
+ * The rule above keys on `.ant-dropdown-menu-item`, which the Dropdown shim no
+ * longer emits, so this row fell back to block layout with a full-size icon
+ * stacked over its label. Mirrors `.logout-button`, which the sibling rows use.
+ */
+.switch-org-trigger {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  padding: 5px 12px;
+  cursor: pointer;
+}
+
+.switch-org-trigger > svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+.switch-org-trigger:hover {
+  background-color: rgba(0, 0, 0, 0.04);
+}
+
+/* White read against the old violet bar; the bar is now `--card`. */
 .page-identifier {
   vertical-align: super;
-  color: white;
+  color: var(--foreground);
 }
 
 .page-heading {
-  color: white;
+  color: var(--foreground);
   font-size: 16px;
   font-weight: 600;
   margin-left: 10px;

@@ -4,7 +4,7 @@
   height: 100%;
   display: flex;
   flex-direction: column;
-  background-color: var(--page-bg-2);
+  background-color: var(--background);
   overflow-y: hidden;
 }
 
@@ -58,7 +58,7 @@
 
 .output-analyzer-left-box > div {
   height: 100%;
-  background-color: var(--white);
+  background-color: var(--card);
   padding: 0px 12px;
 }
 
@@ -69,5 +69,5 @@
 
 .output-analyzer-right-box > div {
   height: 100%;
-  background-color: var(--white);
+  background-color: var(--card);
 }

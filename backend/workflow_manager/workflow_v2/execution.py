@@ -388,6 +388,46 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
             logger.error(f"execution doesn't exist {execution_id}")
 
     @staticmethod
+    def update_execution_completed(
+        execution_id: str, total_files: int = 0, failed_files: int = 0
+    ) -> WorkflowExecution | None:
+        """Terminalise an execution that finished without any work to dispatch.
+
+        The counters must be written alongside the status: a terminal row whose
+        failed_files is NULL reads as a clean success to is_failure_run() and to
+        run history, which would hide a run whose files were all rejected.
+
+        Returns the row as persisted, so callers can see whether the status
+        actually changed rather than assuming it did.
+        """
+        try:
+            execution = WorkflowExecution.objects.get(pk=execution_id)
+            # Routed through the model method so the PG terminal-one-way guard
+            # applies; the legacy transport has no such guard.
+            execution.update_execution(status=ExecutionStatus.COMPLETED)
+            execution.total_files = total_files
+            execution.successful_files = 0
+            execution.failed_files = failed_files
+            # Field-scoped for the columns, but save() still republishes this
+            # object's status to the execution cache. Safe only because the row is
+            # undispatched here, so no worker can have moved it on.
+            execution.save(
+                update_fields=[
+                    "total_files",
+                    "successful_files",
+                    "failed_files",
+                    "modified_at",
+                ]
+            )
+            # The guard may have refused the status change without raising; re-read
+            # so the returned row reflects what is actually stored.
+            execution.refresh_from_db()
+            return execution
+        except WorkflowExecution.DoesNotExist:
+            logger.error(f"execution doesn't exist {execution_id}")
+            return None
+
+    @staticmethod
     def update_execution_task(execution_id: str, task_id: str) -> None:
         try:
             logger.info(
@@ -410,6 +450,37 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
             logger.error(f"execution doesn't exist {execution_id}")
 
     @staticmethod
+    def mark_dispatched(execution_id: str) -> None:
+        """Stamp ``dispatched_at`` — the positive record that the orchestrator task
+        reached its transport.
+
+        Called by the dispatcher the instant dispatch returns, BEFORE any handle
+        bookkeeping. That ordering is the whole point: ``_record_dispatch_handle`` has
+        three paths that leave both handles NULL on an execution that IS running (an
+        exception the caller swallows, an empty handle, an unparseable PG handle), and
+        the undispatched sweep used to read that absence as "never dispatched" and mark
+        the live row ERROR. One write upstream of all three closes it.
+
+        Best-effort, matching the handle write it precedes: a failure here must never
+        abort the caller, which is past the point of no return — the orchestrator is
+        already running. A failure leaves exactly the pre-existing ambiguity rather than
+        a new one.
+
+        ``update()`` rather than ``save()``: no auto_now field on this model may be
+        re-stamped by a bookkeeping write, and this must not race the orchestrator's own
+        status writes on the same row.
+        """
+        from django.utils import timezone
+
+        updated = WorkflowExecution.objects.filter(id=execution_id).update(
+            dispatched_at=timezone.now()
+        )
+        if not updated:
+            logger.error(
+                f"Could not stamp dispatched_at: execution {execution_id} not found"
+            )
+
+    @staticmethod
     def update_execution_queue_message_id(
         execution_id: str, queue_message_id: int | None
     ) -> None:
@@ -428,7 +499,7 @@ class WorkflowExecutionServiceHelper(WorkflowExecutionService):
         # update_fields) re-runs _handle_execution_cache(), which would republish
         # this method's stale in-memory status to the Redis execution cache and can
         # clobber a status the worker has since advanced — the same reason
-        # _set_result_acknowledge uses a queryset .update(). This marker write must
+        # set_result_acknowledge uses a queryset .update(). This marker write must
         # touch ONLY the handle column and never the status/counters or the cache.
         updated = WorkflowExecution.objects.filter(pk=execution_id).update(
             queue_message_id=queue_message_id

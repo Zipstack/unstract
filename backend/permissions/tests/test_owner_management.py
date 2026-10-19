@@ -16,8 +16,10 @@ from unittest.mock import Mock, patch
 import pytest
 from account_v2.models import User
 from django.test import TestCase
-from permissions.roles import ResourceRole
+from prompt_studio.permission import ParentToolAccess
 from rest_framework import status
+from rest_framework.parsers import JSONParser
+from rest_framework.request import Request as DRFRequest
 from rest_framework.response import Response
 from rest_framework.test import APIRequestFactory, force_authenticate
 from rest_framework.views import APIView
@@ -25,7 +27,7 @@ from workflow_manager.workflow_v2.models.workflow import Workflow
 from workflow_manager.workflow_v2.views import WorkflowViewSet
 
 from permissions.membership_serializers import AddOwnerSerializer
-from permissions.permission import IsParentToolOwner
+from permissions.roles import ResourceRole
 from permissions.tests.base import (
     RESOURCE_SPECS,
     CoOwnerOrgTestMixin,
@@ -124,7 +126,8 @@ class WorkflowOwnerEndpointTests(CoOwnerOrgTestMixin, TestCase):
 
     def test_remove_rejects_service_account(self) -> None:
         """Symmetric with the add-side guard: a service-account owner cannot be
-        removed, so it can't be stranded off the resource (UN-2202 review #7)."""
+        removed, so it can't be stranded off the resource (UN-2202 review #7).
+        """
         svc = make_user("svc@example.com", is_service_account=True)
         self.workflow.memberships.create(user=svc, role=ResourceRole.OWNER)
         response = self._remove(self.owner, svc.pk)
@@ -134,7 +137,8 @@ class WorkflowOwnerEndpointTests(CoOwnerOrgTestMixin, TestCase):
     def test_shared_viewer_can_list_shared_users(self) -> None:
         """``list_of_shared_users`` is viewer-tier by design (spec §10): a shared
         user may open the owner popup. Guards against a re-tighten to IsOwner
-        (UN-2202 review #6)."""
+        (UN-2202 review #6).
+        """
         self.workflow.memberships.create(user=self.viewer, role=ResourceRole.VIEWER)
         view = WorkflowViewSet.as_view({"get": "list_of_shared_users"})
         request = self.factory.get("/x/")
@@ -191,7 +195,8 @@ class OwnerModelAndPermissionTests(CoOwnerOrgTestMixin, TestCase):
 
     def test_service_account_excluded_from_owner_roster(self) -> None:
         """A service-account OWNER row is a real grant but must not surface as a
-        removable co-owner or inflate the count badge (UN-2202 review #7)."""
+        removable co-owner or inflate the count badge (UN-2202 review #7).
+        """
         svc = make_user("svc@example.com", is_service_account=True)
         self.workflow.memberships.create(user=self.coowner, role=ResourceRole.OWNER)
         self.workflow.memberships.create(user=svc, role=ResourceRole.OWNER)
@@ -201,9 +206,7 @@ class OwnerModelAndPermissionTests(CoOwnerOrgTestMixin, TestCase):
         self.assertEqual(self.workflow.co_owners_count(), 2)
         # the filter is display-only — the SA still genuinely owns the resource
         self.assertTrue(
-            self.workflow.memberships.filter(
-                user=svc, role=ResourceRole.OWNER
-            ).exists()
+            self.workflow.memberships.filter(user=svc, role=ResourceRole.OWNER).exists()
         )
 
     def test_membership_save_derives_organization(self) -> None:
@@ -216,7 +219,8 @@ class OwnerModelAndPermissionTests(CoOwnerOrgTestMixin, TestCase):
 
 class CrossResourceOwnerManagementTests(CoOwnerOrgTestMixin, TestCase):
     """The shared owner-management surface behaves identically for every OSS
-    shareable resource (AgenticProject is covered cloud-side)."""
+    shareable resource (AgenticProject is covered cloud-side).
+    """
 
     def setUp(self) -> None:
         self._seed_org()
@@ -253,7 +257,8 @@ class OwnerNotificationWiringTests(CoOwnerOrgTestMixin, TestCase):
     notifications with the right payload, and swallow notification failures so
     the owners request is never broken (best-effort). The resource-type hook is
     patched to a fixed value so the test does not depend on the cloud-only
-    notification plugin's conditional ``ResourceType`` import."""
+    notification plugin's conditional ``ResourceType`` import.
+    """
 
     def setUp(self) -> None:
         self._seed_org()
@@ -311,6 +316,20 @@ class OwnerNotificationWiringTests(CoOwnerOrgTestMixin, TestCase):
         self.assertEqual(kwargs["resource_id"], str(self.workflow.pk))
         self.assertEqual(kwargs["resource_instance"], self.workflow)
 
+    def test_remove_skips_notification_when_demoted_owner_retains_access(self) -> None:
+        """Demoted from OWNER, but an org admin still reaches every resource --
+        nothing was actually taken from them, so no "access removed" email.
+        """
+        self.workflow.memberships.create(user=self.admin, role=ResourceRole.OWNER)
+        with patch(
+            "account_v2.authentication_controller.AuthenticationController"
+            ".is_admin_by_role",
+            side_effect=lambda role: role == "admin",
+        ):
+            response = self._remove(self.owner, self.admin.pk)
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.service.send_access_removed_notification.assert_not_called()
+
     def test_notification_failure_does_not_break_add(self) -> None:
         self.service.send_co_owner_added_notification.side_effect = RuntimeError("boom")
         response = self._add(self.owner, self.coowner.pk)
@@ -323,10 +342,12 @@ class OwnerNotificationWiringTests(CoOwnerOrgTestMixin, TestCase):
         self.assertIn(self.coowner.pk, owner_ids)
 
 
-class IsParentToolOwnerTests(CoOwnerOrgTestMixin, TestCase):
-    """``IsParentToolOwner`` inherits access from the parent ``CustomTool``
-    (owner/co-owner/admin/service-account allow; viewer/outsider deny) and falls
-    back to the object's own ``created_by`` when there is no parent tool.
+class ParentToolAccessTests(CoOwnerOrgTestMixin, TestCase):
+    """``ParentToolAccess`` inherits access from the parent ``CustomTool``.
+
+    A Prompt Studio project is shared for collaboration, so a viewer manages
+    its profiles alongside its owner; only an outsider is refused. Falls back
+    to the object's own ``created_by`` when there is no parent tool.
     """
 
     def setUp(self) -> None:
@@ -346,7 +367,7 @@ class IsParentToolOwnerTests(CoOwnerOrgTestMixin, TestCase):
     def _perm(self, user: User, obj: object) -> bool:
         request = APIRequestFactory().get("/")
         request.user = user
-        return IsParentToolOwner().has_object_permission(request, APIView(), obj)
+        return ParentToolAccess().has_object_permission(request, APIView(), obj)
 
     def test_parent_tool_owners_admin_service_account_allowed(self) -> None:
         child = SimpleNamespace(prompt_studio_tool=self.tool)
@@ -356,16 +377,36 @@ class IsParentToolOwnerTests(CoOwnerOrgTestMixin, TestCase):
         self.assertTrue(self._perm(self.admin, child))
         self.assertTrue(self._perm(svc, child))
 
-    def test_parent_tool_viewer_and_outsider_denied(self) -> None:
+    def test_parent_tool_viewer_allowed_outsider_denied(self) -> None:
+        # The collaboration rule: a shared viewer manages the project's
+        # profiles; someone with no access to the project does not.
         child = SimpleNamespace(prompt_studio_tool=self.tool)
-        self.assertFalse(self._perm(self.viewer, child))
+        self.assertTrue(self._perm(self.viewer, child))
         self.assertFalse(self._perm(self.outsider, child))
 
-    def test_null_parent_falls_back_to_object_owner(self) -> None:
+    def test_null_parent_falls_back_to_object_creator(self) -> None:
         # No parent tool → access derives from the object's own ``created_by``.
-        orphan = SimpleNamespace(prompt_studio_tool=None, created_by=self.owner)
+        orphan = SimpleNamespace(prompt_studio_tool=None, created_by_id=self.owner.pk)
         self.assertTrue(self._perm(self.owner, orphan))
         self.assertFalse(self._perm(self.coowner, orphan))
+
+    def test_create_resolves_the_parent_from_the_payload(self) -> None:
+        # ``create`` is collection-level, so DRF never calls get_object();
+        # the parent is read from the request body instead.
+        def can_create(user: User, tool_id: object) -> bool:
+            # A DRF Request, not the raw WSGI one: the gate reads ``.data``.
+            raw = APIRequestFactory().post(
+                "/", {"prompt_studio_tool": str(tool_id)}, format="json"
+            )
+            request = DRFRequest(raw, parsers=[JSONParser()])
+            request.user = user
+            return ParentToolAccess().has_permission(
+                request, SimpleNamespace(action="create")
+            )
+
+        self.assertTrue(can_create(self.owner, self.tool.tool_id))
+        self.assertTrue(can_create(self.viewer, self.tool.tool_id))
+        self.assertFalse(can_create(self.outsider, self.tool.tool_id))
 
 
 class AdapterShareOwnerExemptionTests(CoOwnerOrgTestMixin, TestCase):
@@ -399,9 +440,7 @@ class AdapterShareOwnerExemptionTests(CoOwnerOrgTestMixin, TestCase):
         before = {self.owner.pk, self.coowner.pk, self.viewer.pk}
         after = {self.owner.pk}
         with (
-            patch.object(
-                AdapterInstanceViewSet, "get_object", return_value=self.adapter
-            ),
+            patch.object(AdapterInstanceViewSet, "get_object", return_value=self.adapter),
             patch.object(
                 AdapterInstanceViewSet,
                 "_effective_member_ids",
@@ -510,9 +549,13 @@ class CreateEndpointGrantsCreatorOwnershipTests(CoOwnerOrgTestMixin, TestCase):
         self.assertIn(created, model.objects.for_user(self.coowner))
 
     def _build_workflow_fixture(self) -> Workflow:
-        return Workflow.objects.create(
+        workflow = Workflow.objects.create(
             workflow_name="wf-parent", organization=self.org, created_by=self.coowner
         )
+        # The real create path grants this row, and ``created_by`` is
+        # audit-only -- without it the creator does not own the parent.
+        workflow.memberships.create(user=self.coowner, role=ResourceRole.OWNER)
+        return workflow
 
     @pytest.mark.critical_path("co-owner-manage")
     def test_workflow_create_grants_creator_ownership(self) -> None:
@@ -536,9 +579,7 @@ class CreateEndpointGrantsCreatorOwnershipTests(CoOwnerOrgTestMixin, TestCase):
         from adapter_processor_v2.views import AdapterInstanceViewSet
 
         # Only the SDK context-window lookup (a provider-shaped call) is mocked.
-        with patch.object(
-            AdapterInstance, "get_context_window_size", return_value=4096
-        ):
+        with patch.object(AdapterInstance, "get_context_window_size", return_value=4096):
             response = self._create(
                 AdapterInstanceViewSet,
                 {
@@ -615,7 +656,8 @@ class CreateEndpointGrantsCreatorOwnershipTests(CoOwnerOrgTestMixin, TestCase):
 
     def test_import_path_grants_creator_ownership(self) -> None:
         """The 7th grant site — ``create_tool_from_import_data`` — is a helper
-        the viewset sweep can't reach; pin it directly."""
+        the viewset sweep can't reach; pin it directly.
+        """
         from prompt_studio.prompt_studio_core_v2.models import CustomTool
         from prompt_studio.prompt_studio_core_v2.prompt_studio_helper import (
             PromptStudioHelper,
@@ -629,3 +671,35 @@ class CreateEndpointGrantsCreatorOwnershipTests(CoOwnerOrgTestMixin, TestCase):
         )
         self.assertTrue(tool.is_owner(self.coowner))
         self.assertIn(tool, CustomTool.objects.for_user(self.coowner))
+
+
+class DeprecatedAxisShimTests(CoOwnerOrgTestMixin, TestCase):
+    """The temporary ``share_axes``/``snapshot_share_axes``/``diff_share_axes``
+    shim (see the block comment in ``resource_share_views.py``) -- restored
+    only so cloud's still-stale ``origin/main`` ``AgenticProjectViewSet``
+    doesn't ``AttributeError`` once this branch merges and deletes the real
+    thing on OSS main. Delete this test alongside that block, once
+    Zipstack/unstract-cloud#1698 merges.
+    """
+
+    def setUp(self) -> None:
+        self._seed_org()
+        self.workflow = Workflow.objects.create(
+            workflow_name="wf-shim", organization=self.org, created_by=self.owner
+        )
+        self.workflow.memberships.create(user=self.owner, role=ResourceRole.OWNER)
+
+    def test_snapshot_then_diff_reproduces_the_original_always_empty_shape(self) -> None:
+        # Matches the pre-removal contract exactly: the PATCH path this shim
+        # exists for has no way to actually change shared_users/shared_groups
+        # (see 999e443b4), so the diff for either axis is always empty.
+        view = WorkflowViewSet()
+        before = view.snapshot_share_axes(self.workflow)
+        self.assertEqual(before, {"shared_users": set(), "shared_groups": set()})
+        diff = view.diff_share_axes(
+            self.workflow, before, {"shared_users": [], "shared_groups": []}
+        )
+        self.assertEqual(set(diff), {"shared_users", "shared_groups"})
+        for axis_diff in diff.values():
+            self.assertEqual(axis_diff.added, set())
+            self.assertEqual(axis_diff.removed, set())

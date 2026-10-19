@@ -1,6 +1,6 @@
-import { Layout } from "antd";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
+import { Layout } from "@/components/ui/shims/antd-structure";
 import "./PageLayout.css";
 
 import { LazyOutlet } from "../../components/error/LazyOutlet/LazyOutlet.jsx";
@@ -24,7 +24,6 @@ try {
   // Missing plugin is the expected case; surface anything else so a
   // broken plugin doesn't silently unmount its UI.
   if (!isModuleMissing(err)) {
-    // eslint-disable-next-line no-console
     console.error(
       "[marketplace] MarketplacePendingBanner import failed unexpectedly",
       err,

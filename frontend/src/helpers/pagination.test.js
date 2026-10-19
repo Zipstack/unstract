@@ -35,10 +35,13 @@ describe("fetchAllPages", () => {
     await expect(
       fetchAllPages(axiosInstance, { url: "/x/", params: { type: "LLM" } }),
     ).resolves.toEqual([1, 2, 3]);
-    // Later pages must keep the caller's own params alongside ?page.
+    // Later pages must keep the caller's own params alongside ?page, and go on
+    // requesting the max page size — dropping it would silently re-cap the
+    // follow-up pages at the endpoint's default and stall the loop.
     expect(axiosInstance.mock.calls[1][0].params).toEqual({
       type: "LLM",
       page: 2,
+      page_size: 1000,
     });
   });
 

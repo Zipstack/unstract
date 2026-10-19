@@ -8,16 +8,16 @@ import {
 } from "../components/error/LazyOutlet/LazyOutlet.jsx";
 import { NotFound } from "../components/error/NotFound/NotFound.jsx";
 import { GenericLoader } from "../components/generic-loader/GenericLoader.jsx";
-import { PersistentLogin } from "../components/helpers/auth/PersistentLogin.js";
-import { RequireAuth } from "../components/helpers/auth/RequireAuth.js";
-import { RequireGuest } from "../components/helpers/auth/RequireGuest.js";
+import { PersistentLogin } from "../components/helpers/auth/PersistentLogin.jsx";
+import { RequireAuth } from "../components/helpers/auth/RequireAuth.jsx";
+import { RequireGuest } from "../components/helpers/auth/RequireGuest.jsx";
 import { OAuthStatus } from "../components/oauth-ds/oauth-status/OAuthStatus.jsx";
 import { ErrorBoundary } from "../components/widgets/error-boundary/ErrorBoundary.jsx";
 import { lazyNamed } from "../helpers/lazyNamed.js";
 import { isModuleMissing } from "../helpers/pluginLoader.js";
 import { lazyPlugin } from "../helpers/pluginRegistry.js";
 import { LandingPage } from "../pages/LandingPage.jsx";
-import { useMainAppRoutes } from "./useMainAppRoutes.js";
+import { useMainAppRoutes } from "./useMainAppRoutes.jsx";
 
 // Heavy route pages are code-split so the unauthenticated /landing page does
 // not download their chunks (PDF viewer, Monaco, charts) before login. The
@@ -131,7 +131,6 @@ try {
   llmWhispererRouter = mod.useLlmWhispererRoutes;
 } catch (err) {
   if (!isModuleMissing(err)) {
-    // eslint-disable-next-line no-console
     console.error("[llm-whisperer] routes import failed unexpectedly", err);
   }
 }
@@ -142,7 +141,6 @@ try {
   verticalsRouter = mod.useVerticalsRoutes;
 } catch (err) {
   if (!isModuleMissing(err)) {
-    // eslint-disable-next-line no-console
     console.error("[verticals] routes import failed unexpectedly", err);
   }
 }

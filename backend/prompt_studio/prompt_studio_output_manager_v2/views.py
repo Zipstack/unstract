@@ -1,16 +1,18 @@
 import logging
+import uuid
 from typing import Any
 
-from django.core.exceptions import ObjectDoesNotExist
+from account_v2.models import Organization
 from django.db.models import QuerySet
 from django.http import HttpRequest
 from rest_framework import status, viewsets
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import APIException, ValidationError
 from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
 from utils.common_utils import CommonUtils
 from utils.filtering import FilterHelper
 from utils.user_context import UserContext
+from utils.uuid_validation import validated_uuid
 
 from prompt_studio.prompt_studio_output_manager_v2.constants import (
     PromptOutputManagerErrorMessage,
@@ -27,6 +29,29 @@ from prompt_studio.prompt_studio_v2.models import ToolStudioPrompt
 from .models import PromptStudioOutputManager
 
 logger = logging.getLogger(__name__)
+
+
+def _required_organization(tool_id: uuid.UUID) -> Organization:
+    """The request's organization, refusing to proceed without one.
+
+    ``UserContext.get_organization()`` returns None on both
+    ``Organization.DoesNotExist`` and ``ProgrammingError``, neither logged. A
+    None here compiles to ``organization_id IS NULL``, which matches only rows
+    whose organization was never set and never the caller's tool — downstream
+    every output renders as ``""`` and the user sees a blank project that has
+    real persisted outputs, with nothing to correlate in logs. These endpoints
+    are only routed under ``/api/v1/unstract/<org>/``, so a null org is a bug,
+    not a state to serve.
+    """
+    organization = UserContext.get_organization()
+    if organization is None:
+        logger.error(
+            "No organization in context while reading prompt-studio outputs "
+            "(tool %s); refusing to serve an unscoped empty result.",
+            tool_id,
+        )
+        raise APIException(detail="Organization context is unavailable.")
+    return organization
 
 
 class PromptStudioOutputView(viewsets.ModelViewSet):
@@ -47,6 +72,18 @@ class PromptStudioOutputView(viewsets.ModelViewSet):
         is_single_pass_extract_param = self.request.GET.get(
             PromptStudioOutputManagerKeys.IS_SINGLE_PASS_EXTRACT, "false"
         )
+
+        # Same 500-on-bad-UUID as the detail actions: build_filter_args copies
+        # query params straight through, and all four of these are UUID
+        # columns, so `?tool_id=abc` raises while the query is being built.
+        for key in (
+            PromptStudioOutputManagerKeys.TOOL_ID,
+            PromptStudioOutputManagerKeys.PROMPT_ID,
+            PromptStudioOutputManagerKeys.PROFILE_MANAGER,
+            PromptStudioOutputManagerKeys.DOCUMENT_MANAGER,
+        ):
+            if key in filter_args:
+                filter_args[key] = validated_uuid(filter_args[key], key)
 
         # Convert the string representation to a boolean value
         is_single_pass_extract = CommonUtils.str_to_bool(is_single_pass_extract_param)
@@ -78,9 +115,18 @@ class PromptStudioOutputView(viewsets.ModelViewSet):
         if not prompt_keys:
             return Response({}, status=status.HTTP_200_OK)
 
-        # Custom actions skip filter_queryset(), so OrganizationFilterBackend
-        # never runs — scope explicitly to prevent cross-tenant reads.
-        organization = UserContext.get_organization()
+        tool_id = validated_uuid(tool_id, PromptStudioOutputManagerKeys.TOOL_ID)
+
+        # Defence in depth, not the only scope. Since these models moved to
+        # OrgAwareManager (pinned to tool_id__organization in
+        # ORG_PATH_OVERRIDES) the manager appends this same predicate on its
+        # own, resolving the org through the same UserContext call
+        # _required_organization() makes. Kept explicit because a raw .objects
+        # query is not routed through filter_queryset(), so the view layer
+        # contributes nothing here and the manager pin would be the single
+        # point of failure. test_cross_org_isolation pins the manager
+        # independently, so removing these kwargs stays a safe follow-up.
+        organization = _required_organization(tool_id)
         prompt_id_to_key = dict(
             ToolStudioPrompt.objects.filter(
                 tool_id=tool_id,
@@ -119,17 +165,39 @@ class PromptStudioOutputView(viewsets.ModelViewSet):
         tool_id = request.GET.get("tool_id")
         document_manager_id = request.GET.get("document_manager")
         tool_validation_message = PromptOutputManagerErrorMessage.TOOL_VALIDATION
-        tool_not_found = PromptOutputManagerErrorMessage.TOOL_NOT_FOUND
         if not tool_id:
             raise ValidationError(detail=tool_validation_message)
 
-        try:
-            # Fetch ToolStudioPrompt records based on tool_id
-            tool_studio_prompts = ToolStudioPrompt.objects.filter(
-                tool_id=tool_id
-            ).order_by("sequence_number")
-        except ObjectDoesNotExist:
-            raise ValidationError(detail=tool_not_found)
+        tool_id = validated_uuid(tool_id, PromptStudioOutputManagerKeys.TOOL_ID)
+        # Same column type, same failure: this one reaches
+        # PromptStudioOutputManager.objects.filter(document_manager_id=...) in
+        # the helper below. Required, not optional — absent it stays None and
+        # compiles to `document_manager_id IS NULL`, which matches nothing and
+        # renders every prompt as "", so the project looks empty while holding
+        # real outputs. The only caller always sends it.
+        if not document_manager_id:
+            raise ValidationError(
+                detail="'document_manager' is required and must be a valid UUID."
+            )
+        document_manager_id = validated_uuid(
+            document_manager_id, PromptStudioOutputManagerKeys.DOCUMENT_MANAGER
+        )
+        organization = _required_organization(tool_id)
+
+        # Fetch ToolStudioPrompt records based on tool_id.
+        # Defence in depth, as above: OrgAwareManager already pins this model
+        # to tool_id__organization, and a raw .objects query gets nothing from
+        # the view layer.
+        #
+        # No exception handling below: for a valid UUID that matches no row, or
+        # a tool in another organization, filter() returns empty rather than
+        # raising. Empty is also the correct result for a tool that simply has
+        # no prompts yet, the normal state of a newly created project — so that
+        # case stays a 200 with an empty body.
+        tool_studio_prompts = ToolStudioPrompt.objects.filter(
+            tool_id=tool_id,
+            tool_id__organization=organization,
+        ).order_by("sequence_number")
 
         # Invoke helper method to frame and fetch default response.
         result: dict[str, Any] = OutputManagerHelper.fetch_default_output_response(

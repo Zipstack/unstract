@@ -1,4 +1,5 @@
-import { Col, Row, Typography } from "antd";
+import { Col, Row } from "@/components/ui/shims/antd-layout";
+import { Typography } from "@/components/ui/shims/antd-typography";
 
 import "../../agency/logs-label/LogsLabel.css";
 

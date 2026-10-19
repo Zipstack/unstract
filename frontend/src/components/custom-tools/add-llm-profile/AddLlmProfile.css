@@ -24,8 +24,26 @@
   width: 100%;
 }
 
-.add-llm-profile-panel {
+/* The Form shim spaces its items with `space-y-*` on the <form> element, and
+ * that only reaches direct children. Every field here sits a level or two
+ * deeper — SpaceWrapper > div, Row > Col, the Advanced Settings body — so they
+ * came out flush, each label pressed against the input above it. Give the
+ * items their own rhythm, matching the shim's 16px vertical form gap. */
+.add-llm-profile-body .ant-form-item {
   margin-bottom: 16px;
+}
+
+/* The sticky footer stays flush to the bottom edge. It renders through
+ * FormItem's no-`name` branch, which emits no `.ant-form-item`, so the rule
+ * above misses it today — this outranks that rule either way. */
+.add-llm-profile-body .add-llm-profile-footer {
+  margin-bottom: 0;
+}
+
+/* Separates the "Advanced Settings" header from the last field above it. */
+.add-llm-profile-advanced {
+  border-top: 1px solid var(--border);
+  padding-top: 4px;
 }
 
 .retrieval-strategy-selector {
@@ -46,12 +64,12 @@
 }
 
 .retrieval-strategy-selector:hover {
-  border-color: #40a9ff !important;
+  border-color: var(--violet-300) !important;
   box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.1);
 }
 
 .retrieval-strategy-selector:active {
-  border-color: #1890ff !important;
+  border-color: var(--primary) !important;
   box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.15);
 }
 
@@ -75,13 +93,23 @@
 }
 
 .retrieval-strategy-settings-icon {
-  color: #1890ff;
+  color: var(--primary);
   font-size: 12px;
+  /* width/height, not font-size alone: antd shipped an icon FONT (sized by
+   * font-size); lucide ships SVGs, which ignore it and fall back to their
+   * own 24px default. font-size is kept for any text in the same element. */
+  width: 12px;
+  height: 12px;
   cursor: pointer;
 }
 
 .retrieval-strategy-dropdown-icon {
   color: #bfbfbf;
   font-size: 10px;
+  /* width/height, not font-size alone: antd shipped an icon FONT (sized by
+   * font-size); lucide ships SVGs, which ignore it and fall back to their
+   * own 24px default. font-size is kept for any text in the same element. */
+  width: 10px;
+  height: 10px;
   cursor: pointer;
 }

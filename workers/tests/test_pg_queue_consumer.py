@@ -51,8 +51,10 @@ def _clear_calls():
     _calls.clear()
 
 
-def _msg(msg_id, payload, *, read_ct=1):
-    return QueueMessage(msg_id=msg_id, message=payload, read_ct=read_ct)
+def _msg(msg_id, payload, *, read_ct=1, queue_name="qa"):
+    return QueueMessage(
+        msg_id=msg_id, message=payload, read_ct=read_ct, queue_name=queue_name
+    )
 
 
 def _ok_payload(x, y=0):
@@ -666,8 +668,8 @@ class TestPollHeartbeat:
         assert consumer.seconds_since_last_poll() < 1.0
 
     def test_heartbeat_stamped_before_read(self):
-        # Pins the headline design: the stamp lands at the TOP of poll_once
-        # (before read), so a task running longer than the threshold still trips
+        # Pins the headline design: the stamp lands before each claim (not
+        # after it), so a task running longer than the threshold still trips
         # the probe. A bottom-of-poll stamp would pass test_poll_once_refreshes
         # but fail here.
         client = MagicMock()
@@ -680,6 +682,20 @@ class TestPollHeartbeat:
         )[1]
         consumer.poll_once()
         assert seen["during"] > before  # refreshed BEFORE read ran, not after
+
+    def test_heartbeat_stamped_before_multi_queue_claim(self):
+        # The multi-queue path claims once per cycle (read_any); the stamp must
+        # still land before that claim, not after the task it returns.
+        client = MagicMock()
+        consumer = PgQueueConsumer(["q1", "q2"], client=client)
+        before = consumer._last_poll_monotonic
+        seen: dict[str, float] = {}
+        client.read_any.side_effect = lambda *a, **k: (
+            seen.setdefault("during", consumer._last_poll_monotonic),
+            [],
+        )[1]
+        consumer.poll_once()
+        assert seen["during"] > before
 
     def test_health_server_disabled_without_port(self):
         # No port configured → no server bound (opt-in).
@@ -738,6 +754,82 @@ class TestPollHeartbeat:
         finally:
             server.stop()
 
+    def test_single_process_ready_is_200_once_serving(self):
+        # UN-4136: the single-process server only starts after `import worker` and
+        # the consumer build, so reaching /ready means loaded. The chart's
+        # startupProbe hits /ready on every PG consumer, CONCURRENCY=1 included.
+        import json
+        import urllib.request
+
+        from queue_backend.pg_queue.consumer import LivenessServer
+
+        consumer = PgQueueConsumer(["q"], client=MagicMock())
+        server = LivenessServer(consumer, port=0, stale_after=60)
+        server.start()
+        try:
+            base = f"http://127.0.0.1:{server.bound_port}"
+            for path in ("/ready", "/readyz", "/ready?probe=startup"):
+                with urllib.request.urlopen(f"{base}{path}", timeout=5) as resp:
+                    assert resp.status == 200, path
+                    assert json.loads(resp.read())["status"] == "ready", path
+        finally:
+            server.stop()
+
+    def test_ready_is_404_without_a_ready_fn(self):
+        # A process with no readiness notion (e.g. the reaper) must NOT answer
+        # /ready with a pass — a startupProbe mistakenly pointed at it has to fail.
+        import urllib.error
+        import urllib.request
+
+        from queue_backend.pg_queue.liveness import LivenessServer as Base
+
+        server = Base(
+            freshness_fn=lambda: 0.0,
+            stale_after=60,
+            port=0,
+            check_name="t",
+            age_key="age",
+        )
+        server.start()
+        try:
+            with pytest.raises(urllib.error.HTTPError) as ei:
+                urllib.request.urlopen(
+                    f"http://127.0.0.1:{server.bound_port}/ready", timeout=5
+                )
+            assert ei.value.code == 404
+        finally:
+            server.stop()
+
+    def test_ready_fn_that_raises_answers_503_and_leaves_health_alone(self):
+        import json
+        import urllib.error
+        import urllib.request
+
+        from queue_backend.pg_queue.liveness import LivenessServer as Base
+
+        def _broken() -> bool:
+            raise RuntimeError("boom")
+
+        server = Base(
+            freshness_fn=lambda: 0.0,
+            stale_after=60,
+            port=0,
+            check_name="t",
+            age_key="age",
+            ready_fn=_broken,
+        )
+        server.start()
+        try:
+            base = f"http://127.0.0.1:{server.bound_port}"
+            with pytest.raises(urllib.error.HTTPError) as ei:
+                urllib.request.urlopen(f"{base}/ready", timeout=5)
+            assert ei.value.code == 503
+            assert json.loads(ei.value.read())["status"] == "starting"
+            with urllib.request.urlopen(f"{base}/health", timeout=5) as resp:
+                assert resp.status == 200  # readiness never flips liveness
+        finally:
+            server.stop()
+
     def test_double_start_is_rejected(self):
         from queue_backend.pg_queue.consumer import LivenessServer
 
@@ -779,49 +871,190 @@ class TestConsumerIntegration:
                 )
             pg_client.conn.commit()
 
+    def test_multi_queue_poll_executes_and_acks_on_postgres(self, pg_client):
+        # The multi-queue claim end to end: real read_any rows feed the real
+        # dispatch and the delete() ack, which the stubbed tests can't see.
+        base = f"test_consumer_mq_{os.getpid()}"
+        queues = [f"{base}_a", f"{base}_empty", f"{base}_b"]
+        try:
+            pg_client.send(queues[0], to_payload("test_pg_consumer.ok", args=[11]))
+            pg_client.send(queues[2], to_payload("test_pg_consumer.ok", args=[22]))
+            consumer = PgQueueConsumer(queues, client=pg_client)
+            claimed = [consumer.poll_once() for _ in range(3)]
+            assert claimed == [1, 1, 0]
+            assert (11, 0) in _calls and (22, 0) in _calls
+            assert pg_client.read_any(queues, vt_seconds=30, qty=10) == []  # acked
+        finally:
+            with pg_client.conn.cursor() as cur:
+                cur.execute(
+                    "DELETE FROM pg_queue_message WHERE queue_name = ANY(%s)", (queues,)
+                )
+            pg_client.conn.commit()
+
+    def test_busy_queues_take_equal_turns_around_an_empty_one(self, pg_client):
+        # An empty queue between two busy ones must not give the queue after it
+        # an extra turn: claims alternate.
+        base = f"test_consumer_rr_{os.getpid()}"
+        queues = [f"{base}_a", f"{base}_empty", f"{base}_b"]
+        try:
+            for _ in range(3):
+                pg_client.send(queues[0], to_payload("test_pg_consumer.ok", args=[1]))
+                pg_client.send(queues[2], to_payload("test_pg_consumer.ok", args=[1]))
+            consumer = PgQueueConsumer(queues, client=pg_client)
+            served: list[str] = []
+            consumer._handle = lambda m: served.append(m.queue_name)
+            for _ in range(6):
+                consumer.poll_once()
+            assert served == [queues[0], queues[2]] * 3
+        finally:
+            with pg_client.conn.cursor() as cur:
+                cur.execute(
+                    "DELETE FROM pg_queue_message WHERE queue_name = ANY(%s)", (queues,)
+                )
+            pg_client.conn.commit()
+
 
 class TestMultiQueue:
-    """9f: one consumer drains several queues round-robin."""
+    """9f: one consumer drains several queues — one claim per cycle (UN-4176)."""
 
-    def test_round_robin_reads_each_queue_and_aggregates(self):
+    def test_multi_queue_claims_once_per_cycle(self):
         client = MagicMock()
-        # qa → 2 msgs, qb → 1 msg; poll_once returns the total across both.
-        client.read.side_effect = [
-            [_msg(1, _ok_payload(1)), _msg(2, _ok_payload(2))],
-            [_msg(3, _ok_payload(3))],
-        ]
+        client.read_any.return_value = [_msg(1, _ok_payload(1))]
         claimed = PgQueueConsumer(["qa", "qb"], client=client).poll_once()
-        assert claimed == 3
-        # Read once per queue, in order.
-        assert [c.args[0] for c in client.read.call_args_list] == ["qa", "qb"]
+        assert claimed == 1
+        client.read_any.assert_called_once()
+        client.read.assert_not_called()  # never one statement per queue
+        assert client.read_any.call_args.args[0] == ["qa", "qb"]
 
-    def test_empty_queue_does_not_starve_the_others(self):
+    def test_single_queue_keeps_the_single_queue_claim(self):
         client = MagicMock()
-        client.read.side_effect = [[], [_msg(1, _ok_payload(1))]]
-        assert PgQueueConsumer(["empty", "busy"], client=client).poll_once() == 1
+        client.read.return_value = []
+        PgQueueConsumer(["q"], client=client).poll_once()
+        client.read.assert_called_once()
+        client.read_any.assert_not_called()
+
+    def test_next_claim_starts_past_the_queue_served(self):
+        # Rotating by one regardless of what was served would hand a busy queue
+        # an extra turn for every empty queue before it; starting one past the
+        # queue actually served keeps busy queues on equal turns.
+        client = MagicMock()
+        client.read_any.side_effect = [
+            [_msg(1, _ok_payload(1), queue_name="qc")],  # start 0 fell through to qc
+            [_msg(2, _ok_payload(2), queue_name="qa")],
+            [],
+        ]
+        consumer = PgQueueConsumer(["qa", "qb", "qc"], client=client)
+        for _ in range(3):
+            consumer.poll_once()
+        assert [c.kwargs["start"] for c in client.read_any.call_args_list] == [0, 0, 1]
+        assert consumer._next_queue == 2  # empty cycle moves on by one
+
+    @pytest.mark.parametrize(
+        ("failing", "expected_done", "unstarted"),
+        [(1, 0, [2, 3]), (2, 1, [3]), (3, 2, [])],
+    )
+    def test_handler_failure_stops_the_batch_and_counts_the_work_done(
+        self, caplog, failing, expected_done, unstarted
+    ):
+        # Running the rest after a failure could, in a DB outage, run work whose
+        # ack cannot land; so the batch stops, but work done still counts (0 on
+        # a first-message failure, so run() backs off).
+        client = MagicMock()
+        client.read_any.return_value = [
+            _msg(1, _ok_payload(1), queue_name="qa"),
+            _msg(2, _ok_payload(2), queue_name="qa"),
+            _msg(3, _ok_payload(3), queue_name="qb"),
+        ]
+        consumer = PgQueueConsumer(
+            ["qa", "qb"], client=client, batch_size=3, lease_seconds=60, vt_seconds=60
+        )
+        handled: list[int] = []
+
+        def _handle(message):
+            if message.msg_id == failing:
+                raise RuntimeError("boom")
+            handled.append(message.msg_id)
+
+        consumer._handle = _handle
+        with caplog.at_level(logging.ERROR):
+            assert consumer.poll_once() == expected_done
+        assert handled == list(range(1, failing))
+        assert f"msg_id={failing} " in caplog.text
+        if unstarted:
+            assert f"unstarted msg_ids {unstarted}" in caplog.text
+        else:
+            assert "unstarted" not in caplog.text
+        # Rotation follows the claim, not what ran: the batch ended on qb.
+        assert consumer._next_queue == 0
+
+    def test_non_object_payload_is_dropped_not_raised(self):
+        # A non-dict payload must not raise out of _handle (it would stop its
+        # batch on every delivery); it is dropped and acked like any malformed one.
+        client = MagicMock()
+        client.read_any.return_value = [
+            _msg(1, ["not", "an", "object"]),
+            _msg(2, _ok_payload(7)),
+        ]
+        consumer = PgQueueConsumer(
+            ["qa", "qb"], client=client, batch_size=2, lease_seconds=60, vt_seconds=60
+        )
+        assert consumer.poll_once() == 2
+        assert (7, 0) in _calls  # the batch-mate still ran
+        assert [c.args[0] for c in client.delete.call_args_list] == [1, 2]
+
+    def test_rotation_follows_the_last_message_of_a_batch(self):
+        client = MagicMock()
+        client.read_any.side_effect = [
+            [
+                _msg(1, _ok_payload(1), queue_name="qa"),
+                _msg(2, _ok_payload(2), queue_name="qc"),
+            ],
+            [],
+        ]
+        consumer = PgQueueConsumer(
+            ["qa", "qb", "qc"],
+            client=client,
+            batch_size=3,
+            lease_seconds=60,
+            vt_seconds=60,
+        )
+        consumer._handle = lambda m: None
+        consumer.poll_once()
+        consumer.poll_once()
+        # Batch ended on qc (index 2), so the next claim starts at qa (0).
+        assert [c.kwargs["start"] for c in client.read_any.call_args_list] == [0, 0]
+
+    def test_start_queue_rotates_every_cycle(self):
+        # With nothing claimed the start still moves on, so every queue gets to
+        # be probed first in turn.
+        client = MagicMock()
+        client.read_any.return_value = []
+        consumer = PgQueueConsumer(["qa", "qb", "qc"], client=client)
+        for _ in range(4):
+            consumer.poll_once()
+        assert [c.kwargs["start"] for c in client.read_any.call_args_list] == [
+            0,
+            1,
+            2,
+            0,
+        ]
 
     def test_rejects_empty_queue_list(self):
         client = MagicMock()
         with pytest.raises(ValueError, match="queue_names"):
             PgQueueConsumer([], client=client)
 
-    def test_one_queue_failing_does_not_abort_the_others(self):
-        """A read failure on one queue is isolated: the already-acked work this
-        cycle still counts (so run() doesn't take the empty backoff path), and
-        the failure doesn't propagate out of poll_once.
-        """
+    def test_claim_failure_counts_as_an_empty_cycle(self):
+        """A failed claim is logged, not raised, and returns 0 so run() backs off."""
         client = MagicMock()
-        client.read.side_effect = [[_msg(1, _ok_payload(1))], RuntimeError("boom")]
-        claimed = PgQueueConsumer(["qa", "qb"], client=client).poll_once()
-        assert claimed == 1  # qa's message counted despite qb raising
-        assert _calls == [(1, 0)]  # qa task body ran
-        client.delete.assert_called_once_with(1)  # qa acked
+        client.read_any.side_effect = RuntimeError("boom")
+        assert PgQueueConsumer(["qa", "qb"], client=client).poll_once() == 0
 
-    def test_read_uses_batch_size_qty_per_queue(self):
+    def test_claim_uses_batch_size_qty(self):
         client = MagicMock()
-        client.read.return_value = []
+        client.read_any.return_value = []
         PgQueueConsumer(["qa", "qb"], client=client, batch_size=2).poll_once()
-        assert [c.kwargs["qty"] for c in client.read.call_args_list] == [2, 2]
+        assert client.read_any.call_args.kwargs["qty"] == 2
 
     def test_duplicate_queues_are_deduped(self):
         """A duplicate (e.g. env "q,q") must not double-read the same queue."""

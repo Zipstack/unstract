@@ -11,7 +11,6 @@ from django.db.models import ProtectedError, QuerySet
 from permissions.membership_views import OwnerManagementMixin
 from permissions.permission import IsOwner, IsOwnerOrSharedUserOrSharedToOrg
 from permissions.resource_share_views import ResourceShareManagementMixin
-from permissions.roles import ResourceRole
 from plugins import get_plugin
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -36,7 +35,6 @@ from .serializers import ConnectorInstanceSerializer, SharedUserListSerializer
 notification_plugin = get_plugin("notification")
 if notification_plugin:
     from plugins.notification.constants import ResourceType
-    from plugins.notification.sharing_notification import SharingNotificationService
 
 logger = logging.getLogger(__name__)
 
@@ -258,9 +256,7 @@ class ConnectorInstanceViewSet(
             )
         # ``created_by`` is audit-only; the creator's access flows through an
         # OWNER membership row (UN-2202 co-owners).
-        serializer.instance.memberships.get_or_create(
-            user_id=request.user.id, defaults={"role": ResourceRole.OWNER}
-        )
+        serializer.instance.grant_owner(request.user)
         headers = self.get_success_headers(serializer.data)
         return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
@@ -286,45 +282,3 @@ class ConnectorInstanceViewSet(
                 f" named {instance.connector_name}"
             )
             raise DeleteConnectorInUseError(connector_name=instance.connector_name)
-
-    def partial_update(self, request: Request, *args: Any, **kwargs: Any) -> Response:
-        """Override to handle sharing notifications."""
-        instance = self.get_object()
-        before = self.snapshot_share_axes(instance)
-
-        response = super().partial_update(request, *args, **kwargs)
-        if response.status_code == 200 and notification_plugin:
-            self._notify_shared_users(instance, before, request.data, request.user)
-        return response
-
-    def _notify_shared_users(
-        self,
-        instance: ConnectorInstance,
-        before: dict[str, set[Any]],
-        request_data: dict[str, Any],
-        actor: Any,
-    ) -> None:
-        """Email users newly added to ``shared_users`` (best-effort)."""
-        users_diff = self.diff_share_axes(instance, before, request_data).get(
-            "shared_users"
-        )
-        if not (users_diff and users_diff.added):
-            return
-        try:
-            SharingNotificationService().send_sharing_notification(
-                resource_type=ResourceType.CONNECTOR.value,
-                resource_name=instance.connector_name,
-                resource_id=str(instance.id),
-                shared_by=actor,
-                shared_to=list(users_diff.added),
-                resource_instance=instance,
-            )
-            logger.info(
-                "Sent sharing notifications for connector to %d users",
-                len(users_diff.added),
-            )
-        except Exception as e:
-            logger.exception(
-                "Failed to send sharing notification, continuing update though: %s",
-                str(e),
-            )

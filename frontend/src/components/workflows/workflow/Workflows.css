@@ -14,14 +14,14 @@
 }
 
 .workflows-pg-layout {
-  background-color: var(--page-bg-2);
+  background-color: var(--background);
   padding: 12px;
   height: 100%;
   overflow-y: auto;
 }
 
 .workflows-pg-body {
-  background-color: var(--white);
+  background-color: var(--card);
   height: 100%;
   display: flex;
   flex-direction: column;

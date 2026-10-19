@@ -10,14 +10,11 @@ single-Flipt-flag gate, and the factory wiring.
 
 from unittest.mock import MagicMock, patch
 
-from unstract.workflow_execution.executor_rpc import ExecResultRow
-
 from pg_queue.executor_rpc import (
     DjangoQueueTransport,
-    RoutingExecutionDispatcher,
     get_executor_dispatcher,
-    resolve_executor_transport,
 )
+from unstract.workflow_execution.executor_rpc import ExecResultRow, PgExecutionDispatcher
 
 _MOD = "pg_queue.executor_rpc"
 
@@ -34,7 +31,9 @@ class TestDjangoQueueTransportEnqueue:
     def test_enqueue_calls_enqueue_task_with_request_reply_fields(self):
         with patch(f"{_MOD}.enqueue_task") as enq:
             DjangoQueueTransport().enqueue(
-                queue="celery_executor_legacy", context=_ctx(), org_id="org9",
+                queue="celery_executor_legacy",
+                context=_ctx(),
+                org_id="org9",
                 reply_key="rk1",
             )
         kw = enq.call_args.kwargs
@@ -49,8 +48,11 @@ class TestDjangoQueueTransportEnqueue:
         spec = {"task_name": "ide_prompt_complete", "kwargs": {}, "queue": "ide_callback"}
         with patch(f"{_MOD}.enqueue_task") as enq:
             DjangoQueueTransport().enqueue(
-                queue="celery_executor_legacy", context=_ctx(), org_id="o",
-                on_success=spec, task_id="tid-7",
+                queue="celery_executor_legacy",
+                context=_ctx(),
+                org_id="o",
+                on_success=spec,
+                task_id="tid-7",
             )
         kw = enq.call_args.kwargs
         assert kw["on_success"] == spec and kw["task_id"] == "tid-7"
@@ -116,23 +118,10 @@ class TestDjangoQueueTransportWait:
         qs.filter.return_value.update.assert_not_called()
 
 
-class TestResolveExecutorTransport:
-    def test_delegates_to_shared_flipt_resolver_true(self):
-        with patch(f"{_MOD}.resolve_pg_transport", return_value=True) as r:
-            assert resolve_executor_transport(_ctx()) is True
-        r.assert_called_once()
-        # No master-gate is threaded any more — Flipt is the sole gate.
-        assert "master_gate_enabled" not in r.call_args.kwargs
-
-    def test_delegates_to_shared_flipt_resolver_false(self):
-        with patch(f"{_MOD}.resolve_pg_transport", return_value=False):
-            assert resolve_executor_transport(_ctx()) is False
-
-
 class TestFactoryWiring:
-    def test_factory_wires_routing_with_django_transport(self):
-        d = get_executor_dispatcher(celery_app="app")
-        assert isinstance(d, RoutingExecutionDispatcher)
-        # PG dispatcher uses the backend ORM transport; gate = the Flipt resolver.
-        assert isinstance(d._pg._transport, DjangoQueueTransport)
-        assert d._resolve is resolve_executor_transport
+    def test_factory_wires_the_django_transport(self):
+        # The factory takes no arguments (UN-4046) and returns the PG dispatcher
+        # wired with the backend ORM transport.
+        d = get_executor_dispatcher()
+        assert isinstance(d, PgExecutionDispatcher)
+        assert isinstance(d._transport, DjangoQueueTransport)

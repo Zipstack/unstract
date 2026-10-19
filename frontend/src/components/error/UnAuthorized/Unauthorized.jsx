@@ -1,5 +1,4 @@
-import { Typography } from "antd";
-
+import { Typography } from "@/components/ui/shims/antd-typography";
 import { IslandLayout } from "../../../layouts/island-layout/IslandLayout.jsx";
 import "./Unauthorized.css";
 

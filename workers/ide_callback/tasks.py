@@ -243,9 +243,14 @@ def ide_index_complete(
                     organization_id=org_id,
                 )
             except Exception:
-                logger.warning(
+                # Non-fatal — primary indexing already succeeded — but not
+                # harmless: without the status, check_extraction_status stays
+                # False and every later Answer Prompt re-runs the full X2Text
+                # extraction. ERROR because nothing downstream reports it.
+                logger.error(
                     "Failed to mark extraction_status for document %s "
-                    "profile %s; primary indexing succeeded.",
+                    "profile %s; extraction will be repeated on every "
+                    "subsequent prompt run.",
                     document_id,
                     profile_manager_id,
                     exc_info=True,
@@ -430,7 +435,7 @@ def ide_prompt_complete(
         )
 
         # Persist outputs via internal API
-        resp = api.update_prompt_output(
+        api.update_prompt_output(
             run_id=run_id,
             prompt_ids=prompt_ids,
             outputs=outputs,
@@ -440,8 +445,6 @@ def ide_prompt_complete(
             profile_manager_id=profile_manager_id,
             organization_id=org_id,
         )
-        response = resp.get("data", []) if resp.get("success") else []
-
         _track_subscription_usage(org_id, run_id)
 
         # Fire HubSpot event if applicable
@@ -471,7 +474,9 @@ def ide_prompt_complete(
                 "elapsed": int(time.time() - dispatch_time) if dispatch_time else 0,
             },
             status="completed",
-            result=response,
+            # result intentionally omitted — output already persisted via
+            # update_prompt_output(); frontend refetches via promptOutputApi
+            # to avoid DATA_UPLOAD_MAX_MEMORY_SIZE on emit-websocket endpoint.
         )
         # Return minimal status to avoid logging sensitive extracted data
         return {"status": "completed", "operation": operation}

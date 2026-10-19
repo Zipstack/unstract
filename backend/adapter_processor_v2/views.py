@@ -15,7 +15,6 @@ from permissions.permission import (
     IsOwnerOrSharedUserOrSharedToOrg,
 )
 from permissions.resource_share_views import ResourceShareManagementMixin
-from permissions.roles import ResourceRole
 from plugins import get_plugin
 from rest_framework import status
 from rest_framework.decorators import action
@@ -33,9 +32,14 @@ from utils.user_context import UserContext
 
 from adapter_processor_v2.adapter_processor import AdapterProcessor
 from adapter_processor_v2.constants import AdapterKeys
+from adapter_processor_v2.deprecated_adapters import (
+    get_deprecation_message,
+    is_adapter_deprecated,
+)
 from adapter_processor_v2.exceptions import (
     CannotDeleteDefaultAdapter,
     DeleteAdapterInUseError,
+    DeprecatedAdapter,
     DuplicateAdapterNameError,
     IdIsMandatory,
     InValidType,
@@ -54,8 +58,6 @@ from .constants import AdapterKeys as constant
 from .models import AdapterInstance, UserDefaultAdapter
 
 notification_plugin = get_plugin("notification")
-if notification_plugin:
-    from plugins.notification.constants import ResourceType
 
 logger = logging.getLogger(__name__)
 
@@ -130,6 +132,8 @@ class AdapterViewSet(GenericViewSet):
         serializer: AdapterInstanceSerializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         adapter_id = serializer.validated_data.get(AdapterKeys.ADAPTER_ID)
+        if is_adapter_deprecated(adapter_id):
+            raise DeprecatedAdapter(get_deprecation_message(adapter_id))
         adapter_metadata = serializer.validated_data.get(AdapterKeys.ADAPTER_METADATA)
         adapter_metadata[AdapterKeys.ADAPTER_TYPE] = serializer.validated_data.get(
             AdapterKeys.ADAPTER_TYPE
@@ -156,12 +160,11 @@ class AdapterInstanceViewSet(
     def get_notification_resource_type(self, resource: Any) -> str | None:
         if not notification_plugin:
             return None
-        return {
-            "LLM": ResourceType.LLM.value,
-            "EMBEDDING": ResourceType.EMBEDDING.value,
-            "VECTOR_DB": ResourceType.VECTOR_DB.value,
-            "X2TEXT": ResourceType.X2TEXT.value,
-        }.get(resource.adapter_type, ResourceType.LLM.value)
+        from tenant_account_v2.notification_resource_types import (
+            adapter_notification_type,
+        )
+
+        return adapter_notification_type(resource.adapter_type)
 
     def get_permissions(self) -> list[Any]:
         # Frictionless adapters: hidden from non-owners (update/retrieve),
@@ -246,6 +249,8 @@ class AdapterInstanceViewSet(
         ):
             use_platform_unstract_key = True
 
+        # Deprecated adapter_ids are rejected in AdapterInstanceSerializer.validate,
+        # which also covers update/partial_update.
         serializer.is_valid(raise_exception=True)
         adapter_type = serializer.validated_data.get(AdapterKeys.ADAPTER_TYPE)
         self._enforce_llm_creation_restriction(request, adapter_type)
@@ -271,9 +276,7 @@ class AdapterInstanceViewSet(
             instance = serializer.save(organization=UserContext.get_organization())
             # ``created_by`` is audit-only; the creator's access flows through
             # an OWNER membership row (UN-2202 co-owners).
-            instance.memberships.get_or_create(
-                user_id=request.user.id, defaults={"role": ResourceRole.OWNER}
-            )
+            instance.grant_owner(request.user)
             organization_member = OrganizationMemberService.get_user_by_id(
                 request.user.id
             )
@@ -404,17 +407,6 @@ class AdapterInstanceViewSet(
             raise DeleteAdapterInUseError(adapter_name=adapter_instance.adapter_name)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
-    def partial_update(
-        self, request: Request, *args: tuple[Any], **kwargs: dict[str, Any]
-    ) -> Response:
-        adapter = self.get_object()
-        before = self.snapshot_share_axes(adapter)
-
-        response = super().partial_update(request, *args, **kwargs)
-        if response.status_code == 200 and notification_plugin:
-            self._notify_shared_users(adapter, before, request.data, request.user)
-        return response
-
     @action(detail=True, methods=["post"], url_path="share")
     def share(self, request: Request, pk: str | None = None) -> Response:
         """Apply share state, then clear default-adapter links for any user
@@ -460,42 +452,6 @@ class AdapterInstanceViewSet(
         if user.pk in self._effective_member_ids(resource):
             return
         self._clear_default_adapter_for_removed_users(resource, {user.pk})
-
-    def _notify_shared_users(
-        self,
-        adapter: AdapterInstance,
-        before: dict[str, set[Any]],
-        request_data: dict[str, Any],
-        actor: Any,
-    ) -> None:
-        """Email users newly added to ``shared_users`` (best-effort)."""
-        users_diff = self.diff_share_axes(adapter, before, request_data).get(
-            "shared_users"
-        )
-        if not (users_diff and users_diff.added):
-            return
-        try:
-            adapter_type_to_resource = {
-                "LLM": ResourceType.LLM.value,
-                "EMBEDDING": ResourceType.EMBEDDING.value,
-                "VECTOR_DB": ResourceType.VECTOR_DB.value,
-                "X2TEXT": ResourceType.X2TEXT.value,
-            }
-            resource_type = adapter_type_to_resource.get(
-                adapter.adapter_type, ResourceType.LLM.value
-            )
-            service_class = notification_plugin["service_class"]
-            notification_service = service_class()
-            notification_service.send_sharing_notification(
-                resource_type=resource_type,
-                resource_name=adapter.adapter_name,
-                resource_id=str(adapter.id),
-                shared_by=actor,
-                shared_to=list(users_diff.added),
-                resource_instance=adapter,
-            )
-        except Exception as e:
-            logger.exception("Failed to send sharing notification: %s", e)
 
     def _clear_default_adapter_for_removed_users(
         self,

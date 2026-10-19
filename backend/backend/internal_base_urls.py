@@ -191,6 +191,13 @@ urlpatterns = [
         include("workflow_manager.workflow_execution_internal_urls"),
         name="workflow_execution_internal",
     ),
+    # Dashboard-metrics periodics (UN-3796) — called by the thin worker tasks the PG
+    # scheduler fires, replacing Beat + workerMetrics.
+    path(
+        "v1/dashboard-metrics/",
+        include("dashboard_metrics.internal_urls"),
+        name="dashboard_metrics_internal",
+    ),
     # Workflow management and pipeline APIs
     path(
         "v1/workflow-manager/",
@@ -268,5 +275,11 @@ urlpatterns = [
         "v1/prompt-studio/",
         include("prompt_studio.prompt_studio_core_v2.internal_urls"),
         name="prompt_studio_internal",
+    ),
+    # Group-sharing email notification APIs
+    path(
+        "v1/group-notification/",
+        include("tenant_account_v2.internal_urls"),
+        name="group_notification_internal",
     ),
 ]

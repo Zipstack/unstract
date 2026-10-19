@@ -1,5 +1,7 @@
-import { PlayCircleFilled, PlayCircleOutlined } from "@ant-design/icons";
-import { Button, Space, Tooltip } from "antd";
+import { CirclePlay, FastForward } from "lucide-react";
+import { Button } from "@/components/ui/shims/antd-button";
+import { Space } from "@/components/ui/shims/antd-layout";
+import { Tooltip } from "@/components/ui/shims/antd-overlays";
 import { PROMPT_RUN_TYPES } from "../../../helpers/GetStaticData";
 import usePromptRun from "../../../hooks/usePromptRun";
 import { useCustomToolStore } from "../../../store/custom-tool-store";
@@ -13,7 +15,8 @@ function RunAllPrompts() {
     <Space>
       <Tooltip title="Run all prompts for all LLMs and current document">
         <Button
-          icon={<PlayCircleOutlined className="prompt-card-actions-head" />}
+          data-testid="ps-run-all-prompts-one-doc-btn"
+          icon={<CirclePlay className="prompt-card-actions-head" />}
           onClick={() =>
             handlePromptRunRequest(
               PROMPT_RUN_TYPES.RUN_ALL_PROMPTS_ALL_LLMS_ONE_DOC,
@@ -27,7 +30,10 @@ function RunAllPrompts() {
       </Tooltip>
       <Tooltip title="Run all prompts for all LLMs and documents">
         <Button
-          icon={<PlayCircleFilled className="prompt-card-actions-head" />}
+          data-testid="ps-run-all-prompts-all-docs-btn"
+          // All-documents runs use FastForward; the single-document button
+          // beside it keeps CirclePlay, so the two are told apart at a glance.
+          icon={<FastForward className="prompt-card-actions-head" />}
           onClick={() =>
             handlePromptRunRequest(
               PROMPT_RUN_TYPES.RUN_ALL_PROMPTS_ALL_LLMS_ALL_DOCS,

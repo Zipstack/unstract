@@ -37,6 +37,7 @@ from typing import TYPE_CHECKING, Any, TypeVar
 from celery import current_app
 
 from unstract.core.data_models import ContinuationSpec, TaskPayload
+from unstract.core.jsonb import dumps_for_jsonb
 
 from ..barrier import callback_recovery_identity
 from ..fairness import FAIRNESS_HEADER_NAME
@@ -95,10 +96,12 @@ _DEFAULT_POISON_REPARK_BUDGET = 5
 # response, and the row is TTL'd.
 _TASK_STATUS_RETENTION_SECONDS = 86400
 # Liveness: a poll loop that hasn't cycled in this many seconds is reported
-# unhealthy. The heartbeat is stamped at the top of each poll_once and frozen
-# during task execution, so this threshold doubles as an UPPER BOUND on a single
-# task's wall-clock: a task running longer than it trips the probe → pod restart
-# → the in-flight task is killed and (at-least-once) redelivered. 60s suits the
+# unhealthy. The heartbeat is stamped before each claim and frozen while the
+# claimed batch runs, so this threshold doubles as an UPPER BOUND on a batch's
+# wall-clock (one task at the default batch_size=1): a batch running longer than
+# it trips the probe → pod restart (or,
+# under the prefork supervisor with CHILD_WATCHDOG on, a SIGKILL of just that
+# child) → the in-flight task is killed and (at-least-once) redelivered. 60s suits the
 # current sub-second leaf (send_webhook_notification); for longer-running tasks,
 # raise WORKER_PG_QUEUE_CONSUMER_HEALTH_STALE_SECONDS above
 # max(batch_size x worst_case_task_seconds, backoff_max).
@@ -109,13 +112,20 @@ def _json_safe(value: object) -> object:
     """Round-trip through JSON with ``default=str`` so non-JSON-native values
     (UUID / datetime) survive a self-chained enqueue.
 
-    ``PgQueueClient.send`` serialises with a plain ``json.dumps`` (no
-    ``default=``), so a self-chained continuation whose prepended argument is an
-    executor result dict containing a UUID/datetime would raise ``TypeError`` —
-    swallowed by ``_chain_continuation`` and the callback (plus its user-facing
-    event) lost. Coercing here mirrors the backend producer's ``_json_safe``.
+    ``PgQueueClient.send`` serialises without a ``default=``, so a self-chained
+    continuation whose prepended argument is an executor result dict containing
+    a UUID/datetime would raise ``TypeError`` — swallowed by
+    ``_chain_continuation`` and the callback (plus its user-facing event) lost.
+    Coercing here mirrors the backend producer's ``_json_safe``.
+
+    Uses ``dumps_for_jsonb`` so the same pass also strips the strings the
+    ``::jsonb`` cast refuses. The prepended value is the executor result — the
+    payload that carried a NUL in UN-4126 — and on this branch an unencodable
+    message does not hang the caller: the enqueue fails, ``_chain_continuation``
+    swallows it, and the run falls back to ``on_error``, reporting a *failure*
+    for work that succeeded and was already paid for.
     """
-    return json.loads(json.dumps(value, default=str))
+    return json.loads(dumps_for_jsonb(value, default=str))
 
 
 class _PoisonMarkOutcome(Enum):
@@ -302,14 +312,15 @@ class PgQueueConsumer:
         if not queue_names:
             raise ValueError("queue_names must be a non-empty list")
         # One process can drain several queues (9f) — e.g. a file_processing
-        # consumer drains both file_processing and api_file_processing. Each is
-        # read once per cycle in list order (poll_once): this prevents starvation
-        # (every queue gets a read each cycle) but does NOT equalize throughput —
-        # an always-full queue_names[0] claims its full batch and runs it before
-        # later queues. Copy + de-dup (order-preserving): a duplicate would
-        # double-read a queue per cycle, and storing the caller's list by
+        # consumer drains both file_processing and api_file_processing. All are
+        # claimed from in one statement per cycle, in a rotation that starts past
+        # the queue served last (poll_once): busy queues take equal turns. Copy +
+        # de-dup (order-preserving): a duplicate would probe a queue twice per
+        # claim and give it two rotation slots, and storing the caller's list by
         # reference would let a later mutation bypass the non-empty validation.
         self.queue_names = list(dict.fromkeys(queue_names))
+        # Round-robin start for the multi-queue claim (see poll_once).
+        self._next_queue = 0
         self._client = client if client is not None else PgQueueClient()
         self._app = app if app is not None else current_app
         # Lazily built the first time a poison drop needs to mark an execution
@@ -357,37 +368,74 @@ class PgQueueConsumer:
         self._result_backend: PgResultBackend | None = None
         # Heartbeat for the liveness probe: monotonic timestamp of the most
         # recent poll attempt. Seeded at construction so a just-started consumer
-        # reads healthy. Updated at the TOP of poll_once, so a loop wedged on a
-        # long-running task (poll_once not returning) goes stale and is caught —
+        # reads healthy. Updated before each claim in poll_once, so a loop
+        # wedged on a long-running task goes stale and is caught —
         # something pgrep-based --status and the launch-time check cannot see.
         self._last_poll_monotonic = time.monotonic()
 
     def poll_once(self) -> int:
-        """Claim + process one batch per queue (read once each, in list order);
-        returns the total number of messages claimed across all queues this cycle.
+        """Claim + process one batch; returns the number of messages processed.
 
-        Each queue is isolated: a read/handle failure on one queue is logged and
-        skipped so the others still get their turn, and the work already done this
-        cycle still counts (so run() doesn't take the empty-queue backoff path
-        after a partial failure).
+        A single-queue consumer reads its queue. A multi-queue consumer claims
+        across all its queues in ONE statement (:meth:`PgQueueClient.read_any`),
+        so an idle cycle costs one statement however many queues it drains. The
+        next claim starts one past the queue just served (or one further along
+        after an empty cycle), so busy queues take equal turns and none starves.
+
+        A failed claim is logged and returns 0, so run() backs off. A failure
+        while handling stops the batch: it is logged with the msg_ids left
+        unstarted, and the messages already handled are still counted (so run()
+        does not back off after real work). Accepted trade-off, ``batch_size > 1`` only
+        (it is forced to 1 unless the lease equals the max runtime): the
+        unstarted messages stay claimed until their lease lapses and the reaper
+        re-arms them, costing each a ``read_ct`` attempt toward the poison cap.
+        Running them instead would, during a DB outage, run work whose ack
+        cannot land, so it would run twice.
         """
+        # HEALTH_STALE is sized for one batch (see the constant).
         self._last_poll_monotonic = time.monotonic()
-        total = 0
-        for queue_name in self.queue_names:
+        try:
+            messages = self._claim()
+        except Exception:
+            logger.exception(
+                "PG-queue consumer: claim failed for queues %r", self.queue_names
+            )
+            return 0
+        for handled, message in enumerate(messages):
             try:
-                messages = self._client.read(
-                    queue_name, vt_seconds=self.lease_seconds, qty=self.batch_size
-                )
-                for message in messages:
-                    self._handle(message)
-                total += len(messages)
+                self._handle(message)
             except Exception:
+                unstarted = [m.msg_id for m in messages[handled + 1 :]]
                 logger.exception(
-                    "PG-queue consumer: poll failed for queue %r; "
-                    "continuing with the other queues",
-                    queue_name,
+                    "PG-queue consumer: handling msg_id=%s (queue=%r) failed; it "
+                    "redelivers when its lease lapses%s",
+                    message.msg_id,
+                    message.queue_name,
+                    f", as do the unstarted msg_ids {unstarted}" if unstarted else "",
                 )
-        return total
+                return handled
+        return len(messages)
+
+    def _claim(self) -> list[QueueMessage]:
+        """One claim for this cycle, advancing the multi-queue rotation."""
+        if len(self.queue_names) == 1:
+            return self._client.read(
+                self.queue_names[0], vt_seconds=self.lease_seconds, qty=self.batch_size
+            )
+        messages = self._client.read_any(
+            self.queue_names,
+            vt_seconds=self.lease_seconds,
+            qty=self.batch_size,
+            start=self._next_queue,
+        )
+        # One past the queue served last, so the queues after it go first next
+        # time; an empty cycle just moves on by one.
+        if messages:
+            served = self.queue_names.index(messages[-1].queue_name)
+        else:
+            served = self._next_queue
+        self._next_queue = (served + 1) % len(self.queue_names)
+        return messages
 
     @contextlib.contextmanager
     def _lease_renewal(self, msg_id: int) -> Iterator[None]:
@@ -533,6 +581,17 @@ class PgQueueConsumer:
 
     def _handle(self, message: QueueMessage) -> None:
         payload = message.message
+        if not isinstance(payload, dict):
+            # A raw writer can store any JSON; a non-object would raise below on
+            # every delivery and stop its batch each time, so drop it as malformed.
+            logger.error(
+                "PG-queue consumer: payload is not a JSON object (msg_id=%s) — "
+                "dropping malformed message: %r",
+                message.msg_id,
+                payload,
+            )
+            self._client.delete(message.msg_id)
+            return
         task_name = payload.get("task_name")
         # Request-reply (executor RPC): a unique key the dispatching caller is
         # blocking on. Read up front so the drop branches below can store a
@@ -1204,6 +1263,11 @@ class LivenessServer(_BaseLivenessServer):
     consumer's heartbeat (``seconds_since_last_poll``). Same wire shape as before
     (``/health`` → 200 fresh / 503 stale, ``check="pg_queue_poll"``), plus
     ``/metrics`` exporting that heartbeat as a scrapeable gauge.
+
+    ``/ready`` is always 200 here: it takes an already-built consumer, and
+    ``main()`` only starts it after ``import worker`` and the build, so a probe
+    that can reach it is talking to a loaded process. The same ``startupProbe``
+    therefore works for single-process and prefork pools alike.
     """
 
     def __init__(
@@ -1219,6 +1283,7 @@ class LivenessServer(_BaseLivenessServer):
             check_name="pg_queue_poll",
             age_key="seconds_since_last_poll",
             metrics_fn=metrics.render,
+            ready_fn=lambda: True,
             thread_name="pg-consumer-liveness",
             log_label="pg-queue consumer",
         )

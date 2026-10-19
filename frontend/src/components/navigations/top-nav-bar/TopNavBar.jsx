@@ -1,30 +1,27 @@
-import {
-  LoginOutlined,
-  LogoutOutlined,
-  SettingOutlined,
-  UserOutlined,
-  UserSwitchOutlined,
-} from "@ant-design/icons";
-import {
-  Alert,
-  Button,
-  Col,
-  Dropdown,
-  Image,
-  Row,
-  Space,
-  Typography,
-} from "antd";
 import axios from "axios";
+import {
+  ChevronDown,
+  LogIn,
+  LogOut,
+  Settings,
+  User,
+  UserRoundCog,
+} from "lucide-react";
 import PropTypes from "prop-types";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { Button } from "@/components/ui/shims/antd-button";
+import { Col, Row, Space } from "@/components/ui/shims/antd-layout";
+import { Alert, Image } from "@/components/ui/shims/antd-leaves";
+import { Dropdown } from "@/components/ui/shims/antd-overlays";
+import { Typography } from "@/components/ui/shims/antd-typography";
 
-import { UnstractLogo } from "../../../assets/index.js";
+import { UnstractBlackLogo, UnstractLogo } from "../../../assets/index.js";
 import {
   getBaseUrl,
   homePagePath,
   onboardCompleted,
+  THEME,
 } from "../../../helpers/GetStaticData.js";
 import useLogout from "../../../hooks/useLogout.js";
 import "../../../layouts/page-layout/PageLayout.css";
@@ -67,14 +64,22 @@ try {
 }
 
 let WhispererLogo;
+let WhispererDarkLogo;
 try {
   const mod = await import("../../../plugins/assets/llmWhisperer/index.js");
   WhispererLogo = mod.WhispererLogo;
+  WhispererDarkLogo = mod.LlmWhispererLogo;
 } catch {
   // Ignore if hook not available
 }
 
-const CustomLogo = ({ onClick, className }) => {
+/*
+ * `Logo` is injected rather than hardcoded: the top bar is a light surface in
+ * light mode and a dark one under `.dark`, and each product ships two marks
+ * (white ink / dark ink) instead of one recolourable SVG -- the brand accent
+ * dots are baked in, so a blanket `fill` override would flatten them.
+ */
+const CustomLogo = ({ onClick, className, Logo }) => {
   // Use Ant Design Image and config.logoUrl
   if (config.logoUrl) {
     return (
@@ -100,12 +105,17 @@ const CustomLogo = ({ onClick, className }) => {
       />
     );
   }
-  return <UnstractLogo className={className} onClick={onClick} />;
+  return <Logo className={className} onClick={onClick} />;
 };
+// `APIHubLogo`/`WhispererLogo` are the WHITE-ink marks (named for the dark bar
+// they were drawn for); `APIHubDarkLogo`/`LlmWhispererLogo` are the dark-ink
+// ones. Both are pulled so the bar can pick by theme.
 let APIHubLogo;
+let APIHubDarkLogo;
 try {
   const mod = await import("../../../plugins/assets/verticals/index.js");
   APIHubLogo = mod.APIHubLogo;
+  APIHubDarkLogo = mod.APIHubDarkLogo;
 } catch {
   // Ignore if hook not available
 }
@@ -177,6 +187,15 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
   const isAPIHub = effectiveProduct === "verticals";
   const isStaff = sessionDetails?.isStaff || sessionDetails?.is_staff;
   const isOpenSource = orgName === "mock_org";
+
+  // `.topNav` is `--card`: white in light mode, near-black under `.dark`.
+  // `sessionDetails.currentTheme` is the app's single source of truth for the
+  // theme (App.jsx only mirrors it onto next-themes), so the mark follows it.
+  // In OSS the two plugin logos are undefined either way; the render guards.
+  const isDarkTheme = sessionDetails?.currentTheme === THEME.DARK;
+  const ProductLogo = isDarkTheme ? UnstractLogo : UnstractBlackLogo;
+  const APIHubBarLogo = isDarkTheme ? APIHubLogo : APIHubDarkLogo;
+  const WhispererBarLogo = isDarkTheme ? WhispererLogo : WhispererDarkLogo;
 
   // Check user role and whether the onboarding is incomplete
   useEffect(() => {
@@ -266,7 +285,7 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
     };
 
     const handleClick = isLoggedIn ? logout : handleLogin;
-    const icon = isLoggedIn ? <LogoutOutlined /> : <LoginOutlined />;
+    const icon = isLoggedIn ? <LogOut /> : <LogIn />;
     const label = isLoggedIn ? "Logout" : "Login";
 
     return [
@@ -281,7 +300,7 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
               disabled={shouldDisableRouting}
               type="text"
             >
-              <UserOutlined /> Profile
+              <User /> Profile
             </Button>
           ),
         },
@@ -299,8 +318,17 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
             }}
             placement="left"
           >
-            <div className="ant-dropdown-trigger">
-              <UserSwitchOutlined /> Switch Org
+            {/*
+             * The org list opens on pointerdown; the click that follows would
+             * otherwise select this row of the parent menu, which closes that
+             * menu and unmounts the org list with it.
+             */}
+            <div
+              className="ant-dropdown-trigger switch-org-trigger"
+              onClick={(event) => event.stopPropagation()}
+              onKeyDown={(event) => event.stopPropagation()}
+            >
+              <UserRoundCog /> Switch Org
             </div>
           </Dropdown>
         ),
@@ -324,7 +352,7 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
               className="logout-button"
               type="text"
             >
-              <SettingOutlined /> Custom Plans
+              <Settings /> Custom Plans
             </Button>
           ),
         },
@@ -365,17 +393,21 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
   return (
     <Row align="middle" className="topNav">
       <Col span={6} className="platform-switch-container">
-        {isUnstract ? (
+        {/* The cloud product switcher carries its own product mark. */}
+        {PlatformDropdown ? (
+          <PlatformDropdown />
+        ) : isUnstract ? (
           <CustomLogo
             className="topbar-logo cursor-pointer"
+            Logo={ProductLogo}
             onClick={() =>
               navigate(`/${sessionDetails?.orgName}/${homePagePath}`)
             }
           />
         ) : isAPIHub ? (
-          APIHubLogo && <APIHubLogo className="topbar-logo" />
+          APIHubBarLogo && <APIHubBarLogo className="topbar-logo" />
         ) : (
-          WhispererLogo && <WhispererLogo className="topbar-logo" />
+          WhispererBarLogo && <WhispererBarLogo className="topbar-logo" />
         )}
         {reviewPageHeader && (
           <span className="page-identifier">
@@ -383,7 +415,6 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
             <span className="page-heading">{reviewPageHeader}</span>
           </span>
         )}
-        {PlatformDropdown && <PlatformDropdown />}
       </Col>
 
       {isSimpleLayout ? (
@@ -411,7 +442,7 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
 
       <Col span={4}>
         <Row justify="end" align="middle">
-          <Space>
+          <Space size={6}>
             {topNavBarOptions}
             {isUnstract && TrialDaysInfo && <TrialDaysInfo />}
             <Dropdown
@@ -420,20 +451,26 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
               arrow
               className="top-navbar-dp"
             >
-              <div className="top-navbar-dp">
-                {sessionDetails?.picture ? (
-                  <Image
-                    className="navbar-img"
-                    height="100%"
-                    width="100%"
-                    preview={false}
-                    src={sessionDetails?.picture}
-                  />
-                ) : (
-                  <Typography.Text className="initials">
-                    {getInitials(sessionDetails?.name)}
-                  </Typography.Text>
-                )}
+              <div
+                className="top-navbar-avatar-menu"
+                data-testid="top-navbar-avatar-menu"
+              >
+                <div className="top-navbar-dp">
+                  {sessionDetails?.picture ? (
+                    <Image
+                      className="navbar-img"
+                      height="100%"
+                      width="100%"
+                      preview={false}
+                      src={sessionDetails?.picture}
+                    />
+                  ) : (
+                    <Typography.Text className="initials">
+                      {getInitials(sessionDetails?.name)}
+                    </Typography.Text>
+                  )}
+                </div>
+                <ChevronDown className="top-navbar-avatar-chevron" />
               </div>
             </Dropdown>
           </Space>
@@ -451,6 +488,7 @@ TopNavBar.propTypes = {
 CustomLogo.propTypes = {
   onClick: PropTypes.func.isRequired,
   className: PropTypes.string.isRequired,
+  Logo: PropTypes.elementType.isRequired,
 };
 
 export { TopNavBar };

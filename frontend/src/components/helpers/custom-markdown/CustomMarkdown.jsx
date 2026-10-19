@@ -1,12 +1,10 @@
-import { Typography } from "antd";
 import PropTypes from "prop-types";
 import { useMemo } from "react";
 import { Link as RouterLink } from "react-router-dom";
+import { Link, Paragraph, Text } from "@/components/ui/shims/antd-typography";
 
 import { isSafeExternalUrl } from "../../../helpers/urlSafety";
 import { useSessionStore } from "../../../store/session-store";
-
-const { Text, Link, Paragraph } = Typography;
 
 const CustomMarkdown = ({
   text = "",
@@ -39,7 +37,15 @@ const CustomMarkdown = ({
       case "tripleCode":
         return (
           <Paragraph style={{ margin: 0 }}>
-            <pre style={{ margin: 0 }}>{content}</pre>
+            <pre
+              style={{
+                margin: 0,
+                whiteSpace: "pre-wrap",
+                overflowWrap: "anywhere",
+              }}
+            >
+              {content}
+            </pre>
           </Paragraph>
         );
       case "inlineCode":
