@@ -12,6 +12,7 @@ if TYPE_CHECKING:
     from typing import Any
 
 from pydantic import BaseModel, Field, model_validator
+
 from unstract.sdk1.adapters.constants import AdapterDocs, Common
 from unstract.sdk1.adapters.enums import AdapterTypes
 
@@ -560,6 +561,7 @@ _OPENROUTER_PROVIDER_PREFIX = "openrouter/"
 _MINIMAX_PROVIDER_PREFIX = "minimax/"
 _MINIMAX_ANTHROPIC_PROVIDER_PREFIX = "anthropic/"
 _MINIMAX_CONTEXT_WINDOWS = {
+    "MiniMax-M3.1-Flash": 1_000_000,
     "MiniMax-M3": 1_000_000,
 }
 # All M2.x variants share one window. Kept local because LiteLLM overstates it.
@@ -602,6 +604,11 @@ def _normalize_minimax_thinking(
             }
 
     thinking = adapter_metadata.get("thinking")
+    if model_id == "MiniMax-M3.1-Flash":
+        if thinking is not None and thinking != {"type": "adaptive"}:
+            raise ValueError("MiniMax-M3.1-Flash requires adaptive thinking.")
+        adapter_metadata["thinking"] = {"type": "adaptive"}
+        return
     if thinking is None:
         return
     if is_m2_model:
@@ -658,6 +665,11 @@ class MiniMaxLLMParameters(BaseChatCompletionParameters):
         if context_window := _minimax_context_window(model_id):
             validated["context_window"] = context_window
         validated["allowed_openai_params"] = ["service_tier", "thinking"]
+        if model_id == "MiniMax-M3.1-Flash":
+            # Older saved forms populated a standard tier for every model.
+            # Flash has no service-tier parameter; never forward that setting.
+            validated.pop("service_tier", None)
+            validated["allowed_openai_params"] = ["thinking"]
         return validated
 
     @staticmethod

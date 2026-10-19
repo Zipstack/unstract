@@ -22,12 +22,12 @@
     "model": {
       "type": "string",
       "title": "Model",
-      "default": "MiniMax-M3",
+      "default": "MiniMax-M3.1-Flash",
       "examples": [
-        "MiniMax-M3",
-        "MiniMax-M2.7"
+        "MiniMax-M3.1-Flash",
+        "MiniMax-M3"
       ],
-      "description": "The model name as listed in [MiniMax's model docs](https://platform.minimax.io/docs/api-reference/text-openai-api). Examples: MiniMax-M3, MiniMax-M2.7. See [MiniMax pricing](https://platform.minimax.io/docs/guides/pricing-paygo) for rates and context windows."
+      "description": "MiniMax-M3.1-Flash (default) or MiniMax-M3. Saved and custom model names remain supported. See [MiniMax's model docs](https://platform.minimax.io/docs/guides/models-intro) and [pricing](https://platform.minimax.io/docs/pricing/overview)."
     },
     "api_base": {
       "type": "string",
@@ -43,8 +43,7 @@
         "standard",
         "priority"
       ],
-      "default": "standard",
-      "description": "Priority requests receive faster admission at a higher price. See [MiniMax pricing](https://platform.minimax.io/docs/guides/pricing-paygo). Note that cost tracking records standard-tier rates."
+      "description": "Optional tier for MiniMax-M3; omission uses standard. MiniMax-M3.1-Flash does not support this parameter, so the adapter omits it even if a saved configuration contains a tier. See [MiniMax pricing](https://platform.minimax.io/docs/pricing/overview). Cost tracking records standard-tier rates."
     },
     "max_tokens": {
       "type": "number",
@@ -79,7 +78,7 @@
     "enable_thinking": {
       "type": "boolean",
       "title": "Enable Thinking",
-      "description": "Override the protocol default for MiniMax-M3: OpenAI-compatible requests default to adaptive thinking, while Anthropic-compatible requests default to disabled thinking. MiniMax-M2.x models use always-on thinking and only accept this setting as true. See [MiniMax API docs](https://platform.minimax.io/docs/api-reference/text-openai-api)."
+      "description": "MiniMax-M3.1-Flash requires adaptive thinking: omit this setting or enable it. MiniMax-M3 supports either setting; omission uses adaptive thinking for OpenAI and disabled thinking for Anthropic. MiniMax-M2.x models retain their always-on behavior. Effort is left to the API default. See [MiniMax API docs](https://platform.minimax.io/docs/api-reference/text-chat-openai)."
     }
   }
 }
