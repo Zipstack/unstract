@@ -144,13 +144,26 @@ def model_aware_limits_enabled() -> bool:
     if value in _FALSE_VALUES:
         return False
     if value not in _TRUE_VALUES:
-        logger.error(
-            "Invalid %s value %r (expected true or false); keeping model-aware "
-            "image limits on",
-            ENFORCE_ENV,
-            raw,
-        )
+        _report_invalid_switch_once(raw)
     return True
+
+
+# Invalid values already reported by this process: the switch is read per
+# lookup, so each distinct bad value is logged once.
+_invalid_switch_logged: set[str] = set()
+
+
+def _report_invalid_switch_once(raw: str) -> None:
+    with _switched_off_lock:
+        if raw in _invalid_switch_logged:
+            return
+        _invalid_switch_logged.add(raw)
+    logger.error(
+        "Invalid %s value %r (expected true or false); keeping model-aware "
+        "image limits on (logged once per process)",
+        ENFORCE_ENV,
+        raw,
+    )
 
 
 def fixed_cap_bound_kwargs() -> dict[str, int | None]:

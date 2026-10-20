@@ -721,6 +721,20 @@ class TestEnforceSwitchInsideTheBuilders:
         ]
         assert len(lines) == 1
 
+    def test_invalid_switch_value_is_logged_once_per_process(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        monkeypatch.setattr(policy_mod, "_invalid_switch_logged", set())
+        monkeypatch.setenv(policy_mod.ENFORCE_ENV, "maybe")
+        for _ in range(3):  # read per lookup
+            assert policy_mod.model_aware_limits_enabled() is True
+        lines = [
+            r
+            for r in caplog.records
+            if r.levelname == "ERROR" and policy_mod.ENFORCE_ENV in r.getMessage()
+        ]
+        assert len(lines) == 1
+
     def test_switch_on_keeps_model_aware_limits(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
