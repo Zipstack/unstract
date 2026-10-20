@@ -14,7 +14,8 @@ always available. Precedence, highest first:
    against the bundled table (bundled ``kind``; image-count and
    request-byte limits at most ``MAX_REMOTE_RAISE_FACTOR`` times the
    bundled value). A provider the remote copy lacks resolves from the
-   bundled entry. So a bad value on main is capped per model, and every
+   bundled entry, also as the ``inherit`` parent of an override-file
+   entry. So a bad value on main is capped per model, and every
    other change in the same file (tightening, new models and providers)
    still reaches installs.
 3. The bundled copy.
@@ -108,7 +109,12 @@ def configured_limits_url() -> str | None:
 
 
 def configured_refresh_seconds() -> int:
-    """Seconds between fetch attempts; bad values fall back to the default."""
+    """Seconds between fetch attempts; bad values fall back to the default.
+
+    Read on every refreshing lookup, so a bad value is logged once per
+    process.
+    """
+    global _logged_bad_refresh
     raw = os.environ.get(LIMITS_REFRESH_ENV)
     if raw is None or not raw.strip():
         return DEFAULT_REFRESH_SECONDS
@@ -117,6 +123,9 @@ def configured_refresh_seconds() -> int:
     except ValueError:
         value = 0
     if value <= 0:
+        if _logged_bad_refresh:
+            return DEFAULT_REFRESH_SECONDS
+        _logged_bad_refresh = True
         logger.warning(
             "Ignoring %s=%r (not a positive integer); refreshing every %ss",
             LIMITS_REFRESH_ENV,
@@ -194,7 +203,11 @@ _with_override: dict[str, tuple[LimitsTable, LimitsTable]] = {}
 _logged_disabled = False
 # (provider, model, field) clamps already logged by this process.
 _clamp_reported: set[tuple[str, str, str]] = set()
+# Providers this process has logged as missing from a non-bundled table.
+_missing_reported: set[str] = set()
 _clamp_lock = threading.Lock()
+# Whether this process has logged a bad refresh-window setting.
+_logged_bad_refresh = False
 
 
 def _bundled_table() -> LimitsTable:
@@ -230,6 +243,20 @@ def first_clamp_report(key: tuple[str, str, str]) -> bool:
         if key in _clamp_reported:
             return False
         _clamp_reported.add(key)
+        return True
+
+
+def first_missing_provider_report(provider: str) -> bool:
+    """True the first time this process falls back to bundled for ``provider``.
+
+    The fallback (``resolve._resolve_on``, and an ``inherit`` whose parent the
+    effective table lacks) runs on every lookup; one WARNING per provider
+    per process is enough.
+    """
+    with _clamp_lock:
+        if provider in _missing_reported:
+            return False
+        _missing_reported.add(provider)
         return True
 
 
@@ -330,7 +357,9 @@ def _apply_override(base: LimitsTable, path: str) -> LimitsTable:
     if cached is not None and cached[0] is base:
         return cached[1]
     try:
-        merged = apply_override_file(base, path)
+        # Inherit targets may name a bundled provider the base (remote) copy
+        # dropped; the lookup resolves such a parent from the bundled entry.
+        merged = apply_override_file(base, path, bundled=_bundled_table())
         logger.info("Applied image-limits override file %s", path)
     except (OSError, ValueError) as e:  # LimitsSchemaError is a ValueError
         logger.error(
@@ -369,11 +398,13 @@ def get_limits_table(*, refresh: bool = True) -> LimitsTable:
 
 def clear_limits_cache() -> None:
     """Forget every cached table and fetch time (tests)."""
-    global _bundled, _logged_disabled
+    global _bundled, _logged_disabled, _logged_bad_refresh
     with _lock:
         _bundled = None
         _remote.clear()
         _with_override.clear()
         _logged_disabled = False
+        _logged_bad_refresh = False
     with _clamp_lock:
         _clamp_reported.clear()
+        _missing_reported.clear()
