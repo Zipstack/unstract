@@ -11,6 +11,7 @@ from utils.user_session import UserSessionUtils
 from account_v2.authentication_plugin_registry import AuthenticationPluginRegistry
 from account_v2.authentication_service import AuthenticationService
 from account_v2.constants import Common
+from account_v2.session_tracking import SessionTracker
 from backend.constants import RequestHeader
 from backend.internal_api_constants import INTERNAL_API_PREFIX
 
@@ -99,6 +100,7 @@ class CustomAuthMiddleware:
             # -- see the note beside the setting.
             if request.organization_id and not organization_id:
                 return JsonResponse({"message": "Organization access denied"}, status=403)
+            SessionTracker.touch(request)
             StateStore.set(Common.LOG_EVENTS_ID, request.session.session_key)
             StateStore.set(Account.ORGANIZATION_ID, organization_id)
             response = self.get_response(request)

@@ -840,6 +840,9 @@ else:
     }
 
 SESSION_ENGINE = "django.contrib.sessions.backends.cached_db"
+# Dotted path to `callable(ip: str) -> str | None` naming an approximate location
+# for a signed-in session. Unset, sessions are listed without one.
+SESSION_LOCATION_RESOLVER = os.environ.get("SESSION_LOCATION_RESOLVER") or None
 
 RQ_QUEUES = {
     "default": {"USE_REDIS_CACHE": "default"},
