@@ -647,3 +647,94 @@ class TestEnforceSwitch:
         policy = ImageModePolicy.ceiling_only(**policy_mod.fixed_cap_bound_kwargs())
         assert policy.page_budget.max_pages == 90
         assert policy.raw_byte_budget(page_count=10) == 14 * 1024 * 1024
+
+
+class TestEnforceSwitchInsideTheBuilders:
+    """The shared builders honour ``VLM_IMAGE_LIMITS_ENFORCE=false`` (O13).
+
+    Consumers (the cloud answer plugin, its backend hooks, the OSS upload
+    check) build their policy with these; none of them should have to
+    remember to check the switch.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _switched_off(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv(policy_mod.ENFORCE_ENV, "false")
+
+    @pytest.mark.parametrize("legacy_active", [True, False])
+    def test_from_limits_yields_the_fixed_cap(
+        self, monkeypatch: pytest.MonkeyPatch, legacy_active: bool
+    ) -> None:
+        monkeypatch.setattr(policy_mod, "LEGACY_ANSWER_BOUNDS_ACTIVE", legacy_active)
+        policy = ImageModePolicy.from_limits(
+            [BEDROCK], token_budgets=[200_000], **policy_mod.extraction_bound_kwargs()
+        )
+        assert policy.model_aware is False
+        assert policy.switched_off is True
+        assert policy.page_budget.max_pages == 90  # not Bedrock's 20
+        assert policy.max_request_bytes is None
+        assert policy.max_image_bytes is None
+        assert policy.raw_byte_budget(page_count=10) == 14 * 1024 * 1024
+        # 30 pages: over Bedrock's 20 images, inside the fixed cap.
+        check_page_set(
+            policy, [(n, minimal_png()) for n in range(1, 31)], page_store_dir=DIR
+        )
+
+    def test_from_limits_without_bounds_is_still_the_fixed_cap(self) -> None:
+        policy = ImageModePolicy.from_limits([OPENAI])
+        assert policy.page_budget.max_pages == 90
+        assert policy.bytes_ceiling == 14 * 1024 * 1024
+
+    def test_a_stricter_bound_still_applies(self) -> None:
+        policy = ImageModePolicy.from_limits([OPENAI], legacy_cap=10, bytes_ceiling=1000)
+        assert policy.page_budget.max_pages == 10
+        assert policy.bytes_ceiling == 1000
+
+    def test_extraction_bounds_are_the_fixed_cap_after_rollout(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(policy_mod, "LEGACY_ANSWER_BOUNDS_ACTIVE", False)
+        assert policy_mod.extraction_bound_kwargs() == (
+            policy_mod.fixed_cap_bound_kwargs()
+        )
+
+    def test_compute_page_budget_yields_the_fixed_cap(self) -> None:
+        budget = compute_page_budget(BEDROCK, context_tokens=200_000)
+        assert budget.max_pages == 90
+        assert budget.limits is None
+
+    def test_describe_says_the_switch_is_off(self) -> None:
+        text = ImageModePolicy.from_limits([BEDROCK]).describe()
+        assert "VLM_IMAGE_LIMITS_ENFORCE=false" in text
+        assert "LLM not known" not in text
+
+    def test_switch_on_keeps_model_aware_limits(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv(policy_mod.ENFORCE_ENV, "true")
+        policy = ImageModePolicy.from_limits([BEDROCK])
+        assert policy.model_aware is True
+        assert policy.page_budget.max_pages == 20
+
+
+class TestAdvisoriesCoverEveryLlm:
+    """Pass-through advisories are not dropped when another LLM binds (N4)."""
+
+    def test_image_count_advisory_names_the_pass_through_llm(self) -> None:
+        # Bedrock (20, enforced) sets the page budget; the Ollama model's
+        # advisory default must still be reported.
+        policy = ImageModePolicy.from_limits([BEDROCK, OLLAMA])
+        assert policy.page_budget.limits.provider_key == "bedrock"
+        lines = policy.advisories(page_count=25)
+        assert any("llava" in ln and "publishes no image limit" in ln for ln in lines)
+
+    def test_request_size_advisory_for_each_pass_through_llm(self) -> None:
+        other = dataclasses.replace(OLLAMA, model="bakllava")
+        policy = ImageModePolicy.from_limits([OLLAMA, other])
+        lines = [
+            ln
+            for ln in policy.advisories(page_count=3)
+            if "publishes no request-size limit" in ln
+        ]
+        assert any("`llava`" in ln for ln in lines)
+        assert any("`bakllava`" in ln for ln in lines)

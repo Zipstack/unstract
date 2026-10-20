@@ -14,7 +14,9 @@ a conversion that may be unanswerable. With no ids at all (pre-upgrade
 payloads), only the platform ceilings apply and answer time re-checks.
 
 ``VLM_IMAGE_LIMITS_ENFORCE=false`` skips the LLM lookup and applies the
-fixed 90-page / 14 MiB cap (``ceiling_only``), the pre-UN-4427 behaviour.
+fixed 90-page / 14 MiB cap (``ImageModePolicy.fixed_cap``), the pre-UN-4427
+behaviour. sdk1's builders honour the switch too; checking it here first
+also skips the adapter lookups, which could otherwise fail closed.
 """
 
 from __future__ import annotations
@@ -22,6 +24,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+import requests
 from executor.executors.exceptions import ExtractionError
 
 from unstract.sdk1.adapters.constants import Common
@@ -32,7 +35,6 @@ from unstract.sdk1.utils.image_limits import (
     ImageModePolicy,
     codes,
     extraction_bound_kwargs,
-    fixed_cap_bound_kwargs,
     model_aware_limits_enabled,
 )
 
@@ -61,6 +63,30 @@ def _unresolved(llm_instance_id: str, reason: str, *, transient: bool) -> Extrac
     )
 
 
+def _is_transient(error: BaseException) -> bool:
+    """True for a lookup failure a retry can fix: no connection, a timeout, a 5xx.
+
+    ``PlatformHelper.get_adapter_config`` wraps most failures in ``SdkError``
+    (a refused connection, a 4xx), so the cause chain is inspected. Anything
+    else (a 4xx such as an unknown or forbidden adapter, a bad public
+    adapter definition) is deterministic: retrying returns the same error.
+    """
+    seen: set[int] = set()
+    current: BaseException | None = error
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        if isinstance(
+            current,
+            (requests.ConnectionError, requests.Timeout, ConnectionError, TimeoutError),
+        ):
+            return True
+        if isinstance(current, requests.HTTPError):
+            response = current.response
+            return response is not None and response.status_code >= 500
+        current = current.__cause__ or current.__context__
+    return False
+
+
 def build_extraction_image_policy(
     shim: Any, llm_instance_ids: list[str] | tuple[str, ...]
 ) -> ImageModePolicy:
@@ -71,7 +97,7 @@ def build_extraction_image_policy(
             "of the LLM's limits",
             ENFORCE_ENV,
         )
-        return ImageModePolicy.ceiling_only(**fixed_cap_bound_kwargs())
+        return ImageModePolicy.fixed_cap()
     bounds = extraction_bound_kwargs()
     ids = list(dict.fromkeys(str(i) for i in llm_instance_ids if i))
     if not ids:
@@ -89,7 +115,7 @@ def build_extraction_image_policy(
             config = PlatformHelper.get_adapter_config(shim, llm_instance_id)
         except Exception as e:
             raise _unresolved(
-                llm_instance_id, str(e) or type(e).__name__, transient=True
+                llm_instance_id, str(e) or type(e).__name__, transient=_is_transient(e)
             ) from e
         if not config:
             raise _unresolved(

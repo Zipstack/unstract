@@ -11,6 +11,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
+import requests
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
@@ -27,6 +28,7 @@ from unstract.sdk1.adapters.x2text.constants import X2TextConstants  # noqa: E40
 from unstract.sdk1.adapters.x2text.llm_whisperer_v2.src import (  # noqa: E402
     LLMWhispererV2,
 )
+from unstract.sdk1.exceptions import SdkError  # noqa: E402
 from unstract.sdk1.execution.context import ExecutionContext  # noqa: E402
 from unstract.sdk1.utils.image_limits import ImageModePolicy, codes  # noqa: E402
 from unstract.sdk1.utils.image_limits import policy as policy_mod  # noqa: E402
@@ -46,6 +48,23 @@ OPENAI_CFG = {
         "api_base": "https://api.openai.com/v1",
     },
 }
+
+
+def _http_error(status: int) -> requests.HTTPError:
+    response = requests.Response()
+    response.status_code = status
+    return requests.HTTPError(f"{status} error", response=response)
+
+
+def _wrapped(cause: BaseException, message: str) -> SdkError:
+    """An ``SdkError`` raised from ``cause``, as ``get_adapter_config`` does."""
+    try:
+        raise cause
+    except BaseException as e:
+        try:
+            raise SdkError(message) from e
+        except SdkError as wrapped:
+            return wrapped
 
 
 def _resolver(configs: dict[str, dict | None]):
@@ -141,7 +160,28 @@ class TestBuildExtractionImagePolicy:
         ("failure", "status", "advice"),
         [
             (None, 400, "retrying will not help"),
-            (RuntimeError("platform service down"), 503, "retry in a moment"),
+            # What PlatformHelper.get_adapter_config raises: a refused
+            # connection is wrapped in SdkError, 502-504 escape the retries
+            # as HTTPError, other HTTP errors are wrapped in SdkError.
+            (
+                _wrapped(requests.ConnectionError("refused"), "Unable to connect"),
+                503,
+                "retry in a moment",
+            ),
+            (requests.Timeout("read timed out"), 503, "retry in a moment"),
+            (_http_error(503), 503, "retry in a moment"),
+            (_wrapped(_http_error(500), "Error retrieving adapter."), 503, "retry"),
+            (
+                _wrapped(_http_error(404), "Error retrieving adapter. Not found"),
+                400,
+                "retrying will not help",
+            ),
+            (
+                _wrapped(_http_error(403), "Error retrieving adapter. Forbidden"),
+                400,
+                "retrying will not help",
+            ),
+            (RuntimeError("unexpected"), 400, "retrying will not help"),
             (
                 {"adapter_id": "nope|1", "adapter_metadata": {}},
                 400,
