@@ -40,6 +40,7 @@ from unstract.sdk1.utils.image_limits.source import (
     REMOTE_SOURCE,
     bundled_table,
     first_clamp_report,
+    first_missing_provider_report,
     get_limits_table,
 )
 
@@ -203,7 +204,14 @@ def _resolve_fields(
     if override is not None:
         label = override.description or override.pattern
         if override.inherit and override.inherit not in (_seen | {provider.key}):
-            parent = table.providers[override.inherit]
+            parent = table.providers.get(override.inherit)
+            if parent is None:
+                # An override file may inherit from a bundled provider the
+                # remote copy dropped (``apply_override_file`` allows it):
+                # the parent resolves from the bundled entry, as a missing
+                # provider does in ``_resolve_on``.
+                _warn_missing(override.inherit, table)
+                parent = bundled_table().providers[override.inherit]
             # Match the parent's overrides on what follows the matched slug.
             assert candidate is not None
             match = override.regex.search(candidate)
@@ -234,7 +242,9 @@ def resolve_image_limits(
     (Azure deployment names). ``extra_model_ids`` are extra candidates
     (see the README's "Lookup rules" for how candidates are matched).
     A provider missing from ``table`` but present in the bundled table is
-    resolved from the bundled entry, never as pass-through. When ``table``
+    resolved from the bundled entry, never as pass-through; so is an
+    ``inherit`` parent ``table`` lacks (an override file inheriting from a
+    provider the remote copy dropped). When ``table``
     is a remote copy, the result is clamped against the bundled table
     (``_clamp_to_bundled``); fields an operator override file set are not.
     """
@@ -274,12 +284,7 @@ def _resolve_on(
         if table is not shipped and key in shipped.providers:
             # A provider the bundled table knows never becomes pass-through
             # because another table (remote copy, override) lacks it.
-            logger.warning(
-                "Image limits: provider %r is missing from the %s limits table; "
-                "using the bundled entry",
-                key,
-                table.origin.source if table.origin else "effective",
-            )
+            _warn_missing(key, table)
             return _resolve_on(
                 shipped,
                 adapter_provider,
@@ -341,6 +346,18 @@ def _resolve_on(
         is_default_provider=provider is None,
         table_version=table.origin.version if table.origin else "",
         **resolved,
+    )
+
+
+def _warn_missing(key: str, table: LimitsTable) -> None:
+    """Log, once per provider per process, a fallback to the bundled entry."""
+    if not first_missing_provider_report(key):
+        return
+    logger.warning(
+        "Image limits: provider %r is missing from the %s limits table; "
+        "using the bundled entry (logged once per process)",
+        key,
+        table.origin.source if table.origin else "effective",
     )
 
 

@@ -30,9 +30,12 @@ This is the one statement of the matching rule; the code and
    validated to `bedrock_mantle/...` uses `bedrock_mantle`. Never the
    litellm prefix alone: MiniMax may send `anthropic/<id>`. A provider the
    bundled table has is always resolved, from the bundled entry if the
-   effective table lacks it, and keeps the bundled `kind` (a remote copy's
-   `kind` is clamped, see rule 7); only an operator override file can
-   change a `kind`.
+   effective table lacks it (one WARNING per provider per process), and
+   keeps the bundled `kind` (a remote copy's `kind` is clamped, see rule
+   7); only an operator override file can change a `kind`. The same holds
+   for an `inherit` parent: an override-file entry inheriting from a
+   provider the remote copy dropped resolves that parent from the bundled
+   entry.
 2. Candidates are the bare (litellm-prefix-stripped) ids in this order:
    `cost_model` (Azure's real model), the validated model, then extra ids
    (Bedrock `model_id` behind an ARN).
@@ -147,8 +150,12 @@ branch of Zipstack/unstract. Each process uses, highest precedence first:
    same schema, applied on top of the base table. A provider present in it
    replaces that entry wholesale (no deep merge); a `default` block is
    merged field by field over the shipped default (it may not null a
-   defaultable field); `sources` are merged. A malformed file is logged and
-   ignored. A future per-org override would plug in here.
+   defaultable field); `sources` are merged. Its `inherit` targets and
+   source keys may name any provider or source of the base table or of the
+   bundled one, so a provider or source dropped from the remote copy does
+   not invalidate the file. A malformed
+   file is logged and ignored. A future per-org override would plug in
+   here.
 2. The remote copy — `VLM_IMAGE_LIMITS_URL`, default
    `https://raw.githubusercontent.com/Zipstack/unstract/main/unstract/sdk1/src/unstract/sdk1/utils/image_limits/limits.json`.
    Set it to an empty string to turn fetching off (air-gapped on-prem; the
@@ -177,7 +184,8 @@ override patterns of at most 300 characters (`MAX_PATTERN_LENGTH`) that
 compile. Beyond that the file is accepted as a whole: what a data refresh
 may change is enforced per lookup by the remote clamp (Lookup rules,
 rule 7), because a merge to main reaches every install within an hour. A
-provider missing from the remote copy resolves from the bundled entry.
+provider missing from the remote copy resolves from the bundled entry,
+also as the `inherit` parent of an operator override-file entry.
 Checking the table as a whole could not do this job: it cannot enumerate
 model ids nobody listed (a new override can shadow any real model), and
 rejecting the file would also hold an older install back from every later
@@ -213,7 +221,9 @@ and to the run-log summary.
    on picks it up within one refresh window, without a release. Review a
    data change as you would a deploy. Installs clamp what main may
    loosen (Lookup rules, rule 7): a removed provider resolves from the
-   bundled entry, a changed `kind` keeps the bundled one, and an image
+   bundled entry (directly, and as the `inherit` parent of an operator
+   override file's entry, which stays valid), a changed `kind` keeps the
+   bundled one, and an image
    count or request-byte limit above 2x the bundled value for the same
    model is capped at 2x (a WARNING per provider, model and field names
    both numbers). Ship those changes in an sdk1 release. Lowering limits

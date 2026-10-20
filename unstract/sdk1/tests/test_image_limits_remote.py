@@ -436,6 +436,239 @@ class TestRemoteMissingProvider:
         assert limits.max_images_per_request.advisory is False
 
 
+def _missing_warnings(caplog: pytest.LogCaptureFixture) -> list[str]:
+    return [
+        r.getMessage()
+        for r in caplog.records
+        if r.levelname == "WARNING" and "is missing from the" in r.getMessage()
+    ]
+
+
+class TestRemoteMissingProviderIsLoggedOnce:
+    """The bundled fallback logs one WARNING per provider per process (Q2)."""
+
+    def test_repeated_lookups_log_once_per_provider(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        data = _remote_data()
+        del data["providers"]["bedrock"]
+        del data["providers"]["minimax"]
+        table = _remote_table(data)
+        with caplog.at_level("WARNING"):
+            for _ in range(3):
+                resolve_image_limits("bedrock", "bedrock/some-model", table=table)
+                resolve_image_limits("minimax", "minimax/some-model", table=table)
+        warnings = _missing_warnings(caplog)
+        assert len(warnings) == 2
+        assert any("'bedrock'" in w for w in warnings)
+        assert any("'minimax'" in w for w in warnings)
+
+    def test_clear_limits_cache_resets_the_report(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        table = _remote_table(_drop_provider("bedrock")())
+        with caplog.at_level("WARNING"):
+            resolve_image_limits("bedrock", "bedrock/some-model", table=table)
+            image_limits.clear_limits_cache()
+            resolve_image_limits("bedrock", "bedrock/some-model", table=table)
+        assert len(_missing_warnings(caplog)) == 2
+
+
+class TestBadRefreshWindowIsLoggedOnce:
+    """The refresh window is read on every refreshing lookup; warn once."""
+
+    def test_bad_value_warns_once_per_process(
+        self,
+        serve: Callable[..., _Server],
+        clock: _FakeClock,
+        monkeypatch: MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        serve(_json_response(_remote_data()))
+        monkeypatch.setenv(limits_source.LIMITS_REFRESH_ENV, "soon")
+        with caplog.at_level("WARNING"):
+            for _ in range(4):
+                get_limits_table()
+        bad = [
+            r
+            for r in caplog.records
+            if r.levelname == "WARNING" and "not a positive integer" in r.getMessage()
+        ]
+        assert len(bad) == 1
+
+
+_OPENROUTER_CLAUDE = "openrouter/anthropic/claude-sonnet-4-5"
+
+
+def _drop_anthropic(*, keep_inherit: bool) -> dict:
+    """Main drops ``anthropic``; a valid commit also drops rows inheriting it."""
+    data = _remote_data()
+    del data["providers"]["anthropic"]
+    if not keep_inherit:
+        rows = data["providers"]["openrouter"]["model_overrides"]
+        data["providers"]["openrouter"]["model_overrides"] = [
+            row for row in rows if row.get("inherit") != "anthropic"
+        ]
+    return data
+
+
+class TestOverrideFileOverRemoteMissingProvider:
+    """An override file inheriting from a provider main dropped keeps working (Q1).
+
+    The remote copy is accepted without ``anthropic``; an operator's
+    openrouter entry that inherits ``anthropic`` must still apply, with the
+    parent resolved from the bundled entry.
+    """
+
+    def _write_override(self, tmp_path: Path, monkeypatch: MonkeyPatch) -> Path:
+        openrouter = copy.deepcopy(_bundled_data()["providers"]["openrouter"])
+        for row in openrouter["model_overrides"]:
+            if row.get("inherit") == "anthropic":
+                row["max_images_per_request"] = {
+                    "value": 42,
+                    "confidence": "unverified",
+                    "source": "POLICY",
+                }
+        path = tmp_path / "override.json"
+        path.write_text(
+            json.dumps(
+                {"_meta": {"schema_version": 1}, "providers": {"openrouter": openrouter}}
+            )
+        )
+        monkeypatch.setenv(LIMITS_OVERRIDE_FILE_ENV, str(path))
+        return path
+
+    def test_override_applies_and_the_parent_resolves_from_bundled(
+        self,
+        serve: Callable[..., _Server],
+        clock: _FakeClock,
+        tmp_path: Path,
+        monkeypatch: MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        serve(_json_response(_drop_anthropic(keep_inherit=False)))
+        path = self._write_override(tmp_path, monkeypatch)
+
+        with caplog.at_level("WARNING"):
+            table = get_limits_table()
+            limits = resolve_image_limits("openrouter", _OPENROUTER_CLAUDE, table=table)
+        assert not [r for r in caplog.records if r.levelname == "ERROR"]
+        assert table.origin.source == "remote"
+        assert table.origin.override_file == str(path)
+        assert "anthropic" not in table.providers
+        assert table.providers["openrouter"].layer == "override"
+
+        # The operator's own field: as written, unclamped.
+        own = limits.max_images_per_request
+        assert (own.value, own.layer, own.clamped) == (42, "override", False)
+        # Inherited fields: the bundled anthropic entry, labelled shipped.
+        assert limits.inherited_from == "anthropic"
+        shipped = resolve_image_limits(
+            "anthropic",
+            "anthropic/claude-sonnet-4-5",
+            table=limits_source.bundled_table(),
+        )
+        for name in ("max_request_bytes", "max_image_bytes", "max_image_px"):
+            got, want = limits.field(name), shipped.field(name)
+            assert got.value == want.value is not None
+            assert got.layer == "shipped"
+            assert got.source_urls == want.source_urls != ()
+            assert got.clamped is False
+        assert len(_missing_warnings(caplog)) == 1
+
+    def test_inherited_field_cites_a_source_only_the_bundled_table_has(
+        self,
+        serve: Callable[..., _Server],
+        clock: _FakeClock,
+        tmp_path: Path,
+        monkeypatch: MonkeyPatch,
+    ) -> None:
+        # Main drops anthropic and everything else citing ANTH_CONTEXT, and
+        # then the source itself; the inherited field still cites it.
+        data = _drop_anthropic(keep_inherit=False)
+        del data["providers"]["bedrock_mantle"]
+        del data["sources"]["ANTH_CONTEXT"]
+        serve(_json_response(data))
+        path = tmp_path / "override.json"
+        openrouter = copy.deepcopy(_bundled_data()["providers"]["openrouter"])
+        path.write_text(
+            json.dumps(
+                {"_meta": {"schema_version": 1}, "providers": {"openrouter": openrouter}}
+            )
+        )
+        monkeypatch.setenv(LIMITS_OVERRIDE_FILE_ENV, str(path))
+
+        table = get_limits_table()
+        assert table.origin.override_file == str(path)
+        # The override layer carries the bundled sources it may cite.
+        assert table.sources["ANTH_CONTEXT"].url
+        limits = resolve_image_limits("openrouter", _OPENROUTER_CLAUDE, table=table)
+        assert limits.inherited_from == "anthropic"
+        cited = limits.max_images_per_request
+        assert "ANTH_CONTEXT" in cited.sources
+        bundled_url = limits_source.bundled_table().sources["ANTH_CONTEXT"].url
+        assert bundled_url in cited.source_urls
+
+    def test_override_may_cite_a_source_the_remote_copy_dropped(
+        self,
+        serve: Callable[..., _Server],
+        clock: _FakeClock,
+        tmp_path: Path,
+        monkeypatch: MonkeyPatch,
+    ) -> None:
+        data = _drop_anthropic(keep_inherit=False)
+        del data["providers"]["bedrock_mantle"]
+        del data["sources"]["ANTH_CONTEXT"]
+        serve(_json_response(data))
+        openrouter = copy.deepcopy(_bundled_data()["providers"]["openrouter"])
+        openrouter["defaults"]["max_images_per_request"] = {
+            "value": 33,
+            "confidence": "unverified",
+            "source": "ANTH_CONTEXT",
+        }
+        path = tmp_path / "override.json"
+        path.write_text(
+            json.dumps(
+                {"_meta": {"schema_version": 1}, "providers": {"openrouter": openrouter}}
+            )
+        )
+        monkeypatch.setenv(LIMITS_OVERRIDE_FILE_ENV, str(path))
+
+        table = get_limits_table()
+        assert table.origin.override_file == str(path)
+        limits = resolve_image_limits(
+            "openrouter", "openrouter/meta/llama-x", table=table
+        )
+        assert limits.max_images_per_request.value == 33
+        assert limits.max_images_per_request.layer == "override"
+
+    def test_without_an_override_file_the_remote_openrouter_applies(
+        self, serve: Callable[..., _Server], clock: _FakeClock
+    ) -> None:
+        serve(_json_response(_drop_anthropic(keep_inherit=False)))
+
+        table = get_limits_table()
+        assert table.origin.source == "remote"
+        assert "anthropic" not in table.providers
+        limits = resolve_image_limits("openrouter", _OPENROUTER_CLAUDE, table=table)
+        assert limits.inherited_from is None
+        assert limits.provider_kind == "pass_through"
+        assert limits.max_image_px.value is None
+        # anthropic itself still resolves from the bundled entry.
+        direct = resolve_image_limits(
+            "anthropic", "anthropic/claude-sonnet-4-5", table=table
+        )
+        assert direct.is_default_provider is False
+        assert direct.provider_kind == "hosted"
+
+    def test_remote_that_keeps_a_dangling_inherit_is_rejected(
+        self, serve: Callable[..., _Server], clock: _FakeClock
+    ) -> None:
+        serve(_json_response(_drop_anthropic(keep_inherit=True)))
+
+        assert get_limits_table().origin.source == "bundled"
+
+
 def _mutated(mutate: Callable[[dict], None]) -> dict:
     data = _remote_data()
     mutate(data)

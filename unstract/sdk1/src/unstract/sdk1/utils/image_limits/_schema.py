@@ -26,7 +26,10 @@ import json
 import re
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
+
+if TYPE_CHECKING:
+    from collections.abc import Mapping
 
 # The schema this sdk1 reads. Data-only edits keep it; any new key or
 # changed meaning bumps it, and older installs then skip the remote copy.
@@ -386,24 +389,30 @@ def _parse_table(  # noqa: C901 - one check per schema rule
     )
 
 
-def _check_inheritance(providers: dict[str, ProviderEntry]) -> None:
+def _check_inheritance(
+    providers: dict[str, ProviderEntry],
+    fallback: Mapping[str, ProviderEntry] | None = None,
+) -> None:
     """Enforce one-level ``inherit``.
 
     The target must exist, must not be the provider itself, and must not
     inherit in turn. This rules out every cycle, which the resolver would
-    otherwise follow until ``RecursionError``.
+    otherwise follow until ``RecursionError``. A target missing from
+    ``providers`` may be found in ``fallback`` (the bundled providers, for
+    an override file applied over a remote copy that dropped one).
     """
+    known: Mapping[str, ProviderEntry] = {**(fallback or {}), **providers}
     for entry in providers.values():
         for override in entry.overrides:
             target = override.inherit
             if target is None:
                 continue
             where = f"providers.{entry.key}"
-            if target not in providers:
+            if target not in known:
                 raise _fail(where, f"inherit target '{target}' is not a provider key")
             if target == entry.key:
                 raise _fail(where, f"override '{override.pattern}' inherits itself")
-            if any(o.inherit for o in providers[target].overrides):
+            if any(o.inherit for o in known[target].overrides):
                 raise _fail(
                     where,
                     f"inherit target '{target}' itself inherits; only one level "
@@ -455,7 +464,9 @@ def load_limits_table(path: str | Path | None = None) -> LimitsTable:
     return parse_limits_bytes(raw, source="bundled", location=str(target))
 
 
-def apply_override_file(table: LimitsTable, path: str | Path) -> LimitsTable:
+def apply_override_file(
+    table: LimitsTable, path: str | Path, *, bundled: LimitsTable | None = None
+) -> LimitsTable:
     """Apply an override file: whole provider entries, ``default`` per field.
 
     A provider present in the override replaces the shipped entry wholesale.
@@ -463,8 +474,17 @@ def apply_override_file(table: LimitsTable, path: str | Path) -> LimitsTable:
     so an override that sets only ``max_images_per_request`` keeps the
     shipped request-byte and tokens-per-page defaults. Sources are merged so
     an override can cite its own evidence. The override must resolve on its
-    own (its ``inherit`` targets may name shipped providers).
+    own (its ``inherit`` targets may name shipped providers). ``bundled``
+    is the bundled table when ``table`` is another copy (remote): an
+    ``inherit`` target or source key ``table`` lacks may then name a bundled
+    provider or source, and the lookup resolves that parent from the
+    bundled entry.
     """
+    fallback = {
+        key: p
+        for key, p in (bundled.providers if bundled is not None else {}).items()
+        if key not in table.providers
+    }
     try:
         data = _read_json(Path(path))
     except ValueError as e:
@@ -483,13 +503,12 @@ def apply_override_file(table: LimitsTable, path: str | Path) -> LimitsTable:
     override_providers = data.get("providers")
     if override_providers is not None and not isinstance(override_providers, dict):
         raise LimitsSchemaError(f"{path}: 'providers' must be an object")
-    # Validate the override against the union of sources, and let its
+    # Validate the override against the union of sources (the bundled ones
+    # too, so a source the remote copy dropped stays citable), and let its
     # inherit targets point at shipped providers.
+    known_sources = {**(bundled.sources if bundled is not None else {}), **table.sources}
     merged_sources = {
-        **{
-            k: {"url": v.url, "verified_on": v.verified_on}
-            for k, v in table.sources.items()
-        }
+        k: {"url": v.url, "verified_on": v.verified_on} for k, v in known_sources.items()
     }
     for key, entry in (data.get("sources") or {}).items():
         merged_sources[key] = entry
@@ -500,7 +519,7 @@ def apply_override_file(table: LimitsTable, path: str | Path) -> LimitsTable:
     # of cross-layer inheritance succeeds; they are re-attached below.
     shipped_stubs = {
         key: {"adapter": p.adapter, "display_name": p.display_name, "kind": p.kind}
-        for key, p in table.providers.items()
+        for key, p in {**fallback, **table.providers}.items()
         if key not in (candidate.get("providers") or {})
     }
     candidate["providers"] = {**shipped_stubs, **(candidate.get("providers") or {})}
@@ -511,7 +530,7 @@ def apply_override_file(table: LimitsTable, path: str | Path) -> LimitsTable:
         providers[key] = parsed.providers[key]
     # The override may combine with shipped entries into a chain or a cycle
     # (e.g. its anthropic inheriting the shipped openrouter): check the result.
-    _check_inheritance(providers)
+    _check_inheritance(providers, fallback)
     default = {**table.default, **parsed.default}
     for name in DEFAULTABLE_FIELDS:
         if default.get(name) is None or default[name].value is None:
