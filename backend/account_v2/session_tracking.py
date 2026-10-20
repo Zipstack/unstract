@@ -12,7 +12,7 @@ import re
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import datetime, timedelta
 from functools import cache
 from importlib import import_module
 from typing import Any
@@ -21,7 +21,8 @@ from django.conf import settings
 from django.contrib.auth import SESSION_KEY
 from django.contrib.sessions.models import Session
 from django.core.cache import cache as django_cache
-from django.db import IntegrityError
+from django.db import IntegrityError, connection, transaction
+from django.db.migrations.recorder import MigrationRecorder
 from django.http import HttpRequest
 from django.utils import timezone
 from django.utils.module_loading import import_string
@@ -35,6 +36,7 @@ logger = logging.getLogger(__name__)
 # The spec caps activity writes at one per session per minute.
 ACTIVITY_REFRESH_INTERVAL = timedelta(minutes=1)
 _TOUCH_CACHE_PREFIX = "session_record_touch:"
+_RECORDING_MIGRATION = ("account_v2", "0008_sessionrecord")
 
 # First match wins, so browsers built on Chromium are listed before Chrome and
 # Chrome before Safari (each carries the tokens of the ones after it).
@@ -104,6 +106,22 @@ def _client_ip(request: HttpRequest) -> str | None:
     return request.META.get("REMOTE_ADDR") or None
 
 
+@cache
+def _recording_started_at() -> datetime | None:
+    # When the migration creating SessionRecord was applied: from then on every
+    # sign-in is recorded. No migration history (a schema built straight from the
+    # models) means there are no sessions from before recording either.
+    if not MigrationRecorder(connection).has_table():
+        return None
+    return (
+        MigrationRecorder.Migration.objects.filter(
+            app=_RECORDING_MIGRATION[0], name=_RECORDING_MIGRATION[1]
+        )
+        .values_list("applied", flat=True)
+        .first()
+    )
+
+
 def _session_store_class() -> type:
     return import_module(settings.SESSION_ENGINE).SessionStore
 
@@ -139,7 +157,19 @@ class SessionTracker:
         # saves it. Saving now gives the record a key; the later save reuses it.
         if request.session.session_key is None:
             request.session.save()
-        cls._upsert(request, user)
+        with transaction.atomic():
+            cls._prune_stale()
+            cls._upsert(request, user)
+
+    @staticmethod
+    def _prune_stale() -> None:
+        # Records keep a client IP, so they must not outlive their session even
+        # for a user who never lists their sessions again. Sign-in is frequent
+        # enough to keep the table to live sessions, and rare enough to afford it.
+        live_keys = Session.objects.filter(expire_date__gt=timezone.now()).values(
+            "session_key"
+        )
+        SessionRecord.objects.exclude(session_key__in=live_keys).delete()
 
     @classmethod
     def touch(cls, request: HttpRequest) -> None:
@@ -164,7 +194,8 @@ class SessionTracker:
             ).update(last_active_at=timezone.now())
             if not updated:
                 # Signed in before session recording existed: first seen now.
-                cls._upsert(request, user)
+                with transaction.atomic():
+                    cls._upsert(request, user)
         except IntegrityError:
             # A concurrent request recorded the same session first.
             pass
@@ -241,11 +272,22 @@ class SessionTracker:
 
     @classmethod
     def _unrecorded_session_keys(cls, user: User) -> list[str]:
-        # Sessions signed in before recording existed and idle since have no
-        # record. Only unrecorded live sessions are decoded, so the scan stays
-        # small once those age out.
+        """Live sessions of `user` signed in before recording existed.
+
+        Those have no record until their next request. Every session saved since
+        recording began expires after the cutoff, so bounding on it confines the
+        decode to that fixed pre-rollout set (anonymous sessions included, which
+        never get a record) and makes this a no-op once they have all expired.
+        """
+        started_at = _recording_started_at()
+        if started_at is None:
+            return []
+        cutoff = started_at + timedelta(seconds=settings.SESSION_COOKIE_AGE)
+        now = timezone.now()
+        if now >= cutoff:
+            return []
         candidates = (
-            Session.objects.filter(expire_date__gt=timezone.now())
+            Session.objects.filter(expire_date__gt=now, expire_date__lte=cutoff)
             .exclude(session_key__in=SessionRecord.objects.values("session_key"))
             .iterator()
         )

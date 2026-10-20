@@ -17,6 +17,7 @@ from django.core.cache import cache
 from django.test import SimpleTestCase, override_settings
 from django.urls import include, path
 from django.utils import timezone
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.test import APIClient, APITestCase
 
 from account_v2.models import Organization, SessionRecord, User
@@ -24,8 +25,10 @@ from account_v2.session_tracking import (
     _TOUCH_CACHE_PREFIX,
     SessionTracker,
     _location_resolver,
+    _recording_started_at,
     parse_user_agent,
 )
+from account_v2.session_views import _require_browser_session
 
 ORG = "org-a"
 SESSIONS_URL = f"/api/v1/unstract/{ORG}/users/sessions/"
@@ -84,6 +87,11 @@ class SessionEndpointsTest(APITestCase):
         session["organization"] = ORG
         session["user_id"] = str(user.pk)
         session.save()
+        # `force_login` signs in on a bare request with no headers; a browser's
+        # sign-in request carries its user agent.
+        SessionRecord.objects.filter(
+            session_key=client.cookies[settings.SESSION_COOKIE_NAME].value
+        ).update(user_agent=user_agent)
         return client
 
     @staticmethod
@@ -99,8 +107,7 @@ class SessionEndpointsTest(APITestCase):
     def test_list_shows_both_sessions_with_the_right_current_one(self) -> None:
         laptop = self._sign_in(self.user, CHROME_MAC)
         desktop = self._sign_in(self.user, FIREFOX_WINDOWS)
-        # The first authenticated request on each browser records its user agent.
-        desktop.get(SESSIONS_URL)
+        desktop.get(SESSIONS_URL)  # Desktop is now the most recently active.
 
         response = laptop.get(SESSIONS_URL)
 
@@ -128,6 +135,48 @@ class SessionEndpointsTest(APITestCase):
             },
         )
         self.assertIsNone(current["location"])
+        self.assertEqual(current["device_label"], "Chrome on macOS")
+        self.assertEqual(
+            (other["browser"], other["os"], other["device_label"]),
+            ("Firefox", "Windows", "Firefox on Windows"),
+        )
+
+    def test_signing_in_as_someone_else_on_one_browser_records_the_new_user(
+        self,
+    ) -> None:
+        browser = self._sign_in(self.user)
+        alice_key = self._key(browser)
+        bob = self._make_user("bob@example.com")
+
+        # A different user signing in flushes the session instead of cycling it.
+        browser.force_login(bob)
+
+        bob_key = self._key(browser)
+        self.assertNotEqual(bob_key, alice_key)
+        self.assertEqual(SessionRecord.objects.get(session_key=bob_key).user, bob)
+        self.assertFalse(SessionRecord.objects.filter(session_key=alice_key).exists())
+
+    def test_sign_in_prunes_records_of_expired_sessions(self) -> None:
+        stale = self._sign_in(self._make_user("bob@example.com"))
+        Session.objects.filter(session_key=self._key(stale)).update(
+            expire_date=timezone.now() - timedelta(seconds=1)
+        )
+
+        self._sign_in(self.user)
+
+        self.assertFalse(
+            SessionRecord.objects.filter(session_key=self._key(stale)).exists()
+        )
+
+    def test_sign_in_survives_a_recording_failure(self) -> None:
+        with patch(
+            "account_v2.session_tracking.SessionTracker._upsert",
+            side_effect=RuntimeError("boom"),
+        ):
+            client = self._sign_in(self.user)
+
+        self.assertIn(settings.SESSION_COOKIE_NAME, client.cookies)
+        self.assertEqual(client.get(SESSIONS_URL).status_code, 200)
 
     def test_revoke_all_rejects_every_session(self) -> None:
         laptop = self._sign_in(self.user)
@@ -156,14 +205,39 @@ class SessionEndpointsTest(APITestCase):
 
         self.assertEqual(bob.get(SESSIONS_URL).status_code, 200)
 
+    def _recording_started(self, at) -> None:
+        _recording_started_at.cache_clear()
+        self.addCleanup(_recording_started_at.cache_clear)
+        started = patch(
+            "account_v2.session_tracking._recording_started_at", return_value=at
+        )
+        started.start()
+        self.addCleanup(started.stop)
+
     def test_revoke_all_ends_sessions_signed_in_before_recording(self) -> None:
         laptop = self._sign_in(self.user)
         legacy = self._sign_in(self.user)
         SessionRecord.objects.filter(session_key=self._key(legacy)).delete()
+        # Recording began just after `legacy` signed in, so it expires before the
+        # cutoff while every session saved since expires after it.
+        self._recording_started(timezone.now() + timedelta(seconds=5))
 
         laptop.post(REVOKE_ALL_URL)
 
         self.assertFalse(Session.objects.filter(session_key=self._key(legacy)).exists())
+
+    def test_revoke_all_skips_the_legacy_scan_once_pre_rollout_sessions_expired(
+        self,
+    ) -> None:
+        laptop = self._sign_in(self.user)
+        self._recording_started(
+            timezone.now() - timedelta(seconds=settings.SESSION_COOKIE_AGE + 1)
+        )
+
+        with patch.object(Session.objects, "filter", wraps=Session.objects.filter) as q:
+            SessionTracker._unrecorded_session_keys(self.user)
+        q.assert_not_called()
+        self.assertEqual(laptop.post(REVOKE_ALL_URL).status_code, 204)
 
     def test_revoke_one_leaves_the_other_working(self) -> None:
         laptop = self._sign_in(self.user)
@@ -343,6 +417,20 @@ class IdentityProviderSessionTest(APITestCase):
         self.assertEqual(laptop.get(SESSIONS_URL).status_code, 401)
         self.assertEqual(self.plugin.revoked, [None])
 
+    def test_provider_failures_do_not_fail_the_request(self) -> None:
+        laptop = self._sign_in()
+        desktop = self._sign_in()
+        broken = RuntimeError("provider down")
+
+        with (
+            patch.object(self.plugin, "list_idp_sessions", side_effect=broken),
+            patch.object(self.plugin, "revoke_idp_sessions", side_effect=broken),
+        ):
+            self.assertEqual(len(laptop.get(SESSIONS_URL).json()), 2)
+            self.assertEqual(laptop.post(REVOKE_ALL_URL).status_code, 204)
+
+        self.assertEqual(desktop.get(SESSIONS_URL).status_code, 401)
+
     def test_provider_session_id_is_revoked_through_the_provider(self) -> None:
         laptop = self._sign_in()
 
@@ -407,3 +495,18 @@ class TouchIgnoresNonSessionRequestsTest(SimpleTestCase):
             with patch("account_v2.session_tracking.django_cache") as fake_cache:
                 SessionTracker.touch(request)
             fake_cache.add.assert_not_called()
+
+
+class BrowserSessionGuardTest(SimpleTestCase):
+    def test_platform_key_and_sessionless_callers_are_refused(self) -> None:
+        for request in (
+            SimpleNamespace(
+                platform_api_key=object(), session=SimpleNamespace(session_key="abc")
+            ),
+            SimpleNamespace(session=SimpleNamespace(session_key=None)),
+        ):
+            with self.assertRaises(PermissionDenied):
+                _require_browser_session(request)
+        _require_browser_session(
+            SimpleNamespace(session=SimpleNamespace(session_key="abc"))
+        )
