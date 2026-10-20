@@ -53,6 +53,12 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Shared by the image-mode extract summary and its parser.
+_IMAGE_SUMMARY_PREFIX = "[LLMWhisperer image output mode]"
+_IMAGE_SUMMARY_COUNT_RE = re.compile(
+    re.escape(_IMAGE_SUMMARY_PREFIX) + r" (\d+) page image"
+)
+
 
 class LLMWhispererHelper:
     @staticmethod
@@ -980,10 +986,11 @@ class LLMWhispererHelper:
         """Reject an over-budget document BEFORE the per-page-billed conversion.
 
         With a model-aware policy the budget is the consuming LLM's (image
-        count, context window, LLMWhisperer's 999, operator ceilings) and the
-        error carries a stable code. Without one the legacy fixed cap applies.
-        Best-effort by design: a PDF whose count cannot be read locally falls
-        through and is caught after conversion / at answer time.
+        count, LLMWhisperer's 999, operator ceilings; the context-window
+        estimate only warns) and the error carries a stable code. Without
+        one the legacy fixed cap applies. Best-effort by design: a PDF whose
+        count cannot be read locally falls through and is caught after
+        conversion / at answer time.
         """
         if expected_page_count is None:
             return
@@ -997,11 +1004,12 @@ class LLMWhispererHelper:
                     error_code=limit_codes.IMAGE_PAGE_CAP_EXCEEDED,
                     charged=False,
                 )
-            for line in image_limits.advisories(page_count=expected_page_count):
-                logger.warning("Image mode: %s", line)
-            advisory = image_limits.size_advisory(page_count=expected_page_count)
-            if advisory:
-                logger.warning("Image mode: %s", advisory)
+            # Warn-only limits (context-window estimate, pass-through
+            # defaults, the size hint) go to the worker log and, through the
+            # policy's advisory sink, to the user's run log.
+            image_limits.emit_advisories(
+                page_count=expected_page_count, include_size=True
+            )
             return
         page_cap = configured_page_cap()
         if expected_page_count > page_cap:
@@ -1020,11 +1028,14 @@ class LLMWhispererHelper:
         pages: list[tuple[int, bytes]],
         image_limits: "ImageModePolicy | None",
         page_store_dir: str,
+        expected_page_count: int | None = None,
     ) -> None:
         """Apply the byte/per-image checks once the rendered pages are known.
 
         The conversion is already billed at this point; the checks run before
         anything is persisted so a rejected document leaves no page set behind.
+        Advisories are reported again only when the pre-submit check could
+        not count the pages (``expected_page_count`` differs).
         """
         if image_limits is None:
             LLMWhispererHelper.verify_page_bytes(pages)
@@ -1038,7 +1049,11 @@ class LLMWhispererHelper:
 
         try:
             _policy.check_page_set(
-                image_limits, pages, page_store_dir=page_store_dir, charged=True
+                image_limits,
+                pages,
+                page_store_dir=page_store_dir,
+                charged=True,
+                emit_advisories=expected_page_count != len(pages),
             )
         except PageCapExceededError as e:
             raise ImageLimitExceededError(
@@ -1125,7 +1140,7 @@ class LLMWhispererHelper:
         # it. Failing at indexing is the earliest point the size is known.
         # The answer-time check in page_image_loader stays as the backstop.
         LLMWhispererHelper._check_pages_after_download(
-            pages, image_limits, page_store_dir
+            pages, image_limits, page_store_dir, expected_page_count
         )
         references = LLMWhispererHelper.persist_page_images(fs, page_store_dir, pages)
         logger.info(
@@ -1148,10 +1163,22 @@ class LLMWhispererHelper:
         count = len(page_images)
         noun = "page image" if count == 1 else "page images"
         return (
-            f"[LLMWhisperer image output mode] {count} {noun} extracted from the "
+            f"{_IMAGE_SUMMARY_PREFIX} {count} {noun} extracted from the "
             "PDF and stored in FileStorage. Per-page references are available in "
             "the page_images extraction metadata."
         )
+
+    @staticmethod
+    def page_count_from_image_output_summary(text: str | None) -> int | None:
+        """The page count recorded by ``build_image_output_summary``, or None.
+
+        Lets a cached image-mode extraction be re-checked against a different
+        LLM's page budget without reading the page images.
+        """
+        if not text:
+            return None
+        match = _IMAGE_SUMMARY_COUNT_RE.match(text)
+        return int(match.group(1)) if match else None
 
     @staticmethod
     def write_image_output(

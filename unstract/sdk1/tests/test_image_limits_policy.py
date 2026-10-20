@@ -1,8 +1,9 @@
 """Tests for turning resolved image limits into enforceable checks.
 
-The policy layer decides the effective page cap (image count, context
-tokens, the LLMWhisperer ceiling, operator ceilings), the raw-byte budget
-derived from a wire limit, per-image checks, and the user-facing messages.
+The policy layer decides the effective page cap (image count, the
+LLMWhisperer ceiling, operator ceilings; the context-token estimate only
+warns), the raw-byte budget derived from a wire limit, per-image checks,
+and the user-facing messages.
 """
 
 import dataclasses
@@ -57,6 +58,18 @@ def _own_estimate(limits: ImageRequestLimits, per_page: int = 1500) -> ImageRequ
     return dataclasses.replace(limits, tokens_per_image=estimate)
 
 
+@pytest.fixture(autouse=True)
+def _no_ambient_image_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Rollout and ceiling expectations must not depend on the shell running
+    # the tests (``assert 200 == 90`` when VLM_IMAGE_ANSWER_PAGE_CAP is set).
+    for name in (
+        "VLM_IMAGE_ANSWER_PAGE_CAP",
+        "VLM_IMAGE_ANSWER_MAX_TOTAL_MB",
+        policy_mod.ENFORCE_ENV,
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+
 BEDROCK = resolve_image_limits("bedrock", "bedrock/anthropic.claude-sonnet-4-5-v1:0")
 OPENAI = resolve_image_limits("openai", "openai/gpt-5.6")
 ANTHROPIC = resolve_image_limits("anthropic", "anthropic/claude-sonnet-4-5")
@@ -70,7 +83,6 @@ class TestConstants:
 
     def test_tunables_are_module_constants(self) -> None:
         assert policy_mod.PROMPT_TOKENS_RESERVE == 4_000
-        assert policy_mod.ENFORCE_CONTEXT_TOKEN_TERM is True
         assert policy_mod.ENFORCE_PER_IMAGE_LIMITS is True
         assert policy_mod.ASSUMED_PAGE_BYTES == 250_000
 
@@ -82,11 +94,14 @@ class TestComputePageBudget:
         assert budget.max_pages == 20
         assert budget.binding == "images"
 
-    def test_context_tokens_bind_on_generous_providers(self) -> None:
-        # 1500 images allowed, but (400k - 4k) / 1500 = 264 pages fit.
+    def test_context_tokens_never_bind_even_with_a_model_estimate(self) -> None:
+        # (400k - 4k) / 1500 = 264 pages fit by the estimate; the token term
+        # is warn only, so the budget stays at the next real limit.
         budget = compute_page_budget(_own_estimate(OPENAI), context_tokens=400_000)
-        assert budget.max_pages == 264
-        assert budget.binding == "tokens"
+        assert budget.max_pages == 999
+        assert budget.binding == "llmwhisperer"
+        assert budget.terms["tokens"] is None
+        assert budget.advisory_token_pages == 264
 
     def test_unknown_context_skips_the_token_term(self) -> None:
         budget = compute_page_budget(OPENAI, context_tokens=None)
@@ -96,12 +111,8 @@ class TestComputePageBudget:
     def test_json_max_input_tokens_override_beats_litellm(self) -> None:
         limits = _with(_own_estimate(OPENAI), max_input_tokens=100_000)
         budget = compute_page_budget(limits, context_tokens=1_000_000)
-        assert budget.max_pages == (100_000 - 4_000) // 1500
-
-    def test_token_term_can_be_disabled(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(policy_mod, "ENFORCE_CONTEXT_TOKEN_TERM", False)
-        budget = compute_page_budget(_own_estimate(OPENAI), context_tokens=10_000)
-        assert budget.binding == "llmwhisperer"
+        assert budget.advisory_token_pages == (100_000 - 4_000) // 1500
+        assert budget.context_tokens == 100_000
 
     def test_default_token_estimate_is_advisory(self) -> None:
         # The table's only tokens-per-page figure is the unverified default
@@ -121,10 +132,26 @@ class TestComputePageBudget:
             "context window" in line for line in policy.advisories(page_count=80)
         )
 
-    def test_model_specific_estimate_is_enforced(self) -> None:
+    def test_model_specific_estimate_is_warn_only(self) -> None:
+        # User decision (UN-4427 O4): a per-model tokens_per_image is still an
+        # estimate, so it warns and never rejects.
         budget = compute_page_budget(_own_estimate(OPENAI), context_tokens=128_000)
-        assert budget.binding == "tokens"
-        assert budget.max_pages == 82
+        assert budget.binding == "llmwhisperer"
+        assert budget.max_pages == 999
+        assert budget.advisory_token_pages == 82
+
+    @pytest.mark.parametrize("own_estimate", [False, True])
+    def test_document_over_the_estimate_is_accepted_and_warned(
+        self, own_estimate: bool
+    ) -> None:
+        limits = _own_estimate(OPENAI) if own_estimate else OPENAI
+        policy = ImageModePolicy.from_limits([limits], token_budgets=[128_000])
+        pages = [(n, minimal_png()) for n in range(1, 91)]
+        check_page_set(policy, pages, page_store_dir=DIR)  # 90 > 82: no raise
+        lines = policy.advisories(page_count=90)
+        assert any("may exceed the 128,000-token context window" in ln for ln in lines)
+        wording = "for this model" if own_estimate else "unverified default"
+        assert any(wording in line for line in lines)
 
     def test_operator_ceiling_binds(self) -> None:
         budget = compute_page_budget(OPENAI, context_tokens=None, page_ceiling=50)
@@ -149,10 +176,6 @@ class TestComputePageBudget:
     def test_describe_names_the_binding_term(self) -> None:
         text = compute_page_budget(BEDROCK, context_tokens=None).describe()
         assert "20" in text and "Amazon Bedrock" in text
-        tokens = compute_page_budget(
-            _own_estimate(OPENAI), context_tokens=400_000
-        ).describe()
-        assert "context window" in tokens
 
 
 class TestPolicyFromLimits:
@@ -164,13 +187,66 @@ class TestPolicyFromLimits:
         assert policy.max_image_bytes == 3_750_000
         assert policy.max_image_px == 8000
 
-    def test_min_across_llms_and_records_who_bound(self) -> None:
-        policy = ImageModePolicy.from_limits(
-            [OPENAI, BEDROCK], token_budgets=[None, None]
-        )
+    @pytest.mark.parametrize("order", ["strict_last", "strict_first"])
+    def test_min_across_llms_and_records_who_bound(self, order: str) -> None:
+        # Both orders, so "last LLM wins" cannot pass for "strictest wins".
+        resolved = [OPENAI, BEDROCK] if order == "strict_last" else [BEDROCK, OPENAI]
+        policy = ImageModePolicy.from_limits(resolved, token_budgets=[None, None])
         assert policy.page_budget.max_pages == 20
         assert policy.page_budget.limits is BEDROCK
         assert policy.max_request_bytes == 20_000_000
+        assert policy.request_bytes_source() is BEDROCK
+
+    @pytest.mark.parametrize("order", ["px_model_first", "px_model_last"])
+    def test_per_image_minimum_across_two_llms(self, order: str) -> None:
+        # One LLM has the smaller pixel bound, the other the smaller byte
+        # bound; each per-image limit is the strictest one and keeps its model.
+        small_px = _with(OPENAI, max_image_px=1000, max_image_bytes=50_000_000)
+        small_bytes = _with(ANTHROPIC, max_image_px=8000, max_image_bytes=400)
+        resolved = (
+            [small_px, small_bytes]
+            if order == "px_model_first"
+            else [small_bytes, small_px]
+        )
+        policy = ImageModePolicy.from_limits(resolved)
+        assert policy.max_image_px == 1000
+        assert policy.max_image_px_source is small_px
+        assert policy.max_image_bytes == 400 * 3 // 4  # base64-counted
+        assert policy.max_image_bytes_source is small_bytes
+
+        with pytest.raises(PageImageTooLargeError) as px_err:
+            check_page_set(policy, [(1, _png(1240, 1754))], page_store_dir=DIR)
+        assert "`gpt-5.6` on OpenAI" in str(px_err.value)
+        with pytest.raises(PageImageTooLargeError) as byte_err:
+            check_page_set(policy, [(1, b"x" * 500)], page_store_dir=DIR)
+        assert "`claude-sonnet-4-5` on Anthropic" in str(byte_err.value)
+        assert "gpt-5.6" not in str(byte_err.value)
+
+    def test_per_image_message_names_the_model_that_set_the_limit(self) -> None:
+        # Mistral sets the page budget (8 images); Bedrock's 3.75 MB per-image
+        # limit is the stricter one, so the message must name Bedrock.
+        mistral = resolve_image_limits("mistral", "mistral/pixtral-large-latest")
+        policy = ImageModePolicy.from_limits([mistral, BEDROCK])
+        assert policy.page_budget.limits is mistral
+        with pytest.raises(PageImageTooLargeError) as excinfo:
+            check_page_set(policy, [(1, b"x" * 4_000_000)], page_store_dir=DIR)
+        msg = str(excinfo.value)
+        assert "Amazon Bedrock" in msg and "pixtral" not in msg
+        text = policy.describe()
+        assert "per page image for `anthropic.claude-sonnet-4-5-v1:0`" in text
+
+    def test_many_images_rules_stay_paired_per_model(self) -> None:
+        # (5 images, 3000 px) and (50 images, 1000 px): minimising each half
+        # separately would build (5, 1000), which no model has.
+        a = _with(ANTHROPIC, many_images_threshold=5, many_images_max_px=3000)
+        b = _with(OPENAI, many_images_threshold=50, many_images_max_px=1000)
+        policy = ImageModePolicy.from_limits([a, b])
+        page = _png(2000, 2000)
+        check_page_set(policy, [(n, page) for n in range(1, 11)], page_store_dir=DIR)
+        with pytest.raises(PageImageTooLargeError) as excinfo:
+            check_page_set(policy, [(n, page) for n in range(1, 52)], page_store_dir=DIR)
+        assert "more than 50 images" in str(excinfo.value)
+        assert "OpenAI" in str(excinfo.value)
 
     def test_ceiling_only_is_not_model_aware(self) -> None:
         policy = ImageModePolicy.ceiling_only(
@@ -348,10 +424,22 @@ class TestMessages:
             "conservative default" in line for line in policy.advisories(page_count=60)
         )
 
-    def test_token_bound_message_explains_the_estimate(self) -> None:
-        budget = compute_page_budget(_own_estimate(OPENAI), context_tokens=100_000)
-        msg = policy_mod.page_cap_message(200, budget, charged=False)
-        assert "tokens per page" in msg and "context window" in msg
+    def test_token_advisory_explains_the_estimate(self) -> None:
+        policy = ImageModePolicy.from_limits(
+            [_own_estimate(OPENAI)], token_budgets=[100_000]
+        )
+        (line,) = (ln for ln in policy.advisories(page_count=200) if "token" in ln)
+        assert "tokens per page" in line and "context window" in line
+        assert "about 64 pages fit" in line
+
+    def test_token_advisory_covers_every_llm(self) -> None:
+        # Bedrock sets the page budget; the 128K OpenAI model is the one whose
+        # context the pages may exceed, and the advisory must name it.
+        policy = ImageModePolicy.from_limits(
+            [BEDROCK, OPENAI], token_budgets=[None, 128_000]
+        )
+        lines = policy.advisories(page_count=90)
+        assert any("gpt-5.6" in ln and "128,000-token" in ln for ln in lines)
 
     def test_describe_summarises_the_policy(self) -> None:
         text = ImageModePolicy.from_limits([BEDROCK], token_budgets=[200_000]).describe()
@@ -365,6 +453,28 @@ class TestRolloutBounds:
     bounded by its fixed 90 pages / 14 MiB, so it can only get stricter,
     never looser, than answer time.
     """
+
+    def test_legacy_clamp_follows_the_operator_env_overrides(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # While LEGACY is on the env vars REPLACE 90 / 14 MiB; extraction
+        # must use them, or it accepts documents the plugin then rejects.
+        monkeypatch.setenv("VLM_IMAGE_ANSWER_PAGE_CAP", "40")
+        monkeypatch.setenv("VLM_IMAGE_ANSWER_MAX_TOTAL_MB", "6")
+        assert policy_mod.LEGACY_ANSWER_BOUNDS_ACTIVE is True
+        kwargs = policy_mod.extraction_bound_kwargs()
+        assert kwargs == {
+            "page_ceiling": None,
+            "bytes_ceiling": 6 * 1024 * 1024,
+            "legacy_cap": 40,
+        }
+        policy = ImageModePolicy.from_limits([OPENAI], **kwargs)
+        assert policy.page_budget.max_pages == 40
+        assert policy.raw_byte_budget(page_count=10) == 6 * 1024 * 1024
+        with pytest.raises(PageCapExceededError):
+            check_page_set(
+                policy, [(n, minimal_png()) for n in range(1, 61)], page_store_dir=DIR
+            )
 
     def test_legacy_bounds_are_active_and_read_the_legacy_accessors(
         self, monkeypatch: pytest.MonkeyPatch
@@ -473,3 +583,67 @@ class TestByteUnitsInMessages:
     def test_ceiling_only_policy_reports_the_ceiling(self) -> None:
         policy = ImageModePolicy.ceiling_only(bytes_ceiling=14 * 1024 * 1024)
         assert "14.0 MiB of page images per request" in policy.describe()
+
+
+class TestAdvisorySink:
+    """Advisories reach the user's run log, not only the worker log (O12)."""
+
+    def test_check_page_set_streams_advisories(self) -> None:
+        streamed: list[str] = []
+        policy = ImageModePolicy.from_limits([OLLAMA]).with_advisory_sink(streamed.append)
+        check_page_set(
+            policy, [(n, minimal_png()) for n in range(1, 30)], page_store_dir=DIR
+        )
+        assert streamed and "Ollama" in " ".join(streamed)
+
+    def test_size_advisory_is_streamed(self) -> None:
+        streamed: list[str] = []
+        policy = ImageModePolicy.from_limits([GEMMA]).with_advisory_sink(streamed.append)
+        policy.emit_advisories(page_count=30, include_size=True)
+        assert any("request-size limit" in line for line in streamed)
+
+    def test_advisories_can_be_skipped(self) -> None:
+        streamed: list[str] = []
+        policy = ImageModePolicy.from_limits([OLLAMA]).with_advisory_sink(streamed.append)
+        check_page_set(
+            policy,
+            [(n, minimal_png()) for n in range(1, 30)],
+            page_store_dir=DIR,
+            emit_advisories=False,
+        )
+        assert streamed == []
+
+    def test_a_failing_sink_never_breaks_the_check(self) -> None:
+        def boom(line: str) -> None:
+            raise RuntimeError("log stream down")
+
+        policy = ImageModePolicy.from_limits([OLLAMA]).with_advisory_sink(boom)
+        check_page_set(
+            policy, [(n, minimal_png()) for n in range(1, 30)], page_store_dir=DIR
+        )
+
+
+class TestEnforceSwitch:
+    """``VLM_IMAGE_LIMITS_ENFORCE=false`` falls back to the fixed cap (O13)."""
+
+    def test_enabled_by_default(self) -> None:
+        assert policy_mod.model_aware_limits_enabled() is True
+
+    @pytest.mark.parametrize("raw", ["false", "FALSE", "0", "no", "off"])
+    def test_false_turns_model_aware_limits_off(
+        self, monkeypatch: pytest.MonkeyPatch, raw: str
+    ) -> None:
+        monkeypatch.setenv(policy_mod.ENFORCE_ENV, raw)
+        assert policy_mod.model_aware_limits_enabled() is False
+
+    def test_invalid_value_keeps_them_on_and_logs(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        monkeypatch.setenv(policy_mod.ENFORCE_ENV, "maybe")
+        assert policy_mod.model_aware_limits_enabled() is True
+        assert any(r.levelname == "ERROR" for r in caplog.records)
+
+    def test_fixed_cap_is_90_pages_and_14_mib(self) -> None:
+        policy = ImageModePolicy.ceiling_only(**policy_mod.fixed_cap_bound_kwargs())
+        assert policy.page_budget.max_pages == 90
+        assert policy.raw_byte_budget(page_count=10) == 14 * 1024 * 1024
