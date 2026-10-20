@@ -74,6 +74,17 @@ LEGACY_ANSWER_BOUNDS_ACTIVE = True
 # base64 inflates 3 raw bytes to 4 characters.
 _B64_NUM, _B64_DEN = 4, 3
 _MB = 1_000_000  # the table's byte limits are decimal
+_MIB = 1024 * 1024  # operator / legacy ceilings are MiB (VLM_IMAGE_ANSWER_MAX_TOTAL_MB)
+
+
+def _mb(n: float) -> str:
+    """Decimal megabytes, for provider limits (documented in MB)."""
+    return f"{n / _MB:.1f} MB"
+
+
+def _mib(n: float) -> str:
+    """Mebibytes, for the operator and legacy ceilings (configured in MiB)."""
+    return f"{n / _MIB:.1f} MiB"
 
 
 # --- Bounds shared by every caller -------------------------------------------
@@ -380,7 +391,7 @@ class ImageModePolicy:
             label = _model_label(limits) if limits else "this model"
             lines.append(
                 f"{label} publishes no request-size limit; Unstract's conservative "
-                f"default is {self.advisory_request_bytes.value / _MB:.0f} MB per "
+                f"default is {_mb(self.advisory_request_bytes.value)} per "
                 "request and is not enforced for this provider."
             )
         return lines
@@ -401,26 +412,44 @@ class ImageModePolicy:
         label = _model_label(limits) if limits else "the LLM"
         return (
             f"At a typical {ASSUMED_PAGE_BYTES // 1000} KB per page, {page_count} "
-            f"pages (~{estimate / _MB:.0f} MB) may exceed the request-size limit of "
+            f"pages (~{_mb(estimate)}) may exceed the request-size limit of "
             f"{label}. The conversion is billed before page sizes are known."
         )
 
+    def ceiling_binds_bytes(self) -> bool:
+        """True when the operator/legacy ceiling is below the model's byte limit.
+
+        Compared on raw bytes, ignoring the prompt text, so it is the same
+        answer for every page count that matters for a summary line.
+        """
+        if self.bytes_ceiling is None:
+            return False
+        if self.request_bytes is None or self.request_bytes.value is None:
+            return True
+        model_raw = _raw_equivalent(self.request_bytes)
+        return model_raw is None or self.bytes_ceiling < model_raw
+
     def describe(self) -> str:
-        """Summary line for run logs."""
+        """Summary line for run logs: the limits that will actually bind."""
+        ceiling = (
+            f"{_mib(self.bytes_ceiling)} of page images per request (platform limit)"
+            if self.bytes_ceiling is not None and self.ceiling_binds_bytes()
+            else None
+        )
         if not self.model_aware:
-            return (
-                f"Image mode limits: {self.page_budget.describe()} (LLM not "
-                "known at this point)"
-            )
+            parts = [self.page_budget.describe()]
+            if ceiling:
+                parts.append(ceiling)
+            return f"Image mode limits: {'; '.join(parts)} (LLM not known at this point)"
         limits = self.page_budget.limits
         parts = [self.page_budget.describe()]
-        if self.request_bytes and self.request_bytes.value and limits is not None:
+        if ceiling:
+            parts.append(ceiling)
+        elif self.request_bytes and self.request_bytes.value and limits is not None:
             source = format_limit_source(
                 self.request_bytes, limits, with_table_version=False
             )
-            parts.append(
-                f"{self.request_bytes.value / _MB:.0f} MB per request ({source})"
-            )
+            parts.append(f"{_mb(self.request_bytes.value)} per request ({source})")
         if limits is not None and limits.table_version:
             parts.append(f"limits table {limits.table_version}")
         return "Image mode limits: " + "; ".join(parts)
@@ -683,18 +712,24 @@ def request_too_large_message(
         ),
         None,
     )
+    # The total and the limit are printed in the limit's own unit: decimal
+    # MB for a provider limit, MiB for the (raw-byte) operator/legacy ceiling.
     if limit is not None and limit.value is not None and limits is not None:
+        size = f"total {_mb(raw_total)} ({_mb(wire)} once encoded)"
         bound = (
-            f"over the {limit.value / _MB:.0f} MB request limit of "
+            f"over the {_mb(limit.value)} request limit of "
             f"{_model_label(limits)} "
             f"({format_limit_source(limit, limits)})"
         )
     else:
-        ceiling = policy.bytes_ceiling or 0
-        bound = f"over the {ceiling / _MB:.0f} MB limit for one image-mode request"
+        size = f"total {_mib(raw_total)}"
+        bound = (
+            f"over the {_mib(policy.bytes_ceiling or 0)} limit for one image-mode "
+            "request"
+        )
     return (
-        f"The {page_count} page images of this document total {raw_total / _MB:.1f} MB "
-        f"({wire / _MB:.1f} MB once encoded), {bound}, and image output mode sends "
+        f"The {page_count} page images of this document {size}, {bound}, and "
+        "image output mode sends "
         f"every page in one request. Split the document into smaller files, or "
         f"switch to a text output mode.{_charged_clause(charged, size_known_late=True)}"
     )
@@ -713,8 +748,8 @@ def page_too_large_message(
     """User-facing text for a single page over a per-image limit."""
     limits = policy.page_budget.limits
     if kind == "bytes":
-        measured = f"{actual / _MB:.1f} MB"
-        bound = f"{limit / _MB:.1f} MB"
+        measured = _mb(actual)
+        bound = _mb(limit)
     else:
         measured = f"{dims[0]}×{dims[1]} px" if dims else f"{actual} px"
         bound = f"{limit} px per side"
