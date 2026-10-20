@@ -67,6 +67,7 @@ urlpatterns = [
     path("metrics/", include("dashboard_metrics.urls")),
     path("platform-api/", include("platform_api.urls")),
     path("global-api-deployment/", include("global_api_deployment_key.urls")),
+    path("", include("global_search.urls")),
 ]
 
 # Organization-scoped MCP server — OFF by default.
