@@ -210,7 +210,8 @@ _clamp_lock = threading.Lock()
 _logged_bad_refresh = False
 
 
-def _bundled_table() -> LimitsTable:
+def bundled_table() -> LimitsTable:
+    """The copy shipped in this package (never fetched, never overridden)."""
     global _bundled
     if _bundled is None:
         _bundled = load_limits_table()
@@ -228,9 +229,13 @@ def _describe(table: LimitsTable) -> str:
     )
 
 
-def bundled_table() -> LimitsTable:
-    """The copy shipped in this package (never fetched, never overridden)."""
-    return _bundled_table()
+def _first_time(seen: set, key: object) -> bool:
+    """True, and remember ``key``, the first time ``seen`` is asked about it."""
+    with _clamp_lock:
+        if key in seen:
+            return False
+        seen.add(key)
+        return True
 
 
 def first_clamp_report(key: tuple[str, str, str]) -> bool:
@@ -239,11 +244,7 @@ def first_clamp_report(key: tuple[str, str, str]) -> bool:
     Keeps the clamp warning to one line per field per process: lookups run
     per page set and per profile render.
     """
-    with _clamp_lock:
-        if key in _clamp_reported:
-            return False
-        _clamp_reported.add(key)
-        return True
+    return _first_time(_clamp_reported, key)
 
 
 def first_missing_provider_report(provider: str) -> bool:
@@ -253,15 +254,11 @@ def first_missing_provider_report(provider: str) -> bool:
     effective table lacks) runs on every lookup; one WARNING per provider
     per process is enough.
     """
-    with _clamp_lock:
-        if provider in _missing_reported:
-            return False
-        _missing_reported.add(provider)
-        return True
+    return _first_time(_missing_reported, provider)
 
 
 def _refresh(url: str, state: _RemoteState) -> None:
-    keeping = _describe(state.table or _bundled_table())
+    keeping = _describe(state.table or bundled_table())
     try:
         table = parse_limits_bytes(
             _fetch_with_deadline(url), source="remote", location=url
@@ -309,7 +306,7 @@ def _base_table(*, refresh: bool = True) -> LimitsTable:
     global _logged_disabled
     url = configured_limits_url()
     if url is None:
-        bundled = _bundled_table()
+        bundled = bundled_table()
         if not _logged_disabled:
             _logged_disabled = True
             logger.info(
@@ -321,7 +318,7 @@ def _base_table(*, refresh: bool = True) -> LimitsTable:
     state = _remote.setdefault(url, _RemoteState())
     if refresh:
         _maybe_start_refresh(url, state)
-    return state.table or _bundled_table()
+    return state.table or bundled_table()
 
 
 def _maybe_start_refresh(url: str, state: _RemoteState) -> None:
@@ -359,7 +356,7 @@ def _apply_override(base: LimitsTable, path: str) -> LimitsTable:
     try:
         # Inherit targets may name a bundled provider the base (remote) copy
         # dropped; the lookup resolves such a parent from the bundled entry.
-        merged = apply_override_file(base, path, bundled=_bundled_table())
+        merged = apply_override_file(base, path, bundled=bundled_table())
         logger.info("Applied image-limits override file %s", path)
     except (OSError, ValueError) as e:  # LimitsSchemaError is a ValueError
         logger.error(
