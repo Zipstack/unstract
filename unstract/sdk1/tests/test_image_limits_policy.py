@@ -49,6 +49,14 @@ def _with(limits: ImageRequestLimits, **values: int | None) -> ImageRequestLimit
     return dataclasses.replace(limits, **changes)
 
 
+def _own_estimate(limits: ImageRequestLimits, per_page: int = 1500) -> ImageRequestLimits:
+    """``limits`` with a model-specific tokens-per-page estimate (not the default)."""
+    estimate = dataclasses.replace(
+        limits.tokens_per_image, value=per_page, from_default=False
+    )
+    return dataclasses.replace(limits, tokens_per_image=estimate)
+
+
 BEDROCK = resolve_image_limits("bedrock", "bedrock/anthropic.claude-sonnet-4-5-v1:0")
 OPENAI = resolve_image_limits("openai", "openai/gpt-5.6")
 ANTHROPIC = resolve_image_limits("anthropic", "anthropic/claude-sonnet-4-5")
@@ -76,7 +84,7 @@ class TestComputePageBudget:
 
     def test_context_tokens_bind_on_generous_providers(self) -> None:
         # 1500 images allowed, but (400k - 4k) / 1500 = 264 pages fit.
-        budget = compute_page_budget(OPENAI, context_tokens=400_000)
+        budget = compute_page_budget(_own_estimate(OPENAI), context_tokens=400_000)
         assert budget.max_pages == 264
         assert budget.binding == "tokens"
 
@@ -86,14 +94,37 @@ class TestComputePageBudget:
         assert budget.max_pages == 999
 
     def test_json_max_input_tokens_override_beats_litellm(self) -> None:
-        limits = _with(OPENAI, max_input_tokens=100_000)
+        limits = _with(_own_estimate(OPENAI), max_input_tokens=100_000)
         budget = compute_page_budget(limits, context_tokens=1_000_000)
         assert budget.max_pages == (100_000 - 4_000) // 1500
 
     def test_token_term_can_be_disabled(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(policy_mod, "ENFORCE_CONTEXT_TOKEN_TERM", False)
-        budget = compute_page_budget(OPENAI, context_tokens=10_000)
+        budget = compute_page_budget(_own_estimate(OPENAI), context_tokens=10_000)
         assert budget.binding == "llmwhisperer"
+
+    def test_default_token_estimate_is_advisory(self) -> None:
+        # The table's only tokens-per-page figure is the unverified default
+        # (1,500). Enforcing it capped 128K-context gpt-4o at 82 pages, below
+        # what real pages (~765-1,105 tokens) fit, so it warns instead.
+        budget = compute_page_budget(OPENAI, context_tokens=128_000)
+        assert budget.binding == "llmwhisperer"
+        assert budget.terms["tokens"] is None
+        assert budget.advisory_token_pages == 82
+
+    def test_default_token_estimate_is_reported_when_exceeded(self) -> None:
+        policy = ImageModePolicy.from_limits([OPENAI], token_budgets=[128_000])
+        assert policy.page_budget.max_pages == 999
+        lines = policy.advisories(page_count=90)
+        assert any("128,000-token context window" in line for line in lines)
+        assert not any(
+            "context window" in line for line in policy.advisories(page_count=80)
+        )
+
+    def test_model_specific_estimate_is_enforced(self) -> None:
+        budget = compute_page_budget(_own_estimate(OPENAI), context_tokens=128_000)
+        assert budget.binding == "tokens"
+        assert budget.max_pages == 82
 
     def test_operator_ceiling_binds(self) -> None:
         budget = compute_page_budget(OPENAI, context_tokens=None, page_ceiling=50)
@@ -118,7 +149,9 @@ class TestComputePageBudget:
     def test_describe_names_the_binding_term(self) -> None:
         text = compute_page_budget(BEDROCK, context_tokens=None).describe()
         assert "20" in text and "Amazon Bedrock" in text
-        tokens = compute_page_budget(OPENAI, context_tokens=400_000).describe()
+        tokens = compute_page_budget(
+            _own_estimate(OPENAI), context_tokens=400_000
+        ).describe()
         assert "context window" in tokens
 
 
@@ -316,7 +349,7 @@ class TestMessages:
         )
 
     def test_token_bound_message_explains_the_estimate(self) -> None:
-        budget = compute_page_budget(OPENAI, context_tokens=100_000)
+        budget = compute_page_budget(_own_estimate(OPENAI), context_tokens=100_000)
         msg = policy_mod.page_cap_message(200, budget, charged=False)
         assert "tokens per page" in msg and "context window" in msg
 

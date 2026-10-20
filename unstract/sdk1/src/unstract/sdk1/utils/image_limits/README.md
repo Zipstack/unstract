@@ -44,14 +44,24 @@ page, LLMWhisperer's 999, operator ceilings). `ImageModePolicy` adds the
 raw-byte budget, per-image byte/pixel limits and the Anthropic ">20 images
 ⇒ ≤2000 px" rule; `check_page_set` applies them to a page set. Tunables are
 module constants: `PROMPT_TOKENS_RESERVE`, `ENFORCE_CONTEXT_TOKEN_TERM`,
-`ENFORCE_PER_IMAGE_LIMITS`, `TEXT_RESERVE_BYTES`, `ASSUMED_PAGE_BYTES`
-(pre-conversion size advisory only, never a rejection) and
-`PASS_THROUGH_DEFAULTS_ARE_ADVISORY` in `resolve.py`.
+`ENFORCE_DEFAULT_TOKEN_ESTIMATE`, `ENFORCE_PER_IMAGE_LIMITS`,
+`TEXT_RESERVE_BYTES`, `ASSUMED_PAGE_BYTES` (pre-conversion size advisory
+only, never a rejection) and `PASS_THROUGH_DEFAULTS_ARE_ADVISORY` in
+`resolve.py`.
+
+The token term is enforced only when the model's entry carries its own
+`tokens_per_image`. The top-level default (1,500, unverified) is reported
+as an advisory instead: enforcing it held 128K-context models such as
+gpt-4o to 82 pages, fewer than real pages fit. Adding a verified
+per-model figure to the table turns the term on for that model.
 
 Operator ceilings: `VLM_IMAGE_ANSWER_PAGE_CAP` and
-`VLM_IMAGE_ANSWER_MAX_TOTAL_MB` (MiB) are read by
-`configured_page_ceiling()` / `configured_request_bytes_ceiling()` and only
-ever tighten a model's limits.
+`VLM_IMAGE_ANSWER_MAX_TOTAL_MB` (MiB). Once `LEGACY_ANSWER_BOUNDS_ACTIVE`
+is off they are read by `configured_page_ceiling()` /
+`configured_request_bytes_ceiling()` and only ever tighten a model's limits.
+While it is on (the UN-4427 rollout), they instead replace the legacy 90-page
+/ 14 MiB bound, so a value above 90 pages or 14 MiB raises that bound for
+models whose own limits are larger.
 
 ## Where the table comes from
 
@@ -73,9 +83,15 @@ Fetching (`source.py`) is bounded so image mode never waits on GitHub:
 - at most one attempt per process per `VLM_IMAGE_LIMITS_REFRESH_SECONDS`
   (default 3600, floor 60), and a failed attempt also waits for the next
   window;
-- a 3-second budget for the whole download (`FETCH_TIMEOUT_SECONDS`) and a
-  1 MB size cap (`MAX_REMOTE_BYTES`);
-- while one thread fetches, other threads keep serving the last good table.
+- a 3-second timeout (`FETCH_TIMEOUT_SECONDS`) on each of connect, read and
+  write, plus a 3-second deadline on the body checked between chunks, so a
+  slow or unreachable host costs a few seconds at most (DNS resolution is
+  not covered); and a 1 MB size cap (`MAX_REMOTE_BYTES`);
+- while one thread fetches, other threads keep serving the last good table;
+- `get_limits_table(refresh=False)` (and
+  `LLM.image_input_limits_for(..., refresh_table=False)`) never fetches: it
+  serves the last good copy this process holds, else the bundled one. Use it
+  on request paths, such as a backend serializer.
 
 The remote file must pass the same strict validation as the bundled one,
 including `_meta.schema_version` equal to the version this sdk1 reads and

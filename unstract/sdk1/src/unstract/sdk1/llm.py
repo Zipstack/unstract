@@ -32,7 +32,7 @@ from unstract.sdk1.utils.retry_utils import (
 )
 
 if TYPE_CHECKING:
-    from unstract.sdk1.utils.image_limits import ImageRequestLimits
+    from unstract.sdk1.utils.image_limits import ImageRequestLimits, LimitsTable
 
 logger = logging.getLogger(__name__)
 
@@ -1042,13 +1042,25 @@ class LLM:
         """
         return self.kwargs["model"]
 
-    def get_image_request_limits(self) -> "ImageRequestLimits":
+    def get_cost_model_name(self) -> str:
+        """The real model id: ``cost_model`` when the routed id is an alias.
+
+        For Azure OpenAI the routed id is ``azure/<deployment>``, which no
+        capability or price registry knows; ``cost_model`` (``azure/gpt-4o``)
+        is the model actually served. Same id usage tracking prices with.
+        """
+        return self._cost_model or self.kwargs["model"]
+
+    def get_image_request_limits(
+        self, *, table: "LimitsTable | None" = None
+    ) -> "ImageRequestLimits":
         """Vision image-request limits for this adapter's provider and model.
 
         Keyed on the adapter provider and the validated model string (so a
         Bedrock Mantle model resolves to the Mantle entry and MiniMax never
         resolves as Anthropic), matched on the real model id when the routed
         one is an alias (Azure ``cost_model``, Bedrock ``model_id``).
+        ``table`` defaults to the effective (possibly refreshed) table.
         """
         from unstract.sdk1.utils.image_limits import resolve_image_limits
 
@@ -1058,9 +1070,12 @@ class LLM:
             self.kwargs["model"],
             cost_model=self._cost_model,
             extra_model_ids=[str(model_id)] if model_id else (),
+            table=table,
         )
 
-    def get_image_input_token_budget(self) -> int | None:
+    def get_image_input_token_budget(
+        self, *, table: "LimitsTable | None" = None
+    ) -> int | None:
         """Context window for the image-mode token term, or None when unknown.
 
         Order: the limits table's ``max_input_tokens`` override, the
@@ -1069,7 +1084,7 @@ class LLM:
         """
         from unstract.sdk1.utils.image_limits import local_max_input_tokens
 
-        override = self.get_image_request_limits().max_input_tokens.value
+        override = self.get_image_request_limits(table=table).max_input_tokens.value
         if override:
             return override
         if isinstance(self._context_window, int) and self._context_window > 0:
@@ -1078,16 +1093,28 @@ class LLM:
 
     @classmethod
     def image_input_limits_for(
-        cls, adapter_id: str, adapter_metadata: Mapping[str, object]
+        cls,
+        adapter_id: str,
+        adapter_metadata: Mapping[str, object],
+        *,
+        refresh_table: bool = True,
     ) -> "tuple[ImageRequestLimits, int | None]":
         """``(limits, token_budget)`` for an adapter id + stored metadata.
 
-        Offline: builds a metadata-only ``LLM`` (the adapter's local
-        ``validate``; no platform-service call, no provider network), so the
-        backend can check a profile's LLM from its stored adapter row.
+        Builds a metadata-only ``LLM`` (the adapter's local ``validate``; no
+        platform-service call, no provider network), so the backend can check
+        a profile's LLM from its stored adapter row. The limits table may be
+        refreshed from GitHub (at most once per refresh window); pass
+        ``refresh_table=False`` on request paths that must never wait on it.
         """
+        from unstract.sdk1.utils.image_limits import get_limits_table
+
+        table = None if refresh_table else get_limits_table(refresh=False)
         llm = cls(adapter_id=adapter_id, adapter_metadata=dict(adapter_metadata))
-        return llm.get_image_request_limits(), llm.get_image_input_token_budget()
+        return (
+            llm.get_image_request_limits(table=table),
+            llm.get_image_input_token_budget(table=table),
+        )
 
     def get_metrics(self) -> dict[str, object]:
         return self._metrics
