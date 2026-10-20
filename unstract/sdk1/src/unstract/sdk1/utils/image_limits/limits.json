@@ -3,7 +3,7 @@
     "schema_version": 1,
     "verified_on": "2026-10-09",
     "litellm_version": "1.104.0",
-    "status": "Independently verified 2026-10-09 against the live provider pages and litellm 1.104.0. Corrections from verification.md applied; draft left untouched.",
+    "status": "Independently verified 2026-10-09 against the live provider pages and litellm 1.104.0. Per-field verdicts, URLs and quotes live in the source dataset (_meta.source_dataset), outside the repo.",
     "units": "Bytes are decimal (1 MB = 1,000,000). Providers do not say whether 'MB' means 10^6 or 2^20; decimal is the stricter reading.",
     "field_shape": "Each limit field is {value, confidence, source, scope?, base64_counted?, note?}. value null = unknown. confidence: 'verified' = the number is stated on the cited official page for this scope; 'unverified' = inferred, observed, assumed by analogy, or undocumented. source = key(s) into the top-level 'sources' map.",
     "fields": {
@@ -14,15 +14,8 @@
       "many_images_threshold / many_images_max_px": "Anthropic: when a request has more than threshold images, each image must be <= many_images_max_px per side",
       "max_image_patches": "OpenAI: per-image patch budget"
     },
-    "lookup": [
-      "1. Provider key = the adapter's get_provider(), except a validated Bedrock model starting with 'bedrock_mantle/' uses 'bedrock_mantle'. Never key by the litellm prefix alone (MiniMax may send 'anthropic/').",
-      "2. Strip the litellm provider prefix from the validated model id; match model_overrides with re.search (patterns carry (?i)) against the bare model, then the bare cost_model, then any extra model ids.",
-      "3. The FIRST matching model_override wins; each of its fields replaces the provider default field by field. An override with 'inherit' takes the named provider's resolved limits for the remainder of the slug, then applies its own explicit fields.",
-      "4. A field whose resolved value is null: max_images_per_request, max_request_bytes and tokens_per_image fall back to the top-level 'default'; per-image fields mean 'skip that check'. For kind=pass_through providers a default-filled count/byte field is ADVISORY (warn, do not reject).",
-      "5. Effective page cap = min(max_images_per_request, floor((context_tokens - reserve) / tokens_per_image), the LLMWhisperer 999 ceiling, operator ceilings). Byte limits are checked once page bytes are known (post-download, answer time)."
-    ],
-    "verification": "See verification.md (same directory) for per-field verdicts, URLs and quotes.",
-    "source_dataset": "claudedocs/vlm-consumer/model-limits/limits.verified.json (independently verified 2026-10-09)"
+    "source_dataset": "claudedocs/vlm-consumer/model-limits/limits.verified.json (independently verified 2026-10-09)",
+    "lookup_rules": "See README.md in this directory (\"Lookup rules\"): the single statement of how a provider and model resolve to an entry."
   },
   "sources": {
     "ANTH_VISION": {
@@ -169,6 +162,11 @@
       "url": "litellm 1.104.0 litellm.model_cost at runtime",
       "verified_on": "2026-10-09",
       "quote": "Without LITELLM_LOCAL_MODEL_COST_MAP=True, litellm fetches the remote cost map at import: 4506 entries vs 4375 in the bundled backup. The remote map adds bedrock_mantle/anthropic.claude-{opus,sonnet,haiku}-5-5 (+ us-gov-west-1 variants), so bare anthropic.claude-*-5-5 ids route to Mantle in production but to bedrock/ under the test suite's pinned local map (sdk1/tests/conftest.py). Nothing outside tests pins the map."
+    },
+    "ANTH_VISION_TOKENS": {
+      "url": "https://platform.claude.com/docs/en/build-with-claude/vision#resolution-and-token-cost",
+      "verified_on": "2026-10-20",
+      "quote": "\"Each patch is a 28x28-pixel block of the image, referred to as a visual token. An image, therefore, costs ceil(width / 28) x ceil(height / 28) visual tokens. ... | High-resolution | Claude 4.7 and later models | 2576 px | 4784 | Standard | All other models | 1568 px | 1568 |\""
     }
   },
   "default": {
@@ -192,7 +190,7 @@
       "confidence": "unverified",
       "source": "POLICY",
       "scope": "per_image",
-      "note": "Estimate for a 150-DPI A4 page across providers (Claude/GPT ~1.5K; Gemini 3.x 1120; Nova 2 flat 230). High-res Claude 4.7+ tokenisation runs ~2.7K/page. Used only for the context-window term."
+      "note": "Estimate for a 150-DPI A4 page across providers (Claude/GPT ~1.5K; Gemini 3.x 1120; Nova 2 flat 230). Claude 4.7+ (high-resolution tier, ~2,850/page) has its own overrides. Used only for the warn-only context-window advisory."
     }
   },
   "providers": {
@@ -249,8 +247,8 @@
       },
       "model_overrides": [
         {
-          "pattern": "(?i)claude-(3|instant|2)|claude-(opus|sonnet|haiku)-4-5(?![0-9])|claude-opus-4-1(?![0-9])|claude-(opus|sonnet)-4(?=$|[@:]|-\\d{8}|-v\\d|-0(?![0-9]))",
-          "description": "200k-context Claude models (Sonnet 4.5, Haiku 4.5, Opus 4.5, Opus 4.1, Opus 4, Sonnet 4, Claude 3.x) (+ -4-0 aliases)",
+          "pattern": "(?i)claude-(3|instant|2)|claude-(opus|sonnet|haiku)-4[-.]5(?![0-9])|claude-opus-4[-.]1(?![0-9])|claude-(opus|sonnet)-4(?=$|[@:]|-\\d{8}|-v\\d|[-.]0(?![0-9]))",
+          "description": "200k-context Claude models (Sonnet 4.5, Haiku 4.5, Opus 4.5, Opus 4.1, Opus 4, Sonnet 4, Claude 3.x) (+ -4-0 aliases; '-' or '.' between version digits, e.g. OpenRouter's claude-sonnet-4.5)",
           "max_images_per_request": {
             "value": 100,
             "confidence": "verified",
@@ -260,6 +258,17 @@
             ],
             "scope": "per_request",
             "note": "litellm 1.104 lists claude-sonnet-4-5 with max_input_tokens 1,000,000; Anthropic docs say 200k. Do not derive 100 vs 600 from litellm."
+          }
+        },
+        {
+          "pattern": "(?i)claude-(opus|sonnet|haiku)-4[-.][7-9](?![0-9])|claude-(opus|sonnet|haiku|fable|mythos)-([5-9]|[1-9]\\d)(?![0-9])|claude-mythos",
+          "description": "Claude 4.7 and later (Opus 4.7/4.8, 5.x, Fable, Mythos): high-resolution image tier, ~2,850 tokens per 150-DPI page",
+          "tokens_per_image": {
+            "value": 2850,
+            "confidence": "unverified",
+            "source": "ANTH_VISION_TOKENS",
+            "scope": "per_image",
+            "note": "Derived, not stated: Claude 4.7+ is the high-resolution tier (long edge 2576 px, 4,784 visual tokens max), so a 150-DPI A4 page (1240x1754, LLMWhisperer's PDF_TO_IMAGES_DPI) is not downscaled and costs ceil(1240/28) x ceil(1754/28) = 45 x 63 = 2,835 tokens; rounded up to 2,850. The formula and tier are documented; the page size is Unstract's render. Used only for the warn-only context-window advisory."
           }
         }
       ],
@@ -576,8 +585,8 @@
           }
         },
         {
-          "pattern": "(?i)anthropic\\.claude-haiku-4-5",
-          "description": "Claude Haiku 4.5 via Anthropic Messages on Mantle (200k context)",
+          "pattern": "(?i)anthropic\\.(?:claude-(3|instant|2)|claude-(opus|sonnet|haiku)-4[-.]5(?![0-9])|claude-opus-4[-.]1(?![0-9])|claude-(opus|sonnet)-4(?=$|[@:]|-\\d{8}|-v\\d|[-.]0(?![0-9])))",
+          "description": "200k-context Claude models via Anthropic Messages on Mantle (Haiku 4.5, Sonnet 4.5, Opus 4.5, Opus 4.1, Opus 4, Sonnet 4, Claude 3.x), same rule as the anthropic/vertex_ai/azure_ai entries",
           "max_images_per_request": {
             "value": 100,
             "confidence": "unverified",
@@ -620,6 +629,60 @@
             "confidence": "verified",
             "source": "ANTH_VISION",
             "note": "Documented SAFE bound, not the stated limit: the page says the stricter limit is 'stated in the error message' and advises resizing to <=2000 px per side 'to stay under the limit on all platforms'. Using 2000 as a check is conservative. 150-DPI A4 pages (1240x1754) pass."
+          }
+        },
+        {
+          "pattern": "(?i)anthropic\\.(?:claude-(opus|sonnet|haiku)-4[-.][7-9](?![0-9])|claude-(opus|sonnet|haiku|fable|mythos)-([5-9]|[1-9]\\d)(?![0-9])|claude-mythos)",
+          "description": "Claude 4.7 and later (Opus 4.7/4.8, 5.x, Fable, Mythos): high-resolution image tier, ~2,850 tokens per 150-DPI page via Anthropic Messages on Mantle; otherwise the same limits as the other Claude models below",
+          "max_images_per_request": {
+            "value": 600,
+            "confidence": "unverified",
+            "source": [
+              "ANTH_VISION",
+              "ANTH_CONTEXT"
+            ],
+            "scope": "per_request",
+            "note": "Anthropic states 100/600 for 'the API'; Bedrock not named for the count rule"
+          },
+          "max_request_bytes": {
+            "value": 20000000,
+            "confidence": "unverified",
+            "source": "ANTH_REQSIZE",
+            "scope": "per_request_body",
+            "note": "Downgraded by verifier: Anthropic states this for 'Bedrock' without distinguishing the bedrock-mantle endpoint, whose per-model limits can differ (Gemma 4 on Mantle: 3.5 MB)."
+          },
+          "max_image_bytes": {
+            "value": 5000000,
+            "confidence": "unverified",
+            "source": "ANTH_VISION",
+            "scope": "per_image",
+            "base64_counted": true,
+            "note": "Downgraded by verifier: Anthropic states this for 'Bedrock' without distinguishing the bedrock-mantle endpoint, whose per-model limits can differ (Gemma 4 on Mantle: 3.5 MB)."
+          },
+          "max_image_px": {
+            "value": 8000,
+            "confidence": "verified",
+            "source": "ANTH_VISION",
+            "scope": "per_image_side"
+          },
+          "many_images_threshold": {
+            "value": 20,
+            "confidence": "verified",
+            "source": "ANTH_VISION",
+            "note": "rule applies when the request has MORE than this many image (and, on Bedrock/Google Cloud, document) blocks"
+          },
+          "many_images_max_px": {
+            "value": 2000,
+            "confidence": "verified",
+            "source": "ANTH_VISION",
+            "note": "Documented SAFE bound, not the stated limit: the page says the stricter limit is 'stated in the error message' and advises resizing to <=2000 px per side 'to stay under the limit on all platforms'. Using 2000 as a check is conservative. 150-DPI A4 pages (1240x1754) pass."
+          },
+          "tokens_per_image": {
+            "value": 2850,
+            "confidence": "unverified",
+            "source": "ANTH_VISION_TOKENS",
+            "scope": "per_image",
+            "note": "Derived, not stated: Claude 4.7+ is the high-resolution tier (long edge 2576 px, 4,784 visual tokens max), so a 150-DPI A4 page (1240x1754, LLMWhisperer's PDF_TO_IMAGES_DPI) is not downscaled and costs ceil(1240/28) x ceil(1754/28) = 45 x 63 = 2,835 tokens; rounded up to 2,850. The formula and tier are documented; the page size is Unstract's render. Used only for the warn-only context-window advisory."
           }
         },
         {
@@ -840,8 +903,8 @@
       },
       "model_overrides": [
         {
-          "pattern": "(?i)claude-(3|instant|2)|claude-(opus|sonnet|haiku)-4-5(?![0-9])|claude-opus-4-1(?![0-9])|claude-(opus|sonnet)-4(?=$|[@:]|-\\d{8}|-v\\d|-0(?![0-9]))",
-          "description": "200k-context Claude on Foundry (Anthropic-operated) (+ -4-0 aliases)",
+          "pattern": "(?i)claude-(3|instant|2)|claude-(opus|sonnet|haiku)-4[-.]5(?![0-9])|claude-opus-4[-.]1(?![0-9])|claude-(opus|sonnet)-4(?=$|[@:]|-\\d{8}|-v\\d|[-.]0(?![0-9]))",
+          "description": "200k-context Claude on Foundry (Anthropic-operated) (+ -4-0 aliases; '-' or '.' between version digits, e.g. OpenRouter's claude-sonnet-4.5)",
           "max_images_per_request": {
             "value": 100,
             "confidence": "unverified",
@@ -888,6 +951,61 @@
             "confidence": "unverified",
             "source": "ANTH_VISION",
             "note": "Documented SAFE bound, not the stated limit: the page says the stricter limit is 'stated in the error message' and advises resizing to <=2000 px per side 'to stay under the limit on all platforms'. Using 2000 as a check is conservative. 150-DPI A4 pages (1240x1754) pass."
+          }
+        },
+        {
+          "pattern": "(?i)claude-(opus|sonnet|haiku)-4[-.][7-9](?![0-9])|claude-(opus|sonnet|haiku|fable|mythos)-([5-9]|[1-9]\\d)(?![0-9])|claude-mythos",
+          "description": "Claude 4.7 and later (Opus 4.7/4.8, 5.x, Fable, Mythos): high-resolution image tier, ~2,850 tokens per 150-DPI page; otherwise the same limits as the other 1M-context Claude models below",
+          "max_images_per_request": {
+            "value": 600,
+            "confidence": "unverified",
+            "source": [
+              "ANTH_VISION",
+              "ANTH_FOUNDRY"
+            ],
+            "scope": "per_request"
+          },
+          "max_request_bytes": {
+            "value": 32000000,
+            "confidence": "unverified",
+            "source": [
+              "ANTH_REQSIZE",
+              "ANTH_FOUNDRY"
+            ],
+            "scope": "per_request_body",
+            "base64_counted": true
+          },
+          "max_image_bytes": {
+            "value": 10000000,
+            "confidence": "unverified",
+            "source": "ANTH_VISION",
+            "scope": "per_image",
+            "base64_counted": true
+          },
+          "max_image_px": {
+            "value": 8000,
+            "confidence": "unverified",
+            "source": "ANTH_VISION",
+            "scope": "per_image_side"
+          },
+          "many_images_threshold": {
+            "value": 20,
+            "confidence": "unverified",
+            "source": "ANTH_VISION",
+            "note": "rule applies when the request has MORE than this many image (and, on Bedrock/Google Cloud, document) blocks"
+          },
+          "many_images_max_px": {
+            "value": 2000,
+            "confidence": "unverified",
+            "source": "ANTH_VISION",
+            "note": "Documented SAFE bound, not the stated limit: the page says the stricter limit is 'stated in the error message' and advises resizing to <=2000 px per side 'to stay under the limit on all platforms'. Using 2000 as a check is conservative. 150-DPI A4 pages (1240x1754) pass."
+          },
+          "tokens_per_image": {
+            "value": 2850,
+            "confidence": "unverified",
+            "source": "ANTH_VISION_TOKENS",
+            "scope": "per_image",
+            "note": "Derived, not stated: Claude 4.7+ is the high-resolution tier (long edge 2576 px, 4,784 visual tokens max), so a 150-DPI A4 page (1240x1754, LLMWhisperer's PDF_TO_IMAGES_DPI) is not downscaled and costs ceil(1240/28) x ceil(1754/28) = 45 x 63 = 2,835 tokens; rounded up to 2,850. The formula and tier are documented; the page size is Unstract's render. Used only for the warn-only context-window advisory."
           }
         },
         {
@@ -1236,8 +1354,8 @@
       },
       "model_overrides": [
         {
-          "pattern": "(?i)claude-(3|instant|2)|claude-(opus|sonnet|haiku)-4-5(?![0-9])|claude-opus-4-1(?![0-9])|claude-(opus|sonnet)-4(?=$|[@:]|-\\d{8}|-v\\d|-0(?![0-9]))",
-          "description": "200k-context Claude on Vertex (Agent Platform) (+ -4-0 aliases)",
+          "pattern": "(?i)claude-(3|instant|2)|claude-(opus|sonnet|haiku)-4[-.]5(?![0-9])|claude-opus-4[-.]1(?![0-9])|claude-(opus|sonnet)-4(?=$|[@:]|-\\d{8}|-v\\d|[-.]0(?![0-9]))",
+          "description": "200k-context Claude on Vertex (Agent Platform) (+ -4-0 aliases; '-' or '.' between version digits, e.g. OpenRouter's claude-sonnet-4.5)",
           "max_images_per_request": {
             "value": 100,
             "confidence": "unverified",
@@ -1283,6 +1401,61 @@
             "confidence": "verified",
             "source": "ANTH_VISION",
             "note": "Documented SAFE bound, not the stated limit: the page says the stricter limit is 'stated in the error message' and advises resizing to <=2000 px per side 'to stay under the limit on all platforms'. Using 2000 as a check is conservative. 150-DPI A4 pages (1240x1754) pass."
+          }
+        },
+        {
+          "pattern": "(?i)claude-(opus|sonnet|haiku)-4[-.][7-9](?![0-9])|claude-(opus|sonnet|haiku|fable|mythos)-([5-9]|[1-9]\\d)(?![0-9])|claude-mythos",
+          "description": "Claude 4.7 and later (Opus 4.7/4.8, 5.x, Fable, Mythos): high-resolution image tier, ~2,850 tokens per 150-DPI page; otherwise the same limits as the other 1M-context Claude models below",
+          "max_images_per_request": {
+            "value": 600,
+            "confidence": "unverified",
+            "source": [
+              "ANTH_VISION",
+              "ANTH_GCP"
+            ],
+            "scope": "per_request"
+          },
+          "max_request_bytes": {
+            "value": 30000000,
+            "confidence": "verified",
+            "source": [
+              "ANTH_GCP",
+              "ANTH_REQSIZE"
+            ],
+            "scope": "per_request_body",
+            "base64_counted": true
+          },
+          "max_image_bytes": {
+            "value": 5000000,
+            "confidence": "verified",
+            "source": "ANTH_VISION",
+            "scope": "per_image",
+            "base64_counted": true
+          },
+          "max_image_px": {
+            "value": 8000,
+            "confidence": "verified",
+            "source": "ANTH_VISION",
+            "scope": "per_image_side"
+          },
+          "many_images_threshold": {
+            "value": 20,
+            "confidence": "verified",
+            "source": "ANTH_VISION",
+            "note": "rule applies when the request has MORE than this many image (and, on Bedrock/Google Cloud, document) blocks"
+          },
+          "many_images_max_px": {
+            "value": 2000,
+            "confidence": "verified",
+            "source": "ANTH_VISION",
+            "note": "Documented SAFE bound, not the stated limit: the page says the stricter limit is 'stated in the error message' and advises resizing to <=2000 px per side 'to stay under the limit on all platforms'. Using 2000 as a check is conservative. 150-DPI A4 pages (1240x1754) pass."
+          },
+          "tokens_per_image": {
+            "value": 2850,
+            "confidence": "unverified",
+            "source": "ANTH_VISION_TOKENS",
+            "scope": "per_image",
+            "note": "Derived, not stated: Claude 4.7+ is the high-resolution tier (long edge 2576 px, 4,784 visual tokens max), so a 150-DPI A4 page (1240x1754, LLMWhisperer's PDF_TO_IMAGES_DPI) is not downscaled and costs ceil(1240/28) x ceil(1754/28) = 45 x 63 = 2,835 tokens; rounded up to 2,850. The formula and tier are documented; the page size is Unstract's render. Used only for the warn-only context-window advisory."
           }
         },
         {
@@ -1372,7 +1545,7 @@
             "value": null,
             "confidence": "unverified",
             "source": null,
-            "note": "no 'Input size limit' row on the 3.x spec pages. With lookup rule 4 this null falls back to the 20 MB default (~60 pages at 250 KB), which may be far stricter than Vertex enforces (2.5 pages say 500 MB). Probe before relying on it."
+            "note": "no 'Input size limit' row on the 3.x spec pages. With lookup rule 4 (README.md) this null falls back to the 20 MB default (~60 pages at 250 KB), which may be far stricter than Vertex enforces (2.5 pages say 500 MB). Probe before relying on it."
           },
           "max_image_bytes": {
             "value": 7000000,

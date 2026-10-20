@@ -8,7 +8,7 @@ resolves it here.
 ## What the table holds
 
 - `default`: the conservative fallback (20 images, 20 MB wire, 1,500
-  tokens/page). It fills a provider's null count/byte fields. On hosted
+  tokens/page). It fills a provider's null count/byte/token fields. On hosted
   providers that is a hard cap; on `kind: pass_through` providers (Ollama,
   OpenAI-compatible servers, NVIDIA Build, unknown OpenRouter upstreams) it
   is advisory: the policy logs what the default would have been and sends
@@ -23,45 +23,88 @@ resolves it here.
 
 ## Lookup rules (enforced by `_schema.py` and `resolve.py`)
 
+This is the one statement of the matching rule; the code and
+`limits.json` point here.
+
 1. Provider key = the adapter's `get_provider()`, except a Bedrock model
    validated to `bedrock_mantle/...` uses `bedrock_mantle`. Never the
-   litellm prefix alone: MiniMax may send `anthropic/<id>`.
-2. Strip the litellm prefix; try overrides (`re.search`, patterns carry
-   `(?i)`) against the bare model, then `cost_model` (Azure's real model),
-   then extra ids (Bedrock `model_id` behind an ARN). First match wins and
-   replaces provider defaults field by field. `inherit` takes another
-   provider's resolved limits for the rest of the slug (OpenRouter).
-3. The Anthropic 100-vs-600 split comes from our own 200k-model regex, not
-   litellm's `max_input_tokens` (which is wrong for Sonnet 4.5).
-4. Resolution never reads `litellm.model_cost`, so the remote and bundled
+   litellm prefix alone: MiniMax may send `anthropic/<id>`. A provider the
+   bundled table has is always resolved, from the bundled entry if the
+   effective table lacks it, never as pass-through.
+2. Candidates are the bare (litellm-prefix-stripped) ids in this order:
+   `cost_model` (Azure's real model), the validated model, then extra ids
+   (Bedrock `model_id` behind an ARN).
+3. Overrides are tried IN TABLE ORDER; each one is tested (`re.search`,
+   patterns carry `(?i)`) against every candidate. The first override that
+   matches ANY candidate wins, so an earlier override matching only an
+   extra id beats a later one matching the model. Its fields replace the
+   provider defaults field by field. `inherit` takes another provider's
+   resolved limits for the rest of the matched candidate (OpenRouter).
+4. A field still null after that: `max_images_per_request`,
+   `max_request_bytes` and `tokens_per_image` fall back to `default`
+   (advisory on `kind: pass_through` providers); per-image fields mean
+   "no check".
+5. The Anthropic 100-vs-600 split comes from our own 200k-model regex, not
+   litellm's `max_input_tokens` (which is wrong for Sonnet 4.5). The regex
+   accepts `-` or `.` between version digits (OpenRouter's
+   `claude-sonnet-4.5`) and is repeated on anthropic, vertex_ai, azure_ai
+   and bedrock_mantle.
+6. Resolution never reads `litellm.model_cost`, so the remote and bundled
    cost maps resolve the same validated string identically. Only
-   `local_max_input_tokens` reads the (local) registry.
+   `local_max_input_tokens` reads the in-process registry (litellm's remote
+   cost map, unless `LITELLM_LOCAL_MODEL_COST_MAP` pins the bundled one);
+   it never makes a per-lookup network call.
 
 ## Checks (`policy.py`)
 
-`compute_page_budget` = min(image count, (context − reserve) / tokens per
-page, LLMWhisperer's 999, operator ceilings). `ImageModePolicy` adds the
-raw-byte budget, per-image byte/pixel limits and the Anthropic ">20 images
-⇒ ≤2000 px" rule; `check_page_set` applies them to a page set. Tunables are
-module constants: `PROMPT_TOKENS_RESERVE`, `ENFORCE_CONTEXT_TOKEN_TERM`,
-`ENFORCE_DEFAULT_TOKEN_ESTIMATE`, `ENFORCE_PER_IMAGE_LIMITS`,
-`TEXT_RESERVE_BYTES`, `ASSUMED_PAGE_BYTES` (pre-conversion size advisory
-only, never a rejection) and `PASS_THROUGH_DEFAULTS_ARE_ADVISORY` in
-`resolve.py`.
+`compute_page_budget` = min(image count, LLMWhisperer's 999, operator
+ceilings). `ImageModePolicy` adds the raw-byte budget, per-image byte/pixel
+limits and the Anthropic ">20 images ⇒ ≤2000 px" rule (kept per model, the
+strictest of each across several LLMs, each naming the model it came from);
+`check_page_set` applies them to a page set. Tunables are module constants:
+`PROMPT_TOKENS_RESERVE`, `ENFORCE_PER_IMAGE_LIMITS`, `TEXT_RESERVE_BYTES`,
+`ASSUMED_PAGE_BYTES` (pre-conversion size advisory only, never a rejection)
+and `PASS_THROUGH_DEFAULTS_ARE_ADVISORY` in `resolve.py`.
 
-The token term is enforced only when the model's entry carries its own
-`tokens_per_image`. The top-level default (1,500, unverified) is reported
-as an advisory instead: enforcing it held 128K-context models such as
-gpt-4o to 82 pages, fewer than real pages fit. Adding a verified
-per-model figure to the table turns the term on for that model.
+The context-window term ((context − reserve) / tokens per page) is WARN
+ONLY. Its tokens-per-page figure is an estimate whether it is the default
+(1,500, which would have held 128K gpt-4o to 82 pages) or a model's own
+entry (Claude 4.7+: ~2,850 per 150-DPI page), so it never rejects a
+document: the policy warns when the pages may not fit, and the provider's
+context-length error stays the backstop. Image count and byte limits are
+enforced.
 
-Operator ceilings: `VLM_IMAGE_ANSWER_PAGE_CAP` and
-`VLM_IMAGE_ANSWER_MAX_TOTAL_MB` (MiB). Once `LEGACY_ANSWER_BOUNDS_ACTIVE`
-is off they are read by `configured_page_ceiling()` /
-`configured_request_bytes_ceiling()` and only ever tighten a model's limits.
-While it is on (the UN-4427 rollout), they instead replace the legacy 90-page
-/ 14 MiB bound, so a value above 90 pages or 14 MiB raises that bound for
-models whose own limits are larger.
+Advisories (that warning, pass-through defaults, the pre-conversion size
+hint) go to the worker log at WARNING and, through
+`ImageModePolicy.with_advisory_sink`, to the user's run log at WARN.
+
+### Rollout bound: `LEGACY_ANSWER_BOUNDS_ACTIVE`
+
+While `policy.LEGACY_ANSWER_BOUNDS_ACTIVE` is `True` (the UN-4427 rollout,
+until the cloud answer plugin uses model-aware limits) every model-aware
+policy is ALSO held to the legacy 90 pages / 14 MiB, through
+`extraction_bound_kwargs()` and the legacy accessors `configured_page_cap()`
+/ `configured_max_total_bytes()`. So a generous model (Gemini, OpenAI) is
+still capped at 90 pages; only stricter models (Bedrock 20, Mistral 8, ...)
+see their own, lower limits. In this mode `VLM_IMAGE_ANSWER_PAGE_CAP` and
+`VLM_IMAGE_ANSWER_MAX_TOTAL_MB` (MiB) REPLACE the 90 / 14 MiB, so a value
+above them raises the bound for larger models.
+
+Once the flag is off, the same env vars are read by
+`configured_page_ceiling()` / `configured_request_bytes_ceiling()` and only
+ever tighten a model's limits; unset means no ceiling. An invalid value is
+logged at ERROR and keeps the legacy default (90 / 14 MiB), never "no
+ceiling".
+
+### Runtime switch: `VLM_IMAGE_LIMITS_ENFORCE`
+
+`VLM_IMAGE_LIMITS_ENFORCE=false` (also `0`, `no`, `off`) turns the
+model-aware checks off without a deploy of new data: extraction and the
+Prompt Studio upload and cache-hit checks fall back to the fixed
+90-page / 14 MiB cap (`ImageModePolicy.ceiling_only(**fixed_cap_bound_kwargs())`),
+the pre-UN-4427 behaviour. Set it on the backend and every worker. Unset or
+`true` keeps model-aware limits; any other value is logged at ERROR and
+keeps them on.
 
 ## Where the table comes from
 
@@ -70,35 +113,40 @@ branch of Zipstack/unstract. Each process uses, highest precedence first:
 
 1. `VLM_IMAGE_LIMITS_FILE=/path/to/override.json` — an operator file in the
    same schema, applied on top of the base table. A provider present in it
-   replaces that entry wholesale (no deep merge); a `default` block replaces
-   the default; `sources` are merged. A malformed file is logged and
+   replaces that entry wholesale (no deep merge); a `default` block is
+   merged field by field over the shipped default (it may not null a
+   defaultable field); `sources` are merged. A malformed file is logged and
    ignored. A future per-org override would plug in here.
 2. The remote copy — `VLM_IMAGE_LIMITS_URL`, default
    `https://raw.githubusercontent.com/Zipstack/unstract/main/unstract/sdk1/src/unstract/sdk1/utils/image_limits/limits.json`.
-   Set it to an empty string to turn fetching off (air-gapped on-prem).
+   Set it to an empty string to turn fetching off (air-gapped on-prem; the
+   backend and workers `sample.env` list it).
 3. The copy bundled in this package, always available.
 
-Fetching (`source.py`) is bounded so image mode never waits on GitHub:
+No caller waits on GitHub (`source.py`):
 
+- `get_limits_table()` always answers from memory: the last good remote
+  copy this process holds, else the bundled one. When a refresh is due it
+  starts one on a background daemon thread and returns at once; while it
+  runs, every caller keeps serving the last good table;
 - at most one attempt per process per `VLM_IMAGE_LIMITS_REFRESH_SECONDS`
   (default 3600, floor 60), and a failed attempt also waits for the next
   window;
-- a 3-second timeout (`FETCH_TIMEOUT_SECONDS`) on each of connect, read and
-  write, plus a 3-second deadline on the body checked between chunks, so a
-  slow or unreachable host costs a few seconds at most (DNS resolution is
-  not covered); and a 1 MB size cap (`MAX_REMOTE_BYTES`);
-- while one thread fetches, other threads keep serving the last good table;
+- each attempt has an overall 3-second deadline (`FETCH_TIMEOUT_SECONDS`)
+  covering DNS, connect, headers and body, does not follow redirects, and
+  is capped at 1 MB (`MAX_REMOTE_BYTES`);
 - `get_limits_table(refresh=False)` (and
-  `LLM.image_input_limits_for(..., refresh_table=False)`) never fetches: it
-  serves the last good copy this process holds, else the bundled one. Use it
-  on request paths, such as a backend serializer.
+  `LLM.image_input_limits_for(..., refresh_table=False)`) never even starts
+  a refresh.
 
 The remote file must pass the same strict validation as the bundled one,
 including `_meta.schema_version` equal to the version this sdk1 reads and
 override patterns of at most 300 characters (`MAX_PATTERN_LENGTH`) that
-compile. A timeout, HTTP error, invalid JSON or rejected file logs a
-warning and keeps the last good copy (the previous remote table, else the
-bundled one); nothing in the fetch path raises.
+compile, and it must keep every provider key the bundled table has (a
+dropped provider would otherwise lose its limits on every install). A
+timeout, HTTP error, invalid JSON or rejected file logs a warning and keeps
+the last good copy (the previous remote table, else the bundled one);
+nothing in the fetch path raises.
 
 Every table records its origin. The log says which copy is in use
 (source, URL or path, schema version, `_meta.verified_on`, sha256 prefix),
@@ -113,8 +161,9 @@ and to the run-log summary.
    page states the number for that scope.
 2. Probe before trusting an `unverified` value: send N and N+1 images to
    the model; record the result in the note.
-3. Keep overrides ordered specific → general (first match wins) and repeat
-   every field that differs from the provider defaults.
+3. Order overrides by the lookup rule above (first override matching any
+   candidate wins, so put specific patterns first) and repeat every field
+   that differs from the provider defaults.
 4. Run `pytest tests/test_image_limits_*.py`: the table test rejects
    unknown keys, unresolved sources, bad regexes and missing providers.
 5. The dataset's research and verification log live outside the repo
@@ -122,7 +171,9 @@ and to the run-log summary.
    points at them.
 6. Merging a change to `main` publishes it: every install with fetching
    on picks it up within one refresh window, without a release. Review a
-   data change as you would a deploy.
+   data change as you would a deploy. Removing a provider is rejected by
+   installs (they keep their last good copy); to retire one, ship it in an
+   sdk1 release.
 7. Keep the schema backward compatible. Older installs reject any file
    they cannot read and stay on their bundled copy, so a key they do not
    know (a new limit field, a new field attribute) cuts them off from

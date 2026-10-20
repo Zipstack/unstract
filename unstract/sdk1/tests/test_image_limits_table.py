@@ -277,6 +277,57 @@ class TestOverrideFile:
         )
         assert limits.max_images_per_request.value == 5
 
+    def test_partial_default_block_keeps_the_other_shipped_defaults(
+        self, tmp_path: Path, monkeypatch: MonkeyPatch
+    ) -> None:
+        # An operator tightening ONE default must not drop request bytes (so
+        # Azure lost its 20 MB) or tokens_per_image (so the context check
+        # vanished) along with it.
+        override = {
+            "_meta": {"schema_version": 1},
+            "default": {
+                "max_images_per_request": {
+                    "value": 10,
+                    "confidence": "unverified",
+                    "source": "POLICY",
+                }
+            },
+        }
+        path = tmp_path / "override.json"
+        path.write_text(json.dumps(override))
+        monkeypatch.setenv(LIMITS_OVERRIDE_FILE_ENV, str(path))
+
+        table = get_limits_table()
+        assert table.origin.override_file == str(path)  # applied, not ignored
+        azure = resolve_image_limits("azure", "azure/my-dep", table=table)
+        assert azure.max_request_bytes.value == 20_000_000
+        assert azure.max_request_bytes.layer == "shipped"
+        assert azure.tokens_per_image.value == 1500
+        ollama = resolve_image_limits("ollama", "ollama_chat/llava", table=table)
+        assert ollama.max_images_per_request.value == 10
+        assert ollama.max_images_per_request.layer == "override"
+
+    def test_default_override_cannot_null_a_defaultable_field(
+        self, tmp_path: Path, monkeypatch: MonkeyPatch
+    ) -> None:
+        override = {
+            "_meta": {"schema_version": 1},
+            "default": {
+                "max_request_bytes": {
+                    "value": None,
+                    "confidence": "unverified",
+                    "source": None,
+                }
+            },
+        }
+        path = tmp_path / "override.json"
+        path.write_text(json.dumps(override))
+        monkeypatch.setenv(LIMITS_OVERRIDE_FILE_ENV, str(path))
+
+        table = get_limits_table()
+        assert table.origin.override_file is None  # rejected, shipped kept
+        assert table.default["max_request_bytes"].value == 20_000_000
+
     def test_malformed_override_is_logged_and_ignored(
         self, tmp_path: Path, monkeypatch: MonkeyPatch, caplog: pytest.LogCaptureFixture
     ) -> None:
