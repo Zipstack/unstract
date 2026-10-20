@@ -11,11 +11,12 @@ the copy fetched from GitHub (``source.py``) and an operator override file.
 
 Layers: the base table (remote copy, else bundled) is loaded first; an
 operator override file named by ``VLM_IMAGE_LIMITS_FILE`` may replace whole
-provider entries and/or the ``default`` block. Replacement is per provider,
-never a deep merge, so the effective entry is always one file's text. Every
-entry records the layer it came from, and the table records its origin
-(source, location, version), so messages and logs can say where a number
-originated.
+provider entries and/or fields of the ``default`` block. Providers are
+replaced whole (no deep merge), so an effective provider entry is always
+one file's text; ``default`` is merged field by field, so tightening one
+default never drops the others. Every entry (and every default field)
+records the layer it came from, and the table records its origin (source,
+location, version), so messages and logs can say where a number originated.
 """
 
 from __future__ import annotations
@@ -164,6 +165,12 @@ class LimitsTable:
     default_layer: Layer = "shipped"
     meta: dict[str, Any] = field(default_factory=dict)
     origin: TableOrigin | None = None
+    # Default fields an override file set (their layer is "override").
+    default_override_fields: frozenset[str] = frozenset()
+
+    def default_field_layer(self, name: str) -> Layer:
+        """The layer a ``default`` field came from."""
+        return "override" if name in self.default_override_fields else self.default_layer
 
 
 def _fail(where: str, message: str) -> LimitsSchemaError:
@@ -449,10 +456,12 @@ def load_limits_table(path: str | Path | None = None) -> LimitsTable:
 
 
 def apply_override_file(table: LimitsTable, path: str | Path) -> LimitsTable:
-    """Replace provider entries (and/or ``default``) from an override file.
+    """Apply an override file: whole provider entries, ``default`` per field.
 
-    Per-provider replacement: a provider present in the override replaces
-    the shipped entry wholesale; ``default`` likewise. Sources are merged so
+    A provider present in the override replaces the shipped entry wholesale.
+    A ``default`` block is merged field by field over the shipped default,
+    so an override that sets only ``max_images_per_request`` keeps the
+    shipped request-byte and tokens-per-page defaults. Sources are merged so
     an override can cite its own evidence. The override must resolve on its
     own (its ``inherit`` targets may name shipped providers).
     """
@@ -503,10 +512,13 @@ def apply_override_file(table: LimitsTable, path: str | Path) -> LimitsTable:
     # The override may combine with shipped entries into a chain or a cycle
     # (e.g. its anthropic inheriting the shipped openrouter): check the result.
     _check_inheritance(providers)
-    default = parsed.default if data.get("default") is not None else table.default
-    default_layer: Layer = (
-        "override" if data.get("default") is not None else table.default_layer
-    )
+    default = {**table.default, **parsed.default}
+    for name in DEFAULTABLE_FIELDS:
+        if default.get(name) is None or default[name].value is None:
+            raise LimitsSchemaError(
+                f"{path}: default.{name} must carry a numeric value (it would "
+                "remove the shipped default)"
+            )
     sources = dict(table.sources)
     sources.update(parsed.sources)
     origin = (
@@ -520,7 +532,8 @@ def apply_override_file(table: LimitsTable, path: str | Path) -> LimitsTable:
         default=default,
         providers=providers,
         layer="override",
-        default_layer=default_layer,
+        default_layer=table.default_layer,
         meta=table.meta,
         origin=origin,
+        default_override_fields=table.default_override_fields | frozenset(parsed.default),
     )

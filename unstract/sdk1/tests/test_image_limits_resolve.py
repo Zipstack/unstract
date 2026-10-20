@@ -313,3 +313,95 @@ class TestResolveForAdapter:
         assert isinstance(limits, ImageRequestLimits)
         with pytest.raises(dataclasses.FrozenInstanceError):
             limits.provider_key = "x"  # type: ignore[misc]
+
+
+class TestClaude200kRuleAcrossRoutes:
+    """The 200k-context Claude rule (100 images) is applied on every route.
+
+    OpenRouter's real slugs use a dot between version digits
+    (``anthropic/claude-sonnet-4.5``) and Mantle uses ``anthropic.<id>``;
+    both used to resolve to 600 images.
+    """
+
+    @pytest.mark.parametrize(
+        "slug",
+        [
+            "openrouter/anthropic/claude-sonnet-4.5",
+            "openrouter/anthropic/claude-haiku-4.5",
+            "openrouter/anthropic/claude-opus-4.1",
+            "openrouter/anthropic/claude-opus-4.5",
+        ],
+    )
+    def test_openrouter_dotted_slugs_get_100(self, slug: str) -> None:
+        limits = resolve_image_limits("openrouter", slug)
+        assert limits.inherited_from == "anthropic"
+        assert limits.max_images_per_request.value == 100
+
+    @pytest.mark.parametrize(
+        "slug",
+        [
+            "openrouter/anthropic/claude-sonnet-4.6",
+            "openrouter/anthropic/claude-opus-4.7",
+        ],
+    )
+    def test_openrouter_1m_models_keep_600(self, slug: str) -> None:
+        assert (
+            resolve_image_limits("openrouter", slug).max_images_per_request.value == 600
+        )
+
+    @pytest.mark.parametrize(
+        ("model", "expected"),
+        [
+            ("bedrock_mantle/anthropic.claude-sonnet-4-5-20250929-v1:0", 100),
+            ("bedrock_mantle/anthropic.claude-haiku-4-5", 100),
+            ("bedrock_mantle/anthropic.claude-opus-4-1", 100),
+            ("bedrock_mantle/anthropic.claude-sonnet-4-6", 600),
+            ("bedrock_mantle/anthropic.claude-opus-5-5", 600),
+        ],
+    )
+    def test_mantle_applies_the_same_split(self, model: str, expected: int) -> None:
+        limits = resolve_image_limits("bedrock", model)
+        assert limits.provider_key == "bedrock_mantle"
+        assert limits.max_images_per_request.value == expected
+
+
+class TestClaudeHighResTokens:
+    """Claude 4.7+ is Anthropic's high-resolution image tier (~2,850/page)."""
+
+    @pytest.mark.parametrize(
+        ("provider", "model"),
+        [
+            ("anthropic", "anthropic/claude-opus-4-7"),
+            ("anthropic", "anthropic/claude-opus-5-5"),
+            ("vertex_ai", "vertex_ai/claude-opus-4-8"),
+            ("azure_ai", "azure_ai/claude-sonnet-5"),
+            ("bedrock", "bedrock_mantle/anthropic.claude-opus-5-5"),
+            ("openrouter", "openrouter/anthropic/claude-opus-4.7"),
+        ],
+    )
+    def test_high_res_models_use_2850(self, provider: str, model: str) -> None:
+        limits = resolve_image_limits(provider, model)
+        assert limits.tokens_per_image.value == 2850
+        assert limits.tokens_per_image.from_default is False
+        assert limits.max_images_per_request.value == 600
+
+    @pytest.mark.parametrize(
+        ("provider", "model"),
+        [
+            ("anthropic", "anthropic/claude-sonnet-4-5"),
+            ("anthropic", "anthropic/claude-sonnet-4-6"),
+            ("vertex_ai", "vertex_ai/claude-haiku-4-5@20251001"),
+        ],
+    )
+    def test_standard_tier_models_keep_the_default(
+        self, provider: str, model: str
+    ) -> None:
+        limits = resolve_image_limits(provider, model)
+        assert limits.tokens_per_image.value == 1500
+        assert limits.tokens_per_image.from_default is True
+
+    def test_vertex_high_res_keeps_the_vertex_claude_limits(self) -> None:
+        limits = resolve_image_limits("vertex_ai", "vertex_ai/claude-opus-4-8")
+        assert limits.max_request_bytes.value == 30_000_000
+        assert limits.max_image_bytes.value == 5_000_000
+        assert limits.many_images_threshold.value == 20
