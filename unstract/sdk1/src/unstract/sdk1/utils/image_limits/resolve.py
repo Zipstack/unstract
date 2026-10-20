@@ -19,6 +19,7 @@ registry lookup here: an in-process dict read, no per-lookup network call.
 
 from __future__ import annotations
 
+import dataclasses
 import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
@@ -28,11 +29,19 @@ from unstract.sdk1.utils.image_limits._schema import (
     DEFAULTABLE_FIELDS,
     LIMIT_FIELDS,
     FieldValue,
+    Layer,
     LimitsTable,
     OverrideEntry,
     ProviderEntry,
 )
-from unstract.sdk1.utils.image_limits.source import bundled_table, get_limits_table
+from unstract.sdk1.utils.image_limits.source import (
+    GUARDED_FIELDS,
+    MAX_REMOTE_RAISE_FACTOR,
+    REMOTE_SOURCE,
+    bundled_table,
+    first_clamp_report,
+    get_limits_table,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
@@ -65,6 +74,11 @@ class LimitValue:
     from_default: bool  # fell through to the top-level default block
     advisory: bool  # warn, do not reject (pass-through provider + default)
     layer: str  # shipped | override
+    # True when a remote table asked for more than a data refresh may give
+    # and the value was capped from the bundled one (``_clamp_to_bundled``);
+    # ``clamped_from`` is what the remote table asked for (None: no limit).
+    clamped: bool = False
+    clamped_from: int | None = None
 
 
 @dataclass(frozen=True)
@@ -172,17 +186,20 @@ def _resolve_fields(
     provider: ProviderEntry,
     candidates: Sequence[str],
     _seen: frozenset[str] = frozenset(),
-) -> tuple[dict[str, FieldValue], str | None, str | None, str]:
-    """Return (fields, matched_override_label, inherited_from, layer).
+) -> tuple[dict[str, FieldValue], dict[str, Layer], str | None, str | None]:
+    """Return (fields, field_layers, matched_override_label, inherited_from).
 
-    ``_seen`` guards against inheritance cycles. The loader already rejects
-    them; this keeps a lookup from recursing forever if one slips through.
+    ``field_layers`` says, per field, which layer's entry supplied it: an
+    inherited field comes from the parent provider's entry, the override's
+    own fields from this provider's entry. ``_seen`` guards against
+    inheritance cycles. The loader already rejects them; this keeps a
+    lookup from recursing forever if one slips through.
     """
     fields = dict(provider.defaults)
+    layers: dict[str, Layer] = dict.fromkeys(fields, provider.layer)
     override, candidate = _match_override(provider, candidates)
     inherited_from = None
     label = None
-    layer = provider.layer
     if override is not None:
         label = override.description or override.pattern
         if override.inherit and override.inherit not in (_seen | {provider.key}):
@@ -191,14 +208,15 @@ def _resolve_fields(
             assert candidate is not None
             match = override.regex.search(candidate)
             remainder = candidate[match.end() :] if match else candidate
-            parent_fields, _, _, parent_layer = _resolve_fields(
+            parent_fields, parent_layers, _, _ = _resolve_fields(
                 table, parent, [remainder, candidate], _seen | {provider.key}
             )
             fields.update(parent_fields)
+            layers.update(parent_layers)
             inherited_from = override.inherit
-            layer = parent_layer
         fields.update(override.fields)
-    return fields, label, inherited_from, layer
+        layers.update(dict.fromkeys(override.fields, provider.layer))
+    return fields, layers, label, inherited_from
 
 
 def resolve_image_limits(
@@ -216,9 +234,39 @@ def resolve_image_limits(
     (Azure deployment names). ``extra_model_ids`` are extra candidates
     (see the README's "Lookup rules" for how candidates are matched).
     A provider missing from ``table`` but present in the bundled table is
-    resolved from the bundled entry, never as pass-through.
+    resolved from the bundled entry, never as pass-through. When ``table``
+    is a remote copy, the result is clamped against the bundled table
+    (``_clamp_to_bundled``); fields an operator override file set are not.
     """
     table = table or get_limits_table()
+    limits = _resolve_on(
+        table,
+        adapter_provider,
+        model,
+        cost_model=cost_model,
+        extra_model_ids=extra_model_ids,
+    )
+    if table.origin is None or table.origin.source != REMOTE_SOURCE:
+        return limits
+    return _clamp_to_bundled(
+        limits,
+        table,
+        adapter_provider,
+        model,
+        cost_model=cost_model,
+        extra_model_ids=extra_model_ids,
+    )
+
+
+def _resolve_on(
+    table: LimitsTable,
+    adapter_provider: str,
+    model: str,
+    *,
+    cost_model: str | None,
+    extra_model_ids: Sequence[str],
+) -> ImageRequestLimits:
+    """Resolve against ``table`` as written (no clamp)."""
     key = provider_key(adapter_provider, model)
     provider = table.providers.get(key)
     if provider is None:
@@ -232,31 +280,33 @@ def resolve_image_limits(
                 key,
                 table.origin.source if table.origin else "effective",
             )
-            return resolve_image_limits(
+            return _resolve_on(
+                shipped,
                 adapter_provider,
                 model,
                 cost_model=cost_model,
                 extra_model_ids=extra_model_ids,
-                table=shipped,
             )
     candidates = _candidates(model, cost_model, extra_model_ids)
     bare_model = strip_provider_prefix(model)
 
     if provider is None:
         fields: dict[str, FieldValue] = {}
+        layers: dict[str, Layer] = {}
         label = None
         inherited_from = None
-        layer = table.default_layer
+        layer: Layer = table.default_layer
         kind = PASS_THROUGH_KIND
         display = adapter_provider
     else:
-        fields, label, inherited_from, layer = _resolve_fields(
+        fields, layers, label, inherited_from = _resolve_fields(
             table, provider, candidates
         )
+        layer = provider.layer
         kind = provider.kind
         display = provider.display_name
 
-    advisory_defaults = PASS_THROUGH_DEFAULTS_ARE_ADVISORY and kind == PASS_THROUGH_KIND
+    advisory_defaults = _defaults_are_advisory(kind)
     resolved: dict[str, LimitValue] = {}
     for name in LIMIT_FIELDS:
         value = fields.get(name)
@@ -274,7 +324,11 @@ def resolve_image_limits(
         if value is None:
             value = _empty(name)
         resolved[name] = _materialise(
-            table, value, from_default=False, advisory=False, layer=layer
+            table,
+            value,
+            from_default=False,
+            advisory=False,
+            layer=layers.get(name, layer),
         )
 
     return ImageRequestLimits(
@@ -288,6 +342,148 @@ def resolve_image_limits(
         table_version=table.origin.version if table.origin else "",
         **resolved,
     )
+
+
+def _defaults_are_advisory(kind: str) -> bool:
+    return PASS_THROUGH_DEFAULTS_ARE_ADVISORY and kind == PASS_THROUGH_KIND
+
+
+def _with_kind(limit: LimitValue, advisory_defaults: bool) -> LimitValue:
+    """``limit`` with the advisory flag a default-filled value has under a kind."""
+    if limit.from_default and limit.advisory != advisory_defaults:
+        return dataclasses.replace(limit, advisory=advisory_defaults)
+    return limit
+
+
+def _quarter_bytes(limit: LimitValue) -> int | None:
+    """An enforced limit scaled to compare exactly across ``base64_counted``.
+
+    Request bytes are compared as raw bytes; a base64-counted limit carries
+    3 raw bytes per 4 counted ones. Returning 4x raw keeps it an integer.
+    None when nothing is enforced (no value, or advisory only).
+    """
+    if limit.value is None or limit.advisory:
+        return None
+    if limit.name == "max_request_bytes" and limit.base64_counted:
+        return limit.value * 3
+    return limit.value * 4
+
+
+def _clamp_field(
+    remote: LimitValue, shipped: LimitValue, *, key: str, model: str
+) -> LimitValue:
+    """``min(remote, MAX_REMOTE_RAISE_FACTOR x bundled)``, compared as raw bytes.
+
+    A bundled value that is unknown or advisory leaves the remote value
+    alone; a remote value that is not enforced counts as unlimited.
+    """
+    ceiling = _quarter_bytes(shipped)
+    if ceiling is None:
+        return remote
+    current = _quarter_bytes(remote)
+    if current is not None and current <= MAX_REMOTE_RAISE_FACTOR * ceiling:
+        return remote
+    assert shipped.value is not None  # ceiling is not None
+    capped = MAX_REMOTE_RAISE_FACTOR * shipped.value
+    _warn_clamp(
+        key,
+        model,
+        remote.name,
+        f"remote {_describe_limit(remote)}, bundled {_describe_limit(shipped)}; "
+        f"using {capped}",
+    )
+    return dataclasses.replace(
+        shipped,
+        value=capped,
+        confidence="unverified",
+        advisory=False,
+        layer="shipped",
+        clamped=True,
+        clamped_from=None if remote.advisory else remote.value,
+    )
+
+
+def _describe_limit(limit: LimitValue) -> str:
+    if limit.value is None:
+        return "none"
+    text = str(limit.value)
+    if limit.name == "max_request_bytes":
+        text += " (base64-counted)" if limit.base64_counted else " (raw)"
+    if limit.advisory:
+        text += " advisory"
+    return text
+
+
+def _warn_clamp(key: str, model: str, name: str, detail: str) -> None:
+    if not first_clamp_report((key, model, name)):
+        return
+    logger.warning(
+        "Image limits: the remote limits table loosens %s for %r on %r beyond "
+        "what a data refresh may (%s): %s. Fix limits.json on main, or ship "
+        "the raise in an sdk1 release.",
+        name,
+        model,
+        key,
+        f"kind is locked; count/byte limits at most {MAX_REMOTE_RAISE_FACTOR}x "
+        "the bundled value",
+        detail,
+    )
+
+
+def _clamp_to_bundled(
+    limits: ImageRequestLimits,
+    table: LimitsTable,
+    adapter_provider: str,
+    model: str,
+    *,
+    cost_model: str | None,
+    extra_model_ids: Sequence[str],
+) -> ImageRequestLimits:
+    """Hold a remote-table result to what a data refresh may change.
+
+    The same inputs are resolved against the bundled table. For a provider
+    the bundled table knows: the bundled ``kind`` wins (advisory flags
+    follow it), and each guarded field (``GUARDED_FIELDS``) is at most
+    ``MAX_REMOTE_RAISE_FACTOR`` times the bundled value. Tightening always
+    passes. Fields and provider entries an operator override file supplied
+    (layer ``override``) are left as they are. A provider the bundled table
+    does not know uses the remote data as-is.
+    """
+    shipped_table = bundled_table()
+    key = limits.provider_key
+    entry = table.providers.get(key)
+    if entry is None or key not in shipped_table.providers:
+        return limits
+    shipped = _resolve_on(
+        shipped_table,
+        adapter_provider,
+        model,
+        cost_model=cost_model,
+        extra_model_ids=extra_model_ids,
+    )
+    changes: dict[str, object] = {}
+    kind = limits.provider_kind
+    if entry.layer != "override" and kind != shipped.provider_kind:
+        _warn_clamp(
+            key,
+            limits.model,
+            "kind",
+            f"remote {kind}, bundled {shipped.provider_kind}; using "
+            f"{shipped.provider_kind}",
+        )
+        kind = shipped.provider_kind
+        changes["provider_kind"] = kind
+    advisory_defaults = _defaults_are_advisory(kind)
+    for name in LIMIT_FIELDS:
+        value = _with_kind(limits.field(name), advisory_defaults)
+        if name in GUARDED_FIELDS and value.layer != "override":
+            # Both sides read under the effective kind, so an operator's
+            # kind (override file) is compared like for like.
+            ceiling = _with_kind(shipped.field(name), advisory_defaults)
+            value = _clamp_field(value, ceiling, key=key, model=limits.model)
+        if value != limits.field(name):
+            changes[name] = value
+    return dataclasses.replace(limits, **changes) if changes else limits
 
 
 def local_max_input_tokens(model: str, cost_model: str | None = None) -> int | None:

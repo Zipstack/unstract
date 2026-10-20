@@ -27,7 +27,9 @@ from unstract.sdk1.utils.image_limits import (
     get_limits_table,
     resolve_image_limits,
 )
+from unstract.sdk1.utils.image_limits import resolve as resolve_mod
 from unstract.sdk1.utils.image_limits import source as limits_source
+from unstract.sdk1.utils.image_limits._schema import LimitsTable, parse_limits_bytes
 
 BUNDLED = Path(image_limits.__file__).parent / "limits.json"
 _REAL_HTTP_CLIENT = limits_source._http_client
@@ -385,56 +387,48 @@ def _drop_provider(key: str) -> Callable[[], dict]:
     return build
 
 
-class TestRemoteCannotDropAProvider:
-    """A remote copy that loses a bundled provider is a bad file (O2).
+def _remote_table(data: dict) -> LimitsTable:
+    """A remote copy as the refresh would hold it (schema-checked only)."""
+    return parse_limits_bytes(json.dumps(data).encode(), source="remote", location=URL)
 
-    Otherwise the provider resolves as an advisory pass-through on every
-    install within an hour: its documents are converted and billed, then
-    rejected by the provider.
+
+def _clamp_warnings(caplog: pytest.LogCaptureFixture) -> list[str]:
+    return [
+        r.getMessage()
+        for r in caplog.records
+        if r.levelname == "WARNING" and "remote limits table loosens" in r.getMessage()
+    ]
+
+
+class TestRemoteMissingProvider:
+    """A provider the remote copy lacks resolves from the bundled entry (O2).
+
+    The table itself is accepted (rejecting it would also hold back every
+    other fix in the file); the lookup falls back per provider.
     """
 
     # Providers nothing inherits from (dropping an inherit target is already
-    # a schema error), so only the drop check can reject these.
+    # a schema error).
     @pytest.mark.parametrize("key", ["bedrock", "azure_ai", "minimax"])
-    def test_table_dropping_a_provider_is_rejected(
-        self,
-        serve: Callable[..., _Server],
-        clock: _FakeClock,
-        caplog: pytest.LogCaptureFixture,
-        key: str,
+    def test_table_is_used_and_the_provider_resolves_from_bundled(
+        self, serve: Callable[..., _Server], clock: _FakeClock, key: str
     ) -> None:
         serve(_json_response(_drop_provider(key)()))
 
         table = get_limits_table()
-        assert table.origin.source == "bundled"
-        assert key in table.providers
-        assert any(
-            r.levelname == "WARNING" and key in r.getMessage() and URL in r.getMessage()
-            for r in caplog.records
-        )
-
-    def test_dropping_a_provider_keeps_the_last_good_remote_copy(
-        self, serve: Callable[..., _Server], clock: _FakeClock
-    ) -> None:
-        server = serve(_json_response(_remote_data(azure_images=7)))
-        assert _azure_images() == 7
-        server.handler = _json_response(_drop_provider("bedrock")())
-        clock.now += 3600
-        assert _azure_images() == 7
-        assert "bedrock" in get_limits_table().providers
+        assert table.origin.source == "remote"
+        assert key not in table.providers
+        assert _azure_images() == 7  # the rest of the remote copy applies
+        limits = resolve_image_limits(key, f"{key}/some-model", table=table)
+        assert limits.is_default_provider is False
+        assert limits.provider_kind == "hosted"
+        assert limits.max_images_per_request.advisory is False
 
     def test_resolution_falls_back_to_the_bundled_entry(self) -> None:
-        # Even a table that slipped through (or one passed explicitly) never
-        # turns a provider the bundled table knows into pass-through.
-        from unstract.sdk1.utils.image_limits._schema import parse_limits_bytes
-
-        table = parse_limits_bytes(
-            json.dumps(_drop_provider("bedrock")()).encode(),
-            source="remote",
-            location=URL,
-        )
         limits = resolve_image_limits(
-            "bedrock", "bedrock/anthropic.claude-sonnet-4-5-v1:0", table=table
+            "bedrock",
+            "bedrock/anthropic.claude-sonnet-4-5-v1:0",
+            table=_remote_table(_drop_provider("bedrock")()),
         )
         assert limits.provider_kind == "hosted"
         assert limits.is_default_provider is False
@@ -465,24 +459,33 @@ def _set_kind(provider: str, kind: str) -> Callable[[dict], None]:
     return lambda data: data["providers"][provider].__setitem__("kind", kind)
 
 
-def _shadow_bedrock_claude(data: dict) -> None:
-    # A NEW override placed first that re-limits models the bundled table
-    # already covers: entry-by-entry checks alone would miss it.
-    override = copy.deepcopy(data["providers"]["bedrock"]["model_overrides"][-1])
-    override["pattern"] = "(?i)claude-sonnet"
-    override["max_images_per_request"]["value"] = 999
-    data["providers"]["bedrock"]["model_overrides"].insert(0, override)
+def _field(value: int, *, base64_counted: bool | None = None) -> dict:
+    entry: dict = {"value": value, "confidence": "verified", "source": "POLICY"}
+    if base64_counted is not None:
+        entry["base64_counted"] = base64_counted
+    return entry
 
 
-def _add_new_bedrock_model(data: dict) -> None:
-    override = copy.deepcopy(data["providers"]["bedrock"]["model_overrides"][-1])
-    override["pattern"] = "(?i)brand-new-vision-model"
-    override["max_images_per_request"]["value"] = 999
-    data["providers"]["bedrock"]["model_overrides"].insert(0, override)
+def _shadow(
+    provider: str, pattern: str, *, inherit: str | None = None, **fields: dict
+) -> Callable[[dict], None]:
+    """Insert a NEW first override for ``pattern`` (it shadows later ones)."""
+
+    def mutate(data: dict) -> None:
+        override: dict = {"pattern": pattern, **fields}
+        if inherit is not None:
+            override["inherit"] = inherit
+        data["providers"][provider].setdefault("model_overrides", []).insert(0, override)
+
+    return mutate
 
 
 def _add_provider(data: dict) -> None:
-    data["providers"]["newco"] = copy.deepcopy(data["providers"]["openai"])
+    entry = copy.deepcopy(data["providers"]["openai"])
+    entry["adapter"] = "newco"
+    entry["display_name"] = "NewCo"
+    entry["defaults"]["max_images_per_request"]["value"] = 5000
+    data["providers"]["newco"] = entry
 
 
 def _drop_bedrock_nova2(data: dict) -> None:
@@ -492,113 +495,335 @@ def _drop_bedrock_nova2(data: dict) -> None:
     del overrides[0]
 
 
-def _retarget_openrouter_anthropic(data: dict) -> None:
-    overrides = data["providers"]["openrouter"]["model_overrides"]
-    assert overrides[0]["inherit"] == "anthropic"
-    overrides[0]["inherit"] = "gemini"
+BEDROCK_CLAUDE = "bedrock/anthropic.claude-sonnet-4-5-20250929-v1:0"
+# Index of the bundled bedrock ``(?i)claude-`` override (20 images, 20 MB).
+_BEDROCK_CLAUDE_OVERRIDE = 2
 
 
 def _bedrock_images() -> int | None:
     return resolve_image_limits(
-        "bedrock",
-        "bedrock/anthropic.claude-sonnet-4-5-20250929-v1:0",
-        table=get_limits_table(),
+        "bedrock", BEDROCK_CLAUDE, table=get_limits_table()
     ).max_images_per_request.value
 
 
-class TestRemoteCannotLoosenEnforcement:
-    """A remote copy may tighten freely but loosen only so far (O2).
+class TestRemoteIsClampedAtLookup:
+    """What a remote copy may change, enforced per lookup (O2, UN-4427).
 
-    User decision (UN-4427): a provider's ``kind`` is locked, and an
-    enforced image-count or request-byte limit may rise to at most 2x the
-    bundled value. Otherwise one bad merge to main would loosen limits on
-    every install within an hour, and documents would be converted and
-    billed, then rejected by the provider.
+    User decision: a provider's ``kind`` is locked to the bundled one, and
+    an image-count or request-byte limit may rise to at most 2x the bundled
+    value for the same model. Clamping each lookup (not rejecting the
+    table) also catches a new override that shadows a model the bundled
+    file never lists, and never freezes an install out of later fixes.
     """
 
-    _REJECTED = {
-        "bedrock flipped to pass_through": _set_kind("bedrock", "pass_through"),
-        "ollama flipped to hosted": _set_kind("ollama", "hosted"),
-        "bedrock 20 images raised to 999": _set("bedrock", "max_images_per_request", 999),
-        "bedrock 20 images raised to 41": _set("bedrock", "max_images_per_request", 41),
-        "bedrock claude request bytes raised 2.5x": _set(
-            "bedrock", "max_request_bytes", 50_000_000, override=2
+    # The adversarial verifier's four shadowing cases: (mutation, provider,
+    # model, field, bundled value, remote value).
+    _SHADOWS = {
+        "anthropic sonnet-4-5 100 -> 600": (
+            _shadow(
+                "anthropic",
+                "(?i)claude-sonnet-4-5",
+                max_images_per_request=_field(600),
+            ),
+            "anthropic",
+            "anthropic/claude-sonnet-4-5-20250929",
+            "max_images_per_request",
+            100,
+            600,
         ),
-        "table default raised (hosted fallback)": lambda data: data["default"][
-            "max_images_per_request"
-        ].__setitem__("value", 999),
-        "new override shadows a known model": _shadow_bedrock_claude,
-        "removed override loosens its models": _drop_bedrock_nova2,
-        "inherit retargeted to a looser provider": _retarget_openrouter_anthropic,
-    }
-    _ACCEPTED = {
-        "bedrock raised exactly 2x": _set("bedrock", "max_images_per_request", 40),
-        "openai lowered to 1": _set("openai", "max_images_per_request", 1),
-        "new provider": _add_provider,
-        "new model override": _add_new_bedrock_model,
+        "bedrock opus-4-6 inherits anthropic 20 -> 600": (
+            _shadow("bedrock", "(?i)claude-opus-4-6", inherit="anthropic"),
+            "bedrock",
+            "bedrock/anthropic.claude-opus-4-6-v1:0",
+            "max_images_per_request",
+            20,
+            600,
+        ),
+        "openrouter anthropic shadow inherits openai 100 -> 1500": (
+            _shadow("openrouter", "(?i)^(openrouter/)?~?anthropic/", inherit="openai"),
+            "openrouter",
+            "openrouter/anthropic/claude-3.5-sonnet",
+            "max_images_per_request",
+            100,
+            1500,
+        ),
+        "bedrock_mantle haiku-4-5 100 -> 600": (
+            _shadow(
+                "bedrock_mantle",
+                "(?i)anthropic\\.claude-haiku-4-5",
+                max_images_per_request=_field(600),
+            ),
+            "bedrock",
+            "bedrock_mantle/anthropic.claude-haiku-4-5",
+            "max_images_per_request",
+            100,
+            600,
+        ),
     }
 
-    @pytest.mark.parametrize("name", sorted(_REJECTED))
-    def test_loosening_table_is_rejected(
-        self,
-        serve: Callable[..., _Server],
-        clock: _FakeClock,
-        caplog: pytest.LogCaptureFixture,
-        name: str,
+    @pytest.mark.parametrize("name", sorted(_SHADOWS))
+    def test_shadowing_override_is_clamped_to_twice_bundled(
+        self, caplog: pytest.LogCaptureFixture, name: str
     ) -> None:
-        serve(_json_response(_mutated(self._REJECTED[name])))
+        mutate, provider, model, field, bundled_value, remote_value = self._SHADOWS[name]
+        table = _remote_table(_mutated(mutate))
+        unclamped = resolve_mod._resolve_on(
+            table, provider, model, cost_model=None, extra_model_ids=()
+        )
+        assert unclamped.field(field).value == remote_value  # the raise is real
 
-        table = get_limits_table()
-        assert table.origin.source == "bundled"
+        limits = resolve_image_limits(provider, model, table=table)
+        value = limits.field(field)
+        assert value.value == 2 * bundled_value
+        assert value.clamped is True
+        assert value.clamped_from == remote_value
+        assert value.advisory is False
+        assert value.confidence == "unverified"
         assert any(
-            r.levelname == "WARNING"
-            and "Rejected image limits" in r.getMessage()
-            and URL in r.getMessage()
-            for r in caplog.records
+            str(bundled_value) in line and str(remote_value) in line and field in line
+            for line in _clamp_warnings(caplog)
         )
 
-    @pytest.mark.parametrize("name", sorted(_ACCEPTED))
-    def test_tightening_and_additions_are_accepted(
-        self, serve: Callable[..., _Server], clock: _FakeClock, name: str
+    def test_bedrock_opus_shadow_keeps_request_bytes_within_twice_bundled(
+        self,
     ) -> None:
-        serve(_json_response(_mutated(self._ACCEPTED[name])))
-        assert get_limits_table().origin.source == "remote"
-
-    def test_kind_flip_does_not_make_bedrock_advisory(
-        self, serve: Callable[..., _Server], clock: _FakeClock
-    ) -> None:
-        serve(_json_response(_mutated(_set_kind("bedrock", "pass_through"))))
+        # 20 MB (base64-counted) bundled vs anthropic's 32 MB: 1.6x, kept.
+        mutate = self._SHADOWS["bedrock opus-4-6 inherits anthropic 20 -> 600"][0]
         limits = resolve_image_limits(
-            "bedrock", "bedrock/meta.llama3-2-11b-instruct-v1:0", table=get_limits_table()
+            "bedrock",
+            "bedrock/anthropic.claude-opus-4-6-v1:0",
+            table=_remote_table(_mutated(mutate)),
+        )
+        assert limits.max_request_bytes.value == 32_000_000
+        assert limits.max_request_bytes.clamped is False
+
+    _CLAMPED = {
+        "bedrock defaults 20 -> 999 images": (
+            _set("bedrock", "max_images_per_request", 999),
+            "bedrock/meta.llama3-2-11b-instruct-v1:0",
+            40,
+        ),
+        "bedrock defaults 20 -> 41 images": (
+            _set("bedrock", "max_images_per_request", 41),
+            "bedrock/meta.llama3-2-11b-instruct-v1:0",
+            40,
+        ),
+        "table default 20 -> 999 (hosted fallback)": (
+            lambda data: data["default"]["max_images_per_request"].__setitem__(
+                "value", 999
+            ),
+            "bedrock_mantle/xai.grok-4.6",
+            40,
+        ),
+        "removed nova-2 override loosens 5 -> 20": (
+            _drop_bedrock_nova2,
+            "bedrock/amazon.nova-2-lite-v1:0",
+            10,
+        ),
+    }
+
+    @pytest.mark.parametrize("name", sorted(_CLAMPED))
+    def test_raise_past_twice_bundled_is_clamped(self, name: str) -> None:
+        mutate, model, expected = self._CLAMPED[name]
+        limits = resolve_image_limits(
+            "bedrock", model, table=_remote_table(_mutated(mutate))
+        )
+        assert limits.max_images_per_request.value == expected
+        assert limits.max_images_per_request.clamped is True
+
+    @pytest.mark.parametrize(("value", "clamped"), [(30, False), (40, False), (41, True)])
+    def test_raise_up_to_twice_bundled_passes(self, value: int, clamped: bool) -> None:
+        mutate = _set(
+            "bedrock", "max_images_per_request", value, override=_BEDROCK_CLAUDE_OVERRIDE
+        )
+        limits = resolve_image_limits(
+            "bedrock", BEDROCK_CLAUDE, table=_remote_table(_mutated(mutate))
+        )
+        assert limits.max_images_per_request.value == (40 if clamped else value)
+        assert limits.max_images_per_request.clamped is clamped
+
+    def test_tightening_passes(self) -> None:
+        table = _remote_table(_mutated(_set("openai", "max_images_per_request", 1)))
+        limits = resolve_image_limits("openai", "gpt-4.1", table=table)
+        assert limits.max_images_per_request.value == 1
+        assert limits.max_images_per_request.clamped is False
+
+    def test_kind_flip_to_pass_through_resolves_hosted(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        table = _remote_table(_mutated(_set_kind("bedrock", "pass_through")))
+        limits = resolve_image_limits(
+            "bedrock", "bedrock/meta.llama3-2-11b-instruct-v1:0", table=table
         )
         assert limits.provider_kind == "hosted"
+        # Default-filled request bytes follow the bundled kind: enforced.
+        assert limits.max_request_bytes.from_default is True
         assert limits.max_request_bytes.advisory is False
+        assert limits.max_request_bytes.clamped is False  # 20 MB both sides
+        assert limits.tokens_per_image.from_default is True
+        assert limits.tokens_per_image.advisory is False
+        assert any("kind" in line for line in _clamp_warnings(caplog))
 
-    def test_rejection_keeps_the_last_good_remote_copy(
+    def test_kind_flip_to_hosted_resolves_pass_through(self) -> None:
+        table = _remote_table(_mutated(_set_kind("ollama", "hosted")))
+        limits = resolve_image_limits("ollama", "ollama_chat/llava", table=table)
+        assert limits.provider_kind == "pass_through"
+        assert limits.max_images_per_request.from_default is True
+        assert limits.max_images_per_request.advisory is True
+
+    def test_provider_unknown_to_bundled_uses_remote_data(self) -> None:
+        limits = resolve_image_limits(
+            "newco", "newco/vision-1", table=_remote_table(_mutated(_add_provider))
+        )
+        assert limits.is_default_provider is False
+        assert limits.provider_kind == "hosted"
+        assert limits.max_images_per_request.value == 5000
+        assert limits.max_images_per_request.clamped is False
+
+    @pytest.mark.parametrize(
+        ("value", "base64_counted", "clamped"),
+        [
+            # bundled: 20 MB base64-counted = 15 MB raw; ceiling 30 MB raw.
+            (40_000_000, True, False),  # 30 MB raw: exactly 2x
+            (30_000_000, False, False),  # 30 MB raw: exactly 2x
+            (40_000_000, False, True),  # 40 MB raw: same number, 2.67x
+            (30_000_001, False, True),
+        ],
+    )
+    def test_request_bytes_compare_as_raw_bytes(
+        self, value: int, base64_counted: bool, clamped: bool
+    ) -> None:
+        def mutate(data: dict) -> None:
+            data["providers"]["bedrock"]["model_overrides"][_BEDROCK_CLAUDE_OVERRIDE][
+                "max_request_bytes"
+            ] = _field(value, base64_counted=base64_counted)
+
+        limits = resolve_image_limits(
+            "bedrock", BEDROCK_CLAUDE, table=_remote_table(_mutated(mutate))
+        )
+        request = limits.max_request_bytes
+        assert request.clamped is clamped
+        if clamped:
+            # Twice the bundled value, in the bundled value's counting.
+            assert (request.value, request.base64_counted) == (40_000_000, True)
+            assert request.clamped_from == value
+        else:
+            assert (request.value, request.base64_counted) == (value, base64_counted)
+
+    def test_bundled_table_is_never_clamped(self) -> None:
+        from unstract.sdk1.utils.image_limits.source import bundled_table
+
+        limits = resolve_image_limits("bedrock", BEDROCK_CLAUDE, table=bundled_table())
+        assert limits.max_images_per_request.clamped is False
+
+    def test_clamp_is_logged_once_per_provider_model_field(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        table = _remote_table(
+            _mutated(
+                _set(
+                    "bedrock",
+                    "max_images_per_request",
+                    999,
+                    override=_BEDROCK_CLAUDE_OVERRIDE,
+                )
+            )
+        )
+        for _ in range(3):
+            resolve_image_limits("bedrock", BEDROCK_CLAUDE, table=table)
+        assert len(_clamp_warnings(caplog)) == 1
+        resolve_image_limits(
+            "bedrock", "bedrock/anthropic.claude-3-haiku-v1:0", table=table
+        )
+        assert len(_clamp_warnings(caplog)) == 2
+
+    def test_message_says_the_value_was_capped(self) -> None:
+        table = _remote_table(_mutated(_set("bedrock", "max_images_per_request", 999)))
+        limits = resolve_image_limits(
+            "bedrock", "bedrock/meta.llama3-2-11b-instruct-v1:0", table=table
+        )
+        text = format_limit_source(limits.max_images_per_request, limits)
+        assert "capped at 2x" in text and "999" in text
+
+
+class TestOldInstallKeepsGettingFixes:
+    """A >2x raise for one model never holds back the rest of the file."""
+
+    def test_tightening_applies_and_the_raise_is_clamped(
         self, serve: Callable[..., _Server], clock: _FakeClock
     ) -> None:
-        server = serve(_json_response(_remote_data(azure_images=7)))
-        assert _azure_images() == 7
-        server.handler = _json_response(
-            _mutated(_set("bedrock", "max_images_per_request", 999))
-        )
-        clock.now += 3600
-        assert _azure_images() == 7
-        assert _bedrock_images() == 20
-        assert get_limits_table().origin.source == "remote"
+        def mutate(data: dict) -> None:
+            _set(
+                "bedrock",
+                "max_images_per_request",
+                999,
+                override=_BEDROCK_CLAUDE_OVERRIDE,
+            )(data)
+            _set("openai", "max_images_per_request", 1)(data)
 
-    def test_reason_names_the_provider_and_the_numbers(
-        self,
-        serve: Callable[..., _Server],
-        clock: _FakeClock,
-        caplog: pytest.LogCaptureFixture,
+        serve(_json_response(_mutated(mutate)))
+        table = get_limits_table()
+        assert table.origin.source == "remote"
+        assert _azure_images() == 7
+        assert resolve_image_limits("openai", "gpt-4.1").max_images_per_request.value == 1
+        assert _bedrock_images() == 40
+
+
+class TestEveryEntryPointIsClamped:
+    """Sibling sweep: all lookups go through the clamp, refresh or not."""
+
+    BEDROCK_ID = "bedrock|8d18571f-5e96-4505-bd28-ad0379c64064"
+    BEDROCK_META = {
+        "model": "anthropic.claude-sonnet-4-5-20250929-v1:0",
+        "aws_region_name": "us-east-1",
+    }
+
+    def test_all_entry_points(
+        self, serve: Callable[..., _Server], clock: _FakeClock
     ) -> None:
-        serve(_json_response(_mutated(_set("bedrock", "max_images_per_request", 999))))
-        get_limits_table()
-        assert any(
-            "bedrock defaults: max_images_per_request 20 -> 999" in r.getMessage()
-            for r in caplog.records
+        from unstract.sdk1.llm import LLM
+        from unstract.sdk1.utils.image_limits import resolve_image_limits_for_adapter
+
+        serve(
+            _json_response(
+                _mutated(
+                    _set(
+                        "bedrock",
+                        "max_images_per_request",
+                        999,
+                        override=_BEDROCK_CLAUDE_OVERRIDE,
+                    )
+                )
+            )
         )
+        assert get_limits_table().origin.source == "remote"
+        meta = dict(self.BEDROCK_META)
+        results = [
+            _bedrock_images(),
+            resolve_image_limits("bedrock", BEDROCK_CLAUDE).max_images_per_request.value,
+            resolve_image_limits_for_adapter(
+                self.BEDROCK_ID, meta
+            ).max_images_per_request.value,
+            LLM(adapter_id=self.BEDROCK_ID, adapter_metadata=dict(meta))
+            .get_image_request_limits()
+            .max_images_per_request.value,
+            LLM.image_input_limits_for(self.BEDROCK_ID, meta, refresh_table=False)[
+                0
+            ].max_images_per_request.value,
+            resolve_image_limits(
+                "bedrock", BEDROCK_CLAUDE, table=get_limits_table(refresh=False)
+            ).max_images_per_request.value,
+        ]
+        assert results == [40] * len(results)
+
+
+class TestOverrideFileIsNotClamped:
+    """The operator's own file is configuration: it may loosen (O2)."""
+
+    def _write(self, tmp_path: Path, monkeypatch: MonkeyPatch, data: dict) -> None:
+        path = tmp_path / "override.json"
+        path.write_text(json.dumps({"_meta": {"schema_version": 1}, **data}))
+        monkeypatch.setenv(LIMITS_OVERRIDE_FILE_ENV, str(path))
 
     def test_override_file_may_raise_limits(
         self,
@@ -607,22 +832,120 @@ class TestRemoteCannotLoosenEnforcement:
         tmp_path: Path,
         monkeypatch: MonkeyPatch,
     ) -> None:
-        # The operator's own file is configuration, not a remote refresh:
-        # the 2x rule does not apply to it.
         serve(_json_response(_remote_data(azure_images=7)))
         bedrock = copy.deepcopy(_bundled_data()["providers"]["bedrock"])
         for override in bedrock["model_overrides"]:
             override.pop("max_images_per_request", None)
         bedrock["defaults"]["max_images_per_request"]["value"] = 999
-        path = tmp_path / "override.json"
-        path.write_text(
-            json.dumps(
-                {"_meta": {"schema_version": 1}, "providers": {"bedrock": bedrock}}
-            )
-        )
-        monkeypatch.setenv(LIMITS_OVERRIDE_FILE_ENV, str(path))
+        self._write(tmp_path, monkeypatch, {"providers": {"bedrock": bedrock}})
         assert _bedrock_images() == 999
         assert get_limits_table().origin.source == "remote"
+
+    def test_override_file_may_flip_a_kind(
+        self,
+        serve: Callable[..., _Server],
+        clock: _FakeClock,
+        tmp_path: Path,
+        monkeypatch: MonkeyPatch,
+    ) -> None:
+        serve(_json_response(_remote_data()))
+        bedrock = copy.deepcopy(_bundled_data()["providers"]["bedrock"])
+        bedrock["kind"] = "pass_through"
+        self._write(tmp_path, monkeypatch, {"providers": {"bedrock": bedrock}})
+        limits = resolve_image_limits(
+            "bedrock", "bedrock/meta.llama3-2-11b-instruct-v1:0", table=get_limits_table()
+        )
+        assert limits.provider_kind == "pass_through"
+        assert limits.max_request_bytes.advisory is True
+
+    def test_override_default_may_raise(
+        self,
+        serve: Callable[..., _Server],
+        clock: _FakeClock,
+        tmp_path: Path,
+        monkeypatch: MonkeyPatch,
+    ) -> None:
+        serve(_json_response(_remote_data()))
+        self._write(
+            tmp_path,
+            monkeypatch,
+            {
+                "sources": {"OPS": {"url": "https://ops.example/limits"}},
+                "default": {
+                    "max_images_per_request": {
+                        "value": 999,
+                        "confidence": "unverified",
+                        "source": "OPS",
+                    }
+                },
+            },
+        )
+        limits = resolve_image_limits(
+            "bedrock_mantle", "xai.grok-4.6", table=get_limits_table()
+        )
+        assert limits.max_images_per_request.value == 999
+        assert limits.max_images_per_request.clamped is False
+
+    def test_remote_fields_under_an_override_are_still_clamped(
+        self,
+        serve: Callable[..., _Server],
+        clock: _FakeClock,
+        tmp_path: Path,
+        monkeypatch: MonkeyPatch,
+    ) -> None:
+        # The override replaces openai; the remote bedrock entry (raised past
+        # 2x) is untouched by it, so it is still clamped.
+        serve(
+            _json_response(
+                _mutated(
+                    _set(
+                        "bedrock",
+                        "max_images_per_request",
+                        999,
+                        override=_BEDROCK_CLAUDE_OVERRIDE,
+                    )
+                )
+            )
+        )
+        openai = copy.deepcopy(_bundled_data()["providers"]["openai"])
+        self._write(tmp_path, monkeypatch, {"providers": {"openai": openai}})
+        assert get_limits_table().providers["openai"].layer == "override"
+        assert _bedrock_images() == 40
+
+    def test_inherited_operator_fields_pass_and_remote_fields_clamp(
+        self,
+        serve: Callable[..., _Server],
+        clock: _FakeClock,
+        tmp_path: Path,
+        monkeypatch: MonkeyPatch,
+    ) -> None:
+        # Remote: a new bedrock override inheriting anthropic, with its own
+        # 999 MB request bytes. Operator: anthropic raised to 999 images.
+        serve(
+            _json_response(
+                _mutated(
+                    _shadow(
+                        "bedrock",
+                        "(?i)claude-opus-4-6",
+                        inherit="anthropic",
+                        max_request_bytes=_field(999_000_000),
+                    )
+                )
+            )
+        )
+        anthropic = copy.deepcopy(_bundled_data()["providers"]["anthropic"])
+        anthropic["defaults"]["max_images_per_request"]["value"] = 999
+        self._write(tmp_path, monkeypatch, {"providers": {"anthropic": anthropic}})
+        limits = resolve_image_limits(
+            "bedrock", "bedrock/anthropic.claude-opus-4-6-v1:0", table=get_limits_table()
+        )
+        # Inherited from the operator's anthropic entry: not clamped.
+        assert limits.max_images_per_request.layer == "override"
+        assert limits.max_images_per_request.value == 999
+        # The remote override's own field: clamped to 2x bundled (20 MB).
+        assert limits.max_request_bytes.layer == "shipped"
+        assert limits.max_request_bytes.value == 40_000_000
+        assert limits.max_request_bytes.clamped is True
 
 
 class TestFetchIsBounded:

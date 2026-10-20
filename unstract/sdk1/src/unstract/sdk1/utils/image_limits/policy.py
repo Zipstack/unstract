@@ -36,6 +36,7 @@ import dataclasses
 import logging
 import os
 import struct
+import threading
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
@@ -49,6 +50,7 @@ from unstract.sdk1.adapters.x2text.page_image_loader import (
     configured_page_ceiling,
     configured_request_bytes_ceiling,
 )
+from unstract.sdk1.utils.image_limits.source import MAX_REMOTE_RAISE_FACTOR
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterable, Mapping, Sequence
@@ -112,6 +114,25 @@ def _mib(n: float) -> str:
 ENFORCE_ENV = "VLM_IMAGE_LIMITS_ENFORCE"
 _FALSE_VALUES = frozenset({"false", "0", "no", "off"})
 _TRUE_VALUES = frozenset({"true", "1", "yes", "on"})
+
+
+# Whether this process has logged that the switch is off: ``from_limits``
+# runs per profile render, so the warning is once per process.
+_switched_off_logged = False
+_switched_off_lock = threading.Lock()
+
+
+def _warn_switched_off_once() -> None:
+    global _switched_off_logged
+    with _switched_off_lock:
+        if _switched_off_logged:
+            return
+        _switched_off_logged = True
+    logger.warning(
+        "Image mode: %s=false; applying the fixed page and byte cap instead of "
+        "the LLM's limits (logged once per process)",
+        ENFORCE_ENV,
+    )
 
 
 def model_aware_limits_enabled() -> bool:
@@ -360,11 +381,7 @@ class ImageModePolicy:
         if not resolved:
             raise ValueError("from_limits needs at least one resolved limit set")
         if not model_aware_limits_enabled():
-            logger.warning(
-                "Image mode: %s=false; applying the fixed page and byte cap "
-                "instead of the LLM's limits",
-                ENFORCE_ENV,
-            )
+            _warn_switched_off_once()
             return cls.fixed_cap(
                 page_ceiling=page_ceiling,
                 bytes_ceiling=bytes_ceiling,
@@ -841,6 +858,16 @@ def format_limit_source(
         )
     if limit.layer == "override":
         clause += "; set by this installation's limits override file"
+    if limit.clamped:
+        asked = (
+            f"to {limit.clamped_from}"
+            if limit.clamped_from is not None
+            else "to no enforced limit"
+        )
+        clause += (
+            f"; capped at {MAX_REMOTE_RAISE_FACTOR}x the value bundled with "
+            f"this sdk1 (the remote limits table raised it {asked})"
+        )
     if with_table_version and limits.table_version:
         clause += f"; limits table {limits.table_version}"
     return clause

@@ -30,9 +30,9 @@ This is the one statement of the matching rule; the code and
    validated to `bedrock_mantle/...` uses `bedrock_mantle`. Never the
    litellm prefix alone: MiniMax may send `anthropic/<id>`. A provider the
    bundled table has is always resolved, from the bundled entry if the
-   effective table lacks it, and keeps the bundled `kind` (a remote copy
-   that drops it or changes its `kind` is rejected, see "Where the table
-   comes from"); only an operator override file can change a `kind`.
+   effective table lacks it, and keeps the bundled `kind` (a remote copy's
+   `kind` is clamped, see rule 7); only an operator override file can
+   change a `kind`.
 2. Candidates are the bare (litellm-prefix-stripped) ids in this order:
    `cost_model` (Azure's real model), the validated model, then extra ids
    (Bedrock `model_id` behind an ARN).
@@ -56,6 +56,32 @@ This is the one statement of the matching rule; the code and
    `local_max_input_tokens` reads the in-process registry (litellm's remote
    cost map, unless `LITELLM_LOCAL_MODEL_COST_MAP` pins the bundled one);
    it never makes a per-lookup network call.
+7. Remote clamp. When the base table is the remote copy, every lookup
+   (`resolve_image_limits`, so `resolve_image_limits_for_adapter`, the
+   `LLM` accessors and every consumer built on them, `refresh=False`
+   reads included) also resolves the same inputs (provider, model,
+   `cost_model`, extra ids) against the bundled table and combines them,
+   for a provider the bundled table knows:
+   - `kind` is the bundled one, and the advisory flag of every
+     default-filled field follows that kind;
+   - `max_images_per_request` and `max_request_bytes` are
+     `min(remote, 2 x bundled)` (`MAX_REMOTE_RAISE_FACTOR`), request bytes
+     compared as raw bytes so `base64_counted` differences count. A
+     bundled value that is unknown or advisory leaves the remote value as
+     it is; a remote value that is not enforced counts as unlimited.
+     Tightening always passes.
+   A capped value carries `clamped=True`, `clamped_from` (what the remote
+   table asked for) and `confidence: unverified`; `format_limit_source`
+   says it was capped, and the process logs one WARNING per (provider,
+   model, field) with both numbers, so a maintainer can see that main is
+   being clamped. A provider the bundled table does not know uses the
+   remote data as-is. Fields and provider entries that come from the
+   operator override file (layer `override`) are never clamped; the
+   override applies after the clamp's remote layer. The per-image fields
+   (`max_image_px`, `max_image_bytes`, `many_images_*`,
+   `max_image_patches`) and `tokens_per_image` / `max_input_tokens` are
+   not clamped (product decision, UN-4427): a remote copy may change them
+   freely.
 
 ## Checks (`policy.py`)
 
@@ -108,8 +134,8 @@ inside sdk1's builders, so every consumer gets it without checking it:
 (`ImageModePolicy.fixed_cap()`, the pre-UN-4427 behaviour) whatever limits
 they are given — extraction, the Prompt Studio upload and cache-hit
 checks, and the cloud answer plugin and its profile summary alike. (The
-extraction worker and the upload check also test it first, to skip the
-LLM lookup.) Set it on the backend and every worker. Unset or `true` keeps
+extraction worker and the Prompt Studio upload and cache-hit checks also
+test it first, to skip the LLM lookup, and then apply the fixed page cap.) Set it on the backend and every worker. Unset or `true` keeps
 model-aware limits; any other value is logged at ERROR and keeps them on.
 
 ## Where the table comes from
@@ -148,29 +174,19 @@ No caller waits on GitHub (`source.py`):
 The remote file must pass the same strict validation as the bundled one,
 including `_meta.schema_version` equal to the version this sdk1 reads and
 override patterns of at most 300 characters (`MAX_PATTERN_LENGTH`) that
-compile. It must also stay within what a data refresh may change, or it
-is rejected (`source._loosened_limits`), because a merge to main reaches
-every install within an hour:
+compile. Beyond that the file is accepted as a whole: what a data refresh
+may change is enforced per lookup by the remote clamp (Lookup rules,
+rule 7), because a merge to main reaches every install within an hour. A
+provider missing from the remote copy resolves from the bundled entry.
+Checking the table as a whole could not do this job: it cannot enumerate
+model ids nobody listed (a new override can shadow any real model), and
+rejecting the file would also hold an older install back from every later
+fix in it. With the clamp, one over-raised value is capped and the rest of
+the file (tightening, new providers and models) still applies.
 
-- it keeps every provider key the bundled table has (a dropped provider
-  would otherwise lose its limits);
-- no bundled provider changes `kind` (hosted -> pass_through would turn
-  its default-filled limits advisory; the reverse is locked too);
-- no enforced `max_images_per_request` or `max_request_bytes` (compared as
-  raw bytes, so a `base64_counted` flip counts) rises above 2x
-  (`MAX_REMOTE_RAISE_FACTOR`) its bundled value — in a hosted provider's
-  defaults, in an override with the same `pattern`, through the `default`
-  block they fall back to, or for any bundled `vision_models` example
-  model as it resolves end to end (which also catches a new override that
-  shadows an existing one, a removed override and a changed `inherit`).
-
-Lowering a limit is always accepted, as are new providers and new
-overrides that leave existing models alone. A larger raise ships in an
-sdk1 release. The operator override file is configuration and is not
-subject to these rules. A timeout, HTTP error, invalid JSON or rejected
-file logs a warning (naming the reasons) and keeps the last good copy (the
-previous remote table, else the bundled one); nothing in the fetch path
-raises.
+A timeout, HTTP error, invalid JSON or a file that fails validation logs a
+warning and keeps the last good copy (the previous remote table, else the
+bundled one); nothing in the fetch path raises.
 
 Every table records its origin. The log says which copy is in use
 (source, URL or path, schema version, `_meta.verified_on`, sha256 prefix),
@@ -195,11 +211,14 @@ and to the run-log summary.
    points at them.
 6. Merging a change to `main` publishes it: every install with fetching
    on picks it up within one refresh window, without a release. Review a
-   data change as you would a deploy. Removing a provider, changing a
-   provider's `kind`, or raising an enforced image-count or request-byte
-   limit above 2x the bundled value is rejected by installs (they keep
-   their last good copy); ship those in an sdk1 release. Lowering limits
-   and adding providers or models takes effect on refresh.
+   data change as you would a deploy. Installs clamp what main may
+   loosen (Lookup rules, rule 7): a removed provider resolves from the
+   bundled entry, a changed `kind` keeps the bundled one, and an image
+   count or request-byte limit above 2x the bundled value for the same
+   model is capped at 2x (a WARNING per provider, model and field names
+   both numbers). Ship those changes in an sdk1 release. Lowering limits
+   and adding providers or models takes effect on refresh; per-image
+   limits are not clamped, so review them with extra care.
 7. Keep the schema backward compatible. Older installs reject any file
    they cannot read and stay on their bundled copy, so a key they do not
    know (a new limit field, a new field attribute) cuts them off from

@@ -207,3 +207,48 @@ class TestEnforceSwitch:
         with pytest.raises(ImageModePageLimitExceeded) as excinfo:
             check(_pdf(91), _PDF, _llm_profile(_BEDROCK_ID, _BEDROCK_META))
         assert "the limit is 90" in str(excinfo.value.detail)
+
+
+def _cached_summary(pages: int) -> str:
+    """The extract text a cached image-mode extraction carries."""
+    return _psh_mod.LLMWhispererHelper.build_image_output_summary([None] * pages)
+
+
+class TestCacheHitCheck:
+    """A cached image-mode extraction is re-checked like an upload (P3)."""
+
+    cached_check = staticmethod(PromptStudioHelper._check_cached_image_extraction)
+
+    @pytest.fixture(autouse=True)
+    def _no_env_cap(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("VLM_IMAGE_ANSWER_PAGE_CAP", raising=False)
+
+    def test_model_aware_rejects_over_the_llm_budget(self) -> None:
+        with pytest.raises(_psh_mod.ExtractionAPIError) as excinfo:
+            self.cached_check(
+                _llm_profile(_BEDROCK_ID, _BEDROCK_META), _cached_summary(21), "a.pdf"
+            )
+        assert "20 page images" in str(excinfo.value.detail)
+
+    def test_switch_off_applies_the_fixed_cap(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("VLM_IMAGE_LIMITS_ENFORCE", "false")
+        profile = _llm_profile(_BEDROCK_ID, _BEDROCK_META)
+        # Over Bedrock's 20, inside the fixed cap (90): accepted.
+        self.cached_check(profile, _cached_summary(21), "a.pdf")
+        with pytest.raises(_psh_mod.ExtractionAPIError) as excinfo:
+            self.cached_check(profile, _cached_summary(91), "a.pdf")
+        detail = str(excinfo.value.detail)
+        assert "IMAGE_PAGE_CAP_EXCEEDED" in detail
+        assert "the limit is 90" in detail
+
+    def test_switch_off_honours_the_page_cap_env(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("VLM_IMAGE_LIMITS_ENFORCE", "false")
+        monkeypatch.setenv("VLM_IMAGE_ANSWER_PAGE_CAP", "5")
+        with pytest.raises(_psh_mod.ExtractionAPIError):
+            self.cached_check(
+                _llm_profile(_BEDROCK_ID, _BEDROCK_META), _cached_summary(6), "a.pdf"
+            )
