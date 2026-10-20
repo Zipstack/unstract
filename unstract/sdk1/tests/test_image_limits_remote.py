@@ -439,3 +439,56 @@ class TestOverrideFileWins:
         clock.now += 3600
         assert _azure_images() == 9
         assert get_limits_table().providers["openai"].layer == "override"
+
+
+class TestNoRefreshRead:
+    """``get_limits_table(refresh=False)`` never fetches (request paths)."""
+
+    def test_never_fetches_and_serves_bundled_before_any_fetch(
+        self, serve: Callable[..., _Server], clock: _FakeClock
+    ) -> None:
+        server = serve(_json_response(_remote_data(azure_images=7)))
+        table = get_limits_table(refresh=False)
+        assert server.calls == 0
+        assert table.origin.source == "bundled"
+
+    def test_serves_the_last_good_remote_copy_without_refreshing(
+        self, serve: Callable[..., _Server], clock: _FakeClock
+    ) -> None:
+        server = serve(_json_response(_remote_data(azure_images=7)))
+        get_limits_table()  # a worker-style read fetches once
+        clock.now += 7200  # the window is due again
+        table = get_limits_table(refresh=False)
+        assert server.calls == 1
+        assert table.origin.source == "remote"
+
+    def test_override_file_still_applies(
+        self,
+        serve: Callable[..., _Server],
+        clock: _FakeClock,
+        monkeypatch: MonkeyPatch,
+        tmp_path: Path,
+    ) -> None:
+        serve(_json_response(_remote_data()))
+        override = {
+            "_meta": {"schema_version": 1},
+            "providers": {
+                "azure": {
+                    **_bundled_data()["providers"]["azure"],
+                    "defaults": {
+                        "max_images_per_request": {
+                            "value": 3,
+                            "confidence": "unverified",
+                            "source": "POLICY",
+                        }
+                    },
+                    "model_overrides": [],
+                }
+            },
+        }
+        path = tmp_path / "override.json"
+        path.write_text(json.dumps(override))
+        monkeypatch.setenv(LIMITS_OVERRIDE_FILE_ENV, str(path))
+        table = get_limits_table(refresh=False)
+        limits = resolve_image_limits("azure", "azure/my-dep", table=table)
+        assert limits.max_images_per_request.value == 3

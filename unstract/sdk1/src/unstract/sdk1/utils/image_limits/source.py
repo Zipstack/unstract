@@ -184,7 +184,7 @@ def _refresh(url: str, state: _RemoteState) -> None:
         logger.info("Using the %s", _describe(table))
 
 
-def _base_table() -> LimitsTable:
+def _base_table(*, refresh: bool = True) -> LimitsTable:
     global _logged_disabled
     url = configured_limits_url()
     if url is None:
@@ -197,6 +197,10 @@ def _base_table() -> LimitsTable:
                 _describe(bundled),
             )
         return bundled
+    if not refresh:
+        # Last good remote copy if this process fetched one, else bundled.
+        known = _remote.get(url)
+        return (known.table if known else None) or _bundled_table()
     state = _remote.setdefault(url, _RemoteState())
     window = configured_refresh_seconds()
 
@@ -241,9 +245,14 @@ def _apply_override(base: LimitsTable, path: str) -> LimitsTable:
     return merged
 
 
-def get_limits_table() -> LimitsTable:
-    """The effective table: override file over the remote copy or bundled one."""
-    base = _base_table()
+def get_limits_table(*, refresh: bool = True) -> LimitsTable:
+    """The effective table: override file over the remote copy or bundled one.
+
+    ``refresh=False`` never fetches: it serves the last good remote copy this
+    process already holds, else the bundled one. Use it on request paths
+    (e.g. a backend serializer) that must not wait on GitHub.
+    """
+    base = _base_table(refresh=refresh)
     override = os.getenv(LIMITS_OVERRIDE_FILE_ENV) or None
     if override is None:
         return base

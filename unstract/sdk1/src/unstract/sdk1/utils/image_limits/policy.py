@@ -54,6 +54,13 @@ PROMPT_TOKENS_RESERVE = 4_000
 # Reject when the estimated image tokens exceed the context window. The
 # provider would reject the request anyway, after the full upload.
 ENFORCE_CONTEXT_TOKEN_TERM = True
+# Whether the table's top-level tokens-per-page DEFAULT (an unverified
+# cross-provider estimate) is enforced too. It is not: at 1,500 tokens per
+# page it capped 128K-context models (gpt-4o) at 82 pages, below what real
+# 150-DPI pages fit (~765-1,105 tokens on OpenAI). A model-specific estimate
+# in the table is enforced; the default only warns, and the provider's own
+# context-length rejection remains the backstop.
+ENFORCE_DEFAULT_TOKEN_ESTIMATE = False
 # Reject a page that breaks a per-image byte or pixel limit (no downscaling
 # exists in this path).
 ENFORCE_PER_IMAGE_LIMITS = True
@@ -64,12 +71,13 @@ PAGE_LABEL_OVERHEAD_BYTES = 64
 # Median raw size of a 150-DPI page PNG (354-PDF sample); used ONLY for the
 # pre-conversion size advisory, never to reject.
 ASSUMED_PAGE_BYTES = 250_000
-# TEMPORARY rollout bound (UN-4427). The cloud vlm-image-answer plugin still
-# answers with the fixed legacy limits (90 pages / 14 MiB, or their env
-# overrides). Until it switches to model-aware limits, extraction is bounded
-# by the same values so a document can never pass extraction (and be billed)
-# and then be rejected at answer time by the plugin. Set to False — and
-# delete with the legacy accessors — once the cloud change is released.
+# TEMPORARY rollout bound (UN-4427). While True, every image-mode policy
+# (extraction here, answering in the cloud vlm-image-answer plugin, through
+# extraction_bound_kwargs) is also held to the legacy limits: 90 pages /
+# 14 MiB, or their env overrides, which REPLACE those values rather than cap
+# them. Set to False — and delete with the legacy accessors — once the cloud
+# plugin that answers with model-aware limits is released; the env vars then
+# become ceilings on the model's limits.
 LEGACY_ANSWER_BOUNDS_ACTIVE = True
 # base64 inflates 3 raw bytes to 4 characters.
 _B64_NUM, _B64_DEN = 4, 3
@@ -126,6 +134,9 @@ class PageBudget:
     context_tokens: int | None
     advisory_max_images: int | None
     terms: Mapping[str, int | None] = field(default_factory=dict)
+    # Token-term page count computed from the default estimate: warned
+    # about, not enforced (see ENFORCE_DEFAULT_TOKEN_ESTIMATE).
+    advisory_token_pages: int | None = None
 
     def describe(self) -> str:
         """One sentence naming the binding limit, for messages and logs."""
@@ -184,8 +195,11 @@ def compute_page_budget(
     context = limits.max_input_tokens.value or context_tokens
     per_page = limits.tokens_per_image.value
     token_term: int | None = None
+    advisory_tokens: int | None = None
     if ENFORCE_CONTEXT_TOKEN_TERM and context and per_page:
         token_term = max((context - reserve) // per_page, 0)
+        if limits.tokens_per_image.from_default and not ENFORCE_DEFAULT_TOKEN_ESTIMATE:
+            advisory_tokens, token_term = token_term, None
     terms["tokens"] = token_term
     terms["llmwhisperer"] = ImageOutputConstants.LLMWHISPERER_MAX_PAGES
     terms["ceiling"] = page_ceiling
@@ -206,6 +220,7 @@ def compute_page_budget(
         context_tokens=context,
         advisory_max_images=advisory_count,
         terms=terms,
+        advisory_token_pages=advisory_tokens,
     )
 
 
@@ -378,6 +393,16 @@ class ImageModePolicy:
                     f"has {page_count} pages, above Unstract's conservative default "
                     f"of {budget.advisory_max_images} images. The request will be "
                     "sent; the server may reject it."
+                )
+        if budget.advisory_token_pages is not None and budget.limits is not None:
+            if page_count > budget.advisory_token_pages:
+                per_page = budget.limits.tokens_per_image.value or 0
+                lines.append(
+                    f"At Unstract's unverified estimate of {per_page:,} tokens per "
+                    f"page, {page_count} pages may exceed the "
+                    f"{(budget.context_tokens or 0):,}-token context window of "
+                    f"{_model_label(budget.limits)}. The request will be sent; the "
+                    "provider may reject it."
                 )
         if self.advisory_request_bytes is not None and self.advisory_request_bytes.value:
             limits = next(

@@ -114,3 +114,42 @@ class TestImageInputLimitsFor:
         meta = dict(AZURE_META)
         LLM.image_input_limits_for(AZURE_ID, meta)
         assert meta == AZURE_META
+
+
+class TestCostModelName:
+    def test_azure_returns_the_real_model_not_the_deployment(self) -> None:
+        llm = LLM(adapter_id=AZURE_ID, adapter_metadata=dict(AZURE_META))
+        assert llm.get_model_name() == "azure/my-dep"
+        assert llm.get_cost_model_name() == "azure/gpt-4o"
+
+    def test_falls_back_to_the_routed_model(self) -> None:
+        llm = LLM(
+            adapter_id=OPENAI_ID,
+            adapter_metadata={
+                "model": "gpt-4o",
+                "api_key": "k",
+                "api_base": "https://api.openai.com/v1",
+            },
+        )
+        assert llm.get_cost_model_name() == llm.get_model_name()
+
+
+class TestImageInputLimitsWithoutRefresh:
+    @pytest.fixture
+    def fetches(self, monkeypatch: MonkeyPatch) -> list[str]:
+        from unstract.sdk1.utils.image_limits import clear_limits_cache, source
+
+        calls: list[str] = []
+        monkeypatch.setenv(source.LIMITS_URL_ENV, "https://example.invalid/l.json")
+        monkeypatch.setattr(source, "_refresh", lambda url, state: calls.append(url))
+        clear_limits_cache()
+        yield calls
+        clear_limits_cache()
+
+    def test_refresh_false_never_fetches(self, fetches: list[str]) -> None:
+        LLM.image_input_limits_for(AZURE_ID, dict(AZURE_META), refresh_table=False)
+        assert fetches == []
+
+    def test_default_may_refresh(self, fetches: list[str]) -> None:
+        LLM.image_input_limits_for(AZURE_ID, dict(AZURE_META))
+        assert fetches == ["https://example.invalid/l.json"]
