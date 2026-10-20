@@ -7,22 +7,19 @@ alone — MiniMax sends ``anthropic/<id>`` when its api_base ends in
 ``/anthropic``, NVIDIA Build sends ``custom_openai/<m>`` but has its own
 entry, Ollama sends ``ollama_chat/<m>`` under key ``ollama``.
 
-Matching strips the litellm prefix from the validated model and tries each
-provider override pattern (``re.search``, patterns carry ``(?i)``) against
-the bare model, then the bare ``cost_model`` (Azure's real model id), then
-any extra ids (Bedrock ``model_id`` behind an inference-profile ARN). First
-match wins; its fields replace the provider defaults field by field. An
-override with ``inherit`` takes the named provider's resolved limits for the
-remainder of the slug and then applies its own explicit fields.
+The override-matching rule (candidate order, which override wins,
+``inherit``, default fill) is stated once, in this package's README under
+"Lookup rules"; ``_candidates`` and ``_match_override`` implement it.
 
 Resolution consults the table only — never ``litellm.model_cost`` — so a
 process on the remote cost map and a test on the bundled one resolve the
 same validated string identically. ``local_max_input_tokens`` is the one
-registry lookup here, and it reads the local map only.
+registry lookup here: an in-process dict read, no per-lookup network call.
 """
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -35,10 +32,12 @@ from unstract.sdk1.utils.image_limits._schema import (
     OverrideEntry,
     ProviderEntry,
 )
-from unstract.sdk1.utils.image_limits.source import get_limits_table
+from unstract.sdk1.utils.image_limits.source import bundled_table, get_limits_table
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
+
+logger = logging.getLogger(__name__)
 
 BEDROCK_PROVIDER = "bedrock"
 BEDROCK_MANTLE_KEY = "bedrock_mantle"
@@ -214,11 +213,32 @@ def resolve_image_limits(
 
     ``adapter_provider`` is the adapter module's ``get_provider()``.
     ``cost_model`` is the real model id when the routed one is an alias
-    (Azure deployment names). ``extra_model_ids`` are tried last.
+    (Azure deployment names). ``extra_model_ids`` are extra candidates
+    (see the README's "Lookup rules" for how candidates are matched).
+    A provider missing from ``table`` but present in the bundled table is
+    resolved from the bundled entry, never as pass-through.
     """
     table = table or get_limits_table()
     key = provider_key(adapter_provider, model)
     provider = table.providers.get(key)
+    if provider is None:
+        shipped = bundled_table()
+        if table is not shipped and key in shipped.providers:
+            # A provider the bundled table knows never becomes pass-through
+            # because another table (remote copy, override) lacks it.
+            logger.warning(
+                "Image limits: provider %r is missing from the %s limits table; "
+                "using the bundled entry",
+                key,
+                table.origin.source if table.origin else "effective",
+            )
+            return resolve_image_limits(
+                adapter_provider,
+                model,
+                cost_model=cost_model,
+                extra_model_ids=extra_model_ids,
+                table=shipped,
+            )
     candidates = _candidates(model, cost_model, extra_model_ids)
     bare_model = strip_provider_prefix(model)
 
@@ -248,7 +268,7 @@ def resolve_image_limits(
                     default_value,
                     from_default=True,
                     advisory=advisory_defaults,
-                    layer=table.default_layer,
+                    layer=table.default_field_layer(name),
                 )
                 continue
         if value is None:
@@ -271,12 +291,15 @@ def resolve_image_limits(
 
 
 def local_max_input_tokens(model: str, cost_model: str | None = None) -> int | None:
-    """``max_input_tokens`` from litellm's LOCAL registry, or None when unknown.
+    """``max_input_tokens`` from litellm's in-process registry, or None.
 
-    Never ``litellm.get_model_info``: it can make network calls for
-    self-hosted providers and falls back to a number on failure. An unknown
-    context window must stay unknown so the token term is skipped, not
-    turned into a near-zero page cap.
+    ``litellm.model_cost`` is the cost map litellm loaded at import: the
+    remote one in production, the bundled one when
+    ``LITELLM_LOCAL_MODEL_COST_MAP`` is set (tests). Reading it makes no
+    network call. Never ``litellm.get_model_info``: it can make network
+    calls for self-hosted providers and falls back to a number on failure.
+    An unknown context window must stay unknown so the token advisory is
+    skipped rather than invented.
     """
     registry = litellm.model_cost
     for raw in (cost_model, model):
@@ -298,8 +321,9 @@ def resolve_image_limits_for_adapter(
     """Resolve limits from an LLM adapter id and its stored metadata.
 
     Runs the adapter's local ``validate`` to obtain the routed model string
-    and ``cost_model`` — no ``LLM`` instance, no network. Raises ``KeyError``
-    for an unknown adapter id.
+    and ``cost_model`` — no ``LLM`` instance, no provider call; the limits
+    table comes from memory (``get_limits_table`` never waits on GitHub).
+    Raises ``KeyError`` for an unknown adapter id.
     """
     # Imported lazily: adapters.llm1 pulls in every adapter module.
     from unstract.sdk1.adapters.constants import Common

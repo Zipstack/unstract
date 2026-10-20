@@ -4,10 +4,16 @@ Installs read ``limits.json`` from the repository's main branch so a data
 fix reaches them without a release. The bundled copy is the fallback that
 is always there: a slow, failing or bad remote file must never break image
 mode. No test touches the network; HTTP goes through ``httpx.MockTransport``.
+
+A refresh normally runs on a background thread; most tests run it inline
+(``_start_background`` swapped for a direct call) so they can assert on its
+result, and ``TestRequestPathNeverWaits`` exercises the real thread.
 """
 
 import copy
 import json
+import threading
+import time
 from collections.abc import Callable, Iterator
 from pathlib import Path
 
@@ -92,6 +98,7 @@ def serve(monkeypatch: MonkeyPatch) -> Callable[..., _Server]:
 
 @pytest.fixture(autouse=True)
 def _fresh_state(monkeypatch: MonkeyPatch) -> Iterator[None]:
+    monkeypatch.setattr(limits_source, "_start_background", lambda target: target())
     monkeypatch.delenv(LIMITS_OVERRIDE_FILE_ENV, raising=False)
     monkeypatch.delenv(limits_source.LIMITS_REFRESH_ENV, raising=False)
     image_limits.clear_limits_cache()
@@ -366,6 +373,158 @@ class TestFallbackToBundled:
     ) -> None:
         serve(_raise(RuntimeError("transport bug")))
         assert _azure_images() == 50
+
+
+def _drop_provider(key: str) -> Callable[[], dict]:
+    def build() -> dict:
+        data = _remote_data()
+        del data["providers"][key]
+        return data
+
+    return build
+
+
+class TestRemoteCannotDropAProvider:
+    """A remote copy that loses a bundled provider is a bad file (O2).
+
+    Otherwise the provider resolves as an advisory pass-through on every
+    install within an hour: its documents are converted and billed, then
+    rejected by the provider.
+    """
+
+    # Providers nothing inherits from (dropping an inherit target is already
+    # a schema error), so only the drop check can reject these.
+    @pytest.mark.parametrize("key", ["bedrock", "azure_ai", "minimax"])
+    def test_table_dropping_a_provider_is_rejected(
+        self,
+        serve: Callable[..., _Server],
+        clock: _FakeClock,
+        caplog: pytest.LogCaptureFixture,
+        key: str,
+    ) -> None:
+        serve(_json_response(_drop_provider(key)()))
+
+        table = get_limits_table()
+        assert table.origin.source == "bundled"
+        assert key in table.providers
+        assert any(
+            r.levelname == "WARNING" and key in r.getMessage() and URL in r.getMessage()
+            for r in caplog.records
+        )
+
+    def test_dropping_a_provider_keeps_the_last_good_remote_copy(
+        self, serve: Callable[..., _Server], clock: _FakeClock
+    ) -> None:
+        server = serve(_json_response(_remote_data(azure_images=7)))
+        assert _azure_images() == 7
+        server.handler = _json_response(_drop_provider("bedrock")())
+        clock.now += 3600
+        assert _azure_images() == 7
+        assert "bedrock" in get_limits_table().providers
+
+    def test_resolution_falls_back_to_the_bundled_entry(self) -> None:
+        # Even a table that slipped through (or one passed explicitly) never
+        # turns a provider the bundled table knows into pass-through.
+        from unstract.sdk1.utils.image_limits._schema import parse_limits_bytes
+
+        table = parse_limits_bytes(
+            json.dumps(_drop_provider("bedrock")()).encode(),
+            source="remote",
+            location=URL,
+        )
+        limits = resolve_image_limits(
+            "bedrock", "bedrock/anthropic.claude-sonnet-4-5-v1:0", table=table
+        )
+        assert limits.provider_kind == "hosted"
+        assert limits.is_default_provider is False
+        assert limits.max_images_per_request.value == 20
+        assert limits.max_images_per_request.advisory is False
+
+
+class TestFetchIsBounded:
+    def test_redirects_are_not_followed(
+        self, serve: Callable[..., _Server], clock: _FakeClock
+    ) -> None:
+        body = json.dumps(_remote_data(azure_images=7)).encode()
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            if request.url.host == "elsewhere.example":
+                return httpx.Response(200, content=body)
+            return httpx.Response(
+                302, headers={"location": "https://elsewhere.example/limits.json"}
+            )
+
+        server = serve(handler)
+        assert _azure_images() == 50
+        assert server.calls == 1
+
+    def test_overall_deadline_covers_a_hung_request(
+        self,
+        serve: Callable[..., _Server],
+        monkeypatch: MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        # A hung DNS lookup or connect is outside httpx's per-phase timeouts;
+        # the overall deadline still abandons it.
+        monkeypatch.setattr(limits_source, "FETCH_TIMEOUT_SECONDS", 0.2)
+        release = threading.Event()
+
+        def hang(request: httpx.Request) -> httpx.Response:
+            release.wait(5)
+            return httpx.Response(200, content=json.dumps(_remote_data()).encode())
+
+        serve(hang)
+        started = time.monotonic()
+        try:
+            assert _azure_images() == 50
+            elapsed = time.monotonic() - started
+        finally:
+            release.set()
+        assert elapsed < 2
+        assert any("within 0.2s" in r.getMessage() for r in caplog.records)
+
+
+class TestRequestPathNeverWaits:
+    """The refresh runs on a background thread behind a non-blocking lock."""
+
+    def test_caller_is_served_while_the_refresh_runs(
+        self, serve: Callable[..., _Server], monkeypatch: MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            limits_source,
+            "_start_background",
+            lambda target: threading.Thread(target=target, daemon=True).start(),
+        )
+        entered, release = threading.Event(), threading.Event()
+        body = json.dumps(_remote_data(azure_images=7)).encode()
+
+        def slow(request: httpx.Request) -> httpx.Response:
+            entered.set()
+            release.wait(5)
+            return httpx.Response(200, content=body)
+
+        server = serve(slow)
+        try:
+            started = time.monotonic()
+            first = get_limits_table()
+            assert time.monotonic() - started < 1
+            assert first.origin.source == "bundled"
+            assert entered.wait(5)
+            # In flight: further calls neither wait nor start another fetch,
+            # even once the window is due again.
+            limits_source._remote[URL].last_attempt = -1e9
+            started = time.monotonic()
+            for _ in range(5):
+                assert get_limits_table().origin.source == "bundled"
+            assert time.monotonic() - started < 1
+            assert server.calls == 1
+        finally:
+            release.set()
+        deadline = time.monotonic() + 5
+        while limits_source._lock.locked() and time.monotonic() < deadline:
+            time.sleep(0.01)
+        assert get_limits_table(refresh=False).origin.source == "remote"
+        assert _azure_images() == 7
 
 
 class TestDisabled:
