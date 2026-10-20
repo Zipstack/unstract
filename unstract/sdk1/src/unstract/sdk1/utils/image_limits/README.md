@@ -30,7 +30,9 @@ This is the one statement of the matching rule; the code and
    validated to `bedrock_mantle/...` uses `bedrock_mantle`. Never the
    litellm prefix alone: MiniMax may send `anthropic/<id>`. A provider the
    bundled table has is always resolved, from the bundled entry if the
-   effective table lacks it, never as pass-through.
+   effective table lacks it, and keeps the bundled `kind` (a remote copy
+   that drops it or changes its `kind` is rejected, see "Where the table
+   comes from"); only an operator override file can change a `kind`.
 2. Candidates are the bare (litellm-prefix-stripped) ids in this order:
    `cost_model` (Azure's real model), the validated model, then extra ids
    (Bedrock `model_id` behind an ARN).
@@ -99,12 +101,16 @@ ceiling".
 ### Runtime switch: `VLM_IMAGE_LIMITS_ENFORCE`
 
 `VLM_IMAGE_LIMITS_ENFORCE=false` (also `0`, `no`, `off`) turns the
-model-aware checks off without a deploy of new data: extraction and the
-Prompt Studio upload and cache-hit checks fall back to the fixed
-90-page / 14 MiB cap (`ImageModePolicy.ceiling_only(**fixed_cap_bound_kwargs())`),
-the pre-UN-4427 behaviour. Set it on the backend and every worker. Unset or
-`true` keeps model-aware limits; any other value is logged at ERROR and
-keeps them on.
+model-aware checks off without a deploy of new data. The switch is honoured
+inside sdk1's builders, so every consumer gets it without checking it:
+`ImageModePolicy.from_limits`, `compute_page_budget` and
+`extraction_bound_kwargs()` then yield the fixed 90-page / 14 MiB cap
+(`ImageModePolicy.fixed_cap()`, the pre-UN-4427 behaviour) whatever limits
+they are given — extraction, the Prompt Studio upload and cache-hit
+checks, and the cloud answer plugin and its profile summary alike. (The
+extraction worker and the upload check also test it first, to skip the
+LLM lookup.) Set it on the backend and every worker. Unset or `true` keeps
+model-aware limits; any other value is logged at ERROR and keeps them on.
 
 ## Where the table comes from
 
@@ -142,11 +148,29 @@ No caller waits on GitHub (`source.py`):
 The remote file must pass the same strict validation as the bundled one,
 including `_meta.schema_version` equal to the version this sdk1 reads and
 override patterns of at most 300 characters (`MAX_PATTERN_LENGTH`) that
-compile, and it must keep every provider key the bundled table has (a
-dropped provider would otherwise lose its limits on every install). A
-timeout, HTTP error, invalid JSON or rejected file logs a warning and keeps
-the last good copy (the previous remote table, else the bundled one);
-nothing in the fetch path raises.
+compile. It must also stay within what a data refresh may change, or it
+is rejected (`source._loosened_limits`), because a merge to main reaches
+every install within an hour:
+
+- it keeps every provider key the bundled table has (a dropped provider
+  would otherwise lose its limits);
+- no bundled provider changes `kind` (hosted -> pass_through would turn
+  its default-filled limits advisory; the reverse is locked too);
+- no enforced `max_images_per_request` or `max_request_bytes` (compared as
+  raw bytes, so a `base64_counted` flip counts) rises above 2x
+  (`MAX_REMOTE_RAISE_FACTOR`) its bundled value — in a hosted provider's
+  defaults, in an override with the same `pattern`, through the `default`
+  block they fall back to, or for any bundled `vision_models` example
+  model as it resolves end to end (which also catches a new override that
+  shadows an existing one, a removed override and a changed `inherit`).
+
+Lowering a limit is always accepted, as are new providers and new
+overrides that leave existing models alone. A larger raise ships in an
+sdk1 release. The operator override file is configuration and is not
+subject to these rules. A timeout, HTTP error, invalid JSON or rejected
+file logs a warning (naming the reasons) and keeps the last good copy (the
+previous remote table, else the bundled one); nothing in the fetch path
+raises.
 
 Every table records its origin. The log says which copy is in use
 (source, URL or path, schema version, `_meta.verified_on`, sha256 prefix),
@@ -171,9 +195,11 @@ and to the run-log summary.
    points at them.
 6. Merging a change to `main` publishes it: every install with fetching
    on picks it up within one refresh window, without a release. Review a
-   data change as you would a deploy. Removing a provider is rejected by
-   installs (they keep their last good copy); to retire one, ship it in an
-   sdk1 release.
+   data change as you would a deploy. Removing a provider, changing a
+   provider's `kind`, or raising an enforced image-count or request-byte
+   limit above 2x the bundled value is rejected by installs (they keep
+   their last good copy); ship those in an sdk1 release. Lowering limits
+   and adding providers or models takes effect on refresh.
 7. Keep the schema backward compatible. Older installs reject any file
    they cannot read and stay on their bundled copy, so a key they do not
    know (a new limit field, a new field attribute) cuts them off from

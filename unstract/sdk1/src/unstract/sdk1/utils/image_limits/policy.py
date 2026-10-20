@@ -22,8 +22,10 @@ the operator's server might well accept. Advisories go to the worker log
 and, through ``ImageModePolicy.with_advisory_sink``, to the user's run log.
 
 ``VLM_IMAGE_LIMITS_ENFORCE=false`` turns the model-aware checks off at
-runtime: callers then build ``ImageModePolicy.ceiling_only`` with
-``fixed_cap_bound_kwargs()`` (the fixed 90-page / 14 MiB cap).
+runtime, inside this module: ``ImageModePolicy.from_limits``,
+``compute_page_budget`` and ``extraction_bound_kwargs`` then yield the
+fixed 90-page / 14 MiB cap (``ImageModePolicy.fixed_cap``) whatever limits
+they are given, so every consumer honours the switch without checking it.
 
 Tunables are module constants so a product decision is one edit.
 """
@@ -101,10 +103,12 @@ def _mib(n: float) -> str:
 
 # --- Bounds shared by every caller -------------------------------------------
 
-# Runtime switch back to the fixed cap: "false" makes extraction and upload
-# use ``ceiling_only(**fixed_cap_bound_kwargs())`` instead of the LLM's
-# limits. For when a table value turns out wrong and an override file is
-# not practical. Unset or "true" keeps model-aware limits.
+# Runtime switch back to the fixed cap: "false" makes every builder below
+# (``from_limits``, ``compute_page_budget``, ``extraction_bound_kwargs``)
+# yield the fixed cap (``ImageModePolicy.fixed_cap``) instead of the LLM's
+# limits, for extraction, upload and answering alike. For when a table
+# value turns out wrong and an override file is not practical. Unset or
+# "true" keeps model-aware limits.
 ENFORCE_ENV = "VLM_IMAGE_LIMITS_ENFORCE"
 _FALSE_VALUES = frozenset({"false", "0", "no", "off"})
 _TRUE_VALUES = frozenset({"true", "1", "yes", "on"})
@@ -146,22 +150,28 @@ def extraction_bound_kwargs() -> dict[str, int | None]:
 
     Operator ceilings (``VLM_IMAGE_ANSWER_PAGE_CAP`` /
     ``VLM_IMAGE_ANSWER_MAX_TOTAL_MB``) always apply; while
-    ``LEGACY_ANSWER_BOUNDS_ACTIVE`` the legacy 90-page / 14 MiB answer-time
-    limits are used instead, so extraction is never looser than the plugin.
-    Pass the result to ``ImageModePolicy.from_limits`` / ``ceiling_only``.
+    ``LEGACY_ANSWER_BOUNDS_ACTIVE``, or when ``VLM_IMAGE_LIMITS_ENFORCE=false``,
+    the fixed 90-page / 14 MiB limits are used instead, so extraction is
+    never looser than the plugin. Pass the result to
+    ``ImageModePolicy.from_limits`` / ``ceiling_only``.
     """
-    if LEGACY_ANSWER_BOUNDS_ACTIVE:
+    if LEGACY_ANSWER_BOUNDS_ACTIVE or not model_aware_limits_enabled():
         # The legacy accessors already fold the same env vars in.
-        return {
-            "page_ceiling": None,
-            "bytes_ceiling": configured_max_total_bytes(),
-            "legacy_cap": configured_page_cap(),
-        }
+        return fixed_cap_bound_kwargs()
     return {
         "page_ceiling": configured_page_ceiling(),
         "bytes_ceiling": configured_request_bytes_ceiling(),
         "legacy_cap": None,
     }
+
+
+def _stricter(value: int | None, fixed: int | None) -> int | None:
+    """The smaller of two optional bounds (None means no bound)."""
+    if value is None:
+        return fixed
+    if fixed is None:
+        return value
+    return min(value, fixed)
 
 
 # --- Page budget -----------------------------------------------------------
@@ -219,7 +229,14 @@ def compute_page_budget(
     the advisory only and never lowers ``max_pages``. An unknown context
     skips it rather than inventing a number. An advisory image count
     (pass-through provider on the default) is recorded but not applied.
+
+    With ``VLM_IMAGE_LIMITS_ENFORCE=false`` it returns the fixed cap's
+    budget instead (``ImageModePolicy.fixed_cap``), ignoring ``limits``.
     """
+    if not model_aware_limits_enabled():
+        return ImageModePolicy.fixed_cap(
+            page_ceiling=page_ceiling, legacy_cap=legacy_cap
+        ).page_budget
     reserve = (
         PROMPT_TOKENS_RESERVE if prompt_tokens_reserve is None else prompt_tokens_reserve
     )
@@ -309,6 +326,8 @@ class ImageModePolicy:
     bytes_ceiling: int | None  # operator ceiling on raw bytes
     sources: tuple[ImageRequestLimits, ...]
     model_aware: bool
+    # True when ``VLM_IMAGE_LIMITS_ENFORCE=false`` replaced the LLM's limits.
+    switched_off: bool = False
     max_image_bytes_source: ImageRequestLimits | None = None
     max_image_px_source: ImageRequestLimits | None = None
     # Every LLM's own budget (``page_budget`` is the smallest), for advisories.
@@ -332,9 +351,25 @@ class ImageModePolicy:
         bytes_ceiling: int | None = None,
         legacy_cap: int | None = None,
     ) -> ImageModePolicy:
-        """Build the policy for one or more LLMs (the strictest of each wins)."""
+        """Build the policy for one or more LLMs (the strictest of each wins).
+
+        With ``VLM_IMAGE_LIMITS_ENFORCE=false`` the LLMs' limits are ignored
+        and the fixed cap is returned (``fixed_cap``), still tightened by
+        any stricter bound passed here.
+        """
         if not resolved:
             raise ValueError("from_limits needs at least one resolved limit set")
+        if not model_aware_limits_enabled():
+            logger.warning(
+                "Image mode: %s=false; applying the fixed page and byte cap "
+                "instead of the LLM's limits",
+                ENFORCE_ENV,
+            )
+            return cls.fixed_cap(
+                page_ceiling=page_ceiling,
+                bytes_ceiling=bytes_ceiling,
+                legacy_cap=legacy_cap,
+            )
         budgets_in = list(token_budgets or [None] * len(resolved))
         if len(budgets_in) != len(resolved):
             raise ValueError("token_budgets must align with resolved")
@@ -428,6 +463,27 @@ class ImageModePolicy:
             model_aware=False,
         )
 
+    @classmethod
+    def fixed_cap(
+        cls,
+        *,
+        page_ceiling: int | None = None,
+        bytes_ceiling: int | None = None,
+        legacy_cap: int | None = None,
+    ) -> ImageModePolicy:
+        """The fixed 90-page / 14 MiB policy ``VLM_IMAGE_LIMITS_ENFORCE=false`` uses.
+
+        ``fixed_cap_bound_kwargs`` (90 pages / 14 MiB or their env
+        overrides), tightened by any stricter bound given; never looser.
+        """
+        fixed = fixed_cap_bound_kwargs()
+        policy = cls.ceiling_only(
+            page_ceiling=page_ceiling,
+            bytes_ceiling=_stricter(bytes_ceiling, fixed["bytes_ceiling"]),
+            legacy_cap=_stricter(legacy_cap, fixed["legacy_cap"]),
+        )
+        return dataclasses.replace(policy, switched_off=True)
+
     def with_advisory_sink(self, sink: Callable[[str], None] | None) -> ImageModePolicy:
         """This policy, also sending advisories to ``sink`` (e.g. a run log)."""
         return dataclasses.replace(self, advisory_sink=sink)
@@ -484,35 +540,30 @@ class ImageModePolicy:
     def advisories(self, *, page_count: int) -> list[str]:
         """Warnings to log for limits that are known but not enforced."""
         lines: list[str] = []
-        budget = self.page_budget
-        if budget.advisory_max_images is not None and budget.limits is not None:
-            limits = budget.limits
-            if page_count > budget.advisory_max_images:
+        # Every LLM's own budget: with several LLMs the advisory one is often
+        # not the one whose enforced limit set ``page_budget``.
+        budgets = self.page_budgets or (self.page_budget,)
+        for each in budgets:
+            advisory, limits = each.advisory_max_images, each.limits
+            if advisory is not None and limits is not None and page_count > advisory:
                 lines.append(
                     f"{_model_label(limits)} publishes no image limit; this document "
                     f"has {page_count} pages, above Unstract's conservative default "
-                    f"of {budget.advisory_max_images} images. The request will be "
-                    "sent; the server may reject it."
+                    f"of {advisory} images. The request will be sent; the server "
+                    "may reject it."
                 )
-        for each in self.page_budgets or (budget,):
+        for each in budgets:
             line = _token_advisory(each, page_count=page_count)
             if line:
                 lines.append(line)
-        if self.advisory_request_bytes is not None and self.advisory_request_bytes.value:
-            limits = next(
-                (
-                    lim
-                    for lim in self.sources
-                    if lim.max_request_bytes is self.advisory_request_bytes
-                ),
-                None,
-            )
-            label = _model_label(limits) if limits else "this model"
-            lines.append(
-                f"{label} publishes no request-size limit; Unstract's conservative "
-                f"default is {_mb(self.advisory_request_bytes.value)} per "
-                "request and is not enforced for this provider."
-            )
+        for limits in self.sources:
+            request = limits.max_request_bytes
+            if request.advisory and request.value:
+                lines.append(
+                    f"{_model_label(limits)} publishes no request-size limit; "
+                    f"Unstract's conservative default is {_mb(request.value)} per "
+                    "request and is not enforced for this provider."
+                )
         return lines
 
     def size_advisory(self, *, page_count: int) -> str | None:
@@ -561,7 +612,12 @@ class ImageModePolicy:
             parts = [self.page_budget.describe()]
             if ceiling:
                 parts.append(ceiling)
-            return f"Image mode limits: {'; '.join(parts)} (LLM not known at this point)"
+            why = (
+                f"the LLM's own limits are turned off by {ENFORCE_ENV}=false"
+                if self.switched_off
+                else "LLM not known at this point"
+            )
+            return f"Image mode limits: {'; '.join(parts)} ({why})"
         limits = self.page_budget.limits
         parts = [self.page_budget.describe()]
         request_source = self.request_bytes_source()
