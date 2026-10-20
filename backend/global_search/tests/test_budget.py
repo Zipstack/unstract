@@ -23,6 +23,7 @@ from django.contrib.contenttypes.models import ContentType
 from django.db import connection
 from django.test import TestCase
 from django.test.utils import CaptureQueriesContext
+from unittest.mock import patch
 from permissions.roles import ResourceRole
 from pipeline_v2.models import Pipeline
 from prompt_studio.prompt_studio_core_v2.models import CustomTool
@@ -87,8 +88,8 @@ class SearchBudgetTests(TestCase):
         )
         cls.member = users[0]
         cls.admin = users[1]
-        # A real admin role, not a patched predicate, so the role lookup a
-        # request pays is counted.
+        # The role lookup a request pays is counted: only the role-name check
+        # is patched (see setUp), never the predicate that queries it.
         OrganizationMember.objects.filter(organization=cls.org, user=cls.admin).update(
             role="admin"
         )
@@ -185,8 +186,17 @@ class SearchBudgetTests(TestCase):
 
     def setUp(self) -> None:
         UserContext.set_organization_identifier(self.org.organization_id)
-        # "admin" is the OSS admin role; under an auth plugin with another
-        # name for it the admin subtest would silently measure a member.
+        # Each auth plugin names the admin role differently ("admin" in OSS,
+        # "unstract_admin" in cloud). Pin the name check, which is pure
+        # Python, so the admin subtest measures an admin in every
+        # distribution; the membership query still runs and is counted.
+        name_check = patch(
+            "account_v2.authentication_controller.AuthenticationController"
+            ".is_admin_by_role",
+            new=lambda _self, role: role == "admin",
+        )
+        name_check.start()
+        self.addCleanup(name_check.stop)
         self.assertTrue(
             OrganizationMemberService.is_user_organization_admin(
                 User.objects.get(pk=self.admin.pk)
