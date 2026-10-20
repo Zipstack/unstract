@@ -1,11 +1,13 @@
 """Turn resolved image limits into the checks image output mode enforces.
 
-Three ceilings bound how many page images one request can carry: the
-provider's image count, the model's context window (estimated from a
-per-page token figure) and LLMWhisperer's 999-page conversion maximum,
+Two ceilings bound how many page images one request can carry: the
+provider's image count and LLMWhisperer's 999-page conversion maximum,
 plus optional operator ceilings. ``compute_page_budget`` picks the
 binding one and remembers why, so every error message can say which
-limit the user hit and where the number came from.
+limit the user hit and where the number came from. The model's context
+window, estimated from a per-page token figure, is WARN ONLY: a token
+count per page is an estimate whichever table entry it comes from, so it
+is reported to the user and never rejects a document.
 
 Byte limits are only checkable once pages are rendered: ``ImageModePolicy``
 converts a provider's wire limit (base64 JSON body) into a raw-byte budget
@@ -15,8 +17,13 @@ per-image and whole-set checks to a page set in memory.
 Pass-through providers (Ollama, OpenAI-compatible servers, NVIDIA Build,
 unknown OpenRouter upstreams) publish no limits. Their count/byte values
 come from the table's conservative default and are ADVISORY: the policy
-logs what the default would have been instead of rejecting a document the
-operator's server might well accept.
+reports what the default would have been instead of rejecting a document
+the operator's server might well accept. Advisories go to the worker log
+and, through ``ImageModePolicy.with_advisory_sink``, to the user's run log.
+
+``VLM_IMAGE_LIMITS_ENFORCE=false`` turns the model-aware checks off at
+runtime: callers then build ``ImageModePolicy.ceiling_only`` with
+``fixed_cap_bound_kwargs()`` (the fixed 90-page / 14 MiB cap).
 
 Tunables are module constants so a product decision is one edit.
 """
@@ -25,6 +32,7 @@ from __future__ import annotations
 
 import dataclasses
 import logging
+import os
 import struct
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
@@ -41,7 +49,7 @@ from unstract.sdk1.adapters.x2text.page_image_loader import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Iterable, Mapping, Sequence
+    from collections.abc import Callable, Iterable, Mapping, Sequence
 
     from unstract.sdk1.utils.image_limits.resolve import ImageRequestLimits, LimitValue
 
@@ -49,18 +57,14 @@ logger = logging.getLogger(__name__)
 
 # --- Tunables (product decisions; one edit each) -------------------------
 # Tokens kept back from the context window for the prompt, system text and
-# the answer when deriving the token-based page cap.
+# the answer when deriving the token-based page estimate.
 PROMPT_TOKENS_RESERVE = 4_000
-# Reject when the estimated image tokens exceed the context window. The
-# provider would reject the request anyway, after the full upload.
-ENFORCE_CONTEXT_TOKEN_TERM = True
-# Whether the table's top-level tokens-per-page DEFAULT (an unverified
-# cross-provider estimate) is enforced too. It is not: at 1,500 tokens per
-# page it capped 128K-context models (gpt-4o) at 82 pages, below what real
-# 150-DPI pages fit (~765-1,105 tokens on OpenAI). A model-specific estimate
-# in the table is enforced; the default only warns, and the provider's own
-# context-length rejection remains the backstop.
-ENFORCE_DEFAULT_TOKEN_ESTIMATE = False
+# The context-window term is WARN ONLY (product decision, UN-4427). Its
+# tokens-per-page figure is an estimate whether it is the table's default
+# (1,500, which held 128K gpt-4o to 82 pages where ~90 fit) or a
+# model-specific entry, so it is reported and never rejects a document; the
+# provider's own context-length rejection remains the backstop. Image count
+# and byte limits stay enforced.
 # Reject a page that breaks a per-image byte or pixel limit (no downscaling
 # exists in this path).
 ENFORCE_PER_IMAGE_LIMITS = True
@@ -97,6 +101,45 @@ def _mib(n: float) -> str:
 
 # --- Bounds shared by every caller -------------------------------------------
 
+# Runtime switch back to the fixed cap: "false" makes extraction and upload
+# use ``ceiling_only(**fixed_cap_bound_kwargs())`` instead of the LLM's
+# limits. For when a table value turns out wrong and an override file is
+# not practical. Unset or "true" keeps model-aware limits.
+ENFORCE_ENV = "VLM_IMAGE_LIMITS_ENFORCE"
+_FALSE_VALUES = frozenset({"false", "0", "no", "off"})
+_TRUE_VALUES = frozenset({"true", "1", "yes", "on"})
+
+
+def model_aware_limits_enabled() -> bool:
+    """False when ``VLM_IMAGE_LIMITS_ENFORCE`` turns model-aware limits off."""
+    raw = os.environ.get(ENFORCE_ENV)
+    if raw is None or not raw.strip():
+        return True
+    value = raw.strip().lower()
+    if value in _FALSE_VALUES:
+        return False
+    if value not in _TRUE_VALUES:
+        logger.error(
+            "Invalid %s value %r (expected true or false); keeping model-aware "
+            "image limits on",
+            ENFORCE_ENV,
+            raw,
+        )
+    return True
+
+
+def fixed_cap_bound_kwargs() -> dict[str, int | None]:
+    """The fixed 90-page / 14 MiB cap (or its env overrides), for ``ceiling_only``.
+
+    What image mode enforced before model-aware limits, and what it falls
+    back to when ``VLM_IMAGE_LIMITS_ENFORCE=false``.
+    """
+    return {
+        "page_ceiling": None,
+        "bytes_ceiling": configured_max_total_bytes(),
+        "legacy_cap": configured_page_cap(),
+    }
+
 
 def extraction_bound_kwargs() -> dict[str, int | None]:
     """Ceilings every image-mode policy applies on top of the model's limits.
@@ -129,13 +172,13 @@ class PageBudget:
     """The effective page cap and the term that produced it."""
 
     max_pages: int
-    binding: str  # images | tokens | llmwhisperer | ceiling | legacy
+    binding: str  # images | llmwhisperer | ceiling | legacy
     limits: ImageRequestLimits | None
     context_tokens: int | None
     advisory_max_images: int | None
     terms: Mapping[str, int | None] = field(default_factory=dict)
-    # Token-term page count computed from the default estimate: warned
-    # about, not enforced (see ENFORCE_DEFAULT_TOKEN_ESTIMATE).
+    # Pages that fit the context window at the tokens-per-page estimate:
+    # warned about, never enforced (the token term is warn only).
     advisory_token_pages: int | None = None
 
     def describe(self) -> str:
@@ -150,13 +193,6 @@ class PageBudget:
                     limits.max_images_per_request, limits, with_table_version=False
                 )
                 + ")"
-            )
-        if self.binding == "tokens" and limits is not None:
-            per_page = limits.tokens_per_image.value or 0
-            return (
-                f"at about {per_page:,} tokens per page, the "
-                f"{(self.context_tokens or 0):,}-token context window of {label} "
-                f"fits at most {self.max_pages} pages"
             )
         if self.binding == "llmwhisperer":
             return f"LLMWhisperer converts at most {self.max_pages} pages of a document"
@@ -175,13 +211,14 @@ def compute_page_budget(
     page_ceiling: int | None = None,
     legacy_cap: int | None = None,
 ) -> PageBudget:
-    """The smallest of the image-count, token, LLMWhisperer and ceiling terms.
+    """The smallest of the image-count, LLMWhisperer and ceiling terms.
 
-    ``context_tokens`` is the caller's context-window figure (litellm, local
-    registry); a ``max_input_tokens`` value in the table overrides it. An
-    unknown context skips the token term rather than inventing a number.
-    An advisory image count (pass-through provider on the default) is
-    recorded but not applied.
+    ``context_tokens`` is the caller's context-window figure (adapter,
+    litellm registry); a ``max_input_tokens`` value in the table overrides
+    it. The token term (context window / tokens per page) is computed for
+    the advisory only and never lowers ``max_pages``. An unknown context
+    skips it rather than inventing a number. An advisory image count
+    (pass-through provider on the default) is recorded but not applied.
     """
     reserve = (
         PROMPT_TOKENS_RESERVE if prompt_tokens_reserve is None else prompt_tokens_reserve
@@ -194,13 +231,10 @@ def compute_page_budget(
 
     context = limits.max_input_tokens.value or context_tokens
     per_page = limits.tokens_per_image.value
-    token_term: int | None = None
     advisory_tokens: int | None = None
-    if ENFORCE_CONTEXT_TOKEN_TERM and context and per_page:
-        token_term = max((context - reserve) // per_page, 0)
-        if limits.tokens_per_image.from_default and not ENFORCE_DEFAULT_TOKEN_ESTIMATE:
-            advisory_tokens, token_term = token_term, None
-    terms["tokens"] = token_term
+    if context and per_page:
+        advisory_tokens = max((context - reserve) // per_page, 0)
+    terms["tokens"] = None  # warn only, never enforced
     terms["llmwhisperer"] = ImageOutputConstants.LLMWHISPERER_MAX_PAGES
     terms["ceiling"] = page_ceiling
     terms["legacy"] = legacy_cap
@@ -209,7 +243,7 @@ def compute_page_budget(
     max_pages = ImageOutputConstants.LLMWHISPERER_MAX_PAGES
     # Order decides ties: a model limit equal to the ceiling is still the
     # model's limit, which is the more useful thing to tell the user.
-    for name in ("images", "tokens", "llmwhisperer", "ceiling", "legacy"):
+    for name in ("images", "llmwhisperer", "ceiling", "legacy"):
         value = terms[name]
         if value is not None and value < max_pages:
             max_pages, binding = value, name
@@ -233,19 +267,37 @@ def _raw_equivalent(limit: LimitValue) -> int | None:
     return limit.value * _B64_DEN // _B64_NUM if limit.base64_counted else limit.value
 
 
-def _min_limit(values: Iterable[LimitValue]) -> LimitValue | None:
-    best: LimitValue | None = None
-    for value in values:
+def _min_limit(
+    pairs: Iterable[tuple[LimitValue, ImageRequestLimits]],
+) -> tuple[LimitValue, ImageRequestLimits] | None:
+    """The strictest enforced limit (raw-byte equivalent) and the LLM it is from."""
+    best: tuple[LimitValue, ImageRequestLimits] | None = None
+    for value, source in pairs:
         if value.value is None or value.advisory:
             continue
-        if best is None or (_raw_equivalent(value) or 0) < (_raw_equivalent(best) or 0):
-            best = value
+        if best is None or (_raw_equivalent(value) or 0) < (
+            _raw_equivalent(best[0]) or 0
+        ):
+            best = (value, source)
     return best
 
 
 @dataclass(frozen=True)
+class ManyImagesRule:
+    """Above ``threshold`` images, each image must be <= ``max_px`` per side."""
+
+    threshold: int
+    max_px: int
+    source: ImageRequestLimits
+
+
+@dataclass(frozen=True)
 class ImageModePolicy:
-    """Everything the extraction and answer paths need to check a page set."""
+    """Everything the extraction and answer paths need to check a page set.
+
+    Each per-image limit keeps the LLM it came from (``*_source``), so a
+    message about it names that model, not the one that set the page budget.
+    """
 
     page_budget: PageBudget
     request_bytes: LimitValue | None  # enforced wire/raw limit, if any
@@ -253,11 +305,18 @@ class ImageModePolicy:
     max_image_bytes: int | None
     max_image_bytes_base64_counted: bool
     max_image_px: int | None
-    many_images_threshold: int | None
-    many_images_max_px: int | None
+    many_images_rules: tuple[ManyImagesRule, ...]
     bytes_ceiling: int | None  # operator ceiling on raw bytes
     sources: tuple[ImageRequestLimits, ...]
     model_aware: bool
+    max_image_bytes_source: ImageRequestLimits | None = None
+    max_image_px_source: ImageRequestLimits | None = None
+    # Every LLM's own budget (``page_budget`` is the smallest), for advisories.
+    page_budgets: tuple[PageBudget, ...] = ()
+    # Where advisories go besides the worker log (e.g. the user's run log).
+    advisory_sink: Callable[[str], None] | None = field(
+        default=None, compare=False, repr=False
+    )
 
     @property
     def max_request_bytes(self) -> int | None:
@@ -290,34 +349,44 @@ class ImageModePolicy:
         ]
         page_budget = min(budgets, key=lambda b: b.max_pages)
 
-        request_bytes = _min_limit(lim.max_request_bytes for lim in resolved)
+        request = _min_limit((lim.max_request_bytes, lim) for lim in resolved)
         advisory_bytes = next(
             (lim.max_request_bytes for lim in resolved if lim.max_request_bytes.advisory),
             None,
         )
-        image_bytes = _min_limit(lim.max_image_bytes for lim in resolved)
-        px_values = [lim.max_image_px.value for lim in resolved if lim.max_image_px.value]
-        thresholds = [
-            (lim.many_images_threshold.value, lim.many_images_max_px.value)
+        image_bytes = _min_limit((lim.max_image_bytes, lim) for lim in resolved)
+        px = min(
+            ((lim.max_image_px.value, lim) for lim in resolved if lim.max_image_px.value),
+            key=lambda pair: pair[0],
+            default=None,
+        )
+        # Kept per model: minimising the threshold and the pixel bound
+        # separately could build a pair no model has.
+        rules = tuple(
+            ManyImagesRule(
+                threshold=lim.many_images_threshold.value,
+                max_px=lim.many_images_max_px.value,
+                source=lim,
+            )
             for lim in resolved
             if lim.many_images_threshold.value and lim.many_images_max_px.value
-        ]
-        threshold = min((t for t, _ in thresholds), default=None)
-        many_px = min((p for _, p in thresholds), default=None)
+        )
         return cls(
             page_budget=page_budget,
-            request_bytes=request_bytes,
+            request_bytes=request[0] if request else None,
             advisory_request_bytes=advisory_bytes,
-            max_image_bytes=_raw_equivalent(image_bytes) if image_bytes else None,
+            max_image_bytes=_raw_equivalent(image_bytes[0]) if image_bytes else None,
             max_image_bytes_base64_counted=bool(
-                image_bytes and image_bytes.base64_counted
+                image_bytes and image_bytes[0].base64_counted
             ),
-            max_image_px=min(px_values) if px_values else None,
-            many_images_threshold=threshold,
-            many_images_max_px=many_px,
+            max_image_px=px[0] if px else None,
+            many_images_rules=rules,
             bytes_ceiling=bytes_ceiling,
             sources=tuple(resolved),
             model_aware=True,
+            max_image_bytes_source=image_bytes[1] if image_bytes else None,
+            max_image_px_source=px[1] if px else None,
+            page_budgets=tuple(budgets),
         )
 
     @classmethod
@@ -353,11 +422,42 @@ class ImageModePolicy:
             max_image_bytes=None,
             max_image_bytes_base64_counted=False,
             max_image_px=None,
-            many_images_threshold=None,
-            many_images_max_px=None,
+            many_images_rules=(),
             bytes_ceiling=bytes_ceiling,
             sources=(),
             model_aware=False,
+        )
+
+    def with_advisory_sink(self, sink: Callable[[str], None] | None) -> ImageModePolicy:
+        """This policy, also sending advisories to ``sink`` (e.g. a run log)."""
+        return dataclasses.replace(self, advisory_sink=sink)
+
+    def warn(self, line: str) -> None:
+        """Log an advisory and pass it to the sink; a failing sink is logged."""
+        logger.warning("Image mode: %s", line)
+        if self.advisory_sink is None:
+            return
+        try:
+            self.advisory_sink(line)
+        except Exception:
+            logger.warning("Could not stream an image-mode advisory", exc_info=True)
+
+    def emit_advisories(self, *, page_count: int, include_size: bool = False) -> None:
+        """``warn`` each advisory for ``page_count`` (and the size hint)."""
+        for line in self.advisories(page_count=page_count):
+            self.warn(line)
+        if include_size:
+            hint = self.size_advisory(page_count=page_count)
+            if hint:
+                self.warn(hint)
+
+    def request_bytes_source(self) -> ImageRequestLimits | None:
+        """The LLM whose request-size limit is enforced, if any."""
+        if self.request_bytes is None:
+            return None
+        return next(
+            (lim for lim in self.sources if lim.max_request_bytes is self.request_bytes),
+            None,
         )
 
     def raw_byte_budget(
@@ -394,16 +494,10 @@ class ImageModePolicy:
                     f"of {budget.advisory_max_images} images. The request will be "
                     "sent; the server may reject it."
                 )
-        if budget.advisory_token_pages is not None and budget.limits is not None:
-            if page_count > budget.advisory_token_pages:
-                per_page = budget.limits.tokens_per_image.value or 0
-                lines.append(
-                    f"At Unstract's unverified estimate of {per_page:,} tokens per "
-                    f"page, {page_count} pages may exceed the "
-                    f"{(budget.context_tokens or 0):,}-token context window of "
-                    f"{_model_label(budget.limits)}. The request will be sent; the "
-                    "provider may reject it."
-                )
+        for each in self.page_budgets or (budget,):
+            line = _token_advisory(each, page_count=page_count)
+            if line:
+                lines.append(line)
         if self.advisory_request_bytes is not None and self.advisory_request_bytes.value:
             limits = next(
                 (
@@ -433,8 +527,10 @@ class ImageModePolicy:
         estimate = page_count * ASSUMED_PAGE_BYTES
         if estimate <= budget:
             return None
-        limits = self.page_budget.limits
+        limits = self.request_bytes_source() or self.page_budget.limits
         label = _model_label(limits) if limits else "the LLM"
+        if self.bytes_ceiling is not None and self.ceiling_binds_bytes():
+            label = "one image-mode request (platform limit)"
         return (
             f"At a typical {ASSUMED_PAGE_BYTES // 1000} KB per page, {page_count} "
             f"pages (~{_mb(estimate)}) may exceed the request-size limit of "
@@ -468,13 +564,27 @@ class ImageModePolicy:
             return f"Image mode limits: {'; '.join(parts)} (LLM not known at this point)"
         limits = self.page_budget.limits
         parts = [self.page_budget.describe()]
+        request_source = self.request_bytes_source()
         if ceiling:
             parts.append(ceiling)
-        elif self.request_bytes and self.request_bytes.value and limits is not None:
+        elif self.request_bytes and self.request_bytes.value and request_source:
             source = format_limit_source(
-                self.request_bytes, limits, with_table_version=False
+                self.request_bytes, request_source, with_table_version=False
             )
-            parts.append(f"{_mb(self.request_bytes.value)} per request ({source})")
+            parts.append(
+                f"{_mb(self.request_bytes.value)} per request for "
+                f"{_model_label(request_source)} ({source})"
+            )
+        if self.max_image_bytes is not None and self.max_image_bytes_source:
+            parts.append(
+                f"{_mb(self.max_image_bytes)} per page image for "
+                f"{_model_label(self.max_image_bytes_source)}"
+            )
+        if self.max_image_px is not None and self.max_image_px_source:
+            parts.append(
+                f"{self.max_image_px} px per side for "
+                f"{_model_label(self.max_image_px_source)}"
+            )
         if limits is not None and limits.table_version:
             parts.append(f"limits table {limits.table_version}")
         return "Image mode limits: " + "; ".join(parts)
@@ -528,7 +638,8 @@ def check_page_image(
                 actual=len(data),
                 limit=policy.max_image_bytes,
                 dims=None,
-                many_images=False,
+                source=policy.max_image_bytes_source,
+                threshold=None,
             ),
             page_store_dir=page_store_dir,
             page_number=page_number,
@@ -537,15 +648,11 @@ def check_page_image(
             limit=policy.max_image_bytes,
         )
     px_limit = policy.max_image_px
-    many = False
-    if (
-        policy.many_images_threshold is not None
-        and policy.many_images_max_px is not None
-        and page_count > policy.many_images_threshold
-        and (px_limit is None or policy.many_images_max_px < px_limit)
-    ):
-        px_limit = policy.many_images_max_px
-        many = True
+    px_source = policy.max_image_px_source
+    threshold: int | None = None
+    for rule in policy.many_images_rules:
+        if page_count > rule.threshold and (px_limit is None or rule.max_px < px_limit):
+            px_limit, px_source, threshold = rule.max_px, rule.source, rule.threshold
     if px_limit is None:
         return
     dims = png_dimensions(data)
@@ -561,7 +668,8 @@ def check_page_image(
                 actual=longest,
                 limit=px_limit,
                 dims=dims,
-                many_images=many,
+                source=px_source,
+                threshold=threshold,
             ),
             page_store_dir=page_store_dir,
             page_number=page_number,
@@ -578,11 +686,14 @@ def check_page_set(
     page_store_dir: str,
     prompt_text_bytes: int | None = None,
     charged: bool | None = None,
+    emit_advisories: bool = True,
 ) -> None:
     """Check a whole page set in memory: count, per-image, then total bytes.
 
     ``charged`` says whether the conversion has already been billed so the
-    message can be honest about it (None: say nothing).
+    message can be honest about it (None: say nothing). ``emit_advisories``
+    False skips the advisories when the caller already reported them for
+    this page count.
     """
     page_count = len(pages)
     budget = policy.page_budget
@@ -619,11 +730,30 @@ def check_page_set(
             total_bytes=total,
             max_total_bytes=raw_budget,
         )
-    for line in policy.advisories(page_count=page_count):
-        logger.warning("Image mode: %s", line)
+    if emit_advisories:
+        policy.emit_advisories(page_count=page_count)
 
 
 # --- Messages -----------------------------------------------------------------
+
+
+def _token_advisory(budget: PageBudget, *, page_count: int) -> str | None:
+    """Warn when ``page_count`` pages may not fit the budget's context window."""
+    limits, fits = budget.limits, budget.advisory_token_pages
+    if limits is None or fits is None or page_count <= fits:
+        return None
+    per_page = limits.tokens_per_image.value or 0
+    estimate = (
+        "Unstract's unverified default estimate"
+        if limits.tokens_per_image.from_default
+        else "the limits table's estimate for this model"
+    )
+    return (
+        f"At {estimate} of {per_page:,} tokens per page, {page_count} pages "
+        f"may exceed the {(budget.context_tokens or 0):,}-token context window "
+        f"of {_model_label(limits)} (about {fits} pages fit). The request will "
+        "be sent; the provider may reject it."
+    )
 
 
 def _model_label(limits: ImageRequestLimits | None) -> str:
@@ -682,16 +812,7 @@ def _charged_clause(charged: bool | None, *, size_known_late: bool = False) -> s
 def page_cap_message(page_count: int, budget: PageBudget, *, charged: bool | None) -> str:
     """User-facing text for a document with more pages than the budget."""
     limits = budget.limits
-    if budget.binding == "tokens" and limits is not None:
-        per_page = limits.tokens_per_image.value or 0
-        reason = (
-            f"At about {per_page:,} tokens per page it would need about "
-            f"{page_count * per_page:,} tokens, over the "
-            f"{(budget.context_tokens or 0):,}-token "
-            f"context window of {_model_label(limits)}; the most it can take is "
-            f"{budget.max_pages} pages."
-        )
-    elif budget.binding == "images" and limits is not None:
+    if budget.binding == "images" and limits is not None:
         reason = (
             f"{_model_label(limits)} accepts up to {budget.max_pages} page images in "
             "one request "
@@ -729,14 +850,7 @@ def request_too_large_message(
         )
         if model_budget is not None and policy.bytes_ceiling < model_budget:
             limit = None  # the ceiling bound, not the model's limit
-    limits = next(
-        (
-            lim
-            for lim in policy.sources
-            if limit is not None and lim.max_request_bytes is limit
-        ),
-        None,
-    )
+    limits = policy.request_bytes_source() if limit is not None else None
     # The total and the limit are printed in the limit's own unit: decimal
     # MB for a provider limit, MiB for the (raw-byte) operator/legacy ceiling.
     if limit is not None and limit.value is not None and limits is not None:
@@ -768,21 +882,23 @@ def page_too_large_message(
     actual: int,
     limit: int,
     dims: tuple[int, int] | None,
-    many_images: bool,
+    source: ImageRequestLimits | None,
+    threshold: int | None,
 ) -> str:
-    """User-facing text for a single page over a per-image limit."""
-    limits = policy.page_budget.limits
+    """User-facing text for a single page over a per-image limit.
+
+    ``source`` is the LLM the broken limit belongs to (with several LLMs it
+    can differ from the one that set the page budget); ``threshold`` is set
+    when the many-images pixel rule applied.
+    """
+    limits = source or policy.page_budget.limits
     if kind == "bytes":
         measured = _mb(actual)
         bound = _mb(limit)
     else:
         measured = f"{dims[0]}×{dims[1]} px" if dims else f"{actual} px"
         bound = f"{limit} px per side"
-    when = (
-        f" when more than {policy.many_images_threshold} images are sent"
-        if many_images and policy.many_images_threshold is not None
-        else ""
-    )
+    when = f" when more than {threshold} images are sent" if threshold is not None else ""
     return (
         f"Page {page_number} of this document is {measured}, over the per-image "
         f"limit of {bound} for {_model_label(limits)}{when}. Reduce the page's "

@@ -1,12 +1,16 @@
 """Stable machine-readable error codes for image-output-mode limit failures.
 
-Single home for the code strings. The executor bridge prefixes them onto
-error messages (``"CODE: message"``) because error propagation to Prompt
+Single home for the code strings. The executor formats both extraction and
+answer errors as ``"CODE: message"`` because error propagation to Prompt
 Studio and the deployment API is string-only; the cloud plugin reads them
-through the bridge. Keep the values stable: they are user-visible.
+through the bridge. Callers may prepend context (Prompt Studio's
+``"Failed to extract '<file>'. "``), so a consumer must look for
+``"CODE: "`` anywhere in the text rather than anchor on its start. Keep the
+values stable: they are user-visible.
 """
 
-# More pages than the model's budget allows (image count or context term).
+# More pages than the model's budget allows (image count, LLMWhisperer's 999
+# or an operator/legacy ceiling; the context-window estimate never rejects).
 IMAGE_PAGE_CAP_EXCEEDED = "IMAGE_PAGE_CAP_EXCEEDED"
 # The page images together exceed the model's request-size limit.
 IMAGE_PAGES_TOO_LARGE = "IMAGE_PAGES_TOO_LARGE"

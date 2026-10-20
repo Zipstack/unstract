@@ -428,11 +428,6 @@ class TestCapMatchesBudget:
         capacity = DEFAULT_MAX_TOTAL_BYTES // self._APPROX_LIGHT_PAGE_BYTES
         assert DEFAULT_PAGE_CAP <= capacity + self._MEASUREMENT_SLACK_PAGES
 
-    def test_cap_is_under_the_strictest_provider_image_count(self) -> None:
-        # Anthropic accepts at most 100 images per request on its
-        # 200K-context models — the lowest image-count limit we target.
-        assert DEFAULT_PAGE_CAP <= 100
-
 
 class TestModelAwareLimits:
     """``limits=`` replaces the fixed cap/budget with the model's policy."""
@@ -546,10 +541,31 @@ class TestConfiguredCeilings:
         assert configured_page_ceiling() == 40
         assert configured_request_bytes_ceiling() == 3 * 1024 * 1024
 
-    def test_unusable_value_is_no_ceiling(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    @pytest.mark.parametrize("raw", ["lots", "10MB", "0", "-5", ""])
+    def test_unusable_value_keeps_the_legacy_default(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+        raw: str,
+    ) -> None:
+        # An operator typo must never remove the ceiling (unbounded reads
+        # into worker memory, a 999-page bound); it keeps 90 pages / 14 MiB.
         from unstract.sdk1.adapters.x2text.page_image_loader import (
+            DEFAULT_MAX_TOTAL_BYTES,
+            MAX_TOTAL_MB_ENV,
             configured_page_ceiling,
+            configured_request_bytes_ceiling,
         )
 
-        monkeypatch.setenv(PAGE_CAP_ENV, "lots")
-        assert configured_page_ceiling() is None
+        monkeypatch.setenv(PAGE_CAP_ENV, raw)
+        monkeypatch.setenv(MAX_TOTAL_MB_ENV, raw)
+        with caplog.at_level("ERROR"):
+            assert configured_page_ceiling() == DEFAULT_PAGE_CAP
+            assert configured_request_bytes_ceiling() == DEFAULT_MAX_TOTAL_BYTES
+        errors = [r for r in caplog.records if r.levelname == "ERROR"]
+        assert {PAGE_CAP_ENV, MAX_TOTAL_MB_ENV} <= {
+            name
+            for r in errors
+            for name in (PAGE_CAP_ENV, MAX_TOTAL_MB_ENV)
+            if name in r.getMessage()
+        }

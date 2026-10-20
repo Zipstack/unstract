@@ -154,7 +154,13 @@ def configured_max_total_bytes() -> int:
     return _positive_int_env(MAX_TOTAL_MB_ENV, DEFAULT_MAX_TOTAL_BYTES, scale=1024 * 1024)
 
 
-def _optional_positive_int_env(name: str, *, scale: int = 1) -> int | None:
+def _optional_positive_int_env(name: str, default: int, *, scale: int = 1) -> int | None:
+    """An optional ceiling: None when unset, ``default`` when unusable.
+
+    An invalid value must not remove the ceiling (unbounded reads into
+    worker memory), so it is logged at ERROR and the legacy default is kept.
+    ``default`` is already in the scaled unit.
+    """
     raw = os.getenv(name)
     if raw is None:
         return None
@@ -163,8 +169,14 @@ def _optional_positive_int_env(name: str, *, scale: int = 1) -> int | None:
         if value <= 0:
             raise ValueError("must be positive")
     except (TypeError, ValueError):
-        logger.warning("Invalid %s value %r; ignoring it", name, raw)
-        return None
+        logger.error(
+            "Invalid %s value %r (expected a positive integer); using the "
+            "default %d instead",
+            name,
+            raw,
+            default,
+        )
+        return default
     return value * scale
 
 
@@ -172,14 +184,20 @@ def configured_page_ceiling() -> int | None:
     """``PAGE_CAP_ENV`` read as an optional operator CEILING on the page budget.
 
     Model-aware policies apply it with ``min()`` on top of the model's own
-    limits; unset means no ceiling beyond LLMWhisperer's 999.
+    limits; unset means no ceiling beyond LLMWhisperer's 999. An invalid
+    value keeps ``DEFAULT_PAGE_CAP``.
     """
-    return _optional_positive_int_env(PAGE_CAP_ENV)
+    return _optional_positive_int_env(PAGE_CAP_ENV, DEFAULT_PAGE_CAP)
 
 
 def configured_request_bytes_ceiling() -> int | None:
-    """``MAX_TOTAL_MB_ENV`` (MiB, as before) as an optional raw-byte ceiling."""
-    return _optional_positive_int_env(MAX_TOTAL_MB_ENV, scale=1024 * 1024)
+    """``MAX_TOTAL_MB_ENV`` (MiB, as before) as an optional raw-byte ceiling.
+
+    An invalid value keeps ``DEFAULT_MAX_TOTAL_BYTES``.
+    """
+    return _optional_positive_int_env(
+        MAX_TOTAL_MB_ENV, DEFAULT_MAX_TOTAL_BYTES, scale=1024 * 1024
+    )
 
 
 class _UseConfigured:
