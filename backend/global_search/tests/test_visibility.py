@@ -88,12 +88,51 @@ class SearchVisibilityTests(CoOwnerOrgTestMixin, TestCase):
             leaked = set(result_ids(response)) & set(foreign.values())
             self.assertEqual(leaked, set(), user.email)
 
-    def test_frictionless_adapters_are_listed_for_everyone(self) -> None:
-        # The adapter list shows platform-provided adapters to every member.
+    def test_frictionless_adapters_are_never_returned(self) -> None:
+        # Listed so any member can delete one, but adapter retrieve refuses
+        # them for everyone, admins included; search would only lead to a 403.
         adapter = build_adapter(
             self.org, self.owner, f"{QUERY}-frictionless", is_friction_less=True
         )
-        self.assertTrue(self._found(self.outsider, OSSSearchType.ADAPTER, adapter))
+        adapter.memberships.create(user=self.owner, role=ResourceRole.OWNER)
+        for user in (self.owner, self.admin, self.service_account, self.outsider):
+            self.assertFalse(
+                self._found(user, OSSSearchType.ADAPTER, adapter), user.email
+            )
+
+    def test_adapter_route_follows_who_may_edit_it(self) -> None:
+        # adapter.detail is gated like adapter retrieve: owners, co-owners,
+        # admins and service accounts. Anyone else who can list the adapter
+        # opens the read-only adapter.info.
+        adapter = self._private(OSSSearchType.ADAPTER)
+        set_resource_share_groups(adapter, [self.group.id])
+        adapter.shared_to_org = True
+        adapter.save()
+        expected = {
+            self.owner: "adapter.detail",
+            self.coowner: "adapter.detail",
+            self.admin: "adapter.detail",
+            self.service_account: "adapter.detail",
+            self.viewer: "adapter.info",
+            self.group_member: "adapter.info",
+            self.outsider: "adapter.info",
+        }
+        for user, route_key in expected.items():
+            with self.subTest(user=user.email):
+                response = search(
+                    user, q=QUERY, types=OSSSearchType.ADAPTER, limit=20
+                )
+                (result,) = response.data["groups"][0]["results"]
+                self.assertEqual(
+                    result["route"],
+                    {
+                        "key": route_key,
+                        "params": {
+                            "id": str(adapter.pk),
+                            "adapter_type": adapter.adapter_type,
+                        },
+                    },
+                )
 
     def test_no_op_adapters_are_never_returned(self) -> None:
         adapter = build_adapter(

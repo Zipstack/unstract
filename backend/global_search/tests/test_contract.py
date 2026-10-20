@@ -4,7 +4,8 @@
 * Each OSS type's context line and route params match values copied from
   the README's type table; the table's order, type, label and route key
   columns are checked against the registered providers.
-* The endpoint is mounted on the tenant path.
+* The endpoint is mounted on the tenant path, and refuses a URL organisation
+  other than the session's.
 """
 
 import json
@@ -14,10 +15,12 @@ from unittest.mock import patch
 
 import jsonschema
 from django.db import connection
+from account_v2.models import Organization
 from django.test import TestCase
 from django.urls import resolve
 from permissions.roles import ResourceRole
 from permissions.tests.base import CoOwnerOrgTestMixin, make_user
+from tenant_account_v2.models import OrganizationMember
 
 from global_search.constants import OSSSearchType as T
 from global_search.oss_providers import OSS_PROVIDERS, WorkflowProvider
@@ -124,6 +127,42 @@ class SearchContractTests(CoOwnerOrgTestMixin, TestCase):
         # /api/v1/unstract/<org>/search/ resolves as this path.
         match = resolve("/api/v1/unstract/search/")
         self.assertIs(match.func.view_class, GlobalSearchView)
+
+    def test_url_org_must_match_the_session_org(self) -> None:
+        # Through the real middleware: results come from the session's org,
+        # so a URL naming another org (even one the user belongs to) is
+        # refused rather than answered from the wrong tenant.
+        workflow = OSS_BUILDERS[T.WORKFLOW](self.org, self.owner, "theta-flow")
+        other = Organization.objects.create(
+            name="org-b", display_name="Org B", organization_id="org-b"
+        )
+        OrganizationMember.objects.create(organization=other, user=self.admin, role="admin")
+        # The built-in session auth, so a distribution's auth plugin cannot
+        # 401 the request first; the org check runs after either.
+        no_plugin = patch(
+            "account_v2.custom_auth_middleware.AuthenticationPluginRegistry"
+            ".is_plugin_available",
+            return_value=False,
+        )
+        no_plugin.start()
+        self.addCleanup(no_plugin.stop)
+        self.client.force_login(self.admin)
+        session = self.client.session
+        session["organization"] = self.org.organization_id
+        session.save()
+
+        ok = self.client.get(
+            f"/api/v1/unstract/{self.org.organization_id}/search/", {"q": "theta"}
+        )
+        self.assertEqual(ok.status_code, 200)
+        self.assertIn(
+            str(workflow.pk),
+            [r["id"] for g in ok.json()["groups"] for r in g["results"]],
+        )
+        denied = self.client.get(
+            f"/api/v1/unstract/{other.organization_id}/search/", {"q": "theta"}
+        )
+        self.assertEqual(denied.status_code, 403)
 
 
 def test_readme_lists_every_oss_type():

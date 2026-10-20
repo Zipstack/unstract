@@ -63,7 +63,10 @@ def _group(provider: SearchProvider, user: Any, query: str, limit: int) -> dict 
                 "name": hit.name,
                 "context": hit.context,
                 "match": hit.match.label,
-                "route": {"key": provider.route_key, "params": hit.route_params},
+                "route": {
+                    "key": hit.route_key or provider.route_key,
+                    "params": hit.route_params,
+                },
             }
             for hit in hits[:limit]
         ],

@@ -2,30 +2,45 @@
 
 Each provider starts from the same ``Model.objects.for_user(user)`` its list
 view uses, so search never returns a row the caller could not open from the
-list. Search may narrow further (pipeline type, No Op adapters), never widen.
+list. Search may narrow further (pipeline type, No Op and frictionless
+adapters), never widen.
 """
 
 from __future__ import annotations
 
+import dataclasses
 from typing import Any
 
 from adapter_processor_v2.models import AdapterInstance
 from api_v2.models import APIDeployment
 from connector_v2.models import ConnectorInstance
 from django.contrib.contenttypes.models import ContentType
-from django.db.models import CharField, F, Model, OuterRef, QuerySet, Subquery
+from django.db.models import (
+    BooleanField,
+    CharField,
+    Exists,
+    F,
+    Model,
+    OuterRef,
+    Q,
+    QuerySet,
+    Subquery,
+    Value,
+)
 from django.db.models.functions import Cast
 from permissions.roles import ResourceRole
 from pipeline_v2.models import Pipeline
 from prompt_studio.prompt_studio_core_v2.models import CustomTool
 from tenant_account_v2.models import ResourceMembership
+from tenant_account_v2.organization_member_service import OrganizationMemberService
 from workflow_manager.workflow_v2.models.workflow import Workflow
 
 from global_search.constants import OSSSearchType
-from global_search.providers import ModelSearchProvider
+from global_search.providers import ModelSearchProvider, SearchHit
 
 OWNER_EMAIL = "_search_owner_email"
 PARENT_NAME = "_search_parent_name"
+CAN_EDIT = "_search_can_edit"
 
 # Frontend v1 retires the No Op adapters (spec decision D12, UN-4257);
 # their ids share this prefix.
@@ -57,7 +72,7 @@ def _provider(registry_id: str) -> str:
 class OwnedModelProvider(ModelSearchProvider):
     """Context line is the owner's e-mail."""
 
-    def annotate(self, queryset: QuerySet[Any]) -> QuerySet[Any]:
+    def annotate(self, queryset: QuerySet[Any], user: Any) -> QuerySet[Any]:
         return queryset.annotate(**{OWNER_EMAIL: owner_email_subquery(queryset.model)})
 
     def context(self, obj: Model) -> str | None:
@@ -67,7 +82,7 @@ class OwnedModelProvider(ModelSearchProvider):
 class WorkflowChildProvider(ModelSearchProvider):
     """Context line is the parent workflow's name."""
 
-    def annotate(self, queryset: QuerySet[Any]) -> QuerySet[Any]:
+    def annotate(self, queryset: QuerySet[Any], user: Any) -> QuerySet[Any]:
         return queryset.annotate(**{PARENT_NAME: F("workflow__workflow_name")})
 
     def context(self, obj: Model) -> str | None:
@@ -139,9 +154,41 @@ class AdapterProvider(ModelSearchProvider):
     description_field = "description"
 
     def visible_queryset(self, user: Any) -> QuerySet[Any]:
+        # Frictionless adapters stay in the adapter list, where any member
+        # may delete them, but nobody can open one: retrieve refuses them
+        # for everyone, admins included (IsFrictionLessAdapter).
         return AdapterInstance.objects.for_user(user).exclude(
-            adapter_id__startswith=NO_OP_ADAPTER_PREFIX
+            Q(adapter_id__startswith=NO_OP_ADAPTER_PREFIX) | Q(is_friction_less=True)
         )
+
+    @property
+    def info_route_key(self) -> str:
+        return f"{self.type_key}.info"
+
+    def annotate(self, queryset: QuerySet[Any], user: Any) -> QuerySet[Any]:
+        # Same rule as IsFrictionLessAdapter, which gates retrieve: service
+        # accounts, org admins and owners (creator or co-owner). Anyone else
+        # who can list the adapter opens it read-only, via adapter_info.
+        if getattr(
+            user, "is_service_account", False
+        ) or OrganizationMemberService.is_user_organization_admin(user):
+            can_edit = Value(True, output_field=BooleanField())
+        else:
+            can_edit = Exists(
+                ResourceMembership.objects.filter(
+                    content_type=ContentType.objects.get_for_model(queryset.model),
+                    object_id=Cast(OuterRef("pk"), output_field=CharField()),
+                    role=ResourceRole.OWNER,
+                    user=user,
+                )
+            )
+        return queryset.annotate(**{CAN_EDIT: can_edit})
+
+    def to_hit(self, obj: Model) -> SearchHit:
+        hit = super().to_hit(obj)
+        if getattr(obj, CAN_EDIT):
+            return hit
+        return dataclasses.replace(hit, route_key=self.info_route_key)
 
     def context(self, obj: Model) -> str | None:
         return " · ".join(p for p in (obj.adapter_type, _provider(obj.adapter_id)) if p)

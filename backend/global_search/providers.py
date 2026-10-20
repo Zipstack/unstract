@@ -26,6 +26,9 @@ class SearchHit:
     # No default, and it must carry the ``id`` the frontend opens.
     route_params: dict[str, str]
     context: str | None = None
+    # Overrides the provider's ``route_key`` for this hit, for a type whose
+    # rows open on different screens depending on the caller.
+    route_key: str | None = None
 
     def __post_init__(self) -> None:
         if "id" not in self.route_params:
@@ -71,8 +74,8 @@ class ModelSearchProvider(SearchProvider):
     def visible_queryset(self, user: Any) -> QuerySet[Any]:
         """Rows ``user`` can see in this type's list, before search."""
 
-    def annotate(self, queryset: QuerySet[Any]) -> QuerySet[Any]:
-        """Hook to add context columns without per-row queries."""
+    def annotate(self, queryset: QuerySet[Any], user: Any) -> QuerySet[Any]:
+        """Hook to add context or route columns without per-row queries."""
         return queryset
 
     @abstractmethod
@@ -89,7 +92,7 @@ class ModelSearchProvider(SearchProvider):
             name_fields=self.name_fields,
             description_field=self.description_field,
         )
-        return [self.to_hit(obj) for obj in self.annotate(queryset)[: limit + 1]]
+        return [self.to_hit(obj) for obj in self.annotate(queryset, user)[: limit + 1]]
 
     def to_hit(self, obj: Model) -> SearchHit:
         return SearchHit(

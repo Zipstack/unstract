@@ -24,7 +24,6 @@ from django.db import connection
 from django.test import TestCase
 from django.test.utils import CaptureQueriesContext
 from permissions.roles import ResourceRole
-from permissions.tests.base import _ADMIN_PREDICATE
 from pipeline_v2.models import Pipeline
 from prompt_studio.prompt_studio_core_v2.models import CustomTool
 from tenant_account_v2.models import (
@@ -34,7 +33,6 @@ from tenant_account_v2.models import (
     ResourceGroupShare,
     ResourceMembership,
 )
-from unittest.mock import patch
 from utils.user_context import UserContext
 from workflow_manager.workflow_v2.models.workflow import Workflow
 
@@ -52,8 +50,9 @@ CEILING_MS = int(os.environ.get("GLOBAL_SEARCH_CEILING_MS", str(BUDGET_MS)))
 # membership subquery on the non-admin path). Anything per result -- an
 # N+1 -- breaks the bound.
 QUERIES_PER_TYPE = 3
-# Headroom for an incidental per-request lookup.
-FIXED_OVERHEAD_QUERIES = 2
+# Per request, not per type: the caller's admin-role lookup (memoized on the
+# user, so paid once) and the organisation lookup, plus one spare.
+FIXED_OVERHEAD_QUERIES = 3
 # OSS types only, so the bound holds in every distribution; cloud types
 # carry their own query bounds in the cloud repo.
 OSS_TYPES = ",".join(p.type_key for p in OSS_PROVIDERS)
@@ -87,6 +86,11 @@ class SearchBudgetTests(TestCase):
         )
         cls.member = users[0]
         cls.admin = users[1]
+        # A real admin role, not a patched predicate, so the role lookup a
+        # request pays is counted.
+        OrganizationMember.objects.filter(organization=cls.org, user=cls.admin).update(
+            role="admin"
+        )
 
         common = {"organization": cls.org}
         n = range(ROWS_PER_TYPE)
@@ -180,13 +184,13 @@ class SearchBudgetTests(TestCase):
 
     def setUp(self) -> None:
         UserContext.set_organization_identifier(self.org.organization_id)
-        patcher = patch(_ADMIN_PREDICATE, side_effect=lambda u: u.pk == self.admin.pk)
-        patcher.start()
-        self.addCleanup(patcher.stop)
 
     def _queries(self, user: User, limit: int) -> list[str]:
         """SQL issued for one search, minus the per-provider savepoints the
         view opens inside a transaction (TestCase always has one)."""
+        # A fresh user object, as each request gets: the admin-role memo
+        # lives on the user, so reusing one would hide that lookup.
+        user = User.objects.get(pk=user.pk)
         with CaptureQueriesContext(connection) as ctx:
             response = search(user, q="inv", types=OSS_TYPES, limit=limit)
         self.assertEqual(response.status_code, 200)
