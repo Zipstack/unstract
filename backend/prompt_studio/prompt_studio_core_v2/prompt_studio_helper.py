@@ -93,8 +93,12 @@ from unstract.sdk1.file_storage.constants import StorageType
 from unstract.sdk1.file_storage.env_helper import EnvHelper
 from unstract.sdk1.llm import LLM
 from unstract.sdk1.utils.image_limits import (
+    codes as image_limit_codes,
+)
+from unstract.sdk1.utils.image_limits import (
     compute_page_budget,
     extraction_bound_kwargs,
+    model_aware_limits_enabled,
     page_cap_message,
 )
 from unstract.sdk1.utils.indexing import IndexingUtils
@@ -1497,14 +1501,17 @@ class PromptStudioHelper:
 
     @staticmethod
     def _upload_page_budget(profile_manager: ProfileManager | None) -> Any:
-        """The default profile LLM's page budget, or None to use the fixed cap.
+        """The profile LLM's page budget, or None to use the fixed cap.
 
-        Resolution is local (the adapter's own validation, no network). Any
-        failure falls back to the fixed cap rather than blocking the upload:
-        extraction re-checks against the LLM before anything is converted.
+        Resolution is local (the adapter's own validation) and never waits on
+        the network: the limits table is served from memory, and a due
+        refresh runs in the background. Any failure, or
+        ``VLM_IMAGE_LIMITS_ENFORCE=false``, falls back to the fixed cap rather
+        than blocking the upload: extraction re-checks against the LLM before
+        anything is converted.
         """
         llm = getattr(profile_manager, "llm", None)
-        if llm is None:
+        if llm is None or not model_aware_limits_enabled():
             return None
         try:
             limits, tokens = LLM.image_input_limits_for(
@@ -1523,6 +1530,37 @@ class PromptStudioHelper:
             context_tokens=tokens,
             page_ceiling=bounds["page_ceiling"],
             legacy_cap=bounds["legacy_cap"],
+        )
+
+    @staticmethod
+    def _check_cached_image_extraction(
+        profile_manager: ProfileManager, extracted_text: str, filename: str
+    ) -> None:
+        """Re-check a cached image-mode extraction against the profile's LLM.
+
+        The extraction cache is keyed on the document, profile and x2text
+        config, not the LLM. After a profile switches LLM (e.g. Gemini to
+        Bedrock Claude, 20 images) a cache hit would skip the page-budget
+        check and the prompt would fail at the provider. Uses the page count
+        recorded in the image-mode summary; no-op outside image mode or when
+        the count or the LLM's limits are unknown (answer time re-checks).
+        """
+        if not PromptStudioHelper.uploads_use_image_output_mode(profile_manager):
+            return
+        page_count = LLMWhispererHelper.page_count_from_image_output_summary(
+            extracted_text
+        )
+        if page_count is None:
+            return
+        budget = PromptStudioHelper._upload_page_budget(profile_manager)
+        if budget is None or page_count <= budget.max_pages:
+            return
+        raise ExtractionAPIError(
+            f"Failed to extract '{filename}'. "
+            f"{image_limit_codes.IMAGE_PAGE_CAP_EXCEEDED}: "
+            + page_cap_message(page_count, budget, charged=None)
+            + " The document was extracted earlier for a different LLM; "
+            "switch this profile back, or use one whose LLM accepts more pages."
         )
 
     @staticmethod
@@ -2768,6 +2806,11 @@ class PromptStudioHelper:
             try:
                 extracted_text = fs_instance.read(path=extract_file_path, mode="r")
                 logger.info("Extracted text found. Reading from file..")
+                # The cache key ignores the LLM, so a cached image-mode
+                # extraction made for another LLM must still fit this one.
+                PromptStudioHelper._check_cached_image_extraction(
+                    profile_manager, extracted_text, filename
+                )
                 return extracted_text
             except FileNotFoundError as e:
                 logger.warning(

@@ -194,3 +194,16 @@ class TestModelAwareUploadCheck:
         source = inspect.getsource(_views_mod.PromptStudioCoreView.upload_for_ide)
         call = source[source.index("validate_upload_page_count_for_image_mode") :]
         assert "default_profile" in call[: call.index(")")]
+
+
+class TestEnforceSwitch:
+    """``VLM_IMAGE_LIMITS_ENFORCE=false`` restores the fixed cap at upload."""
+
+    def test_switch_off_uses_the_fixed_cap(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("VLM_IMAGE_ANSWER_PAGE_CAP", raising=False)
+        monkeypatch.setenv("VLM_IMAGE_LIMITS_ENFORCE", "false")
+        # Bedrock would reject 21 pages; the fixed cap (90) accepts them.
+        check(_pdf(21), _PDF, _llm_profile(_BEDROCK_ID, _BEDROCK_META))
+        with pytest.raises(ImageModePageLimitExceeded) as excinfo:
+            check(_pdf(91), _PDF, _llm_profile(_BEDROCK_ID, _BEDROCK_META))
+        assert "the limit is 90" in str(excinfo.value.detail)
