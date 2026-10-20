@@ -44,7 +44,6 @@ MAX_PATTERN_LENGTH = 300
 
 Layer = Literal["shipped", "override"]
 TableSource = Literal["bundled", "remote"]
-Confidence = Literal["verified", "unverified"]
 
 LIMIT_FIELDS: tuple[str, ...] = (
     "max_images_per_request",
