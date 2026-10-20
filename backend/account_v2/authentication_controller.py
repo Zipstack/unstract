@@ -45,6 +45,7 @@ from account_v2.enums import UserRole
 from account_v2.exceptions import OrganizationNotExist
 from account_v2.models import Organization, User
 from account_v2.organization import OrganizationService
+from account_v2.organization_details import with_member_details
 from account_v2.serializer import (
     GetOrganizationsResponseSerializer,
     OrganizationSerializer,
@@ -142,8 +143,14 @@ class AuthenticationController:
 
         CacheService.set_user_organizations(user.user_id, list(org_ids))
 
+        try:
+            listed: list[Any] = with_member_details(organizations, user)
+        except Exception:
+            # The details are optional; the list itself must still load.
+            logger.exception("Could not add member details to the organization list")
+            listed = organizations
         serialized_organizations = GetOrganizationsResponseSerializer(
-            organizations, many=True
+            listed, many=True
         ).data
         response = Response(
             status=status.HTTP_200_OK,

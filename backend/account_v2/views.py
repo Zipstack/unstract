@@ -2,7 +2,8 @@ import logging
 from typing import Any
 
 from django.conf import settings
-from rest_framework import status
+from drf_spectacular.utils import OpenApiResponse, extend_schema, inline_serializer
+from rest_framework import serializers, status
 from rest_framework.decorators import api_view
 from rest_framework.request import Request
 from rest_framework.response import Response
@@ -17,6 +18,7 @@ from account_v2.dto import (
 from account_v2.models import Organization
 from account_v2.organization import OrganizationService
 from account_v2.serializer import (
+    GetOrganizationsResponseSerializer,
     OrganizationSignupResponseSerializer,
     OrganizationSignupSerializer,
     UserSessionResponseSerializer,
@@ -73,6 +75,25 @@ def logout(request: Request) -> Response:
     return auth_controller.user_logout(request)
 
 
+@extend_schema(
+    operation_id="organization_list",
+    tags=["organization"],
+    responses={
+        200: inline_serializer(
+            "OrganizationListResponse",
+            {
+                "message": serializers.CharField(),
+                "organizations": GetOrganizationsResponseSerializer(many=True),
+            },
+        ),
+        412: OpenApiResponse(
+            description="The user could not be given an organization; the "
+            "session is logged out."
+        ),
+    },
+    description="The caller's organizations. See account_v2/ReadMe.md for "
+    "when role, member_count and region are present.",
+)
 @api_view(["GET"])
 def get_organizations(request: Request) -> Response:
     """get_organizations.
