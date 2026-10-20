@@ -158,18 +158,20 @@ class SessionTracker:
         if request.session.session_key is None:
             request.session.save()
         with transaction.atomic():
-            cls._prune_stale()
+            cls._prune_stale(user)
             cls._upsert(request, user)
 
-    @staticmethod
-    def _prune_stale() -> None:
+    @classmethod
+    def _prune_stale(cls, user: User) -> None:
         # Records keep a client IP, so they must not outlive their session even
-        # for a user who never lists their sessions again. Sign-in is frequent
-        # enough to keep the table to live sessions, and rare enough to afford it.
-        live_keys = Session.objects.filter(expire_date__gt=timezone.now()).values(
-            "session_key"
-        )
-        SessionRecord.objects.exclude(session_key__in=live_keys).delete()
+        # for a user who never lists their sessions again. A live session is
+        # touched on every authenticated request, so a record idle for longer
+        # than a session can live is dead: that bound keeps the global sweep on
+        # an index instead of an anti-join against every live session. The
+        # signing-in user's own records are checked exactly.
+        idle_cutoff = timezone.now() - timedelta(seconds=settings.SESSION_COOKIE_AGE)
+        SessionRecord.objects.filter(last_active_at__lt=idle_cutoff).delete()
+        cls.live_records(user)
 
     @classmethod
     def touch(cls, request: HttpRequest) -> None:
@@ -209,7 +211,13 @@ class SessionTracker:
 
     @staticmethod
     def live_records(user: User) -> list[SessionRecord]:
-        """The user's recorded sessions that are still live, pruning the rest."""
+        """The user's recorded sessions that are still live, pruning the rest.
+
+        Liveness must come from `django_session`, not from the record alone: a
+        request that passed authentication just before its session was revoked
+        can still `touch()` and recreate the record. Checking the session here is
+        what keeps such a record out of the list.
+        """
         records = list(SessionRecord.objects.filter(user=user))
         live_keys = set(
             Session.objects.filter(

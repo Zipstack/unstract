@@ -191,7 +191,8 @@ class SessionRecord(models.Model):
     ip_address = models.GenericIPAddressField(null=True, blank=True)
     location = models.CharField(max_length=255, null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
-    last_active_at = models.DateTimeField()
+    # Indexed for the idle sweep at sign-in.
+    last_active_at = models.DateTimeField(db_index=True)
 
     class Meta:
         verbose_name = "Session Record"

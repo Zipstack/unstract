@@ -154,19 +154,64 @@ class SessionEndpointsTest(APITestCase):
         bob_key = self._key(browser)
         self.assertNotEqual(bob_key, alice_key)
         self.assertEqual(SessionRecord.objects.get(session_key=bob_key).user, bob)
-        self.assertFalse(SessionRecord.objects.filter(session_key=alice_key).exists())
+        # Alice's flushed session is gone, so it is no longer one of hers.
+        self.assertEqual(SessionTracker.live_records(self.user), [])
 
-    def test_sign_in_prunes_records_of_expired_sessions(self) -> None:
-        stale = self._sign_in(self._make_user("bob@example.com"))
-        Session.objects.filter(session_key=self._key(stale)).update(
+    def _expire(self, client: APIClient) -> None:
+        Session.objects.filter(session_key=self._key(client)).update(
             expire_date=timezone.now() - timedelta(seconds=1)
         )
+
+    def test_sign_in_prunes_the_users_own_dead_records(self) -> None:
+        stale = self._sign_in(self.user)
+        self._expire(stale)
 
         self._sign_in(self.user)
 
         self.assertFalse(
             SessionRecord.objects.filter(session_key=self._key(stale)).exists()
         )
+
+    def test_sign_in_leaves_other_users_recently_active_records_alone(self) -> None:
+        bob_stale = self._sign_in(self._make_user("bob@example.com"))
+        self._expire(bob_stale)
+
+        self._sign_in(self.user)
+
+        # Bob's own next sign-in or listing prunes it; Alice's does not scan it.
+        self.assertTrue(
+            SessionRecord.objects.filter(session_key=self._key(bob_stale)).exists()
+        )
+
+    def test_sign_in_removes_any_record_idle_longer_than_a_session_lives(self) -> None:
+        bob_idle = self._sign_in(self._make_user("bob@example.com"))
+        SessionRecord.objects.filter(session_key=self._key(bob_idle)).update(
+            last_active_at=timezone.now()
+            - timedelta(seconds=settings.SESSION_COOKIE_AGE + 1)
+        )
+
+        self._sign_in(self.user)
+
+        self.assertFalse(
+            SessionRecord.objects.filter(session_key=self._key(bob_idle)).exists()
+        )
+
+    def test_record_recreated_by_an_in_flight_request_after_revoke_is_not_listed(
+        self,
+    ) -> None:
+        laptop = self._sign_in(self.user)
+        desktop = self._sign_in(self.user)
+        desktop_key = self._key(desktop)
+        desktop_id = SessionRecord.objects.get(session_key=desktop_key).id
+        laptop.delete(f"{SESSIONS_URL}{desktop_id}/")
+
+        # A desktop request that authenticated before the revoke touches late.
+        SessionRecord.objects.create(
+            session_key=desktop_key, user=self.user, last_active_at=timezone.now()
+        )
+
+        self.assertEqual(len(laptop.get(SESSIONS_URL).json()), 1)
+        self.assertFalse(SessionRecord.objects.filter(session_key=desktop_key).exists())
 
     def test_sign_in_survives_a_recording_failure(self) -> None:
         with patch(
