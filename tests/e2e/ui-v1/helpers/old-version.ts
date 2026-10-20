@@ -18,7 +18,7 @@ import {
   OLD_VERSION_PREFERENCE,
   type PageKey,
 } from "../contract/registry.ts";
-import { V1_ROOT_SELECTOR } from "../contract/v1-ui.ts";
+import { APP_MOUNTED_SELECTOR, V1_ROOT_SELECTOR } from "../contract/v1-ui.ts";
 import { fillPattern, type RouteParams, routeRegex } from "./routes.ts";
 
 function writePreference([storage, key, value]: [
@@ -64,6 +64,12 @@ export async function expectOldVersionRoundTrip(
     );
   }
   const v1Root = page.locator(V1_ROOT_SELECTOR);
+  const expectV0Rendered = async () => {
+    // Before the SPA mounts there is no v1 root either; wait until it has.
+    await expect(page.locator(APP_MOUNTED_SELECTOR).first()).toBeVisible();
+    await page.waitForLoadState("networkidle").catch(() => null);
+    await expect(v1Root).toHaveCount(0);
+  };
 
   for (const [v1, v0] of Object.entries(entry.toV0)) {
     const v1Url = fillPattern(v1, params);
@@ -73,11 +79,11 @@ export async function expectOldVersionRoundTrip(
       await setOldVersionPreference(page, true);
       await page.goto(v1Url, { waitUntil: "domcontentloaded" });
       await expect(page).toHaveURL(routeRegex(v0Url));
-      await expect(v1Root).toHaveCount(0);
+      await expectV0Rendered();
 
       await page.reload({ waitUntil: "domcontentloaded" });
       await expect(page).toHaveURL(routeRegex(v0Url));
-      await expect(v1Root).toHaveCount(0);
+      await expectV0Rendered();
     });
 
     // A v1-only sub-route maps to its nearest v0 route, so the way back lands

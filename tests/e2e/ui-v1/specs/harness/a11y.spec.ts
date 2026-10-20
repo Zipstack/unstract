@@ -12,6 +12,9 @@ const DIRTY = `<!doctype html><html lang="en"><head><title>dirty</title></head>
 <body><main><h1>Dirty</h1><img src="data:image/gif;base64,R0lGODlhAQABAAAAACw=">
 <button type="button"></button></main></body></html>`;
 
+const LOW_CONTRAST = `<!doctype html><html lang="en"><head><title>contrast</title></head>
+<body><main><h1>Contrast</h1><p style="color:#bbbbbb;background:#ffffff">Faint text</p></main></body></html>`;
+
 test.describe("harness: accessibility scan", { tag: DIST.all }, () => {
   test("a clean page passes", async ({ page }) => {
     await page.setContent(CLEAN);
@@ -26,6 +29,18 @@ test.describe("harness: accessibility scan", { tag: DIST.all }, () => {
     expect(error).toBeInstanceOf(A11yViolationError);
     expect(String(error)).toContain("image-alt");
     expect(String(error)).toContain("button-name");
+  });
+
+  test("violations below the level pass, at the level fail", async ({
+    page,
+  }) => {
+    // Low-contrast text: `color-contrast` is a `serious` violation.
+    await page.setContent(LOW_CONTRAST);
+    await expectAccessible(page, { minImpact: "critical" });
+    const error = await expectAccessible(page, { minImpact: "serious" }).catch(
+      (e: unknown) => e,
+    );
+    expect(String(error)).toContain("color-contrast");
   });
 
   test("report mode annotates instead of failing", async ({ page }) => {

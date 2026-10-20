@@ -77,11 +77,15 @@ function json(route: Route, status: number, body: unknown): Promise<void> {
   });
 }
 
-/** Continues to the real API, or fulfils the stubbed rest body. */
+/**
+ * Hands the request on (to an earlier handler, else the real API), or fulfils
+ * the stubbed rest body. `fallback`, not `continue`: `continue` would skip any
+ * route the spec itself installed.
+ */
 function passThrough(screen: Screen) {
   return (route: Route) =>
     screen.restBody === undefined
-      ? route.continue()
+      ? route.fallback()
       : json(route, 200, screen.restBody);
 }
 
@@ -133,12 +137,24 @@ async function driveState(
         await rest(route).catch(() => null);
       };
       await withRoute(page, screen, hold, async () => {
+        /*
+         * Not awaited until the response is released: `open` may wait for
+         * networkidle (`app.goto` does), which cannot happen while the
+         * response is held. Settled into a value so it cannot reject unseen.
+         */
+        const opened = screen.open().then(
+          () => null,
+          (err: unknown) => err,
+        );
         try {
-          await screen.open();
           await expect(locatorFor("loading")).toBeVisible({ timeout });
           await expect(screen.rest(page)).toBeHidden({ timeout });
         } finally {
           release();
+        }
+        const openError = await opened;
+        if (openError) {
+          throw openError;
         }
         await expect(screen.rest(page)).toBeVisible({ timeout });
         await expect(locatorFor("loading")).toBeHidden({ timeout });

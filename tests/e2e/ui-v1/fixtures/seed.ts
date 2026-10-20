@@ -42,6 +42,8 @@ export const test = authTest.extend<{ seed: Seed }>({
   seed: async ({ session }, use) => {
     const prefix = `${BACKEND_URL}/api/v1/unstract/${session.orgId}`;
     const cleanups: { url: string; label: string }[] = [];
+    // Created rows whose delete URL could not be worked out.
+    const orphans: string[] = [];
 
     await use({
       prefix,
@@ -62,26 +64,35 @@ export const test = authTest.extend<{ seed: Seed }>({
             `seed POST ${url} -> ${res.status()}: ${await res.text()}`,
           );
         }
-        const created = (await res.json()) as T;
-        const id = (created as Record<string, unknown>)[
-          options.idField ?? "id"
-        ];
-        const deletePath =
-          options.deletePath?.(created) ??
-          (id === undefined
-            ? undefined
-            : `${path.replace(/\/$/, "")}/${String(id)}/`);
-        if (!deletePath) {
-          throw new Error(
-            `seed POST ${url} returned no "${options.idField ?? "id"}"; pass idField or deletePath`,
-          );
+        // The row exists from here on: anything that stops us finding its
+        // delete URL must still surface it in teardown, not drop it.
+        const raw = await res.text();
+        try {
+          const created = JSON.parse(raw) as T;
+          const id = (created as Record<string, unknown>)[
+            options.idField ?? "id"
+          ];
+          const deletePath =
+            options.deletePath?.(created) ??
+            (id === undefined
+              ? undefined
+              : `${path.replace(/\/$/, "")}/${String(id)}/`);
+          if (!deletePath) {
+            throw new Error(
+              `returned no "${options.idField ?? "id"}"; pass idField or deletePath`,
+            );
+          }
+          cleanups.push({ url: join(prefix, deletePath), label: path });
+          return created;
+        } catch (err) {
+          const reason = err instanceof Error ? err.message : String(err);
+          orphans.push(`${path}: ${reason}; response: ${raw.slice(0, 500)}`);
+          throw new Error(`seed POST ${url} created a row but ${reason}`);
         }
-        cleanups.push({ url: join(prefix, deletePath), label: path });
-        return created;
       },
     });
 
-    const leaks: string[] = [];
+    const leaks = orphans.map((o) => `${o} (never deletable)`);
     for (const { url, label } of cleanups.reverse()) {
       const res = await session.api
         .delete(url, {

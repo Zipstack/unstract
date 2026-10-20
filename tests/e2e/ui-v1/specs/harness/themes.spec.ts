@@ -34,12 +34,24 @@ test.describe("harness: theme matrix", { tag: DIST.all }, () => {
   test("a pluggable setTheme replaces the default", async ({ page }) => {
     await installDemoPage(page);
     const calls: Theme[] = [];
-    await forEachTheme(page, async () => {}, {
-      themes: ["dark"],
-      setTheme: async (_page, theme) => {
-        calls.push(theme);
+    await forEachTheme(
+      page,
+      async () => {
+        await openDemoPage(page);
+        // The default hook never ran: no attribute, no class.
+        await expect(page.locator("html")).not.toHaveAttribute(
+          THEME_ATTRIBUTE,
+          /.*/,
+        );
+        await expect(page.locator("html")).not.toHaveClass(/\bdark\b/);
       },
-    });
+      {
+        themes: ["dark"],
+        setTheme: async (_page, theme) => {
+          calls.push(theme);
+        },
+      },
+    );
     expect(calls).toEqual(["dark"]);
   });
 });

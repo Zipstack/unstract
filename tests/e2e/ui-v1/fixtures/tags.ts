@@ -1,6 +1,9 @@
 /**
  * Distribution tags. Every spec carries at least one: the config only runs
  * tests tagged for the current distribution, so an untagged spec never runs.
+ * This repo's `frontend-v1-e2e` runs `@oss`; unstract-cloud's
+ * `frontend-v1-e2e-cloud` runs `@cloud` over the same folder. Cloud-only pages
+ * belong in unstract-cloud (`specs/cloud/`), not here.
  *
  *   test("…", { tag: DIST.both }, async () => {});
  *   test.describe("…", { tag: DIST.cloud }, () => {});

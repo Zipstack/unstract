@@ -48,9 +48,35 @@ test.describe("harness: five states", { tag: DIST.all }, () => {
     }).catch((e: unknown) => e);
 
     expect(error).toBeInstanceOf(Error);
+    // The 1s state timeout was honoured, not the 5s expect default.
+    expect(Date.now() - started).toBeLessThan(4_000);
     // The held response was released: the page went on to render rest.
     await expect(page.getByTestId(DEMO_REST_TEST_ID)).toBeVisible();
-    expect(Date.now() - started).toBeLessThan(10_000);
+  });
+
+  test("an open that waits for networkidle does not hang on the held response", async ({
+    page,
+  }) => {
+    // The shape of `app.goto`, which page specs use as `open`.
+    await expectFiveStates(page, {
+      ...demoScreen(page),
+      states: ["loading"],
+      open: async () => {
+        await openDemoPage(page);
+        await page.waitForLoadState("networkidle");
+      },
+    });
+  });
+
+  test("without restBody, rest falls through to the route behind it", async ({
+    page,
+  }) => {
+    // installDemoPage's API route stands in for the real API here.
+    await expectFiveStates(page, {
+      ...demoScreen(page),
+      restBody: undefined,
+      states: ["rest", "loading"],
+    });
   });
 
   test("a wrong empty body is caught", async ({ page }) => {

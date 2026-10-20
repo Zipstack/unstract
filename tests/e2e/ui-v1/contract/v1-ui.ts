@@ -10,6 +10,13 @@
 /** Attribute on the v1 tree root that tells v1 apart from v0. */
 export const V1_ROOT_SELECTOR = '[data-ui-version="v1"]';
 
+/**
+ * Something rendered into the SPA mount (frontend/index.html `#root`). "No v1
+ * root" only means v0 rendered once this exists; before React mounts, the
+ * page has no v1 root either.
+ */
+export const APP_MOUNTED_SELECTOR = "#root > *";
+
 /** Test ids of the one skeleton, empty state, error and no-permission view. */
 export const STATE_TEST_IDS = {
   loading: "v1-state-loading",
