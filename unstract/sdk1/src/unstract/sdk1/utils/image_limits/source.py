@@ -8,14 +8,19 @@ always available. Precedence, highest first:
 1. ``VLM_IMAGE_LIMITS_FILE`` — operator override file, applied per provider
    on top of whichever base table is in use.
 2. The remote copy (``VLM_IMAGE_LIMITS_URL``, default main on GitHub), when
-   the last good fetch passed the same strict schema as the bundled file.
+   the last good fetch passed the same strict schema as the bundled file
+   and kept every provider the bundled file has.
 3. The bundled copy.
 
-Fetching is bounded so image mode never waits long on GitHub: at most one
-attempt per process per refresh window (failures included), a short
-timeout and size cap per attempt, and while one thread fetches the others
-keep serving the last good table. A fetch failure, a bad file or no
-network logs a warning and keeps the last good copy; nothing here raises.
+No caller ever waits on GitHub: ``get_limits_table`` always answers from
+memory (the last good remote copy, else the bundled one). When a refresh
+is due it is started on a background daemon thread, at most one at a time
+per process and at most one attempt per refresh window (failures
+included). That attempt has an overall deadline of
+``FETCH_TIMEOUT_SECONDS`` covering DNS, connect, headers and body, does
+not follow redirects, and is capped at ``MAX_REMOTE_BYTES``. A fetch
+failure, a bad file or no network logs a warning and keeps the last good
+copy; nothing here raises.
 """
 
 from __future__ import annotations
@@ -25,6 +30,7 @@ import os
 import threading
 import time
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 import httpx
 from unstract.sdk1.utils.image_limits._schema import (
@@ -36,6 +42,9 @@ from unstract.sdk1.utils.image_limits._schema import (
     load_limits_table,
     parse_limits_bytes,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 logger = logging.getLogger(__name__)
 
@@ -49,17 +58,26 @@ LIMITS_REFRESH_ENV = "VLM_IMAGE_LIMITS_REFRESH_SECONDS"
 DEFAULT_REFRESH_SECONDS = 3600
 # Floor on the window so a misconfigured value cannot hammer GitHub.
 MIN_REFRESH_SECONDS = 60
-# Whole-download budget for one attempt (connect + headers + body).
+# Overall deadline for one attempt: DNS, connect, headers and body. Enforced
+# by waiting on the fetch thread (``_fetch_with_deadline``), so a hung DNS
+# lookup or a server that trickles bytes cannot stretch it.
 FETCH_TIMEOUT_SECONDS = 3.0
 # The bundled file is ~80 KB; anything far larger is not a limits table.
 MAX_REMOTE_BYTES = 1_000_000
 
-# Seams for tests: the clock and the HTTP client.
+# Seams for tests: the clock, the HTTP client and how a refresh is started.
 _clock = time.monotonic
 
 
 def _http_client() -> httpx.Client:
-    return httpx.Client(timeout=FETCH_TIMEOUT_SECONDS, follow_redirects=True)
+    # No redirects: the URL is a raw file, and following one would restart
+    # httpx's per-phase timers and point the fetch at another host.
+    return httpx.Client(timeout=FETCH_TIMEOUT_SECONDS, follow_redirects=False)
+
+
+def _start_background(target: Callable[[], None]) -> None:
+    """Run a refresh off the caller's thread (tests swap in a synchronous run)."""
+    threading.Thread(target=target, name="image-limits-refresh", daemon=True).start()
 
 
 def configured_limits_url() -> str | None:
@@ -95,7 +113,11 @@ class RemoteFetchError(Exception):
 
 
 def fetch_remote_bytes(url: str) -> bytes:
-    """Download ``url`` within ``FETCH_TIMEOUT_SECONDS`` and ``MAX_REMOTE_BYTES``."""
+    """Download ``url`` (no redirects), capped at ``MAX_REMOTE_BYTES``.
+
+    The body is abandoned once ``FETCH_TIMEOUT_SECONDS`` have passed between
+    chunks; ``_fetch_with_deadline`` bounds the whole call, DNS included.
+    """
     deadline = _clock() + FETCH_TIMEOUT_SECONDS
     chunks: list[bytes] = []
     size = 0
@@ -111,6 +133,32 @@ def fetch_remote_bytes(url: str) -> bytes:
                 )
             chunks.append(chunk)
     return b"".join(chunks)
+
+
+def _fetch_with_deadline(url: str) -> bytes:
+    """``fetch_remote_bytes`` bounded by an overall ``FETCH_TIMEOUT_SECONDS``.
+
+    httpx times each phase separately and DNS resolution not at all, so the
+    download runs on its own daemon thread and is abandoned (its result
+    discarded) when the deadline passes.
+    """
+    outcome: dict[str, object] = {}
+
+    def run() -> None:
+        try:
+            outcome["data"] = fetch_remote_bytes(url)
+        except BaseException as e:  # re-raised on the waiting thread
+            outcome["error"] = e
+
+    worker = threading.Thread(target=run, name="image-limits-fetch", daemon=True)
+    worker.start()
+    worker.join(FETCH_TIMEOUT_SECONDS)
+    if worker.is_alive():
+        raise RemoteFetchError(f"no complete response within {FETCH_TIMEOUT_SECONDS:g}s")
+    error = outcome.get("error")
+    if error is not None:
+        raise error  # type: ignore[misc]
+    return outcome["data"]  # type: ignore[return-value]
 
 
 @dataclass
@@ -145,10 +193,22 @@ def _describe(table: LimitsTable) -> str:
     )
 
 
+def bundled_table() -> LimitsTable:
+    """The copy shipped in this package (never fetched, never overridden)."""
+    return _bundled_table()
+
+
+def _dropped_providers(table: LimitsTable) -> list[str]:
+    """Bundled provider keys the remote table no longer has."""
+    return sorted(set(_bundled_table().providers) - set(table.providers))
+
+
 def _refresh(url: str, state: _RemoteState) -> None:
     keeping = _describe(state.table or _bundled_table())
     try:
-        table = parse_limits_bytes(fetch_remote_bytes(url), source="remote", location=url)
+        table = parse_limits_bytes(
+            _fetch_with_deadline(url), source="remote", location=url
+        )
     except IncompatibleSchemaError as e:
         logger.warning(
             "Skipping image limits from %s: %s. Keeping the %s.", url, e, keeping
@@ -178,6 +238,19 @@ def _refresh(url: str, state: _RemoteState) -> None:
             exc_info=True,
         )
         return
+    dropped = _dropped_providers(table)
+    if dropped:
+        # A provider missing from the remote copy would resolve as an
+        # advisory pass-through and lose every enforced limit, on every
+        # install, within one refresh window. Treat it as a bad file.
+        logger.warning(
+            "Rejected image limits from %s: it drops provider(s) %s that the "
+            "bundled table has. Keeping the %s.",
+            url,
+            dropped,
+            keeping,
+        )
+        return
     previous = state.table
     state.table = table
     if previous is None or previous.origin != table.origin:
@@ -185,6 +258,10 @@ def _refresh(url: str, state: _RemoteState) -> None:
 
 
 def _base_table(*, refresh: bool = True) -> LimitsTable:
+    """The last good remote copy, else the bundled one; never waits.
+
+    ``refresh=True`` also starts a background refresh when one is due.
+    """
     global _logged_disabled
     url = configured_limits_url()
     if url is None:
@@ -197,25 +274,38 @@ def _base_table(*, refresh: bool = True) -> LimitsTable:
                 _describe(bundled),
             )
         return bundled
-    if not refresh:
-        # Last good remote copy if this process fetched one, else bundled.
-        known = _remote.get(url)
-        return (known.table if known else None) or _bundled_table()
     state = _remote.setdefault(url, _RemoteState())
+    if refresh:
+        _maybe_start_refresh(url, state)
+    return state.table or _bundled_table()
+
+
+def _maybe_start_refresh(url: str, state: _RemoteState) -> None:
     window = configured_refresh_seconds()
 
     def due() -> bool:
         return state.last_attempt is None or _clock() - state.last_attempt >= window
 
-    # Non-blocking: if another thread is fetching, serve the last good copy.
-    if due() and _lock.acquire(blocking=False):
+    # Non-blocking: if a refresh is already running, keep serving the last
+    # good copy. The lock is held by the refresh until it finishes.
+    if not (due() and _lock.acquire(blocking=False)):
+        return
+    if not due():
+        _lock.release()
+        return
+    state.last_attempt = _clock()
+
+    def run() -> None:
         try:
-            if due():
-                state.last_attempt = _clock()
-                _refresh(url, state)
+            _refresh(url, state)
         finally:
             _lock.release()
-    return state.table or _bundled_table()
+
+    try:
+        _start_background(run)
+    except Exception:  # e.g. the interpreter cannot start a thread
+        _lock.release()
+        logger.warning("Could not start the image-limits refresh", exc_info=True)
 
 
 def _apply_override(base: LimitsTable, path: str) -> LimitsTable:
@@ -248,9 +338,10 @@ def _apply_override(base: LimitsTable, path: str) -> LimitsTable:
 def get_limits_table(*, refresh: bool = True) -> LimitsTable:
     """The effective table: override file over the remote copy or bundled one.
 
-    ``refresh=False`` never fetches: it serves the last good remote copy this
-    process already holds, else the bundled one. Use it on request paths
-    (e.g. a backend serializer) that must not wait on GitHub.
+    Never waits on the network: it serves the last good remote copy this
+    process holds, else the bundled one. ``refresh=True`` (the default) also
+    starts a background refresh when the window is due; ``refresh=False``
+    never starts one.
     """
     base = _base_table(refresh=refresh)
     override = os.getenv(LIMITS_OVERRIDE_FILE_ENV) or None

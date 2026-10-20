@@ -1076,11 +1076,13 @@ class LLM:
     def get_image_input_token_budget(
         self, *, table: "LimitsTable | None" = None
     ) -> int | None:
-        """Context window for the image-mode token term, or None when unknown.
+        """Context window for the image-mode token advisory, or None if unknown.
 
         Order: the limits table's ``max_input_tokens`` override, the
-        adapter's own ``context_window``, then litellm's LOCAL registry.
-        Never ``get_model_info`` (network, and a made-up fallback value).
+        adapter's own ``context_window``, then litellm's in-process registry
+        (``local_max_input_tokens``; no network call). Never
+        ``get_model_info`` (network, and a made-up fallback value). The
+        result feeds the warn-only context-window advisory.
         """
         from unstract.sdk1.utils.image_limits import local_max_input_tokens
 
@@ -1103,9 +1105,10 @@ class LLM:
 
         Builds a metadata-only ``LLM`` (the adapter's local ``validate``; no
         platform-service call, no provider network), so the backend can check
-        a profile's LLM from its stored adapter row. The limits table may be
-        refreshed from GitHub (at most once per refresh window); pass
-        ``refresh_table=False`` on request paths that must never wait on it.
+        a profile's LLM from its stored adapter row. Never waits on GitHub:
+        the limits table is served from memory, and with ``refresh_table``
+        True (the default) a due refresh starts in the background; False
+        never starts one.
         """
         from unstract.sdk1.utils.image_limits import get_limits_table
 
