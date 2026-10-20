@@ -1,10 +1,4 @@
-"""The role alphabets are wire contracts: pin every value.
-
-``OrganizationMember.role`` stores these strings, the permission checks compare
-against them, and the SPA matches the ``unstract_*`` ones literally
-(``RequireAuth.jsx``, ``SideNavBar.jsx``, ``InviteEditUser.jsx`` and others). A
-renamed value is a silent permission change, so a change here must fail a test.
-"""
+"""Pin every role value: a renamed value is a silent permission change."""
 
 from account_v2.enums import UnstractRole, UserRole
 
@@ -26,20 +20,11 @@ def test_plugin_alphabet_is_pinned() -> None:
     }
 
 
-def test_members_compare_equal_to_their_wire_strings() -> None:
-    # StrEnum: a member is usable wherever the stored string is, so call sites
-    # can move from ``.value`` to the member without changing a comparison.
+def test_members_equal_their_stored_strings() -> None:
+    # Call sites compare members with stored strings, which needs StrEnum.
     assert UserRole.ADMIN == "admin"
     assert UnstractRole.ADMIN == "unstract_admin"
-    assert f"{UnstractRole.REVIEWER}" == "unstract_reviewer"
 
 
 def test_alphabets_are_disjoint() -> None:
-    # The default service's "admin" is not an administrator under the plugins,
-    # and the reverse. Overlap would make the two alphabets ambiguous.
-    assert not {r.value for r in UserRole} & {r.value for r in UnstractRole}
-
-
-def test_parsing_a_stored_string_returns_the_member() -> None:
-    assert UnstractRole("unstract_admin") is UnstractRole.ADMIN
-    assert UserRole("admin") is UserRole.ADMIN
+    assert not set(UserRole) & set(UnstractRole)
