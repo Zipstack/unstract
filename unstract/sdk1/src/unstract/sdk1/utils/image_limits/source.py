@@ -8,16 +8,19 @@ always available. Precedence, highest first:
 1. ``VLM_IMAGE_LIMITS_FILE`` — operator override file, applied per provider
    on top of whichever base table is in use.
 2. The remote copy (``VLM_IMAGE_LIMITS_URL``, default main on GitHub), when
-   the last good fetch passed the same strict schema as the bundled file
-   and stays within what a data refresh may change (``_loosened_limits``):
-   every bundled provider kept with the same ``kind``, and no enforced
-   image-count or request-byte limit raised above
-   ``MAX_REMOTE_RAISE_FACTOR`` times the bundled value. Lowering a limit and
-   adding providers or models are always accepted.
+   the last good fetch passed the same strict schema as the bundled file.
+   What a remote copy may change is enforced at lookup time, not here:
+   ``resolve.resolve_image_limits`` clamps every remote-table result
+   against the bundled table (bundled ``kind``; image-count and
+   request-byte limits at most ``MAX_REMOTE_RAISE_FACTOR`` times the
+   bundled value). A provider the remote copy lacks resolves from the
+   bundled entry. So a bad value on main is capped per model, and every
+   other change in the same file (tightening, new models and providers)
+   still reaches installs.
 3. The bundled copy.
 
-The operator override file is trusted as configuration: these remote
-checks never apply to it.
+The operator override file is trusted as configuration: the clamp never
+applies to a field or provider entry it supplies.
 
 No caller ever waits on GitHub: ``get_limits_table`` always answers from
 memory (the last good remote copy, else the bundled one). When a refresh
@@ -32,7 +35,6 @@ copy; nothing here raises.
 
 from __future__ import annotations
 
-import json
 import logging
 import os
 import threading
@@ -42,23 +44,17 @@ from typing import TYPE_CHECKING
 
 import httpx
 from unstract.sdk1.utils.image_limits._schema import (
-    BUNDLED_LIMITS_PATH,
     LIMITS_OVERRIDE_FILE_ENV,
-    FieldValue,
     IncompatibleSchemaError,
     LimitsSchemaError,
     LimitsTable,
-    OverrideEntry,
-    ProviderEntry,
     apply_override_file,
     load_limits_table,
     parse_limits_bytes,
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterator
-
-    from unstract.sdk1.utils.image_limits.resolve import LimitValue
+    from collections.abc import Callable
 
 logger = logging.getLogger(__name__)
 
@@ -82,12 +78,11 @@ MAX_REMOTE_BYTES = 1_000_000
 # How far a remote copy may raise an enforced image-count or request-byte
 # limit over the bundled value (product decision, UN-4427). A data fix that
 # needs more than this ships in an sdk1 release. Lowering is unlimited.
+# Applied at lookup time (``resolve._clamp_to_bundled``).
 MAX_REMOTE_RAISE_FACTOR = 2
 # The enforced limits a remote copy may raise only that far.
 GUARDED_FIELDS: tuple[str, ...] = ("max_images_per_request", "max_request_bytes")
-HOSTED_KIND = "hosted"
-# Rejection reasons quoted in one log line; the rest are counted.
-_MAX_REASONS_LOGGED = 5
+REMOTE_SOURCE = "remote"
 
 # Seams for tests: the clock, the HTTP client and how a refresh is started.
 _clock = time.monotonic
@@ -197,7 +192,9 @@ _remote: dict[str, _RemoteState] = {}
 # override path -> (base table it was applied to, merged table)
 _with_override: dict[str, tuple[LimitsTable, LimitsTable]] = {}
 _logged_disabled = False
-_known_ids: dict[str, tuple[str, ...]] | None = None
+# (provider, model, field) clamps already logged by this process.
+_clamp_reported: set[tuple[str, str, str]] = set()
+_clamp_lock = threading.Lock()
 
 
 def _bundled_table() -> LimitsTable:
@@ -223,153 +220,17 @@ def bundled_table() -> LimitsTable:
     return _bundled_table()
 
 
-def _dropped_providers(table: LimitsTable) -> list[str]:
-    """Bundled provider keys the remote table no longer has."""
-    return sorted(set(_bundled_table().providers) - set(table.providers))
+def first_clamp_report(key: tuple[str, str, str]) -> bool:
+    """True the first time this process clamps ``(provider, model, field)``.
 
-
-def _raw_value(field_value: FieldValue | LimitValue | None) -> int | None:
-    """A count, or a byte limit as raw bytes (base64-counted limits are 3/4).
-
-    Takes a table field or a resolved limit (both carry name, value and
-    ``base64_counted``).
+    Keeps the clamp warning to one line per field per process: lookups run
+    per page set and per profile render.
     """
-    if field_value is None or field_value.value is None:
-        return None
-    if field_value.name == "max_request_bytes" and field_value.base64_counted:
-        return field_value.value * 3 // 4
-    return field_value.value
-
-
-def _entry_value(
-    table: LimitsTable,
-    provider: ProviderEntry,
-    override: OverrideEntry | None,
-    name: str,
-) -> int | None:
-    """What a model matched by ``override`` (None: no override) is held to.
-
-    Mirrors the resolver's field order (override fields over an inherited
-    provider's defaults over the provider's defaults, then the table's
-    ``default``) without needing a model id.
-    """
-    fields = dict(provider.defaults)
-    if override is not None:
-        parent = table.providers.get(override.inherit) if override.inherit else None
-        if parent is not None:
-            fields.update(parent.defaults)
-        fields.update(override.fields)
-    value = fields.get(name)
-    if value is None or value.value is None:
-        value = table.default.get(name)
-    return _raw_value(value)
-
-
-def _field_label(name: str) -> str:
-    return f"{name} (raw bytes)" if name == "max_request_bytes" else name
-
-
-def _raised_too_far(before: int | None, after: int | None) -> bool:
-    if before is None:
-        return False  # nothing was enforced, so nothing can loosen
-    return after is None or after > MAX_REMOTE_RAISE_FACTOR * before
-
-
-def _known_model_ids() -> dict[str, tuple[str, ...]]:
-    """Example model ids per provider from the bundled file's ``vision_models``.
-
-    Documentation-only data the parser does not keep; read here so a remote
-    copy can be checked against how real models resolve, not just entry by
-    entry (a new, earlier override can shadow an existing one).
-    """
-    global _known_ids
-    if _known_ids is None:
-        ids: dict[str, tuple[str, ...]] = {}
-        try:
-            data = json.loads(BUNDLED_LIMITS_PATH.read_bytes())
-            for key, entry in data.get("providers", {}).items():
-                families = (entry.get("vision_models") or {}).get("families") or {}
-                examples = [
-                    str(model)
-                    for family in families.values()
-                    for model in (family.get("examples") or [])
-                ]
-                ids[key] = tuple(dict.fromkeys(examples))
-        except (OSError, ValueError, AttributeError, TypeError):
-            logger.warning("Could not read the bundled model examples", exc_info=True)
-        _known_ids = ids
-    return _known_ids
-
-
-def _loosened_by_entry(table: LimitsTable) -> Iterator[str]:
-    """Kind changes and over-raised limits, provider entry by entry."""
-    bundled = _bundled_table()
-    for key, shipped in bundled.providers.items():
-        remote = table.providers.get(key)
-        if remote is None:
-            continue  # reported by ``_dropped_providers``
-        if remote.kind != shipped.kind:
-            yield f"{key}: kind changed from {shipped.kind} to {remote.kind}"
-            continue
-        if shipped.kind != HOSTED_KIND:
-            continue
-        remote_overrides = {o.pattern: o for o in remote.overrides}
-        entries: list[tuple[str, OverrideEntry | None]] = [("defaults", None)]
-        entries += [(f"override {o.pattern!r}", o) for o in shipped.overrides]
-        for label, shipped_override in entries:
-            # An override the remote copy removed (or re-patterned) leaves
-            # its models on the provider defaults.
-            remote_override = (
-                remote_overrides.get(shipped_override.pattern)
-                if shipped_override is not None
-                else None
-            )
-            for name in GUARDED_FIELDS:
-                before = _entry_value(bundled, shipped, shipped_override, name)
-                after = _entry_value(table, remote, remote_override, name)
-                if _raised_too_far(before, after):
-                    yield f"{key} {label}: {_field_label(name)} {before} -> {after}"
-
-
-def _loosened_for_known_models(table: LimitsTable) -> Iterator[str]:
-    """Over-raised (or no longer enforced) limits of the bundled example models."""
-    # Imported here: ``resolve`` imports this module.
-    from unstract.sdk1.utils.image_limits.resolve import resolve_image_limits
-
-    bundled = _bundled_table()
-    for key, model_ids in _known_model_ids().items():
-        if key not in bundled.providers or key not in table.providers:
-            continue
-        for model_id in model_ids:
-            before = resolve_image_limits(key, model_id, table=bundled)
-            after = resolve_image_limits(key, model_id, table=table)
-            for name in GUARDED_FIELDS:
-                old, new = before.field(name), after.field(name)
-                if old.advisory or old.value is None:
-                    continue  # not enforced in the bundled table
-                old_raw = _raw_value(old)
-                new_raw = None if new.advisory else _raw_value(new)
-                if _raised_too_far(old_raw, new_raw):
-                    yield (
-                        f"{key} model {model_id!r}: {_field_label(name)} "
-                        f"{old_raw} -> {new_raw}"
-                    )
-
-
-def _loosened_limits(table: LimitsTable) -> list[str]:
-    """Why ``table`` loosens enforcement beyond what a refresh may change.
-
-    A provider's ``kind`` may not change (hosted -> pass_through would make
-    its default-filled limits advisory), and an enforced image-count or
-    request-byte limit (raw-byte equivalent) may not rise above
-    ``MAX_REMOTE_RAISE_FACTOR`` times its bundled value, whether in a
-    provider's defaults, an override, the table ``default`` it falls back
-    to, or how a bundled example model resolves. Lowering is always fine,
-    as are new providers and overrides that leave existing models alone.
-    """
-    reasons = list(dict.fromkeys(_loosened_by_entry(table)))
-    reasons += [r for r in _loosened_for_known_models(table) if r not in reasons]
-    return reasons
+    with _clamp_lock:
+        if key in _clamp_reported:
+            return False
+        _clamp_reported.add(key)
+        return True
 
 
 def _refresh(url: str, state: _RemoteState) -> None:
@@ -405,37 +266,6 @@ def _refresh(url: str, state: _RemoteState) -> None:
             url,
             keeping,
             exc_info=True,
-        )
-        return
-    dropped = _dropped_providers(table)
-    if dropped:
-        # A provider missing from the remote copy would resolve as an
-        # advisory pass-through and lose every enforced limit, on every
-        # install, within one refresh window. Treat it as a bad file.
-        logger.warning(
-            "Rejected image limits from %s: it drops provider(s) %s that the "
-            "bundled table has. Keeping the %s.",
-            url,
-            dropped,
-            keeping,
-        )
-        return
-    loosened = _loosened_limits(table)
-    if loosened:
-        shown = "; ".join(loosened[:_MAX_REASONS_LOGGED])
-        more = len(loosened) - _MAX_REASONS_LOGGED
-        if more > 0:
-            shown += f"; and {more} more"
-        logger.warning(
-            "Rejected image limits from %s: it loosens enforced limits more "
-            "than a data refresh may (kind changes, or image-count/request-byte "
-            "limits above %sx the bundled value): %s. Lowering limits and adding "
-            "providers or models is accepted; larger raises ship in an sdk1 "
-            "release. Keeping the %s.",
-            url,
-            MAX_REMOTE_RAISE_FACTOR,
-            shown,
-            keeping,
         )
         return
     previous = state.table
@@ -539,10 +369,11 @@ def get_limits_table(*, refresh: bool = True) -> LimitsTable:
 
 def clear_limits_cache() -> None:
     """Forget every cached table and fetch time (tests)."""
-    global _bundled, _logged_disabled, _known_ids
+    global _bundled, _logged_disabled
     with _lock:
         _bundled = None
-        _known_ids = None
         _remote.clear()
         _with_override.clear()
         _logged_disabled = False
+    with _clamp_lock:
+        _clamp_reported.clear()

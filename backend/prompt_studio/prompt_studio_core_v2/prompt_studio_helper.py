@@ -1544,6 +1544,8 @@ class PromptStudioHelper:
         check and the prompt would fail at the provider. Uses the page count
         recorded in the image-mode summary; no-op outside image mode or when
         the count or the LLM's limits are unknown (answer time re-checks).
+        With ``VLM_IMAGE_LIMITS_ENFORCE=false`` the fixed page cap applies,
+        as at upload.
         """
         if not PromptStudioHelper.uploads_use_image_output_mode(profile_manager):
             return
@@ -1552,6 +1554,18 @@ class PromptStudioHelper:
         )
         if page_count is None:
             return
+        if not model_aware_limits_enabled():
+            page_cap = configured_page_cap()
+            if page_count <= page_cap:
+                return
+            raise ExtractionAPIError(
+                f"Failed to extract '{filename}'. "
+                f"{image_limit_codes.IMAGE_PAGE_CAP_EXCEEDED}: This document has "
+                f"too many pages for image output mode. It has {page_count} "
+                f"pages, and the limit is {page_cap} because every page is sent "
+                "to the LLM in one request. Split the document into smaller "
+                "files, or switch this profile to a text output mode."
+            )
         budget = PromptStudioHelper._upload_page_budget(profile_manager)
         if budget is None or page_count <= budget.max_pages:
             return
