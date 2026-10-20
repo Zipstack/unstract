@@ -27,7 +27,7 @@
 
 ## Organization list contract
 
-`GET /api/v1/organization` returns the caller's organizations. The schema is the `organization_list` operation's `@extend_schema` annotation in `views.py`; this section states the rules the schema can't.
+`GET /api/v1/organization` returns the caller's organizations. The schema is the `organization_list` operation's `@extend_schema` annotation in `views.py`; this section states the rules the schema can't. Example from a cloud deployment:
 
 ```json
 {
@@ -46,13 +46,13 @@
 }
 ```
 
-- `id`, `display_name` and `name` are always present, in that order. `metadata` is present when the auth plugin supplies it (cloud).
+- `id`, `display_name`, `name` and `metadata` are always present, in that order. `metadata` is `null` in OSS and holds the identity provider's organization metadata in cloud.
 - `role`, `member_count` and `region` are each **absent, never null**, when this deployment can't answer for that organization. In cloud, regions share one identity provider, so the list can name organizations with no data on this deployment.
 
 | Field | Present when | Value |
 |---|---|---|
 | `role` | The caller has a membership in the organization on this deployment. | The stored role: `admin` or `user` in OSS; `unstract_admin`, `unstract_user`, `unstract_supervisor` or `unstract_reviewer` in cloud. |
-| `member_count` | The organization exists on this deployment. | Members who have signed in on this deployment. Pending invitations are not counted. |
+| `member_count` | The organization exists on this deployment. | The people the members page lists: members who have signed in on this deployment. Platform API key accounts and pending invitations are not counted. |
 | `region` | The organization exists on this deployment and the deployment sets `REGION`. | The region code (`US`, `EU`; `STAGING`, `DEV` or `INTEGRATION` outside production). The client maps it to a label. OSS and on-prem never send it. |
 
 If working out these three fields fails, the list is returned without them.

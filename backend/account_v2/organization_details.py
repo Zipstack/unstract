@@ -6,8 +6,9 @@ field is added only where this deployment can answer it, and is otherwise left
 out of the row rather than sent as null:
 
 - ``role``: the caller has a membership row in that organization here.
-- ``member_count``: the organization exists here. Counts members who have
-  signed in here, not pending invitations.
+- ``member_count``: the organization exists here. Counts the people the
+  members page lists: members who have signed in here, without platform API
+  key accounts or pending invitations.
 - ``region``: the organization exists here and ``settings.REGION`` is set.
 """
 
@@ -16,7 +17,7 @@ from dataclasses import asdict
 from typing import Any
 
 from django.conf import settings
-from django.db.models import Count
+from django.db.models import Count, Q
 from tenant_account_v2.models import OrganizationMember
 
 from account_v2.models import Organization, User
@@ -36,7 +37,14 @@ def with_member_details(organizations: Sequence[Any], user: User) -> list[dict[s
     ids = [org.id for org in organizations]
     member_counts = dict(
         Organization.objects.filter(organization_id__in=ids)
-        .annotate(member_count=Count("organizationmember"))
+        .annotate(
+            # Same rule as the members page: platform API key accounts are
+            # members in the table but not people.
+            member_count=Count(
+                "organizationmember",
+                filter=Q(organizationmember__user__is_service_account=False),
+            )
+        )
         .values_list("organization_id", "member_count")
     )
     # _base_manager: the default manager filters to the request's organization.

@@ -43,7 +43,8 @@ class GetOrganizationsResponseSerializer(serializers.Serializer):
     )
     member_count = serializers.IntegerField(
         required=False,
-        help_text="Members who have signed in on this deployment. Absent if "
+        help_text="Members who have signed in on this deployment, without platform "
+        "API key accounts. Absent if "
         "the organization has no data on this deployment.",
     )
     region = serializers.CharField(

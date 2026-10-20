@@ -58,6 +58,7 @@ class WithMemberDetailsTests(TestCase):
             OrganizationMember.objects.create(organization=org, user=user, role=role)
         # The list is requested from inside one organization's context.
         UserContext.set_organization_identifier(self.org_a.organization_id)
+        self.addCleanup(UserContext.set_organization_identifier, None)
 
     @override_settings(REGION="US")
     def test_role_count_and_region_per_organisation(self) -> None:
@@ -101,6 +102,15 @@ class WithMemberDetailsTests(TestCase):
         self.assertEqual(row["member_count"], 1)
         self.assertEqual(row["region"], "US")
         self.assertNotIn("role", row)
+
+    def test_member_count_leaves_out_service_accounts(self) -> None:
+        # Platform API keys get a member row; the members page doesn't list them.
+        bot = _user("key-bot@example.com")
+        bot.is_service_account = True
+        bot.save()
+        OrganizationMember.objects.create(organization=self.org_a, user=bot, role="user")
+        row = with_member_details([_data(self.org_a)], self.caller)[0]
+        self.assertEqual(row["member_count"], 3)
 
     def test_two_queries_for_any_number_of_organisations(self) -> None:
         orgs = [_data(self.org_a), _data(self.org_b), _data(self.org_c)]

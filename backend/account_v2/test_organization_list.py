@@ -14,7 +14,7 @@ from rest_framework.test import APIRequestFactory, force_authenticate
 from tenant_account_v2.models import OrganizationMember
 from utils.user_context import UserContext
 
-from account_v2 import urls
+from account_v2 import urls, views
 from account_v2.authentication_controller import AuthenticationController
 from account_v2.dto import OrganizationData
 from account_v2.models import Organization, User
@@ -44,6 +44,7 @@ class OrganizationListTests(TestCase):
         ]:
             OrganizationMember.objects.create(organization=org, user=user, role=role)
         UserContext.set_organization_identifier(org_a.organization_id)
+        self.addCleanup(UserContext.set_organization_identifier, None)
 
         for target, kwargs in [
             (
@@ -68,6 +69,7 @@ class OrganizationListTests(TestCase):
             )
             for o in (org_a, org_b)
         ]
+        self.listed = listed
         patcher = patch.object(
             self.controller.auth_service, "user_organizations", return_value=listed
         )
@@ -109,6 +111,42 @@ class OrganizationListTests(TestCase):
         self.assertEqual([org["id"] for org in orgs], ["org-a", "org-b"])
         self.assertNotIn("role", orgs[0])
         logout.assert_not_called()
+
+    @override_settings(REGION=None)
+    def test_view_returns_the_old_payload_plus_details(self) -> None:
+        # Through the view, as v0 calls it: every old key and value unchanged.
+        raw = APIRequestFactory().get("/api/v1/organization")
+        force_authenticate(raw, user=self.caller)
+        with patch(
+            "account_v2.authentication_controller.AuthenticationService.user_organizations",
+            return_value=self.listed,
+        ):
+            response = views.get_organizations(raw)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.data,
+            {
+                "message": "success",
+                "organizations": [
+                    {
+                        "id": "org-a",
+                        "display_name": "Org A",
+                        "name": "org-a",
+                        "metadata": None,
+                        "role": "admin",
+                        "member_count": 3,
+                    },
+                    {
+                        "id": "org-b",
+                        "display_name": "Org B",
+                        "name": "org-b",
+                        "metadata": None,
+                        "role": "user",
+                        "member_count": 2,
+                    },
+                ],
+            },
+        )
 
 
 class OrganizationListSchemaTests(TestCase):
