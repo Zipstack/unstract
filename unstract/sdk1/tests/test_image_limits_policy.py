@@ -188,10 +188,7 @@ class TestByteBudgets:
     def test_advisory_request_bytes_are_not_enforced(self) -> None:
         policy = ImageModePolicy.from_limits([OLLAMA])
         assert policy.raw_byte_budget(page_count=3) is None
-        assert any(
-            "20 MB" in line or "20,000,000" in line
-            for line in policy.advisories(page_count=3)
-        )
+        assert any("20.0 MB" in line for line in policy.advisories(page_count=3))
 
     def test_gemma_tiny_request_limit_binds(self) -> None:
         policy = ImageModePolicy.from_limits([GEMMA])
@@ -325,7 +322,7 @@ class TestMessages:
 
     def test_describe_summarises_the_policy(self) -> None:
         text = ImageModePolicy.from_limits([BEDROCK], token_budgets=[200_000]).describe()
-        assert "Amazon Bedrock" in text and "20" in text and "20 MB" in text
+        assert "Amazon Bedrock" in text and "20" in text and "20.0 MB" in text
 
 
 class TestRolloutBounds:
@@ -382,12 +379,64 @@ class TestRolloutBounds:
         assert "90" in msg
 
     def test_ceiling_bound_bytes_message_names_the_ceiling_not_the_model(self) -> None:
-        # Bedrock allows 20 MB on the wire (~15 MB raw); a 1 MB ceiling binds.
-        policy = ImageModePolicy.from_limits([BEDROCK], bytes_ceiling=1_000_000)
+        # Bedrock allows 20 MB on the wire (~15 MB raw); a 1 MiB ceiling binds.
+        policy = ImageModePolicy.from_limits([BEDROCK], bytes_ceiling=1024 * 1024)
         with pytest.raises(PageImageSetTooLargeError) as excinfo:
             check_page_set(
                 policy, [(1, b"x" * 600_000), (2, b"x" * 600_000)], page_store_dir=DIR
             )
         msg = str(excinfo.value)
-        assert "20 MB request limit" not in msg
-        assert "1 MB" in msg
+        assert "20.0 MB request limit" not in msg
+        assert "over the 1.0 MiB limit" in msg
+
+
+class TestByteUnitsInMessages:
+    """A message prints its limit and its total in one unit, to 0.1.
+
+    Provider limits are documented in decimal MB; the operator and legacy
+    ceilings are MiB (``VLM_IMAGE_ANSWER_MAX_TOTAL_MB`` has always been
+    MiB). Rounding to whole units used to print Gemma 4's 3.5 MB as "4 MB"
+    and a 14.7 MiB total as "over the 15 MB limit".
+    """
+
+    def test_gemma_request_limit_keeps_its_decimal(self) -> None:
+        policy = ImageModePolicy.from_limits([GEMMA])
+        page = b"x" * 1_400_000
+        with pytest.raises(PageImageSetTooLargeError) as excinfo:
+            check_page_set(policy, [(1, page), (2, page)], page_store_dir=DIR)
+        msg = str(excinfo.value)
+        assert "total 2.8 MB (3.8 MB once encoded)" in msg
+        assert "over the 3.5 MB request limit" in msg
+        assert "3.5 MB per request" in policy.describe()
+
+    def test_legacy_ceiling_message_is_in_mib(self) -> None:
+        # The 14 MiB legacy ceiling binds under OpenAI's 512 MB limit.
+        policy = ImageModePolicy.from_limits(
+            [OPENAI], **policy_mod.extraction_bound_kwargs()
+        )
+        page = b"x" * 7_700_000
+        with pytest.raises(PageImageSetTooLargeError) as excinfo:
+            check_page_set(policy, [(1, page), (2, page)], page_store_dir=DIR)
+        msg = str(excinfo.value)
+        assert "total 14.7 MiB" in msg
+        assert "over the 14.0 MiB limit" in msg
+        assert "15 MB" not in msg and "512" not in msg
+
+    def test_describe_reports_a_binding_ceiling(self) -> None:
+        policy = ImageModePolicy.from_limits(
+            [OPENAI], **policy_mod.extraction_bound_kwargs()
+        )
+        text = policy.describe()
+        assert "14.0 MiB of page images per request" in text
+        assert "512" not in text
+
+    def test_describe_reports_the_model_limit_when_it_is_smaller(self) -> None:
+        # Bedrock's 20 MB wire limit (~15 MB raw) is under a 100 MiB ceiling.
+        policy = ImageModePolicy.from_limits([BEDROCK], bytes_ceiling=100 * 1024 * 1024)
+        text = policy.describe()
+        assert "20.0 MB per request" in text
+        assert "MiB" not in text
+
+    def test_ceiling_only_policy_reports_the_ceiling(self) -> None:
+        policy = ImageModePolicy.ceiling_only(bytes_ceiling=14 * 1024 * 1024)
+        assert "14.0 MiB of page images per request" in policy.describe()
