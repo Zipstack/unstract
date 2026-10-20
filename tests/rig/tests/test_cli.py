@@ -916,6 +916,57 @@ def test_node_command_without_npx_collects_nothing(
     ]
 
 
+def _node_group(workdir: Path, *, optional: bool):
+    from tests.rig.groups import GroupDefinition
+
+    return GroupDefinition(
+        name="ui", tier="e2e", paths=(".",), runner="playwright",
+        workdir=str(workdir), optional=optional,
+    )
+
+
+def test_node_command_optional_group_without_node_modules_collects_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """CI has npx but never installs an optional suite's packages, so
+    `npx --no-install` aborts and the group reads as an error on every run.
+    An optional group must skip instead, as `groups.yaml` documents.
+    """
+    import tests.rig.cli as cli_mod
+
+    monkeypatch.setattr(cli_mod.shutil, "which", lambda _: "/usr/bin/npx")
+    group = _node_group(tmp_path, optional=True)
+    assert cli_mod._node_command(group, junit=tmp_path / "junit.xml") == [
+        "sh", "-c", "exit 5",
+    ]
+
+
+def test_node_command_required_group_without_node_modules_still_runs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A required group (e.g. `frontend`) whose install step went missing must
+    stay red, not skip quietly.
+    """
+    import tests.rig.cli as cli_mod
+
+    monkeypatch.setattr(cli_mod.shutil, "which", lambda _: "/usr/bin/npx")
+    group = _node_group(tmp_path, optional=False)
+    cmd = cli_mod._node_command(group, junit=tmp_path / "junit.xml")
+    assert cmd[:4] == ["npx", "--no-install", "playwright", "test"]
+
+
+def test_node_command_optional_group_with_node_modules_runs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import tests.rig.cli as cli_mod
+
+    monkeypatch.setattr(cli_mod.shutil, "which", lambda _: "/usr/bin/npx")
+    (tmp_path / "node_modules").mkdir()
+    group = _node_group(tmp_path, optional=True)
+    cmd = cli_mod._node_command(group, junit=tmp_path / "junit.xml")
+    assert cmd[:4] == ["npx", "--no-install", "playwright", "test"]
+
+
 def _make_group(name: str, workdir: str):
     from tests.rig.groups import GroupDefinition
 

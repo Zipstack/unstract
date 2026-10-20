@@ -1238,6 +1238,17 @@ def _node_command(
         )
         return ["sh", "-c", "exit 5"]
 
+    if group.optional and not (group.absolute_workdir() / "node_modules").is_dir():
+        # An optional suite nobody installed (CI never installs `ui`) would
+        # otherwise make `npx --no-install` abort and read as an error on every
+        # run. Required groups fall through, so a missing install stays red.
+        print(
+            f"[rig] {group.workdir}/node_modules not found; skipping optional "
+            f"{group.name} (runner={group.runner})",
+            file=sys.stderr,
+        )
+        return ["sh", "-c", "exit 5"]
+
     if group.runner == "vitest":
         cmd = [
             "npx",
