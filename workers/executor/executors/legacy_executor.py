@@ -258,7 +258,7 @@ class LegacyExecutor(BaseExecutor):
         if self._is_image_mode_extractor(x2text):
             policy = build_extraction_image_policy(
                 shim, params.get(IKeys.LLM_INSTANCE_IDS) or []
-            )
+            ).with_advisory_sink(lambda line: shim.stream_log(line, level=LogLevel.WARN))
             shim.stream_log(policy.describe())
             image_kwargs[X2TextConstants.IMAGE_LIMITS] = policy
         try:
@@ -334,13 +334,15 @@ class LegacyExecutor(BaseExecutor):
                 str(e),
             )
             msg = f"Error from text extractor '{name}'. {e}"
-            # Image-mode limit errors carry a stable code; prefix it (as the
-            # answer-time bridge does) so it survives the string-only error
-            # propagation to Prompt Studio and deployment responses.
+            # Image-mode limit errors carry a stable code. Format them exactly
+            # as the answer-time bridge does ("CODE: message") so it survives
+            # the string-only propagation; callers may still prepend context
+            # (Prompt Studio: "Failed to extract '<file>'. "), so consumers
+            # find the code anywhere in the text, not only at the start.
             error_code = getattr(e, "error_code", None)
             if isinstance(error_code, str) and error_code:
                 raise ExtractionError(
-                    message=f"{error_code}: {msg}",
+                    message=f"{error_code}: {e}",
                     code=getattr(e, "status_code", None) or 400,
                 ) from e
             raise ExtractionError(message=msg) from e

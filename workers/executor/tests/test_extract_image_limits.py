@@ -62,21 +62,39 @@ def _resolver(configs: dict[str, dict | None]):
 def _no_env_ceilings(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("VLM_IMAGE_ANSWER_PAGE_CAP", raising=False)
     monkeypatch.delenv("VLM_IMAGE_ANSWER_MAX_TOTAL_MB", raising=False)
+    monkeypatch.delenv(policy_mod.ENFORCE_ENV, raising=False)
 
 
 class TestBuildExtractionImagePolicy:
-    def test_resolves_each_llm_and_takes_the_strictest(self) -> None:
+    @pytest.mark.parametrize("ids", [["llm-a", "llm-b"], ["llm-b", "llm-a"]])
+    def test_resolves_each_llm_and_takes_the_strictest(self, ids: list[str]) -> None:
+        # Both orders: the strict Bedrock model must win whether it comes
+        # first or last ("last LLM wins" would pass a single order).
         with patch.object(
             exec_limits.PlatformHelper,
             "get_adapter_config",
             side_effect=_resolver({"llm-a": OPENAI_CFG, "llm-b": BEDROCK_CFG}),
         ):
-            policy = exec_limits.build_extraction_image_policy(
-                MagicMock(), ["llm-a", "llm-b"]
-            )
+            policy = exec_limits.build_extraction_image_policy(MagicMock(), ids)
         assert policy.model_aware is True
         assert policy.page_budget.max_pages == 20
         assert policy.page_budget.limits.provider_key == "bedrock"
+        assert policy.max_request_bytes == 20_000_000
+        assert policy.max_image_bytes == 3_750_000  # Bedrock counts raw bytes
+        assert policy.max_image_bytes_source.provider_key == "bedrock"
+
+    def test_enforce_false_falls_back_to_the_fixed_cap(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv(policy_mod.ENFORCE_ENV, "false")
+        with patch.object(exec_limits.PlatformHelper, "get_adapter_config") as get:
+            policy = exec_limits.build_extraction_image_policy(
+                MagicMock(), ["llm-a", "llm-b"]
+            )
+        get.assert_not_called()
+        assert policy.model_aware is False
+        assert policy.page_budget.max_pages == 90
+        assert policy.raw_byte_budget(page_count=10) == 14 * 1024 * 1024
 
     def test_legacy_bound_holds_generous_models_at_90_during_rollout(self) -> None:
         with patch.object(
@@ -120,14 +138,20 @@ class TestBuildExtractionImagePolicy:
         assert any("LLM" in rec.message for rec in caplog.records)
 
     @pytest.mark.parametrize(
-        "failure",
+        ("failure", "status", "advice"),
         [
-            None,
-            RuntimeError("platform service down"),
-            {"adapter_id": "nope|1", "adapter_metadata": {}},
+            (None, 400, "retrying will not help"),
+            (RuntimeError("platform service down"), 503, "retry in a moment"),
+            (
+                {"adapter_id": "nope|1", "adapter_metadata": {}},
+                400,
+                "retrying will not help",
+            ),
         ],
     )
-    def test_resolution_failure_fails_closed_before_conversion(self, failure) -> None:
+    def test_resolution_failure_fails_closed_before_conversion(
+        self, failure, status: int, advice: str
+    ) -> None:
         with patch.object(
             exec_limits.PlatformHelper,
             "get_adapter_config",
@@ -138,7 +162,10 @@ class TestBuildExtractionImagePolicy:
         err = excinfo.value
         assert err.message.startswith(f"{codes.IMAGE_LIMITS_UNRESOLVED}: ")
         assert "No pages were converted or charged" in err.message
-        assert err.code == 503
+        # Only the message reaches the user, so it must say whether a retry
+        # can help: a lookup outage can, a broken adapter config cannot.
+        assert advice in err.message
+        assert err.code == status
 
 
 def _extract_context(params: dict) -> ExecutionContext:
@@ -196,7 +223,47 @@ class TestHandleExtractWiring:
         assert result.success
         build.assert_called_once()
         assert build.call_args.args[1] == ["llm-1"]
-        assert x2text.process.call_args.kwargs[X2TextConstants.IMAGE_LIMITS] is policy
+        passed = x2text.process.call_args.kwargs[X2TextConstants.IMAGE_LIMITS]
+        # The built policy, with the run-log advisory sink attached.
+        assert passed == policy
+        assert passed.advisory_sink is not None
+
+    def test_advisories_are_streamed_to_the_run_log_at_warn(self) -> None:
+        from unstract.sdk1.constants import LogLevel
+        from unstract.sdk1.utils.image_limits import resolve_image_limits
+
+        ollama = resolve_image_limits("ollama", "ollama_chat/llava")
+        policy = ImageModePolicy.from_limits([ollama])
+        shim = MagicMock()
+        x2text = _x2text(image_mode=True)
+        executor = LegacyExecutor()
+        with (
+            patch("executor.executors.legacy_executor.X2Text", return_value=x2text),
+            patch("executor.executors.legacy_executor.FileUtils.get_fs_instance"),
+            patch.object(LegacyExecutor, "_build_shim", return_value=shim),
+            patch(
+                "executor.executors.legacy_executor.build_extraction_image_policy",
+                return_value=policy,
+            ),
+        ):
+            executor._handle_extract(
+                _extract_context(
+                    {
+                        IKeys.X2TEXT_INSTANCE_ID: "x2t-1",
+                        IKeys.FILE_PATH: "/data/doc.pdf",
+                        IKeys.OUTPUT_FILE_PATH: "/data/extract/doc.txt",
+                        IKeys.LLM_INSTANCE_IDS: ["llm-1"],
+                    }
+                )
+            )
+        passed = x2text.process.call_args.kwargs[X2TextConstants.IMAGE_LIMITS]
+        passed.emit_advisories(page_count=40)
+        warned = [
+            c.args[0]
+            for c in shim.stream_log.call_args_list
+            if c.kwargs.get("level") == LogLevel.WARN
+        ]
+        assert any("Ollama" in line for line in warned)
 
     def test_text_mode_never_resolves_limits(self) -> None:
         x2text = _x2text(image_mode=False)
@@ -248,8 +315,9 @@ class TestExtractionErrorCodes:
         x2text = _x2text(image_mode=True, process_side_effect=err)
         with pytest.raises(ExtractionError) as excinfo:
             _run_extract(x2text, {}, policy=ImageModePolicy.ceiling_only())
-        assert excinfo.value.message.startswith(
-            f"{codes.IMAGE_PAGE_CAP_EXCEEDED}: Error from text extractor"
+        # Same "CODE: message" shape as the answer-time bridge.
+        assert excinfo.value.message == (
+            f"{codes.IMAGE_PAGE_CAP_EXCEEDED}: This document has 25 pages."
         )
         assert excinfo.value.code == 400
 
