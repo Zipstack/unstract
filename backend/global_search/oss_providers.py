@@ -155,8 +155,8 @@ class AdapterProvider(ModelSearchProvider):
 
     def visible_queryset(self, user: Any) -> QuerySet[Any]:
         # Frictionless adapters stay in the adapter list, where any member
-        # may delete them, but nobody can open one: retrieve refuses them
-        # for everyone, admins included (IsFrictionLessAdapter).
+        # may delete them, but nobody can open their detail view: retrieve
+        # refuses them for everyone, admins included (IsFrictionLessAdapter).
         return AdapterInstance.objects.for_user(user).exclude(
             Q(adapter_id__startswith=NO_OP_ADAPTER_PREFIX) | Q(is_friction_less=True)
         )

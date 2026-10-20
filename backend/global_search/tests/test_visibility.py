@@ -6,10 +6,14 @@ see it; an org member without access and another org's resources do not.
 """
 
 from account_v2.models import Organization
+from adapter_processor_v2.models import AdapterInstance
 from django.test import TestCase
+from permissions.permission import IsFrictionLessAdapter
 from permissions.roles import ResourceRole
 from permissions.tests.base import CoOwnerOrgTestMixin, make_user
 from pipeline_v2.models import Pipeline
+from rest_framework.request import Request
+from rest_framework.test import APIRequestFactory
 from tenant_account_v2.models import GroupMembership, OrganizationGroup, OrganizationMember
 from tenant_account_v2.sharing_helpers import set_resource_share_groups
 from utils.user_context import UserContext
@@ -133,6 +137,18 @@ class SearchVisibilityTests(CoOwnerOrgTestMixin, TestCase):
                         },
                     },
                 )
+                # Tied to the real gate, so the two rules cannot drift apart.
+                self.assertEqual(
+                    route_key == "adapter.detail", self._may_retrieve(user, adapter)
+                )
+
+    @staticmethod
+    def _may_retrieve(user, adapter) -> bool:
+        request = Request(APIRequestFactory().get("/"))
+        request.user = user
+        return IsFrictionLessAdapter().has_object_permission(
+            request, None, AdapterInstance.objects.get(pk=adapter.pk)
+        )
 
     def test_no_op_adapters_are_never_returned(self) -> None:
         adapter = build_adapter(

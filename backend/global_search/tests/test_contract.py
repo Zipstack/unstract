@@ -23,7 +23,7 @@ from permissions.tests.base import CoOwnerOrgTestMixin, make_user
 from tenant_account_v2.models import OrganizationMember
 
 from global_search.constants import OSSSearchType as T
-from global_search.oss_providers import OSS_PROVIDERS, WorkflowProvider
+from global_search.oss_providers import AdapterProvider, OSS_PROVIDERS, WorkflowProvider
 from global_search.providers import SearchProvider
 from global_search.tests.base import OSS_BUILDERS, search
 from global_search.views import GlobalSearchView
@@ -168,5 +168,8 @@ class SearchContractTests(CoOwnerOrgTestMixin, TestCase):
 def test_readme_lists_every_oss_type():
     for provider_cls in OSS_PROVIDERS:
         provider = provider_cls()
-        row = f"| {provider.order} | `{provider.type_key}` | {provider.label} | `{provider.route_key}` |"
+        keys = f"`{provider.route_key}`"
+        if isinstance(provider, AdapterProvider):
+            keys += f" / `{provider.info_route_key}`"
+        row = f"| {provider.order} | `{provider.type_key}` | {provider.label} | {keys} |"
         assert row in README, f"README type table is missing: {row}"

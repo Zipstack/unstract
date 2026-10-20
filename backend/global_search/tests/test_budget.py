@@ -33,6 +33,7 @@ from tenant_account_v2.models import (
     ResourceGroupShare,
     ResourceMembership,
 )
+from tenant_account_v2.organization_member_service import OrganizationMemberService
 from utils.user_context import UserContext
 from workflow_manager.workflow_v2.models.workflow import Workflow
 
@@ -184,6 +185,13 @@ class SearchBudgetTests(TestCase):
 
     def setUp(self) -> None:
         UserContext.set_organization_identifier(self.org.organization_id)
+        # "admin" is the OSS admin role; under an auth plugin with another
+        # name for it the admin subtest would silently measure a member.
+        self.assertTrue(
+            OrganizationMemberService.is_user_organization_admin(
+                User.objects.get(pk=self.admin.pk)
+            )
+        )
 
     def _queries(self, user: User, limit: int) -> list[str]:
         """SQL issued for one search, minus the per-provider savepoints the

@@ -65,8 +65,10 @@ changes.
   recently modified, then by id.
 - `context` is a single display-only line, or `null`. Do not parse it.
 - `route.key` is a route-registry name, not a URL. `route.params` values are
-  strings. It is normally the type's key from the table below; a type may
-  name a different screen per result (see adapters).
+  strings. It is one of the keys the table below lists for the result's
+  type; adapters have two (see below the table). A client that does not
+  know a key should render the result without a link, never guess a
+  screen.
 - `type` is an open string. A client should render an unknown type with its
   `label`, or skip it.
 - `failed_types` lists types whose search failed; their groups are missing
@@ -97,14 +99,14 @@ Errors use the standard error envelope:
 | 40 | `api_deployment` | API deployments | `api_deployment.detail` | `id` | parent workflow name |
 | 50 | `etl_pipeline` | ETL pipelines | `etl_pipeline.detail` | `id` | parent workflow name |
 | 60 | `task_pipeline` | Task pipelines | `task_pipeline.detail` | `id` | parent workflow name |
-| 80 | `adapter` | Adapters | `adapter.detail` | `id`, `adapter_type` | adapter type · provider |
+| 80 | `adapter` | Adapters | `adapter.detail` / `adapter.info` | `id`, `adapter_type` | adapter type · provider |
 | 90 | `connector` | Connectors | `connector.detail` | `id` | provider |
 
 An adapter opens on `adapter.detail` only for a caller who may edit it
 (owner or co-owner, org admin, service account), the same rule as the
 adapter `retrieve` endpoint. Everyone else gets `adapter.info`, with the
 same params, a read-only view backed by `adapter/info/<id>/`, which allows
-every caller who can list the adapter.
+every caller search sends there.
 
 Cloud and on-prem add `agentic_project` (20) and `review_queue` (70). Those
 apps register these types themselves, and they are documented in the cloud
@@ -123,7 +125,7 @@ admins and service accounts. Search rules:
 - Pipelines: ETL and Task only. DEFAULT and APP pipelines are excluded.
 - Adapters: platform-provided (frictionless) adapters are never returned.
   The adapter list shows them so any member can delete one, but nobody can
-  open one. No Op adapters are never returned either.
+  open their detail view. No Op adapters are never returned either.
 - Owner e-mail is not matched. The workflow, Prompt Studio, adapter and
   connector list `search` parameters do match it, so the panel and those
   filtered lists can differ slightly.
