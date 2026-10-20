@@ -30,6 +30,7 @@ from unstract.sdk1.utils.image_limits import (
 from unstract.sdk1.utils.image_limits import source as limits_source
 
 BUNDLED = Path(image_limits.__file__).parent / "limits.json"
+_REAL_HTTP_CLIENT = limits_source._http_client
 URL = "https://limits.example/limits.json"
 
 
@@ -443,7 +444,10 @@ class TestRemoteCannotDropAProvider:
 
 class TestFetchIsBounded:
     def test_redirects_are_not_followed(
-        self, serve: Callable[..., _Server], clock: _FakeClock
+        self,
+        serve: Callable[..., _Server],
+        clock: _FakeClock,
+        monkeypatch: MonkeyPatch,
     ) -> None:
         body = json.dumps(_remote_data(azure_images=7)).encode()
 
@@ -455,6 +459,15 @@ class TestFetchIsBounded:
             )
 
         server = serve(handler)
+        # Use the real client factory (its redirect setting is under test),
+        # with only the transport swapped for the mock.
+        real_client = httpx.Client
+        monkeypatch.setattr(limits_source, "_http_client", _REAL_HTTP_CLIENT)
+        monkeypatch.setattr(
+            limits_source.httpx,
+            "Client",
+            lambda **kw: real_client(transport=httpx.MockTransport(server), **kw),
+        )
         assert _azure_images() == 50
         assert server.calls == 1
 
