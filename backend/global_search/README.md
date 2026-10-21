@@ -74,7 +74,11 @@ changes.
 - `failed_types` lists types whose search failed; their groups are missing
   even if they have matches, so a client can say "some results could not be
   loaded". It is empty on a normal response.
-- `route.params` always includes `id`.
+- Every result has a `route`, and `route.params` always includes `id`: a
+  search result is always one item that can be opened. Other contracts that
+  reuse the route object (for example the notifications inbox, PB-T17) may
+  set `route` to `null` when an item has nothing to open; search never does.
+  Clients treat a `null` route like an unknown key: render without a link.
 
 Errors use the standard error envelope:
 
@@ -89,6 +93,20 @@ Errors use the standard error envelope:
 - `500` with code `search_failed` when every searched type failed and not
   all with such database errors (a bug). Retrying will not help.
 - 401 and 403 behave as on every tenant endpoint.
+
+### No matches
+
+When nothing matches, the response is still 200, with no groups:
+
+```json
+{"query": "zzqx", "groups": [], "failed_types": []}
+```
+
+A query shorter than 2 characters returns the same shape. A panel shows
+"No results" here. If `failed_types` is non-empty while `groups` is empty,
+some types could not be searched, so the panel says that instead of plain
+"No results". When every searched type fails, the response is a 5xx, not an
+empty 200 (see the errors above).
 
 ## Types
 
