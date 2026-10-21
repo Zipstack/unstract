@@ -165,12 +165,21 @@ class TestCachedImageExtractionIsRecheckedForTheLLM:
         profile = self._cache_hit(monkeypatch, pages=20)
         assert self._extract(profile) == _summary(20)
 
-    def test_enforce_switch_off_skips_the_recheck(
+    def test_enforce_switch_off_applies_the_fixed_cap(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        # Switched off, the cache hit is checked against the fixed 90-page
+        # cap instead of the LLM's 20: 50 pages pass, 91 are rejected.
         monkeypatch.setenv("VLM_IMAGE_LIMITS_ENFORCE", "false")
+        monkeypatch.delenv("VLM_IMAGE_ANSWER_PAGE_CAP", raising=False)
         profile = self._cache_hit(monkeypatch, pages=50)
         assert self._extract(profile) == _summary(50)
+        profile = self._cache_hit(monkeypatch, pages=91)
+        with pytest.raises(_psh_mod.ExtractionAPIError) as excinfo:
+            self._extract(profile)
+        msg = str(excinfo.value)
+        assert "IMAGE_PAGE_CAP_EXCEEDED" in msg
+        assert "It has 91 pages, and the limit is 90" in msg
 
     def test_summary_page_count_round_trips(self) -> None:
         from unstract.sdk1.adapters.x2text.llm_whisperer_v2.src.helper import (
