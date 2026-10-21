@@ -6,7 +6,9 @@ policy into the x2text adapter, fails closed when limits cannot be
 resolved, and keeps the machine-readable code on extraction errors.
 """
 
+import logging
 import sys
+import traceback
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -206,6 +208,70 @@ class TestBuildExtractionImagePolicy:
         # can help: a lookup outage can, a broken adapter config cannot.
         assert advice in err.message
         assert err.code == status
+
+
+CANARY = "leak-canary"
+# Missing ``api_base``: pydantic's error quotes the whole input dict
+# (``input_value={'api_key': ...}``), so the raw SdkError text holds the key.
+AZURE_CFG_LEAKY = {
+    "adapter_id": "azureopenai|592d84b9-fe03-4102-a17e-6b391f32850b",
+    "adapter_metadata": {"api_key": CANARY},
+}
+
+
+class TestUnresolvedErrorsNeverQuoteMetadata:
+    def test_validation_error_reports_only_the_type(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        caplog.set_level(logging.DEBUG)
+        with patch.object(
+            exec_limits.PlatformHelper,
+            "get_adapter_config",
+            side_effect=_resolver({"llm-a": AZURE_CFG_LEAKY}),
+        ):
+            with pytest.raises(ExtractionError) as excinfo:
+                exec_limits.build_extraction_image_policy(MagicMock(), ["llm-a"])
+        err = excinfo.value
+        assert CANARY not in err.message
+        assert "SdkError" in err.message
+        assert "retrying will not help" in err.message
+        assert err.code == 400
+        # The executor logs this exception with its traceback: no cause
+        # chain may carry the validation text either.
+        assert err.__cause__ is None and err.__suppress_context__
+        rendered = "".join(
+            traceback.format_exception(type(err), err, err.__traceback__)
+        )
+        assert CANARY not in rendered
+        assert CANARY not in caplog.text
+
+    def test_internal_error_is_not_blamed_on_the_adapter(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        with (
+            patch.object(
+                exec_limits.PlatformHelper,
+                "get_adapter_config",
+                side_effect=_resolver({"llm-a": OPENAI_CFG}),
+            ),
+            patch.object(
+                exec_limits.LLM,
+                "image_input_limits_for",
+                side_effect=KeyError("max_images_per_request"),
+            ),
+        ):
+            with pytest.raises(ExtractionError) as excinfo:
+                exec_limits.build_extraction_image_policy(MagicMock(), ["llm-a"])
+        err = excinfo.value
+        assert err.message.startswith(f"{codes.IMAGE_LIMITS_UNRESOLVED}: ")
+        assert "Internal error resolving the image limits" in err.message
+        assert "No pages were converted or charged" in err.message
+        assert "fix the profile" not in err.message
+        assert "retrying will not help" not in err.message
+        assert err.code == 500
+        assert any(
+            rec.levelno == logging.ERROR and rec.exc_info for rec in caplog.records
+        )
 
 
 def _extract_context(params: dict) -> ExecutionContext:

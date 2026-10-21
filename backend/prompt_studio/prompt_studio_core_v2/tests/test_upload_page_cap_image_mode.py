@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import inspect
 import io
+import logging
 from unittest.mock import MagicMock
 
 import pypdfium2 as pdfium
@@ -180,6 +181,24 @@ class TestModelAwareUploadCheck:
         with pytest.raises(ImageModePageLimitExceeded) as excinfo:
             check(_pdf(6), _PDF, profile)
         assert "the limit is 5" in str(excinfo.value.detail)
+
+    def test_validation_error_logs_never_quote_the_metadata(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        # Missing ``api_base``: pydantic's error quotes the whole stored
+        # metadata dict, api_key included.
+        canary = "leak-canary"
+        monkeypatch.setenv("VLM_IMAGE_ANSWER_PAGE_CAP", "5")
+        caplog.set_level(logging.DEBUG)
+        profile = _llm_profile(
+            "azureopenai|592d84b9-fe03-4102-a17e-6b391f32850b", {"api_key": canary}
+        )
+        with pytest.raises(ImageModePageLimitExceeded) as excinfo:
+            check(_pdf(6), _PDF, profile)
+        assert canary not in str(excinfo.value.detail)
+        assert "SdkError" in caplog.text
+        assert canary not in caplog.text
+        assert all(rec.exc_info is None for rec in caplog.records)
 
     def test_profile_without_llm_uses_the_fixed_cap(
         self, monkeypatch: pytest.MonkeyPatch

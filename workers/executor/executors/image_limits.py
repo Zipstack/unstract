@@ -28,6 +28,7 @@ import requests
 from executor.executors.exceptions import ExtractionError
 
 from unstract.sdk1.adapters.constants import Common
+from unstract.sdk1.exceptions import SdkError
 from unstract.sdk1.llm import LLM
 from unstract.sdk1.platform import PlatformHelper
 from unstract.sdk1.utils.image_limits import (
@@ -44,6 +45,7 @@ logger = logging.getLogger(__name__)
 # advice in the message is what tells the user whether retrying can help.
 _TRANSIENT_STATUS = 503  # the platform service lookup failed
 _CONFIG_STATUS = 400  # the adapter configuration itself is unusable
+_INTERNAL_STATUS = 500  # a defect while resolving the limits, not the adapter
 
 
 def _unresolved(llm_instance_id: str, reason: str, *, transient: bool) -> ExtractionError:
@@ -60,6 +62,18 @@ def _unresolved(llm_instance_id: str, reason: str, *, transient: bool) -> Extrac
             f"{reason}. No pages were converted or charged; {advice}."
         ),
         code=_TRANSIENT_STATUS if transient else _CONFIG_STATUS,
+    )
+
+
+def _internal_error(llm_instance_id: str) -> ExtractionError:
+    return ExtractionError(
+        message=(
+            f"{codes.IMAGE_LIMITS_UNRESOLVED}: Internal error resolving the image "
+            f"limits of the LLM (adapter {llm_instance_id}) that will read this "
+            "document. No pages were converted or charged; contact support if "
+            "this persists."
+        ),
+        code=_INTERNAL_STATUS,
     )
 
 
@@ -114,6 +128,9 @@ def build_extraction_image_policy(
         try:
             config = PlatformHelper.get_adapter_config(shim, llm_instance_id)
         except Exception as e:
+            # The lookup's own text is safe to show: the platform service
+            # answers with fixed messages (not found, deprecated, key changed)
+            # and never quotes the decrypted metadata.
             raise _unresolved(
                 llm_instance_id, str(e) or type(e).__name__, transient=_is_transient(e)
             ) from e
@@ -125,10 +142,24 @@ def build_extraction_image_policy(
             limits, tokens = LLM.image_input_limits_for(
                 config[Common.ADAPTER_ID], config[Common.ADAPTER_METADATA] or {}
             )
-        except Exception as e:
+        except SdkError as e:
+            # The error type only, and the cause is dropped (``from None``):
+            # the adapter's validation error quotes the stored metadata,
+            # credentials included, and the executor logs this exception with
+            # its traceback.
             raise _unresolved(
-                llm_instance_id, str(e) or type(e).__name__, transient=False
-            ) from e
+                llm_instance_id,
+                f"the adapter configuration did not validate ({type(e).__name__})",
+                transient=False,
+            ) from None
+        except Exception:
+            # Not the adapter's fault: a defect while resolving the limits.
+            logger.exception(
+                "Image mode: internal error resolving the image limits of LLM "
+                "adapter %s",
+                llm_instance_id,
+            )
+            raise _internal_error(llm_instance_id) from None
         resolved.append(limits)
         token_budgets.append(tokens)
 
