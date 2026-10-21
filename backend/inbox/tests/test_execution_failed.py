@@ -23,6 +23,10 @@ def _items(user) -> list[InboxItem]:
     return list(InboxItem.objects.filter(user=user))
 
 
+def _run_route(execution) -> dict:
+    return {"key": "execution.detail", "params": {"id": str(execution.pk)}}
+
+
 class _Runs(CoOwnerOrgTestMixin):
     def setUp(self) -> None:
         self._seed_org()
@@ -53,18 +57,14 @@ class _Runs(CoOwnerOrgTestMixin):
 class ExecutionFailedTests(_Runs, TestCase):
     def test_pipeline_error_notifies_owners_and_co_owners_only(self) -> None:
         pipeline = _build_pipeline(self.org, self.owner)
-        pipeline.pipeline_type = "ETL"
-        pipeline.save(update_fields=["pipeline_type"])
         self.share(pipeline)
-        self.finish(self.run_of(pipeline), ExecutionStatus.ERROR)
+        execution = self.run_of(pipeline)
+        self.finish(execution, ExecutionStatus.ERROR)
         for user in (self.owner, self.coowner):
             (item,) = _items(user)
             self.assertEqual(item.kind, InboxItem.Kind.EXECUTION_FAILED)
             self.assertIn(pipeline.pipeline_name, item.title)
-            self.assertEqual(
-                item.route,
-                {"key": "etl_pipeline.detail", "params": {"id": str(pipeline.pk)}},
-            )
+            self.assertEqual(item.route, _run_route(execution))
         self.assertEqual(_items(self.viewer), [])
         self.assertEqual(_items(self.outsider), [])
 
@@ -99,21 +99,20 @@ class ExecutionFailedTests(_Runs, TestCase):
     def test_api_deployment_run_notifies_its_owners(self) -> None:
         api = _build_api_deployment(self.org, self.owner)
         self.share(api)
-        self.finish(self.run_of(api), ExecutionStatus.ERROR)
+        execution = self.run_of(api)
+        self.finish(execution, ExecutionStatus.ERROR)
         (item,) = _items(self.coowner)
         self.assertIn(api.api_name, item.title)
-        self.assertEqual(
-            item.route, {"key": "api_deployment.detail", "params": {"id": str(api.pk)}}
-        )
+        self.assertEqual(item.route, _run_route(execution))
 
     def test_workflow_run_notifies_workflow_owners(self) -> None:
         workflow = _build_workflow(self.org, self.owner)
         self.share(workflow)
-        self.finish(self.run_of(workflow=workflow), ExecutionStatus.ERROR)
+        execution = self.run_of(workflow=workflow)
+        self.finish(execution, ExecutionStatus.ERROR)
         (item,) = _items(self.owner)
-        self.assertEqual(
-            item.route, {"key": "workflow.detail", "params": {"id": str(workflow.pk)}}
-        )
+        self.assertIn(workflow.workflow_name, item.title)
+        self.assertEqual(item.route, _run_route(execution))
 
     def test_organization_comes_from_the_workflow_not_the_request(self) -> None:
         pipeline = _build_pipeline(self.org, self.owner)

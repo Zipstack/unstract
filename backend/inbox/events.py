@@ -82,8 +82,8 @@ def notify_resource_shared(
         )
 
 
-def _run_source(execution: Any) -> tuple[Any, str, str, str | None]:
-    """What ran: (resource whose owners hear about it, label, name, route key)."""
+def _run_source(execution: Any) -> tuple[Any, str, str]:
+    """What ran: (resource whose owners hear about it, label, name)."""
     from api_v2.models import APIDeployment
     from pipeline_v2.models import Pipeline
 
@@ -91,13 +91,12 @@ def _run_source(execution: Any) -> tuple[Any, str, str, str | None]:
         # Base managers: this runs in worker requests with no organization context.
         pipeline = Pipeline._base_manager.filter(pk=execution.pipeline_id).first()
         if pipeline:
-            key = _PIPELINE_ROUTE_KEYS.get(pipeline.pipeline_type)
-            return pipeline, "pipeline", pipeline.pipeline_name, key
+            return pipeline, "pipeline", pipeline.pipeline_name
         api = APIDeployment._base_manager.filter(pk=execution.pipeline_id).first()
         if api:
-            return api, "API deployment", api.api_name, "api_deployment.detail"
+            return api, "API deployment", api.api_name
     workflow = execution.workflow
-    return workflow, "workflow", workflow.workflow_name, "workflow.detail"
+    return workflow, "workflow", workflow.workflow_name
 
 
 def _failure_title(execution: Any, label: str, name: str) -> str:
@@ -127,13 +126,13 @@ def notify_execution_failed(execution_id: Any) -> None:
             # ponytail: an ERROR later corrected to a clean COMPLETED keeps its item;
             # delete it here if premature errors turn out to be common.
             return
-        resource, label, name, key = _run_source(execution)
+        resource, label, name = _run_source(execution)
         notify(
             resource.owners(),
             kind=InboxItem.Kind.EXECUTION_FAILED,
             title=_failure_title(execution, label, name),
             body=execution.error_message or "",
-            route={"key": key, "params": {"id": str(resource.pk)}} if key else None,
+            route={"key": "execution.detail", "params": {"id": str(execution.pk)}},
             dedupe_key=f"execution_failed:{execution.pk}",
             organization=execution.workflow.organization,
         )
