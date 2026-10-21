@@ -96,6 +96,7 @@ class PublisherTests(TestCase):
         with (
             patch.object(service, "_queue", full),
             patch.object(service, "_ensure_publisher"),
+            patch.object(service, "_dropping", False),
         ):
             with self.assertLogs("inbox.service", "WARNING"):
                 service._submit("user:1", "inbox:unread", {"unread_count": 1})
@@ -139,6 +140,12 @@ class PublisherTests(TestCase):
             with self.assertLogs("inbox.service", "WARNING") as logs:
                 service._submit("user:1", "inbox:unread", {})
                 service._submit("user:2", "inbox:unread", {})
+            self.assertEqual(len(logs.records), 1)
+            # Room again: the next push gets through and resets the warning.
+            full.get_nowait()
+            service._submit("user:3", "inbox:unread", {})
+            with self.assertLogs("inbox.service", "WARNING") as logs:
+                service._submit("user:4", "inbox:unread", {})
             self.assertEqual(len(logs.records), 1)
 
 

@@ -27,7 +27,10 @@ class InboxViewSet(viewsets.GenericViewSet):
     @extend_schema(
         operation_id="inbox_list",
         tags=["inbox"],
-        responses={200: InboxPageSerializer},
+        responses={
+            200: InboxPageSerializer,
+            404: OpenApiResponse(description="Page past the end; go back to page 1"),
+        },
         description="Newest first. See inbox/ReadMe.md.",
     )
     def list(self, request: Request) -> Response:
@@ -45,9 +48,14 @@ class InboxViewSet(viewsets.GenericViewSet):
     @action(detail=True, methods=["post"])
     def read(self, request: Request, pk: str | None = None) -> Response:
         item = get_object_or_404(self.get_queryset(), pk=pk)
-        if item.read_at is None:
-            item.read_at = timezone.now()
-            item.save(update_fields=["read_at"])
+        # Matched on created_at too: a failure refresh landing after the load
+        # brings new content the user has not seen, so it stays unread.
+        marked = (
+            self.get_queryset()
+            .filter(pk=item.pk, read_at__isnull=True, created_at=item.created_at)
+            .update(read_at=timezone.now())
+        )
+        if marked:
             push_unread(item.organization, [request.user.pk])
         return Response(status=status.HTTP_204_NO_CONTENT)
 

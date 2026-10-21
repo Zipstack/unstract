@@ -60,7 +60,9 @@ def _submit(room: str, event: str, data: dict[str, Any]) -> None:
         _dropping = False
     except queue.Full:
         if not _dropping:
-            logger.warning("Inbox push backlog is full; dropping pushes until it drains")
+            logger.warning(
+                "Inbox push backlog is full; dropping pushes while it stays full"
+            )
         _dropping = True
 
 

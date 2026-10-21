@@ -1,13 +1,16 @@
 """Inbox storage, endpoints and the share event."""
 
+from datetime import timedelta
 from unittest.mock import patch
 
 from account_v2.models import Organization
 from django.test import TestCase
+from django.utils import timezone
 from permissions.roles import ResourceRole
 from permissions.tests.base import CoOwnerOrgTestMixin, make_user
 from rest_framework.test import APIRequestFactory, force_authenticate
 from tenant_account_v2.models import GroupMembership, OrganizationGroup
+from tenant_account_v2.shareable_resources import descriptor_for_kind, kind_for_instance
 from utils.user_context import UserContext
 from workflow_manager.workflow_v2.models.workflow import Workflow
 from workflow_manager.workflow_v2.views import WorkflowViewSet
@@ -19,6 +22,10 @@ from inbox.views import InboxViewSet
 
 def _items(user) -> list[InboxItem]:
     return list(InboxItem.objects.filter(user=user))
+
+
+def _shape(index_or_constraint) -> tuple:
+    return index_or_constraint.name, tuple(index_or_constraint.fields)
 
 
 class ServiceTests(CoOwnerOrgTestMixin, TestCase):
@@ -144,6 +151,26 @@ class EndpointTests(CoOwnerOrgTestMixin, TestCase):
     def test_anonymous_request_is_refused(self) -> None:
         response = InboxViewSet.as_view({"get": "list"})(self.factory.get("/x/"))
         self.assertIn(response.status_code, (401, 403))
+
+    def test_read_does_not_swallow_a_refresh_that_lands_meanwhile(self) -> None:
+        item = InboxItem.objects.get(user=self.viewer, title="new")
+        real_get = InboxItem.objects.get_queryset
+
+        def refresh_after_load(*args, **kwargs):
+            # The item is refreshed between the view loading it and marking it.
+            InboxItem.objects.filter(pk=item.pk).update(
+                created_at=timezone.now() + timedelta(seconds=1)
+            )
+            return real_get()
+
+        with patch("inbox.views.get_object_or_404") as load:
+            load.side_effect = lambda qs, pk: (
+                InboxItem.objects.get(pk=pk),
+                refresh_after_load(),
+            )[0]
+            self.call(self.viewer, "read", "post", pk=str(item.pk))
+        item.refresh_from_db()
+        self.assertIsNone(item.read_at)
 
     def test_reading_a_read_item_keeps_its_read_time(self) -> None:
         item = InboxItem.objects.get(user=self.viewer, title="new")
@@ -305,6 +332,7 @@ class SchemaTests(TestCase):
         )
         body = op["responses"]["200"]["content"]["application/json"]["schema"]
         self.assertEqual(body, {"$ref": "#/components/schemas/InboxPage"})
+        self.assertIn("404", op["responses"])
         results = page["properties"]["results"]["items"]
         self.assertEqual(results, {"$ref": "#/components/schemas/InboxItem"})
         route = schema["components"]["schemas"]["InboxRoute"]
@@ -331,6 +359,7 @@ class RouteTests(TestCase):
                 "key": "prompt_studio_project.detail",
                 "params": {"id": "p1"},
             },
+            "agentic_project": {"key": "agentic_project.detail", "params": {"id": "p1"}},
             "lookup": None,
         }
         for kind, expected in cases.items():
@@ -363,9 +392,46 @@ class WiringTests(TestCase):
             for op in migration.Migration.operations:
                 for attr in ("index", "constraint"):
                     if hasattr(op, attr):
-                        migrated.add(getattr(op, attr).name)
+                        migrated.add(_shape(getattr(op, attr)))
                 options = getattr(op, "options", {})
                 for item in options.get("indexes", []) + options.get("constraints", []):
-                    migrated.add(item.name)
+                    migrated.add(_shape(item))
         for item in InboxItem._meta.indexes + InboxItem._meta.constraints:
-            self.assertIn(item.name, migrated)
+            self.assertIn(_shape(item), migrated)
+
+
+class ShareKindTests(CoOwnerOrgTestMixin, TestCase):
+    """Each OSS kind through the real event: its label, name and route."""
+
+    def setUp(self) -> None:
+        self._seed_org()
+        self.addCleanup(UserContext.set_organization_identifier, None)
+
+    def test_every_oss_kind_names_the_resource_and_links_to_it(self) -> None:
+        from permissions.tests.base import RESOURCE_SPECS
+
+        # Written out, not read from the code's table, so a typo there fails here.
+        expected = {
+            "workflow": ("workflow", "workflow.detail"),
+            "pipeline": ("pipeline", None),  # DEFAULT-type pipelines have no page
+            "api_deployment": ("API deployment", "api_deployment.detail"),
+            "connector_instance": ("connector", "connector.detail"),
+            "adapter_instance": ("adapter", "adapter.info"),
+            "custom_tool": ("Prompt Studio project", "prompt_studio_project.detail"),
+        }
+        for spec in RESOURCE_SPECS:
+            with self.subTest(kind=spec.kind):
+                resource = spec.build(self.org, self.owner)
+                InboxItem.objects.all().delete()
+                events.notify_resource_shared(
+                    resource=resource, users=[self.viewer], groups=[], actor=self.owner
+                )
+                (item,) = _items(self.viewer)
+                kind = kind_for_instance(resource)
+                label, key = expected[kind]
+                name = getattr(resource, descriptor_for_kind(kind).name_field)
+                self.assertTrue(name)
+                self.assertEqual(
+                    item.title, f"{self.owner.email} shared the {label} {name} with you"
+                )
+                self.assertEqual(item.route and item.route["key"], key)

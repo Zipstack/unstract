@@ -168,6 +168,18 @@ def _already_points_at_this_or_newer(items: Any, execution: Any, runs: Any) -> b
     return shown_run is not None and shown_run > execution.created_at
 
 
+def _lock_item(dedupe_key: str) -> None:
+    """Transaction-scoped Postgres advisory lock on one item key."""
+    from django.db import connection
+
+    with connection.cursor() as cursor:
+        # The two-key form keeps these locks apart from single-key users.
+        cursor.execute(
+            "SELECT pg_advisory_xact_lock(hashtext('inbox'), hashtext(%s))",
+            [dedupe_key],
+        )
+
+
 def notify_execution_failed(execution_id: Any) -> None:
     """Tell the owners of what ran when a run fails.
 
@@ -202,13 +214,20 @@ def _notify_execution_failed(execution_id: Any) -> None:
         organization=organization, dedupe_key=dedupe_key
     )
     if not is_failure_run(execution.status, execution.failed_files):
-        # No lock needed: a failure being recorded holds the row lock, and this
-        # run's own status write waited for it, so the item is already stored.
-        items.filter(route__params__id=str(execution.pk)).delete()
+        # No row lock needed: a failure being recorded holds this run's row
+        # lock, and this run's own status write waited for it, so the item is
+        # already stored. The item lock keeps the delete off a concurrent refresh.
+        with transaction.atomic():
+            _lock_item(dedupe_key)
+            items.filter(route__params__id=str(execution.pk)).delete()
         return
-    # The row lock holds off a concurrent status write until this decision is
-    # stored, so a clean correction always runs after the item it withdraws.
     with transaction.atomic():
+        # The item lock serialises runs of one resource, so the newest-run check
+        # and the refresh below act as one step.
+        _lock_item(dedupe_key)
+        # The row lock holds off a concurrent status write until this decision
+        # is stored, so a clean correction always runs after the item it
+        # withdraws.
         execution = runs.select_for_update(of=("self",)).filter(pk=execution_id).first()
         if not execution or not is_failure_run(execution.status, execution.failed_files):
             return
@@ -224,7 +243,7 @@ def _notify_execution_failed(execution_id: Any) -> None:
             dedupe_key=dedupe_key,
             organization=organization,
             refresh=True,
-            # Never on the status-write path: an emit retries without limit while
-            # the socket broker is down. The count shows on the next list call.
+            # Keeps the count query off the status-write path; the new count
+            # shows on the next list call.
             push=False,
         )

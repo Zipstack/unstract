@@ -62,11 +62,15 @@ class ExecutionFailedTests(_Runs, TestCase):
         pipeline = _build_pipeline(self.org, self.owner)
         self.share(pipeline)
         execution = self.run_of(pipeline)
+        execution.error_message = "boom"
         self.finish(execution, ExecutionStatus.ERROR)
         for user in (self.owner, self.coowner):
             (item,) = _items(user)
             self.assertEqual(item.kind, InboxItem.Kind.EXECUTION_FAILED)
-            self.assertIn(pipeline.pipeline_name, item.title)
+            self.assertEqual(
+                item.title, f"A run of the pipeline {pipeline.pipeline_name} failed"
+            )
+            self.assertEqual(item.body, "boom")
             self.assertEqual(item.route, _run_route(execution))
         self.assertEqual(_items(self.viewer), [])
         self.assertEqual(_items(self.outsider), [])
@@ -257,3 +261,19 @@ class RealCommitTests(_Runs, TransactionTestCase):
             str(execution.pk), total_files=3, failed_files=3
         )
         self.assertEqual(len(_items(self.owner)), 1)
+
+
+class LockTests(_Runs, TestCase):
+    def test_both_paths_serialise_on_the_item(self) -> None:
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+
+        pipeline = _build_pipeline(self.org, self.owner)
+        self.share(pipeline)
+        execution = self.run_of(pipeline)
+        for status in (ExecutionStatus.ERROR, ExecutionStatus.COMPLETED):
+            with self.subTest(status=status):
+                with CaptureQueriesContext(connection) as queries:
+                    self.finish(execution, status, failed_files=0)
+                sql = " ".join(q["sql"] for q in queries.captured_queries)
+                self.assertIn("pg_advisory_xact_lock", sql)

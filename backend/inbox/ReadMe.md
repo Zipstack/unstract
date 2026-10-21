@@ -6,7 +6,7 @@ Each user has one inbox per organization. Paths are organization-scoped: `/api/v
 
 | Method and path | Response |
 |---|---|
-| GET `notifications/inbox/` | `{count, next, previous, results, unread_count}`, newest first, `?page` and `?page_size` |
+| GET `notifications/inbox/` | `{count, next, previous, results, unread_count}`, newest first, `?page` and `?page_size`; 404 for a page past the end (go back to page 1) |
 | POST `notifications/inbox/<id>/read/` | 204; 404 when the item is not the caller's |
 | POST `notifications/inbox/read-all/` | 204 |
 
@@ -25,7 +25,7 @@ Each user has one inbox per organization. Paths are organization-scoped: `/api/v
 | `connector.detail` | `id` | a shared connector |
 | `adapter.info` | `id`, `adapter_type` | a shared adapter (shared users are viewers, so the read-only page) |
 | `prompt_studio_project.detail` | `id` | a shared Prompt Studio project |
-| `agentic_project.detail` | `id` | a shared Agentic Studio project (cloud); not in global search |
+| `agentic_project.detail` | `id` | a shared Agentic Studio project (cloud) |
 | `execution.detail` | `id`, the run's id | a failed run; not in global search |
 
 A shared look-up sends null.
