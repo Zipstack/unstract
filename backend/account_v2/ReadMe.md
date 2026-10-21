@@ -24,3 +24,21 @@
 ## Signout
 
 1.signout APi
+
+## Last-used product preference (PB-T23)
+
+Each user has one last-used product, shared by all their organisations
+(`UserProductPreference`, logic in `product_preference.py`).
+
+- `GET /api/v1/users/me/product-preference/` returns `product` (`unstract`,
+  `llm-whisperer`, `verticals` or `flow`, or null), `updated_at` and
+  `has_chosen`.
+- `PUT` the same URL with `{"product": "<id>"}` to store it. Unknown ids get a
+  400. Service accounts get a 403.
+- `GET /api/v1/session` also returns `last_product` and `has_chosen`.
+- `has_chosen` is false until the first write, which is the first-login flag.
+- An auth plugin stores a login's `selectedProduct` by calling
+  `record_selected_product(user, value)`. It ignores unknown values and never
+  raises.
+
+JSON Schemas for the responses and the request body are in `contract/`.

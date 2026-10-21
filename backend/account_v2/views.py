@@ -16,9 +16,16 @@ from account_v2.dto import (
 )
 from account_v2.models import Organization
 from account_v2.organization import OrganizationService
+from account_v2.product_preference import (
+    ProductPreference,
+    get_product_preference,
+    set_product_preference,
+)
 from account_v2.serializer import (
     OrganizationSignupResponseSerializer,
     OrganizationSignupSerializer,
+    ProductPreferenceSerializer,
+    ProductPreferenceUpdateSerializer,
     UserSessionResponseSerializer,
 )
 
@@ -142,6 +149,7 @@ def make_session_response(
     auth_controller = AuthenticationController()
     token_data = UserSessionUtils.get_token_data(request)
     provider = "" if token_data is None else token_data.get("provider", "")
+    preference = get_product_preference(request.user)
     return UserSessionResponseSerializer(
         UserSessionInfo(
             id=request.user.id,
@@ -153,7 +161,46 @@ def make_session_response(
             provider=provider,
             is_staff=request.user.is_staff,
             disable_sso_idp_authorization=settings.DISABLE_SSO_IDP_AUTHORIZATION,
+            last_product=preference.product,
+            has_chosen=preference.has_chosen,
         )
+    ).data
+
+
+@api_view(["GET", "PUT"])
+def product_preference(request: Request) -> Response:
+    """Read or write the signed-in user's last-used product (PB-T23).
+
+    The preference belongs to the user, not the organisation, so this route
+    carries no organisation segment and needs none selected: it answers on
+    first login, before the user has picked an organisation. A user only
+    ever reaches their own row, since the row is looked up from
+    ``request.user``. Service accounts (platform API keys) are refused, as
+    they never land anywhere.
+    """
+    if getattr(request.user, "is_service_account", False):
+        return Response(
+            status=status.HTTP_403_FORBIDDEN,
+            data={"message": "Service accounts have no product preference"},
+        )
+    if request.method == "PUT":
+        serializer = ProductPreferenceUpdateSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        preference = set_product_preference(
+            request.user, serializer.validated_data["product"]
+        )
+    else:
+        preference = get_product_preference(request.user)
+    return Response(status=status.HTTP_200_OK, data=_product_preference_data(preference))
+
+
+def _product_preference_data(preference: ProductPreference) -> Any:
+    return ProductPreferenceSerializer(
+        {
+            "product": preference.product,
+            "updated_at": preference.updated_at,
+            "has_chosen": preference.has_chosen,
+        }
     ).data
 
 

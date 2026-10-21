@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "unstract/account/session-product-fields/v1",
+  "description": "The two fields PB-T23 adds to the session response. Every existing session field is unchanged, so they are not described here.",
+  "type": "object",
+  "required": ["last_product", "has_chosen"],
+  "properties": {
+    "last_product": {
+      "enum": ["unstract", "llm-whisperer", "verticals", "flow", null]
+    },
+    "has_chosen": {"type": "boolean"}
+  }
+}

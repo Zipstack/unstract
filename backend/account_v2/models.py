@@ -3,6 +3,7 @@ import uuid
 from django.contrib.auth.models import AbstractUser, Group, Permission
 from django.db import models
 
+from account_v2.enums import Product
 from backend.constants import FieldLengthConstants as FieldLength
 
 NAME_SIZE = 64
@@ -120,6 +121,32 @@ class User(AbstractUser):
         verbose_name = "User"
         verbose_name_plural = "Users"
         db_table = "user"
+
+
+class UserProductPreference(models.Model):
+    """A user's last-used product, shared across their organisations.
+
+    No row means the user has never chosen a product (the first-login flag).
+    See ``account_v2/product_preference.py``.
+    """
+
+    user = models.OneToOneField(
+        "User",
+        on_delete=models.CASCADE,
+        primary_key=True,
+        related_name="product_preference",
+    )
+    product = models.CharField(
+        max_length=32,
+        choices=Product.choices,
+        db_comment="Product id the user last used, e.g. unstract or llm-whisperer",
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "User Product Preference"
+        verbose_name_plural = "User Product Preferences"
+        db_table = "user_product_preference"
 
 
 class PlatformKey(models.Model):

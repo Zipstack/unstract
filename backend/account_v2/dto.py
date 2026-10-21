@@ -63,6 +63,8 @@ class UserSessionInfo:
     provider: str
     is_staff: bool = False
     disable_sso_idp_authorization: bool = False
+    last_product: str | None = None
+    has_chosen: bool = False
 
     @staticmethod
     def from_dict(data: dict[str, Any]) -> "UserSessionInfo":
