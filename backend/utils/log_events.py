@@ -112,8 +112,8 @@ def _get_user_session_id_from_cookies(sid: str, environ: Any) -> str | None:
     if not session_id:
         logger.warning(f"No session ID found in cookies for SID {sid}")
         return None
-    # Django session keys are lowercase letters and digits. Anything else could
-    # name another room, such as a user room, so it is refused.
+    # Django session keys are alphanumeric. Anything else, such as "user:5",
+    # could name another room, so it is refused.
     if not session_id.value.isalnum():
         logger.warning(f"Malformed session ID in cookies for SID {sid}")
         return None

@@ -105,6 +105,24 @@ class ExecutionFailedTests(_Runs, TestCase):
         self.finish(execution, ExecutionStatus.COMPLETED, failed_files=0)
         self.assertEqual(_items(self.owner), [])
 
+    def test_error_restarted_then_clean_withdraws_the_item(self) -> None:
+        pipeline = _build_pipeline(self.org, self.owner)
+        self.share(pipeline)
+        execution = self.run_of(pipeline)
+        self.finish(execution, ExecutionStatus.ERROR)
+        self.finish(execution, ExecutionStatus.EXECUTING)
+        self.finish(execution, ExecutionStatus.COMPLETED, failed_files=0)
+        self.assertEqual(_items(self.owner), [])
+
+    def test_pg_transport_run_is_notified(self) -> None:
+        pipeline = _build_pipeline(self.org, self.owner)
+        self.share(pipeline)
+        execution = self.run_of(pipeline)
+        WorkflowExecution.objects.filter(pk=execution.pk).update(queue_message_id=1)
+        execution.refresh_from_db()
+        self.finish(execution, ExecutionStatus.ERROR)
+        self.assertEqual(len(_items(self.owner)), 1)
+
     def test_failed_run_does_not_push_over_the_socket(self) -> None:
         pipeline = _build_pipeline(self.org, self.owner)
         self.share(pipeline)

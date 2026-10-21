@@ -1,6 +1,8 @@
 """Writes and counts inbox items."""
 
 import logging
+import queue
+import threading
 from collections.abc import Iterable
 from typing import Any
 
@@ -14,6 +16,43 @@ from inbox.models import InboxItem
 logger = logging.getLogger(__name__)
 
 UNREAD_EVENT = "inbox:unread"
+
+# Pushes go to one background thread per process: a socket publish retries
+# without limit while the broker is down, and must not hold a request. A full
+# backlog drops new pushes; the list endpoint stays the source of truth.
+_queue: queue.Queue = queue.Queue(maxsize=1000)
+_publisher: threading.Thread | None = None
+_publisher_lock = threading.Lock()
+
+
+def _publish_forever() -> None:
+    while True:
+        room, event, data = _queue.get()
+        try:
+            from utils import log_events
+
+            log_events._emit_websocket_event(room, event, data)
+        except Exception:
+            logger.exception("Could not push an inbox count")
+
+
+def _ensure_publisher() -> None:
+    global _publisher
+    with _publisher_lock:
+        # Checked on each push: a forked worker process inherits no threads.
+        if _publisher is None or not _publisher.is_alive():
+            _publisher = threading.Thread(
+                target=_publish_forever, name="inbox-push", daemon=True
+            )
+            _publisher.start()
+
+
+def _submit(room: str, event: str, data: dict[str, Any]) -> None:
+    _ensure_publisher()
+    try:
+        _queue.put_nowait((room, event, data))
+    except queue.Full:
+        logger.warning("Inbox push backlog is full; dropped a push to %s", room)
 
 
 def notify(
@@ -32,22 +71,27 @@ def notify(
     ``push=False`` leaves the new count to the user's next list call.
     """
     organization = organization or UserContext.get_organization()
+    if organization is None:
+        # A NULL organization would also escape the one-item-per-event constraint.
+        raise ValueError("An inbox item needs an organization")
     users = {u.pk: u for u in users}
-    InboxItem.objects.bulk_create(
-        [
-            InboxItem(
-                organization=organization,
-                user=user,
-                kind=kind,
-                title=title[:255],
-                body=body,
-                route=route,
-                dedupe_key=dedupe_key,
-            )
-            for user in users.values()
-        ],
-        ignore_conflicts=True,
-    )
+    # A savepoint, so a failed insert never breaks the caller's transaction.
+    with transaction.atomic():
+        InboxItem.objects.bulk_create(
+            [
+                InboxItem(
+                    organization=organization,
+                    user=user,
+                    kind=kind,
+                    title=title[:255],
+                    body=body,
+                    route=route,
+                    dedupe_key=dedupe_key,
+                )
+                for user in users.values()
+            ],
+            ignore_conflicts=True,
+        )
     if push:
         push_unread(organization, users)
 
@@ -62,8 +106,6 @@ def push_unread(organization: Organization, user_ids: Iterable[Any]) -> None:
 
     def send() -> None:
         try:
-            from utils.log_events import _emit_websocket_event
-
             # Base manager: callers may run with no organization in context.
             counts = dict(
                 InboxItem._base_manager.filter(
@@ -76,7 +118,7 @@ def push_unread(organization: Organization, user_ids: Iterable[Any]) -> None:
                 .values_list("user_id", "n")
             )
             for user_id in user_ids:
-                _emit_websocket_event(
+                _submit(
                     f"user:{user_id}",
                     UNREAD_EVENT,
                     {

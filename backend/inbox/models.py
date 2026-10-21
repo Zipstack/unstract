@@ -52,4 +52,6 @@ class InboxItem(DefaultOrganizationMixin, BaseModel):
             ),
             # The daily purge's cutoff.
             models.Index(fields=["created_at"], name="inbox_item_created"),
+            # Withdrawing a failed-run item when its run finishes clean.
+            models.Index(fields=["organization", "dedupe_key"], name="inbox_item_event"),
         ]

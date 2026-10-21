@@ -12,7 +12,7 @@ from utils.user_context import UserContext
 from workflow_manager.workflow_v2.models.workflow import Workflow
 from workflow_manager.workflow_v2.views import WorkflowViewSet
 
-from inbox import service
+from inbox import events, service
 from inbox.models import InboxItem
 from inbox.views import InboxViewSet
 
@@ -44,6 +44,15 @@ class ServiceTests(CoOwnerOrgTestMixin, TestCase):
         self.notify([self.viewer])
         self.notify([self.viewer])
         self.assertEqual(len(_items(self.viewer)), 1)
+
+    def test_notify_needs_an_organization(self) -> None:
+        UserContext.set_organization_identifier(None)
+        with self.assertRaises(ValueError):
+            self.notify([self.viewer])
+
+    def test_long_title_is_cut_to_the_column(self) -> None:
+        self.notify([self.viewer], title="x" * 300)
+        self.assertEqual(len(_items(self.viewer)[0].title), 255)
 
     def test_unread_count_is_per_user_and_organization(self) -> None:
         self.notify([self.viewer], key="a")
@@ -210,6 +219,44 @@ class ShareEventTests(CoOwnerOrgTestMixin, TestCase):
         self.share({"shared_groups": [self.group.pk]})
         self.assertEqual(_items(self.outsider), [])
 
+    def test_share_of_an_org_wide_resource_still_notifies(self) -> None:
+        self.workflow.shared_to_org = True
+        self.workflow.save(update_fields=["shared_to_org"])
+        self.share({"shared_users": [self.viewer.pk]})
+        self.assertEqual(len(_items(self.viewer)), 1)
+
+    def test_unknown_prior_access_notifies_nobody(self) -> None:
+        with patch(
+            "tenant_account_v2.sharing_helpers.retained_user_ids",
+            side_effect=RuntimeError("boom"),
+        ):
+            with self.assertLogs("inbox.events", "ERROR") as logs:
+                response = self.share({"shared_users": [self.viewer.pk]})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(_items(self.viewer), [])
+        # Skipped outright, not failed further down.
+        self.assertEqual(len(logs.records), 1)
+
+    def test_failed_insert_leaves_the_callers_transaction_usable(self) -> None:
+        from django.db import connection, transaction
+
+        def break_transaction(*args, **kwargs):
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT 1/0")
+
+        with transaction.atomic():
+            with patch.object(
+                InboxItem.objects, "bulk_create", side_effect=break_transaction
+            ):
+                with self.assertLogs("inbox.events", "ERROR"):
+                    events.notify_resource_shared(
+                        resource=self.workflow,
+                        users=[self.viewer],
+                        groups=[],
+                        actor=self.owner,
+                    )
+            self.assertTrue(Workflow.objects.filter(pk=self.workflow.pk).exists())
+
     def test_non_member_of_the_org_is_never_notified(self) -> None:
         stranger = make_user("s2@example.com")
         GroupMembership.objects.create(group=self.group, user=stranger)
@@ -271,3 +318,31 @@ class RouteTests(TestCase):
         self.assertEqual(_route("pipeline", task)["key"], "task_pipeline.detail")
         app = SimpleNamespace(pk="p1", pipeline_type="APP")
         self.assertIsNone(_route("pipeline", app))
+
+
+class WiringTests(TestCase):
+    def test_purge_path_the_worker_calls_resolves(self) -> None:
+        from django.urls import resolve
+
+        from inbox.internal_views import PurgeInboxAPIView
+
+        match = resolve("/internal/v1/inbox/purge/")
+        self.assertIs(match.func.view_class, PurgeInboxAPIView)
+
+    def test_every_model_index_has_a_migration(self) -> None:
+        # Tests run without migrations, so read the migration files themselves.
+        import importlib
+        import pkgutil
+
+        import inbox.migrations as package
+
+        migrated = set()
+        for module in pkgutil.iter_modules(package.__path__):
+            migration = importlib.import_module(f"inbox.migrations.{module.name}")
+            for op in migration.Migration.operations:
+                if hasattr(op, "index"):
+                    migrated.add(op.index.name)
+                for index in getattr(op, "options", {}).get("indexes", []):
+                    migrated.add(index.name)
+        for index in InboxItem._meta.indexes:
+            self.assertIn(index.name, migrated)

@@ -16,7 +16,8 @@ from inbox import service
 from inbox.models import InboxItem
 from inbox.views import InboxViewSet
 
-EMIT = "utils.log_events._emit_websocket_event"
+# The request thread only enqueues; a background thread publishes.
+EMIT = "inbox.service._submit"
 
 
 def _pushed(emit, user) -> list[dict]:
@@ -80,6 +81,33 @@ class PushTests(CoOwnerOrgTestMixin, TestCase):
             with self.assertLogs("inbox.service", "ERROR"):
                 self.notify([self.viewer], "a")
         self.assertEqual(service.unread_count(self.viewer), 1)
+
+
+class PublisherTests(TestCase):
+    def test_full_backlog_drops_the_push_without_failing(self) -> None:
+        import queue
+
+        full = queue.Queue(maxsize=1)
+        full.put(("room", "event", {}))
+        with (
+            patch.object(service, "_queue", full),
+            patch.object(service, "_ensure_publisher"),
+        ):
+            with self.assertLogs("inbox.service", "WARNING"):
+                service._submit("user:1", "inbox:unread", {"unread_count": 1})
+        self.assertEqual(full.qsize(), 1)
+
+    def test_publisher_thread_emits_what_was_queued(self) -> None:
+        import threading
+
+        done = threading.Event()
+        with patch(
+            "utils.log_events._emit_websocket_event",
+            side_effect=lambda *a: done.set(),
+        ) as emit:
+            service._submit("user:1", "inbox:unread", {"unread_count": 1})
+            self.assertTrue(done.wait(5))
+        emit.assert_called_with("user:1", "inbox:unread", {"unread_count": 1})
 
 
 class ConnectTests(CoOwnerOrgTestMixin, TestCase):

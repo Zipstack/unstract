@@ -56,11 +56,12 @@ def _group_members(groups: Iterable[Any]) -> set[User]:
     return {user for members in by_group.values() for user in members}
 
 
-def users_with_access(resource: Any) -> set[int]:
+def users_with_access(resource: Any) -> set[int] | None:
     """Ids of users who already reach ``resource``; read before a share changes it.
 
     Empty when access does not depend on shares (shared with the whole
-    organization), so a share there still tells its recipients.
+    organization), so a share there still tells its recipients. None when it
+    could not be read: the share then notifies nobody rather than everyone.
     """
     from tenant_account_v2.sharing_helpers import retained_user_ids
 
@@ -70,7 +71,7 @@ def users_with_access(resource: Any) -> set[int]:
         logger.exception(
             "Could not read who can access %s", getattr(resource, "pk", None)
         )
-        return set()
+        return None
 
 
 def notify_resource_shared(
@@ -79,9 +80,11 @@ def notify_resource_shared(
     users: Iterable[User],
     groups: Iterable[Any],
     actor: User,
-    had_access: set[int] = frozenset(),
+    had_access: set[int] | None = frozenset(),
 ) -> None:
     """Tell users newly given access, directly or through a group, once each."""
+    if had_access is None:
+        return
     try:
         kind = kind_for_instance(resource)
         if kind not in _SHARED_KINDS:
@@ -137,11 +140,11 @@ def _failure_title(execution: Any, label: str, name: str) -> str:
     )
 
 
-def notify_execution_failed(execution_id: Any, was_error: bool = False) -> None:
+def notify_execution_failed(execution_id: Any) -> None:
     """Tell the owners of what ran, once per execution, when a run fails.
 
-    ``was_error``: the run stood at ERROR before this write. ERROR can be
-    corrected to a clean COMPLETED, and then the failure item is withdrawn.
+    Called on every terminal status write. ERROR can later be corrected to a
+    clean COMPLETED, so a clean finish withdraws any failure item for the run.
     """
     try:
         from notification_v2.helper import is_failure_run
@@ -156,10 +159,9 @@ def notify_execution_failed(execution_id: Any, was_error: bool = False) -> None:
             return
         dedupe_key = f"execution_failed:{execution.pk}"
         if not is_failure_run(execution.status, execution.failed_files):
-            if was_error:
-                InboxItem._base_manager.filter(
-                    organization=execution.workflow.organization, dedupe_key=dedupe_key
-                ).delete()
+            InboxItem._base_manager.filter(
+                organization=execution.workflow.organization, dedupe_key=dedupe_key
+            ).delete()
             return
         resource, label, name = _run_source(execution)
         notify(
