@@ -158,9 +158,12 @@ Each process uses, highest precedence first:
    defaultable field); `sources` are merged. Its `inherit` targets and
    source keys may name any provider or source of the base table or of the
    bundled one, so a provider or source dropped from the remote copy does
-   not invalidate the file. A malformed
-   file is logged and ignored. A future per-org override would plug in
-   here.
+   not invalidate the file. Each process re-reads the file when its
+   modification time or size changes, so editing or replacing it (e.g. a
+   remounted ConfigMap) needs no restart. A malformed or unreadable file is
+   logged at ERROR and ignored, and retried when it changes or after 60
+   seconds (`OVERRIDE_RETRY_SECONDS`). A future per-org override would plug
+   in here.
 2. The remote copy — only when `VLM_IMAGE_LIMITS_URL` is set (unset or
    empty, the default, means no fetch). The published file is
    `https://raw.githubusercontent.com/Zipstack/unstract/main/unstract/sdk1/src/unstract/sdk1/utils/image_limits/limits.json`

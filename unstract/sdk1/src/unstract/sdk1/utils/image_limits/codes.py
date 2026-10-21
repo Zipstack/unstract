@@ -14,7 +14,8 @@ values stable: they are user-visible.
 IMAGE_PAGE_CAP_EXCEEDED = "IMAGE_PAGE_CAP_EXCEEDED"
 # The page images together exceed the model's request-size limit.
 IMAGE_PAGES_TOO_LARGE = "IMAGE_PAGES_TOO_LARGE"
-# One page breaks a per-image byte or pixel limit; splitting does not help.
+# One page breaks a per-image byte or pixel limit (the message says whether
+# splitting helps: see ``policy.page_too_large_message``).
 IMAGE_PAGE_TOO_LARGE = "IMAGE_PAGE_TOO_LARGE"
 # The provider rejected a request the local checks allowed (backstop).
 IMAGE_REQUEST_TOO_LARGE = "IMAGE_REQUEST_TOO_LARGE"

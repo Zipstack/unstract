@@ -1046,6 +1046,9 @@ class TestStructureToolImageLimitLlms:
         second = dict(tool_metadata_regular["outputs"][0], name="field_b", llm="llm-2")
         no_llm = dict(tool_metadata_regular["outputs"][0], name="field_c", llm="")
         tool_metadata_regular["outputs"].extend([second, no_llm])
+        # The tool-level LLM never reads page images (it only summarizes),
+        # so its limits must not restrict the extraction.
+        tool_metadata_regular["tool_settings"]["llm"] = "llm-tool"
         mock_get_fs.return_value = mock_fs
         mock_create_ph.return_value = mock_platform_helper
         mock_platform_helper.get_prompt_studio_tool.return_value = {
@@ -1063,6 +1066,6 @@ class TestStructureToolImageLimitLlms:
             if "extract_params" in call.args[0].executor_params
         )
         ids = pipeline_ctx.executor_params["extract_params"]["llm_instance_ids"]
-        # tool-level LLM + each prompt's LLM, de-duplicated and sorted;
-        # blanks are dropped.
+        # Each prompt's LLM, de-duplicated and sorted; blanks are dropped
+        # and the tool-level LLM is not included.
         assert ids == ["llm-1", "llm-2"]

@@ -276,9 +276,8 @@ class PageImageSetTooLargeError(PageImageLoadError):
 class PageImageTooLargeError(PageImageLoadError):
     """One page image breaks a per-image byte or pixel limit.
 
-    Distinct from ``PageImageSetTooLargeError``: splitting the document does
-    not help, the fix is a lower render resolution or a model with larger
-    per-image limits.
+    Distinct from ``PageImageSetTooLargeError``: the page itself is over a
+    limit. The message (``policy.page_too_large_message``) says what fixes it.
     """
 
     def __init__(

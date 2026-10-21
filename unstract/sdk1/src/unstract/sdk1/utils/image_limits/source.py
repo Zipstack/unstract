@@ -191,6 +191,20 @@ def _fetch_with_deadline(url: str) -> bytes:
     return outcome["data"]  # type: ignore[return-value]
 
 
+@dataclass(frozen=True)
+class _OverrideResult:
+    base: LimitsTable  # the base table the file was applied to
+    signature: tuple[int, int] | None  # the file's (mtime_ns, size); None: no stat
+    merged: LimitsTable  # the result; ``base`` itself when the file failed
+    failed_at: float | None  # clock time of a failed read or parse, else None
+
+
+# A failed override file is retried at most this often even when its
+# (mtime, size) has not changed, so a transient read error is not kept for
+# the life of the process and a persistent one logs at most once a minute.
+OVERRIDE_RETRY_SECONDS = 60
+
+
 @dataclass
 class _RemoteState:
     table: LimitsTable | None = None  # last good remote copy
@@ -200,8 +214,8 @@ class _RemoteState:
 _lock = threading.Lock()
 _bundled: LimitsTable | None = None
 _remote: dict[str, _RemoteState] = {}
-# override path -> (base table it was applied to, merged table)
-_with_override: dict[str, tuple[LimitsTable, LimitsTable]] = {}
+# override path -> the last application of that file (see ``_apply_override``)
+_with_override: dict[str, _OverrideResult] = {}
 _logged_disabled = False
 # (provider, model, field) clamps already logged by this process.
 _clamp_reported: set[tuple[str, str, str]] = set()
@@ -351,10 +365,36 @@ def _maybe_start_refresh(url: str, state: _RemoteState) -> None:
         logger.warning("Could not start the image-limits refresh", exc_info=True)
 
 
+def _file_signature(path: str) -> tuple[int, int] | None:
+    try:
+        st = os.stat(path)
+    except OSError:
+        return None
+    return (st.st_mtime_ns, st.st_size)
+
+
 def _apply_override(base: LimitsTable, path: str) -> LimitsTable:
+    """``base`` with the override file at ``path`` applied, cached per file.
+
+    The cached result is reused while the base table and the file's
+    ``(mtime, size)`` are unchanged, so an operator can fix or replace the
+    file without restarting the process. A failed read or parse falls back
+    to ``base`` and is retried when the file changes, or after
+    ``OVERRIDE_RETRY_SECONDS`` at the latest; it is never kept for good.
+    """
+    signature = _file_signature(path)
     cached = _with_override.get(path)
-    if cached is not None and cached[0] is base:
-        return cached[1]
+    if (
+        cached is not None
+        and cached.base is base
+        and cached.signature == signature
+        and (
+            cached.failed_at is None
+            or _clock() - cached.failed_at < OVERRIDE_RETRY_SECONDS
+        )
+    ):
+        return cached.merged
+    failed_at: float | None = None
     try:
         # Inherit targets may name a bundled provider the base (remote) copy
         # dropped; the lookup resolves such a parent from the bundled entry.
@@ -367,7 +407,7 @@ def _apply_override(base: LimitsTable, path: str) -> LimitsTable:
             LIMITS_OVERRIDE_FILE_ENV,
             e,
         )
-        merged = base
+        merged, failed_at = base, _clock()
     except Exception:  # a bad override must never break image mode
         logger.error(
             "Ignoring image-limits override file %s (%s): unexpected error",
@@ -375,8 +415,8 @@ def _apply_override(base: LimitsTable, path: str) -> LimitsTable:
             LIMITS_OVERRIDE_FILE_ENV,
             exc_info=True,
         )
-        merged = base
-    _with_override[path] = (base, merged)
+        merged, failed_at = base, _clock()
+    _with_override[path] = _OverrideResult(base, signature, merged, failed_at)
     return merged
 
 

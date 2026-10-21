@@ -994,10 +994,21 @@ def page_too_large_message(
     else:
         measured = f"{dims[0]}×{dims[1]} px" if dims else f"{actual} px"
         bound = f"{limit} px per side"
-    when = f" when more than {threshold} images are sent" if threshold is not None else ""
+    label = _model_label(limits)
+    if threshold is not None:
+        # The many-images rule: the page fits when at most ``threshold``
+        # images go in one request, so splitting the document is a fix.
+        return (
+            f"Page {page_number} of this document is {measured}, over the "
+            f"per-image limit of {bound} for {label} when more than {threshold} "
+            f"images are sent. Send at most {threshold} pages per request: split "
+            f"the document into files of at most {threshold} pages, reduce the "
+            "page's render resolution, or use a model with larger per-image "
+            "limits."
+        )
     return (
         f"Page {page_number} of this document is {measured}, over the per-image "
-        f"limit of {bound} for {_model_label(limits)}{when}. Reduce the page's "
-        "render resolution, or use a model with larger per-image limits; "
-        "splitting the document does not help."
+        f"limit of {bound} for {label}. Reduce the page's render resolution, or "
+        "use a model with larger per-image limits; splitting the document does "
+        "not help."
     )

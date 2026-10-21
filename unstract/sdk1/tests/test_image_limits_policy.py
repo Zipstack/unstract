@@ -356,6 +356,8 @@ class TestCheckPageSet:
         err = excinfo.value
         assert err.page_number == 1 and err.limit_kind == "bytes"
         assert "Page 1" in str(err) and "per-image" in str(err)
+        # The page alone is too large: splitting cannot fix it.
+        assert "splitting the document does not help" in str(err)
 
     def test_single_page_over_pixel_limit(self) -> None:
         limits = _with(BEDROCK, max_image_px=1000)
@@ -372,7 +374,12 @@ class TestCheckPageSet:
         check_page_set(policy, [(1, page), (2, page)], page_store_dir=DIR)
         with pytest.raises(PageImageTooLargeError) as excinfo:
             check_page_set(policy, [(1, page), (2, page), (3, page)], page_store_dir=DIR)
-        assert "more than 2 images" in str(excinfo.value)
+        msg = str(excinfo.value)
+        assert "more than 2 images" in msg
+        # Splitting IS the fix under the many-images rule.
+        assert "at most 2 pages per request" in msg
+        assert "files of at most 2 pages" in msg
+        assert "does not help" not in msg
 
     def test_per_image_checks_can_be_disabled(
         self, monkeypatch: pytest.MonkeyPatch
