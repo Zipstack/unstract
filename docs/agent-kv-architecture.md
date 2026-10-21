@@ -146,10 +146,19 @@ when the hardening lands:
   `DB_HOST/DB_USER/DB_PASSWORD/DB_NAME`. Combined with the NetworkPolicy permitting
   egress to db-proxy:5432 (it must, for the same reason), the recovered credential is
   **directly usable**, and in cloud staging `DB_USER` is `postgres`.
-- **The AST gate is not a second line of defence here.** It is bypassable
-  (`statistics.random._os.system(...)`, `collections._sys._getframe(0).f_builtins[...]`
-  — allowlisted modules re-export `sys`/`os` as non-dunder attributes the gate never
-  inspects), so it should be read as best-effort hygiene, not containment.
+- **The AST gate is not a second line of defence here.** It should be read as
+  best-effort hygiene, not containment — and that reading is unchanged by the
+  fact that the re-export paths this section named are now rejected.
+  `statistics.random._os`, `collections._sys` and `statistics.sys` (the last
+  walking around the `sys.argv` restriction, which only constrains the NAME
+  `sys`) were all GATE-PASS; the gate now refuses every underscore-prefixed
+  attribute and any attribute named `sys`, which closes all two-hop paths from
+  the allowlist to a dangerous module (asserted exhaustively, not case by case,
+  in `test_no_allowlisted_module_still_reaches_a_dangerous_one`).
+  **That does not make layer 1 a boundary.** It is a static check over a
+  dynamic language, the closure is of the paths that exist in today's stdlib,
+  and the worst case above needs no import at all — `open()` alone reaches
+  `/proc/<ppid>/environ`.
 
 **So the true worst case is credential disclosure plus database reach beyond the job's
 own input**, not disclosure of a non-sensitive container file. What still contains it is

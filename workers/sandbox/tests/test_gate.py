@@ -270,8 +270,101 @@ class TestEveryRuleIsRegistered:
             "_rule_import_from",
             "_rule_denylisted_call",
             "_rule_dangerous_attribute",
-            "_rule_dunder_attribute",
+            "_rule_private_attribute",
+            "_rule_sys_reexport",
             "_rule_builtins_subscript",
             "_rule_sys_name",
             "_rule_denylisted_name",
         ]
+
+
+class TestModuleReexportEscapes:
+    """An allowlisted module handing out one that is not.
+
+    All three were ACCEPTED before (verified on 3.12.9) and all three reach the
+    real `os`: `statistics.random._os` and `collections._sys` directly, and
+    `statistics.sys` because the `sys.argv` restriction only constrains the NAME
+    `sys`, not an attribute NAMED `sys` on something else. `sys.modules['os']`
+    is then the whole interpreter.
+
+    The gate is layer 1 of five and was never the boundary, so these were not
+    an escape from the sandbox -- layers 2-5 still deny egress, scrub the env
+    and hold no secret beyond the pod's own transport. What they did break is
+    the accepted residual as written: "`pathlib`, `os`, `socket` and `urllib`
+    are all outside the allowlist, so there is no path to a secret, a
+    cross-tenant read, or exfiltration."
+    """
+
+    def test_private_module_attribute_reaches_os(self):
+        ok, reason = check_code_safe(
+            "import statistics\nstatistics.random._os.listdir('/')"
+        )
+        assert ok is False
+        assert "_os" in reason
+
+    def test_private_sys_alias_reaches_os(self):
+        ok, reason = check_code_safe(
+            "import collections\ncollections._sys.modules['os'].listdir('/')"
+        )
+        assert ok is False
+        assert "_sys" in reason
+
+    def test_sys_as_an_attribute_walks_around_the_argv_restriction(self):
+        """The one the `sys.argv` rule could not see, by construction."""
+        ok, reason = check_code_safe(
+            "import statistics\nstatistics.sys.modules['os'].listdir('/')"
+        )
+        assert ok is False
+        assert "sys" in reason
+
+    def test_sys_argv_itself_still_works(self):
+        """The restriction permits exactly this, and must keep permitting it --
+        the generated code's only way to find its input and output paths."""
+        ok, reason = check_code_safe(
+            "import json\nimport sys\n"
+            "with open(sys.argv[1]) as f:\n    d = json.load(f)\n"
+            "with open(sys.argv[2], 'w') as f:\n    f.write('{}')\n"
+        )
+        assert ok is True, reason
+
+    def test_no_allowlisted_module_still_reaches_a_dangerous_one(self):
+        """Exhaustive rather than a list of the three that were reported: walk
+        every module-valued attribute of every allowlisted module and assert the
+        gate refuses any two-hop path to a dangerous module or to sys.modules.
+        """
+        import importlib
+        import types
+
+        from sandbox.gate import _ALLOWED_IMPORTS
+
+        dangerous = {
+            "os", "subprocess", "socket", "shutil", "ctypes",
+            "pickle", "importlib", "urllib", "http",
+        }
+        accepted = []
+        for name in sorted(_ALLOWED_IMPORTS):
+            try:
+                mod = importlib.import_module(name)
+            except Exception:  # pragma: no cover - allowlist is importable
+                continue
+            for first in dir(mod):
+                if first.startswith("__"):
+                    continue
+                hop = getattr(mod, first, None)
+                if not isinstance(hop, types.ModuleType):
+                    continue
+                for second in dir(hop):
+                    if second.startswith("__"):
+                        continue
+                    target = getattr(hop, second, None)
+                    reaches = (
+                        isinstance(target, types.ModuleType)
+                        and target.__name__.split(".")[0] in dangerous
+                    ) or second == "modules"
+                    if not reaches:
+                        continue
+                    expr = f"{name}.{first}.{second}"
+                    ok, _ = check_code_safe(f"import {name}\n{expr}")
+                    if ok:
+                        accepted.append(expr)
+        assert not accepted, f"the gate still accepts: {sorted(accepted)}"

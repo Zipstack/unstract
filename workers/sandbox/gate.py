@@ -160,10 +160,37 @@ def _rule_dangerous_attribute(node, parents) -> str | None:
     return None
 
 
-def _rule_dunder_attribute(node, parents) -> str | None:
-    """Any dunder attribute access at all."""
-    if isinstance(node, ast.Attribute) and node.attr.startswith("__"):
-        return f"safety gate: dunder attribute access '{node.attr}'"
+def _rule_private_attribute(node, parents) -> str | None:
+    """Any underscore-prefixed attribute access, dunder or single.
+
+    Widened from dunders only, because single-underscore attributes are how an
+    allowlisted module hands out one that is not: `statistics.random._os` and
+    `collections._sys` both resolve to the real modules on 3.12, and `_os` is
+    not a dunder, so the old rule passed them. The module allowlist is only
+    layer 1 and layers 2-5 still contain what they reach, but the accepted
+    residual was written as "`os` is outside the allowlist, so there is no path
+    to a secret, a cross-tenant read, or exfiltration" -- which these made
+    false. Generated transformation code has no business reading a module's
+    privates, so the whole prefix goes.
+    """
+    if isinstance(node, ast.Attribute) and node.attr.startswith("_"):
+        kind = "dunder" if node.attr.startswith("__") else "private"
+        return f"safety gate: {kind} attribute access '{node.attr}'"
+    return None
+
+
+def _rule_sys_reexport(node, parents) -> str | None:
+    """`anything.sys` -- the re-export that walks around the `sys.argv` rule.
+
+    `_rule_sys_name` restricts the NAME `sys` to `sys.argv` and closes aliasing
+    (`import sys as s`, `from sys import ...`). It cannot see `statistics.sys`,
+    which is the same module reached as an attribute of an allowlisted one, and
+    from there `sys.modules['os']` is the whole interpreter. Blocking the
+    attribute name closes that without touching the permitted `sys.argv`, which
+    is an attribute access ON the name `sys`, not an attribute NAMED `sys`.
+    """
+    if isinstance(node, ast.Attribute) and node.attr == "sys":
+        return "safety gate: 'sys' reached as an attribute of another module"
     return None
 
 
@@ -228,7 +255,8 @@ _RULES = (
     _rule_import_from,
     _rule_denylisted_call,
     _rule_dangerous_attribute,
-    _rule_dunder_attribute,
+    _rule_private_attribute,
+    _rule_sys_reexport,
     _rule_builtins_subscript,
     _rule_sys_name,
     _rule_denylisted_name,

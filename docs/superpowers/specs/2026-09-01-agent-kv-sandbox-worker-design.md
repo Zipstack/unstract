@@ -151,11 +151,20 @@ are all outside it. That bounds nothing here, for two reasons found in review:
    so `open('/proc/<ppid>/environ')` returns the worker's full environment, `DB_PASSWORD`
    included. No import is involved, so the allowlist does not apply.
 2. **The allowlist is not a boundary anyway.** Allowlisted modules re-export the excluded
-   ones as non-dunder attributes the gate never inspects — `statistics.random._os.system('id')`
-   runs `id`, `collections._sys` *is* `sys`, and
-   `collections._sys._getframe(0).f_builtins['__imp'+'ort__']('os')` reaches arbitrary
-   import (the dunder-subscript check only catches *constant* strings). All GATE-PASS.
-   Treat layer 1 as best-effort hygiene, not containment.
+   ones as non-dunder attributes the gate did not inspect — `statistics.random._os.system('id')`
+   ran `id`, `collections._sys` *is* `sys`, and
+   `collections._sys._getframe(0).f_builtins['__imp'+'ort__']('os')` reached arbitrary
+   import (the dunder-subscript check only catches *constant* strings). All were GATE-PASS.
+
+   Those paths are now rejected: the gate refuses every underscore-prefixed attribute
+   (widened from dunders only) and any attribute named `sys` — the latter because the
+   `sys.argv` restriction constrains the NAME `sys`, so `statistics.sys.modules['os']`
+   walked straight around it. A test walks every module-valued attribute of every
+   allowlisted module and asserts no two-hop path to a dangerous module survives.
+
+   **Treat layer 1 as best-effort hygiene, not containment, regardless.** This is a
+   static check over a dynamic language; the closure is over the paths that exist in
+   today's stdlib, and reason 1 above needs no import at all.
 
 The previous "Containment" list also claimed *the pod carries **no secrets***, while its
 own parenthetical admitted the DB credential. The second half is the true one:
