@@ -149,6 +149,8 @@ def make_session_response(
     auth_controller = AuthenticationController()
     token_data = UserSessionUtils.get_token_data(request)
     provider = "" if token_data is None else token_data.get("provider", "")
+    # Not guarded: a failed read must not pass for "never chosen", which
+    # would send a returning user through the first-login choice.
     preference = get_product_preference(request.user)
     return UserSessionResponseSerializer(
         UserSessionInfo(

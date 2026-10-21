@@ -22,6 +22,7 @@ from pathlib import Path
 from unittest import mock
 
 import jsonschema
+from django.db import connection
 from django.test import TestCase
 
 from account_v2.authentication_plugin_registry import AuthenticationPluginRegistry
@@ -242,3 +243,28 @@ class ProductContractTests(TestCase):
         self.assertEqual(
             set(SESSION_SCHEMA["properties"]["last_product"]["enum"]) - {None}, products
         )
+
+
+class RecordSelectedProductTransactionTests(TestCase):
+    """``TestCase`` runs each test in a transaction, standing in for a
+    request under ATOMIC_REQUESTS.
+    """
+
+    def test_a_failed_write_leaves_the_transaction_usable(self) -> None:
+        user = _user("atomic@example.com")
+
+        def fail_in_sql(*args, **kwargs):
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT 1 / 0")
+
+        with (
+            mock.patch(
+                "account_v2.product_preference.set_product_preference",
+                side_effect=fail_in_sql,
+            ),
+            self.assertLogs("account_v2.product_preference", level="ERROR"),
+        ):
+            record_selected_product(user, "unstract")
+
+        # Raises "current transaction is aborted" without the savepoint.
+        self.assertTrue(User.objects.filter(pk=user.pk).exists())

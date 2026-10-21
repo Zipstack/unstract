@@ -13,6 +13,8 @@ import logging
 from dataclasses import dataclass
 from datetime import datetime
 
+from django.db import transaction
+
 from account_v2.enums import Product
 from account_v2.models import User, UserProductPreference
 
@@ -35,8 +37,9 @@ NO_PREFERENCE = ProductPreference(product=None, updated_at=None)
 def parse_product(value: object) -> str | None:
     """Return ``value`` if it is a known product id, else None.
 
-    Unknown values are ignored rather than rejected, matching how the login
-    flow already treats ``selectedProduct`` in the auth plugin.
+    Unknown values are ignored rather than rejected, as the auth plugin
+    already ignores an unknown ``selectedProduct``. The set is wider than the
+    plugin's OAuth scope list, which names only unstract and llm-whisperer.
     """
     if isinstance(value, str) and value in Product.values:
         return value
@@ -79,7 +82,10 @@ def record_selected_product(user: User, value: object) -> None:
     if product is None:
         return
     try:
-        set_product_preference(user, product)
+        # A savepoint, so a failed write leaves the caller's transaction
+        # usable when the request runs in one (ATOMIC_REQUESTS).
+        with transaction.atomic():
+            set_product_preference(user, product)
     except Exception:
         logger.exception(
             "Could not store selected product %r for user %s", product, user.id
