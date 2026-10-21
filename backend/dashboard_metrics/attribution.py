@@ -47,9 +47,9 @@ _PIPELINE_TYPES = {
 
 def _describe_sources(
     pipeline_ids: set, workflow_ids: set
-) -> dict[tuple[str, str], tuple[str | None, str]]:
+) -> dict[tuple[str, str], tuple[str | None, SourceType]]:
     """Name and type of each source, keyed by ``(kind, id)``."""
-    described: dict[tuple[str, str], tuple[str | None, str]] = {}
+    described: dict[tuple[str, str], tuple[str | None, SourceType]] = {}
     for d in APIDeployment._base_manager.filter(pk__in=pipeline_ids).values(
         "pk", "display_name"
     ):
@@ -69,6 +69,22 @@ def _describe_sources(
     ):
         described[("workflow", str(w["pk"]))] = (w["workflow_name"], SourceType.WORKFLOW)
     return described
+
+
+def _source(
+    key: tuple[str, str],
+    pages: int,
+    total: int,
+    described: dict[tuple[str, str], tuple[str | None, SourceType]],
+) -> dict[str, Any]:
+    name, source_type = described.get(key, _DELETED)
+    return {
+        "id": key[1],
+        "name": name,
+        "type": source_type.value,
+        "failed_pages": pages,
+        "share": round(pages / total, 4) if total else 0.0,
+    }
 
 
 def failure_attribution(
@@ -128,17 +144,7 @@ def failure_attribution(
         "start_date": start_date.isoformat(),
         "end_date": end_date.isoformat(),
         "total_failed_pages": total,
-        "sources": [
-            {
-                "id": key[1],
-                "name": name,
-                "type": source_type.value,
-                "failed_pages": pages,
-                "share": round(pages / total, 4) if total else 0.0,
-            }
-            for key, pages in ordered
-            for name, source_type in [described.get(key, _DELETED)]
-        ],
+        "sources": [_source(key, pages, total, described) for key, pages in ordered],
         "days": [
             {
                 "date": period.date().isoformat(),
