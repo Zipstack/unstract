@@ -646,6 +646,13 @@ class PromptStudioHelper:
                 "check_extraction_status raised; falling back to full extraction",
                 exc_info=True,
             )
+        if reused_extracted_text:
+            # The cache key ignores the LLM, so a cached image-mode extraction
+            # made for another LLM must still fit this profile's (outside the
+            # fallback above: a rejection must reach the user).
+            PromptStudioHelper._check_cached_image_extraction(
+                default_profile, reused_extracted_text, filename
+            )
 
         util = PromptIdeBaseTool(log_level=LogLevel.INFO, org_id=org_id)
         doc_id_key = IndexingUtils.generate_index_key(

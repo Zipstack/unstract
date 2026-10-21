@@ -198,7 +198,11 @@ Checking the table as a whole could not do this job: it cannot enumerate
 model ids nobody listed (a new override can shadow any real model), and
 rejecting the file would also hold an older install back from every later
 fix in it. With the clamp, one over-raised value is capped and the rest of
-the file (tightening, new providers and models) still applies.
+the file (tightening, new providers) still applies. A model newly listed
+under a provider the bundled table already has is clamped too: the bundled
+table resolves that model id from the provider's defaults (or the shipped
+`default`), so its count and request bytes can be at most 2x that value
+until an sdk1 release bundles the entry (rule 7).
 
 A timeout, HTTP error, invalid JSON or a file that fails validation logs a
 warning and keeps the last good copy (the previous remote table, else the
@@ -237,8 +241,12 @@ and to the run-log summary.
    count or request-byte limit above 2x the bundled value for the same
    model is capped at 2x (a WARNING per provider, model and field names
    both numbers). Ship those changes in an sdk1 release. Lowering limits
-   and adding providers or models takes effect on refresh; per-image
-   limits are not clamped, so review them with extra care.
+   and adding providers takes effect on refresh. A model newly listed
+   under a provider the bundled table has is clamped against what the
+   bundled table resolves for it (the provider's defaults or the shipped
+   `default`), so a generous new entry is capped at 2x that until it ships
+   in a release. Per-image limits are not clamped, so review them with
+   extra care.
 7. Keep the schema backward compatible. Older installs reject any file
    they cannot read and stay on their bundled copy, so a key they do not
    know (a new limit field, a new field attribute) cuts them off from

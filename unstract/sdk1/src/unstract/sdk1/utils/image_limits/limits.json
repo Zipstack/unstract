@@ -184,7 +184,7 @@
       "scope": "per_request_body",
       "base64_counted": true
     },
-    "rationale": "20 images = the Bedrock Converse per-message limit and the point above which Anthropic tightens per-image pixels. 20 x ~0.33 MB (250 KB page, base64) = ~6.7 MB, under every documented byte limit except Gemma 4 on Mantle (3.5 MB, own entry). 20 MB = Bedrock's Claude request limit, the strictest common documented byte limit (Gemini API inline is now documented as 100 MB). Known stricter cases have their own entries (Mistral 8, Nova 2 5, Gemma 4 3.5 MB) or are noted (NIM 1.x default 5). Verifier caveats: (1) this default also fills every null count/byte field after resolution, e.g. Vertex Gemini 3.x request bytes, Azure request bytes, MiniMax and Mantle Grok/Qwen counts, so it is a hard cap on those too; (2) for pass-through providers (vLLM default 999, unknown OpenRouter upstreams) it will block documents the server could take, so make it operator-overridable or a warning rather than a hard reject.",
+    "rationale": "20 images = the Bedrock Converse per-message limit and the point above which Anthropic tightens per-image pixels. 20 x ~0.33 MB (250 KB page, base64) = ~6.7 MB, under every documented byte limit except Gemma 4 on Mantle (3.5 MB, own entry). 20 MB = Bedrock's Claude request limit, the strictest common documented byte limit (Gemini API inline is now documented as 100 MB). Known stricter cases have their own entries (Mistral 8, Nova 2 5, Gemma 4 3.5 MB) or are noted (NIM 1.x default 5). Verifier caveats: (1) this default also fills every null count/byte field after resolution, e.g. Vertex Gemini 3.x request bytes, Azure request bytes, MiniMax and Mantle Grok/Qwen counts, so it is a hard cap on those too; (2) for pass-through providers (vLLM default 999, unknown OpenRouter upstreams) it is advisory, not a hard reject: the policy logs it and sends the request (resolve.PASS_THROUGH_DEFAULTS_ARE_ADVISORY), and an operator override file can set real values.",
     "tokens_per_image": {
       "value": 1500,
       "confidence": "unverified",
@@ -1781,7 +1781,7 @@
       "model_overrides": [
         {
           "pattern": "(?i)^(openrouter/)?~?anthropic/",
-          "note": "unverified; if inheriting, use the strictest platform: 100/600 images by context window, 20 MB request",
+          "note": "unverified; inherits Anthropic direct (100/600 images by context window, 32 MB request); an upstream on Bedrock is stricter (20 images, 20 MB request)",
           "inherit": "anthropic"
         },
         {
