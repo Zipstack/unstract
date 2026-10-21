@@ -46,13 +46,16 @@
 }
 ```
 
-- `id`, `display_name`, `name` and `metadata` are always present, in that order. `metadata` is `null` in OSS and holds the identity provider's organization metadata in cloud.
+- `id`, `display_name`, `name` and `metadata` are always present, in that order. `metadata` is always `null` in OSS. In cloud it holds the identity provider's organization metadata, or `null` when the organization has none.
 - `role`, `member_count` and `region` are each **absent, never null**, when this deployment can't answer for that organization. In cloud, regions share one identity provider, so the list can name organizations with no data on this deployment.
+- Absent means unknown. A client leaves the value out of the display and draws no conclusion from it: the same rows come back without the three fields when working them out fails (see below).
 
 | Field | Present when | Value |
 |---|---|---|
 | `role` | The caller has a membership in the organization on this deployment. | The stored role: `admin` or `user` in OSS; `unstract_admin`, `unstract_user`, `unstract_supervisor` or `unstract_reviewer` in cloud. |
-| `member_count` | The organization exists on this deployment. | The people the members page lists: members who have signed in on this deployment. Platform API key accounts and pending invitations are not counted. |
+| `member_count` | The organization exists on this deployment. | The people the members page lists: the organization's member records on this deployment. Platform API key accounts and pending invitations are not counted. |
 | `region` | The organization exists on this deployment and the deployment sets `REGION`. | The region code (`US`, `EU`; `STAGING`, `DEV` or `INTEGRATION` outside production). The client maps it to a label. OSS and on-prem never send it. |
 
-If working out these three fields fails, the list is returned without them.
+If working out these three fields fails, the list is returned without them and the failure is logged.
+
+If the organizations can't be listed at all, the response is `412` and the session is logged out. For a known authorization error the body is `{"domain": ..., "code": ...}` with `code` one of `USF`, `USR`, `INE001`, `INE002` or `INS`; otherwise the body is empty.

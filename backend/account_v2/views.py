@@ -87,8 +87,17 @@ def logout(request: Request) -> Response:
             },
         ),
         412: OpenApiResponse(
-            description="The user could not be given an organization; the "
-            "session is logged out."
+            response=inline_serializer(
+                "OrganizationListFailed",
+                {
+                    "domain": serializers.CharField(required=False, allow_null=True),
+                    "code": serializers.CharField(required=False),
+                },
+            ),
+            description="Listing the organizations failed and the session is "
+            "logged out. For a known authorization error the body carries "
+            "`code` (USF, USR, INE001, INE002 or INS) and `domain`; otherwise "
+            "it is empty.",
         ),
     },
     description="The caller's organizations. See account_v2/ReadMe.md for "

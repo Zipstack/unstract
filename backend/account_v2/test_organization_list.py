@@ -7,6 +7,7 @@ contract, so it is tested here too.
 import secrets
 from unittest.mock import patch
 
+from django.db import connection
 from django.test import TestCase, override_settings
 from drf_spectacular.generators import SchemaGenerator
 from rest_framework.request import Request
@@ -90,7 +91,7 @@ class OrganizationListTests(TestCase):
 
     def test_existing_fields_keep_their_order(self) -> None:
         org = self.controller.user_organizations(self.request).data["organizations"][0]
-        self.assertEqual(list(org)[:3], ["id", "display_name", "name"])
+        self.assertEqual(list(org)[:4], ["id", "display_name", "name", "metadata"])
 
     @override_settings(REGION=None)
     def test_no_region_key_without_regions(self) -> None:
@@ -99,6 +100,7 @@ class OrganizationListTests(TestCase):
 
     def test_details_failure_still_lists_without_logout(self) -> None:
         with (
+            self.assertLogs("account_v2.authentication_controller", "ERROR") as logs,
             patch(
                 "account_v2.authentication_controller.with_member_details",
                 side_effect=RuntimeError("boom"),
@@ -111,15 +113,36 @@ class OrganizationListTests(TestCase):
         self.assertEqual([org["id"] for org in orgs], ["org-a", "org-b"])
         self.assertNotIn("role", orgs[0])
         logout.assert_not_called()
+        self.assertIn(self.caller.user_id, logs.output[0])
+        self.assertIn("2 organizations", logs.output[0])
+
+    def test_failed_details_query_leaves_the_transaction_usable(self) -> None:
+        # TestCase wraps each test in a transaction, as ATOMIC_REQUESTS would.
+        def bad_query(*args: object) -> None:
+            with connection.cursor() as cursor:
+                cursor.execute("SELECT * FROM no_such_table")
+
+        with (
+            self.assertLogs("account_v2.authentication_controller", "ERROR"),
+            patch(
+                "account_v2.authentication_controller.with_member_details",
+                side_effect=bad_query,
+            ),
+        ):
+            response = self.controller.user_organizations(self.request)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(User.objects.filter(pk=self.caller.pk).count(), 1)
 
     @override_settings(REGION=None)
     def test_view_returns_the_old_payload_plus_details(self) -> None:
         # Through the view, as v0 calls it: every old key and value unchanged.
         raw = APIRequestFactory().get("/api/v1/organization")
         force_authenticate(raw, user=self.caller)
+        # org-x has no data on this deployment, as for another region's org.
+        unknown = OrganizationData(id="org-x", display_name="X", name="org-x")
         with patch(
             "account_v2.authentication_controller.AuthenticationService.user_organizations",
-            return_value=self.listed,
+            return_value=[*self.listed, unknown],
         ):
             response = views.get_organizations(raw)
         self.assertEqual(response.status_code, 200)
@@ -144,8 +167,23 @@ class OrganizationListTests(TestCase):
                         "role": "user",
                         "member_count": 2,
                     },
+                    {
+                        "id": "org-x",
+                        "display_name": "X",
+                        "name": "org-x",
+                        "metadata": None,
+                    },
                 ],
             },
+        )
+        # assertEqual ignores key order; the wire order is part of the contract.
+        self.assertEqual(
+            [list(org) for org in response.data["organizations"]],
+            [
+                ["id", "display_name", "name", "metadata", "role", "member_count"],
+                ["id", "display_name", "name", "metadata", "role", "member_count"],
+                ["id", "display_name", "name", "metadata"],
+            ],
         )
 
 
@@ -156,10 +194,54 @@ class OrganizationListSchemaTests(TestCase):
         )
         org = schema["components"]["schemas"]["GetOrganizationsResponse"]
         self.assertTrue({"role", "member_count", "region"} <= set(org["properties"]))
-        self.assertEqual(set(org["required"]), {"id", "display_name", "name"})
+        self.assertEqual(set(org["required"]), {"id", "display_name", "name", "metadata"})
+        for field in ("role", "member_count", "region"):
+            self.assertNotIn("nullable", org["properties"][field])
+        failed = schema["paths"]["/organization"]["get"]["responses"]["412"]
+        body = failed["content"]["application/json"]["schema"]
+        body = schema["components"]["schemas"][body["$ref"].rsplit("/", 1)[1]]
+        self.assertEqual(set(body["properties"]), {"domain", "code"})
         operation_ids = {
             op.get("operationId")
             for path in schema["paths"].values()
             for op in path.values()
         }
         self.assertIn("organization_list", operation_ids)
+
+
+@override_settings(REGION="US")
+class OrganizationListEndpointTests(TestCase):
+    """Through the URL and the auth middleware, as a browser calls it."""
+
+    url = "/api/v1/organization"
+
+    def setUp(self) -> None:
+        self.caller = _user("caller@example.com")
+        org = Organization.objects.create(
+            name="org-a", display_name="Org A", organization_id="org-a"
+        )
+        OrganizationMember.objects.create(
+            organization=org, user=self.caller, role="admin"
+        )
+        self.listed = [OrganizationData(id="org-a", display_name="Org A", name="org-a")]
+        patcher = patch(
+            "account_v2.authentication_controller.AuthenticationService.user_organizations",
+            return_value=self.listed,
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        self.addCleanup(UserContext.set_organization_identifier, None)
+
+    def test_signed_in_caller_gets_the_details(self) -> None:
+        self.client.force_login(self.caller)
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 200)
+        (org,) = response.json()["organizations"]
+        self.assertEqual(
+            (org["role"], org["member_count"], org["region"]), ("admin", 1, "US")
+        )
+
+    def test_anonymous_caller_is_refused(self) -> None:
+        response = self.client.get(self.url)
+        self.assertEqual(response.status_code, 401)
+        self.assertNotIn(b"org-a", response.content)

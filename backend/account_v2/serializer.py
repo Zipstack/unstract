@@ -33,24 +33,28 @@ class GetOrganizationsResponseSerializer(serializers.Serializer):
     id = serializers.CharField()
     display_name = serializers.CharField()
     name = serializers.CharField()
-    metadata = serializers.JSONField(required=False, allow_null=True)
+    # Always sent: allow_null turns a missing attribute into null.
+    metadata = serializers.JSONField(allow_null=True)
     # Absent, never null, where this deployment can't answer for the
-    # organization: see account_v2/organization_details.py.
+    # organization: see account_v2/organization_details.py. Absent means
+    # unknown, so clients leave it out rather than infer from it.
     role = serializers.CharField(
         required=False,
         help_text="The caller's role. Absent if the caller has no membership "
-        "in this organization on this deployment.",
+        "in this organization on this deployment, or if the details could not "
+        "be loaded.",
     )
     member_count = serializers.IntegerField(
         required=False,
-        help_text="Members who have signed in on this deployment, without platform "
-        "API key accounts. Absent if "
-        "the organization has no data on this deployment.",
+        help_text="The people the members page lists, without platform API key "
+        "accounts. Absent if the organization has no data on this deployment, "
+        "or if the details could not be loaded.",
     )
     region = serializers.CharField(
         required=False,
         help_text="The deployment's region code, e.g. US or EU. Absent where "
-        "the deployment has no regions or the organization has no data here.",
+        "the deployment has no regions, the organization has no data here, or "
+        "the details could not be loaded.",
     )
 
     def to_representation(self, instance):  # type: ignore

@@ -7,14 +7,13 @@ out of the row rather than sent as null:
 
 - ``role``: the caller has a membership row in that organization here.
 - ``member_count``: the organization exists here. Counts the people the
-  members page lists: members who have signed in here, without platform API
-  key accounts or pending invitations.
+  members page lists: the organization's member records here, without
+  platform API key accounts. Pending invitations have no record yet.
 - ``region``: the organization exists here and ``settings.REGION`` is set.
 """
 
 from collections.abc import Sequence
-from dataclasses import asdict
-from typing import Any
+from typing import Any, Protocol
 
 from django.conf import settings
 from django.db.models import Count, Q
@@ -23,12 +22,23 @@ from tenant_account_v2.models import OrganizationMember
 from account_v2.models import Organization, User
 
 
-def with_member_details(organizations: Sequence[Any], user: User) -> list[dict[str, Any]]:
+class ListedOrganization(Protocol):
+    """What the auth services return for each organization."""
+
+    id: str
+    display_name: str
+    name: str
+
+
+def with_member_details(
+    organizations: Sequence[ListedOrganization], user: User
+) -> list[dict[str, Any]]:
     """Return each organization as a dict with the details this deployment has.
 
     Args:
-        organizations: dataclasses with an ``id`` holding the organization_id,
-            in the order the list should keep.
+        organizations: objects with ``id`` (the organization_id),
+            ``display_name``, ``name`` and optionally ``metadata``, in the
+            order the list should keep.
         user: the user the list belongs to.
 
     Returns:
@@ -57,7 +67,12 @@ def with_member_details(organizations: Sequence[Any], user: User) -> list[dict[s
 
     rows = []
     for org in organizations:
-        row = asdict(org)
+        row: dict[str, Any] = {
+            "id": org.id,
+            "display_name": org.display_name,
+            "name": org.name,
+            "metadata": getattr(org, "metadata", None),
+        }
         if org.id in roles:
             row["role"] = roles[org.id]
         if org.id in member_counts:

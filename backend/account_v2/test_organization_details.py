@@ -2,6 +2,7 @@
 
 import secrets
 from dataclasses import dataclass
+from types import SimpleNamespace
 
 from django.test import TestCase, override_settings
 from tenant_account_v2.models import OrganizationMember
@@ -70,6 +71,7 @@ class WithMemberDetailsTests(TestCase):
                     "id": "org-a",
                     "display_name": "Org A",
                     "name": "org-a",
+                    "metadata": None,
                     "role": "admin",
                     "member_count": 3,
                     "region": "US",
@@ -78,6 +80,7 @@ class WithMemberDetailsTests(TestCase):
                     "id": "org-b",
                     "display_name": "Org B",
                     "name": "org-b",
+                    "metadata": None,
                     "role": "user",
                     "member_count": 2,
                     "region": "US",
@@ -94,7 +97,10 @@ class WithMemberDetailsTests(TestCase):
     def test_unknown_organisation_gets_no_details(self) -> None:
         unknown = OrganizationData(id="org-x", display_name="X", name="org-x")
         rows = with_member_details([unknown], self.caller)
-        self.assertEqual(rows, [{"id": "org-x", "display_name": "X", "name": "org-x"}])
+        self.assertEqual(
+            rows,
+            [{"id": "org-x", "display_name": "X", "name": "org-x", "metadata": None}],
+        )
 
     @override_settings(REGION="US")
     def test_member_count_without_caller_membership(self) -> None:
@@ -111,6 +117,16 @@ class WithMemberDetailsTests(TestCase):
         OrganizationMember.objects.create(organization=self.org_a, user=bot, role="user")
         row = with_member_details([_data(self.org_a)], self.caller)[0]
         self.assertEqual(row["member_count"], 3)
+
+    @override_settings(REGION="US")
+    def test_organisation_with_no_people_counts_zero(self) -> None:
+        bot = _user("only-bot@example.com")
+        bot.is_service_account = True
+        bot.save()
+        empty = _org("org-empty", "Empty")
+        OrganizationMember.objects.create(organization=empty, user=bot, role="user")
+        row = with_member_details([_data(empty)], self.caller)[0]
+        self.assertEqual((row["member_count"], row["region"]), (0, "US"))
 
     def test_two_queries_for_any_number_of_organisations(self) -> None:
         orgs = [_data(self.org_a), _data(self.org_b), _data(self.org_c)]
@@ -129,3 +145,12 @@ class WithMemberDetailsTests(TestCase):
         org = _data(self.org_a)
         with_member_details([org], self.caller)
         self.assertFalse(hasattr(org, "role"))
+
+    def test_any_object_with_the_fields_works(self) -> None:
+        # A plugin may hand back plain objects rather than dataclasses.
+        org = SimpleNamespace(id="org-a", display_name="Org A", name="org-a")
+        row = with_member_details([org], self.caller)[0]
+        self.assertEqual(
+            list(row), ["id", "display_name", "name", "metadata", "role", "member_count"]
+        )
+        self.assertIsNone(row["metadata"])
