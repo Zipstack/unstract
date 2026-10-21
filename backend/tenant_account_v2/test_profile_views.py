@@ -81,6 +81,12 @@ class ProfileEndpointTests(LocalStorageMixin, TestCase):
         self.assertEqual(response.status_code, 200, response.content)
         self.assertEqual(self.profile()["language"], "en-US")
 
+    def test_empty_patch_changes_nothing(self) -> None:
+        self.patch_profile({"display_name": "Me Edited"})
+        response = self.patch_profile({})
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.json()["user"]["display_name"], "Me Edited")
+
     def test_patch_refuses_empty_and_blank_names(self) -> None:
         for name in ("", "   "):
             with self.subTest(name=name):
@@ -242,6 +248,9 @@ class ProfileSchemaTests(TestCase):
         update = schema["components"]["schemas"]["PatchedProfileUpdate"]
         self.assertNotIn("required", update)
         self.assertEqual(update["properties"]["display_name"]["maxLength"], 64)
+        self.assertEqual(
+            set(ops["user_profile_update"]["responses"]), {"200", "400", "404", "500"}
+        )
         photo = ops["user_profile_photo"]["responses"]["200"]["content"]
         self.assertEqual(set(photo), {"image/png", "image/jpeg"})
         upload = ops["user_profile_photo_upload"]["requestBody"]["content"]

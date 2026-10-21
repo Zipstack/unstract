@@ -1,5 +1,6 @@
 """Tests for the locally edited profile: name, language and photo."""
 
+import dataclasses
 import os
 import secrets
 import struct
@@ -101,6 +102,16 @@ class PhotoStorageTests(LocalStorageMixin, TestCase):
         user_profile.delete_photo(self.user)
         self.user.refresh_from_db()
         self.assertIsNone(self.user.profile_photo_updated_at)
+        self.assertIsNone(user_profile.read_photo(self.user))
+
+    def test_storage_failure_on_delete_keeps_the_photo_recorded(self) -> None:
+        user_profile.save_photo(self.user, png_bytes())
+        with patch("unstract.sdk1.file_storage.impl.FileStorage.rm", side_effect=OSError):
+            with self.assertRaises(OSError):
+                user_profile.delete_photo(self.user)
+        self.user.refresh_from_db()
+        self.assertIsNotNone(self.user.profile_photo_updated_at)
+        user_profile.delete_photo(self.user)  # a retry removes it
         self.assertIsNone(user_profile.read_photo(self.user))
 
     def test_delete_when_object_already_gone(self) -> None:
@@ -227,10 +238,14 @@ class ProfileOverrideTests(TestCase):
         result = user_profile.with_profile_overrides(self.info, self.user, "org-a")
         self.assertEqual(result, self.info)
 
-    def test_edited_name_replaces_name_and_display_name(self) -> None:
+    def test_edited_name_replaces_the_provider_name(self) -> None:
         self.user.profile_display_name = "Edited"
-        result = user_profile.with_profile_overrides(self.info, self.user, "org-a")
-        self.assertEqual((result.name, result.display_name), ("Edited", "Edited"))
+        info = dataclasses.replace(self.info, family_name="Smith")
+        result = user_profile.with_profile_overrides(info, self.user, "org-a")
+        self.assertEqual(
+            (result.name, result.display_name, result.family_name),
+            ("Edited", "Edited", None),
+        )
         self.assertEqual(self.info.name, "Provider")
 
     def test_photo_replaces_picture(self) -> None:

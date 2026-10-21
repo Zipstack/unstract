@@ -1,7 +1,8 @@
 """The profile a user edits locally: name, language and photo.
 
-The edited name and photo are stored here, never written to the identity
-provider, and shown in place of the provider's values.
+The edited name and language live on the User row and the photo in the
+permanent file storage. Neither is written to the identity provider; both
+are shown in place of the provider's values.
 """
 
 import dataclasses
@@ -92,15 +93,17 @@ def read_photo(user: User) -> tuple[bytes, str] | None:
 
 
 def delete_photo(user: User) -> None:
+    """Remove the object, then the record, so a failed removal can be retried."""
+    recorded = User.objects.filter(
+        pk=user.pk, profile_photo_updated_at__isnull=False
+    ).exists()
+    if recorded:  # Without a recorded photo there is no storage to touch.
+        try:
+            _storage().rm(photo_path(user), recursive=False)
+        except FileNotFoundError:
+            logger.warning("Profile photo of user %s was already gone", user.pk)
+        User.objects.filter(pk=user.pk).update(profile_photo_updated_at=None)
     user.profile_photo_updated_at = None
-    if not User.objects.filter(pk=user.pk, profile_photo_updated_at__isnull=False).update(
-        profile_photo_updated_at=None
-    ):
-        return  # No photo, so no storage to touch.
-    try:
-        _storage().rm(photo_path(user), recursive=False)
-    except FileNotFoundError:
-        logger.warning("Profile photo of user %s was already gone", user.pk)
 
 
 def photo_url(user: User, organization_id: str | None) -> str | None:
@@ -116,10 +119,13 @@ def photo_url(user: User, organization_id: str | None) -> str | None:
 
 def with_profile_overrides(info: T, user: User, organization_id: str | None) -> T:
     """A copy of the provider's user info with the locally edited values on top."""
-    changes: dict[str, str] = {}
+    changes: dict[str, str | None] = {}
     if user.profile_display_name:
+        # The edited name is the whole name; the provider's surname would
+        # otherwise be appended to it where clients join the two.
         changes["name"] = user.profile_display_name
         changes["display_name"] = user.profile_display_name
+        changes["family_name"] = None
     url = photo_url(user, organization_id)
     if url:
         changes["picture"] = url

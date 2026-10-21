@@ -196,7 +196,9 @@ class OrganizationUserViewSet(viewsets.ViewSet):
         request={"multipart/form-data": ProfilePhotoSerializer},
         responses={
             200: PHOTO_URL_RESPONSE,
-            400: OpenApiResponse(description="Not a PNG or JPEG, or over 2 MB"),
+            400: OpenApiResponse(
+                description="No photo field, not a PNG or JPEG, or over 2 MB"
+            ),
         },
     )
     @action(detail=False, methods=["POST"])
