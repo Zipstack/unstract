@@ -49,6 +49,8 @@ class TestTextModeRegression:
         assert result.extracted_text == "hello text"
         assert result.extraction_metadata.whisper_hash == "wh1"
         assert result.extraction_metadata.page_images is None
+        # Responses without whisper_metadata report no page count.
+        assert result.page_count is None
         assert image_called["hit"] is False  # image path never touched
 
     def test_text_mode_error_path_propagates(self, monkeypatch: MonkeyPatch) -> None:
@@ -98,6 +100,8 @@ class TestImageModeBranch:
         assert result.extracted_text == expected_summary
         assert "page_001.png" not in result.extracted_text
         assert result.extraction_metadata.page_images == refs
+        # Image mode converts every page, so billing must count the file.
+        assert result.page_count is None
         # The real job id is recorded, not an empty string (HITL/QueueResult
         # consumers read this).
         assert result.extraction_metadata.whisper_hash == "run-1|doc-hash"
