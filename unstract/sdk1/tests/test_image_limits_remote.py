@@ -1021,7 +1021,6 @@ class TestEveryEntryPointIsClamped:
         self, serve: Callable[..., _Server], clock: _FakeClock
     ) -> None:
         from unstract.sdk1.llm import LLM
-        from unstract.sdk1.utils.image_limits import resolve_image_limits_for_adapter
 
         serve(
             _json_response(
@@ -1040,9 +1039,6 @@ class TestEveryEntryPointIsClamped:
         results = [
             _bedrock_images(),
             resolve_image_limits("bedrock", BEDROCK_CLAUDE).max_images_per_request.value,
-            resolve_image_limits_for_adapter(
-                self.BEDROCK_ID, meta
-            ).max_images_per_request.value,
             LLM(adapter_id=self.BEDROCK_ID, adapter_metadata=dict(meta))
             .get_image_request_limits()
             .max_images_per_request.value,

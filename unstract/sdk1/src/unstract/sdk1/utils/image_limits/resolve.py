@@ -45,7 +45,7 @@ from unstract.sdk1.utils.image_limits.source import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping, Sequence
+    from collections.abc import Sequence
 
 logger = logging.getLogger(__name__)
 
@@ -526,28 +526,3 @@ def local_max_input_tokens(model: str, cost_model: str | None = None) -> int | N
             if isinstance(value, int) and not isinstance(value, bool) and value > 0:
                 return value
     return None
-
-
-def resolve_image_limits_for_adapter(
-    adapter_id: str, adapter_metadata: Mapping[str, object]
-) -> ImageRequestLimits:
-    """Resolve limits from an LLM adapter id and its stored metadata.
-
-    Runs the adapter's local ``validate`` to obtain the routed model string
-    and ``cost_model`` — no ``LLM`` instance, no provider call; the limits
-    table comes from memory (``get_limits_table`` never waits on GitHub).
-    Raises ``KeyError`` for an unknown adapter id.
-    """
-    # Imported lazily: adapters.llm1 pulls in every adapter module.
-    from unstract.sdk1.adapters.constants import Common
-    from unstract.sdk1.adapters.llm1 import adapters
-
-    module = adapters[adapter_id][Common.MODULE]
-    validated = module.validate(dict(adapter_metadata))
-    model_id = validated.get("model_id")
-    return resolve_image_limits(
-        module.get_provider(),
-        str(validated["model"]),
-        cost_model=validated.get("cost_model"),
-        extra_model_ids=[str(model_id)] if model_id else (),
-    )

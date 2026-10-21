@@ -1013,13 +1013,15 @@ class LLMWhispererHelper:
             return
         page_cap = configured_page_cap()
         if expected_page_count > page_cap:
+            from unstract.sdk1.utils.image_limits.policy import fixed_cap_message
+
             raise ExtractorError(
-                "This document has too many pages for image output mode. It "
-                f"has {expected_page_count} pages, and the limit is {page_cap} "
-                "because every page is sent to the LLM in one request. Split "
-                "the document into smaller files, or use a text output mode "
-                "instead. No pages were converted or charged. (The 'Pages to "
-                "extract' setting does not apply in image output mode.)",
+                fixed_cap_message(
+                    expected_page_count,
+                    page_cap,
+                    charged=False,
+                    pages_to_extract_note=True,
+                ),
                 status_code=400,
             )
 

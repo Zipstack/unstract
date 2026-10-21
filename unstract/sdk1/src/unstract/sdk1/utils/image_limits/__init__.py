@@ -7,8 +7,9 @@ registry, so Unstract maintains the table in ``limits.json`` here.
 
 Public surface:
 
-- ``resolve_image_limits`` / ``resolve_image_limits_for_adapter`` — look up
-  the limits for a provider/model (see ``resolve``).
+- ``resolve_image_limits`` — look up the limits for a provider/model (see
+  ``resolve``); ``LLM.image_input_limits_for`` does it from an adapter id
+  and its stored metadata.
 - ``compute_page_budget`` / ``ImageModePolicy`` / ``check_page_set`` — turn
   limits into the checks the extraction and answer paths run (see
   ``policy``).
@@ -38,6 +39,7 @@ from unstract.sdk1.utils.image_limits.policy import (
     estimate_wire_bytes,
     extraction_bound_kwargs,
     fixed_cap_bound_kwargs,
+    fixed_cap_message,
     format_limit_source,
     model_aware_limits_enabled,
     page_cap_message,
@@ -49,7 +51,6 @@ from unstract.sdk1.utils.image_limits.resolve import (
     local_max_input_tokens,
     provider_key,
     resolve_image_limits,
-    resolve_image_limits_for_adapter,
 )
 from unstract.sdk1.utils.image_limits.source import (
     LIMITS_REFRESH_ENV,
@@ -79,6 +80,7 @@ __all__ = [
     "extraction_bound_kwargs",
     "fixed_cap_bound_kwargs",
     "format_limit_source",
+    "fixed_cap_message",
     "page_cap_message",
     "png_dimensions",
     "LimitsSchemaError",
@@ -90,5 +92,4 @@ __all__ = [
     "model_aware_limits_enabled",
     "provider_key",
     "resolve_image_limits",
-    "resolve_image_limits_for_adapter",
 ]

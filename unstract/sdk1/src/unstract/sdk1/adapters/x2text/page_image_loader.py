@@ -130,23 +130,51 @@ PAGE_CAP_ENV = "VLM_IMAGE_ANSWER_PAGE_CAP"
 MAX_TOTAL_MB_ENV = "VLM_IMAGE_ANSWER_MAX_TOTAL_MB"
 
 
+# (env name, raw value) pairs already reported as unusable: these are read
+# on every page set and profile render, so each bad value is logged once.
+_reported_bad_env: set[tuple[str, str]] = set()
+
+
+def _env_value(name: str) -> str | None:
+    """The variable's value, or None when unset or empty (empty means unset)."""
+    raw = os.getenv(name)
+    if raw is None or not raw.strip():
+        return None
+    return raw
+
+
+def _parse_positive(raw: str) -> int | None:
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return None
+    return value if value > 0 else None
+
+
+def _first_report(name: str, raw: str) -> bool:
+    key = (name, raw)
+    if key in _reported_bad_env:
+        return False
+    _reported_bad_env.add(key)
+    return True
+
+
 def _positive_int_env(name: str, default: int, *, scale: int = 1) -> int:
     """Parse a positive-integer env override, logging and defaulting otherwise.
 
-    An absent variable is the normal case and returns ``default`` silently.
-    A present-but-unusable value is an operator mistake: log it and fall back
-    rather than failing extraction over a malformed env var. ``scale``
-    converts the parsed value into the unit of ``default`` (e.g. MB → bytes).
+    An unset or empty variable is the normal case and returns ``default``
+    silently. A present-but-unusable value is an operator mistake: log it
+    (once per value) and fall back rather than failing extraction over a
+    malformed env var. ``scale`` converts the parsed value into the unit of
+    ``default`` (e.g. MB → bytes).
     """
-    raw = os.getenv(name)
+    raw = _env_value(name)
     if raw is None:
         return default
-    try:
-        value = int(raw)
-        if value <= 0:
-            raise ValueError("must be positive")
-    except (TypeError, ValueError):
-        logger.warning("Invalid %s value %r; using default %d", name, raw, default)
+    value = _parse_positive(raw)
+    if value is None:
+        if _first_report(name, raw):
+            logger.warning("Invalid %s value %r; using default %d", name, raw, default)
         return default
     return value * scale
 
@@ -162,27 +190,25 @@ def configured_max_total_bytes() -> int:
 
 
 def _optional_positive_int_env(name: str, default: int, *, scale: int = 1) -> int | None:
-    """An optional ceiling: None when unset, ``default`` when unusable.
+    """An optional ceiling: None when unset or empty, ``default`` when unusable.
 
     An invalid value must not remove the ceiling (unbounded reads into
-    worker memory), so it is logged at ERROR and the legacy default is kept.
-    ``default`` is already in the scaled unit.
+    worker memory), so it is logged at ERROR (once per value) and the legacy
+    default is kept. ``default`` is already in the scaled unit.
     """
-    raw = os.getenv(name)
+    raw = _env_value(name)
     if raw is None:
         return None
-    try:
-        value = int(raw)
-        if value <= 0:
-            raise ValueError("must be positive")
-    except (TypeError, ValueError):
-        logger.error(
-            "Invalid %s value %r (expected a positive integer); using the "
-            "default %d instead",
-            name,
-            raw,
-            default,
-        )
+    value = _parse_positive(raw)
+    if value is None:
+        if _first_report(name, raw):
+            logger.error(
+                "Invalid %s value %r (expected a positive integer); using the "
+                "default %d instead",
+                name,
+                raw,
+                default,
+            )
         return default
     return value * scale
 
@@ -456,13 +482,10 @@ def load_page_images(  # noqa: C901 - legacy and policy paths share one bounded-
                 page_cap=page_cap,
             )
     elif page_cap is not None and page_count > page_cap:
+        from unstract.sdk1.utils.image_limits.policy import fixed_cap_message
+
         raise PageCapExceededError(
-            "This document has too many pages for image output mode. It "
-            f"has {page_count} pages, and the limit is {page_cap} "
-            "because every page is sent to the LLM in one request. Split "
-            "the document into smaller files, or use a text output mode "
-            "instead. (The 'Pages to extract' setting does not apply in "
-            "image output mode.)",
+            fixed_cap_message(page_count, page_cap, pages_to_extract_note=True),
             page_store_dir=page_store_dir,
             page_count=page_count,
             page_cap=page_cap,

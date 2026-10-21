@@ -98,6 +98,7 @@ from unstract.sdk1.utils.image_limits import (
 from unstract.sdk1.utils.image_limits import (
     compute_page_budget,
     extraction_bound_kwargs,
+    fixed_cap_message,
     model_aware_limits_enabled,
     page_cap_message,
 )
@@ -1569,11 +1570,12 @@ class PromptStudioHelper:
                 return
             raise ExtractionAPIError(
                 f"Failed to extract '{filename}'. "
-                f"{image_limit_codes.IMAGE_PAGE_CAP_EXCEEDED}: This document has "
-                f"too many pages for image output mode. It has {page_count} "
-                f"pages, and the limit is {page_cap} because every page is sent "
-                "to the LLM in one request. Split the document into smaller "
-                "files, or switch this profile to a text output mode."
+                f"{image_limit_codes.IMAGE_PAGE_CAP_EXCEEDED}: "
+                + fixed_cap_message(
+                    page_count,
+                    page_cap,
+                    switch_to="switch this profile to a text output mode",
+                )
             )
         budget = PromptStudioHelper._upload_page_budget(profile_manager)
         if budget is None or page_count <= budget.max_pages:
@@ -1628,12 +1630,10 @@ class PromptStudioHelper:
         if page_count <= page_cap:
             return
         raise ImageModePageLimitExceeded(
-            detail=(
-                "This document has too many pages for image output mode. It "
-                f"has {page_count} pages, and the limit is {page_cap} because "
-                "every page is sent to the LLM in one request. Split the "
-                "document into smaller files, or switch the project's default "
-                "profile to a text output mode."
+            detail=fixed_cap_message(
+                page_count,
+                page_cap,
+                switch_to="switch the project's default profile to a text output mode",
             )
         )
 

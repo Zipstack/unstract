@@ -10,12 +10,13 @@ import dataclasses
 
 import pytest
 from _pytest.monkeypatch import MonkeyPatch
+from unstract.sdk1.exceptions import SdkError
+from unstract.sdk1.llm import LLM
 from unstract.sdk1.utils.image_limits import (
     ImageRequestLimits,
     local_max_input_tokens,
     provider_key,
     resolve_image_limits,
-    resolve_image_limits_for_adapter,
 )
 from unstract.sdk1.utils.image_limits import resolve as resolve_mod
 
@@ -250,9 +251,14 @@ class TestLocalMaxInputTokens:
         assert local_max_input_tokens("ollama_chat/llava") is None
 
 
+def _for_adapter(adapter_id: str, metadata: dict) -> ImageRequestLimits:
+    """Limits from an adapter id + stored metadata (the backend's entry point)."""
+    return LLM.image_input_limits_for(adapter_id, metadata, refresh_table=False)[0]
+
+
 class TestResolveForAdapter:
     def test_azure_uses_cost_model_for_matching(self) -> None:
-        limits = resolve_image_limits_for_adapter(
+        limits = _for_adapter(
             AZURE_ID,
             {
                 "deployment_name": "my-dep",
@@ -272,14 +278,14 @@ class TestResolveForAdapter:
         monkeypatch.setattr(
             litellm, "model_cost", {"bedrock_mantle/openai.gpt-5.6-terra": {}}
         )
-        limits = resolve_image_limits_for_adapter(
+        limits = _for_adapter(
             BEDROCK_ID, {"model": "openai.gpt-5.6-terra", "aws_region_name": "us-east-1"}
         )
         assert limits.provider_key == "bedrock_mantle"
         assert limits.max_images_per_request.value == 100
 
     def test_minimax_anthropic_base_keeps_minimax(self) -> None:
-        limits = resolve_image_limits_for_adapter(
+        limits = _for_adapter(
             MINIMAX_ID,
             {
                 "model": "MiniMax-M3",
@@ -290,13 +296,11 @@ class TestResolveForAdapter:
         assert limits.provider_key == "minimax"
 
     def test_pass_through_adapters(self) -> None:
-        ollama = resolve_image_limits_for_adapter(
+        ollama = _for_adapter(
             OLLAMA_ID, {"model": "llava", "api_base": "http://localhost:11434"}
         )
-        nvidia = resolve_image_limits_for_adapter(
-            NVIDIA_ID, {"model": "x/y", "api_key": "k"}
-        )
-        compat = resolve_image_limits_for_adapter(
+        nvidia = _for_adapter(NVIDIA_ID, {"model": "x/y", "api_key": "k"})
+        compat = _for_adapter(
             COMPAT_ID, {"model": "y", "api_base": "http://vllm:8000/v1"}
         )
         assert ollama.provider_key == "ollama"
@@ -305,8 +309,8 @@ class TestResolveForAdapter:
         assert all(x.max_images_per_request.advisory for x in (ollama, nvidia, compat))
 
     def test_unknown_adapter_id_raises(self) -> None:
-        with pytest.raises(KeyError):
-            resolve_image_limits_for_adapter("nope|123", {"model": "x"})
+        with pytest.raises(SdkError):
+            _for_adapter("nope|123", {"model": "x"})
 
     def test_result_is_a_frozen_dataclass(self) -> None:
         limits = resolve_image_limits("openai", "openai/gpt-5.6")

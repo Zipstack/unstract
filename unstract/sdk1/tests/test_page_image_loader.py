@@ -7,6 +7,7 @@ double and the real local-filesystem FileStorage backend.
 """
 
 import base64
+import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -27,6 +28,15 @@ from unstract.sdk1.adapters.x2text.page_image_loader import (
 from unstract.sdk1.file_storage import FileStorage, FileStorageProvider
 
 from tests.llmw_image_fixtures import InMemoryFileStorage, minimal_png
+
+
+@pytest.fixture(autouse=True)
+def _fresh_bad_env_reports(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Each bad env value is logged once per process; start every test fresh.
+    from unstract.sdk1.adapters.x2text import page_image_loader
+
+    monkeypatch.setattr(page_image_loader, "_reported_bad_env", set())
+
 
 if TYPE_CHECKING:
     from unstract.sdk1.utils.image_limits import ImageModePolicy
@@ -345,7 +355,7 @@ class TestConfiguredPageCap:
         monkeypatch.setenv(PAGE_CAP_ENV, "42")
         assert configured_page_cap() == 42
 
-    @pytest.mark.parametrize("raw", ["not-a-number", "0", "-5", ""])
+    @pytest.mark.parametrize("raw", ["not-a-number", "0", "-5", "", "  "])
     def test_unusable_value_falls_back(
         self, raw: str, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -541,7 +551,42 @@ class TestConfiguredCeilings:
         assert configured_page_ceiling() == 40
         assert configured_request_bytes_ceiling() == 3 * 1024 * 1024
 
-    @pytest.mark.parametrize("raw", ["lots", "10MB", "0", "-5", ""])
+    @pytest.mark.parametrize("raw", ["", "   "])
+    def test_empty_value_is_unset(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+        raw: str,
+    ) -> None:
+        # A chart that renders VAR: "" means "not set", not an invalid value.
+        from unstract.sdk1.adapters.x2text.page_image_loader import (
+            MAX_TOTAL_MB_ENV,
+            configured_page_ceiling,
+            configured_request_bytes_ceiling,
+        )
+
+        monkeypatch.setenv(PAGE_CAP_ENV, raw)
+        monkeypatch.setenv(MAX_TOTAL_MB_ENV, raw)
+        with caplog.at_level("WARNING"):
+            assert configured_page_ceiling() is None
+            assert configured_request_bytes_ceiling() is None
+            assert configured_page_cap() == DEFAULT_PAGE_CAP
+        assert not [r for r in caplog.records if r.levelno >= logging.WARNING]
+
+    def test_a_bad_value_is_logged_once(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        from unstract.sdk1.adapters.x2text.page_image_loader import (
+            configured_page_ceiling,
+        )
+
+        monkeypatch.setenv(PAGE_CAP_ENV, "lots")
+        with caplog.at_level("ERROR"):
+            for _ in range(3):
+                assert configured_page_ceiling() == DEFAULT_PAGE_CAP
+        assert len([r for r in caplog.records if r.levelname == "ERROR"]) == 1
+
+    @pytest.mark.parametrize("raw", ["lots", "10MB", "0", "-5"])
     def test_unusable_value_keeps_the_legacy_default(
         self,
         monkeypatch: pytest.MonkeyPatch,

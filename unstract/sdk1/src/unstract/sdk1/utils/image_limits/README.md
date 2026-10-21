@@ -60,7 +60,7 @@ This is the one statement of the matching rule; the code and
    cost map, unless `LITELLM_LOCAL_MODEL_COST_MAP` pins the bundled one);
    it never makes a per-lookup network call.
 7. Remote clamp. When the base table is the remote copy, every lookup
-   (`resolve_image_limits`, so `resolve_image_limits_for_adapter`, the
+   (`resolve_image_limits`, so the
    `LLM` accessors and every consumer built on them, `refresh=False`
    reads included) also resolves the same inputs (provider, model,
    `cost_model`, extra ids) against the bundled table and combines them,

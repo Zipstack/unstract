@@ -927,6 +927,36 @@ def page_cap_message(page_count: int, budget: PageBudget, *, charged: bool | Non
     )
 
 
+_PAGES_TO_EXTRACT_NOTE = (
+    " (The 'Pages to extract' setting does not apply in image output mode.)"
+)
+
+
+def fixed_cap_message(
+    page_count: int,
+    page_cap: int,
+    *,
+    switch_to: str = "use a text output mode instead",
+    charged: bool | None = None,
+    pages_to_extract_note: bool = False,
+) -> str:
+    """User-facing text for a document over the FIXED page cap.
+
+    The fixed cap applies when model-aware limits are off
+    (``VLM_IMAGE_LIMITS_ENFORCE=false``) or no LLM is known;
+    ``page_cap_message`` covers the model-aware budget. ``switch_to`` ends the
+    advice ("switch this profile to a text output mode", ...).
+    """
+    return (
+        "This document has too many pages for image output mode. It has "
+        f"{page_count} pages, and the limit is {page_cap} because every page is "
+        "sent to the LLM in one request. Split the document into smaller files, "
+        f"or {switch_to}."
+        + _charged_clause(charged)
+        + (_PAGES_TO_EXTRACT_NOTE if pages_to_extract_note else "")
+    )
+
+
 def request_too_large_message(
     policy: ImageModePolicy,
     *,
