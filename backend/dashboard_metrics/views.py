@@ -21,6 +21,8 @@ from rest_framework.throttling import UserRateThrottle
 from utils.filters.ordering_filter import DeterministicOrderingFilter
 from utils.user_context import UserContext
 
+from .attention import collect_attention
+from .attribution import failure_attribution
 from .cache import (
     cache_metrics_response,
     mget_metrics_buckets,
@@ -946,6 +948,60 @@ class DashboardMetricsViewSet(viewsets.ReadOnlyModelViewSet):
                 "range_truncated": params["range_truncated"],
                 "deployments": data,
             }
+        )
+
+    @action(detail=False, methods=["get"], url_path="attention")
+    def attention(self, request: Request) -> Response:
+        """Open items that need attention in the range (PB-T14).
+
+        Failing pipelines and API deployments in OSS; cloud apps add their own
+        kinds. Read live, not cached. Contract:
+        ``contract/attention-response.schema.json``.
+
+        Query Parameters:
+            start_date: Start of date range (ISO 8601). Default: 30 days ago
+            end_date: End of date range (ISO 8601). Default: now
+
+        Returns:
+            200: Items, and ``failed_kinds`` naming any kind that could not load
+        """
+        query_serializer = MetricsQuerySerializer(data=request.query_params)
+        query_serializer.is_valid(raise_exception=True)
+        params = query_serializer.validated_data
+        organization = self._get_organization()
+
+        items, failed_kinds = collect_attention(
+            organization, params["start_date"], params["end_date"]
+        )
+        return Response(
+            {
+                "start_date": params["start_date"].isoformat(),
+                "end_date": params["end_date"].isoformat(),
+                "items": items,
+                "failed_kinds": failed_kinds,
+            }
+        )
+
+    @action(detail=False, methods=["get"], url_path="attribution")
+    def attribution(self, request: Request) -> Response:
+        """Failed pages by source and by day for the range (PB-T14).
+
+        Totals equal the ``failed_pages`` metric for the same range. Read
+        live, not cached. Contract: ``contract/attribution-response.schema.json``.
+
+        Query Parameters:
+            start_date: Start of date range (ISO 8601). Default: 30 days ago
+            end_date: End of date range (ISO 8601). Default: now
+        """
+        query_serializer = MetricsQuerySerializer(data=request.query_params)
+        query_serializer.is_valid(raise_exception=True)
+        params = query_serializer.validated_data
+        organization = self._get_organization()
+
+        return Response(
+            failure_attribution(
+                str(organization.id), params["start_date"], params["end_date"]
+            )
         )
 
     @action(detail=False, methods=["get"], url_path="health")
