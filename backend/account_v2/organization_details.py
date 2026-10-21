@@ -23,7 +23,11 @@ from account_v2.models import Organization, User
 
 
 class ListedOrganization(Protocol):
-    """What the auth services return for each organization."""
+    """What the auth services return for each organization.
+
+    ``metadata`` is read too where the object has it (cloud does, OSS
+    doesn't); a Protocol can't declare an optional attribute.
+    """
 
     id: str
     display_name: str

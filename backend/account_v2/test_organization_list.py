@@ -5,7 +5,7 @@ contract, so it is tested here too.
 """
 
 import secrets
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from django.db import connection
 from django.test import TestCase, override_settings
@@ -17,8 +17,14 @@ from utils.user_context import UserContext
 
 from account_v2 import urls, views
 from account_v2.authentication_controller import AuthenticationController
+from account_v2.constants import AuthorizationErrorCode
 from account_v2.dto import OrganizationData
 from account_v2.models import Organization, User
+
+
+class _AuthorizationError(Exception):
+    code = AuthorizationErrorCode.USF
+    data = {"domain": "example.com"}
 
 
 def _user(email: str) -> User:
@@ -112,6 +118,7 @@ class OrganizationListTests(TestCase):
         orgs = response.data["organizations"]
         self.assertEqual([org["id"] for org in orgs], ["org-a", "org-b"])
         self.assertNotIn("role", orgs[0])
+        self.assertEqual(list(orgs[0]), ["id", "display_name", "name", "metadata"])
         logout.assert_not_called()
         self.assertIn(self.caller.user_id, logs.output[0])
         self.assertIn("2 organizations", logs.output[0])
@@ -132,6 +139,59 @@ class OrganizationListTests(TestCase):
             response = self.controller.user_organizations(self.request)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(User.objects.filter(pk=self.caller.pk).count(), 1)
+
+    def test_failure_outside_a_transaction_needs_no_savepoint(self) -> None:
+        with (
+            self.assertLogs("account_v2.authentication_controller", "ERROR"),
+            patch(
+                "account_v2.authentication_controller.connection",
+                MagicMock(in_atomic_block=False),
+            ),
+            patch("account_v2.authentication_controller.transaction.atomic") as atomic,
+            patch(
+                "account_v2.authentication_controller.with_member_details",
+                side_effect=RuntimeError("boom"),
+            ),
+        ):
+            response = self.controller.user_organizations(self.request)
+        self.assertEqual(response.status_code, 200)
+        atomic.assert_not_called()
+
+    def test_known_listing_error_is_412_with_code_and_logs_out(self) -> None:
+        with (
+            patch.object(
+                self.controller.auth_service,
+                "user_organizations",
+                side_effect=_AuthorizationError(),
+            ),
+            patch.object(self.controller, "user_logout") as logout,
+        ):
+            response = self.controller.user_organizations(self.request)
+        self.assertEqual(response.status_code, 412)
+        self.assertEqual(response.data, {"domain": "example.com", "code": "USF"})
+        logout.assert_called_once()
+
+    def test_unknown_listing_error_is_412_with_no_body(self) -> None:
+        with (
+            patch.object(
+                self.controller.auth_service,
+                "user_organizations",
+                side_effect=RuntimeError("idp down"),
+            ),
+            patch.object(self.controller, "user_logout") as logout,
+        ):
+            response = self.controller.user_organizations(self.request)
+        self.assertEqual(response.status_code, 412)
+        self.assertIsNone(response.data)
+        logout.assert_called_once()
+
+    def test_no_organizations_lists_none(self) -> None:
+        with patch.object(
+            self.controller.auth_service, "user_organizations", return_value=[]
+        ):
+            response = self.controller.user_organizations(self.request)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["organizations"], [])
 
     @override_settings(REGION=None)
     def test_view_returns_the_old_payload_plus_details(self) -> None:
@@ -201,6 +261,7 @@ class OrganizationListSchemaTests(TestCase):
         body = failed["content"]["application/json"]["schema"]
         body = schema["components"]["schemas"][body["$ref"].rsplit("/", 1)[1]]
         self.assertEqual(set(body["properties"]), {"domain", "code"})
+        self.assertEqual(set(body["required"]), {"domain", "code"})
         operation_ids = {
             op.get("operationId")
             for path in schema["paths"].values()
@@ -217,31 +278,69 @@ class OrganizationListEndpointTests(TestCase):
 
     def setUp(self) -> None:
         self.caller = _user("caller@example.com")
-        org = Organization.objects.create(
+        org_a = Organization.objects.create(
             name="org-a", display_name="Org A", organization_id="org-a"
         )
-        OrganizationMember.objects.create(
-            organization=org, user=self.caller, role="admin"
+        org_b = Organization.objects.create(
+            name="org-b", display_name="Org B", organization_id="org-b"
         )
-        self.listed = [OrganizationData(id="org-a", display_name="Org A", name="org-a")]
-        patcher = patch(
-            "account_v2.authentication_controller.AuthenticationService.user_organizations",
-            return_value=self.listed,
-        )
-        patcher.start()
-        self.addCleanup(patcher.stop)
+        for org, user, role in [
+            (org_a, self.caller, "admin"),
+            (org_b, self.caller, "user"),
+            (org_b, _user("b1@example.com"), "admin"),
+        ]:
+            OrganizationMember.objects.create(organization=org, user=user, role=role)
+        listed = [
+            OrganizationData(
+                id=o.organization_id, display_name=o.display_name, name=o.name
+            )
+            for o in (org_a, org_b)
+        ]
+        self.list_organizations = MagicMock(return_value=listed)
+        for target, value in [
+            (
+                "account_v2.authentication_controller."
+                "AuthenticationService.user_organizations",
+                self.list_organizations,
+            ),
+            # OSS auth throughout, and no write to the shared cache.
+            (
+                "account_v2.custom_auth_middleware."
+                "AuthenticationPluginRegistry.is_plugin_available",
+                MagicMock(return_value=False),
+            ),
+            (
+                "account_v2.authentication_controller."
+                "AuthenticationPluginRegistry.is_plugin_available",
+                MagicMock(return_value=False),
+            ),
+            (
+                "account_v2.authentication_controller."
+                "CacheService.set_user_organizations",
+                MagicMock(),
+            ),
+        ]:
+            patcher = patch(target, value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
         self.addCleanup(UserContext.set_organization_identifier, None)
 
     def test_signed_in_caller_gets_the_details(self) -> None:
+        # Signed in to org-a, as the browser is when it opens the switcher.
         self.client.force_login(self.caller)
+        session = self.client.session
+        session["organization"] = "org-a"
+        session.save()
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, 200)
-        (org,) = response.json()["organizations"]
-        self.assertEqual(
-            (org["role"], org["member_count"], org["region"]), ("admin", 1, "US")
-        )
+        rows = [
+            (org["id"], org["role"], org["member_count"], org["region"])
+            for org in response.json()["organizations"]
+        ]
+        self.assertEqual(rows, [("org-a", "admin", 1, "US"), ("org-b", "user", 2, "US")])
 
     def test_anonymous_caller_is_refused(self) -> None:
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, 401)
-        self.assertNotIn(b"org-a", response.content)
+        self.assertEqual(response.json(), {"message": "Unauthorized"})
+        self.list_organizations.assert_not_called()

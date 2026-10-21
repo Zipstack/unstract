@@ -90,8 +90,8 @@ def logout(request: Request) -> Response:
             response=inline_serializer(
                 "OrganizationListFailed",
                 {
-                    "domain": serializers.CharField(required=False, allow_null=True),
-                    "code": serializers.CharField(required=False),
+                    "domain": serializers.CharField(allow_null=True),
+                    "code": serializers.CharField(),
                 },
             ),
             description="Listing the organizations failed and the session is "

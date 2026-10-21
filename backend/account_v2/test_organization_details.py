@@ -49,10 +49,11 @@ class WithMemberDetailsTests(TestCase):
         self.org_c = _org("org-c", "Org C")
         members = [
             (self.org_a, self.caller, "admin"),
-            (self.org_a, _user("a1@example.com"), "user"),
-            (self.org_a, _user("a2@example.com"), "user"),
+            # Other members hold a role the caller never has, so a leak shows.
+            (self.org_a, _user("a1@example.com"), "reviewer"),
+            (self.org_a, _user("a2@example.com"), "reviewer"),
             (self.org_b, self.caller, "user"),
-            (self.org_b, _user("b1@example.com"), "admin"),
+            (self.org_b, _user("b1@example.com"), "reviewer"),
             (self.org_c, _user("c1@example.com"), "admin"),
         ]
         for org, user, role in members:
@@ -154,3 +155,6 @@ class WithMemberDetailsTests(TestCase):
             list(row), ["id", "display_name", "name", "metadata", "role", "member_count"]
         )
         self.assertIsNone(row["metadata"])
+
+    def test_no_organizations(self) -> None:
+        self.assertEqual(with_member_details([], self.caller), [])
