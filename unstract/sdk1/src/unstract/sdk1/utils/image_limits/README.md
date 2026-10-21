@@ -144,7 +144,12 @@ model-aware limits; any other value is logged at ERROR and keeps them on.
 ## Where the table comes from
 
 The source of truth is `limits.json` in this directory on the `main`
-branch of Zipstack/unstract. Each process uses, highest precedence first:
+branch of Zipstack/unstract. By default a process uses the copy bundled in
+this package and fetches nothing, so an on-prem install never phones home
+and its limits change only with an sdk1 release. A deployment that wants
+data fixes without a release (SaaS) opts in by setting
+`VLM_IMAGE_LIMITS_URL` to the published file (`PUBLISHED_LIMITS_URL`).
+Each process uses, highest precedence first:
 
 1. `VLM_IMAGE_LIMITS_FILE=/path/to/override.json` — an operator file in the
    same schema, applied on top of the base table. A provider present in it
@@ -156,10 +161,10 @@ branch of Zipstack/unstract. Each process uses, highest precedence first:
    not invalidate the file. A malformed
    file is logged and ignored. A future per-org override would plug in
    here.
-2. The remote copy — `VLM_IMAGE_LIMITS_URL`, default
-   `https://raw.githubusercontent.com/Zipstack/unstract/main/unstract/sdk1/src/unstract/sdk1/utils/image_limits/limits.json`.
-   Set it to an empty string to turn fetching off (air-gapped on-prem; the
-   backend and workers `sample.env` list it).
+2. The remote copy — only when `VLM_IMAGE_LIMITS_URL` is set (unset or
+   empty, the default, means no fetch). The published file is
+   `https://raw.githubusercontent.com/Zipstack/unstract/main/unstract/sdk1/src/unstract/sdk1/utils/image_limits/limits.json`
+   (the backend and workers `sample.env` list it).
 3. The copy bundled in this package, always available.
 
 No caller waits on GitHub (`source.py`):
@@ -183,8 +188,8 @@ including `_meta.schema_version` equal to the version this sdk1 reads and
 override patterns of at most 300 characters (`MAX_PATTERN_LENGTH`) that
 compile. Beyond that the file is accepted as a whole: what a data refresh
 may change is enforced per lookup by the remote clamp (Lookup rules,
-rule 7), because a merge to main reaches every install within an hour. A
-provider missing from the remote copy resolves from the bundled entry,
+rule 7), because a merge to main reaches every fetching install within an
+hour. A provider missing from the remote copy resolves from the bundled entry,
 also as the `inherit` parent of an operator override-file entry.
 Checking the table as a whole could not do this job: it cannot enumerate
 model ids nobody listed (a new override can shadow any real model), and
@@ -218,7 +223,9 @@ and to the run-log summary.
    (`claudedocs/vlm-consumer/model-limits/`); `_meta.source_dataset`
    points at them.
 6. Merging a change to `main` publishes it: every install with fetching
-   on picks it up within one refresh window, without a release. Review a
+   on (`VLM_IMAGE_LIMITS_URL` set, e.g. SaaS) picks it up within one
+   refresh window, without a release; installs on the default (no URL)
+   get it with their next sdk1 release. Review a
    data change as you would a deploy. Installs clamp what main may
    loosen (Lookup rules, rule 7): a removed provider resolves from the
    bundled entry (directly, and as the `inherit` parent of an operator
