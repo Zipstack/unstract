@@ -70,6 +70,9 @@ class WorkerRegistry:
         ),
         WorkerType.IDE_CALLBACK: WorkerQueueConfig(
             primary_queue=QueueName.IDE_CALLBACK,
+            # Agent-KV terminal callbacks (agent_kv_complete/agent_kv_error)
+            # ride the same worker on their own dedicated queue (spec §5.3).
+            additional_queues=[QueueName.AGENT_KV_CALLBACK],
         ),
     }
 
@@ -156,6 +159,19 @@ class WorkerRegistry:
                 TaskRoute("ide_prompt_complete", QueueName.IDE_CALLBACK),
                 TaskRoute("ide_prompt_error", QueueName.IDE_CALLBACK),
                 TaskRoute("ide_callback.tasks.*", QueueName.IDE_CALLBACK),
+                TaskRoute("agent_kv_complete", QueueName.AGENT_KV_CALLBACK),
+                TaskRoute("agent_kv_error", QueueName.AGENT_KV_CALLBACK),
+                # Both terminal webhooks are enqueued by the BACKEND, from
+                # whichever request won the terminal guard, and are mutually
+                # exclusive: a cancel that won means no finalize did.
+                #
+                # Cancellation does not go through finalize at all, so its
+                # notification has no callback to ride on. Finalize's used to
+                # ride on one and was lost whenever the finalize response was
+                # lost -- the retry saw an already-terminal row, reported
+                # `finalized: False`, and the worker declined to send.
+                TaskRoute("agent_kv_cancelled", QueueName.AGENT_KV_CALLBACK),
+                TaskRoute("agent_kv_finalized", QueueName.AGENT_KV_CALLBACK),
             ],
         ),
     }

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
 import { useCoOwnerManagement } from "../../../hooks/useCoOwnerManagement";
+import { useCopyToClipboard } from "../../../hooks/useCopyToClipboard";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler";
 import {
   applyPagedResponse,
@@ -63,6 +64,7 @@ function ToolSettings({ type }) {
   const { sessionDetails } = useSessionStore();
   const { setAlertDetails } = useAlertStore();
   const axiosPrivate = useAxiosPrivate();
+  const copyToClipboard = useCopyToClipboard();
   const handleException = useExceptionHandler();
   // Monotonic request token so a stale response can't overwrite a newer one.
   const seqRef = useRef(0);
@@ -223,6 +225,20 @@ function ToolSettings({ type }) {
     })
       .then(() => handleListRefresh())
       .catch((err) => setAlertDetails(handleException(err)));
+  };
+
+  /**
+   * Copy the adapter's INSTANCE id — what the Agent-KV API means by
+   * `adapters: {llm, lite_llm, x2text}`.
+   *
+   * `item.id`, NOT `item.adapter_id`. Both sit on the row and both look like
+   * identifiers; `adapter_id` is the provider descriptor
+   * (`anthropic|90ebd4cd-...`), shared by every instance of that provider, so
+   * the wrong one copies happily and fails much later at submit as "no such
+   * adapter in this organization".
+   */
+  const handleCopyId = (_event, item) => {
+    copyToClipboard(item?.id, "Adapter ID");
   };
 
   const handleEdit = (_event, item) => {
@@ -411,6 +427,7 @@ function ToolSettings({ type }) {
                 dateProp="created_at"
                 handleEdit={handleEdit}
                 handleShare={handleShare}
+                handleCopyId={handleCopyId}
                 handleDelete={handleDelete}
                 handleCoOwner={handleCoOwner}
                 sessionDetails={sessionDetails}
