@@ -25,6 +25,7 @@ Each user has one inbox per organization. Paths are organization-scoped: `/api/v
 - Each event adds at most one item per user.
 - `resource_shared`: a resource is shared with the user directly or with a group they belong to. The person who shared it is not notified, and users who already had direct access are not notified again.
 - `execution_failed`: a run ends with status ERROR or STOPPED, or completes with failed files, the rule the failure notifications in `notification_v2` use. The owners and co-owners of the pipeline or API deployment that ran are notified, or of the workflow for a run started from the workflow. The run records no user, so nobody else is. The body is the run's error message. One item per run, however often its status is written.
+- Items are deleted 90 days after they are created, read or not. The PG scheduler runs `inbox.purge` daily at 02:30 UTC (row `inbox_purge`, seeded inert by migration 0002 and adopted by `converge_pg_scheduler --periodics`); it calls the internal endpoint `POST /internal/v1/inbox/purge/`.
 - The existing e-mail and webhook notifications in `notification_v2` are separate and unchanged.
 
 ### Live unread count
