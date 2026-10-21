@@ -56,7 +56,7 @@ IMAGE_OUTPUT_MISSING = "IMAGE_OUTPUT_MISSING"
 # and re-exported here so existing importers keep working.
 IMAGE_PAGE_CAP_EXCEEDED = _limit_codes.IMAGE_PAGE_CAP_EXCEEDED
 IMAGE_PAGES_TOO_LARGE = _limit_codes.IMAGE_PAGES_TOO_LARGE
-# One page over a per-image byte/pixel limit; splitting does not help.
+# One page over a per-image byte/pixel limit (see sdk1 image_limits.codes).
 IMAGE_PAGE_TOO_LARGE = _limit_codes.IMAGE_PAGE_TOO_LARGE
 # Distinct from IMAGE_PAGES_TOO_LARGE (our own budget, caught before the
 # call): this one is the PROVIDER rejecting a request the local checks

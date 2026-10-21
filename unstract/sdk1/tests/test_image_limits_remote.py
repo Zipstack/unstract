@@ -13,6 +13,7 @@ result, and ``TestRequestPathNeverWaits`` exercises the real thread.
 import copy
 import json
 import logging
+import os
 import threading
 import time
 from collections.abc import Callable, Iterator
@@ -1371,6 +1372,88 @@ class TestOverrideFileWins:
         clock.now += 3600
         assert _azure_images() == 9
         assert get_limits_table().providers["openai"].layer == "override"
+
+
+class TestOverrideFileIsReread:
+    """The override file follows edits without a restart (on-prem, M1)."""
+
+    @staticmethod
+    def _override(images: int) -> str:
+        entry = copy.deepcopy(_bundled_data()["providers"]["azure"])
+        entry["defaults"] = {
+            "max_images_per_request": {
+                "value": images,
+                "confidence": "unverified",
+                "source": "POLICY",
+            }
+        }
+        entry["model_overrides"] = []
+        return json.dumps({"_meta": {"schema_version": 1}, "providers": {"azure": entry}})
+
+    @staticmethod
+    def _touch(path: Path, step_ns: int) -> None:
+        st = path.stat()
+        os.utime(path, ns=(st.st_atime_ns, st.st_mtime_ns + step_ns))
+
+    def test_an_edited_file_is_applied(
+        self, tmp_path: Path, monkeypatch: MonkeyPatch
+    ) -> None:
+        path = tmp_path / "override.json"
+        path.write_text(self._override(10))
+        monkeypatch.setenv(LIMITS_OVERRIDE_FILE_ENV, str(path))
+        assert _azure_images() == 10
+
+        path.write_text(self._override(11))
+        self._touch(path, 1_000_000_000)
+        assert _azure_images() == 11
+
+    def test_an_unchanged_file_is_not_reread(
+        self, tmp_path: Path, monkeypatch: MonkeyPatch
+    ) -> None:
+        path = tmp_path / "override.json"
+        path.write_text(self._override(10))
+        monkeypatch.setenv(LIMITS_OVERRIDE_FILE_ENV, str(path))
+        calls = []
+        real = limits_source.apply_override_file
+        monkeypatch.setattr(
+            limits_source,
+            "apply_override_file",
+            lambda *a, **k: calls.append(1) or real(*a, **k),
+        )
+        assert _azure_images() == 10
+        assert _azure_images() == 10
+        assert len(calls) == 1
+
+    def test_a_missing_file_applies_once_it_appears(
+        self, tmp_path: Path, monkeypatch: MonkeyPatch
+    ) -> None:
+        path = tmp_path / "override.json"
+        monkeypatch.setenv(LIMITS_OVERRIDE_FILE_ENV, str(path))
+        assert _azure_images() == 50  # missing: the base table applies
+
+        path.write_text(self._override(10))
+        assert _azure_images() == 10
+
+    def test_a_failure_with_an_unchanged_file_is_retried_later(
+        self, clock: _FakeClock, tmp_path: Path, monkeypatch: MonkeyPatch
+    ) -> None:
+        path = tmp_path / "override.json"
+        path.write_text(self._override(10))
+        monkeypatch.setenv(LIMITS_OVERRIDE_FILE_ENV, str(path))
+        real = limits_source.apply_override_file
+        failing = {"on": True}
+
+        def flaky(*a: object, **k: object) -> LimitsTable:
+            if failing["on"]:
+                raise OSError("transient read error")
+            return real(*a, **k)
+
+        monkeypatch.setattr(limits_source, "apply_override_file", flaky)
+        assert _azure_images() == 50
+        failing["on"] = False
+        assert _azure_images() == 50  # same file, inside the retry window
+        clock.now += limits_source.OVERRIDE_RETRY_SECONDS
+        assert _azure_images() == 10
 
 
 class TestNoRefreshRead:

@@ -109,12 +109,16 @@ class _SK:
 # -----------------------------------------------------------------------
 
 
-def _image_mode_llm_ids(
-    tool_settings: dict[str, Any], outputs: list[dict[str, Any]]
-) -> list[str]:
-    """Distinct LLM adapter ids of the tool and of each prompt run here."""
-    ids = {tool_settings.get(_SK.LLM)} | {o.get(_SK.LLM) for o in outputs}
-    return sorted(str(i) for i in ids if i)
+def _image_mode_llm_ids(outputs: list[dict[str, Any]]) -> list[str]:
+    """Distinct LLM adapter ids of the prompts run here.
+
+    Only these LLMs receive page images: each image-mode prompt is answered
+    by its own LLM. The tool-level LLM (``tool_settings["llm"]``) is not
+    included: in image mode it only summarizes text (single-pass is
+    rejected, challenge and evaluation are skipped), so its image limits
+    must not restrict the document.
+    """
+    return sorted({str(o.get(_SK.LLM)) for o in outputs if o.get(_SK.LLM)})
 
 
 def _apply_profile_overrides(tool_metadata: dict, profile_data: dict) -> list[str]:
@@ -473,9 +477,10 @@ def _execute_structure_tool_impl(params: dict) -> dict:
 
     extract_params = {
         "x2text_instance_id": tool_settings[_SK.X2TEXT_ADAPTER],
-        # Every LLM that will read an image-mode document, so the extraction
-        # checks their image-request limits before the billed conversion.
-        "llm_instance_ids": _image_mode_llm_ids(tool_settings, outputs),
+        # Every LLM that will read an image-mode document's pages, so the
+        # extraction checks their image-request limits before the billed
+        # conversion.
+        "llm_instance_ids": _image_mode_llm_ids(outputs),
         "file_path": input_file_path,
         "enable_highlight": is_highlight_enabled,
         "output_file_path": str(execution_run_data_folder / _SK.EXTRACT),
