@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 from account_v2.models import Organization
 from account_v2.test_user_profile import GIF, LocalStorageMixin, make_user, png_bytes
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import TestCase
+from django.test import RequestFactory, TestCase
 from utils.user_context import UserContext
 
 from tenant_account_v2.models import OrganizationMember
@@ -135,10 +135,52 @@ class ProfileEndpointTests(LocalStorageMixin, TestCase):
         response = self.client.post(PHOTO, upload(GIF, "me.gif"))
         self.assertEqual(self.error_attrs(response), ["photo"])
 
-    def test_upload_refuses_over_2_mb(self) -> None:
+    def test_upload_refuses_over_2_mb_before_reading_it(self) -> None:
         big = png_bytes() + b"\x00" * (2 * 1024 * 1024 + 1 - len(png_bytes()))
-        response = self.client.post(PHOTO, upload(big))
+        with patch("utils.FileValidator.magic.from_buffer") as sniff:
+            response = self.client.post(PHOTO, upload(big))
         self.assertEqual(self.error_attrs(response), ["photo"])
+        sniff.assert_not_called()
+
+    def test_set_organization_returns_photo_for_the_new_organization(self) -> None:
+        from account_v2.authentication_controller import AuthenticationController
+
+        Organization.objects.create(
+            name="org-b", display_name="Org B", organization_id="org-b"
+        )
+        self.client.post(PHOTO, upload(png_bytes()))
+        self.user.refresh_from_db()
+        request = RequestFactory().post("/x/")
+        request.user = self.user
+        request.session = self.client.session  # still on org-a
+        for target, value in (
+            (
+                "account_v2.authentication_controller.CacheService"
+                ".get_user_organizations",
+                MagicMock(return_value={"org-a", "org-b"}),
+            ),
+            (
+                "account_v2.authentication_controller.OrganizationMemberService"
+                ".remove_user_membership_in_organization_cache",
+                MagicMock(),
+            ),
+            (
+                "account_v2.authentication_controller.OrganizationMemberService"
+                ".set_user_membership_in_organization_cache",
+                MagicMock(),
+            ),
+            (
+                "account_v2.authentication_controller.AuthenticationService"
+                ".setup_default_adapters_for_user",
+                MagicMock(),
+            ),
+        ):
+            patcher = patch(target, value)
+            patcher.start()
+            self.addCleanup(patcher.stop)
+        response = AuthenticationController().set_user_organization(request, "org-b")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("/org-b/users/profile/photo/", response.data["user"]["picture"])
 
     def test_upload_accepts_exactly_2_mb(self) -> None:
         exact = png_bytes() + b"\x00" * (2 * 1024 * 1024 - len(png_bytes()))

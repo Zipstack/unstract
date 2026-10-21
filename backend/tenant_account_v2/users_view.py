@@ -149,6 +149,12 @@ class OrganizationUserViewSet(viewsets.ViewSet):
         responses={
             200: PROFILE_RESPONSE,
             400: OpenApiResponse(description="Invalid field"),
+            404: OpenApiResponse(
+                description="Saved, but the user was not found on read back"
+            ),
+            500: OpenApiResponse(
+                description="Saved, but the profile could not be read back"
+            ),
         },
     )
     @action(detail=False, methods=["PATCH"])

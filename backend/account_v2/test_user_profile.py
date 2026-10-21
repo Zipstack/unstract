@@ -103,6 +103,13 @@ class PhotoStorageTests(LocalStorageMixin, TestCase):
         self.assertIsNone(self.user.profile_photo_updated_at)
         self.assertIsNone(user_profile.read_photo(self.user))
 
+    def test_delete_when_object_already_gone(self) -> None:
+        user_profile.save_photo(self.user, png_bytes())
+        os.remove(user_profile.photo_path(self.user))
+        user_profile.delete_photo(self.user)
+        self.user.refresh_from_db()
+        self.assertIsNone(self.user.profile_photo_updated_at)
+
     def test_delete_without_photo_is_a_no_op(self) -> None:
         user_profile.delete_photo(self.user)
         self.assertIsNone(user_profile.read_photo(self.user))
@@ -154,12 +161,27 @@ class PhotoBasePathTests(TestCase):
             )
 
     def test_unset_paths_are_a_config_error(self) -> None:
-        with patch.dict(
-            "os.environ",
-            {"REMOTE_USER_PROFILE_PHOTO_PATH": "", "REMOTE_PROMPT_STUDIO_FILE_PATH": ""},
-        ):
-            with self.assertRaises(ImproperlyConfigured):
-                user_profile.photo_base_path()
+        for blank in ("", "   "):
+            with (
+                self.subTest(blank=blank),
+                patch.dict(
+                    "os.environ",
+                    {
+                        "REMOTE_USER_PROFILE_PHOTO_PATH": blank,
+                        "REMOTE_PROMPT_STUDIO_FILE_PATH": blank,
+                    },
+                ),
+            ):
+                with self.assertRaises(ImproperlyConfigured):
+                    user_profile.photo_base_path()
+
+
+class DeleteWithoutStorageTests(TestCase):
+    def test_delete_without_photo_needs_no_storage(self) -> None:
+        user = make_user()
+        with patch.object(user_profile, "_storage") as storage:
+            user_profile.delete_photo(user)
+        storage.assert_not_called()
 
 
 class PhotoUrlTests(TestCase):

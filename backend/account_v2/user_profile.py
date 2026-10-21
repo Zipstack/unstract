@@ -92,12 +92,15 @@ def read_photo(user: User) -> tuple[bytes, str] | None:
 
 
 def delete_photo(user: User) -> None:
-    fs = _storage()
-    path = photo_path(user)
-    if fs.exists(path):
-        fs.rm(path, recursive=False)
-    User.objects.filter(pk=user.pk).update(profile_photo_updated_at=None)
     user.profile_photo_updated_at = None
+    if not User.objects.filter(pk=user.pk, profile_photo_updated_at__isnull=False).update(
+        profile_photo_updated_at=None
+    ):
+        return  # No photo, so no storage to touch.
+    try:
+        _storage().rm(photo_path(user), recursive=False)
+    except FileNotFoundError:
+        logger.warning("Profile photo of user %s was already gone", user.pk)
 
 
 def photo_url(user: User, organization_id: str | None) -> str | None:
