@@ -26,3 +26,7 @@ Each user has one inbox per organization. Paths are organization-scoped: `/api/v
 - `resource_shared`: a resource is shared with the user directly or with a group they belong to. The person who shared it is not notified, and users who already had direct access are not notified again.
 - `execution_failed`: a run ends with status ERROR or STOPPED, or completes with failed files, the rule the failure notifications in `notification_v2` use. The owners and co-owners of the pipeline or API deployment that ran are notified, or of the workflow for a run started from the workflow. The run records no user, so nobody else is. The body is the run's error message. One item per run, however often its status is written.
 - The existing e-mail and webhook notifications in `notification_v2` are separate and unchanged.
+
+### Live unread count
+
+A signed-in browser's Socket.IO connection also joins the room `user:<user id>`. Whenever the user's unread count changes (a new item, read, read all), the backend emits `inbox:unread` to that room with `{"data": {"organization_id": "...", "unread_count": 3}}`. The count is for that organization only; a client in another organization ignores it. A failed emit is logged; the list endpoint's `unread_count` stays the source of truth.

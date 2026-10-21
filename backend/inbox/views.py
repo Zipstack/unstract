@@ -6,10 +6,11 @@ from rest_framework.decorators import action
 from rest_framework.request import Request
 from rest_framework.response import Response
 from utils.pagination import CustomPagination
+from utils.user_context import UserContext
 
 from inbox.models import InboxItem
 from inbox.serializers import InboxItemSerializer
-from inbox.service import unread_count
+from inbox.service import push_unread, unread_count
 
 
 class InboxViewSet(viewsets.GenericViewSet):
@@ -56,6 +57,7 @@ class InboxViewSet(viewsets.GenericViewSet):
         if item.read_at is None:
             item.read_at = timezone.now()
             item.save(update_fields=["read_at"])
+            push_unread(item.organization, [request.user.pk])
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     @extend_schema(
@@ -64,4 +66,5 @@ class InboxViewSet(viewsets.GenericViewSet):
     @action(detail=False, methods=["post"], url_path="read-all")
     def read_all(self, request: Request) -> Response:
         self.get_queryset().filter(read_at__isnull=True).update(read_at=timezone.now())
+        push_unread(UserContext.get_organization(), [request.user.pk])
         return Response(status=status.HTTP_204_NO_CONTENT)

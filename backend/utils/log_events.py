@@ -2,10 +2,12 @@ import http
 import logging
 import os
 import uuid
+from importlib import import_module
 from typing import Any
 
 import socketio
 from django.conf import settings
+from django.contrib.auth import SESSION_KEY
 from django.core.wsgi import WSGIHandler
 
 from unstract.core.cache.redis_client import create_redis_client
@@ -75,6 +77,10 @@ def connect(sid: str, environ: Any, auth: Any) -> None:
     if session_id:
         sio.enter_room(sid, session_id)
         logger.info(f"Entered room {session_id} for socket {sid}")
+        user_id = _get_user_id(session_id)
+        if user_id:
+            # Per-user events, such as the inbox unread count.
+            sio.enter_room(sid, f"user:{user_id}")
     else:
         sio.disconnect(sid)
 
@@ -107,6 +113,18 @@ def _get_user_session_id_from_cookies(sid: str, environ: Any) -> str | None:
         return None
 
     return session_id.value
+
+
+def _get_user_id(session_id: str) -> str | None:
+    """The signed-in user of a session, or None."""
+    try:
+        store = import_module(settings.SESSION_ENGINE).SessionStore(
+            session_key=session_id
+        )
+        return store.get(SESSION_KEY)
+    except Exception:
+        logger.exception("Could not read the session of a socket")
+        return None
 
 
 # Functions moved to unstract.core.log_utils for sharing with workers
