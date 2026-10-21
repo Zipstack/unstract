@@ -112,6 +112,11 @@ const getSettingsMenuItems = (orgName, isAdmin) => [
           label: "Global API Deployment Keys",
           path: `/${orgName}/settings/global-api-deployment-keys`,
         },
+        {
+          key: "agentKvKeys",
+          label: "Agent-KV API Keys",
+          path: `/${orgName}/settings/agent-kv-keys`,
+        },
       ]
     : []),
   {
@@ -151,6 +156,12 @@ const getActiveSettingsKey = () => {
   }
   if (currentPath.includes("/settings/platform-api-keys")) {
     return "platformApiKeys";
+  }
+  // Before the "/settings/platform" test below, which is a prefix of nothing
+  // here but sits in a chain where the first match wins — the neighbouring
+  // key routes are ordered on the same basis.
+  if (currentPath.includes("/settings/agent-kv-keys")) {
+    return "agentKvKeys";
   }
   if (currentPath.includes("/settings/platform")) {
     return "platform";
@@ -483,6 +494,8 @@ const SideNavBar = ({ collapsed, setCollapsed }) => {
               `/${orgName}/settings/platform-api-keys` ||
             globalThis.location.pathname ===
               `/${orgName}/settings/global-api-deployment-keys` ||
+            globalThis.location.pathname ===
+              `/${orgName}/settings/agent-kv-keys` ||
             globalThis.location.pathname === `/${orgName}/settings/triad` ||
             globalThis.location.pathname === `/${orgName}/settings/review` ||
             globalThis.location.pathname === `/${orgName}/users` ||

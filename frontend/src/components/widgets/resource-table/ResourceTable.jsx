@@ -4,6 +4,7 @@ import {
   ChevronDown,
   ChevronUp,
   CircleHelp,
+  Copy,
   Eraser,
   Pencil,
   Share2,
@@ -146,6 +147,7 @@ function ResourceTable({
   extraColumns = [],
   handleEdit,
   handleShare,
+  handleCopyId,
   handleDelete,
   handleCoOwner,
   onRowClick,
@@ -327,6 +329,31 @@ function ResourceTable({
           </Tooltip>
         )}
         {/*
+         * Opt-in, like Share: most resources are reached by name and their id
+         * is an implementation detail. Adapters are the exception — the
+         * Agent-KV API makes the caller name their `llm` / `lite_llm` /
+         * `x2text` adapters by instance id, and that id was in no screen at
+         * all, so the first API call answered `Must be a valid UUID` with no
+         * way forward but the network tab.
+         *
+         * Deliberately NOT gated on `deprecated` or `locked`: copying an
+         * identifier changes nothing, and a caller debugging a deprecated or
+         * someone else's adapter is exactly who needs to read its id.
+         */}
+        {handleCopyId && (
+          <Tooltip title={`Copy ${type} ID`}>
+            <button
+              type="button"
+              className="action-icon-btn"
+              aria-label={`Copy ${type} ID`}
+              data-testid={rowTestId(item, "copy-id")}
+              onClick={(event) => handleCopyId(event, item)}
+            >
+              <Copy className="action-icon-buttons" />
+            </button>
+          </Tooltip>
+        )}
+        {/*
          * The confirm panel is NOT keyed by row: only one can be open at a
          * time, so a per-row id would just make the locator longer without
          * making it more specific. The button that opens it is per-row,
@@ -503,6 +530,7 @@ ResourceTable.propTypes = {
   extraColumns: PropTypes.array,
   handleEdit: PropTypes.func,
   handleShare: PropTypes.func,
+  handleCopyId: PropTypes.func,
   handleDelete: PropTypes.func,
   handleCoOwner: PropTypes.func,
   onRowClick: PropTypes.func,
