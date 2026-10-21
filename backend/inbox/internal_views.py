@@ -28,6 +28,7 @@ class PurgeInboxAPIView(APIView):
         old = InboxItem._base_manager.filter(created_at__lt=cutoff)
         deleted = 0
         while batch := list(old.values_list("pk", flat=True)[:PURGE_BATCH]):
-            deleted += InboxItem._base_manager.filter(pk__in=batch).delete()[0]
+            # Re-checked: a failure refresh may have renewed a row meanwhile.
+            deleted += old.filter(pk__in=batch).delete()[0]
         logger.info("Inbox purge deleted %s items older than %s", deleted, cutoff)
         return Response({"deleted": deleted})

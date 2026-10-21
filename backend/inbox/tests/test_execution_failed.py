@@ -80,7 +80,10 @@ class ExecutionFailedTests(_Runs, TestCase):
         self.share(pipeline)
         self.finish(self.run_of(pipeline), ExecutionStatus.COMPLETED, failed_files=2)
         (item,) = _items(self.owner)
-        self.assertIn("2", item.title)
+        self.assertEqual(
+            item.title,
+            f"A run of the pipeline {pipeline.pipeline_name} finished with 2 failed files",
+        )
 
     def test_clean_run_creates_nothing(self) -> None:
         pipeline = _build_pipeline(self.org, self.owner)

@@ -43,7 +43,12 @@ class InboxViewSet(viewsets.GenericViewSet):
         operation_id="inbox_read",
         tags=["inbox"],
         request=None,
-        responses={204: None, 404: OpenApiResponse(description="Not the caller's item")},
+        responses={
+            204: None,
+            404: OpenApiResponse(
+                description="Not the caller's item, or since withdrawn or purged"
+            ),
+        },
     )
     @action(detail=True, methods=["post"])
     def read(self, request: Request, pk: str | None = None) -> Response:

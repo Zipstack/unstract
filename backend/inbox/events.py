@@ -10,6 +10,7 @@ from collections.abc import Iterable
 from typing import Any
 
 from account_v2.models import User
+from django.db.models import Max
 from tenant_account_v2.shareable_resources import descriptor_for_kind, kind_for_instance
 
 from inbox.models import InboxItem
@@ -159,13 +160,10 @@ def _already_points_at_this_or_newer(items: Any, execution: Any, runs: Any) -> b
     A repeated or refused status write for a run, or a late failure of an older
     run, must not mark a read item unread or point it back in time.
     """
-    shown = items.values_list("route__params__id", flat=True).first()
-    if shown is None:
-        return False
-    if shown == str(execution.pk):
-        return True
-    shown_run = runs.filter(pk=shown).values_list("created_at", flat=True).first()
-    return shown_run is not None and shown_run > execution.created_at
+    # Every owner's row, not one: a former owner's row can lag behind.
+    shown = set(items.values_list("route__params__id", flat=True))
+    newest = runs.filter(pk__in=shown).aggregate(newest=Max("created_at"))["newest"]
+    return newest is not None and newest >= execution.created_at
 
 
 def _lock_item(dedupe_key: str) -> None:
@@ -214,12 +212,15 @@ def _notify_execution_failed(execution_id: Any) -> None:
         organization=organization, dedupe_key=dedupe_key
     )
     if not is_failure_run(execution.status, execution.failed_files):
-        # No row lock needed: a failure being recorded holds this run's row
-        # lock, and this run's own status write waited for it, so the item is
-        # already stored. The item lock keeps the delete off a concurrent refresh.
-        with transaction.atomic():
-            _lock_item(dedupe_key)
-            items.filter(route__params__id=str(execution.pk)).delete()
+        # No row lock needed: a failure callback for this run either stored its
+        # item before this run's status write could take the row lock, or
+        # re-read the clean run and stored nothing. Most clean runs have no
+        # item, so they skip the lock; the lock keeps a delete off a refresh.
+        mine = items.filter(route__params__id=str(execution.pk))
+        if mine.exists():
+            with transaction.atomic():
+                _lock_item(dedupe_key)
+                mine.delete()
         return
     with transaction.atomic():
         # The item lock serialises runs of one resource, so the newest-run check

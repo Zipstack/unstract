@@ -114,6 +114,21 @@ class PublisherTests(TestCase):
             service._publish_next()
         emit.assert_called_once_with("user:1", "inbox:unread", {"unread_count": 1})
 
+    def test_a_failing_emit_is_logged_and_the_publisher_carries_on(self) -> None:
+        import queue
+
+        pending = queue.Queue(maxsize=10)
+        pending.put(("user:1", "inbox:unread", {"unread_count": 1}))
+        with (
+            patch.object(service, "_queue", pending),
+            patch(
+                "utils.log_events._emit_websocket_event",
+                side_effect=RuntimeError("broker down"),
+            ),
+        ):
+            with self.assertLogs("inbox.service", "ERROR"):
+                service._publish_next()
+
     def test_publisher_thread_is_started_once_and_restarted_when_dead(self) -> None:
         with (
             patch.object(service, "_publisher", None),
@@ -123,6 +138,10 @@ class PublisherTests(TestCase):
             service._ensure_publisher()
             service._ensure_publisher()
             self.assertEqual(thread.call_count, 1)
+            thread.assert_called_with(
+                target=service._publish_forever, name="inbox-push", daemon=True
+            )
+            thread.return_value.start.assert_called_once()
             thread.return_value.is_alive.return_value = False
             service._ensure_publisher()
             self.assertEqual(thread.call_count, 2)

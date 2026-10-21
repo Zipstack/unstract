@@ -36,9 +36,10 @@ you have simply moved the outage. The release path logs a warning saying so.
 
 Periodics (every non-pipeline row in ``pg_periodic_task``, for example
 ``dashboard_metrics.*`` on the ``dashboard_metric_events`` queue and
-``inbox.purge`` on the ``scheduler`` queue) are opt-in via ``--periodics``: pipelines and metrics are separate rollout
-decisions, and metrics have their own consumer (``workerPgMetrics``) that has to be
-deployed before they can be adopted.
+``inbox.purge`` on the ``scheduler`` queue) are opt-in via ``--periodics``: they
+are a separate rollout decision from pipelines, and each needs its consumer
+deployed first (``workerPgMetrics`` for ``dashboard_metrics.*``, the scheduler
+worker for ``inbox.purge``).
 """
 
 from typing import Any
@@ -111,8 +112,13 @@ class Command(BaseCommand):
                 self.style.WARNING(
                     "Released to Beat. Beat publishes over RabbitMQ — these schedules "
                     "fire again ONLY if workerSchedulerV2 (and workerMetrics, with "
-                    "--periodics) are running. Check that before relying on this. "
-                    "inbox.purge has no Beat twin: released, it stops until re-adopted."
+                    "--periodics) are running. Check that before relying on this."
+                    + (
+                        " inbox.purge has no Beat twin: released, it stops until "
+                        "re-adopted."
+                        if periodics
+                        else ""
+                    )
                 )
             )
 
