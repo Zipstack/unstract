@@ -428,6 +428,7 @@ class WorkflowExecution(BaseModel):
             )
             if locked is None:
                 return
+            was_error = locked["status"] == ExecutionStatus.ERROR.value
             if locked["queue_message_id"] is None:
                 should_release_rate_limit = self._apply_legacy_update(
                     status, error, increment_attempt
@@ -455,7 +456,9 @@ class WorkflowExecution(BaseModel):
             # On commit, so the file counts written in the same transaction are seen.
             from inbox.events import notify_execution_failed
 
-            transaction.on_commit(partial(notify_execution_failed, self.pk))
+            transaction.on_commit(
+                partial(notify_execution_failed, self.pk, was_error=was_error)
+            )
 
     def _apply_legacy_update(
         self,

@@ -86,6 +86,10 @@ class ConnectTests(CoOwnerOrgTestMixin, TestCase):
     def setUp(self) -> None:
         self._seed_org()
         self.addCleanup(UserContext.set_organization_identifier, None)
+        # It would close the test's own transaction, as the test client avoids.
+        patcher = patch.object(log_events, "close_old_connections")
+        self.close_old = patcher.start()
+        self.addCleanup(patcher.stop)
 
     def connect(self, session_key: str):
         environ = {"HTTP_COOKIE": f"{settings.SESSION_COOKIE_NAME}={session_key}"}
@@ -102,13 +106,35 @@ class ConnectTests(CoOwnerOrgTestMixin, TestCase):
     def test_signed_in_socket_joins_its_users_room(self) -> None:
         key = self.session(**{SESSION_KEY: str(self.viewer.pk)})
         enter = self.connect(key)
-        enter.assert_has_calls([call("sid-1", key), call("sid-1", f"user:{self.viewer.pk}")])
+        enter.assert_has_calls(
+            [call("sid-1", key), call("sid-1", f"user:{self.viewer.pk}")]
+        )
+
+    def test_session_read_drops_stale_connections(self) -> None:
+        self.connect(self.session(other="x"))
+        self.assertEqual(self.close_old.call_count, 2)
 
     def test_anonymous_session_joins_only_the_session_room(self) -> None:
         key = self.session(other="x")
         enter = self.connect(key)
         enter.assert_called_once_with("sid-1", key)
 
+    def test_cookie_shaped_like_a_user_room_joins_nothing(self) -> None:
+        environ = {"HTTP_COOKIE": f"{settings.SESSION_COOKIE_NAME}=user:{self.viewer.pk}"}
+        with (
+            patch.object(log_events.sio, "enter_room") as enter,
+            patch.object(log_events.sio, "disconnect") as disconnect,
+        ):
+            log_events.connect("sid-1", environ, None)
+        enter.assert_not_called()
+        disconnect.assert_called_once_with("sid-1")
+
+    def test_failing_session_store_joins_only_the_session_room(self) -> None:
+        with patch.object(log_events, "import_module", side_effect=RuntimeError("db")):
+            with self.assertLogs("utils.log_events", "ERROR"):
+                enter = self.connect("abc123")
+        enter.assert_called_once_with("sid-1", "abc123")
+
     def test_unknown_session_joins_only_the_session_room(self) -> None:
-        enter = self.connect("no-such-session")
-        enter.assert_called_once_with("sid-1", "no-such-session")
+        enter = self.connect("nosuchsession")
+        enter.assert_called_once_with("sid-1", "nosuchsession")

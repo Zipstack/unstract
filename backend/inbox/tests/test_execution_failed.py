@@ -1,5 +1,6 @@
 """Failed runs put one item in the inboxes of the owners of what ran."""
 
+import uuid
 from unittest.mock import patch
 
 from django.db import transaction
@@ -95,6 +96,41 @@ class ExecutionFailedTests(_Runs, TestCase):
         self.finish(execution, ExecutionStatus.ERROR)
         self.finish(execution, ExecutionStatus.COMPLETED, failed_files=1)
         self.assertEqual(len(_items(self.owner)), 1)
+
+    def test_error_corrected_to_a_clean_run_withdraws_the_item(self) -> None:
+        pipeline = _build_pipeline(self.org, self.owner)
+        self.share(pipeline)
+        execution = self.run_of(pipeline)
+        self.finish(execution, ExecutionStatus.ERROR)
+        self.finish(execution, ExecutionStatus.COMPLETED, failed_files=0)
+        self.assertEqual(_items(self.owner), [])
+
+    def test_failed_run_does_not_push_over_the_socket(self) -> None:
+        pipeline = _build_pipeline(self.org, self.owner)
+        self.share(pipeline)
+        with patch("utils.log_events._emit_websocket_event") as emit:
+            self.finish(self.run_of(pipeline), ExecutionStatus.ERROR)
+        emit.assert_not_called()
+        self.assertEqual(len(_items(self.owner)), 1)
+
+    def test_stopped_run_says_stopped(self) -> None:
+        pipeline = _build_pipeline(self.org, self.owner)
+        self.share(pipeline)
+        self.finish(self.run_of(pipeline), ExecutionStatus.STOPPED)
+        (item,) = _items(self.owner)
+        self.assertIn("was stopped", item.title)
+
+    def test_run_of_a_deleted_pipeline_falls_back_to_the_workflow(self) -> None:
+        workflow = _build_workflow(self.org, self.owner)
+        self.share(workflow)
+        execution = WorkflowExecution.objects.create(
+            workflow=workflow,
+            pipeline_id=uuid.uuid4(),
+            status=ExecutionStatus.EXECUTING.value,
+        )
+        self.finish(execution, ExecutionStatus.ERROR)
+        (item,) = _items(self.owner)
+        self.assertIn(workflow.workflow_name, item.title)
 
     def test_api_deployment_run_notifies_its_owners(self) -> None:
         api = _build_api_deployment(self.org, self.owner)

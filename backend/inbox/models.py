@@ -49,5 +49,7 @@ class InboxItem(DefaultOrganizationMixin, BaseModel):
             models.Index(
                 fields=["organization", "user", "-created_at"],
                 name="inbox_item_user_newest",
-            )
+            ),
+            # The daily purge's cutoff.
+            models.Index(fields=["created_at"], name="inbox_item_created"),
         ]

@@ -2,6 +2,7 @@
 
 import importlib
 from datetime import timedelta
+from unittest.mock import patch
 
 from account_v2.models import Organization
 from django.apps import apps
@@ -43,6 +44,18 @@ class PurgeTests(CoOwnerOrgTestMixin, TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data, {"deleted": 2})
         self.assertEqual(list(InboxItem._base_manager.all()), [kept])
+
+    def test_deletes_in_batches(self) -> None:
+        for i in range(5):
+            self.item(self.org, 100, f"old{i}")
+        with patch("inbox.internal_views.PURGE_BATCH", 2):
+            response = PurgeInboxAPIView.as_view()(APIRequestFactory().post("/x/"))
+        self.assertEqual(response.data, {"deleted": 5})
+        self.assertFalse(InboxItem._base_manager.exists())
+
+    def test_created_at_is_indexed_for_the_purge(self) -> None:
+        indexed = [tuple(i.fields) for i in InboxItem._meta.indexes]
+        self.assertIn(("created_at",), indexed)
 
     def test_schedule_row_is_seeded_inert_and_daily(self) -> None:
         seed.create_pg_periodic_task(apps, None)

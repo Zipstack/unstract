@@ -25,8 +25,12 @@ def notify(
     body: str = "",
     route: dict[str, Any] | None = None,
     organization: Organization | None = None,
+    push: bool = True,
 ) -> None:
-    """Add one item per user; an event already delivered to a user is skipped."""
+    """Add one item per user; an event already delivered to a user is skipped.
+
+    ``push=False`` leaves the new count to the user's next list call.
+    """
     organization = organization or UserContext.get_organization()
     users = {u.pk: u for u in users}
     InboxItem.objects.bulk_create(
@@ -44,7 +48,8 @@ def notify(
         ],
         ignore_conflicts=True,
     )
-    push_unread(organization, users)
+    if push:
+        push_unread(organization, users)
 
 
 def unread_count(user: User) -> int:
@@ -56,9 +61,9 @@ def push_unread(organization: Organization, user_ids: Iterable[Any]) -> None:
     user_ids = list(user_ids)
 
     def send() -> None:
-        from utils.log_events import _emit_websocket_event
-
         try:
+            from utils.log_events import _emit_websocket_event
+
             # Base manager: callers may run with no organization in context.
             counts = dict(
                 InboxItem._base_manager.filter(

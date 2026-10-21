@@ -3,6 +3,7 @@ from django.utils import timezone
 from drf_spectacular.utils import OpenApiResponse, extend_schema, inline_serializer
 from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
 from utils.pagination import CustomPagination
@@ -18,6 +19,7 @@ class InboxViewSet(viewsets.GenericViewSet):
 
     serializer_class = InboxItemSerializer
     pagination_class = CustomPagination
+    permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
         return InboxItem.objects.filter(user=self.request.user).order_by("-created_at")

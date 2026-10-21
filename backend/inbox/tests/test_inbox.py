@@ -132,6 +132,17 @@ class EndpointTests(CoOwnerOrgTestMixin, TestCase):
         theirs.refresh_from_db()
         self.assertIsNone(theirs.read_at)
 
+    def test_anonymous_request_is_refused(self) -> None:
+        response = InboxViewSet.as_view({"get": "list"})(self.factory.get("/x/"))
+        self.assertIn(response.status_code, (401, 403))
+
+    def test_reading_a_read_item_keeps_its_read_time(self) -> None:
+        item = InboxItem.objects.get(user=self.viewer, title="new")
+        self.call(self.viewer, "read", "post", pk=str(item.pk))
+        first = InboxItem.objects.get(pk=item.pk).read_at
+        self.call(self.viewer, "read", "post", pk=str(item.pk))
+        self.assertEqual(InboxItem.objects.get(pk=item.pk).read_at, first)
+
     def test_mark_all_read_touches_only_own_items(self) -> None:
         response = self.call(self.viewer, "read_all", "post")
         self.assertEqual(response.status_code, 204)
@@ -194,6 +205,11 @@ class ShareEventTests(CoOwnerOrgTestMixin, TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(self.viewer, self.workflow.viewers())
 
+    def test_group_share_skips_members_who_already_had_access(self) -> None:
+        self.workflow.memberships.create(user=self.outsider, role=ResourceRole.VIEWER)
+        self.share({"shared_groups": [self.group.pk]})
+        self.assertEqual(_items(self.outsider), [])
+
     def test_non_member_of_the_org_is_never_notified(self) -> None:
         stranger = make_user("s2@example.com")
         GroupMembership.objects.create(group=self.group, user=stranger)
@@ -222,3 +238,36 @@ class SchemaTests(TestCase):
             {"id", "kind", "title", "body", "route", "created", "read"},
         )
         self.assertTrue(item["properties"]["route"]["nullable"])
+        self.assertEqual(item["properties"]["kind"], {"type": "string"})
+        route = schema["components"]["schemas"]["InboxRoute"]
+        self.assertEqual(set(route["properties"]), {"key", "params"})
+
+
+class RouteTests(TestCase):
+    def test_route_for_each_shareable_kind(self) -> None:
+        from types import SimpleNamespace
+
+        from inbox.events import _route
+
+        res = SimpleNamespace(pk="p1", pipeline_type="ETL", adapter_type="LLM")
+        cases = {
+            "workflow": {"key": "workflow.detail", "params": {"id": "p1"}},
+            "pipeline": {"key": "etl_pipeline.detail", "params": {"id": "p1"}},
+            "api_deployment": {"key": "api_deployment.detail", "params": {"id": "p1"}},
+            "connector_instance": {"key": "connector.detail", "params": {"id": "p1"}},
+            "adapter_instance": {
+                "key": "adapter.info",
+                "params": {"id": "p1", "adapter_type": "LLM"},
+            },
+            "custom_tool": {
+                "key": "prompt_studio_project.detail",
+                "params": {"id": "p1"},
+            },
+            "lookup": None,
+        }
+        for kind, expected in cases.items():
+            self.assertEqual(_route(kind, res), expected, kind)
+        task = SimpleNamespace(pk="p1", pipeline_type="TASK")
+        self.assertEqual(_route("pipeline", task)["key"], "task_pipeline.detail")
+        app = SimpleNamespace(pk="p1", pipeline_type="APP")
+        self.assertIsNone(_route("pipeline", app))
