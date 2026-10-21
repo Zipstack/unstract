@@ -32,6 +32,7 @@ urlpatterns = [
     path("", include("feature_flag.urls")),
     path("workflow/", include("workflow_manager.urls")),
     path("platform/", include("platform_settings_v2.urls")),
+    path("agent-kv/", include("agent_kv.urls")),
     path("api/", include("api_v2.urls")),
     path("usage/", include("usage_v2.urls")),
     path("notifications/", include("notification_v2.urls")),
@@ -67,6 +68,7 @@ urlpatterns = [
     path("metrics/", include("dashboard_metrics.urls")),
     path("platform-api/", include("platform_api.urls")),
     path("global-api-deployment/", include("global_api_deployment_key.urls")),
+    path("", include("global_search.urls")),
 ]
 
 # Organization-scoped MCP server — OFF by default.
