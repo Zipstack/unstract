@@ -1,14 +1,18 @@
 """Which copy of the limits table a process uses, and keeping it fresh.
 
 The source of truth is ``limits.json`` on the main branch of
-Zipstack/unstract. Installs fetch that raw file so a data fix reaches them
-without a release; the copy bundled in this package is the fallback that is
-always available. Precedence, highest first:
+Zipstack/unstract. By default a process uses only the copy bundled in this
+package and never fetches anything (on-prem installs never phone home). A
+deployment that wants data fixes without a release (SaaS) opts in by setting
+``VLM_IMAGE_LIMITS_URL`` to ``PUBLISHED_LIMITS_URL``, the raw file on main;
+the bundled copy stays the fallback that is always available. Precedence,
+highest first:
 
 1. ``VLM_IMAGE_LIMITS_FILE`` — operator override file, applied per provider
    on top of whichever base table is in use.
-2. The remote copy (``VLM_IMAGE_LIMITS_URL``, default main on GitHub), when
-   the last good fetch passed the same strict schema as the bundled file.
+2. The remote copy (``VLM_IMAGE_LIMITS_URL``; unset or empty, the default,
+   means no fetch), when the last good fetch passed the same strict schema
+   as the bundled file.
    What a remote copy may change is enforced at lookup time, not here:
    ``resolve.resolve_image_limits`` clamps every remote-table result
    against the bundled table (bundled ``kind``; image-count and
@@ -59,9 +63,10 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Empty string disables the fetch (air-gapped installs).
+# Unset or empty (the default) disables the fetch: only the bundled table is
+# used. SaaS opts in by setting it to ``PUBLISHED_LIMITS_URL``.
 LIMITS_URL_ENV = "VLM_IMAGE_LIMITS_URL"
-DEFAULT_LIMITS_URL = (
+PUBLISHED_LIMITS_URL = (
     "https://raw.githubusercontent.com/Zipstack/unstract/main/unstract/sdk1/"
     "src/unstract/sdk1/utils/image_limits/limits.json"
 )
@@ -101,11 +106,8 @@ def _start_background(target: Callable[[], None]) -> None:
 
 
 def configured_limits_url() -> str | None:
-    """The remote table's URL, or None when the fetch is disabled."""
-    raw = os.environ.get(LIMITS_URL_ENV)
-    if raw is None:
-        return DEFAULT_LIMITS_URL
-    return raw.strip() or None
+    """The remote table's URL, or None (unset or empty: the default) for no fetch."""
+    return os.environ.get(LIMITS_URL_ENV, "").strip() or None
 
 
 def configured_refresh_seconds() -> int:
@@ -310,7 +312,7 @@ def _base_table(*, refresh: bool = True) -> LimitsTable:
         if not _logged_disabled:
             _logged_disabled = True
             logger.info(
-                "Remote image limits disabled (%s is empty); using the %s",
+                "Remote image limits off (%s unset or empty); using the %s",
                 LIMITS_URL_ENV,
                 _describe(bundled),
             )

@@ -12,6 +12,7 @@ result, and ``TestRequestPathNeverWaits`` exercises the real thread.
 
 import copy
 import json
+import logging
 import threading
 import time
 from collections.abc import Callable, Iterator
@@ -116,9 +117,13 @@ def _azure_images() -> int | None:
 
 
 class TestConfiguration:
-    def test_default_url_is_limits_json_on_main(self, monkeypatch: MonkeyPatch) -> None:
+    def test_unset_url_means_no_fetch(self, monkeypatch: MonkeyPatch) -> None:
+        # On-prem never phones home: the fetch is opt-in (SaaS sets the URL).
         monkeypatch.delenv(limits_source.LIMITS_URL_ENV, raising=False)
-        assert limits_source.configured_limits_url() == (
+        assert limits_source.configured_limits_url() is None
+
+    def test_published_url_is_limits_json_on_main(self) -> None:
+        assert limits_source.PUBLISHED_LIMITS_URL == (
             "https://raw.githubusercontent.com/Zipstack/unstract/main/unstract/"
             "sdk1/src/unstract/sdk1/utils/image_limits/limits.json"
         )
@@ -1280,6 +1285,22 @@ class TestRequestPathNeverWaits:
 
 
 class TestDisabled:
+    def test_unset_url_never_fetches(
+        self,
+        serve: Callable[..., _Server],
+        monkeypatch: MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        server = serve(_json_response(_remote_data()))
+        monkeypatch.delenv(limits_source.LIMITS_URL_ENV, raising=False)
+        caplog.set_level(logging.DEBUG, logger=limits_source.__name__)
+
+        assert _azure_images() == 50
+        get_limits_table()
+        assert get_limits_table().origin.source == "bundled"
+        assert server.calls == 0
+        assert not [r for r in caplog.records if r.levelno >= logging.WARNING]
+
     def test_empty_url_never_fetches(
         self, serve: Callable[..., _Server], monkeypatch: MonkeyPatch
     ) -> None:
