@@ -548,6 +548,11 @@ def _execute_structure_tool_impl(params: dict) -> dict:
             # when a lookup is assigned; None otherwise.
             "lookup_config": at_output.get("lookup_config"),
         }
+        logger.info(
+            "Agentic params for %s: enable_raw_extraction=%s",
+            at_output.get("name", "unknown"),
+            agentic_params.get("enable_raw_extraction"),
+        )
         at_ctx = ExecutionContext(
             executor_name="agentic_table",
             operation="table_extract",
@@ -571,6 +576,12 @@ def _execute_structure_tool_impl(params: dict) -> dict:
         raw_data = at_output_data.get("_raw_data")
         if raw_data is not None:
             agentic_raw_data[at_output[_SK.NAME]] = raw_data
+        logger.info(
+            "Executor result for %s: _raw_data present=%s, keys=%s",
+            at_output.get("name", "unknown"),
+            raw_data is not None,
+            list(at_output_data.keys()) if at_output_data else [],
+        )
         # The executor runs its own X2Text, so its metrics carry an extraction
         # duration the legacy pipeline's timer never sees. Same result shape the
         # non-agentic table plugin uses (LegacyExecutor._run_table_extraction).
@@ -642,6 +653,11 @@ def _execute_structure_tool_impl(params: dict) -> dict:
 
     # ---- Step 7: Write output files ----
     # (metadata/metrics merging already done by executor pipeline)
+    logger.info(
+        "Final structured_output keys: output_keys=%s, has_raw_data=%s",
+        list(structured_output.get("output", {}).keys()),
+        "_raw_data" in structured_output.get("output", {}),
+    )
     write_error = _write_pipeline_outputs(
         fs=fs,
         structured_output=structured_output,
