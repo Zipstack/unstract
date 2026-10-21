@@ -8,7 +8,11 @@
     "start_date": {"type": "string", "format": "date-time"},
     "end_date": {"type": "string", "format": "date-time"},
     "items": {"type": "array", "items": {"$ref": "#/$defs/item"}},
-    "failed_kinds": {"type": "array", "items": {"type": "string"}}
+    "failed_kinds": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {"type": "string", "pattern": "^[a-z][a-z0-9_]*$"}
+    }
   },
   "$defs": {
     "item": {

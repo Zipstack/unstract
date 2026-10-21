@@ -8,8 +8,10 @@ totals here equal that series for the same range. The response contract is
 
 from __future__ import annotations
 
+import logging
 from collections import defaultdict
 from datetime import datetime
+from enum import StrEnum
 from typing import Any
 
 from api_v2.models import APIDeployment
@@ -20,15 +22,18 @@ from workflow_manager.workflow_v2.models.workflow import Workflow
 from dashboard_metrics.models import Granularity
 from dashboard_metrics.services import MetricsQueryService
 
+logger = logging.getLogger(__name__)
 
-class SourceType:
+
+class SourceType(StrEnum):
     API_DEPLOYMENT = "api_deployment"
     ETL_PIPELINE = "etl_pipeline"
     TASK_PIPELINE = "task_pipeline"
+    # A pipeline of another type (e.g. APP, DEFAULT).
     PIPELINE = "pipeline"
     # Runs with no pipeline: a workflow run by hand.
     WORKFLOW = "workflow"
-    # A pipeline id whose pipeline or deployment no longer exists.
+    # A source whose pipeline, deployment or workflow no longer exists.
     DELETED = "deleted"
 
 
@@ -109,6 +114,14 @@ def failure_attribution(
 
     described = _describe_sources(pipeline_ids, workflow_ids)
     total = sum(per_source.values())
+    unresolved = sorted(per_source.keys() - described.keys())
+    if unresolved:
+        logger.info(
+            "Attribution: %d sources reported as deleted for org %s: %s",
+            len(unresolved),
+            organization_id,
+            unresolved,
+        )
 
     ordered = sorted(per_source.items(), key=lambda kv: (-kv[1], kv[0]))
     return {
@@ -118,12 +131,13 @@ def failure_attribution(
         "sources": [
             {
                 "id": key[1],
-                "name": described.get(key, _DELETED)[0],
-                "type": described.get(key, _DELETED)[1],
+                "name": name,
+                "type": source_type.value,
                 "failed_pages": pages,
                 "share": round(pages / total, 4) if total else 0.0,
             }
             for key, pages in ordered
+            for name, source_type in [described.get(key, _DELETED)]
         ],
         "days": [
             {

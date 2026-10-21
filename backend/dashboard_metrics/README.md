@@ -727,13 +727,16 @@ days, at most 365 days apart), are read live and are not cached. JSON Schemas fo
   the latest of them is in the range. Runs still pending or executing are
   skipped; a STOPPED or COMPLETED run ends the streak. The rule and why it is
   ERROR only are in `workflow_manager/workflow_v2/failing_streaks.py`.
-- `route` uses the route-registry keys proposed for global search (#2343, not
-  yet merged), or is `null`.
+- `route` uses the route-registry keys proposed for global search (#2343), or
+  is `null`.
   `details` is kind-specific.
-- Items are in provider order (`failing_pipeline`, `failing_deployment`, then
-  cloud kinds), newest failure first within a kind.
-- `failed_kinds` names kinds whose provider raised; never show those as
-  "nothing needs attention".
+- Kinds are sorted by each provider's `order` (OSS: `failing_pipeline` = 10,
+  `failing_deployment` = 20; cloud kinds choose their own); within a kind,
+  newest failure first.
+- The range filters on when the newest failure happened; the failing test
+  always uses a row's latest runs.
+- `failed_kinds` names kinds whose provider raised or returned an item that
+  breaks the contract; never show those as "nothing needs attention".
 - A cloud app adds a kind by subclassing `attention.AttentionProvider` and
   calling `register_attention_provider()` from its `AppConfig.ready()`.
 
@@ -760,8 +763,9 @@ days, at most 365 days apart), are read live and are not cached. JSON Schemas fo
   `total_failed_pages` and each day's `failed_pages` equal that series for the
   same range.
 - A source is the pipeline or API deployment that ran the file; a run with no
-  pipeline is attributed to its workflow (`type: workflow`), and a pipeline
-  that no longer exists has `type: deleted` and `name: null`.
+  pipeline is attributed to its workflow (`type: workflow`), and a source whose
+  pipeline, deployment or workflow no longer exists has `type: deleted` and
+  `name: null`.
 - Sources are ordered by failed pages, most first; `share` is the fraction of
   `total_failed_pages`, rounded to 4 places.
 

@@ -48,7 +48,7 @@ def _finished_runs() -> QuerySet[WorkflowExecution]:
     """The outer row's finished runs, newest first."""
     return WorkflowExecution.objects.filter(
         pipeline_id=OuterRef("pk"), status__in=_FINISHED
-    ).order_by("-created_at")
+    ).order_by("-created_at", "-id")
 
 
 def failing_streaks(
@@ -61,7 +61,8 @@ def failing_streaks(
     ``rows`` is a queryset of ``Pipeline`` or ``APIDeployment``; executions are
     matched on ``WorkflowExecution.pipeline_id``. Rows with fewer than five
     finished runs are never failing. ``start_date`` and ``end_date``, when
-    given, bound the latest failure.
+    given, bound the latest failure: the failing test always uses the row's
+    latest runs, so a past ``end_date`` does not mean "failing as of then".
 
     One query, whatever the number of rows. The failing test and the range run
     in SQL first, so the streak lookups, which can read a row's whole history,
@@ -78,7 +79,7 @@ def failing_streaks(
         rows = rows.filter(_last_failure__lte=end_date)
 
     # The streak is the ERRORs since the newest finished run that was not one.
-    streak = _finished_runs().filter(
+    streak = finished.filter(
         status=_FAILED,
         created_at__gt=Coalesce(OuterRef("_streak_break"), Value(_EPOCH)),
     )
@@ -89,26 +90,31 @@ def failing_streaks(
         _streak_break=Subquery(finished.exclude(status=_FAILED).values("created_at")[:1]),
     ).annotate(
         _failing_since=Subquery(streak.order_by("created_at").values("created_at")[:1]),
-        _failures_in_a_row=Coalesce(
-            Subquery(
-                streak.order_by()
-                .values("pipeline_id")
-                .annotate(n=Count("id"))
-                .values("n")[:1]
-            ),
-            0,
+        _failures_in_a_row=Subquery(
+            streak.order_by()
+            .values("pipeline_id")
+            .annotate(n=Count("id"))
+            .values("n")[:1]
         ),
     )
 
-    streaks = [
-        FailingStreak(
-            row=row,
-            failures_in_a_row=row._failures_in_a_row,
-            failing_since=row._failing_since,
-            last_failure=row._last_failure,
-            last_success=row._last_success,
+    streaks = []
+    for row in annotated:
+        # Every row here ended its last five finished runs in ERROR, so a
+        # shorter streak means the queries disagree; fail loudly, not as "0".
+        if (row._failures_in_a_row or 0) < FAILING_STREAK_RUNS or not row._failing_since:
+            raise ValueError(
+                f"Inconsistent failing streak for {row.pk}: "
+                f"{row._failures_in_a_row} since {row._failing_since}"
+            )
+        streaks.append(
+            FailingStreak(
+                row=row,
+                failures_in_a_row=row._failures_in_a_row,
+                failing_since=row._failing_since,
+                last_failure=row._last_failure,
+                last_success=row._last_success,
+            )
         )
-        for row in annotated
-    ]
     streaks.sort(key=lambda s: (s.last_failure, str(s.row.pk)), reverse=True)
     return streaks

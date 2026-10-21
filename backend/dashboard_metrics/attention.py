@@ -17,6 +17,7 @@ from datetime import datetime
 from typing import Any
 
 from api_v2.models import APIDeployment
+from django.db import transaction
 from django.db.models import QuerySet
 from pipeline_v2.models import Pipeline
 from rest_framework.utils.encoders import JSONEncoder
@@ -34,9 +35,9 @@ _ROUTE_KEY = re.compile(r"^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$")
 class AttentionItem:
     """One open item.
 
-    ``since`` is when the item began: the first failure of a streak, or the
-    oldest wait. ``route`` names a frontend route-registry key and its params;
-    the keys are proposed by the global search work (#2343) and not yet merged.
+    ``since`` is when the item began (for failing rows, the first failure of
+    the streak). ``route`` names a frontend route-registry key (see #2343) and
+    its params.
     """
 
     kind: str
@@ -128,10 +129,14 @@ def collect_attention(
     failed: list[str] = []
     for provider in get_attention_providers():
         try:
-            provided = [
-                _serialize(provider, item)
-                for item in provider.items(organization, start_date, end_date)
-            ]
+            # A savepoint per provider: with ATOMIC_REQUESTS on, a database
+            # error would otherwise abort the request's transaction and fail
+            # every provider after this one.
+            with transaction.atomic():
+                provided = [
+                    _serialize(provider, item)
+                    for item in provider.items(organization, start_date, end_date)
+                ]
         except Exception:
             logger.exception(
                 "Attention provider '%s' failed for organization %s (%s to %s)",
@@ -168,6 +173,8 @@ def _serialize(provider: AttentionProvider, item: AttentionItem) -> dict[str, An
         raise ValueError(
             f"Route params must map strings to strings: {item.route_params!r}"
         )
+    if item.route_params and item.route_key is None:
+        raise ValueError("Item has route params but no route key")
     if not isinstance(item.details, dict):
         raise ValueError(f"Item details must be a dict, got {item.details!r}")
     serialized = item.to_dict()

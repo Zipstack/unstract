@@ -19,6 +19,7 @@ import jsonschema
 from account_usage.models import PageUsage
 from account_v2.models import Organization
 from api_v2.models import APIDeployment
+from django.db import connection
 from django.test import TestCase
 from django.utils import timezone
 from permissions.tests.base import CoOwnerOrgTestMixin
@@ -39,6 +40,7 @@ from dashboard_metrics.attention import (
     get_attention_providers,
     register_attention_provider,
 )
+from dashboard_metrics.attribution import SourceType
 from dashboard_metrics.models import Granularity
 from dashboard_metrics.services import MetricsQueryService
 from dashboard_metrics.views import DashboardMetricsViewSet
@@ -185,6 +187,21 @@ class FailingStreakTests(_Seed, TestCase):
                 self._runs(self._pipeline(name), statuses)
         self.assertEqual(failing_streaks(Pipeline.objects.all()), [])
 
+    def test_a_streak_the_queries_disagree_on_fails_loudly(self) -> None:
+        # A COMPLETED and an ERROR run at the same instant, the ERROR first by
+        # id: it is among the last five, but the streak starts after the tie.
+        pipeline = self._pipeline("tied")
+        tied_at = self.now - timedelta(hours=20)
+        for run_id, status in ((uuid.UUID(int=1), COMPLETED), (uuid.UUID(int=2), ERROR)):
+            WorkflowExecution.objects.create(
+                id=run_id, workflow=pipeline.workflow, pipeline_id=pipeline.pk, status=status
+            )
+            WorkflowExecution.objects.filter(pk=run_id).update(created_at=tied_at)
+        self._runs(pipeline, [ERROR] * 4)
+
+        with self.assertRaisesRegex(ValueError, "Inconsistent failing streak"):
+            failing_streaks(Pipeline.objects.all())
+
     def test_one_query_whatever_the_number_of_rows(self) -> None:
         for i in range(3):
             self._runs(self._pipeline(f"p{i}"), [ERROR] * 5)
@@ -245,17 +262,36 @@ class AttentionTests(_Seed, TestCase):
         other = Organization.objects.create(
             name="org-b", display_name="Org B", organization_id="org-b"
         )
+        # Of a type the feed lists, so only the organization filter drops them.
         foreign = Pipeline.objects.create(
             pipeline_name="foreign",
+            pipeline_type=Pipeline.PipelineType.ETL,
             workflow=self._workflow(other),
             organization=other,
             created_by=self.owner,
             active=True,
         )
         self._runs(foreign, [ERROR] * 5)
+        foreign_deployment = APIDeployment.objects.create(
+            api_name=f"api-{uuid.uuid4().hex[:6]}",
+            display_name="foreign",
+            workflow=self._workflow(other),
+            organization=other,
+            created_by=self.owner,
+        )
+        self._runs(foreign_deployment, [ERROR] * 5)
 
         response = self._get("attention")
         self.assertEqual(response.data["items"], [])
+
+    def test_only_etl_and_task_pipelines_are_listed(self) -> None:
+        etl = self._pipeline("nightly")
+        self._runs(etl, [ERROR] * 5)
+        self._runs(self._pipeline("app", pipeline_type="APP"), [ERROR] * 5)
+
+        response = self._get("attention")
+        self.assertEqual([i["id"] for i in response.data["items"]], [str(etl.pk)])
+        self.assertEqual(response.data["failed_kinds"], [])
 
     def test_range_follows_the_query_parameters(self) -> None:
         pipeline = self._pipeline("nightly")
@@ -298,6 +334,16 @@ class _Malformed(AttentionProvider):
         return [AttentionItem(kind=self.kind, id="x", name=None, count=1, since="now")]
 
 
+class _DatabaseError(AttentionProvider):
+    kind = "test_database_error"
+    order = 1  # before the OSS providers, which query after it
+
+    def items(self, organization, start_date, end_date):
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT * FROM no_such_table")
+        return []
+
+
 class _First(AttentionProvider):
     kind = "test_first"
     order = 5
@@ -317,6 +363,18 @@ class AttentionProviderRegistryTests(_Seed, TestCase):
         # Registered out of order: _First sorts before the OSS providers.
         for provider in (_Broken(), _Reviews(), _Malformed(), _First()):
             register_attention_provider(provider)
+
+    def test_a_database_error_fails_only_its_own_provider(self) -> None:
+        register_attention_provider(_DatabaseError())
+        pipeline = self._pipeline("nightly")
+        self._runs(pipeline, [ERROR] * 5)
+
+        response = self._get("attention")
+        self.assertIn(str(pipeline.pk), [i["id"] for i in response.data["items"]])
+        self.assertEqual(
+            response.data["failed_kinds"],
+            ["test_database_error", "test_broken", "test_malformed"],
+        )
 
     def test_contributed_kinds_and_failures(self) -> None:
         response = self._get("attention")
@@ -353,6 +411,7 @@ class AttentionProviderRegistryTests(_Seed, TestCase):
             },
             "details not a dict": {**good, "count": 1, "details": []},
             "details not renderable": {**good, "count": 1, "details": {"x": object()}},
+            "route params without a key": {**good, "count": 1, "route_params": {"id": "x"}},
         }
         for name, fields in cases.items():
             with self.subTest(name), self.assertRaises((ValueError, TypeError)):
@@ -503,6 +562,34 @@ class AttributionTests(_Seed, TestCase):
             {d["date"]: d["failed_pages"] for d in response.data["days"]},
             {r["period"].date().isoformat(): r["value"] for r in series},
         )
+
+    def test_failed_files_without_pages(self) -> None:
+        pipeline = self._pipeline("no-pages")
+        WorkflowFileExecution.objects.create(
+            workflow_execution=self._run(pipeline, ERROR, 1),
+            file_name="x.pdf",
+            status=ERROR,
+        )
+
+        response = self._get("attribution")
+        self.assertEqual(response.status_code, 200)
+        jsonschema.validate(response.data, ATTRIBUTION_SCHEMA, format_checker=FORMATS)
+        self.assertEqual(response.data["total_failed_pages"], 0)
+        (source,) = response.data["sources"]
+        self.assertEqual((source["failed_pages"], source["share"]), (0, 0.0))
+
+    def test_other_pipeline_types(self) -> None:
+        app = self._pipeline("app", pipeline_type="APP")
+        self._failed_file(self._run(app, ERROR, 1), 3, days_ago=1)
+
+        response = self._get("attribution")
+        jsonschema.validate(response.data, ATTRIBUTION_SCHEMA, format_checker=FORMATS)
+        (source,) = response.data["sources"]
+        self.assertEqual((source["id"], source["type"]), (str(app.pk), "pipeline"))
+
+    def test_source_types_match_the_schema(self) -> None:
+        enum = ATTRIBUTION_SCHEMA["properties"]["sources"]["items"]["properties"]["type"]
+        self.assertEqual(set(enum["enum"]), {t.value for t in SourceType})
 
     def test_empty_range(self) -> None:
         response = self._get("attribution")
