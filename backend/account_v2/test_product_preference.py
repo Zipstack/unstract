@@ -9,7 +9,9 @@
   product list matches ``Product``.
 
 Requests go through the real URLconf and middleware with the Django test
-client, so routing and the auth middleware are covered too.
+client, so routing and the auth middleware are covered too. The built-in
+session auth is forced, so a distribution's auth plugin (cloud's Auth0) cannot
+401 the request first, as in ``global_search/tests/test_contract.py``.
 
 DB-backed Django ``TestCase`` → auto-marked ``integration`` by ``backend/conftest.py``.
 """
@@ -22,6 +24,7 @@ from unittest import mock
 import jsonschema
 from django.test import TestCase
 
+from account_v2.authentication_plugin_registry import AuthenticationPluginRegistry
 from account_v2.enums import Product
 from account_v2.models import User, UserProductPreference
 from account_v2.product_preference import (
@@ -56,14 +59,24 @@ EXISTING_SESSION_FIELDS = {
 }
 
 
+class _BuiltInSessionAuth(TestCase):
+    def setUp(self) -> None:
+        no_plugin = mock.patch.object(
+            AuthenticationPluginRegistry, "is_plugin_available", return_value=False
+        )
+        no_plugin.start()
+        self.addCleanup(no_plugin.stop)
+
+
 def _user(email: str, **fields) -> User:
     return User.objects.create_user(
         username=email, email=email, password=secrets.token_urlsafe(), **fields
     )
 
 
-class ProductPreferenceEndpointTests(TestCase):
+class ProductPreferenceEndpointTests(_BuiltInSessionAuth):
     def setUp(self) -> None:
+        super().setUp()
         self.user = _user("first@example.com")
         self.client.force_login(self.user)
 
@@ -146,8 +159,9 @@ class ProductPreferenceEndpointTests(TestCase):
         self.assertEqual(self.client.delete(URL).status_code, 405)
 
 
-class SessionProductFieldsTests(TestCase):
+class SessionProductFieldsTests(_BuiltInSessionAuth):
     def setUp(self) -> None:
+        super().setUp()
         self.user = _user("session@example.com")
         self.client.force_login(self.user)
 
