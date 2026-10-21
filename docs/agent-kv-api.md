@@ -505,7 +505,7 @@ spec's illustrative example, not a drift, since spec §7.2 was explicitly a part
 sample ("Verbose, agent-centric, stage-level").
 
 ```bash
-curl https://api.unstract.example/api/v1/agent-kv/5b6e9b0a-.../ \
+curl https://api.unstract.example/api/v1/agent-kv/5b6e9b0a-... \
   -H "Authorization: Bearer 5c9e2c9e-1234-4a5b-9c6d-abcdef012345"
 ```
 
@@ -848,7 +848,7 @@ A few details that matter if you are changing this endpoint:
   along with everything else, and one attempted afterwards is refused outright.
 
 ```bash
-curl -X DELETE https://api.unstract.example/api/v1/agent-kv/5b6e9b0a-.../ \
+curl -X DELETE https://api.unstract.example/api/v1/agent-kv/5b6e9b0a-... \
   -H "Authorization: Bearer 5c9e2c9e-1234-4a5b-9c6d-abcdef012345"
 ```
 
@@ -945,9 +945,18 @@ own module docstring says so:
   The structural fix is to move delivery onto the `notifications_webhook` worker
   the way pipeline notifications do, so a slow receiver cannot occupy an
   `ide_callback` slot at all — not done here, because it is a queue change.
-- **No retries.** One POST attempt only; any failure (host refused by the
-  pre-check, timeout, connection error, non-2xx status) is logged and swallowed —
-  there is no retry loop anywhere in this delivery path.
+- **Terminal notifications retry; the one follow-up does not.** This changed
+  when the backend took ownership of the terminal POST. `agent_kv_finalized`
+  and `agent_kv_cancelled` are queued tasks with `autoretry_for=(Exception,)`
+  and `max_retries=3` (backoff, jitter): `_deliver_terminal_webhook` RAISES on
+  a connection failure or a non-2xx, so the delivery is retried. A URL the
+  SSRF guard refuses permanently is the exception — retrying cannot change a
+  property of the URL, so it is logged at ERROR and the message acknowledged.
+
+  The `result_available` follow-up, still sent inline by the callback worker,
+  is the one delivery with **no retry**: a failure there is logged and
+  swallowed. It is also the one that matters least — `GET result` is the
+  authority, and the notification only saves a poll.
 
 Test/dev stacks only: `AGENT_KV_WEBHOOK_INSECURE_ALLOW_HTTP_PRIVATE=1` on the
 ide-callback worker waives both guards (http scheme and non-public host) so the
@@ -1388,8 +1397,18 @@ beyond `docker compose up`:
     `host.docker.internal` (the compose host-gateway mapping). The lane also
     covers sync-wait submits (`timeout` → 200 with the inline result) and an
     `.xlsx` document (`fixtures/invoice.xlsx`, the no-pre-OCR-page-count path).
-11. **Sandbox worker — calculations codegen fleet** (when
-    `AGENT_KV_CALCULATIONS_ENABLED=true`). The optional `calculations` field
+11. **Sandbox worker — calculations codegen fleet. NOT APPLICABLE TO THIS
+    RELEASE; do not action this item.** `calculations` belongs to the `kv`
+    extractor, and `EXTRACTOR_ROUTES` accepts only `table`, whose options
+    reject the field — so no job this release can accept reaches the sandbox,
+    whatever `AGENT_KV_CALCULATIONS_ENABLED` is set to. No sandbox fleet ships
+    here, and deploying one buys nothing until `kv` is routable.
+
+    Kept because it is the deployment order to follow WHEN that happens, and
+    the order is the part that is easy to get wrong. Everything below is
+    future KV-only work.
+
+    The optional `calculations` field
     invokes out-of-process codegen and execution in a dedicated sandbox worker fleet
     consuming the `sandbox_codegen` Celery queue. **Deployment order is strict:**
     deploy the sandbox worker (Deployment healthy, actively consuming tasks from

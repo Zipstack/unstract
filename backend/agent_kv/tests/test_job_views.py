@@ -966,3 +966,57 @@ def test_a_reported_stage_counts_as_evidence_of_an_executor(m_jobs):
 
     excluded = m_jobs.filter.return_value.exclude.call_args.kwargs
     assert excluded == {"dispatched_at__isnull": True, "stage": ""}, excluded
+
+
+# ---------------------------------------------------------------------------
+# (7c) cancel that LOSES the guard reports the row's CURRENT status, not the
+# one read before the race.
+#
+# `job` is loaded before the guarded UPDATE. Losing that guard means something
+# else terminalized the row in between -- a finalize, or a competing cancel --
+# so the in-memory copy is stale by definition on this path. Reporting it
+# answered `409 {"status": "running"}` for a job that was already `completed`,
+# which is the one thing a caller reads this body for. Reported by Greptile on
+# #2317.
+# ---------------------------------------------------------------------------
+@mock.patch.object(ev.AgentKVConcurrencyLimiter, "release")
+@mock.patch.object(AgentKVJob, "mark_terminal", return_value=False)
+@mock.patch.object(AgentKVJob, "objects")
+@mock.patch.object(AgentKVKey, "objects")
+def test_cancel_loss_reports_the_refreshed_status(
+    m_keys, m_jobs, m_mark_terminal, m_release
+):
+    m_keys.get.return_value = kv_key()
+    stale = AgentKVJob(status=JobStatus.RUNNING)
+    stale.organization_id = "org1"
+    fresh = AgentKVJob(status=JobStatus.COMPLETED)
+    fresh.organization_id = "org1"
+    # First read is the pre-race one the view cancels against; the second is
+    # the re-read after the guard was lost.
+    m_jobs.get.side_effect = [stale, fresh]
+
+    resp = ev.JobCancelView.as_view()(_authed(method="post"), job_id=uuid.uuid4())
+
+    assert resp.status_code == 409
+    assert resp.data == {"status": "completed"}, (
+        "the 409 body reported the status read BEFORE the guard was lost"
+    )
+
+
+# ---------------------------------------------------------------------------
+# (7d) ...and a DELETE landing in that same window answers 404, not a status.
+# The job is gone, so "running" would be a worse answer than not-found.
+# ---------------------------------------------------------------------------
+@mock.patch.object(ev.AgentKVConcurrencyLimiter, "release")
+@mock.patch.object(AgentKVJob, "mark_terminal", return_value=False)
+@mock.patch.object(AgentKVJob, "objects")
+@mock.patch.object(AgentKVKey, "objects")
+def test_cancel_loss_to_a_delete_is_404(m_keys, m_jobs, m_mark_terminal, m_release):
+    m_keys.get.return_value = kv_key()
+    stale = AgentKVJob(status=JobStatus.RUNNING)
+    stale.organization_id = "org1"
+    m_jobs.get.side_effect = [stale, AgentKVJob.DoesNotExist()]
+
+    resp = ev.JobCancelView.as_view()(_authed(method="post"), job_id=uuid.uuid4())
+
+    assert resp.status_code == 404

@@ -898,5 +898,17 @@ class JobCancelView(APIView):
             # nothing else would ever correct that.
             dispatch_cancelled_webhook(job)
             return Response({"status": "cancelled"}, status=200)
+        # Re-read before reporting. `job` was loaded BEFORE the guarded
+        # UPDATE, and losing that guard means something else terminalized the
+        # row in between -- a finalize, or a competing cancel. Reporting the
+        # in-memory copy therefore answered `409 {"status": "running"}` for a
+        # job that was already `completed`, which is the one thing a caller
+        # reads this body for. The 409 itself is right either way: the cancel
+        # was refused.
+        #
+        # A DELETE landing in the same window removes the row, and
+        # `_get_job`'s 404 is the honest answer then -- the job is gone, not
+        # running.
+        job = _get_job(agent_kv_key, job_id)
         # Lowercased for cross-endpoint consistency (spec §7.2).
         return Response({"status": job.status.lower()}, status=409)
