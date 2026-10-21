@@ -38,4 +38,16 @@ class Migration(migrations.Migration):
                 null=True,
             ),
         ),
+        # Database defaults too, so pods still on the old code can create users
+        # while a deploy rolls out.
+        migrations.RunSQL(
+            sql=[
+                """ALTER TABLE "user" ALTER COLUMN "profile_display_name" SET DEFAULT ''""",
+                """ALTER TABLE "user" ALTER COLUMN "language" SET DEFAULT 'en-US'""",
+            ],
+            reverse_sql=[
+                """ALTER TABLE "user" ALTER COLUMN "profile_display_name" DROP DEFAULT""",
+                """ALTER TABLE "user" ALTER COLUMN "language" DROP DEFAULT""",
+            ],
+        ),
     ]

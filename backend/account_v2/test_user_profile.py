@@ -1,5 +1,6 @@
 """Tests for the locally edited profile: name, language and photo."""
 
+import os
 import secrets
 import struct
 import tempfile
@@ -8,6 +9,7 @@ from dataclasses import dataclass
 from unittest.mock import patch
 
 from django.conf import settings
+from django.core.exceptions import ImproperlyConfigured
 from django.test import TestCase
 
 from account_v2 import user_profile
@@ -105,12 +107,27 @@ class PhotoStorageTests(LocalStorageMixin, TestCase):
         user_profile.delete_photo(self.user)
         self.assertIsNone(user_profile.read_photo(self.user))
 
+    def test_missing_object_is_logged_and_not_served(self) -> None:
+        user_profile.save_photo(self.user, png_bytes())
+        os.remove(user_profile.photo_path(self.user))
+        with self.assertLogs("account_v2.user_profile", "WARNING"):
+            self.assertIsNone(user_profile.read_photo(self.user))
+
+    def test_delete_clears_timestamp_even_when_in_memory_copy_is_stale(self) -> None:
+        user_profile.save_photo(self.user, png_bytes())
+        stale = User.objects.get(pk=self.user.pk)
+        stale.profile_photo_updated_at = None
+        user_profile.delete_photo(stale)
+        self.user.refresh_from_db()
+        self.assertIsNone(self.user.profile_photo_updated_at)
+
     def test_stored_bytes_that_are_not_an_image_are_not_served(self) -> None:
         user_profile.save_photo(self.user, png_bytes())
         path = user_profile.photo_path(self.user)
         with open(path, "wb") as f:
             f.write(GIF)
-        self.assertIsNone(user_profile.read_photo(self.user))
+        with self.assertLogs("account_v2.user_profile", "WARNING"):
+            self.assertIsNone(user_profile.read_photo(self.user))
 
 
 class PhotoBasePathTests(TestCase):
@@ -135,6 +152,14 @@ class PhotoBasePathTests(TestCase):
             self.assertEqual(
                 user_profile.photo_base_path(), "bucket-x/user-profile-photos"
             )
+
+    def test_unset_paths_are_a_config_error(self) -> None:
+        with patch.dict(
+            "os.environ",
+            {"REMOTE_USER_PROFILE_PHOTO_PATH": "", "REMOTE_PROMPT_STUDIO_FILE_PATH": ""},
+        ):
+            with self.assertRaises(ImproperlyConfigured):
+                user_profile.photo_base_path()
 
 
 class PhotoUrlTests(TestCase):
@@ -204,3 +229,22 @@ class ProfileOverrideTests(TestCase):
 class LanguageDefaultTests(TestCase):
     def test_new_user_language_is_en_us(self) -> None:
         self.assertEqual(make_user().language, "en-US")
+
+
+class ControllerOrganizationTests(TestCase):
+    def test_photo_url_uses_the_organization_passed_in(self) -> None:
+        from types import SimpleNamespace
+
+        from account_v2.authentication_controller import AuthenticationController
+
+        user = make_user()
+        user.profile_photo_updated_at = user_profile.timezone.now()
+        with patch(
+            "account_v2.authentication_controller.AuthenticationPluginRegistry"
+            ".is_plugin_available",
+            return_value=False,
+        ):
+            info = AuthenticationController().get_user_info(
+                SimpleNamespace(user=user), organization_id="org-b"
+            )
+        self.assertEqual(info.picture, user_profile.photo_url(user, "org-b"))

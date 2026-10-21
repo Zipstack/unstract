@@ -5,12 +5,14 @@ provider, and shown in place of the provider's values.
 """
 
 import dataclasses
+import logging
 import os
 from pathlib import PurePosixPath
 from typing import TypeVar
 
 import magic
 from django.conf import settings
+from django.core.exceptions import ImproperlyConfigured
 from django.utils import timezone
 from utils.file_storage.constants import FileStorageConstants, FileStorageKeys
 
@@ -26,12 +28,13 @@ PHOTO_PATH_ENV = "REMOTE_USER_PROFILE_PHOTO_PATH"
 
 T = TypeVar("T", bound=UserInfo)
 
+logger = logging.getLogger(__name__)
+
 
 def photo_base_path() -> str:
     """Where photos are kept: the env if set, else beside Prompt Studio files.
 
-    The default lands in the same bucket as Prompt Studio data, which every
-    deployment already configures.
+    The default lands in the same bucket as Prompt Studio data.
     """
     explicit = os.environ.get(PHOTO_PATH_ENV, "").strip()
     if explicit:
@@ -39,6 +42,12 @@ def photo_base_path() -> str:
     prompt_studio = os.environ.get(
         FileStorageConstants.REMOTE_PROMPT_STUDIO_FILE_PATH, ""
     )
+    if not prompt_studio.strip():
+        raise ImproperlyConfigured(
+            f"Set {PHOTO_PATH_ENV} or "
+            f"{FileStorageConstants.REMOTE_PROMPT_STUDIO_FILE_PATH} to store "
+            "profile photos."
+        )
     return str(PurePosixPath(prompt_studio).parent / "user-profile-photos")
 
 
@@ -67,13 +76,17 @@ def read_photo(user: User) -> tuple[bytes, str] | None:
     """The photo bytes and content type, or None when there is no servable photo."""
     if not user.profile_photo_updated_at:
         return None
-    fs = _storage()
     path = photo_path(user)
-    if not fs.exists(path):
+    try:
+        data = _storage().read(path=path, mode="rb")
+    except FileNotFoundError:
+        logger.warning("Profile photo of user %s is missing at %s", user.pk, path)
         return None
-    data = fs.read(path=path, mode="rb")
     content_type = magic.from_buffer(data, mime=True)
     if content_type not in PHOTO_TYPES:
+        logger.warning(
+            "Profile photo of user %s is %s, not served", user.pk, content_type
+        )
         return None
     return data, content_type
 
@@ -83,13 +96,12 @@ def delete_photo(user: User) -> None:
     path = photo_path(user)
     if fs.exists(path):
         fs.rm(path, recursive=False)
-    if user.profile_photo_updated_at:
-        user.profile_photo_updated_at = None
-        user.save(update_fields=["profile_photo_updated_at"])
+    User.objects.filter(pk=user.pk).update(profile_photo_updated_at=None)
+    user.profile_photo_updated_at = None
 
 
 def photo_url(user: User, organization_id: str | None) -> str | None:
-    """Org-scoped URL of the photo endpoint, versioned so a new photo busts caches."""
+    """Org-scoped URL of the photo endpoint, versioned by upload time in seconds."""
     if not (user.profile_photo_updated_at and organization_id):
         return None
     version = int(user.profile_photo_updated_at.timestamp())

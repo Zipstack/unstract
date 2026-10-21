@@ -175,8 +175,11 @@ class ProfilePhotoSerializer(serializers.Serializer):
     photo = serializers.FileField()
 
     def validate_photo(self, photo: Any) -> Any:
+        # Size first, so an oversized upload is refused before it is read.
+        if photo.size > MAX_PHOTO_BYTES:
+            raise ValidationError("The photo is larger than 2 MB.")
         # The type is read from the bytes, so a renamed file is judged by content.
-        FileValidator(allowed_mimetypes=PHOTO_TYPES, max_size=MAX_PHOTO_BYTES)([photo])
+        FileValidator(allowed_mimetypes=PHOTO_TYPES)([photo])
         return photo
 
 

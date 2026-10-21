@@ -75,7 +75,9 @@ class ProfileEndpointTests(LocalStorageMixin, TestCase):
         self.assertEqual(self.user.profile_display_name, "Me Edited")
 
     def test_patch_language(self) -> None:
-        response = self.patch_profile({"display_name": "Me", "language": "en-US"})
+        type(self.user).objects.filter(pk=self.user.pk).update(language="xx-XX")
+        self.assertEqual(self.profile()["language"], "xx-XX")
+        response = self.patch_profile({"language": "en-US"})
         self.assertEqual(response.status_code, 200, response.content)
         self.assertEqual(self.profile()["language"], "en-US")
 
