@@ -51,6 +51,7 @@ from account_v2.serializer import (
     SetOrganizationsResponseSerializer,
 )
 from account_v2.user import UserService
+from account_v2.user_profile import with_profile_overrides
 
 logger = logging.getLogger(__name__)
 
@@ -254,7 +255,19 @@ class AuthenticationController:
         return Response(status=status.HTTP_403_FORBIDDEN)
 
     def get_user_info(self, request: Request) -> UserInfo | None:
-        return self.auth_service.get_user_info(request)
+        """The auth service's user info, with the locally edited name and photo.
+
+        Every auth plugin's result passes through here, so the edits show in the
+        profile and set-organization responses whichever provider signed the
+        user in.
+        """
+        user_info = self.auth_service.get_user_info(request)
+        user = getattr(request, "user", None)
+        if not user_info or not isinstance(user, User):
+            return user_info
+        return with_profile_overrides(
+            user_info, user, UserSessionUtils.get_organization_id(request)
+        )
 
     def is_admin_by_role(self, role: str) -> bool:
         """Check the role is act as admin in the context of authentication

@@ -2,9 +2,12 @@ from collections import OrderedDict
 from typing import Any, cast
 
 from account_v2.constants import Common
+from account_v2.models import NAME_SIZE
+from account_v2.user_profile import LANGUAGES, MAX_PHOTO_BYTES, PHOTO_TYPES
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
 from rest_framework.serializers import ModelSerializer
+from utils.FileValidator import FileValidator
 
 from tenant_account_v2.models import OrganizationMember
 
@@ -134,6 +137,47 @@ class UserInfoSerializer(serializers.Serializer):
     display_name = serializers.CharField()
     family_name = serializers.CharField()
     picture = serializers.CharField()
+
+
+class UserProfileSerializer(UserInfoSerializer):
+    """The `user` object GET users/profile/ returns; documents the contract."""
+
+    name = serializers.CharField(
+        help_text="The edited name when set, else the provider's"
+    )
+    display_name = serializers.CharField(
+        help_text="The edited name when set, else the provider's"
+    )
+    family_name = serializers.CharField(allow_null=True)
+    picture = serializers.CharField(
+        allow_null=True,
+        help_text="`photo_url` when a photo is set, else the provider's picture",
+    )
+    is_admin = serializers.BooleanField()
+    login_onboarding_message_displayed = serializers.BooleanField()
+    prompt_onboarding_message_displayed = serializers.BooleanField()
+    role = serializers.CharField()
+    organization_name = serializers.CharField(required=False)
+    organization_id = serializers.CharField(required=False)
+    photo_url = serializers.CharField(
+        allow_null=True,
+        help_text="Org-scoped URL of GET users/profile/photo/, null when no photo",
+    )
+    language = serializers.CharField(help_text="BCP 47 tag; only `en-US` for now")
+
+
+class ProfileUpdateSerializer(serializers.Serializer):
+    display_name = serializers.CharField(max_length=NAME_SIZE)
+    language = serializers.ChoiceField(choices=LANGUAGES, required=False)
+
+
+class ProfilePhotoSerializer(serializers.Serializer):
+    photo = serializers.FileField()
+
+    def validate_photo(self, photo: Any) -> Any:
+        # The type is read from the bytes, so a renamed file is judged by content.
+        FileValidator(allowed_mimetypes=PHOTO_TYPES, max_size=MAX_PHOTO_BYTES)([photo])
+        return photo
 
 
 class GetRolesResponseSerializer(serializers.Serializer):
