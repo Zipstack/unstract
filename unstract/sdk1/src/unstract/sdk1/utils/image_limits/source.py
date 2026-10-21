@@ -145,8 +145,9 @@ class RemoteFetchError(Exception):
 def fetch_remote_bytes(url: str) -> bytes:
     """Download ``url`` (no redirects), capped at ``MAX_REMOTE_BYTES``.
 
-    The body is abandoned once ``FETCH_TIMEOUT_SECONDS`` have passed between
-    chunks; ``_fetch_with_deadline`` bounds the whole call, DNS included.
+    The body is abandoned at the first chunk that arrives more than
+    ``FETCH_TIMEOUT_SECONDS`` after the call started; ``_fetch_with_deadline``
+    bounds the whole call, DNS and a stalled stream included.
     """
     deadline = _clock() + FETCH_TIMEOUT_SECONDS
     chunks: list[bytes] = []

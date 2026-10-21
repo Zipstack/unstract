@@ -50,17 +50,20 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# THE single source of truth for the image-mode page cap. Above it a document
-# is rejected rather than windowed, because this path answers in a single
-# call. It is read through configured_page_cap() by both the extraction-time
-# pre-check and the answer-time consumer, so they cannot disagree.
+# The FIXED image-mode page cap: the whole limit when model-aware limits are
+# off (``VLM_IMAGE_LIMITS_ENFORCE=false``) or a caller passes no
+# ``ImageModePolicy``, and the UN-4427 rollout bound
+# (``policy.LEGACY_ANSWER_BOUNDS_ACTIVE``) while that is on. Model-aware
+# limits come from ``unstract.sdk1.utils.image_limits``. Above the cap a
+# document is rejected rather than windowed, because this path answers in a
+# single call.
 #
-# Keep the value HERE. PAGE_CAP_ENV exists only as an emergency override and
-# is deliberately not set in any Helm chart: the cap is coupled to the byte
-# budget below, and TestCapMatchesBudget can only check the pair when both
-# live in this file. A deployment-level override silently bypasses that
-# check — e.g. raising the cap to 300 in a chart while the budget still holds
-# ~90 pages reopens the billed-then-rejected window described below.
+# Keep the value HERE: the cap is coupled to the byte budget below, and
+# TestCapMatchesBudget can only check the pair when both live in this file.
+# PAGE_CAP_ENV (an operator ceiling, see configured_page_ceiling) is not set
+# in any shipped chart; raising it without the byte budget (e.g. 300 while
+# the budget still holds ~90 pages) reopens the billed-then-rejected window
+# described below.
 #
 # RAISING THIS ABOVE 999 ALSO NEEDS LLMWHISPERER CHANGES. Image mode's pages
 # come from LLMWhisperer's /pdf-to-images endpoint, which:
@@ -107,18 +110,22 @@ DEFAULT_PAGE_CAP = 90
 #
 # Like DEFAULT_PAGE_CAP above, keep the value HERE rather than in a Helm
 # chart: the two are a coupled pair, checked together by
-# TestCapMatchesBudget. VLM_IMAGE_ANSWER_MAX_TOTAL_MB is an emergency
-# override only.
+# TestCapMatchesBudget. VLM_IMAGE_ANSWER_MAX_TOTAL_MB is an operator
+# ceiling (see configured_request_bytes_ceiling), not set in any shipped
+# chart.
 DEFAULT_MAX_TOTAL_BYTES = 14 * 1024 * 1024
 
 _PAGE_NAME_RE = re.compile(ImageOutputConstants.PAGE_NUMBER_REGEX)
 
-# Platform overrides for the two limits. Defined here — next to the defaults
-# and the enforcement — so every site that needs them agrees: the
-# extraction-time checks (adapter: the page-count pre-check before the
-# per-page-billed conversion is submitted, and the byte check right after
-# it) and the answer-time enforcement (cloud consumer plugin). Emergency
-# overrides only; see DEFAULT_PAGE_CAP for why the values live in this file.
+# Operator settings for the two limits, defined next to the defaults so
+# every site reads them the same way: the extraction-time checks (before
+# and right after the per-page-billed conversion) and the answer-time
+# enforcement (cloud consumer plugin). With model-aware limits they are
+# ceilings applied with min() on top of the LLM's limits
+# (configured_page_ceiling / configured_request_bytes_ceiling); with the
+# fixed cap they replace its values (configured_page_cap /
+# configured_max_total_bytes). See DEFAULT_PAGE_CAP for why the defaults
+# live in this file.
 PAGE_CAP_ENV = "VLM_IMAGE_ANSWER_PAGE_CAP"
 MAX_TOTAL_MB_ENV = "VLM_IMAGE_ANSWER_MAX_TOTAL_MB"
 

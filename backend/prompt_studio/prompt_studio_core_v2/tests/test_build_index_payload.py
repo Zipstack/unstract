@@ -24,6 +24,8 @@ from contextlib import ExitStack
 from typing import Any
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from prompt_studio.prompt_studio_core_v2 import prompt_studio_helper as _psh_mod
 
 PromptStudioHelper = _psh_mod.PromptStudioHelper
@@ -192,6 +194,60 @@ class TestBuildIndexPayloadMarker:
             "falling back to full extraction" in rec.getMessage()
             for rec in caplog.records
         )
+
+
+_LLMW_ADAPTER_ID = "llmwhisperer|a5e6b8af-3e1f-4a80-b006-d017e8e67f93"
+_BEDROCK_ID = "bedrock|8d18571f-5e96-4505-bd28-ad0379c64064"
+_BEDROCK_META = {
+    "model": "anthropic.claude-sonnet-4-5-20250929-v1:0",
+    "aws_region_name": "us-east-1",
+}
+
+
+def _image_mode_bedrock_profile() -> MagicMock:
+    profile = _make_profile()
+    profile.x2text.adapter_id = _LLMW_ADAPTER_ID
+    profile.x2text.metadata = {"output_mode": "image"}
+    profile.llm.adapter_id = _BEDROCK_ID
+    profile.llm.metadata = _BEDROCK_META
+    return profile
+
+
+def _cached_summary(pages: int) -> str:
+    return _psh_mod.LLMWhispererHelper.build_image_output_summary([None] * pages)
+
+
+class TestCacheHitImageLimits:
+    """Index reuses a cached extract only if it fits the profile's LLM (M5).
+
+    The extraction cache ignores the LLM: a document extracted for a
+    generous LLM must not be indexed for one that cannot answer it.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _no_env_cap(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("VLM_IMAGE_ANSWER_PAGE_CAP", raising=False)
+        monkeypatch.delenv("VLM_IMAGE_LIMITS_ENFORCE", raising=False)
+
+    def test_cached_extract_over_the_llm_budget_is_rejected(self) -> None:
+        with pytest.raises(_psh_mod.ExtractionAPIError) as excinfo:
+            _dispatch_build(
+                check_return=True,
+                read_return=_cached_summary(21),
+                profile=_image_mode_bedrock_profile(),
+            )
+        detail = str(excinfo.value.detail)
+        assert "IMAGE_PAGE_CAP_EXCEEDED" in detail
+        assert "doc.pdf" in detail and "20 page images" in detail
+
+    def test_cached_extract_within_the_budget_is_reused(self) -> None:
+        context, _cb, _fs, _check = _dispatch_build(
+            check_return=True,
+            read_return=_cached_summary(20),
+            profile=_image_mode_bedrock_profile(),
+        )
+        index_params = context.executor_params["index_params"]
+        assert index_params[IKeys.EXTRACTED_TEXT] == _cached_summary(20)
 
 
 class TestOwnerAccessPlumbing:

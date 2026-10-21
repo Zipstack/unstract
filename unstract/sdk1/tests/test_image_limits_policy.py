@@ -115,9 +115,10 @@ class TestComputePageBudget:
         assert budget.context_tokens == 100_000
 
     def test_default_token_estimate_is_advisory(self) -> None:
-        # The table's only tokens-per-page figure is the unverified default
-        # (1,500). Enforcing it capped 128K-context gpt-4o at 82 pages, below
-        # what real pages (~765-1,105 tokens) fit, so it warns instead.
+        # The context-window term is warn-only for every estimate. With the
+        # unverified default (1,500 tokens per page) enforcing it would cap
+        # 128K-context gpt-4o at 82 pages, below what real pages (~765-1,105
+        # tokens) fit; the 82 is reported as an advisory only.
         budget = compute_page_budget(OPENAI, context_tokens=128_000)
         assert budget.binding == "llmwhisperer"
         assert budget.terms["tokens"] is None
