@@ -99,7 +99,7 @@ def delete_photo(user: User) -> None:
     ).exists()
     if recorded:  # Without a recorded photo there is no storage to touch.
         try:
-            _storage().rm(photo_path(user), recursive=False)
+            _storage().rm_exact(photo_path(user))
         except FileNotFoundError:
             logger.warning("Profile photo of user %s was already gone", user.pk)
         User.objects.filter(pk=user.pk).update(profile_photo_updated_at=None)

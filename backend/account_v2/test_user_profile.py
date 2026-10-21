@@ -106,12 +106,25 @@ class PhotoStorageTests(LocalStorageMixin, TestCase):
 
     def test_storage_failure_on_delete_keeps_the_photo_recorded(self) -> None:
         user_profile.save_photo(self.user, png_bytes())
-        with patch("unstract.sdk1.file_storage.impl.FileStorage.rm", side_effect=OSError):
+        with patch(
+            "unstract.sdk1.file_storage.impl.FileStorage.rm_exact", side_effect=OSError
+        ):
             with self.assertRaises(OSError):
                 user_profile.delete_photo(self.user)
         self.user.refresh_from_db()
         self.assertIsNotNone(self.user.profile_photo_updated_at)
         user_profile.delete_photo(self.user)  # a retry removes it
+        self.assertIsNone(user_profile.read_photo(self.user))
+
+    def test_delete_does_not_use_the_bulk_delete_minio_rejects(self) -> None:
+        # Object-store `rm` sends a bulk delete, which MinIO can refuse with
+        # MissingContentMD5; the SDK only falls back for recursive deletes.
+        user_profile.save_photo(self.user, png_bytes())
+        with patch(
+            "unstract.sdk1.file_storage.impl.FileStorage.rm",
+            side_effect=Exception("MissingContentMD5"),
+        ):
+            user_profile.delete_photo(self.user)
         self.assertIsNone(user_profile.read_photo(self.user))
 
     def test_delete_when_object_already_gone(self) -> None:
