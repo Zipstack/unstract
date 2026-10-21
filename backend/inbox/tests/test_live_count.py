@@ -32,6 +32,10 @@ class PushTests(CoOwnerOrgTestMixin, TestCase):
     def setUp(self) -> None:
         self._seed_org()
         self.addCleanup(UserContext.set_organization_identifier, None)
+        # Never reach the real publisher thread or broker from these tests.
+        patcher = patch(EMIT)
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     def notify(self, users, key) -> None:
         with self.captureOnCommitCallbacks(execute=True):
@@ -98,13 +102,18 @@ class PublisherTests(TestCase):
         self.assertEqual(full.qsize(), 1)
 
     def test_publisher_thread_emits_what_was_queued(self) -> None:
+        import queue
         import threading
 
         done = threading.Event()
-        with patch(
-            "utils.log_events._emit_websocket_event",
-            side_effect=lambda *a: done.set(),
-        ) as emit:
+        with (
+            patch.object(service, "_queue", queue.Queue(maxsize=10)),
+            patch.object(service, "_publisher", None),
+            patch(
+                "utils.log_events._emit_websocket_event",
+                side_effect=lambda *a: done.set(),
+            ) as emit,
+        ):
             service._submit("user:1", "inbox:unread", {"unread_count": 1})
             self.assertTrue(done.wait(5))
         emit.assert_called_with("user:1", "inbox:unread", {"unread_count": 1})
@@ -158,11 +167,18 @@ class ConnectTests(CoOwnerOrgTestMixin, TestCase):
         disconnect.assert_called_once_with("sid-1")
 
     def test_failing_session_store_joins_only_the_session_room(self) -> None:
+        key = "a" * 32
         with patch.object(log_events, "import_module", side_effect=RuntimeError("db")):
             with self.assertLogs("utils.log_events", "ERROR"):
-                enter = self.connect("abc123")
-        enter.assert_called_once_with("sid-1", "abc123")
+                enter = self.connect(key)
+        enter.assert_called_once_with("sid-1", key)
+
+    def test_cookie_not_shaped_like_a_session_key_is_never_looked_up(self) -> None:
+        with patch.object(log_events, "import_module") as store:
+            self.connect("ABCDEFGHIJKLMNOPQRSTUVWXYZ012345")
+            self.connect("short1")
+        store.assert_not_called()
 
     def test_unknown_session_joins_only_the_session_room(self) -> None:
-        enter = self.connect("nosuchsession")
-        enter.assert_called_once_with("sid-1", "nosuchsession")
+        enter = self.connect("n" * 32)
+        enter.assert_called_once_with("sid-1", "n" * 32)

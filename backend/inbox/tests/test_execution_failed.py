@@ -1,10 +1,12 @@
 """Failed runs put one item in the inboxes of the owners of what ran."""
 
 import uuid
+from datetime import timedelta
 from unittest.mock import patch
 
 from django.db import transaction
 from django.test import TestCase, TransactionTestCase
+from django.utils import timezone
 from permissions.roles import ResourceRole
 from permissions.tests.base import (
     CoOwnerOrgTestMixin,
@@ -89,6 +91,31 @@ class ExecutionFailedTests(_Runs, TestCase):
             self.finish(self.run_of(pipeline), ExecutionStatus.EXECUTING)
         hook.assert_not_called()
 
+    def test_repeated_failures_refresh_one_item_per_resource(self) -> None:
+        pipeline = _build_pipeline(self.org, self.owner)
+        self.share(pipeline)
+        first, second = self.run_of(pipeline), self.run_of(pipeline)
+        self.finish(first, ExecutionStatus.ERROR)
+        earlier = timezone.now() - timedelta(days=1)
+        InboxItem.objects.filter(user=self.owner).update(
+            read_at=timezone.now(), created_at=earlier
+        )
+        self.finish(second, ExecutionStatus.ERROR)
+        (item,) = _items(self.owner)
+        self.assertEqual(item.route, _run_route(second))
+        self.assertIsNone(item.read_at)
+        self.assertGreater(item.created_at, earlier)
+
+    def test_clean_retry_of_an_older_run_keeps_the_newer_failure(self) -> None:
+        pipeline = _build_pipeline(self.org, self.owner)
+        self.share(pipeline)
+        first, second = self.run_of(pipeline), self.run_of(pipeline)
+        self.finish(first, ExecutionStatus.ERROR)
+        self.finish(second, ExecutionStatus.ERROR)
+        self.finish(first, ExecutionStatus.COMPLETED, failed_files=0)
+        (item,) = _items(self.owner)
+        self.assertEqual(item.route, _run_route(second))
+
     def test_one_item_per_execution(self) -> None:
         pipeline = _build_pipeline(self.org, self.owner)
         self.share(pipeline)
@@ -126,9 +153,9 @@ class ExecutionFailedTests(_Runs, TestCase):
     def test_failed_run_does_not_push_over_the_socket(self) -> None:
         pipeline = _build_pipeline(self.org, self.owner)
         self.share(pipeline)
-        with patch("utils.log_events._emit_websocket_event") as emit:
+        with patch("inbox.service._submit") as submit:
             self.finish(self.run_of(pipeline), ExecutionStatus.ERROR)
-        emit.assert_not_called()
+        submit.assert_not_called()
         self.assertEqual(len(_items(self.owner)), 1)
 
     def test_stopped_run_says_stopped(self) -> None:

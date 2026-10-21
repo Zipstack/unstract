@@ -1,7 +1,7 @@
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
-from drf_spectacular.utils import OpenApiResponse, extend_schema, inline_serializer
-from rest_framework import serializers, status, viewsets
+from drf_spectacular.utils import OpenApiResponse, extend_schema
+from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
@@ -10,7 +10,7 @@ from utils.pagination import CustomPagination
 from utils.user_context import UserContext
 
 from inbox.models import InboxItem
-from inbox.serializers import InboxItemSerializer
+from inbox.serializers import InboxItemSerializer, InboxPageSerializer
 from inbox.service import push_unread, unread_count
 
 
@@ -27,18 +27,7 @@ class InboxViewSet(viewsets.GenericViewSet):
     @extend_schema(
         operation_id="inbox_list",
         tags=["inbox"],
-        responses={
-            200: inline_serializer(
-                "InboxPage",
-                {
-                    "count": serializers.IntegerField(),
-                    "next": serializers.URLField(allow_null=True),
-                    "previous": serializers.URLField(allow_null=True),
-                    "results": InboxItemSerializer(many=True),
-                    "unread_count": serializers.IntegerField(),
-                },
-            )
-        },
+        responses={200: InboxPageSerializer},
         description="Newest first. See inbox/ReadMe.md.",
     )
     def list(self, request: Request) -> Response:

@@ -64,10 +64,13 @@ def notify(
     body: str = "",
     route: dict[str, Any] | None = None,
     organization: Organization | None = None,
+    refresh: bool = False,
     push: bool = True,
 ) -> None:
     """Add one item per user; an event already delivered to a user is skipped.
 
+    ``refresh=True`` instead overwrites a user's existing item for the same
+    ``dedupe_key``: new text and route, unread again, and moved to the top.
     ``push=False`` leaves the new count to the user's next list call.
     """
     organization = organization or UserContext.get_organization()
@@ -90,7 +93,15 @@ def notify(
                 )
                 for user in users.values()
             ],
-            ignore_conflicts=True,
+            **(
+                {
+                    "update_conflicts": True,
+                    "unique_fields": ["organization", "user", "dedupe_key"],
+                    "update_fields": ["title", "body", "route", "read_at", "created_at"],
+                }
+                if refresh
+                else {"ignore_conflicts": True}
+            ),
         )
     if push:
         push_unread(organization, users)

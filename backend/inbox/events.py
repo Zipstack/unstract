@@ -124,6 +124,12 @@ def _run_source(execution: Any) -> tuple[Any, str, str]:
         api = APIDeployment._base_manager.filter(pk=execution.pipeline_id).first()
         if api:
             return api, "API deployment", api.api_name
+        logger.warning(
+            "Run %s names a pipeline or API deployment %s that no longer exists; "
+            "telling the workflow's owners",
+            execution.pk,
+            execution.pipeline_id,
+        )
     workflow = execution.workflow
     return workflow, "workflow", workflow.workflow_name
 
@@ -141,26 +147,43 @@ def _failure_title(execution: Any, label: str, name: str) -> str:
 
 
 def notify_execution_failed(execution_id: Any) -> None:
-    """Tell the owners of what ran, once per execution, when a run fails.
+    """Tell the owners of what ran when a run fails.
 
-    Called on every terminal status write. ERROR can later be corrected to a
-    clean COMPLETED, so a clean finish withdraws any failure item for the run.
+    Each owner keeps one item per pipeline, API deployment or workflow: a new
+    failure refreshes it to the latest run and marks it unread again, so a
+    resource that keeps failing does not flood the inbox. Called on every
+    terminal status write; ERROR can later be corrected to a clean COMPLETED,
+    so a clean finish withdraws the item while it still points at that run.
     """
     try:
-        from notification_v2.helper import is_failure_run
-        from workflow_manager.workflow_v2.models import WorkflowExecution
+        _notify_execution_failed(execution_id)
+    except Exception:
+        logger.exception("Could not add failed-run notifications for %s", execution_id)
 
+
+def _notify_execution_failed(execution_id: Any) -> None:
+    from django.db import transaction
+    from notification_v2.helper import is_failure_run
+    from workflow_manager.workflow_v2.models import WorkflowExecution
+
+    # The row lock holds off a concurrent status write until this decision is
+    # stored, so a clean correction always runs after the item it withdraws.
+    with transaction.atomic():
         execution = (
-            WorkflowExecution.objects.select_related("workflow__organization")
+            WorkflowExecution.objects.select_for_update(of=("self",))
+            .select_related("workflow__organization")
             .filter(pk=execution_id)
             .first()
         )
         if not execution:
             return
-        dedupe_key = f"execution_failed:{execution.pk}"
+        organization = execution.workflow.organization
+        dedupe_key = f"run_failed:{execution.pipeline_id or execution.workflow_id}"
         if not is_failure_run(execution.status, execution.failed_files):
             InboxItem._base_manager.filter(
-                organization=execution.workflow.organization, dedupe_key=dedupe_key
+                organization=organization,
+                dedupe_key=dedupe_key,
+                route__params__id=str(execution.pk),
             ).delete()
             return
         resource, label, name = _run_source(execution)
@@ -171,10 +194,9 @@ def notify_execution_failed(execution_id: Any) -> None:
             body=execution.error_message or "",
             route={"key": "execution.detail", "params": {"id": str(execution.pk)}},
             dedupe_key=dedupe_key,
-            organization=execution.workflow.organization,
+            organization=organization,
+            refresh=True,
             # Never on the status-write path: an emit retries without limit while
             # the socket broker is down. The count shows on the next list call.
             push=False,
         )
-    except Exception:
-        logger.exception("Could not add failed-run notifications for %s", execution_id)

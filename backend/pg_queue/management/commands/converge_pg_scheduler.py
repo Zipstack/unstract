@@ -34,9 +34,11 @@ start:
 those back in the SAME change that sets ``PG_SCHEDULER_ENABLED=false`` — otherwise
 you have simply moved the outage. The release path logs a warning saying so.
 
-Periodics (``dashboard_metrics.*``) are opt-in via ``--periodics``: pipelines and
-metrics are separate rollout decisions, and metrics have their own consumer
-(``workerPgMetrics``) that has to be deployed before they can be adopted.
+Periodics (every non-pipeline row in ``pg_periodic_task``: ``dashboard_metrics.*``
+on the ``dashboard_metric_events`` queue, ``inbox.purge`` on the ``scheduler``
+queue) are opt-in via ``--periodics``: pipelines and metrics are separate rollout
+decisions, and metrics have their own consumer (``workerPgMetrics``) that has to be
+deployed before they can be adopted.
 """
 
 from typing import Any
@@ -63,9 +65,10 @@ class Command(BaseCommand):
             "--periodics",
             action="store_true",
             help=(
-                "Also converge the non-pipeline periodics (dashboard_metrics.*). "
-                "Off by default: adopting them requires workerPgMetrics to be "
-                "deployed, so it is a separate rollout decision from pipelines."
+                "Also converge the non-pipeline periodics (dashboard_metrics.* on "
+                "workerPgMetrics, inbox.purge on the scheduler worker). Off by "
+                "default: adopting them requires those consumers to be deployed, "
+                "so it is a separate rollout decision from pipelines."
             ),
         )
 

@@ -286,6 +286,16 @@ class SchemaTests(TestCase):
         )
         self.assertTrue(item["properties"]["route"]["nullable"])
         self.assertEqual(item["properties"]["kind"], {"type": "string"})
+        (op,) = (
+            op
+            for path in schema["paths"].values()
+            for op in path.values()
+            if op["operationId"] == "inbox_list"
+        )
+        body = op["responses"]["200"]["content"]["application/json"]["schema"]
+        self.assertEqual(body, {"$ref": "#/components/schemas/InboxPage"})
+        results = page["properties"]["results"]["items"]
+        self.assertEqual(results, {"$ref": "#/components/schemas/InboxItem"})
         route = schema["components"]["schemas"]["InboxRoute"]
         self.assertEqual(set(route["properties"]), {"key", "params"})
 

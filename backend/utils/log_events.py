@@ -1,6 +1,7 @@
 import http
 import logging
 import os
+import re
 import uuid
 from importlib import import_module
 from typing import Any
@@ -18,6 +19,8 @@ from utils.constants import ExecutionLogConstants
 from utils.cors_origin import RegexOrigin
 
 logger = logging.getLogger(__name__)
+
+_SESSION_KEY_RE = re.compile(r"[a-z0-9]{32}")
 
 
 _cors_allowed_origins: list[Any] = list(settings.CORS_ALLOWED_ORIGINS)
@@ -112,9 +115,10 @@ def _get_user_session_id_from_cookies(sid: str, environ: Any) -> str | None:
     if not session_id:
         logger.warning(f"No session ID found in cookies for SID {sid}")
         return None
-    # Django session keys are alphanumeric. Anything else, such as "user:5",
-    # could name another room, so it is refused.
-    if not session_id.value.isalnum():
+    # Django session keys are 32 lowercase letters and digits. Anything else,
+    # such as "user:5", could name another room, so it is refused before any
+    # session lookup.
+    if not _SESSION_KEY_RE.fullmatch(session_id.value):
         logger.warning(f"Malformed session ID in cookies for SID {sid}")
         return None
 

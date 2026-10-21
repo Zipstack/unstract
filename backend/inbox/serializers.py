@@ -1,3 +1,4 @@
+from drf_spectacular.utils import extend_schema_serializer
 from rest_framework import serializers
 
 from inbox.models import InboxItem
@@ -26,3 +27,19 @@ class InboxItemSerializer(serializers.ModelSerializer):
 
     def get_read(self, item: InboxItem) -> bool:
         return item.read_at is not None
+
+
+# many=False: the list action is paginated, and without it the schema would wrap
+# this page inside a second paginated envelope.
+@extend_schema_serializer(many=False)
+class InboxPageSerializer(serializers.Serializer):
+    """Schema only: the list response."""
+
+    count = serializers.IntegerField()
+    next = serializers.URLField(allow_null=True)
+    previous = serializers.URLField(allow_null=True)
+    results = InboxItemSerializer(many=True)
+    unread_count = serializers.IntegerField()
+
+    class Meta:
+        ref_name = "InboxPage"
