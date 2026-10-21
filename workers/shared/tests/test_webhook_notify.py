@@ -123,7 +123,10 @@ def test_public_host_posted_no_redirects(m_gai, m_requests):
     assert wn.send_webhook("https://example.com/hook", {"job_id": "j"}) is True
     kw = m_requests.post.call_args.kwargs
     assert kw["allow_redirects"] is False
-    assert kw["timeout"] == 10
+    # A (connect, read) pair, not a scalar. The scalar read as one total
+    # budget and was not: `requests` applies it per socket operation.
+    assert kw["timeout"] == (wn._CONNECT_TIMEOUT, wn._READ_TIMEOUT)
+    assert kw["stream"] is True
 
 
 @mock.patch.object(wn, "requests")
@@ -219,3 +222,56 @@ class TestAllowInsecure:
             is False
         )
         assert not m_requests.post.called
+
+
+# ---------------------------------------------------------------------------
+# The response body is never read.
+# ---------------------------------------------------------------------------
+
+
+def test_the_body_is_never_read_and_the_response_is_closed(monkeypatch):
+    """`timeout` is per-read, not total, so reading the body is unbounded work.
+
+    This runs inline on the `ide_callback` consumer -- concurrency 2 by
+    default and shared with Prompt Studio -- so a receiver that answers 200
+    and then trickles one byte every nine seconds, or returns a very large
+    body, held one of those two slots for as long as it liked while resetting
+    the read timeout on every chunk. Cheap to trigger with any API key:
+    submit, cancel immediately, and the cancellation webhook fires with no LLM
+    spend. Reported by @athul-rs on #2317.
+
+    Asserting `stream=True` AND the close, because either alone is
+    insufficient: without `stream` the body is already read by the time the
+    call returns, and without the close the connection is held until GC.
+    """
+    captured = {}
+
+    class _Resp:
+        status_code = 200
+
+        def __init__(self):
+            self.closed = False
+
+        def close(self):
+            self.closed = True
+
+        @property
+        def text(self):  # pragma: no cover - must never be reached
+            raise AssertionError("the response body must not be read")
+
+    resp = _Resp()
+
+    def _post(url, **kwargs):
+        captured.update(kwargs)
+        return resp
+
+    monkeypatch.setattr(wn.requests, "post", _post)
+    monkeypatch.setattr(wn, "is_safe_webhook_url", lambda *a, **k: True)
+
+    assert wn.send_webhook("https://example.com/hook", {"job_id": "j"})
+
+    assert captured["stream"] is True
+    assert resp.closed, "the connection must be released without draining the body"
+    # A tuple, so connect and read read as separate budgets rather than one
+    # total -- which is what the old scalar looked like.
+    assert isinstance(captured["timeout"], tuple)

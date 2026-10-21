@@ -1,5 +1,6 @@
 import os
 import re
+import uuid
 from unittest import mock
 
 import django
@@ -15,6 +16,17 @@ from django.test import override_settings  # noqa: E402
 
 from agent_kv import storage  # noqa: E402
 from agent_kv.models import AgentKVJob  # noqa: E402
+
+#: A job id of the shape the real paths carry, so the reconstructed job dir in
+#: the reap tests is the real thing rather than "None".
+_JOB_ID = uuid.UUID("3f2504e0-4f89-41d3-9a0c-0305e82c3301")
+
+
+def _upload(name: str, data: bytes):
+    up = mock.Mock()
+    up.name = name
+    up.chunks.return_value = [data]
+    return up
 
 
 @mock.patch.object(storage, "FileSystem")
@@ -84,17 +96,81 @@ def test_read_result_returns_parsed_json(m_fs):
     fh.json_load.assert_called_once_with(path="unstract/agent_kv/org1/job1/result.json")
 
 
+def _job(**kwargs):
+    """An unsaved job that still has the identity the job-dir reap needs."""
+    kwargs.setdefault("input_ref", "org/o/agent_kv/j/input.pdf")
+    kwargs.setdefault("result_ref", "org/o/agent_kv/j/result.json")
+    return AgentKVJob(id=_JOB_ID, organization_id=7, **kwargs)
+
+
 @mock.patch.object(storage, "FileSystem")
 def test_delete_job_files_removes_both_refs(m_fs):
     fh = m_fs.return_value.get_file_storage.return_value
-    job = AgentKVJob(
-        input_ref="org/o/agent_kv/j/input.pdf",
-        result_ref="org/o/agent_kv/j/result.json",
-    )
+    # Flat object storage: the prefix stops existing with its last object, so
+    # the reap below finds nothing to do. That is the ordinary case.
+    fh.exists.return_value = False
+    job = _job()
     cleared = storage.delete_job_files(job)
     removed = {c.kwargs["path"] for c in fh.rm.call_args_list}
     assert removed == {job.input_ref, job.result_ref}
     assert cleared == ["input_ref", "result_ref"]
+    assert not fh.rm_exact.called
+
+
+@mock.patch.object(storage, "FileSystem")
+def test_delete_job_files_reaps_an_orphan_left_in_the_job_dir(m_fs):
+    """The hole a failed `delete_result_file` leaves, and the only pass that
+    can see it.
+
+    A finalize that loses the attach guard writes a result file and then
+    deletes it best-effort. If that delete fails the object stays and NO ref
+    anywhere points at it -- `delete_result_file` logs and returns, and TTL
+    cleanup selects candidates by the refs stored on the row. Both named files
+    being confirmed gone is what makes anything still under the job's own
+    directory an orphan by definition.
+    """
+    fh = m_fs.return_value.get_file_storage.return_value
+    fh.exists.return_value = True
+    job = _job()
+
+    cleared = storage.delete_job_files(job)
+
+    assert cleared == ["input_ref", "result_ref"]
+    fh.rm_exact.assert_called_once_with(f"unstract/agent_kv/7/{_JOB_ID}")
+
+
+@mock.patch.object(storage, "FileSystem")
+def test_the_reaped_dir_is_the_one_the_job_actually_wrote_into(m_fs):
+    """Guards the reap's one assumption.
+
+    It reconstructs the directory from the job's org and id rather than from a
+    ref, so it still works when both refs are already blank. That is only
+    sound while the reconstruction matches what `stage_input`/`write_result`
+    actually used -- `org_id` there is `str(agent_kv_key.organization_id)`, the
+    same value. If the storage layout or the org identifier changes, this
+    fails rather than the reap silently deleting nothing (or something else).
+    """
+    staged = storage.stage_input("7", str(_JOB_ID), _upload("x.pdf", b"a"))
+    written = storage.write_result("7", str(_JOB_ID), {})
+
+    job_dir = storage._base("7", str(_JOB_ID))
+
+    assert staged.rsplit("/", 1)[0] == job_dir
+    assert written.rsplit("/", 1)[0] == job_dir
+
+
+@mock.patch.object(storage, "FileSystem")
+def test_a_failing_reap_does_not_change_which_refs_are_reported_clear(m_fs):
+    """Best-effort and LAST. The reap runs only after the named deletes have
+    succeeded, so its failure cannot cost the caller a ref it was about to
+    blank -- and the orphan it could not remove is exactly as reachable as it
+    was before (i.e. not), which is a pre-existing hole and not a new one.
+    """
+    fh = m_fs.return_value.get_file_storage.return_value
+    fh.exists.return_value = True
+    fh.rm_exact.side_effect = OSError("object store unreachable")
+
+    assert storage.delete_job_files(_job()) == ["input_ref", "result_ref"]
 
 
 @mock.patch.object(storage, "FileSystem")
@@ -115,7 +191,8 @@ def test_delete_job_files_tolerates_missing_files(m_fs):
 @mock.patch.object(storage, "FileSystem")
 def test_delete_job_files_skips_blank_refs(m_fs):
     fh = m_fs.return_value.get_file_storage.return_value
-    job = AgentKVJob(input_ref="", result_ref="")
+    fh.exists.return_value = False
+    job = _job(input_ref="", result_ref="")
     cleared = storage.delete_job_files(job)
     assert not fh.rm.called
     # Reported clear: nothing was ever staged, so there is nothing to retry and
@@ -131,10 +208,7 @@ def test_delete_job_files_skips_blank_refs(m_fs):
 @mock.patch.object(storage, "FileSystem")
 def test_delete_job_files_omits_the_ref_whose_delete_raised(m_fs):
     fh = m_fs.return_value.get_file_storage.return_value
-    job = AgentKVJob(
-        input_ref="org/o/agent_kv/j/input.pdf",
-        result_ref="org/o/agent_kv/j/result.json",
-    )
+    job = _job()
 
     def rm(*, path):
         if path == job.result_ref:
@@ -147,17 +221,18 @@ def test_delete_job_files_omits_the_ref_whose_delete_raised(m_fs):
     # Still attempted both -- one failure must not abort the other's cleanup.
     assert fh.rm.call_count == 2
     assert cleared == ["input_ref"]
+    # And NO reap: `result_ref` is being kept as the retry handle, so the file
+    # it points at is still wanted. Reaping the directory here would delete
+    # the very object the retry exists for, and blank nothing, leaving the row
+    # to retry forever against a file that is already gone.
+    assert not fh.rm_exact.called
 
 
 @mock.patch.object(storage, "FileSystem")
 def test_delete_job_files_reports_nothing_clear_when_both_deletes_raise(m_fs):
     fh = m_fs.return_value.get_file_storage.return_value
     fh.rm.side_effect = OSError("object store unreachable")
-    job = AgentKVJob(
-        input_ref="org/o/agent_kv/j/input.pdf",
-        result_ref="org/o/agent_kv/j/result.json",
-    )
-    assert storage.delete_job_files(job) == []
+    assert storage.delete_job_files(_job()) == []
 
 
 # delete_input carries the same confirmed-clear contract as delete_job_files.

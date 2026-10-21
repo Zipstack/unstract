@@ -1,5 +1,6 @@
 from unstract.filesystem.file_storage_config import (
-    FILE_STORAGE_CREDENTIALS_TO_ENV_NAME_MAPPING, STORAGE_MAPPING,
+    FILE_STORAGE_CREDENTIALS_TO_ENV_NAME_MAPPING,
+    STORAGE_MAPPING,
 )
 from unstract.filesystem.file_storage_types import FileStorageType
 

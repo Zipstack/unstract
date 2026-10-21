@@ -4,6 +4,7 @@ from datetime import timedelta
 from unittest import mock
 
 import django
+import pytest
 from django.apps import apps
 
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "backend.settings.test")
@@ -15,6 +16,7 @@ from rest_framework.test import APIRequestFactory  # noqa: E402
 
 from agent_kv import execution_views as ev  # noqa: E402
 from agent_kv import execution_views_result as evr  # noqa: E402
+from agent_kv.constants import V1_EXTRACTOR_NAME  # noqa: E402
 from agent_kv.models import AgentKVJob, AgentKVKey, JobStatus  # noqa: E402
 from agent_kv.tests._factories import kv_key  # noqa: E402
 
@@ -38,6 +40,42 @@ def test_foreign_org_job_is_404(m_keys, m_jobs):
 
 
 # ---------------------------------------------------------------------------
+# (1b) ...and the lookup is actually ORG-SCOPED.
+#
+# The test above forces `DoesNotExist` and asserts the view 404s, which says
+# nothing about the `organization_id` filter: delete
+# `organization_id=agent_kv_key.organization_id` from `_get_job` and it stays
+# green -- while every org could then read, cancel, delete and fetch the result
+# of every other org's job.
+#
+# The production code IS correctly scoped. What was missing is a test that can
+# detect its removal, on the one security-relevant path in the app. Every
+# job-scoped view funnels through `_get_job`, so each is covered.
+#
+# Reported by Greptile on PR #2317.
+# ---------------------------------------------------------------------------
+@pytest.mark.parametrize(
+    ("view", "method"),
+    [
+        (ev.JobStatusView, "get"),
+        (ev.JobResultView, "get"),
+        (ev.JobCancelView, "post"),
+        (ev.JobDeleteView, "delete"),
+    ],
+)
+@mock.patch.object(AgentKVJob, "objects")
+@mock.patch.object(AgentKVKey, "objects")
+def test_every_job_scoped_view_filters_by_organization(m_keys, m_jobs, view, method):
+    m_keys.get.return_value = kv_key(org_pk=7)
+    m_jobs.get.side_effect = AgentKVJob.DoesNotExist
+    job_id = uuid.uuid4()
+
+    view.as_view()(_authed(method=method), job_id=job_id)
+
+    m_jobs.get.assert_called_once_with(id=job_id, organization_id=7)
+
+
+# ---------------------------------------------------------------------------
 # (2) status running -> stages list ordered per STAGE_NAMES, lowercased
 # status, only the stages actually present are included.
 # ---------------------------------------------------------------------------
@@ -46,6 +84,12 @@ def test_foreign_org_job_is_404(m_keys, m_jobs):
 def test_status_running_builds_ordered_stages_and_lowercases_status(m_keys, m_jobs):
     m_keys.get.return_value = kv_key()
     job = AgentKVJob(
+        # Explicit, not the column default: the stage names below are the KV
+        # list, and `_status_document` filters a job's stages through
+        # STAGE_NAMES_BY_EXTRACTOR[job.extractor]. This used to ride on
+        # `extractor` defaulting to `kv`, which made a load-bearing fact
+        # invisible in the test that depends on it.
+        extractor=V1_EXTRACTOR_NAME,
         status=JobStatus.RUNNING,
         stage="extraction",
         stages={
@@ -123,6 +167,9 @@ def test_result_after_expiry_is_404(m_keys, m_jobs, m_read):
 def test_result_happy_path_returns_read_result_payload(m_keys, m_jobs, m_read):
     m_keys.get.return_value = kv_key()
     job = AgentKVJob(
+        # Explicit: the assertions below namespace the payload under `kv`,
+        # which is `job.extractor`, not a constant of the response shape.
+        extractor=V1_EXTRACTOR_NAME,
         status=JobStatus.COMPLETED,
         result_ref="org/o/agent_kv/j/result.json",
         expires_at=timezone.now() + timedelta(days=1),
@@ -261,12 +308,28 @@ def test_cancel_win_releases_concurrency_slot(m_keys, m_jobs, m_mark_terminal, m
     job = AgentKVJob(status=JobStatus.PENDING)
     job.organization_id = "org1"
     m_jobs.get.return_value = job
+    _executor_may_exist_in_db(m_jobs, False)
 
     resp = ev.JobCancelView.as_view()(_authed(method="post"), job_id=uuid.uuid4())
 
     assert resp.status_code == 200
     m_release.assert_called_once_with("org1", str(job.id))
 
+
+def _executor_may_exist_in_db(m_jobs, may_exist: bool) -> None:
+    """Wire the DB re-read `_never_dispatched` performs.
+
+    It no longer reads `job.dispatched_at` off the in-memory row -- that row
+    predates `mark_terminal`, and a dispatch completing in that gap made the
+    cancel release a slot whose executor was still running (round-2 C1). It now
+    asks the database for EITHER durable marker (`dispatched_at` set, or a
+    `stage` recorded by the executor's first progress report), so these tests
+    have to say what the database would answer.
+
+    `may_exist=True` means the DB has evidence of an executor, so the slot must
+    NOT be released.
+    """
+    m_jobs.filter.return_value.exclude.return_value.exists.return_value = may_exist
 
 # ---------------------------------------------------------------------------
 # (6c) cancel that LOSES the guard (job already terminal) must NOT release --
@@ -317,12 +380,23 @@ def test_cancel_on_completed_is_409_and_result_untouched(
 # ---------------------------------------------------------------------------
 # (8) delete calls delete_job_files and blanks both refs.
 # ---------------------------------------------------------------------------
+# `mark_files_purged` is stubbed to None throughout this DB-free suite. DELETE
+# calls it on EVERY request now -- it writes the `files_purged` marker and hands
+# back the row read under a lock -- and the real method opens a transaction, so
+# the request would 500 here. Returning None exercises the view's documented
+# fallback (`... or job`), which keeps these cases asserting exactly what they
+# were written to assert: the files the caller's own row points at. The claim's
+# real return value is honoured in
+# `test_delete_acts_on_the_row_the_purge_claim_returns`, that it happens at all
+# in `test_delete_claims_the_purge_even_when_it_wins_the_cancel`, and the marker
+# itself DB-backed in `test_models.py`.
+@mock.patch.object(AgentKVJob, "mark_files_purged", return_value=None)
 @mock.patch.object(AgentKVJob, "save")
 @mock.patch.object(ev, "delete_job_files")
 @mock.patch.object(AgentKVJob, "objects")
 @mock.patch.object(AgentKVKey, "objects")
 def test_delete_calls_delete_job_files_and_blanks_refs(
-    m_keys, m_jobs, m_delete_files, m_save
+    m_keys, m_jobs, m_delete_files, m_save, m_purge
 ):
     m_keys.get.return_value = kv_key()
     job = AgentKVJob(
@@ -349,13 +423,15 @@ def test_delete_calls_delete_job_files_and_blanks_refs(
 # files are deleted -- a still-running job that finalizes late would
 # otherwise write a fresh result onto a job the caller just deleted.
 # ---------------------------------------------------------------------------
+# See the note on `mark_files_purged` at (8); stubbed for the same reason.
+@mock.patch.object(AgentKVJob, "mark_files_purged", return_value=None)
 @mock.patch.object(AgentKVJob, "save")
 @mock.patch.object(ev, "delete_job_files")
 @mock.patch.object(AgentKVJob, "mark_terminal", return_value=True)
 @mock.patch.object(AgentKVJob, "objects")
 @mock.patch.object(AgentKVKey, "objects")
 def test_delete_on_running_job_cancels_before_deleting_files(
-    m_keys, m_jobs, m_mark_terminal, m_delete_files, m_save
+    m_keys, m_jobs, m_mark_terminal, m_delete_files, m_save, m_purge
 ):
     m_keys.get.return_value = kv_key()
     job = AgentKVJob(status=JobStatus.RUNNING)
@@ -384,19 +460,69 @@ def test_delete_on_running_job_cancels_before_deleting_files(
 # leaked a slot until the 6h TTL, and enough of them exhaust the org's
 # allowance and start rejecting new submits.
 # ---------------------------------------------------------------------------
+# See the note on `mark_files_purged` at (8); stubbed for the same reason.
+@mock.patch.object(AgentKVJob, "mark_files_purged", return_value=None)
 @mock.patch.object(ev.AgentKVConcurrencyLimiter, "release")
 @mock.patch.object(AgentKVJob, "save")
 @mock.patch.object(ev, "delete_job_files", return_value=["input_ref", "result_ref"])
 @mock.patch.object(AgentKVJob, "mark_terminal", return_value=True)
 @mock.patch.object(AgentKVJob, "objects")
 @mock.patch.object(AgentKVKey, "objects")
-def test_delete_on_running_job_releases_the_concurrency_slot(
-    m_keys, m_jobs, m_mark_terminal, m_delete_files, m_save, m_release
+def test_delete_on_a_running_job_does_NOT_release_the_slot(
+    m_keys, m_jobs, m_mark_terminal, m_delete_files, m_save, m_release, m_purge
 ):
+    """Inverted: this used to assert the release, which was the bug.
+
+    Nothing revokes a running executor -- `job.task_id` is written at dispatch
+    and never read again -- so the engine keeps running, keeps calling LLMs and
+    keeps billing. Handing its slot back immediately let the next submit start
+    alongside it, so submit-then-delete in a loop ran arbitrarily many
+    concurrent extractions against a ceiling of AGENT_KV_CONCURRENT_LIMIT, all
+    paid for.
+
+    The slot is released by `FinalizeView`'s `finally` when the executor's
+    callback lands. Reported as 2.5 in the branch review.
+    """
     m_keys.get.return_value = kv_key()
     job = AgentKVJob(status=JobStatus.RUNNING)
     job.organization_id = "org1"
+    job.dispatched_at = timezone.now()
     m_jobs.get.return_value = job
+
+    resp = ev.JobDeleteView.as_view()(_authed(method="delete"), job_id=uuid.uuid4())
+
+    assert resp.status_code == 204
+    assert not m_release.called, (
+        "the executor is still running and still billing; its slot belongs to "
+        "the finalize callback, not to this request"
+    )
+
+
+# See the note on `mark_files_purged` at (8); stubbed for the same reason.
+@mock.patch.object(AgentKVJob, "mark_files_purged", return_value=None)
+@mock.patch.object(ev, "dispatch_cancelled_webhook")
+@mock.patch.object(ev.AgentKVConcurrencyLimiter, "release")
+@mock.patch.object(AgentKVJob, "save")
+@mock.patch.object(ev, "delete_job_files", return_value=["input_ref", "result_ref"])
+@mock.patch.object(AgentKVJob, "mark_terminal", return_value=True)
+@mock.patch.object(AgentKVJob, "objects")
+@mock.patch.object(AgentKVKey, "objects")
+def test_delete_on_a_never_dispatched_job_DOES_release_the_slot(
+    m_keys, m_jobs, m_mark_terminal, m_delete_files, m_save, m_release, m_hook,
+    m_purge,
+):
+    """The case the release exists for, and the only one.
+
+    A job cancelled before dispatch gets no finalize callback, and the sweep's
+    phase-1 only targets PENDING, never CANCELLED -- so without this its slot
+    leaks until the 6h TTL.
+    """
+    m_keys.get.return_value = kv_key()
+    job = AgentKVJob(status=JobStatus.PENDING)
+    job.organization_id = "org1"
+    job.dispatched_at = None
+    m_jobs.get.return_value = job
+    _executor_may_exist_in_db(m_jobs, False)
 
     resp = ev.JobDeleteView.as_view()(_authed(method="delete"), job_id=uuid.uuid4())
 
@@ -411,12 +537,16 @@ def test_delete_on_running_job_releases_the_concurrency_slot(
 # ---------------------------------------------------------------------------
 @mock.patch.object(ev.AgentKVConcurrencyLimiter, "release")
 @mock.patch.object(AgentKVJob, "save")
+# DELETE re-reads the row before cleanup (see 8i) -- now through the purge claim
+# rather than a bare `refresh_from_db`. This suite touches no database, so the
+# claim is stubbed out here; see the note at (8).
+@mock.patch.object(AgentKVJob, "mark_files_purged", return_value=None)
 @mock.patch.object(ev, "delete_job_files", return_value=["input_ref", "result_ref"])
 @mock.patch.object(AgentKVJob, "mark_terminal", return_value=False)
 @mock.patch.object(AgentKVJob, "objects")
 @mock.patch.object(AgentKVKey, "objects")
 def test_delete_does_not_release_the_slot_when_it_loses_the_terminal_race(
-    m_keys, m_jobs, m_mark_terminal, m_delete_files, m_save, m_release
+    m_keys, m_jobs, m_mark_terminal, m_delete_files, m_purge, m_save, m_release
 ):
     m_keys.get.return_value = kv_key()
     job = AgentKVJob(status=JobStatus.RUNNING)
@@ -436,12 +566,14 @@ def test_delete_does_not_release_the_slot_when_it_loses_the_terminal_race(
 # still in the bucket orphans that object permanently. Still 204 -- the job is
 # terminal and the caller's intent is recorded.
 # ---------------------------------------------------------------------------
+# See the note on `mark_files_purged` at (8); stubbed for the same reason.
+@mock.patch.object(AgentKVJob, "mark_files_purged", return_value=None)
 @mock.patch.object(AgentKVJob, "save")
 @mock.patch.object(ev, "delete_job_files")
 @mock.patch.object(AgentKVJob, "objects")
 @mock.patch.object(AgentKVKey, "objects")
 def test_delete_keeps_the_ref_whose_file_delete_failed(
-    m_keys, m_jobs, m_delete_files, m_save
+    m_keys, m_jobs, m_delete_files, m_save, m_purge
 ):
     m_keys.get.return_value = kv_key()
     job = AgentKVJob(
@@ -465,13 +597,15 @@ def test_delete_keeps_the_ref_whose_file_delete_failed(
 # (8c) delete on an already-terminal job never attempts to cancel it again --
 # unchanged behavior for the terminal case.
 # ---------------------------------------------------------------------------
+# See the note on `mark_files_purged` at (8); stubbed for the same reason.
+@mock.patch.object(AgentKVJob, "mark_files_purged", return_value=None)
 @mock.patch.object(AgentKVJob, "save")
 @mock.patch.object(ev, "delete_job_files")
 @mock.patch.object(AgentKVJob, "mark_terminal")
 @mock.patch.object(AgentKVJob, "objects")
 @mock.patch.object(AgentKVKey, "objects")
 def test_delete_on_terminal_job_does_not_call_mark_terminal(
-    m_keys, m_jobs, m_mark_terminal, m_delete_files, m_save
+    m_keys, m_jobs, m_mark_terminal, m_delete_files, m_save, m_purge
 ):
     m_keys.get.return_value = kv_key()
     job = AgentKVJob(status=JobStatus.COMPLETED)
@@ -511,3 +645,378 @@ def test_all_job_views_401_without_key():
         req = getattr(APIRequestFactory(), method)("/agent-kv/x")
         resp = view.as_view()(req, job_id=uuid.uuid4())
         assert resp.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# (8i) DELETE must act on the row the purge claim returns, not on its own
+# earlier read.
+#
+# The race: DELETE reads a RUNNING job (result_ref ""), the finalize callback
+# wins the guarded UPDATE in between and writes COMPLETED + a real result_ref,
+# and `mark_terminal` here returns False. Acting on the stale copy,
+# `delete_job_files` reports an already-empty `result_ref` as "cleared" (there
+# was nothing to delete), and the save then writes "" OVER the winner's real
+# ref. The job stays COMPLETED, its result 404s, and the object is orphaned --
+# TTL cleanup selects on `result_ref > ""`, so a blanked row never comes back.
+#
+# Originally reported by Greptile on PR #2317 against a bare `refresh_from_db`
+# on the lost-race branch. `AgentKVJob.mark_files_purged` now owns that re-read
+# (it has to: it must also be ordered against a concurrent salvage), so this
+# pins the row it hands back actually being the one that gets cleaned up.
+# ---------------------------------------------------------------------------
+@mock.patch.object(ev.AgentKVConcurrencyLimiter, "release")
+@mock.patch.object(AgentKVJob, "save")
+@mock.patch.object(ev, "delete_job_files")
+@mock.patch.object(AgentKVJob, "mark_terminal", return_value=False)
+@mock.patch.object(AgentKVJob, "objects")
+@mock.patch.object(AgentKVKey, "objects")
+def test_delete_acts_on_the_row_the_purge_claim_returns(
+    m_keys, m_jobs, m_mark_terminal, m_delete_files, m_save, m_release
+):
+    m_keys.get.return_value = kv_key()
+    job = AgentKVJob(status=JobStatus.RUNNING)
+    job.organization_id = "org1"
+    m_jobs.get.return_value = job
+
+    # What the claim reads back under its lock: the winner's write.
+    fresh = AgentKVJob(
+        status=JobStatus.COMPLETED, result_ref="org1/job/result.json", files_purged=True
+    )
+    fresh.organization_id = "org1"
+
+    with mock.patch.object(
+        AgentKVJob, "mark_files_purged", return_value=fresh
+    ) as m_purge:
+        # Capture what the cleanup actually SAW. `call_args` would be useless
+        # here: it records a reference to the object the view then blanks, so by
+        # assertion time it reads "" whether the fix works or not.
+        seen: list[str] = []
+
+        def _record(j):
+            seen.append(j.result_ref)
+            return ["input_ref", "result_ref"] if j.result_ref else ["input_ref"]
+
+        m_delete_files.side_effect = _record
+        resp = ev.JobDeleteView.as_view()(_authed(method="delete"), job_id=uuid.uuid4())
+
+    assert resp.status_code == 204
+    assert m_purge.called, (
+        "DELETE skipped the purge claim; acting on its own stale copy blanks "
+        "the winner's result_ref and orphans the result file"
+    )
+    # The file helper saw the winner's ref, so the real object is deleted...
+    assert seen == ["org1/job/result.json"]
+    # ...and the blanking is of a ref that was genuinely cleared, not a stale "".
+    assert m_save.call_args.kwargs["update_fields"] == ["input_ref", "result_ref"]
+    assert fresh.result_ref == ""
+
+
+# ---------------------------------------------------------------------------
+# (8i-ii) The claim is made on EVERY delete, including one that wins the cancel.
+#
+# This replaces `test_delete_does_not_refresh_when_it_wins_the_terminal_race`,
+# whose premise -- "winning means nothing else wrote to the row, so the extra
+# query is waste" -- the salvage invalidates: a late finalize can still ATTACH a
+# result to the row this request just cancelled, and the marker that stops it
+# serving one has to be written here.
+#
+# Note what makes a conditional version of this quietly wrong. `mark_terminal`
+# is a queryset UPDATE and never touches the in-memory row, so `job.status` is
+# still RUNNING below even though this request won the cancel -- a re-read
+# gated on `job.status == CANCELLED` would skip precisely the path that needs
+# it, and this mock reproduces the un-mutated row faithfully, so it would agree
+# with that mistake. The claim is unconditional, so there is no condition to get
+# wrong.
+# ---------------------------------------------------------------------------
+@mock.patch.object(ev, "dispatch_cancelled_webhook")
+@mock.patch.object(ev.AgentKVConcurrencyLimiter, "release")
+@mock.patch.object(AgentKVJob, "save")
+@mock.patch.object(ev, "delete_job_files", return_value=["input_ref", "result_ref"])
+@mock.patch.object(AgentKVJob, "mark_terminal", return_value=True)
+@mock.patch.object(AgentKVJob, "objects")
+@mock.patch.object(AgentKVKey, "objects")
+def test_delete_claims_the_purge_even_when_it_wins_the_cancel(
+    m_keys, m_jobs, m_mark_terminal, m_delete_files, m_save, m_release, m_hook
+):
+    m_keys.get.return_value = kv_key()
+    job = AgentKVJob(status=JobStatus.RUNNING)
+    job.id = uuid.uuid4()
+    job.organization_id = "org1"
+    m_jobs.get.return_value = job
+
+    with mock.patch.object(
+        AgentKVJob, "mark_files_purged", return_value=None
+    ) as m_purge:
+        resp = ev.JobDeleteView.as_view()(_authed(method="delete"), job_id=job.id)
+
+    assert resp.status_code == 204
+    assert job.status == JobStatus.RUNNING, (
+        "guard for the trap this test exists for: if mark_terminal ever starts "
+        "mutating the in-memory row, a status-gated re-read would start passing "
+        "here for the wrong reason"
+    )
+    m_purge.assert_called_once_with(job.id, "org1")
+
+
+# ---------------------------------------------------------------------------
+# (8j) Cancellation must deliver the documented terminal webhook.
+#
+# Cancellation never reaches finalize -- JobCancelView and DELETE terminalize
+# the row themselves -- so nothing in the finalize path ever fired a webhook for
+# a cancelled job, and a late executor callback cannot either: it loses the
+# terminal guard, and `_maybe_webhook` correctly declines a non-fresh finalize.
+# A caller who supplied `webhook_url` was simply never told, despite docs §8.
+#
+# Guarded on `won`, which is what keeps exactly one path owning the
+# notification: a cancel that LOST means a finalize won and will send.
+#
+# Reported by Greptile on PR #2317.
+# ---------------------------------------------------------------------------
+@mock.patch.object(ev, "dispatch_cancelled_webhook")
+@mock.patch.object(ev.AgentKVConcurrencyLimiter, "release")
+@mock.patch.object(AgentKVJob, "mark_terminal", return_value=True)
+@mock.patch.object(AgentKVJob, "objects")
+@mock.patch.object(AgentKVKey, "objects")
+def test_cancel_that_wins_queues_the_terminal_webhook(
+    m_keys, m_jobs, m_mark_terminal, m_release, m_hook
+):
+    m_keys.get.return_value = kv_key()
+    job = AgentKVJob(status=JobStatus.RUNNING, webhook_url="https://hook.example/x")
+    job.organization_id = "org1"
+    m_jobs.get.return_value = job
+
+    resp = ev.JobCancelView.as_view()(_authed(method="post"), job_id=uuid.uuid4())
+
+    assert resp.status_code == 200
+    assert m_hook.called, "a won cancel must notify; nothing else will"
+    assert m_hook.call_args.args[0] is job
+
+
+@mock.patch.object(ev, "dispatch_cancelled_webhook")
+@mock.patch.object(ev.AgentKVConcurrencyLimiter, "release")
+@mock.patch.object(AgentKVJob, "mark_terminal", return_value=False)
+@mock.patch.object(AgentKVJob, "objects")
+@mock.patch.object(AgentKVKey, "objects")
+def test_cancel_that_loses_does_not_queue_a_webhook(
+    m_keys, m_jobs, m_mark_terminal, m_release, m_hook
+):
+    """The finalize that beat it owns the notification. Sending here too would
+    double-notify the caller for one job.
+    """
+    m_keys.get.return_value = kv_key()
+    job = AgentKVJob(status=JobStatus.RUNNING, webhook_url="https://hook.example/x")
+    job.organization_id = "org1"
+    m_jobs.get.return_value = job
+
+    resp = ev.JobCancelView.as_view()(_authed(method="post"), job_id=uuid.uuid4())
+
+    assert resp.status_code == 409
+    assert not m_hook.called
+
+
+# See the note on `mark_files_purged` at (8); stubbed for the same reason.
+@mock.patch.object(AgentKVJob, "mark_files_purged", return_value=None)
+@mock.patch.object(ev, "dispatch_cancelled_webhook")
+@mock.patch.object(ev.AgentKVConcurrencyLimiter, "release")
+@mock.patch.object(AgentKVJob, "save")
+@mock.patch.object(ev, "delete_job_files", return_value=["input_ref", "result_ref"])
+@mock.patch.object(AgentKVJob, "mark_terminal", return_value=True)
+@mock.patch.object(AgentKVJob, "objects")
+@mock.patch.object(AgentKVKey, "objects")
+def test_delete_that_cancels_a_running_job_also_queues_the_webhook(
+    m_keys, m_jobs, m_mark_terminal, m_delete_files, m_save, m_release, m_hook,
+    m_purge,
+):
+    """DELETE on a non-terminal job cancels it first; that cancellation is just
+    as terminal, and just as invisible to the caller without this.
+    """
+    m_keys.get.return_value = kv_key()
+    job = AgentKVJob(status=JobStatus.RUNNING, webhook_url="https://hook.example/x")
+    job.organization_id = "org1"
+    m_jobs.get.return_value = job
+
+    resp = ev.JobDeleteView.as_view()(_authed(method="delete"), job_id=uuid.uuid4())
+
+    assert resp.status_code == 204
+    assert m_hook.called
+
+
+# ---------------------------------------------------------------------------
+# (8k) The same narrowing on JobCancelView, which has the identical shape.
+# ---------------------------------------------------------------------------
+@mock.patch.object(ev, "dispatch_cancelled_webhook")
+@mock.patch.object(ev.AgentKVConcurrencyLimiter, "release")
+@mock.patch.object(AgentKVJob, "mark_terminal", return_value=True)
+@mock.patch.object(AgentKVJob, "objects")
+@mock.patch.object(AgentKVKey, "objects")
+def test_cancel_on_a_running_job_does_NOT_release_the_slot(
+    m_keys, m_jobs, m_mark_terminal, m_release, m_hook
+):
+    m_keys.get.return_value = kv_key()
+    job = AgentKVJob(status=JobStatus.RUNNING)
+    job.organization_id = "org1"
+    job.dispatched_at = timezone.now()
+    m_jobs.get.return_value = job
+
+    resp = ev.JobCancelView.as_view()(_authed(method="post"), job_id=uuid.uuid4())
+
+    assert resp.status_code == 200
+    assert not m_release.called
+
+
+@mock.patch.object(ev, "dispatch_cancelled_webhook")
+@mock.patch.object(ev.AgentKVConcurrencyLimiter, "release")
+@mock.patch.object(AgentKVJob, "mark_terminal", return_value=True)
+@mock.patch.object(AgentKVJob, "objects")
+@mock.patch.object(AgentKVKey, "objects")
+def test_cancel_on_a_never_dispatched_job_DOES_release_the_slot(
+    m_keys, m_jobs, m_mark_terminal, m_release, m_hook
+):
+    m_keys.get.return_value = kv_key()
+    job = AgentKVJob(status=JobStatus.PENDING)
+    job.organization_id = "org1"
+    job.dispatched_at = None
+    m_jobs.get.return_value = job
+    _executor_may_exist_in_db(m_jobs, False)
+
+    resp = ev.JobCancelView.as_view()(_authed(method="post"), job_id=uuid.uuid4())
+
+    assert resp.status_code == 200
+    m_release.assert_called_once_with("org1", str(job.id))
+
+
+@mock.patch.object(ev, "dispatch_cancelled_webhook")
+@mock.patch.object(ev.AgentKVConcurrencyLimiter, "release")
+@mock.patch.object(AgentKVJob, "mark_terminal", return_value=True)
+@mock.patch.object(AgentKVJob, "objects")
+@mock.patch.object(AgentKVKey, "objects")
+def test_a_cancel_that_raced_a_dispatch_does_NOT_release_the_slot(
+    m_keys, m_jobs, m_mark_terminal, m_release, m_hook
+):
+    """Round-2 C1. The in-memory row says undispatched; the database disagrees.
+
+    The interleaving: the cancel reads a PENDING row with `dispatched_at=NULL`,
+    then `dispatch_job` passes its own terminal re-read, enqueues, and stamps
+    `dispatched_at` / DISPATCHED. The cancel's `mark_terminal` still wins
+    (DISPATCHED is not terminal), and the old check -- reading
+    `job.dispatched_at` off the snapshot -- answered True and released a slot
+    whose executor was running and billing.
+
+    That is a smaller instance of the very over-release bug the narrowing was
+    written to fix. The row here is deliberately left looking undispatched, so
+    the ONLY thing that can produce the right answer is the DB re-read.
+    """
+    m_keys.get.return_value = kv_key()
+    job = AgentKVJob(status=JobStatus.PENDING)
+    job.organization_id = "org1"
+    job.dispatched_at = None  # the stale snapshot, as the cancel path sees it
+    m_jobs.get.return_value = job
+    _executor_may_exist_in_db(m_jobs, True)  # what actually happened meanwhile
+
+    resp = ev.JobCancelView.as_view()(_authed(method="post"), job_id=uuid.uuid4())
+
+    assert resp.status_code == 200
+    assert not m_release.called, (
+        "released a slot for a job that HAD been dispatched -- the executor is "
+        "still running and its finalize callback owns the slot"
+    )
+    # The caller is still told, since cancellation never reaches finalize.
+    assert m_hook.called
+
+
+@mock.patch.object(AgentKVJob, "objects")
+def test_the_undispatched_check_asks_the_database_not_the_row(m_jobs):
+    """Pins the mechanism, so the C1 regression cannot return quietly.
+
+    If `_never_dispatched` goes back to reading `job.dispatched_at`, this fails:
+    the row says dispatched (which the old code would honour) while the DB says
+    it is not, and only the DB answer is correct after a `mark_terminal`.
+    """
+    job = AgentKVJob(status=JobStatus.CANCELLED)
+    job.dispatched_at = timezone.now()
+    _executor_may_exist_in_db(m_jobs, False)
+
+    assert ev._never_dispatched(job) is True
+
+    _executor_may_exist_in_db(m_jobs, True)
+    assert ev._never_dispatched(job) is False
+
+
+@mock.patch.object(AgentKVJob, "objects")
+def test_a_reported_stage_counts_as_evidence_of_an_executor(m_jobs):
+    """The case dropping the `status` condition lost, pinned on the query.
+
+    `dispatch_job` wraps `_record_dispatch` in a try/except so a bookkeeping
+    failure cannot be reported as a failed dispatch -- the task is already
+    queued. So a job can be RUNNING, with an executor spending money, while
+    `dispatched_at` is still NULL; the executor's first stage report is the only
+    thing that recorded it (`internal_views.py:152-156` writes `stage` and
+    promotes the status).
+
+    Checking `dispatched_at` alone released that slot. The old
+    `status == PENDING` arm had been catching it by accident, off the stale row.
+    This asserts the query consults BOTH markers, so neither can be dropped
+    again: a filter on one field only would not produce this `exclude` call.
+    """
+    job = AgentKVJob(status=JobStatus.CANCELLED)
+    job.dispatched_at = None
+    _executor_may_exist_in_db(m_jobs, True)
+
+    assert ev._never_dispatched(job) is False
+
+    excluded = m_jobs.filter.return_value.exclude.call_args.kwargs
+    assert excluded == {"dispatched_at__isnull": True, "stage": ""}, excluded
+
+
+# ---------------------------------------------------------------------------
+# (7c) cancel that LOSES the guard reports the row's CURRENT status, not the
+# one read before the race.
+#
+# `job` is loaded before the guarded UPDATE. Losing that guard means something
+# else terminalized the row in between -- a finalize, or a competing cancel --
+# so the in-memory copy is stale by definition on this path. Reporting it
+# answered `409 {"status": "running"}` for a job that was already `completed`,
+# which is the one thing a caller reads this body for. Reported by Greptile on
+# #2317.
+# ---------------------------------------------------------------------------
+@mock.patch.object(ev.AgentKVConcurrencyLimiter, "release")
+@mock.patch.object(AgentKVJob, "mark_terminal", return_value=False)
+@mock.patch.object(AgentKVJob, "objects")
+@mock.patch.object(AgentKVKey, "objects")
+def test_cancel_loss_reports_the_refreshed_status(
+    m_keys, m_jobs, m_mark_terminal, m_release
+):
+    m_keys.get.return_value = kv_key()
+    stale = AgentKVJob(status=JobStatus.RUNNING)
+    stale.organization_id = "org1"
+    fresh = AgentKVJob(status=JobStatus.COMPLETED)
+    fresh.organization_id = "org1"
+    # First read is the pre-race one the view cancels against; the second is
+    # the re-read after the guard was lost.
+    m_jobs.get.side_effect = [stale, fresh]
+
+    resp = ev.JobCancelView.as_view()(_authed(method="post"), job_id=uuid.uuid4())
+
+    assert resp.status_code == 409
+    assert resp.data == {"status": "completed"}, (
+        "the 409 body reported the status read BEFORE the guard was lost"
+    )
+
+
+# ---------------------------------------------------------------------------
+# (7d) ...and a DELETE landing in that same window answers 404, not a status.
+# The job is gone, so "running" would be a worse answer than not-found.
+# ---------------------------------------------------------------------------
+@mock.patch.object(ev.AgentKVConcurrencyLimiter, "release")
+@mock.patch.object(AgentKVJob, "mark_terminal", return_value=False)
+@mock.patch.object(AgentKVJob, "objects")
+@mock.patch.object(AgentKVKey, "objects")
+def test_cancel_loss_to_a_delete_is_404(m_keys, m_jobs, m_mark_terminal, m_release):
+    m_keys.get.return_value = kv_key()
+    stale = AgentKVJob(status=JobStatus.RUNNING)
+    stale.organization_id = "org1"
+    m_jobs.get.side_effect = [stale, AgentKVJob.DoesNotExist()]
+
+    resp = ev.JobCancelView.as_view()(_authed(method="post"), job_id=uuid.uuid4())
+
+    assert resp.status_code == 404

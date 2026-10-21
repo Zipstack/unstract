@@ -23,6 +23,13 @@ class IndexingAPIError(APIException):
         self.status_code = status_code
 
 
+class ImageModePageLimitExceeded(APIException):
+    """An upload has more pages than image output mode can answer."""
+
+    status_code = 400
+    default_detail = "This document has too many pages for image output mode."
+
+
 class ExtractionAPIError(APIException):
     status_code = 500
     default_detail = "Error while extracting file"

@@ -13,10 +13,8 @@ if not apps.ready:
 from rest_framework.test import APIRequestFactory  # noqa: E402
 
 from agent_kv import execution_views as ev  # noqa: E402
-from agent_kv.exceptions import RateLimited  # noqa: E402
 from agent_kv.models import AgentKVKey  # noqa: E402
 from agent_kv.tests._factories import kv_key  # noqa: E402
-from unstract.agent_kv_schema.compile import SchemaError, compile_schema  # noqa: E402
 
 
 def _authed(method="post", path="/agent-kv/validate", data=None):

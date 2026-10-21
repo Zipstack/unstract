@@ -13,6 +13,7 @@ already passed by the time any fixture here actually executes.
 from __future__ import annotations
 
 import json
+import os
 import time
 import uuid
 from dataclasses import dataclass
@@ -87,12 +88,16 @@ class AgentKVAuth:
     def headers(self) -> dict[str, str]:
         return {"Authorization": f"Bearer {self.key}"}
 
+    #: Mounted under the platform's own API prefix, so it rides the `/api/v1`
+    #: route every deployment already has rather than needing its own.
+    PREFIX = "api/v1/agent-kv"
+
     @property
     def exec_url(self) -> str:
-        return f"{self.base}/agent-kv/"
+        return f"{self.base}/{self.PREFIX}/"
 
     def job_url(self, job_id: str, suffix: str = "") -> str:
-        return f"{self.base}/agent-kv/{job_id}{suffix}"
+        return f"{self.base}/{self.PREFIX}/{job_id}{suffix}"
 
 
 @pytest.fixture(scope="session")
@@ -149,13 +154,46 @@ def kv_stages(status_doc: dict) -> list[dict]:
     return status_doc["extractors"]["kv"]["stages"]
 
 
+#: The platform adapters an Agent-KV `table` submit must name, read from the
+#: environment because they are rows in the deployed stack's database -- an
+#: e2e client cannot mint them, and they carry real provider credentials.
+#:
+#: Unset by default, which makes every submit a 400. The `require_adapters`
+#: fixture is what turns that into an explicit skip instead of a confusing
+#: failure; scenarios that expect a rejection BEFORE the adapter gate (bad
+#: key, rate limit, absent `extractors`) do not need it.
+#:
+#: Create them once in the target org -- an LLM adapter, a second cheaper LLM
+#: adapter, and an LLMWhisperer X2TEXT adapter -- and export their ids.
+E2E_ADAPTER_ENV = {
+    "llm": "AGENT_KV_E2E_LLM_ADAPTER",
+    "lite_llm": "AGENT_KV_E2E_LITE_LLM_ADAPTER",
+    "x2text": "AGENT_KV_E2E_X2TEXT_ADAPTER",
+}
+
+
+def e2e_adapters() -> dict[str, str]:
+    """The configured adapter ids, by role; roles with no env var are omitted."""
+    return {
+        role: os.environ[var]
+        for role, var in E2E_ADAPTER_ENV.items()
+        if os.environ.get(var)
+    }
+
+
+def missing_adapter_env() -> list[str]:
+    """Which adapter env vars are unset, for a skip message that names them."""
+    return [var for var in E2E_ADAPTER_ENV.values() if not os.environ.get(var)]
+
+
 def submit_raw(
     auth: AgentKVAuth,
     file_bytes: bytes,
     filename: str,
     keys: dict | None,
     *,
-    extractor: str = "kv",
+    extractor: str = "table",
+    adapters: dict[str, str] | None = None,
     **fields: object,
 ) -> requests.Response:
     """POST a submit request and return the raw response -- no assertions.
@@ -184,16 +222,66 @@ def submit_raw(
             f"belongs there"
         )
     else:
-        data["extractors"] = json.dumps(
-            [{"name": extractor, "keys": keys, "options": options}]
-        )
+        entry: dict[str, object] = {
+            "name": extractor,
+            "keys": keys,
+            "options": options,
+        }
+        # `adapters` is REQUIRED for `table` -- the caller names the LLM and
+        # OCR adapters the extraction runs on. Defaults to whatever the
+        # environment configured; `{}` is sent as-is so a scenario can assert
+        # the 400 for an absent block.
+        #
+        # When the env vars are UNSET this omits the block, and the backend
+        # then refuses the submit at the adapter field validator -- before any
+        # file or page-cap check. That is correct behaviour but it is a trap
+        # for tests asserting a DIFFERENT 400: they still see a 400, then fail
+        # on the blamed attribute (`extractors`, not `file`). Red, not skipped.
+        # Every scenario that asserts a specific rejection attribute therefore
+        # takes `require_adapters`, which turns the unconfigured lane into an
+        # explicit skip naming the missing vars.
+        resolved = e2e_adapters() if adapters is None else adapters
+        if resolved:
+            entry["adapters"] = resolved
+        data["extractors"] = json.dumps([entry])
     return requests.post(
         auth.exec_url,
         headers=auth.headers,
         files={"file": (filename, file_bytes, "application/octet-stream")},
         data=data,
-        timeout=60,
+        timeout=_http_timeout(data.get("timeout")),
     )
+
+
+#: Client read timeout for a submit that does NOT ask the backend to sync-wait.
+_HTTP_TIMEOUT = 60
+
+#: Added on top of a requested sync-wait so the CLIENT always outlives the
+#: SERVER's own deadline.
+_HTTP_TIMEOUT_MARGIN = 30
+
+
+def _http_timeout(server_wait: object) -> int:
+    """Seconds to let the HTTP request run for, given the sync-wait asked for.
+
+    `timeout` in the submit body is the SERVER's wait: the backend holds the
+    request open that long for a terminal state before falling back to the 202
+    handshake. The client's own read timeout has to outlast it, or a job that
+    finishes inside the window the test asked for still fails the test -- with
+    a `requests.ReadTimeout` from the harness, which reads as a product bug and
+    is not one. `test_sync_wait_submit_returns_result_inline` asked for 120 s
+    against a fixed 60 s client timeout, so any run slower than a warm cache
+    was a coin flip (Greptile P2).
+
+    The margin covers the handshake and the response body on top of the
+    backend's own deadline, so the SERVER is always the side that gives up
+    first and the test sees the documented fallback rather than an exception.
+    """
+    try:
+        wait = int(server_wait)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return _HTTP_TIMEOUT
+    return max(_HTTP_TIMEOUT, wait + _HTTP_TIMEOUT_MARGIN)
 
 
 def submit(
@@ -202,20 +290,25 @@ def submit(
     filename: str,
     keys: dict,
     *,
-    extractor: str = "kv",
+    extractor: str = "table",
+    adapters: dict[str, str] | None = None,
     **fields: object,
 ) -> tuple[str, str]:
     """POST a submit request expected to succeed; return (job_id, status_url).
 
     Asserts the 202 handshake (spec §7.1 / docs §3) so every caller only ever
     polls a genuinely dispatched job. A 501 here almost always means the
-    cloud ``agentic_kv`` executor plugin isn't installed on this deployment
-    -- this whole lane requires it (docs §11).
+    cloud ``agentic_table`` executor plugin isn't installed on this deployment
+    -- this whole lane requires it (docs §11). A 400 naming `adapters`
+    means the `AGENT_KV_E2E_*_ADAPTER` ids are unset or do not belong to this
+    key's organization -- gate such a scenario on `require_adapters`.
     """
-    resp = submit_raw(auth, file_bytes, filename, keys, extractor=extractor, **fields)
+    resp = submit_raw(
+        auth, file_bytes, filename, keys, extractor=extractor, adapters=adapters, **fields
+    )
     assert resp.status_code == 202, (
         f"submit: HTTP {resp.status_code} (expected 202; a 501 means the "
-        f"agent-kv engine plugin isn't installed on this deployment): {resp.text}"
+        f"agentic_table executor plugin isn't installed on this deployment): {resp.text}"
     )
     body = resp.json()
     job_id = body["job_id"]

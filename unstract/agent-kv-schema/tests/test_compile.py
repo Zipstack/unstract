@@ -1,8 +1,14 @@
 """compile_schema: structural validation + caps on top of the ported compiler."""
+
+from dataclasses import FrozenInstanceError
+
 import pytest
 
 from unstract.agent_kv_schema import (
-    CompiledSchema, SchemaCaps, SchemaError, compile_schema,
+    CompiledSchema,
+    SchemaCaps,
+    SchemaError,
+    compile_schema,
 )
 
 VALID = {
@@ -59,8 +65,10 @@ def test_regex_length_cap():
 
 
 def test_bad_constraint_syntax_rejected():
-    spec = {"a": {"description": "d"},
-            "_constraints": ["__import__('os').system('true')"]}
+    spec = {
+        "a": {"description": "d"},
+        "_constraints": ["__import__('os').system('true')"],
+    }
     with pytest.raises(SchemaError, match="constraint"):
         compile_schema(spec)
 
@@ -72,8 +80,7 @@ def test_constraint_call_allowlist():
 
 
 def test_constraints_cap():
-    spec = {"a": {"description": "d"},
-            "_constraints": ["a > 0"] * 31}
+    spec = {"a": {"description": "d"}, "_constraints": ["a > 0"] * 31}
     with pytest.raises(SchemaError, match="max_constraints"):
         compile_schema(spec)
 
@@ -175,10 +182,6 @@ def test_pathologically_deep_under_decoy_array_raises_fast():
 # this package deliberately has zero dependencies -- UN-4225.
 # ---------------------------------------------------------------------------
 
-import pytest
-
-from unstract.agent_kv_schema.compile import SchemaError, compile_schema
-
 
 def _schema(pattern: str) -> dict:
     return {"amount": {"description": "x", "format": f"regex:{pattern}"}}
@@ -247,3 +250,243 @@ def test_non_overlapping_alternation_still_compiles(pattern):
     patterns -- `(?:a|b)+` is linear.
     """
     compile_schema(_schema(pattern))
+
+
+# --------------------------------------------------------------------------
+# 2.18: formats that can never validate anything, or always fail.
+#
+# Free-text `format` stays an LLM hint -- that is deliberate, see the `format`
+# comment on KeySpec. The three shapes below are not hints, they are mistakes
+# with no observable symptom, all three verified by execution before the fix.
+# --------------------------------------------------------------------------
+
+
+def _one_key(fmt: str) -> dict:
+    return {"amount": {"description": "An amount", "format": fmt}}
+
+
+@pytest.mark.parametrize(
+    ("fmt", "intended"),
+    [
+        ("Number", "number"),
+        ("NUMBER", "number"),
+        ("Date", "date"),
+        ("Currency", "currency"),
+        ("String", "string"),
+        ("Enum", "enum"),
+        ("Regex", "regex"),
+    ],
+)
+def test_a_case_variant_of_a_known_format_is_refused(fmt, intended):
+    """`format: "Number"` silently became a free-text hint.
+
+    `validate_format("not a number at all", spec)` then returned True for
+    every value for the life of the job, and `/validate` reported
+    `{"valid": true}` -- the author configured validation and got none.
+    """
+    spec = _one_key(fmt)
+    with pytest.raises(SchemaError, match=f"Did you mean '{intended}'"):
+        compile_schema(spec)
+
+
+@pytest.mark.parametrize(
+    ("fmt", "intended"),
+    [
+        ("Enum:paid,unpaid", "enum:paid,unpaid"),
+        ("ENUM:paid,unpaid", "enum:paid,unpaid"),
+        ("Regex:^[0-9]+$", "regex:^[0-9]+$"),
+        ("REGEX:^[0-9]+$", "regex:^[0-9]+$"),
+    ],
+)
+def test_a_case_variant_of_an_ARGUMENT_taking_format_is_refused(fmt, intended):
+    """The residual the first round's fix left behind.
+
+    `test_a_case_variant_of_a_known_format_is_refused` above covers the BARE
+    names, including bare `"Enum"` and `"Regex"` -- but not the forms that
+    actually carry an argument, which is how anyone real writes them.
+    `_parse_format` matches the `enum:` / `regex:` prefix case-sensitively, so
+    `"Enum:paid,unpaid"` never becomes kind `"enum"`; it reached the typo guard
+    as the whole raw string, and `"enum:paid,unpaid"` is not a member of
+    `_KNOWN_FORMATS` (which holds the bare `"enum"`).
+
+    Net effect before this: the key compiled as a free-text hint, `/validate`
+    reported `{"valid": true}`, and the enum was never enforced -- identical to
+    the `"Number"` failure, through the one gap the fix for it did not close.
+    """
+    schema = _one_key(fmt)
+
+    with pytest.raises(SchemaError, match="Did you mean") as caught:
+        compile_schema(schema)
+
+    # And the suggestion has to be the usable spelling, argument included --
+    # `"enum"` alone would be rejected by the no-values check one line later,
+    # sending the author in a circle.
+    assert intended in str(caught.value)
+
+
+@pytest.mark.parametrize(
+    "fmt",
+    ["enum:paid,unpaid", "regex:^[0-9]+$", "enum:a,b,c"],
+)
+def test_correctly_cased_argument_formats_still_compile(fmt):
+    """The other half: the fix must not reject the valid spellings.
+
+    These reach the guard with kind already resolved to `"enum"`/`"regex"` by
+    `_parse_format`, so the colon-splitting branch must not fire on them.
+    """
+    compile_schema(_one_key(fmt))
+
+
+@pytest.mark.parametrize(
+    "fmt",
+    [
+        "customer:id",  # a colon in genuine free text
+        "total:in USD",
+        "ref:12345",
+    ],
+)
+def test_free_text_containing_a_colon_is_not_mistaken_for_a_format(fmt):
+    """Splitting on `:` must not capture unrelated hints.
+
+    The prefix before the colon is not a known format in any of these, so they
+    stay free text -- which is what a schema author writing a descriptive hint
+    expects.
+    """
+    compile_schema(_one_key(fmt))
+
+
+@pytest.mark.parametrize(
+    "fmt",
+    [
+        "number: of items",
+        "date: of issue",
+        "currency: USD",
+        "string: free text",
+        "Number: of items",
+    ],
+)
+def test_a_known_NAME_before_a_colon_is_still_free_text_when_it_takes_no_argument(
+    fmt,
+):
+    """The over-rejection the first cut of the `Enum:` fix introduced.
+
+    Comparing the pre-colon segment against every name in `_KNOWN_FORMATS`
+    rejected all of these -- ordinary prose a schema author is entitled to
+    write, since free text IS a supported way to describe a key. That is a
+    worse failure than the one being fixed: the `Enum:` bug silently disabled
+    validation for one key, this refused to compile the schema at all and made
+    authors reword valid hints.
+
+    Only `enum` and `regex` take an argument (`_ARGUMENT_FORMATS`), so only
+    those can legitimately appear as `name:arg`. There is no such thing as
+    `number:`, which is exactly why these must stay free text.
+    """
+    compile_schema(_one_key(fmt))
+
+
+@pytest.mark.parametrize("fmt", ["number", "date", "currency", "string"])
+def test_the_known_formats_still_compile(fmt):
+    compile_schema(_one_key(fmt))
+
+
+@pytest.mark.parametrize(
+    "fmt",
+    [
+        "the invoice total in USD",  # a real hint, which is the point of free text
+        "amount",
+        "numeric-ish",  # near a known format but not a case variant of one
+        "dates",
+    ],
+)
+def test_free_text_format_is_still_accepted_as_an_llm_hint(fmt):
+    compile_schema(_one_key(fmt))
+
+
+@pytest.mark.parametrize("fmt", ["enum:", "enum", "enum: , ,"])
+def test_an_enum_with_no_values_is_refused(fmt):
+    """`enum_values=[]` means `_check_one` tests membership of the empty set,
+    so every non-empty value fails QA forever. This does not disable
+    validation, it inverts it.
+    """
+    spec = _one_key(fmt)
+    with pytest.raises(SchemaError, match="enum with no values"):
+        compile_schema(spec)
+
+
+def test_an_enum_with_values_still_compiles():
+    compiled = compile_schema(_one_key("enum:paid,unpaid"))
+    assert compiled.key_specs[0].enum_values == ["paid", "unpaid"]
+
+
+@pytest.mark.parametrize("fmt", ["regex:", "regex"])
+def test_an_empty_regex_is_refused(fmt):
+    spec = _one_key(fmt)
+    with pytest.raises(SchemaError, match="empty regex"):
+        compile_schema(spec)
+
+
+def test_the_same_rules_apply_to_array_columns():
+    """Array columns are leaves too, and were checked by nothing."""
+    spec = {
+        "lines": {
+            "description": "One row per line",
+            "_array": {"total": {"description": "Line total", "format": "Currency"}},
+        }
+    }
+    with pytest.raises(SchemaError, match="Did you mean 'currency'"):
+        compile_schema(spec)
+
+
+# --------------------------------------------------------------------------
+# 2.18 (second half): `_key` naming a column that does not exist.
+# --------------------------------------------------------------------------
+
+
+def test_a_key_column_that_does_not_exist_is_refused():
+    """A `_key` typo is not an error anywhere downstream.
+
+    Every row misses, the array silently falls back to positional identity,
+    and the cost is accuracy on exactly the arrays the author cared enough
+    about to key. Nothing is reported.
+    """
+    spec = {
+        "lines": {
+            "description": "One row per line",
+            "_key": "skew",  # the column is 'sku'
+            "_array": {
+                "sku": {"description": "SKU"},
+                "total": {"description": "Line total"},
+            },
+        }
+    }
+    with pytest.raises(SchemaError, match="_key 'skew'"):
+        compile_schema(spec)
+
+
+def test_a_key_column_that_exists_still_compiles():
+    compiled = compile_schema(VALID)
+    assert [a.key_column for a in compiled.array_specs] == ["sku"]
+
+
+def test_an_array_with_no_key_column_is_positional_and_accepted():
+    spec = {
+        "lines": {
+            "description": "One row per line",
+            "_array": {"sku": {"description": "SKU"}},
+        }
+    }
+    compiled = compile_schema(spec)
+    assert compiled.array_specs[0].key_column == ""
+
+
+# --------------------------------------------------------------------------
+# 2.18 (third): the specs are compile OUTPUT and must not be mutable.
+# --------------------------------------------------------------------------
+
+
+def test_compiled_specs_are_frozen():
+    compiled = compile_schema(VALID)
+    with pytest.raises(FrozenInstanceError):
+        compiled.key_specs[0].format = "number"
+    with pytest.raises(FrozenInstanceError):
+        compiled.array_specs[0].key_column = "total"

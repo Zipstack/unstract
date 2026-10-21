@@ -49,7 +49,12 @@ from unstract.core.network.ssrf import is_safe_webhook_url, safe_host
 
 logger = logging.getLogger(__name__)
 
-_TIMEOUT = 10
+#: Separate budgets, and NOT a total. `requests` applies each to one socket
+#: operation, so the wall-clock cost of a delivery is bounded only by how many
+#: reads the peer can draw out. The body is never read (see `send_webhook`),
+#: which removes the unbounded case; headers remain.
+_CONNECT_TIMEOUT = 5
+_READ_TIMEOUT = 10
 
 
 def send_webhook(
@@ -72,14 +77,40 @@ def send_webhook(
         ):
             # is_safe_webhook_url already logged the refusal reason and host.
             return False
+        # `stream=True` and an explicit close: the status code is the only
+        # thing this function uses, and without it `requests` reads the
+        # response BODY before returning.
+        #
+        # That mattered because `timeout` is per-read, not total, and this
+        # runs inline on the `ide_callback` consumer -- concurrency 2 by
+        # default, shared with Prompt Studio. A receiver answering 200 and
+        # then trickling a byte every nine seconds, or returning a very large
+        # body, held one of those two slots for as long as it liked while
+        # resetting the read timeout on every chunk. Any key holder could
+        # arrange it cheaply: submit, cancel immediately, and the cancellation
+        # webhook fires with no LLM spend at all.
+        #
+        # With the body never read, the exposure is bounded by `timeout` per
+        # read of the HEADERS. A server that trickles headers can still extend
+        # a single delivery, which is why the real fix is to move delivery off
+        # this consumer onto `notifications_webhook`, as pipeline
+        # notifications do -- noted on the PR rather than done here, because
+        # it is a queue change rather than a client one.
         resp = requests.post(
             url,
             data=json.dumps(payload),
             headers={"Content-Type": "application/json"},
-            timeout=_TIMEOUT,
+            # Explicit (connect, read) rather than a scalar, so the two are
+            # visible as separate budgets instead of looking like one total.
+            timeout=(_CONNECT_TIMEOUT, _READ_TIMEOUT),
             allow_redirects=False,
+            stream=True,
         )
-        return 200 <= resp.status_code < 300
+        try:
+            return 200 <= resp.status_code < 300
+        finally:
+            # Releases the connection without draining the body.
+            resp.close()
     except Exception:
         logger.warning("webhook delivery failed (host=%s)", safe_host(url), exc_info=True)
         return False

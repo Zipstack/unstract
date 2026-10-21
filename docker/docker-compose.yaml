@@ -534,7 +534,7 @@ services:
       - APPLICATION_NAME=unstract-worker-pg-executor
       - WORKER_BARRIER_BACKEND=pg
       - WORKER_PG_QUEUE_CONSUMER_WORKER_TYPE=executor
-      - WORKER_PG_QUEUE_CONSUMER_QUEUE=celery_executor_legacy,celery_executor_agentic,celery_executor_table,celery_executor_smart_table,celery_executor_simple_prompt_studio,celery_executor_agentic_table,celery_executor_lookup_test,celery_executor_agentic_kv
+      - WORKER_PG_QUEUE_CONSUMER_QUEUE=celery_executor_legacy,celery_executor_agentic,celery_executor_table,celery_executor_smart_table,celery_executor_simple_prompt_studio,celery_executor_agentic_table,celery_executor_lookup_test
       - WORKER_PG_QUEUE_CONSUMER_HEALTH_PORT=8090
       # Log publisher — see the note on the backend service (UN-4046).
       - LOG_TRANSPORT=redis

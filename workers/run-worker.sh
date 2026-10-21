@@ -77,7 +77,7 @@ declare -rA PG_CONSUMER_ROLES=(
     # Runs execute_extraction (the executor RPC) over PG — request-reply: writes
     # the result to pg_task_result for the blocking caller. Queues mirror the
     # Celery executor's CELERY_QUEUES_EXECUTOR.
-    ["$PG_ROLE_EXECUTOR"]="executor;celery_executor_legacy,celery_executor_agentic,celery_executor_table,celery_executor_smart_table,celery_executor_simple_prompt_studio,celery_executor_agentic_table,celery_executor_lookup_test,celery_executor_agentic_kv"
+    ["$PG_ROLE_EXECUTOR"]="executor;celery_executor_legacy,celery_executor_agentic,celery_executor_table,celery_executor_smart_table,celery_executor_simple_prompt_studio,celery_executor_agentic_table,celery_executor_lookup_test"
     # Runs the dashboard_metrics.* periodics fired by the PG scheduler tick,
     # replacing the Celery 'workerMetrics' (-Q dashboard_metric_events). Its own
     # role rather than a queue bolted onto pg-scheduler: the consumer's health
@@ -347,7 +347,8 @@ ENVIRONMENT:
     Required variables:
     - INTERNAL_SERVICE_API_KEY
     - INTERNAL_API_BASE_URL
-    - CELERY_BROKER_BASE_URL
+    - CELERY_BROKER_BASE_URL (not needed when LOG_TRANSPORT=redis and only PG-queue
+      workers are started)
     - DB_HOST, DB_USER, DB_PASSWORD, DB_NAME (for PostgreSQL result backend)
 
     Plugin availability is detected dynamically via plugin registry.
@@ -453,7 +454,33 @@ validate_env() {
     local required_vars=(
         "INTERNAL_SERVICE_API_KEY"
         "INTERNAL_API_BASE_URL"
-        "CELERY_BROKER_BASE_URL"
+    )
+
+    # The broker is needed by every Celery worker, and by every worker while logs
+    # are published over Celery (LOG_TRANSPORT other than "redis", the default).
+    # Skip it only when logs go over Redis and every requested worker is a
+    # PG-queue member (or the PG-queue set itself).
+    local log_transport="${LOG_TRANSPORT-celery}"
+    log_transport="${log_transport,,}"
+    log_transport="${log_transport#"${log_transport%%[![:space:]]*}"}"
+    log_transport="${log_transport%"${log_transport##*[![:space:]]}"}"
+    local needs_broker=""
+    if [[ "$log_transport" != "redis" ]]; then
+        needs_broker=1
+    fi
+    local wt resolved
+    for wt in "${WORKER_TYPES[@]}"; do
+        resolved="${WORKERS[$wt]:-${PLUGGABLE_WORKERS[$wt]:-}}"
+        if [[ "$resolved" != "$PG_QUEUE_SET" && -z "${PG_QUEUE_MEMBERS[$resolved]:-}" ]]; then
+            needs_broker=1
+            break
+        fi
+    done
+    if [[ -n "$needs_broker" ]]; then
+        required_vars+=("CELERY_BROKER_BASE_URL")
+    fi
+
+    required_vars+=(
         "DB_HOST"
         "DB_USER"
         "DB_PASSWORD"

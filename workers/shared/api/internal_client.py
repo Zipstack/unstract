@@ -1634,7 +1634,13 @@ class InternalAPIClient(CachedAPIClientMixin):
             usage_summary: Optional usage/cost summary to persist (success only).
 
         Returns:
-            Backend response: ``{"finalized": bool, "webhook_url": str, "status": str}``.
+            Backend response: ``{"finalized": bool, "webhook_url": str,
+            "status": str, "reason": str, "result_attached": bool}``.
+            ``result_attached`` is True only when ``finalized`` is False because
+            a cancel won the race, and the finished extraction's result was kept
+            on the cancelled row rather than discarded -- the one non-fresh
+            finalize that still owes the caller a notification (see
+            ``ide_callback.agent_kv_tasks._maybe_webhook``).
         """
         payload: dict[str, Any] = {"org_id": org_id, "success": success}
         if success:
@@ -1669,8 +1675,17 @@ class InternalAPIClient(CachedAPIClientMixin):
             job_id: Agent-KV job ID.
             org_id: Organization ID (required by the endpoint's body, not the
                 URL — mirrors ``StageReportView``/``FinalizeView``).
-            stage: Pipeline stage name (e.g. ``"extract"``).
-            status: Stage status (e.g. ``"started"``, ``"completed"``).
+            stage: Pipeline stage name. Must be one of the stage names the
+                job's extractor declares (``agent_kv.constants
+                .STAGE_NAMES_BY_EXTRACTOR``) -- ``"table_extraction"`` for
+                ``table``, one of ``STAGE_NAMES`` for ``kv``. The endpoint
+                only checks the name is non-empty, but ``_status_document``
+                filters a job's recorded stages through that list, so an
+                off-list name is stored and then dropped from every status
+                response.
+            status: Stage status -- ``"running"`` or ``"done"``, the only two
+                values ``StageReportView`` accepts. (These examples read
+                ``"started"``/``"completed"`` before review; both are 400s.)
             seconds: Optional stage duration in seconds.
             counters: Optional stage counters to record.
 

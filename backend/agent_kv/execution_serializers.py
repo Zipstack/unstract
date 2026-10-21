@@ -8,6 +8,8 @@ from rest_framework import serializers
 
 from agent_kv.constants import EXTRACTOR_ROUTES, TABLE_EXTRACTOR_NAME, V1_EXTRACTOR_NAME
 from unstract.agent_kv_schema import SchemaError, compile_schema
+from unstract.core.network.ssrf import webhook_url_refusal
+from unstract.sdk1.constants import AdapterTypes
 
 # Images are deliberately ABSENT, and that is a cross-repo contract, not an
 # oversight. The cloud engine's `_build_agent_graph` (agentic_kv
@@ -155,14 +157,111 @@ _OPTIONS_SERIALIZERS = {
 }
 
 
+class TableAdaptersSerializer(serializers.Serializer):
+    """The platform adapters the `table` extractor runs on.
+
+    **Why the caller names adapters rather than the operator configuring env
+    vars.** The engine needs two LLMs and an OCR source. The IDE table path
+    resolves all three from platform adapter instances the user configured
+    (`agentic_table/executor.py` -> `LLM(adapter_instance_id=...)`,
+    `X2Text(adapter_instance_id=...)`), and this API now does the same. That
+    reverses spec D6, which specified system-level env configuration and "no
+    end-user model control" -- a deliberate reversal, recorded here and in
+    `docs/agent-kv-api.md`: the consumers are existing customers with
+    accounts, so they already own adapters, and letting them choose puts model
+    selection and LLM spend on the account that benefits from it.
+
+    Field names follow the platform convention for naming adapters by ROLE,
+    not by id: `prompt_profile_manager_v2.ProfileManager` declares `llm`,
+    `x2text`, `embedding_model`, `vector_store`. Hence `llm` / `lite_llm` /
+    `x2text` rather than `llm_adapter_id` and friends.
+
+    `lite_llm` is separate because the engine uses a cheaper model for
+    per-page presence detection and the advanced one for structure and
+    extraction; collapsing them would silently multiply the cost of the
+    highest-volume stage.
+    """
+
+    llm = serializers.UUIDField()
+    lite_llm = serializers.UUIDField()
+    x2text = serializers.UUIDField()
+
+    def validate(self, data):
+        unknown = set(self.initial_data) - set(self.fields)
+        if unknown:
+            raise serializers.ValidationError(
+                f"unknown adapters for extractor '{TABLE_EXTRACTOR_NAME}': "
+                f"{sorted(unknown)}"
+            )
+        return data
+
+
+#: Each extractor's own `adapters` validator, and which `AdapterTypes` each
+#: role must be. An extractor absent from this table takes no adapters -- `kv`
+#: is env-configured (`extraction_seams.ExtractionConfig`) and deliberately
+#: stays that way for now, so the two credential models coexist: one extractor
+#: per model, never both for one extractor.
+_ADAPTERS_SERIALIZERS = {
+    TABLE_EXTRACTOR_NAME: (
+        TableAdaptersSerializer,
+        {
+            "llm": AdapterTypes.LLM,
+            "lite_llm": AdapterTypes.LLM,
+            "x2text": AdapterTypes.X2TEXT,
+        },
+    ),
+}
+
+
+#: Each extractor's own `keys` validator. An extractor absent from this table
+#: falls through to the schema compiler, which is `kv`'s contract: its `keys` IS
+#: a compiled schema rather than a fixed set of fields.
+_KEYS_SERIALIZERS = {
+    TABLE_EXTRACTOR_NAME: TableKeysSerializer,
+}
+
+
+def _validated_adapter_shape(name: str, supplied) -> dict:
+    """Validate an extractor's `adapters` block SHAPE only. No database.
+
+    Returns `{role: "<uuid>"}`, or `{}` for an extractor that takes none.
+
+    Deliberately split from the tenancy check. This runs in the serializer, so
+    it must stay free of the ORM -- `test_submit_serializer.py` is a unit suite
+    with no database, and an adapter lookup here would make every submit test
+    require one. What it does check is everything that needs no database:
+    presence, that each id parses as a UUID, and that no unknown role was sent.
+
+    **Ownership and type are checked in the VIEW**
+    (`execution_views._resolved_adapters`), because they need the Bearer key's
+    organization -- the same reason `_subscription_denial` lives there. Both
+    still run before anything is staged or billed.
+    """
+    entry = _ADAPTERS_SERIALIZERS.get(name)
+    if entry is None:
+        if supplied:
+            raise serializers.ValidationError(
+                {"adapters": f"extractor '{name}' takes no adapters"}
+            )
+        return {}
+
+    adapters_cls, _expected_types = entry
+    ser = adapters_cls(data=supplied if isinstance(supplied, dict) else {})
+    ser.is_valid(raise_exception=True)
+    return {role: str(value) for role, value in ser.validated_data.items()}
+
+
 class ExtractorSerializer(serializers.Serializer):
     """One entry of the submit's `extractors` array (spec §7.0/§7.1)."""
 
     name = serializers.CharField()
     keys = serializers.JSONField()
+    #: Sibling of `keys`/`options`, not nested inside them. These are the
+    #: RESOURCES the extractor runs on, which `ProfileManager` likewise holds
+    #: as fields on the owning object rather than inside a knobs blob -- and
+    #: keeping them out of `options` leaves that member optional.
+    adapters = serializers.DictField(required=False, default=dict)
     options = serializers.DictField(required=False, default=dict)
-
-    compiled = None
 
     def validate_name(self, v):
         if v not in SUPPORTED_EXTRACTORS:
@@ -171,24 +270,54 @@ class ExtractorSerializer(serializers.Serializer):
             )
         return v
 
-    def validate_keys(self, spec):
-        name = (self.initial_data or {}).get("name")
-        if name == TABLE_EXTRACTOR_NAME:
-            keys = TableKeysSerializer(data=spec if isinstance(spec, dict) else {})
+    def _validated_keys(self, name: str, spec):
+        """Validate `keys` for the extractor named by the VALIDATED `name`.
+
+        Not a `validate_keys` field validator, deliberately. That ran before
+        object-level validation and branched on raw ``self.initial_data["name"]``
+        -- while ``validate_name`` saw the value DRF had already trimmed
+        (``CharField.trim_whitespace`` defaults True). So the extractor's
+        identity was decided twice, under two different values:
+        ``{"name": " table ", ...}`` passed the name check as ``table`` and then
+        took the **kv** branch here, never running ``TableKeysSerializer``. A
+        kv-shaped payload like ``{"target_table": {"description": "x"}}``
+        compiles cleanly as a KV schema, so the submit returned **202** and
+        dispatched to ``agentic_table`` with a `target_table` that is a dict
+        rather than the string the binding requires -- the job staged, billed
+        and then failed at the executor.
+
+        Branching on `data["name"]` in ``validate()`` means the name is trimmed
+        and already checked against ``SUPPORTED_EXTRACTORS`` exactly once.
+        """
+        keys_cls = _KEYS_SERIALIZERS.get(name)
+        if keys_cls is not None:
+            keys = keys_cls(data=spec if isinstance(spec, dict) else {})
             keys.is_valid(raise_exception=True)
             return keys.validated_data
-        # kv: size is capped on the SERIALIZED form -- the cap exists to bound
-        # parse and compile cost, and `keys` arrives here already parsed out of
-        # the `extractors` JSON.
-        # ensure_ascii=False so this measures the SAME bytes the outer
-        # `extractors` cap measured.
+
+        # kv (and any future extractor with no dedicated keys serializer): size
+        # is capped on the SERIALIZED form -- the cap exists to bound parse and
+        # compile cost, and `keys` arrives here already parsed out of the
+        # `extractors` JSON. ensure_ascii=False so this measures the SAME bytes
+        # the outer `extractors` cap measured.
         serialized = json.dumps(spec, ensure_ascii=False).encode("utf-8")
         if len(serialized) > settings.AGENT_KV_MAX_SCHEMA_BYTES:
-            raise serializers.ValidationError("keys schema too large")
+            raise serializers.ValidationError({"keys": "keys schema too large"})
+        # Called for what it REFUSES, not for what it returns. The
+        # `CompiledSchema` used to be stashed on the serializer and collected
+        # into a `{name: compiled}` dict by `SubmitSerializer`, which no
+        # non-test code ever read: `dispatch_job` sends `schema=entry["keys"]`,
+        # the raw dict, and the engine re-compiles it on its own (see the
+        # docstring on `compile.py` -- the caps are a submit-time gate, not an
+        # invariant the engine re-checks). Plumbing the compiled form through
+        # instead is not an option the queue allows: it would have to survive
+        # JSON round-tripping to the executor, which is exactly why the engine
+        # recompiles. So the dead attribute is gone rather than left to read as
+        # plumbing that exists. What this call is for is the 400 below.
         try:
-            self.compiled = compile_schema(spec)
+            compile_schema(spec)
         except SchemaError as e:
-            raise serializers.ValidationError(str(e))
+            raise serializers.ValidationError({"keys": str(e)})
         return spec
 
     def validate(self, data):
@@ -202,7 +331,9 @@ class ExtractorSerializer(serializers.Serializer):
             raise serializers.ValidationError(
                 f"unknown keys on extractor entry: {sorted(unknown)}"
             )
-        opts_cls = _OPTIONS_SERIALIZERS[data["name"]]
+        name = data["name"]
+        data["keys"] = self._validated_keys(name, data.get("keys"))
+        opts_cls = _OPTIONS_SERIALIZERS[name]
         opts = opts_cls(data=data.get("options") or {})
         opts.is_valid(raise_exception=True)
         data["options"] = opts.validated_data
@@ -237,9 +368,47 @@ class SubmitSerializer(serializers.Serializer):
         required=False, allow_blank=True, default="", max_length=1024
     )
 
-    #: ``{extractor_name: compiled schema}`` -- populated during validation.
-    compiled = None
+    def validate_webhook_url(self, value):
+        """Refuse at submit what the sink will refuse at delivery.
+
+        `URLField` alone accepts `http://`, `localhost` and private address
+        literals, none of which this API will ever dial: `send_webhook` is
+        called without `allow_http`, so the sink allows https to public hosts
+        only. The caller therefore got a 202 and a webhook that never arrived,
+        with nothing in the response contradicting the "https-only" promise in
+        the docs -- and on the cancel path `agent_kv_cancelled` treats the
+        refusal as a delivery failure and burns its whole retry budget on a
+        URL that cannot work.
+
+        `resolve=False`, matching `notification_v2.serializers`: DNS has no
+        timeout and this runs on the request thread, so a hostname pointing
+        inward is accepted here and refused at the sink, which does resolve.
+        The syntactic checks -- scheme, credentials in the URL, parser
+        disagreement, address literals -- all still run.
+        """
+        if not value:
+            return value
+        if settings.AGENT_KV_WEBHOOK_INSECURE_ALLOW_HTTP_PRIVATE:
+            # The same test/dev waiver the delivery sink reads. Both sides
+            # must honour it or they disagree: with the check only at submit,
+            # the e2e webhook scenario 400s before a job exists; with it only
+            # at the sink, this validation is the thing that breaks it. Unset
+            # in production.
+            return value
+        reason = webhook_url_refusal(value, allowed_schemes=("https",), resolve=False)
+        if reason is not None:
+            raise serializers.ValidationError(
+                "webhook_url must be an https URL on a public host " f"({reason})"
+            )
+        return value
+
+    #: Measured page count of the uploaded document. None for Excel, which has
+    #: no pre-OCR page concept. This is what metering and the status document
+    #: report, and it is NOT what the page cap is compared against.
     pages_total = None
+    #: How many pages the request actually asks to process, after `page_start` /
+    #: `page_end` are applied. This is what the cap bounds. None for Excel.
+    pages_selected = None
 
     def validate_file(self, f):
         name = (f.name or "").lower()
@@ -272,6 +441,20 @@ class SubmitSerializer(serializers.Serializer):
             entries = json.loads(raw)
         except (ValueError, TypeError) as e:
             raise serializers.ValidationError(f"extractors is not valid JSON: {e}")
+        except RecursionError:
+            # NOT a ValueError, so the clause above does not catch it: it is a
+            # RuntimeError subclass, and an uncaught one here is a 500 on a
+            # request the caller controls entirely. `[` repeated a few thousand
+            # times exhausts the decoder's recursion limit while occupying a
+            # tiny fraction of AGENT_KV_MAX_SCHEMA_BYTES (256 KiB), so the byte
+            # cap above is no defence at all -- the cheapest possible input
+            # reaches it (Greptile P2).
+            #
+            # Reported as a validation error rather than re-raised, because it
+            # IS one: the payload is malformed for this endpoint's purposes,
+            # and the caller can act on the message. Depth is not named as a
+            # number because the limit is the interpreter's, not ours.
+            raise serializers.ValidationError("extractors is nested too deeply to parse")
         if not isinstance(entries, list) or not entries:
             raise serializers.ValidationError("extractors must be a non-empty JSON array")
         if len(entries) > 1:
@@ -283,16 +466,23 @@ class SubmitSerializer(serializers.Serializer):
                 "multiple extractors are not supported yet; pass exactly one"
             )
 
-        validated, compiled = [], {}
+        validated = []
         for i, entry in enumerate(entries):
             if not isinstance(entry, dict):
                 raise serializers.ValidationError(f"extractors[{i}] must be an object")
             ser = ExtractorSerializer(data=entry)
             if not ser.is_valid():
                 raise serializers.ValidationError({f"extractors[{i}]": ser.errors})
-            validated.append(ser.validated_data)
-            compiled[ser.validated_data["name"]] = ser.compiled
-        self.compiled = compiled
+            data = ser.validated_data
+            try:
+                data["adapters"] = _validated_adapter_shape(
+                    data["name"], data.get("adapters")
+                )
+            except serializers.ValidationError as e:
+                raise serializers.ValidationError(
+                    {f"extractors[{i}]": e.detail}
+                ) from None
+            validated.append(data)
         return validated
 
     def validate(self, data):
@@ -311,11 +501,45 @@ class SubmitSerializer(serializers.Serializer):
                 raise serializers.ValidationError({"file": "Unreadable PDF"})
             finally:
                 f.seek(0)
+            if start > self.pages_total:
+                raise serializers.ValidationError(
+                    {
+                        "page_start": f"page_start {start} is past the end of a "
+                        f"{self.pages_total}-page document"
+                    }
+                )
+            # The cap is on the DOCUMENT, not on the selected range, and the
+            # reason is billing rather than tidiness.
+            #
+            # This briefly compared `pages_selected` instead, on the premise
+            # that "pages 1-5 of a 400-page PDF is five pages of OCR". That
+            # premise is false. The engine renders EVERY page
+            # (`convert_pdf_to_images(file_content, dir)`) and OCRs the whole
+            # file -- `X2Text.process` takes `input_file_path` and no range at
+            # all -- and `load_pages(starting_page=, ending_page=)` filters
+            # afterwards, choosing only which rendered pages the agents look
+            # at. So pages 1-5 of a 400-page document costs 400 pages of OCR
+            # and is billed for 400.
+            #
+            # It also disagreed with the worker, which has always refused on
+            # `pages_total` (cloud `api_binding.py`). The caller got a 202,
+            # a concurrency slot and a staged upload, and then a failure --
+            # the worst of both, since the refusal still arrived but only
+            # after the request looked accepted. Caught in review on #2317 /
+            # unstract-cloud#1828.
+            #
+            # `pages_selected` is still computed: it is the honest count of
+            # what will be EXTRACTED, and the message below uses it to explain
+            # why a small range was refused anyway.
+            last_page = self.pages_total if end is None else min(end, self.pages_total)
+            self.pages_selected = last_page - start + 1
             if self.pages_total > settings.AGENT_KV_MAX_PAGES:
                 raise serializers.ValidationError(
                     {
-                        "file": f"Document has {self.pages_total} pages; "
-                        f"max is {settings.AGENT_KV_MAX_PAGES} (§6.1)"
+                        "file": f"Document has {self.pages_total} pages; max is "
+                        f"{settings.AGENT_KV_MAX_PAGES} (§6.1). A page range does "
+                        "not reduce this: the whole document is OCR'd and billed "
+                        "regardless of page_start/page_end"
                     }
                 )
         # Excel: no page concept pre-OCR (spec §6.1); pages_total stays None,

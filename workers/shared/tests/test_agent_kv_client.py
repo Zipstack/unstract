@@ -17,13 +17,9 @@ from shared.api import InternalAPIClient
 class TestAgentKvStageReport:
     def test_posts_minimal_body_to_the_stage_endpoint(self):
         """seconds/counters are omitted from the body when not provided."""
-        with patch.object(
-            InternalAPIClient, "post", return_value={"ok": True}
-        ) as m_post:
+        with patch.object(InternalAPIClient, "post", return_value={"ok": True}) as m_post:
             client = InternalAPIClient.__new__(InternalAPIClient)
-            result = client.agent_kv_stage_report(
-                "job-1", "org-1", "extract", "started"
-            )
+            result = client.agent_kv_stage_report("job-1", "org-1", "extract", "started")
 
         m_post.assert_called_once_with(
             "v1/agent-kv/jobs/job-1/stage/",
@@ -33,9 +29,7 @@ class TestAgentKvStageReport:
         assert result == {"ok": True}
 
     def test_posts_full_body_with_seconds_and_counters(self):
-        with patch.object(
-            InternalAPIClient, "post", return_value={"ok": True}
-        ) as m_post:
+        with patch.object(InternalAPIClient, "post", return_value={"ok": True}) as m_post:
             client = InternalAPIClient.__new__(InternalAPIClient)
             result = client.agent_kv_stage_report(
                 "job-2",
@@ -67,9 +61,7 @@ class TestAgentKvStageReport:
             InternalAPIClient, "post", return_value={"ok": True, "noop": True}
         ):
             client = InternalAPIClient.__new__(InternalAPIClient)
-            result = client.agent_kv_stage_report(
-                "job-3", "org-3", "extract", "started"
-            )
+            result = client.agent_kv_stage_report("job-3", "org-3", "extract", "started")
 
         assert result == {"ok": True, "noop": True}
 
@@ -77,9 +69,7 @@ class TestAgentKvStageReport:
         """``if counters:`` (not ``is not None``) mirrors the brief's
         implementation exactly -- an empty dict is falsy and left out.
         """
-        with patch.object(
-            InternalAPIClient, "post", return_value={"ok": True}
-        ) as m_post:
+        with patch.object(InternalAPIClient, "post", return_value={"ok": True}) as m_post:
             client = InternalAPIClient.__new__(InternalAPIClient)
             client.agent_kv_stage_report(
                 "job-4", "org-4", "extract", "started", counters={}

@@ -19,7 +19,6 @@ os.environ.setdefault("DJANGO_SETTINGS_MODULE", "backend.settings.test")
 if not apps.ready:
     django.setup()
 
-from agent_kv import dispatch  # noqa: E402
 from agent_kv.constants import (  # noqa: E402
     EXTRACTOR_ROUTES,
     STAGE_NAMES_BY_EXTRACTOR,
@@ -34,8 +33,14 @@ from agent_kv.execution_serializers import (  # noqa: E402
 from agent_kv.models import AgentKVJob, JobStatus  # noqa: E402
 
 
-def test_both_extractors_are_supported():
-    assert set(SUPPORTED_EXTRACTORS) == {V1_EXTRACTOR_NAME, TABLE_EXTRACTOR_NAME}
+def test_table_is_the_only_supported_extractor():
+    """`kv` is out of EXTRACTOR_ROUTES because this deployment ships no
+    `agentic_kv` plugin, so nothing drains `celery_executor_agentic_kv`.
+    SUPPORTED_EXTRACTORS is derived from that table, so the omission is what
+    turns a `kv` submit into a 400 rather than a 202 for a job that never runs.
+    """
+    assert set(SUPPORTED_EXTRACTORS) == {TABLE_EXTRACTOR_NAME}
+    assert V1_EXTRACTOR_NAME not in EXTRACTOR_ROUTES
 
 
 def test_every_supported_extractor_has_a_route_stage_list_and_options_serializer():
@@ -90,21 +95,22 @@ def test_kv_options_are_rejected_on_a_table_entry():
     assert "qa" in json.dumps(s.errors)
 
 
-def test_table_options_are_rejected_on_a_kv_entry():
+def test_a_kv_entry_is_refused_by_name():
+    """Options scoping is moot for `kv` here: `validate_name` refuses the entry
+    before any options validator runs. What matters is that the refusal names
+    the extractor, so a caller sending a KV payload to this deployment learns
+    why rather than seeing a schema complaint.
+    """
     s = ExtractorSerializer(
         data={
             "name": "kv",
-            # A schema valid under kv_schema's own leaf-attribute allowlist --
-            # this test is about options being extractor-scoped, not about
-            # `keys` validation, so `keys` itself must not fail here (a `keys`
-            # error would short-circuit DRF's to_internal_value() before the
-            # object-level validate() that scopes `options` ever runs).
             "keys": {"total": {"description": "d"}},
-            "options": {"target_table": "Rent rolls"},
+            "options": {"qa": False},
         }
     )
     assert not s.is_valid()
-    assert "target_table" in json.dumps(s.errors)
+    assert "unknown extractor" in json.dumps(s.errors)
+    assert "kv" in json.dumps(s.errors)
 
 
 def _job(extractor=TABLE_EXTRACTOR_NAME, **overrides):
@@ -127,43 +133,23 @@ def _job(extractor=TABLE_EXTRACTOR_NAME, **overrides):
     return job
 
 
-@mock.patch.object(dispatch, "_platform_api_key", return_value="pk")
-@mock.patch.object(dispatch, "_dispatcher")
-@mock.patch.object(AgentKVJob, "objects")
-def test_dispatch_uses_the_route_for_the_requested_extractor(m_objects, m_disp, m_key):
-    job = _job()
-    dispatch.dispatch_job(
-        job,
-        extractor=TABLE_EXTRACTOR_NAME,
-        schema={"target_table": "Rent rolls"},
-        options={"page_start": 1, "page_end": None},
+def test_the_kv_route_constants_survive_for_re_enablement():
+    """`kv` is unroutable, not deleted. The executor/operation pair, the stage
+    list and the options serializer all stay so the branch carrying the engine
+    re-enables the extractor by restoring one dict entry -- not by merging
+    content back into the files it rewrites most.
+    """
+    from agent_kv.constants import (
+        EXECUTOR_NAME,
+        OPERATION_KV_EXTRACT,
+        STAGE_NAMES_BY_EXTRACTOR,
     )
+    from agent_kv.execution_serializers import _OPTIONS_SERIALIZERS
 
-    ctx = m_disp.return_value.dispatch_with_callback.call_args.args[0]
-    assert ctx.executor_name == "agentic_table"
-    assert ctx.operation == "table_extract_api"
-    # The executor_params shape does NOT branch by extractor -- both executors
-    # read the same keys, which is what lets one dispatcher serve both.
-    assert ctx.executor_params["schema"] == {"target_table": "Rent rolls"}
-    assert ctx.executor_params["input_ref"] == job.input_ref
-    assert ctx.executor_params["platform_api_key"] == "pk"
-
-
-@mock.patch.object(dispatch, "_platform_api_key", return_value="pk")
-@mock.patch.object(dispatch, "_dispatcher")
-@mock.patch.object(AgentKVJob, "objects")
-def test_the_kv_route_is_unchanged(m_objects, m_disp, m_key):
-    """Regression: making the route a lookup must not move the kv extractor."""
-    job = _job(extractor=V1_EXTRACTOR_NAME)
-    dispatch.dispatch_job(
-        job,
-        extractor=V1_EXTRACTOR_NAME,
-        schema={"a": {"description": "d"}},
-        options={"qa": True},
-    )
-    ctx = m_disp.return_value.dispatch_with_callback.call_args.args[0]
-    assert ctx.executor_name == "agentic_kv"
-    assert ctx.operation == "kv_extract"
+    assert EXECUTOR_NAME == "agentic_kv"
+    assert OPERATION_KV_EXTRACT == "kv_extract"
+    assert V1_EXTRACTOR_NAME in STAGE_NAMES_BY_EXTRACTOR
+    assert V1_EXTRACTOR_NAME in _OPTIONS_SERIALIZERS
 
 
 def test_the_status_document_keys_stages_by_the_extractor_that_ran():
@@ -191,7 +177,10 @@ def test_a_kv_job_still_reports_its_kv_stages():
     job = _job(
         extractor=V1_EXTRACTOR_NAME,
         stage="extraction",
-        stages={"document_processing": {"status": "done"}, "extraction": {"status": "running"}},
+        stages={
+            "document_processing": {"status": "done"},
+            "extraction": {"status": "running"},
+        },
     )
     doc = _status_document(job)
 
@@ -220,11 +209,26 @@ def test_the_result_payload_keys_by_the_extractor_that_ran():
     assert V1_EXTRACTOR_NAME not in payload["extractors"]
 
 
-def test_the_extractor_column_defaults_to_kv():
-    """The migration's default is the historical truth, not a guess: before
-    this column existed the API accepted exactly one extractor, always `kv`.
+def test_the_extractor_column_has_no_default():
+    """Was `test_the_extractor_column_defaults_to_kv`, asserting `== "kv"`.
+
+    It pinned the defect as the contract. The default WAS the historical truth
+    when migration 0002 added the column -- the API accepted exactly one
+    extractor and it was always `kv` -- and it became a mis-filing trap the
+    moment `table` existed: `kv` is a valid key in `STAGE_NAMES_BY_EXTRACTOR`,
+    so a table job filed under it gets the KV stage list and
+    `table_extraction` is silently dropped from every status response, with
+    nothing logged because nothing looks wrong to the filter.
+
+    `""` matches no route, so an omission now fails the dispatch visibly. The
+    row-level truth 0002 back-filled is untouched: existing `kv` rows keep
+    saying `kv`, which is what `test_a_job_whose_extractor_has_no_stage_list_
+    reports_no_stages` below depends on.
     """
-    assert AgentKVJob().extractor == V1_EXTRACTOR_NAME
+    assert AgentKVJob().extractor == ""
+    assert V1_EXTRACTOR_NAME in {
+        value for value, _ in AgentKVJob._meta.get_field("extractor").choices
+    }, "a pre-carve-out row must still be a legal value to READ back"
 
 
 def test_a_job_whose_extractor_has_no_stage_list_reports_no_stages(caplog):
@@ -250,3 +254,38 @@ def test_a_job_whose_extractor_has_no_stage_list_reports_no_stages(caplog):
     assert doc["extractors"]["retired_extractor"]["stages"] == []
     assert doc["status"] == job.status.lower()
     assert "retired_extractor" in caplog.text
+
+
+# ---------------------------------------------------------------------------
+# `ValidateView` is part of the carve-out: the class stays in the tree and the
+# route does not. Both halves are asserted here, including that the class says
+# so itself -- a reader of `execution_views.py` sees a complete, decorated,
+# live-looking endpoint, and the only thing that decided otherwise was a file
+# they may never open.
+# ---------------------------------------------------------------------------
+
+
+def test_validate_is_not_a_public_route_on_this_deployment():
+    from agent_kv import execution_urls
+
+    names = {p.name for p in execution_urls.urlpatterns}
+    assert names == {
+        "agent_kv_submit",
+        "agent_kv_status",
+        "agent_kv_result",
+        "agent_kv_cancel",
+    }, (
+        "the public route set changed; `/validate` compiles a `kv` schema and "
+        "`kv` is the one extractor this build refuses, so routing it would "
+        "advertise validation for an extractor every submit 400s"
+    )
+
+
+def test_validate_view_documents_that_it_is_unrouted():
+    from agent_kv.execution_views import ValidateView
+
+    doc = ValidateView.__doc__ or ""
+    assert "NOT ROUTED" in doc, (
+        "ValidateView is a complete, decorated, live-looking endpoint that "
+        "nothing reaches. Say so on the class, not only in execution_urls.py"
+    )

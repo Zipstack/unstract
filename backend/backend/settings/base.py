@@ -15,12 +15,13 @@ import re
 from pathlib import Path
 from urllib.parse import quote
 
-import httpx
+from django.core.exceptions import ImproperlyConfigured
 from django.core.validators import URLValidator
 from dotenv import find_dotenv, load_dotenv
 from utils.common_utils import CommonUtils
 from utils.cors_origin import normalize_web_app_origin
 
+from backend.celery_broker import build_broker_url, required_broker_settings
 from unstract.core.cache.redis_client import (
     apply_url_credentials,
     build_socketio_redis_url,
@@ -71,19 +72,21 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # Load default log from env
 DEFAULT_LOG_LEVEL = os.environ.get("DEFAULT_LOG_LEVEL", "INFO")
 
-# Celery Broker Configuration
-CELERY_BROKER_BASE_URL = get_required_setting("CELERY_BROKER_BASE_URL")
-CELERY_BROKER_USER = get_required_setting("CELERY_BROKER_USER")
-CELERY_BROKER_PASS = get_required_setting("CELERY_BROKER_PASS")
-CELERY_BROKER_URL = str(
-    httpx.URL(CELERY_BROKER_BASE_URL).copy_with(
-        username=CELERY_BROKER_USER, password=CELERY_BROKER_PASS
-    )
-)
-
 ENV_FILE = find_dotenv()
 if ENV_FILE:
     load_dotenv(ENV_FILE)
+
+# Celery Broker Configuration (read after the .env load so it can set LOG_TRANSPORT)
+# Required on the Celery log transport; optional on Redis, which never dials the
+# broker (an unset base URL leaves the URL empty and Celery connects lazily).
+for _broker_setting in required_broker_settings(os.environ):
+    get_required_setting(_broker_setting)
+CELERY_BROKER_BASE_URL = os.environ.get("CELERY_BROKER_BASE_URL")
+CELERY_BROKER_USER = os.environ.get("CELERY_BROKER_USER")
+CELERY_BROKER_PASS = os.environ.get("CELERY_BROKER_PASS")
+CELERY_BROKER_URL = build_broker_url(
+    CELERY_BROKER_BASE_URL, CELERY_BROKER_USER, CELERY_BROKER_PASS
+)
 
 # Loading environment variables
 
@@ -204,8 +207,66 @@ API_DEPLOYMENT_RATE_LIMIT_LOCK_BLOCKING_TIMEOUT = int(
     os.environ.get("API_DEPLOYMENT_RATE_LIMIT_LOCK_BLOCKING_TIMEOUT", 5)
 )
 
+
 # Agent-KV API
-AGENT_KV_PATH_PREFIX = os.environ.get("AGENT_KV_PATH_PREFIX", "agent-kv")
+#
+# Validated at import, because this value is added to `WHITELISTED_PATHS` and
+# `CustomAuthMiddleware` matches that list with `startswith`. An empty or
+# whitespace-only value makes the entry `/`, which is a prefix of every path on
+# the service -- authentication would be skipped for ALL of them. A value that
+# collides with another mounted prefix (`api`, `api/v1`, `deployment`) exempts
+# that whole surface instead. Both are operator mistakes rather than attacks,
+# and both are silent: the server starts, every request succeeds, and nothing
+# in any log says the API is now unauthenticated.
+#
+# Refused loudly at startup instead. `ImproperlyConfigured` is Django's own
+# signal for this and aborts the boot, which is the only outcome that cannot
+# be missed.
+def validate_agent_kv_path_prefix(raw, path_prefix, deployment_prefix):
+    """Normalise and refuse an unsafe `AGENT_KV_PATH_PREFIX`.
+
+    A function rather than inline statements so it is testable without
+    re-importing the settings module under a patched environment -- the
+    behaviour being guarded is an auth bypass, and it deserves a test that
+    enumerates the bad values rather than one that can only check the good one.
+    """
+    prefix = (raw or "").strip().strip("/")
+    if not prefix:
+        raise ImproperlyConfigured(
+            "AGENT_KV_PATH_PREFIX must not be empty: it is whitelisted out of "
+            "authentication by prefix match, so an empty value exempts every "
+            "path on this service."
+        )
+    for other_name, other in (
+        ("PATH_PREFIX", path_prefix),
+        ("API_DEPLOYMENT_PATH_PREFIX", deployment_prefix),
+    ):
+        # Equal, or an ancestor of the other: either way one whitelist entry
+        # swallows the other surface.
+        if prefix == other or other.startswith(f"{prefix}/"):
+            raise ImproperlyConfigured(
+                f"AGENT_KV_PATH_PREFIX={prefix!r} collides with "
+                f"{other_name}={other!r}. It is whitelisted out of "
+                "authentication by prefix match, so this would exempt that "
+                "surface too."
+            )
+    return prefix
+
+
+# Under PATH_PREFIX, not beside it: `/api/v1/agent-kv/`. It is a product API
+# like every other one the platform serves, and sharing the prefix means the
+# LB rule that already routes `/api/v1` covers it -- no dedicated ingress
+# entry to add, and nothing to keep in step with this value. That coupling
+# was a real gap: on-prem values files replace `ingress.hosts` wholesale and
+# carried no `/agent-kv`, so the API answered the SPA's HTML there.
+#
+# It is NOT under TENANT_SUBFOLDER_PREFIX (`api/v1/unstract`), because it
+# resolves its organisation from the Bearer key rather than a URL segment.
+AGENT_KV_PATH_PREFIX = validate_agent_kv_path_prefix(
+    os.environ.get("AGENT_KV_PATH_PREFIX", f"{PATH_PREFIX}/agent-kv"),
+    PATH_PREFIX,
+    API_DEPLOYMENT_PATH_PREFIX,
+)
 # Bucket-rooted object-store root for staged inputs/results, mirroring
 # WORKFLOW_EXECUTION_DIR_PREFIX / API_EXECUTION_DIR_PREFIX: the FIRST segment is
 # the bucket (s3fs/gcsfs treat it that way), so it must already exist. MUST match
@@ -216,6 +277,18 @@ AGENT_KV_STORAGE_DIR_PREFIX = (
     or "unstract/agent_kv"
 )  # same normalisation as the cloud executor's reader (whitespace, edge slashes)
 AGENT_KV_MAX_FILE_SIZE_MB = int(os.environ.get("AGENT_KV_MAX_FILE_SIZE_MB", 50))
+
+#: Test/dev only: waive the https-and-public-host rule on `webhook_url` at
+#: SUBMIT, matching the waiver `workers/ide_callback/agent_kv_tasks.py` already
+#: reads at delivery. One switch, honoured on both sides.
+#:
+#: Needed because submit-side validation and the delivery guard have to agree:
+#: with the check only at the sink, the e2e webhook scenario could post to a
+#: receiver on the compose host; with it only at submit, that scenario 400s
+#: before a job exists. Unset in production, where both guards stay mandatory.
+AGENT_KV_WEBHOOK_INSECURE_ALLOW_HTTP_PRIVATE = os.environ.get(
+    "AGENT_KV_WEBHOOK_INSECURE_ALLOW_HTTP_PRIVATE", ""
+).lower() in ("1", "true", "yes")
 AGENT_KV_MAX_PAGES = int(os.environ.get("AGENT_KV_MAX_PAGES", 100))
 AGENT_KV_MAX_CALCULATIONS_BYTES = int(
     os.environ.get("AGENT_KV_MAX_CALCULATIONS_BYTES", 20_000)
@@ -238,6 +311,31 @@ AGENT_KV_LIMITER_FAIL_OPEN = (
 AGENT_KV_SWEEP_GRACE_SECONDS = int(os.environ.get("AGENT_KV_SWEEP_GRACE_SECONDS", 3600))
 AGENT_KV_STUCK_JOB_GRACE_SECONDS = int(
     os.environ.get("AGENT_KV_STUCK_JOB_GRACE_SECONDS", 21600)
+)
+#: How long after DISPATCH a cancelled job's executor is presumed dead, so the
+#: sweep may release the concurrency slot it still holds.
+#:
+#: Its own setting, and deliberately shorter than both the stuck grace and
+#: `rate_limiter.SLOT_TTL_SECONDS`. Phase 3 of the sweep used the stuck grace
+#: as its floor and the slot TTL as its ceiling; both default to 21600, so the
+#: window was `completed_at < now-21600 AND completed_at > now-21600` -- empty,
+#: and empty for ANY grace >= TTL. The phase could never select a row, and
+#: `released` was always 0.
+#:
+#: Measured from the CANCEL, not from dispatch. `dispatched_at` records
+#: enqueueing, so under a queue backlog a job can be an hour past dispatch
+#: with an executor that has only just started -- releasing then would free a
+#: slot still in use. Cancelling is what makes a live executor stop, so the
+#: grace runs from there.
+#:
+#: One hour rather than six because a live executor learns of the cancel at
+#: its next stage report, so an hour of silence after it is already strong
+#: evidence that nothing is coming.
+#: Waiting the full six hours is indistinguishable from waiting for Redis to
+#: expire the slot on its own, which is the behaviour this phase exists to
+#: improve on.
+AGENT_KV_ABANDONED_SLOT_GRACE_SECONDS = int(
+    os.environ.get("AGENT_KV_ABANDONED_SLOT_GRACE_SECONDS", 3600)
 )
 AGENT_KV_CALCULATIONS_ENABLED = (
     os.environ.get("AGENT_KV_CALCULATIONS_ENABLED", "false").lower() == "true"
@@ -496,6 +594,7 @@ SHARED_APPS = (
     "dashboard_metrics",
     "platform_api",
     "global_api_deployment_key",
+    "global_search",
     "agent_kv",
 )
 TENANT_APPS = []
@@ -1069,13 +1168,10 @@ SOCIAL_AUTH_JSONFIELD_ENABLED = True
 SOCIAL_AUTH_FIELDS_STORED_IN_SESSION = ["oauth-key", "connector-guid"]
 SOCIAL_AUTH_TRAILING_SLASH = False
 
-for key in [
-    "GOOGLE_OAUTH2_KEY",
-    "GOOGLE_OAUTH2_SECRET",
-    "AZUREAD_TENANT_OAUTH2_KEY",
-    "AZUREAD_TENANT_OAUTH2_SECRET",
-]:
-    exec(f"SOCIAL_AUTH_{key} = os.environ.get('{key}')")
+SOCIAL_AUTH_GOOGLE_OAUTH2_KEY = os.environ.get("GOOGLE_OAUTH2_KEY")
+SOCIAL_AUTH_GOOGLE_OAUTH2_SECRET = os.environ.get("GOOGLE_OAUTH2_SECRET")
+SOCIAL_AUTH_AZUREAD_TENANT_OAUTH2_KEY = os.environ.get("AZUREAD_TENANT_OAUTH2_KEY")
+SOCIAL_AUTH_AZUREAD_TENANT_OAUTH2_SECRET = os.environ.get("AZUREAD_TENANT_OAUTH2_SECRET")
 
 SOCIAL_AUTH_PIPELINE = (
     # Checks if user is authenticated

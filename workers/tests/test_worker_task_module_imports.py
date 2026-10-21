@@ -82,8 +82,11 @@ print("RESULT" + json.dumps(failures))
 
 def _run_probe(source: str, workers: list[str] | None = None) -> dict[str, str]:
     proc = subprocess.run(
-        [sys.executable, "-c",
-         source.format(root=str(_WORKERS_ROOT), workers=workers or _TASK_MODULES)],
+        [
+            sys.executable,
+            "-c",
+            source.format(root=str(_WORKERS_ROOT), workers=workers or _TASK_MODULES),
+        ],
         capture_output=True,
         text=True,
         cwd=str(_WORKERS_ROOT),
@@ -91,7 +94,9 @@ def _run_probe(source: str, workers: list[str] | None = None) -> dict[str, str]:
     )
     marker = [ln for ln in proc.stdout.splitlines() if ln.startswith("RESULT")]
     if not marker:
-        pytest.fail(f"probe did not complete.\nstdout:\n{proc.stdout}\nstderr:\n{proc.stderr}")
+        pytest.fail(
+            f"probe did not complete.\nstdout:\n{proc.stdout}\nstderr:\n{proc.stderr}"
+        )
     return json.loads(marker[-1][len("RESULT") :])
 
 

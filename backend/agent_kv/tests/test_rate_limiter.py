@@ -1,7 +1,9 @@
 import os
+import pathlib
 from unittest import mock
 
 import django
+import pytest
 from django.apps import apps
 
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "backend.settings.test")
@@ -153,3 +155,38 @@ def test_release_still_tolerates_an_unreachable_backend(m_redis):
     work, and a slot it cannot free expires on its own TTL.
     """
     rl.AgentKVConcurrencyLimiter.release("org1", "job1")
+
+
+# ---------------------------------------------------------------------------
+# The published env table said both limiters "fail open on Redis errors", for
+# the whole life of the branch that made them fail CLOSED. An operator reading
+# it would size a Redis outage as "requests get through" when the real
+# behaviour is "every submit 429s" -- the opposite incident. Docs are the
+# contract for a public API, so this is pinned rather than trusted.
+# ---------------------------------------------------------------------------
+
+_DOCS = pathlib.Path(__file__).resolve().parents[3] / "docs" / "agent-kv-api.md"
+
+
+@pytest.mark.parametrize(
+    "variable",
+    ["AGENT_KV_CONCURRENT_LIMIT", "AGENT_KV_KEY_RATE_LIMIT_PER_MINUTE"],
+)
+def test_the_docs_do_not_describe_either_limiter_as_failing_open(variable):
+    row = next(line for line in _DOCS.read_text().splitlines() if f"`{variable}`" in line)
+    assert "fails open" not in row.casefold(), row
+    assert "closed" in row.casefold(), (
+        f"the {variable} row must say what a Redis outage does, and it fails "
+        "closed -- see _limiter_failure_allows_request"
+    )
+
+
+def test_the_waiver_flag_is_documented_with_its_real_default():
+    text = _DOCS.read_text()
+    assert "`AGENT_KV_LIMITER_FAIL_OPEN`" in text, (
+        "the only way to restore fail-open is undocumented, so the only "
+        "documented behaviour was the wrong one"
+    )
+    assert not rl._limiter_failure_allows_request() or getattr(
+        settings, "AGENT_KV_LIMITER_FAIL_OPEN", False
+    ), "the default must be fail-closed"

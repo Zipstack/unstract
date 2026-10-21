@@ -53,6 +53,7 @@ from prompt_studio.prompt_studio_core_v2.document_indexing_service import (
     DocumentIndexingService,
 )
 from prompt_studio.prompt_studio_core_v2.exceptions import (
+    DefaultProfileError,
     DeploymentUsageCheckError,
     MaxProfilesReachedError,
     OperationNotSupported,
@@ -278,54 +279,6 @@ class PromptStudioCoreView(
                 "Delete its usages first."
             )
         return super().destroy(request, *args, **kwargs)
-
-    def partial_update(
-        self, request: Request, *args: tuple[Any], **kwargs: dict[str, Any]
-    ) -> Response:
-        custom_tool = self.get_object()
-        before = self.snapshot_share_axes(custom_tool)
-
-        response = super().partial_update(request, *args, **kwargs)
-        if response.status_code == 200:
-            self._notify_shared_users(custom_tool, before, request.data, request.user)
-        return response
-
-    def _notify_shared_users(
-        self,
-        custom_tool: CustomTool,
-        before: dict[str, set[Any]],
-        request_data: dict[str, Any],
-        actor: Any,
-    ) -> None:
-        """Email users newly added to ``shared_users`` (best-effort)."""
-        notification_plugin = get_plugin("notification")
-        if not notification_plugin:
-            return
-        users_diff = self.diff_share_axes(custom_tool, before, request_data).get(
-            "shared_users"
-        )
-        if not (users_diff and users_diff.added):
-            return
-
-        from plugins.notification.constants import ResourceType
-
-        try:
-            service_class = notification_plugin["service_class"]
-            notification_service = service_class()
-            notification_service.send_sharing_notification(
-                resource_type=ResourceType.TEXT_EXTRACTOR.value,
-                resource_name=custom_tool.tool_name,
-                resource_id=str(custom_tool.tool_id),
-                shared_by=actor,
-                shared_to=list(users_diff.added),
-                resource_instance=custom_tool,
-            )
-        except Exception as e:
-            logger.exception(
-                "Failed to send sharing notification for custom tool %s: %s",
-                custom_tool.tool_id,
-                str(e),
-            )
 
     @action(detail=True, methods=["get"])
     def get_select_choices(self, request: HttpRequest) -> Response:
@@ -1064,14 +1017,30 @@ class PromptStudioCoreView(
             tool__in=CustomTool.objects.all()
         ).count()
 
-        documents = []
+        # Detect MIME from file content (not browser-supplied header)
+        file_types = []
         for uploaded_file in uploaded_files:
+            file_types.append(magic.from_buffer(uploaded_file.read(2048), mime=True))
+            uploaded_file.seek(0)
+
+        # Image mode can't answer a PDF over the page cap: reject it here,
+        # rather than at indexing. Every file is checked before any is stored,
+        # so a page-cap rejection never leaves part of the upload behind.
+        try:
+            default_profile = ProfileManager.get_default_llm_profile(custom_tool)
+        except DefaultProfileError:
+            default_profile = None
+        if PromptStudioHelper.uploads_use_image_output_mode(default_profile):
+            for uploaded_file, file_type in zip(uploaded_files, file_types, strict=True):
+                PromptStudioHelper.validate_upload_page_count_for_image_mode(
+                    uploaded_file, file_type
+                )
+
+        documents = []
+        for uploaded_file, file_type in zip(uploaded_files, file_types, strict=True):
             # Store file
             file_name = uploaded_file.name
             file_data = uploaded_file
-            # Detect MIME from file content (not browser-supplied header)
-            file_type = magic.from_buffer(uploaded_file.read(2048), mime=True)
-            uploaded_file.seek(0)
 
             if file_converter_plugin and file_type != "application/pdf":
                 file_converter_service = file_converter_plugin["service_class"]()

@@ -79,6 +79,7 @@ def _walk(
         return
 
     object_values = [v for v in node.values() if isinstance(v, dict)]
+    scalar_keys = [k for k, v in node.items() if not isinstance(v, dict)]
 
     is_interior = len(object_values) == len(node)  # every value is an object
     is_leaf = len(object_values) == 0  # no value is an object
@@ -101,7 +102,7 @@ def _walk(
             )
         return
 
-    _append_leaf(node, path_parts, out)
+    _append_leaf(node, path_parts, scalar_keys, out)
 
 
 def _walk_array(
@@ -112,7 +113,13 @@ def _walk_array(
     max_depth: int,
     depth: int,
 ) -> None:
-    """Compile an `_array` node into one ArraySpec of row-local column KeySpecs."""
+    """Compile an `_array` node into one ArraySpec.
+
+    Column paths are row-LOCAL: each column walks with its own name as the
+    whole path and an empty `arrays` sink, so a nested array would have nowhere
+    to land -- which is why it is rejected explicitly first rather than left to
+    disappear into that sink.
+    """
     extra = set(node.keys()) - RESERVED_NODE
     if extra:
         raise ValueError(
@@ -134,7 +141,7 @@ def _walk_array(
             col_node,
             [col_name],
             item_specs,
-            [],  # row-LOCAL paths; nested arrays sink to [] (rejected above)
+            [],
             max_depth=max_depth,
             depth=depth + 1,
         )
@@ -149,9 +156,13 @@ def _walk_array(
     )
 
 
-def _append_leaf(node: dict[str, Any], path_parts: list[str], out: list[KeySpec]) -> None:
-    """Emit the KeySpec for a leaf node -- scalar attributes only."""
-    scalar_keys = [k for k, v in node.items() if not isinstance(v, dict)]
+def _append_leaf(
+    node: dict[str, Any],
+    path_parts: list[str],
+    scalar_keys: list[str],
+    out: list[KeySpec],
+) -> None:
+    """Compile a leaf node (scalar attributes only) into one KeySpec."""
     unknown = [k for k in scalar_keys if k not in RESERVED]
     if unknown:
         raise ValueError(

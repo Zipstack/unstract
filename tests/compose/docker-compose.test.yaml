@@ -22,6 +22,13 @@ services:
       # Flips on the Agent-KV calc e2e lane (Task 12); unset/empty (the
       # default) keeps it off so other lanes are unaffected.
       - AGENT_KV_CALCULATIONS_ENABLED=${AGENT_KV_CALCULATIONS_ENABLED:-}
+      # The webhook SSRF waiver, which the backend needs as well as
+      # worker-pg-ide-callback below: the https-and-public-host rule is
+      # applied at SUBMIT as well as at delivery, so without it here the
+      # webhook e2e scenario is refused with a 400 before a job exists and
+      # the worker-side waiver never gets a chance to matter. Both services
+      # read the same variable; unset (the default) keeps both guards on.
+      - AGENT_KV_WEBHOOK_INSECURE_ALLOW_HTTP_PRIVATE=${AGENT_KV_WEBHOOK_INSECURE_ALLOW_HTTP_PRIVATE:-}
 
   platform-service:
     image: unstract/platform-service:${UNSTRACT_TEST_VERSION:-latest}
@@ -51,8 +58,9 @@ services:
       # CELERY_QUEUES_EXECUTOR is read only by workers/executor/worker.py -- the
       # now-disabled Celery executor -- so setting it here drained nothing and
       # the agent-kv lane hung in DISPATCHED with no error at the producer.
-      - WORKER_PG_QUEUE_CONSUMER_QUEUE=${WORKER_PG_QUEUE_CONSUMER_QUEUE:-celery_executor_legacy,celery_executor_agentic,celery_executor_table,celery_executor_smart_table,celery_executor_simple_prompt_studio,celery_executor_agentic_table,celery_executor_lookup_test,celery_executor_agentic_kv}
-      # Agent-KV engine config, read by the cloud `agentic_kv` executor plugin
+      - WORKER_PG_QUEUE_CONSUMER_QUEUE=${WORKER_PG_QUEUE_CONSUMER_QUEUE:-celery_executor_legacy,celery_executor_agentic,celery_executor_table,celery_executor_smart_table,celery_executor_simple_prompt_studio,celery_executor_agentic_table,celery_executor_lookup_test}
+      # Agent-KV engine config, read by the cloud `agentic_kv` and `agentic_table`
+      # executor plugins
       # (not by backend settings) -- docs/agent-kv-api.md §12 item 5 / §13.
       # `AGENT_KV_LLM_PROVIDER` is a v1 hard allowlist of `anthropic`|`openai`.
       # Model names have no safe default -- Task 13b must supply real ones.

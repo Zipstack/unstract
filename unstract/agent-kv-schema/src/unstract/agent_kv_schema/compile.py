@@ -207,49 +207,129 @@ def _reject_unsafe_regex(path: str, pattern: str) -> None:
         )
 
 
-def _check_shape_caps(key_specs: list, array_specs: list, caps: SchemaCaps) -> None:
-    """Leaf, array and per-array-column counts."""
-    if len(key_specs) > caps.max_leaves:
-        raise SchemaError(f"schema exceeds max_leaves={caps.max_leaves}")
-    if len(array_specs) > caps.max_arrays:
-        raise SchemaError(f"schema exceeds max_arrays={caps.max_arrays}")
+#: The formats ``validators._check_one`` actually implements. Anything else is
+#: passed through as a free-text LLM hint, which is deliberate (see the
+#: ``format`` comment on ``KeySpec``) -- and is also why a typo in one of these
+#: six is invisible: ``format: "Number"`` is not a known format, so it becomes a
+#: hint, so ``validate_format`` returns True for every value forever and
+#: ``/validate`` reports ``{"valid": true}``. The author configured validation
+#: and got none, with no error anywhere to find it by.
+_KNOWN_FORMATS = frozenset({"string", "number", "date", "currency", "enum", "regex"})
+
+#: The only two formats that take an ARGUMENT, written `enum:a,b` / `regex:^x$`.
+#: Everything else in `_KNOWN_FORMATS` is a bare name, so `"number: of items"`
+#: cannot be a mis-cased format -- there is no such thing as `number:` -- and
+#: must stay a free-text hint. Scoping the colon check to these two is what
+#: keeps the `Enum:`/`REGEX:` guard from rejecting ordinary prose.
+_ARGUMENT_FORMATS = frozenset({"enum", "regex"})
+
+
+def _reject_unusable_formats(key_specs, array_specs) -> None:
+    """Refuse declared formats that can never validate anything, or always fail.
+
+    Four shapes, all accepted before review and all verified by execution:
+
+    * ``format: "Number"`` -- a case variant of a known format. Silently
+      degrades to a free-text hint, disabling validation for that key. Rejected
+      with the intended spelling, rather than guessed at: a schema author who
+      meant the hint can lower-case it or reword it, and one who meant the
+      format gets told.
+    * ``format: "Enum:paid,unpaid"`` / ``"REGEX:^[0-9]+$"`` -- the same defect
+      class for the two formats that take an ARGUMENT, and the one the first
+      round's fix missed. ``_parse_format`` matches the ``enum:`` / ``regex:``
+      prefix case-sensitively, so these never reach kind ``"enum"``/``"regex"``;
+      they arrive as the whole raw string, which no bare-name comparison
+      matches. Validation was silently off for the key -- the precise outcome
+      the first bullet exists to prevent, reached by a route it did not cover.
+
+      Only ``enum`` and ``regex`` are checked this way (``_ARGUMENT_FORMATS``).
+      Checking every known name against the pre-colon segment rejected
+      ordinary prose -- ``"number: of items"``, ``"date: of issue"`` -- which
+      is a worse failure than the one being fixed, because free text is a
+      SUPPORTED way to describe a key.
+    * ``format: "enum:"`` -- no values, so ``_check_one`` tests membership of
+      the empty set and EVERY non-empty value fails QA for the life of the job.
+    * ``format: "regex:"`` -- empty pattern, so ``re.fullmatch("", v)`` matches
+      nothing but the empty string, which ``validate_format`` already passes
+      before reaching the pattern. Same outcome: nothing can ever conform.
+
+    The last two are worse than the first: they do not disable validation, they
+    invert it, and the result is a document that fails QA no matter what is on
+    the page.
+    """
+    for kspec in _every_leaf(key_specs, array_specs):
+        fmt = kspec.format
+        lowered = fmt.casefold()
+        # `lowered` catches a bare case variant (`"Number"`). The colon arm
+        # catches the two formats that take an ARGUMENT, which the bare check
+        # misses entirely: `_parse_format` matches the `enum:` / `regex:`
+        # prefix case-SENSITIVELY, so `"Enum:paid,unpaid"` never becomes kind
+        # `"enum"` -- it arrives here as the whole raw string, and
+        # `"enum:paid,unpaid".casefold()` is not a member of `_KNOWN_FORMATS`
+        # (which holds the bare `"enum"`). So the mis-cased form slipped this
+        # guard, parsed as a free-text kind, and validation was silently off
+        # for that key -- exactly the failure this function closes for bare
+        # formats.
+        #
+        # Scoped to `_ARGUMENT_FORMATS`, NOT all of `_KNOWN_FORMATS`. Comparing
+        # the pre-colon segment against every known name rejected ordinary
+        # prose: `"number: of items"`, `"date: of issue"`, `"currency: USD"`
+        # and `"string: free text"` all split to a known name and all raised,
+        # forcing authors to reword valid hints. None of those four formats
+        # takes an argument, so `"number:"` is not a spelling of anything and
+        # the hint is simply free text -- which this function must keep
+        # accepting, since free text is how a schema author gives the model a
+        # plain-language description.
+        #
+        # Rejected rather than auto-corrected, to match the bare case above: a
+        # schema author who meant the format gets told the spelling, and one
+        # who meant a free-text hint can reword it. Silently honouring `Enum:`
+        # would make case significant in one direction only.
+        kind_only = lowered.split(":", 1)[0]
+        if fmt not in _KNOWN_FORMATS and (
+            lowered in _KNOWN_FORMATS or (":" in fmt and kind_only in _ARGUMENT_FORMATS)
+        ):
+            raise SchemaError(
+                f"'{kspec.path}' declares format {fmt!r}, which is not a known "
+                f"format and is therefore treated as free text -- no validation "
+                f"would run. Did you mean {lowered!r}?"
+            )
+        if fmt == "enum" and not kspec.enum_values:
+            raise SchemaError(
+                f"'{kspec.path}' declares an enum with no values "
+                f"(e.g. 'enum:paid,unpaid'); as written no value can ever conform."
+            )
+        if fmt == "regex" and not kspec.regex_pattern:
+            raise SchemaError(
+                f"'{kspec.path}' declares an empty regex; as written no value "
+                f"can ever conform."
+            )
+
+
+def _reject_unknown_key_columns(array_specs) -> None:
+    """Refuse an array's ``_key`` that names a column the array does not declare.
+
+    ``key_column`` selects row identity for scoring. A name with no matching
+    column is not an error anywhere downstream -- every row simply misses, and
+    the array silently falls back to positional identity. So a typo costs
+    accuracy on exactly the arrays the author cared enough about to key, and
+    reports nothing.
+    """
     for aspec in array_specs:
-        if len(aspec.item_specs) > caps.max_columns_per_array:
+        if not aspec.key_column:
+            continue  # '' is the documented "positional identity" default
+        columns = {s.path for s in aspec.item_specs}
+        if aspec.key_column not in columns:
             raise SchemaError(
-                f"array '{aspec.path}' exceeds "
-                f"max_columns_per_array={caps.max_columns_per_array}"
+                f"array '{aspec.path}' declares _key "
+                f"{aspec.key_column!r}, which is not one of its columns "
+                f"({sorted(columns)})."
             )
 
 
-def _check_per_key_caps(key_specs: list, array_specs: list, caps: SchemaCaps) -> None:
-    """Regex safety and per-key length caps, for scalar and array columns alike."""
-    for kspec in key_specs + [s for a in array_specs for s in a.item_specs]:
-        _reject_unsafe_regex(kspec.path, kspec.regex_pattern)
-        if len(kspec.regex_pattern) > caps.max_regex_len:
-            raise SchemaError(
-                f"'{kspec.path}' regex exceeds max_regex_len={caps.max_regex_len}"
-            )
-        if len(kspec.aliases) > caps.max_aliases:
-            raise SchemaError(f"'{kspec.path}' exceeds max_aliases={caps.max_aliases}")
-        if len(kspec.effective_description) > caps.max_description_len:
-            raise SchemaError(
-                f"'{kspec.path}' description exceeds "
-                f"max_description_len={caps.max_description_len}"
-            )
-
-
-def _validated_constraints(spec: dict, caps: SchemaCaps) -> list:
-    """The `_constraints` list, checked for type, count and expression syntax."""
-    constraints = spec.get("_constraints", [])
-    if not isinstance(constraints, list) or not all(
-        isinstance(c, str) for c in constraints
-    ):
-        raise SchemaError("_constraints must be a list of strings")
-    if len(constraints) > caps.max_constraints:
-        raise SchemaError(f"schema exceeds max_constraints={caps.max_constraints}")
-    for expr in constraints:
-        _check_constraint_syntax(expr)
-    return constraints
+def _every_leaf(key_specs, array_specs):
+    """Scalar leaves and array columns, which carry the same per-leaf rules."""
+    return list(key_specs) + [s for a in array_specs for s in a.item_specs]
 
 
 def compile_schema(spec: dict, caps: SchemaCaps | None = None) -> CompiledSchema:
@@ -271,10 +351,57 @@ def compile_schema(spec: dict, caps: SchemaCaps | None = None) -> CompiledSchema
     except ValueError as e:
         raise SchemaError(str(e)) from e
 
-    _check_shape_caps(key_specs, array_specs, caps)
-    _check_per_key_caps(key_specs, array_specs, caps)
+    _enforce_shape_caps(key_specs, array_specs, caps)
+    _enforce_leaf_caps(key_specs, array_specs, caps)
+    _reject_unusable_formats(key_specs, array_specs)
+    _reject_unknown_key_columns(array_specs)
     constraints = _validated_constraints(spec, caps)
 
     return CompiledSchema(
         key_specs=key_specs, array_specs=array_specs, constraints=list(constraints)
     )
+
+
+def _enforce_shape_caps(key_specs, array_specs, caps: SchemaCaps) -> None:
+    """Bound how much structure the schema declares."""
+    if len(key_specs) > caps.max_leaves:
+        raise SchemaError(f"schema exceeds max_leaves={caps.max_leaves}")
+    if len(array_specs) > caps.max_arrays:
+        raise SchemaError(f"schema exceeds max_arrays={caps.max_arrays}")
+    for aspec in array_specs:
+        if len(aspec.item_specs) > caps.max_columns_per_array:
+            raise SchemaError(
+                f"array '{aspec.path}' exceeds "
+                f"max_columns_per_array={caps.max_columns_per_array}"
+            )
+
+
+def _enforce_leaf_caps(key_specs, array_specs, caps: SchemaCaps) -> None:
+    """Bound every leaf's author-supplied text, across scalars and array columns."""
+    for kspec in _every_leaf(key_specs, array_specs):
+        _reject_unsafe_regex(kspec.path, kspec.regex_pattern)
+        if len(kspec.regex_pattern) > caps.max_regex_len:
+            raise SchemaError(
+                f"'{kspec.path}' regex exceeds max_regex_len={caps.max_regex_len}"
+            )
+        if len(kspec.aliases) > caps.max_aliases:
+            raise SchemaError(f"'{kspec.path}' exceeds max_aliases={caps.max_aliases}")
+        if len(kspec.effective_description) > caps.max_description_len:
+            raise SchemaError(
+                f"'{kspec.path}' description exceeds "
+                f"max_description_len={caps.max_description_len}"
+            )
+
+
+def _validated_constraints(spec: dict, caps: SchemaCaps) -> list:
+    """Return the schema's `_constraints`, rejecting a malformed or oversized list."""
+    constraints = spec.get("_constraints", [])
+    if not isinstance(constraints, list) or not all(
+        isinstance(c, str) for c in constraints
+    ):
+        raise SchemaError("_constraints must be a list of strings")
+    if len(constraints) > caps.max_constraints:
+        raise SchemaError(f"schema exceeds max_constraints={caps.max_constraints}")
+    for expr in constraints:
+        _check_constraint_syntax(expr)
+    return constraints

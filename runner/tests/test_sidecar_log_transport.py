@@ -57,6 +57,10 @@ class TestSidecarLogTransport:
         # this key, and an explicit default documents the flag-off state.
         assert envs[Env.LOG_TRANSPORT] == "celery"
 
+    def test_forwards_an_explicit_celery_transport(self, sidecar_env):
+        envs = sidecar_env(LOG_TRANSPORT="celery")
+        assert envs[Env.LOG_TRANSPORT] == "celery"
+
     def test_forwards_redis_transport_to_the_sidecar(self, sidecar_env):
         envs = sidecar_env(LOG_TRANSPORT="redis")
         assert envs[Env.LOG_TRANSPORT] == "redis"
@@ -80,8 +84,30 @@ class TestSidecarLogTransport:
 
     def test_celery_broker_still_forwarded_for_the_flag_off_path(self, sidecar_env):
         # Flag-off must stay intact: the sidecar still publishes over AMQP.
-        envs = sidecar_env(CELERY_BROKER_BASE_URL="amqp://x")
+        envs = sidecar_env(
+            CELERY_BROKER_BASE_URL="amqp://x",
+            CELERY_BROKER_USER="u",
+            CELERY_BROKER_PASS="p",
+        )
         assert envs["CELERY_BROKER_BASE_URL"] == "amqp://x"
+        assert envs["CELERY_BROKER_USER"] == "u"
+        assert envs["CELERY_BROKER_PASS"] == "p"
+
+    def test_unset_celery_broker_is_not_forwarded(self, sidecar_env, monkeypatch):
+        # A deployment without a broker must not hand the sidecar unset keys.
+        for key in (
+            Env.CELERY_BROKER_BASE_URL,
+            Env.CELERY_BROKER_USER,
+            Env.CELERY_BROKER_PASS,
+        ):
+            monkeypatch.delenv(key, raising=False)
+        envs = sidecar_env()
+        for key in (
+            Env.CELERY_BROKER_BASE_URL,
+            Env.CELERY_BROKER_USER,
+            Env.CELERY_BROKER_PASS,
+        ):
+            assert key not in envs
 
 
 class TestSidecarRedisTls:

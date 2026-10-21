@@ -19,15 +19,20 @@ is either a guarded UPDATE (``AgentKVJob.mark_terminal``) or a targeted
 single-row write, never a queryset-wide one.
 """
 
+import logging
 from datetime import timedelta
 
 from django.conf import settings
 from django.db.models import Q
+from django.db.models.functions import Coalesce
 from django.utils import timezone
 
+from agent_kv.dispatch import dispatch_terminal_webhook
 from agent_kv.models import AgentKVJob, JobStatus
-from agent_kv.rate_limiter import AgentKVConcurrencyLimiter
+from agent_kv.rate_limiter import SLOT_TTL_SECONDS, AgentKVConcurrencyLimiter
 from agent_kv.storage import delete_job_files
+
+logger = logging.getLogger(__name__)
 
 _MAINTENANCE_BATCH_LIMIT = 500
 # Slots in each TTL-cleanup batch held for rows whose file delete failed before.
@@ -36,6 +41,25 @@ _MAINTENANCE_BATCH_LIMIT = 500
 # the implementation starving each side in turn when one ordering tried to do
 # both. 20% leaves 400 slots for the normal case, where nothing is retrying.
 _TTL_RETRY_RESERVE = 100
+#: What "never dispatched" means, declared once because it is applied TWICE:
+#: as the sweep's candidate query and again inside the guarded UPDATE that
+#: terminalizes each candidate (`mark_terminal(require=...)`).
+#:
+#: Selecting and writing are two statements, and a delayed dispatch landing
+#: between them turns a long-PENDING row into a live DISPATCHED one. Failing
+#: it then would kill a job whose executor is still running and spending, and
+#: release its concurrency slot -- and the executor's finalize could not
+#: recover it either, because the row reads FAILED by then and only a
+#: CANCELLED row is given a second look (`FinalizeView._salvage`). Re-stating
+#: the predicate in the write makes the sweep lose that race instead of the
+#: job (Greptile P1).
+#:
+#: The age cutoff is deliberately NOT in here: `created_at` never changes, so
+#: re-checking it would be noise. Only the two columns a dispatch mutates are.
+_NEVER_DISPATCHED = {
+    "status": JobStatus.PENDING,
+    "dispatched_at__isnull": True,
+}
 _NEVER_DISPATCHED_ERROR = "Job was never dispatched"
 _STUCK_JOB_ERROR = "Job timed out"
 
@@ -91,9 +115,8 @@ def run_sweep() -> dict:
         seconds=settings.AGENT_KV_SWEEP_GRACE_SECONDS
     )
     never_dispatched_candidates = AgentKVJob.objects.filter(
-        status=JobStatus.PENDING,
         created_at__lt=never_dispatched_cutoff,
-        dispatched_at__isnull=True,
+        **_NEVER_DISPATCHED,
     ).order_by("created_at")[:_MAINTENANCE_BATCH_LIMIT]
 
     swept = 0
@@ -109,6 +132,9 @@ def run_sweep() -> dict:
             org_id,
             JobStatus.FAILED,
             error=_NEVER_DISPATCHED_ERROR,
+            # Re-checked in the UPDATE, not just in the SELECT above. See
+            # `_NEVER_DISPATCHED`.
+            require=_NEVER_DISPATCHED,
         )
         if won:
             swept += 1
@@ -116,6 +142,15 @@ def run_sweep() -> dict:
             # worth releasing here -- one a concurrent finalize/cancel
             # won instead already released its own slot on that path.
             AgentKVConcurrencyLimiter.release(str(org_id), str(job.id))
+            # ...and only such a job owes a terminal notification. The sweep
+            # is a THIRD path to a terminal state, alongside finalize and
+            # cancel, and docs §8 promises a POST on every one of them. It
+            # used to send nothing: a job whose dispatch was lost reached
+            # FAILED in silence, and no later callback could cover for it --
+            # it would find an already-terminal row, report `finalized:
+            # False`, and correctly decline to send. The caller simply never
+            # heard again about a job they were told was accepted.
+            dispatch_terminal_webhook(job, "failed")
 
     stuck_cutoff = now - timedelta(seconds=settings.AGENT_KV_STUCK_JOB_GRACE_SECONDS)
     # `dispatched_at__lt` OR `dispatched_at IS NULL`, not just the former.
@@ -136,7 +171,13 @@ def run_sweep() -> dict:
             Q(dispatched_at__lt=stuck_cutoff)
             | Q(dispatched_at__isnull=True, created_at__lt=stuck_cutoff)
         )
-        .order_by("dispatched_at")[:_MAINTENANCE_BATCH_LIMIT]
+        # Coalesce, not a bare `dispatched_at`. The second Q arm exists to
+        # recover rows whose post-enqueue bookkeeping was lost -- they have
+        # `dispatched_at IS NULL` -- but Postgres sorts ascending NULLS LAST,
+        # so with a full batch of non-NULL stuck rows ahead of them those rows
+        # were never selected. The backstop could not fire in exactly the
+        # situation it exists for: a backlog.
+        .order_by(Coalesce("dispatched_at", "created_at"))[:_MAINTENANCE_BATCH_LIMIT]
     )
 
     timed_out = 0
@@ -151,8 +192,142 @@ def run_sweep() -> dict:
         if won:
             timed_out += 1
             AgentKVConcurrencyLimiter.release(str(org_id), str(job.id))
+            # Same as phase 1: this call terminalized the job, so this call
+            # owes the notification. Best-effort, like every other enqueue
+            # site -- a queue failure must not abort the rest of the batch.
+            dispatch_terminal_webhook(job, "failed")
 
-    return {"swept": swept, "timed_out": timed_out}
+    # Phase 3: release slots still held by jobs that were CANCELLED after being
+    # dispatched.
+    #
+    # Cancelling a dispatched job deliberately does NOT release its slot -- the
+    # executor is still running and still billing, so the slot belongs to the
+    # finalize callback that will arrive when it finishes. But if that executor
+    # dies, no callback ever arrives, and neither phase above selects a
+    # CANCELLED row: phase 1 wants PENDING, phase 2 wants DISPATCHED/RUNNING.
+    # The slot then sits occupied until Redis expires it.
+    #
+    # Bounded on BOTH sides, which is what keeps this from rescanning the same
+    # ancient rows forever: old enough that the executor is presumed dead (so a
+    # live one is not cut short) and young enough that Redis still holds the
+    # slot (past the TTL there is nothing left to release).
+    #
+    # Both bounds read `dispatched_at`, and both of those are corrections.
+    #
+    # The floor used `AGENT_KV_STUCK_JOB_GRACE_SECONDS` against the slot TTL
+    # ceiling. Both default to 21600, so the window was
+    # `completed_at < now-21600 AND completed_at > now-21600` -- EMPTY, and
+    # empty for any grace >= TTL. This phase could never select a row and
+    # `released` was always 0, so an abandoned cancelled job held its org's
+    # slot for the full six hours exactly as it would have with no phase 3 at
+    # all. Hence the dedicated, shorter grace.
+    #
+    # The ceiling used `completed_at`, the CANCEL time, to decide whether Redis
+    # still holds the slot -- but the slot is scored by when it was ACQUIRED,
+    # at submit (`rate_limiter.check_and_acquire` zadds with `now` and trims
+    # below `now - SLOT_TTL`). A job submitted seven hours ago and cancelled a
+    # minute ago has a recent `completed_at` and no slot left to release, and
+    # the old bound would have selected it every sweep.
+    # The floor is time since the CANCEL; the ceiling is the age of the slot.
+    # Two different clocks, and the first correction here got that half right
+    # and half wrong.
+    #
+    # Measuring the floor from `dispatched_at` was wrong for the reason review
+    # gave: that column records ENQUEUEING, not when the executor picked the
+    # job up. A queue backlog of more than the grace means a job can satisfy a
+    # dispatch-age test while its executor has only just started -- so
+    # cancelling it would make it eligible on the next sweep and the sweep
+    # would free a slot that is still in use, letting another submit exceed
+    # AGENT_KV_CONCURRENT_LIMIT while the executor bills on.
+    #
+    # Time since the cancel is the quantity that actually answers "has a live
+    # executor had its chance to notice and finalize?", because noticing is
+    # what a cancel triggers. So the floor is `completed_at`.
+    #
+    # The ceiling stays on `dispatched_at`: it asks whether Redis still holds
+    # the slot, and slots are scored by acquisition at submit
+    # (`check_and_acquire` zadds `now` and trims below `now - SLOT_TTL`).
+    # Asking that question of the cancel time was the original bug.
+    #
+    # Different columns, so the window cannot collapse the way it did when
+    # both bounds were `completed_at` with equal constants.
+    abandoned_grace = getattr(settings, "AGENT_KV_ABANDONED_SLOT_GRACE_SECONDS", 3600)
+    cancelled_floor = now - timedelta(seconds=abandoned_grace)
+    slot_ttl_floor = now - timedelta(seconds=SLOT_TTL_SECONDS)
+    abandoned_cancelled = AgentKVJob.objects.filter(
+        status=JobStatus.CANCELLED,
+        dispatched_at__isnull=False,
+        completed_at__lt=cancelled_floor,
+        dispatched_at__gt=slot_ttl_floor,
+        # NEWEST first, the opposite of the other two phases and deliberate.
+        # Releasing a slot does not remove its row from this query -- there is
+        # no "released" marker -- so oldest-first would re-select the same 500
+        # rows every sweep whenever the backlog exceeds the batch limit, and
+        # rows arriving behind them would age out of the window never having
+        # been looked at.
+        #
+        # Newest-first inverts which rows lose: the ones skipped are the oldest,
+        # i.e. closest to the slot TTL floor, where Redis is about to drop the
+        # entry anyway and a release buys almost nothing. Every row is seen
+        # while its release still matters, unless more than
+        # `_MAINTENANCE_BATCH_LIMIT` become eligible inside one sweep interval
+        # -- and the TTL remains the backstop for that.
+        #
+        # Ordered by the CANCEL time, the column the floor filters on: the
+        # rows at risk of ageing out of the window are the ones cancelled
+        # longest ago.
+    ).order_by("-completed_at")[:_MAINTENANCE_BATCH_LIMIT]
+
+    released = 0
+    for job in abandoned_cancelled:
+        # No `dispatch_terminal_webhook` here, unlike phases 1 and 2, and that
+        # asymmetry is deliberate rather than an omission. This phase does not
+        # TERMINALIZE anything -- it only frees a slot on a row that is already
+        # CANCELLED, and whose notification `agent_kv_cancelled` sent the
+        # moment that cancel won. Sending another would be a duplicate telling
+        # the caller nothing new; the one follow-up a cancelled job can still
+        # owe is `result_available`, which the callback worker handles.
+        #
+        # `release` is an idempotent zrem, so re-releasing a slot the callback
+        # already freed costs nothing and is not worth a guard.
+        AgentKVConcurrencyLimiter.release(str(job.organization_id), str(job.id))
+        released += 1
+    if released:
+        logger.info(
+            "agent-kv sweep released %s concurrency slot(s) held by cancelled "
+            "jobs whose executor never called back",
+            released,
+        )
+
+    # These two counts are the only evidence the sweep ran and the only
+    # evidence it had to do anything. A sweep that terminalizes a thousand jobs
+    # as FAILED used to emit nothing at all -- the module has had no logger
+    # since it was written -- so a backlog of stranded jobs looked identical to
+    # a quiet, healthy system.
+    if swept or timed_out:
+        logger.warning(
+            "agent-kv sweep terminalized %s never-dispatched and %s stuck job(s); "
+            "a non-zero count here means jobs were stranded and their "
+            "concurrency slots held",
+            swept,
+            timed_out,
+        )
+    else:
+        logger.info("agent-kv sweep: nothing to terminalize")
+    # `released` is reported, not just logged. Phase 3 counted slot releases
+    # into a local, logged it, and then returned only the first two counts --
+    # so `SweepView` (which returns this dict verbatim) and the scheduler task
+    # (which logs it) could never show that any slot was recovered. That is the
+    # same "counted, then discarded before the caller sees it" shape as the
+    # round-1 finding about this function's return value, reintroduced by the
+    # phase that was added to fix a different half of it.
+    #
+    # It matters operationally: a cancelled job whose executor never called
+    # back holds a slot against the org's cap, and phase 3 is the only thing
+    # that frees it. Without this key, "the cap is being hit and the sweep is
+    # recovering slots" and "the cap is being hit and nothing is recovering
+    # anything" produce identical output.
+    return {"swept": swept, "timed_out": timed_out, "released": released}
 
 
 def run_ttl_cleanup() -> dict:
@@ -167,6 +342,13 @@ def run_ttl_cleanup() -> dict:
     the candidate set on the next pass.
 
     Platform-wide by design, same as :func:`run_sweep`.
+
+    **Every row this touches is stamped ``files_purged``**, before its deletes
+    are attempted and whether or not they succeed. The sweep is a purge, so it
+    is one of the two paths that owe that marker -- the other being
+    ``JobStatusView.delete`` -- and
+    ``AgentKVJob.attach_result_to_cancelled`` refuses to graft a late result
+    onto a row carrying it. See ``AgentKVJob.mark_files_purged``.
 
     **Two queries, not one ordering.** Retaining a ref whose delete failed is
     what makes a retry possible at all, but it also means failed rows compete
@@ -192,8 +374,17 @@ def run_ttl_cleanup() -> dict:
     row before applying the limit, which grows with the backlog.
     """
     now = timezone.now()
-    expired = AgentKVJob.objects.filter(expires_at__lt=now).filter(
-        Q(input_ref__gt="") | Q(result_ref__gt="")
+    # TERMINAL only. Without this, a job still RUNNING past `expires_at` had
+    # its staged input deleted out from under the executor -- the TTL is a
+    # retention policy for finished work, not a kill switch for running work.
+    # Reachable whenever a job is stuck non-terminal for longer than
+    # AGENT_KV_RESULT_TTL_DAYS, which is precisely what the sweep's phase 2
+    # exists to catch; the sweep terminalizes those first, and then this
+    # cleans them.
+    expired = (
+        AgentKVJob.objects.filter(expires_at__lt=now)
+        .filter(status__in=list(AgentKVJob.TERMINAL))
+        .filter(Q(input_ref__gt="") | Q(result_ref__gt=""))
     )
 
     # Retries first, capped at the reserve so they cannot crowd out fresh work.
@@ -224,7 +415,23 @@ def run_ttl_cleanup() -> dict:
         # unconditionally, so a transient object-store failure orphaned the file
         # permanently (the candidate filters above only match rows that still
         # carry a non-blank ref, so a blanked row can never be reconsidered).
-        cleared = delete_job_files(job)
+        #
+        # `mark_files_purged` first, for the same two reasons `JobStatusView.
+        # delete` calls it: it records the purge UNCONDITIONALLY (a failed
+        # delete below must not leave the marker False -- it says the files are
+        # being destroyed, not that they are gone), and it returns the row read
+        # under a lock so the deletes act on the refs that exist NOW.
+        #
+        # The lock is what stops `AgentKVJob.attach_result_to_cancelled`
+        # interleaving between this read and the blanking update below. Without
+        # it, an attach landing in that window sets a `result_ref` this pass has
+        # already read as blank, the blanking write then clears it without the
+        # file ever having been deleted, and the candidate filters above
+        # (`input_ref > "" OR result_ref > ""`) can never select the row again:
+        # extracted customer data left in the bucket past its retention window,
+        # with nothing pointing at it. See that method's docstring.
+        row = AgentKVJob.mark_files_purged(job.id, job.organization_id) or job
+        cleared = delete_job_files(row)
         fields: dict = dict.fromkeys(cleared, "")
         if len(cleared) == 2:
             cleaned += 1
@@ -246,4 +453,16 @@ def run_ttl_cleanup() -> dict:
     # stays high across ticks is the signal that something is wrong with the
     # object store rather than with one job -- the split stops either side
     # blocking the other, it does not make a persistent fault harmless.
+    # `retained` is the count this pass could NOT clean -- a file delete that
+    # failed keeps its ref so the next pass retries it. A `retained` that never
+    # falls is a stuck object, and stays invisible without this.
+    if retained:
+        logger.warning(
+            "agent-kv TTL cleanup removed %s job(s) and RETAINED %s whose files "
+            "could not be deleted; those refs are kept for the next pass",
+            cleaned,
+            retained,
+        )
+    elif cleaned:
+        logger.info("agent-kv TTL cleanup removed %s expired job(s)", cleaned)
     return {"cleaned": cleaned, "retained": retained}

@@ -1,6 +1,11 @@
-#: v1 accepts exactly one extractor (`kv`), so the job row does not carry which
-#: one it ran. When fan-out lands this becomes per-job state rather than a
-#: constant -- the wire format (spec §7.0) is already shaped for that.
+#: The `kv` extractor's name. Kept as a constant, but NOT routable on this
+#: deployment -- see `EXTRACTOR_ROUTES` below, which carries `table` only.
+#:
+#: An earlier version of this comment said "v1 accepts exactly one extractor
+#: (`kv`), so the job row does not carry which one it ran". Both halves are now
+#: wrong, on line 1 of the file that defines the routing table: `kv` is the one
+#: extractor this deployment does NOT accept, and `AgentKVJob.extractor` has
+#: carried the name since migration 0002.
 V1_EXTRACTOR_NAME = "kv"
 
 STAGE_NAMES = [
@@ -30,8 +35,21 @@ OPERATION_TABLE_EXTRACT_API = "table_extract_api"
 #: Which executor and operation each extractor dispatches to. `dispatch_job`
 #: reads this rather than hardcoding one pair, so adding an extractor is one
 #: entry here plus its options serializer and stage list.
+#:
+#: **`kv` is deliberately absent.** This deployment ships the `agentic_table`
+#: plugin and not `agentic_kv`, so nothing drains `celery_executor_agentic_kv`.
+#: `SUPPORTED_EXTRACTORS` is derived from this table's keys
+#: (`execution_serializers.py`), so the omission turns a `kv` submit into a 400
+#: at the serializer. Restoring the entry below is all it takes to re-enable
+#: the extractor once the plugin ships -- and restoring it WITHOUT the plugin
+#: is the failure this guards: the submit would be accepted with a 202,
+#: dispatched to a queue with no consumer, and sit in DISPATCHED forever with
+#: no error at the producer and nothing in any log to find.
+#:
+#: `V1_EXTRACTOR_NAME`, `STAGE_NAMES` and the KV options serializer stay in the
+#: tree, dormant and still under test, so re-enabling is one line rather than a
+#: content merge against the branch that carries the engine.
 EXTRACTOR_ROUTES = {
-    V1_EXTRACTOR_NAME: (EXECUTOR_NAME, OPERATION_KV_EXTRACT),
     TABLE_EXTRACTOR_NAME: (TABLE_EXECUTOR_NAME, OPERATION_TABLE_EXTRACT_API),
 }
 

@@ -66,6 +66,10 @@ const OutputAnalyzerPage = lazyNamed(
   () => import("../pages/OutputAnalyzerPage.jsx"),
   "OutputAnalyzerPage",
 );
+const AgentKvKeysPage = lazyNamed(
+  () => import("../pages/AgentKvKeysPage.jsx"),
+  "AgentKvKeysPage",
+);
 const PlatformApiKeysPage = lazyNamed(
   () => import("../pages/PlatformApiKeysPage.jsx"),
   "PlatformApiKeysPage",
@@ -314,6 +318,10 @@ function useMainAppRoutes() {
             path="settings/global-api-deployment-keys"
             element={<GlobalApiDeploymentKeysPage />}
           />
+          {/* Under RequireAdmin with its siblings: the backend gates key
+              management on IsOrganizationAdmin, so a non-admin reaching this
+              route would get a page of 403s rather than a usable screen. */}
+          <Route path="settings/agent-kv-keys" element={<AgentKvKeysPage />} />
         </Route>
         <Route path="settings/triad" element={<DefaultTriad />} />
         {RequirePlatformAdmin && PlatformAdminPage && (

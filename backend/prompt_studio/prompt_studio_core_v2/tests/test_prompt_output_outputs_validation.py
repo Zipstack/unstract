@@ -35,7 +35,7 @@ def _request(outputs):
     # require_http_methods reads request.method; a MagicMock attribute is not
     # the string "POST" and the view short-circuits with 405.
     request.method = "POST"
-    request.body = json.dumps(
+    body = json.dumps(
         {
             "run_id": "run-1",
             "prompt_ids": [_PROMPT_ID],
@@ -43,7 +43,10 @@ def _request(outputs):
             "document_id": _DOC_ID,
             "is_single_pass_extract": True,
         }
-    )
+    ).encode()
+    request.body = body
+    request.read.return_value = body
+    request.META = {"CONTENT_LENGTH": str(len(body))}
     return request
 
 
@@ -79,14 +82,17 @@ def test_non_mapping_metadata_rejected():
     `if not prompts` early exit — so it 500s even with valid outputs."""
     request = MagicMock()
     request.method = "POST"
-    request.body = json.dumps(
+    body = json.dumps(
         {
             "prompt_ids": [_PROMPT_ID],
             "document_id": _DOC_ID,
             "outputs": {"invoice_number": "INV-001"},
             "metadata": [],
         }
-    )
+    ).encode()
+    request.body = body
+    request.read.return_value = body
+    request.META = {"CONTENT_LENGTH": str(len(body))}
     response = prompt_output(request)
     assert response.status_code == 400
     assert "metadata must be a JSON object" in _body(response)["error"]
@@ -136,7 +142,10 @@ def test_missing_outputs_defaults_to_empty_dict_and_is_accepted():
     """Absent `outputs` has always meant {}; the guard must not change that."""
     request = MagicMock()
     request.method = "POST"
-    request.body = json.dumps({"prompt_ids": [_PROMPT_ID], "document_id": _DOC_ID})
+    body = json.dumps({"prompt_ids": [_PROMPT_ID], "document_id": _DOC_ID}).encode()
+    request.body = body
+    request.read.return_value = body
+    request.META = {"CONTENT_LENGTH": str(len(body))}
     with patch(
         "prompt_studio.prompt_studio_v2.models.ToolStudioPrompt.objects"
     ) as prompts, patch(

@@ -1,14 +1,36 @@
-"""Cross-field consistency (spec §18.3): a fail-closed evaluator for schema-author-declared
+"""Cross-field consistency (spec §18.3): an ADVISORY evaluator for schema-author-declared
 constraints over the NORMALIZED key values. No eval/exec — a static AST allowlist (Compare/BoolOp/
 BinOp/UnaryOp/Name/Attribute-path/Constant only). Operands resolve to normalized values; a missing/
-empty/un-coercible operand SKIPS the constraint (advisory), never crashes. Returns violated exprs.
+empty/un-coercible operand SKIPS the constraint, never crashes. Returns violated exprs.
+
+Two senses of "fail-closed" were conflated here, and this docstring used to
+claim the wrong one. What IS fail-closed is the *grammar*: anything outside the
+allowlist is refused rather than executed, so no constraint can run code. What
+is NOT fail-closed is the *outcome*: a constraint that cannot be evaluated --
+missing operand, mixed types, or an unexpected exception -- is dropped, and
+``evaluate_constraints`` records only ``is False`` as a violation. So a dropped
+constraint is indistinguishable, in the return value, from one that passed.
+
+That matters because dropping is REACHABLE, not theoretical: `_BIN` includes
+`truediv`, so `unit_price == line_total / quantity` is an accepted constraint,
+and a row where `quantity` normalizes to `0.0` raises `ZeroDivisionError`. The
+QA result then reports ``violations: []`` -- a positive assurance that nothing
+was checked.
+
+Until the result shape can carry a third state (skipped-with-reason), every
+drop is LOGGED, so the condition is at least diagnosable from the worker logs
+rather than silent. Surfacing it in the QA document is a public contract change
+on the `kv` extractor, which this deployment does not ship; tracked separately.
 """
 
 import ast
+import logging
 import math
 import operator
 
 from .validators import coerce_number
+
+logger = logging.getLogger(__name__)
 
 # Equality on these values is TOLERANT, not exact. Operands are normalized
 # currency/number values that arrived as floats, so binary floating point makes
@@ -108,30 +130,14 @@ def _coerce(raw: str):
     return n if n is not None else raw
 
 
-def _aggregate(node: ast.Call, arrays: dict[str, list[dict[str, str]]]):
-    """Evaluate one of the five allowlisted aggregates over an array column.
+def _parse_agg_call(node: ast.Call) -> tuple[str, str, str]:
+    """Validate `NAME('literal')` and split it into (fn, array_path, column).
 
-    FAIL-CLOSED by construction: nothing reaches an aggregate that `_agg_call_parts`
-    has not first validated as `NAME('literal')`, and any deviation there raises
-    `_Skip` (-> constraint skipped, never run). The argument is `'array_path'` (only
-    valid for count, = row count) or `'array_path.column'`; see `_agg_count` and
-    `_agg_numeric` for what each does with the cells.
-    """
-    fn, array_path, column = _agg_call_parts(node)
-    rows = arrays.get(array_path)
-    if rows is None:  # no such array available
-        raise _Skip()
-    if fn == "count":
-        return _agg_count(rows, column)
-    return _agg_numeric(fn, rows, column)
-
-
-def _agg_call_parts(node: ast.Call) -> tuple[str, str, str]:
-    """Validate `NAME('array[.column]')` and split it into (fn, array_path, column).
-
-    This is the fail-closed gate: the func must be a bare `ast.Name` in `_AGG` (no
-    attribute access -- blocks `os.system`/`x.__class__`), exactly one positional arg,
-    no keywords, and that arg a string Constant. Any deviation raises `_Skip`.
+    FAIL-CLOSED by construction: the only thing accepted is `NAME('literal')`
+    where NAME is in `_AGG`, the func is a bare `ast.Name` (no attribute access
+    -- blocks `os.system` / `x.__class__`), there is exactly one positional arg,
+    no keywords, and that arg is a string Constant. Any deviation raises `_Skip`,
+    so the constraint is skipped and never run.
     """
     if not isinstance(node.func, ast.Name) or node.func.id not in _AGG:
         raise _Skip()  # not a whitelisted aggregate name
@@ -141,9 +147,9 @@ def _agg_call_parts(node: ast.Call) -> tuple[str, str, str]:
     if not (isinstance(arg, ast.Constant) and isinstance(arg.value, str)):
         raise _Skip()  # arg must be a literal string path
     ref = arg.value
-    # Split on the LAST dot: an ArraySpec.path may itself be dotted (e.g. 'invoice.lines'),
-    # while the column is always a row-LOCAL bare name. A bare ref (no dot) is a whole-array
-    # row count -> array_path=ref, column=''.
+    # Split on the LAST dot: an ArraySpec.path may itself be dotted (e.g.
+    # 'invoice.lines'), while the column is always a row-LOCAL bare name. A bare
+    # ref (no dot) is a whole-array row count -> array_path=ref, column=''.
     if "." in ref:
         array_path, _, column = ref.rpartition(".")
     else:
@@ -151,25 +157,57 @@ def _agg_call_parts(node: ast.Call) -> tuple[str, str, str]:
     return node.func.id, array_path, column
 
 
-def _agg_count(rows: list[dict[str, str]], column: str) -> float:
-    """`count('array')` is the row count; `count('array.col')` counts non-empty cells."""
-    if not column:  # count('array') -> number of rows
-        return float(len(rows))
-    # count('array.col') -> rows with a non-empty value for that column (text columns
-    # like sku/description/name are valid to count; numeric coercion would zero them out)
-    return float(sum(1 for r in rows if (r.get(column) or "").strip() != ""))
+def _aggregate(node: ast.Call, arrays: dict[str, list[dict[str, str]]]):
+    """Evaluate one of the five allowlisted aggregates over an array column.
 
+    FAIL-CLOSED by construction: the only thing this accepts is `NAME('literal')` where
+    NAME is in `_AGG`, the func is a bare ast.Name (no attribute access — blocks
+    `os.system`/`x.__class__`), there is exactly one positional arg, no keywords, and that
+    arg is a string Constant. Any deviation raises `_Skip` (-> constraint skipped, never run).
 
-def _agg_numeric(fn: str, rows: list[dict[str, str]], column: str) -> float:
-    """sum/min/max/avg over the numeric cells of one column.
+    Argument is `'array_path'` (only valid for count = row count) or `'array_path.column'`.
+    Numeric cells (sum/min/max/avg) are pulled with the SAME `coerce_number` used elsewhere
+    (strips commas/$/%, drops non-finite/empty -> None); such cells are skipped (not zeroed).
+    `count('a.col')` counts rows whose column value is NON-EMPTY (text columns like
+    sku/description count too); `count('a')` is the row count. A sum/min/max/avg over zero
+    usable cells raises `_Skip` (advisory) rather than guessing 0, and sum/avg additionally
+    require EVERY row to contribute -- see the comment at that check.
 
-    Non-numeric and non-finite cells are skipped (not zeroed). Zero usable cells
-    raises `_Skip` (advisory) rather than guessing 0.
+    "FAIL-CLOSED" above is about the grammar, not the outcome: a deviation is
+    refused rather than executed. A `_Skip` is then reported by
+    `evaluate_constraints` as "no violation", which is the module docstring's
+    subject.
     """
+    fn, array_path, column = _parse_agg_call(node)
+    rows = arrays.get(array_path)
+    if rows is None:  # no such array available
+        raise _Skip()
+
+    if fn == "count":
+        if not column:  # count('array') -> number of rows
+            return float(len(rows))
+        # count('array.col') -> rows with a non-empty value for that column (text columns
+        # like sku/description/name are valid to count; numeric coercion would zero them out)
+        return float(sum(1 for r in rows if (r.get(column) or "").strip() != ""))
+
     if not column:  # sum/min/max/avg need a column
         raise _Skip()
     nums = [n for r in rows if (n := coerce_number(r.get(column))) is not None]
     if not nums:  # nothing usable -> advisory skip
+        raise _Skip()
+    # A PARTIAL sum or average is not the column's sum or average -- it is a
+    # smaller number that will then be compared against a scalar key covering
+    # the whole column, and report a violation on a CORRECT document. One
+    # blank or un-parseable cell in a 40-row invoice is enough. That is the
+    # same false-positive class the comparison tolerance above exists to
+    # eliminate, arriving by a different route, so sum/avg require every row
+    # to contribute and otherwise skip (advisory) rather than guess.
+    #
+    # min/max/count are deliberately NOT subject to this: they are meaningful
+    # over a subset by construction (the smallest value present, the largest
+    # value present, the number of rows carrying one), and `count` has already
+    # returned above.
+    if fn in ("sum", "avg") and len(nums) != len(rows):
         raise _Skip()
     # `math.fsum`, not the builtin `sum`: exactly-rounded, so accumulation error
     # does not grow with row count. The builtin accumulates left to right, and
@@ -229,11 +267,13 @@ def _truth(node, values: dict[str, str], arrays: dict[str, list[dict[str, str]]]
 
 
 def _compare_chain(
-    node: ast.Compare,
-    values: dict[str, str],
-    arrays: dict[str, list[dict[str, str]]],
+    node: ast.Compare, values: dict[str, str], arrays: dict[str, list[dict[str, str]]]
 ) -> bool:
-    """Evaluate `a < b <= c` left to right, short-circuiting on the first False."""
+    """Evaluate a (possibly chained) comparison, Python-style: `a < b < c`.
+
+    Each link is checked against the previous operand, so the chain short-
+    circuits on the first False exactly as the language does.
+    """
     left = _operand(node.left, values, arrays)
     for op, comp in zip(node.ops, node.comparators, strict=False):
         if type(op) not in _CMP:
@@ -255,13 +295,32 @@ def _evaluate_one(
     try:
         tree = ast.parse(expr, mode="eval")
     except SyntaxError:
+        # Unreachable from the API: `compile._check_constraint_syntax` parses
+        # every constraint at submit. Still logged, because reaching it means
+        # a constraint got in past that gate.
+        logger.warning("agent-kv constraint does not parse, skipping: %r", expr)
         return None
     try:
         return _truth(tree.body, values, arrays)
     except _Skip:
+        # The ordinary, expected drop: an operand is missing, empty, or not
+        # like-typed. Debug rather than warning -- on a document with optional
+        # keys this is normal and would otherwise be per-constraint noise.
+        logger.debug("agent-kv constraint skipped (operand unusable): %r", expr)
         return None
     except Exception:
-        return None  # fail-closed: any surprise -> skip, never crash the pipeline
+        # NOT fail-closed, whatever the previous comment on this line said: the
+        # caller turns None into "no violation", so this returns a pass for a
+        # check that never ran. `ZeroDivisionError` on a quantity of 0 reaches
+        # here. Keeping the catch is still right -- one bad constraint must not
+        # fail the whole extraction -- but it is logged at exception level so
+        # the drop is findable, which is the part that was missing.
+        logger.exception(
+            "agent-kv constraint raised and was DROPPED (reported as no "
+            "violation, not as a failure): %r",
+            expr,
+        )
+        return None
 
 
 def evaluate_constraints(

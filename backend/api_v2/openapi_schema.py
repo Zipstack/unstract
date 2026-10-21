@@ -9,15 +9,18 @@ they are written for the caller rather than the maintainer.
 """
 
 from drf_spectacular.utils import (
+    OpenApiExample,
     OpenApiParameter,
     OpenApiResponse,
     extend_schema,
     extend_schema_serializer,
     extend_schema_view,
 )
+from drf_standardized_errors.openapi import AutoSchema as StandardizedErrorsAutoSchema
 from platform_api.openapi_schema import PlatformKeyError
 from rest_framework import serializers
 
+from api_v2.error_message import add_error_message
 from api_v2.models import API_NAME_MAX_LENGTH, DESCRIPTION_MAX_LENGTH
 from api_v2.serializers import (
     APIDeploymentListSerializer,
@@ -116,6 +119,44 @@ class ErrorResponse(serializers.Serializer):
     errors = ErrorDetail(many=True)
 
 
+class ErrorMessage(serializers.Serializer):
+    """The failure in the same place an execution reports its own."""
+
+    execution_status = serializers.CharField(help_text="Always `ERROR`.")
+    error = serializers.CharField(
+        help_text="Every problem in `errors`, as one readable string."
+    )
+
+
+class DeploymentErrorResponse(ErrorResponse):
+    """The body of a rejected execute request.
+
+    Carries `message.error` as well, so a client can read the failure from the
+    key an execution reports it in, whatever went wrong.
+    """
+
+    message = ErrorMessage()
+
+
+class DeploymentAutoSchema(StandardizedErrorsAutoSchema):
+    """Shows the injected handler examples on execute with the `message` block
+    the deployment view adds, so they match `DeploymentErrorResponse`.
+    """
+
+    def _get_error_response_examples(self) -> list[OpenApiExample]:
+        if self.method != "POST":
+            return super()._get_error_response_examples()
+        return [
+            OpenApiExample(
+                example.name,
+                value=add_error_message(dict(example.value)),
+                response_only=example.response_only,
+                status_codes=example.status_codes,
+            )
+            for example in super()._get_error_response_examples()
+        ]
+
+
 # Restates the route's own pattern so a client rejects a mistyped identifier
 # without a round trip.
 PATH_SEGMENT = {"type": "string", "pattern": r"^[\w-]+$"}
@@ -156,20 +197,29 @@ DEPLOYMENT_ERRORS = {
     ),
 }
 
+# The execute endpoint also mirrors each rejection into `message`; the status
+# read does not, because there `message` is the result.
+EXECUTE_REQUEST_ERRORS = {
+    code: OpenApiResponse(DeploymentErrorResponse, description=response.description)
+    for code, response in DEPLOYMENT_ERRORS.items()
+}
+
 # Only the execution endpoint fetches documents and takes a rate-limit slot, so
 # these cannot arise on the status read.
 EXECUTE_ERRORS = {
     413: OpenApiResponse(
-        ErrorResponse, description="A referenced document is larger than the limit."
+        DeploymentErrorResponse,
+        description="A referenced document is larger than the limit.",
     ),
     429: OpenApiResponse(
-        ErrorResponse, description="Too many concurrent executions; retry later."
+        DeploymentErrorResponse,
+        description="Too many concurrent executions; retry later.",
     ),
     502: OpenApiResponse(
-        ErrorResponse, description="A referenced document could not be fetched."
+        DeploymentErrorResponse, description="A referenced document could not be fetched."
     ),
     504: OpenApiResponse(
-        ErrorResponse, description="Fetching a referenced document timed out."
+        DeploymentErrorResponse, description="Fetching a referenced document timed out."
     ),
 }
 
@@ -220,7 +270,7 @@ DEPLOYMENT_EXECUTION_SCHEMA = extend_schema_view(
                 description="The deployment could not be run; the body carries the "
                 "execution that failed.",
             ),
-            **DEPLOYMENT_ERRORS,
+            **EXECUTE_REQUEST_ERRORS,
             **EXECUTE_ERRORS,
         },
         description=EXECUTE_DESCRIPTION,

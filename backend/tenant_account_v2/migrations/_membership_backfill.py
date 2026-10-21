@@ -72,6 +72,59 @@ def backfill_memberships(apps, app_label: str, model_name: str) -> None:
     )
 
 
+def repair_ownerless_owner_rows(apps, app_label: str, model_name: str) -> int:
+    """Give ``created_by`` an OWNER row on resources that have no owner at all.
+
+    Only resources with *zero* OWNER rows are touched, so a creator who was
+    deliberately replaced by a co-owner is not resurrected. Null creator or
+    null organization means there is nothing to grant, so those are skipped.
+    Idempotent: a second run finds no ownerless rows.
+    """
+    Resource = apps.get_model(app_label, model_name)  # NOSONAR
+    Membership = apps.get_model("tenant_account_v2", "ResourceMembership")  # NOSONAR
+    ContentType = apps.get_model("contenttypes", "ContentType")  # NOSONAR
+
+    content_type = ContentType.objects.get_for_model(Resource)
+    owned_ids = set(
+        Membership.objects.filter(content_type=content_type, role=OWNER).values_list(
+            "object_id", flat=True
+        )
+    )
+
+    # Base manager: unscoped with both live and historical models.
+    repaired = promoted = skipped = 0
+    for resource in Resource._base_manager.exclude(created_by=None).iterator():
+        if resource.organization_id is None:
+            skipped += 1
+            continue
+        object_id = str(resource.pk)
+        if object_id in owned_ids:
+            continue
+        # ``update_or_create``, not ``get_or_create``: membership is unique per
+        # (user, resource), so a creator already holding a VIEWER row would be
+        # returned unchanged and stay locked out. Promoting is safe because only
+        # resources with zero OWNER rows reach this point.
+        _, created = Membership.objects.update_or_create(
+            content_type=content_type,
+            object_id=object_id,
+            user_id=resource.created_by_id,
+            defaults={"role": OWNER, "organization_id": resource.organization_id},
+        )
+        repaired += 1
+        promoted += int(not created)
+
+    logger.info(
+        "%s.%s ownerless repair: owners granted=%s (%s promoted from an existing "
+        "row; skipped %s null-org)",
+        app_label,
+        model_name,
+        repaired,
+        promoted,
+        skipped,
+    )
+    return repaired
+
+
 def repair_platform_key_ownership(apps) -> None:
     """Re-point service-account OWNER rows to the key's live creator.
 

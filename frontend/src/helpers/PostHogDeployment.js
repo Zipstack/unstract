@@ -12,4 +12,10 @@ const getDeployment = () =>
 // PII (email, name) may only leave Unstract-managed SaaS deployments
 const isSaasProdDeployment = () => getDeployment() !== "self-hosted";
 
-export { getDeployment, isSaasProdDeployment };
+// Error text can contain customer endpoints, so it is sent only from SaaS.
+const saasOnlyErrorProps = (errorMessage) =>
+  typeof errorMessage === "string" && errorMessage && isSaasProdDeployment()
+    ? { error: errorMessage.slice(0, 200) }
+    : {};
+
+export { getDeployment, isSaasProdDeployment, saasOnlyErrorProps };

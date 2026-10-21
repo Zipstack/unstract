@@ -14,6 +14,10 @@ from s3fs.core import S3FileSystem
 from unstract.connectors.exceptions import ConnectorError
 from unstract.connectors.filesystems.unstract_file_system import UnstractFileSystem
 
+# sdk1 is already a runtime dependency here via `unstract.filesystem`. Importing
+# storage_compat also re-adds Content-MD5 on DeleteObjects (UN-4224).
+from unstract.sdk1.patches.storage_compat import S3_CHECKSUM_CONFIG
+
 from .exceptions import (
     BUCKET_PROBE_DISPOSITION,
     BucketProbeDisposition,
@@ -22,36 +26,6 @@ from .exceptions import (
 )
 
 logger = logging.getLogger(__name__)
-
-
-class _BucketScopedFileSystem(DirFileSystem):
-    """`DirFileSystem.walk()` relpaths the directory string it yields, but
-    not the `name` field inside each file/dir entry's own metadata dict —
-    those still carry the wrapped fs's raw, bucket-prefixed key. `ls()`
-    already fixes every entry; `walk()` doesn't. Fix it here so discovery
-    (which walks) and browsing (which lists) agree (UN-3487).
-    """
-
-    def _relpath_entries(
-        self, entries: dict[str, Any] | list[str]
-    ) -> dict[str, Any] | list[str]:
-        # detail=False (fsspec's own default) yields bare basenames with
-        # nothing to fix. detail=True yields a dict already keyed by bare
-        # basename — only each entry's own `name` field is bucket-qualified.
-        if not isinstance(entries, dict):
-            return entries
-        return {
-            name: {**info, "name": self._relpath(info["name"])}
-            for name, info in entries.items()
-        }
-
-    def walk(self, path: str, *args: Any, **kwargs: Any) -> Any:
-        for root, dirs, files in super().walk(path, *args, **kwargs):
-            yield root, self._relpath_entries(dirs), self._relpath_entries(files)
-
-    async def _walk(self, path: str, *args: Any, **kwargs: Any) -> Any:
-        async for root, dirs, files in super()._walk(path, *args, **kwargs):
-            yield root, self._relpath_entries(dirs), self._relpath_entries(files)
 
 
 # Cap concurrent per-bucket probes to avoid S3 503 SlowDown on large accounts.
@@ -205,6 +179,9 @@ class MinioFS(UnstractFileSystem):
             default_cache_type="none",
             skip_instance_cache=True,
             client_kwargs=client_kwargs,
+            # No aws-chunked uploads: UCS (GCS's S3 API) and TLS MinIO get the
+            # plain payload-signed requests boto3 1.34 sent (UN-4224).
+            config_kwargs=dict(S3_CHECKSUM_CONFIG),
             **creds,
         )
 
@@ -371,12 +348,13 @@ class MinioFS(UnstractFileSystem):
         """Return the filesystem scoped to this connector's bucket.
 
         When a bucket is configured, every operation (list, read, write,
-        `test_credentials`) is confined to it via `_BucketScopedFileSystem` —
-        the underlying credentials may see more, but this connector never
-        will.
+        `test_credentials`) is confined to it via `DirFileSystem` — the
+        underlying credentials may see more, but this connector never will.
+        Since fsspec 2026.x, `DirFileSystem.walk()` also relpaths each entry's
+        own `name` field, so walk and ls agree without an override (UN-3487).
         """
         if self.bucket:
-            return _BucketScopedFileSystem(path=self.bucket, fs=self.s3)
+            return DirFileSystem(path=self.bucket, fs=self.s3)
         return self.s3
 
     def test_credentials(self) -> bool:
