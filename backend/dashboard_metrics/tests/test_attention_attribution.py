@@ -339,9 +339,23 @@ class AttentionProviderRegistryTests(_Seed, TestCase):
             "since a date": {**good, "count": 1, "since": self.now.date()},
             "id not a string": {**good, "count": 1, "id": 7},
             "name not a string": {**good, "count": 1, "name": 7},
+            "since without a timezone": {
+                **good,
+                "count": 1,
+                "since": self.now.replace(tzinfo=None),
+            },
+            "bad route key": {**good, "count": 1, "route_key": "Detail"},
+            "route param not a string": {
+                **good,
+                "count": 1,
+                "route_key": "x.detail",
+                "route_params": {"id": 7},
+            },
+            "details not a dict": {**good, "count": 1, "details": []},
+            "details not renderable": {**good, "count": 1, "details": {"x": object()}},
         }
         for name, fields in cases.items():
-            with self.subTest(name), self.assertRaises(ValueError):
+            with self.subTest(name), self.assertRaises((ValueError, TypeError)):
                 attention._serialize(_Reviews(), AttentionItem(**fields))
         self.assertEqual(
             attention._serialize(_Reviews(), AttentionItem(**good, count=0))["count"], 0

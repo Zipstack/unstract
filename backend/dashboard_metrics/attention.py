@@ -8,6 +8,7 @@ where its app is installed and OSS never names a cloud kind. The response contra
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 from abc import ABC, abstractmethod
@@ -18,12 +19,15 @@ from typing import Any
 from api_v2.models import APIDeployment
 from django.db.models import QuerySet
 from pipeline_v2.models import Pipeline
+from rest_framework.utils.encoders import JSONEncoder
 from workflow_manager.workflow_v2.failing_streaks import FailingStreak, failing_streaks
 
 logger = logging.getLogger(__name__)
 
 # Same pattern the published JSON Schema requires of ``kind``.
 _KIND = re.compile(r"^[a-z][a-z0-9_]*$")
+# Same pattern the published JSON Schema requires of ``route.key``.
+_ROUTE_KEY = re.compile(r"^[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*$")
 
 
 @dataclass(frozen=True)
@@ -152,9 +156,25 @@ def _serialize(provider: AttentionProvider, item: AttentionItem) -> dict[str, An
             f"Item id must be a string and name a string or None, "
             f"got {item.id!r} and {item.name!r}"
         )
-    if not isinstance(item.since, datetime | None):
-        raise ValueError(f"Item since must be a datetime, got {item.since!r}")
-    return item.to_dict()
+    if not isinstance(item.since, datetime | None) or (
+        item.since is not None and item.since.tzinfo is None
+    ):
+        raise ValueError(f"Item since must be an aware datetime, got {item.since!r}")
+    if item.route_key is not None and not _ROUTE_KEY.fullmatch(str(item.route_key)):
+        raise ValueError(f"Invalid route key {item.route_key!r}")
+    if not isinstance(item.route_params, dict) or not all(
+        isinstance(k, str) and isinstance(v, str) for k, v in item.route_params.items()
+    ):
+        raise ValueError(
+            f"Route params must map strings to strings: {item.route_params!r}"
+        )
+    if not isinstance(item.details, dict):
+        raise ValueError(f"Item details must be a dict, got {item.details!r}")
+    serialized = item.to_dict()
+    # Render here, with the encoder the response uses, so a value it cannot
+    # encode fails this provider rather than the whole response.
+    json.dumps(serialized, cls=JSONEncoder)
+    return serialized
 
 
 class _FailingRowsProvider(AttentionProvider):
