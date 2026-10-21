@@ -86,6 +86,8 @@ class ProfileEndpointTests(LocalStorageMixin, TestCase):
         response = self.patch_profile({})
         self.assertEqual(response.status_code, 200, response.content)
         self.assertEqual(response.json()["user"]["display_name"], "Me Edited")
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.profile_display_name, "Me Edited")
 
     def test_patch_refuses_empty_and_blank_names(self) -> None:
         for name in ("", "   "):

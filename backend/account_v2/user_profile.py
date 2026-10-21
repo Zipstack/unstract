@@ -1,8 +1,8 @@
 """The profile a user edits locally: name, language and photo.
 
 The edited name and language live on the User row and the photo in the
-permanent file storage. Neither is written to the identity provider; both
-are shown in place of the provider's values.
+permanent file storage. None of them is written to the identity provider,
+and the edited name and photo are shown in place of the provider's.
 """
 
 import dataclasses
