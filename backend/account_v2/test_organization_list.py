@@ -1,8 +1,4 @@
-"""Tests for GET organization: the role, member count and region it now carries.
-
-The drf-spectacular annotation on the view, with ReadMe.md, is the published
-contract, so it is tested here too.
-"""
+"""Tests for GET organization: the role, member count and region it now carries."""
 
 import secrets
 from unittest.mock import MagicMock, patch

@@ -49,6 +49,8 @@ def _data(org: Organization) -> OrganizationData:
     )
 
 
+# REGION comes from the deployment's settings; start every test without one.
+@override_settings(REGION=None)
 class WithMemberDetailsTests(TestCase):
     def setUp(self) -> None:
         self.caller = _user("caller@example.com")

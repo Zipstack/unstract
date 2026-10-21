@@ -87,6 +87,9 @@ def logout(request: Request) -> Response:
             },
         ),
         412: OpenApiResponse(
+            # Describes the body for a known error, which always carries both
+            # keys; for any other error the body is empty, as the description
+            # says. One OpenAPI response can't express both.
             response=inline_serializer(
                 "OrganizationListFailed",
                 {
