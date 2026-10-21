@@ -9,6 +9,7 @@ import secrets
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from django.conf import settings
 from django.http import HttpResponse
 from django.test import TestCase
 from rest_framework.test import APIRequestFactory
@@ -96,8 +97,27 @@ class LogoutMethodTests(TestCase):
     def test_get_logs_out(self) -> None:
         response = logout(APIRequestFactory().get("/logout"))
         self.assertEqual(response.status_code, 302)
+        self.controller.return_value.user_logout.assert_called_once()
 
     def test_post_logs_out(self) -> None:
         response = logout(APIRequestFactory().post("/logout"))
+        self.assertEqual(response.status_code, 302)
+        self.controller.return_value.user_logout.assert_called_once()
+
+    def _signed_in_post(self, token: str | None = None) -> HttpResponse:
+        headers = {"HTTP_X_CSRFTOKEN": token} if token else {}
+        request = APIRequestFactory(enforce_csrf_checks=True).post("/logout", **headers)
+        if token:
+            request.COOKIES[settings.CSRF_COOKIE_NAME] = token
+        request.user = SimpleNamespace(is_active=True)
+        return logout(request)
+
+    def test_signed_in_post_without_csrf_token_is_refused(self) -> None:
+        response = self._signed_in_post()
+        self.assertEqual(response.status_code, 403)
+        self.controller.return_value.user_logout.assert_not_called()
+
+    def test_signed_in_post_with_csrf_token_logs_out(self) -> None:
+        response = self._signed_in_post(token=secrets.token_hex(16))
         self.assertEqual(response.status_code, 302)
         self.controller.return_value.user_logout.assert_called_once()
