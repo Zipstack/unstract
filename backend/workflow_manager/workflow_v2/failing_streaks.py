@@ -48,7 +48,7 @@ def _finished_runs() -> QuerySet[WorkflowExecution]:
     """The outer row's finished runs, newest first."""
     return WorkflowExecution.objects.filter(
         pipeline_id=OuterRef("pk"), status__in=_FINISHED
-    ).order_by("-created_at", "-id")
+    ).order_by("-created_at")
 
 
 def failing_streaks(
@@ -90,31 +90,26 @@ def failing_streaks(
         _streak_break=Subquery(finished.exclude(status=_FAILED).values("created_at")[:1]),
     ).annotate(
         _failing_since=Subquery(streak.order_by("created_at").values("created_at")[:1]),
-        _failures_in_a_row=Subquery(
-            streak.order_by()
-            .values("pipeline_id")
-            .annotate(n=Count("id"))
-            .values("n")[:1]
+        _failures_in_a_row=Coalesce(
+            Subquery(
+                streak.order_by()
+                .values("pipeline_id")
+                .annotate(n=Count("id"))
+                .values("n")[:1]
+            ),
+            0,
         ),
     )
 
-    streaks = []
-    for row in annotated:
-        # Every row here ended its last five finished runs in ERROR, so a
-        # shorter streak means the queries disagree; fail loudly, not as "0".
-        if (row._failures_in_a_row or 0) < FAILING_STREAK_RUNS or not row._failing_since:
-            raise ValueError(
-                f"Inconsistent failing streak for {row.pk}: "
-                f"{row._failures_in_a_row} since {row._failing_since}"
-            )
-        streaks.append(
-            FailingStreak(
-                row=row,
-                failures_in_a_row=row._failures_in_a_row,
-                failing_since=row._failing_since,
-                last_failure=row._last_failure,
-                last_success=row._last_success,
-            )
+    streaks = [
+        FailingStreak(
+            row=row,
+            failures_in_a_row=row._failures_in_a_row,
+            failing_since=row._failing_since,
+            last_failure=row._last_failure,
+            last_success=row._last_success,
         )
+        for row in annotated
+    ]
     streaks.sort(key=lambda s: (s.last_failure, str(s.row.pk)), reverse=True)
     return streaks

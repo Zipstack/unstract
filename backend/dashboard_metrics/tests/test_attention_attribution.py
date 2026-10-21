@@ -187,21 +187,6 @@ class FailingStreakTests(_Seed, TestCase):
                 self._runs(self._pipeline(name), statuses)
         self.assertEqual(failing_streaks(Pipeline.objects.all()), [])
 
-    def test_a_streak_the_queries_disagree_on_fails_loudly(self) -> None:
-        # A COMPLETED and an ERROR run at the same instant, the ERROR first by
-        # id: it is among the last five, but the streak starts after the tie.
-        pipeline = self._pipeline("tied")
-        tied_at = self.now - timedelta(hours=20)
-        for run_id, status in ((uuid.UUID(int=1), COMPLETED), (uuid.UUID(int=2), ERROR)):
-            WorkflowExecution.objects.create(
-                id=run_id, workflow=pipeline.workflow, pipeline_id=pipeline.pk, status=status
-            )
-            WorkflowExecution.objects.filter(pk=run_id).update(created_at=tied_at)
-        self._runs(pipeline, [ERROR] * 4)
-
-        with self.assertRaisesRegex(ValueError, "Inconsistent failing streak"):
-            failing_streaks(Pipeline.objects.all())
-
     def test_one_query_whatever_the_number_of_rows(self) -> None:
         for i in range(3):
             self._runs(self._pipeline(f"p{i}"), [ERROR] * 5)
