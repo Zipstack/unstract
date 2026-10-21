@@ -80,3 +80,62 @@ def notify_resource_shared(
         logger.exception(
             "Could not add share notifications for %s", getattr(resource, "pk", None)
         )
+
+
+def _run_source(execution: Any) -> tuple[Any, str, str, str | None]:
+    """What ran: (resource whose owners hear about it, label, name, route key)."""
+    from api_v2.models import APIDeployment
+    from pipeline_v2.models import Pipeline
+
+    if execution.pipeline_id:
+        # Base managers: this runs in worker requests with no organization context.
+        pipeline = Pipeline._base_manager.filter(pk=execution.pipeline_id).first()
+        if pipeline:
+            key = _PIPELINE_ROUTE_KEYS.get(pipeline.pipeline_type)
+            return pipeline, "pipeline", pipeline.pipeline_name, key
+        api = APIDeployment._base_manager.filter(pk=execution.pipeline_id).first()
+        if api:
+            return api, "API deployment", api.api_name, "api_deployment.detail"
+    workflow = execution.workflow
+    return workflow, "workflow", workflow.workflow_name, "workflow.detail"
+
+
+def _failure_title(execution: Any, label: str, name: str) -> str:
+    from workflow_manager.workflow_v2.enums import ExecutionStatus
+
+    if execution.status == ExecutionStatus.ERROR.value:
+        return f"A run of the {label} {name} failed"
+    if execution.status == ExecutionStatus.STOPPED.value:
+        return f"A run of the {label} {name} was stopped"
+    return (
+        f"A run of the {label} {name} finished with {execution.failed_files} failed files"
+    )
+
+
+def notify_execution_failed(execution_id: Any) -> None:
+    """Tell the owners of what ran, once per execution, when a run fails."""
+    from notification_v2.helper import is_failure_run
+    from workflow_manager.workflow_v2.models import WorkflowExecution
+
+    try:
+        execution = (
+            WorkflowExecution.objects.select_related("workflow__organization")
+            .filter(pk=execution_id)
+            .first()
+        )
+        if not execution or not is_failure_run(execution.status, execution.failed_files):
+            # ponytail: an ERROR later corrected to a clean COMPLETED keeps its item;
+            # delete it here if premature errors turn out to be common.
+            return
+        resource, label, name, key = _run_source(execution)
+        notify(
+            resource.owners(),
+            kind=InboxItem.Kind.EXECUTION_FAILED,
+            title=_failure_title(execution, label, name),
+            body=execution.error_message or "",
+            route={"key": key, "params": {"id": str(resource.pk)}} if key else None,
+            dedupe_key=f"execution_failed:{execution.pk}",
+            organization=execution.workflow.organization,
+        )
+    except Exception:
+        logger.exception("Could not add failed-run notifications for %s", execution_id)

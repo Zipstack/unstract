@@ -1,6 +1,7 @@
 import logging
 import uuid
 from datetime import timedelta
+from functools import partial
 
 from api_v2.models import APIDeployment
 from django.core.exceptions import ObjectDoesNotExist
@@ -446,6 +447,15 @@ class WorkflowExecution(BaseModel):
             # txn) it runs immediately. So the happy path is unchanged for both
             # transports, only the rollback leak is closed.
             transaction.on_commit(self._release_api_deployment_rate_limit)
+        if status is not None and ExecutionStatus(status) in (
+            ExecutionStatus.COMPLETED,
+            ExecutionStatus.ERROR,
+            ExecutionStatus.STOPPED,
+        ):
+            # On commit, so the file counts written in the same transaction are seen.
+            from inbox.events import notify_execution_failed
+
+            transaction.on_commit(partial(notify_execution_failed, self.pk))
 
     def _apply_legacy_update(
         self,
