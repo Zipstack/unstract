@@ -27,7 +27,7 @@
 
 ## Organization list contract
 
-`GET /api/v1/organization` returns the caller's organizations. The schema is the `organization_list` operation's `@extend_schema` annotation in `views.py`; this section states the rules the schema can't. Example from a cloud deployment:
+`GET /api/v1/organization` returns the caller's organizations. The typed contract is the `organization_list` operation's `@extend_schema` annotation in `views.py`, read with drf-spectacular; it is not part of the published deployment API spec. This section states the rules the annotation can't. Example from a cloud deployment:
 
 ```json
 {
