@@ -101,22 +101,45 @@ class PublisherTests(TestCase):
                 service._submit("user:1", "inbox:unread", {"unread_count": 1})
         self.assertEqual(full.qsize(), 1)
 
-    def test_publisher_thread_emits_what_was_queued(self) -> None:
+    def test_publisher_emits_what_was_queued(self) -> None:
         import queue
-        import threading
 
-        done = threading.Event()
+        pending = queue.Queue(maxsize=10)
+        pending.put(("user:1", "inbox:unread", {"unread_count": 1}))
         with (
-            patch.object(service, "_queue", queue.Queue(maxsize=10)),
-            patch.object(service, "_publisher", None),
-            patch(
-                "utils.log_events._emit_websocket_event",
-                side_effect=lambda *a: done.set(),
-            ) as emit,
+            patch.object(service, "_queue", pending),
+            patch("utils.log_events._emit_websocket_event") as emit,
         ):
-            service._submit("user:1", "inbox:unread", {"unread_count": 1})
-            self.assertTrue(done.wait(5))
-        emit.assert_called_with("user:1", "inbox:unread", {"unread_count": 1})
+            service._publish_next()
+        emit.assert_called_once_with("user:1", "inbox:unread", {"unread_count": 1})
+
+    def test_publisher_thread_is_started_once_and_restarted_when_dead(self) -> None:
+        with (
+            patch.object(service, "_publisher", None),
+            patch.object(service.threading, "Thread") as thread,
+        ):
+            thread.return_value.is_alive.return_value = True
+            service._ensure_publisher()
+            service._ensure_publisher()
+            self.assertEqual(thread.call_count, 1)
+            thread.return_value.is_alive.return_value = False
+            service._ensure_publisher()
+            self.assertEqual(thread.call_count, 2)
+
+    def test_a_full_backlog_warns_once_until_it_drains(self) -> None:
+        import queue
+
+        full = queue.Queue(maxsize=1)
+        full.put(("room", "event", {}))
+        with (
+            patch.object(service, "_queue", full),
+            patch.object(service, "_ensure_publisher"),
+            patch.object(service, "_dropping", False),
+        ):
+            with self.assertLogs("inbox.service", "WARNING") as logs:
+                service._submit("user:1", "inbox:unread", {})
+                service._submit("user:2", "inbox:unread", {})
+            self.assertEqual(len(logs.records), 1)
 
 
 class ConnectTests(CoOwnerOrgTestMixin, TestCase):

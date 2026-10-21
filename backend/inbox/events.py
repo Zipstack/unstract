@@ -52,7 +52,14 @@ def _group_members(groups: Iterable[Any]) -> set[User]:
     groups = list(groups)
     if not groups:
         return set()
-    by_group = _group_recipients_batch(UserContext.get_organization(), groups, set())
+    try:
+        by_group = _group_recipients_batch(UserContext.get_organization(), groups, set())
+    except Exception:
+        # The users shared with directly are still told.
+        logger.exception(
+            "Could not read the members of groups %s", [g.pk for g in groups]
+        )
+        return set()
     return {user for members in by_group.values() for user in members}
 
 
@@ -146,14 +153,30 @@ def _failure_title(execution: Any, label: str, name: str) -> str:
     )
 
 
+def _already_points_at_this_or_newer(items: Any, execution: Any, runs: Any) -> bool:
+    """True when the stored item already shows this run or a later one.
+
+    A repeated or refused status write for a run, or a late failure of an older
+    run, must not mark a read item unread or point it back in time.
+    """
+    shown = items.values_list("route__params__id", flat=True).first()
+    if shown is None:
+        return False
+    if shown == str(execution.pk):
+        return True
+    shown_run = runs.filter(pk=shown).values_list("created_at", flat=True).first()
+    return shown_run is not None and shown_run > execution.created_at
+
+
 def notify_execution_failed(execution_id: Any) -> None:
     """Tell the owners of what ran when a run fails.
 
     Each owner keeps one item per pipeline, API deployment or workflow: a new
     failure refreshes it to the latest run and marks it unread again, so a
-    resource that keeps failing does not flood the inbox. Called on every
-    terminal status write; ERROR can later be corrected to a clean COMPLETED,
-    so a clean finish withdraws the item while it still points at that run.
+    resource that keeps failing does not flood the inbox. Registered by
+    ``WorkflowExecution.update_execution`` for COMPLETED, ERROR and STOPPED.
+    ERROR can later be corrected to a clean COMPLETED, so a clean finish
+    withdraws the item while it still points at that run.
     """
     try:
         _notify_execution_failed(execution_id)
@@ -166,25 +189,30 @@ def _notify_execution_failed(execution_id: Any) -> None:
     from notification_v2.helper import is_failure_run
     from workflow_manager.workflow_v2.models import WorkflowExecution
 
+    runs = WorkflowExecution.objects.select_related("workflow__organization")
+    execution = runs.filter(pk=execution_id).first()
+    if not execution:
+        return
+    organization = execution.workflow.organization
+    if organization is None:
+        logger.warning("Run %s has no organization; no inbox item", execution.pk)
+        return
+    dedupe_key = f"run_failed:{execution.pipeline_id or execution.workflow_id}"
+    items = InboxItem._base_manager.filter(
+        organization=organization, dedupe_key=dedupe_key
+    )
+    if not is_failure_run(execution.status, execution.failed_files):
+        # No lock needed: a failure being recorded holds the row lock, and this
+        # run's own status write waited for it, so the item is already stored.
+        items.filter(route__params__id=str(execution.pk)).delete()
+        return
     # The row lock holds off a concurrent status write until this decision is
     # stored, so a clean correction always runs after the item it withdraws.
     with transaction.atomic():
-        execution = (
-            WorkflowExecution.objects.select_for_update(of=("self",))
-            .select_related("workflow__organization")
-            .filter(pk=execution_id)
-            .first()
-        )
-        if not execution:
+        execution = runs.select_for_update(of=("self",)).filter(pk=execution_id).first()
+        if not execution or not is_failure_run(execution.status, execution.failed_files):
             return
-        organization = execution.workflow.organization
-        dedupe_key = f"run_failed:{execution.pipeline_id or execution.workflow_id}"
-        if not is_failure_run(execution.status, execution.failed_files):
-            InboxItem._base_manager.filter(
-                organization=organization,
-                dedupe_key=dedupe_key,
-                route__params__id=str(execution.pk),
-            ).delete()
+        if _already_points_at_this_or_newer(items, execution, runs):
             return
         resource, label, name = _run_source(execution)
         notify(

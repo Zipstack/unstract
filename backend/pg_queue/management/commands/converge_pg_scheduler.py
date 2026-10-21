@@ -111,7 +111,8 @@ class Command(BaseCommand):
                 self.style.WARNING(
                     "Released to Beat. Beat publishes over RabbitMQ — these schedules "
                     "fire again ONLY if workerSchedulerV2 (and workerMetrics, with "
-                    "--periodics) are running. Check that before relying on this."
+                    "--periodics) are running. Check that before relying on this. "
+                    "inbox.purge has no Beat twin: released, it stops until re-adopted."
                 )
             )
 

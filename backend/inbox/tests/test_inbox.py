@@ -257,6 +257,17 @@ class ShareEventTests(CoOwnerOrgTestMixin, TestCase):
                     )
             self.assertTrue(Workflow.objects.filter(pk=self.workflow.pk).exists())
 
+    def test_group_lookup_failure_still_tells_direct_users(self) -> None:
+        with patch(
+            "tenant_account_v2.group_notification_service._group_recipients_batch",
+            side_effect=RuntimeError("boom"),
+        ):
+            with self.assertLogs("inbox.events", "ERROR"):
+                self.share(
+                    {"shared_users": [self.viewer.pk], "shared_groups": [self.group.pk]}
+                )
+        self.assertEqual(len(_items(self.viewer)), 1)
+
     def test_non_member_of_the_org_is_never_notified(self) -> None:
         stranger = make_user("s2@example.com")
         GroupMembership.objects.create(group=self.group, user=stranger)
@@ -350,9 +361,11 @@ class WiringTests(TestCase):
         for module in pkgutil.iter_modules(package.__path__):
             migration = importlib.import_module(f"inbox.migrations.{module.name}")
             for op in migration.Migration.operations:
-                if hasattr(op, "index"):
-                    migrated.add(op.index.name)
-                for index in getattr(op, "options", {}).get("indexes", []):
-                    migrated.add(index.name)
-        for index in InboxItem._meta.indexes:
-            self.assertIn(index.name, migrated)
+                for attr in ("index", "constraint"):
+                    if hasattr(op, attr):
+                        migrated.add(getattr(op, attr).name)
+                options = getattr(op, "options", {})
+                for item in options.get("indexes", []) + options.get("constraints", []):
+                    migrated.add(item.name)
+        for item in InboxItem._meta.indexes + InboxItem._meta.constraints:
+            self.assertIn(item.name, migrated)

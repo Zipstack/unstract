@@ -23,17 +23,22 @@ UNREAD_EVENT = "inbox:unread"
 _queue: queue.Queue = queue.Queue(maxsize=1000)
 _publisher: threading.Thread | None = None
 _publisher_lock = threading.Lock()
+_dropping = False  # one warning per stretch of dropped pushes
+
+
+def _publish_next() -> None:
+    room, event, data = _queue.get()
+    try:
+        from utils import log_events
+
+        log_events._emit_websocket_event(room, event, data)
+    except Exception:
+        logger.exception("Could not push an inbox count")
 
 
 def _publish_forever() -> None:
     while True:
-        room, event, data = _queue.get()
-        try:
-            from utils import log_events
-
-            log_events._emit_websocket_event(room, event, data)
-        except Exception:
-            logger.exception("Could not push an inbox count")
+        _publish_next()
 
 
 def _ensure_publisher() -> None:
@@ -48,11 +53,15 @@ def _ensure_publisher() -> None:
 
 
 def _submit(room: str, event: str, data: dict[str, Any]) -> None:
+    global _dropping
     _ensure_publisher()
     try:
         _queue.put_nowait((room, event, data))
+        _dropping = False
     except queue.Full:
-        logger.warning("Inbox push backlog is full; dropped a push to %s", room)
+        if not _dropping:
+            logger.warning("Inbox push backlog is full; dropping pushes until it drains")
+        _dropping = True
 
 
 def notify(
@@ -91,7 +100,8 @@ def notify(
                     route=route,
                     dedupe_key=dedupe_key,
                 )
-                for user in users.values()
+                # A fixed order, so two writers upserting the same rows cannot deadlock.
+                for user in sorted(users.values(), key=lambda u: u.pk)
             ],
             **(
                 {

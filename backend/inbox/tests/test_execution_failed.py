@@ -17,7 +17,7 @@ from permissions.tests.base import (
 from utils.user_context import UserContext
 from workflow_manager.workflow_v2.enums import ExecutionStatus
 from workflow_manager.workflow_v2.execution import WorkflowExecutionServiceHelper
-from workflow_manager.workflow_v2.models import WorkflowExecution
+from workflow_manager.workflow_v2.models import Workflow, WorkflowExecution
 
 from inbox.models import InboxItem
 
@@ -115,6 +115,36 @@ class ExecutionFailedTests(_Runs, TestCase):
         self.finish(first, ExecutionStatus.COMPLETED, failed_files=0)
         (item,) = _items(self.owner)
         self.assertEqual(item.route, _run_route(second))
+
+    def test_same_run_failing_again_leaves_a_read_item_read(self) -> None:
+        pipeline = _build_pipeline(self.org, self.owner)
+        self.share(pipeline)
+        execution = self.run_of(pipeline)
+        self.finish(execution, ExecutionStatus.ERROR)
+        InboxItem.objects.filter(user=self.owner).update(read_at=timezone.now())
+        self.finish(execution, ExecutionStatus.ERROR)
+        self.assertIsNotNone(_items(self.owner)[0].read_at)
+
+    def test_late_failure_of_an_older_run_keeps_the_newer_one(self) -> None:
+        pipeline = _build_pipeline(self.org, self.owner)
+        self.share(pipeline)
+        older, newer = self.run_of(pipeline), self.run_of(pipeline)
+        WorkflowExecution.objects.filter(pk=older.pk).update(
+            created_at=timezone.now() - timedelta(hours=1)
+        )
+        older.refresh_from_db()
+        self.finish(newer, ExecutionStatus.ERROR)
+        self.finish(older, ExecutionStatus.ERROR)
+        (item,) = _items(self.owner)
+        self.assertEqual(item.route, _run_route(newer))
+
+    def test_workflow_without_an_organization_is_skipped(self) -> None:
+        workflow = _build_workflow(self.org, self.owner)
+        self.share(workflow)
+        Workflow.objects.filter(pk=workflow.pk).update(organization=None)
+        with self.assertLogs("inbox.events", "WARNING"):
+            self.finish(self.run_of(workflow=workflow), ExecutionStatus.ERROR)
+        self.assertFalse(InboxItem._base_manager.exists())
 
     def test_one_item_per_execution(self) -> None:
         pipeline = _build_pipeline(self.org, self.owner)
