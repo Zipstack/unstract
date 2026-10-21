@@ -1,0 +1,27 @@
+# inbox
+
+## Inbox contract
+
+Each user has one inbox per organization. Paths are organization-scoped: `/api/v1/unstract/<org_id>/notifications/inbox/...`. The typed contract is the `@extend_schema` annotation on `inbox/views.py` (operation ids `inbox_list`, `inbox_read`, `inbox_read_all`). It is not part of the published deployment API spec. The item shape is provisional until it is agreed with the LLMWhisperer notifications (PB-T18).
+
+| Method and path | Response |
+|---|---|
+| GET `notifications/inbox/` | `{count, next, previous, results, unread_count}`, newest first, `?page` and `?page_size` |
+| POST `notifications/inbox/<id>/read/` | 204; 404 when the item is not the caller's |
+| POST `notifications/inbox/read-all/` | 204 |
+
+### Item
+
+- `id`: UUID.
+- `kind`: `resource_shared` or `execution_failed`. Clients show an unknown kind generically.
+- `title`, `body`: display text; `body` may be empty.
+- `route`: `{key, params}` as in global search (`global_search/README.md`), or null when there is nothing to open. Clients treat an unknown `key` like null.
+- `created`: when the item was added.
+- `read`: whether the user has read it.
+
+### Rules
+
+- A user sees only their own items in the current organization.
+- Each event adds at most one item per user.
+- `resource_shared`: a resource is shared with the user directly or with a group they belong to. The person who shared it is not notified, and users who already had direct access are not notified again.
+- The existing e-mail and webhook notifications in `notification_v2` are separate and unchanged.
