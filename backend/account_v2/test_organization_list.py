@@ -70,15 +70,14 @@ class OrganizationListTests(TestCase):
             self.addCleanup(patcher.stop)
 
         self.controller = AuthenticationController()
-        listed = [
+        self.listed = [
             OrganizationData(
                 id=o.organization_id, display_name=o.display_name, name=o.name
             )
             for o in (org_a, org_b)
         ]
-        self.listed = listed
         patcher = patch.object(
-            self.controller.auth_service, "user_organizations", return_value=listed
+            self.controller.auth_service, "user_organizations", return_value=self.listed
         )
         patcher.start()
         self.addCleanup(patcher.stop)
@@ -262,12 +261,8 @@ class OrganizationListSchemaTests(TestCase):
         body = schema["components"]["schemas"][body["$ref"].rsplit("/", 1)[1]]
         self.assertEqual(set(body["properties"]), {"domain", "code"})
         self.assertEqual(set(body["required"]), {"domain", "code"})
-        operation_ids = {
-            op.get("operationId")
-            for path in schema["paths"].values()
-            for op in path.values()
-        }
-        self.assertIn("organization_list", operation_ids)
+        operation = schema["paths"]["/organization"]["get"]
+        self.assertEqual(operation["operationId"], "organization_list")
 
 
 @override_settings(REGION="US")

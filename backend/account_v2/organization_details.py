@@ -52,8 +52,8 @@ def with_member_details(
     member_counts = dict(
         Organization.objects.filter(organization_id__in=ids)
         .annotate(
-            # Same rule as the members page: platform API key accounts are
-            # members in the table but not people.
+            # Same rule as OrganizationMemberService.get_members (the members
+            # page): platform API key accounts are members but not people.
             member_count=Count(
                 "organizationmember",
                 filter=Q(organizationmember__user__is_service_account=False),

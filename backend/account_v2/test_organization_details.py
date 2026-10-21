@@ -29,6 +29,14 @@ def _user(email: str) -> User:
     )
 
 
+def _bot(email: str) -> User:
+    """A platform API key account."""
+    bot = _user(email)
+    bot.is_service_account = True
+    bot.save()
+    return bot
+
+
 def _org(slug: str, display_name: str) -> Organization:
     return Organization.objects.create(
         name=slug, display_name=display_name, organization_id=slug
@@ -112,18 +120,14 @@ class WithMemberDetailsTests(TestCase):
 
     def test_member_count_leaves_out_service_accounts(self) -> None:
         # Platform API keys get a member row; the members page doesn't list them.
-        bot = _user("key-bot@example.com")
-        bot.is_service_account = True
-        bot.save()
+        bot = _bot("key-bot@example.com")
         OrganizationMember.objects.create(organization=self.org_a, user=bot, role="user")
         row = with_member_details([_data(self.org_a)], self.caller)[0]
         self.assertEqual(row["member_count"], 3)
 
     @override_settings(REGION="US")
     def test_organisation_with_no_people_counts_zero(self) -> None:
-        bot = _user("only-bot@example.com")
-        bot.is_service_account = True
-        bot.save()
+        bot = _bot("only-bot@example.com")
         empty = _org("org-empty", "Empty")
         OrganizationMember.objects.create(organization=empty, user=bot, role="user")
         row = with_member_details([_data(empty)], self.caller)[0]
