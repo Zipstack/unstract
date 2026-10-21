@@ -9,7 +9,9 @@ import secrets
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from django.http import HttpResponse
 from django.test import TestCase
+from rest_framework.test import APIRequestFactory
 from tenant_account_v2.models import OrganizationMember
 from utils.user_context import UserContext
 
@@ -17,6 +19,7 @@ from account_v2.authentication_controller import AuthenticationController
 from account_v2.custom_exceptions import Forbidden
 from account_v2.enums import UserRole
 from account_v2.models import Organization, User
+from account_v2.views import logout
 
 
 def _make_member(org: Organization, email: str, role: str) -> OrganizationMember:
@@ -81,3 +84,20 @@ class LastAdminGuardTests(TestCase):
                 self.admin.user.email,
                 UserRole.ADMIN.value,
             )
+
+
+class LogoutMethodTests(TestCase):
+    def setUp(self) -> None:
+        controller = patch("account_v2.views.AuthenticationController")
+        self.controller = controller.start()
+        self.addCleanup(controller.stop)
+        self.controller.return_value.user_logout.return_value = HttpResponse(status=302)
+
+    def test_get_logs_out(self) -> None:
+        response = logout(APIRequestFactory().get("/logout"))
+        self.assertEqual(response.status_code, 302)
+
+    def test_post_logs_out(self) -> None:
+        response = logout(APIRequestFactory().post("/logout"))
+        self.assertEqual(response.status_code, 302)
+        self.controller.return_value.user_logout.assert_called_once()
