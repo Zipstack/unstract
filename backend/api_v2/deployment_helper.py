@@ -19,7 +19,9 @@ from usage_v2.helper import UsageHelper
 from utils.constants import Account, CeleryQueue
 from utils.local_context import StateStore
 from workflow_manager.endpoint_v2.destination import DestinationConnector
+from workflow_manager.endpoint_v2.result_cache_utils import ResultCacheUtils
 from workflow_manager.endpoint_v2.source import SourceConnector
+from workflow_manager.utils.pipeline_utils import PipelineUtils
 from workflow_manager.workflow_v2.dto import ExecutionResponse
 from workflow_manager.workflow_v2.enums import ExecutionStatus
 from workflow_manager.workflow_v2.execution import WorkflowExecutionServiceHelper
@@ -293,7 +295,12 @@ class DeploymentHelper(BaseAPIKeyValidator):
                 logger.exception(f"Failed to mark execution {execution_id} as ERROR")
 
             # Async job never started — release the rate limit slot and clean up.
-            APIDeploymentRateLimiter.release_slot(api.organization, str(execution_id))
+            # The id string, never the model instance: release_slot builds its
+            # Redis key from what it is passed, so an instance silently removes
+            # nothing and leaves the slot held for its full TTL.
+            APIDeploymentRateLimiter.release_slot(
+                str(api.organization.organization_id), str(execution_id)
+            )
             DestinationConnector.delete_api_storage_dir(
                 workflow_id=workflow_id, execution_id=execution_id
             )
@@ -303,6 +310,69 @@ class DeploymentHelper(BaseAPIKeyValidator):
                     execution_id=execution_id,
                     execution_status=ExecutionStatus.ERROR.value,
                     error=str(error),
+                )
+            ).data
+
+        # Nothing was staged, so nothing will be dispatched to write a status
+        # back. Terminalise here or the execution is stranded in PENDING.
+        if not hash_values_of_files:
+            # Isolated so the slot and staging dir are released even if it raises.
+            execution = None
+            terminalise_error: str | None = None
+            try:
+                execution = WorkflowExecutionServiceHelper.update_execution_completed(
+                    str(execution_id),
+                    total_files=len(file_objs),
+                    failed_files=len(file_objs),
+                )
+            except Exception as error:
+                logger.exception(f"Failed to mark execution {execution_id} as COMPLETED")
+                # Reported, so the caller is not given a bare failure with no reason.
+                terminalise_error = str(error)
+
+            APIDeploymentRateLimiter.release_slot(
+                str(api.organization.organization_id), str(execution_id)
+            )
+            DestinationConnector.delete_api_storage_dir(
+                workflow_id=workflow_id, execution_id=execution_id
+            )
+            api_results = ResultCacheUtils.get_api_results(
+                workflow_id=str(workflow_id), execution_id=str(execution_id)
+            )
+            if execution is not None:
+                # Separate blocks: independent obligations, so a failure in one
+                # must not silence the other.
+                try:
+                    # This response carries the results, so mark them consumed or a
+                    # later GET /status serves them again.
+                    WorkflowHelper.set_result_acknowledge(execution)
+                except Exception:
+                    logger.exception(
+                        f"Failed to acknowledge results for execution {execution_id}"
+                    )
+
+                try:
+                    # Terminalising here bypasses the usual notifier, so subscribers
+                    # would otherwise hear nothing.
+                    PipelineUtils.update_pipeline_status(
+                        pipeline_id=pipeline_id, workflow_execution=execution
+                    )
+                except Exception:
+                    logger.exception(
+                        f"Failed to notify subscribers for execution {execution_id}"
+                    )
+
+            # The stored status, not an assumed COMPLETED: the row may be missing
+            # or the guard may have refused the change.
+            return APIExecutionResponseSerializer(
+                ExecutionResponse(
+                    workflow_id=workflow_id,
+                    execution_id=execution_id,
+                    execution_status=(
+                        execution.status if execution else ExecutionStatus.ERROR.value
+                    ),
+                    error=terminalise_error,
+                    result=api_results,
                 )
             ).data
 
@@ -352,7 +422,9 @@ class DeploymentHelper(BaseAPIKeyValidator):
             # Dispatch failures are marked ERROR internally by execute_workflow_async;
             # post-dispatch failures (enrichment/config) must not overwrite a running
             # execution's status, so only release the slot and clean up storage here.
-            APIDeploymentRateLimiter.release_slot(api.organization, str(execution_id))
+            APIDeploymentRateLimiter.release_slot(
+                str(api.organization.organization_id), str(execution_id)
+            )
 
             # Clean up storage
             DestinationConnector.delete_api_storage_dir(

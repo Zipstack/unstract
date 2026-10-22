@@ -934,14 +934,53 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
 
     @staticmethod
     def _update_file_aggregates(execution, validated_data) -> None:
-        """Persist total / successful / failed file counts when present."""
+        """Persist total / failed / successful file counts when present.
+
+        Floored at what the file rows say, because the worker's aggregate only
+        counts files it was dispatched and misses any rejected before that.
+        """
         update_fields: list[str] = []
         for field in ("total_files", "successful_files", "failed_files"):
             if validated_data.get(field) is not None:
                 setattr(execution, field, validated_data[field])
                 update_fields.append(field)
-        if update_fields:
-            execution.save(update_fields=update_fields)
+        if not update_fields:
+            return
+
+        WorkflowExecutionInternalViewSet._floor_counters_at_file_rows(
+            execution, update_fields
+        )
+        execution.save(update_fields=update_fields)
+
+    @staticmethod
+    def _floor_counters_at_file_rows(execution, update_fields: "list[str]") -> None:
+        """Raise the counters being written to match the file rows on disk.
+
+        Only ever corrects upward, and only to a count already true, so a run
+        with nothing rejected is left alone.
+        """
+        wants_failed = "failed_files" in update_fields
+        wants_total = "total_files" in update_fields
+        if not (wants_failed or wants_total):
+            return
+
+        from workflow_manager.workflow_v2.enums import ExecutionStatus
+
+        try:
+            rows = execution.file_executions
+            error_rows = rows.filter(status=ExecutionStatus.ERROR.value).count()
+            row_total = rows.count()
+        except Exception:
+            logger.exception(
+                "Could not read file rows to floor the counters for execution %s",
+                execution.id,
+            )
+            return
+
+        if wants_failed:
+            execution.failed_files = max(execution.failed_files or 0, error_rows)
+        if wants_total:
+            execution.total_files = max(execution.total_files or 0, row_total)
 
 
 class FileBatchCreateAPIView(APIView):

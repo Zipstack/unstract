@@ -8,7 +8,7 @@ from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.request import Request
 from rest_framework.response import Response
-from tenant_account_v2.sharing_helpers import serialize_owner_refs
+from tenant_account_v2.sharing_helpers import retained_user_ids, serialize_owner_refs
 
 from permissions.membership_serializers import AddOwnerSerializer, RemoveOwnerSerializer
 
@@ -86,6 +86,11 @@ class OwnerManagementMixin:
     # --- notifications: reuse the user-sharing service, best-effort ---
 
     def _notification_context(self, resource: Any) -> tuple[str, str] | None:
+        """``(resource_type, resource_name)``, or ``None`` if not notifiable.
+
+        Also used by ``ResourceShareManagementMixin``, which every host mixes
+        in alongside this one.
+        """
         if not notification_plugin or not self.notification_resource_name_field:
             return None
         resource_type = self.get_notification_resource_type(resource)
@@ -114,6 +119,13 @@ class OwnerManagementMixin:
     def _notify_owner_removed(self, resource: Any, user: User, actor: Any) -> None:
         ctx = self._notification_context(resource)
         if ctx is None:
+            return
+        # The OWNER row is already gone by the time this runs (serializer.save()
+        # ran first) -- but the demoted user may still reach the resource another
+        # way (a group, a direct share, an org-wide share, org admin), same as
+        # the direct-share and group-revoke paths already check.
+        retained = retained_user_ids(resource)
+        if retained is None or user.pk in retained:
             return
         resource_type, resource_name = ctx
         try:
