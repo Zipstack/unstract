@@ -37,9 +37,10 @@ class UserContext:
     def get_organization() -> Organization | None:
         """Resolve the current organization, caching a hit.
 
-        Later calls return the same instance until the id is next set or the
-        cache cleared, so a write to the row through another instance is not
-        reflected in it until then. Conversely, every caller shares that
+        Later calls return the same instance until the id is next set, the
+        cache cleared, or another instance cached with ``cache_organization``,
+        so a write to the row through another instance is not reflected in it
+        until then. Conversely, every caller shares that
         instance: an attribute changed on it and not saved is seen by later
         org-scoped code in the same request or task.
         """
