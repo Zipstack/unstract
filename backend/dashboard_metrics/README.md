@@ -613,6 +613,7 @@ Base URL: `/api/v1/unstract/<org_id>/metrics/`
 | `/series/` | GET | Time series for date range | Auto-selected table |
 | `/live-summary/` | GET | Summary from source tables | Source tables directly |
 | `/live-series/` | GET | Time series from source tables | Source tables directly |
+| `/recent-activity/` | GET | Latest file executions; paged with counts on request | Source tables directly |
 | `/attention/` | GET | Open items that need attention | Source tables directly |
 | `/attribution/` | GET | Failed pages by source and by day | Source tables directly |
 | `/health/` | GET | Health check | DB + Cache |
@@ -685,6 +686,73 @@ Override with `?source=hourly|daily|monthly`
   ]
 }
 ```
+
+### Recent activity (DG-02, DG-03)
+
+`/recent-activity/` has two forms. The contract is this section plus the
+`@extend_schema` annotation on `DashboardMetricsViewSet.recent_activity`
+(operation `metrics_recent_activity`).
+
+**Default form.** With none of the parameters below, the response is exactly
+what it has always been: the latest `limit` file executions (default 10, at
+most 50), newest first, and nothing else. The v0 dashboard and the v1 overview
+use this form.
+
+```json
+{
+  "activity": [
+    {"id": "…", "execution_id": "…", "type": "workflow", "file_name": "inv-01.pdf",
+     "status": "COMPLETED", "workflow_name": "Invoices",
+     "created_at": "2026-10-21T09:12:03+00:00", "execution_time": 4.2,
+     "total_tokens": 1830, "cost": 0.0123}
+  ]
+}
+```
+
+**Paged form.** Passing any of these switches to it; `limit` is then ignored.
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `start_date` | 30 days ago | ISO 8601, inclusive. At most 365 days before `end_date` |
+| `end_date` | Now | ISO 8601, inclusive |
+| `status` | All | File execution statuses, comma-separated: `PENDING`, `EXECUTING`, `COMPLETED`, `STOPPED`, `ERROR` (case-insensitive) |
+| `surface` | All | Comma-separated: `api`, `etl`, `task`, `workflow` |
+| `page` | 1 | 1-based. A page past the end returns no rows |
+| `page_size` | 20 | At most 100 |
+
+`status` and `surface` take one comma-separated value, not a repeated
+parameter, because the response cache keys on the last value of each
+parameter. An unknown value, a bad date or an out-of-range page size is a 400.
+
+```json
+{
+  "start_date": "2026-09-22T00:00:00+00:00",
+  "end_date": "2026-10-22T00:00:00+00:00",
+  "page": 1,
+  "page_size": 20,
+  "activity": [
+    {"id": "…", "execution_id": "…", "type": "workflow", "surface": "task",
+     "file_name": "inv-01.pdf", "status": "ERROR", "workflow_name": "Invoices",
+     "created_at": "2026-10-21T09:12:03+00:00", "execution_time": 4.2,
+     "total_tokens": 1830, "cost": 0.0123}
+  ],
+  "count": 1007,
+  "status_counts": {"PENDING": 0, "EXECUTING": 2, "COMPLETED": 951,
+                    "STOPPED": 0, "ERROR": 54}
+}
+```
+
+- Rows are newest first, ties broken by id, so pages do not overlap.
+- `count` is the number of rows matching every filter (for "Showing 20 of 1,007").
+- `status_counts` counts the range and `surface` but ignores `status`, so each
+  status filter chip can show its count while one is selected. Every status is
+  present, with 0 when there are none; "All" is the sum.
+- `surface` (paged form only) tells Task pipeline runs apart: `api` (API
+  deployment), `etl` (ETL pipeline), `task` (Task pipeline) and `workflow`
+  (everything else: manual runs, and default and app pipelines). `type` keeps
+  its old values, where a Task pipeline run is `workflow`.
+- Both forms are cached like the other metrics responses; `?refresh=true`
+  bypasses the cache and does not switch forms.
 
 ### Attention and attribution (PB-T14)
 
