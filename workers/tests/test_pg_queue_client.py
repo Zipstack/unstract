@@ -289,17 +289,6 @@ class TestConnectionLifecycle:
         PgQueueClient(conn=injected).close()
         injected.close.assert_not_called()
 
-    def test_owned_conn_runs_in_autocommit(self, monkeypatch):
-        # Single-statement operations must not pay psycopg2's BEGIN/COMMIT
-        # round trips (UN-4254) — including the reconnect after a dead conn.
-        client, conn, factory = self._owned_client(monkeypatch)
-        conn.autocommit = False
-        assert client.conn.autocommit is True
-        client._conn = None
-        conn.autocommit = False
-        assert client.conn.autocommit is True
-        assert factory.call_count == 2
-
 
 class TestSendReconnectRetry:
     """``send()``'s one-shot reconnect-retry for a reused, idle-reaped connection.

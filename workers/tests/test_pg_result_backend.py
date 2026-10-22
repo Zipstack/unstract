@@ -606,6 +606,27 @@ class TestStoreResultReconnectRetry:
         conn.autocommit = False
         assert PgResultBackend(conn=conn).conn.autocommit is False
 
+    def test_bare_database_error_drops_owned_conn(self):
+        # Under autocommit rollback() sends nothing, so it can't flag a dead
+        # server connection; a bare DatabaseError (how a server-side termination
+        # can surface) must drop the owned handle itself, as PgQueueClient does.
+        dead, _ = self._conn(execute_side_effect=psycopg2.DatabaseError("gone"))
+        rb = PgResultBackend()
+        rb._conn = dead
+        with pytest.raises(psycopg2.DatabaseError):
+            rb.get_result("k")
+        assert rb._conn is None
+        dead.close.assert_called_once()
+
+    def test_statement_error_subclass_keeps_owned_conn(self):
+        # A SQLSTATE-mapped statement error is not a dead connection.
+        conn, _ = self._conn(execute_side_effect=psycopg2.DataError("bad input"))
+        rb = PgResultBackend()
+        rb._conn = conn
+        with pytest.raises(psycopg2.DataError):
+            rb.get_result("k")
+        assert rb._conn is conn
+
     @pytest.mark.parametrize(
         "exc_type", [psycopg2.OperationalError, psycopg2.InterfaceError]
     )
@@ -699,6 +720,51 @@ class TestStoreResultRealReconnect:
 
         # The row really landed — read it back on the fixture's own connection.
         pg_conn.rollback()  # clear any aborted txn before reading
+        with pg_conn.cursor() as cur:
+            cur.execute(
+                "SELECT result->>'healed' FROM pg_task_result WHERE task_id = %s",
+                (key,),
+            )
+            row = cur.fetchone()
+            cur.execute("DELETE FROM pg_task_result WHERE task_id = %s", (key,))
+        pg_conn.commit()
+        assert row is not None and row[0] == "true"
+
+    def test_real_reconnect_after_backend_termination(self, pg_conn, monkeypatch):
+        # The owned connection runs in autocommit, where rollback() sends nothing
+        # and so can't prove a server-terminated connection dead. Pin that a
+        # terminated backend still heals: a read drops the handle, and a write
+        # self-heals through _store_with_reconnect.
+        os.environ.setdefault("TEST_DB_HOST", "127.0.0.1")
+        monkeypatch.setattr(
+            "queue_backend.pg_queue.result_backend.create_pg_connection",
+            lambda *a, **k: create_pg_connection(env_prefix="TEST_DB_"),
+        )
+
+        def terminate(pid):
+            with pg_conn.cursor() as cur:
+                # Wait (up to 5 s) for the backend to exit, so the next call
+                # can't race ahead of the termination (PG14+).
+                cur.execute("SELECT pg_terminate_backend(%s, 5000)", (pid,))
+            pg_conn.commit()
+
+        key = _key()
+        rb = PgResultBackend()
+        try:
+            assert rb.conn.autocommit is True
+            old_pid = rb.conn.get_backend_pid()
+            terminate(old_pid)
+            with pytest.raises(psycopg2.DatabaseError):
+                rb.get_result(key)
+            assert rb._conn is None  # dropped, so the next call reconnects
+
+            terminate(rb.conn.get_backend_pid())
+            rb.store_result(key, result={"healed": True})  # must self-heal
+            assert rb.conn.get_backend_pid() != old_pid
+        finally:
+            rb.close()
+
+        pg_conn.rollback()
         with pg_conn.cursor() as cur:
             cur.execute(
                 "SELECT result->>'healed' FROM pg_task_result WHERE task_id = %s",
