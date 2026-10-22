@@ -148,6 +148,20 @@ class MemberEventTests(AuditTestBase):
             [("a@example.com", "user"), ("b@example.com", "admin")],
         )
 
+    def test_a_failing_organisation_lookup_does_not_stop_invites(self) -> None:
+        # Only the audit side's lookups fail: the view's and the recorder's.
+        with (
+            patch("tenant_account_v2.users_view.UserContext") as view_context,
+            patch("platform_audit.recorder.UserContext") as recorder_context,
+        ):
+            view_context.get_organization.side_effect = OperationalError("db")
+            recorder_context.get_organization.side_effect = OperationalError("db")
+            response = self._invite(
+                [{"email": "new@example.com", "role": "user"}], [True]
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(self.events(), [])
+
     def test_each_invite_records_its_own_role(self) -> None:
         self._invite(
             [

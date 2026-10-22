@@ -135,13 +135,12 @@ class OrganizationUserViewSet(viewsets.ViewSet):
         serializer.is_valid(raise_exception=True)
         user_list = serializer.get_users(serializer.validated_data)
         auth_controller = AuthenticationController()
-        organization = UserContext.get_organization()  # once, not per event
         invite_response = auth_controller.invite_user(
             admin=request.user,
             org_id=UserSessionUtils.get_organization_id(request),
             user_list=user_list,
             request=request,
-            on_invited=lambda item: _record_invite(request, item, organization),
+            on_invited=lambda item: _record_invite(request, item),
         )
 
         response_serializer = UserInviteResponseSerializer(invite_response, many=True)
@@ -260,10 +259,12 @@ def _record_role_change(
 
 
 @best_effort
-def _record_invite(request: Request, item: dict, organization) -> None:
+def _record_invite(request: Request, item: dict) -> None:
     """One invitation the identity provider accepted. The role is the one the
     request asked for: an identity provider that coerces a missing or unknown
-    role (Auth0 invites those as a user) is not reflected here.
+    role (Auth0 invites those as a user) is not reflected here. The recorder
+    resolves the organisation, inside its own guard, so a failed lookup cannot
+    stop the invitations.
     """
     email = item.get("email")
     role = item.get("role")
@@ -275,7 +276,6 @@ def _record_invite(request: Request, item: dict, organization) -> None:
         changes={"after": {"role": role}},
         summary=f"as {role}" if role else "",
         request=request,
-        organization=organization,
     )
 
 
