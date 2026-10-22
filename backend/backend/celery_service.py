@@ -36,7 +36,8 @@ def _drop_cached_organization(**kwargs: object) -> None:
     """Backstop for tasks that set the organization id and never clear it.
 
     Setting the id already drops the cached organization, so this only keeps a
-    pool thread from carrying it into a task that relies on a leftover id.
+    pool worker (a prefork child process, or a thread under the threads pool)
+    from carrying it into a task that relies on a leftover id.
     """
     # Lazy: account_v2.models needs the app registry, ready once tasks run.
     from utils.user_context import UserContext
