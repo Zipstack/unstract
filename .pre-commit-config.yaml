@@ -37,6 +37,28 @@ repos:
       - id: mixed-line-ending
       - id: no-commit-to-branch
 
+  # Duplicate mapping keys only. `check-yaml` above cannot catch them: it runs
+  # with `--unsafe`, which parses for syntax without constructing the
+  # document, and even without that flag it loads via `yaml.safe_load`, which
+  # resolves a duplicate to the last occurrence silently. Docker Compose's
+  # loader rejects them outright, so the two disagree and CI is the stricter.
+  # That gap shipped a `docker-compose.test.yaml` with a second `backend:`
+  # key: pre-commit passed it and the e2e tier then died at `compose up`
+  # before a container started.
+  #
+  # Every other yamllint rule is off, deliberately. The repo has no yamllint
+  # baseline and this hook is not an invitation to adopt one: `extends:
+  # default` reports 333 findings across the 22 tracked YAML files (270 of
+  # them line-length), which would get the hook disabled rather than the
+  # files fixed. With only `key-duplicates` the same 22 files are clean, so
+  # it needs no exclusions and no per-file waivers.
+  - repo: https://github.com/adrienverge/yamllint
+    rev: v1.38.0
+    hooks:
+      - id: yamllint
+        name: check yaml for duplicate keys
+        args: ["-d", "{rules: {key-duplicates: enable}}"]
+
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.3.4
     hooks:

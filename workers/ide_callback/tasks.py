@@ -115,7 +115,24 @@ def _get_task_error(
         if res.result:
             return str(res.result)
     except Exception:
-        pass
+        # Was a bare `pass`, the same defect fixed in the Agent-KV twin
+        # (`agent_kv_tasks.py::_error_link`) -- carried over here because the
+        # cause and the cost are identical, not because this PR owns the IDE
+        # path.
+        #
+        # The common case is a kombu deserialization failure: the executor
+        # raised an exception class that is not importable in this image, so
+        # the result backend HAS the error and this process cannot read it. The
+        # execution is then finalized with the generic `default` -- the exact
+        # useless message this lookup exists to avoid -- and silently, leaving
+        # the real cause unrecoverable even from logs.
+        logger.warning(
+            "Could not read the executor error from the result backend for "
+            "task %s; finalizing with the generic message %r",
+            failed_task_id,
+            default,
+            exc_info=True,
+        )
     return default
 
 
@@ -693,3 +710,19 @@ def extraction_error(
                 source,
                 file_id,
             )
+
+
+# ------------------------------------------------------------------
+# Agent-KV terminal callbacks (spec §5.3)
+#
+# ``workers/worker.py``'s ``load_worker_tasks()`` registers this worker
+# type's tasks by loading THIS file directly (by path, under the bare
+# module name ``"tasks"``) rather than importing the ``ide_callback``
+# package -- so ``agent_kv_complete``/``agent_kv_error`` only bind to the
+# Celery app if something imports them as a side effect of importing this
+# module. Import at the bottom (not the top) to avoid a circular import:
+# ``agent_kv_tasks`` doesn't currently import back from here, but keeping
+# task-module imports last matches this file's own load-bearing position
+# in the worker boot sequence.
+# ------------------------------------------------------------------
+from ide_callback import agent_kv_tasks  # noqa: E402, F401
