@@ -49,12 +49,12 @@ class GetOrganizationsResponseSerializer(serializers.Serializer):
         required=False,
         help_text="The people the members page lists, without platform API key "
         "accounts. Absent if the organization has no data on this deployment, "
-        "or if the details could not be loaded.",
+        "if it belongs to another region, or if the details could not be loaded.",
     )
     region = serializers.CharField(
         required=False,
-        help_text="The deployment's region code, e.g. US or EU. Absent where "
-        "the deployment has no regions, the organization has no data here, or "
+        help_text="The organization's home region code, e.g. US or EU. Absent "
+        "where the deployment has no regions, the region is not known here, or "
         "the details could not be loaded.",
     )
 

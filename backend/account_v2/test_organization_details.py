@@ -164,3 +164,41 @@ class WithMemberDetailsTests(TestCase):
 
     def test_no_organizations(self) -> None:
         self.assertEqual(with_member_details([], self.caller), [])
+
+
+# Cloud stamps the region an organization was created in on its identity
+# provider metadata; a local copy in another region carries that stamp too.
+@override_settings(REGION="US")
+class HomeRegionTests(TestCase):
+    def setUp(self) -> None:
+        self.caller = _user("caller@example.com")
+        self.org = _org("org-a", "Org A")
+        OrganizationMember.objects.create(
+            organization=self.org, user=self.caller, role="admin"
+        )
+
+    def _row(self, metadata: dict | None, org_id: str = "org-a") -> dict:
+        org = CloudOrg(id=org_id, display_name="Org A", name=org_id, metadata=metadata)
+        return with_member_details([org], self.caller)[0]
+
+    def test_home_organisation_keeps_this_regions_details(self) -> None:
+        row = self._row({"region": "US"})
+        self.assertEqual((row["region"], row["member_count"]), ("US", 1))
+
+    def test_local_copy_shows_its_home_region(self) -> None:
+        row = self._row({"region": "EU"})
+        self.assertEqual(row["region"], "EU")
+        # This deployment's count covers only the people who opened the copy here.
+        self.assertNotIn("member_count", row)
+        self.assertEqual(row["role"], "admin")
+
+    def test_organisation_with_no_data_here_still_shows_its_region(self) -> None:
+        row = self._row({"region": "EU"}, org_id="org-x")
+        self.assertEqual(row["region"], "EU")
+        self.assertNotIn("member_count", row)
+        self.assertNotIn("role", row)
+
+    def test_unstamped_organisation_falls_back_to_this_region(self) -> None:
+        # Organizations created before the stamp, until they are back-filled.
+        row = self._row({"environment": "cloud-production"})
+        self.assertEqual((row["region"], row["member_count"]), ("US", 1))

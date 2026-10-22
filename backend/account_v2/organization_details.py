@@ -6,10 +6,17 @@ field is added only where this deployment can answer it, and is otherwise left
 out of the row rather than sent as null:
 
 - ``role``: the caller has a membership row in that organization here.
-- ``member_count``: the organization exists here. Counts the people the
-  members page lists: the organization's member records here, without
-  platform API key accounts. Pending invitations have no record yet.
-- ``region``: the organization exists here and ``settings.REGION`` is set.
+- ``member_count``: the organization exists here and is not a copy from
+  another region. Counts the people the members page lists: the
+  organization's member records here, without platform API key accounts.
+  Pending invitations have no record yet.
+- ``region``: the home region stamped on the organization's metadata, else
+  ``settings.REGION`` when the organization exists here.
+
+Cloud stamps ``region`` on an organization's metadata where it is created.
+Opening it from another region makes a local copy there, so where the stamp
+names another region the row shows that region and leaves out this
+deployment's member count, which covers only the people who opened the copy.
 """
 
 from collections.abc import Sequence
@@ -71,17 +78,22 @@ def with_member_details(
 
     rows = []
     for org in organizations:
+        metadata = getattr(org, "metadata", None)
+        home = metadata.get("region") if isinstance(metadata, dict) else None
         row: dict[str, Any] = {
             "id": org.id,
             "display_name": org.display_name,
             "name": org.name,
-            "metadata": getattr(org, "metadata", None),
+            "metadata": metadata,
         }
         if org.id in roles:
             row["role"] = roles[org.id]
-        if org.id in member_counts:
+        is_copy = bool(home and region and home != region)
+        if org.id in member_counts and not is_copy:
             row["member_count"] = member_counts[org.id]
-            if region:
-                row["region"] = region
+        if home:
+            row["region"] = home
+        elif region and org.id in member_counts:
+            row["region"] = region
         rows.append(row)
     return rows
