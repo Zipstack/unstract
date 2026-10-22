@@ -7,8 +7,11 @@ the first two capabilities, so ``organization/settings`` and
 ``organization/capabilities/`` stay in step by construction.
 
 Service accounts (platform API keys) are never subject to a capability
-setting. That is all a capability decides: each endpoint's own rules (admin
-checks, key permission levels, ownership) still apply on top, unchanged.
+setting. For the three creation capabilities and resource deletion, the
+setting only narrows: each endpoint's own rules (ownership, key permission levels)
+still apply on top. The three formerly admin-only areas (members, API keys,
+platform defaults) are the exception: ``opened_to_members`` admits members to
+them, with the limits each endpoint sets; see CAPABILITIES.md.
 """
 
 from dataclasses import dataclass
@@ -98,24 +101,25 @@ SPECS: tuple[CapabilitySpec, ...] = (
     CapabilitySpec(
         Capability.MANAGE_API_KEYS,
         "Manage API keys",
-        "Create and rotate platform keys and global deployment keys "
-        "(not per-deployment keys, which their owners manage).",
+        "Create global deployment keys for deployments they own, and "
+        "view or rotate the keys they created. Platform API keys stay "
+        "admin-only.",
         "restrict_api_key_management",
-        enforced=False,
+        enforced=True,
     ),
     CapabilitySpec(
         Capability.MANAGE_MEMBERS,
         "Manage members",
-        "Invite members and change their roles.",
+        "Invite members with the user role.",
         "restrict_member_management",
-        enforced=False,
+        enforced=True,
     ),
     CapabilitySpec(
         Capability.CHANGE_PLATFORM_DEFAULTS,
         "Change platform defaults",
-        "Change organisation-wide platform settings.",
+        "Change the organisation's notification settings.",
         "restrict_platform_defaults",
-        enforced=False,
+        enforced=True,
     ),
     CapabilitySpec(
         Capability.DELETE_WORKFLOWS_AND_DEPLOYMENTS,
@@ -147,6 +151,21 @@ def is_allowed(user: Any, organization: Organization | None, key: Capability) ->
     if setting_of(organization, spec) == CapabilitySetting.ANY_MEMBER:
         return True
     return OrganizationMemberService.is_user_organization_admin(user)
+
+
+def opened_to_members(
+    user: Any, organization: Organization | None, key: Capability
+) -> bool:
+    """Whether ``key`` admits ``user`` though they are not an admin.
+
+    For the capabilities whose endpoints were admin-only (API keys, members,
+    platform defaults): the caller's admin check stays, and this is the only
+    way past it. Service accounts never qualify; those endpoints refused them
+    before and still do.
+    """
+    if getattr(user, "is_service_account", False) or organization is None:
+        return False
+    return setting_of(organization, SPECS_BY_KEY[key]) == CapabilitySetting.ANY_MEMBER
 
 
 def enforce_capability(request: Any, key: Capability) -> None:

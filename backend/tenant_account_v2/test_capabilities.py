@@ -9,17 +9,30 @@ import re
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from account_v2.authentication_controller import AuthenticationController
+from account_v2.custom_exceptions import Forbidden
 from account_v2.models import Organization
 from adapter_processor_v2.models import AdapterInstance
 from adapter_processor_v2.views import AdapterInstanceViewSet
 from api_v2.api_deployment_views import APIDeploymentViewSet
+from api_v2.exceptions import UnauthorizedKey
+from api_v2.key_helper import KeyHelper
+from api_v2.models import APIDeployment
 from connector_v2.models import ConnectorInstance
 from connector_v2.views import ConnectorInstanceViewSet
 from django.test import SimpleTestCase
 from drf_spectacular.generators import SchemaGenerator
+from global_api_deployment_key.models import GlobalApiDeploymentKey
+from global_api_deployment_key.serializers import (
+    GlobalApiDeploymentKeyUpdateSerializer,
+)
+from global_api_deployment_key.views import GlobalApiDeploymentKeyViewSet
+from notification_v2.views import NotificationSettingsView
 from permissions.permission import IsOwner
 from permissions.roles import ResourceRole
 from pipeline_v2.views import PipelineViewSet
+from platform_api.models import ApiKeyPermission, PlatformApiKey
+from platform_api.views import PlatformApiKeyViewSet
 from platform_audit.tests.base import AuditTestBase, make_user
 from rest_framework.exceptions import PermissionDenied
 from workflow_manager.workflow_v2.models.workflow import Workflow
@@ -31,9 +44,18 @@ from tenant_account_v2.capabilities import (
     Capability,
     CapabilitySetting,
 )
+from tenant_account_v2.models import OrganizationMember
+from tenant_account_v2.users_view import OrganizationUserViewSet
 from tenant_account_v2.views import organization_capabilities, organization_settings
 
-ENFORCED = [spec for spec in SPECS if spec.enforced]
+# Endpoints open to members before UN-4399; service accounts pass them.
+MEMBER_OPEN = (
+    Capability.CREATE_LLM_ADAPTERS,
+    Capability.CREATE_CONNECTORS,
+    Capability.CREATE_OTHER_ADAPTERS,
+    Capability.DELETE_WORKFLOWS_AND_DEPLOYMENTS,
+)
+ENFORCED = [spec for spec in SPECS if spec.key in MEMBER_OPEN]
 
 
 class CapabilityRegistryTests(SimpleTestCase):
@@ -105,6 +127,10 @@ class CapabilityTestBase(AuditTestBase):
     def setUp(self) -> None:
         super().setUp()
         self.service_account = make_user("svc@example.com", is_service_account=True)
+        # As platform_api.services gives every platform key's service account.
+        OrganizationMember.objects.create(
+            organization=self.org, user=self.service_account, role="user"
+        )
 
     def restrict(self, key: Capability, restricted: bool) -> None:
         spec = next(s for s in SPECS if s.key == key)
@@ -137,7 +163,7 @@ class CapabilitiesApiTests(CapabilityTestBase):
         self.assertEqual(rows["create_connectors"]["label"], "Create connectors")
         self.assertEqual(
             {k for k, r in rows.items() if not r["configurable"]},
-            {"manage_api_keys", "manage_members", "change_platform_defaults"},
+            set(),
         )
 
     def test_admins_are_always_allowed(self) -> None:
@@ -206,7 +232,6 @@ class CapabilitiesApiTests(CapabilityTestBase):
         for body, attr in (
             ({"create_connectors": "admins_only", "nope": "admins_only"}, "nope"),
             ({"create_connectors": "admins_only", "create_llm_adapters": "x"}, None),
-            ({"manage_members": "any_member", "create_connectors": "admins_only"}, None),
             ({}, None),
         ):
             with self.subTest(body=str(body)):
@@ -215,23 +240,14 @@ class CapabilitiesApiTests(CapabilityTestBase):
                 self.org.refresh_from_db()
                 self.assertFalse(self.org.restrict_connector_creation)
 
-    def test_unenforced_capabilities_accept_only_admins_only(self) -> None:
+    def test_every_capability_accepts_both_settings(self) -> None:
         for spec in SPECS:
-            if spec.enforced:
-                continue
-            with self.subTest(key=spec.key.value):
-                ok = self.call(
-                    organization_capabilities,
-                    "patch",
-                    data={spec.key.value: "admins_only"},
-                )
-                self.assertEqual(ok.status_code, 200)
-                refused = self.call(
-                    organization_capabilities,
-                    "patch",
-                    data={spec.key.value: "any_member"},
-                )
-                self.assertEqual(refused.status_code, 400)
+            for setting in ("any_member", "admins_only"):
+                with self.subTest(key=spec.key.value, setting=setting):
+                    response = self.call(
+                        organization_capabilities, "patch", data={spec.key.value: setting}
+                    )
+                    self.assertEqual(response.status_code, 200, response.data)
 
     def test_legacy_settings_and_capabilities_stay_in_step(self) -> None:
         self.call(
@@ -526,3 +542,703 @@ class EnforcementMatrixTests(CapabilityTestBase):
                 ):
                     for permission in view.get_permissions():
                         permission.has_permission(request, view)
+
+
+class AdminOnlyEndpointsMatrixTests(CapabilityTestBase):
+    """API keys, members and platform defaults: endpoints that were admin-only.
+    'Any member' opens them to members; service accounts stay refused.
+    """
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.colleague = make_user("colleague@example.com")
+        OrganizationMember.objects.create(
+            organization=self.org, user=self.colleague, role="user"
+        )
+        workflow = Workflow.objects.create(
+            workflow_name="wf", organization=self.org, created_by=self.member
+        )
+        self.deployment = APIDeployment.objects.create(
+            api_name="api",
+            workflow=workflow,
+            organization=self.org,
+            created_by=self.member,
+        )
+        self.deployment.grant_owner(self.member)
+
+    def _allowed(self, key: Capability, user) -> bool:
+        if key == Capability.MANAGE_API_KEYS:
+            view = GlobalApiDeploymentKeyViewSet.as_view({"post": "create"})
+            data = {
+                "name": f"k-{user.pk}-{GlobalApiDeploymentKey.objects.count()}",
+                "description": "ci",
+                "allow_all_deployments": False,
+                "api_deployments": [str(self.deployment.pk)],
+            }
+            response = self.call(view, "post", user=user, data=data)
+            ok_status = 201
+        elif key == Capability.MANAGE_MEMBERS:
+            view = OrganizationUserViewSet.as_view(
+                {"post": "assign_organization_role_to_user"}
+            )
+            response = self.call(
+                view,
+                "post",
+                user=user,
+                data={"email": "colleague@example.com", "role": "user"},
+            )
+            ok_status = 200
+        else:
+            view = NotificationSettingsView.as_view()
+            response = self.call(
+                view, "patch", user=user, data={"club_interval_seconds": 600}
+            )
+            ok_status = 200
+        if response.status_code == 403:
+            return False
+        self.assertEqual(response.status_code, ok_status, getattr(response, "data", None))
+        return True
+
+    def test_matrix(self) -> None:
+        for key in (
+            Capability.MANAGE_API_KEYS,
+            Capability.MANAGE_MEMBERS,
+            Capability.CHANGE_PLATFORM_DEFAULTS,
+        ):
+            for restricted in (True, False):
+                self.restrict(key, restricted)
+                for name, user, expected in (
+                    ("admin", self.admin, True),
+                    ("member", self.member, not restricted),
+                    ("service account", self.service_account, False),
+                ):
+                    with self.subTest(key=key.value, restricted=restricted, user=name):
+                        self.assertEqual(self._allowed(key, user), expected)
+
+
+class MemberManagementGuardrailTests(CapabilityTestBase):
+    """With 'Any member', a member manages non-admin members only."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.restrict(Capability.MANAGE_MEMBERS, False)
+        self.colleague = make_user("colleague@example.com")
+        OrganizationMember.objects.create(
+            organization=self.org, user=self.colleague, role="user"
+        )
+        self.assign = OrganizationUserViewSet.as_view(
+            {"post": "assign_organization_role_to_user"}
+        )
+
+    def _assign(self, email: str, role: str):
+        return self.call(
+            self.assign, "post", user=self.member, data={"email": email, "role": role}
+        )
+
+    def test_a_member_cannot_grant_admin(self) -> None:
+        response = self._assign("colleague@example.com", "admin")
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(OrganizationMember.objects.get(user=self.colleague).role, "user")
+
+    def test_a_member_cannot_change_their_own_role(self) -> None:
+        self.assertEqual(self._assign("member@example.com", "user").status_code, 403)
+
+    def test_a_member_cannot_change_an_admins_role(self) -> None:
+        # A second admin, so the last-admin guard is not what refuses it.
+        second = make_user("second-admin@example.com")
+        OrganizationMember.objects.create(
+            organization=self.org, user=second, role="admin"
+        )
+        self.assertEqual(self._assign(second.email, "user").status_code, 403)
+        self.assertEqual(OrganizationMember.objects.get(user=second).role, "admin")
+
+    def test_a_member_cannot_revoke_admin(self) -> None:
+        # A second admin, so the last-admin guard is not what refuses it.
+        second = make_user("second-admin@example.com")
+        OrganizationMember.objects.create(
+            organization=self.org, user=second, role="admin"
+        )
+        view = OrganizationUserViewSet.as_view(
+            {"delete": "remove_organization_role_from_user"}
+        )
+        response = self.call(
+            view,
+            "delete",
+            user=self.member,
+            data={"email": second.email, "role": "admin"},
+        )
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(OrganizationMember.objects.get(user=second).role, "admin")
+
+    def test_a_member_cannot_remove_a_role(self) -> None:
+        # Removing someone's only role removes them, which stays admin-only.
+        view = OrganizationUserViewSet.as_view(
+            {"delete": "remove_organization_role_from_user"}
+        )
+        response = self.call(
+            view,
+            "delete",
+            user=self.member,
+            data={"email": "colleague@example.com", "role": "user"},
+        )
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(
+            str(response.data["errors"][0]["detail"]),
+            "Only admins can remove a member's role.",
+        )
+
+    def test_admins_invite_and_change_any_role_under_both_settings(self) -> None:
+        controller = AuthenticationController()
+        admin = OrganizationMember.objects.get(user=self.admin)
+        target = OrganizationMember.objects.get(user=self.colleague)
+        for restricted in (True, False):
+            self.restrict(Capability.MANAGE_MEMBERS, restricted)
+            with self.subTest(restricted=restricted):
+                controller.authorize_invite(admin, ["admin", "user", None])
+                controller.authorize_role_change(admin, target, "admin")
+                controller.authorize_role_change(admin, target, "user", removing=True)
+
+    def test_admins_only_refuses_members_removing_roles(self) -> None:
+        self.restrict(Capability.MANAGE_MEMBERS, True)
+        view = OrganizationUserViewSet.as_view(
+            {"delete": "remove_organization_role_from_user"}
+        )
+        response = self.call(
+            view,
+            "delete",
+            user=self.member,
+            data={"email": "colleague@example.com", "role": "user"},
+        )
+        self.assertEqual(response.status_code, 403)
+
+    def test_the_invite_endpoint_checks_before_inviting(self) -> None:
+        controller = AuthenticationController()
+        with patch.object(controller.auth_service, "invite_user") as invite:
+            with self.assertRaises(Forbidden):
+                controller.invite_user(
+                    admin=self.member,
+                    org_id=self.org.organization_id,
+                    user_list=[{"email": "new@example.com", "role": "admin"}],
+                    request=None,
+                )
+        invite.assert_not_called()
+
+    def test_a_member_invites_with_the_user_role_only(self) -> None:
+        controller = AuthenticationController()
+        actor = OrganizationMember.objects.get(user=self.member)
+        controller.authorize_invite(actor, ["user", None])
+        with self.assertRaises(Forbidden):
+            controller.authorize_invite(actor, ["user", "admin"])
+
+    def test_a_plugin_that_names_no_member_roles_refuses_members(self) -> None:
+        # A plugin that does not define the member-role hooks refuses
+        # members: plugins need not inherit AuthenticationService.
+        controller = AuthenticationController()
+        controller.auth_service = SimpleNamespace(
+            is_organization_admin=lambda member: False,
+            is_admin_by_role=lambda role: role == "admin",
+        )
+        actor = OrganizationMember.objects.get(user=self.member)
+        target = OrganizationMember.objects.get(user=self.colleague)
+        with self.assertRaises(Forbidden):
+            controller.authorize_invite(actor, ["user"])
+        with self.assertRaises(Forbidden):
+            controller.authorize_role_change(actor, target, "user")
+
+    def test_admins_only_refuses_members_everything(self) -> None:
+        self.restrict(Capability.MANAGE_MEMBERS, True)
+        actor = OrganizationMember.objects.get(user=self.member)
+        with self.assertRaises(Forbidden):
+            AuthenticationController().authorize_invite(actor, ["user"])
+        self.assertEqual(self._assign("colleague@example.com", "user").status_code, 403)
+
+
+class PlatformApiKeyGuardrailTests(CapabilityTestBase):
+    """Platform API keys stay admin-only even with 'Any member': each acts as
+    a service account that bypasses per-resource sharing and ownership.
+    """
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.restrict(Capability.MANAGE_API_KEYS, False)
+        self.read = PlatformApiKey.objects.create(
+            name="ci-read",
+            permission=ApiKeyPermission.READ,
+            organization=self.org,
+            created_by=self.member,
+        )
+
+    def test_members_cannot_use_platform_api_keys(self) -> None:
+        pk = {"pk": str(self.read.pk)}
+        create = {"data": {"name": "m", "description": "d", "permission": "read"}}
+        for action, method, kwargs in (
+            ({"get": "list"}, "get", {}),
+            ({"post": "create"}, "post", create),
+            ({"get": "retrieve"}, "get", pk),
+            ({"post": "rotate"}, "post", pk),
+            ({"patch": "partial_update"}, "patch", {**pk, "data": {"is_active": False}}),
+            ({"delete": "destroy"}, "delete", pk),
+        ):
+            with self.subTest(action=next(iter(action.values()))):
+                view = PlatformApiKeyViewSet.as_view(action)
+                response = self.call(view, method, user=self.member, **kwargs)
+                self.assertEqual(response.status_code, 403)
+        self.assertEqual(PlatformApiKey.objects.count(), 1)
+
+
+class GlobalDeploymentKeyGuardrailTests(CapabilityTestBase):
+    """With 'Any member', a member only keys deployments they own."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.restrict(Capability.MANAGE_API_KEYS, False)
+        workflow = Workflow.objects.create(
+            workflow_name="wf", organization=self.org, created_by=self.admin
+        )
+        self.mine = APIDeployment.objects.create(
+            api_name="mine",
+            workflow=workflow,
+            organization=self.org,
+            created_by=self.member,
+        )
+        self.mine.grant_owner(self.member)
+        self.theirs = APIDeployment.objects.create(
+            api_name="theirs",
+            workflow=workflow,
+            organization=self.org,
+            created_by=self.admin,
+        )
+        self.theirs.grant_owner(self.admin)
+        self.all_key = GlobalApiDeploymentKey.objects.create(
+            name="admin-all",
+            allow_all_deployments=True,
+            organization=self.org,
+            created_by=self.admin,
+        )
+
+    def _create(self, data: dict):
+        view = GlobalApiDeploymentKeyViewSet.as_view({"post": "create"})
+        return self.call(
+            view,
+            "post",
+            user=self.member,
+            data={"name": "k", "description": "ci", **data},
+        )
+
+    def test_a_member_cannot_create_an_allow_all_key(self) -> None:
+        response = self._create({"allow_all_deployments": True, "api_deployments": []})
+        self.assertEqual(response.status_code, 403)
+
+    def test_a_member_cannot_key_a_deployment_they_do_not_own(self) -> None:
+        response = self._create(
+            {"allow_all_deployments": False, "api_deployments": [str(self.theirs.pk)]}
+        )
+        self.assertEqual(response.status_code, 403)
+
+    def test_a_member_may_grant_their_own_deployment(self) -> None:
+        response = self._create(
+            {"allow_all_deployments": False, "api_deployments": [str(self.mine.pk)]}
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+
+    def test_a_member_rotates_only_keys_they_created(self) -> None:
+        own = GlobalApiDeploymentKey.objects.create(
+            name="own",
+            organization=self.org,
+            created_by=self.member,
+            created_by_member=True,
+        )
+        own.api_deployments.add(self.mine)
+        admins = GlobalApiDeploymentKey.objects.create(
+            name="admins", organization=self.org, created_by=self.admin
+        )
+        admins.api_deployments.add(self.mine)
+        rotate = GlobalApiDeploymentKeyViewSet.as_view({"post": "rotate"})
+        response = self.call(rotate, "post", user=self.member, pk=str(own.pk))
+        self.assertEqual(response.status_code, 200, response.data)
+        key_before = admins.key
+        response = self.call(rotate, "post", user=self.member, pk=str(admins.pk))
+        self.assertEqual(response.status_code, 403)
+        admins.refresh_from_db()
+        self.assertEqual(admins.key, key_before)
+
+    def test_a_member_cannot_edit_or_delete_their_own_key(self) -> None:
+        own = GlobalApiDeploymentKey.objects.create(
+            name="own",
+            organization=self.org,
+            created_by=self.member,
+            created_by_member=True,
+        )
+        own.api_deployments.add(self.mine)
+        update = GlobalApiDeploymentKeyViewSet.as_view({"patch": "partial_update"})
+        response = self.call(
+            update,
+            "patch",
+            user=self.member,
+            pk=str(own.pk),
+            data={"allow_all_deployments": True},
+        )
+        self.assertEqual(response.status_code, 403)
+        destroy = GlobalApiDeploymentKeyViewSet.as_view({"delete": "destroy"})
+        response = self.call(destroy, "delete", user=self.member, pk=str(own.pk))
+        self.assertEqual(response.status_code, 403)
+        own.refresh_from_db()
+        self.assertFalse(own.allow_all_deployments)
+
+    def test_a_member_cannot_view_or_rotate_their_own_key_once_it_reaches_further(
+        self,
+    ) -> None:
+        # Their own key, later widened by an admin: same rule as creating it.
+        own = GlobalApiDeploymentKey.objects.create(
+            name="own",
+            organization=self.org,
+            created_by=self.member,
+            created_by_member=True,
+        )
+        own.api_deployments.add(self.mine, self.theirs)
+        rotate = GlobalApiDeploymentKeyViewSet.as_view({"post": "rotate"})
+        response = self.call(rotate, "post", user=self.member, pk=str(own.pk))
+        self.assertEqual(response.status_code, 403)
+
+    def test_a_member_cannot_view_or_rotate_an_allow_all_key(self) -> None:
+        # Their own key, so only the allow-all rule can refuse it.
+        own_all = GlobalApiDeploymentKey.objects.create(
+            name="own-all",
+            allow_all_deployments=True,
+            organization=self.org,
+            created_by=self.member,
+            created_by_member=True,
+        )
+        for action, method in (
+            ({"get": "retrieve"}, "get"),
+            ({"post": "rotate"}, "post"),
+        ):
+            with self.subTest(action=method):
+                view = GlobalApiDeploymentKeyViewSet.as_view(action)
+                response = self.call(view, method, user=self.member, pk=str(own_all.pk))
+                self.assertEqual(response.status_code, 403)
+
+    def test_a_member_lists_and_views_only_their_own_keys(self) -> None:
+        own = GlobalApiDeploymentKey.objects.create(
+            name="own",
+            organization=self.org,
+            created_by=self.member,
+            created_by_member=True,
+        )
+        own.api_deployments.add(self.mine)
+        listing = GlobalApiDeploymentKeyViewSet.as_view({"get": "list"})
+        response = self.call(listing, "get", user=self.member)
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual([row["name"] for row in response.data], ["own"])
+        response = self.call(listing, "get", user=self.admin)
+        self.assertEqual(
+            sorted(row["name"] for row in response.data), ["admin-all", "own"]
+        )
+        retrieve = GlobalApiDeploymentKeyViewSet.as_view({"get": "retrieve"})
+        response = self.call(retrieve, "get", user=self.member, pk=str(own.pk))
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(response.data["key"], str(own.key))
+
+    def test_a_members_list_hides_deployments_they_no_longer_own(self) -> None:
+        own = GlobalApiDeploymentKey.objects.create(
+            name="own",
+            organization=self.org,
+            created_by=self.member,
+            created_by_member=True,
+        )
+        own.api_deployments.add(self.mine)
+        listing = GlobalApiDeploymentKeyViewSet.as_view({"get": "list"})
+
+        def listed(user) -> list[str]:
+            response = self.call(listing, "get", user=user)
+            self.assertEqual(response.status_code, 200, response.data)
+            row = next(r for r in response.data if r["name"] == "own")
+            return [d["id"] for d in row["api_deployments"]]
+
+        self.assertEqual(listed(self.member), [str(self.mine.pk)])
+        # Still a viewer: viewing is not owning.
+        self.mine.memberships.filter(user=self.member).update(role=ResourceRole.VIEWER)
+        self.assertEqual(listed(self.member), [])
+        # The link itself stays, and an admin still sees it.
+        self.assertEqual(listed(self.admin), [str(self.mine.pk)])
+
+    def _member_key(self) -> GlobalApiDeploymentKey:
+        response = self._create(
+            {"allow_all_deployments": False, "api_deployments": [str(self.mine.pk)]}
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+        return GlobalApiDeploymentKey.objects.get(pk=response.data["id"])
+
+    def _authenticates(self, key: GlobalApiDeploymentKey, deployment=None) -> bool:
+        try:
+            KeyHelper.validate_global_api_deployment_key(
+                api_key=str(key.key), api_deployment=deployment or self.mine
+            )
+        except UnauthorizedKey:
+            return False
+        return True
+
+    def test_a_members_key_stops_working_when_they_stop_owning_it(self) -> None:
+        key = self._member_key()
+        self.assertTrue(key.created_by_member)
+        self.assertTrue(self._authenticates(key))
+        # Still a viewer: viewing is not owning.
+        self.mine.memberships.filter(user=self.member).update(role=ResourceRole.VIEWER)
+        self.assertFalse(self._authenticates(key))
+
+    def test_a_members_key_stops_working_when_they_leave(self) -> None:
+        key = self._member_key()
+        OrganizationMember.objects.filter(user=self.member).delete()
+        self.assertFalse(self._authenticates(key))
+
+    def test_an_admins_key_does_not_depend_on_its_creator(self) -> None:
+        view = GlobalApiDeploymentKeyViewSet.as_view({"post": "create"})
+        response = self.call(
+            view,
+            "post",
+            user=self.admin,
+            data={
+                "name": "admins",
+                "description": "ci",
+                "allow_all_deployments": False,
+                "api_deployments": [str(self.mine.pk)],
+            },
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+        key = GlobalApiDeploymentKey.objects.get(pk=response.data["id"])
+        self.assertFalse(key.created_by_member)
+        OrganizationMember.objects.filter(user=self.admin).delete()
+        self.assertTrue(self._authenticates(key))
+
+    def _admin_patch(self, key: GlobalApiDeploymentKey, data: dict):
+        view = GlobalApiDeploymentKeyViewSet.as_view({"patch": "partial_update"})
+        response = self.call(view, "patch", user=self.admin, pk=str(key.pk), data=data)
+        key.refresh_from_db()
+        return response
+
+    def test_an_admin_cannot_widen_a_members_key(self) -> None:
+        key = self._member_key()
+        for data in (
+            {"allow_all_deployments": True},
+            {"api_deployments": [str(self.mine.pk), str(self.theirs.pk)]},
+        ):
+            with self.subTest(data=data):
+                response = self._admin_patch(key, data)
+                self.assertEqual(response.status_code, 400)
+                self.assertIn(next(iter(data)), str(response.data))
+                self.assertFalse(key.allow_all_deployments)
+                self.assertEqual(list(key.api_deployments.all()), [self.mine])
+        # What the edit form sends for a description-only edit.
+        response = self._admin_patch(
+            key,
+            {
+                "description": "renamed",
+                "allow_all_deployments": False,
+                "api_deployments": [str(self.mine.pk)],
+            },
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(key.description, "renamed")
+        self.assertTrue(key.created_by_member)
+        self.assertTrue(response.data["created_by_member"])
+
+    def test_an_admin_can_still_edit_a_stranded_members_key(self) -> None:
+        form = {
+            "description": "renamed",
+            "allow_all_deployments": False,
+            "api_deployments": [str(self.mine.pk)],
+        }
+        key = self._member_key()
+        self.mine.memberships.filter(user=self.member).delete()
+        self.assertEqual(self._admin_patch(key, form).status_code, 200)
+        key.created_by = None
+        key.save(update_fields=["created_by"])
+        self.assertEqual(
+            self._admin_patch(key, {**form, "description": "again"}).status_code, 200
+        )
+        # Still nothing may be added.
+        response = self._admin_patch(
+            key, {"api_deployments": [str(self.mine.pk), str(self.theirs.pk)]}
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("api_deployments", str(response.data))
+        self.assertEqual(list(key.api_deployments.all()), [self.mine])
+
+    def _second_deployment(self) -> APIDeployment:
+        workflow = Workflow.objects.create(
+            workflow_name="wf2", organization=self.org, created_by=self.member
+        )
+        return APIDeployment.objects.create(
+            api_name="mine2",
+            workflow=workflow,
+            organization=self.org,
+            created_by=self.member,
+        )
+
+    def test_an_admin_may_add_a_deployment_the_creator_owns(self) -> None:
+        mine2 = self._second_deployment()
+        mine2.grant_owner(self.member)
+        key = self._member_key()
+        response = self._admin_patch(
+            key, {"api_deployments": [str(self.mine.pk), str(mine2.pk)]}
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(
+            {d.pk for d in key.api_deployments.all()}, {self.mine.pk, mine2.pk}
+        )
+        self.assertTrue(self._authenticates(key, mine2))
+
+    def test_a_creator_who_left_cannot_have_deployments_added(self) -> None:
+        mine2 = self._second_deployment()
+        mine2.grant_owner(self.member)
+        key = self._member_key()
+        OrganizationMember.objects.filter(user=self.member).delete()
+        response = self._admin_patch(
+            key, {"api_deployments": [str(self.mine.pk), str(mine2.pk)]}
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("api_deployments", str(response.data))
+
+    def test_a_member_cannot_open_another_members_key(self) -> None:
+        # Both own the deployment, and the other key is a member's key: only
+        # the creator check can refuse it.
+        colleague = make_user("colleague@example.com")
+        OrganizationMember.objects.create(
+            organization=self.org, user=colleague, role="user"
+        )
+        self.mine.grant_owner(colleague)
+        theirs = GlobalApiDeploymentKey.objects.create(
+            name="colleague",
+            organization=self.org,
+            created_by=colleague,
+            created_by_member=True,
+        )
+        theirs.api_deployments.add(self.mine)
+        key_before = theirs.key
+        for action, method in (
+            ({"get": "retrieve"}, "get"),
+            ({"post": "rotate"}, "post"),
+        ):
+            with self.subTest(action=method):
+                response = self.call(
+                    GlobalApiDeploymentKeyViewSet.as_view(action),
+                    method,
+                    user=self.member,
+                    pk=str(theirs.pk),
+                )
+                self.assertEqual(response.status_code, 403)
+        theirs.refresh_from_db()
+        self.assertEqual(theirs.key, key_before)
+
+    def test_a_demoted_admin_cannot_view_or_rotate_their_admin_era_key(self) -> None:
+        view = GlobalApiDeploymentKeyViewSet.as_view({"post": "create"})
+        response = self.call(
+            view,
+            "post",
+            user=self.admin,
+            data={
+                "name": "admin-era",
+                "description": "ci",
+                "allow_all_deployments": False,
+                "api_deployments": [str(self.theirs.pk)],
+            },
+        )
+        self.assertEqual(response.status_code, 201, response.data)
+        key = GlobalApiDeploymentKey.objects.get(pk=response.data["id"])
+        self.assertFalse(key.created_by_member)
+        # Demoted, still owning the key's deployment.
+        OrganizationMember.objects.filter(user=self.admin).update(role="user")
+        demoted = type(self.admin).objects.get(pk=self.admin.pk)
+        for action, method in (
+            ({"get": "retrieve"}, "get"),
+            ({"post": "rotate"}, "post"),
+        ):
+            with self.subTest(action=method):
+                response = self.call(
+                    GlobalApiDeploymentKeyViewSet.as_view(action),
+                    method,
+                    user=demoted,
+                    pk=str(key.pk),
+                )
+                self.assertEqual(response.status_code, 403)
+        listing = self.call(
+            GlobalApiDeploymentKeyViewSet.as_view({"get": "list"}), "get", user=demoted
+        )
+        self.assertEqual(listing.status_code, 200, listing.data)
+        self.assertNotIn("admin-era", [row["name"] for row in listing.data])
+
+    def test_execution_checks_a_members_key_with_its_creators_rights(self) -> None:
+        # The execute view hands the authorising global key to the request
+        # serializer, which holds a member's key to its creator's profiles.
+        from api_v2.api_deployment_views import DeploymentExecution
+
+        key = self._member_key()
+        seen = {}
+
+        class Stop(Exception):
+            pass
+
+        def capture(*args, **kwargs):
+            seen.update(kwargs["context"])
+            raise Stop
+
+        request = self.factory.post(
+            "/", {}, format="json", HTTP_AUTHORIZATION=f"Bearer {key.key}"
+        )
+        with patch("api_v2.api_deployment_views.ExecutionRequestSerializer", capture):
+            # The view's error handler turns Stop into a 500; only the
+            # captured serializer context matters here.
+            DeploymentExecution.as_view()(
+                request, org_name=self.org.organization_id, api_name="mine"
+            )
+        self.assertEqual(seen["global_key"].pk, key.pk)
+        self.assertTrue(seen["global_key"].created_by_member)
+
+    def test_a_creator_promoted_to_admin_keeps_their_keys_working(self) -> None:
+        key = self._member_key()
+        self.mine.memberships.filter(user=self.member).delete()
+        OrganizationMember.objects.filter(user=self.member).update(role="admin")
+        key = GlobalApiDeploymentKey.objects.get(pk=key.pk)
+        self.assertTrue(self._authenticates(key))
+
+    def test_a_member_cannot_key_a_deployment_they_only_view(self) -> None:
+        self.theirs.memberships.create(user=self.member, role=ResourceRole.VIEWER)
+        response = self._create(
+            {"allow_all_deployments": False, "api_deployments": [str(self.theirs.pk)]}
+        )
+        self.assertEqual(response.status_code, 403)
+        picker = GlobalApiDeploymentKeyViewSet.as_view({"get": "deployments"})
+        names = [
+            row["api_name"] for row in self.call(picker, "get", user=self.member).data
+        ]
+        self.assertEqual(names, ["mine"])
+        # A key that covered it (an admin's grant before) stops working for it.
+        key = self._member_key()
+        key.api_deployments.add(self.theirs)
+        self.assertFalse(self._authenticates(key, self.theirs))
+
+    def test_an_edit_does_not_undo_a_rotate_made_meanwhile(self) -> None:
+        key = self._member_key()
+        stale = GlobalApiDeploymentKey.objects.get(pk=key.pk)
+        rotate = GlobalApiDeploymentKeyViewSet.as_view({"post": "rotate"})
+        response = self.call(rotate, "post", user=self.member, pk=str(key.pk))
+        self.assertEqual(response.status_code, 200, response.data)
+        rotated = response.data["key"]
+        request = SimpleNamespace(user=self.admin)
+        serializer = GlobalApiDeploymentKeyUpdateSerializer(
+            stale,
+            data={"description": "edited"},
+            partial=True,
+            context={"request": request},
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        key.refresh_from_db()
+        self.assertEqual(str(key.key), str(rotated))
+        self.assertEqual(key.description, "edited")
+
+    def test_a_member_picks_from_their_own_deployments(self) -> None:
+        view = GlobalApiDeploymentKeyViewSet.as_view({"get": "deployments"})
+        response = self.call(view, "get", user=self.member)
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual([row["api_name"] for row in response.data], ["mine"])

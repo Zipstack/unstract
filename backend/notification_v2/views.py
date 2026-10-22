@@ -15,7 +15,7 @@ from platform_audit.recorder import (
     record_platform_event,
 )
 from rest_framework import status, viewsets
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import BasePermission, IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -59,6 +59,19 @@ class NotificationViewSet(viewsets.ModelViewSet):
         return queryset
 
 
+class CanChangePlatformDefaults(BasePermission):
+    message = "Change platform defaults is restricted to organisation admins."
+
+    def has_permission(self, request, view):
+        from tenant_account_v2.capabilities import Capability, opened_to_members
+
+        return IsOrganizationAdmin().has_permission(request, view) or opened_to_members(
+            request.user,
+            UserContext.get_organization(),
+            Capability.CHANGE_PLATFORM_DEFAULTS,
+        )
+
+
 class NotificationSettingsView(APIView):
     """Org-scoped notification batching settings — currently just the club interval.
 
@@ -70,7 +83,10 @@ class NotificationSettingsView(APIView):
     flush_after.
     """
 
-    permission_classes = [IsAuthenticated, IsOrganizationAdmin]
+    # Admins, or members when the org lets members change platform defaults
+    # (UN-4399). Platform defaults are otherwise per-user; this is the only
+    # organisation-level setting the capability governs.
+    permission_classes = [IsAuthenticated, CanChangePlatformDefaults]
 
     def get(self, request: Request) -> Response:
         organization = UserContext.get_organization()

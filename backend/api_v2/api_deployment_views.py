@@ -105,7 +105,7 @@ class DeploymentExecution(views.APIView):
             context={
                 "api": api,
                 "api_key": api_key,
-                "is_global_key": deployment_execution_dto.is_global_key,
+                "global_key": deployment_execution_dto.global_key,
             },
         )
         serializer.is_valid(raise_exception=True)
