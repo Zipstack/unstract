@@ -72,7 +72,6 @@ import time
 from collections.abc import Callable, Iterator
 from typing import TYPE_CHECKING, Any, Final, Self
 
-import psycopg2
 import redis
 
 from unstract.core.cache.redis_client import create_redis_client
@@ -82,7 +81,11 @@ from unstract.core.polling import poll_for_row
 
 from .connection import CONN_DEAD_ERRORS as _CONN_DEAD_ERRORS
 from .connection import PAYLOAD_REJECTED_ERRORS as _PAYLOAD_REJECTED_ERRORS
-from .connection import create_pg_connection, is_connection_dead
+from .connection import (
+    create_pg_connection,
+    is_connection_dead,
+    is_dead_after_autocommit_error,
+)
 from .schema import qualified
 
 if TYPE_CHECKING:
@@ -314,23 +317,14 @@ class PgResultBackend:
 
     @contextlib.contextmanager
     def _cursor(self) -> Iterator[Any]:
-        """Yield a cursor; commit on success, roll back + recover on error.
-
-        On the owned autocommit connection ``commit()`` / ``rollback()`` send
-        nothing to the server, so ``rollback()`` cannot detect a dead server
-        connection there; see the heuristic below.
-        """
+        """Yield a cursor; commit on success, roll back + recover on error."""
         conn = self.conn
         try:
             with conn.cursor() as cur:
                 yield cur
             conn.commit()
         except Exception as exc:
-            # As in PgQueueClient._cursor: a server-side termination can surface
-            # as a bare DatabaseError, which the autocommit rollback() no longer
-            # catches, so treat it as dead directly. Statement errors map to a
-            # SQLSTATE subclass; a rare unmapped one costs only a reconnect.
-            conn_dead = is_connection_dead(exc) or type(exc) is psycopg2.DatabaseError
+            conn_dead = is_dead_after_autocommit_error(exc)
             try:
                 conn.rollback()
             except Exception:

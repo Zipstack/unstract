@@ -699,25 +699,21 @@ class TestStoreResultRealReconnect:
     were unusable — the mock tests can't see that.
     """
 
-    def test_real_reconnect_heals_closed_connection(self, pg_conn, monkeypatch):
+    @pytest.fixture
+    def owned_rb(self, pg_conn, monkeypatch):
         # The owned backend reconnects via result_backend.create_pg_connection;
         # point that at the integration DB (TEST_DB_*), the same one pg_conn uses
         # (the bare DB_* env is the suite's unit-isolation placeholder).
-        os.environ.setdefault("TEST_DB_HOST", "127.0.0.1")
         monkeypatch.setattr(
             "queue_backend.pg_queue.result_backend.create_pg_connection",
             lambda *a, **k: create_pg_connection(env_prefix="TEST_DB_"),
         )
-
-        key = _key()
         rb = PgResultBackend()  # owned, real connection to the test DB
-        try:
-            _ = rb.conn  # materialise the connection
-            rb._conn.close()  # client-side close -> InterfaceError on next use
-            rb.store_result(key, result={"healed": True})  # must self-heal
-        finally:
-            rb.close()
+        yield rb
+        rb.close()
 
+    @staticmethod
+    def _assert_healed_and_delete(pg_conn, key):
         # The row really landed — read it back on the fixture's own connection.
         pg_conn.rollback()  # clear any aborted txn before reading
         with pg_conn.cursor() as cur:
@@ -730,17 +726,18 @@ class TestStoreResultRealReconnect:
         pg_conn.commit()
         assert row is not None and row[0] == "true"
 
-    def test_real_reconnect_after_backend_termination(self, pg_conn, monkeypatch):
+    def test_real_reconnect_heals_closed_connection(self, pg_conn, owned_rb):
+        key = _key()
+        _ = owned_rb.conn  # materialise the connection
+        owned_rb._conn.close()  # client-side close -> InterfaceError on next use
+        owned_rb.store_result(key, result={"healed": True})  # must self-heal
+        self._assert_healed_and_delete(pg_conn, key)
+
+    def test_real_reconnect_after_backend_termination(self, pg_conn, owned_rb):
         # The owned connection runs in autocommit, where rollback() sends nothing
         # and so can't prove a server-terminated connection dead. Pin that a
         # terminated backend still heals: a read drops the handle, and a write
         # self-heals through _store_with_reconnect.
-        os.environ.setdefault("TEST_DB_HOST", "127.0.0.1")
-        monkeypatch.setattr(
-            "queue_backend.pg_queue.result_backend.create_pg_connection",
-            lambda *a, **k: create_pg_connection(env_prefix="TEST_DB_"),
-        )
-
         def terminate(pid):
             with pg_conn.cursor() as cur:
                 # Wait (up to 5 s) for the backend to exit, so the next call
@@ -749,31 +746,17 @@ class TestStoreResultRealReconnect:
             pg_conn.commit()
 
         key = _key()
-        rb = PgResultBackend()
-        try:
-            assert rb.conn.autocommit is True
-            old_pid = rb.conn.get_backend_pid()
-            terminate(old_pid)
-            with pytest.raises(psycopg2.DatabaseError):
-                rb.get_result(key)
-            assert rb._conn is None  # dropped, so the next call reconnects
+        assert owned_rb.conn.autocommit is True
+        old_pid = owned_rb.conn.get_backend_pid()
+        terminate(old_pid)
+        with pytest.raises(psycopg2.DatabaseError):
+            owned_rb.get_result(key)
+        assert owned_rb._conn is None  # dropped, so the next call reconnects
 
-            terminate(rb.conn.get_backend_pid())
-            rb.store_result(key, result={"healed": True})  # must self-heal
-            assert rb.conn.get_backend_pid() != old_pid
-        finally:
-            rb.close()
-
-        pg_conn.rollback()
-        with pg_conn.cursor() as cur:
-            cur.execute(
-                "SELECT result->>'healed' FROM pg_task_result WHERE task_id = %s",
-                (key,),
-            )
-            row = cur.fetchone()
-            cur.execute("DELETE FROM pg_task_result WHERE task_id = %s", (key,))
-        pg_conn.commit()
-        assert row is not None and row[0] == "true"
+        terminate(owned_rb.conn.get_backend_pid())
+        owned_rb.store_result(key, result={"healed": True})  # must self-heal
+        assert owned_rb.conn.get_backend_pid() != old_pid
+        self._assert_healed_and_delete(pg_conn, key)
 
 
 class TestRedisDownFallbackBudget:
