@@ -482,7 +482,11 @@ class ExecutionRequestSerializer(TagParamsSerializer):
         # Get context from serializer
         api = self.context.get("api")
         api_key = self.context.get("api_key")
-        is_global_key = self.context.get("is_global_key", False)
+        # One source of truth: the authorising global key itself, so the
+        # member-key check below cannot be skipped by a caller that marks the
+        # request global without passing the key.
+        global_key = self.context.get("global_key")
+        is_global_key = global_key is not None
 
         if not api or not api_key:
             raise ValidationError("Unable to validate LLM profile ownership")
@@ -493,8 +497,10 @@ class ExecutionRequestSerializer(TagParamsSerializer):
         except ProfileManager.DoesNotExist:
             raise ValidationError("Profile not found")
 
-        # Global API Keys are org-level (not tied to a single user), so the
-        # per-user ownership check below does not apply. We must still confirm
+        # A Global API Key an admin created is org-level, so the per-user
+        # ownership check below does not apply to it; one a member created
+        # (UN-4399) may only use profiles its creator owns, as a deployment's
+        # own key does, checked after the org check. We must still confirm
         # the profile belongs to the same organization as the deployment,
         # otherwise a caller could reference another org's profile by UUID.
         # ``ProfileManager.objects`` is not org-scoped by default, so this
@@ -514,6 +520,11 @@ class ExecutionRequestSerializer(TagParamsSerializer):
             if profile_org_id != api.organization_id:
                 # Generic error avoids confirming another org's profile exists.
                 raise ValidationError("Profile not found")
+            if (
+                global_key.created_by_member
+                and profile.created_by_id != global_key.created_by_id
+            ):
+                raise ValidationError("You can only use profiles that you own")
             return value
 
         # Get the specific API key being used

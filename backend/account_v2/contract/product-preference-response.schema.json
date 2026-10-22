@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "unstract/account/product-preference-response/v1",
+  "type": "object",
+  "required": ["product", "updated_at", "has_chosen"],
+  "additionalProperties": false,
+  "properties": {
+    "product": {
+      "enum": ["unstract", "llm-whisperer", "verticals", "flow", null]
+    },
+    "updated_at": {"type": ["string", "null"], "format": "date-time"},
+    "has_chosen": {"type": "boolean"}
+  }
+}
