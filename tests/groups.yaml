@@ -330,3 +330,21 @@ groups:
     depends_on: [e2e-smoke]
     timeout_seconds: 1800
     optional: true
+
+  # ── Frontend v1 (epic UN-4257) ─────────────────────────────────────────────
+  # `frontend-v1` prefix (D10): v1 results sort together and apart from
+  # `frontend` and `ui`, so v1 never pollutes v0 results.
+  frontend-v1-e2e:
+    # Playwright over the v1 pages: one spec per page task in specs/, the
+    # P8-T01 journeys in journeys/. Self-contained like `ui` (own package.json,
+    # lock and Playwright). Only tests tagged for UNSTRACT_DISTRIBUTION
+    # (default oss) run; see tests/e2e/ui-v1/fixtures/tags.ts.
+    # `optional` until CI has shown it green; then it gates like any e2e group.
+    tier: e2e
+    runner: playwright
+    workdir: tests/e2e/ui-v1
+    paths: ["."]
+    requires_platform: true
+    depends_on: [e2e-smoke]
+    timeout_seconds: 1800
+    optional: true
