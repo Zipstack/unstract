@@ -86,7 +86,7 @@ def _lookup_returning(*orgs: _Org):
 
 
 class TestOrganizationCache:
-    def test_resolved_once_per_request(self):
+    def test_repeat_calls_reuse_the_cached_organization(self):
         org = _Org("org-a")
         StateStore.set(Account.ORGANIZATION_ID, "org-a")
         with _lookup_returning(org) as lookup:
@@ -184,6 +184,14 @@ class TestCacheOrganization:
         UserContext.clear_organization_cache()
         assert StateStore.get(Account.ORGANIZATION_CACHE) is None
         UserContext.clear_organization_cache()  # idempotent
+
+    def test_drop_derived_drops_the_cache_and_keeps_the_id(self):
+        """What the root conftest fixture relies on between tests."""
+        StateStore.set(Account.ORGANIZATION_ID, "org-a")
+        UserContext.cache_organization(_Org("org-a"))
+        StateStore.drop_derived()
+        assert StateStore.get(Account.ORGANIZATION_CACHE) is None
+        assert StateStore.get(Account.ORGANIZATION_ID) == "org-a"
 
     def test_set_organization_sets_the_id_then_seeds(self):
         org = _Org("org-a")

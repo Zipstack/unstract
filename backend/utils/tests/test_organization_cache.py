@@ -1,4 +1,4 @@
-"""Org-scoped querysets resolve the request's organization once (UN-4253).
+"""Org-scoped querysets reuse the cached organization (UN-4253).
 
 ``DefaultOrganizationManagerMixin`` asks ``UserContext.get_organization()``
 for the organization on every queryset. Without the per-request cache each of
