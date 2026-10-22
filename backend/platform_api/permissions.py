@@ -25,6 +25,42 @@ class IsOrganizationAdmin(BasePermission):
             return False
 
 
+def is_org_admin_session(request, view=None) -> bool:
+    return IsOrganizationAdmin().has_permission(request, view)
+
+
+def member_may_manage_keys(request) -> bool:
+    """A non-admin the org's ``manage_api_keys`` setting admits (UN-4399).
+
+    Only global deployment keys use this. Platform API keys stay admin-only
+    whatever the setting: each acts as a service account that bypasses
+    per-resource sharing and ownership, so a member holding one would reach
+    every resource in the organisation.
+    """
+    from tenant_account_v2.capabilities import Capability, opened_to_members
+    from utils.user_context import UserContext
+
+    return opened_to_members(
+        request.user, UserContext.get_organization(), Capability.MANAGE_API_KEYS
+    )
+
+
+class CanManageApiKeys(BasePermission):
+    """Admins, or members when the org lets members manage API keys.
+
+    For the global deployment key actions members may use (list, create,
+    retrieve, rotate, deployments); the view narrows what a member may do to a given key.
+    Editing and deleting keys stay ``IsOrganizationAdmin``.
+    """
+
+    message = "Manage API keys is restricted to organisation admins."
+
+    def has_permission(self, request, view):
+        if not request.user or not request.user.is_authenticated:
+            return False
+        return is_org_admin_session(request, view) or member_may_manage_keys(request)
+
+
 class CanRotatePlatformApiKey(BasePermission):
     """Permission for the ``rotate`` action (UN-3586).
 
