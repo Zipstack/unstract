@@ -394,7 +394,11 @@ class PagedFormTests(_Seed, TestCase):
 
 
 class ContractTests(SimpleTestCase):
-    """The drf-spectacular annotation is the contract, with the README."""
+    """The drf-spectacular annotation is the contract, with the README.
+
+    This checks the schema's names, not a real response's shape: the default
+    form is pinned byte for byte above, the paged form key by key.
+    """
 
     def test_schema_documents_both_forms(self) -> None:
         schema = SchemaGenerator(patterns=urls.urlpatterns).get_schema(
