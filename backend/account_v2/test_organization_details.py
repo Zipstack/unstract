@@ -167,7 +167,7 @@ class WithMemberDetailsTests(TestCase):
 
 
 # Cloud stamps the region an organization was created in on its identity
-# provider metadata; a local copy in another region carries that stamp too.
+# provider metadata, which the auth service returns with each organization.
 @override_settings(REGION="US")
 class HomeRegionTests(TestCase):
     def setUp(self) -> None:
@@ -202,3 +202,16 @@ class HomeRegionTests(TestCase):
         # Organizations created before the stamp, until they are back-filled.
         row = self._row({"environment": "cloud-production"})
         self.assertEqual((row["region"], row["member_count"]), ("US", 1))
+
+    @override_settings(REGION=None)
+    def test_deployment_without_regions_ignores_the_stamp(self) -> None:
+        # OSS and on-prem: a region key in the provider's metadata changes nothing.
+        row = self._row({"region": "EU"})
+        self.assertNotIn("region", row)
+        self.assertEqual(row["member_count"], 1)
+
+    def test_stamp_that_is_not_a_region_code_is_ignored(self) -> None:
+        for stamp in ("", ["EU"], 7):
+            with self.subTest(stamp=repr(stamp)):
+                row = self._row({"region": stamp})
+                self.assertEqual((row["region"], row["member_count"]), ("US", 1))

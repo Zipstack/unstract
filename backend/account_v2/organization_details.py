@@ -10,8 +10,9 @@ out of the row rather than sent as null:
   another region. Counts the people the members page lists: the
   organization's member records here, without platform API key accounts.
   Pending invitations have no record yet.
-- ``region``: the home region stamped on the organization's metadata, else
-  ``settings.REGION`` when the organization exists here.
+- ``region``: only where ``settings.REGION`` is set: the home region stamped
+  on the organization's metadata, else ``settings.REGION`` when the
+  organization exists here.
 
 Cloud stamps ``region`` on an organization's metadata where it is created.
 Opening it from another region makes a local copy there, so where the stamp
@@ -39,6 +40,12 @@ class ListedOrganization(Protocol):
     id: str
     display_name: str
     name: str
+
+
+def _home_region(metadata: Any) -> str | None:
+    """The region code stamped on the identity provider's metadata, if any."""
+    stamp = metadata.get("region") if isinstance(metadata, dict) else None
+    return stamp if isinstance(stamp, str) and stamp else None
 
 
 def with_member_details(
@@ -79,7 +86,7 @@ def with_member_details(
     rows = []
     for org in organizations:
         metadata = getattr(org, "metadata", None)
-        home = metadata.get("region") if isinstance(metadata, dict) else None
+        home = _home_region(metadata) if region else None
         row: dict[str, Any] = {
             "id": org.id,
             "display_name": org.display_name,
@@ -88,7 +95,7 @@ def with_member_details(
         }
         if org.id in roles:
             row["role"] = roles[org.id]
-        is_copy = bool(home and region and home != region)
+        is_copy = bool(home and home != region)
         if org.id in member_counts and not is_copy:
             row["member_count"] = member_counts[org.id]
         if home:
