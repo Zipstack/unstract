@@ -54,7 +54,7 @@
 |---|---|---|
 | `role` | The caller has a membership in the organization on this deployment. | The stored role: `admin` or `user` in OSS; `unstract_admin`, `unstract_user`, `unstract_supervisor` or `unstract_reviewer` in cloud. |
 | `member_count` | The organization exists on this deployment. | The people the members page lists: the organization's member records on this deployment. Platform API key accounts and pending invitations are not counted. |
-| `region` | The organization exists on this deployment and the deployment sets `REGION`. | The region code (`US`, `EU`; `STAGING`, `DEV` or `INTEGRATION` outside production). The client maps it to a label. OSS and on-prem never send it: their settings don't read `REGION`, whatever the environment sets. |
+| `region` | The organization exists on this deployment and the deployment sets `REGION`. | The region code (`US`, `EU`; `STAGING`, `DEV` or `INTEGRATION` outside production). The client maps it to a label. OSS and on-prem never send it: their settings don't read `REGION`, whatever the environment sets. It is the region of the deployment that answered: an organization from another region that the user once opened here has a local copy, so it shows this region and this deployment's member count. |
 
 If working out these three fields fails, the list is returned without them and the failure is logged.
 
