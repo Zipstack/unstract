@@ -410,6 +410,29 @@ class MetricsQueryService:
         """
         trunc_func = MetricsQueryService._get_trunc_func(granularity)
 
+        # Main query: failed executions with their pages, grouped by period
+        return list(
+            MetricsQueryService.failed_file_executions_with_pages(
+                organization_id, start_date, end_date
+            )
+            .annotate(period=trunc_func("created_at"))
+            .values("period")
+            .annotate(value=Sum("pages"))
+            .order_by("period")
+        )
+
+    @staticmethod
+    def failed_file_executions_with_pages(
+        organization_id: str,
+        start_date: datetime,
+        end_date: datetime,
+    ):
+        """Failed file executions in the range, each annotated with ``pages``.
+
+        The one definition of a failed page: ``get_failed_pages`` and the
+        dashboard's failure attribution both group this queryset, so their
+        totals agree by construction.
+        """
         # Subquery: get pages for each file execution from page_usage
         # Join on: page_usage.run_id = workflow_file_execution.id::text
         pages_subquery = (
@@ -418,23 +441,12 @@ class MetricsQueryService:
             .annotate(total=Sum("pages_processed"))
             .values("total")[:1]
         )
-
-        # Main query: failed executions with their pages, grouped by period
-        return list(
-            WorkflowFileExecution.objects.filter(
-                workflow_execution__workflow__organization_id=organization_id,
-                status=ExecutionStatus.ERROR,
-                created_at__gte=start_date,
-                created_at__lte=end_date,
-            )
-            .annotate(
-                pages=Coalesce(Subquery(pages_subquery), 0),
-                period=trunc_func("created_at"),
-            )
-            .values("period")
-            .annotate(value=Sum("pages"))
-            .order_by("period")
-        )
+        return WorkflowFileExecution.objects.filter(
+            workflow_execution__workflow__organization_id=organization_id,
+            status=ExecutionStatus.ERROR,
+            created_at__gte=start_date,
+            created_at__lte=end_date,
+        ).annotate(pages=Coalesce(Subquery(pages_subquery), 0))
 
     @staticmethod
     def get_hitl_reviews(
