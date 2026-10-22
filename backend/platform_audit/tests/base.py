@@ -70,6 +70,9 @@ class AuditTestBase(TestCase):
         if platform_api_key is not None:
             request.platform_api_key = platform_api_key
         force_authenticate(request, user=user or self.admin)
+        # Each call stands in for a new request, and a real one starts by
+        # setting the organization id, which drops the cached organization.
+        UserContext.clear_organization_cache()
         with self.captureOnCommitCallbacks(execute=True):
             response = view(request, **url_kwargs)
         return response
