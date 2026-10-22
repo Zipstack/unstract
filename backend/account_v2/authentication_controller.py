@@ -1,4 +1,5 @@
 import logging
+from collections.abc import Callable
 from typing import Any
 
 from django.conf import settings
@@ -341,6 +342,7 @@ class AuthenticationController:
         org_id: str,
         user_list: list[dict[str, str | None]],
         request: HttpRequest,
+        on_invited: Callable[[dict[str, str | None]], None] | None = None,
     ) -> list[UserInviteResponse]:
         """Invites users to join an organization.
 
@@ -349,6 +351,9 @@ class AuthenticationController:
             org_id (str): ID of the organization to which users are invited.
             user_list (list[dict[str, Union[str, None]]]):
                 List of user details for invitation.
+            on_invited: Called with each item the identity provider accepted,
+                as soon as it does, so a later item raising cannot lose the
+                record of the invitations already sent.
 
         Returns:
             list[UserInviteResponse]: List of responses for each
@@ -373,6 +378,8 @@ class AuthenticationController:
                         admin_user, org_id, email, role=role, request=request
                     )
                     message = "User invitation successful."
+                    if status and on_invited:
+                        on_invited(user_item)
 
                 response.append(
                     UserInviteResponse(

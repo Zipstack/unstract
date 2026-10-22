@@ -5,6 +5,8 @@ from account_v2.authentication_controller import AuthenticationController
 from account_v2.dto import UserRoleData
 from account_v2.models import Organization
 from platform_api.permissions import IsOrganizationAdmin
+from platform_audit.actions import Action, TargetType
+from platform_audit.recorder import record_platform_event
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
@@ -103,15 +105,31 @@ def organization_settings(request: Request) -> Response:
                     status=status.HTTP_400_BAD_REQUEST,
                     data={"message": f"{flag} must be a boolean"},
                 )
+        before = {flag: getattr(organization, flag) for flag in provided}
         for flag, value in provided.items():
             setattr(organization, flag, value)
         organization.modified_by = request.user
         organization.save(update_fields=[*provided, "modified_by", "modified_at"])
+        _record_setting_changes(request, before, provided)
 
     return Response(
         status=status.HTTP_200_OK,
         data={flag: getattr(organization, flag) for flag in ORGANIZATION_SETTING_FLAGS},
     )
+
+
+def _record_setting_changes(request: Request, before: dict, provided: dict) -> None:
+    for flag, value in provided.items():
+        if before[flag] != value:
+            record_platform_event(
+                action=Action.PLATFORM_SETTING_CHANGED,
+                target_type=TargetType.PLATFORM_SETTING,
+                target_id=flag,
+                target_name=flag,
+                changes={"before": {flag: before[flag]}, "after": {flag: value}},
+                summary=f"{flag}: {before[flag]} → {value}",
+                request=request,
+            )
 
 
 @api_view(["GET"])
