@@ -695,8 +695,7 @@ Override with `?source=hourly|daily|monthly`
 
 **Default form.** With none of the parameters below, the response is exactly
 what it has always been: the latest `limit` file executions (default 10, at
-most 50), newest first, and nothing else. The v0 dashboard and the v1 overview
-use this form.
+most 50), newest first, and nothing else. The v0 dashboard uses this form.
 
 ```json
 {
@@ -709,7 +708,7 @@ use this form.
 }
 ```
 
-**Paged form.** Passing any of these switches to it; `limit` is then ignored.
+**Paged form.** Passing any of these with a value switches to it; `limit` is then ignored.
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
@@ -717,7 +716,7 @@ use this form.
 | `end_date` | Now | ISO 8601, inclusive |
 | `status` | All | File execution statuses, comma-separated: `PENDING`, `EXECUTING`, `COMPLETED`, `STOPPED`, `ERROR` (case-insensitive) |
 | `surface` | All | Comma-separated: `api`, `etl`, `task`, `workflow` |
-| `page` | 1 | 1-based. A page past the end returns no rows |
+| `page` | 1 | 1-based, at most 10,000. A page past the end returns no rows |
 | `page_size` | 20 | At most 100 |
 
 `status` and `surface` take one comma-separated value, not a repeated
@@ -742,7 +741,8 @@ parameter. An unknown value, a bad date or an out-of-range page size is a 400.
 }
 ```
 
-- Rows are newest first, ties broken by id, so pages do not overlap.
+- Rows are newest first, ties broken by id. To page through a stable set,
+  send the `start_date` and `end_date` echoed on page 1 with every later page.
 - `count` is the number of rows matching every filter (for "Showing 20 of 1,007").
 - `status_counts` counts the range and `surface` but ignores `status`, so each
   status filter chip can show its count while one is selected. Every status is

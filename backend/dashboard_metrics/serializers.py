@@ -139,8 +139,9 @@ class _CommaSeparatedChoicesField(serializers.CharField):
 class RecentActivityQuerySerializer(serializers.Serializer):
     """Query parameters for the paged form of ``recent-activity/`` (DG-02).
 
-    Passing any of these switches the endpoint to the paged response. Without
-    them, the endpoint answers exactly as before, from ``limit`` alone.
+    Passing any of these with a value switches the endpoint to the paged
+    response. Without them, the endpoint answers exactly as before, from
+    ``limit`` alone.
     """
 
     PAGED_PARAMS = frozenset(
@@ -148,6 +149,7 @@ class RecentActivityQuerySerializer(serializers.Serializer):
     )
     DEFAULT_PAGE_SIZE = 20
     MAX_PAGE_SIZE = 100
+    MAX_PAGE = 10_000
 
     start_date = serializers.DateTimeField(
         required=False,
@@ -170,7 +172,11 @@ class RecentActivityQuerySerializer(serializers.Serializer):
         help_text="Surfaces, comma-separated: api, etl, task, workflow.",
     )
     page = serializers.IntegerField(
-        required=False, default=1, min_value=1, help_text="1-based page."
+        required=False,
+        default=1,
+        min_value=1,
+        max_value=MAX_PAGE,
+        help_text=f"1-based page, at most {MAX_PAGE}.",
     )
     page_size = serializers.IntegerField(
         required=False,

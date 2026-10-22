@@ -172,6 +172,10 @@ class DefaultFormTests(_Seed, TestCase):
         # The old cap and fallback are kept.
         self.assertEqual(len(self._get(limit="500").data["activity"]), 3)
         self.assertEqual(len(self._get(limit="x").data["activity"]), 3)
+        # A blank paged-form parameter does not switch forms.
+        response = self._get(limit="2", status="")
+        self.assertEqual(list(response.data), ["activity"])
+        self.assertEqual(len(response.data["activity"]), 2)
 
 
 class PagedFormTests(_Seed, TestCase):
@@ -333,7 +337,8 @@ class PagedFormTests(_Seed, TestCase):
         seen = []
         for page in (1, 2):
             seen += self._ids(self._get(page=str(page), page_size="2", surface="etl"))
-        self.assertCountEqual(seen, [str(t.pk) for t in tied])
+        # The -id tie-break, exactly.
+        self.assertEqual(seen, [str(pk) for pk in sorted((t.pk for t in tied), reverse=True)])
 
     def test_empty_range(self) -> None:
         response = self._get(
@@ -367,6 +372,7 @@ class PagedFormTests(_Seed, TestCase):
             "empty status": {"status": ","},
             "surface": {"surface": "pipeline"},
             "page": {"page": "0"},
+            "page too far": {"page": "10001"},
             "page_size": {"page_size": "101"},
             "date": {"start_date": "yesterday"},
             "order": {
@@ -388,7 +394,7 @@ class PagedFormTests(_Seed, TestCase):
 
 
 class ContractTests(SimpleTestCase):
-    """The drf-spectacular annotation is the published contract, with the README."""
+    """The drf-spectacular annotation is the contract, with the README."""
 
     def test_schema_documents_both_forms(self) -> None:
         schema = SchemaGenerator(patterns=urls.urlpatterns).get_schema(
@@ -413,6 +419,7 @@ class ContractTests(SimpleTestCase):
                 "page_size",
             },
         )
+        self.assertLessEqual({"200", "400", "401", "403", "429"}, set(operation["responses"]))
         components = schema["components"]["schemas"]
         self.assertLessEqual(
             {"activity", "count", "status_counts", "page", "page_size"},
@@ -421,5 +428,5 @@ class ContractTests(SimpleTestCase):
         row = components["RecentActivityRow"]
         self.assertIn("surface", row["properties"])
         self.assertNotIn("surface", row["required"])
-        # Round-trips as JSON, as the published schema must.
+        # Round-trips as JSON, as a generated schema must.
         json.dumps(schema, default=str)

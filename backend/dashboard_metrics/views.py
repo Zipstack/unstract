@@ -12,7 +12,12 @@ from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
-from drf_standardized_errors.openapi_serializers import ValidationErrorResponseSerializer
+from drf_standardized_errors.openapi_serializers import (
+    ErrorResponse401Serializer,
+    ErrorResponse403Serializer,
+    ErrorResponse429Serializer,
+    ValidationErrorResponseSerializer,
+)
 from permissions.permission import IsOrganizationMember
 from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action
@@ -959,10 +964,13 @@ class DashboardMetricsViewSet(viewsets.ReadOnlyModelViewSet):
                 },
             ),
             400: ValidationErrorResponseSerializer,
+            401: ErrorResponse401Serializer,
+            403: ErrorResponse403Serializer,
+            429: ErrorResponse429Serializer,
         },
         description=(
             "Recent file executions, newest first. Without any of start_date, "
-            "end_date, status, surface, page or page_size the response is the "
+            "end_date, status, surface, page or page_size (with a value) the response is the "
             "original one: limit rows and no counts. Passing any of them returns "
             "the paged form with counts. See dashboard_metrics/README.md."
         ),
@@ -989,7 +997,10 @@ class DashboardMetricsViewSet(viewsets.ReadOnlyModelViewSet):
         organization = self._get_organization()
         org_id = str(organization.id)
 
-        if RecentActivityQuerySerializer.PAGED_PARAMS & request.query_params.keys():
+        if any(
+            request.query_params.get(param)
+            for param in RecentActivityQuerySerializer.PAGED_PARAMS
+        ):
             return self._recent_activity_page(request, org_id)
 
         try:
