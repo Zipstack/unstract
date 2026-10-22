@@ -8,7 +8,6 @@ function workflowService() {
   const axiosPrivate = useAxiosPrivate();
   const { sessionDetails } = useSessionStore();
   const path = `/api/v1/unstract/${sessionDetails.orgId.replaceAll('"', "")}`;
-  const csrfToken = sessionDetails.csrfToken;
 
   return {
     // Feeds selectors, so it resolves to every workflow rather than one page.
@@ -36,9 +35,6 @@ function workflowService() {
       options = {
         url: id ? `${path}/workflow/${id}/` : `${path}/workflow/`,
         method: id ? "PUT" : "POST",
-        headers: {
-          "X-CSRFToken": csrfToken,
-        },
         data: {
           workflow_name: name,
           description,
@@ -51,9 +47,6 @@ function workflowService() {
       options = {
         url: `${path}/workflow/${id}/`,
         method: "DELETE",
-        headers: {
-          "X-CSRFToken": csrfToken,
-        },
       };
       return axiosPrivate(options);
     },
@@ -61,9 +54,6 @@ function workflowService() {
       options = {
         url: `${path}/workflow/${id}/clear-file-marker/`,
         method: "POST",
-        headers: {
-          "X-CSRFToken": csrfToken,
-        },
       };
       return axiosPrivate(options);
     },
@@ -79,9 +69,6 @@ function workflowService() {
       options = {
         url: `${path}/workflow/${workflowId}/file-histories/${fileHistoryId}/`,
         method: "DELETE",
-        headers: {
-          "X-CSRFToken": csrfToken,
-        },
       };
       return axiosPrivate(options);
     },
@@ -90,7 +77,6 @@ function workflowService() {
         url: `${path}/workflow/${workflowId}/file-histories/clear/`,
         method: "POST",
         headers: {
-          "X-CSRFToken": csrfToken,
           "Content-Type": "application/json",
         },
         data: filters,
@@ -102,7 +88,6 @@ function workflowService() {
         url: `${path}/workflow/${workflowId}/file-histories/clear/`,
         method: "POST",
         headers: {
-          "X-CSRFToken": csrfToken,
           "Content-Type": "application/json",
         },
         data: { ids },
@@ -127,9 +112,6 @@ function workflowService() {
       options = {
         url: `${path}/workflow/${id}/share/`,
         method: "POST",
-        headers: {
-          "X-CSRFToken": csrfToken,
-        },
         data: {
           shared_users: sharedUsers,
           shared_to_org: shareWithEveryone,
@@ -150,7 +132,6 @@ function workflowService() {
         url: `${path}/workflow/${id}/owners/`,
         method: "POST",
         headers: {
-          "X-CSRFToken": csrfToken,
           "Content-Type": "application/json",
         },
         data: { user_id: userId },
@@ -161,9 +142,6 @@ function workflowService() {
       options = {
         url: `${path}/workflow/${id}/owners/${userId}/`,
         method: "DELETE",
-        headers: {
-          "X-CSRFToken": csrfToken,
-        },
       };
       return axiosPrivate(options);
     },

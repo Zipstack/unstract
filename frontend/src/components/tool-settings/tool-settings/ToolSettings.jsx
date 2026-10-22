@@ -80,14 +80,12 @@ function ToolSettings({ type }) {
         axiosPrivate({
           method: "GET",
           url: `/api/v1/unstract/${sessionDetails?.orgId}/adapter/users/${id}/`,
-          headers: { "X-CSRFToken": sessionDetails?.csrfToken },
         }),
       addCoOwner: (id, userId) =>
         axiosPrivate({
           method: "POST",
           url: `/api/v1/unstract/${sessionDetails?.orgId}/adapter/${id}/owners/`,
           headers: {
-            "X-CSRFToken": sessionDetails?.csrfToken,
             "Content-Type": "application/json",
           },
           data: { user_id: userId },
@@ -96,10 +94,9 @@ function ToolSettings({ type }) {
         axiosPrivate({
           method: "DELETE",
           url: `/api/v1/unstract/${sessionDetails?.orgId}/adapter/${id}/owners/${userId}/`,
-          headers: { "X-CSRFToken": sessionDetails?.csrfToken },
         }),
     }),
-    [sessionDetails?.orgId, sessionDetails?.csrfToken],
+    [sessionDetails?.orgId],
   );
 
   const {
@@ -221,7 +218,6 @@ function ToolSettings({ type }) {
     axiosPrivate({
       method: "DELETE",
       url: `/api/v1/unstract/${sessionDetails?.orgId}/adapter/${adapter?.id}/`,
-      headers: { "X-CSRFToken": sessionDetails?.csrfToken },
     })
       .then(() => handleListRefresh())
       .catch((err) => setAlertDetails(handleException(err)));
@@ -267,9 +263,6 @@ function ToolSettings({ type }) {
     const requestOptions = {
       method: "GET",
       url: `/api/v1/unstract/${sessionDetails?.orgId}/adapter/users/${adapter.id}/`,
-      headers: {
-        "X-CSRFToken": sessionDetails?.csrfToken,
-      },
     };
     setIsShareLoading(true);
     getAllUsers();
@@ -324,9 +317,6 @@ function ToolSettings({ type }) {
     const requestOptions = {
       method: "POST",
       url: `/api/v1/unstract/${sessionDetails?.orgId}/adapter/${adapter?.id}/share/`,
-      headers: {
-        "X-CSRFToken": sessionDetails?.csrfToken,
-      },
       data: {
         shared_users: userIds,
         shared_to_org: shareWithEveryone || false,

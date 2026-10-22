@@ -1,12 +1,20 @@
 import axios from "axios";
 import { useEffect, useMemo } from "react";
 
+import { attachCsrfInterceptor } from "../helpers/csrf";
 import { attachRequestIdInterceptor } from "../helpers/requestId";
 import useLogout from "./useLogout";
 
 function useAxiosPrivate() {
   const logout = useLogout();
-  const axiosPrivate = useMemo(() => axios.create(), []);
+  // CSRF is attached at creation, not in the effect below: a child that is
+  // handed this instance can fire a request from its own mount effect, which
+  // runs before ours.
+  const axiosPrivate = useMemo(() => {
+    const instance = axios.create();
+    attachCsrfInterceptor(instance);
+    return instance;
+  }, []);
 
   useEffect(() => {
     const requestInterceptor = attachRequestIdInterceptor(axiosPrivate);

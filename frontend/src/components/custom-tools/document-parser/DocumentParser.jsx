@@ -198,7 +198,6 @@ function DocumentParser({
       method: "PATCH",
       url,
       headers: {
-        "X-CSRFToken": sessionDetails?.csrfToken,
         "Content-Type": "application/json",
       },
       data: body,
@@ -242,9 +241,6 @@ function DocumentParser({
     const requestOptions = {
       method: "DELETE",
       url,
-      headers: {
-        "X-CSRFToken": sessionDetails?.csrfToken,
-      },
     };
 
     axiosPrivate(requestOptions)

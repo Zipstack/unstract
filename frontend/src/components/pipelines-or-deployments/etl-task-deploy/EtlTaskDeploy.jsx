@@ -204,7 +204,6 @@ const EtlTaskDeploy = ({
       url: `/api/v1/unstract/${sessionDetails?.orgId}/pipeline/${body?.id}/`,
       headers: {
         "Content-Type": "application/json",
-        "X-CSRFToken": sessionDetails?.csrfToken,
       },
       data: body,
     };
@@ -239,7 +238,6 @@ const EtlTaskDeploy = ({
       url: `/api/v1/unstract/${sessionDetails?.orgId}/pipeline/`,
       headers: {
         "Content-Type": "application/json",
-        "X-CSRFToken": sessionDetails?.csrfToken,
       },
       data: body,
     };

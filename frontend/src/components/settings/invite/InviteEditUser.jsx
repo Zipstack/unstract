@@ -44,7 +44,6 @@ function InviteEditUser() {
       method: "GET",
       url: `/api/v1/unstract/${sessionDetails?.orgId}/roles`,
       headers: {
-        "X-CSRFToken": sessionDetails?.csrfToken,
         "Content-Type": "application/json",
       },
     };
@@ -71,7 +70,6 @@ function InviteEditUser() {
       url: `/api/v1/unstract/${sessionDetails?.orgId}/users/invite/`,
       data: { users: [value] },
       headers: {
-        "X-CSRFToken": sessionDetails?.csrfToken,
         "Content-Type": "application/json",
       },
     };
@@ -99,7 +97,6 @@ function InviteEditUser() {
       url: `/api/v1/unstract/${sessionDetails?.orgId}/users/role/`,
       data: { ...user },
       headers: {
-        "X-CSRFToken": sessionDetails?.csrfToken,
         "Content-Type": "application/json",
       },
     };

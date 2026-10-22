@@ -46,7 +46,6 @@ function Prompt() {
       url: `/api/v1/unstract/${sessionDetails?.orgId}/workflow/${workflowId}/`,
       headers: {
         "Content-Type": "application/json",
-        "X-CSRFToken": sessionDetails?.csrfToken,
       },
       data: body,
     };

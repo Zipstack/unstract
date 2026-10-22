@@ -109,7 +109,6 @@ function ApiKeyManager({
           method: "POST",
           url: `${basePath}/keys/`,
           headers: {
-            "X-CSRFToken": sessionDetails?.csrfToken,
             "Content-Type": "application/json",
           },
           data: transformCreatePayload(values),
@@ -146,7 +145,6 @@ function ApiKeyManager({
           method: "PATCH",
           url: `${basePath}/keys/${selectedKey?.id}/`,
           headers: {
-            "X-CSRFToken": sessionDetails?.csrfToken,
             "Content-Type": "application/json",
           },
           data: transformEditPayload(values),
@@ -181,7 +179,6 @@ function ApiKeyManager({
       method: "PATCH",
       url: `${basePath}/keys/${record?.id}/`,
       headers: {
-        "X-CSRFToken": sessionDetails?.csrfToken,
         "Content-Type": "application/json",
       },
       data: { is_active: !record?.is_active },
@@ -196,7 +193,6 @@ function ApiKeyManager({
     axiosPrivate({
       method: "POST",
       url: `${basePath}/keys/${record?.id}/rotate/`,
-      headers: { "X-CSRFToken": sessionDetails?.csrfToken },
     })
       .then((res) => {
         fetchKeys();
@@ -211,7 +207,6 @@ function ApiKeyManager({
     axiosPrivate({
       method: "DELETE",
       url: `${basePath}/keys/${record?.id}/`,
-      headers: { "X-CSRFToken": sessionDetails?.csrfToken },
     })
       .then(() => {
         fetchKeys();

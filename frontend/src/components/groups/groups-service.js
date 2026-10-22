@@ -15,11 +15,9 @@ function groupsService() {
   const { sessionDetails } = useSessionStore();
   const orgId = sessionDetails?.orgId?.replaceAll?.('"', "") ?? "";
   const path = `/api/v1/unstract/${orgId}`;
-  const csrfToken = sessionDetails.csrfToken;
 
   const requestHeaders = {
     "Content-Type": "application/json",
-    "X-CSRFToken": csrfToken,
   };
 
   return {

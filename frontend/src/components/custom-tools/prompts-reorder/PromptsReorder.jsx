@@ -112,7 +112,6 @@ function PromptsReorder({ isOpen, updateReorderedStatus }) {
         method: "POST",
         url: `/api/v1/unstract/${sessionDetails?.orgId}/prompt-studio/prompt/reorder/`,
         headers: {
-          "X-CSRFToken": sessionDetails?.csrfToken,
           "Content-Type": "application/json",
         },
         data: body,
@@ -130,7 +129,6 @@ function PromptsReorder({ isOpen, updateReorderedStatus }) {
       handleDropError,
       handleDropSuccess,
       previousListOfPrompts,
-      sessionDetails?.csrfToken,
       sessionDetails?.orgId,
       updateReorderedStatus,
     ],

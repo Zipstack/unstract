@@ -238,9 +238,6 @@ const usePromptOutput = () => {
     const requestOptions = {
       method: "GET",
       url,
-      headers: {
-        "X-CSRFToken": sessionDetails?.csrfToken,
-      },
     };
 
     return axiosPrivate(requestOptions)

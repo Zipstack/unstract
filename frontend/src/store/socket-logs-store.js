@@ -1,6 +1,7 @@
 import axios from "axios";
 import { create } from "zustand";
 
+import { orgApi } from "../helpers/orgApi";
 import { useSessionStore } from "./session-store";
 
 const STORE_VARIABLES = {
@@ -40,14 +41,19 @@ const useSocketLogsStore = create((setState, getState) => ({
       ) {
         const requestOptions = {
           method: "POST",
-          url: `/api/v1/unstract/${sessionDetails?.orgId}/logs/`,
-          headers: {
-            "X-CSRFToken": sessionDetails?.csrfToken,
-          },
+          url: orgApi("logs/"),
           data: { log: JSON.stringify(newLog) },
         };
-        axios(requestOptions).catch(() => {
-          // Intentionally empty: best-effort log persistence
+        // Raw axios on purpose: a store cannot use hooks, and a failed
+        // background log write must not log the user out. CSRF comes from the
+        // global interceptor in App.jsx.
+        axios(requestOptions).catch((err) => {
+          // Best-effort persistence, but leave a trace instead of failing
+          // silently.
+          console.warn("[socket-logs-store] Failed to persist notification", {
+            status: err?.response?.status,
+            message: err?.message,
+          });
         });
       }
     });
