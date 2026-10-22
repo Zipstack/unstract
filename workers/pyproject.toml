@@ -32,6 +32,7 @@ dependencies = [
     "unstract-tool-sandbox",
     "unstract-workflow-execution",
     "unstract-filesystem",
+    "unstract-agent-kv-schema",
     # Caching
     "redis>=4.5.0,<6.0.0", # Redis client for worker cache access
     # PG Queue — direct Postgres access for the bespoke SKIP LOCKED queue
@@ -223,6 +224,7 @@ exclude_lines = [
 
 [tool.uv.sources]
 unstract-filesystem = { path = "../unstract/filesystem", editable = true }
+unstract-agent-kv-schema = { path = "../unstract/agent-kv-schema", editable = true }
 unstract-workflow-execution = { path = "../unstract/workflow-execution", editable = true }
 unstract-tool-sandbox = { path = "../unstract/tool-sandbox", editable = true }
 unstract-tool-registry = { path = "../unstract/tool-registry", editable = true }

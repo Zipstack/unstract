@@ -74,16 +74,16 @@ const useCustomToolStore = create((setState, getState) => ({
 
     if (type === promptType.prompt) {
       const newPrompt = { ...defaultPromptInstance };
-      newPrompt["prompt_id"] = `unsaved_${promptsAndNotes.length + 1}`;
+      newPrompt.prompt_id = `unsaved_${promptsAndNotes.length + 1}`;
       promptsAndNotes.push(newPrompt);
     } else {
       const newNote = { ...defaultNoteInstance };
-      newNote["prompt_id"] = `unsaved_${promptsAndNotes.length + 1}`;
+      newNote.prompt_id = `unsaved_${promptsAndNotes.length + 1}`;
       promptsAndNotes.push(newNote);
     }
-    newState["details"]["prompts"] = [...promptsAndNotes];
+    newState.details.prompts = [...promptsAndNotes];
     // Mark as having unsaved changes when a new prompt/note is added
-    newState["hasUnsavedChanges"] = true;
+    newState.hasUnsavedChanges = true;
     setState({ ...newState });
   },
   deleteInstance: (promptId) => {
@@ -92,9 +92,9 @@ const useCustomToolStore = create((setState, getState) => ({
     const filteredData = promptsAndNotes.filter(
       (item) => item?.prompt_id !== promptId,
     );
-    newState["details"]["prompts"] = filteredData;
+    newState.details.prompts = filteredData;
     // Mark as having unsaved changes when a prompt/note is deleted
-    newState["hasUnsavedChanges"] = true;
+    newState.hasUnsavedChanges = true;
     setState({ ...newState });
   },
   getDropdownItems: (propertyName) => {

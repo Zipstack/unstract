@@ -1,0 +1,1225 @@
+"""Agent-KV never-dispatched sweep and TTL cleanup internal endpoints
+(spec §5.4, task-14-brief.md).
+
+Same mock-based style as test_internal_views.py: no real DB, every
+``AgentKVJob.objects`` (and, for TTLCleanupView, ``delete_job_files``) call
+is mocked and its arguments/ordering are asserted directly. That is also
+the mechanism for the two predicate-shaped guarantees in the brief that a
+mock can't literally execute against a database:
+
+* "non-expired jobs untouched" -- proven by asserting the exact
+  ``expires_at__lt`` filter kwarg the candidate query is built with.
+* "blank-ref rows excluded / a second run over the same set is a no-op" --
+  proven by asserting the exact ``Q(input_ref__gt="") | Q(result_ref__gt="")``
+  filter the candidate query is built with: a row TTLCleanupView just
+  blanked no longer satisfies that predicate, so it drops out of the next
+  call's candidate set.
+
+These tests exercise the two-phase sweep and TTL-cleanup logic through the
+(now-thin) ``SweepView``/``TTLCleanupView`` -- the logic itself lives in
+``agent_kv.maintenance`` (moved there so the ``agent_kv_sweep``/
+``agent_kv_ttl_cleanup`` management commands can share it), which is why
+``delete_job_files`` is patched on the ``maintenance`` module below rather
+than on ``internal_views``.
+"""
+
+import logging
+import os
+import uuid
+from datetime import timedelta
+from unittest import mock
+
+import django
+from django.apps import apps
+
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "backend.settings.test")
+if not apps.ready:
+    django.setup()
+
+from account_v2.models import Organization  # noqa: E402
+from django.conf import settings  # noqa: E402
+from django.db.models import Q  # noqa: E402
+from django.db.models.functions import Coalesce  # noqa: E402
+from django.test import TestCase  # noqa: E402
+from django.utils import timezone  # noqa: E402
+from rest_framework.test import APIRequestFactory  # noqa: E402
+from utils.user_context import UserContext  # noqa: E402
+
+from agent_kv import internal_views as iv  # noqa: E402
+from agent_kv import maintenance  # noqa: E402
+from agent_kv.models import AgentKVJob, JobStatus  # noqa: E402
+from agent_kv.rate_limiter import SLOT_TTL_SECONDS  # noqa: E402
+
+
+def _post(path, body=None):
+    return APIRequestFactory().post(path, body or {}, format="json")
+
+
+# ---------------------------------------------------------------------------
+# SweepView
+# ---------------------------------------------------------------------------
+#
+# SweepView runs two independent phases per call -- never-dispatched PENDING
+# jobs, then stuck DISPATCHED/RUNNING jobs -- each its own
+# filter().order_by()[:500] chain against the same (mocked) AgentKVJob.objects
+# manager. ``_wire_sweep_phases`` gives each phase call its own Mock object
+# (via `side_effect`, keyed on call ORDER: phase 1 first, then phase 2) so a
+# test can assert on -- and control the candidates of -- one phase without the
+# other phase's identical-shaped chain aliasing it.
+
+
+def _wire_sweep_phases(m_objects, never_dispatched=(), stuck=(), cancelled=()):
+    """Wire the sweep's three phase queries.
+
+    Phase 2 is `filter(status__in=...).filter(Q(...) | Q(...))` -- two levels,
+    because the age test is an OR: `dispatched_at < cutoff` OR
+    `dispatched_at IS NULL AND created_at < cutoff`. A `__lt` filter alone can
+    never match a NULL (SQL `NULL < x` is not true), so without that second arm
+    a DISPATCHED/RUNNING row with a NULL `dispatched_at` hangs forever.
+
+    Phase 3 releases slots still held by jobs CANCELLED after dispatch, whose
+    executor died without calling back -- neither phase above selects a
+    CANCELLED row, so the slot would sit occupied until Redis expired it.
+    """
+    phase1_qs = mock.MagicMock()
+    phase1_qs.order_by.return_value.__getitem__.return_value = list(never_dispatched)
+    phase2_status_qs = mock.MagicMock()
+    phase2_qs = phase2_status_qs.filter.return_value
+    phase2_qs.order_by.return_value.__getitem__.return_value = list(stuck)
+    phase3_qs = mock.MagicMock()
+    phase3_qs.order_by.return_value.__getitem__.return_value = list(cancelled)
+    m_objects.filter.side_effect = [phase1_qs, phase2_status_qs, phase3_qs]
+    return phase1_qs, phase2_qs, phase2_status_qs
+
+
+# (1) the never-dispatched-phase candidate query is exactly PENDING + older
+# than the grace + dispatched_at IS NULL -- assert the filter kwargs directly
+# (this IS the proof that "only PENDING+old+undispatched" are swept; nothing
+# else does a real DB round trip in this suite) -- and, per the task-14-review
+# ruling, oldest-created-first and capped at 500: an unbounded queryset would
+# load a whole infra-incident backlog into memory and hold the request open
+# through it, exactly when the sweep matters most.
+@mock.patch.object(AgentKVJob, "mark_terminal")
+@mock.patch.object(AgentKVJob, "objects")
+def test_sweep_queries_pending_older_than_grace_and_undispatched(
+    m_objects, m_mark_terminal
+):
+    frozen_now = timezone.now()
+    phase1_qs, phase2_qs, phase2_status_qs = _wire_sweep_phases(m_objects)
+
+    with mock.patch.object(timezone, "now", return_value=frozen_now):
+        resp = iv.SweepView.as_view()(_post("/x"))
+
+    assert resp.status_code == 200
+    assert resp.data == {"swept": 0, "timed_out": 0, "released": 0}
+    filter_kwargs = m_objects.filter.call_args_list[0].kwargs
+    assert filter_kwargs["status"] == JobStatus.PENDING
+    assert filter_kwargs["dispatched_at__isnull"] is True
+    assert filter_kwargs["created_at__lt"] == frozen_now - timedelta(
+        seconds=settings.AGENT_KV_SWEEP_GRACE_SECONDS
+    )
+    phase1_qs.order_by.assert_called_once_with("created_at")
+    phase1_qs.order_by.return_value.__getitem__.assert_called_once_with(
+        slice(None, 500, None)
+    )
+    assert not m_mark_terminal.called
+
+
+# (2) each never-dispatched candidate is terminalized via
+# mark_terminal(FAILED, "Job was never dispatched") -- the guarded write, not
+# a raw .update().
+@mock.patch.object(iv.AgentKVConcurrencyLimiter, "release")
+@mock.patch.object(AgentKVJob, "mark_terminal")
+@mock.patch.object(AgentKVJob, "objects")
+def test_sweep_terminalizes_each_candidate_as_failed_never_dispatched(
+    m_objects, m_mark_terminal, m_release
+):
+    job = AgentKVJob(id=uuid.uuid4(), organization_id="org1")
+    _wire_sweep_phases(m_objects, never_dispatched=[job])
+    m_mark_terminal.return_value = True
+
+    resp = iv.SweepView.as_view()(_post("/x"))
+
+    assert resp.status_code == 200
+    m_mark_terminal.assert_called_once_with(
+        job.id,
+        "org1",
+        JobStatus.FAILED,
+        error="Job was never dispatched",
+        # The selection predicate, restated in the guarded UPDATE so a
+        # dispatch landing between the two statements wins instead of being
+        # overwritten. See TestTheSweepLosesTheRaceRatherThanTheJob, which
+        # exercises the race itself against a real database -- a mock cannot,
+        # since it replays whatever predicate is written.
+        require=maintenance._NEVER_DISPATCHED,
+    )
+
+
+# (3) a job the guard actually wins gets its concurrency slot released, with
+# its own org id and job id.
+@mock.patch.object(iv.AgentKVConcurrencyLimiter, "release")
+@mock.patch.object(AgentKVJob, "mark_terminal")
+@mock.patch.object(AgentKVJob, "objects")
+def test_sweep_releases_the_concurrency_slot_of_each_swept_job(
+    m_objects, m_mark_terminal, m_release
+):
+    job = AgentKVJob(id=uuid.uuid4(), organization_id="org7")
+    _wire_sweep_phases(m_objects, never_dispatched=[job])
+    m_mark_terminal.return_value = True
+
+    iv.SweepView.as_view()(_post("/x"))
+
+    m_release.assert_called_once_with("org7", str(job.id))
+
+
+# (4) a candidate that LOSES the mark_terminal guard (raced to terminal by
+# a concurrent finalize/cancel/duplicate sweep between the candidate read
+# and the guarded write) is not counted as swept and its slot is not
+# released here -- whichever path won the race already released it.
+@mock.patch.object(iv.AgentKVConcurrencyLimiter, "release")
+@mock.patch.object(AgentKVJob, "mark_terminal")
+@mock.patch.object(AgentKVJob, "objects")
+def test_sweep_count_reflects_guard_outcomes_not_candidate_count(
+    m_objects, m_mark_terminal, m_release
+):
+    won_job = AgentKVJob(id=uuid.uuid4(), organization_id="org1")
+    lost_job = AgentKVJob(id=uuid.uuid4(), organization_id="org1")
+    _wire_sweep_phases(m_objects, never_dispatched=[won_job, lost_job])
+    m_mark_terminal.side_effect = [True, False]
+
+    resp = iv.SweepView.as_view()(_post("/x"))
+
+    assert resp.status_code == 200
+    assert resp.data == {"swept": 1, "timed_out": 0, "released": 0}
+    m_release.assert_called_once_with("org1", str(won_job.id))
+
+
+# (5) no candidates -> {"swept": 0, "timed_out": 0}, and no terminalize/
+# release side effects.
+@mock.patch.object(iv.AgentKVConcurrencyLimiter, "release")
+@mock.patch.object(AgentKVJob, "mark_terminal")
+@mock.patch.object(AgentKVJob, "objects")
+def test_sweep_with_no_candidates_is_a_pure_noop(m_objects, m_mark_terminal, m_release):
+    _wire_sweep_phases(m_objects)
+
+    resp = iv.SweepView.as_view()(_post("/x"))
+
+    assert resp.status_code == 200
+    assert resp.data == {"swept": 0, "timed_out": 0, "released": 0}
+    assert not m_mark_terminal.called
+    assert not m_release.called
+
+
+# ---------------------------------------------------------------------------
+# SweepView -- stuck-job (phase 2) terminalizer (Fix 8)
+# ---------------------------------------------------------------------------
+
+
+# (5a) the stuck-job-phase candidate query is exactly
+# DISPATCHED/RUNNING + dispatched_at older than the stuck grace, ordered
+# oldest-dispatched-first and capped at 500 -- same batch-safety rationale as
+# phase 1.
+@mock.patch.object(AgentKVJob, "mark_terminal")
+@mock.patch.object(AgentKVJob, "objects")
+def test_stuck_sweep_queries_dispatched_and_running_older_than_stuck_grace(
+    m_objects, m_mark_terminal
+):
+    frozen_now = timezone.now()
+    phase1_qs, phase2_qs, phase2_status_qs = _wire_sweep_phases(m_objects)
+
+    with mock.patch.object(timezone, "now", return_value=frozen_now):
+        resp = iv.SweepView.as_view()(_post("/x"))
+
+    assert resp.status_code == 200
+    assert resp.data == {"swept": 0, "timed_out": 0, "released": 0}
+    filter_kwargs = m_objects.filter.call_args_list[1].kwargs
+    assert set(filter_kwargs["status__in"]) == {JobStatus.DISPATCHED, JobStatus.RUNNING}
+    cutoff = frozen_now - timedelta(seconds=settings.AGENT_KV_STUCK_JOB_GRACE_SECONDS)
+    # The age test is an OR, and the second arm is load-bearing: a `__lt`
+    # filter alone can never match a NULL `dispatched_at`, so such a row would
+    # be invisible to this phase AND to phase 1 (which requires PENDING), and
+    # would hang non-terminal forever. A row with no dispatch time falls back
+    # to `created_at` -- the only timestamp it has.
+    (age_q,), age_kwargs = phase2_status_qs.filter.call_args
+    assert age_kwargs == {}
+    assert age_q == (
+        Q(dispatched_at__lt=cutoff) | Q(dispatched_at__isnull=True, created_at__lt=cutoff)
+    )
+    # Coalesce, NOT a bare "dispatched_at". This assertion used to pin the
+    # bare column, which is the bug: Postgres sorts ascending NULLS LAST, so
+    # with a full batch of non-NULL stuck rows ahead of them, the
+    # `dispatched_at IS NULL` rows the second Q arm exists to recover were
+    # never selected. The backstop could not fire in exactly the situation it
+    # exists for -- a backlog. (2.14 in the branch review.)
+    phase2_qs.order_by.assert_called_once_with(Coalesce("dispatched_at", "created_at"))
+    phase2_qs.order_by.return_value.__getitem__.assert_called_once_with(
+        slice(None, 500, None)
+    )
+    assert not m_mark_terminal.called
+
+
+# (5b) each stuck candidate is terminalized via mark_terminal(FAILED,
+# "Job timed out") -- distinct error text from the never-dispatched phase.
+@mock.patch.object(iv.AgentKVConcurrencyLimiter, "release")
+@mock.patch.object(AgentKVJob, "mark_terminal")
+@mock.patch.object(AgentKVJob, "objects")
+def test_stuck_sweep_terminalizes_each_candidate_as_failed_timed_out(
+    m_objects, m_mark_terminal, m_release
+):
+    job = AgentKVJob(id=uuid.uuid4(), organization_id="org1", status=JobStatus.RUNNING)
+    _wire_sweep_phases(m_objects, stuck=[job])
+    m_mark_terminal.return_value = True
+
+    resp = iv.SweepView.as_view()(_post("/x"))
+
+    assert resp.status_code == 200
+    assert resp.data == {"swept": 0, "timed_out": 1, "released": 0}
+    m_mark_terminal.assert_called_once_with(
+        job.id, "org1", JobStatus.FAILED, error="Job timed out"
+    )
+
+
+# (5c) a stuck job the guard wins gets its concurrency slot released.
+@mock.patch.object(iv.AgentKVConcurrencyLimiter, "release")
+@mock.patch.object(AgentKVJob, "mark_terminal")
+@mock.patch.object(AgentKVJob, "objects")
+def test_stuck_sweep_releases_the_concurrency_slot_of_each_timed_out_job(
+    m_objects, m_mark_terminal, m_release
+):
+    job = AgentKVJob(id=uuid.uuid4(), organization_id="org9", status=JobStatus.DISPATCHED)
+    _wire_sweep_phases(m_objects, stuck=[job])
+    m_mark_terminal.return_value = True
+
+    iv.SweepView.as_view()(_post("/x"))
+
+    m_release.assert_called_once_with("org9", str(job.id))
+
+
+# (5d) a stuck candidate that LOSES the guard (raced to terminal by a
+# concurrent finalize/cancel/duplicate sweep) is not counted as timed_out and
+# its slot is not released here.
+@mock.patch.object(iv.AgentKVConcurrencyLimiter, "release")
+@mock.patch.object(AgentKVJob, "mark_terminal")
+@mock.patch.object(AgentKVJob, "objects")
+def test_stuck_sweep_count_reflects_guard_outcomes_not_candidate_count(
+    m_objects, m_mark_terminal, m_release
+):
+    won_job = AgentKVJob(id=uuid.uuid4(), organization_id="org1")
+    lost_job = AgentKVJob(id=uuid.uuid4(), organization_id="org1")
+    _wire_sweep_phases(m_objects, stuck=[won_job, lost_job])
+    m_mark_terminal.side_effect = [True, False]
+
+    resp = iv.SweepView.as_view()(_post("/x"))
+
+    assert resp.status_code == 200
+    assert resp.data == {"swept": 0, "timed_out": 1, "released": 0}
+    m_release.assert_called_once_with("org1", str(won_job.id))
+
+
+# (5e) the two phases' counts are independent -- a hit in one phase doesn't
+# affect the other's count, and both run on the same call.
+@mock.patch.object(iv.AgentKVConcurrencyLimiter, "release")
+@mock.patch.object(AgentKVJob, "mark_terminal")
+@mock.patch.object(AgentKVJob, "objects")
+def test_sweep_reports_both_phase_counts_independently(
+    m_objects, m_mark_terminal, m_release
+):
+    never_dispatched_job = AgentKVJob(id=uuid.uuid4(), organization_id="org1")
+    stuck_job = AgentKVJob(id=uuid.uuid4(), organization_id="org1")
+    _wire_sweep_phases(
+        m_objects, never_dispatched=[never_dispatched_job], stuck=[stuck_job]
+    )
+    m_mark_terminal.return_value = True
+
+    resp = iv.SweepView.as_view()(_post("/x"))
+
+    assert resp.status_code == 200
+    assert resp.data == {"swept": 1, "timed_out": 1, "released": 0}
+
+
+# ---------------------------------------------------------------------------
+# TTLCleanupView
+# ---------------------------------------------------------------------------
+
+
+class _Lane:
+    """One of run_ttl_cleanup's two candidate queries, recording how it was used.
+
+    A real object rather than a ``Mock``: the lane is sorted and then SLICED,
+    and a Mock whose ``__getitem__`` is wrapped to record the slice ends up
+    calling itself (the wrapper re-enters the same mock), which is how the
+    first version of this helper recursed instead of asserting.
+    """
+
+    def __init__(self, rows):
+        self.rows = list(rows)
+        self.order_by_args = None
+        self.slice = None
+
+    def order_by(self, *args):
+        self.order_by_args = args
+        return self
+
+    def __getitem__(self, sl):
+        self.slice = sl
+        return self.rows[sl]
+
+
+class _Lanes:
+    """Stand-in for the narrowed expired queryset, dispatching to either lane.
+
+    run_ttl_cleanup narrows the expired set once and queries it TWICE --
+    ``cleanup_failed_at__isnull=False`` (retries, a reserved slice) and
+    ``...=True`` (new expirations, the remainder). A plain ``Mock`` hands back
+    the same child for both calls regardless of arguments, so the two lanes
+    would yield identical rows and every job would be processed twice.
+    """
+
+    def __init__(self, retries, fresh):
+        self.retry = _Lane(retries)
+        self.fresh = _Lane(fresh)
+        self.filter_kwargs: list[dict] = []
+
+    def filter(self, *_args, **kwargs):
+        self.filter_kwargs.append(kwargs)
+        is_null = kwargs.get("cleanup_failed_at__isnull")
+        return self.retry if is_null is False else self.fresh
+
+
+def _ttl_lanes(m_objects, *, retries=(), fresh=()):
+    """Wire a mocked ``AgentKVJob.objects`` to both TTL-cleanup lanes.
+
+    Three chained filters now: `expires_at < now`, then TERMINAL-only (2.15 --
+    a running job must not have its input deleted out from under it), then the
+    non-blank-ref Q.
+    """
+    lanes = _Lanes(retries, fresh)
+    m_objects.filter.return_value.filter.return_value.filter.return_value = lanes
+    return lanes
+
+
+# (6) the candidate query is exactly expires_at < now AND (non-blank
+# input_ref OR non-blank result_ref), capped at 500 across both lanes.
+# This is what proves BOTH "non-expired untouched" (the expires_at__lt
+# half) and "blank-ref rows excluded / second run is a no-op" (the Q half:
+# a row TTLCleanupView just blanked no longer satisfies `__gt=""`).
+@mock.patch.object(maintenance, "delete_job_files")
+@mock.patch.object(AgentKVJob, "objects")
+def test_ttl_cleanup_queries_expired_jobs_with_a_nonblank_ref(m_objects, m_delete):
+    frozen_now = timezone.now()
+    lanes = _ttl_lanes(m_objects)
+
+    with mock.patch.object(timezone, "now", return_value=frozen_now):
+        resp = iv.TTLCleanupView.as_view()(_post("/x"))
+
+    assert resp.status_code == 200
+    assert resp.data == {"cleaned": 0, "retained": 0}
+    assert m_objects.filter.call_args_list[0].kwargs == {"expires_at__lt": frozen_now}
+    # TERMINAL-only: a job still RUNNING past its TTL must keep its staged
+    # input. The retention policy covers finished work, not running work.
+    status_filter = m_objects.filter.return_value.filter.call_args
+    assert set(status_filter.kwargs["status__in"]) == set(AgentKVJob.TERMINAL)
+    (q_arg,), q_kwargs = (
+        m_objects.filter.return_value.filter.return_value.filter.call_args
+    )
+    assert q_kwargs == {}
+    assert q_arg == (Q(input_ref__gt="") | Q(result_ref__gt=""))
+    # Two lanes off that one narrowed set: retries first, then new expirations.
+    assert lanes.filter_kwargs == [
+        {"cleanup_failed_at__isnull": False},
+        {"cleanup_failed_at__isnull": True},
+    ]
+    assert not m_delete.called
+
+
+# (6b) each lane sorts by a SINGLE named column ascending -- never
+# `cleanup_failed_at NULLS FIRST`. A btree index is NULLS LAST ascending, so
+# that ordering could not use the (cleanup_failed_at, expires_at) index at all
+# and Postgres had to sort every matching expired row before applying the
+# limit, work that grows with the backlog. Splitting the query removed it.
+@mock.patch.object(maintenance, "delete_job_files")
+@mock.patch.object(AgentKVJob, "objects")
+def test_ttl_cleanup_lanes_sort_by_a_plain_ascending_column(m_objects, m_delete):
+    lanes = _ttl_lanes(m_objects)
+
+    iv.TTLCleanupView.as_view()(_post("/x"))
+
+    assert lanes.retry.order_by_args == ("cleanup_failed_at",)
+    assert lanes.fresh.order_by_args == ("expires_at",)
+
+
+# (6c) with nothing to retry, the fresh lane still gets the WHOLE batch -- the
+# reserve is a cap on the retry lane, not a permanent tax on the normal case.
+@mock.patch.object(maintenance, "delete_job_files")
+@mock.patch.object(AgentKVJob, "objects")
+def test_ttl_cleanup_fresh_lane_gets_the_whole_batch_when_nothing_is_retrying(
+    m_objects, m_delete
+):
+    lanes = _ttl_lanes(m_objects)
+
+    iv.TTLCleanupView.as_view()(_post("/x"))
+
+    assert lanes.retry.slice == slice(None, 100, None)
+    assert lanes.fresh.slice == slice(None, 500, None)
+
+
+# (6d) THE fix for the second starvation direction. With the retry lane full,
+# the fresh lane shrinks by exactly that many, so the two together never exceed
+# the batch cap -- and crucially the retry lane is served FIRST, so a steady
+# stream of new expirations can no longer push retries out of every batch and
+# leave their files in storage indefinitely. Both orderings tried before this
+# starved one side: oldest-expiry-first starved fresh work, NULLS FIRST starved
+# retries.
+# `mark_files_purged` is stubbed to None throughout the DB-free TTL cases.
+# Cleanup claims the purge on every row it processes -- the marker has to be
+# written whether or not the deletes below succeed, and the row it reads back
+# under the lock is what the deletes then act on -- and the real method opens
+# a transaction, which this suite has no database for. None exercises the
+# documented `... or job` fallback, so these cases keep asserting exactly what
+# they were written to assert. The claim itself is covered DB-backed in
+# `test_models.py::TestTheTtlSweepClaimsThePurge`.
+@mock.patch.object(AgentKVJob, "mark_files_purged", return_value=None)
+@mock.patch.object(maintenance, "delete_job_files", return_value=["input_ref"])
+@mock.patch.object(AgentKVJob, "objects")
+def test_ttl_cleanup_reserves_capacity_for_retries_under_a_flood_of_new_expiries(
+    m_objects, m_delete, m_purge
+):
+    retries = [
+        AgentKVJob(id=uuid.uuid4(), input_ref=f"r{i}", cleanup_failed_at=timezone.now())
+        for i in range(100)
+    ]
+    fresh = [AgentKVJob(id=uuid.uuid4(), input_ref=f"f{i}") for i in range(500)]
+    lanes = _ttl_lanes(m_objects, retries=retries, fresh=fresh)
+
+    resp = iv.TTLCleanupView.as_view()(_post("/x"))
+
+    assert lanes.retry.slice == slice(None, 100, None)
+    assert lanes.fresh.slice == slice(None, 400, None)
+    # Every retry was attempted even though 500 fresh rows were queued behind
+    # them, and the batch cap still held: 100 + 400 == 500.
+    assert m_delete.call_count == 500
+    assert resp.data == {"cleaned": 0, "retained": 500}
+
+
+# (7) files are deleted BEFORE the refs are blanked -- order matters: a
+# delete failure must not blank a ref pointing at a file that's still there.
+# Stubbed for the same reason as (6d); see the note there.
+@mock.patch.object(AgentKVJob, "mark_files_purged", return_value=None)
+@mock.patch.object(maintenance, "delete_job_files")
+@mock.patch.object(AgentKVJob, "objects")
+def test_ttl_cleanup_deletes_files_before_blanking_refs(m_objects, m_delete, m_purge):
+    job_id = uuid.uuid4()
+    job = AgentKVJob(
+        id=job_id, input_ref="org/o/j/input.pdf", result_ref="org/o/j/result.json"
+    )
+    m_delete.return_value = ["input_ref", "result_ref"]
+    m_qs = m_objects.filter.return_value
+    _ttl_lanes(m_objects, fresh=[job])
+
+    manager = mock.Mock()
+    manager.attach_mock(m_delete, "delete_job_files")
+    manager.attach_mock(m_qs.update, "update")
+
+    resp = iv.TTLCleanupView.as_view()(_post("/x"))
+
+    assert resp.status_code == 200
+    assert resp.data == {"cleaned": 1, "retained": 0}
+    assert [c[0] for c in manager.mock_calls] == ["delete_job_files", "update"]
+    m_delete.assert_called_once_with(job)
+
+
+# (8) both refs are blanked via `.update()` (not `job.save()`), targeting
+# exactly this job's row, and the row itself is left in place (no .delete()
+# call is ever made on the queryset).
+# Stubbed for the same reason as (6d); see the note there.
+@mock.patch.object(AgentKVJob, "mark_files_purged", return_value=None)
+@mock.patch.object(maintenance, "delete_job_files")
+@mock.patch.object(AgentKVJob, "objects")
+def test_ttl_cleanup_blanks_both_refs_for_the_job_row(m_objects, m_delete, m_purge):
+    job_id = uuid.uuid4()
+    job = AgentKVJob(id=job_id, input_ref="org/o/j/input.pdf", result_ref="")
+    m_delete.return_value = ["input_ref", "result_ref"]
+    m_qs = m_objects.filter.return_value
+    _ttl_lanes(m_objects, fresh=[job])
+
+    iv.TTLCleanupView.as_view()(_post("/x"))
+
+    assert m_objects.filter.call_args_list[-1].kwargs == {"id": job_id}
+    m_qs.update.assert_called_once_with(
+        input_ref="", result_ref="", cleanup_failed_at=None
+    )
+    assert not m_qs.delete.called
+
+
+# (9) `cleaned` counts jobs actually processed this call, across multiple
+# candidates.
+# Stubbed for the same reason as (6d); see the note there.
+@mock.patch.object(AgentKVJob, "mark_files_purged", return_value=None)
+@mock.patch.object(maintenance, "delete_job_files")
+@mock.patch.object(AgentKVJob, "objects")
+def test_ttl_cleanup_returns_count_of_jobs_cleaned(m_objects, m_delete, m_purge):
+    job1 = AgentKVJob(id=uuid.uuid4(), input_ref="a", result_ref="")
+    job2 = AgentKVJob(id=uuid.uuid4(), input_ref="", result_ref="b")
+    m_delete.return_value = ["input_ref", "result_ref"]
+    m_qs = m_objects.filter.return_value
+    _ttl_lanes(
+        m_objects,
+        fresh=[
+            job1,
+            job2,
+        ],
+    )
+
+    resp = iv.TTLCleanupView.as_view()(_post("/x"))
+
+    assert resp.data == {"cleaned": 2, "retained": 0}
+    assert m_delete.call_count == 2
+    assert m_qs.update.call_count == 2
+
+
+# (10) no candidates -> {"cleaned": 0}, nothing deleted or updated. This is
+# also the concrete shape of a "second run over the same set" once every
+# candidate from the first run has had its refs blanked: the (mocked)
+# candidate query simply returns nothing.
+@mock.patch.object(maintenance, "delete_job_files")
+@mock.patch.object(AgentKVJob, "objects")
+def test_ttl_cleanup_with_no_candidates_is_a_pure_noop(m_objects, m_delete):
+    m_qs = m_objects.filter.return_value
+    _ttl_lanes(m_objects, fresh=[])
+
+    resp = iv.TTLCleanupView.as_view()(_post("/x"))
+
+    assert resp.status_code == 200
+    assert resp.data == {"cleaned": 0, "retained": 0}
+    assert not m_delete.called
+    assert not m_qs.update.called
+
+
+# (10b) THE case test (7)'s comment claims ("a delete failure must not blank a
+# ref pointing at a file that's still there") but which nothing actually
+# asserted until the Greptile review: test (7) only pinned the ORDER of the two
+# calls, and ordering is irrelevant when the update blanks both refs regardless
+# of what the delete returned. Before the fix this test fails -- `update` is
+# called with both refs blanked and the still-present result file loses its only
+# handle, since the candidate query below matches only rows with a non-blank
+# ref.
+# Stubbed for the same reason as (6d); see the note there.
+@mock.patch.object(AgentKVJob, "mark_files_purged", return_value=None)
+@mock.patch.object(maintenance, "delete_job_files")
+@mock.patch.object(AgentKVJob, "objects")
+def test_ttl_cleanup_keeps_the_ref_whose_file_delete_failed(m_objects, m_delete, m_purge):
+    job_id = uuid.uuid4()
+    job = AgentKVJob(
+        id=job_id, input_ref="org/o/j/input.pdf", result_ref="org/o/j/result.json"
+    )
+    # Input gone, result delete raised inside delete_job_files.
+    m_delete.return_value = ["input_ref"]
+    m_qs = m_objects.filter.return_value
+    _ttl_lanes(m_objects, fresh=[job])
+
+    resp = iv.TTLCleanupView.as_view()(_post("/x"))
+
+    # Only the confirmed-gone ref is blanked; result_ref is NOT in the update,
+    # so the row still matches `result_ref__gt=""` and the next pass retries.
+    (), kwargs = m_qs.update.call_args
+    assert kwargs["input_ref"] == ""
+    assert "result_ref" not in kwargs
+    # Stamped so the nulls-first ordering pushes this row behind all never-failed
+    # work on the next tick -- retried, but unable to block the backlog.
+    assert kwargs["cleanup_failed_at"] is not None
+    # Not counted as cleaned -- it is unfinished, and `retained` is what makes a
+    # permanently-failing backlog visible instead of silently draining to zero.
+    assert resp.data == {"cleaned": 0, "retained": 1}
+
+
+# (10c) nothing confirmed gone -> no ref is blanked, but the failure is still
+# recorded. Skipping the write entirely would leave cleanup_failed_at NULL, and
+# a NULL sorts FIRST under the candidate ordering -- so the row would hold the
+# head of every batch indefinitely, which is the starvation this ordering
+# exists to prevent.
+# Stubbed for the same reason as (6d); see the note there.
+@mock.patch.object(AgentKVJob, "mark_files_purged", return_value=None)
+@mock.patch.object(maintenance, "delete_job_files")
+@mock.patch.object(AgentKVJob, "objects")
+def test_ttl_cleanup_blanks_no_ref_but_still_stamps_the_failure(m_objects, m_delete, m_purge):
+    job = AgentKVJob(
+        id=uuid.uuid4(), input_ref="org/o/j/input.pdf", result_ref="org/o/j/r.json"
+    )
+    m_delete.return_value = []
+    m_qs = m_objects.filter.return_value
+    _ttl_lanes(m_objects, fresh=[job])
+
+    resp = iv.TTLCleanupView.as_view()(_post("/x"))
+
+    # No ref is blanked -- but the failure IS stamped, or the row would sort
+    # nulls-first forever and keep its place at the head of every batch.
+    (), kwargs = m_qs.update.call_args
+    assert kwargs == {"cleanup_failed_at": mock.ANY}
+    assert kwargs["cleanup_failed_at"] is not None
+    assert resp.data == {"cleaned": 0, "retained": 1}
+
+
+# (10d) a row that failed before and succeeds now must have its stale failure
+# marker cleared. It drops out of the candidate filter anyway (both refs blank),
+# so this matters for the audit trail and for anything reading
+# cleanup_failed_at as "currently failing" rather than "failed once".
+# Stubbed for the same reason as (6d); see the note there.
+@mock.patch.object(AgentKVJob, "mark_files_purged", return_value=None)
+@mock.patch.object(maintenance, "delete_job_files")
+@mock.patch.object(AgentKVJob, "objects")
+def test_ttl_cleanup_clears_a_stale_failure_marker_on_success(m_objects, m_delete, m_purge):
+    job = AgentKVJob(
+        id=uuid.uuid4(),
+        input_ref="org/o/j/input.pdf",
+        result_ref="org/o/j/result.json",
+        cleanup_failed_at=timezone.now(),
+    )
+    m_delete.return_value = ["input_ref", "result_ref"]
+    m_qs = m_objects.filter.return_value
+    _ttl_lanes(m_objects, fresh=[job])
+
+    resp = iv.TTLCleanupView.as_view()(_post("/x"))
+
+    m_qs.update.assert_called_once_with(
+        input_ref="", result_ref="", cleanup_failed_at=None
+    )
+    assert resp.data == {"cleaned": 1, "retained": 0}
+
+
+# ---------------------------------------------------------------------------
+# URL wiring
+# ---------------------------------------------------------------------------
+
+
+# (11) regression pin for the frozen paths (spec Interfaces block): the
+# PG-scheduler/reaper periodic mechanism calls these exact URLs, so a
+# dropped/renamed include in internal_base_urls.py must fail loudly here
+# rather than 404 in prod.
+def test_frozen_sweep_and_ttl_cleanup_urls_resolve_to_the_right_views():
+    from django.urls import resolve
+
+    sweep = resolve("/internal/v1/agent-kv/sweep/")
+    assert sweep.func.cls is iv.SweepView
+
+    ttl_cleanup = resolve("/internal/v1/agent-kv/ttl-cleanup/")
+    assert ttl_cleanup.func.cls is iv.TTLCleanupView
+
+
+# ---------------------------------------------------------------------------
+# Phase 3: slots held by jobs CANCELLED after dispatch.
+#
+# Cancelling a dispatched job deliberately does not release its slot -- the
+# executor is still running and still billing, so the slot belongs to the
+# finalize callback. But if that executor dies no callback arrives, and neither
+# phase 1 (PENDING) nor phase 2 (DISPATCHED/RUNNING) selects a CANCELLED row,
+# so the slot sat occupied until Redis expired it six hours later.
+#
+# Reported by Greptile on PR #2317.
+# ---------------------------------------------------------------------------
+@mock.patch.object(maintenance.AgentKVConcurrencyLimiter, "release")
+@mock.patch.object(AgentKVJob, "mark_terminal", return_value=True)
+@mock.patch.object(AgentKVJob, "objects")
+def test_sweep_releases_slots_held_by_abandoned_cancelled_jobs(
+    m_objects, m_mark_terminal, m_release
+):
+    job = AgentKVJob(status=JobStatus.CANCELLED)
+    job.organization_id = "org1"
+    _wire_sweep_phases(m_objects, cancelled=[job])
+
+    resp = iv.SweepView.as_view()(_post("/x"))
+
+    assert resp.status_code == 200
+    m_release.assert_called_once_with("org1", str(job.id))
+    # The job is ALREADY terminal; phase 3 only frees the slot.
+    assert not m_mark_terminal.called
+
+
+@mock.patch.object(maintenance.AgentKVConcurrencyLimiter, "release")
+@mock.patch.object(AgentKVJob, "mark_terminal", return_value=True)
+@mock.patch.object(AgentKVJob, "objects")
+def test_phase_three_s_release_count_reaches_the_caller(
+    m_objects, m_mark_terminal, m_release
+):
+    """`released` must be in the RESPONSE, not only in a log line.
+
+    Phase 3 counted its releases into a local, logged them, and returned only
+    `{"swept", "timed_out"}`. `SweepView` passes that dict through verbatim and
+    the scheduler task logs it, so no caller could ever see that a slot had
+    been recovered -- the same "counted then discarded" shape as the round-1
+    finding about this function's return value, reintroduced by the phase added
+    to fix another part of it.
+
+    Operationally: a cancelled job whose executor never called back holds a
+    slot against the org's cap, and phase 3 is the only thing that frees it.
+    Without this key, "the cap is being hit and the sweep is recovering slots"
+    and "the cap is being hit and nothing is recovering anything" look the same
+    from outside.
+    """
+    jobs = []
+    for _ in range(3):
+        job = AgentKVJob(status=JobStatus.CANCELLED)
+        job.organization_id = "org1"
+        jobs.append(job)
+    _wire_sweep_phases(m_objects, cancelled=jobs)
+
+    resp = iv.SweepView.as_view()(_post("/x"))
+
+    assert resp.status_code == 200
+    assert resp.data["released"] == 3, resp.data
+    assert m_release.call_count == 3
+
+
+@mock.patch.object(maintenance.AgentKVConcurrencyLimiter, "release")
+@mock.patch.object(AgentKVJob, "mark_terminal", return_value=True)
+@mock.patch.object(AgentKVJob, "objects")
+def test_a_sweep_that_strands_jobs_says_so_at_warning(
+    m_objects, m_mark_terminal, m_release, caplog
+):
+    """The logging added for round-1 finding 2, pinned.
+
+    Nothing anywhere used `caplog` on this module, so all five log lines could
+    be deleted and the suite stayed green -- `test_agent_kv_scheduler_tasks.py`
+    asserts the returned dict, which passed before the logging existed too.
+
+    WARNING specifically, not INFO: a non-zero count means jobs were stranded
+    and their concurrency slots held, which is the condition an operator needs
+    surfaced. Before this, a sweep terminalizing a thousand jobs as FAILED
+    emitted nothing at all, so a backlog of stranded jobs was indistinguishable
+    from a quiet, healthy system.
+    """
+    job = AgentKVJob(id=uuid.uuid4(), organization_id="org1")
+    _wire_sweep_phases(m_objects, never_dispatched=[job])
+
+    with caplog.at_level(logging.INFO, logger="agent_kv.maintenance"):
+        resp = iv.SweepView.as_view()(_post("/x"))
+
+    assert resp.data["swept"] == 1
+    terminalized = [
+        r
+        for r in caplog.records
+        if r.levelno >= logging.WARNING and "terminalized" in r.getMessage()
+    ]
+    assert len(terminalized) == 1, [r.getMessage() for r in caplog.records]
+    assert "1 never-dispatched" in terminalized[0].getMessage()
+
+
+@mock.patch.object(maintenance.AgentKVConcurrencyLimiter, "release")
+@mock.patch.object(AgentKVJob, "mark_terminal", return_value=True)
+@mock.patch.object(AgentKVJob, "objects")
+def test_a_quiet_sweep_still_records_that_it_RAN(
+    m_objects, m_mark_terminal, m_release, caplog
+):
+    """The other half, and the one that matters more.
+
+    "Ran and found nothing" and "never ran at all" produce the same counts, and
+    distinguishing them is the whole reason this line exists -- the sweep
+    shipped unscheduled and the only symptom was an absence. So the quiet path
+    must log too, at INFO.
+    """
+    _wire_sweep_phases(m_objects)
+
+    with caplog.at_level(logging.INFO, logger="agent_kv.maintenance"):
+        iv.SweepView.as_view()(_post("/x"))
+
+    assert any(
+        "nothing to terminalize" in r.getMessage() for r in caplog.records
+    ), [r.getMessage() for r in caplog.records]
+
+
+@mock.patch.object(maintenance.AgentKVConcurrencyLimiter, "release")
+@mock.patch.object(AgentKVJob, "objects")
+def test_phase_three_is_bounded_on_both_sides(m_objects, m_release):
+    """Old enough that the executor is presumed dead, young enough that Redis
+    still holds the slot -- and BOTH bounds read `dispatched_at`.
+
+    This test used to assert the stuck grace against `completed_at`, which was
+    wrong twice over and could not notice either: the two constants were equal
+    so the window was empty, and the ceiling asked about slot age using the
+    cancel time when slots are scored from acquisition at submit. Asserting
+    kwargs cannot see an empty window, which is why
+    `TestPhaseThreeActuallySelectsSomething` exists below.
+    """
+    frozen_now = timezone.now()
+    _wire_sweep_phases(m_objects)
+
+    with mock.patch.object(timezone, "now", return_value=frozen_now):
+        iv.SweepView.as_view()(_post("/x"))
+
+    kwargs = m_objects.filter.call_args_list[2].kwargs
+    assert kwargs["status"] == JobStatus.CANCELLED
+    assert kwargs["dispatched_at__isnull"] is False
+    # Floor on the CANCEL time, ceiling on the SLOT's age. Two different
+    # columns, which is also what stops the window collapsing the way it did
+    # when both were `completed_at` with equal constants.
+    assert kwargs["completed_at__lt"] == frozen_now - timedelta(
+        seconds=settings.AGENT_KV_ABANDONED_SLOT_GRACE_SECONDS
+    )
+    assert kwargs["dispatched_at__gt"] == frozen_now - timedelta(
+        seconds=maintenance.SLOT_TTL_SECONDS
+    )
+    # The bound that makes the window non-empty at all.
+    assert (
+        settings.AGENT_KV_ABANDONED_SLOT_GRACE_SECONDS < maintenance.SLOT_TTL_SECONDS
+    )
+
+
+def test_phase_three_takes_the_newest_eligible_rows_first():
+    """Releasing a slot does not remove its row from phase 3's query -- there
+    is no "released" marker -- so oldest-first would re-select the same batch
+    every sweep under backlog, and rows arriving behind it would age out of the
+    window unprocessed.
+
+    Newest-first inverts which rows lose: the skipped ones are the oldest, i.e.
+    closest to the slot TTL floor where Redis is about to drop the entry anyway
+    and a release buys almost nothing.
+
+    Reported by Greptile on PR #2317.
+    """
+    phase1 = mock.MagicMock()
+    phase1.order_by.return_value.__getitem__.return_value = []
+    phase2_status = mock.MagicMock()
+    phase2_status.filter.return_value.order_by.return_value.__getitem__.return_value = []
+    phase3 = mock.MagicMock()
+    phase3.order_by.return_value.__getitem__.return_value = []
+
+    with mock.patch.object(AgentKVJob, "objects") as m_objects:
+        m_objects.filter.side_effect = [phase1, phase2_status, phase3]
+        maintenance.run_sweep()
+
+    phase3.order_by.assert_called_once_with("-completed_at")
+
+
+# ---------------------------------------------------------------------------
+# The select-then-write race, against a real database.
+# ---------------------------------------------------------------------------
+#
+# Everything above mocks `AgentKVJob.objects` and asserts the filter kwargs the
+# queries are built with. That style cannot see this class of defect at all: a
+# mock replays whatever predicate is written, so a SELECT and an UPDATE that
+# disagree agree perfectly in a mock. The bug below -- the sweep failing a job
+# that was dispatched between the two statements -- was found by review, not by
+# the 20 tests above it, which is the honest reason this section exists and is
+# DB-backed.
+
+
+class TestTheSweepLosesTheRaceRatherThanTheJob(TestCase):
+    """Phase 1 picks long-PENDING rows, then terminalizes them in a second
+    statement. A dispatch landing in between must not be overwritten.
+
+    What it would cost: the executor is running and spending, the row says
+    FAILED and its concurrency slot has been handed to someone else, and the
+    finalize that eventually arrives cannot rescue the output -- only a
+    CANCELLED row gets a second look, so the result is written and deleted.
+    """
+
+    def setUp(self):
+        self.org = Organization.objects.create(
+            display_name="Sweep", organization_id="org_sweep", name="sweep"
+        )
+        UserContext.set_organization_identifier(None)
+        self.stale = timezone.now() - timedelta(
+            seconds=settings.AGENT_KV_SWEEP_GRACE_SECONDS + 600
+        )
+
+    def _pending_job(self):
+        job = AgentKVJob(
+            organization_id=self.org.id,
+            status=JobStatus.PENDING,
+            extractor="table",
+        )
+        job.save()
+        # `created_at` is auto_now_add, so it has to be backdated after the
+        # insert for the row to be a sweep candidate at all.
+        AgentKVJob.objects.filter(id=job.id).update(created_at=self.stale)
+        return job
+
+    def _sweep_with_a_dispatch_landing_mid_flight(self, job):
+        """Run the real sweep, dispatching `job` between SELECT and UPDATE.
+
+        Patching `mark_terminal` to mutate the row and then delegate to the
+        real classmethod reproduces the window exactly: the candidate query has
+        already run and returned a snapshot, and the guarded UPDATE is about to
+        run against a row that no longer matches it.
+        """
+        original = AgentKVJob.mark_terminal.__func__
+
+        def dispatch_then_terminalize(job_id, org_id, new_status, **kwargs):
+            AgentKVJob.objects.filter(id=job_id).update(
+                status=JobStatus.DISPATCHED, dispatched_at=timezone.now()
+            )
+            return original(AgentKVJob, job_id, org_id, new_status, **kwargs)
+
+        with mock.patch.object(
+            AgentKVJob, "mark_terminal", side_effect=dispatch_then_terminalize
+        ):
+            with mock.patch.object(maintenance.AgentKVConcurrencyLimiter, "release"):
+                return maintenance.run_sweep()
+
+    def test_a_job_dispatched_mid_sweep_is_left_alone(self):
+        job = self._pending_job()
+
+        result = self._sweep_with_a_dispatch_landing_mid_flight(job)
+        job.refresh_from_db()
+
+        assert job.status == JobStatus.DISPATCHED, (
+            "the sweep overwrote a job that was dispatched after it was "
+            "selected -- the executor is still running and spending"
+        )
+        assert not job.completed_at
+        assert result["swept"] == 0, "a job it did not terminalize must not be counted"
+
+    def test_its_concurrency_slot_is_not_released(self):
+        """The slot belongs to the live run now. Releasing it lets another
+        submit in over the org's limit while this one is still holding real
+        executor capacity -- and nothing ever reclaims the double-booking.
+        """
+        self._pending_job()
+        original = AgentKVJob.mark_terminal.__func__
+
+        def dispatch_then_terminalize(job_id, org_id, new_status, **kwargs):
+            AgentKVJob.objects.filter(id=job_id).update(
+                status=JobStatus.DISPATCHED, dispatched_at=timezone.now()
+            )
+            return original(AgentKVJob, job_id, org_id, new_status, **kwargs)
+
+        with mock.patch.object(
+            AgentKVJob, "mark_terminal", side_effect=dispatch_then_terminalize
+        ):
+            with mock.patch.object(
+                maintenance.AgentKVConcurrencyLimiter, "release"
+            ) as m_release:
+                maintenance.run_sweep()
+
+        assert not m_release.called
+
+    def test_an_undisturbed_candidate_is_still_swept(self):
+        """The guard must not cost the sweep its actual job."""
+        job = self._pending_job()
+
+        with mock.patch.object(maintenance.AgentKVConcurrencyLimiter, "release"):
+            result = maintenance.run_sweep()
+        job.refresh_from_db()
+
+        assert job.status == JobStatus.FAILED
+        assert result["swept"] == 1
+
+    def test_the_predicate_is_declared_once_for_both_statements(self):
+        """The candidate query and the guarded UPDATE must not drift apart --
+        that drift IS the bug. Both read `_NEVER_DISPATCHED`.
+        """
+        assert maintenance._NEVER_DISPATCHED == {
+            "status": JobStatus.PENDING,
+            "dispatched_at__isnull": True,
+        }
+
+
+class TestPhaseThreeActuallySelectsSomething(TestCase):
+    """Phase 3 against a real database, because a mock cannot see an empty window.
+
+    The mocked tests above assert the filter KWARGS the query is built with.
+    That is blind to whether those kwargs can ever match: phase 3 bounded
+    `completed_at` below by `AGENT_KV_STUCK_JOB_GRACE_SECONDS` and above by
+    `SLOT_TTL_SECONDS`, both 21600, so the window was
+    `completed_at < now-21600 AND completed_at > now-21600` -- empty for any
+    grace >= TTL. The phase could never release a slot and `released` was
+    always 0, while every mocked assertion stayed green. Caught in review by
+    @athul-rs on #2317.
+
+    The second bug the same tests could not see: the ceiling asked whether
+    Redis still holds the slot, but read the CANCEL time. Slots are scored by
+    acquisition, at submit, so a job submitted long ago and cancelled a moment
+    ago looked eligible and had nothing left to release.
+    """
+
+    def setUp(self):
+        self.org = Organization.objects.create(
+            display_name="Sweep3", organization_id="org_sweep3", name="sweep3"
+        )
+        UserContext.set_organization_identifier(None)
+
+    def _cancelled(self, *, dispatched_ago, completed_ago=60):
+        job = AgentKVJob(
+            organization_id=self.org.id,
+            status=JobStatus.CANCELLED,
+            extractor="table",
+        )
+        job.save()
+        now = timezone.now()
+        AgentKVJob.objects.filter(id=job.id).update(
+            dispatched_at=now - timedelta(seconds=dispatched_ago),
+            completed_at=now - timedelta(seconds=completed_ago),
+        )
+        return job
+
+    def _sweep(self):
+        with mock.patch.object(
+            maintenance.AgentKVConcurrencyLimiter, "release"
+        ) as m_release:
+            result = maintenance.run_sweep()
+        return result, m_release
+
+    def test_an_abandoned_cancelled_job_has_its_slot_released(self):
+        """The whole point of the phase, and it had never once happened."""
+        job = self._cancelled(dispatched_ago=4 * 3600, completed_ago=2 * 3600)
+
+        result, m_release = self._sweep()
+
+        assert result["released"] == 1, result
+        m_release.assert_called_once_with(str(self.org.id), str(job.id))
+
+    def test_a_job_dispatched_moments_ago_is_left_alone(self):
+        """A job dispatched and cancelled moments ago keeps its slot."""
+        self._cancelled(dispatched_ago=60, completed_ago=30)
+
+        result, m_release = self._sweep()
+
+        assert result["released"] == 0
+        assert not m_release.called
+
+    def test_a_job_whose_slot_redis_has_already_dropped_is_left_alone(self):
+        """Past the slot TTL there is nothing to release, so selecting it would
+        mean re-releasing the same rows on every sweep forever.
+        """
+        self._cancelled(
+            dispatched_ago=SLOT_TTL_SECONDS + 3600, completed_ago=2 * 3600
+        )
+
+        result, m_release = self._sweep()
+
+        assert result["released"] == 0
+
+    def test_the_slot_age_is_measured_from_dispatch_not_from_the_cancel(self):
+        """Submitted long ago, cancelled a minute ago: the slot is gone.
+
+        The original ceiling read `completed_at`, so this row looked eligible
+        -- recent cancel, inside the TTL -- when its slot had expired hours
+        earlier. It would have been re-selected every sweep.
+        """
+        self._cancelled(
+            dispatched_ago=SLOT_TTL_SECONDS + 3600, completed_ago=2 * 3600
+        )
+
+        result, _ = self._sweep()
+
+        assert result["released"] == 0
+
+    def test_a_job_cancelled_moments_ago_keeps_its_slot(self):
+        """The floor is time since the CANCEL, not since dispatch.
+
+        `dispatched_at` records ENQUEUEING. Under a queue backlog longer than
+        the grace, a job can be an hour past dispatch with an executor that
+        has only just started -- so a dispatch-age floor would free a slot
+        that is still in use, and another submit could then exceed
+        AGENT_KV_CONCURRENT_LIMIT while the executor bills on. Cancelling is
+        what makes a live executor stop, so the grace has to run from there.
+        Reported by Greptile on #2317, against this phase's first fix.
+        """
+        self._cancelled(dispatched_ago=4 * 3600, completed_ago=30)
+
+        result, m_release = self._sweep()
+
+        assert result["released"] == 0
+        assert not m_release.called
+
+    def test_the_grace_is_its_own_setting_and_shorter_than_the_slot_ttl(self):
+        """The invariant that keeps the window non-empty. If these ever meet
+        again, phase 3 silently stops working and every test above still
+        passes except the first.
+        """
+        assert settings.AGENT_KV_ABANDONED_SLOT_GRACE_SECONDS < SLOT_TTL_SECONDS
+
+
+# ---------------------------------------------------------------------------
+# The sweep owes a terminal notification too
+# ---------------------------------------------------------------------------
+# Mock-backed rather than `TestCase`, deliberately: these assert which calls
+# `run_sweep` makes, not what the database ends up holding, and keeping them
+# off the DB means they run anywhere.
+#
+# Reported by Greptile on #2317. The sweep is the THIRD route to a terminal
+# state, after finalize and cancel, and docs §8 promises a POST on every one.
+# It sent nothing, and no later callback could cover for it: a callback
+# arriving after the sweep finds an already-terminal row, reports
+# `finalized: False`, and correctly declines to send. A caller whose job timed
+# out was simply never told.
+
+
+def _qs(rows):
+    """A queryset stand-in whose `.order_by(...)[:n]` yields `rows`."""
+    qs = mock.MagicMock()
+    qs.order_by.return_value.__getitem__.return_value = rows
+    return qs
+
+
+def _job(**kw):
+    j = mock.MagicMock()
+    j.id = uuid.uuid4()
+    j.organization_id = uuid.uuid4()
+    j.webhook_url = kw.get("webhook_url", "https://hook.example/x")
+    return j
+
+
+def _run_sweep_with(phase1, phase2, phase3):
+    """Drive `run_sweep` with a fixed candidate list per phase.
+
+    `objects.filter` is called once per phase, except phase 2 which chains a
+    second `.filter(...)` onto the first.
+    """
+    qs2_outer = mock.MagicMock()
+    qs2_outer.filter.return_value = _qs(phase2)
+    with (
+        mock.patch.object(maintenance.AgentKVJob, "objects") as m_objects,
+        mock.patch.object(
+            maintenance.AgentKVJob, "mark_terminal", return_value=True
+        ) as m_mark,
+        mock.patch.object(maintenance.AgentKVConcurrencyLimiter, "release"),
+        mock.patch.object(maintenance, "dispatch_terminal_webhook") as m_hook,
+    ):
+        m_objects.filter.side_effect = [_qs(phase1), qs2_outer, _qs(phase3)]
+        maintenance.run_sweep()
+    return m_hook, m_mark
+
+
+def test_a_never_dispatched_job_the_sweep_fails_gets_its_webhook():
+    job = _job()
+    m_hook, _ = _run_sweep_with([job], [], [])
+
+    m_hook.assert_called_once_with(job, "failed")
+
+
+def test_a_stuck_job_the_sweep_times_out_gets_its_webhook():
+    job = _job()
+    m_hook, _ = _run_sweep_with([], [job], [])
+
+    m_hook.assert_called_once_with(job, "failed")
+
+
+def test_an_abandoned_cancelled_slot_release_notifies_nobody():
+    """Phase 3 frees a slot on a row that is ALREADY cancelled; its
+    notification went out when the cancel won. A second POST would repeat
+    what the caller was told and carry nothing new."""
+    m_hook, _ = _run_sweep_with([], [], [_job()])
+
+    m_hook.assert_not_called()
+
+
+def test_a_job_the_sweep_did_not_terminalize_gets_no_webhook():
+    """The guard is what decides, not the SELECT. A row a concurrent
+    finalize or cancel won in the meantime is not this call's to announce --
+    whoever won it already queued one."""
+    job = _job()
+    qs2_outer = mock.MagicMock()
+    qs2_outer.filter.return_value = _qs([])
+    with (
+        mock.patch.object(maintenance.AgentKVJob, "objects") as m_objects,
+        # The guarded UPDATE matched nothing: someone else got there first.
+        mock.patch.object(maintenance.AgentKVJob, "mark_terminal", return_value=False),
+        mock.patch.object(maintenance.AgentKVConcurrencyLimiter, "release") as m_rel,
+        mock.patch.object(maintenance, "dispatch_terminal_webhook") as m_hook,
+    ):
+        m_objects.filter.side_effect = [_qs([job]), qs2_outer, _qs([])]
+        maintenance.run_sweep()
+
+    m_hook.assert_not_called()
+    # And the slot is not released either -- the winner released its own.
+    m_rel.assert_not_called()

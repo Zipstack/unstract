@@ -94,6 +94,7 @@ function Agency() {
 
   const { setPostHogCustomEvent } = usePostHogEvents();
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: mount-only initialisation — these callbacks are stable refs and re-running on every render would duplicate network requests
   useEffect(() => {
     const abortController = new AbortController();
     const signal = abortController.signal;
@@ -147,7 +148,7 @@ function Agency() {
     }
 
     setPrevLoadingType(loadingType);
-  }, [workflowStore]);
+  }, [loadingType, prevLoadingType]);
 
   useEffect(() => {
     if (!isUpdateSteps) {
@@ -569,21 +570,21 @@ function Agency() {
       setSourceMsg("");
       setDestinationMsg("");
       const newSteps = [...steps].map((step) => {
-        step["progress"] = "";
-        step["status"] = "";
+        step.progress = "";
+        step.status = "";
         return step;
       });
       setSteps(newSteps);
     }
 
     if (msgComp === "SOURCE") {
-      const srcMsg = message?.state + ": " + message?.message;
+      const srcMsg = `${message?.state}: ${message?.message}`;
       setSourceMsg(srcMsg);
       return;
     }
 
     if (msgComp === "DESTINATION") {
-      const destMsg = message?.state + ": " + message?.message;
+      const destMsg = `${message?.state}: ${message?.message}`;
       setDestinationMsg(destMsg);
       return;
     }
@@ -600,8 +601,8 @@ function Agency() {
         return stepObj;
       }
 
-      stepObj["progress"] = message?.state;
-      stepObj["status"] = message?.message;
+      stepObj.progress = message?.state;
+      stepObj.status = message?.message;
       return stepObj;
     });
     setSteps(newSteps);
@@ -756,7 +757,7 @@ function Agency() {
   ) => {
     initializeWfComp();
     if (isStepExecution) {
-      body["execution_action"] = wfExecutionTypes[0];
+      body.execution_action = wfExecutionTypes[0];
     }
 
     const loadingStatus = {
@@ -780,9 +781,9 @@ function Agency() {
           duration: 0,
         });
       }
-      body["execution_id"] = execIdValue;
+      body.execution_id = execIdValue;
       if (isStepExecution) {
-        body["execution_action"] = wfExecutionTypes[executionAction];
+        body.execution_action = wfExecutionTypes[executionAction];
       }
       const wfExecRes = await handleWfExecutionApi(body);
       const data = wfExecRes?.data;
@@ -803,8 +804,8 @@ function Agency() {
       });
     } finally {
       handleClearStates();
-      loadingStatus["isLoading"] = false;
-      loadingStatus["loadingType"] = "";
+      loadingStatus.isLoading = false;
+      loadingStatus.loadingType = "";
       updateWorkflow(loadingStatus);
     }
   };
@@ -818,16 +819,16 @@ function Agency() {
     fileList.forEach((file) => {
       formData.append("files", file);
     });
-    formData.append("workflow_id", body["workflow_id"]);
-    formData.append("execution_id", body["execution_id"]);
-    if (body["execution_action"]) {
-      formData.append("execution_action", body["execution_action"]);
+    formData.append("workflow_id", body.workflow_id);
+    formData.append("execution_id", body.execution_id);
+    if (body.execution_action) {
+      formData.append("execution_action", body.execution_action);
     }
     return formData;
   };
 
   const shouldIncludeFile = (body) => {
-    return body["execution_id"] && body["execution_id"].length > 0;
+    return body.execution_id && body.execution_id.length > 0;
   };
 
   const handleWfExecutionApi = async (body) => {
@@ -891,8 +892,8 @@ function Agency() {
     if (isInitial) {
       await handleInitialExecution(body, isStepExecution, executionAction);
     } else {
-      body["execution_id"] = executionId;
-      body["execution_action"] = wfExecutionTypes[executionAction];
+      body.execution_id = executionId;
+      body.execution_action = wfExecutionTypes[executionAction];
 
       handleWfExecutionApi(body)
         .then(() => {
