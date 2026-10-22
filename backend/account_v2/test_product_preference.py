@@ -22,7 +22,6 @@ from pathlib import Path
 from unittest import mock
 
 import jsonschema
-from django.db import connection
 from django.test import TestCase
 
 from account_v2.authentication_plugin_registry import AuthenticationPluginRegistry
@@ -30,7 +29,6 @@ from account_v2.enums import Product
 from account_v2.models import User, UserProductPreference
 from account_v2.product_preference import (
     get_product_preference,
-    record_selected_product,
     set_product_preference,
 )
 
@@ -208,30 +206,6 @@ class ProductPreferenceServiceTests(TestCase):
             set_product_preference(self.user, "photoshop")
         self.assertFalse(get_product_preference(self.user).has_chosen)
 
-    def test_record_selected_product_stores_a_known_product(self) -> None:
-        record_selected_product(self.user, "llm-whisperer")
-
-        self.assertEqual(get_product_preference(self.user).product, "llm-whisperer")
-
-    def test_record_selected_product_ignores_unknown_values(self) -> None:
-        set_product_preference(self.user, "unstract")
-        for value in (None, "", "photoshop", ["unstract"]):
-            with self.subTest(value=value):
-                record_selected_product(self.user, value)
-                self.assertEqual(get_product_preference(self.user).product, "unstract")
-
-    def test_record_selected_product_never_raises(self) -> None:
-        with (
-            mock.patch(
-                "account_v2.product_preference.set_product_preference",
-                side_effect=RuntimeError("db down"),
-            ),
-            self.assertLogs("account_v2.product_preference", level="ERROR"),
-        ):
-            record_selected_product(self.user, "unstract")
-
-        self.assertFalse(get_product_preference(self.user).has_chosen)
-
 
 class ProductContractTests(TestCase):
     def test_schemas_list_exactly_the_product_ids(self) -> None:
@@ -243,28 +217,3 @@ class ProductContractTests(TestCase):
         self.assertEqual(
             set(SESSION_SCHEMA["properties"]["last_product"]["enum"]) - {None}, products
         )
-
-
-class RecordSelectedProductTransactionTests(TestCase):
-    """``TestCase`` runs each test in a transaction, standing in for a
-    request under ATOMIC_REQUESTS.
-    """
-
-    def test_a_failed_write_leaves_the_transaction_usable(self) -> None:
-        user = _user("atomic@example.com")
-
-        def fail_in_sql(*args, **kwargs):
-            with connection.cursor() as cursor:
-                cursor.execute("SELECT 1 / 0")
-
-        with (
-            mock.patch(
-                "account_v2.product_preference.set_product_preference",
-                side_effect=fail_in_sql,
-            ),
-            self.assertLogs("account_v2.product_preference", level="ERROR"),
-        ):
-            record_selected_product(user, "unstract")
-
-        # Raises "current transaction is aborted" without the savepoint.
-        self.assertTrue(User.objects.filter(pk=user.pk).exists())

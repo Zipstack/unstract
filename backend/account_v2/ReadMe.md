@@ -37,8 +37,9 @@ Each user has one last-used product, shared by all their organisations
   400. Service accounts get a 403.
 - `GET /api/v1/session` also returns `last_product` and `has_chosen`.
 - `has_chosen` is false until the first write, which is the first-login flag.
-- An auth plugin stores a login's `selectedProduct` by calling
-  `record_selected_product(user, value)`. It ignores unknown values and never
-  raises.
+- The backend never writes it on its own. The frontend `PUT`s it from the
+  product switcher, and after a login that started from a product page
+  (`selectedProduct`), before it reads `session` to pick where to land. This
+  works the same for every auth plugin.
 
 JSON Schemas for the responses and the request body are in `contract/`.

@@ -4,21 +4,16 @@ One row per user, shared by every organisation the user belongs to, so the
 platform can land a returning user in the product they used last. The row's
 existence is the first-login flag: a user with no row has never chosen.
 
-The value is written by the product switcher (``PUT users/me/product-preference/``)
-and by the login callback when the login carried ``selectedProduct``. It is
-read back on ``session`` as ``last_product`` and ``has_chosen``.
+The value is written by the frontend (``PUT users/me/product-preference/``):
+by the product switcher, and after a login that started from a product page.
+It is read back on ``session`` as ``last_product`` and ``has_chosen``.
 """
 
-import logging
 from dataclasses import dataclass
 from datetime import datetime
 
-from django.db import transaction
-
 from account_v2.enums import Product
 from account_v2.models import User, UserProductPreference
-
-logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -32,18 +27,6 @@ class ProductPreference:
 
 
 NO_PREFERENCE = ProductPreference(product=None, updated_at=None)
-
-
-def parse_product(value: object) -> str | None:
-    """Return ``value`` if it is a known product id, else None.
-
-    Unknown values are ignored rather than rejected, as the auth plugin
-    already ignores an unknown ``selectedProduct``. The set is wider than the
-    plugin's OAuth scope list, which names only unstract and llm-whisperer.
-    """
-    if isinstance(value, str) and value in Product.values:
-        return value
-    return None
 
 
 def get_product_preference(user: User) -> ProductPreference:
@@ -63,30 +46,9 @@ def set_product_preference(user: User, product: str) -> ProductPreference:
     Raises ValueError for an unknown product id: callers validate first, so
     this guards the table, not user input.
     """
-    if parse_product(product) is None:
+    if product not in Product.values:
         raise ValueError(f"Unknown product: {product!r}")
     row, _ = UserProductPreference.objects.update_or_create(
         user=user, defaults={"product": product}
     )
     return ProductPreference(product=row.product, updated_at=row.updated_at)
-
-
-def record_selected_product(user: User, value: object) -> None:
-    """Store a login's ``selectedProduct``, never failing the login.
-
-    For the auth plugin's callback: an unknown value is ignored, and a write
-    error is logged rather than raised, because a missing preference only
-    costs the user a product choice while a failed callback costs the login.
-    """
-    product = parse_product(value)
-    if product is None:
-        return
-    try:
-        # A savepoint, so a failed write leaves the caller's transaction
-        # usable when the request runs in one (ATOMIC_REQUESTS).
-        with transaction.atomic():
-            set_product_preference(user, product)
-    except Exception:
-        logger.exception(
-            "Could not store selected product %r for user %s", product, user.id
-        )
