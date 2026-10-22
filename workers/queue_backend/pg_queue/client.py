@@ -201,16 +201,29 @@ class PgQueueClient:
     def conn(self) -> PgConnection:
         if self._conn is None:
             self._conn = create_pg_connection()
+            # Every operation here is ONE statement (the claim CTE, set_vt, the
+            # ack DELETE, the enqueue INSERT) and already atomic on its own. In
+            # psycopg2's default mode each is wrapped in BEGIN … COMMIT: three
+            # round trips per operation, empty polls included — the largest
+            # share of statements on the DB under load (UN-4254). Autocommit
+            # sends the bare statement. Owned connections only: an injected one
+            # keeps the caller's mode, and create_pg_connection() itself stays
+            # non-autocommit because pg_barrier's retry safety depends on it.
+            self._conn.autocommit = True
         return self._conn
 
     @contextlib.contextmanager
     def _cursor(self) -> Iterator[Any]:
         """Yield a cursor; commit on success, roll back + recover on error.
 
-        Keeps the cached connection usable: a failed statement leaves the
-        connection in an aborted transaction, so we always roll back; a
-        dead connection can't be reused, so (when we own it) we drop the
-        cached handle and the next call reconnects.
+        Keeps the cached connection usable: a failed statement on a
+        non-autocommit (injected) connection leaves it in an aborted
+        transaction, so we always roll back; a dead connection can't be
+        reused, so (when we own it) we drop the cached handle and the next
+        call reconnects. On the owned autocommit connection ``commit()`` /
+        ``rollback()`` send nothing to the server (no transaction is open),
+        but ``rollback()`` still raises on a closed connection, which is
+        what flags it as dead below.
         """
         conn = self.conn
         try:
@@ -278,7 +291,10 @@ class PgQueueClient:
         committed the row but BEFORE psycopg2 read back ``RETURNING msg_id``
         (the commit-loss / PgBouncer server-recycle case this very feature
         targets) is indistinguishable here from an idle reap, so the retry would
-        re-insert an already-committed row. The enqueue is therefore
+        re-insert an already-committed row. On the owned autocommit connection
+        there is no separate COMMIT: the row is durable as soon as the INSERT
+        executes, so this window covers the statement's own execution rather
+        than only a trailing COMMIT. The enqueue is therefore
         **at-least-once**: the ``reused`` gate removes the *common* duplicate
         (idle reap) but cannot remove the *rare* one (post-commit death). That
         residual duplicate leans on the module's at-least-once / idempotent-
