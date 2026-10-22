@@ -275,7 +275,7 @@ class LockTests(_Runs, TestCase):
         self.share(pipeline)
         execution = self.run_of(pipeline)
         for status in (ExecutionStatus.ERROR, ExecutionStatus.COMPLETED):
-            with self.subTest(status=status):
+            with self.subTest(status=status.value):
                 with CaptureQueriesContext(connection) as queries:
                     self.finish(execution, status, failed_files=0)
                 sql = " ".join(q["sql"] for q in queries.captured_queries)
