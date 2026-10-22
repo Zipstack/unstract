@@ -3,6 +3,7 @@ helper that calls a view the way a request would and runs its on-commit writes."
 
 import secrets
 from typing import Any
+from unittest.mock import patch
 
 from account_v2.models import Organization, User
 from django.test import TestCase
@@ -21,6 +22,17 @@ def make_user(email: str, **kwargs: Any) -> User:
 
 class AuditTestBase(TestCase):
     def setUp(self) -> None:
+        # The built-in auth service, whatever plugin the distribution installs:
+        # these tests use its role names ("admin", "user") and patch its
+        # identity-provider calls. Under a plugin such as cloud's Auth0, a
+        # role="admin" row is not an admin, and the patches would miss.
+        no_plugin = patch(
+            "account_v2.authentication_plugin_registry.AuthenticationPluginRegistry"
+            ".is_plugin_available",
+            return_value=False,
+        )
+        no_plugin.start()
+        self.addCleanup(no_plugin.stop)
         self.org = Organization.objects.create(
             name="org-a", display_name="Org A", organization_id="org-a"
         )
