@@ -3,6 +3,7 @@ import re
 from rest_framework import serializers
 from utils.input_sanitizer import validate_name_field
 
+from account_v2.enums import Product
 from account_v2.models import Organization, User
 
 
@@ -149,3 +150,16 @@ class UserSessionResponseSerializer(serializers.Serializer):
     provider = serializers.CharField()
     is_staff = serializers.BooleanField()
     disable_sso_idp_authorization = serializers.BooleanField()
+    # The user's last-used product and whether they have ever chosen one.
+    last_product = serializers.ChoiceField(choices=Product.choices, allow_null=True)
+    has_chosen = serializers.BooleanField()
+
+
+class ProductPreferenceSerializer(serializers.Serializer):
+    product = serializers.ChoiceField(choices=Product.choices, allow_null=True)
+    updated_at = serializers.DateTimeField(allow_null=True)
+    has_chosen = serializers.BooleanField()
+
+
+class ProductPreferenceUpdateSerializer(serializers.Serializer):
+    product = serializers.ChoiceField(choices=Product.choices)

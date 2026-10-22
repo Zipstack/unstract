@@ -81,7 +81,11 @@ from unstract.core.polling import poll_for_row
 
 from .connection import CONN_DEAD_ERRORS as _CONN_DEAD_ERRORS
 from .connection import PAYLOAD_REJECTED_ERRORS as _PAYLOAD_REJECTED_ERRORS
-from .connection import create_pg_connection, is_connection_dead
+from .connection import (
+    create_pg_connection,
+    is_connection_dead,
+    is_dead_after_autocommit_error,
+)
 from .schema import qualified
 
 if TYPE_CHECKING:
@@ -305,6 +309,10 @@ class PgResultBackend:
     def conn(self) -> PgConnection:
         if self._conn is None:
             self._conn = create_pg_connection()
+            # Every write and read here is ONE idempotent statement, so run in
+            # autocommit and skip psycopg2's BEGIN … COMMIT round trips (UN-4254;
+            # same reasoning as PgQueueClient.conn). Owned connections only.
+            self._conn.autocommit = True
         return self._conn
 
     @contextlib.contextmanager
@@ -316,7 +324,7 @@ class PgResultBackend:
                 yield cur
             conn.commit()
         except Exception as exc:
-            conn_dead = is_connection_dead(exc)
+            conn_dead = is_dead_after_autocommit_error(exc)
             try:
                 conn.rollback()
             except Exception:

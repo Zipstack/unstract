@@ -59,3 +59,25 @@
 If working out these three fields fails, the list is returned without them and the failure is logged.
 
 If the organizations can't be listed at all, the response is `412` and the session is logged out. For a known authorization error the body is `{"domain": ..., "code": ...}` with `code` one of `USF`, `USR`, `INE001`, `INE002` or `INS`; otherwise the body is empty.
+
+## Last-used product preference
+
+Each user has one last-used product, shared by all their organisations
+(`UserProductPreference`, logic in `product_preference.py`).
+
+- `GET /api/v1/users/me/product-preference/` returns `product` (`unstract`,
+  `llm-whisperer`, `verticals` or `flow`, or null), `updated_at` and
+  `has_chosen`.
+- `PUT` the same URL with `{"product": "<id>"}` to store it. Unknown ids get a
+  400. Service accounts get a 403.
+- `GET /api/v1/session` also returns `last_product` and `has_chosen`.
+- `has_chosen` is false until a product is first stored. Clients use it as the
+  first-login signal.
+- The backend never writes it on its own. The client is expected to `PUT` it
+  (from the product switcher, and after a login that started from a product
+  page via `selectedProduct`) before reading `session`. Because the write is
+  client-side, it works the same for every auth plugin.
+- The `product` column has a database check constraint, so only the ids above
+  can be stored.
+
+JSON Schemas for the responses and the request body are in `contract/`.
