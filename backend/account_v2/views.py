@@ -17,7 +17,6 @@ from account_v2.dto import (
 from account_v2.models import Organization
 from account_v2.organization import OrganizationService
 from account_v2.product_preference import (
-    ProductPreference,
     get_product_preference,
     set_product_preference,
 )
@@ -171,7 +170,7 @@ def make_session_response(
 
 @api_view(["GET", "PUT"])
 def product_preference(request: Request) -> Response:
-    """Read or write the signed-in user's last-used product (PB-T23).
+    """Read or write the signed-in user's last-used product.
 
     The preference belongs to the user, not the organisation, so this route
     carries no organisation segment and needs none selected: it answers on
@@ -193,17 +192,9 @@ def product_preference(request: Request) -> Response:
         )
     else:
         preference = get_product_preference(request.user)
-    return Response(status=status.HTTP_200_OK, data=_product_preference_data(preference))
-
-
-def _product_preference_data(preference: ProductPreference) -> Any:
-    return ProductPreferenceSerializer(
-        {
-            "product": preference.product,
-            "updated_at": preference.updated_at,
-            "has_chosen": preference.has_chosen,
-        }
-    ).data
+    return Response(
+        status=status.HTTP_200_OK, data=ProductPreferenceSerializer(preference).data
+    )
 
 
 def makeSignupRequestParams(

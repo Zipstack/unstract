@@ -147,6 +147,12 @@ class UserProductPreference(models.Model):
         verbose_name = "User Product Preference"
         verbose_name_plural = "User Product Preferences"
         db_table = "user_product_preference"
+        constraints = [
+            models.CheckConstraint(
+                check=models.Q(product__in=Product.values),
+                name="user_product_preference_product_valid",
+            )
+        ]
 
 
 class PlatformKey(models.Model):

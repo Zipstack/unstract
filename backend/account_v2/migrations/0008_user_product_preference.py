@@ -45,4 +45,13 @@ class Migration(migrations.Migration):
                 "db_table": "user_product_preference",
             },
         ),
+        migrations.AddConstraint(
+            model_name="userproductpreference",
+            constraint=models.CheckConstraint(
+                check=models.Q(
+                    ("product__in", ["unstract", "llm-whisperer", "verticals", "flow"])
+                ),
+                name="user_product_preference_product_valid",
+            ),
+        ),
     ]

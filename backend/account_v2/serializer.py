@@ -129,7 +129,7 @@ class UserSessionResponseSerializer(serializers.Serializer):
     provider = serializers.CharField()
     is_staff = serializers.BooleanField()
     disable_sso_idp_authorization = serializers.BooleanField()
-    # PB-T23: the user's last-used product and whether they have ever chosen.
+    # The user's last-used product and whether they have ever chosen one.
     last_product = serializers.CharField(allow_null=True)
     has_chosen = serializers.BooleanField()
 

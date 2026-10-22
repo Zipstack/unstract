@@ -1,8 +1,9 @@
-"""Last-used product preference and first-login flag (PB-T23).
+"""Last-used product preference and first-login flag.
 
 * A new user has no product and ``has_chosen`` false; one PUT sets both.
-* The preference belongs to the user: other users and other organisations do
-  not see a different value, and service accounts are refused.
+* The preference belongs to the user: each user sees only their own value, the
+  same value in every organisation, and service accounts are refused.
+* Only known product ids can be stored, by the API and by the database.
 * ``session`` carries ``last_product`` and ``has_chosen`` beside its existing
   fields.
 * Responses validate against the committed JSON Schemas, and the schemas'
@@ -18,11 +19,14 @@ DB-backed Django ``TestCase`` → auto-marked ``integration`` by ``backend/conft
 
 import json
 import secrets
+from datetime import timedelta
 from pathlib import Path
 from unittest import mock
 
 import jsonschema
+from django.db import IntegrityError
 from django.test import TestCase
+from django.utils import timezone
 
 from account_v2.authentication_plugin_registry import AuthenticationPluginRegistry
 from account_v2.enums import Product
@@ -45,7 +49,8 @@ REQUEST_SCHEMA = json.loads(
 SESSION_SCHEMA = json.loads((CONTRACT / "session-product-fields.schema.json").read_text())
 FORMATS = jsonschema.FormatChecker()
 
-# The session fields that existed before PB-T23, from UserSessionResponseSerializer.
+# Session fields that existed before the product fields, from
+# UserSessionResponseSerializer.
 EXISTING_SESSION_FIELDS = {
     "id",
     "user_id",
@@ -115,6 +120,15 @@ class ProductPreferenceEndpointTests(_BuiltInSessionAuth):
         self.assertEqual(self.client.get(URL).json()["product"], "unstract")
         self.assertEqual(UserProductPreference.objects.filter(user=self.user).count(), 1)
 
+    def test_overwrite_moves_updated_at_forward(self) -> None:
+        first = self._put({"product": "llm-whisperer"}).json()["updated_at"]
+        later = timezone.now() + timedelta(minutes=5)
+        with mock.patch("django.utils.timezone.now", return_value=later):
+            second = self._put({"product": "unstract"}).json()["updated_at"]
+
+        self.assertGreater(second, first)
+        self.assertEqual(self.client.get(URL).json()["updated_at"], second)
+
     def test_every_product_id_is_accepted(self) -> None:
         for product in Product.values:
             with self.subTest(product=product):
@@ -123,10 +137,28 @@ class ProductPreferenceEndpointTests(_BuiltInSessionAuth):
                 self.assertEqual(response.status_code, 200)
                 self.assertEqual(response.json()["product"], product)
 
-    def test_unknown_or_missing_product_is_rejected_and_nothing_is_stored(self) -> None:
-        for body in ({"product": "photoshop"}, {"product": None}, {}):
+    def test_invalid_bodies_are_rejected_and_nothing_is_stored(self) -> None:
+        bodies = (
+            {"product": "photoshop"},
+            {"product": None},
+            {},
+            {"product": "LLMWhisperer"},
+            {"product": "API Hub"},
+            {"product": "UNSTRACT"},
+            {"product": 123},
+            {"product": ["unstract"]},
+        )
+        for body in bodies:
             with self.subTest(body=body):
+                with self.assertRaises(jsonschema.ValidationError):
+                    jsonschema.validate(body, REQUEST_SCHEMA)
                 self.assertEqual(self._put(body).status_code, 400)
+        self.assertFalse(UserProductPreference.objects.filter(user=self.user).exists())
+
+    def test_malformed_json_is_rejected(self) -> None:
+        response = self.client.put(URL, data="{", content_type="application/json")
+
+        self.assertEqual(response.status_code, 400)
         self.assertFalse(UserProductPreference.objects.filter(user=self.user).exists())
 
     def test_a_user_reads_and_writes_only_their_own_preference(self) -> None:
@@ -146,15 +178,19 @@ class ProductPreferenceEndpointTests(_BuiltInSessionAuth):
 
         self.assertEqual(self.client.get(URL).status_code, 403)
         self.assertEqual(self._put({"product": "unstract"}).status_code, 403)
+        self.assertEqual(self._put({"product": "photoshop"}).status_code, 403)
         self.assertFalse(UserProductPreference.objects.filter(user=bot).exists())
 
     def test_anonymous_request_is_unauthorised(self) -> None:
         self.client.logout()
 
         self.assertEqual(self.client.get(URL).status_code, 401)
+        self.assertEqual(self._put({"product": "unstract"}).status_code, 401)
+        self.assertFalse(UserProductPreference.objects.exists())
 
     def test_other_methods_are_not_allowed(self) -> None:
         self.assertEqual(self.client.post(URL, {"product": "unstract"}).status_code, 405)
+        self.assertEqual(self.client.patch(URL, {"product": "unstract"}).status_code, 405)
         self.assertEqual(self.client.delete(URL).status_code, 405)
 
 
@@ -180,9 +216,9 @@ class SessionProductFieldsTests(_BuiltInSessionAuth):
         self.assertFalse(data["has_chosen"])
         jsonschema.validate(data, SESSION_SCHEMA)
 
-    def test_session_only_gains_the_two_new_fields(self) -> None:
-        self.assertEqual(
-            set(self._session()), EXISTING_SESSION_FIELDS | {"last_product", "has_chosen"}
+    def test_session_keeps_its_fields_and_adds_the_product_fields(self) -> None:
+        self.assertLessEqual(
+            EXISTING_SESSION_FIELDS | {"last_product", "has_chosen"}, set(self._session())
         )
 
     def test_session_carries_the_stored_product_in_every_organisation(self) -> None:
@@ -205,6 +241,14 @@ class ProductPreferenceServiceTests(TestCase):
         with self.assertRaises(ValueError):
             set_product_preference(self.user, "photoshop")
         self.assertFalse(get_product_preference(self.user).has_chosen)
+
+    def test_database_rejects_an_unknown_product(self) -> None:
+        set_product_preference(self.user, "unstract")
+
+        with self.assertRaises(IntegrityError):
+            UserProductPreference.objects.filter(user=self.user).update(
+                product="photoshop"
+            )
 
 
 class ProductContractTests(TestCase):

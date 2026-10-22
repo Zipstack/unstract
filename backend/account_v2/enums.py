@@ -30,9 +30,9 @@ class UnstractRole(StrEnum):
 class Product(models.TextChoices):
     """Product ids a user can land in.
 
-    ``verticals`` is API Hub, the key the v0 product switcher already stores.
-    ``flow`` has no product in these repositories yet; where it lands is
-    configuration on the client, so storing it needs nothing here.
+    ``verticals`` is API Hub; the id matches the frontend ``selectedProduct``
+    value, so it must not be renamed. ``flow`` is accepted, but the backend has
+    no Flow-specific behaviour; the client decides where it lands.
     """
 
     UNSTRACT = "unstract", "Unstract"
