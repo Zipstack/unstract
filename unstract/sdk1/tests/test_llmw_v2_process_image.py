@@ -202,3 +202,35 @@ class TestPdfOnlyValidation:
                 raise AssertionError("must not read when the extension is .pdf")
 
         LLMWhispererV2._validate_pdf_only("/tmp/doc.pdf", fs=_Fs())  # no raise
+
+
+class TestImageLimitsForwarding:
+    def test_image_limits_kwarg_reaches_the_helper(
+        self, monkeypatch: MonkeyPatch
+    ) -> None:
+        from unstract.sdk1.adapters.x2text.constants import X2TextConstants
+        from unstract.sdk1.utils.image_limits import ImageModePolicy
+
+        captured: dict[str, object] = {}
+
+        def _capture(**kwargs: object) -> tuple[str, list]:
+            captured.update(kwargs)
+            return "wh", []
+
+        monkeypatch.setattr(LLMWhispererHelper, "get_page_images", _capture)
+        policy = ImageModePolicy.ceiling_only(page_ceiling=7)
+        _adapter(output_mode="image").process(
+            "in.pdf", **{X2TextConstants.IMAGE_LIMITS: policy}
+        )
+        assert captured["image_limits"] is policy
+
+    def test_absent_kwarg_passes_none(self, monkeypatch: MonkeyPatch) -> None:
+        captured: dict[str, object] = {}
+
+        def _capture(**kwargs: object) -> tuple[str, list]:
+            captured.update(kwargs)
+            return "wh", []
+
+        monkeypatch.setattr(LLMWhispererHelper, "get_page_images", _capture)
+        _adapter(output_mode="image").process("in.pdf")
+        assert captured["image_limits"] is None

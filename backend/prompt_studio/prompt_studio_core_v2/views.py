@@ -1033,7 +1033,7 @@ class PromptStudioCoreView(
         if PromptStudioHelper.uploads_use_image_output_mode(default_profile):
             for uploaded_file, file_type in zip(uploaded_files, file_types, strict=True):
                 PromptStudioHelper.validate_upload_page_count_for_image_mode(
-                    uploaded_file, file_type
+                    uploaded_file, file_type, default_profile
                 )
 
         documents = []

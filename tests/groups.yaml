@@ -89,8 +89,10 @@ groups:
   unit-workers:
     tier: unit
     workdir: workers
+    # executor/tests: the executor's own unit tests (image-limit resolution,
+    # the vlm_image_answer bridge); no lane collected them before UN-4427.
     paths: [tests, shared/tests, shared/infrastructure/config/tests,
-            ide_callback/tests]
+            ide_callback/tests, executor/tests]
     # Negative filter: worker unit tests aren't tagged `unit` (~1100 of them),
     # so select by exclusion. `conftest.py` marks real-Postgres tests
     # `integration` (routed to the `integration-workers` group); `slow` tests are
