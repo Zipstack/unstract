@@ -130,12 +130,12 @@ class UserSessionResponseSerializer(serializers.Serializer):
     is_staff = serializers.BooleanField()
     disable_sso_idp_authorization = serializers.BooleanField()
     # The user's last-used product and whether they have ever chosen one.
-    last_product = serializers.CharField(allow_null=True)
+    last_product = serializers.ChoiceField(choices=Product.choices, allow_null=True)
     has_chosen = serializers.BooleanField()
 
 
 class ProductPreferenceSerializer(serializers.Serializer):
-    product = serializers.CharField(allow_null=True)
+    product = serializers.ChoiceField(choices=Product.choices, allow_null=True)
     updated_at = serializers.DateTimeField(allow_null=True)
     has_chosen = serializers.BooleanField()
 

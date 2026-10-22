@@ -25,7 +25,7 @@ from unittest import mock
 
 import jsonschema
 from django.db import IntegrityError
-from django.test import TestCase
+from django.test import SimpleTestCase, TestCase
 from django.utils import timezone
 
 from account_v2.authentication_plugin_registry import AuthenticationPluginRegistry
@@ -251,7 +251,7 @@ class ProductPreferenceServiceTests(TestCase):
             )
 
 
-class ProductContractTests(TestCase):
+class ProductContractTests(SimpleTestCase):
     def test_schemas_list_exactly_the_product_ids(self) -> None:
         products = set(Product.values)
         self.assertEqual(
