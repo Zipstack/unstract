@@ -20,6 +20,7 @@ from adapter_processor_v2.deprecated_adapters import (
     get_deprecation_metadata,
     is_adapter_deprecated,
 )
+from adapter_processor_v2.exceptions import InValidAdapterId
 from adapter_processor_v2.image_output_gating import validate_image_output_allowed
 from backend.constants import FieldLengthConstants as FLC
 from backend.serializers import AuditSerializer
@@ -111,7 +112,41 @@ class AdapterInstanceSerializer(BaseAdapterSerializer):
             raise ValidationError(
                 {AdapterKeys.ADAPTER_ID: get_deprecation_message(adapter_id)}
             )
+        self._reject_type_mismatch(attrs)
         return attrs
+
+    def _reject_type_mismatch(self, attrs: dict[str, Any]) -> None:
+        """Reject an ``adapter_type`` that is not the type of ``adapter_id``.
+
+        The create capability is chosen from ``adapter_type`` (UN-4399), so a
+        mislabelled pair would let a member past "Create LLM adapters" or
+        "Create other adapters". On update either field may be absent, so each
+        falls back to the stored one. An id the registry does not know is left
+        to the existing paths, which already fail it when it is used.
+        """
+        instance = self.instance
+        adapter_id = attrs.get(AdapterKeys.ADAPTER_ID) or getattr(
+            instance, "adapter_id", None
+        )
+        declared = attrs.get(AdapterKeys.ADAPTER_TYPE) or getattr(
+            instance, "adapter_type", None
+        )
+        if not adapter_id or not declared:
+            return
+        try:
+            actual = AdapterProcessor.get_adapter_data_with_key(
+                adapter_id, AdapterKeys.ADAPTER_TYPE
+            )
+        except InValidAdapterId:
+            return
+        if actual and actual != declared:
+            raise ValidationError(
+                {
+                    AdapterKeys.ADAPTER_TYPE: (
+                        f"Adapter '{adapter_id}' has type {actual}, not {declared}."
+                    )
+                }
+            )
 
     def to_internal_value(self, data: dict[str, Any]) -> dict[str, Any]:
         if data.get(AdapterKeys.ADAPTER_METADATA, None):

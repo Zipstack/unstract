@@ -684,24 +684,23 @@ class DefaultProfileEventTests(AuditTestBase):
 
 class PlatformSettingEventTests(AuditTestBase):
     def test_organization_setting_changed(self) -> None:
+        """Its flags are the storage of two capabilities (UN-4399), so a change
+        is recorded once, as the capability changing."""
         response = self.call(
             organization_settings,
             "patch",
             data={"restrict_llm_adapter_creation": True},
         )
         self.assertEqual(response.status_code, 200)
-        event = self.only_event(action="platform_setting.changed")
+        event = self.only_event(action="capability.changed")
         self.assert_admin_actor(event)
         self.assertEqual(
-            (event.target_type, event.target_id),
-            ("platform_setting", "restrict_llm_adapter_creation"),
+            (event.target_type, event.target_id, event.target_name),
+            ("capability", "create_llm_adapters", "Create LLM adapters"),
         )
         self.assertEqual(
             event.changes,
-            {
-                "before": {"restrict_llm_adapter_creation": False},
-                "after": {"restrict_llm_adapter_creation": True},
-            },
+            {"before": {"setting": "any_member"}, "after": {"setting": "admins_only"}},
         )
         # Re-sending the same value is not a change.
         self.call(
