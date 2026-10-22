@@ -22,6 +22,7 @@ from platform_audit.recorder import (
     diff,
     record_platform_event,
 )
+from platform_audit.resources import record_resource_event, resource_ref
 from plugins import get_plugin
 from rest_framework import status
 from rest_framework.decorators import action
@@ -319,6 +320,7 @@ class AdapterInstanceViewSet(
             raise DuplicateAdapterNameError(
                 name=serializer.validated_data.get(AdapterKeys.ADAPTER_NAME)
             )
+        record_resource_event(request, Action.RESOURCE_CREATED, instance)
         headers = self.get_success_headers(serializer.data)
         return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
@@ -396,6 +398,7 @@ class AdapterInstanceViewSet(
             )
             raise DeleteAdapterInUseError(adapter_name=adapter_instance.adapter_name)
 
+        deleted = resource_ref(adapter_instance)
         try:
             super().perform_destroy(adapter_instance)
         except ProtectedError:
@@ -405,6 +408,7 @@ class AdapterInstanceViewSet(
             )
             # TODO: Provide details of adpter usage with exception object
             raise DeleteAdapterInUseError(adapter_name=adapter_instance.adapter_name)
+        record_resource_event(request, Action.RESOURCE_DELETED, deleted)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(detail=True, methods=["post"], url_path="share")
