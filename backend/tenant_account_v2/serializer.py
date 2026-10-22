@@ -4,6 +4,8 @@ from typing import Any, cast
 from account_v2.constants import Common
 from account_v2.models import NAME_SIZE
 from account_v2.user_profile import LANGUAGES, MAX_PHOTO_BYTES, PHOTO_TYPES
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
 from rest_framework.serializers import ModelSerializer
@@ -171,8 +173,15 @@ class ProfileUpdateSerializer(serializers.Serializer):
     language = serializers.ChoiceField(choices=LANGUAGES, required=False)
 
 
+@extend_schema_field(OpenApiTypes.BINARY)
+class PhotoUploadField(serializers.FileField):
+    """A bare ``FileField`` documents as ``format: uri``, and generators emit a
+    string for it instead of a multipart upload.
+    """
+
+
 class ProfilePhotoSerializer(serializers.Serializer):
-    photo = serializers.FileField()
+    photo = PhotoUploadField()
 
     def validate_photo(self, photo: Any) -> Any:
         # Size first, so an oversized upload is refused before it is read.

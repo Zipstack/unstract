@@ -257,3 +257,17 @@ class ProfileSchemaTests(TestCase):
         self.assertEqual(set(photo), {"image/png", "image/jpeg"})
         upload = ops["user_profile_photo_upload"]["requestBody"]["content"]
         self.assertEqual(set(upload), {"multipart/form-data"})
+
+
+def test_photo_upload_is_documented_as_binary() -> None:
+    """A bare FileField documents as `format: uri`, which generators turn into a
+    string parameter instead of a multipart upload.
+    """
+    from drf_spectacular.openapi import AutoSchema
+
+    from tenant_account_v2.serializer import ProfilePhotoSerializer
+
+    field = ProfilePhotoSerializer().fields["photo"]
+    mapped = AutoSchema()._map_serializer_field(field, direction="request")
+
+    assert mapped == {"type": "string", "format": "binary"}
