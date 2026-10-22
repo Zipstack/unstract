@@ -1,3 +1,8 @@
+from account_v2.session_views import (
+    list_sessions,
+    revoke_all_sessions,
+    revoke_session,
+)
 from django.urls import path
 
 from tenant_account_v2.users_view import OrganizationUserViewSet
@@ -35,4 +40,7 @@ urlpatterns = [
     path("profile/", user_profile, name="user_profile"),
     path("role/", organization_user_role, name="organization_user_role"),
     path("invite/", invite_user, name="invite_user"),
+    path("sessions/", list_sessions, name="user_sessions"),
+    path("sessions/revoke-all/", revoke_all_sessions, name="user_sessions_revoke_all"),
+    path("sessions/<str:session_id>/", revoke_session, name="user_session"),
 ]

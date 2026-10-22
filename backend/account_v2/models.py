@@ -167,3 +167,34 @@ class PlatformKey(models.Model):
                 name="unique_key_name_organization",
             ),
         ]
+
+
+class SessionRecord(models.Model):
+    """Where a user is signed in: one row per live browser session.
+
+    Django's session table cannot be queried by user (the user id is inside the
+    encoded payload), so this row is what makes a user's sessions listable.
+    Deliberately a plain user FK with no organization scoping: a user's sessions
+    span organizations and must all be listed from any one of them. Liveness is
+    still owned by `django_session`; a row whose session has expired or gone is
+    stale and is pruned when the user's sessions are listed.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    session_key = models.CharField(max_length=40, unique=True)
+    user = models.ForeignKey(
+        "User",
+        on_delete=models.CASCADE,
+        related_name="session_records",
+    )
+    user_agent = models.TextField(blank=True, default="")
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    location = models.CharField(max_length=255, null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    # Indexed for the idle sweep at sign-in.
+    last_active_at = models.DateTimeField(db_index=True)
+
+    class Meta:
+        verbose_name = "Session Record"
+        verbose_name_plural = "Session Records"
+        db_table = "session_record"

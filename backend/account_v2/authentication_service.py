@@ -476,3 +476,20 @@ class AuthenticationService:
         request: HttpRequest | None = None,
     ) -> bool:
         raise MethodNotImplemented()
+
+    def list_idp_sessions(self, request: HttpRequest) -> list[dict[str, Any]]:
+        """Sessions the identity provider holds for the signed-in user.
+
+        Each item has the shape of a `users/sessions/` entry. Basic auth has no
+        provider, so none. A plugin overrides this where its provider can list.
+        """
+        return []
+
+    def revoke_idp_sessions(
+        self, request: HttpRequest, session_id: str | None = None
+    ) -> bool:
+        """End the provider's session `session_id`, or all of them when None.
+
+        Returns whether the provider ended anything.
+        """
+        return False
