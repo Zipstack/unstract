@@ -741,8 +741,8 @@ parameter. An unknown value, a bad date or an out-of-range page size is a 400.
 }
 ```
 
-- Rows are newest first, ties broken by id. To page through a stable set,
-  send the `start_date` and `end_date` echoed on page 1 with every later page.
+- Rows are newest first, ties broken by id. Send the `start_date` and
+  `end_date` echoed on page 1 with every later page.
 - `count` is the number of rows matching every filter (for "Showing 20 of 1,007").
 - `status_counts` counts the range and `surface` but ignores `status`, so each
   status filter chip can show its count while one is selected. Every status is

@@ -987,8 +987,7 @@ class DashboardMetricsViewSet(viewsets.ReadOnlyModelViewSet):
 
         Query Parameters:
             limit: Maximum records to return (default 10, max 50)
-            start_date, end_date, status, surface, page, page_size: any of
-                these returns the paged form instead (DG-02); see the README
+            The paged form (DG-02) is described in the README.
 
         Returns:
             200: List of recent activity items

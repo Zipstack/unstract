@@ -796,8 +796,8 @@ class MetricsQueryService:
             ``status_counts``
         """
         source_ids = _activity_source_ids(organization_id)
-        # Accepted for now: with no status filter, no index leads on created_at,
-        # so a wide range scans the org's rows in it. Responses are cached.
+        # Accepted for now: no index leads on created_at, so a wide range scans
+        # the org's rows in it. Responses are cached.
         in_range = _org_file_executions(organization_id).filter(
             created_at__gte=start_date,
             created_at__lte=end_date,
