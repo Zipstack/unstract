@@ -584,6 +584,49 @@ class TestStoreResultReconnectRetry:
         sleep.assert_not_called()
         conn.close.assert_not_called()  # caller's connection untouched
 
+    def test_owned_conn_runs_in_autocommit(self, monkeypatch):
+        # Single-statement writes/reads skip psycopg2's BEGIN/COMMIT (UN-4254),
+        # including on the connection the retry reconnects to.
+        dead, _ = self._conn(execute_side_effect=psycopg2.OperationalError("reap"))
+        fresh, _ = self._conn()
+        fresh.autocommit = False
+        monkeypatch.setattr(
+            "queue_backend.pg_queue.result_backend.create_pg_connection",
+            MagicMock(return_value=fresh),
+        )
+        self._no_sleep(monkeypatch)
+        rb = PgResultBackend()
+        rb._conn = dead
+
+        rb.store_result("k", result={"ok": True})
+        assert fresh.autocommit is True
+
+    def test_injected_conn_keeps_callers_mode(self):
+        conn, _ = self._conn()
+        conn.autocommit = False
+        assert PgResultBackend(conn=conn).conn.autocommit is False
+
+    def test_bare_database_error_drops_owned_conn(self):
+        # Under autocommit rollback() sends nothing, so a bare DatabaseError on
+        # a connection psycopg2 still reports open must drop the owned handle
+        # through is_dead_after_autocommit_error, as PgQueueClient does.
+        dead, _ = self._conn(execute_side_effect=psycopg2.DatabaseError("gone"))
+        rb = PgResultBackend()
+        rb._conn = dead
+        with pytest.raises(psycopg2.DatabaseError):
+            rb.get_result("k")
+        assert rb._conn is None
+        dead.close.assert_called_once()
+
+    def test_statement_error_subclass_keeps_owned_conn(self):
+        # A SQLSTATE-mapped statement error is not a dead connection.
+        conn, _ = self._conn(execute_side_effect=psycopg2.DataError("bad input"))
+        rb = PgResultBackend()
+        rb._conn = conn
+        with pytest.raises(psycopg2.DataError):
+            rb.get_result("k")
+        assert rb._conn is conn
+
     @pytest.mark.parametrize(
         "exc_type", [psycopg2.OperationalError, psycopg2.InterfaceError]
     )
@@ -656,25 +699,21 @@ class TestStoreResultRealReconnect:
     were unusable — the mock tests can't see that.
     """
 
-    def test_real_reconnect_heals_closed_connection(self, pg_conn, monkeypatch):
+    @pytest.fixture
+    def owned_rb(self, pg_conn, monkeypatch):
         # The owned backend reconnects via result_backend.create_pg_connection;
         # point that at the integration DB (TEST_DB_*), the same one pg_conn uses
         # (the bare DB_* env is the suite's unit-isolation placeholder).
-        os.environ.setdefault("TEST_DB_HOST", "127.0.0.1")
         monkeypatch.setattr(
             "queue_backend.pg_queue.result_backend.create_pg_connection",
             lambda *a, **k: create_pg_connection(env_prefix="TEST_DB_"),
         )
-
-        key = _key()
         rb = PgResultBackend()  # owned, real connection to the test DB
-        try:
-            _ = rb.conn  # materialise the connection
-            rb._conn.close()  # client-side close -> InterfaceError on next use
-            rb.store_result(key, result={"healed": True})  # must self-heal
-        finally:
-            rb.close()
+        yield rb
+        rb.close()
 
+    @staticmethod
+    def _assert_healed_and_delete(pg_conn, key):
         # The row really landed — read it back on the fixture's own connection.
         pg_conn.rollback()  # clear any aborted txn before reading
         with pg_conn.cursor() as cur:
@@ -686,6 +725,39 @@ class TestStoreResultRealReconnect:
             cur.execute("DELETE FROM pg_task_result WHERE task_id = %s", (key,))
         pg_conn.commit()
         assert row is not None and row[0] == "true"
+
+    def test_real_reconnect_heals_closed_connection(self, pg_conn, owned_rb):
+        key = _key()
+        _ = owned_rb.conn  # materialise the connection
+        owned_rb._conn.close()  # client-side close -> InterfaceError on next use
+        owned_rb.store_result(key, result={"healed": True})  # must self-heal
+        self._assert_healed_and_delete(pg_conn, key)
+
+    def test_real_reconnect_after_backend_termination(self, pg_conn, owned_rb):
+        # Pin that a terminated backend heals on the owned autocommit
+        # connection: a read drops the handle, and a write self-heals through
+        # _store_with_reconnect. Termination surfaces as OperationalError with
+        # the connection marked closed, so this path rests on is_connection_dead
+        # and conn.closed; the bare-DatabaseError branch is the unit test's.
+        def terminate(pid):
+            with pg_conn.cursor() as cur:
+                # Wait (up to 5 s) for the backend to exit, so the next call
+                # can't race ahead of the termination (PG14+).
+                cur.execute("SELECT pg_terminate_backend(%s, 5000)", (pid,))
+            pg_conn.commit()
+
+        key = _key()
+        assert owned_rb.conn.autocommit is True
+        old_pid = owned_rb.conn.get_backend_pid()
+        terminate(old_pid)
+        with pytest.raises(psycopg2.OperationalError):
+            owned_rb.get_result(key)
+        assert owned_rb._conn is None  # dropped, so the next call reconnects
+
+        terminate(owned_rb.conn.get_backend_pid())
+        owned_rb.store_result(key, result={"healed": True})  # must self-heal
+        assert owned_rb.conn.get_backend_pid() != old_pid
+        self._assert_healed_and_delete(pg_conn, key)
 
 
 class TestRedisDownFallbackBudget:

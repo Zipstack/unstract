@@ -105,7 +105,7 @@ class KeyHelper:
         if not global_key.has_access_to_deployment(api_deployment):
             logger.warning(
                 "Global API key '%s' (%s) rejected: no access to deployment %s "
-                "(out of scope or different organization).",
+                "(out of scope, different organization, or its creator may no longer key it).",
                 global_key.name,
                 global_key.id,
                 api_deployment.id,

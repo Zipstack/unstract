@@ -82,6 +82,25 @@ def is_connection_dead(exc: BaseException) -> bool:
     return isinstance(exc, CONN_DEAD_ERRORS)
 
 
+def is_dead_after_autocommit_error(exc: BaseException) -> bool:
+    """Whether a statement error on an owned AUTOCOMMIT connection means it is dead.
+
+    A connection the server terminated already reads as dead without this: the
+    error is an ``OperationalError`` and psycopg2 marks the connection closed.
+    What autocommit loses is narrower: ``rollback()`` sends nothing, so it no
+    longer exposes a dead connection that psycopg2 still reports as open. So a
+    bare ``DatabaseError`` (one psycopg2 mapped to no SQLSTATE subclass) is
+    treated as dead too; if it was only an unmapped statement error, the cost
+    is one needless reconnect.
+
+    Deliberately separate from :func:`is_connection_dead`: transactional
+    connections (``pg_barrier``) get this detection from a real ``rollback()``,
+    and the retry sites must not start treating a bare ``DatabaseError`` as
+    retryable.
+    """
+    return is_connection_dead(exc) or type(exc) is psycopg2.DatabaseError
+
+
 # Bounded retry for *transient* connect failures (DB restart, PgBouncer pool
 # wait, brief network partition, "too many clients" spikes) — the common cloud
 # blips. Opening a connection is side-effect-free, so retrying it is safe and

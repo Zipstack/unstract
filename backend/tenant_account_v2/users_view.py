@@ -7,11 +7,18 @@ from account_v2.user_profile import delete_photo, photo_url, read_photo, save_ph
 from django.http import HttpResponse
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiResponse, extend_schema, inline_serializer
+from platform_audit.actions import Action, TargetType
+from platform_audit.recorder import (
+    BEFORE_UNAVAILABLE,
+    best_effort,
+    record_platform_event,
+)
 from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import NotFound
 from rest_framework.request import Request
 from rest_framework.response import Response
+from utils.user_context import UserContext
 from utils.user_session import UserSessionUtils
 
 from tenant_account_v2.models import OrganizationMember
@@ -52,8 +59,10 @@ class OrganizationUserViewSet(viewsets.ViewSet):
         auth_controller = AuthenticationController()
 
         auth_controller = AuthenticationController()
+        member_before = _member_snapshot(user_email)
         update_status = auth_controller.add_user_role(request, org_id, user_email, role)
         if update_status:
+            _record_role_change(request, user_email, member_before, update_status)
             return Response(
                 status=status.HTTP_200_OK,
                 data={"status": "success", "message": "success"},
@@ -76,10 +85,12 @@ class OrganizationUserViewSet(viewsets.ViewSet):
         auth_controller = AuthenticationController()
 
         auth_controller = AuthenticationController()
+        member_before = _member_snapshot(user_email)
         update_status = auth_controller.remove_user_role(
             request, org_id, user_email, role
         )
         if update_status:
+            _record_role_change(request, user_email, member_before, update_status)
             return Response(
                 status=status.HTTP_200_OK,
                 data={"status": "success", "message": "success"},
@@ -233,6 +244,7 @@ class OrganizationUserViewSet(viewsets.ViewSet):
             org_id=UserSessionUtils.get_organization_id(request),
             user_list=user_list,
             request=request,
+            on_invited=lambda item: _record_invite(request, item),
         )
 
         response_serializer = UserInviteResponseSerializer(invite_response, many=True)
@@ -258,12 +270,14 @@ class OrganizationUserViewSet(viewsets.ViewSet):
         organization_id: str = UserSessionUtils.get_organization_id(request)
 
         auth_controller = AuthenticationController()
+        members_before = [(e, _member_snapshot(e)) for e in user_emails]
         is_updated = auth_controller.remove_users_from_organization(
             request=request,
             organization_id=organization_id,
             user_emails=user_emails,
         )
         if is_updated:
+            _record_removals(request, members_before)
             return Response(
                 status=status.HTTP_200_OK,
                 data={"status": "success", "message": "success"},
@@ -309,4 +323,95 @@ class OrganizationUserViewSet(viewsets.ViewSet):
         return Response(
             status=status.HTTP_200_OK,
             data={"status": "success", "message": "success"},
+        )
+
+
+# Returned for an e-mail with no membership, so that ``None`` (from
+# ``best_effort``) means only "the lookup failed".
+_NOT_A_MEMBER: dict = {}
+
+
+@best_effort
+def _member_snapshot(email: str) -> dict | None:
+    member = OrganizationMemberService.get_user_by_email(email=email)
+    if member is None:
+        return _NOT_A_MEMBER
+    return {"user_id": member.user_id, "email": member.user.email, "role": member.role}
+
+
+@best_effort
+def _record_role_change(
+    request: Request, email: str, member_before: dict | None, new_role: str
+) -> None:
+    old_role = member_before["role"] if member_before else None
+    if old_role == new_role:
+        return
+    record_platform_event(
+        action=Action.MEMBER_ROLE_CHANGED,
+        target_type=TargetType.MEMBER,
+        target_id=member_before["user_id"] if member_before else "",
+        target_name=member_before["email"] if member_before else email,
+        changes={
+            "before": {"role": old_role} if old_role else None,
+            "after": {"role": new_role},
+        },
+        summary=f"{old_role} → {new_role}"
+        if old_role
+        else f"role → {new_role} {BEFORE_UNAVAILABLE}",
+        request=request,
+    )
+
+
+@best_effort
+def _record_invite(request: Request, item: dict) -> None:
+    """One invitation the identity provider accepted. The role is the one the
+    request asked for: an identity provider that coerces a missing or unknown
+    role (Auth0 invites those as a user) is not reflected here. The recorder
+    resolves the organisation, inside its own guard, so a failed lookup cannot
+    stop the invitations.
+    """
+    email = item.get("email")
+    role = item.get("role")
+    record_platform_event(
+        action=Action.MEMBER_INVITED,
+        target_type=TargetType.INVITATION,
+        target_id=email,
+        target_name=email,
+        changes={"after": {"role": role}},
+        summary=f"as {role}" if role else "",
+        request=request,
+    )
+
+
+@best_effort
+def _record_removals(
+    request: Request, members_before: list[tuple[str, dict | None]]
+) -> None:
+    """One event per removed member. A member whose snapshot could not be read
+    is still recorded, by e-mail and without ``before``.
+    """
+    organization = UserContext.get_organization()  # once, not per event
+    for email, member in members_before:
+        if member is _NOT_A_MEMBER:
+            continue
+        if member is None:
+            record_platform_event(
+                action=Action.MEMBER_REMOVED,
+                target_type=TargetType.MEMBER,
+                # Lower-cased to match the stored actor_email.
+                target_name=email.strip().lower(),
+                summary=f"membership not confirmed {BEFORE_UNAVAILABLE}",
+                request=request,
+                organization=organization,
+            )
+            continue
+        record_platform_event(
+            action=Action.MEMBER_REMOVED,
+            target_type=TargetType.MEMBER,
+            target_id=member["user_id"],
+            target_name=member["email"],
+            changes={"before": {"role": member["role"]}},
+            summary=f"was {member['role']}",
+            request=request,
+            organization=organization,
         )

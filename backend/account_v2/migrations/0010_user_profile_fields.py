@@ -3,7 +3,7 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("account_v2", "0007_organization_restrict_connector_creation"),
+        ("account_v2", "0009_user_product_preference"),
     ]
 
     operations = [

@@ -3,6 +3,7 @@ import uuid
 from django.contrib.auth.models import AbstractUser, Group, Permission
 from django.db import models
 
+from account_v2.enums import Product
 from backend.constants import FieldLengthConstants as FieldLength
 
 NAME_SIZE = 64
@@ -51,6 +52,46 @@ class Organization(models.Model):
         db_comment=(
             "Controlled mode: when True, only organization admins may create "
             "connectors in this org. Default False preserves open creation."
+        ),
+    )
+    # Capability permissions (UN-4399): True means admins only. Defaults keep
+    # today's behaviour for each capability.
+    restrict_other_adapter_creation = models.BooleanField(
+        default=False,
+        db_comment=(
+            "Capability: when True, only organization admins may create non-LLM "
+            "adapters. Default False preserves open creation."
+        ),
+    )
+    restrict_api_key_management = models.BooleanField(
+        default=True,
+        db_comment=(
+            "Capability: when True, only organization admins may create and "
+            "rotate platform and global deployment keys. Default True is "
+            "today's admin-only behaviour."
+        ),
+    )
+    restrict_member_management = models.BooleanField(
+        default=True,
+        db_comment=(
+            "Capability: when True, only organization admins may invite members "
+            "and change roles. Default True is today's admin-only behaviour."
+        ),
+    )
+    restrict_platform_defaults = models.BooleanField(
+        default=True,
+        db_comment=(
+            "Capability: when True, only organization admins may change "
+            "organization-wide platform settings. Default True is today's "
+            "behaviour."
+        ),
+    )
+    restrict_resource_deletion = models.BooleanField(
+        default=False,
+        db_comment=(
+            "Capability: when True, only organization admins may delete "
+            "workflows, API deployments and pipelines. Default False keeps "
+            "today's owner-or-admin rule."
         ),
     )
 
@@ -135,6 +176,38 @@ class User(AbstractUser):
         verbose_name = "User"
         verbose_name_plural = "Users"
         db_table = "user"
+
+
+class UserProductPreference(models.Model):
+    """A user's last-used product, shared across their organisations.
+
+    No row means the user has never chosen a product (the first-login flag).
+    See ``account_v2/product_preference.py``.
+    """
+
+    user = models.OneToOneField(
+        "User",
+        on_delete=models.CASCADE,
+        primary_key=True,
+        related_name="product_preference",
+    )
+    product = models.CharField(
+        max_length=32,
+        choices=Product.choices,
+        db_comment="Product id the user last used, e.g. unstract or llm-whisperer",
+    )
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "User Product Preference"
+        verbose_name_plural = "User Product Preferences"
+        db_table = "user_product_preference"
+        constraints = [
+            models.CheckConstraint(
+                check=models.Q(product__in=Product.values),
+                name="user_product_preference_product_valid",
+            )
+        ]
 
 
 class PlatformKey(models.Model):

@@ -39,14 +39,16 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Final, Self
 
-import psycopg2
-
 from unstract.core.data_models import QueueMessageState
 from unstract.core.jsonb import dumps_for_jsonb
 
 from ..fairness import DEFAULT_PRIORITY, MAX_PRIORITY, MIN_PRIORITY
 from .connection import CONN_DEAD_ERRORS as _CONN_DEAD_ERRORS
-from .connection import create_pg_connection, is_connection_dead
+from .connection import (
+    create_pg_connection,
+    is_connection_dead,
+    is_dead_after_autocommit_error,
+)
 from .schema import qualified
 
 if TYPE_CHECKING:
@@ -278,19 +280,15 @@ class PgQueueClient:
             conn.commit()
         except Exception as exc:
             # A failed rollback proves the connection is unusable, regardless
-            # of which psycopg2 error subclass was raised (a server-side
-            # termination mid-statement can surface as a bare DatabaseError).
-            # On an owned autocommit connection rollback() sends nothing, so it
-            # can't detect a dead server connection there. As a heuristic, a
-            # bare DatabaseError is treated as dead directly instead: statement
-            # errors normally map to a SQLSTATE subclass, and a rare unmapped
-            # one costs only a needless reconnect.
+            # of which psycopg2 error subclass was raised. On the owned
+            # autocommit connection a rollback that succeeds sends nothing, so
+            # the helper also treats a bare DatabaseError as dead.
             # NOTE: ``send()``'s retry deliberately catches only
-            # ``_CONN_DEAD_ERRORS``; a server death that surfaces as a *bare*
-            # ``psycopg2.DatabaseError`` is still dropped here when we own the
-            # connection (an injected one is never dropped) but is intentionally
-            # NOT retried by ``send()`` — it's left to the next call's reconnect.
-            conn_dead = is_connection_dead(exc) or type(exc) is psycopg2.DatabaseError
+            # ``_CONN_DEAD_ERRORS``; a *bare* ``psycopg2.DatabaseError`` is still
+            # dropped here when we own the connection (an injected one is never
+            # dropped) but is intentionally NOT retried by ``send()`` — it's
+            # left to the next call's reconnect.
+            conn_dead = is_dead_after_autocommit_error(exc)
             try:
                 conn.rollback()
             except Exception:

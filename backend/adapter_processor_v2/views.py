@@ -15,15 +15,23 @@ from permissions.permission import (
     IsOwnerOrSharedUserOrSharedToOrg,
 )
 from permissions.resource_share_views import ResourceShareManagementMixin
+from platform_audit.actions import Action, TargetType
+from platform_audit.recorder import (
+    BEFORE_UNAVAILABLE,
+    best_effort,
+    diff,
+    record_platform_event,
+)
+from platform_audit.resources import record_resource_event, resource_ref
 from plugins import get_plugin
 from rest_framework import status
 from rest_framework.decorators import action
-from rest_framework.exceptions import PermissionDenied
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.serializers import ModelSerializer
 from rest_framework.versioning import URLPathVersioning
 from rest_framework.viewsets import GenericViewSet, ModelViewSet
+from tenant_account_v2.capabilities import Capability, enforce_capability
 from tenant_account_v2.organization_member_service import OrganizationMemberService
 from tool_instance_v2.models import ToolInstance
 from utils.filtering import FilterHelper
@@ -73,7 +81,9 @@ class DefaultAdapterViewSet(ModelViewSet):
         serializer.is_valid(raise_exception=True)
         # Convert request data to json
         default_triad = request.data
+        before = _default_adapter_names(request.user)
         AdapterProcessor.set_default_triad(default_triad, request.user)
+        _record_defaults_changed(request, before)
         return Response(status=status.HTTP_200_OK)
 
     def get_default_triad(
@@ -218,26 +228,17 @@ class AdapterInstanceViewSet(
         return AdapterInstanceSerializer
 
     @staticmethod
-    def _enforce_llm_creation_restriction(request: Any, adapter_type: str) -> None:
-        """Controlled mode (UN-3584): only org admins may create LLM adapters
-        when the org has enabled the restriction. Service accounts (platform
-        API-key sessions) and non-LLM adapter types bypass; the default
-        (flag off) keeps creation open for everyone.
+    def _enforce_adapter_creation_capability(request: Any, adapter_type: str) -> None:
+        """Capability permissions (UN-3584, UN-4399): LLM adapters fall under
+        "Create LLM adapters", every other type under "Create other adapters".
+        Service accounts bypass; the defaults keep creation open for everyone.
         """
-        if adapter_type != AdapterKeys.LLM:
-            return
-        if getattr(request.user, "is_service_account", False):
-            return
-        organization = UserContext.get_organization()
-        if (
-            organization
-            and organization.restrict_llm_adapter_creation
-            and not OrganizationMemberService.is_user_organization_admin(request.user)
-        ):
-            raise PermissionDenied(
-                "LLM adapter creation is restricted to organization admins. "
-                "Please contact your organization admin."
-            )
+        enforce_capability(
+            request,
+            Capability.CREATE_LLM_ADAPTERS
+            if adapter_type == AdapterKeys.LLM
+            else Capability.CREATE_OTHER_ADAPTERS,
+        )
 
     def create(self, request: Any) -> Response:
         serializer = self.get_serializer(data=request.data)
@@ -253,7 +254,7 @@ class AdapterInstanceViewSet(
         # which also covers update/partial_update.
         serializer.is_valid(raise_exception=True)
         adapter_type = serializer.validated_data.get(AdapterKeys.ADAPTER_TYPE)
-        self._enforce_llm_creation_restriction(request, adapter_type)
+        self._enforce_adapter_creation_capability(request, adapter_type)
 
         try:
             if adapter_type == AdapterKeys.X2TEXT and use_platform_unstract_key:
@@ -319,6 +320,7 @@ class AdapterInstanceViewSet(
             raise DuplicateAdapterNameError(
                 name=serializer.validated_data.get(AdapterKeys.ADAPTER_NAME)
             )
+        record_resource_event(request, Action.RESOURCE_CREATED, instance)
         headers = self.get_success_headers(serializer.data)
         return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
@@ -396,6 +398,7 @@ class AdapterInstanceViewSet(
             )
             raise DeleteAdapterInUseError(adapter_name=adapter_instance.adapter_name)
 
+        deleted = resource_ref(adapter_instance)
         try:
             super().perform_destroy(adapter_instance)
         except ProtectedError:
@@ -405,6 +408,7 @@ class AdapterInstanceViewSet(
             )
             # TODO: Provide details of adpter usage with exception object
             raise DeleteAdapterInUseError(adapter_name=adapter_instance.adapter_name)
+        record_resource_event(request, Action.RESOURCE_DELETED, deleted)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(detail=True, methods=["post"], url_path="share")
@@ -523,6 +527,11 @@ class AdapterInstanceViewSet(
 
         # Get the adapter instance for update
         adapter = self.get_object()
+        # Changing an adapter's type amounts to creating one of the new type,
+        # so it needs the same capability as creating it would.
+        new_type = request.data.get(AdapterKeys.ADAPTER_TYPE)
+        if new_type and new_type != adapter.adapter_type:
+            self._enforce_adapter_creation_capability(request, new_type)
 
         if use_platform_unstract_key:
             logger.error("Processing adapter with platform key")
@@ -560,3 +569,57 @@ class AdapterInstanceViewSet(
         serialized_instances = AdapterInfoSerializer(adapter).data
 
         return Response(serialized_instances)
+
+
+_DEFAULT_SLOTS = {
+    "llm": "default_llm_adapter",
+    "embedding": "default_embedding_adapter",
+    "vector_db": "default_vector_db_adapter",
+    "x2text": "default_x2text_adapter",
+}
+
+
+@best_effort
+def _default_adapter_names(user: User) -> dict[str, str | None]:
+    """The member's default adapter per slot, by name."""
+    member = OrganizationMemberService.get_user_by_id(user.id)
+    defaults = (
+        UserDefaultAdapter.objects.filter(organization_member=member)
+        .select_related(*_DEFAULT_SLOTS.values())
+        .first()
+    )
+    names: dict[str, str | None] = {}
+    for slot, field in _DEFAULT_SLOTS.items():
+        adapter = getattr(defaults, field, None) if defaults else None
+        names[slot] = adapter.adapter_name if adapter else None
+    return names
+
+
+@best_effort
+def _record_defaults_changed(request: Request, before: dict | None) -> None:
+    """Defaults are stored per member, so the member is both actor and target."""
+    after = _default_adapter_names(request.user)
+    if after is None:
+        return
+    if before is None:
+        # Previous defaults unreadable: record all of them as they now stand.
+        changes = {"after": after}
+        summary = "; ".join(f"{slot} → {name or 'none'}" for slot, name in after.items())
+        summary = f"{summary} {BEFORE_UNAVAILABLE}"
+    else:
+        changes = diff(before, after)
+        summary = "; ".join(
+            f"{slot}: {changes['before'][slot] or 'none'} → {name or 'none'}"
+            for slot, name in changes["after"].items()
+        )
+    if not changes["after"]:
+        return
+    record_platform_event(
+        action=Action.DEFAULT_PROFILE_CHANGED,
+        target_type=TargetType.DEFAULT_PROFILE,
+        target_id=request.user.id,
+        target_name=request.user.email,
+        changes=changes,
+        summary=summary,
+        request=request,
+    )
