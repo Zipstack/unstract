@@ -184,10 +184,9 @@ class InternalAPIAuthMiddleware(MiddlewareMixin):
                         "name": organization.display_name,
                         "validated": True,
                     }
-                    # Store the organization_id string field in StateStore for UserContext compatibility
-                    StateStore.set(Account.ORGANIZATION_ID, organization.organization_id)
-                    # Already loaded: saves the request's first org lookup.
-                    UserContext.cache_organization(organization)
+                    # Store the organization_id string field in StateStore for UserContext compatibility,
+                    # then cache the row already loaded above: saves the request's first org lookup.
+                    UserContext.set_organization(organization)
 
                     logger.debug(
                         f"Organization context validated and set: {organization.display_name} (org_id: {organization.organization_id}, pk: {organization.id})"
