@@ -252,20 +252,27 @@ configuration key (1–3650). An env value outside 1–3650 is treated as 3650
 default; the purge instead skips that organisation and exits non-zero, as it
 does when it cannot read the override. Every read hides events older than the
 cutoff.
-Rows are physically deleted by
+### Purging expired events
+
+Rows are physically deleted by the `purge_platform_audit_events` management
+command:
 
 ```
 python manage.py purge_platform_audit_events [--dry-run] [--batch-size N]
 ```
 
-The unstract-platform Helm chart (cloud and on-prem) runs it daily at 03:23 UTC
-as the `unstract-backend-platform-audit-purge-cronjob` CronJob
-(`backend.platformAuditPurgeCronJob`, on by default). Docker Compose has no
-scheduler for it; add a daily host cron entry such as
-`docker exec unstract-backend .venv/bin/python manage.py purge_platform_audit_events`.
-Wherever it does not run,
-retention only hides rows, which stay in the table, so raising an
-organisation's override later shows the hidden events again.
+- For each organisation with events, it deletes the events older than that
+  organisation's retention.
+- `--dry-run` reports how many it would delete and deletes nothing.
+- `--batch-size` sets the events deleted per transaction (default 5000). A run
+  that stops part-way keeps what it deleted, and the next run continues.
+- It never deletes by a guessed retention. An organisation whose override it
+  cannot read, or whose override is out of range, is skipped, and the command
+  then exits non-zero naming it.
+
+Run it regularly. Until it runs, retention only hides rows, which stay in the
+table, so raising an organisation's override later shows the hidden events
+again.
 
 ## What is not recorded
 
