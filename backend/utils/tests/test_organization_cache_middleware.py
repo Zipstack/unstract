@@ -77,11 +77,11 @@ WHITELISTED_URL = "/health/cache-probe/"
 _MIDDLEWARE = [
     "middleware.request_id.CustomRequestIDMiddleware",
     settings.TENANT_MIDDLEWARE,
+    "middleware.internal_api_auth.InternalAPIAuthMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     settings.CUSTOM_AUTH_MIDDLEWARE,
-    "middleware.internal_api_auth.InternalAPIAuthMiddleware",
 ]
 
 

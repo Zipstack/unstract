@@ -6,8 +6,8 @@ from utils.constants import Account
 from utils.local_context import StateStore
 
 # The cached organization is dropped whenever the organization id is set or
-# cleared, so a request or task that sets the id resolves it afresh at most
-# once. A path that sets the id and never clears it (whitelisted paths return
+# cleared, so each setting of the id resolves it afresh at most once (a lookup
+# that finds no row is not cached and runs again). A path that sets the id and never clears it (whitelisted paths return
 # from CustomAuthMiddleware before its clear; some Celery tasks rely on a
 # leftover id) gets a boundary hook instead: request_finished below,
 # task_postrun in backend.celery_service.
@@ -36,11 +36,13 @@ class UserContext:
 
     @staticmethod
     def get_organization() -> Organization | None:
-        """Resolve the current organization, at most once per request or task.
+        """Resolve the current organization, at most once per setting of the id.
 
         Later calls return the same instance until the id is next set or the
         cache cleared, so a write to the row through another instance is not
-        reflected in it until then.
+        reflected in it until then. Conversely, every caller shares that
+        instance: an attribute changed on it and not saved is seen by later
+        org-scoped code in the same request or task.
         """
         organization_id = StateStore.get(Account.ORGANIZATION_ID)
         # Skip the query so this stays evaluable on a DB-less/unmigrated setup.
