@@ -36,14 +36,34 @@ class AddOwnerSerializer(serializers.Serializer):
             raise serializers.ValidationError("User is already an owner.")
         return value
 
-    def save(self, **kwargs) -> None:
+    def save(self, **kwargs) -> bool:
+        """Promote a viewer or create the owner row; whether anything changed.
+
+        A concurrent request may have made the user an owner since validation.
+        """
         resource = self.context["resource"]
-        # Reverse manager auto-scopes to this resource; promote a viewer or
-        # create the owner row.
-        resource.memberships.update_or_create(
-            user_id=self.validated_data["user_id"],
-            defaults={"role": ResourceRole.OWNER},
-        )
+        user_id = self.validated_data["user_id"]
+        with transaction.atomic():
+            # Reverse manager auto-scopes to this resource. Lock the user's row
+            # by key (a concurrent share/ may add, remove or recreate it);
+            # create one only when there is none, then lock what exists.
+            for _ in range(3):
+                row = (
+                    resource.memberships.select_for_update()
+                    .filter(user_id=user_id)
+                    .first()
+                )
+                if row is not None:
+                    if row.role == ResourceRole.OWNER:
+                        return False
+                    resource.memberships.filter(pk=row.pk).update(role=ResourceRole.OWNER)
+                    return True
+                _, created = resource.memberships.get_or_create(
+                    user_id=user_id, defaults={"role": ResourceRole.OWNER}
+                )
+                if created:
+                    return True
+        raise serializers.ValidationError("Could not add the co-owner; please retry.")
 
 
 class RemoveOwnerSerializer(serializers.Serializer):
@@ -65,7 +85,8 @@ class RemoveOwnerSerializer(serializers.Serializer):
             )
         return attrs
 
-    def save(self, **kwargs) -> None:
+    def save(self, **kwargs) -> bool:
+        """Remove the OWNER row; whether there was one to remove."""
         resource = self.context["resource"]
         user = self.context["user_to_remove"]
         with transaction.atomic():
@@ -93,4 +114,7 @@ class RemoveOwnerSerializer(serializers.Serializer):
                 raise serializers.ValidationError(
                     "Cannot remove the last owner. Add another owner first."
                 )
-            resource.memberships.filter(user=user, role=ResourceRole.OWNER).delete()
+            deleted, _ = resource.memberships.filter(
+                user=user, role=ResourceRole.OWNER
+            ).delete()
+            return deleted > 0

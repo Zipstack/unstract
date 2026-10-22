@@ -3,9 +3,11 @@
 import logging
 from typing import Any
 
-from account_v2.models import Organization
+from account_v2.models import Organization, User
 from django.db.models import QuerySet
 from django.shortcuts import get_object_or_404
+from platform_audit.actions import Action, TargetType
+from platform_audit.recorder import best_effort, diff, record_platform_event
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import NotFound, PermissionDenied, ValidationError
@@ -134,9 +136,34 @@ class OrganizationGroupViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer: BaseSerializer) -> None:
         organization = _current_organization()
-        serializer.save(
+        group = serializer.save(
             organization=organization,
             created_by=self.request.user,
+        )
+        record_platform_event(
+            action=Action.GROUP_CREATED,
+            target_type=TargetType.GROUP,
+            target_id=group.pk,
+            target_name=group.name,
+            changes={"after": _group_fields(group)},
+            request=self.request,
+        )
+
+    def perform_update(self, serializer: BaseSerializer) -> None:
+        before = _group_fields(serializer.instance)
+        group = serializer.save()
+        _record_group_changed(self.request, group, before)
+
+    def perform_destroy(self, instance: OrganizationGroup) -> None:
+        group_id, before = instance.pk, _group_fields(instance)
+        instance.delete()
+        record_platform_event(
+            action=Action.GROUP_DELETED,
+            target_type=TargetType.GROUP,
+            target_id=group_id,
+            target_name=before["name"],
+            changes={"before": before},
+            request=self.request,
         )
 
     # --- members -------------------------------------------------------------
@@ -177,6 +204,7 @@ class OrganizationGroupViewSet(viewsets.ModelViewSet):
                 user_ids=newly_added_ids,
                 actor=request.user,
             )
+            _record_membership(request, group, Action.GROUP_MEMBER_ADDED, newly_added_ids)
         return Response(
             {"added_user_ids": newly_added_ids},
             status=status.HTTP_201_CREATED,
@@ -206,6 +234,7 @@ class OrganizationGroupViewSet(viewsets.ModelViewSet):
             user_ids=[user_id_int],
             actor=request.user,
         )
+        _record_membership(request, group, Action.GROUP_MEMBER_REMOVED, [user_id_int])
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     # --- resources shared with this group ------------------------------------
@@ -229,6 +258,49 @@ class OrganizationGroupViewSet(viewsets.ModelViewSet):
             OrganizationGroup, pk=pk, organization=organization
         )
         return obj
+
+
+def _group_fields(group: OrganizationGroup) -> dict[str, str]:
+    return {"name": group.name, "description": group.description}
+
+
+@best_effort
+def _record_group_changed(
+    request: Request, group: OrganizationGroup, before: dict[str, str]
+) -> None:
+    changes = diff(before, _group_fields(group))
+    if not changes["after"]:
+        return
+    record_platform_event(
+        action=Action.GROUP_CHANGED,
+        target_type=TargetType.GROUP,
+        target_id=group.pk,
+        target_name=group.name,
+        changes=changes,
+        summary=(f"renamed from {before['name']}" if "name" in changes["after"] else ""),
+        request=request,
+    )
+
+
+@best_effort
+def _record_membership(
+    request: Request, group: OrganizationGroup, action: Action, user_ids: list[int]
+) -> None:
+    """One event per user, so the Audit log can be searched by their e-mail."""
+    emails = dict(User.objects.filter(id__in=user_ids).values_list("id", "email"))
+    organization = group.organization  # once, not per event
+    for user_id in user_ids:
+        email = emails.get(user_id, str(user_id))
+        record_platform_event(
+            action=action,
+            target_type=TargetType.GROUP,
+            target_id=group.pk,
+            target_name=group.name,
+            summary=email,
+            metadata={"user_id": user_id, "email": email},
+            request=request,
+            organization=organization,
+        )
 
 
 def _collect_resources_shared_with_group(

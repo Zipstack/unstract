@@ -91,7 +91,8 @@ class DeploymentHelper(BaseAPIKeyValidator):
         Returns:
             The authorizing ``GlobalApiDeploymentKey`` when the request was
             authenticated via a global key, else ``None`` (deployment-specific
-            key). Returning the key (not a bool) preserves audit identity.
+            key). Returning the key (not a bool) preserves audit identity and
+            lets the request serializer check a member-created key's profiles.
 
         Raises:
             APINotFound: If deployment not found
