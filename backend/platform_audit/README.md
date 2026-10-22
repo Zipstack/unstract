@@ -275,7 +275,8 @@ cloud, from Prompt Studio clone (`prompt-studio/clone/`, also on-prem; summary
 `clone of <name>`), the Agentic Studio connector views (adapters), and
 frictionless onboarding (the default adapters and the sample project, recorded
 as the `system` actor). The cloud-only kinds `agentic_project` and `lookup`
-are not recorded on create or delete; only their sharing is.
+are not recorded on create or delete; only their sharing and co-owner
+changes are.
 
 Side effects that change a member's default adapter are not recorded. Among
 them: creating an adapter when the member has no default of that type makes it
