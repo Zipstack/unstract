@@ -29,6 +29,7 @@ from queue_backend.pg_queue.executor_rpc import (
 from shared.enums.task_enums import TaskName
 from shared.infrastructure.context import StateStore
 
+from unstract.core.stage_timings import AGENTIC_EXTRACTION_SECONDS_KEY
 from unstract.sdk1.constants import ToolEnv, UsageKwargs
 from unstract.sdk1.execution.context import ExecutionContext
 from unstract.sdk1.execution.result import ExecutionResult
@@ -265,6 +266,14 @@ def _merge_agentic_metrics(
     )
     file_bucket[PSKeys.TIME_TAKEN] = (
         file_bucket.get(PSKeys.TIME_TAKEN, 0.0) + extraction_seconds
+    )
+    # Record how much was folded, so the stage-timing split can subtract this
+    # exact amount from its prompts bucket instead of guessing from key names
+    # (UN-3451). Lives in metadata, not metrics, to leave the metrics contract
+    # that ships in API responses unchanged.
+    meta = structured_output.setdefault("metadata", {})
+    meta[AGENTIC_EXTRACTION_SECONDS_KEY] = (
+        meta.get(AGENTIC_EXTRACTION_SECONDS_KEY, 0.0) + extraction_seconds
     )
 
 
