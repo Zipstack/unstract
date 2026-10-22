@@ -458,6 +458,13 @@ NOTIFICATION_DISPATCH_LEASE_SECONDS = int(
 NOTIFICATION_MAX_DISPATCH_ATTEMPTS = int(
     os.environ.get("NOTIFICATION_MAX_DISPATCH_ATTEMPTS", "5")
 )
+# How long platform audit events (Settings > Audit log) stay readable. This is
+# the default; each org can override it (Configuration key
+# PLATFORM_AUDIT_RETENTION_DAYS). Older rows are hidden from every read and are
+# deleted by the purge_platform_audit_events management command.
+PLATFORM_AUDIT_RETENTION_DAYS = int(
+    os.environ.get("PLATFORM_AUDIT_RETENTION_DAYS", "365")
+)
 ATOMIC_REQUESTS = CommonUtils.str_to_bool(
     os.environ.get("DJANGO_ATOMIC_REQUESTS", "False")
 )
@@ -594,6 +601,7 @@ SHARED_APPS = (
     "dashboard_metrics",
     "platform_api",
     "global_api_deployment_key",
+    "platform_audit",
     "global_search",
     "agent_kv",
 )
@@ -1088,6 +1096,8 @@ SPECTACULAR_SETTINGS = {
     "ENUM_NAME_OVERRIDES": {
         "ErrorType": "api_v2.openapi_schema.ERROR_TYPES",
         "ApiKeyPermission": "platform_api.models.ApiKeyPermission.choices",
+        "CapabilityKey": "tenant_account_v2.capabilities.CAPABILITY_KEY_VALUES",
+        "CapabilitySetting": "tenant_account_v2.capabilities.CAPABILITY_SETTING_VALUES",
     },
     # Group descriptions generated clients show in their help; without this
     # the spec has no root `tags` array for the text to live in.
