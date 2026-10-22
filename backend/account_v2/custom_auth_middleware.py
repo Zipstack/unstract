@@ -195,9 +195,9 @@ class CustomAuthMiddleware:
         # Skip CSRF for Bearer-authenticated requests
         request.csrf_processing_done = True
         StateStore.set(Common.LOG_EVENTS_ID, str(key.id))
-        StateStore.set(Account.ORGANIZATION_ID, key.organization.organization_id)
-        # Loaded with the key: saves the request's first org lookup.
-        UserContext.cache_organization(key.organization)
+        # Sets the id, then caches the row loaded with the key: saves the
+        # request's first org lookup.
+        UserContext.set_organization(key.organization)
 
         try:
             return self.get_response(request)

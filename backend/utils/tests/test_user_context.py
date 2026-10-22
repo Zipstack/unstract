@@ -11,6 +11,8 @@ from unittest.mock import patch
 
 import pytest
 from account_v2.models import Organization
+from celery.signals import task_postrun
+from django.core.signals import request_finished
 from django.db.utils import ProgrammingError
 
 from utils.constants import Account
@@ -183,10 +185,40 @@ class TestCacheOrganization:
         assert StateStore.get(Account.ORGANIZATION_CACHE) is None
         UserContext.clear_organization_cache()  # idempotent
 
-    def test_celery_task_postrun_drops_the_cache(self):
-        from backend.celery_service import _drop_cached_organization
+    def test_set_organization_sets_the_id_then_seeds(self):
+        org = _Org("org-a")
+        with patch(_LOOKUP) as lookup:
+            UserContext.set_organization(org)
+            assert StateStore.get(Account.ORGANIZATION_ID) == "org-a"
+            assert UserContext.get_organization() is org
+        lookup.assert_not_called()
 
+
+class TestBoundaryHooks:
+    """Sent through the signals, so what is pinned is the registration, not
+    the receiver's body: ``backend.celery_service`` connects task_postrun when
+    the ``backend`` package is imported, ``utils.user_context`` connects
+    request_finished on import.
+    """
+
+    def test_celery_task_postrun_drops_the_cache(self):
         StateStore.set(Account.ORGANIZATION_ID, "org-a")
         UserContext.cache_organization(_Org("org-a"))
-        _drop_cached_organization(task_id="t", task=None)
+        task_postrun.send(
+            sender=object(),
+            task_id="t",
+            task=None,
+            args=(),
+            kwargs={},
+            retval=None,
+            state=None,
+        )
+        assert StateStore.get(Account.ORGANIZATION_CACHE) is None
+
+    @pytest.mark.django_db  # Django's own close_old_connections receiver needs it
+    def test_request_finished_drops_the_cache(self):
+        """The boundary for paths that set the id and never clear it."""
+        StateStore.set(Account.ORGANIZATION_ID, "org-a")
+        UserContext.cache_organization(_Org("org-a"))
+        request_finished.send(sender=object())
         assert StateStore.get(Account.ORGANIZATION_CACHE) is None

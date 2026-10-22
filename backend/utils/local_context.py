@@ -18,9 +18,10 @@ class StateStore:
     # Thread-safe storage.
     thread_local = threading.local()
     # Keys holding a value cached from another key, keyed by that source key.
-    # Setting or clearing the source drops them, so a cached value never
-    # outlives the request or task that set the value it was built from,
-    # whichever code path sets it.
+    # Setting or clearing the source drops them, so a cached value is never
+    # served once the value it was built from has changed. That alone does not
+    # bound it to a request or task: a path that sets the source and never
+    # clears it needs a boundary hook (see utils.user_context).
     _derived_keys: dict[str, set[str]] = {}
 
     @classmethod
@@ -45,6 +46,14 @@ class StateStore:
         for derived_key in cls._derived_keys.get(key, ()):
             if hasattr(cls.thread_local, derived_key):
                 delattr(cls.thread_local, derived_key)
+
+    @classmethod
+    def drop_derived(cls) -> None:
+        """Drop every registered derived value on this thread, leaving the
+        source keys as they are. A no-op where nothing has registered one.
+        """
+        for key in cls._derived_keys:
+            cls._drop_derived(key)
 
     @classmethod
     def get(cls, key: str) -> Any:

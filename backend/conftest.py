@@ -30,15 +30,18 @@ def _drop_cached_organization():
     """Keep the per-request organization cache from crossing tests.
 
     Tests share a thread, and many leave the organization id set. Production
-    drops the cache when the next request sets the id; a test that relies on
-    a leftover id would instead be served an organization another test
-    created and rolled back.
+    drops the cache when the next request sets the id, or at request end; a
+    test that relies on a leftover id would instead be served an organization
+    another test created and rolled back.
     """
     yield
-    # Lazy: utils.user_context needs the app registry.
-    from utils.user_context import UserContext
+    # Django-free on purpose: ``utils.user_context`` (which registers the cache
+    # as a derived key) needs the app registry, and ``utils.constants`` needs
+    # configured settings; a run of the Django-free test files has neither, and
+    # then has nothing registered to drop either.
+    from utils.local_context import StateStore
 
-    UserContext.clear_organization_cache()
+    StateStore.drop_derived()
 
 
 def pytest_collection_modifyitems(items):
