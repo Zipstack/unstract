@@ -22,6 +22,7 @@ from unittest.mock import MagicMock
 
 import psycopg2
 import pytest
+from psycopg2.extensions import TRANSACTION_STATUS_IDLE
 from queue_backend.fairness import DEFAULT_PRIORITY, MAX_PRIORITY, MIN_PRIORITY
 from queue_backend.pg_queue import PgQueueClient, QueueMessage
 from queue_backend.pg_queue.client import _SEND_RETRY_BACKOFF_SECONDS, _dequeue_any_sql
@@ -578,6 +579,35 @@ def queue_name(pg_conn):
 
 
 class TestPgQueueClientIntegration:
+    def test_owned_autocommit_conn_roundtrip(self, pg_conn, queue_name, monkeypatch):
+        # The production posture: an owned connection in autocommit. Each
+        # operation must persist on its own (visible to another session) and
+        # leave no transaction open between calls.
+        monkeypatch.setattr(
+            "queue_backend.pg_queue.client.create_pg_connection",
+            lambda *a, **k: create_pg_connection(env_prefix="TEST_DB_"),
+        )
+        client = PgQueueClient()
+        try:
+            msg_id = client.send(queue_name, {"hello": "autocommit"})
+            assert client.conn.autocommit is True
+            assert client.conn.get_transaction_status() == TRANSACTION_STATUS_IDLE
+            pg_conn.rollback()
+            with pg_conn.cursor() as cur:
+                cur.execute(
+                    "SELECT state FROM pg_queue_message WHERE msg_id = %s", (msg_id,)
+                )
+                assert cur.fetchone() == (QueueMessageState.READY.value,)
+            pg_conn.rollback()
+            msgs = client.read(queue_name, vt_seconds=30, qty=10)
+            assert [m.msg_id for m in msgs] == [msg_id]
+            assert client.conn.get_transaction_status() == TRANSACTION_STATUS_IDLE
+            assert client.set_vt(msg_id, 60) is True
+            assert client.delete(msg_id) is True
+            assert client.read(queue_name, vt_seconds=30, qty=10) == []
+        finally:
+            client.close()
+
     def test_send_read_delete_roundtrip(self, pg_conn, queue_name):
         client = PgQueueClient(conn=pg_conn)
         msg_id = client.send(queue_name, {"hello": "world"})
