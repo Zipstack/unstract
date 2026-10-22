@@ -223,10 +223,23 @@ Expected emitters outside this PR:
 | `platform_setting.changed` | Setting changed | settings | `notifications/settings/` PATCH |
 | `capability.changed` | Capability changed | capabilities | `organization/capabilities/` PATCH and `organization/settings` PATCH (its two flags are the storage of two capabilities), one event per changed capability; target `capability`, id = capability key, name = label, `changes` `{"before": {"setting": …}, "after": {"setting": …}}` with values `admins_only`/`any_member` |
 | `execution.aborted` | Execution aborted | executions | PB-T08 |
+| `resource.created` | Resource created | resources | create of an adapter, connector, workflow, API deployment, pipeline or Prompt Studio project |
+| `resource.deleted` | Resource deleted | resources | delete of the same; a refused delete records nothing |
+| `resource.sharing_changed` | Sharing changed | resources | `<resource>/<id>/share/` POST; `changes` holds only the axes that changed (`shared_users` e-mails, `shared_groups` names, `shared_to_org`) |
+| `resource.co_owner_added` | Co-owner added | resources | `<resource>/<id>/owners/` POST; co-owner e-mail in summary |
+| `resource.co_owner_removed` | Co-owner removed | resources | `<resource>/<id>/owners/<user_id>/` DELETE |
+
+The `resource.*` target type is the resource's kind: `adapter_instance`,
+`connector_instance`, `workflow`, `api_deployment`, `pipeline`, `custom_tool`
+(a Prompt Studio project), and on cloud `agentic_project` and `lookup`, whose
+sharing is recorded through the same endpoints. The summary is the adapter type
+(`LLM`, `EMBEDDING`, ...) or pipeline type (`ETL`, `TASK`) where there is one.
 
 Target types: `member`, `invitation`, `group`, `platform_api_key`,
 `global_api_deployment_key`, `platform_key`, `default_profile`,
-`platform_setting`, `capability`, `execution`.
+`platform_setting`, `capability`, `execution`, and the resource kinds
+`adapter_instance`, `connector_instance`, `workflow`, `api_deployment`,
+`pipeline`, `custom_tool`, `agentic_project`, `lookup`.
 
 Per-deployment API keys (`api_v2`) are not recorded.
 
@@ -257,6 +270,14 @@ made any other way are not recorded: identity-provider or SCIM changes, cloud
 staff and admin routes, Django admin, invitation acceptance, and cloud-only
 features (until cloud code emits them).
 
+`resource.created` and `resource.deleted` come from the OSS viewsets only.
+These cloud paths create or delete the same kinds of resource without an
+event: Prompt Studio clone (`prompt-studio/clone/`, also mounted on-prem), the
+Agentic Studio connector views that create and delete adapters, and
+frictionless onboarding (the default adapters and the sample project). A
+project cloned and later deleted through the OSS viewset therefore shows a
+`resource.deleted` with no matching `resource.created`.
+
 Side effects that change a member's default adapter are not recorded. Among
 them: creating an adapter when the member has no default of that type makes it
 the default; revoking a share, or removing a co-owner who loses all access,
@@ -267,6 +288,10 @@ Activating a legacy platform key records `key.disabled` for the keys that were
 active a moment before; two admins toggling keys at the same instant can make
 that list miss or name the wrong key, and if reading that list fails, the
 deactivated keys are not recorded.
+
+Editing a resource (renaming it, changing its settings) is not recorded. Nor is
+anything a resource delete removes with it: deleting a workflow also deletes its
+pipelines and API deployments, with no event of their own.
 
 Each invitation is recorded as the identity provider accepts it, so the ones
 sent before a later one fails are kept. The role recorded is the one the
