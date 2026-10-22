@@ -270,13 +270,12 @@ made any other way are not recorded: identity-provider or SCIM changes, cloud
 staff and admin routes, Django admin, invitation acceptance, and cloud-only
 features (until cloud code emits them).
 
-`resource.created` and `resource.deleted` come from the OSS viewsets only.
-These cloud paths create or delete the same kinds of resource without an
-event: Prompt Studio clone (`prompt-studio/clone/`, also mounted on-prem), the
-Agentic Studio connector views that create and delete adapters, and
-frictionless onboarding (the default adapters and the sample project). A
-project cloned and later deleted through the OSS viewset therefore shows a
-`resource.deleted` with no matching `resource.created`.
+`resource.created` and `resource.deleted` come from the OSS viewsets and, on
+cloud, from Prompt Studio clone (`prompt-studio/clone/`, also on-prem; summary
+`clone of <name>`), the Agentic Studio connector views (adapters), and
+frictionless onboarding (the default adapters and the sample project, recorded
+as the `system` actor). The cloud-only kinds `agentic_project` and `lookup`
+are not recorded on create or delete; only their sharing is.
 
 Side effects that change a member's default adapter are not recorded. Among
 them: creating an adapter when the member has no default of that type makes it
