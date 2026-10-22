@@ -7,7 +7,7 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("account_v2", "0007_organization_restrict_connector_creation"),
+        ("account_v2", "0008_organization_capability_settings"),
     ]
 
     operations = [
