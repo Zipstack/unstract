@@ -607,9 +607,9 @@ class TestStoreResultReconnectRetry:
         assert PgResultBackend(conn=conn).conn.autocommit is False
 
     def test_bare_database_error_drops_owned_conn(self):
-        # Under autocommit rollback() sends nothing, so it can't flag a dead
-        # server connection; a bare DatabaseError (how a server-side termination
-        # can surface) must drop the owned handle itself, as PgQueueClient does.
+        # Under autocommit rollback() sends nothing, so a bare DatabaseError on
+        # a connection psycopg2 still reports open must drop the owned handle
+        # through is_dead_after_autocommit_error, as PgQueueClient does.
         dead, _ = self._conn(execute_side_effect=psycopg2.DatabaseError("gone"))
         rb = PgResultBackend()
         rb._conn = dead
@@ -734,10 +734,11 @@ class TestStoreResultRealReconnect:
         self._assert_healed_and_delete(pg_conn, key)
 
     def test_real_reconnect_after_backend_termination(self, pg_conn, owned_rb):
-        # The owned connection runs in autocommit, where rollback() sends nothing
-        # and so can't prove a server-terminated connection dead. Pin that a
-        # terminated backend still heals: a read drops the handle, and a write
-        # self-heals through _store_with_reconnect.
+        # Pin that a terminated backend heals on the owned autocommit
+        # connection: a read drops the handle, and a write self-heals through
+        # _store_with_reconnect. Termination surfaces as OperationalError with
+        # the connection marked closed, so this path rests on is_connection_dead
+        # and conn.closed; the bare-DatabaseError branch is the unit test's.
         def terminate(pid):
             with pg_conn.cursor() as cur:
                 # Wait (up to 5 s) for the backend to exit, so the next call
@@ -749,7 +750,7 @@ class TestStoreResultRealReconnect:
         assert owned_rb.conn.autocommit is True
         old_pid = owned_rb.conn.get_backend_pid()
         terminate(old_pid)
-        with pytest.raises(psycopg2.DatabaseError):
+        with pytest.raises(psycopg2.OperationalError):
             owned_rb.get_result(key)
         assert owned_rb._conn is None  # dropped, so the next call reconnects
 

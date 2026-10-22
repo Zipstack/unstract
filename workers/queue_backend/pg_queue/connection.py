@@ -85,11 +85,13 @@ def is_connection_dead(exc: BaseException) -> bool:
 def is_dead_after_autocommit_error(exc: BaseException) -> bool:
     """Whether a statement error on an owned AUTOCOMMIT connection means it is dead.
 
-    On a transactional connection a failed ``rollback()`` proves a dead server.
-    Under autocommit ``rollback()`` sends nothing, so it proves nothing; and a
-    server-side termination mid-statement can surface as a *bare*
-    ``DatabaseError``. Treat that as dead too: statement errors normally map to
-    a SQLSTATE subclass, and a rare unmapped one costs only a needless reconnect.
+    A connection the server terminated already reads as dead without this: the
+    error is an ``OperationalError`` and psycopg2 marks the connection closed.
+    What autocommit loses is narrower: ``rollback()`` sends nothing, so it no
+    longer exposes a dead connection that psycopg2 still reports as open. So a
+    bare ``DatabaseError`` (one psycopg2 mapped to no SQLSTATE subclass) is
+    treated as dead too; if it was only an unmapped statement error, the cost
+    is one needless reconnect.
 
     Deliberately separate from :func:`is_connection_dead`: transactional
     connections (``pg_barrier``) get this detection from a real ``rollback()``,

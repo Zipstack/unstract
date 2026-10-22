@@ -280,13 +280,14 @@ class PgQueueClient:
             conn.commit()
         except Exception as exc:
             # A failed rollback proves the connection is unusable, regardless
-            # of which psycopg2 error subclass was raised; on the owned
-            # autocommit connection it proves nothing, hence the helper.
+            # of which psycopg2 error subclass was raised. On the owned
+            # autocommit connection a rollback that succeeds sends nothing, so
+            # the helper also treats a bare DatabaseError as dead.
             # NOTE: ``send()``'s retry deliberately catches only
-            # ``_CONN_DEAD_ERRORS``; a server death that surfaces as a *bare*
-            # ``psycopg2.DatabaseError`` is still dropped here when we own the
-            # connection (an injected one is never dropped) but is intentionally
-            # NOT retried by ``send()`` — it's left to the next call's reconnect.
+            # ``_CONN_DEAD_ERRORS``; a *bare* ``psycopg2.DatabaseError`` is still
+            # dropped here when we own the connection (an injected one is never
+            # dropped) but is intentionally NOT retried by ``send()`` — it's
+            # left to the next call's reconnect.
             conn_dead = is_dead_after_autocommit_error(exc)
             try:
                 conn.rollback()
