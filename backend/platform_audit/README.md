@@ -261,7 +261,9 @@ python manage.py purge_platform_audit_events [--dry-run] [--batch-size N]
 The unstract-platform Helm chart (cloud and on-prem) runs it daily at 03:23 UTC
 as the `unstract-backend-platform-audit-purge-cronjob` CronJob
 (`backend.platformAuditPurgeCronJob`, on by default). Docker Compose has no
-scheduler for it: run it from the host's cron. Wherever it does not run,
+scheduler for it; add a daily host cron entry such as
+`docker exec unstract-backend .venv/bin/python manage.py purge_platform_audit_events`.
+Wherever it does not run,
 retention only hides rows, which stay in the table, so raising an
 organisation's override later shows the hidden events again.
 
