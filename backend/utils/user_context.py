@@ -8,7 +8,7 @@ from utils.local_context import StateStore
 # The cached organization is dropped whenever the organization id is set or
 # cleared; a lookup that finds no row is not cached. A path that sets the id
 # and never clears it (whitelisted paths return from CustomAuthMiddleware
-# before its clear; some Celery tasks rely on a leftover id) gets a boundary
+# before its clear; some Celery tasks set it and leave it set) gets a boundary
 # hook instead: request_finished below, task_postrun in backend.celery_service.
 StateStore.register_derived_key(Account.ORGANIZATION_ID, Account.ORGANIZATION_CACHE)
 
@@ -48,9 +48,7 @@ class UserContext:
         if not organization_id:
             return None
         # Every org-scoped queryset calls this. The cached entry carries the id
-        # it was resolved for and is used only while that id is still current,
-        # so it is never another organization than the lookup below would
-        # return for the same id.
+        # it was resolved for and is used only while that id is still current.
         cached = StateStore.get(Account.ORGANIZATION_CACHE)
         if isinstance(cached, tuple) and cached[0] == organization_id:
             cached_organization: Organization = cached[1]
@@ -95,8 +93,8 @@ def _drop_cached_organization(**kwargs: object) -> None:
     """Request boundary for paths that set the organization id and never clear it.
 
     Whitelisted paths return from CustomAuthMiddleware before its clear, and
-    the views behind them (API deployments, the OAuth callback) set the id
-    themselves. Without this the cached row would stay on the gunicorn thread
+    some views behind them (API deployments, the OSS default-user login) set
+    the id themselves. Without this the cached row would stay on the gunicorn thread
     until the id is next set, and be served stale to a later request on that
     thread that relies on the leftover id.
     """
