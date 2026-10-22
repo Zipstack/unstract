@@ -18,8 +18,19 @@ class TextExtractionMetadata:
 
 @dataclass
 class TextExtractionResult:
+    """Outcome of a text extraction.
+
+    Attributes:
+        extracted_text: The text the extractor produced.
+        extraction_metadata: Extractor-specific metadata, if any.
+        page_count: Billable page count the extractor reports, or None when it
+            reports none. For non-PDF inputs this may be derived from content
+            length rather than pages.
+    """
+
     extracted_text: str
     extraction_metadata: TextExtractionMetadata | None = None
+    page_count: int | None = None
 
 
 @dataclass

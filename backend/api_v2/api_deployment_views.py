@@ -32,6 +32,7 @@ from api_v2.api_deployment_dto_registry import ApiDeploymentDTORegistry
 from api_v2.constants import ApiExecution
 from api_v2.deployment_helper import DeploymentHelper
 from api_v2.dto import DeploymentExecutionDTO
+from api_v2.error_message import add_error_message
 from api_v2.exceptions import (
     NoActiveAPIKeyError,
     RateLimitExceeded,
@@ -41,6 +42,7 @@ from api_v2.models import APIDeployment
 from api_v2.openapi_schema import (
     API_DEPLOYMENT_LIST_SCHEMA,
     DEPLOYMENT_EXECUTION_SCHEMA,
+    DeploymentAutoSchema,
 )
 from api_v2.rate_limiter import APIDeploymentRateLimiter
 from api_v2.serializers import (
@@ -61,6 +63,8 @@ logger = logging.getLogger(__name__)
 
 @DEPLOYMENT_EXECUTION_SCHEMA
 class DeploymentExecution(views.APIView):
+    schema = DeploymentAutoSchema()
+
     def initialize_request(self, request: Request, *args: Any, **kwargs: Any) -> Request:
         """To remove csrf request for public API.
 
@@ -72,6 +76,14 @@ class DeploymentExecution(views.APIView):
         """
         request.csrf_processing_done = True
         return super().initialize_request(request, *args, **kwargs)
+
+    def handle_exception(self, exc: Exception) -> Response:
+        response = super().handle_exception(exc)
+        # On the status read `message` is the result payload, and published
+        # clients copy it out as the extraction result without checking.
+        if self.request.method == "POST":
+            add_error_message(response.data)
+        return response
 
     @DeploymentHelper.validate_api_key
     def post(
@@ -466,40 +478,3 @@ class APIDeploymentViewSet(
         instance = self.get_object()
         serializer = SharedUserListSerializer(instance)
         return Response(serializer.data)
-
-    def partial_update(self, request: Request, *args: Any, **kwargs: Any) -> Response:
-        """Override partial_update to handle sharing notifications."""
-        instance = self.get_object()
-        before = self.snapshot_share_axes(instance)
-
-        response = super().partial_update(request, *args, **kwargs)
-        if response.status_code == 200 and notification_plugin:
-            self._notify_shared_users(instance, before, request.data, request.user)
-        return response
-
-    def _notify_shared_users(
-        self,
-        instance: APIDeployment,
-        before: dict[str, set[Any]],
-        request_data: dict[str, Any],
-        actor: Any,
-    ) -> None:
-        """Email users newly added to ``shared_users`` (best-effort)."""
-        users_diff = self.diff_share_axes(instance, before, request_data).get(
-            "shared_users"
-        )
-        if not (users_diff and users_diff.added):
-            return
-        try:
-            service_class = notification_plugin["service_class"]
-            notification_service = service_class()
-            notification_service.send_sharing_notification(
-                resource_type=ResourceType.API_DEPLOYMENT.value,
-                resource_name=instance.display_name,
-                resource_id=str(instance.id),
-                shared_by=actor,
-                shared_to=list(users_diff.added),
-                resource_instance=instance,
-            )
-        except Exception as e:
-            logger.exception("Failed to send sharing notification: %s", e)
