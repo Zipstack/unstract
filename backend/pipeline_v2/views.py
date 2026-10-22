@@ -23,6 +23,7 @@ from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
 from scheduler.helper import SchedulerHelper
+from tenant_account_v2.capabilities import Capability, RequiresCapability
 from utils.filters.ordering_filter import DeterministicOrderingFilter
 from utils.pagination import CustomPagination
 
@@ -74,8 +75,13 @@ class PipelineViewSet(
             self.request, flag="active", ignore=("pipeline_id",)
         ):
             return [IsOwnerOrSharedUserOrSharedToOrg()]
+        if self.action == "destroy":
+            # Ownership as before, narrowed by the org's deletion capability.
+            return [
+                IsOwner(),
+                RequiresCapability(Capability.DELETE_WORKFLOWS_AND_DEPLOYMENTS),
+            ]
         if self.action in [
-            "destroy",
             "partial_update",
             "update",
             "add_co_owner",
