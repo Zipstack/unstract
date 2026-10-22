@@ -137,8 +137,9 @@ class CapabilityTestBase(AuditTestBase):
         spec = next(s for s in SPECS if s.key == key)
         Organization.objects.filter(pk=self.org.pk).update(**{spec.field: restricted})
         self.org.refresh_from_db()
-        # Stands in for an admin's change in another request; this one would
-        # start with the cached organization dropped.
+        # Stands in for an admin's change made in another request. The cached
+        # organization is dropped at every request end (request_finished), so
+        # no real request is served a row cached before the change.
         UserContext.clear_organization_cache()
 
     def capabilities(self, user) -> dict[str, dict]:
