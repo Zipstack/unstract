@@ -40,7 +40,6 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Final, Self
 
 import psycopg2
-
 from unstract.core.data_models import QueueMessageState
 from unstract.core.jsonb import dumps_for_jsonb
 

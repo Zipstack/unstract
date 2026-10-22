@@ -11,7 +11,6 @@ from typing import Any
 
 from notification.providers.webhook_provider import WebhookProvider
 from shared.infrastructure.logging import WorkerLogger
-
 from unstract.core.notification_clubbed_renderer import build_envelope
 
 logger = WorkerLogger.get_logger(__name__)

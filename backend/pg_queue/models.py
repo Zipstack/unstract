@@ -1,7 +1,6 @@
 from django.db import models
 from django.db.models import F
 from django.utils import timezone
-
 from unstract.core.data_models import QueueMessageState
 
 # Local aliases so the model reads cleanly; the enum is the single source of truth
