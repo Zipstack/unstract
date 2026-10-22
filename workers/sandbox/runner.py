@@ -95,16 +95,42 @@ def _limits(cpu_seconds: int, memory_mb: int, max_pids: int, fsize: int):
     return _apply
 
 
-def _kill_group(proc, note: str) -> None:
-    """SIGKILL the child's whole process group, best effort.
+def _pgid_of(proc) -> int | None:
+    """The child's process-group id, read while the child is still alive.
+
+    Captured once, right after the spawn, so the failure paths below read the
+    pgid a single time rather than re-reading it from a child that may already
+    have been reaped (where `os.getpgid` fails with ESRCH). Returns None when
+    the child is already gone, which `_kill_group` treats as nothing to kill.
+    """
+    try:
+        return os.getpgid(proc.pid)
+    except Exception:
+        return None
+
+
+def _kill_group(pgid: int | None, note: str) -> None:
+    """SIGKILL a whole process group, best effort.
 
     The group (not just the pid) because _limits() makes the child a session
     leader via os.setsid() before it execs, so any children/grandchildren the
-    script spawned die with it. Failures are logged, never raised: this runs on
-    paths that are already returning a failure RunResult.
+    script spawned die with it. Failures are logged, never raised: every caller
+    is already returning a failure RunResult.
+
+    ProcessLookupError is swallowed WITHOUT logging: the group being gone
+    already is an ordinary race with the child exiting on its own, not a
+    problem worth a line in the worker log.
+
+    pgid <= 1 and our own group are refused outright: killpg(1, ...) is
+    kill(-1, ...), which SIGKILLs every process this user owns (a MagicMock
+    proc in tests has pid 1 via __index__), and our own group is the worker.
     """
+    if pgid is None or pgid <= 1 or pgid == os.getpgrp():
+        return
     try:
-        os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+        os.killpg(pgid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
     except Exception:
         logger.warning(note, exc_info=True)
 
@@ -248,6 +274,10 @@ def run_code(
             return texts[0], texts[1]
 
         proc = None
+        # Initialised here so the failure paths can use the ONE pgid captured
+        # after the spawn: calling _pgid_of again there would read it a second
+        # time (and read it from an already-reaped child).
+        pgid = None
         try:
             with open(stdout_path, "w") as f_out, open(stderr_path, "w") as f_err:
                 proc = subprocess.Popen(
@@ -261,6 +291,9 @@ def run_code(
                         cpu_seconds, memory_mb, max_pids, max_output_bytes
                     ),
                 )
+                # Captured BEFORE the wait: by the time a failure path runs,
+                # the child may already be reaped and its pgid unreadable.
+                pgid = _pgid_of(proc)
                 proc.wait(timeout=timeout)
             stdout, stderr = _captured()
             returncode = proc.returncode
@@ -270,7 +303,7 @@ def run_code(
             # why _limits() makes the child a session leader via
             # os.setsid() before it execs the script).
             _kill_group(
-                proc, "sandbox: could not kill the timed-out child's process group"
+                pgid, "sandbox: could not kill the timed-out child's process group"
             )
             # REAP before reading. SIGKILL is asynchronous: without this the
             # child may still be writing when the capture files are read
@@ -299,7 +332,7 @@ def run_code(
             # nothing anywhere to say the harness itself had failed.
             logger.warning("sandbox: harness failure running generated code: %s", exc)
             if proc is not None:
-                _kill_group(proc, "sandbox: could not kill the child's process group")
+                _kill_group(pgid, "sandbox: could not kill the child's process group")
             return RunResult(
                 success=False, error=f"execution failed: {type(exc).__name__}"
             )

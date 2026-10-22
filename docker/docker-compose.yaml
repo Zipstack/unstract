@@ -99,8 +99,27 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
+    # BOUNDED, and the bound matters more here than in Kubernetes. A bare
+    # `tmpfs: - /tmp` takes Docker's default size (half of host RAM), and this
+    # is the one writable path in a read-only container, so generated code can
+    # fill it with host MEMORY: `open()` stays available to the script by
+    # design, and RLIMIT_FSIZE caps each file, never their total. Files written
+    # outside the per-job tempdir also outlive its cleanup, so the cost
+    # accumulates across jobs until the daemon's host is affected.
+    #
+    # 256m mirrors the chart's `emptyDir.sizeLimit: 256Mi` for this same mount,
+    # so the two deployment surfaces agree on the budget. Note the chart's
+    # emptyDir is DISK-backed (no `medium: Memory`), which is why compose needs
+    # the explicit cap more, not less.
     tmpfs:
-      - /tmp
+      - /tmp:size=256m
+    # Mirrors the chart's `workerPgSandbox.resources.limits.memory: 1Gi`. The
+    # tmpfs cap above bounds what the script can write; this bounds what it can
+    # allocate, and without it an untrusted-code container is the only service
+    # here that can take the host down by asking for memory. (No other service
+    # in this file sets a limit -- that is a deliberate exception for the one
+    # service that executes code it did not write.)
+    mem_limit: 1g
     env_file:
       - ../workers/.env
       - ./essentials.env
@@ -113,6 +132,16 @@ services:
       - WORKER_PG_QUEUE_CONSUMER_WORKER_TYPE=sandbox
       - WORKER_PG_QUEUE_CONSUMER_QUEUE=sandbox_codegen
       - WORKER_PG_QUEUE_CONSUMER_HEALTH_PORT=8092
+      # Same requirement the chart documents for this image under a read-only
+      # rootfs: worker-unified sets HOME=/home/worker and WORKDIR=/app and
+      # redirects neither TMPDIR nor XDG_CACHE_HOME, so any boot-time write to
+      # ~/.cache or the CWD (Celery / SDK1 / litellm import) hits a read-only
+      # filesystem. The chart points all three at its writable /tmp mount;
+      # this service has the same `read_only: true` + tmpfs shape and was
+      # missing them.
+      - HOME=/tmp
+      - TMPDIR=/tmp
+      - XDG_CACHE_HOME=/tmp/.cache
     labels:
       - traefik.enable=false
 

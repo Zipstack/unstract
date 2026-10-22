@@ -259,6 +259,92 @@ def test_run_worker_pg_ide_callback_role_drains_the_callback_queue():
 
 
 # --------------------------------------------------------------------------
+# The sandbox role's operability and its resource bounds. Both are about the
+# one service in these stacks that runs code it did not write.
+
+
+def test_the_sandbox_role_is_individually_controllable():
+    """`PG_CONSUMER_ROLES` alone does not make a role usable.
+
+    The launcher resolves the name a user types through WORKERS, and the
+    status/stop paths build their process list from it too. With the role in
+    PG_CONSUMER_ROLES only, `run-worker.sh pg-sandbox` is rejected as an
+    unknown worker, and a sandbox started as part of the `pg` group is invisible
+    to `status` and survives `stop` -- an orphaned consumer of untrusted code
+    is the worst process to leave running unattended.
+
+    (`pg-ide-callback` and `pg-notification` have the same gap. They predate
+    this and are deliberately not changed here.)
+    """
+    text = RUN_WORKER.read_text()
+    match = re.search(r"declare -A WORKERS=\((.*?)\n\)", text, re.S)
+    assert match, "could not find the WORKERS map in run-worker.sh"
+    assert "PG_ROLE_SANDBOX" in match.group(1), (
+        "pg-sandbox is not in WORKERS: `run-worker.sh pg-sandbox` is rejected, "
+        "and status/stop miss the process the `pg` group starts."
+    )
+
+
+def test_the_compose_sandbox_bounds_its_in_memory_scratch_dir():
+    """An unbounded tmpfs on the one writable path is host MEMORY.
+
+    `open()` stays available to generated code by design, and RLIMIT_FSIZE caps
+    each file rather than their total, so a script can fill /tmp with many
+    small files. Docker's default tmpfs size is half of host RAM, and files
+    written outside the per-job tempdir outlive its cleanup, so the cost
+    accumulates across jobs. The bound mirrors the chart's
+    `emptyDir.sizeLimit: 256Mi` for the same mount.
+    """
+    compose = yaml.safe_load(DEV_COMPOSE.read_text())
+    service = compose["services"]["worker-sandbox"]
+    mounts = service.get("tmpfs") or []
+    tmp = [m for m in mounts if m.split(":")[0] == "/tmp"]
+    assert tmp, "worker-sandbox does not mount /tmp as tmpfs"
+    assert "size=" in tmp[0], (
+        f"worker-sandbox's /tmp tmpfs is unbounded ({tmp[0]!r}); generated code "
+        f"can fill it with host memory."
+    )
+
+
+def test_the_compose_sandbox_bounds_its_memory():
+    """The only service here that executes untrusted code is the only one that
+    needs a memory ceiling; without it the container can take the host down by
+    allocating. Mirrors the chart's limits.memory for the same role.
+    """
+    compose = yaml.safe_load(DEV_COMPOSE.read_text())
+    service = compose["services"]["worker-sandbox"]
+    assert service.get("mem_limit"), (
+        "worker-sandbox has no mem_limit: an untrusted-code container with an "
+        "unbounded memory budget."
+    )
+
+
+def test_the_compose_sandbox_redirects_its_caches_into_the_writable_mount():
+    """read_only rootfs + worker-unified means HOME must move.
+
+    The chart documents this for the same image: it sets HOME=/home/worker and
+    WORKDIR=/app and redirects neither TMPDIR nor XDG_CACHE_HOME, so a
+    boot-time write to ~/.cache (Celery / SDK1 / litellm import) lands on a
+    read-only filesystem. The chart points all three at its writable /tmp; this
+    service has the identical read_only + tmpfs shape.
+    """
+    compose = yaml.safe_load(DEV_COMPOSE.read_text())
+    service = compose["services"]["worker-sandbox"]
+    env = dict(
+        item.split("=", 1) for item in service.get("environment", []) if "=" in item
+    )
+    for key in ("HOME", "TMPDIR", "XDG_CACHE_HOME"):
+        assert key in env, (
+            f"worker-sandbox does not set {key}; with read_only: true a "
+            f"boot-time write outside /tmp fails."
+        )
+        assert env[key].startswith("/tmp"), (
+            f"worker-sandbox points {key} at {env[key]!r}, which is not inside "
+            f"the writable tmpfs."
+        )
+
+
+# --------------------------------------------------------------------------
 # Traefik routing. Same family of failure as an unconsumed queue: the service
 # is up, the route looks configured, and the request lands somewhere that
 # cannot serve it.

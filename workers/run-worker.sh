@@ -155,6 +155,12 @@ declare -A WORKERS=(
     ["$PG_ROLE_SCHEDULER"]="$PG_ROLE_SCHEDULER"
     ["$PG_ROLE_EXECUTOR"]="$PG_ROLE_EXECUTOR"
     ["$PG_ROLE_METRICS"]="$PG_ROLE_METRICS"
+    # Without this entry the role is startable only as part of the `pg` group:
+    # `run-worker.sh pg-sandbox` is rejected as an unknown worker, and the
+    # status/stop paths build their list from WORKERS, so they miss the
+    # process the `pg` group started. (`pg-ide-callback` and `pg-notification`
+    # have the same gap; they predate this change and are left alone.)
+    ["$PG_ROLE_SANDBOX"]="$PG_ROLE_SANDBOX"
     # PG Queue reaper — leader-elected recovery loop (barrier-orphan sweep)
     ["reaper"]="$PG_QUEUE_REAPER_TYPE"
     ["pg-queue-reaper"]="$PG_QUEUE_REAPER_TYPE"

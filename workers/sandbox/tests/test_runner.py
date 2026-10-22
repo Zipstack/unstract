@@ -82,9 +82,12 @@ def test_subprocess_popen_env_is_exactly_minimal_path():
     # the actual Popen call: the child's env must be exactly the minimal
     # PATH-only mapping — nothing from the parent's environment leaks in.
     mock_proc = MagicMock()
+    mock_proc.pid = 4321
     mock_proc.communicate.return_value = ("", "")
     mock_proc.returncode = 0
-    with patch("sandbox.runner.subprocess.Popen", return_value=mock_proc) as mock_popen:
+    with patch("sandbox.runner.subprocess.Popen", return_value=mock_proc) as mock_popen, \
+         patch("sandbox.runner.os.getpgid", return_value=4321), \
+         patch("sandbox.runner.os.killpg"):
         r = run_code(
             "import sys\nopen(sys.argv[2], 'w').close()\n",
             json.dumps({"records": [{}]}), **_DEFAULTS,
