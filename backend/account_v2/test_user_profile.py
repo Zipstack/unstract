@@ -130,7 +130,8 @@ class PhotoStorageTests(LocalStorageMixin, TestCase):
     def test_delete_when_object_already_gone(self) -> None:
         user_profile.save_photo(self.user, png_bytes())
         os.remove(user_profile.photo_path(self.user))
-        user_profile.delete_photo(self.user)
+        with self.assertLogs("account_v2.user_profile", "WARNING"):
+            user_profile.delete_photo(self.user)
         self.user.refresh_from_db()
         self.assertIsNone(self.user.profile_photo_updated_at)
 
@@ -141,8 +142,31 @@ class PhotoStorageTests(LocalStorageMixin, TestCase):
     def test_missing_object_is_logged_and_not_served(self) -> None:
         user_profile.save_photo(self.user, png_bytes())
         os.remove(user_profile.photo_path(self.user))
-        with self.assertLogs("account_v2.user_profile", "WARNING"):
+        with self.assertLogs("account_v2.user_profile", "ERROR"):
             self.assertIsNone(user_profile.read_photo(self.user))
+
+    def test_empty_read_is_logged_and_not_served(self) -> None:
+        # The SDK's stale-cache retry can return None for a file that exists.
+        user_profile.save_photo(self.user, png_bytes())
+        for empty in (None, b""):
+            with (
+                self.subTest(empty=empty),
+                patch(
+                    "unstract.sdk1.file_storage.impl.FileStorage.read",
+                    return_value=empty,
+                ),
+                self.assertLogs("account_v2.user_profile", "ERROR"),
+            ):
+                self.assertIsNone(user_profile.read_photo(self.user))
+
+    def test_failed_write_records_no_photo(self) -> None:
+        with patch(
+            "unstract.sdk1.file_storage.impl.FileStorage.write", side_effect=OSError
+        ):
+            with self.assertRaises(OSError):
+                user_profile.save_photo(self.user, png_bytes())
+        self.user.refresh_from_db()
+        self.assertIsNone(self.user.profile_photo_updated_at)
 
     def test_delete_clears_timestamp_even_when_in_memory_copy_is_stale(self) -> None:
         user_profile.save_photo(self.user, png_bytes())
@@ -183,6 +207,34 @@ class PhotoBasePathTests(TestCase):
             self.assertEqual(
                 user_profile.photo_base_path(), "bucket-x/user-profile-photos"
             )
+
+    def test_prompt_studio_path_is_stripped(self) -> None:
+        with patch.dict(
+            "os.environ",
+            {
+                "REMOTE_USER_PROFILE_PHOTO_PATH": "",
+                "REMOTE_PROMPT_STUDIO_FILE_PATH": " bucket-x/prompt-studio-data ",
+            },
+        ):
+            self.assertEqual(
+                user_profile.photo_base_path(), "bucket-x/user-profile-photos"
+            )
+
+    def test_prompt_studio_path_without_a_bucket_is_a_config_error(self) -> None:
+        # A sibling of a bare name would be a bucket of its own.
+        for bare in ("prompt-studio-data", "/prompt-studio-data"):
+            with (
+                self.subTest(bare=bare),
+                patch.dict(
+                    "os.environ",
+                    {
+                        "REMOTE_USER_PROFILE_PHOTO_PATH": "",
+                        "REMOTE_PROMPT_STUDIO_FILE_PATH": bare,
+                    },
+                ),
+            ):
+                with self.assertRaises(ImproperlyConfigured):
+                    user_profile.photo_base_path()
 
     def test_unset_paths_are_a_config_error(self) -> None:
         for blank in ("", "   "):
@@ -282,6 +334,15 @@ class LanguageDefaultTests(TestCase):
 
 
 class ControllerOrganizationTests(TestCase):
+    def setUp(self) -> None:
+        patcher = patch(
+            "account_v2.authentication_controller.AuthenticationPluginRegistry"
+            ".is_plugin_available",
+            return_value=False,
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
     def test_photo_url_uses_the_organization_passed_in(self) -> None:
         from types import SimpleNamespace
 
@@ -289,12 +350,40 @@ class ControllerOrganizationTests(TestCase):
 
         user = make_user()
         user.profile_photo_updated_at = user_profile.timezone.now()
-        with patch(
-            "account_v2.authentication_controller.AuthenticationPluginRegistry"
-            ".is_plugin_available",
-            return_value=False,
-        ):
-            info = AuthenticationController().get_user_info(
-                SimpleNamespace(user=user), organization_id="org-b"
-            )
+        info = AuthenticationController().get_user_info(
+            SimpleNamespace(user=user), organization_id="org-b"
+        )
         self.assertEqual(info.picture, user_profile.photo_url(user, "org-b"))
+
+    def test_info_passes_through_without_a_signed_in_user(self) -> None:
+        from types import SimpleNamespace
+
+        from django.contrib.auth.models import AnonymousUser
+
+        from account_v2.authentication_controller import AuthenticationController
+
+        info = UserInfo(email="a@example.com", user_id="x", name="Provider")
+        with patch(
+            "account_v2.authentication_controller.AuthenticationService.get_user_info",
+            return_value=info,
+        ):
+            result = AuthenticationController().get_user_info(
+                SimpleNamespace(user=AnonymousUser()), organization_id="org-a"
+            )
+        self.assertIs(result, info)
+
+    def test_no_info_from_the_auth_service_stays_none(self) -> None:
+        from types import SimpleNamespace
+
+        from account_v2.authentication_controller import AuthenticationController
+
+        user = make_user()
+        user.profile_display_name = "Edited"
+        with patch(
+            "account_v2.authentication_controller.AuthenticationService.get_user_info",
+            return_value=None,
+        ):
+            result = AuthenticationController().get_user_info(
+                SimpleNamespace(user=user), organization_id="org-a"
+            )
+        self.assertIsNone(result)

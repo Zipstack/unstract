@@ -35,21 +35,25 @@ logger = logging.getLogger(__name__)
 def photo_base_path() -> str:
     """Where photos are kept: the env if set, else beside Prompt Studio files.
 
-    The default lands in the same bucket as Prompt Studio data.
+    The default is a sibling of the Prompt Studio path, so it shares that
+    path's bucket. A Prompt Studio path with no bucket prefix is refused,
+    since its sibling would be a bucket of its own.
     """
     explicit = os.environ.get(PHOTO_PATH_ENV, "").strip()
     if explicit:
         return explicit
-    prompt_studio = os.environ.get(
-        FileStorageConstants.REMOTE_PROMPT_STUDIO_FILE_PATH, ""
-    )
-    if not prompt_studio.strip():
+    prompt_studio_env = FileStorageConstants.REMOTE_PROMPT_STUDIO_FILE_PATH
+    prompt_studio = os.environ.get(prompt_studio_env, "").strip()
+    if not prompt_studio:
         raise ImproperlyConfigured(
-            f"Set {PHOTO_PATH_ENV} or "
-            f"{FileStorageConstants.REMOTE_PROMPT_STUDIO_FILE_PATH} to store "
-            "profile photos."
+            f"Set {PHOTO_PATH_ENV} or {prompt_studio_env} to store profile photos."
         )
-    return str(PurePosixPath(prompt_studio).parent / "user-profile-photos")
+    parent = PurePosixPath(prompt_studio).parent
+    if str(parent) in (".", "/"):
+        raise ImproperlyConfigured(
+            f"Set {PHOTO_PATH_ENV}; {prompt_studio_env} has no bucket prefix."
+        )
+    return str(parent / "user-profile-photos")
 
 
 def photo_path(user: User) -> str:
@@ -81,7 +85,10 @@ def read_photo(user: User) -> tuple[bytes, str] | None:
     try:
         data = _storage().read(path=path, mode="rb")
     except FileNotFoundError:
-        logger.warning("Profile photo of user %s is missing at %s", user.pk, path)
+        logger.error("Profile photo of user %s is missing at %s", user.pk, path)
+        return None
+    if not data:
+        logger.error("Profile photo of user %s read back empty at %s", user.pk, path)
         return None
     content_type = magic.from_buffer(data, mime=True)
     if content_type not in PHOTO_TYPES:
@@ -98,9 +105,11 @@ def delete_photo(user: User) -> None:
         pk=user.pk, profile_photo_updated_at__isnull=False
     ).exists()
     if recorded:  # Without a recorded photo there is no storage to touch.
-        try:
-            _storage().rm_exact(photo_path(user))
-        except FileNotFoundError:
+        fs, path = _storage(), photo_path(user)
+        # rm_exact passes over a missing object silently.
+        if fs.exists(path):
+            fs.rm_exact(path)
+        else:
             logger.warning("Profile photo of user %s was already gone", user.pk)
         User.objects.filter(pk=user.pk).update(profile_photo_updated_at=None)
     user.profile_photo_updated_at = None

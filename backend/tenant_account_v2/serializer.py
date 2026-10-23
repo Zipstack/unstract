@@ -151,11 +151,13 @@ class UserInfoSerializer(serializers.Serializer):
 class UserProfileSerializer(UserInfoSerializer):
     """The `user` object GET users/profile/ returns; documents the contract."""
 
+    # The identity provider's user info may leave these out.
+    id = serializers.CharField(allow_null=True)
     name = serializers.CharField(
-        help_text="The edited name when set, else the provider's"
+        allow_null=True, help_text="The edited name when set, else the provider's"
     )
     display_name = serializers.CharField(
-        help_text="The edited name when set, else the provider's"
+        allow_null=True, help_text="The edited name when set, else the provider's"
     )
     family_name = serializers.CharField(allow_null=True)
     picture = serializers.CharField(
@@ -176,7 +178,10 @@ class UserProfileSerializer(UserInfoSerializer):
 
 
 class ProfileUpdateSerializer(serializers.Serializer):
-    display_name = serializers.CharField(max_length=NAME_SIZE)
+    # validated_data is keyed by the model field the value is saved to.
+    display_name = serializers.CharField(
+        max_length=NAME_SIZE, source="profile_display_name"
+    )
     language = serializers.ChoiceField(choices=LANGUAGES, required=False)
 
 
@@ -191,9 +196,13 @@ class ProfilePhotoSerializer(serializers.Serializer):
     photo = PhotoUploadField()
 
     def validate_photo(self, photo: Any) -> Any:
-        # Size first, so an oversized upload is refused before it is read.
+        # Size first, so an oversized file is refused before it is read again
+        # for type sniffing. The parser has already received it; a request-size
+        # cap belongs in the proxy or DATA_UPLOAD_MAX_MEMORY_SIZE.
         if photo.size > MAX_PHOTO_BYTES:
-            raise ValidationError("The photo is larger than 2 MB.")
+            raise ValidationError(
+                f"The photo is larger than {MAX_PHOTO_BYTES // (1024 * 1024)} MB."
+            )
         # The type is read from the bytes, so a renamed file is judged by content.
         FileValidator(allowed_mimetypes=PHOTO_TYPES)([photo])
         return photo
