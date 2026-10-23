@@ -35,9 +35,11 @@ full rationale.
 """
 
 import base64
+import json
 import logging
 import os
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING
@@ -333,11 +335,96 @@ class PageImageTooLargeError(PageImageLoadError):
 
 @dataclass(frozen=True)
 class LoadedPageImage:
-    """A page image read from FileStorage, base64-encoded for a VLM call."""
+    """A page image read from FileStorage, base64-encoded for a VLM call.
+
+    ``page_number`` is the image's position (``page_NNN``, always 1..N).
+    ``document_page`` is its page number in the source document when
+    ``pages.json`` records it (a 'Pages to extract' selection), else None.
+    """
 
     page_number: int
     path: str
     base64_data: str
+    document_page: int | None = None
+
+    @property
+    def label_page(self) -> int:
+        """The page number shown to the LLM: the document's, else the position."""
+        return self.document_page or self.page_number
+
+
+# Written next to the page images when a selection makes the document page
+# numbers differ from the image positions: {"pages": [10, 12, ...]}, one
+# entry per image in order. Used for the "Page N" labels only.
+PAGE_LABELS_FILENAME = "pages.json"
+# Up to 999 six-digit page numbers fit comfortably; bounds a corrupt object.
+_PAGE_LABELS_MAX_BYTES = 64 * 1024
+
+
+def validate_document_pages(value: object, image_count: int) -> list[int] | None:
+    """``value`` as document page numbers for ``image_count`` images, or None.
+
+    Valid means a list of positive integers (not bools), strictly ascending
+    (LLMWhisperer renders a selection in ascending order without
+    duplicates), with exactly one entry per image.
+    """
+    if not isinstance(value, list) or len(value) != image_count or not value:
+        return None
+    if any(isinstance(p, bool) or not isinstance(p, int) or p < 1 for p in value):
+        return None
+    if any(a >= b for a, b in zip(value, value[1:], strict=False)):
+        return None
+    return list(value)
+
+
+def is_page_selection(document_pages: Sequence[int] | None) -> bool:
+    """Whether ``document_pages`` came from a selection (not simply 1..N)."""
+    return document_pages is not None and list(document_pages) != list(
+        range(1, len(document_pages) + 1)
+    )
+
+
+def _page_position(
+    index: int, page_number: int, image_count: int, document_pages: list[int] | None
+) -> str:
+    """'page 12 (image 2 of 5)' with labels, else 'page 2 of 5'."""
+    if document_pages:
+        return f"page {document_pages[index]} (image {page_number} of {image_count})"
+    return f"page {page_number} of {image_count}"
+
+
+def read_document_pages(
+    fs: FileStorage, page_store_dir: str, image_count: int
+) -> list[int] | None:
+    """Document page numbers recorded in ``pages.json``, or None.
+
+    Fails open: a missing, unreadable or invalid file means the labels fall
+    back to the image positions; it never fails the prompt.
+    """
+    path = str(PurePosixPath(page_store_dir) / PAGE_LABELS_FILENAME)
+    try:
+        # Most page sets have no labels file: a missing one is the common case.
+        raw = fs.read(path=path, mode="rb", length=_PAGE_LABELS_MAX_BYTES + 1)
+    except FileNotFoundError:
+        return None
+    except Exception as e:
+        logger.warning("Image mode: could not read page labels %s: %s", path, e)
+        return None
+    try:
+        if len(raw) > _PAGE_LABELS_MAX_BYTES:
+            raise ValueError("too large")
+        data = json.loads(raw)
+        pages = validate_document_pages(
+            data.get("pages") if isinstance(data, dict) else None, image_count
+        )
+        if pages is None:
+            raise ValueError("does not match the page images")
+    except ValueError as e:
+        logger.warning(
+            "Image mode: ignoring page labels %s (%s); labelling by position", path, e
+        )
+        return None
+    return pages
 
 
 def _not_found(page_store_dir: str) -> PageImagesNotFoundError:
@@ -466,6 +553,9 @@ def load_page_images(  # noqa: C901 - legacy and policy paths share one bounded-
             max_total_bytes = configured_max_total_bytes()
     discovered = discover_page_images(fs, page_store_dir)
     page_count = len(discovered)
+    # Read first so a cap message can say the pages are a selection.
+    document_pages = read_document_pages(fs, page_store_dir, page_count)
+    selected = is_page_selection(document_pages)
     if limits is not None:
         # Imported here: the policy module imports this module's exceptions.
         from unstract.sdk1.utils.image_limits import policy as _policy
@@ -476,7 +566,9 @@ def load_page_images(  # noqa: C901 - legacy and policy paths share one bounded-
         )
         if page_count > page_cap:
             raise PageCapExceededError(
-                _policy.page_cap_message(page_count, limits.page_budget, charged=None),
+                _policy.page_cap_message(
+                    page_count, limits.page_budget, charged=None, selected=selected
+                ),
                 page_store_dir=page_store_dir,
                 page_count=page_count,
                 page_cap=page_cap,
@@ -485,7 +577,7 @@ def load_page_images(  # noqa: C901 - legacy and policy paths share one bounded-
         from unstract.sdk1.utils.image_limits.policy import fixed_cap_message
 
         raise PageCapExceededError(
-            fixed_cap_message(page_count, page_cap, pages_to_extract_note=True),
+            fixed_cap_message(page_count, page_cap, selected=selected),
             page_store_dir=page_store_dir,
             page_count=page_count,
             page_cap=page_cap,
@@ -493,7 +585,7 @@ def load_page_images(  # noqa: C901 - legacy and policy paths share one bounded-
 
     loaded = []
     total_bytes = 0
-    for page_number, path in discovered:
+    for index, (page_number, path) in enumerate(discovered):
         read_kwargs: dict[str, int] = {}
         if max_total_bytes is not None:
             # Bounded read: never pull more than the remaining budget (+1
@@ -523,6 +615,7 @@ def load_page_images(  # noqa: C901 - legacy and policy paths share one bounded-
                 page_count=page_count,
                 data=data,
                 page_store_dir=page_store_dir,
+                document_page=document_pages[index] if document_pages else None,
             )
         if max_total_bytes is not None and total_bytes > max_total_bytes:
             # Stop before encoding/retaining more — the page cap bounds the
@@ -536,11 +629,14 @@ def load_page_images(  # noqa: C901 - legacy and policy paths share one bounded-
                     charged=None,
                 )
             else:
+                where = _page_position(
+                    index, page_number, len(discovered), document_pages
+                )
                 message = (
                     "This document is too large for image output mode. Its "
                     "page images go over the "
-                    f"{max_total_bytes // (1024 * 1024)} MB limit at page "
-                    f"{page_number} of {len(discovered)}, and image mode has to "
+                    f"{max_total_bytes // (1024 * 1024)} MB limit at {where}"
+                    ", and image mode has to "
                     "send every page to the LLM in one request. Split the "
                     "document into smaller files, or use a text output mode "
                     "instead."
@@ -553,7 +649,12 @@ def load_page_images(  # noqa: C901 - legacy and policy paths share one bounded-
             )
         encoded = base64.b64encode(data).decode("ascii")
         loaded.append(
-            LoadedPageImage(page_number=page_number, path=path, base64_data=encoded)
+            LoadedPageImage(
+                page_number=page_number,
+                path=path,
+                base64_data=encoded,
+                document_page=document_pages[index] if document_pages else None,
+            )
         )
     return loaded
 
@@ -566,14 +667,17 @@ def build_vision_message_content(
     Layout: the prompt text first (task framing), then for each page — in
     page order — a ``Page N`` text label immediately followed by that
     page's image block. The explicit labels preserve reading order for the
-    model and enable page citations later at zero cost.
+    model and enable page citations later at zero cost. ``N`` is the page's
+    number in the source document (``Page 10`` for document page 10 of a
+    'Pages to extract' selection), as /whisper's page separators use, falling
+    back to the image position when no labels were recorded.
 
     Returns the ``content`` list for a single user message; callers wrap it
     as ``[{"role": "user", "content": content}]``.
     """
     content: list[dict] = [{"type": "text", "text": prompt_text}]
     for page in pages:
-        content.append({"type": "text", "text": f"Page {page.page_number}"})
+        content.append({"type": "text", "text": f"Page {page.label_page}"})
         content.append(
             {
                 "type": "image_url",

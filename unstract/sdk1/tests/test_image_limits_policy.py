@@ -223,6 +223,17 @@ class TestPolicyFromLimits:
         assert "`claude-sonnet-4-5` on Anthropic" in str(byte_err.value)
         assert "gpt-5.6" not in str(byte_err.value)
 
+    def test_per_image_message_names_the_document_page(self) -> None:
+        policy = ImageModePolicy.from_limits([BEDROCK])
+        pages = [(1, b"x" * 10), (2, b"x" * 4_000_000)]
+        with pytest.raises(PageImageTooLargeError) as excinfo:
+            check_page_set(policy, pages, page_store_dir=DIR, document_pages=[10, 12])
+        assert str(excinfo.value).startswith("Page 12 of this document is")
+        assert excinfo.value.page_number == 2  # the image position stays structured
+        with pytest.raises(PageImageTooLargeError) as fallback:
+            check_page_set(policy, pages, page_store_dir=DIR)
+        assert str(fallback.value).startswith("Page 2 of this document is")
+
     def test_per_image_message_names_the_model_that_set_the_limit(self) -> None:
         # Mistral sets the page budget (8 images); Bedrock's 3.75 MB per-image
         # limit is the stricter one, so the message must name Bedrock.
@@ -779,18 +790,59 @@ class TestFixedCapMessage:
     """One wording for the fixed cap, shared by every site that enforces it."""
 
     def test_states_the_count_the_cap_and_the_fix(self) -> None:
-        msg = policy_mod.fixed_cap_message(
-            91, 90, charged=False, pages_to_extract_note=True
-        )
+        msg = policy_mod.fixed_cap_message(91, 90, charged=False)
         assert msg.startswith("This document has too many pages for image output mode.")
         assert "It has 91 pages, and the limit is 90" in msg
+        assert "set the adapter's 'Pages to extract' to a smaller range" in msg
         assert "or use a text output mode instead." in msg
-        assert "No pages were converted or charged." in msg
-        assert msg.endswith("does not apply in image output mode.)")
+        assert msg.endswith("No pages were converted or charged.")
+        assert "does not apply" not in msg
 
     def test_callers_choose_the_text_mode_advice(self) -> None:
         msg = policy_mod.fixed_cap_message(
             6, 5, switch_to="switch this profile to a text output mode"
         )
         assert msg.endswith("or switch this profile to a text output mode.")
-        assert "charged" not in msg and "Pages to extract" not in msg
+        assert "charged" not in msg
+        assert "'Pages to extract' to a smaller range" in msg
+
+    def test_fixed_cap_with_a_selection_names_it(self) -> None:
+        msg = policy_mod.fixed_cap_message(50, 20, selected_from=300)
+        assert msg.startswith("Too many pages are selected for image output mode.")
+        assert "'Pages to extract' selects 50 of this document's 300 pages" in msg
+        assert "and the limit is 20" in msg
+        assert "This document has" not in msg
+
+    def test_page_cap_with_a_selection_names_it(self) -> None:
+        budget = policy_mod.PageBudget(
+            max_pages=20,
+            binding="ceiling",
+            limits=None,
+            context_tokens=None,
+            advisory_max_images=None,
+        )
+        msg = policy_mod.page_cap_message(50, budget, charged=False, selected_from=300)
+        assert msg.startswith(
+            "'Pages to extract' selects 50 of this document's 300 pages."
+        )
+        assert "This document has" not in msg
+
+    def test_selection_without_document_count(self) -> None:
+        budget = policy_mod.PageBudget(
+            max_pages=20,
+            binding="ceiling",
+            limits=None,
+            context_tokens=None,
+            advisory_max_images=None,
+        )
+        msg = policy_mod.page_cap_message(50, budget, charged=None, selected=True)
+        assert msg.startswith("'Pages to extract' selects 50 pages. ")
+        fixed = policy_mod.fixed_cap_message(50, 20, selected=True)
+        assert "'Pages to extract' selects 50 pages, and the limit is 20" in fixed
+        assert ".," not in fixed and ".," not in policy_mod.fixed_cap_message(
+            50, 20, selected_from=300
+        )
+
+    def test_model_aware_advice_names_pages_to_extract(self) -> None:
+        # Image mode honours 'Pages to extract', so narrowing it is a fix.
+        assert "'Pages to extract' to a smaller range" in policy_mod._SPLIT_ADVICE

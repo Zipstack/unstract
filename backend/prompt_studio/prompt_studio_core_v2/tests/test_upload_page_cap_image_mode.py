@@ -14,7 +14,7 @@ from __future__ import annotations
 import inspect
 import io
 import logging
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pypdfium2 as pdfium
 import pytest
@@ -73,6 +73,71 @@ class TestRejectsOverCapInImageMode:
         check(data, _PDF)
         assert data.tell() == 0
         assert not data.closed
+
+
+class TestPagesToExtract:
+    """The check counts the pages the profile's 'Pages to extract' selects."""
+
+    @staticmethod
+    def _ranged(spec: str) -> MagicMock:
+        profile = _profile({"output_mode": "image", "pages_to_extract": spec})
+        profile.llm = None  # fixed cap of five
+        return profile
+
+    def test_range_within_cap_accepts_a_large_pdf(self) -> None:
+        check(_pdf(30), _PDF, self._ranged("1-5"))
+
+    def test_range_over_cap_names_the_selection(self) -> None:
+        with pytest.raises(ImageModePageLimitExceeded) as excinfo:
+            check(_pdf(30), _PDF, self._ranged("1-10"))
+        msg = str(excinfo.value.detail)
+        assert "'Pages to extract' selects 10 of this document's 30 pages" in msg
+        assert "and the limit is 5" in msg
+        assert "This document has" not in msg
+
+    def test_range_selecting_every_page_is_not_named(self) -> None:
+        # Same rule as the SDK: the selection is named only when it narrows.
+        with pytest.raises(ImageModePageLimitExceeded) as excinfo:
+            check(_pdf(30), _PDF, self._ranged("1-"))
+        msg = str(excinfo.value.detail)
+        assert "selects" not in msg
+        assert "It has 30 pages, and the limit is 5" in msg
+
+    def test_count_comes_from_the_sdk_helper(self) -> None:
+        with patch.object(
+            _psh_mod.LLMWhispererHelper, "selected_page_count", return_value=4
+        ) as count:
+            assert PromptStudioHelper._selected_page_count(self._ranged("1-4"), 30) == 4
+        assert count.call_args.args[1] == 30
+
+    def test_unreadable_setting_is_logged_without_its_value(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        profile = MagicMock(name="ProfileManager")
+        type(profile.x2text).metadata = property(
+            lambda _self: (_ for _ in ()).throw(ValueError("secret-key-material"))
+        )
+        with caplog.at_level(logging.WARNING):
+            count = PromptStudioHelper._selected_page_count(profile, 30)
+        assert count == 30
+        assert "ValueError" in caplog.text
+        assert "Pages to extract" in caplog.text
+        assert "secret-key-material" not in caplog.text
+
+    def test_invalid_setting_is_logged_without_its_value(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        with caplog.at_level(logging.WARNING):
+            count = PromptStudioHelper._selected_page_count(self._ranged("5-3"), 30)
+        assert count == 30
+        assert "PageRangeError" in caplog.text
+        assert "5-3" not in caplog.text
+
+    def test_invalid_range_falls_back_to_the_whole_document(self) -> None:
+        with pytest.raises(ImageModePageLimitExceeded) as excinfo:
+            check(_pdf(30), _PDF, self._ranged("5-3"))
+        assert "selects" not in str(excinfo.value.detail)
+        check(_pdf(5), _PDF, self._ranged("5-3"))
 
 
 class TestGate:

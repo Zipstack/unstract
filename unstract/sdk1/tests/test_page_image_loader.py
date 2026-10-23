@@ -15,6 +15,7 @@ import pytest
 from unstract.sdk1.adapters.x2text.page_image_loader import (
     DEFAULT_PAGE_CAP,
     PAGE_CAP_ENV,
+    PAGE_LABELS_FILENAME,
     LoadedPageImage,
     PageCapExceededError,
     PageImageSetIncompleteError,
@@ -131,10 +132,9 @@ class TestPageCap:
         msg = str(err)
         assert "too many pages for image output mode" in msg
         assert "It has 5 pages, and the limit is 4" in msg
-        # Rules out the adapter's "Pages to extract" setting — pointing at it
-        # sent a tester hunting through a field they had never set (UN-2646
-        # follow-up). The operator-only env var is not shown to users.
-        assert "'Pages to extract' setting does not apply" in msg
+        # Image mode honours the adapter's "Pages to extract" setting, so the
+        # message offers narrowing it. The operator-only env var is not shown.
+        assert "'Pages to extract' to a smaller range" in msg
         assert "VLM_IMAGE_ANSWER_PAGE_CAP" not in msg
 
     def test_cap_check_precedes_reads(self) -> None:
@@ -145,7 +145,8 @@ class TestPageCap:
         fs.read = lambda path, **kw: reads.append(path) or original_read(path, **kw)
         with pytest.raises(PageCapExceededError):
             load_page_images(fs, _DIR, page_cap=1)
-        assert reads == []
+        # Only the small labels file (read for the message) may be touched.
+        assert [p for p in reads if not p.endswith(PAGE_LABELS_FILENAME)] == []
 
     def test_none_disables_cap(self) -> None:
         fs = _store({n: b"x" for n in range(1, DEFAULT_PAGE_CAP + 5)})
@@ -297,7 +298,8 @@ class TestByteBudget:
         original_read = fs.read
 
         def recording_read(path: str, **kw: object) -> bytes | str:
-            lengths.append(kw.get("length"))
+            if not path.endswith(PAGE_LABELS_FILENAME):  # page images only
+                lengths.append(kw.get("length"))
             return original_read(path, **kw)
 
         fs.read = recording_read
@@ -463,7 +465,8 @@ class TestModelAwareLimits:
         original_read = fs.read
 
         def recording_read(path: str, **kw: object) -> bytes | str:
-            reads.append(path)
+            if not path.endswith(PAGE_LABELS_FILENAME):  # page images only
+                reads.append(path)
             return original_read(path, **kw)
 
         fs.read = recording_read
@@ -484,7 +487,8 @@ class TestModelAwareLimits:
         original_read = fs.read
 
         def recording_read(path: str, **kw: object) -> bytes | str:
-            lengths.append(kw.get("length"))
+            if not path.endswith(PAGE_LABELS_FILENAME):  # page images only
+                lengths.append(kw.get("length"))
             return original_read(path, **kw)
 
         fs.read = recording_read
@@ -503,6 +507,16 @@ class TestModelAwareLimits:
         with pytest.raises(PageImageTooLargeError) as excinfo:
             load_page_images(fs, _DIR, limits=self._policy(max_image_bytes=100))
         assert excinfo.value.page_number == 2
+
+    def test_per_image_error_names_the_document_page(self) -> None:
+        from unstract.sdk1.adapters.x2text.page_image_loader import PageImageTooLargeError
+
+        fs = _store(
+            {1: b"a" * 10, 2: b"b" * 500}, extra={"pages.json": b'{"pages": [10, 12]}'}
+        )
+        with pytest.raises(PageImageTooLargeError) as excinfo:
+            load_page_images(fs, _DIR, limits=self._policy(max_image_bytes=100))
+        assert str(excinfo.value).startswith("Page 12 of this document is")
 
     def test_within_policy_loads(self) -> None:
         fs = _store({1: minimal_png(), 2: minimal_png()})
@@ -614,3 +628,97 @@ class TestConfiguredCeilings:
             for name in (PAGE_CAP_ENV, MAX_TOTAL_MB_ENV)
             if name in r.getMessage()
         }
+
+
+class TestDocumentPageLabels:
+    """pages.json gives each image its document page for the label only."""
+
+    def _labels(self, fs: InMemoryFileStorage) -> list[str]:
+        content = build_vision_message_content(load_page_images(fs, _DIR), "Q")
+        return [block["text"] for block in content[1:] if block["type"] == "text"]
+
+    def test_labels_use_document_pages(self) -> None:
+        fs = _store({1: b"a", 2: b"b"}, extra={"pages.json": b'{"pages": [10, 12]}'})
+        loaded = load_page_images(fs, _DIR)
+        assert [p.page_number for p in loaded] == [1, 2]
+        assert [p.document_page for p in loaded] == [10, 12]
+        assert self._labels(fs) == ["Page 10", "Page 12"]
+
+    def test_absent_file_falls_back_to_file_numbers(self) -> None:
+        fs = _store({1: b"a", 2: b"b"})
+        assert self._labels(fs) == ["Page 1", "Page 2"]
+
+    @pytest.mark.parametrize(
+        "raw",
+        [
+            b"not json",
+            b"[10, 12]",
+            b'{"pages": [10]}',
+            b'{"pages": [12, 10]}',
+            b'{"pages": [10, 10]}',
+            b'{"pages": [0, 12]}',
+            b'{"pages": ["10", 12]}',
+            b'{"pages": [true, 12]}',
+        ],
+        ids=[
+            "garbage",
+            "bare-list",
+            "short",
+            "unordered",
+            "dupes",
+            "zero",
+            "str",
+            "bool",
+        ],
+    )
+    def test_invalid_file_falls_back_to_file_numbers(self, raw: bytes) -> None:
+        fs = _store({1: b"a", 2: b"b"}, extra={"pages.json": raw})
+        assert self._labels(fs) == ["Page 1", "Page 2"]
+
+    def test_labels_file_is_not_a_page(self) -> None:
+        fs = _store({1: b"a"}, extra={"pages.json": b'{"pages": [3]}'})
+        assert [n for n, _ in discover_page_images(fs, _DIR)] == [1]
+
+
+class TestDocumentPageInLoaderMessages:
+    def test_byte_budget_message_names_the_document_page(self) -> None:
+        fs = _store(
+            {1: b"a" * 40, 2: b"b" * 40}, extra={"pages.json": b'{"pages": [10, 12]}'}
+        )
+        with pytest.raises(PageImageSetTooLargeError) as excinfo:
+            load_page_images(fs, _DIR, max_total_bytes=50)
+        assert "limit at page 12 (image 2 of 2)" in str(excinfo.value)
+
+    def test_byte_budget_message_falls_back_to_the_position(self) -> None:
+        fs = _store({1: b"a" * 40, 2: b"b" * 40})
+        with pytest.raises(PageImageSetTooLargeError) as excinfo:
+            load_page_images(fs, _DIR, max_total_bytes=50)
+        assert "limit at page 2 of 2" in str(excinfo.value)
+
+    def test_fixed_cap_message_names_a_selection(self) -> None:
+        fs = _store(
+            {1: b"a", 2: b"b", 3: b"c"}, extra={"pages.json": b'{"pages": [4, 8, 9]}'}
+        )
+        with pytest.raises(PageCapExceededError) as excinfo:
+            load_page_images(fs, _DIR, page_cap=2)
+        msg = str(excinfo.value)
+        assert "'Pages to extract' selects 3 pages, and the limit is 2" in msg
+        assert "This document has" not in msg
+
+    def test_fixed_cap_message_without_a_selection_is_unchanged(self) -> None:
+        fs = _store({1: b"a", 2: b"b", 3: b"c"})
+        with pytest.raises(PageCapExceededError) as excinfo:
+            load_page_images(fs, _DIR, page_cap=2)
+        assert "This document has too many pages" in str(excinfo.value)
+        assert "It has 3 pages, and the limit is 2" in str(excinfo.value)
+
+    def test_missing_labels_file_is_read_without_an_exists_check(self) -> None:
+        fs = _store({1: b"a"})
+        original_exists = fs.exists
+
+        def exists(path: str) -> bool:
+            assert not path.endswith(PAGE_LABELS_FILENAME), "labels: read, not exists"
+            return original_exists(path)
+
+        fs.exists = exists
+        assert [p.page_number for p in load_page_images(fs, _DIR)] == [1]

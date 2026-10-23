@@ -1609,10 +1609,16 @@ class PromptStudioHelper:
         """
         if file_type != "application/pdf":
             return
-        page_count = LLMWhispererHelper.pdf_page_count(file_data)
+        total_page_count = LLMWhispererHelper.pdf_page_count(file_data)
         file_data.seek(0)
-        if page_count is None:
+        if total_page_count is None:
             return
+        page_count = PromptStudioHelper._selected_page_count(
+            profile_manager, total_page_count
+        )
+        # Named in the message only when the selection narrowed the count,
+        # as the SDK's pre-submit check does.
+        selected_from = total_page_count if page_count != total_page_count else None
         budget = PromptStudioHelper._upload_page_budget(profile_manager)
         if budget is not None:
             if page_count <= budget.max_pages:
@@ -1620,7 +1626,9 @@ class PromptStudioHelper:
             profile_name = getattr(profile_manager, "profile_name", "") or "default"
             raise ImageModePageLimitExceeded(
                 detail=(
-                    page_cap_message(page_count, budget, charged=None)
+                    page_cap_message(
+                        page_count, budget, charged=None, selected_from=selected_from
+                    )
                     + " This check uses the project's default profile "
                     f"('{profile_name}'); other profiles may allow a different "
                     "number of pages."
@@ -1634,8 +1642,35 @@ class PromptStudioHelper:
                 page_count,
                 page_cap,
                 switch_to="switch the project's default profile to a text output mode",
+                selected_from=selected_from,
             )
         )
+
+    @staticmethod
+    def _selected_page_count(
+        profile_manager: ProfileManager | None, total_page_count: int
+    ) -> int:
+        """Pages the profile's 'Pages to extract' selects.
+
+        Image mode converts and sends only the selected pages, so the upload
+        check counts those, with the SDK's own counting. Fails open to the
+        whole document when the setting is unreadable or invalid; extraction
+        reports an invalid setting before anything is converted. A failure is
+        logged with its type only: the adapter metadata can hold credentials,
+        and the setting's value is user input.
+        """
+        try:
+            x2text = getattr(profile_manager, "x2text", None)
+            metadata = (getattr(x2text, "metadata", None) or {}) if x2text else {}
+            return LLMWhispererHelper.selected_page_count(metadata, total_page_count)
+        except Exception as e:
+            logger.warning(
+                "Could not apply the default profile's 'Pages to extract' setting "
+                "to the upload page check (%s); counting all %d pages",
+                type(e).__name__,
+                total_page_count,
+            )
+            return total_page_count
 
     @staticmethod
     def _validate_image_output_pdf_only(
