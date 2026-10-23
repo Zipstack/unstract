@@ -7,7 +7,7 @@ Each user has one inbox per organization. Paths are organization-scoped: `/api/v
 | Method and path | Response |
 |---|---|
 | GET `notifications/inbox/` | `{count, next, previous, results, unread_count}`, newest first, `?page` and `?page_size`; 404 for a page past the end (go back to page 1) |
-| POST `notifications/inbox/<id>/read/` | 204; 404 when the item is not the caller's or no longer exists (withdrawn or purged) |
+| POST `notifications/inbox/<id>/read/` | Optional body `{"created": "<the item's created as listed>"}`. 204 when the item is now read, or already was; 404 when the item is not the caller's or no longer exists (withdrawn or purged); 409 when a later failure has refreshed the item since that `created`: the item stays unread, and the body is `{"item": <the item as it is now>, "unread_count": n}`. Without `created`, the item's current version is marked |
 | POST `notifications/inbox/read-all/` | 204; marks every unread item, including any that arrived after the client's list was loaded |
 
 ### Item
