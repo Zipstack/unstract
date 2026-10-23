@@ -91,8 +91,9 @@ class TestPagesToExtract:
         with pytest.raises(ImageModePageLimitExceeded) as excinfo:
             check(_pdf(30), _PDF, self._ranged("1-"))
         msg = str(excinfo.value.detail)
-        assert "'Pages to extract' (1-) selects 30 of the document's 30 pages." in msg
-        assert "It has 30 pages, and the limit is 5" in msg
+        assert "'Pages to extract' selects 30 of this document's 30 pages" in msg
+        assert "and the limit is 5" in msg
+        assert "This document has" not in msg
 
     def test_invalid_range_falls_back_to_the_whole_document(self) -> None:
         with pytest.raises(ImageModePageLimitExceeded) as excinfo:

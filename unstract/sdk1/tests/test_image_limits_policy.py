@@ -795,6 +795,27 @@ class TestFixedCapMessage:
         assert "charged" not in msg
         assert "'Pages to extract' to a smaller range" in msg
 
+    def test_fixed_cap_with_a_selection_names_it(self) -> None:
+        msg = policy_mod.fixed_cap_message(50, 20, selected_from=300)
+        assert msg.startswith("Too many pages are selected for image output mode.")
+        assert "'Pages to extract' selects 50 of this document's 300 pages" in msg
+        assert "and the limit is 20" in msg
+        assert "This document has" not in msg
+
+    def test_page_cap_with_a_selection_names_it(self) -> None:
+        budget = policy_mod.PageBudget(
+            max_pages=20,
+            binding="ceiling",
+            limits=None,
+            context_tokens=None,
+            advisory_max_images=None,
+        )
+        msg = policy_mod.page_cap_message(50, budget, charged=False, selected_from=300)
+        assert msg.startswith(
+            "'Pages to extract' selects 50 of this document's 300 pages."
+        )
+        assert "This document has" not in msg
+
     def test_model_aware_advice_names_pages_to_extract(self) -> None:
         # Image mode honours 'Pages to extract', so narrowing it is a fix.
         assert "'Pages to extract' to a smaller range" in policy_mod._SPLIT_ADVICE
