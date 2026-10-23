@@ -2,14 +2,20 @@ import logging
 
 from account_v2.authentication_controller import AuthenticationController
 from account_v2.exceptions import BadRequestException
+from account_v2.models import User
+from account_v2.user_profile import delete_photo, photo_url, read_photo, save_photo
+from django.http import HttpResponse
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiResponse, extend_schema, inline_serializer
 from platform_audit.actions import Action, TargetType
 from platform_audit.recorder import (
     BEFORE_UNAVAILABLE,
     best_effort,
     record_platform_event,
 )
-from rest_framework import status, viewsets
+from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import NotFound
 from rest_framework.request import Request
 from rest_framework.response import Response
 from utils.user_context import UserContext
@@ -21,13 +27,23 @@ from tenant_account_v2.serializer import (
     ChangeUserRoleRequestSerializer,
     InviteUserSerializer,
     OrganizationMemberSerializer,
+    ProfilePhotoSerializer,
+    ProfileUpdateSerializer,
     RemoveUserFromOrganizationSerializer,
     UpdateFlagSerializer,
     UserInfoSerializer,
     UserInviteResponseSerializer,
+    UserProfileSerializer,
 )
 
 Logger = logging.getLogger(__name__)
+
+PROFILE_RESPONSE = inline_serializer(
+    "UserProfileResponse", {"user": UserProfileSerializer()}
+)
+PHOTO_URL_RESPONSE = inline_serializer(
+    "UserProfilePhotoResponse", {"photo_url": serializers.CharField()}
+)
 
 
 class OrganizationUserViewSet(viewsets.ViewSet):
@@ -85,6 +101,12 @@ class OrganizationUserViewSet(viewsets.ViewSet):
                 data={"status": "failed", "message": "failed"},
             )
 
+    @extend_schema(
+        operation_id="user_profile",
+        tags=["profile"],
+        responses={200: PROFILE_RESPONSE},
+        description="The current user. See tenant_account_v2/ReadMe.md.",
+    )
     @action(detail=False, methods=["GET"])
     def get_user_profile(self, request: Request) -> Response:
         auth_controller = AuthenticationController()
@@ -118,6 +140,8 @@ class OrganizationUserViewSet(viewsets.ViewSet):
                 if org:
                     serialized_user_info["organization_name"] = org.display_name
                     serialized_user_info["organization_id"] = org.organization_id
+            serialized_user_info["photo_url"] = photo_url(request.user, org_id)
+            serialized_user_info["language"] = request.user.language
 
             return Response(
                 status=status.HTTP_200_OK, data={"user": serialized_user_info}
@@ -128,6 +152,86 @@ class OrganizationUserViewSet(viewsets.ViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 data={"message": "Internal Error"},
             )
+
+    @extend_schema(
+        operation_id="user_profile_update",
+        tags=["profile"],
+        request=ProfileUpdateSerializer,
+        responses={
+            200: PROFILE_RESPONSE,
+            400: OpenApiResponse(description="Invalid field"),
+            404: OpenApiResponse(
+                description="Saved, but the user was not found on read back"
+            ),
+            500: OpenApiResponse(
+                description="Saved, but the profile could not be read back"
+            ),
+        },
+    )
+    @action(detail=False, methods=["PATCH"])
+    def update_profile(self, request: Request) -> Response:
+        """Set the name and/or language shown for the current user."""
+        serializer = ProfileUpdateSerializer(data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        changes = {
+            "profile_display_name" if field == "display_name" else field: value
+            for field, value in serializer.validated_data.items()
+        }
+        if changes:
+            User.objects.filter(pk=request.user.pk).update(**changes)
+            request.user.refresh_from_db(fields=list(changes))
+        return self.get_user_profile(request)
+
+    @extend_schema(
+        operation_id="user_profile_photo",
+        tags=["profile"],
+        responses={
+            (200, "image/png"): OpenApiTypes.BINARY,
+            (200, "image/jpeg"): OpenApiTypes.BINARY,
+            404: OpenApiResponse(description="No photo"),
+        },
+    )
+    @action(detail=False, methods=["GET"])
+    def get_profile_photo(self, request: Request) -> HttpResponse:
+        photo = read_photo(request.user)
+        if not photo:
+            raise NotFound("No profile photo.")
+        data, content_type = photo
+        response = HttpResponse(data, content_type=content_type)
+        response["Content-Disposition"] = "inline"
+        return response
+
+    @extend_schema(
+        operation_id="user_profile_photo_upload",
+        tags=["profile"],
+        request={"multipart/form-data": ProfilePhotoSerializer},
+        responses={
+            200: PHOTO_URL_RESPONSE,
+            400: OpenApiResponse(
+                description="No photo field, not a PNG or JPEG, or over 2 MB"
+            ),
+        },
+    )
+    @action(detail=False, methods=["POST"])
+    def upload_profile_photo(self, request: Request) -> Response:
+        serializer = ProfilePhotoSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        save_photo(request.user, serializer.validated_data["photo"].read())
+        org_id = UserSessionUtils.get_organization_id(request)
+        return Response(
+            status=status.HTTP_200_OK,
+            data={"photo_url": photo_url(request.user, org_id)},
+        )
+
+    @extend_schema(
+        operation_id="user_profile_photo_delete",
+        tags=["profile"],
+        responses={204: None},
+    )
+    @action(detail=False, methods=["DELETE"])
+    def delete_profile_photo(self, request: Request) -> Response:
+        delete_photo(request.user)
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(detail=False, methods=["POST"])
     def invite_user(self, request: Request) -> Response:
