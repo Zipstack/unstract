@@ -321,17 +321,23 @@ def _notify_execution_failed(execution_id: Any) -> None:
         organization=organization, dedupe_key=dedupe_key
     )
     if not is_failure_run(execution.status, execution.failed_files):
-        # No execution row lock needed: a failure callback for this run either
-        # stored its item before this run's status write could take the row
-        # lock, or re-read the clean run and stored nothing. Most clean runs
-        # have no item, so they skip the item lock too; when there is one, the
-        # item lock keeps this change from interleaving with another run's
-        # refresh.
+        # A failure callback for this run either stored its item before this
+        # run's status write could take the row lock, or re-read the clean run
+        # and stored nothing. Most clean runs have no item, so they skip both
+        # locks; when there is one, the item lock keeps this change from
+        # interleaving with another run's refresh, and the re-read under the
+        # row lock keeps it from withdrawing a failure that came back meanwhile.
         mine = _showing(items, execution)
         if mine.exists():
             with transaction.atomic():
                 _lock_item(dedupe_key)
-                _hand_back_or_withdraw(mine, execution, runs, organization)
+                execution = (
+                    runs.select_for_update(of=("self",)).filter(pk=execution_id).first()
+                )
+                if execution and not is_failure_run(
+                    execution.status, execution.failed_files
+                ):
+                    _hand_back_or_withdraw(mine, execution, runs, organization)
         return
     with transaction.atomic():
         # The item lock serialises runs of one resource, so the newest-run check
