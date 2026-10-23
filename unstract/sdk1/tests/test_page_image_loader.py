@@ -613,3 +613,53 @@ class TestConfiguredCeilings:
             for name in (PAGE_CAP_ENV, MAX_TOTAL_MB_ENV)
             if name in r.getMessage()
         }
+
+
+class TestDocumentPageLabels:
+    """pages.json gives each image its document page for the label only."""
+
+    def _labels(self, fs: InMemoryFileStorage) -> list[str]:
+        content = build_vision_message_content(load_page_images(fs, _DIR), "Q")
+        return [block["text"] for block in content[1:] if block["type"] == "text"]
+
+    def test_labels_use_document_pages(self) -> None:
+        fs = _store({1: b"a", 2: b"b"}, extra={"pages.json": b'{"pages": [10, 12]}'})
+        loaded = load_page_images(fs, _DIR)
+        assert [p.page_number for p in loaded] == [1, 2]
+        assert [p.document_page for p in loaded] == [10, 12]
+        assert self._labels(fs) == ["Page 10", "Page 12"]
+
+    def test_absent_file_falls_back_to_file_numbers(self) -> None:
+        fs = _store({1: b"a", 2: b"b"})
+        assert self._labels(fs) == ["Page 1", "Page 2"]
+
+    @pytest.mark.parametrize(
+        "raw",
+        [
+            b"not json",
+            b"[10, 12]",
+            b'{"pages": [10]}',
+            b'{"pages": [12, 10]}',
+            b'{"pages": [10, 10]}',
+            b'{"pages": [0, 12]}',
+            b'{"pages": ["10", 12]}',
+            b'{"pages": [true, 12]}',
+        ],
+        ids=[
+            "garbage",
+            "bare-list",
+            "short",
+            "unordered",
+            "dupes",
+            "zero",
+            "str",
+            "bool",
+        ],
+    )
+    def test_invalid_file_falls_back_to_file_numbers(self, raw: bytes) -> None:
+        fs = _store({1: b"a", 2: b"b"}, extra={"pages.json": raw})
+        assert self._labels(fs) == ["Page 1", "Page 2"]
+
+    def test_labels_file_is_not_a_page(self) -> None:
+        fs = _store({1: b"a"}, extra={"pages.json": b'{"pages": [3]}'})
+        assert [n for n, _ in discover_page_images(fs, _DIR)] == [1]
