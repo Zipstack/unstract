@@ -1,7 +1,7 @@
 """Delete platform audit events older than each organisation's retention.
 
-Reads already hide expired events, so running this only reclaims space. It is
-not scheduled; run it from cron or by hand::
+Reads already hide expired events, so running this reclaims space and makes a
+lowered retention final. Run it regularly::
 
     python manage.py purge_platform_audit_events --dry-run
     python manage.py purge_platform_audit_events --batch-size 5000
