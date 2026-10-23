@@ -110,6 +110,23 @@ class ProfileEndpointTests(LocalStorageMixin, TestCase):
         )
         self.assertEqual(self.patch_profile({"display_name": "x" * 64}).status_code, 200)
 
+    def test_patch_keeps_the_change_when_the_read_back_fails(self) -> None:
+        with (
+            patch(
+                "tenant_account_v2.users_view.AuthenticationController"
+                ".get_organization_members_by_user",
+                side_effect=RuntimeError("auth service down"),
+            ),
+            self.assertLogs("tenant_account_v2.users_view", "ERROR") as logs,
+        ):
+            response = self.patch_profile({"display_name": "Me Edited"})
+        self.assertEqual(response.status_code, 500, response.content)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.profile_display_name, "Me Edited")
+        (record,) = logs.records
+        self.assertIsNotNone(record.exc_info)
+        self.assertIn(str(self.user.pk), record.getMessage())
+
     def test_patch_ignores_fields_it_does_not_own(self) -> None:
         before = type(self.user).objects.get(pk=self.user.pk)
         response = self.patch_profile(

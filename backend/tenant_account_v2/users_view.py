@@ -181,8 +181,8 @@ class OrganizationUserViewSet(viewsets.ViewSet):
             return Response(
                 status=status.HTTP_200_OK, data={"user": serialized_user_info}
             )
-        except Exception as error:
-            Logger.error(f"Error while get User : {error}")
+        except Exception:
+            Logger.exception("Profile read failed for user %s", request.user.pk)
             return Response(
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 data={"message": "Internal Error"},
