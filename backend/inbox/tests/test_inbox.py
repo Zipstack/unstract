@@ -25,7 +25,11 @@ def _items(user) -> list[InboxItem]:
 
 
 def _shape(index_or_constraint) -> tuple:
-    return index_or_constraint.name, tuple(index_or_constraint.fields)
+    return (
+        index_or_constraint.name,
+        tuple(getattr(index_or_constraint, "fields", ())),
+        str(getattr(index_or_constraint, "check", "")),
+    )
 
 
 class ServiceTests(CoOwnerOrgTestMixin, TestCase):

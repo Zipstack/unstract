@@ -31,7 +31,11 @@ class InboxItem(DefaultOrganizationMixin, BaseModel):
         db_comment="Where the item opens: {key, params} as in global search, or null",
     )
     dedupe_key = models.CharField(
-        max_length=255, db_comment="Identifies the event, so it lands once per user"
+        max_length=255,
+        db_comment=(
+            "One item per user per key. A failed run's key names its source, so "
+            "later failures refresh the item; each share action has its own key"
+        ),
     )
     read_at = models.DateTimeField(null=True, blank=True)
 
@@ -43,7 +47,13 @@ class InboxItem(DefaultOrganizationMixin, BaseModel):
             models.UniqueConstraint(
                 fields=["organization", "user", "dedupe_key"],
                 name="unique_inbox_item_per_event",
-            )
+            ),
+            # NULLs are distinct in the unique constraint above, so a NULL
+            # organization would escape it.
+            models.CheckConstraint(
+                check=models.Q(organization__isnull=False),
+                name="inbox_item_has_organization",
+            ),
         ]
         indexes = [
             models.Index(
