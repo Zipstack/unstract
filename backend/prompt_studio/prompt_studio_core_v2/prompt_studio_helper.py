@@ -1623,12 +1623,7 @@ class PromptStudioHelper:
         page_count, spec = PromptStudioHelper._selected_page_count(
             profile_manager, total_page_count
         )
-        selection = (
-            f"'Pages to extract' ({spec}) selects {page_count} of the document's "
-            f"{total_page_count} pages. "
-            if spec
-            else ""
-        )
+        selected_from = total_page_count if spec else None
         budget = PromptStudioHelper._upload_page_budget(profile_manager)
         if budget is not None:
             if page_count <= budget.max_pages:
@@ -1636,8 +1631,9 @@ class PromptStudioHelper:
             profile_name = getattr(profile_manager, "profile_name", "") or "default"
             raise ImageModePageLimitExceeded(
                 detail=(
-                    selection
-                    + page_cap_message(page_count, budget, charged=None)
+                    page_cap_message(
+                        page_count, budget, charged=None, selected_from=selected_from
+                    )
                     + " This check uses the project's default profile "
                     f"('{profile_name}'); other profiles may allow a different "
                     "number of pages."
@@ -1647,11 +1643,11 @@ class PromptStudioHelper:
         if page_count <= page_cap:
             return
         raise ImageModePageLimitExceeded(
-            detail=selection
-            + fixed_cap_message(
+            detail=fixed_cap_message(
                 page_count,
                 page_cap,
                 switch_to="switch the project's default profile to a text output mode",
+                selected_from=selected_from,
             )
         )
 

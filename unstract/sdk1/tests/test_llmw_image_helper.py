@@ -612,6 +612,35 @@ class TestPreSubmitPageCap:
         assert excinfo.value.status_code == 400
         submit.assert_not_called()
 
+    @pytest.mark.parametrize("spec", ["1-", "1-999999", "7"])
+    def test_unknown_count_checks_the_range_without_expanding_it(
+        self, monkeypatch: MonkeyPatch, spec: str
+    ) -> None:
+        import unstract.sdk1.adapters.x2text.llm_whisperer_v2.src.helper as helper_mod
+
+        expand = MagicMock(side_effect=AssertionError("must not expand"))
+        monkeypatch.setattr(helper_mod, "resolve_page_range", expand)
+        assert H._expected_page_count({"pages_to_extract": spec}, None) is None
+
+    @pytest.mark.parametrize("spec", ["0", "0-3", "5-3", "-0"])
+    def test_unknown_count_still_rejects_zero_and_reversed(self, spec: str) -> None:
+        with pytest.raises(ExtractorError):
+            H._expected_page_count({"pages_to_extract": spec}, None)
+
+    def test_over_cap_selection_message_names_the_selection(
+        self, monkeypatch: MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("VLM_IMAGE_ANSWER_PAGE_CAP", "20")
+        fs = self._fs_with_pdf(monkeypatch, 300)
+        self._stub_after_submit(monkeypatch, 50)
+        with pytest.raises(ExtractorError) as excinfo:
+            H.get_page_images(
+                {"pages_to_extract": "1-50"}, "/in/d.pdf", "/o/d.txt", fs=fs
+            )
+        msg = str(excinfo.value)
+        assert "'Pages to extract' selects 50 of this document's 300 pages" in msg
+        assert "It has 50 pages" not in msg and "This document has" not in msg
+
     def test_status_document_pages_reach_persistence(
         self, monkeypatch: MonkeyPatch
     ) -> None:

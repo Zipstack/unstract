@@ -906,8 +906,25 @@ def _charged_clause(charged: bool | None, *, size_known_late: bool = False) -> s
     return " No pages were converted or charged."
 
 
-def page_cap_message(page_count: int, budget: PageBudget, *, charged: bool | None) -> str:
-    """User-facing text for a document with more pages than the budget."""
+def _selection_sentence(page_count: int, selected_from: int) -> str:
+    return (
+        f"'Pages to extract' selects {page_count} of this document's "
+        f"{selected_from} pages."
+    )
+
+
+def page_cap_message(
+    page_count: int,
+    budget: PageBudget,
+    *,
+    charged: bool | None,
+    selected_from: int | None = None,
+) -> str:
+    """User-facing text for a document with more pages than the budget.
+
+    ``selected_from`` is the document's page count when 'Pages to extract'
+    narrowed it to ``page_count``; the message then names the selection.
+    """
     limits = budget.limits
     if budget.binding == "images" and limits is not None:
         reason = (
@@ -922,10 +939,12 @@ def page_cap_message(page_count: int, budget: PageBudget, *, charged: bool | Non
             f"{described[0].upper()}{described[1:]}, and image output mode "
             "sends every page together."
         )
-    return (
-        f"This document has {page_count} pages. {reason} {_SPLIT_ADVICE}"
-        f"{_charged_clause(charged)}"
+    opening = (
+        _selection_sentence(page_count, selected_from)
+        if selected_from is not None
+        else f"This document has {page_count} pages."
     )
+    return f"{opening} {reason} {_SPLIT_ADVICE}{_charged_clause(charged)}"
 
 
 def fixed_cap_message(
@@ -934,6 +953,7 @@ def fixed_cap_message(
     *,
     switch_to: str = "use a text output mode instead",
     charged: bool | None = None,
+    selected_from: int | None = None,
 ) -> str:
     """User-facing text for a document over the FIXED page cap.
 
@@ -942,9 +962,18 @@ def fixed_cap_message(
     ``page_cap_message`` covers the model-aware budget. ``switch_to`` ends the
     advice ("switch this profile to a text output mode", ...).
     """
+    if selected_from is not None:
+        opening = (
+            "Too many pages are selected for image output mode. "
+            f"{_selection_sentence(page_count, selected_from)[:-1]}, and the limit is "
+        )
+    else:
+        opening = (
+            "This document has too many pages for image output mode. It has "
+            f"{page_count} pages, and the limit is "
+        )
     return (
-        "This document has too many pages for image output mode. It has "
-        f"{page_count} pages, and the limit is {page_cap} because every page is "
+        opening + f"{page_cap} because every page is "
         "sent to the LLM in one request. Split the document into smaller files, "
         "set the adapter's 'Pages to extract' to a smaller range, "
         f"or {switch_to}." + _charged_clause(charged)

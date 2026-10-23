@@ -1066,16 +1066,15 @@ class LLMWhispererHelper:
         zip_buffer = LLMWhispererHelper.download_pdf_to_images_zip(config, whisper_hash)
         return LLMWhispererHelper.extract_page_images_from_zip(zip_buffer)
 
-    # Resolves a selection when the PDF's page count is unknown: catches page
-    # 0 and reversed ranges (no page count needed); a selection past the end
-    # is then left to LLMWhisperer, which fails it unbilled.
-    _UNKNOWN_PAGE_COUNT_BOUND = 999_999
-
     @staticmethod
     def _expected_page_count(
         config: dict[str, Any], total_page_count: int | None
     ) -> int | None:
         """Number of pages the job will convert, or None when unknown.
+
+        With an unknown PDF page count the setting is still checked for page 0
+        and reversed ranges (neither needs the count); a selection that lies
+        past the end is then left to LLMWhisperer, which fails it unbilled.
 
         Raises:
             ExtractorError: The 'Pages to extract' setting is invalid for this
@@ -1083,11 +1082,9 @@ class LLMWhispererHelper:
         """
         spec = str(config.get(WhispererConfig.PAGES_TO_EXTRACT) or "")
         try:
-            canonical = normalize_page_range(spec)
+            canonical = LLMWhispererHelper.pages_to_extract_setting(config)
             if total_page_count is None:
-                resolve_page_range(
-                    canonical, LLMWhispererHelper._UNKNOWN_PAGE_COUNT_BOUND
-                )
+                LLMWhispererHelper._check_range_bounds(canonical)
                 return None
             return len(resolve_page_range(canonical, total_page_count))
         except PageRangeError as e:
@@ -1098,8 +1095,29 @@ class LLMWhispererHelper:
             ) from e
 
     @staticmethod
+    def _check_range_bounds(canonical: str) -> None:
+        """Reject page 0 and reversed ranges without expanding the selection.
+
+        Raises:
+            PageRangeError: A page number is 0 or a closed range is reversed.
+        """
+        for token in filter(None, canonical.split(",")):
+            numbers = [int(part) for part in token.split("-") if part]
+            if any(number < 1 for number in numbers):
+                raise PageRangeError(
+                    f"invalid page range '{canonical}': page numbers start at 1"
+                )
+            closed = "-" in token.strip("-")
+            if closed and numbers[0] > numbers[1]:
+                raise PageRangeError(
+                    f"invalid page range '{canonical}': '{token}' is reversed"
+                )
+
+    @staticmethod
     def _check_page_count_before_submit(
-        expected_page_count: int | None, image_limits: "ImageModePolicy | None"
+        expected_page_count: int | None,
+        image_limits: "ImageModePolicy | None",
+        selected_from: int | None = None,
     ) -> None:
         """Reject an over-budget document BEFORE the per-page-billed conversion.
 
@@ -1118,7 +1136,12 @@ class LLMWhispererHelper:
             budget = image_limits.page_budget
             if expected_page_count > budget.max_pages:
                 raise ImageLimitExceededError(
-                    _policy.page_cap_message(expected_page_count, budget, charged=False),
+                    _policy.page_cap_message(
+                        expected_page_count,
+                        budget,
+                        charged=False,
+                        selected_from=selected_from,
+                    ),
                     error_code=limit_codes.IMAGE_PAGE_CAP_EXCEEDED,
                     charged=False,
                 )
@@ -1138,6 +1161,7 @@ class LLMWhispererHelper:
                     expected_page_count,
                     page_cap,
                     charged=False,
+                    selected_from=selected_from,
                 ),
                 status_code=400,
             )
@@ -1230,8 +1254,12 @@ class LLMWhispererHelper:
         expected_page_count = LLMWhispererHelper._expected_page_count(
             config, total_page_count
         )
+        # Named in the cap message only when a selection narrowed the count.
+        selected_from = (
+            total_page_count if expected_page_count != total_page_count else None
+        )
         LLMWhispererHelper._check_page_count_before_submit(
-            expected_page_count, image_limits
+            expected_page_count, image_limits, selected_from
         )
 
         whisper_hash = LLMWhispererHelper.submit_pdf_to_images(
