@@ -1,7 +1,9 @@
 """Organisation capability permissions (UN-4399).
 
-The OSS auth service treats the ``admin`` role as admin, so the fixtures'
-roles drive ``is_user_organization_admin`` directly.
+The fixtures' roles come from the active auth service (``utils.tests.auth_seam``),
+so they drive ``is_user_organization_admin`` directly under any distribution.
+The classes whose role changes go through the identity provider pin the built-in
+service instead, and say why.
 """
 
 import importlib
@@ -35,6 +37,7 @@ from platform_api.models import ApiKeyPermission, PlatformApiKey
 from platform_api.views import PlatformApiKeyViewSet
 from platform_audit.tests.base import AuditTestBase, make_user
 from rest_framework.exceptions import PermissionDenied
+from utils.tests.auth_seam import builtin_auth_service
 from workflow_manager.workflow_v2.models.workflow import Workflow
 from workflow_manager.workflow_v2.views import WorkflowViewSet
 
@@ -129,7 +132,7 @@ class CapabilityTestBase(AuditTestBase):
         self.service_account = make_user("svc@example.com", is_service_account=True)
         # As platform_api.services gives every platform key's service account.
         OrganizationMember.objects.create(
-            organization=self.org, user=self.service_account, role="user"
+            organization=self.org, user=self.service_account, role=self.member_role
         )
 
     def restrict(self, key: Capability, restricted: bool) -> None:
@@ -550,10 +553,14 @@ class AdminOnlyEndpointsMatrixTests(CapabilityTestBase):
     """
 
     def setUp(self) -> None:
+        # Role changes go through the identity provider, and under a plugin
+        # they take its role ids, not names: these check the built-in service's
+        # path. A plugin's is checked in that plugin's own tests.
+        self.enterContext(builtin_auth_service())
         super().setUp()
         self.colleague = make_user("colleague@example.com")
         OrganizationMember.objects.create(
-            organization=self.org, user=self.colleague, role="user"
+            organization=self.org, user=self.colleague, role=self.member_role
         )
         workflow = Workflow.objects.create(
             workflow_name="wf", organization=self.org, created_by=self.member
@@ -585,7 +592,7 @@ class AdminOnlyEndpointsMatrixTests(CapabilityTestBase):
                 view,
                 "post",
                 user=user,
-                data={"email": "colleague@example.com", "role": "user"},
+                data={"email": "colleague@example.com", "role": self.member_role},
             )
             ok_status = 200
         else:
@@ -620,11 +627,15 @@ class MemberManagementGuardrailTests(CapabilityTestBase):
     """With 'Any member', a member manages non-admin members only."""
 
     def setUp(self) -> None:
+        # Role changes go through the identity provider, and under a plugin
+        # they take its role ids, not names: these check the built-in service's
+        # path. A plugin's is checked in that plugin's own tests.
+        self.enterContext(builtin_auth_service())
         super().setUp()
         self.restrict(Capability.MANAGE_MEMBERS, False)
         self.colleague = make_user("colleague@example.com")
         OrganizationMember.objects.create(
-            organization=self.org, user=self.colleague, role="user"
+            organization=self.org, user=self.colleague, role=self.member_role
         )
         self.assign = OrganizationUserViewSet.as_view(
             {"post": "assign_organization_role_to_user"}
@@ -636,27 +647,33 @@ class MemberManagementGuardrailTests(CapabilityTestBase):
         )
 
     def test_a_member_cannot_grant_admin(self) -> None:
-        response = self._assign("colleague@example.com", "admin")
+        response = self._assign("colleague@example.com", self.admin_role)
         self.assertEqual(response.status_code, 403)
-        self.assertEqual(OrganizationMember.objects.get(user=self.colleague).role, "user")
+        self.assertEqual(
+            OrganizationMember.objects.get(user=self.colleague).role, self.member_role
+        )
 
     def test_a_member_cannot_change_their_own_role(self) -> None:
-        self.assertEqual(self._assign("member@example.com", "user").status_code, 403)
+        self.assertEqual(
+            self._assign("member@example.com", self.member_role).status_code, 403
+        )
 
     def test_a_member_cannot_change_an_admins_role(self) -> None:
         # A second admin, so the last-admin guard is not what refuses it.
         second = make_user("second-admin@example.com")
         OrganizationMember.objects.create(
-            organization=self.org, user=second, role="admin"
+            organization=self.org, user=second, role=self.admin_role
         )
-        self.assertEqual(self._assign(second.email, "user").status_code, 403)
-        self.assertEqual(OrganizationMember.objects.get(user=second).role, "admin")
+        self.assertEqual(self._assign(second.email, self.member_role).status_code, 403)
+        self.assertEqual(
+            OrganizationMember.objects.get(user=second).role, self.admin_role
+        )
 
     def test_a_member_cannot_revoke_admin(self) -> None:
         # A second admin, so the last-admin guard is not what refuses it.
         second = make_user("second-admin@example.com")
         OrganizationMember.objects.create(
-            organization=self.org, user=second, role="admin"
+            organization=self.org, user=second, role=self.admin_role
         )
         view = OrganizationUserViewSet.as_view(
             {"delete": "remove_organization_role_from_user"}
@@ -665,10 +682,12 @@ class MemberManagementGuardrailTests(CapabilityTestBase):
             view,
             "delete",
             user=self.member,
-            data={"email": second.email, "role": "admin"},
+            data={"email": second.email, "role": self.admin_role},
         )
         self.assertEqual(response.status_code, 403)
-        self.assertEqual(OrganizationMember.objects.get(user=second).role, "admin")
+        self.assertEqual(
+            OrganizationMember.objects.get(user=second).role, self.admin_role
+        )
 
     def test_a_member_cannot_remove_a_role(self) -> None:
         # Removing someone's only role removes them, which stays admin-only.
@@ -679,7 +698,7 @@ class MemberManagementGuardrailTests(CapabilityTestBase):
             view,
             "delete",
             user=self.member,
-            data={"email": "colleague@example.com", "role": "user"},
+            data={"email": "colleague@example.com", "role": self.member_role},
         )
         self.assertEqual(response.status_code, 403)
         self.assertEqual(
@@ -694,9 +713,13 @@ class MemberManagementGuardrailTests(CapabilityTestBase):
         for restricted in (True, False):
             self.restrict(Capability.MANAGE_MEMBERS, restricted)
             with self.subTest(restricted=restricted):
-                controller.authorize_invite(admin, ["admin", "user", None])
-                controller.authorize_role_change(admin, target, "admin")
-                controller.authorize_role_change(admin, target, "user", removing=True)
+                controller.authorize_invite(
+                    admin, [self.admin_role, self.member_role, None]
+                )
+                controller.authorize_role_change(admin, target, self.admin_role)
+                controller.authorize_role_change(
+                    admin, target, self.member_role, removing=True
+                )
 
     def test_admins_only_refuses_members_removing_roles(self) -> None:
         self.restrict(Capability.MANAGE_MEMBERS, True)
@@ -707,7 +730,7 @@ class MemberManagementGuardrailTests(CapabilityTestBase):
             view,
             "delete",
             user=self.member,
-            data={"email": "colleague@example.com", "role": "user"},
+            data={"email": "colleague@example.com", "role": self.member_role},
         )
         self.assertEqual(response.status_code, 403)
 
@@ -718,7 +741,7 @@ class MemberManagementGuardrailTests(CapabilityTestBase):
                 controller.invite_user(
                     admin=self.member,
                     org_id=self.org.organization_id,
-                    user_list=[{"email": "new@example.com", "role": "admin"}],
+                    user_list=[{"email": "new@example.com", "role": self.admin_role}],
                     request=None,
                 )
         invite.assert_not_called()
@@ -726,9 +749,9 @@ class MemberManagementGuardrailTests(CapabilityTestBase):
     def test_a_member_invites_with_the_user_role_only(self) -> None:
         controller = AuthenticationController()
         actor = OrganizationMember.objects.get(user=self.member)
-        controller.authorize_invite(actor, ["user", None])
+        controller.authorize_invite(actor, [self.member_role, None])
         with self.assertRaises(Forbidden):
-            controller.authorize_invite(actor, ["user", "admin"])
+            controller.authorize_invite(actor, [self.member_role, self.admin_role])
 
     def test_a_plugin_that_names_no_member_roles_refuses_members(self) -> None:
         # A plugin that does not define the member-role hooks refuses
@@ -736,21 +759,23 @@ class MemberManagementGuardrailTests(CapabilityTestBase):
         controller = AuthenticationController()
         controller.auth_service = SimpleNamespace(
             is_organization_admin=lambda member: False,
-            is_admin_by_role=lambda role: role == "admin",
+            is_admin_by_role=lambda role: role == self.admin_role,
         )
         actor = OrganizationMember.objects.get(user=self.member)
         target = OrganizationMember.objects.get(user=self.colleague)
         with self.assertRaises(Forbidden):
-            controller.authorize_invite(actor, ["user"])
+            controller.authorize_invite(actor, [self.member_role])
         with self.assertRaises(Forbidden):
-            controller.authorize_role_change(actor, target, "user")
+            controller.authorize_role_change(actor, target, self.member_role)
 
     def test_admins_only_refuses_members_everything(self) -> None:
         self.restrict(Capability.MANAGE_MEMBERS, True)
         actor = OrganizationMember.objects.get(user=self.member)
         with self.assertRaises(Forbidden):
-            AuthenticationController().authorize_invite(actor, ["user"])
-        self.assertEqual(self._assign("colleague@example.com", "user").status_code, 403)
+            AuthenticationController().authorize_invite(actor, [self.member_role])
+        self.assertEqual(
+            self._assign("colleague@example.com", self.member_role).status_code, 403
+        )
 
 
 class PlatformApiKeyGuardrailTests(CapabilityTestBase):
@@ -1104,7 +1129,7 @@ class GlobalDeploymentKeyGuardrailTests(CapabilityTestBase):
         # the creator check can refuse it.
         colleague = make_user("colleague@example.com")
         OrganizationMember.objects.create(
-            organization=self.org, user=colleague, role="user"
+            organization=self.org, user=colleague, role=self.member_role
         )
         self.mine.grant_owner(colleague)
         theirs = GlobalApiDeploymentKey.objects.create(
@@ -1147,7 +1172,7 @@ class GlobalDeploymentKeyGuardrailTests(CapabilityTestBase):
         key = GlobalApiDeploymentKey.objects.get(pk=response.data["id"])
         self.assertFalse(key.created_by_member)
         # Demoted, still owning the key's deployment.
-        OrganizationMember.objects.filter(user=self.admin).update(role="user")
+        OrganizationMember.objects.filter(user=self.admin).update(role=self.member_role)
         demoted = type(self.admin).objects.get(pk=self.admin.pk)
         for action, method in (
             ({"get": "retrieve"}, "get"),
@@ -1197,7 +1222,7 @@ class GlobalDeploymentKeyGuardrailTests(CapabilityTestBase):
     def test_a_creator_promoted_to_admin_keeps_their_keys_working(self) -> None:
         key = self._member_key()
         self.mine.memberships.filter(user=self.member).delete()
-        OrganizationMember.objects.filter(user=self.member).update(role="admin")
+        OrganizationMember.objects.filter(user=self.member).update(role=self.admin_role)
         key = GlobalApiDeploymentKey.objects.get(pk=key.pk)
         self.assertTrue(self._authenticates(key))
 
