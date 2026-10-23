@@ -228,6 +228,31 @@ class ExecutionFailedTests(_Runs, TestCase):
         (item,) = _items(self.owner)
         self.assertEqual(item.route, _run_route(first))
 
+    def test_clean_callback_keeps_the_item_when_the_run_failed_again(self) -> None:
+        pipeline = _build_pipeline(self.org, self.owner)
+        self.share(pipeline)
+        execution = self.run_of(pipeline)
+        self.finish(execution, ExecutionStatus.ERROR)
+        WorkflowExecution.objects.filter(pk=execution.pk).update(
+            status=ExecutionStatus.COMPLETED.value, failed_files=0
+        )
+        from inbox import events
+
+        real = events._showing
+
+        def failed_again(items, run):
+            # The clean callback has read the clean status; the run then fails
+            # again before it takes the item lock.
+            WorkflowExecution.objects.filter(pk=run.pk).update(
+                status=ExecutionStatus.ERROR.value
+            )
+            return real(items, run)
+
+        with patch.object(events, "_showing", side_effect=failed_again):
+            events.notify_execution_failed(execution.pk)
+        (item,) = _items(self.owner)
+        self.assertEqual(item.route, _run_route(execution))
+
     def test_handing_back_keeps_the_read_state(self) -> None:
         pipeline = _build_pipeline(self.org, self.owner)
         self.share(pipeline)
