@@ -247,6 +247,18 @@ class ProfileEndpointTests(LocalStorageMixin, TestCase):
     def test_upload_refuses_missing_file(self) -> None:
         self.assertEqual(self.error_attrs(self.client.post(PHOTO, {})), ["photo"])
 
+    def test_storage_read_error_is_a_500_and_keeps_the_photo(self) -> None:
+        from unstract.sdk1.exceptions import FileOperationError
+
+        self.client.post(PHOTO, upload(png_bytes()))
+        with patch(
+            "unstract.sdk1.file_storage.impl.FileStorage.read",
+            side_effect=FileOperationError("AccessDenied"),
+        ):
+            self.assertEqual(self.client.get(PHOTO).status_code, 500)
+        self.user.refresh_from_db()
+        self.assertIsNotNone(self.user.profile_photo_updated_at)
+
     def test_no_photo_is_404(self) -> None:
         self.assertEqual(self.client.get(PHOTO).status_code, 404)
 
