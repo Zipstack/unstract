@@ -1,0 +1,74 @@
+from django.shortcuts import get_object_or_404
+from django.utils import timezone
+from drf_spectacular.utils import OpenApiResponse, extend_schema
+from rest_framework import status, viewsets
+from rest_framework.decorators import action
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.request import Request
+from rest_framework.response import Response
+from utils.pagination import CustomPagination
+from utils.user_context import UserContext
+
+from inbox.models import InboxItem
+from inbox.serializers import InboxItemSerializer, InboxPageSerializer
+from inbox.service import push_unread, unread_count
+
+
+class InboxViewSet(viewsets.GenericViewSet):
+    """The caller's own inbox in the current organization."""
+
+    serializer_class = InboxItemSerializer
+    pagination_class = CustomPagination
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return InboxItem.objects.filter(user=self.request.user).order_by("-created_at")
+
+    @extend_schema(
+        operation_id="inbox_list",
+        tags=["inbox"],
+        responses={
+            200: InboxPageSerializer,
+            404: OpenApiResponse(description="Page past the end; go back to page 1"),
+        },
+        description="Newest first. See inbox/ReadMe.md.",
+    )
+    def list(self, request: Request) -> Response:
+        page = self.paginate_queryset(self.get_queryset())
+        data = self.get_paginated_response(self.get_serializer(page, many=True).data).data
+        data["unread_count"] = unread_count(request.user)
+        return Response(data)
+
+    @extend_schema(
+        operation_id="inbox_read",
+        tags=["inbox"],
+        request=None,
+        responses={
+            204: None,
+            404: OpenApiResponse(
+                description="Not the caller's item, or since withdrawn or purged"
+            ),
+        },
+    )
+    @action(detail=True, methods=["post"])
+    def read(self, request: Request, pk: str | None = None) -> Response:
+        item = get_object_or_404(self.get_queryset(), pk=pk)
+        # Matched on created_at too: a failure refresh landing after the load
+        # brings new content the user has not seen, so it stays unread.
+        marked = (
+            self.get_queryset()
+            .filter(pk=item.pk, read_at__isnull=True, created_at=item.created_at)
+            .update(read_at=timezone.now())
+        )
+        if marked:
+            push_unread(item.organization, [request.user.pk])
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+    @extend_schema(
+        operation_id="inbox_read_all", tags=["inbox"], request=None, responses={204: None}
+    )
+    @action(detail=False, methods=["post"], url_path="read-all")
+    def read_all(self, request: Request) -> Response:
+        self.get_queryset().filter(read_at__isnull=True).update(read_at=timezone.now())
+        push_unread(UserContext.get_organization(), [request.user.pk])
+        return Response(status=status.HTTP_204_NO_CONTENT)
