@@ -49,13 +49,18 @@ class GetOrganizationsResponseSerializer(serializers.Serializer):
         required=False,
         help_text="The people the members page lists, without platform API key "
         "accounts. Absent if the organization has no data on this deployment, "
-        "if it belongs to another region, or if the details could not be loaded.",
+        "if the deployment has regions and the organization's metadata names "
+        "another one, or if the details could not be loaded. Organizations "
+        "without a region in their metadata count as this deployment's: see "
+        "account_v2/ReadMe.md.",
     )
     region = serializers.CharField(
         required=False,
-        help_text="The organization's home region code, e.g. US or EU. Absent "
-        "where the deployment has no regions, the region is not known here, or "
-        "the details could not be loaded.",
+        help_text="The region code, e.g. US or EU, named in the organization's "
+        "metadata, else this deployment's region if the organization exists "
+        "here. Absent where the deployment has no regions, the region is not "
+        "known here, or the details could not be loaded. See account_v2/ReadMe.md "
+        "for organizations without a region in their metadata.",
     )
 
     def to_representation(self, instance):  # type: ignore

@@ -6,18 +6,20 @@ field is added only where this deployment can answer it, and is otherwise left
 out of the row rather than sent as null:
 
 - ``role``: the caller has a membership row in that organization here.
-- ``member_count``: the organization exists here and is not a copy from
-  another region. Counts the people the members page lists: the
-  organization's member records here, without platform API key accounts.
-  Pending invitations have no record yet.
-- ``region``: only where ``settings.REGION`` is set: the home region stamped
-  on the organization's metadata, else ``settings.REGION`` when the
-  organization exists here.
+- ``member_count``: the organization exists here and, where
+  ``settings.REGION`` is set, its metadata names no other region. Counts the
+  people the members page lists: the organization's member records here,
+  without platform API key accounts. Pending invitations have no record yet.
+- ``region``: only where ``settings.REGION`` is set: the region named in the
+  organization's metadata, else ``settings.REGION`` when the organization
+  exists here.
 
 Cloud stamps ``region`` on an organization's metadata where it is created.
 Opening it from another region makes a local copy there, so where the stamp
 names another region the row shows that region and leaves out this
 deployment's member count, which covers only the people who opened the copy.
+An organization without the stamp (created before it and not back-filled) is
+treated as this region's: a copy of one shows this region and the copy's count.
 """
 
 import logging
