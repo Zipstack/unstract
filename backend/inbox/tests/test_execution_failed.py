@@ -204,6 +204,30 @@ class ExecutionFailedTests(_Runs, TestCase):
             )
             self.assertIsNone(item.read_at)
 
+    def test_hand_back_skips_a_failure_corrected_before_it_was_locked(self) -> None:
+        pipeline = _build_pipeline(self.org, self.owner)
+        self.share(pipeline)
+        first, second, third = self.runs_of(pipeline, 3)
+        for execution in (first, second, third):
+            self.finish(execution, ExecutionStatus.ERROR)
+        # second was picked unlocked, then its clean correction committed; its
+        # own callback did nothing because the item showed third.
+        WorkflowExecution.objects.filter(pk=second.pk).update(
+            status=ExecutionStatus.COMPLETED.value, failed_files=0
+        )
+        from inbox import events
+
+        real = events._failed_before
+        stale = iter([second])
+        with patch.object(
+            events,
+            "_failed_before",
+            side_effect=lambda *args: next(stale, None) or real(*args),
+        ):
+            self.finish(third, ExecutionStatus.COMPLETED, failed_files=0)
+        (item,) = _items(self.owner)
+        self.assertEqual(item.route, _run_route(first))
+
     def test_handing_back_keeps_the_read_state(self) -> None:
         pipeline = _build_pipeline(self.org, self.owner)
         self.share(pipeline)
