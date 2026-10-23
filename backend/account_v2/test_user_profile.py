@@ -130,7 +130,8 @@ class PhotoStorageTests(LocalStorageMixin, TestCase):
     def test_delete_when_object_already_gone(self) -> None:
         user_profile.save_photo(self.user, png_bytes())
         os.remove(user_profile.photo_path(self.user))
-        user_profile.delete_photo(self.user)
+        with self.assertLogs("account_v2.user_profile", "WARNING"):
+            user_profile.delete_photo(self.user)
         self.user.refresh_from_db()
         self.assertIsNone(self.user.profile_photo_updated_at)
 
@@ -141,8 +142,31 @@ class PhotoStorageTests(LocalStorageMixin, TestCase):
     def test_missing_object_is_logged_and_not_served(self) -> None:
         user_profile.save_photo(self.user, png_bytes())
         os.remove(user_profile.photo_path(self.user))
-        with self.assertLogs("account_v2.user_profile", "WARNING"):
+        with self.assertLogs("account_v2.user_profile", "ERROR"):
             self.assertIsNone(user_profile.read_photo(self.user))
+
+    def test_empty_read_is_logged_and_not_served(self) -> None:
+        # The SDK's stale-cache retry can return None for a file that exists.
+        user_profile.save_photo(self.user, png_bytes())
+        for empty in (None, b""):
+            with (
+                self.subTest(empty=empty),
+                patch(
+                    "unstract.sdk1.file_storage.impl.FileStorage.read",
+                    return_value=empty,
+                ),
+                self.assertLogs("account_v2.user_profile", "ERROR"),
+            ):
+                self.assertIsNone(user_profile.read_photo(self.user))
+
+    def test_failed_write_records_no_photo(self) -> None:
+        with patch(
+            "unstract.sdk1.file_storage.impl.FileStorage.write", side_effect=OSError
+        ):
+            with self.assertRaises(OSError):
+                user_profile.save_photo(self.user, png_bytes())
+        self.user.refresh_from_db()
+        self.assertIsNone(self.user.profile_photo_updated_at)
 
     def test_delete_clears_timestamp_even_when_in_memory_copy_is_stale(self) -> None:
         user_profile.save_photo(self.user, png_bytes())
@@ -183,6 +207,34 @@ class PhotoBasePathTests(TestCase):
             self.assertEqual(
                 user_profile.photo_base_path(), "bucket-x/user-profile-photos"
             )
+
+    def test_prompt_studio_path_is_stripped(self) -> None:
+        with patch.dict(
+            "os.environ",
+            {
+                "REMOTE_USER_PROFILE_PHOTO_PATH": "",
+                "REMOTE_PROMPT_STUDIO_FILE_PATH": " bucket-x/prompt-studio-data ",
+            },
+        ):
+            self.assertEqual(
+                user_profile.photo_base_path(), "bucket-x/user-profile-photos"
+            )
+
+    def test_prompt_studio_path_without_a_bucket_is_a_config_error(self) -> None:
+        # A sibling of a bare name would be a bucket of its own.
+        for bare in ("prompt-studio-data", "/prompt-studio-data"):
+            with (
+                self.subTest(bare=bare),
+                patch.dict(
+                    "os.environ",
+                    {
+                        "REMOTE_USER_PROFILE_PHOTO_PATH": "",
+                        "REMOTE_PROMPT_STUDIO_FILE_PATH": bare,
+                    },
+                ),
+            ):
+                with self.assertRaises(ImproperlyConfigured):
+                    user_profile.photo_base_path()
 
     def test_unset_paths_are_a_config_error(self) -> None:
         for blank in ("", "   "):
