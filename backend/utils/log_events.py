@@ -85,6 +85,10 @@ def connect(sid: str, environ: Any, auth: Any) -> None:
         if user_id:
             # Per-user events, such as the inbox unread count.
             sio.enter_room(sid, f"user:{user_id}")
+        else:
+            logger.info(
+                f"No signed-in user for the session of socket {sid}; no user room"
+            )
     else:
         sio.disconnect(sid)
 

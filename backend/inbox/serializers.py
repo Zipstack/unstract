@@ -43,3 +43,23 @@ class InboxPageSerializer(serializers.Serializer):
 
     class Meta:
         ref_name = "InboxPage"
+
+
+class InboxReadSerializer(serializers.Serializer):
+    created = serializers.DateTimeField(
+        required=False,
+        help_text=(
+            "The item's `created` as the client listed it. When the item has been "
+            "refreshed since, it stays unread and the response is 409."
+        ),
+    )
+
+
+class InboxReadConflictSerializer(serializers.Serializer):
+    """The item as it is now, after a refresh the client has not seen."""
+
+    item = InboxItemSerializer()
+    unread_count = serializers.IntegerField()
+
+    class Meta:
+        ref_name = "InboxReadConflict"

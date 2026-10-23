@@ -25,7 +25,11 @@ def _items(user) -> list[InboxItem]:
 
 
 def _shape(index_or_constraint) -> tuple:
-    return index_or_constraint.name, tuple(index_or_constraint.fields)
+    return (
+        index_or_constraint.name,
+        tuple(getattr(index_or_constraint, "fields", ())),
+        str(getattr(index_or_constraint, "check", "")),
+    )
 
 
 class ServiceTests(CoOwnerOrgTestMixin, TestCase):
@@ -98,11 +102,23 @@ class EndpointTests(CoOwnerOrgTestMixin, TestCase):
             dedupe_key="x",
         )
 
-    def call(self, user, action, method="get", pk=None):
+    def call(self, user, action, method="get", pk=None, data=None):
         view = InboxViewSet.as_view({method: action})
-        request = getattr(self.factory, method)("/x/")
+        request = getattr(self.factory, method)("/x/", data, format="json")
         force_authenticate(request, user=user)
         return view(request, pk=pk) if pk else view(request)
+
+    def other_org_item(self) -> InboxItem:
+        other = Organization.objects.create(
+            name="org-b", display_name="Org B", organization_id="org-b"
+        )
+        return InboxItem.objects.create(
+            organization=other,
+            user=self.viewer,
+            kind="resource_shared",
+            title="elsewhere",
+            dedupe_key="e",
+        )
 
     def test_list_is_newest_first_own_items_with_unread_count(self) -> None:
         response = self.call(self.viewer, "list")
@@ -120,18 +136,28 @@ class EndpointTests(CoOwnerOrgTestMixin, TestCase):
         self.assertFalse(rows[0]["read"])
 
     def test_list_excludes_other_organizations(self) -> None:
-        other = Organization.objects.create(
-            name="org-b", display_name="Org B", organization_id="org-b"
-        )
-        InboxItem.objects.create(
-            organization=other,
-            user=self.viewer,
-            kind="resource_shared",
-            title="elsewhere",
-            dedupe_key="e",
-        )
+        self.other_org_item()
         titles = [r["title"] for r in self.call(self.viewer, "list").data["results"]]
         self.assertNotIn("elsewhere", titles)
+
+    def test_cannot_read_own_item_in_another_organization(self) -> None:
+        elsewhere = self.other_org_item()
+        response = self.call(self.viewer, "read", "post", pk=str(elsewhere.pk))
+        self.assertEqual(response.status_code, 404)
+        elsewhere.refresh_from_db()
+        self.assertIsNone(elsewhere.read_at)
+
+    def test_read_all_leaves_other_organizations_unread(self) -> None:
+        elsewhere = self.other_org_item()
+        self.call(self.viewer, "read_all", "post")
+        elsewhere.refresh_from_db()
+        self.assertIsNone(elsewhere.read_at)
+
+    def test_read_all_with_nothing_unread_pushes_nothing(self) -> None:
+        self.call(self.viewer, "read_all", "post")
+        with patch("inbox.views.push_unread") as push:
+            self.call(self.viewer, "read_all", "post")
+        push.assert_not_called()
 
     def test_mark_one_read(self) -> None:
         item = InboxItem.objects.get(user=self.viewer, title="new")
@@ -152,25 +178,49 @@ class EndpointTests(CoOwnerOrgTestMixin, TestCase):
         response = InboxViewSet.as_view({"get": "list"})(self.factory.get("/x/"))
         self.assertIn(response.status_code, (401, 403))
 
-    def test_read_does_not_swallow_a_refresh_that_lands_meanwhile(self) -> None:
+    def listed(self, title: str) -> dict:
+        rows = self.call(self.viewer, "list").data["results"]
+        return next(row for row in rows if row["title"] == title)
+
+    def test_read_of_the_listed_version_marks_it(self) -> None:
+        row = self.listed("new")
+        response = self.call(
+            self.viewer, "read", "post", pk=row["id"], data={"created": row["created"]}
+        )
+        self.assertEqual(response.status_code, 204)
+        self.assertIsNotNone(InboxItem.objects.get(pk=row["id"]).read_at)
+
+    def test_read_after_a_refresh_the_client_has_not_seen_is_refused(self) -> None:
+        row = self.listed("new")
+        # A later failure refreshes the item after the client listed it.
+        InboxItem.objects.filter(pk=row["id"]).update(
+            title="newer", created_at=timezone.now() + timedelta(seconds=1)
+        )
+        response = self.call(
+            self.viewer, "read", "post", pk=row["id"], data={"created": row["created"]}
+        )
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.data["item"]["title"], "newer")
+        self.assertFalse(response.data["item"]["read"])
+        self.assertEqual(response.data["unread_count"], 2)
+        self.assertIsNone(InboxItem.objects.get(pk=row["id"]).read_at)
+
+    def test_read_without_created_marks_the_current_version(self) -> None:
         item = InboxItem.objects.get(user=self.viewer, title="new")
-        real_get = InboxItem.objects.get_queryset
-
-        def refresh_after_load(*args, **kwargs):
-            # The item is refreshed between the view loading it and marking it.
-            InboxItem.objects.filter(pk=item.pk).update(
-                created_at=timezone.now() + timedelta(seconds=1)
-            )
-            return real_get()
-
-        with patch("inbox.views.get_object_or_404") as load:
-            load.side_effect = lambda qs, pk: (
-                InboxItem.objects.get(pk=pk),
-                refresh_after_load(),
-            )[0]
-            self.call(self.viewer, "read", "post", pk=str(item.pk))
+        InboxItem.objects.filter(pk=item.pk).update(
+            created_at=timezone.now() + timedelta(seconds=1)
+        )
+        response = self.call(self.viewer, "read", "post", pk=str(item.pk))
+        self.assertEqual(response.status_code, 204)
         item.refresh_from_db()
-        self.assertIsNone(item.read_at)
+        self.assertIsNotNone(item.read_at)
+
+    def test_read_with_a_malformed_created_is_a_bad_request(self) -> None:
+        item = InboxItem.objects.get(user=self.viewer, title="new")
+        response = self.call(
+            self.viewer, "read", "post", pk=str(item.pk), data={"created": "soon"}
+        )
+        self.assertEqual(response.status_code, 400)
 
     def test_reading_a_read_item_keeps_its_read_time(self) -> None:
         item = InboxItem.objects.get(user=self.viewer, title="new")
@@ -241,6 +291,25 @@ class ShareEventTests(CoOwnerOrgTestMixin, TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn(self.viewer, self.workflow.viewers())
 
+    def test_direct_share_skips_users_who_already_had_access(self) -> None:
+        self.workflow.memberships.create(user=self.viewer, role=ResourceRole.VIEWER)
+        with patch("inbox.events.notify") as notify:
+            events.notify_resource_shared(
+                resource=self.workflow,
+                users=[self.viewer, self.outsider],
+                groups=[],
+                actor=self.owner,
+                had_access=events.users_with_access(self.workflow),
+            )
+        (recipients,) = notify.call_args.args
+        self.assertEqual(recipients, {self.outsider})
+
+    def test_had_access_must_be_passed(self) -> None:
+        with self.assertRaises(TypeError):
+            events.notify_resource_shared(
+                resource=self.workflow, users=[self.viewer], groups=[], actor=self.owner
+            )
+
     def test_group_share_skips_members_who_already_had_access(self) -> None:
         self.workflow.memberships.create(user=self.outsider, role=ResourceRole.VIEWER)
         self.share({"shared_groups": [self.group.pk]})
@@ -281,6 +350,7 @@ class ShareEventTests(CoOwnerOrgTestMixin, TestCase):
                         users=[self.viewer],
                         groups=[],
                         actor=self.owner,
+                        had_access=set(),
                     )
             self.assertTrue(Workflow.objects.filter(pk=self.workflow.pk).exists())
 
@@ -335,6 +405,15 @@ class SchemaTests(TestCase):
         self.assertIn("404", op["responses"])
         results = page["properties"]["results"]["items"]
         self.assertEqual(results, {"$ref": "#/components/schemas/InboxItem"})
+        (read,) = (
+            op
+            for path in schema["paths"].values()
+            for op in path.values()
+            if op["operationId"] == "inbox_read"
+        )
+        self.assertEqual(set(read["responses"]) & {"204", "404", "409"}, {"204", "404", "409"})
+        conflict = read["responses"]["409"]["content"]["application/json"]["schema"]
+        self.assertEqual(conflict, {"$ref": "#/components/schemas/InboxReadConflict"})
         route = schema["components"]["schemas"]["InboxRoute"]
         self.assertEqual(set(route["properties"]), {"key", "params"})
 
@@ -424,7 +503,11 @@ class ShareKindTests(CoOwnerOrgTestMixin, TestCase):
                 resource = spec.build(self.org, self.owner)
                 InboxItem.objects.all().delete()
                 events.notify_resource_shared(
-                    resource=resource, users=[self.viewer], groups=[], actor=self.owner
+                    resource=resource,
+                    users=[self.viewer],
+                    groups=[],
+                    actor=self.owner,
+                    had_access=set(),
                 )
                 (item,) = _items(self.viewer)
                 kind = kind_for_instance(resource)

@@ -1,20 +1,26 @@
 """Backend events that put items in users' inboxes.
 
-Callers run these after their own change has committed. An inbox failure is
-logged and never fails the action that caused it.
+Callers run these after their own change is written: on commit, or later in
+the same request transaction. An inbox failure is logged and never fails the
+action that caused it.
 """
 
 import logging
 import uuid
 from collections.abc import Iterable
+from collections.abc import Set as AbstractSet
+from datetime import timedelta
+from functools import partial
 from typing import Any
 
 from account_v2.models import User
-from django.db.models import Max
+from django.db.models import Max, Q
+from django.utils import timezone
 from tenant_account_v2.shareable_resources import descriptor_for_kind, kind_for_instance
 
+from inbox.internal_views import RETENTION_DAYS
 from inbox.models import InboxItem
-from inbox.service import notify
+from inbox.service import InboxRoute, notify, push_unread
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +39,7 @@ _SHARED_KINDS: dict[str, tuple[str, str | None]] = {
 _PIPELINE_ROUTE_KEYS = {"ETL": "etl_pipeline.detail", "TASK": "task_pipeline.detail"}
 
 
-def _route(kind: str, resource: Any) -> dict[str, Any] | None:
+def _route(kind: str, resource: Any) -> InboxRoute | None:
     key = _SHARED_KINDS[kind][1]
     if kind == "pipeline":
         key = _PIPELINE_ROUTE_KEYS.get(getattr(resource, "pipeline_type", ""))
@@ -68,7 +74,8 @@ def users_with_access(resource: Any) -> set[int] | None:
     """Ids of users who already reach ``resource``; read before a share changes it.
 
     Empty when access does not depend on shares (shared with the whole
-    organization), so a share there still tells its recipients. None when it
+    organization, or a friction-less adapter), so a share there still tells
+    its recipients. None when it
     could not be read: the share then notifies nobody rather than everyone.
     """
     from tenant_account_v2.sharing_helpers import retained_user_ids
@@ -88,11 +95,16 @@ def notify_resource_shared(
     users: Iterable[User],
     groups: Iterable[Any],
     actor: User,
-    had_access: set[int] | None = frozenset(),
+    had_access: AbstractSet[int] | None,
 ) -> None:
-    """Tell users newly given access, directly or through a group, once each."""
+    """Tell users newly given access, directly or through a group, once each.
+
+    ``had_access`` is ``users_with_access(resource)`` read before the share;
+    None notifies nobody.
+    """
     if had_access is None:
         return
+    kind = None
     try:
         kind = kind_for_instance(resource)
         if kind not in _SHARED_KINDS:
@@ -105,7 +117,8 @@ def notify_resource_shared(
         if not recipients:
             return
         label = _SHARED_KINDS[kind][0]
-        name = getattr(resource, descriptor_for_kind(kind).name_field, "")
+        # No default: a wrong name_field in the registry raises and is logged.
+        name = getattr(resource, descriptor_for_kind(kind).name_field)
         notify(
             recipients,
             kind=InboxItem.Kind.RESOURCE_SHARED,
@@ -115,7 +128,10 @@ def notify_resource_shared(
         )
     except Exception:
         logger.exception(
-            "Could not add share notifications for %s", getattr(resource, "pk", None)
+            "Could not add share notifications for %s %s (kind %s)",
+            type(resource).__name__,
+            getattr(resource, "pk", None),
+            kind,
         )
 
 
@@ -125,7 +141,8 @@ def _run_source(execution: Any) -> tuple[Any, str, str]:
     from pipeline_v2.models import Pipeline
 
     if execution.pipeline_id:
-        # Base managers: this runs in worker requests with no organization context.
+        # Base managers: callers (worker internal requests, the reaper) may have
+        # no organization context, or a different one.
         pipeline = Pipeline._base_manager.filter(pk=execution.pipeline_id).first()
         if pipeline:
             return pipeline, "pipeline", pipeline.pipeline_name
@@ -154,6 +171,19 @@ def _failure_title(execution: Any, label: str, name: str) -> str:
     )
 
 
+# The run an execution_failed item shows is the id in its route. The lookups
+# below and _run_route are the only places that know where it sits.
+_SHOWN_RUN = "route__params__id"
+
+
+def _run_route(execution: Any) -> InboxRoute:
+    return {"key": "execution.detail", "params": {"id": str(execution.pk)}}
+
+
+def _showing(items: Any, execution: Any) -> Any:
+    return items.filter(**{_SHOWN_RUN: str(execution.pk)})
+
+
 def _already_points_at_this_or_newer(items: Any, execution: Any, runs: Any) -> bool:
     """True when the stored item already shows this run or a later one.
 
@@ -161,9 +191,46 @@ def _already_points_at_this_or_newer(items: Any, execution: Any, runs: Any) -> b
     run, must not mark a read item unread or point it back in time.
     """
     # Every owner's row, not one: a former owner's row can lag behind.
-    shown = set(items.values_list("route__params__id", flat=True))
+    shown = set(items.values_list(_SHOWN_RUN, flat=True))
     newest = runs.filter(pk__in=shown).aggregate(newest=Max("created_at"))["newest"]
     return newest is not None and newest >= execution.created_at
+
+
+def _previous_failure(execution: Any, runs: Any) -> Any:
+    """The newest failed run of the same source that started before this one.
+
+    Runs older than the inbox retention are left out, as their items would
+    already have been purged.
+    """
+    from workflow_manager.workflow_v2.enums import ExecutionStatus
+
+    if execution.pipeline_id:
+        source = Q(pipeline_id=execution.pipeline_id)
+    else:
+        source = Q(workflow_id=execution.workflow_id, pipeline_id__isnull=True)
+    # The is_failure_run rule, for terminal runs only.
+    failed = Q(
+        status__in=[ExecutionStatus.ERROR.value, ExecutionStatus.STOPPED.value]
+    ) | Q(status=ExecutionStatus.COMPLETED.value, failed_files__gt=0)
+    return (
+        runs.filter(
+            source,
+            failed,
+            created_at__lt=execution.created_at,
+            created_at__gte=timezone.now() - timedelta(days=RETENTION_DAYS),
+        )
+        .order_by("-created_at")
+        .first()
+    )
+
+
+def _failure_content(execution: Any, label: str, name: str) -> dict[str, Any]:
+    """Title, body and route of a failed run's item."""
+    return {
+        "title": _failure_title(execution, label, name)[:255],
+        "body": execution.error_message or "",
+        "route": _run_route(execution),
+    }
 
 
 def _lock_item(dedupe_key: str) -> None:
@@ -178,15 +245,39 @@ def _lock_item(dedupe_key: str) -> None:
         )
 
 
+def notify_on_terminal_status(execution_id: Any, status: Any) -> None:
+    """Run ``notify_execution_failed`` on commit when ``status`` ends the run.
+
+    Callers write the run's file counts in the same transaction as the status,
+    or the callback sees stale counts.
+    """
+    from django.db import transaction
+    from workflow_manager.workflow_v2.enums import ExecutionStatus
+
+    try:
+        status = ExecutionStatus(status)
+    except ValueError:
+        return
+    if status in (
+        ExecutionStatus.COMPLETED,
+        ExecutionStatus.ERROR,
+        ExecutionStatus.STOPPED,
+    ):
+        transaction.on_commit(partial(notify_execution_failed, execution_id))
+
+
 def notify_execution_failed(execution_id: Any) -> None:
     """Tell the owners of what ran when a run fails.
 
     Each owner keeps one item per pipeline, API deployment or workflow: a new
     failure refreshes it to the latest run and marks it unread again, so a
-    resource that keeps failing does not flood the inbox. Registered by
-    ``WorkflowExecution.update_execution`` for COMPLETED, ERROR and STOPPED.
-    ERROR can later be corrected to a clean COMPLETED, so a clean finish
-    withdraws the item while it still points at that run.
+    resource that keeps failing does not flood the inbox. Registered through
+    ``notify_on_terminal_status`` by ``WorkflowExecution.update_execution`` and
+    the internal batch status endpoint.
+
+    ERROR can later be corrected to a clean COMPLETED. A clean finish of the
+    run an item shows hands the item back to the newest earlier failure of the
+    same source, or withdraws it when there is none.
     """
     try:
         _notify_execution_failed(execution_id)
@@ -212,15 +303,17 @@ def _notify_execution_failed(execution_id: Any) -> None:
         organization=organization, dedupe_key=dedupe_key
     )
     if not is_failure_run(execution.status, execution.failed_files):
-        # No row lock needed: a failure callback for this run either stored its
-        # item before this run's status write could take the row lock, or
-        # re-read the clean run and stored nothing. Most clean runs have no
-        # item, so they skip the lock; the lock keeps a delete off a refresh.
-        mine = items.filter(route__params__id=str(execution.pk))
+        # No execution row lock needed: a failure callback for this run either
+        # stored its item before this run's status write could take the row
+        # lock, or re-read the clean run and stored nothing. Most clean runs
+        # have no item, so they skip the item lock too; when there is one, the
+        # item lock keeps this change from interleaving with another run's
+        # refresh.
+        mine = _showing(items, execution)
         if mine.exists():
             with transaction.atomic():
                 _lock_item(dedupe_key)
-                mine.delete()
+                _hand_back_or_withdraw(mine, execution, runs, organization)
         return
     with transaction.atomic():
         # The item lock serialises runs of one resource, so the newest-run check
@@ -235,16 +328,51 @@ def _notify_execution_failed(execution_id: Any) -> None:
         if _already_points_at_this_or_newer(items, execution, runs):
             return
         resource, label, name = _run_source(execution)
+        owners = _members_of(organization, resource.owners())
+        if not owners:
+            logger.warning(
+                "Run %s: %s %s has no owners in its organization; no inbox item",
+                execution.pk,
+                label,
+                name,
+            )
+            return
         notify(
-            resource.owners(),
+            owners,
             kind=InboxItem.Kind.EXECUTION_FAILED,
-            title=_failure_title(execution, label, name),
-            body=execution.error_message or "",
-            route={"key": "execution.detail", "params": {"id": str(execution.pk)}},
+            **_failure_content(execution, label, name),
             dedupe_key=dedupe_key,
             organization=organization,
             refresh=True,
-            # Keeps the count query off the status-write path; the new count
-            # shows on the next list call.
-            push=False,
         )
+
+
+def _members_of(organization: Any, users: Iterable[User]) -> list[User]:
+    """``users`` who are still members of ``organization``."""
+    from tenant_account_v2.models import OrganizationMember
+
+    users = list(users)
+    # Base manager: the organization context may be absent or another one.
+    members = set(
+        OrganizationMember._base_manager.filter(
+            organization=organization, user__in=users
+        ).values_list("user_id", flat=True)
+    )
+    return [user for user in users if user.pk in members]
+
+
+def _hand_back_or_withdraw(
+    mine: Any, execution: Any, runs: Any, organization: Any
+) -> None:
+    """Point ``mine`` at the previous failure, or delete it; read state is kept."""
+    user_ids = list(mine.values_list("user_id", flat=True))
+    if not user_ids:
+        return
+    previous = _previous_failure(execution, runs)
+    if previous:
+        _, label, name = _run_source(previous)
+        # A base-manager queryset, so modified_at is set here.
+        mine.update(**_failure_content(previous, label, name), modified_at=timezone.now())
+    else:
+        mine.delete()
+    push_unread(organization, user_ids)

@@ -10,7 +10,12 @@ from utils.pagination import CustomPagination
 from utils.user_context import UserContext
 
 from inbox.models import InboxItem
-from inbox.serializers import InboxItemSerializer, InboxPageSerializer
+from inbox.serializers import (
+    InboxItemSerializer,
+    InboxPageSerializer,
+    InboxReadConflictSerializer,
+    InboxReadSerializer,
+)
 from inbox.service import push_unread, unread_count
 
 
@@ -42,33 +47,56 @@ class InboxViewSet(viewsets.GenericViewSet):
     @extend_schema(
         operation_id="inbox_read",
         tags=["inbox"],
-        request=None,
+        request=InboxReadSerializer,
         responses={
-            204: None,
+            204: OpenApiResponse(description="Read, or already read"),
             404: OpenApiResponse(
                 description="Not the caller's item, or since withdrawn or purged"
+            ),
+            409: OpenApiResponse(
+                InboxReadConflictSerializer,
+                description=(
+                    "Refreshed by a later failure since the client listed it; "
+                    "left unread"
+                ),
             ),
         },
     )
     @action(detail=True, methods=["post"])
     def read(self, request: Request, pk: str | None = None) -> Response:
+        params = InboxReadSerializer(data=request.data)
+        params.is_valid(raise_exception=True)
         item = get_object_or_404(self.get_queryset(), pk=pk)
-        # Matched on created_at too: a failure refresh landing after the load
-        # brings new content the user has not seen, so it stays unread.
-        marked = (
-            self.get_queryset()
-            .filter(pk=item.pk, read_at__isnull=True, created_at=item.created_at)
-            .update(read_at=timezone.now())
-        )
+        # Only the version the client saw is marked: a failure refresh brings
+        # content the user has not seen, so it stays unread.
+        seen = params.validated_data.get("created", item.created_at)
+        marked = InboxItem.objects.filter(
+            pk=item.pk, user=request.user, read_at__isnull=True, created_at=seen
+        ).update(read_at=timezone.now())
         if marked:
-            push_unread(item.organization, [request.user.pk])
-        return Response(status=status.HTTP_204_NO_CONTENT)
+            push_unread(UserContext.get_organization(), [request.user.pk])
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        current = get_object_or_404(self.get_queryset(), pk=pk)
+        if current.read_at is not None:
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        return Response(
+            {
+                "item": self.get_serializer(current).data,
+                "unread_count": unread_count(request.user),
+            },
+            status=status.HTTP_409_CONFLICT,
+        )
 
     @extend_schema(
         operation_id="inbox_read_all", tags=["inbox"], request=None, responses={204: None}
     )
     @action(detail=False, methods=["post"], url_path="read-all")
     def read_all(self, request: Request) -> Response:
-        self.get_queryset().filter(read_at__isnull=True).update(read_at=timezone.now())
-        push_unread(UserContext.get_organization(), [request.user.pk])
+        marked = (
+            self.get_queryset()
+            .filter(read_at__isnull=True)
+            .update(read_at=timezone.now())
+        )
+        if marked:
+            push_unread(UserContext.get_organization(), [request.user.pk])
         return Response(status=status.HTTP_204_NO_CONTENT)
