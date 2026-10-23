@@ -74,6 +74,77 @@ services:
       - traefik.http.routers.backend.rule=Host(`frontend.unstract.localhost`) && (PathPrefix(`/api/v1`) || PathPrefix(`/deployment`) || PathPrefix(`/public`))
       - traefik.http.services.backend.loadbalancer.server.port=8000
 
+  # Codegen sandbox worker (WorkerType.SANDBOX) — drains sandbox_codegen and
+  # runs generated code out-of-process in a scrubbed, rlimit-bounded
+  # subprocess (spec §6.3).
+  #
+  # On the PG transport, not the broker: UN-4046 retired RabbitMQ as the task
+  # transport, so a broker-only consumer accepts work and drains none — silently
+  # (the producer's enqueue still succeeds). It loads the SAME
+  # workers/sandbox/tasks.py as before via WORKER_PG_QUEUE_CONSUMER_WORKER_TYPE,
+  # so every §6.3 layer is enforced identically; only the transport changed.
+  #
+  # Hardened and isolated: no host_gateway (must not reach the host), no
+  # published ports (the health port is internal-only — 8090/8091 are reserved
+  # for pg_queue_consumer / pluggable-worker auto-discovery, 8092 is the
+  # sandbox's fixed slot), read-only rootfs, all capabilities dropped, no
+  # privilege escalation.
+  worker-sandbox:
+    image: unstract/worker-unified:${VERSION}
+    container_name: unstract-worker-sandbox
+    restart: unless-stopped
+    command: ["pg-queue-consumer"]
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    # BOUNDED, and the bound matters more here than in Kubernetes. A bare
+    # `tmpfs: - /tmp` takes Docker's default size (half of host RAM), and this
+    # is the one writable path in a read-only container, so generated code can
+    # fill it with host MEMORY: `open()` stays available to the script by
+    # design, and RLIMIT_FSIZE caps each file, never their total. Files written
+    # outside the per-job tempdir also outlive its cleanup, so the cost
+    # accumulates across jobs until the daemon's host is affected.
+    #
+    # 256m mirrors the chart's `emptyDir.sizeLimit: 256Mi` for this same mount,
+    # so the two deployment surfaces agree on the budget. Note the chart's
+    # emptyDir is DISK-backed (no `medium: Memory`), which is why compose needs
+    # the explicit cap more, not less.
+    tmpfs:
+      - /tmp:size=256m
+    # Mirrors the chart's `workerPgSandbox.resources.limits.memory: 1Gi`. The
+    # tmpfs cap above bounds what the script can write; this bounds what it can
+    # allocate, and without it an untrusted-code container is the only service
+    # here that can take the host down by asking for memory. (No other service
+    # in this file sets a limit -- that is a deliberate exception for the one
+    # service that executes code it did not write.)
+    mem_limit: 1g
+    env_file:
+      - ../workers/.env
+      - ./essentials.env
+    depends_on:
+      - db
+      - redis
+    environment:
+      - APPLICATION_NAME=unstract-worker-sandbox
+      - WORKER_NAME=sandbox-worker
+      - WORKER_PG_QUEUE_CONSUMER_WORKER_TYPE=sandbox
+      - WORKER_PG_QUEUE_CONSUMER_QUEUE=sandbox_codegen
+      - WORKER_PG_QUEUE_CONSUMER_HEALTH_PORT=8092
+      # Same requirement the chart documents for this image under a read-only
+      # rootfs: worker-unified sets HOME=/home/worker and WORKDIR=/app and
+      # redirects neither TMPDIR nor XDG_CACHE_HOME, so any boot-time write to
+      # ~/.cache or the CWD (Celery / SDK1 / litellm import) hits a read-only
+      # filesystem. The chart points all three at its writable /tmp mount;
+      # this service has the same `read_only: true` + tmpfs shape and was
+      # missing them.
+      - HOME=/tmp
+      - TMPDIR=/tmp
+      - XDG_CACHE_HOME=/tmp/.cache
+    labels:
+      - traefik.enable=false
+
   # Celery Flower
   celery-flower:
     <<: *host_gateway
