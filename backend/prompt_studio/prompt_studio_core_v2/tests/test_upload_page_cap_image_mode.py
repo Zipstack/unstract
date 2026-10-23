@@ -75,6 +75,32 @@ class TestRejectsOverCapInImageMode:
         assert not data.closed
 
 
+class TestPagesToExtract:
+    """The check counts the pages the profile's 'Pages to extract' selects."""
+
+    @staticmethod
+    def _ranged(spec: str) -> MagicMock:
+        profile = _profile({"output_mode": "image", "pages_to_extract": spec})
+        profile.llm = None  # fixed cap of five
+        return profile
+
+    def test_range_within_cap_accepts_a_large_pdf(self) -> None:
+        check(_pdf(30), _PDF, self._ranged("1-5"))
+
+    def test_range_over_cap_names_the_selection(self) -> None:
+        with pytest.raises(ImageModePageLimitExceeded) as excinfo:
+            check(_pdf(30), _PDF, self._ranged("1-"))
+        msg = str(excinfo.value.detail)
+        assert "'Pages to extract' (1-) selects 30 of the document's 30 pages." in msg
+        assert "It has 30 pages, and the limit is 5" in msg
+
+    def test_invalid_range_falls_back_to_the_whole_document(self) -> None:
+        with pytest.raises(ImageModePageLimitExceeded) as excinfo:
+            check(_pdf(30), _PDF, self._ranged("5-3"))
+        assert "selects" not in str(excinfo.value.detail)
+        check(_pdf(5), _PDF, self._ranged("5-3"))
+
+
 class TestGate:
     def test_image_mode_default_profile_is_gated(self) -> None:
         assert gated(_profile({"output_mode": "image"})) is True
