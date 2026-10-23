@@ -11,14 +11,15 @@ from django.db.models import ProtectedError, QuerySet
 from permissions.membership_views import OwnerManagementMixin
 from permissions.permission import IsOwner, IsOwnerOrSharedUserOrSharedToOrg
 from permissions.resource_share_views import ResourceShareManagementMixin
+from platform_audit.actions import Action
+from platform_audit.resources import record_resource_event, resource_ref
 from plugins import get_plugin
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
-from rest_framework.exceptions import PermissionDenied
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
-from tenant_account_v2.organization_member_service import OrganizationMemberService
+from tenant_account_v2.capabilities import Capability, enforce_capability
 from utils.filtering import FilterHelper
 from utils.pagination import OptionalPagination
 from utils.user_context import UserContext
@@ -75,18 +76,7 @@ class ConnectorInstanceViewSet(
         for everyone. Applies to all connector types (all connect to external
         systems).
         """
-        if getattr(request.user, "is_service_account", False):
-            return
-        organization = UserContext.get_organization()
-        if (
-            organization
-            and organization.restrict_connector_creation
-            and not OrganizationMemberService.is_user_organization_admin(request.user)
-        ):
-            raise PermissionDenied(
-                "Connector creation is restricted to organization admins. "
-                "Please contact your organization admin."
-            )
+        enforce_capability(request, Capability.CREATE_CONNECTORS)
 
     def get_queryset(self) -> QuerySet | None:
         # Avoid per-row queries for owner/co-owner + creator fields in list views
@@ -257,6 +247,7 @@ class ConnectorInstanceViewSet(
         # ``created_by`` is audit-only; the creator's access flows through an
         # OWNER membership row (UN-2202 co-owners).
         serializer.instance.grant_owner(request.user)
+        record_resource_event(request, Action.RESOURCE_CREATED, serializer.instance)
         headers = self.get_success_headers(serializer.data)
         return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
@@ -274,6 +265,7 @@ class ConnectorInstanceViewSet(
         Raises:
             DeleteConnectorInUseError: If the connector is being used in workflows
         """
+        deleted = resource_ref(instance)
         try:
             super().perform_destroy(instance)
         except ProtectedError:
@@ -282,3 +274,4 @@ class ConnectorInstanceViewSet(
                 f" named {instance.connector_name}"
             )
             raise DeleteConnectorInUseError(connector_name=instance.connector_name)
+        record_resource_event(self.request, Action.RESOURCE_DELETED, deleted)

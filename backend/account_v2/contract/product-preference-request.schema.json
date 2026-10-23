@@ -1,0 +1,9 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "unstract/account/product-preference-request/v1",
+  "type": "object",
+  "required": ["product"],
+  "properties": {
+    "product": {"enum": ["unstract", "llm-whisperer", "verticals", "flow"]}
+  }
+}
