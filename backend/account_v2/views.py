@@ -2,6 +2,7 @@ import logging
 from typing import Any
 
 from django.conf import settings
+from django.http.response import HttpResponseBase, HttpResponseRedirectBase
 from drf_spectacular.utils import OpenApiResponse, extend_schema, inline_serializer
 from rest_framework import serializers, status
 from rest_framework.decorators import api_view
@@ -75,10 +76,19 @@ def signup(request: Request) -> Response:
     return auth_controller.user_signup(request)
 
 
+# POST is the CSRF-protected sign-out for v1. GET stays for v0's useLogout and
+# can go once v0 is retired.
 @api_view(["GET", "POST"])
-def logout(request: Request) -> Response:
+def logout(request: Request) -> HttpResponseBase:
     auth_controller = AuthenticationController()
-    return auth_controller.user_logout(request)
+    response = auth_controller.user_logout(request)
+    if request.method == "POST" and isinstance(response, HttpResponseRedirectBase):
+        # A fetch or XHR caller cannot follow the cross-origin redirect a cloud
+        # sign-out ends in, so POST returns the target for the client to open.
+        payload = Response({"redirect_url": response.url})
+        payload.cookies.update(response.cookies)
+        return payload
+    return response
 
 
 @extend_schema(
