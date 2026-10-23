@@ -53,8 +53,8 @@
 | Field | Present when | Value |
 |---|---|---|
 | `role` | The caller has a membership in the organization on this deployment. | The stored role: `admin` or `user` in OSS; `unstract_admin`, `unstract_user`, `unstract_supervisor` or `unstract_reviewer` in cloud. |
-| `member_count` | The organization exists on this deployment. | The people the members page lists: the organization's member records on this deployment. Platform API key accounts and pending invitations are not counted. |
-| `region` | The organization exists on this deployment and the deployment sets `REGION`. | The region code (`US`, `EU`; `STAGING`, `DEV` or `INTEGRATION` outside production). The client maps it to a label. OSS and on-prem never send it: their settings don't read `REGION`, whatever the environment sets. It is the region of the deployment that answered: an organization from another region that the user once opened here has a local copy, so it shows this region and this deployment's member count. |
+| `member_count` | The organization exists on this deployment and belongs to this region. | The people the members page lists: the organization's member records on this deployment. Platform API key accounts and pending invitations are not counted. |
+| `region` | The deployment sets `REGION`, and either the organization's metadata names its home region or the organization exists on this deployment. | The region code (`US`, `EU`; `STAGING`, `DEV` or `INTEGRATION` outside production). The client maps it to a label. OSS and on-prem never send it: their settings don't read `REGION`, whatever the environment sets. Cloud stamps `region` on an organization's metadata where it is created. An organization from another region that the user once opened here has a local copy; its row shows the home region and no `member_count`, since this deployment counts only the people who opened the copy. Organizations created before the stamp show the region of the deployment that answered until they are back-filled. |
 
 If working out these three fields fails, the list is returned without them and the failure is logged.
 
