@@ -1,8 +1,7 @@
 """One test per recorded event type, through the view that records it.
 
-Identity-provider calls are patched; everything else, the active auth service's
-role logic included, runs for real so the stored row is what production would
-store.
+Identity-provider calls are patched, and the membership rows take the active
+auth service's role names, so the stored row is what production would store.
 """
 
 import uuid
@@ -139,10 +138,7 @@ class MemberEventTests(AuditTestBase):
         identity provider's per-user call answering ``idp_results`` in order.
         """
         view = OrganizationUserViewSet.as_view({"post": "invite_user"})
-        with (
-            patch_auth_service("is_organization_admin", return_value=True),
-            patch_auth_service("invite_user", side_effect=idp_results),
-        ):
+        with patch_auth_service("invite_user", side_effect=idp_results):
             return self.call(view, "post", data={"users": users})
 
     def test_invited_records_only_successful_invites(self) -> None:

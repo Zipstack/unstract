@@ -65,6 +65,8 @@ EXISTING_SESSION_FIELDS = {
 
 class _BuiltInSessionAuth(TestCase):
     def setUp(self) -> None:
+        # The built-in session auth: a plugin's middleware would 401 a session
+        # it did not seed. Test sessions have no plugin hook yet.
         self.enterContext(builtin_auth_service())
 
 

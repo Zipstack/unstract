@@ -351,9 +351,8 @@ the active service, with the helpers in `backend/utils/tests/auth_seam.py`:
 `builtin_auth_service()` turns any plugin off, so the test stops checking the
 distribution it runs in. Use it only when the test's subject is the built-in
 service (its session login, or a role change through its identity-provider
-path). Say why in a comment, and where the plugin's own behaviour is tested.
-`platform_audit/tests/` and `tenant_account_v2/test_capabilities.py` show both
-cases.
+path). Say why in a comment. `backend/tenant_account_v2/test_capabilities.py`
+shows both cases.
 
 ### Other services / new areas
 

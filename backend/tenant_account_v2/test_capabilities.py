@@ -2,6 +2,8 @@
 
 The fixtures' roles come from the active auth service (``utils.tests.auth_seam``),
 so they drive ``is_user_organization_admin`` directly under any distribution.
+The classes whose role changes go through the identity provider pin the built-in
+service instead, and say why.
 """
 
 import importlib
@@ -553,7 +555,7 @@ class AdminOnlyEndpointsMatrixTests(CapabilityTestBase):
     def setUp(self) -> None:
         # Role changes go through the identity provider, and under a plugin
         # they take its role ids, not names: these check the built-in service's
-        # path. Auth0's is checked in its own plugin tests (test_member_management).
+        # path. A plugin's is checked in that plugin's own tests.
         self.enterContext(builtin_auth_service())
         super().setUp()
         self.colleague = make_user("colleague@example.com")
@@ -627,7 +629,7 @@ class MemberManagementGuardrailTests(CapabilityTestBase):
     def setUp(self) -> None:
         # Role changes go through the identity provider, and under a plugin
         # they take its role ids, not names: these check the built-in service's
-        # path. Auth0's is checked in its own plugin tests (test_member_management).
+        # path. A plugin's is checked in that plugin's own tests.
         self.enterContext(builtin_auth_service())
         super().setUp()
         self.restrict(Capability.MANAGE_MEMBERS, False)

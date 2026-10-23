@@ -54,8 +54,8 @@ def builtin_auth_service() -> Any:
 
     Under a plugin this turns the plugin off, so the test no longer checks the
     distribution it runs in. Use it only when the built-in service is the
-    subject, and say in a comment why and where the plugin's own behaviour is
-    tested. In a ``TestCase``: ``self.enterContext(builtin_auth_service())``.
+    subject, and say why in a comment. In a ``TestCase``:
+    ``self.enterContext(builtin_auth_service())``.
     """
     return patch.object(
         AuthenticationPluginRegistry, "is_plugin_available", return_value=False

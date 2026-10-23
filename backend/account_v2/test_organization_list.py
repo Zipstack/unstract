@@ -9,7 +9,7 @@ from drf_spectacular.generators import SchemaGenerator
 from rest_framework.request import Request
 from rest_framework.test import APIRequestFactory, force_authenticate
 from tenant_account_v2.models import OrganizationMember
-from utils.tests.auth_seam import builtin_auth_service
+from utils.tests.auth_seam import builtin_auth_service, patch_auth_service
 from utils.user_context import UserContext
 
 from account_v2 import urls, views
@@ -50,9 +50,6 @@ class OrganizationListTests(TestCase):
         UserContext.set_organization_identifier(org_a.organization_id)
         self.addCleanup(UserContext.set_organization_identifier, None)
 
-        # The built-in service: these check the controller's list against its
-        # membership rows, and patch the built-in user_organizations below.
-        self.enterContext(builtin_auth_service())
         patcher = patch(
             "account_v2.authentication_controller.CacheService.set_user_organizations"
         )
@@ -189,9 +186,8 @@ class OrganizationListTests(TestCase):
         force_authenticate(raw, user=self.caller)
         # org-x has no data on this deployment, as for another region's org.
         unknown = OrganizationData(id="org-x", display_name="X", name="org-x")
-        with patch(
-            "account_v2.authentication_controller.AuthenticationService.user_organizations",
-            return_value=[*self.listed, unknown],
+        with patch_auth_service(
+            "user_organizations", return_value=[*self.listed, unknown]
         ):
             response = views.get_organizations(raw)
         self.assertEqual(response.status_code, 200)
