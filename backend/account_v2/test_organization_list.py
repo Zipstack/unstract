@@ -9,6 +9,7 @@ from drf_spectacular.generators import SchemaGenerator
 from rest_framework.request import Request
 from rest_framework.test import APIRequestFactory, force_authenticate
 from tenant_account_v2.models import OrganizationMember
+from utils.tests.auth_seam import builtin_auth_service
 from utils.user_context import UserContext
 
 from account_v2 import urls, views
@@ -49,21 +50,14 @@ class OrganizationListTests(TestCase):
         UserContext.set_organization_identifier(org_a.organization_id)
         self.addCleanup(UserContext.set_organization_identifier, None)
 
-        for target, kwargs in [
-            (
-                "account_v2.authentication_controller."
-                "AuthenticationPluginRegistry.is_plugin_available",
-                {"return_value": False},
-            ),
-            (
-                "account_v2.authentication_controller."
-                "CacheService.set_user_organizations",
-                {},
-            ),
-        ]:
-            patcher = patch(target, **kwargs)
-            patcher.start()
-            self.addCleanup(patcher.stop)
+        # The built-in service: these check the controller's list against its
+        # membership rows, and patch the built-in user_organizations below.
+        self.enterContext(builtin_auth_service())
+        patcher = patch(
+            "account_v2.authentication_controller.CacheService.set_user_organizations"
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
         self.controller = AuthenticationController()
         self.listed = [
@@ -288,23 +282,16 @@ class OrganizationListEndpointTests(TestCase):
             for o in (org_a, org_b)
         ]
         self.list_organizations = MagicMock(return_value=listed)
+        # The built-in session auth throughout: a plugin's middleware would 401
+        # a session it did not seed. Test sessions have no plugin hook yet.
+        self.enterContext(builtin_auth_service())
         for target, value in [
             (
                 "account_v2.authentication_controller."
                 "AuthenticationService.user_organizations",
                 self.list_organizations,
             ),
-            # OSS auth throughout, and no write to the shared cache.
-            (
-                "account_v2.custom_auth_middleware."
-                "AuthenticationPluginRegistry.is_plugin_available",
-                MagicMock(return_value=False),
-            ),
-            (
-                "account_v2.authentication_controller."
-                "AuthenticationPluginRegistry.is_plugin_available",
-                MagicMock(return_value=False),
-            ),
+            # No write to the shared cache.
             (
                 "account_v2.authentication_controller."
                 "CacheService.set_user_organizations",
