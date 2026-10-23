@@ -1,15 +1,22 @@
 import logging
+from typing import Any
 
 from account_v2.authentication_controller import AuthenticationController
 from account_v2.exceptions import BadRequestException
+from account_v2.user_profile import delete_photo, photo_url, read_photo, save_photo
+from django.http import HttpResponse
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiResponse, extend_schema, inline_serializer
 from platform_audit.actions import Action, TargetType
 from platform_audit.recorder import (
     BEFORE_UNAVAILABLE,
     best_effort,
     record_platform_event,
 )
-from rest_framework import status, viewsets
+from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import NotFound
+from rest_framework.renderers import BaseRenderer, JSONRenderer
 from rest_framework.request import Request
 from rest_framework.response import Response
 from utils.user_context import UserContext
@@ -21,16 +28,61 @@ from tenant_account_v2.serializer import (
     ChangeUserRoleRequestSerializer,
     InviteUserSerializer,
     OrganizationMemberSerializer,
+    ProfilePhotoSerializer,
+    ProfileUpdateSerializer,
     RemoveUserFromOrganizationSerializer,
     UpdateFlagSerializer,
     UserInfoSerializer,
     UserInviteResponseSerializer,
+    UserProfileSerializer,
 )
 
 Logger = logging.getLogger(__name__)
 
+PROFILE_RESPONSE = inline_serializer(
+    "UserProfileResponse", {"user": UserProfileSerializer()}
+)
+SERVICE_ACCOUNT_REFUSED = OpenApiResponse(
+    description="The caller is a service account (platform API key)"
+)
+PHOTO_URL_RESPONSE = inline_serializer(
+    "UserProfilePhotoResponse",
+    {"photo_url": serializers.CharField(allow_null=True)},
+)
+
+
+class ProfilePhotoRenderer(BaseRenderer):
+    """Lets a client that accepts only images reach the photo view.
+
+    The photo itself is returned as an ``HttpResponse``, so this renderer only
+    renders the error bodies, as JSON.
+    """
+
+    media_type = "image/*"
+    format = "image"
+    charset = None
+    render_style = "binary"
+
+    def render(
+        self,
+        data: Any,
+        accepted_media_type: str | None = None,
+        renderer_context: dict[str, Any] | None = None,
+    ) -> bytes:
+        response = (renderer_context or {}).get("response")
+        if response is not None:
+            response["Content-Type"] = JSONRenderer.media_type
+        return JSONRenderer().render(data)
+
 
 class OrganizationUserViewSet(viewsets.ViewSet):
+    def get_renderers(self) -> list[BaseRenderer]:
+        renderers = super().get_renderers()
+        if getattr(self, "action", None) == "get_profile_photo":
+            # JSON stays first, so a client that accepts both gets JSON errors.
+            renderers.append(ProfilePhotoRenderer())
+        return renderers
+
     @action(detail=False, methods=["POST"])
     def assign_organization_role_to_user(self, request: Request) -> Response:
         serializer = ChangeUserRoleRequestSerializer(data=request.data)
@@ -85,6 +137,12 @@ class OrganizationUserViewSet(viewsets.ViewSet):
                 data={"status": "failed", "message": "failed"},
             )
 
+    @extend_schema(
+        operation_id="user_profile",
+        tags=["profile"],
+        responses={200: PROFILE_RESPONSE},
+        description="The current user. See tenant_account_v2/ReadMe.md.",
+    )
     @action(detail=False, methods=["GET"])
     def get_user_profile(self, request: Request) -> Response:
         auth_controller = AuthenticationController()
@@ -118,16 +176,104 @@ class OrganizationUserViewSet(viewsets.ViewSet):
                 if org:
                     serialized_user_info["organization_name"] = org.display_name
                     serialized_user_info["organization_id"] = org.organization_id
+            serialized_user_info["photo_url"] = photo_url(request.user, org_id)
+            serialized_user_info["language"] = request.user.language
 
             return Response(
                 status=status.HTTP_200_OK, data={"user": serialized_user_info}
             )
-        except Exception as error:
-            Logger.error(f"Error while get User : {error}")
+        except Exception:
+            Logger.exception("Profile read failed for user %s", request.user.pk)
             return Response(
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 data={"message": "Internal Error"},
             )
+
+    @extend_schema(
+        operation_id="user_profile_update",
+        tags=["profile"],
+        request=ProfileUpdateSerializer,
+        responses={
+            200: PROFILE_RESPONSE,
+            400: OpenApiResponse(description="Invalid field"),
+            403: SERVICE_ACCOUNT_REFUSED,
+            404: OpenApiResponse(
+                description="Saved, but the user was not found on read back"
+            ),
+            500: OpenApiResponse(
+                description="Saved, but the profile could not be read back"
+            ),
+        },
+    )
+    @action(detail=False, methods=["PATCH"])
+    def update_profile(self, request: Request) -> Response:
+        """Set the name and/or language shown for the current user."""
+        if refused := _refuse_service_account(request):
+            return refused
+        serializer = ProfileUpdateSerializer(data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        changes = serializer.validated_data
+        if changes:
+            for field, value in changes.items():
+                setattr(request.user, field, value)
+            request.user.save(update_fields=list(changes))
+        return self.get_user_profile(request)
+
+    @extend_schema(
+        operation_id="user_profile_photo",
+        tags=["profile"],
+        responses={
+            (200, "image/png"): OpenApiTypes.BINARY,
+            (200, "image/jpeg"): OpenApiTypes.BINARY,
+            404: OpenApiResponse(description="No photo"),
+        },
+    )
+    @action(detail=False, methods=["GET"])
+    def get_profile_photo(self, request: Request) -> HttpResponse:
+        photo = read_photo(request.user)
+        if not photo:
+            raise NotFound("No profile photo.")
+        data, content_type = photo
+        response = HttpResponse(data, content_type=content_type)
+        response["Content-Disposition"] = "inline"
+        return response
+
+    @extend_schema(
+        operation_id="user_profile_photo_upload",
+        tags=["profile"],
+        request={"multipart/form-data": ProfilePhotoSerializer},
+        responses={
+            200: PHOTO_URL_RESPONSE,
+            400: OpenApiResponse(
+                description="No photo field, not a PNG or JPEG, or over 2 MB"
+            ),
+            403: SERVICE_ACCOUNT_REFUSED,
+        },
+    )
+    @action(detail=False, methods=["POST"])
+    def upload_profile_photo(self, request: Request) -> Response:
+        if refused := _refuse_service_account(request):
+            return refused
+        serializer = ProfilePhotoSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        save_photo(request.user, serializer.validated_data["photo"].read())
+        org_id = UserSessionUtils.get_organization_id(request)
+        return Response(
+            status=status.HTTP_200_OK,
+            data={"photo_url": photo_url(request.user, org_id)},
+        )
+
+    @extend_schema(
+        operation_id="user_profile_photo_delete",
+        tags=["profile"],
+        responses={204: None, 403: SERVICE_ACCOUNT_REFUSED},
+    )
+    @action(detail=False, methods=["DELETE"])
+    def delete_profile_photo(self, request: Request) -> Response:
+        if refused := _refuse_service_account(request):
+            return refused
+        delete_photo(request.user)
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(detail=False, methods=["POST"])
     def invite_user(self, request: Request) -> Response:
@@ -220,6 +366,16 @@ class OrganizationUserViewSet(viewsets.ViewSet):
             status=status.HTTP_200_OK,
             data={"status": "success", "message": "success"},
         )
+
+
+def _refuse_service_account(request: Request) -> Response | None:
+    """A 403 for service accounts (platform API keys), which have no profile."""
+    if getattr(request.user, "is_service_account", False):
+        return Response(
+            status=status.HTTP_403_FORBIDDEN,
+            data={"message": "Service accounts have no profile"},
+        )
+    return None
 
 
 # Returned for an e-mail with no membership, so that ``None`` (from
