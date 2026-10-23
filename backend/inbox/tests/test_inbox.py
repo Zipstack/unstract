@@ -304,6 +304,12 @@ class ShareEventTests(CoOwnerOrgTestMixin, TestCase):
         (recipients,) = notify.call_args.args
         self.assertEqual(recipients, {self.outsider})
 
+    def test_had_access_must_be_passed(self) -> None:
+        with self.assertRaises(TypeError):
+            events.notify_resource_shared(
+                resource=self.workflow, users=[self.viewer], groups=[], actor=self.owner
+            )
+
     def test_group_share_skips_members_who_already_had_access(self) -> None:
         self.workflow.memberships.create(user=self.outsider, role=ResourceRole.VIEWER)
         self.share({"shared_groups": [self.group.pk]})

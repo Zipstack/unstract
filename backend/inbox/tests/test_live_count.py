@@ -96,7 +96,7 @@ class PublisherTests(TestCase):
         with (
             patch.object(service, "_queue", full),
             patch.object(service, "_ensure_publisher"),
-            patch.object(service, "_dropping", False),
+            patch.object(service, "_dropped", 0),
         ):
             with self.assertLogs("inbox.service", "WARNING"):
                 service._submit("user:1", "inbox:unread", {"unread_count": 1})
@@ -109,10 +109,12 @@ class PublisherTests(TestCase):
         pending.put(("user:1", "inbox:unread", {"unread_count": 1}))
         with (
             patch.object(service, "_queue", pending),
-            patch("utils.log_events._emit_websocket_event") as emit,
+            patch("utils.log_events.sio") as sio,
         ):
             service._publish_next()
-        emit.assert_called_once_with("user:1", "inbox:unread", {"unread_count": 1})
+        sio.emit.assert_called_once_with(
+            "inbox:unread", data={"data": {"unread_count": 1}}, room="user:1"
+        )
 
     def test_a_failing_emit_is_logged_and_the_publisher_carries_on(self) -> None:
         import queue
@@ -121,13 +123,13 @@ class PublisherTests(TestCase):
         pending.put(("user:1", "inbox:unread", {"unread_count": 1}))
         with (
             patch.object(service, "_queue", pending),
-            patch(
-                "utils.log_events._emit_websocket_event",
-                side_effect=RuntimeError("broker down"),
-            ),
+            patch("utils.log_events.sio") as sio,
         ):
-            with self.assertLogs("inbox.service", "ERROR"):
+            sio.emit.side_effect = RuntimeError("broker down")
+            with self.assertLogs("inbox.service", "ERROR") as logs:
                 service._publish_next()
+        self.assertIn("user:1", logs.output[0])
+        self.assertIn("broker down", logs.output[0])
 
     def test_publisher_thread_is_started_once_and_restarted_when_dead(self) -> None:
         with (
@@ -154,15 +156,18 @@ class PublisherTests(TestCase):
         with (
             patch.object(service, "_queue", full),
             patch.object(service, "_ensure_publisher"),
-            patch.object(service, "_dropping", False),
+            patch.object(service, "_dropped", 0),
         ):
             with self.assertLogs("inbox.service", "WARNING") as logs:
                 service._submit("user:1", "inbox:unread", {})
                 service._submit("user:2", "inbox:unread", {})
             self.assertEqual(len(logs.records), 1)
-            # Room again: the next push gets through and resets the warning.
+            # Room again: the next push gets through, says how many were
+            # dropped, and resets the warning.
             full.get_nowait()
-            service._submit("user:3", "inbox:unread", {})
+            with self.assertLogs("inbox.service", "WARNING") as logs:
+                service._submit("user:3", "inbox:unread", {})
+            self.assertIn("resumed after 2 dropped pushes", logs.output[0])
             with self.assertLogs("inbox.service", "WARNING") as logs:
                 service._submit("user:4", "inbox:unread", {})
             self.assertEqual(len(logs.records), 1)
@@ -229,5 +234,7 @@ class ConnectTests(CoOwnerOrgTestMixin, TestCase):
         store.assert_not_called()
 
     def test_unknown_session_joins_only_the_session_room(self) -> None:
-        enter = self.connect("n" * 32)
+        with self.assertLogs("utils.log_events", "INFO") as logs:
+            enter = self.connect("n" * 32)
         enter.assert_called_once_with("sid-1", "n" * 32)
+        self.assertTrue(any("no user room" in line for line in logs.output))

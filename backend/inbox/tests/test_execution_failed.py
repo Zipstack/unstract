@@ -40,12 +40,25 @@ class _Runs(CoOwnerOrgTestMixin):
         resource.memberships.create(user=self.coowner, role=ResourceRole.OWNER)
         resource.memberships.create(user=self.viewer, role=ResourceRole.VIEWER)
 
-    def run_of(self, resource=None, workflow=None) -> WorkflowExecution:
-        return WorkflowExecution.objects.create(
+    def run_of(self, resource=None, workflow=None, ago=None) -> WorkflowExecution:
+        execution = WorkflowExecution.objects.create(
             workflow=workflow or resource.workflow,
             pipeline_id=resource.pk if resource else None,
             status=ExecutionStatus.EXECUTING.value,
         )
+        if ago is not None:
+            # Explicit start times: runs created back to back can share one.
+            WorkflowExecution.objects.filter(pk=execution.pk).update(
+                created_at=timezone.now() - ago
+            )
+            execution.refresh_from_db()
+        return execution
+
+    def runs_of(self, resource, count: int) -> list[WorkflowExecution]:
+        """``count`` runs, oldest first, an hour apart."""
+        return [
+            self.run_of(resource, ago=timedelta(hours=count - n)) for n in range(count)
+        ]
 
     def finish(self, execution, status, failed_files=None) -> None:
         # As the worker's update_status does: status and counts in one transaction.
@@ -91,17 +104,26 @@ class ExecutionFailedTests(_Runs, TestCase):
         self.finish(self.run_of(pipeline), ExecutionStatus.COMPLETED, failed_files=0)
         self.assertEqual(_items(self.owner), [])
 
-    def test_non_terminal_status_creates_nothing(self) -> None:
+    def test_non_terminal_status_registers_no_hook(self) -> None:
+        from inbox.events import notify_execution_failed
+
         pipeline = _build_pipeline(self.org, self.owner)
         self.share(pipeline)
-        with patch("inbox.events.notify_execution_failed") as hook:
-            self.finish(self.run_of(pipeline), ExecutionStatus.EXECUTING)
-        hook.assert_not_called()
+        execution = self.run_of(pipeline)
+        # Read from the registered callbacks, so it holds wherever the hook is imported.
+        with self.captureOnCommitCallbacks() as callbacks:
+            execution.update_execution(status=ExecutionStatus.EXECUTING)
+        self.assertNotIn(
+            notify_execution_failed, [getattr(c, "func", c) for c in callbacks]
+        )
+        with self.captureOnCommitCallbacks() as callbacks:
+            execution.update_execution(status=ExecutionStatus.ERROR)
+        self.assertIn(notify_execution_failed, [getattr(c, "func", c) for c in callbacks])
 
     def test_repeated_failures_refresh_one_item_per_resource(self) -> None:
         pipeline = _build_pipeline(self.org, self.owner)
         self.share(pipeline)
-        first, second = self.run_of(pipeline), self.run_of(pipeline)
+        first, second = self.runs_of(pipeline, 2)
         self.finish(first, ExecutionStatus.ERROR)
         earlier = timezone.now() - timedelta(days=1)
         InboxItem.objects.filter(user=self.owner).update(
@@ -116,7 +138,7 @@ class ExecutionFailedTests(_Runs, TestCase):
     def test_clean_retry_of_an_older_run_keeps_the_newer_failure(self) -> None:
         pipeline = _build_pipeline(self.org, self.owner)
         self.share(pipeline)
-        first, second = self.run_of(pipeline), self.run_of(pipeline)
+        first, second = self.runs_of(pipeline, 2)
         self.finish(first, ExecutionStatus.ERROR)
         self.finish(second, ExecutionStatus.ERROR)
         self.finish(first, ExecutionStatus.COMPLETED, failed_files=0)
@@ -135,11 +157,7 @@ class ExecutionFailedTests(_Runs, TestCase):
     def test_late_failure_of_an_older_run_keeps_the_newer_one(self) -> None:
         pipeline = _build_pipeline(self.org, self.owner)
         self.share(pipeline)
-        older, newer = self.run_of(pipeline), self.run_of(pipeline)
-        WorkflowExecution.objects.filter(pk=older.pk).update(
-            created_at=timezone.now() - timedelta(hours=1)
-        )
-        older.refresh_from_db()
+        older, newer = self.runs_of(pipeline, 2)
         self.finish(newer, ExecutionStatus.ERROR)
         self.finish(older, ExecutionStatus.ERROR)
         (item,) = _items(self.owner)
@@ -169,6 +187,100 @@ class ExecutionFailedTests(_Runs, TestCase):
         self.finish(execution, ExecutionStatus.COMPLETED, failed_files=0)
         self.assertEqual(_items(self.owner), [])
 
+    def test_corrected_run_hands_the_item_back_to_the_older_failure(self) -> None:
+        pipeline = _build_pipeline(self.org, self.owner)
+        self.share(pipeline)
+        first, second = self.runs_of(pipeline, 2)
+        first.error_message = "first broke"
+        self.finish(first, ExecutionStatus.ERROR)
+        self.finish(second, ExecutionStatus.ERROR)
+        self.finish(second, ExecutionStatus.COMPLETED, failed_files=0)
+        for user in (self.owner, self.coowner):
+            (item,) = _items(user)
+            self.assertEqual(item.route, _run_route(first))
+            self.assertEqual(item.body, "first broke")
+            self.assertEqual(
+                item.title, f"A run of the pipeline {pipeline.pipeline_name} failed"
+            )
+            self.assertIsNone(item.read_at)
+
+    def test_handing_back_keeps_the_read_state(self) -> None:
+        pipeline = _build_pipeline(self.org, self.owner)
+        self.share(pipeline)
+        first, second = self.runs_of(pipeline, 2)
+        self.finish(first, ExecutionStatus.ERROR)
+        self.finish(second, ExecutionStatus.ERROR)
+        InboxItem.objects.filter(user=self.owner).update(read_at=timezone.now())
+        self.finish(second, ExecutionStatus.COMPLETED, failed_files=0)
+        (item,) = _items(self.owner)
+        self.assertEqual(item.route, _run_route(first))
+        self.assertIsNotNone(item.read_at)
+
+    def test_failure_older_than_retention_is_not_handed_back(self) -> None:
+        pipeline = _build_pipeline(self.org, self.owner)
+        self.share(pipeline)
+        ancient = self.run_of(pipeline, ago=timedelta(days=91))
+        WorkflowExecution.objects.filter(pk=ancient.pk).update(
+            status=ExecutionStatus.ERROR.value
+        )
+        execution = self.run_of(pipeline)
+        self.finish(execution, ExecutionStatus.ERROR)
+        self.finish(execution, ExecutionStatus.COMPLETED, failed_files=0)
+        self.assertEqual(_items(self.owner), [])
+
+    def test_failure_of_another_pipeline_is_not_handed_back(self) -> None:
+        pipeline, other = (_build_pipeline(self.org, self.owner) for _ in range(2))
+        self.share(pipeline)
+        stranger = self.run_of(other, ago=timedelta(hours=1))
+        WorkflowExecution.objects.filter(pk=stranger.pk).update(
+            status=ExecutionStatus.ERROR.value
+        )
+        execution = self.run_of(pipeline)
+        self.finish(execution, ExecutionStatus.ERROR)
+        self.finish(execution, ExecutionStatus.COMPLETED, failed_files=0)
+        self.assertEqual(_items(self.owner), [])
+
+    def test_lagging_former_owner_row_does_not_let_an_older_run_win(self) -> None:
+        import uuid as uuid_module
+
+        pipeline = _build_pipeline(self.org, self.owner)
+        self.share(pipeline)
+        run1, run2, run3 = self.runs_of(pipeline, 3)
+        self.finish(run1, ExecutionStatus.ERROR)
+        pipeline.memberships.filter(user=self.coowner).delete()
+        self.finish(run3, ExecutionStatus.ERROR)
+        # The former owner's row still shows run1; it sorts first by pk, so a
+        # check that read one row would see run1 and let run2 refresh.
+        InboxItem.objects.filter(user=self.coowner).update(id=uuid_module.UUID(int=0))
+        self.finish(run2, ExecutionStatus.ERROR)
+        (item,) = _items(self.owner)
+        self.assertEqual(item.route, _run_route(run3))
+
+    def test_owner_who_left_the_organization_is_not_notified(self) -> None:
+        pipeline = _build_pipeline(self.org, self.owner)
+        self.share(pipeline)
+        pipeline.memberships.create(user=self.stranger, role=ResourceRole.OWNER)
+        self.finish(self.run_of(pipeline), ExecutionStatus.ERROR)
+        self.assertEqual(_items(self.stranger), [])
+        self.assertEqual(len(_items(self.owner)), 1)
+
+    def test_resource_with_no_owners_logs_why(self) -> None:
+        pipeline = _build_pipeline(self.org, self.owner)
+        with self.assertLogs("inbox.events", "WARNING") as logs:
+            self.finish(self.run_of(pipeline), ExecutionStatus.ERROR)
+        self.assertIn("has no owners", logs.output[0])
+        self.assertFalse(InboxItem._base_manager.exists())
+
+    def test_refresh_moves_modified_at(self) -> None:
+        pipeline = _build_pipeline(self.org, self.owner)
+        self.share(pipeline)
+        first, second = self.runs_of(pipeline, 2)
+        self.finish(first, ExecutionStatus.ERROR)
+        earlier = timezone.now() - timedelta(days=1)
+        InboxItem.objects.update(modified_at=earlier)
+        self.finish(second, ExecutionStatus.ERROR)
+        self.assertGreater(_items(self.owner)[0].modified_at, earlier)
+
     def test_error_restarted_then_clean_withdraws_the_item(self) -> None:
         pipeline = _build_pipeline(self.org, self.owner)
         self.share(pipeline)
@@ -187,13 +299,27 @@ class ExecutionFailedTests(_Runs, TestCase):
         self.finish(execution, ExecutionStatus.ERROR)
         self.assertEqual(len(_items(self.owner)), 1)
 
-    def test_failed_run_does_not_push_over_the_socket(self) -> None:
+    def test_failed_run_pushes_the_owners_counts(self) -> None:
         pipeline = _build_pipeline(self.org, self.owner)
         self.share(pipeline)
         with patch("inbox.service._submit") as submit:
             self.finish(self.run_of(pipeline), ExecutionStatus.ERROR)
-        submit.assert_not_called()
-        self.assertEqual(len(_items(self.owner)), 1)
+        pushed = {call.args[0]: call.args[2]["unread_count"] for call in submit.mock_calls}
+        self.assertEqual(
+            pushed, {f"user:{self.owner.pk}": 1, f"user:{self.coowner.pk}": 1}
+        )
+
+    def test_withdrawal_pushes_the_owners_counts(self) -> None:
+        pipeline = _build_pipeline(self.org, self.owner)
+        self.share(pipeline)
+        execution = self.run_of(pipeline)
+        self.finish(execution, ExecutionStatus.ERROR)
+        with patch("inbox.service._submit") as submit:
+            self.finish(execution, ExecutionStatus.COMPLETED, failed_files=0)
+        pushed = {call.args[0]: call.args[2]["unread_count"] for call in submit.mock_calls}
+        self.assertEqual(
+            pushed, {f"user:{self.owner.pk}": 0, f"user:{self.coowner.pk}": 0}
+        )
 
     def test_stopped_run_says_stopped(self) -> None:
         pipeline = _build_pipeline(self.org, self.owner)
@@ -255,6 +381,54 @@ class ExecutionFailedTests(_Runs, TestCase):
 
 class RealCommitTests(_Runs, TransactionTestCase):
     """Real commits: TestCase defers on-commit hooks past every write."""
+
+    def post_internal(self, view, payload: dict, **kwargs):
+        from rest_framework.test import APIRequestFactory
+
+        request = APIRequestFactory().post("/x/", payload, format="json")
+        # What the internal API middleware sets from X-Organization-ID.
+        request.organization_id = self.org.organization_id
+        return view(request, **kwargs)
+
+    def test_worker_status_write_with_failed_files_adds_the_item(self) -> None:
+        from workflow_manager.internal_views import WorkflowExecutionInternalViewSet
+
+        pipeline = _build_pipeline(self.org, self.owner)
+        self.share(pipeline)
+        execution = self.run_of(pipeline)
+        response = self.post_internal(
+            WorkflowExecutionInternalViewSet.as_view({"post": "update_status"}),
+            {
+                "status": ExecutionStatus.COMPLETED.value,
+                "total_files": 2,
+                "successful_files": 0,
+                "failed_files": 2,
+            },
+            id=str(execution.pk),
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        (item,) = _items(self.owner)
+        self.assertIn("finished with 2 failed files", item.title)
+
+    def test_batch_status_write_adds_the_item(self) -> None:
+        from workflow_manager.internal_views import BatchStatusUpdateAPIView
+
+        pipeline = _build_pipeline(self.org, self.owner)
+        self.share(pipeline)
+        execution = self.run_of(pipeline)
+        response = self.post_internal(
+            BatchStatusUpdateAPIView.as_view(),
+            {
+                "updates": [
+                    {
+                        "execution_id": str(execution.pk),
+                        "status": ExecutionStatus.ERROR.value,
+                    }
+                ]
+            },
+        )
+        self.assertEqual(len(response.data["successful_updates"]), 1, response.data)
+        self.assertEqual(len(_items(self.owner)), 1)
 
     def test_run_finished_with_nothing_to_dispatch_and_rejected_files(self) -> None:
         pipeline = _build_pipeline(self.org, self.owner)
