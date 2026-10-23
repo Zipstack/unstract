@@ -254,6 +254,10 @@ def _save_restrictions(
             setattr(locked, field, value)
         locked.modified_by = request.user
         locked.save(update_fields=[*values, "modified_by", "modified_at"])
+    # The request's cached organization is another instance and still holds
+    # the old values; cache the written row so later reads in this request
+    # see them.
+    UserContext.cache_organization(locked)
     return locked, before
 
 
