@@ -4,6 +4,7 @@ import re
 import time
 import zipfile
 import zlib
+from collections.abc import Callable
 from io import BytesIO
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, BinaryIO
@@ -44,8 +45,10 @@ from unstract.sdk1.adapters.x2text.llm_whisperer_v2.src.page_range import (
     resolve_page_range,
 )
 from unstract.sdk1.adapters.x2text.page_image_loader import (
+    PAGE_LABELS_FILENAME,
     configured_max_total_bytes,
     configured_page_cap,
+    validate_document_pages,
 )
 from unstract.sdk1.constants import MimeType
 from unstract.sdk1.exceptions import FileOperationError
@@ -909,12 +912,51 @@ class LLMWhispererHelper:
             )
 
     @staticmethod
+    def status_document_pages(
+        status: dict[str, Any], image_count: int
+    ) -> list[int] | None:
+        """``metadata.pages`` of a pdf-to-images status, if valid for the images."""
+        metadata = status.get("metadata")
+        value = metadata.get("pages") if isinstance(metadata, dict) else None
+        return validate_document_pages(value, image_count)
+
+    @staticmethod
+    def _write_page_labels(
+        fs: FileStorage,
+        page_store_dir: str,
+        document_pages: list[int] | None,
+        image_count: int,
+        write: Callable[..., None],
+    ) -> None:
+        """Write ``pages.json`` when the document pages differ from 1..N."""
+        pages = validate_document_pages(document_pages, image_count)
+        if pages is None or pages == list(range(1, image_count + 1)):
+            return
+        path = str(Path(page_store_dir) / PAGE_LABELS_FILENAME)
+        try:
+            write(fs=fs, path=path, data=json.dumps({"pages": pages}).encode())
+        except Exception as e:
+            logger.warning(
+                "Image mode: could not write page labels %s (%s); prompts will "
+                "label pages by position",
+                path,
+                e,
+            )
+
+    @staticmethod
     def persist_page_images(
         fs: FileStorage,
         page_store_dir: str,
         pages: list[tuple[int, bytes]],
+        document_pages: list[int] | None = None,
     ) -> list[PageImageReference]:
         """Write every page image to FileStorage with per-page retry.
+
+        ``document_pages`` (from the status' ``metadata.pages``) records each
+        image's page number in the source document. When valid and different
+        from the positions 1..N, it is written as ``pages.json`` next to the
+        images so the "Page N" labels match the document; it is best-effort
+        and never fails the extraction (labels fall back to the positions).
 
         Fail-closed on disk as well as in the return value: if any page exhausts
         its retries, the pages already written are removed (best-effort) before
@@ -1006,6 +1048,9 @@ class LLMWhispererHelper:
                 )
             )
         references.sort(key=lambda ref: ref.page_number)
+        LLMWhispererHelper._write_page_labels(
+            fs, page_store_dir, document_pages, len(references), write_with_retry
+        )
         logger.info(
             "Image mode: persisted %d page image(s) under %s (provider=%s)",
             len(references),
@@ -1226,7 +1271,12 @@ class LLMWhispererHelper:
         LLMWhispererHelper._check_pages_after_download(
             pages, image_limits, page_store_dir, expected_page_count
         )
-        references = LLMWhispererHelper.persist_page_images(fs, page_store_dir, pages)
+        references = LLMWhispererHelper.persist_page_images(
+            fs,
+            page_store_dir,
+            pages,
+            LLMWhispererHelper.status_document_pages(status, len(pages)),
+        )
         logger.info(
             "Image mode: completed job=%s pages=%d", whisper_hash, len(references)
         )

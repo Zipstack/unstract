@@ -8,6 +8,7 @@ All tests are pure in-memory / temp-dir units: no network, no live service.
 """
 
 import io
+import json
 import uuid
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
@@ -172,6 +173,60 @@ class TestPersistence:
         assert refs[0].size_bytes == len(b"one")
         assert refs[0].provider is FileStorageProvider.S3
         assert len(fs.stored_paths) == 3
+
+    def test_document_pages_are_written_as_pages_json(self) -> None:
+        fs = InMemoryFileStorage()
+        H.persist_page_images(fs, "doc/pages", [(1, b"a"), (2, b"b")], [10, 12])
+        raw = fs.read(path="doc/pages/pages.json", mode="rb")
+        assert json.loads(raw) == {"pages": [10, 12]}
+
+    @pytest.mark.parametrize(
+        "document_pages",
+        [None, [1, 2], [10], [12, 10]],
+        ids=["none", "identity", "short", "bad"],
+    )
+    def test_no_labels_file_without_useful_document_pages(
+        self, document_pages: list[int] | None
+    ) -> None:
+        fs = InMemoryFileStorage()
+        H.persist_page_images(fs, "doc/pages", [(1, b"a"), (2, b"b")], document_pages)
+        assert not fs.exists("doc/pages/pages.json")
+
+    def test_labels_write_failure_does_not_fail_extraction(
+        self, monkeypatch: MonkeyPatch
+    ) -> None:
+        fs = InMemoryFileStorage()
+        real_write = fs.write
+
+        def write(path: str, **kwargs: object) -> None:
+            if str(path).endswith("pages.json"):
+                raise OSError("disk full")
+            real_write(path=path, **kwargs)
+
+        monkeypatch.setattr(fs, "write", write)
+        refs = H.persist_page_images(fs, "doc/pages", [(1, b"a")], [7])
+        assert [r.page_number for r in refs] == [1]
+
+    def test_reextraction_without_labels_removes_old_labels(self) -> None:
+        fs = InMemoryFileStorage()
+        H.persist_page_images(fs, "doc/pages", [(1, b"a")], [7])
+        H.persist_page_images(fs, "doc/pages", [(1, b"a")])
+        assert not fs.exists("doc/pages/pages.json")
+
+    @pytest.mark.parametrize(
+        ("status", "count", "expected"),
+        [
+            ({"metadata": {"pages": [4, 9]}}, 2, [4, 9]),
+            ({"metadata": {"pages": [4, 9]}}, 3, None),
+            ({"metadata": {"pages": [9, 4]}}, 2, None),
+            ({"metadata": {}}, 2, None),
+            ({}, 2, None),
+        ],
+    )
+    def test_status_document_pages(
+        self, status: dict, count: int, expected: list[int] | None
+    ) -> None:
+        assert H.status_document_pages(status, count) == expected
 
     def test_retry_then_success(self, monkeypatch: MonkeyPatch) -> None:
         # Patch the class the helper actually holds (helper_mod.WhispererDefaults),
@@ -556,6 +611,22 @@ class TestPreSubmitPageCap:
         assert "No pages were converted or charged" in msg
         assert excinfo.value.status_code == 400
         submit.assert_not_called()
+
+    def test_status_document_pages_reach_persistence(
+        self, monkeypatch: MonkeyPatch
+    ) -> None:
+        fs = self._fs_with_pdf(monkeypatch, 30)
+        self._stub_after_submit(monkeypatch, 2)
+        status = {"status": "processed", "metadata": {"page_count": 2, "pages": [10, 12]}}
+        monkeypatch.setattr(
+            H, "poll_pdf_to_images_status", staticmethod(lambda *_a: status)
+        )
+        persist = MagicMock(name="persist", return_value=[])
+        monkeypatch.setattr(H, "persist_page_images", staticmethod(persist))
+
+        H.get_page_images({"pages_to_extract": "10,12"}, "/in/d.pdf", "/out/d.txt", fs=fs)
+
+        assert persist.call_args.args[3] == [10, 12]
 
     def test_unreadable_page_count_still_submits(self, monkeypatch: MonkeyPatch) -> None:
         # Best-effort by design: a PDF we cannot count locally must not be
