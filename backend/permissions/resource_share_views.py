@@ -180,6 +180,7 @@ class ResourceShareManagementMixin:
         users, group-membership for groups) live in
         ``ShareAuthorizationService``.
         """
+        from inbox.events import notify_resource_shared, users_with_access
         from tenant_account_v2.share_notifications import (
             notify_resource_group_share_changed,
         )
@@ -202,6 +203,7 @@ class ResourceShareManagementMixin:
             if "shared_groups" in desired
             else set()
         )
+        had_access = users_with_access(resource)
         org_before = (
             bool(getattr(resource, "shared_to_org", False))
             if "shared_to_org" in desired
@@ -249,6 +251,13 @@ class ResourceShareManagementMixin:
         )
         self._notify_shared_users(
             resource, users_after - users_before, users_before - users_after, request.user
+        )
+        notify_resource_shared(
+            resource=resource,
+            users=users_after - users_before,
+            groups=groups_after - groups_before,
+            actor=request.user,
+            had_access=had_access,
         )
         return Response(status=status.HTTP_200_OK)
 
