@@ -95,6 +95,29 @@ class TestPagesToExtract:
         assert "and the limit is 5" in msg
         assert "This document has" not in msg
 
+    def test_unreadable_setting_is_logged_without_its_value(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        profile = MagicMock(name="ProfileManager")
+        type(profile.x2text).metadata = property(
+            lambda _self: (_ for _ in ()).throw(ValueError("secret-key-material"))
+        )
+        with caplog.at_level(logging.WARNING):
+            count = PromptStudioHelper._selected_page_count(profile, 30)
+        assert count == (30, "")
+        assert "ValueError" in caplog.text
+        assert "Pages to extract" in caplog.text
+        assert "secret-key-material" not in caplog.text
+
+    def test_invalid_setting_is_logged_without_its_value(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        with caplog.at_level(logging.WARNING):
+            count = PromptStudioHelper._selected_page_count(self._ranged("5-3"), 30)
+        assert count == (30, "")
+        assert "PageRangeError" in caplog.text
+        assert "5-3" not in caplog.text
+
     def test_invalid_range_falls_back_to_the_whole_document(self) -> None:
         with pytest.raises(ImageModePageLimitExceeded) as excinfo:
             check(_pdf(30), _PDF, self._ranged("5-3"))

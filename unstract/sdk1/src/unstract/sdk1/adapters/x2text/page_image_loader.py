@@ -376,6 +376,15 @@ def validate_document_pages(value: object, image_count: int) -> list[int] | None
     return list(value)
 
 
+def _page_position(
+    index: int, page_number: int, image_count: int, document_pages: list[int] | None
+) -> str:
+    """'page 12 (image 2 of 5)' with labels, else 'page 2 of 5'."""
+    if document_pages:
+        return f"page {document_pages[index]} (image {page_number} of {image_count})"
+    return f"page {page_number} of {image_count}"
+
+
 def read_document_pages(
     fs: FileStorage, page_store_dir: str, image_count: int
 ) -> list[int] | None:
@@ -596,6 +605,7 @@ def load_page_images(  # noqa: C901 - legacy and policy paths share one bounded-
                 page_count=page_count,
                 data=data,
                 page_store_dir=page_store_dir,
+                document_page=document_pages[index] if document_pages else None,
             )
         if max_total_bytes is not None and total_bytes > max_total_bytes:
             # Stop before encoding/retaining more — the page cap bounds the
@@ -609,11 +619,14 @@ def load_page_images(  # noqa: C901 - legacy and policy paths share one bounded-
                     charged=None,
                 )
             else:
+                where = _page_position(
+                    index, page_number, len(discovered), document_pages
+                )
                 message = (
                     "This document is too large for image output mode. Its "
                     "page images go over the "
-                    f"{max_total_bytes // (1024 * 1024)} MB limit at page "
-                    f"{page_number} of {len(discovered)}, and image mode has to "
+                    f"{max_total_bytes // (1024 * 1024)} MB limit at {where}"
+                    ", and image mode has to "
                     "send every page to the LLM in one request. Split the "
                     "document into smaller files, or use a text output mode "
                     "instead."

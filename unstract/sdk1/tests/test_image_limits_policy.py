@@ -223,6 +223,17 @@ class TestPolicyFromLimits:
         assert "`claude-sonnet-4-5` on Anthropic" in str(byte_err.value)
         assert "gpt-5.6" not in str(byte_err.value)
 
+    def test_per_image_message_names_the_document_page(self) -> None:
+        policy = ImageModePolicy.from_limits([BEDROCK])
+        pages = [(1, b"x" * 10), (2, b"x" * 4_000_000)]
+        with pytest.raises(PageImageTooLargeError) as excinfo:
+            check_page_set(policy, pages, page_store_dir=DIR, document_pages=[10, 12])
+        assert str(excinfo.value).startswith("Page 12 of this document is")
+        assert excinfo.value.page_number == 2  # the image position stays structured
+        with pytest.raises(PageImageTooLargeError) as fallback:
+            check_page_set(policy, pages, page_store_dir=DIR)
+        assert str(fallback.value).startswith("Page 2 of this document is")
+
     def test_per_image_message_names_the_model_that_set_the_limit(self) -> None:
         # Mistral sets the page budget (8 images); Bedrock's 3.75 MB per-image
         # limit is the stricter one, so the message must name Bedrock.

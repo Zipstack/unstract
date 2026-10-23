@@ -1172,8 +1172,11 @@ class LLMWhispererHelper:
         image_limits: "ImageModePolicy | None",
         page_store_dir: str,
         expected_page_count: int | None = None,
+        document_pages: list[int] | None = None,
     ) -> None:
         """Apply the byte/per-image checks once the rendered pages are known.
+
+        ``document_pages`` makes a per-image error name the document page.
 
         The conversion is already billed at this point; the checks run before
         anything is persisted so a rejected document leaves no page set behind.
@@ -1197,6 +1200,7 @@ class LLMWhispererHelper:
                 page_store_dir=page_store_dir,
                 charged=True,
                 emit_advisories=expected_page_count != len(pages),
+                document_pages=document_pages,
             )
         except PageCapExceededError as e:
             raise ImageLimitExceededError(
@@ -1296,14 +1300,12 @@ class LLMWhispererHelper:
         # the user ran a prompt, after they had built their prompts around
         # it. Failing at indexing is the earliest point the size is known.
         # The answer-time check in page_image_loader stays as the backstop.
+        document_pages = LLMWhispererHelper.status_document_pages(status, len(pages))
         LLMWhispererHelper._check_pages_after_download(
-            pages, image_limits, page_store_dir, expected_page_count
+            pages, image_limits, page_store_dir, expected_page_count, document_pages
         )
         references = LLMWhispererHelper.persist_page_images(
-            fs,
-            page_store_dir,
-            pages,
-            LLMWhispererHelper.status_document_pages(status, len(pages)),
+            fs, page_store_dir, pages, document_pages
         )
         logger.info(
             "Image mode: completed job=%s pages=%d", whisper_hash, len(references)
