@@ -2,9 +2,11 @@
 
 import pytest
 from unstract.sdk1.adapters.x2text.llm_whisperer_v2.src.page_range import (
+    PageLimitError,
     PageRangeError,
     normalize_page_range,
     resolve_page_range,
+    validate_page_range,
 )
 
 
@@ -17,7 +19,21 @@ def test_normalize_canonicalises(spec: str, expected: str) -> None:
     assert normalize_page_range(spec) == expected
 
 
-@pytest.mark.parametrize("spec", ["abc", "1--2", "1-2-3", ",", "-", "1,,2", "1 2"])
+@pytest.mark.parametrize(
+    "spec",
+    [
+        "abc",
+        "1--2",
+        "1-2-3",
+        ",",
+        "-",
+        "1,,2",
+        "1 2",
+        "\uff11-\uff13",
+        "\u0661",
+        "1-5,",
+    ],
+)
 def test_normalize_rejects_malformed(spec: str) -> None:
     """A token that is not a page or range is a syntax error."""
     with pytest.raises(PageRangeError):
@@ -71,3 +87,44 @@ def test_normalize_rejects_oversized_values(spec: str) -> None:
     """Huge numbers or values are a PageRangeError, never a bare int() ValueError."""
     with pytest.raises(PageRangeError):
         normalize_page_range(spec)
+
+
+@pytest.mark.parametrize(
+    ("spec", "page_count", "selected"),
+    [("", 1000, 1000), ("1-", 5_000_000, 5_000_000), ("1-600,500-1100", 2000, 1100)],
+)
+def test_resolve_rejects_selection_over_max_pages(
+    spec: str, page_count: int, selected: int
+) -> None:
+    """Over the limit raises before the page list is built, naming the count."""
+    with pytest.raises(PageLimitError) as excinfo:
+        resolve_page_range(spec, page_count, max_pages=999)
+    assert excinfo.value.selected == selected
+    assert "maximum supported is 999" in str(excinfo.value)
+    assert isinstance(excinfo.value, PageRangeError)
+
+
+def test_resolve_allows_selection_at_max_pages() -> None:
+    """A selection of exactly max_pages pages from a huge document resolves."""
+    pages = resolve_page_range("10-1008", 5_000_000, max_pages=999)
+    assert pages[0] == 10
+    assert pages[-1] == 1008
+    assert len(pages) == 999
+
+
+@pytest.mark.parametrize(("spec", "expected"), [("", ""), (" 3-999999 ", "3-999999")])
+def test_validate_accepts_without_page_count(spec: str, expected: str) -> None:
+    """Validation needs no page count and returns the canonical value."""
+    assert validate_page_range(spec) == expected
+
+
+@pytest.mark.parametrize("spec", ["0", "5-3", "-0", "0-", "1,,2", "\uff11"])
+def test_validate_rejects_bounds_and_syntax(spec: str) -> None:
+    """Page 0, reversed ranges and bad syntax fail without a page count."""
+    with pytest.raises(PageRangeError):
+        validate_page_range(spec)
+
+
+def test_validate_allows_open_range_past_any_end() -> None:
+    """An open range is fine without a count; resolving decides if it is empty."""
+    assert validate_page_range("50-") == "50-"

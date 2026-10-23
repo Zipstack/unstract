@@ -827,6 +827,22 @@ class TestFixedCapMessage:
         )
         assert "This document has" not in msg
 
+    def test_selection_without_document_count(self) -> None:
+        budget = policy_mod.PageBudget(
+            max_pages=20,
+            binding="ceiling",
+            limits=None,
+            context_tokens=None,
+            advisory_max_images=None,
+        )
+        msg = policy_mod.page_cap_message(50, budget, charged=None, selected=True)
+        assert msg.startswith("'Pages to extract' selects 50 pages. ")
+        fixed = policy_mod.fixed_cap_message(50, 20, selected=True)
+        assert "'Pages to extract' selects 50 pages, and the limit is 20" in fixed
+        assert ".," not in fixed and ".," not in policy_mod.fixed_cap_message(
+            50, 20, selected_from=300
+        )
+
     def test_model_aware_advice_names_pages_to_extract(self) -> None:
         # Image mode honours 'Pages to extract', so narrowing it is a fix.
         assert "'Pages to extract' to a smaller range" in policy_mod._SPLIT_ADVICE
