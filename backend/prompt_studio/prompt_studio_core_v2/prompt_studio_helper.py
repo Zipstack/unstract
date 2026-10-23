@@ -1660,7 +1660,9 @@ class PromptStudioHelper:
         Image mode converts and sends only the selected pages, so the upload
         check counts those. Fails open to the whole document (and ``""``)
         when the setting is unset, unreadable or invalid; extraction reports
-        an invalid setting before anything is converted.
+        an invalid setting before anything is converted. A failure is logged
+        with its type only: the adapter metadata can hold credentials, and
+        the setting's value is user input.
         """
         try:
             x2text = getattr(profile_manager, "x2text", None)
@@ -1671,7 +1673,13 @@ class PromptStudioHelper:
             if not spec:
                 return total_page_count, ""
             return len(resolve_page_range(spec, total_page_count)), spec
-        except Exception:
+        except Exception as e:
+            logger.warning(
+                "Could not apply the default profile's 'Pages to extract' setting "
+                "to the upload page check (%s); counting all %d pages",
+                type(e).__name__,
+                total_page_count,
+            )
             return total_page_count, ""
 
     @staticmethod

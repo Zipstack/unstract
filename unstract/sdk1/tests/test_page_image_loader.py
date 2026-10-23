@@ -503,6 +503,16 @@ class TestModelAwareLimits:
             load_page_images(fs, _DIR, limits=self._policy(max_image_bytes=100))
         assert excinfo.value.page_number == 2
 
+    def test_per_image_error_names_the_document_page(self) -> None:
+        from unstract.sdk1.adapters.x2text.page_image_loader import PageImageTooLargeError
+
+        fs = _store(
+            {1: b"a" * 10, 2: b"b" * 500}, extra={"pages.json": b'{"pages": [10, 12]}'}
+        )
+        with pytest.raises(PageImageTooLargeError) as excinfo:
+            load_page_images(fs, _DIR, limits=self._policy(max_image_bytes=100))
+        assert str(excinfo.value).startswith("Page 12 of this document is")
+
     def test_within_policy_loads(self) -> None:
         fs = _store({1: minimal_png(), 2: minimal_png()})
         assert len(load_page_images(fs, _DIR, limits=self._policy())) == 2
@@ -663,3 +673,19 @@ class TestDocumentPageLabels:
     def test_labels_file_is_not_a_page(self) -> None:
         fs = _store({1: b"a"}, extra={"pages.json": b'{"pages": [3]}'})
         assert [n for n, _ in discover_page_images(fs, _DIR)] == [1]
+
+
+class TestDocumentPageInLoaderMessages:
+    def test_byte_budget_message_names_the_document_page(self) -> None:
+        fs = _store(
+            {1: b"a" * 40, 2: b"b" * 40}, extra={"pages.json": b'{"pages": [10, 12]}'}
+        )
+        with pytest.raises(PageImageSetTooLargeError) as excinfo:
+            load_page_images(fs, _DIR, max_total_bytes=50)
+        assert "limit at page 12 (image 2 of 2)" in str(excinfo.value)
+
+    def test_byte_budget_message_falls_back_to_the_position(self) -> None:
+        fs = _store({1: b"a" * 40, 2: b"b" * 40})
+        with pytest.raises(PageImageSetTooLargeError) as excinfo:
+            load_page_images(fs, _DIR, max_total_bytes=50)
+        assert "limit at page 2 of 2" in str(excinfo.value)

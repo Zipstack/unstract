@@ -711,15 +711,20 @@ def check_page_image(
     page_count: int,
     data: bytes,
     page_store_dir: str,
+    document_page: int | None = None,
 ) -> None:
-    """Apply the per-image byte and pixel limits to one page."""
+    """Apply the per-image byte and pixel limits to one page.
+
+    ``page_number`` is the image position (kept on the error);
+    ``document_page``, when known, is the page the message names.
+    """
     if not ENFORCE_PER_IMAGE_LIMITS:
         return
     if policy.max_image_bytes is not None and len(data) > policy.max_image_bytes:
         raise PageImageTooLargeError(
             page_too_large_message(
                 policy,
-                page_number=page_number,
+                page_number=document_page or page_number,
                 kind="bytes",
                 actual=len(data),
                 limit=policy.max_image_bytes,
@@ -749,7 +754,7 @@ def check_page_image(
         raise PageImageTooLargeError(
             page_too_large_message(
                 policy,
-                page_number=page_number,
+                page_number=document_page or page_number,
                 kind="pixels",
                 actual=longest,
                 limit=px_limit,
@@ -773,8 +778,12 @@ def check_page_set(
     prompt_text_bytes: int | None = None,
     charged: bool | None = None,
     emit_advisories: bool = True,
+    document_pages: Sequence[int] | None = None,
 ) -> None:
     """Check a whole page set in memory: count, per-image, then total bytes.
+
+    ``document_pages`` (one per image, from a 'Pages to extract' selection)
+    makes per-image errors name the document page instead of the position.
 
     ``charged`` says whether the conversion has already been billed so the
     message can be honest about it (None: say nothing). ``emit_advisories``
@@ -791,13 +800,14 @@ def check_page_set(
             page_cap=budget.max_pages,
         )
     total = 0
-    for page_number, data in pages:
+    for index, (page_number, data) in enumerate(pages):
         check_page_image(
             policy,
             page_number=page_number,
             page_count=page_count,
             data=data,
             page_store_dir=page_store_dir,
+            document_page=document_pages[index] if document_pages else None,
         )
         total += len(data)
     raw_budget = policy.raw_byte_budget(
@@ -1035,6 +1045,9 @@ def page_too_large_message(
     threshold: int | None,
 ) -> str:
     """User-facing text for a single page over a per-image limit.
+
+    ``page_number`` is the page as the user knows it: the document page when
+    a selection recorded it, else the image position.
 
     ``source`` is the LLM the broken limit belongs to (with several LLMs it
     can differ from the one that set the page budget); ``threshold`` is set
