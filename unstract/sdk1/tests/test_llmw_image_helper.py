@@ -96,6 +96,36 @@ class TestPageCountVerification:
         pages = H.extract_page_images_from_zip(io.BytesIO(make_page_zip(2)))
         H.verify_page_count(pages, expected_page_count=None)  # no raise
 
+    def test_service_count_is_used_when_local_count_is_unknown(self) -> None:
+        two = H.extract_page_images_from_zip(io.BytesIO(make_page_zip(2)))
+        three = H.extract_page_images_from_zip(io.BytesIO(make_page_zip(3)))
+        H.verify_page_count(two, None, service_page_count=2)  # no raise
+        with pytest.raises(ExtractorError, match="reported by the service"):
+            H.verify_page_count(three, None, service_page_count=2)
+
+    def test_local_count_wins_over_service_count(self) -> None:
+        # An LLMWhisperer that ignored pages_to_extract converts (and bills)
+        # the whole document and reports that count: the selection must win.
+        three = H.extract_page_images_from_zip(io.BytesIO(make_page_zip(3)))
+        with pytest.raises(ExtractorError, match="selected from the input PDF"):
+            H.verify_page_count(three, 2, service_page_count=3)
+
+    @pytest.mark.parametrize(
+        ("status", "expected"),
+        [
+            ({"metadata": {"page_count": 4}}, 4),
+            ({}, None),
+            ({"metadata": {"page_count": "x"}}, None),
+            ({"metadata": {"page_count": 0}}, None),
+            ({"metadata": {"page_count": True}}, None),
+            ({"metadata": None}, None),
+        ],
+    )
+    def test_status_page_count_reads_metadata(
+        self, status: dict, expected: int | None
+    ) -> None:
+        assert H.status_page_count(status) == expected
+
 
 class TestFolderKeyAndNaming:
     def test_folder_isolates_distinct_documents(self) -> None:

@@ -802,31 +802,52 @@ class LLMWhispererHelper:
         return LLMWhispererHelper.pdf_page_count(pdf_bytes)
 
     @staticmethod
-    def verify_page_count(
-        pages: list[tuple[int, bytes]], expected_page_count: int | None
-    ) -> None:
-        """Verify the extracted page count against the input PDF's page count.
+    def status_page_count(status: dict[str, Any]) -> int | None:
+        """``metadata.page_count`` of a pdf-to-images status, or None.
 
-        ``expected_page_count`` is derived locally from the input PDF (the
-        pdf-to-images-status response exposes no count). A mismatch means the
-        service returned more or fewer images than the document has pages — a
-        truncated or over-produced archive — and raises. When the count could
-        not be determined the check is skipped with a warning, leaving the
-        1..N contiguity check in ``extract_page_images_from_zip`` as the last
-        line of defence.
+        The number of page images LLMWhisperer put in the ZIP; None when the
+        status carries no usable positive integer.
         """
-        if expected_page_count is None:
+        metadata = status.get("metadata")
+        count = metadata.get("page_count") if isinstance(metadata, dict) else None
+        if isinstance(count, bool) or not isinstance(count, int) or count <= 0:
+            return None
+        return count
+
+    @staticmethod
+    def verify_page_count(
+        pages: list[tuple[int, bytes]],
+        expected_page_count: int | None,
+        service_page_count: int | None = None,
+    ) -> None:
+        """Verify the extracted image count before anything is persisted.
+
+        ``expected_page_count`` is the number of pages the 'Pages to extract'
+        setting selects in the input PDF, derived locally before submission.
+        It wins over ``service_page_count`` (the processed status'
+        ``metadata.page_count``): a service that ignored the selection
+        converts the whole document and reports that count, and the wrong
+        page set must not be persisted. When the local count is unknown the
+        service's count is used; with neither, the check is skipped with a
+        warning, leaving the 1..N contiguity check in
+        ``extract_page_images_from_zip`` as the last line of defence.
+        """
+        if expected_page_count is not None:
+            expected, source = expected_page_count, "selected from the input PDF"
+        elif service_page_count is not None:
+            expected, source = service_page_count, "reported by the service"
+        else:
             logger.warning(
                 "Image mode: input PDF page count unavailable; skipping "
                 "page-count verification (relying on the 1..N contiguity check)"
             )
             return
         actual = len(pages)
-        if actual != expected_page_count:
+        if actual != expected:
             raise ExtractorError(
-                "Page count mismatch in image output mode: the input PDF has "
-                f"{expected_page_count} page(s) but the service returned {actual} "
-                "page image(s)",
+                "Page count mismatch in image output mode: expected "
+                f"{expected} page image(s) ({source}) but the service returned "
+                f"{actual}",
                 status_code=502,
             )
 
@@ -1175,16 +1196,21 @@ class LLMWhispererHelper:
             tag=tag,
             file_name=Path(input_file_path).name,
         )
-        LLMWhispererHelper.poll_pdf_to_images_status(config, whisper_hash)
+        status = LLMWhispererHelper.poll_pdf_to_images_status(config, whisper_hash)
 
         pages = LLMWhispererHelper._download_and_extract(
             config=config, whisper_hash=whisper_hash
         )
 
-        # Verify the returned image count against the input PDF's own page count
-        # (derived locally above, before submission) BEFORE persisting, so
-        # nothing is written on a truncated/over-produced archive.
-        LLMWhispererHelper.verify_page_count(pages, expected_page_count)
+        # Verify the returned image count against the selected page count
+        # (derived locally above, before submission; else the service's own
+        # count) BEFORE persisting, so nothing is written on a truncated or
+        # over-produced archive, or on one where the selection was ignored.
+        LLMWhispererHelper.verify_page_count(
+            pages,
+            expected_page_count,
+            LLMWhispererHelper.status_page_count(status),
+        )
 
         page_store_dir = LLMWhispererHelper.build_page_store_dir(
             output_file_path=output_file_path,
