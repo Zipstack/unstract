@@ -39,6 +39,7 @@ import json
 import logging
 import os
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import PurePosixPath
 from typing import TYPE_CHECKING
@@ -376,6 +377,13 @@ def validate_document_pages(value: object, image_count: int) -> list[int] | None
     return list(value)
 
 
+def is_page_selection(document_pages: Sequence[int] | None) -> bool:
+    """Whether ``document_pages`` came from a selection (not simply 1..N)."""
+    return document_pages is not None and list(document_pages) != list(
+        range(1, len(document_pages) + 1)
+    )
+
+
 def _page_position(
     index: int, page_number: int, image_count: int, document_pages: list[int] | None
 ) -> str:
@@ -395,9 +403,7 @@ def read_document_pages(
     """
     path = str(PurePosixPath(page_store_dir) / PAGE_LABELS_FILENAME)
     try:
-        # Most page sets have no labels file: check before reading.
-        if not fs.exists(path):
-            return None
+        # Most page sets have no labels file: a missing one is the common case.
         raw = fs.read(path=path, mode="rb", length=_PAGE_LABELS_MAX_BYTES + 1)
     except FileNotFoundError:
         return None
@@ -547,6 +553,9 @@ def load_page_images(  # noqa: C901 - legacy and policy paths share one bounded-
             max_total_bytes = configured_max_total_bytes()
     discovered = discover_page_images(fs, page_store_dir)
     page_count = len(discovered)
+    # Read first so a cap message can say the pages are a selection.
+    document_pages = read_document_pages(fs, page_store_dir, page_count)
+    selected = is_page_selection(document_pages)
     if limits is not None:
         # Imported here: the policy module imports this module's exceptions.
         from unstract.sdk1.utils.image_limits import policy as _policy
@@ -557,7 +566,9 @@ def load_page_images(  # noqa: C901 - legacy and policy paths share one bounded-
         )
         if page_count > page_cap:
             raise PageCapExceededError(
-                _policy.page_cap_message(page_count, limits.page_budget, charged=None),
+                _policy.page_cap_message(
+                    page_count, limits.page_budget, charged=None, selected=selected
+                ),
                 page_store_dir=page_store_dir,
                 page_count=page_count,
                 page_cap=page_cap,
@@ -566,13 +577,12 @@ def load_page_images(  # noqa: C901 - legacy and policy paths share one bounded-
         from unstract.sdk1.utils.image_limits.policy import fixed_cap_message
 
         raise PageCapExceededError(
-            fixed_cap_message(page_count, page_cap),
+            fixed_cap_message(page_count, page_cap, selected=selected),
             page_store_dir=page_store_dir,
             page_count=page_count,
             page_cap=page_cap,
         )
 
-    document_pages = read_document_pages(fs, page_store_dir, page_count)
     loaded = []
     total_bytes = 0
     for index, (page_number, path) in enumerate(discovered):

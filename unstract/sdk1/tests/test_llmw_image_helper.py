@@ -9,6 +9,7 @@ All tests are pure in-memory / temp-dir units: no network, no live service.
 
 import io
 import json
+import logging
 import uuid
 from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
@@ -387,6 +388,34 @@ class TestSubmitParams:
         H.submit_pdf_to_images(config, io.BytesIO(b"pdf"))
         assert captured["params"]["pages_to_extract"] == "1-3,7"
 
+    def test_invalid_pages_to_extract_is_an_extractor_error(
+        self, monkeypatch: MonkeyPatch
+    ) -> None:
+        self._patch(monkeypatch)
+        with pytest.raises(ExtractorError) as excinfo:
+            H.submit_pdf_to_images(
+                {**self._CONFIG, "pages_to_extract": "5-3"}, io.BytesIO(b"pdf")
+            )
+        assert excinfo.value.status_code == 400
+
+    def test_given_pages_to_extract_overrides_config(
+        self, monkeypatch: MonkeyPatch
+    ) -> None:
+        captured = self._patch(monkeypatch)
+        H.submit_pdf_to_images(
+            {**self._CONFIG, "pages_to_extract": "bad"},
+            io.BytesIO(b"pdf"),
+            pages_to_extract="2-4",
+        )
+        assert captured["params"]["pages_to_extract"] == "2-4"
+
+    @pytest.mark.parametrize(
+        ("spec", "total", "expected"),
+        [("", 300, 300), ("1-50", 300, 50), ("1-", 5_000_000, 5_000_000)],
+    )
+    def test_selected_page_count(self, spec: str, total: int, expected: int) -> None:
+        assert H.selected_page_count({"pages_to_extract": spec}, total) == expected
+
     def test_empty_pages_to_extract_is_not_sent(self, monkeypatch: MonkeyPatch) -> None:
         captured = self._patch(monkeypatch)
         H.submit_pdf_to_images({**self._CONFIG, "pages_to_extract": ""}, io.BytesIO(b"x"))
@@ -620,12 +649,63 @@ class TestPreSubmitPageCap:
 
         expand = MagicMock(side_effect=AssertionError("must not expand"))
         monkeypatch.setattr(helper_mod, "resolve_page_range", expand)
-        assert H._expected_page_count({"pages_to_extract": spec}, None) is None
+        config = {"pages_to_extract": spec}
+        canonical = H._pages_to_extract_or_error(config)
+        assert H._local_selection(config, canonical, None) == (None, None)
 
     @pytest.mark.parametrize("spec", ["0", "0-3", "5-3", "-0"])
     def test_unknown_count_still_rejects_zero_and_reversed(self, spec: str) -> None:
-        with pytest.raises(ExtractorError):
-            H._expected_page_count({"pages_to_extract": spec}, None)
+        with pytest.raises(ExtractorError) as excinfo:
+            H._pages_to_extract_or_error({"pages_to_extract": spec})
+        assert excinfo.value.status_code == 400
+
+    def test_setting_is_parsed_once_and_passed_to_submit(
+        self, monkeypatch: MonkeyPatch
+    ) -> None:
+        import unstract.sdk1.adapters.x2text.llm_whisperer_v2.src.helper as helper_mod
+
+        fs = self._fs_with_pdf(monkeypatch, 30)
+        submit = self._stub_after_submit(monkeypatch, 3)
+        validate = MagicMock(wraps=helper_mod.validate_page_range)
+        monkeypatch.setattr(helper_mod, "validate_page_range", validate)
+
+        H.get_page_images({"pages_to_extract": " 1-3 "}, "/in/d.pdf", "/out/d.txt", fs=fs)
+
+        validate.assert_called_once()
+        assert submit.call_args.kwargs["pages_to_extract"] == "1-3"
+
+    @pytest.mark.parametrize(
+        ("status_pages", "expected"),
+        [(None, [10, 12]), ([10, 12], [10, 12]), ([11, 13], [10, 12])],
+        ids=["service-missing", "agree", "disagree"],
+    )
+    def test_labels_use_the_local_selection(
+        self,
+        monkeypatch: MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+        status_pages: list[int] | None,
+        expected: list[int],
+    ) -> None:
+        fs = self._fs_with_pdf(monkeypatch, 30)
+        self._stub_after_submit(monkeypatch, 2)
+        metadata: dict = {"page_count": 2}
+        if status_pages is not None:
+            metadata["pages"] = status_pages
+        status = {"status": "processed", "metadata": metadata}
+        monkeypatch.setattr(
+            H, "poll_pdf_to_images_status", staticmethod(lambda *_a: status)
+        )
+        persist = MagicMock(name="persist", return_value=[])
+        monkeypatch.setattr(H, "persist_page_images", staticmethod(persist))
+
+        with caplog.at_level(logging.WARNING):
+            H.get_page_images(
+                {"pages_to_extract": "10,12"}, "/in/d.pdf", "/out/d.txt", fs=fs
+            )
+
+        assert persist.call_args.args[3] == expected
+        disagreed = "labelling with the selection" in caplog.text
+        assert disagreed == (status_pages == [11, 13])
 
     def test_over_cap_selection_message_names_the_selection(
         self, monkeypatch: MonkeyPatch

@@ -82,15 +82,8 @@ from prompt_studio.prompt_studio_v2.models import ToolStudioPrompt
 from prompt_studio.vlm_utils import invalidate_vlm_answers_on_reextraction
 from unstract.core.pubsub_helper import LogPublisher
 from unstract.sdk1.adapters.x2text.constants import ImageOutputConstants
-from unstract.sdk1.adapters.x2text.llm_whisperer_v2.src.constants import (
-    WhispererConfig,
-)
 from unstract.sdk1.adapters.x2text.llm_whisperer_v2.src.helper import (
     LLMWhispererHelper,
-)
-from unstract.sdk1.adapters.x2text.llm_whisperer_v2.src.page_range import (
-    normalize_page_range,
-    resolve_page_range,
 )
 from unstract.sdk1.adapters.x2text.page_image_loader import configured_page_cap
 from unstract.sdk1.constants import LogLevel
@@ -1620,10 +1613,12 @@ class PromptStudioHelper:
         file_data.seek(0)
         if total_page_count is None:
             return
-        page_count, spec = PromptStudioHelper._selected_page_count(
+        page_count = PromptStudioHelper._selected_page_count(
             profile_manager, total_page_count
         )
-        selected_from = total_page_count if spec else None
+        # Named in the message only when the selection narrowed the count,
+        # as the SDK's pre-submit check does.
+        selected_from = total_page_count if page_count != total_page_count else None
         budget = PromptStudioHelper._upload_page_budget(profile_manager)
         if budget is not None:
             if page_count <= budget.max_pages:
@@ -1654,25 +1649,20 @@ class PromptStudioHelper:
     @staticmethod
     def _selected_page_count(
         profile_manager: ProfileManager | None, total_page_count: int
-    ) -> tuple[int, str]:
-        """Pages the profile's 'Pages to extract' selects, and the setting.
+    ) -> int:
+        """Pages the profile's 'Pages to extract' selects.
 
         Image mode converts and sends only the selected pages, so the upload
-        check counts those. Fails open to the whole document (and ``""``)
-        when the setting is unset, unreadable or invalid; extraction reports
-        an invalid setting before anything is converted. A failure is logged
-        with its type only: the adapter metadata can hold credentials, and
-        the setting's value is user input.
+        check counts those, with the SDK's own counting. Fails open to the
+        whole document when the setting is unreadable or invalid; extraction
+        reports an invalid setting before anything is converted. A failure is
+        logged with its type only: the adapter metadata can hold credentials,
+        and the setting's value is user input.
         """
         try:
             x2text = getattr(profile_manager, "x2text", None)
             metadata = (getattr(x2text, "metadata", None) or {}) if x2text else {}
-            spec = normalize_page_range(
-                str(metadata.get(WhispererConfig.PAGES_TO_EXTRACT) or "")
-            )
-            if not spec:
-                return total_page_count, ""
-            return len(resolve_page_range(spec, total_page_count)), spec
+            return LLMWhispererHelper.selected_page_count(metadata, total_page_count)
         except Exception as e:
             logger.warning(
                 "Could not apply the default profile's 'Pages to extract' setting "
@@ -1680,7 +1670,7 @@ class PromptStudioHelper:
                 type(e).__name__,
                 total_page_count,
             )
-            return total_page_count, ""
+            return total_page_count
 
     @staticmethod
     def _validate_image_output_pdf_only(

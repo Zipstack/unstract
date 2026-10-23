@@ -49,6 +49,7 @@ from unstract.sdk1.adapters.x2text.page_image_loader import (
     configured_page_cap,
     configured_page_ceiling,
     configured_request_bytes_ceiling,
+    is_page_selection,
 )
 from unstract.sdk1.utils.image_limits.source import MAX_REMOTE_RAISE_FACTOR
 
@@ -794,7 +795,12 @@ def check_page_set(
     budget = policy.page_budget
     if page_count > budget.max_pages:
         raise PageCapExceededError(
-            page_cap_message(page_count, budget, charged=charged),
+            page_cap_message(
+                page_count,
+                budget,
+                charged=charged,
+                selected=is_page_selection(document_pages),
+            ),
             page_store_dir=page_store_dir,
             page_count=page_count,
             page_cap=budget.max_pages,
@@ -916,10 +922,13 @@ def _charged_clause(charged: bool | None, *, size_known_late: bool = False) -> s
     return " No pages were converted or charged."
 
 
-def _selection_sentence(page_count: int, selected_from: int) -> str:
+def _selection_clause(page_count: int, selected_from: int | None) -> str:
+    """'Pages to extract' selects N [of this document's M] pages (no period)."""
+    if selected_from is None:
+        return f"'Pages to extract' selects {page_count} pages"
     return (
         f"'Pages to extract' selects {page_count} of this document's "
-        f"{selected_from} pages."
+        f"{selected_from} pages"
     )
 
 
@@ -929,11 +938,14 @@ def page_cap_message(
     *,
     charged: bool | None,
     selected_from: int | None = None,
+    selected: bool = False,
 ) -> str:
     """User-facing text for a document with more pages than the budget.
 
     ``selected_from`` is the document's page count when 'Pages to extract'
     narrowed it to ``page_count``; the message then names the selection.
+    ``selected`` names it without the document's count (unknown at answer
+    time, when only the selected pages' images exist).
     """
     limits = budget.limits
     if budget.binding == "images" and limits is not None:
@@ -950,8 +962,8 @@ def page_cap_message(
             "sends every page together."
         )
     opening = (
-        _selection_sentence(page_count, selected_from)
-        if selected_from is not None
+        f"{_selection_clause(page_count, selected_from)}."
+        if selected_from is not None or selected
         else f"This document has {page_count} pages."
     )
     return f"{opening} {reason} {_SPLIT_ADVICE}{_charged_clause(charged)}"
@@ -964,6 +976,7 @@ def fixed_cap_message(
     switch_to: str = "use a text output mode instead",
     charged: bool | None = None,
     selected_from: int | None = None,
+    selected: bool = False,
 ) -> str:
     """User-facing text for a document over the FIXED page cap.
 
@@ -971,11 +984,13 @@ def fixed_cap_message(
     (``VLM_IMAGE_LIMITS_ENFORCE=false``) or no LLM is known;
     ``page_cap_message`` covers the model-aware budget. ``switch_to`` ends the
     advice ("switch this profile to a text output mode", ...).
+    ``selected_from`` and ``selected`` name the selection as in
+    ``page_cap_message``.
     """
-    if selected_from is not None:
+    if selected_from is not None or selected:
         opening = (
             "Too many pages are selected for image output mode. "
-            f"{_selection_sentence(page_count, selected_from)[:-1]}, and the limit is "
+            f"{_selection_clause(page_count, selected_from)}, and the limit is "
         )
     else:
         opening = (
