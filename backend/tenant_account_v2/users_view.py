@@ -46,7 +46,8 @@ SERVICE_ACCOUNT_REFUSED = OpenApiResponse(
     description="The caller is a service account (platform API key)"
 )
 PHOTO_URL_RESPONSE = inline_serializer(
-    "UserProfilePhotoResponse", {"photo_url": serializers.CharField()}
+    "UserProfilePhotoResponse",
+    {"photo_url": serializers.CharField(allow_null=True)},
 )
 
 

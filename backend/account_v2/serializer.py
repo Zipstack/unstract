@@ -66,7 +66,8 @@ class SetOrganizationsResponseSerializer(serializers.Serializer):
     email = serializers.CharField()
     name = serializers.CharField()
     display_name = serializers.CharField()
-    family_name = serializers.CharField()
+    # Null when the user has set a name on their profile.
+    family_name = serializers.CharField(allow_null=True)
     picture = serializers.CharField()
     # Add more fields as needed
 

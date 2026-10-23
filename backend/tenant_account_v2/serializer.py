@@ -151,11 +151,13 @@ class UserInfoSerializer(serializers.Serializer):
 class UserProfileSerializer(UserInfoSerializer):
     """The `user` object GET users/profile/ returns; documents the contract."""
 
+    # The identity provider's user info may leave these out.
+    id = serializers.CharField(allow_null=True)
     name = serializers.CharField(
-        help_text="The edited name when set, else the provider's"
+        allow_null=True, help_text="The edited name when set, else the provider's"
     )
     display_name = serializers.CharField(
-        help_text="The edited name when set, else the provider's"
+        allow_null=True, help_text="The edited name when set, else the provider's"
     )
     family_name = serializers.CharField(allow_null=True)
     picture = serializers.CharField(

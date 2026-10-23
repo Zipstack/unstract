@@ -310,7 +310,11 @@ class ProfileSchemaTests(TestCase):
         )
         user = schema["components"]["schemas"]["UserProfile"]
         self.assertTrue({"photo_url", "language"} <= set(user["required"]))
-        self.assertTrue(user["properties"]["photo_url"]["nullable"])
+        for field in ("id", "name", "display_name", "family_name", "photo_url"):
+            with self.subTest(field=field):
+                self.assertTrue(user["properties"][field].get("nullable"))
+        photo_url = schema["components"]["schemas"]["UserProfilePhotoResponse"]
+        self.assertTrue(photo_url["properties"]["photo_url"].get("nullable"))
         update = schema["components"]["schemas"]["PatchedProfileUpdate"]
         self.assertNotIn("required", update)
         self.assertEqual(update["properties"]["display_name"]["maxLength"], 64)
@@ -322,17 +326,10 @@ class ProfileSchemaTests(TestCase):
         self.assertEqual(set(photo), {"image/png", "image/jpeg"})
         upload = ops["user_profile_photo_upload"]["requestBody"]["content"]
         self.assertEqual(set(upload), {"multipart/form-data"})
-
-
-def test_photo_upload_is_documented_as_binary() -> None:
-    """A bare FileField documents as `format: uri`, which generators turn into a
-    string parameter instead of a multipart upload.
-    """
-    from drf_spectacular.openapi import AutoSchema
-
-    from tenant_account_v2.serializer import ProfilePhotoSerializer
-
-    field = ProfilePhotoSerializer().fields["photo"]
-    mapped = AutoSchema()._map_serializer_field(field, direction="request")
-
-    assert mapped == {"type": "string", "format": "binary"}
+        # A bare FileField documents as `format: uri`, which generators turn
+        # into a string parameter instead of a multipart upload.
+        ref = upload["multipart/form-data"]["schema"]["$ref"].rsplit("/", 1)[-1]
+        self.assertEqual(
+            schema["components"]["schemas"][ref]["properties"]["photo"],
+            {"type": "string", "format": "binary"},
+        )
