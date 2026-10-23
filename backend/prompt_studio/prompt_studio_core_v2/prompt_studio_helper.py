@@ -82,8 +82,15 @@ from prompt_studio.prompt_studio_v2.models import ToolStudioPrompt
 from prompt_studio.vlm_utils import invalidate_vlm_answers_on_reextraction
 from unstract.core.pubsub_helper import LogPublisher
 from unstract.sdk1.adapters.x2text.constants import ImageOutputConstants
+from unstract.sdk1.adapters.x2text.llm_whisperer_v2.src.constants import (
+    WhispererConfig,
+)
 from unstract.sdk1.adapters.x2text.llm_whisperer_v2.src.helper import (
     LLMWhispererHelper,
+)
+from unstract.sdk1.adapters.x2text.llm_whisperer_v2.src.page_range import (
+    normalize_page_range,
+    resolve_page_range,
 )
 from unstract.sdk1.adapters.x2text.page_image_loader import configured_page_cap
 from unstract.sdk1.constants import LogLevel
@@ -1609,10 +1616,19 @@ class PromptStudioHelper:
         """
         if file_type != "application/pdf":
             return
-        page_count = LLMWhispererHelper.pdf_page_count(file_data)
+        total_page_count = LLMWhispererHelper.pdf_page_count(file_data)
         file_data.seek(0)
-        if page_count is None:
+        if total_page_count is None:
             return
+        page_count, spec = PromptStudioHelper._selected_page_count(
+            profile_manager, total_page_count
+        )
+        selection = (
+            f"'Pages to extract' ({spec}) selects {page_count} of the document's "
+            f"{total_page_count} pages. "
+            if spec
+            else ""
+        )
         budget = PromptStudioHelper._upload_page_budget(profile_manager)
         if budget is not None:
             if page_count <= budget.max_pages:
@@ -1620,7 +1636,8 @@ class PromptStudioHelper:
             profile_name = getattr(profile_manager, "profile_name", "") or "default"
             raise ImageModePageLimitExceeded(
                 detail=(
-                    page_cap_message(page_count, budget, charged=None)
+                    selection
+                    + page_cap_message(page_count, budget, charged=None)
                     + " This check uses the project's default profile "
                     f"('{profile_name}'); other profiles may allow a different "
                     "number of pages."
@@ -1630,12 +1647,36 @@ class PromptStudioHelper:
         if page_count <= page_cap:
             return
         raise ImageModePageLimitExceeded(
-            detail=fixed_cap_message(
+            detail=selection
+            + fixed_cap_message(
                 page_count,
                 page_cap,
                 switch_to="switch the project's default profile to a text output mode",
             )
         )
+
+    @staticmethod
+    def _selected_page_count(
+        profile_manager: ProfileManager | None, total_page_count: int
+    ) -> tuple[int, str]:
+        """Pages the profile's 'Pages to extract' selects, and the setting.
+
+        Image mode converts and sends only the selected pages, so the upload
+        check counts those. Fails open to the whole document (and ``""``)
+        when the setting is unset, unreadable or invalid; extraction reports
+        an invalid setting before anything is converted.
+        """
+        try:
+            x2text = getattr(profile_manager, "x2text", None)
+            metadata = (getattr(x2text, "metadata", None) or {}) if x2text else {}
+            spec = normalize_page_range(
+                str(metadata.get(WhispererConfig.PAGES_TO_EXTRACT) or "")
+            )
+            if not spec:
+                return total_page_count, ""
+            return len(resolve_page_range(spec, total_page_count)), spec
+        except Exception:
+            return total_page_count, ""
 
     @staticmethod
     def _validate_image_output_pdf_only(
