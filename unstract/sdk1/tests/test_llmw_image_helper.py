@@ -473,6 +473,60 @@ class TestPreSubmitPageCap:
         assert whisper_hash == "hash-1"
         submit.assert_called_once()
 
+    @staticmethod
+    def _stub_after_submit(monkeypatch: MonkeyPatch, pages: int) -> MagicMock:
+        submit = MagicMock(name="submit", return_value="hash-r")
+        monkeypatch.setattr(H, "submit_pdf_to_images", staticmethod(submit))
+        monkeypatch.setattr(H, "poll_pdf_to_images_status", staticmethod(MagicMock()))
+        images = [(n, minimal_png()) for n in range(1, pages + 1)]
+        monkeypatch.setattr(H, "_download_and_extract", staticmethod(lambda **_k: images))
+        monkeypatch.setattr(H, "persist_page_images", staticmethod(lambda *_a: []))
+        return submit
+
+    def test_range_under_cap_passes_a_large_document(
+        self, monkeypatch: MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("VLM_IMAGE_ANSWER_PAGE_CAP", "20")
+        fs = self._fs_with_pdf(monkeypatch, 300)
+        submit = self._stub_after_submit(monkeypatch, 10)
+
+        H.get_page_images({"pages_to_extract": "1-10"}, "/in/d.pdf", "/out/d.txt", fs=fs)
+
+        submit.assert_called_once()
+
+    def test_open_range_over_cap_fails_before_submitting(
+        self, monkeypatch: MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("VLM_IMAGE_ANSWER_PAGE_CAP", "20")
+        fs = self._fs_with_pdf(monkeypatch, 300)
+        submit = self._stub_after_submit(monkeypatch, 300)
+
+        with pytest.raises(ExtractorError) as excinfo:
+            H.get_page_images(
+                {"pages_to_extract": "1-"}, "/in/d.pdf", "/out/d.txt", fs=fs
+            )
+
+        assert "It has 300 pages" in str(excinfo.value)
+        submit.assert_not_called()
+
+    @pytest.mark.parametrize("count", [None, 30])
+    def test_invalid_range_fails_before_submitting(
+        self, monkeypatch: MonkeyPatch, count: int | None
+    ) -> None:
+        fs = self._fs_with_pdf(monkeypatch, count)
+        submit = self._stub_after_submit(monkeypatch, 1)
+
+        with pytest.raises(ExtractorError) as excinfo:
+            H.get_page_images(
+                {"pages_to_extract": "5-3"}, "/in/d.pdf", "/out/d.txt", fs=fs
+            )
+
+        msg = str(excinfo.value)
+        assert "'Pages to extract'" in msg
+        assert "No pages were converted or charged" in msg
+        assert excinfo.value.status_code == 400
+        submit.assert_not_called()
+
     def test_unreadable_page_count_still_submits(self, monkeypatch: MonkeyPatch) -> None:
         # Best-effort by design: a PDF we cannot count locally must not be
         # blocked at extraction — the answer-time cap remains the backstop.

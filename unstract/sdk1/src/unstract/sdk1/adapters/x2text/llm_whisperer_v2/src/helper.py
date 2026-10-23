@@ -39,7 +39,9 @@ from unstract.sdk1.adapters.x2text.llm_whisperer_v2.src.dto import (
     WhispererRequestParams,
 )
 from unstract.sdk1.adapters.x2text.llm_whisperer_v2.src.page_range import (
+    PageRangeError,
     normalize_page_range,
+    resolve_page_range,
 )
 from unstract.sdk1.adapters.x2text.page_image_loader import (
     configured_max_total_bytes,
@@ -998,6 +1000,37 @@ class LLMWhispererHelper:
         zip_buffer = LLMWhispererHelper.download_pdf_to_images_zip(config, whisper_hash)
         return LLMWhispererHelper.extract_page_images_from_zip(zip_buffer)
 
+    # Resolves a selection when the PDF's page count is unknown: catches page
+    # 0 and reversed ranges (no page count needed); a selection past the end
+    # is then left to LLMWhisperer, which fails it unbilled.
+    _UNKNOWN_PAGE_COUNT_BOUND = 999_999
+
+    @staticmethod
+    def _expected_page_count(
+        config: dict[str, Any], total_page_count: int | None
+    ) -> int | None:
+        """Number of pages the job will convert, or None when unknown.
+
+        Raises:
+            ExtractorError: The 'Pages to extract' setting is invalid for this
+                document (status 400; nothing was submitted or charged).
+        """
+        spec = str(config.get(WhispererConfig.PAGES_TO_EXTRACT) or "")
+        try:
+            canonical = normalize_page_range(spec)
+            if total_page_count is None:
+                resolve_page_range(
+                    canonical, LLMWhispererHelper._UNKNOWN_PAGE_COUNT_BOUND
+                )
+                return None
+            return len(resolve_page_range(canonical, total_page_count))
+        except PageRangeError as e:
+            raise ExtractorError(
+                f"Invalid 'Pages to extract' setting '{spec}' for image output "
+                f"mode: {e}. No pages were converted or charged.",
+                status_code=400,
+            ) from e
+
     @staticmethod
     def _check_page_count_before_submit(
         expected_page_count: int | None, image_limits: "ImageModePolicy | None"
@@ -1126,7 +1159,12 @@ class LLMWhispererHelper:
         # bills per converted page, and the answer-time check would reject
         # the result anyway — so without this check the caller pays to
         # convert a document that can never be answered.
-        expected_page_count = LLMWhispererHelper._safe_pdf_page_count(input_bytes)
+        # The count that matters is the SELECTED one: pdf-to-images converts
+        # and bills only the pages 'Pages to extract' selects.
+        total_page_count = LLMWhispererHelper._safe_pdf_page_count(input_bytes)
+        expected_page_count = LLMWhispererHelper._expected_page_count(
+            config, total_page_count
+        )
         LLMWhispererHelper._check_page_count_before_submit(
             expected_page_count, image_limits
         )
