@@ -176,7 +176,10 @@ class UserProfileSerializer(UserInfoSerializer):
 
 
 class ProfileUpdateSerializer(serializers.Serializer):
-    display_name = serializers.CharField(max_length=NAME_SIZE)
+    # validated_data is keyed by the model field the value is saved to.
+    display_name = serializers.CharField(
+        max_length=NAME_SIZE, source="profile_display_name"
+    )
     language = serializers.ChoiceField(choices=LANGUAGES, required=False)
 
 

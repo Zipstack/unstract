@@ -3,7 +3,6 @@ from typing import Any
 
 from account_v2.authentication_controller import AuthenticationController
 from account_v2.exceptions import BadRequestException
-from account_v2.models import User
 from account_v2.user_profile import delete_photo, photo_url, read_photo, save_photo
 from django.http import HttpResponse
 from drf_spectacular.types import OpenApiTypes
@@ -206,13 +205,11 @@ class OrganizationUserViewSet(viewsets.ViewSet):
         """Set the name and/or language shown for the current user."""
         serializer = ProfileUpdateSerializer(data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
-        changes = {
-            "profile_display_name" if field == "display_name" else field: value
-            for field, value in serializer.validated_data.items()
-        }
+        changes = serializer.validated_data
         if changes:
-            User.objects.filter(pk=request.user.pk).update(**changes)
-            request.user.refresh_from_db(fields=list(changes))
+            for field, value in changes.items():
+                setattr(request.user, field, value)
+            request.user.save(update_fields=list(changes))
         return self.get_user_profile(request)
 
     @extend_schema(

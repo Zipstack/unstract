@@ -110,6 +110,24 @@ class ProfileEndpointTests(LocalStorageMixin, TestCase):
         )
         self.assertEqual(self.patch_profile({"display_name": "x" * 64}).status_code, 200)
 
+    def test_patch_ignores_fields_it_does_not_own(self) -> None:
+        before = type(self.user).objects.get(pk=self.user.pk)
+        response = self.patch_profile(
+            {
+                "display_name": "Me Edited",
+                "is_staff": True,
+                "email": "evil@example.com",
+                "profile_photo_updated_at": "2026-01-01T00:00:00Z",
+            }
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.profile_display_name, "Me Edited")
+        self.assertEqual(
+            (self.user.is_staff, self.user.email, self.user.profile_photo_updated_at),
+            (before.is_staff, before.email, None),
+        )
+
     def test_patch_refuses_unknown_language(self) -> None:
         self.assertEqual(
             self.error_attrs(
