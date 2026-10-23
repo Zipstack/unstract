@@ -177,8 +177,10 @@ class HomeRegionTests(TestCase):
             organization=self.org, user=self.caller, role="admin"
         )
 
-    def _row(self, metadata: dict | None, org_id: str = "org-a") -> dict:
-        org = CloudOrg(id=org_id, display_name="Org A", name=org_id, metadata=metadata)
+    def _row(self, metadata: object, org_id: str = "org-a") -> dict:
+        org = SimpleNamespace(
+            id=org_id, display_name="Org A", name=org_id, metadata=metadata
+        )
         return with_member_details([org], self.caller)[0]
 
     def test_home_organisation_keeps_this_regions_details(self) -> None:
@@ -210,8 +212,60 @@ class HomeRegionTests(TestCase):
         self.assertNotIn("region", row)
         self.assertEqual(row["member_count"], 1)
 
-    def test_stamp_that_is_not_a_region_code_is_ignored(self) -> None:
-        for stamp in ("", ["EU"], 7):
+    def test_stamp_that_is_not_a_non_empty_string_is_ignored(self) -> None:
+        for stamp in ("", " ", ["EU"], 7):
             with self.subTest(stamp=repr(stamp)):
-                row = self._row({"region": stamp})
+                with self.assertLogs("account_v2.organization_details", "WARNING"):
+                    row = self._row({"region": stamp})
                 self.assertEqual((row["region"], row["member_count"]), ("US", 1))
+
+    def test_stamp_is_compared_without_case_or_padding(self) -> None:
+        for stamp, region, count in (
+            ("us", "US", 1),
+            (" US ", "US", 1),
+            ("eu", "EU", None),
+        ):
+            with self.subTest(stamp=stamp):
+                row = self._row({"region": stamp})
+                self.assertEqual(
+                    (row["region"], row.get("member_count")), (region, count)
+                )
+
+    @override_settings(REGION="us")
+    def test_this_deployments_region_is_compared_without_case(self) -> None:
+        row = self._row({"region": "US"})
+        self.assertEqual((row["region"], row["member_count"]), ("US", 1))
+
+    def test_metadata_that_is_not_a_dict_counts_as_unstamped(self) -> None:
+        for metadata in (None, "EU", ["EU"]):
+            with self.subTest(metadata=repr(metadata)):
+                row = self._row(metadata)
+                self.assertEqual((row["region"], row["member_count"]), ("US", 1))
+                self.assertEqual(row["metadata"], metadata)
+
+    def test_this_regions_organisation_with_no_data_here(self) -> None:
+        row = self._row({"region": "US"}, org_id="org-x")
+        self.assertEqual(row["region"], "US")
+        self.assertNotIn("member_count", row)
+        self.assertNotIn("role", row)
+
+    def test_mixed_list_keeps_order_and_queries(self) -> None:
+        _org("org-b", "Org B")
+        orgs = [
+            CloudOrg(id="org-a", display_name="A", name="a", metadata={"region": "EU"}),
+            CloudOrg(id="org-b", display_name="B", name="b", metadata=None),
+            CloudOrg(id="org-x", display_name="X", name="x", metadata={"region": "US"}),
+        ]
+        with self.assertNumQueries(2):
+            rows = with_member_details(orgs, self.caller)
+        self.assertEqual(
+            [
+                (r["id"], r.get("region"), r.get("member_count"), r.get("role"))
+                for r in rows
+            ],
+            [
+                ("org-a", "EU", None, "admin"),
+                ("org-b", "US", 0, None),
+                ("org-x", "US", None, None),
+            ],
+        )
