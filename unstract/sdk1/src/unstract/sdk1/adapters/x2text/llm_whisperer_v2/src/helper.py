@@ -1093,7 +1093,6 @@ class LLMWhispererHelper:
                     expected_page_count,
                     page_cap,
                     charged=False,
-                    pages_to_extract_note=True,
                 ),
                 status_code=400,
             )

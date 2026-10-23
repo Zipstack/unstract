@@ -779,18 +779,22 @@ class TestFixedCapMessage:
     """One wording for the fixed cap, shared by every site that enforces it."""
 
     def test_states_the_count_the_cap_and_the_fix(self) -> None:
-        msg = policy_mod.fixed_cap_message(
-            91, 90, charged=False, pages_to_extract_note=True
-        )
+        msg = policy_mod.fixed_cap_message(91, 90, charged=False)
         assert msg.startswith("This document has too many pages for image output mode.")
         assert "It has 91 pages, and the limit is 90" in msg
+        assert "set the adapter's 'Pages to extract' to a smaller range" in msg
         assert "or use a text output mode instead." in msg
-        assert "No pages were converted or charged." in msg
-        assert msg.endswith("does not apply in image output mode.)")
+        assert msg.endswith("No pages were converted or charged.")
+        assert "does not apply" not in msg
 
     def test_callers_choose_the_text_mode_advice(self) -> None:
         msg = policy_mod.fixed_cap_message(
             6, 5, switch_to="switch this profile to a text output mode"
         )
         assert msg.endswith("or switch this profile to a text output mode.")
-        assert "charged" not in msg and "Pages to extract" not in msg
+        assert "charged" not in msg
+        assert "'Pages to extract' to a smaller range" in msg
+
+    def test_model_aware_advice_names_pages_to_extract(self) -> None:
+        # Image mode honours 'Pages to extract', so narrowing it is a fix.
+        assert "'Pages to extract' to a smaller range" in policy_mod._SPLIT_ADVICE

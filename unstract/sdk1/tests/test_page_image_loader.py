@@ -131,10 +131,9 @@ class TestPageCap:
         msg = str(err)
         assert "too many pages for image output mode" in msg
         assert "It has 5 pages, and the limit is 4" in msg
-        # Rules out the adapter's "Pages to extract" setting — pointing at it
-        # sent a tester hunting through a field they had never set (UN-2646
-        # follow-up). The operator-only env var is not shown to users.
-        assert "'Pages to extract' setting does not apply" in msg
+        # Image mode honours the adapter's "Pages to extract" setting, so the
+        # message offers narrowing it. The operator-only env var is not shown.
+        assert "'Pages to extract' to a smaller range" in msg
         assert "VLM_IMAGE_ANSWER_PAGE_CAP" not in msg
 
     def test_cap_check_precedes_reads(self) -> None:

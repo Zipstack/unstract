@@ -887,8 +887,9 @@ def format_limit_source(
 
 
 _SPLIT_ADVICE = (
-    "Split the document into smaller files, pick a profile whose LLM accepts "
-    "more pages, or switch to a text output mode."
+    "Split the document into smaller files, set the adapter's 'Pages to "
+    "extract' to a smaller range, pick a profile whose LLM accepts more "
+    "pages, or switch to a text output mode."
 )
 
 
@@ -927,18 +928,12 @@ def page_cap_message(page_count: int, budget: PageBudget, *, charged: bool | Non
     )
 
 
-_PAGES_TO_EXTRACT_NOTE = (
-    " (The 'Pages to extract' setting does not apply in image output mode.)"
-)
-
-
 def fixed_cap_message(
     page_count: int,
     page_cap: int,
     *,
     switch_to: str = "use a text output mode instead",
     charged: bool | None = None,
-    pages_to_extract_note: bool = False,
 ) -> str:
     """User-facing text for a document over the FIXED page cap.
 
@@ -951,9 +946,8 @@ def fixed_cap_message(
         "This document has too many pages for image output mode. It has "
         f"{page_count} pages, and the limit is {page_cap} because every page is "
         "sent to the LLM in one request. Split the document into smaller files, "
-        f"or {switch_to}."
-        + _charged_clause(charged)
-        + (_PAGES_TO_EXTRACT_NOTE if pages_to_extract_note else "")
+        "set the adapter's 'Pages to extract' to a smaller range, "
+        f"or {switch_to}." + _charged_clause(charged)
     )
 
 

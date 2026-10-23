@@ -485,7 +485,7 @@ def load_page_images(  # noqa: C901 - legacy and policy paths share one bounded-
         from unstract.sdk1.utils.image_limits.policy import fixed_cap_message
 
         raise PageCapExceededError(
-            fixed_cap_message(page_count, page_cap, pages_to_extract_note=True),
+            fixed_cap_message(page_count, page_cap),
             page_store_dir=page_store_dir,
             page_count=page_count,
             page_cap=page_cap,
