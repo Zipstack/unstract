@@ -256,9 +256,44 @@ Five mandatory layers:
 3. Hardened pod: `runAsNonRoot`, `readOnlyRootFilesystem` + per-job `emptyDir` tmp, all
    capabilities dropped, `seccompProfile: RuntimeDefault`,
    `automountServiceAccountToken: false`, CPU/memory/PID limits, wall-clock timeout.
-4. NetworkPolicy: default-deny egress except the broker.
-5. No secrets in the pod beyond a broker credential scoped to the sandbox queues; the
-   scrubbed subprocess env hides even that from generated code.
+4. NetworkPolicy: default-deny **ingress and egress**, with exactly two egress rules —
+   TCP **5432** to the in-cluster db-proxy pod, and UDP/TCP **53** to in-cluster
+   resolvers. **There is no broker rule.** It was removed when the sandbox moved onto
+   the Postgres queue transport, where both the work and the reply travel through
+   Postgres (`pg_task` / `pg_task_result`), so the pod never speaks to RabbitMQ.
+   Nothing else: no object store, no platform-service, no backend, no internet.
+   Measured against `charts/unstract-platform/templates/worker-sandbox/networkpolicy.yaml`
+   in the cloud chart. The DNS rule is the one intentionally widenable one
+   (`workerPgSandbox.dnsEgress`, defaulting to the `kube-system` namespace plus the
+   GKE NodeLocal DNSCache address `169.254.20.10/32`); **emptying both of its lists
+   leaves the rule's `to:` empty, which in a NetworkPolicy selects every
+   destination** — port 53 wide open out of the one pod on the cluster that runs
+   untrusted code. Neither default is empty for that reason; widen that rule, never
+   clear it.
+5. No **platform** secrets in the pod: the sandbox Deployment deliberately does not
+   attach the shared `unstract-worker-secret`, so the master `ENCRYPTION_KEY` that
+   decrypts every tenant's stored adapter credentials is absent, and a sandbox
+   compromise is not a platform-wide credential compromise. **The pod is not
+   secret-free, and it carries no broker credential at all.**
+   `workerPgSandbox.additionalConfigs` is `[database]`, so it holds
+   `DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_PASSWORD` — today the shared application
+   account (`DB_USER: postgres` in cloud staging) — plus a second copy of the same
+   user and password under `CELERY_BACKEND_DB_USER`/`CELERY_BACKEND_DB_PASSWORD` in
+   `unstract-worker-sandbox-secret`. On the PG transport that is unavoidable: the
+   queue *is* Postgres, which is also why layer 4 must permit db-proxy:5432.
+   **The scrubbed subprocess env of layer 2 does not hide this from generated code.**
+   `workers/sandbox/runner.py` spawns the child with no `user=`/`group=` and no
+   `setuid`, so it runs as the consumer's UID and `/proc/self/status` → `PPid:` →
+   `/proc/<ppid>/environ` reads the parent's full, unscrubbed environment. That needs
+   no import — `open()` alone reaches it — so neither the module allowlist nor the
+   AST gate bounds it, and layer 4 makes the recovered credential directly usable.
+   The required mitigation is a **narrowly-scoped queue/result DB role** — a credential
+   that cannot read beyond the job's own queue rows — tracked as **UN-4218** and signed
+   off as accepted residual **R12** in `docs/agent-kv-architecture.md`. Until that role
+   exists, "no secrets in the sandbox pod" must not be cited as an invariant for this
+   pod; what contains the residual is the read-only rootfs, the non-root numeric
+   `runAsUser`, the per-job tempdir, and layer 4's default-deny egress to everything
+   except Postgres and DNS.
 
 The sandbox receives only the record JSON + generated code (opaque job ref; no document,
 no schema, no tenant identifiers). Output is validated as JSONL and size-capped.

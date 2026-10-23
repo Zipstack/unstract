@@ -522,9 +522,10 @@ Re-readable until `expires_at` (D11), plus explicit `DELETE`.
   not evidence that the data is still yours to read ([§7](#7-delete--delete-agent-kvjob_id)).
 - **`COMPLETED`**: `200` with the engine's full result object, unchanged (record,
   normalized_record, per-field audit trail, `qa_passed`, `challenge_passed`,
-  `consistency_violations`, `cost_summary`, `timing` — spec §4; this repo does not
-  shape or re-validate that payload, it stores and replays exactly what the executor's
-  finalize call sent).
+  `consistency_violations`, `cost_summary`, `timing`, plus the advisory markers that
+  qualify `qa_passed`/`challenge_passed` — spec §4; this repo does not shape or
+  re-validate that payload, it stores and replays exactly what the executor's finalize
+  call sent, so **this document is the only deprecation path for a change to it**).
 - **`FAILED`**: `200` with
   `{"success": false, "status": "failed", "error": "<user-safe message>"}`.
 - **`CANCELLED`**: `200` with `{"success": false, "status": "cancelled"}` — unless
@@ -540,20 +541,84 @@ Re-readable until `expires_at` (D11), plus explicit `DELETE`.
 `AGENT_KV_CALCULATIONS_ENABLED=true`): a `COMPLETED` result adds these fields to the
 engine's standard result object:
 
-- `calculations_applied: true` — indicates calculation codegen ran.
+- `calculations_applied: bool` — **branch on this first.** `true` means codegen ran and
+  the fields below are present; `false` means the per-job token ceiling skipped the
+  `code_generator` stage, and then `execution` and `codegen_validation_passed` are
+  **absent entirely** (see "Budget-skipped calculations" below). The key itself is
+  absent on a job that requested no `calculations` at all, so read it with
+  `result.get("calculations_applied")` rather than treating a missing key as `false`.
 - `execution: {success: bool, rows_written: int, error: string|null}` — sandbox worker
   execution status. `success` is `true` if the generated code ran without error;
   `rows_written` is the count of rows the code emitted; `error` is `null` on success, or
   a user-safe message (e.g., `"Runtime error: division by zero"`) on failure.
-- `codegen_validation_passed: bool` — whether the AST gate (layer 1 of a 5-layer
-  defense-in-depth model) accepted the generated code syntax.
-- `calculation_rows: [...]` — an array of computed JSONL rows (size-capped). If the code
-  produced more rows than the cap allows, this array is empty and `calculation_rows_truncated: true`
-  is present instead.
+  **Present only when `calculations_applied` is `true`.**
+- `codegen_validation_passed: bool` — whether the generated code passed a **flake8
+  lint** (`flake8 --ignore=E501,W503 --max-line-length=120`). **It is not the AST safety
+  gate**, despite the name. This field is a code-*quality* signal with no security
+  meaning. The AST gate is a separate, fail-closed, server-side control re-run inside
+  the sandbox worker (the engine's client-side copy is never trusted), and a gate
+  rejection is **never** visible here: it makes the whole job **fail**, so the result is
+  the `FAILED` body above — which carries no `execution` block and no
+  `codegen_validation_passed` at all.
+
+  **In the shipped worker image this field is `false` on every calculations job that
+  ran codegen** (i.e. wherever `calculations_applied` is `true`; on a budget-skipped job
+  the key is absent instead). flake8 is not reachable there — it is not a declared
+  dependency of the plugin, and the worker's virtualenv `bin` directory is not on the
+  process `PATH` — so the lint subprocess raises `FileNotFoundError`, the lint never
+  runs, and a lint that did not run is reported as not passed.
+  `codegen_validation_skipped: true` is emitted alongside it, and that marker is how you
+  tell "did not run" from "ran and found problems". Do **not** read `false` here as "the
+  code-safety gate rejected the generated code" — today it means nothing more than
+  "not linted".
+
+  So `true` means, and only means, "the lint ran and found nothing". The field is
+  strictly a boolean — it was briefly the string `"skipped"`, which is truthy and so
+  still read as "lint clean" to every `if passed:` consumer; that value is gone and will
+  not come back. Present only when `calculations_applied` is `true`.
+- `calculation_rows: [...]` — an array of computed JSONL rows. Present on any
+  `COMPLETED` result for a job that supplied `calculations`, including a budget-skipped
+  one, where it is `[]`. (`FAILED` and `CANCELLED` bodies carry no engine blob at all,
+  so the key is absent there — see the status bullets above.)
 
 If the sandbox worker fails to execute, the job completes with `success: false` and a
 user-safe `error` (e.g., `"Calculation execution timed out"`); the `execution` field
 carries the inner error details.
+
+**Budget-skipped calculations — a `success: true` shape with fields missing.** When the
+per-job token ceiling is reached before the `code_generator` stage, the job still
+completes successfully (the extraction was already paid for and is returned), but:
+
+- `calculations_applied: false`
+- `calculation_rows: []`
+- **no `execution` key and no `codegen_validation_passed` key** — omitted rather than
+  zeroed, because a `{"success": false, "rows_written": 0}` block would read as "ran and
+  produced nothing"
+- `budget_exhausted: true`, and `budget_skipped_stages` naming `code_generator`
+
+A consumer that reads `result["execution"]["error"]` to find out why calculations are
+missing raises `KeyError` on this shape. **Branch on `calculations_applied`**, then read
+`budget_skipped_stages` when it is `false`.
+
+**Removed: `calculation_rows_truncated`.** Earlier revisions of this document described
+over-cap calculation output as returning `calculation_rows: []` plus
+`calculation_rows_truncated: true` on an otherwise successful, fully billed job. **No
+code path emits that flag** (grepped across both repos 2026-10-23: the only occurrences
+are explanatory comments, one test asserting its absence, and this document). Returning
+success with the computed rows silently discarded was the defect, not the contract, so
+over-cap output now **fails the job** — in both places it can be detected:
+
+- the sandbox worker fails closed on its own output cap
+  (`"execution failed: output exceeds size cap"`, and a sibling row cap), so a
+  successful sandbox reply's rows are always inside that cap; and
+- the executor's own read guard fails the job with `"extraction failed: calculation
+  output exceeded the executor's read cap; raise SANDBOX_MAX_OUTPUT_BYTES on the
+  executor to match the sandbox"` — reachable only when the two pods' cap settings
+  disagree.
+
+A malformed JSONL row likewise fails the job (`"calculations produced invalid output"`)
+rather than being dropped. So `calculation_rows` on a `success: true` job is complete:
+there is no truncation flag to check, because there is no truncated success.
 
 **Drift from the spec:** §7.3 sketches the failed-job body as
 `{success: false, error, timing}`. The shipped body
@@ -580,7 +645,7 @@ alongside the authoritative total:
       "record": {"quotation_number": "Q-10234", "customer": {"name": "Acme Corp"}},
       "normalized_record": {"quotation_number": "Q-10234", "customer": {"name": "Acme Corp"}},
       "keys": [
-        {"key_path": "quotation_number", "qa_status": "pass", "challenge_status": "pass"}
+        {"key_path": "quotation_number", "qa_status": "passed", "challenge_status": "passed"}
       ],
       "qa_passed": true,
       "challenge_passed": true,
@@ -614,6 +679,46 @@ multi-extractor job can be attributed. With one extractor they are the same numb
 Note the **failed** and **cancelled** payloads above are NOT extractor-keyed: a
 failure belongs to the job, not to one extractor.
 
+### `qa_passed` / `challenge_passed`, and the advisory markers that qualify them
+
+`qa_passed` and `challenge_passed` are positive assertions, and on their own they
+**cannot distinguish "checked and clean" from "nothing was checked"**. Four advisory
+markers (five keys — `budget_exhausted` travels with a companion list) carry that
+distinction. They are the whole mitigation, so a consumer that acts on either flag must
+read them. They sit in the **same per-extractor block** as `qa_passed` itself
+(`extractors.<name>.*`), not at the top level.
+
+**Convention: each marker is present only when it applies, and its absence means the
+benign state.** The boolean markers are never emitted as `false` — read a missing key as
+`false` (`result.get("qa_unchecked", False)`), not as missing data; for the one list
+marker read a missing key as `[]` (`result.get("budget_skipped_stages", [])`). An
+ordinary clean job's shape is unchanged by any of this, which is why they are omitted
+rather than always present.
+
+| Marker | Type | Present when | What it means for the field it qualifies |
+| --- | --- | --- | --- |
+| `qa_unchecked` | `true` | the token ceiling skipped the `kv_qa` stage | `qa_passed` was left at the much weaker pre-seeded value "every required key was found". No format check, no grounding check and no re-extraction ran. |
+| `challenge_unchecked` | `true` | the challenger produced no usable verdict | `challenge_passed: true` means "nothing was found wrong **because nothing was readable**", which is not a clean challenge. |
+| `budget_exhausted` | `true` | the per-job token ceiling bit anywhere | Some work the job was asked to do did not happen. |
+| `budget_skipped_stages` | `string[]` | alongside `budget_exhausted` | Names the stages that were skipped, e.g. `["kv_qa", "code_generator"]`. |
+| `codegen_validation_skipped` | `true` | the flake8 lint could not run | `codegen_validation_passed: false` means "not linted", not "lint failed". See the calculation result shape above. |
+
+Three edge cases that a reader checking only the happy path gets wrong:
+
+- **`budget_skipped_stages` can be `[]`** while `budget_exhausted` is `true`. The
+  ceiling is also checked *inside* the QA retry loop, so a job whose QA loop stopped
+  early mid-round has exhausted its budget without any whole stage having been skipped.
+  In that case there is no `qa_unchecked` either: QA did run, just not to completion.
+  Read `budget_exhausted` as "something was cut short" and `budget_skipped_stages` as
+  "these stages never started" — they are not the same claim.
+- **`qa_unchecked` is not implied by `budget_exhausted`,** and vice versa. Check both.
+- **`challenge_unchecked` has nothing to do with the budget.** It is set whenever the
+  challenger came back with no usable verdict at all — an unparseable or empty model
+  response, for instance — which can happen on a job with budget left and therefore **no
+  `budget_exhausted` marker at all**. A consumer that treats `budget_exhausted` as the
+  one "something was skipped" flag will read `challenge_passed: true` on that job as a
+  clean challenge. The four markers are independent signals; none subsumes another.
+
 **`cost_summary` dollars are always `0.0` and are not a billing figure**: the executor
 zeroes the engine's per-token price fields (they were stale hardcoded list prices), so
 `total_cost` and every per-agent `cost` come back `0.0` — metering is what bills, from
@@ -627,6 +732,19 @@ entry carries more than the example above shows — this one is verbatim from a 
 "unchecked", "qa_attempts": 0, "line_start": 5, "line_end": 5, "normalized_value":
 "INV-…"}` (`qa_status` is `"unchecked"` with `qa_attempts: 0` when the job ran with
 `qa=false`).
+
+Both statuses take the values `"unchecked"`, `"passed"` or `"failed"` — not
+`"pass"`/`"fail"`, which earlier revisions of the example above showed. Presence depends
+on the entry's `kind`:
+
+- **`kind: "scalar"`** (a `key_path` entry, as above) — `qa_status` is always present;
+  `challenge_status` is **omitted when it would be `"unchecked"`**.
+- **array entries** (the other shape concatenated into `keys[]`) — **both** are omitted
+  when they would be `"unchecked"`.
+
+So read either with a default (`entry.get("challenge_status", "unchecked")`) rather than
+by subscript; a missing status means that check never produced a verdict for that entry,
+not that the data is absent.
 
 (The exact result shape beyond `success` is the cloud engine's contract — spec §4 — not
 re-specified or validated by this repo.)

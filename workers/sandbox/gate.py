@@ -24,24 +24,45 @@ contained by the OTHER layers, which are the real security boundary:
 So this gate's job is to raise the cost of a bypass — not to be the sole
 barrier. Do not treat a pass here as proof the code is safe.
 
-**Measured bypasses (2026-10-04, executed under the production
-`python -I -S -E`).** These all return GATE-PASS today, and they are recorded
-here so nobody reads the `sys`-handling rationale below as airtight:
+**The re-export bypasses measured on 2026-10-04 are now REJECTED** (re-run
+against this file's rule chain, 2026-10-23). They were GATE-PASS when they were
+found; they are recorded here because the rules that close them are not
+self-explanatory and must not be deleted as redundant:
 
-  * `statistics.random._os.system('id')` — ran `id`.
-  * `collections._sys` *is* the `sys` module.
+  * `statistics.random._os.system('id')` — rejected by `_rule_private_attribute`
+    (`private attribute access '_os'`).
+  * `collections._sys` — rejected by `_rule_private_attribute`
+    (`private attribute access '_sys'`).
   * `collections._sys._getframe(0).f_builtins['__imp' + 'ort__']('os')` —
-    reaches arbitrary import, because the dunder-subscript check matches only
-    *constant* strings and a concatenation is not one.
+    rejected by `_rule_private_attribute` as well. The reason it reports
+    `_getframe` rather than `_sys` is only `ast.walk` order: both attributes
+    match, and either one is enough.
+  * The non-underscore spelling of the same walk, `statistics.sys`, is what
+    `_rule_sys_reexport` closes (`'sys' reached as an attribute of another
+    module`) — `_rule_private_attribute` never sees it, because `sys` has no
+    leading underscore.
 
-The root cause is structural: allowlisted modules re-export `sys` and `os` as
-NON-dunder attributes (`_sys`, `_os`), and the gate inspects neither. So the
-careful `sys`-aliasing rules below are worth materially less than they look —
-they close the direct spellings while a one-hop attribute walk through any
-allowlisted module goes around them. Closing this properly needs an allowlist
-of attribute paths, not a denylist of names; until then the containment
-argument rests on layers 2–5, which is what the rest of this module header
-says and what the design documents now say too.
+The three rules are complementary, not duplicates, and none is redundant:
+`_rule_private_attribute` covers `_sys`/`_os`-style re-exports,
+`_rule_sys_reexport` covers the plain `.sys` attribute, and `_rule_sys_name`
+restricts the *name* `sys` to `sys.argv`.
+`test_no_allowlisted_module_still_reaches_a_dangerous_one` asserts the closure
+exhaustively — it walks every module-valued attribute of every module in
+`_ALLOWED_IMPORTS` two hops deep — rather than case by case, so a new allowlist
+entry that re-exports something dangerous is caught by the test rather than by
+inspection.
+
+**What is NOT fixed, and must not be read as fixed.** The dunder-subscript check
+still matches only *constant* strings, so `d['__imp' + 'ort__']` is still
+GATE-PASS on its own (verified 2026-10-23) — what changed is that the `_sys`
+spelling above no longer gets you a frame to subscript. More importantly the
+structural point stands unchanged: this is a denylist of names over a dynamic
+language, the closure above is a closure of the paths that exist in *today's*
+stdlib, and the worst case in the threat model needs no import at all (see
+`open()` below). Closing this class properly needs an allowlist of attribute
+paths, not a denylist of names; until then the containment argument rests on
+layers 2–5, which is what the rest of this module header says and what the
+design documents say too.
 
 This is also the authoritative copy: the sandbox NEVER trusts the client-side
 pre-flight check in the agentic_kv engine (``engine/code_executor._check_code_safe``,
@@ -58,8 +79,42 @@ dangerous surface: ``sys.modules`` reaches already-imported modules like
 sandbox-escape primitives, and the bare name itself can be aliased —
 ``x = sys`` — to reach any of that through a different name, so any Load
 reference to ``sys`` other than the immediate ``sys.argv`` attribute access is
-rejected, not just a denylist of attributes) and ``open()`` on the runner's
-two argv paths.
+rejected, not just a denylist of attributes).
+
+**``open()`` is NOT restricted, and this gate attempts no path or argument check
+of any kind.** An earlier version of this docstring said ``open()`` was permitted
+only "on the runner's two argv paths". That was never implemented: the nine-rule
+chain in ``_RULES`` inspects imports, call/attribute/name identifiers and
+*constant* subscript keys, and **no rule relates a call's arguments to its
+callee** — argument expressions are walked like any other node, so a dangerous
+*spelling* inside one is still caught, but nothing constrains which VALUE may be
+passed to a given function. ``open`` is in neither ``_DENYLISTED_CALLS`` nor
+``_DENYLISTED_NAMES``, so ``open('/etc/passwd')``, ``open('../../secret.txt')``
+and ``open('/tmp/evil', 'w')`` all GATE-PASS (verified 2026-10-23), exactly like
+the legitimate ``open(sys.argv[1])``.
+
+Path restriction is deliberately **not attempted here**, and adding it is the
+repo owner's call, not a drive-by. Two reasons:
+
+  1. Generated code legitimately needs ``open()`` (it reads ``argv[1]`` and
+     writes ``argv[2]``), so the control would have to be an *argument* allowlist
+     — and a static AST check over a dynamic language cannot carry one. The path
+     reaching ``open`` need not be a literal: ``open(p)``, ``open(base + name)``,
+     a dict lookup, or a name bound three statements earlier all defeat a
+     constant-argument check while reading as safe. That buys the appearance of
+     containment, which is worse than the honest absence of it, because the
+     appearance is what gets cited in a review.
+  2. The exposure that matters does not depend on which path is opened.
+     ``open('/proc/<ppid>/environ')`` returns the parent's full *unscrubbed*
+     environment — including ``DB_PASSWORD`` — because ``runner.py`` spawns the
+     child with no ``user=``/``group=`` and it inherits the consumer's UID. No
+     import is needed, so neither ``_ALLOWED_IMPORTS`` nor any rule below bounds
+     it. A path check here would be read as closing that, and it would not.
+
+The containment for that is layers 2–5 plus the narrowly-scoped queue/result DB
+role tracked as **UN-4218**; see accepted residual **R12** in
+``docs/agent-kv-architecture.md``, which says this layer "should be read as
+best-effort hygiene, not containment".
 """
 
 import ast

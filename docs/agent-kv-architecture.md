@@ -118,10 +118,24 @@ trusting the client):
    kill at `timeout + grace`.
 3. **Hardened pod** — non-root, read-only rootfs + `emptyDir` /tmp, all caps dropped,
    `seccompProfile: RuntimeDefault`, no service-account token, CPU/mem/PID limits.
-4. **NetworkPolicy** — default-deny ingress+egress; egress only to broker, Postgres, DNS.
-   No object store, no platform-service, no backend, no internet.
-5. **No secrets** in the pod beyond its own broker/result-backend DB credential — and
-   critically **not** the platform master `ENCRYPTION_KEY`.
+4. **NetworkPolicy** — default-deny ingress+egress; egress is exactly two rules:
+   TCP 5432 to the db-proxy pod, and UDP/TCP 53 to in-cluster resolvers. **No broker
+   rule** — it was removed when the sandbox moved onto the Postgres queue transport, so
+   the older "egress only to broker, Postgres, DNS" wording here no longer describes the
+   policy. No object store, no platform-service, no backend, no internet. The DNS peers
+   come from `workerPgSandbox.dnsEgress`; widen those lists for an unusual resolver
+   topology and never clear them, because an egress rule with an empty `to:` selects
+   *every* destination rather than none (the chart now fails the render rather than let
+   that happen).
+5. **No *platform* secrets** in the pod — critically **not** the master `ENCRYPTION_KEY`,
+   and not the shared `unstract-worker-secret` that carries it. But the pod is **not**
+   secret-free and holds **no broker credential at all**: it mounts the `database`
+   shared-config group (`DB_HOST/PORT/NAME/USER/PASSWORD`), plus a second copy of the
+   same user and password as `CELERY_BACKEND_DB_*` in its own Secret. The earlier
+   "beyond its own broker/result-backend DB credential" wording understated this on both
+   counts. See R12 below and UN-4218: the mitigation is a narrowly-scoped
+   `unstract_sandbox` role, not removal of the group, because on the PG transport the
+   queue *is* Postgres.
 
 The sandbox receives only `{record JSON + generated code}` — no document, no schema, no
 tenant identifiers; output is validated JSONL, row- and byte-capped.
