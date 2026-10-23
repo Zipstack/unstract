@@ -252,6 +252,20 @@ class ProfileEndpointTests(LocalStorageMixin, TestCase):
                 self.assertEqual(response.status_code, 401)
         self.assertEqual(self.patch_profile({"display_name": "x"}).status_code, 401)
 
+    def test_service_account_cannot_change_the_profile(self) -> None:
+        type(self.user).objects.filter(pk=self.user.pk).update(is_service_account=True)
+        calls = (
+            ("patch", lambda: self.patch_profile({"display_name": "Bot"})),
+            ("post", lambda: self.client.post(PHOTO, upload(png_bytes()))),
+            ("delete", lambda: self.client.delete(PHOTO)),
+        )
+        for method, call in calls:
+            with self.subTest(method=method):
+                self.assertEqual(call().status_code, 403)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.profile_display_name, "")
+        self.assertIsNone(self.user.profile_photo_updated_at)
+
 
 class ProfileSchemaTests(TestCase):
     def test_schema_documents_the_contract(self) -> None:
@@ -284,7 +298,8 @@ class ProfileSchemaTests(TestCase):
         self.assertNotIn("required", update)
         self.assertEqual(update["properties"]["display_name"]["maxLength"], 64)
         self.assertEqual(
-            set(ops["user_profile_update"]["responses"]), {"200", "400", "404", "500"}
+            set(ops["user_profile_update"]["responses"]),
+            {"200", "400", "403", "404", "500"},
         )
         photo = ops["user_profile_photo"]["responses"]["200"]["content"]
         self.assertEqual(set(photo), {"image/png", "image/jpeg"})

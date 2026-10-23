@@ -42,6 +42,9 @@ Logger = logging.getLogger(__name__)
 PROFILE_RESPONSE = inline_serializer(
     "UserProfileResponse", {"user": UserProfileSerializer()}
 )
+SERVICE_ACCOUNT_REFUSED = OpenApiResponse(
+    description="The caller is a service account (platform API key)"
+)
 PHOTO_URL_RESPONSE = inline_serializer(
     "UserProfilePhotoResponse", {"photo_url": serializers.CharField()}
 )
@@ -192,6 +195,7 @@ class OrganizationUserViewSet(viewsets.ViewSet):
         responses={
             200: PROFILE_RESPONSE,
             400: OpenApiResponse(description="Invalid field"),
+            403: SERVICE_ACCOUNT_REFUSED,
             404: OpenApiResponse(
                 description="Saved, but the user was not found on read back"
             ),
@@ -203,6 +207,8 @@ class OrganizationUserViewSet(viewsets.ViewSet):
     @action(detail=False, methods=["PATCH"])
     def update_profile(self, request: Request) -> Response:
         """Set the name and/or language shown for the current user."""
+        if refused := _refuse_service_account(request):
+            return refused
         serializer = ProfileUpdateSerializer(data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
         changes = serializer.validated_data
@@ -240,10 +246,13 @@ class OrganizationUserViewSet(viewsets.ViewSet):
             400: OpenApiResponse(
                 description="No photo field, not a PNG or JPEG, or over 2 MB"
             ),
+            403: SERVICE_ACCOUNT_REFUSED,
         },
     )
     @action(detail=False, methods=["POST"])
     def upload_profile_photo(self, request: Request) -> Response:
+        if refused := _refuse_service_account(request):
+            return refused
         serializer = ProfilePhotoSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         save_photo(request.user, serializer.validated_data["photo"].read())
@@ -256,10 +265,12 @@ class OrganizationUserViewSet(viewsets.ViewSet):
     @extend_schema(
         operation_id="user_profile_photo_delete",
         tags=["profile"],
-        responses={204: None},
+        responses={204: None, 403: SERVICE_ACCOUNT_REFUSED},
     )
     @action(detail=False, methods=["DELETE"])
     def delete_profile_photo(self, request: Request) -> Response:
+        if refused := _refuse_service_account(request):
+            return refused
         delete_photo(request.user)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -354,6 +365,16 @@ class OrganizationUserViewSet(viewsets.ViewSet):
             status=status.HTTP_200_OK,
             data={"status": "success", "message": "success"},
         )
+
+
+def _refuse_service_account(request: Request) -> Response | None:
+    """A 403 for service accounts (platform API keys), which have no profile."""
+    if getattr(request.user, "is_service_account", False):
+        return Response(
+            status=status.HTTP_403_FORBIDDEN,
+            data={"message": "Service accounts have no profile"},
+        )
+    return None
 
 
 # Returned for an e-mail with no membership, so that ``None`` (from
