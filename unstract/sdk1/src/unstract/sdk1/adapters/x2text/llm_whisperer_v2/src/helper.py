@@ -38,6 +38,9 @@ from unstract.sdk1.adapters.x2text.llm_whisperer_v2.src.constants import (
 from unstract.sdk1.adapters.x2text.llm_whisperer_v2.src.dto import (
     WhispererRequestParams,
 )
+from unstract.sdk1.adapters.x2text.llm_whisperer_v2.src.page_range import (
+    normalize_page_range,
+)
 from unstract.sdk1.adapters.x2text.page_image_loader import (
     configured_max_total_bytes,
     configured_page_cap,
@@ -550,6 +553,18 @@ class LLMWhispererHelper:
         return parsed
 
     @staticmethod
+    def pages_to_extract_setting(config: dict[str, Any]) -> str:
+        """The adapter's ``pages_to_extract`` in canonical form (``""`` = all).
+
+        Raises:
+            PageRangeError: The setting is not a list of pages and ranges.
+        """
+        raw = config.get(
+            WhispererConfig.PAGES_TO_EXTRACT, WhispererDefaults.PAGES_TO_EXTRACT
+        )
+        return normalize_page_range(str(raw or ""))
+
+    @staticmethod
     def submit_pdf_to_images(
         config: dict[str, Any],
         file_data: BytesIO,
@@ -558,10 +573,11 @@ class LLMWhispererHelper:
     ) -> str:
         """Submit a ``pdf-to-images`` job; returns the job id (whisper_hash).
 
-        The image ``format``, ``tag`` (usage-report label) and ``file_name`` are
-        sent as query params — consistent with the ``/whisper`` endpoint so the
-        service attributes usage correctly. ``tag`` falls back to the adapter
-        config, then the default.
+        The image ``format``, ``tag`` (usage-report label), ``file_name`` and
+        the adapter's ``pages_to_extract`` (when set) are sent as query params,
+        consistent with the ``/whisper`` endpoint, so the service attributes
+        usage correctly and converts and bills only the selected pages.
+        ``tag`` falls back to the adapter config, then the default.
         """
         resolved_tag = WhispererRequestParams(tag=tag).tag or config.get(
             WhispererConfig.TAG, WhispererDefaults.TAG
@@ -572,6 +588,9 @@ class LLMWhispererHelper:
         }
         if file_name:
             params[ImageOutputConfig.FILE_NAME_PARAM] = file_name
+        pages_to_extract = LLMWhispererHelper.pages_to_extract_setting(config)
+        if pages_to_extract:
+            params[WhispererConfig.PAGES_TO_EXTRACT] = pages_to_extract
         headers = {
             **LLMWhispererHelper.get_request_headers(config),
             "Content-Type": "application/octet-stream",

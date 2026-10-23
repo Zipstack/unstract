@@ -296,6 +296,17 @@ class TestSubmitParams:
         H.submit_pdf_to_images(self._CONFIG, io.BytesIO(b"pdf"), tag=["first", "second"])
         assert captured["params"]["tag"] == "first"
 
+    def test_pages_to_extract_from_config_is_sent(self, monkeypatch: MonkeyPatch) -> None:
+        captured = self._patch(monkeypatch)
+        config = {**self._CONFIG, "pages_to_extract": " 1-3 , 7 "}
+        H.submit_pdf_to_images(config, io.BytesIO(b"pdf"))
+        assert captured["params"]["pages_to_extract"] == "1-3,7"
+
+    def test_empty_pages_to_extract_is_not_sent(self, monkeypatch: MonkeyPatch) -> None:
+        captured = self._patch(monkeypatch)
+        H.submit_pdf_to_images({**self._CONFIG, "pages_to_extract": ""}, io.BytesIO(b"x"))
+        assert "pages_to_extract" not in captured["params"]
+
 
 _NET_CONFIG = {"url": "https://svc.example", "unstract_key": "k"}
 
