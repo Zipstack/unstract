@@ -1,4 +1,5 @@
 import logging
+from typing import Any
 
 from account_v2.authentication_controller import AuthenticationController
 from account_v2.exceptions import BadRequestException
@@ -16,6 +17,7 @@ from platform_audit.recorder import (
 from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import NotFound
+from rest_framework.renderers import BaseRenderer, JSONRenderer
 from rest_framework.request import Request
 from rest_framework.response import Response
 from utils.user_context import UserContext
@@ -46,7 +48,38 @@ PHOTO_URL_RESPONSE = inline_serializer(
 )
 
 
+class ProfilePhotoRenderer(BaseRenderer):
+    """Lets a client that accepts only images reach the photo view.
+
+    The photo itself is returned as an ``HttpResponse``, so this renderer only
+    renders the error bodies, as JSON.
+    """
+
+    media_type = "image/*"
+    format = "image"
+    charset = None
+    render_style = "binary"
+
+    def render(
+        self,
+        data: Any,
+        accepted_media_type: str | None = None,
+        renderer_context: dict[str, Any] | None = None,
+    ) -> bytes:
+        response = (renderer_context or {}).get("response")
+        if response is not None:
+            response["Content-Type"] = JSONRenderer.media_type
+        return JSONRenderer().render(data)
+
+
 class OrganizationUserViewSet(viewsets.ViewSet):
+    def get_renderers(self) -> list[BaseRenderer]:
+        renderers = super().get_renderers()
+        if getattr(self, "action", None) == "get_profile_photo":
+            # JSON stays first, so a client that accepts both gets JSON errors.
+            renderers.append(ProfilePhotoRenderer())
+        return renderers
+
     @action(detail=False, methods=["POST"])
     def assign_organization_role_to_user(self, request: Request) -> Response:
         serializer = ChangeUserRoleRequestSerializer(data=request.data)

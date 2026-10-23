@@ -134,6 +134,21 @@ class ProfileEndpointTests(LocalStorageMixin, TestCase):
         self.assertEqual(photo["Content-Type"], "image/png")
         self.assertEqual(photo["X-Content-Type-Options"], "nosniff")
 
+    def test_photo_is_served_to_a_client_that_accepts_only_images(self) -> None:
+        self.client.post(PHOTO, upload(png_bytes()))
+        for accept in ("image/png", "image/*"):
+            with self.subTest(accept=accept):
+                photo = self.client.get(PHOTO, HTTP_ACCEPT=accept)
+                self.assertEqual(photo.status_code, 200)
+                self.assertEqual(photo.content, png_bytes())
+                self.assertEqual(photo["Content-Type"], "image/png")
+
+    def test_no_photo_is_a_json_404_when_only_images_are_accepted(self) -> None:
+        response = self.client.get(PHOTO, HTTP_ACCEPT="image/png")
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response["Content-Type"], "application/json")
+        self.assertEqual(response.json()["type"], "client_error")
+
     def test_type_comes_from_the_bytes_not_the_name(self) -> None:
         response = self.client.post(PHOTO, upload(png_bytes(), "me.jpg"))
         self.assertEqual(response.status_code, 200, response.content)
