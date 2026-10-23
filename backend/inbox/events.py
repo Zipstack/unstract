@@ -196,11 +196,11 @@ def _already_points_at_this_or_newer(items: Any, execution: Any, runs: Any) -> b
     return newest is not None and newest >= execution.created_at
 
 
-def _previous_failure(execution: Any, runs: Any) -> Any:
-    """The newest failed run of the same source that started before this one.
+def _failed_before(execution: Any, runs: Any, before: Any) -> Any:
+    """The newest failed run of ``execution``'s source started before ``before``.
 
     Runs older than the inbox retention are left out, as their items would
-    already have been purged.
+    already have been purged. Not locked: a candidate for ``_previous_failure``.
     """
     from workflow_manager.workflow_v2.enums import ExecutionStatus
 
@@ -216,12 +216,30 @@ def _previous_failure(execution: Any, runs: Any) -> Any:
         runs.filter(
             source,
             failed,
-            created_at__lt=execution.created_at,
+            created_at__lt=before,
             created_at__gte=timezone.now() - timedelta(days=RETENTION_DAYS),
         )
         .order_by("-created_at")
         .first()
     )
+
+
+def _previous_failure(execution: Any, runs: Any) -> Any:
+    """The newest run before ``execution`` that is still failed, row-locked.
+
+    The lock makes a clean correction of the returned run wait until the
+    caller commits; that correction then finds the item showing its run and
+    hands it back again. A candidate corrected before the lock is skipped.
+    """
+    from notification_v2.helper import is_failure_run
+
+    before = execution.created_at
+    while candidate := _failed_before(execution, runs, before):
+        locked = runs.select_for_update(of=("self",)).filter(pk=candidate.pk).first()
+        if locked and is_failure_run(locked.status, locked.failed_files):
+            return locked
+        before = candidate.created_at
+    return None
 
 
 def _failure_content(execution: Any, label: str, name: str) -> dict[str, Any]:
