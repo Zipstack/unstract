@@ -80,7 +80,7 @@
     "typecheck": "tsc --noEmit",
     "typecheck:v1": "node scripts/v1-boundary.mjs files && tsc --noEmit -p tsconfig.v1.json",
     "lint:v1": "biome lint src/v1 && node scripts/v1-boundary.mjs imports",
-    "test:v1": "vitest run --passWithNoTests src/v1 && node --test scripts/v1-boundary.fixtures.mjs"
+    "test:v1": "vitest run src/v1 && node --test scripts/*.fixtures.mjs"
   },
   "browserslist": {
     "production": [
