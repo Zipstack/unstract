@@ -120,6 +120,20 @@
       }
     }
   },
+  "overrides": [
+    {
+      "includes": ["src/v1/**"],
+      "linter": {
+        "rules": {
+          "correctness": {
+            "noUnusedImports": "error",
+            "noUnusedVariables": "error"
+          },
+          "suspicious": { "noExplicitAny": "error" }
+        }
+      }
+    }
+  ],
   "javascript": {
     "formatter": {
       "quoteStyle": "double",

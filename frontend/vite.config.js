@@ -184,6 +184,8 @@ export default defineConfig(({ mode }) => {
     resolve: {
       alias: {
         "@": path.resolve(import.meta.dirname, "./src"),
+        // v1's own alias (src/v1/README.md); tsconfig.v1.json mirrors it.
+        "@v1": path.resolve(import.meta.dirname, "./src/v1"),
       },
     },
 

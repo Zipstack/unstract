@@ -41,8 +41,9 @@ eggs/
 lib/
 lib64/
 # The Python `lib/` rule above also matches the frontend's shadcn/ui helper
-# directory (`@/lib/utils` per components.json). Keep that tracked.
+# directory (`@/lib/utils` per components.json) and v1's `lib/`. Keep both tracked.
 !frontend/src/lib/
+!frontend/src/v1/lib/
 parts/
 sdist/
 var/
