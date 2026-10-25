@@ -153,6 +153,21 @@ class User(AbstractUser):
         default=False,
         db_comment="True for service accounts (e.g. platform API key bearer auth sessions)",
     )
+    profile_display_name = models.CharField(
+        max_length=NAME_SIZE,
+        blank=True,
+        default="",
+        db_comment="Name the user set on their profile; empty means the identity "
+        "provider's name is shown",
+    )
+    language = models.CharField(
+        max_length=16, default="en-US", db_comment="Preferred UI language (BCP 47)"
+    )
+    profile_photo_updated_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        db_comment="When the profile photo was stored; null when there is none",
+    )
 
     def __str__(self):  # type: ignore
         return f"User({self.id}, email: {self.email}, userId: {self.user_id})"
