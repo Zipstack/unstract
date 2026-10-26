@@ -9,6 +9,8 @@ import { deploymentTypes } from "../helpers/GetStaticData.js";
 import { lazyNamed } from "../helpers/lazyNamed.js";
 import { isModuleMissing } from "../helpers/pluginLoader.js";
 import { lazyPlugin } from "../helpers/pluginRegistry.js";
+// TEST BRANCH ONLY: the Lane B v1 preview. Never merged.
+import { V1PreviewPage } from "../pages/V1PreviewPage.jsx";
 
 // Route pages are code-split (via the shared lazyNamed helper) so they are
 // only fetched when navigated to, not eagerly on the unauthenticated /landing
@@ -236,6 +238,7 @@ function useMainAppRoutes() {
       )}
       <Route path=":orgName" element={<PageLayout />}>
         <Route path="dashboard" element={<MetricsDashboardPage />} />
+        <Route path="v1-preview" element={<V1PreviewPage />} />
         {UnstractSubscriptionPage && (
           <Route element={<RequireAdmin />}>
             <Route path="pricing" element={<UnstractSubscriptionPage />} />
