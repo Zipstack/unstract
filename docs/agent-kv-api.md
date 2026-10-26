@@ -700,24 +700,42 @@ rather than always present.
 | `qa_unchecked` | `true` | the token ceiling skipped the `kv_qa` stage | `qa_passed` was left at the much weaker pre-seeded value "every required key was found". No format check, no grounding check and no re-extraction ran. |
 | `challenge_unchecked` | `true` | the challenger produced no usable verdict | `challenge_passed: true` means "nothing was found wrong **because nothing was readable**", which is not a clean challenge. |
 | `budget_exhausted` | `true` | the per-job token ceiling bit anywhere | Some work the job was asked to do did not happen. |
-| `budget_skipped_stages` | `string[]` | alongside `budget_exhausted` | Names the stages that were skipped, e.g. `["kv_qa", "code_generator"]`. |
+| `budget_skipped_stages` | `string[]` | the ceiling skipped at least one whole stage | Names the stages that never started, e.g. `["kv_qa", "code_generator"]`. **Never present as `[]`** — see the first edge case below. |
+| `qa_partial` | `true` | QA ran and the ceiling bit mid-loop | QA started but abandoned part of its work, so `qa_passed` reflects an incomplete pass. Distinct from `qa_unchecked`, which means the stage never started; the two are mutually exclusive. |
+| `extraction_degraded` | `true` | the engine isolated at least one failure | The record may be short through no fault of the document. Paired with `extraction_dropped`; `success: true` with missing keys is otherwise indistinguishable from "the document does not contain them". |
+| `extraction_dropped` | `string[]` | alongside `extraction_degraded` | Sorted reason codes for what was isolated. **Closed vocabulary of exactly six values**: `empty_response`, `unparseable_response`, `results_not_a_list`, `whole_doc:error`, `page:error`, `array:error`. Classes only, never document content. An earlier revision suffixed the exception class name (`page:OSError`), which exported a third-party implementation detail as contract; a guard test now fails if the emitted set drifts from these six, so a new code arrives as a deliberate change to this table. |
 | `codegen_validation_skipped` | `true` | the flake8 lint could not run | `codegen_validation_passed: false` means "not linted", not "lint failed". See the calculation result shape above. |
 
 Three edge cases that a reader checking only the happy path gets wrong:
 
-- **`budget_skipped_stages` can be `[]`** while `budget_exhausted` is `true`. The
+- **`budget_exhausted: true` can arrive with NO `budget_skipped_stages` at all.** The
   ceiling is also checked *inside* the QA retry loop, so a job whose QA loop stopped
   early mid-round has exhausted its budget without any whole stage having been skipped.
-  In that case there is no `qa_unchecked` either: QA did run, just not to completion.
-  Read `budget_exhausted` as "something was cut short" and `budget_skipped_stages` as
-  "these stages never started" — they are not the same claim.
+  That case now carries **`qa_partial: true`** and omits `budget_skipped_stages`
+  entirely; there is no `qa_unchecked` either, because QA did run, just not to
+  completion. Read `budget_exhausted` as "something was cut short" and
+  `budget_skipped_stages` as "these stages never started" — they are not the same claim.
+
+  **This changed.** An earlier revision emitted `budget_skipped_stages: []` in this
+  case — "something is missing, and here is the empty list of what" — and a revision
+  before that put the synthetic string `"kv_qa (partial)"` in the list, which no
+  consumer testing `"kv_qa" in skipped` matched and which contradicted what the list
+  asserts about every other member. A consumer reading the field with the documented
+  `result.get("budget_skipped_stages", [])` default is unaffected by the change; one
+  that branched on the key being present with an empty value must now read
+  `qa_partial`.
 - **`qa_unchecked` is not implied by `budget_exhausted`,** and vice versa. Check both.
+- **`extraction_degraded` has nothing to do with the budget either.** It means a
+  per-page, whole-document or array call failed and was isolated so the rest of the run
+  could continue. The job is still `success: true` and still billed, so a consumer that
+  treats a short record as "this document has few keys" will be wrong on exactly these
+  jobs. Check it before drawing conclusions from absent keys.
 - **`challenge_unchecked` has nothing to do with the budget.** It is set whenever the
   challenger came back with no usable verdict at all — an unparseable or empty model
   response, for instance — which can happen on a job with budget left and therefore **no
   `budget_exhausted` marker at all**. A consumer that treats `budget_exhausted` as the
   one "something was skipped" flag will read `challenge_passed: true` on that job as a
-  clean challenge. The four markers are independent signals; none subsumes another.
+  clean challenge. These markers are independent signals; none subsumes another.
 
 **`cost_summary` dollars are always `0.0` and are not a billing figure**: the executor
 zeroes the engine's per-token price fields (they were stale hardcoded list prices), so
