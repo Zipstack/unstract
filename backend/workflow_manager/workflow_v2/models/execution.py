@@ -401,6 +401,8 @@ class WorkflowExecution(BaseModel):
         status: ExecutionStatus | None = None,
         error: str | None = None,
         increment_attempt: bool = False,
+        *,
+        locked_row: dict | None = None,
     ) -> None:
         """Update the execution status and related fields.
 
@@ -408,8 +410,23 @@ class WorkflowExecution(BaseModel):
             status (Optional[ExecutionStatus], optional): New execution status. Defaults to None.
             error (Optional[str], optional): Error message if any. Defaults to None.
             increment_attempt (bool, optional): Whether to increment attempt counter. Defaults to False.
+            locked_row (Optional[dict], optional): For a caller that ALREADY holds
+                this row's lock in the current transaction: the persisted
+                ``queue_message_id`` / ``status`` / ``attempts`` it read under that
+                lock. Skips the second ``SELECT ... FOR NO KEY UPDATE`` round-trip.
+                Must come from a locked read in the same, still-open transaction —
+                a value read without the lock reintroduces the stale-routing race
+                described below.
         """
-        from django.db import transaction
+        from django.db import connection, transaction
+
+        if locked_row is not None and not connection.in_atomic_block:
+            # Outside a transaction the caller's lock was already released when its
+            # statement autocommitted, so the snapshot proves nothing.
+            raise RuntimeError(
+                "update_execution(locked_row=...) requires the caller's open "
+                "transaction that holds the row lock"
+            )
 
         should_release_rate_limit = False
         with transaction.atomic():
@@ -419,12 +436,22 @@ class WorkflowExecution(BaseModel):
             # handle, mis-routed to an unlocked legacy full save(), would write NULL
             # back into queue_message_id and permanently disable every guard. Under
             # this lock a concurrent _record_dispatch_handle serializes after us.
-            locked = (
-                WorkflowExecution.objects.select_for_update()
-                .filter(pk=self.pk)
-                .values("queue_message_id", "status", "attempts")
-                .first()
-            )
+            #
+            # no_key=True takes FOR NO KEY UPDATE rather than FOR UPDATE. Status
+            # writers still exclude each other (the mode conflicts with itself), but
+            # it no longer conflicts with the FOR KEY SHARE that every child-row
+            # INSERT takes on this row for its foreign-key check — so file-execution
+            # inserts and log writes for this execution stop queueing behind a
+            # status update. Nothing here changes the primary key, which is the only
+            # thing FOR KEY SHARE protects.
+            locked = locked_row
+            if locked is None:
+                locked = (
+                    WorkflowExecution.objects.select_for_update(no_key=True)
+                    .filter(pk=self.pk)
+                    .values("queue_message_id", "status", "attempts")
+                    .first()
+                )
             if locked is None:
                 return
             if locked["queue_message_id"] is None:
