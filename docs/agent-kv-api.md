@@ -617,8 +617,24 @@ over-cap output now **fails the job** — in both places it can be detected:
   disagree.
 
 A malformed JSONL row likewise fails the job (`"calculations produced invalid output"`)
-rather than being dropped. So `calculation_rows` on a `success: true` job is complete:
-there is no truncation flag to check, because there is no truncated success.
+rather than being dropped, and so does an output file that cannot be READ at all
+(`"calculations produced no readable output; the extraction was kept"`) — the engine
+reported that codegen ran, so an unreadable file is a real I/O fault rather than an
+empty result, and the previous behaviour reported `calculation_rows: []` for it on a
+fully billed job with no log at any level.
+
+So `calculation_rows` on a `success: true` job is complete: there is no truncation flag
+to check, because there is no truncated success.
+
+**On a failed calculation the extraction is retained inside the executor but does NOT
+reach you.** Two of these errors say "the extraction was kept", and that is a statement
+about the executor's own result object: the document's `record`, `normalized_record` and
+`keys` survive the failure there rather than being discarded, because the job was billed
+for them. They are dropped before the API: the callback forwards no `data` on the
+failure arm, and the finalize view writes only the error. So a `FAILED` body still
+carries no engine blob, exactly as the status bullets above say. The retention exists so
+that wiring it through is a change to those two hops rather than a re-extraction; until
+then, do not write a consumer that expects a partial record on a failed job.
 
 **Drift from the spec:** §7.3 sketches the failed-job body as
 `{success: false, error, timing}`. The shipped body
@@ -698,7 +714,7 @@ rather than always present.
 | Marker | Type | Present when | What it means for the field it qualifies |
 | --- | --- | --- | --- |
 | `qa_unchecked` | `true` | the token ceiling skipped the `kv_qa` stage | `qa_passed` was left at the much weaker pre-seeded value "every required key was found". No format check, no grounding check and no re-extraction ran. |
-| `challenge_unchecked` | `true` | the challenger produced no usable verdict | `challenge_passed: true` means "nothing was found wrong **because nothing was readable**", which is not a clean challenge. |
+| `challenge_unchecked` | `true` | at least one key's **final** value was never challenged | `challenge_passed: true` means "nothing was found wrong about the values that WERE judged", which is not the same as a clean challenge of the record you are reading. |
 | `budget_exhausted` | `true` | the per-job token ceiling bit anywhere | Some work the job was asked to do did not happen. |
 | `budget_skipped_stages` | `string[]` | the ceiling skipped at least one whole stage | Names the stages that never started, e.g. `["kv_qa", "code_generator"]`. **Never present as `[]`** — see the first edge case below. |
 | `qa_partial` | `true` | QA ran and the ceiling bit mid-loop | QA started but abandoned part of its work, so `qa_passed` reflects an incomplete pass. Distinct from `qa_unchecked`, which means the stage never started; the two are mutually exclusive. |
@@ -730,12 +746,20 @@ Three edge cases that a reader checking only the happy path gets wrong:
   could continue. The job is still `success: true` and still billed, so a consumer that
   treats a short record as "this document has few keys" will be wrong on exactly these
   jobs. Check it before drawing conclusions from absent keys.
-- **`challenge_unchecked` has nothing to do with the budget.** It is set whenever the
-  challenger came back with no usable verdict at all — an unparseable or empty model
-  response, for instance — which can happen on a job with budget left and therefore **no
+- **`challenge_unchecked` has nothing to do with the budget**, and its meaning is
+  narrower than it looks. It is set whenever **at least one key's final value was never
+  challenged**, which happens on a job with budget left and therefore **no
   `budget_exhausted` marker at all**. A consumer that treats `budget_exhausted` as the
   one "something was skipped" flag will read `challenge_passed: true` on that job as a
   clean challenge. These markers are independent signals; none subsumes another.
+
+  **This is a change in meaning.** An earlier revision described it as "the challenger
+  came back with no usable verdict at all" — i.e. no round was ever readable. That left
+  two paths unmarked, both of which publish a verdict about a value the record no longer
+  holds: a key the challenger REPLACED after judging it, and a key whose later round was
+  unreadable so the earlier round's verdict stood. Each key is now decided by the last
+  readable verdict that judged **the value it still holds**, and the marker answers the
+  question a consumer of `challenge_passed` actually has.
 
 **`cost_summary` dollars are always `0.0` and are not a billing figure**: the executor
 zeroes the engine's per-token price fields (they were stale hardcoded list prices), so
