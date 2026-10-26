@@ -129,6 +129,54 @@ def test_non_json_output_is_error():
     assert "invalid" in r.error.lower() or "json" in r.error.lower()
 
 
+def test_unicode_line_separators_inside_a_json_string_do_not_split_the_row():
+    """One valid JSONL row carrying U+2028 must stay one row.
+
+    `splitlines()` breaks on NEL (U+0085), LINE SEPARATOR (U+2028) and
+    PARAGRAPH SEPARATOR (U+2029), which `json.dumps(..., ensure_ascii=False)`
+    writes LITERALLY because JSON only requires escaping below U+0020. So a
+    compliant row containing any of them was split into fragments, every
+    fragment failed `json.loads`, and the runner reported "invalid JSONL
+    output" for output that was valid -- while also counting each fragment
+    against `max_rows`.
+
+    Document text copied out of PDFs and word processors is where these come
+    from, so a calculation that preserves a cell value hits it. Found in review
+    on Zipstack/unstract#2309.
+    """
+    code = (
+        "import json, sys\n"
+        "with open(sys.argv[2], 'w', encoding='utf-8') as f:\n"
+        "    f.write(json.dumps({'name': 'first\u2028second'}, "
+        "ensure_ascii=False) + '\\n')\n"
+        "    f.write(json.dumps({'name': 'a\u2029b'}, "
+        "ensure_ascii=False) + '\\n')\n"
+        "    f.write(json.dumps({'name': 'c\u0085d'}, "
+        "ensure_ascii=False) + '\\n')\n"
+    )
+    # max_rows 3 is deliberately exact: under splitlines() these three rows
+    # become six fragments, so the cap would trip even if every fragment
+    # somehow parsed. It pins the count as well as the parse.
+    r = run_code(code, "{}", **{**_DEFAULTS, "max_rows": 3})
+    assert r.success is True, r.error
+
+
+def test_crlf_output_still_parses():
+    """The one regression risk in moving off `splitlines()`.
+
+    `split("\n")` leaves a trailing "\r" on CRLF output where `splitlines()`
+    would have stripped it. `json.loads` accepts it as trailing whitespace, so
+    nothing breaks -- pinned rather than assumed.
+    """
+    code = (
+        "import sys\n"
+        "with open(sys.argv[2], 'w', newline='') as f:\n"
+        "    f.write('{\"a\": 1}\\r\\n{\"b\": 2}\\r\\n')\n"
+    )
+    r = run_code(code, "{}", **_DEFAULTS)
+    assert r.success is True, r.error
+
+
 def test_output_row_cap_enforced():
     code = (
         "import sys\n"

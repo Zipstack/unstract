@@ -176,7 +176,27 @@ def _result_from_output(
                 error="execution failed: output exceeds size cap",
             )
         rows = 0
-        for line in raw.splitlines():
+        # `split("\n")`, NOT `splitlines()`. JSONL is newline-delimited, and
+        # `splitlines()` also breaks on NEL (U+0085), LINE SEPARATOR (U+2028)
+        # and PARAGRAPH SEPARATOR (U+2029) -- which `json.dumps(...,
+        # ensure_ascii=False)` emits LITERALLY inside a string, since JSON only
+        # requires escaping below U+0020. So one valid row carrying any of them
+        # was split into fragments, every fragment failed `json.loads`, and the
+        # `except ValueError` below reported "invalid JSONL output" for output
+        # that was valid. Measured: `json.dumps({"name": "first\u2028second"},
+        # ensure_ascii=False)` is one row and two fragments, neither parseable.
+        # The row COUNT was inflated the same way, so `max_rows` could trip on
+        # a compliant file.
+        #
+        # Those three reach the file; the control separators splitlines() also
+        # breaks on (\x0b, \x0c, \x1c-\x1e) do not, because json.dumps escapes
+        # everything below U+0020 regardless of ensure_ascii. Document text
+        # copied out of PDFs and word processors is where U+2028/U+2029 come
+        # from, so this is reachable rather than theoretical.
+        #
+        # CRLF output stays safe: `split("\n")` leaves a trailing "\r", which
+        # `json.loads` accepts as whitespace (checked).
+        for line in raw.split("\n"):
             if not line.strip():
                 continue
             json.loads(line)
