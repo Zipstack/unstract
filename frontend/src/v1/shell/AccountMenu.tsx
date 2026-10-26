@@ -83,11 +83,13 @@ export function AccountMenu({ user, profileHref }: AccountMenuProps) {
             </span>
             <span className="flex min-w-0 flex-col gap-px">
               <span className="truncate text-sm font-semibold leading-5 text-[var(--foreground)]">
-                {user.name}
+                {user.name || user.email}
               </span>
-              <span className="truncate text-xs leading-4 text-[var(--muted-foreground)]">
-                {user.email}
-              </span>
+              {user.name && (
+                <span className="truncate text-xs leading-4 text-[var(--muted-foreground)]">
+                  {user.email}
+                </span>
+              )}
             </span>
           </div>
           <DropdownMenu.Separator className="h-px bg-[var(--border)]" />

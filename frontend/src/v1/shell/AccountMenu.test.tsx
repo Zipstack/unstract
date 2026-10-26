@@ -47,6 +47,20 @@ describe("AccountMenu", () => {
     ).toBeInTheDocument();
   });
 
+  test("a user without a name shows the e-mail once, in the name's place", async () => {
+    render(
+      <AccountMenu
+        user={{ name: "", email: "athul@zipstack.com" }}
+        profileHref="/zipstack/profile"
+      />,
+    );
+    await userEvent.click(screen.getByRole("button", { name: "Account menu" }));
+    const lines = screen.getAllByText("athul@zipstack.com");
+    expect(lines).toHaveLength(1);
+    // The bold title line, not an empty title above the e-mail.
+    expect(lines[0]).toHaveClass("font-semibold");
+  });
+
   test("OSS has no Plan & billing item and no version switch (D14)", async () => {
     await open();
     expect(screen.queryByText("Plan & billing")).not.toBeInTheDocument();
