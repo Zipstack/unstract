@@ -5,8 +5,8 @@ from unittest.mock import call, patch
 
 from account_v2.models import Organization
 from django.conf import settings
-from django.contrib.auth import SESSION_KEY
-from django.test import TestCase
+from django.contrib.auth import BACKEND_SESSION_KEY, HASH_SESSION_KEY, SESSION_KEY
+from django.test import TestCase, override_settings
 from permissions.tests.base import CoOwnerOrgTestMixin
 from rest_framework.test import APIRequestFactory, force_authenticate
 from utils import log_events
@@ -194,9 +194,55 @@ class ConnectTests(CoOwnerOrgTestMixin, TestCase):
         store.create()
         return store.session_key
 
+    def signed_in(self, user, **overrides) -> str:
+        """A session as login() leaves it, with any field overridden."""
+        return self.session(
+            **{
+                SESSION_KEY: str(user.pk),
+                BACKEND_SESSION_KEY: settings.AUTHENTICATION_BACKENDS[0],
+                HASH_SESSION_KEY: user.get_session_auth_hash(),
+                **overrides,
+            }
+        )
+
     def test_signed_in_socket_joins_its_users_room(self) -> None:
-        key = self.session(**{SESSION_KEY: str(self.viewer.pk)})
+        key = self.signed_in(self.viewer)
         enter = self.connect(key)
+        enter.assert_has_calls(
+            [call("sid-1", key), call("sid-1", f"user:{self.viewer.pk}")]
+        )
+
+    def test_deactivated_user_joins_only_the_session_room(self) -> None:
+        key = self.signed_in(self.viewer)
+        self.viewer.is_active = False
+        self.viewer.save(update_fields=["is_active"])
+        self.connect(key).assert_called_once_with("sid-1", key)
+
+    def test_session_from_before_a_password_change_joins_only_the_session_room(
+        self,
+    ) -> None:
+        key = self.signed_in(self.viewer)
+        self.viewer.set_password("a-new-password")
+        self.viewer.save()
+        self.connect(key).assert_called_once_with("sid-1", key)
+
+    def test_session_without_a_hash_joins_only_the_session_room(self) -> None:
+        key = self.signed_in(self.viewer, **{HASH_SESSION_KEY: ""})
+        self.connect(key).assert_called_once_with("sid-1", key)
+
+    def test_session_from_an_unconfigured_backend_joins_only_the_session_room(
+        self,
+    ) -> None:
+        key = self.signed_in(self.viewer, **{BACKEND_SESSION_KEY: "no.such.Backend"})
+        self.connect(key).assert_called_once_with("sid-1", key)
+
+    def test_session_signed_with_a_fallback_secret_still_joins(self) -> None:
+        key = self.signed_in(self.viewer)
+        with override_settings(
+            SECRET_KEY="rotated-" + settings.SECRET_KEY,
+            SECRET_KEY_FALLBACKS=[settings.SECRET_KEY],
+        ):
+            enter = self.connect(key)
         enter.assert_has_calls(
             [call("sid-1", key), call("sid-1", f"user:{self.viewer.pk}")]
         )
