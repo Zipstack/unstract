@@ -1,9 +1,11 @@
 import logging
 from collections.abc import Callable
+from contextlib import nullcontext
 from typing import Any
 
 from django.conf import settings
 from django.contrib.auth import logout as django_logout
+from django.db import connection, transaction
 from django.db.utils import IntegrityError
 from django.http import HttpRequest
 from django.middleware import csrf
@@ -46,12 +48,14 @@ from account_v2.enums import UserRole
 from account_v2.exceptions import OrganizationNotExist
 from account_v2.models import Organization, User
 from account_v2.organization import OrganizationService
+from account_v2.organization_details import with_member_details
 from account_v2.serializer import (
     GetOrganizationsResponseSerializer,
     OrganizationSerializer,
     SetOrganizationsResponseSerializer,
 )
 from account_v2.user import UserService
+from account_v2.user_profile import with_profile_overrides
 
 logger = logging.getLogger(__name__)
 
@@ -110,11 +114,12 @@ class AuthenticationController:
         """List a user's organizations.
 
         Args:
-            user (User): User instance
-            z_code (str): _description_
+            request: the authenticated request.
 
         Returns:
-            list[OrganizationData]: _description_
+            Response with ``message`` and ``organizations`` (see
+            account_v2/ReadMe.md), or 412 with the session logged out if the
+            organizations can't be listed.
         """
         try:
             organizations = self.auth_service.user_organizations(request)
@@ -143,8 +148,23 @@ class AuthenticationController:
 
         CacheService.set_user_organizations(user.user_id, list(org_ids))
 
+        # Under ATOMIC_REQUESTS a failed query aborts the request's
+        # transaction; a savepoint keeps the rest of the request usable.
+        guard = transaction.atomic() if connection.in_atomic_block else nullcontext()
+        try:
+            with guard:
+                listed: list[Any] = with_member_details(organizations, user)
+        except Exception:
+            # The details are optional; the list itself must still load.
+            logger.exception(
+                "Could not add member details to the organization list "
+                "for user %s (%d organizations)",
+                user.user_id,
+                len(organizations),
+            )
+            listed = organizations
         serialized_organizations = GetOrganizationsResponseSerializer(
-            organizations, many=True
+            listed, many=True
         ).data
         response = Response(
             status=status.HTTP_200_OK,
@@ -228,7 +248,9 @@ class AuthenticationController:
                         user.email,
                     )
 
-            user_info: UserInfo | None = self.get_user_info(request)
+            user_info: UserInfo | None = self.get_user_info(
+                request, organization_id=organization_id
+            )
             serialized_user_info = SetOrganizationsResponseSerializer(user_info).data
             organization_info = OrganizationSerializer(organization).data
             response: Response = Response(
@@ -254,8 +276,25 @@ class AuthenticationController:
             return response
         return Response(status=status.HTTP_403_FORBIDDEN)
 
-    def get_user_info(self, request: Request) -> UserInfo | None:
-        return self.auth_service.get_user_info(request)
+    def get_user_info(
+        self, request: Request, organization_id: str | None = None
+    ) -> UserInfo | None:
+        """The auth service's user info, with the locally edited name and photo.
+
+        Every auth plugin's result passes through here, so the edits show in the
+        profile and set-organization responses whichever provider signed the
+        user in. `organization_id` scopes the photo URL; it defaults to the
+        session's organization.
+        """
+        user_info = self.auth_service.get_user_info(request)
+        user = getattr(request, "user", None)
+        if not user_info or not isinstance(user, User):
+            return user_info
+        return with_profile_overrides(
+            user_info,
+            user,
+            organization_id or UserSessionUtils.get_organization_id(request),
+        )
 
     def is_admin_by_role(self, role: str) -> bool:
         """Check the role is act as admin in the context of authentication

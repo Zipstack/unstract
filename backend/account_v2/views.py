@@ -2,7 +2,9 @@ import logging
 from typing import Any
 
 from django.conf import settings
-from rest_framework import status
+from django.http.response import HttpResponseBase, HttpResponseRedirectBase
+from drf_spectacular.utils import OpenApiResponse, extend_schema, inline_serializer
+from rest_framework import serializers, status
 from rest_framework.decorators import api_view
 from rest_framework.request import Request
 from rest_framework.response import Response
@@ -21,6 +23,7 @@ from account_v2.product_preference import (
     set_product_preference,
 )
 from account_v2.serializer import (
+    GetOrganizationsResponseSerializer,
     OrganizationSignupResponseSerializer,
     OrganizationSignupSerializer,
     ProductPreferenceSerializer,
@@ -73,12 +76,52 @@ def signup(request: Request) -> Response:
     return auth_controller.user_signup(request)
 
 
-@api_view(["GET"])
-def logout(request: Request) -> Response:
+# POST is the CSRF-protected sign-out for v1. GET stays for v0's useLogout and
+# can go once v0 is retired.
+@api_view(["GET", "POST"])
+def logout(request: Request) -> HttpResponseBase:
     auth_controller = AuthenticationController()
-    return auth_controller.user_logout(request)
+    response = auth_controller.user_logout(request)
+    if request.method == "POST" and isinstance(response, HttpResponseRedirectBase):
+        # A fetch or XHR caller cannot follow the cross-origin redirect a cloud
+        # sign-out ends in, so POST returns the target for the client to open.
+        payload = Response({"redirect_url": response.url})
+        payload.cookies.update(response.cookies)
+        return payload
+    return response
 
 
+@extend_schema(
+    operation_id="organization_list",
+    tags=["organization"],
+    responses={
+        200: inline_serializer(
+            "OrganizationListResponse",
+            {
+                "message": serializers.CharField(),
+                "organizations": GetOrganizationsResponseSerializer(many=True),
+            },
+        ),
+        412: OpenApiResponse(
+            # Describes the body for a known error, which always carries both
+            # keys; for any other error the body is empty, as the description
+            # says. One OpenAPI response can't express both.
+            response=inline_serializer(
+                "OrganizationListFailed",
+                {
+                    "domain": serializers.CharField(allow_null=True),
+                    "code": serializers.CharField(),
+                },
+            ),
+            description="Listing the organizations failed and the session is "
+            "logged out. For a known authorization error the body carries "
+            "`code` (USF, USR, INE001, INE002 or INS) and `domain`; otherwise "
+            "it is empty.",
+        ),
+    },
+    description="The caller's organizations. See account_v2/ReadMe.md for "
+    "when role, member_count and region are present.",
+)
 @api_view(["GET"])
 def get_organizations(request: Request) -> Response:
     """get_organizations.
