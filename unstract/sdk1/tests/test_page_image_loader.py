@@ -13,7 +13,9 @@ from typing import TYPE_CHECKING
 
 import pytest
 from unstract.sdk1.adapters.x2text.page_image_loader import (
+    DEFAULT_MAX_TOTAL_BYTES,
     DEFAULT_PAGE_CAP,
+    MAX_TOTAL_MB_ENV,
     PAGE_CAP_ENV,
     PAGE_LABELS_FILENAME,
     LoadedPageImage,
@@ -22,8 +24,9 @@ from unstract.sdk1.adapters.x2text.page_image_loader import (
     PageImageSetTooLargeError,
     PageImagesNotFoundError,
     build_vision_message_content,
-    configured_page_cap,
     discover_page_images,
+    fixed_max_total_bytes,
+    fixed_page_cap,
     load_page_images,
 )
 from unstract.sdk1.file_storage import FileStorage, FileStorageProvider
@@ -346,24 +349,37 @@ class TestByteBudget:
         assert DEFAULT_MAX_TOTAL_BYTES * 4 / 3 < 20 * 1024 * 1024
 
 
-class TestConfiguredPageCap:
-    """The env override shared by the extraction pre-check and the consumer."""
+class TestFixedPageCap:
+    """The fixed cap: 90 pages / 14 MiB, tightened by the ceilings, never raised."""
 
-    def test_absent_env_uses_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_absent_env_is_the_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv(PAGE_CAP_ENV, raising=False)
-        assert configured_page_cap() == DEFAULT_PAGE_CAP
+        monkeypatch.delenv(MAX_TOTAL_MB_ENV, raising=False)
+        assert fixed_page_cap() == DEFAULT_PAGE_CAP
+        assert fixed_max_total_bytes() == DEFAULT_MAX_TOTAL_BYTES
 
-    def test_env_overrides_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_lower_ceiling_tightens(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv(PAGE_CAP_ENV, "42")
-        assert configured_page_cap() == 42
+        monkeypatch.setenv(MAX_TOTAL_MB_ENV, "6")
+        assert fixed_page_cap() == 42
+        assert fixed_max_total_bytes() == 6 * 1024 * 1024
+
+    def test_higher_ceiling_does_not_raise(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # The env vars are ceilings: above the fixed cap they change nothing.
+        monkeypatch.setenv(PAGE_CAP_ENV, "200")
+        monkeypatch.setenv(MAX_TOTAL_MB_ENV, "50")
+        assert fixed_page_cap() == DEFAULT_PAGE_CAP
+        assert fixed_max_total_bytes() == DEFAULT_MAX_TOTAL_BYTES
 
     @pytest.mark.parametrize("raw", ["not-a-number", "0", "-5", "", "  "])
-    def test_unusable_value_falls_back(
+    def test_unusable_value_keeps_the_default(
         self, raw: str, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        # An operator typo must not fail extraction outright.
+        # An operator typo must not fail extraction or remove the cap.
         monkeypatch.setenv(PAGE_CAP_ENV, raw)
-        assert configured_page_cap() == DEFAULT_PAGE_CAP
+        monkeypatch.setenv(MAX_TOTAL_MB_ENV, raw)
+        assert fixed_page_cap() == DEFAULT_PAGE_CAP
+        assert fixed_max_total_bytes() == DEFAULT_MAX_TOTAL_BYTES
 
 
 class TestLoaderReadsConfiguredLimits:
@@ -394,7 +410,7 @@ class TestByteBudgetMessage:
             load_page_images(fs, _DIR, page_cap=None, max_total_bytes=1024 * 1024)
         msg = str(excinfo.value)
         assert msg.startswith("This document is too large for image output mode.")
-        assert "go over the 1 MB limit at page 2 of 3" in msg
+        assert "go over the 1.0 MiB limit at page 2 of 3" in msg
         assert "Split the document into smaller files" in msg
         # Operator-only knob and the confusing phrasing are gone.
         assert "VLM_IMAGE_ANSWER_MAX_TOTAL_MB" not in msg
@@ -584,7 +600,7 @@ class TestConfiguredCeilings:
         with caplog.at_level("WARNING"):
             assert configured_page_ceiling() is None
             assert configured_request_bytes_ceiling() is None
-            assert configured_page_cap() == DEFAULT_PAGE_CAP
+            assert fixed_page_cap() == DEFAULT_PAGE_CAP
         assert not [r for r in caplog.records if r.levelno >= logging.WARNING]
 
     def test_a_bad_value_is_logged_once(
