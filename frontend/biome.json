@@ -145,12 +145,23 @@
                 },
                 "patterns": [
                   {
-                    "group": ["../**", "@/**", "src/**"],
+                    "group": [
+                      "../**",
+                      "..",
+                      "./../**",
+                      "/**",
+                      "@/**",
+                      "src/**"
+                    ],
                     "message": "v1 imports nothing outside src/v1, and never with '../'. Use './' within a folder and '@v1/...' across folders."
                   },
                   {
-                    "group": ["@ant-design/**"],
+                    "group": ["@ant-design/**", "antd/**"],
                     "message": "antd is not used under src/v1."
+                  },
+                  {
+                    "group": ["prop-types/**"],
+                    "message": "v1 is typed with TypeScript; PropTypes are not used under src/v1."
                   },
                   {
                     "group": ["**/*.css", "!@v1/styles/**"],

@@ -184,7 +184,8 @@ export default defineConfig(({ mode }) => {
     resolve: {
       alias: {
         "@": path.resolve(import.meta.dirname, "./src"),
-        // v1 frontend; mirrored in src/v1/tsconfig.json and vitest.config.mjs.
+        // v1 frontend. Also in src/v1/tsconfig.json and vitest.config.mjs;
+        // tsconfig.json/jsconfig.json map only the entry, for v0.
         "@v1": path.resolve(import.meta.dirname, "./src/v1"),
       },
     },

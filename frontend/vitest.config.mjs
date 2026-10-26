@@ -110,7 +110,7 @@ export default defineConfig({
      * of this tree entirely, so vitest's default glob no longer reaches it.
      * `build/` is listed because a production build lands there and its
      * bundled chunks would otherwise be walked. `test-fixtures/` holds
-     * deliberately broken trees (some with `*.test.ts` files) that
+     * known-good and known-bad trees (some with `*.test.ts` files) that
      * test-fixtures/v1-boundary/boundary.fixtures.mjs lints and type-checks;
      * they are inputs, not tests.
      */

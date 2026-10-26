@@ -17,7 +17,9 @@
 
     "allowJs": false,
     "noEmit": true,
-    "skipLibCheck": true,
+    /* Off so hand-written .d.ts under v1 are checked too; with it on, an
+     * unresolved name in one silently becomes `any`. */
+    "skipLibCheck": false,
     "esModuleInterop": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
@@ -28,8 +30,9 @@
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
 
-    /* Only `@v1` — deliberately no `@/*`, so a v0 import fails typecheck as
-     * well as lint. Mirrored in vite.config.js and vitest.config.mjs. */
+    /* Only `@v1` and `@v1/*` — deliberately no `@/*`, so an `@/` import
+     * fails typecheck as well as lint (`../` imports are caught by lint). The
+     * alias is also declared in vite.config.js and vitest.config.mjs. */
     "paths": {
       "@v1": ["./index.ts"],
       "@v1/*": ["./*"]
