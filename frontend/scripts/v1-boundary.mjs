@@ -162,9 +162,18 @@ export function check(src, mode = "all") {
   return errors;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+const MODES = new Set(["all", "files", "imports"]);
+
+// Compared as real paths: a URL-encoded space or a symlinked checkout would
+// otherwise skip the check and exit 0.
+if (process.argv[1] && fs.realpathSync(process.argv[1]) === import.meta.filename) {
+  const mode = process.argv[2] ?? "all";
+  if (!MODES.has(mode)) {
+    console.error(`v1-boundary: unknown mode ${mode}; use ${[...MODES].join(", ")}`);
+    process.exit(2);
+  }
   const src = path.resolve(import.meta.dirname, "../src");
-  const errors = check(src, process.argv[2]);
+  const errors = check(src, mode);
   for (const e of errors) {
     console.error(e);
   }

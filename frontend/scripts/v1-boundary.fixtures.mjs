@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { spawnSync } from "node:child_process";
 import { test } from "node:test";
 import { check } from "./v1-boundary.mjs";
 
@@ -112,4 +113,46 @@ test("multi-line and type-only imports are seen", () => {
 test("the real scaffold is clean", () => {
   const src = path.resolve(import.meta.dirname, "../src");
   assert.deepEqual(check(src), []);
+});
+
+// The CLI checks the src/ next to its own scripts/ folder.
+function cliCheckout() {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "v1 boundary "));
+  const real = path.join(root, "a checkout");
+  fs.mkdirSync(path.join(real, "scripts"), { recursive: true });
+  fs.copyFileSync(
+    path.join(import.meta.dirname, "v1-boundary.mjs"),
+    path.join(real, "scripts", "v1-boundary.mjs"),
+  );
+  for (const [file, body] of Object.entries({
+    ...ENTRY,
+    "v1/lib/bad.js": "export const x = 1;\n",
+  })) {
+    fs.mkdirSync(path.dirname(path.join(real, "src", file)), { recursive: true });
+    fs.writeFileSync(path.join(real, "src", file), body);
+  }
+  const link = path.join(root, "linked");
+  fs.symlinkSync(real, link);
+  return { real, link };
+}
+
+function runCli(checkout, ...args) {
+  return spawnSync(process.execPath, [path.join(checkout, "scripts", "v1-boundary.mjs"), ...args], {
+    encoding: "utf8",
+  });
+}
+
+test("the CLI reports violations from a path with spaces or through a symlink", () => {
+  const { real, link } = cliCheckout();
+  for (const checkout of [real, link]) {
+    const run = runCli(checkout, "files");
+    assert.equal(run.status, 1, `${checkout}: ${run.stderr}`);
+    assert.match(run.stderr, /bad\.js/);
+  }
+});
+
+test("the CLI refuses an unknown mode instead of checking nothing", () => {
+  const run = runCli(cliCheckout().real, "file");
+  assert.equal(run.status, 2);
+  assert.match(run.stderr, /mode/);
 });
