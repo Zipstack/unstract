@@ -31,7 +31,7 @@ def _describe(record: SessionRecord, current_key: str) -> dict[str, Any]:
         "browser": device.browser,
         "os": device.os,
         "device_label": device.label,
-        "location": record.location,
+        "location": record.location or None,
         "last_active": record.last_active_at,
         "created": record.created_at,
         "is_current": record.session_key == current_key,

@@ -12,17 +12,16 @@ import re
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import timedelta
 from functools import cache
 from importlib import import_module
 from typing import Any
 
 from django.conf import settings
-from django.contrib.auth import SESSION_KEY
 from django.contrib.sessions.models import Session
 from django.core.cache import cache as django_cache
-from django.db import IntegrityError, connection, transaction
-from django.db.migrations.recorder import MigrationRecorder
+from django.db import IntegrityError, transaction
+from django.db.models import F
 from django.http import HttpRequest
 from django.utils import timezone
 from django.utils.module_loading import import_string
@@ -36,7 +35,6 @@ logger = logging.getLogger(__name__)
 # The spec caps activity writes at one per session per minute.
 ACTIVITY_REFRESH_INTERVAL = timedelta(minutes=1)
 _TOUCH_CACHE_PREFIX = "session_record_touch:"
-_RECORDING_MIGRATION = ("account_v2", "0008_sessionrecord")
 
 # First match wins, so browsers built on Chromium are listed before Chrome and
 # Chrome before Safari (each carries the tokens of the ones after it).
@@ -46,7 +44,8 @@ _BROWSERS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("Samsung Internet", re.compile(r"\bSamsungBrowser/")),
     ("Firefox", re.compile(r"\b(?:Firefox|FxiOS)/")),
     ("Chrome", re.compile(r"\b(?:Chrome|CriOS)/")),
-    ("Safari", re.compile(r"\bVersion/[\d.]+.*\bSafari/")),
+    # Safari puts "Version/x" just before "Safari/", with "Mobile/x" between on iOS.
+    ("Safari", re.compile(r"\bVersion/\S+ (?:Mobile/\S+ )?Safari/")),
 )
 # iOS before macOS (iPad UAs mention "Mac OS X"); Android before Linux.
 _OPERATING_SYSTEMS: tuple[tuple[str, re.Pattern[str]], ...] = (
@@ -106,22 +105,6 @@ def _client_ip(request: HttpRequest) -> str | None:
     return request.META.get("REMOTE_ADDR") or None
 
 
-@cache
-def _recording_started_at() -> datetime | None:
-    # When the migration creating SessionRecord was applied: from then on every
-    # sign-in is recorded. No migration history (a schema built straight from the
-    # models) means there are no sessions from before recording either.
-    if not MigrationRecorder(connection).has_table():
-        return None
-    return (
-        MigrationRecorder.Migration.objects.filter(
-            app=_RECORDING_MIGRATION[0], name=_RECORDING_MIGRATION[1]
-        )
-        .values_list("applied", flat=True)
-        .first()
-    )
-
-
 def _session_store_class() -> type:
     return import_module(settings.SESSION_ENGINE).SessionStore
 
@@ -145,7 +128,7 @@ class SessionTracker:
                 "user": user,
                 "user_agent": user_agent,
                 "ip_address": ip_address,
-                "location": _resolve_location(ip_address),
+                "location": _resolve_location(ip_address) or "",
                 "last_active_at": timezone.now(),
             },
         )
@@ -232,7 +215,14 @@ class SessionTracker:
 
     @staticmethod
     def idp_sessions(request: HttpRequest) -> list[dict[str, Any]]:
-        """Sessions the identity provider owns, from the plugin if it lists any."""
+        """Sessions the identity provider owns, from the plugin if it lists any.
+
+        A plugin opts in by defining `list_idp_sessions(request)`, returning
+        entries shaped like a `users/sessions/` item, and
+        `revoke_idp_sessions(request, session_id=None)`, ending one provider
+        session or all of them and returning whether it ended anything. Both are
+        optional; the basic-auth service defines neither.
+        """
         hook = getattr(_auth_service(), "list_idp_sessions", None)
         if hook is None:
             return []
@@ -279,42 +269,19 @@ class SessionTracker:
         return True
 
     @classmethod
-    def _unrecorded_session_keys(cls, user: User) -> list[str]:
-        """Live sessions of `user` signed in before recording existed.
-
-        Those have no record until their next request. Every session saved since
-        recording began expires after the cutoff, so bounding on it confines the
-        decode to that fixed pre-rollout set (anonymous sessions included, which
-        never get a record) and makes this a no-op once they have all expired.
-        """
-        started_at = _recording_started_at()
-        if started_at is None:
-            return []
-        cutoff = started_at + timedelta(seconds=settings.SESSION_COOKIE_AGE)
-        now = timezone.now()
-        if now >= cutoff:
-            return []
-        candidates = (
-            Session.objects.filter(expire_date__gt=now, expire_date__lte=cutoff)
-            .exclude(session_key__in=SessionRecord.objects.values("session_key"))
-            .iterator()
-        )
-        user_pk = str(user.pk)
-        return [
-            s.session_key
-            for s in candidates
-            if s.get_decoded().get(SESSION_KEY) == user_pk
-        ]
-
-    @classmethod
     def revoke_all(cls, request: HttpRequest) -> None:
         """End every session of the caller, the one making this request last."""
         user = request.user
         current_key = request.session.session_key
+        # Ends the sessions with no record too: one signed in before recording
+        # existed, or whose recording failed at sign-in, still carries the old
+        # generation's auth hash and is refused on its next request.
+        User.objects.filter(pk=user.pk).update(
+            session_generation=F("session_generation") + 1
+        )
         session_keys = set(
             SessionRecord.objects.filter(user=user).values_list("session_key", flat=True)
         )
-        session_keys.update(cls._unrecorded_session_keys(user))
         session_keys.discard(current_key)
         for session_key in session_keys:
             cls._end(request, session_key)

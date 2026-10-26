@@ -12,6 +12,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from django.conf import settings
+from django.contrib.auth.base_user import AbstractBaseUser
 from django.contrib.sessions.models import Session
 from django.core.cache import cache
 from django.test import SimpleTestCase, override_settings
@@ -25,7 +26,6 @@ from account_v2.session_tracking import (
     _TOUCH_CACHE_PREFIX,
     SessionTracker,
     _location_resolver,
-    _recording_started_at,
     parse_user_agent,
 )
 from account_v2.session_views import _require_browser_session
@@ -250,39 +250,78 @@ class SessionEndpointsTest(APITestCase):
 
         self.assertEqual(bob.get(SESSIONS_URL).status_code, 200)
 
-    def _recording_started(self, at) -> None:
-        _recording_started_at.cache_clear()
-        self.addCleanup(_recording_started_at.cache_clear)
-        started = patch(
-            "account_v2.session_tracking._recording_started_at", return_value=at
+    def test_revoke_all_ends_a_session_whose_recording_failed_at_sign_in(
+        self,
+    ) -> None:
+        laptop = self._sign_in(self.user)
+        with patch(
+            "account_v2.session_tracking.SessionTracker._upsert",
+            side_effect=RuntimeError("boom"),
+        ):
+            unrecorded = self._sign_in(self.user)
+        self.assertFalse(
+            SessionRecord.objects.filter(session_key=self._key(unrecorded)).exists()
         )
-        started.start()
-        self.addCleanup(started.stop)
+
+        # No request from the unrecorded browser in between, so nothing lazily
+        # records it before the revoke.
+        laptop.post(REVOKE_ALL_URL)
+
+        self.assertEqual(unrecorded.get(SESSIONS_URL).status_code, 401)
 
     def test_revoke_all_ends_sessions_signed_in_before_recording(self) -> None:
         laptop = self._sign_in(self.user)
         legacy = self._sign_in(self.user)
         SessionRecord.objects.filter(session_key=self._key(legacy)).delete()
-        # Recording began just after `legacy` signed in, so it expires before the
-        # cutoff while every session saved since expires after it.
-        self._recording_started(timezone.now() + timedelta(seconds=5))
 
         laptop.post(REVOKE_ALL_URL)
 
-        self.assertFalse(Session.objects.filter(session_key=self._key(legacy)).exists())
+        self.assertEqual(legacy.get(SESSIONS_URL).status_code, 401)
 
-    def test_revoke_all_skips_the_legacy_scan_once_pre_rollout_sessions_expired(
+    def test_signing_in_again_after_revoke_all_works(self) -> None:
+        laptop = self._sign_in(self.user)
+        laptop.post(REVOKE_ALL_URL)
+
+        # The auth flows load the user fresh, with the bumped generation.
+        self.user.refresh_from_db()
+        again = self._sign_in(self.user)
+
+        self.assertEqual(again.get(SESSIONS_URL).status_code, 200)
+
+    def test_full_save_of_a_user_loaded_before_revoke_all_keeps_it_revoked(
         self,
     ) -> None:
         laptop = self._sign_in(self.user)
-        self._recording_started(
-            timezone.now() - timedelta(seconds=settings.SESSION_COOKIE_AGE + 1)
-        )
+        desktop = self._sign_in(self.user)
+        loaded_earlier = User.objects.get(pk=self.user.pk)
 
-        with patch.object(Session.objects, "filter", wraps=Session.objects.filter) as q:
-            SessionTracker._unrecorded_session_keys(self.user)
-        q.assert_not_called()
-        self.assertEqual(laptop.post(REVOKE_ALL_URL).status_code, 204)
+        laptop.post(REVOKE_ALL_URL)
+        loaded_earlier.first_name = "Alice"
+        loaded_earlier.save()
+
+        self.assertEqual(desktop.get(SESSIONS_URL).status_code, 401)
+        loaded_earlier.refresh_from_db()
+        self.assertEqual(loaded_earlier.first_name, "Alice")
+        self.assertEqual(loaded_earlier.session_generation, 1)
+
+    def test_revoke_all_survives_a_secret_key_rotation(self) -> None:
+        old_key, new_key = "a" * 50, "b" * 50
+        with override_settings(SECRET_KEY=old_key):
+            laptop = self._sign_in(self.user)
+            laptop.post(REVOKE_ALL_URL)
+            self.user.refresh_from_db()
+            desktop = self._sign_in(self.user)
+
+        with override_settings(SECRET_KEY=new_key, SECRET_KEY_FALLBACKS=[old_key]):
+            self.assertEqual(desktop.get(SESSIONS_URL).status_code, 200)
+
+    def test_sessions_from_before_the_generation_existed_stay_valid(self) -> None:
+        # Generation 0 must hash exactly as Django does, or deploying this would
+        # sign every user out.
+        self.assertEqual(
+            self.user.get_session_auth_hash(),
+            AbstractBaseUser.get_session_auth_hash(self.user),
+        )
 
     def test_revoke_one_leaves_the_other_working(self) -> None:
         laptop = self._sign_in(self.user)
