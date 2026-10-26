@@ -465,74 +465,67 @@ class TestMessages:
         assert "Amazon Bedrock" in text and "20" in text and "20.0 MB" in text
 
 
-class TestRolloutBounds:
-    """Extraction stays within the plugin's fixed limits during rollout.
+class TestOperatorCeilings:
+    """VLM_IMAGE_ANSWER_* only ever tighten a model's limits; unset means none."""
 
-    Until the cloud plugin answers with model-aware limits, extraction is
-    bounded by its fixed 90 pages / 14 MiB, so it can only get stricter,
-    never looser, than answer time.
-    """
+    def test_no_env_means_no_bounds(self) -> None:
+        assert policy_mod.extraction_bound_kwargs() == {
+            "page_ceiling": None,
+            "bytes_ceiling": None,
+            "legacy_cap": None,
+        }
 
-    def test_legacy_clamp_follows_the_operator_env_overrides(
+    def test_generous_model_gets_its_own_limit(self) -> None:
+        policy = ImageModePolicy.from_limits(
+            [OPENAI], **policy_mod.extraction_bound_kwargs()
+        )
+        assert policy.page_budget.max_pages == 999
+        assert policy.page_budget.binding == "llmwhisperer"
+        assert policy.bytes_ceiling is None
+        # The fixture is Sonnet 4.5: a 200k-context model, 100 images.
+        claude = ImageModePolicy.from_limits(
+            [ANTHROPIC], **policy_mod.extraction_bound_kwargs()
+        )
+        assert (claude.page_budget.max_pages, claude.page_budget.binding) == (
+            100,
+            "images",
+        )
+
+    def test_lower_ceiling_binds_and_names_the_administrator(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        # While LEGACY is on the env vars REPLACE 90 / 14 MiB; extraction
-        # must use them, or it accepts documents the plugin then rejects.
         monkeypatch.setenv("VLM_IMAGE_ANSWER_PAGE_CAP", "40")
         monkeypatch.setenv("VLM_IMAGE_ANSWER_MAX_TOTAL_MB", "6")
-        assert policy_mod.LEGACY_ANSWER_BOUNDS_ACTIVE is True
         kwargs = policy_mod.extraction_bound_kwargs()
         assert kwargs == {
-            "page_ceiling": None,
+            "page_ceiling": 40,
             "bytes_ceiling": 6 * 1024 * 1024,
-            "legacy_cap": 40,
+            "legacy_cap": None,
         }
         policy = ImageModePolicy.from_limits([OPENAI], **kwargs)
-        assert policy.page_budget.max_pages == 40
+        assert (policy.page_budget.max_pages, policy.page_budget.binding) == (
+            40,
+            "ceiling",
+        )
         assert policy.raw_byte_budget(page_count=10) == 6 * 1024 * 1024
+        msg = policy_mod.page_cap_message(60, policy.page_budget, charged=False)
+        assert "administrator" in msg
         with pytest.raises(PageCapExceededError):
             check_page_set(
                 policy, [(n, minimal_png()) for n in range(1, 61)], page_store_dir=DIR
             )
 
-    def test_legacy_bounds_are_active_and_read_the_legacy_accessors(
+    def test_higher_ceiling_cannot_raise_a_strict_model(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.delenv("VLM_IMAGE_ANSWER_PAGE_CAP", raising=False)
-        monkeypatch.delenv("VLM_IMAGE_ANSWER_MAX_TOTAL_MB", raising=False)
-        assert policy_mod.LEGACY_ANSWER_BOUNDS_ACTIVE is True
-        kwargs = policy_mod.extraction_bound_kwargs()
-        assert kwargs == {
-            "page_ceiling": None,
-            "bytes_ceiling": 14 * 1024 * 1024,
-            "legacy_cap": 90,
-        }
-
-    def test_switch_off_leaves_only_operator_ceilings(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setattr(policy_mod, "LEGACY_ANSWER_BOUNDS_ACTIVE", False)
-        monkeypatch.setenv("VLM_IMAGE_ANSWER_PAGE_CAP", "40")
-        monkeypatch.delenv("VLM_IMAGE_ANSWER_MAX_TOTAL_MB", raising=False)
-        assert policy_mod.extraction_bound_kwargs() == {
-            "page_ceiling": 40,
-            "bytes_ceiling": None,
-            "legacy_cap": None,
-        }
-
-    def test_generous_model_is_held_at_the_legacy_cap(self) -> None:
-        policy = ImageModePolicy.from_limits(
-            [OPENAI], **policy_mod.extraction_bound_kwargs()
-        )
-        assert policy.page_budget.max_pages == 90
-        assert policy.page_budget.binding == "legacy"
-
-    def test_strict_model_still_binds_below_the_legacy_cap(self) -> None:
+        monkeypatch.setenv("VLM_IMAGE_ANSWER_PAGE_CAP", "500")
         policy = ImageModePolicy.from_limits(
             [BEDROCK], **policy_mod.extraction_bound_kwargs()
         )
-        assert policy.page_budget.max_pages == 20
-        assert policy.page_budget.binding == "images"
+        assert (policy.page_budget.max_pages, policy.page_budget.binding) == (
+            20,
+            "images",
+        )
 
     def test_legacy_page_message_does_not_blame_an_administrator(self) -> None:
         budget = compute_page_budget(OPENAI, context_tokens=None, legacy_cap=90)
@@ -555,8 +548,8 @@ class TestRolloutBounds:
 class TestByteUnitsInMessages:
     """A message prints its limit and its total in one unit, to 0.1.
 
-    Provider limits are documented in decimal MB; the operator and legacy
-    ceilings are MiB (``VLM_IMAGE_ANSWER_MAX_TOTAL_MB`` has always been
+    Provider limits are documented in decimal MB; the operator ceilings and
+    the fixed cap are MiB (``VLM_IMAGE_ANSWER_MAX_TOTAL_MB`` has always been
     MiB). Rounding to whole units used to print Gemma 4's 3.5 MB as "4 MB"
     and a 14.7 MiB total as "over the 15 MB limit".
     """
@@ -571,11 +564,9 @@ class TestByteUnitsInMessages:
         assert "over the 3.5 MB request limit" in msg
         assert "3.5 MB per request" in policy.describe()
 
-    def test_legacy_ceiling_message_is_in_mib(self) -> None:
-        # The 14 MiB legacy ceiling binds under OpenAI's 512 MB limit.
-        policy = ImageModePolicy.from_limits(
-            [OPENAI], **policy_mod.extraction_bound_kwargs()
-        )
+    def test_ceiling_message_is_in_mib(self) -> None:
+        # A 14 MiB ceiling binds under OpenAI's 512 MB limit.
+        policy = ImageModePolicy.from_limits([OPENAI], bytes_ceiling=14 * 1024 * 1024)
         page = b"x" * 7_700_000
         with pytest.raises(PageImageSetTooLargeError) as excinfo:
             check_page_set(policy, [(1, page), (2, page)], page_store_dir=DIR)
@@ -585,9 +576,7 @@ class TestByteUnitsInMessages:
         assert "15 MB" not in msg and "512" not in msg
 
     def test_describe_reports_a_binding_ceiling(self) -> None:
-        policy = ImageModePolicy.from_limits(
-            [OPENAI], **policy_mod.extraction_bound_kwargs()
-        )
+        policy = ImageModePolicy.from_limits([OPENAI], bytes_ceiling=14 * 1024 * 1024)
         text = policy.describe()
         assert "14.0 MiB of page images per request" in text
         assert "512" not in text
@@ -680,11 +669,7 @@ class TestEnforceSwitchInsideTheBuilders:
     def _switched_off(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv(policy_mod.ENFORCE_ENV, "false")
 
-    @pytest.mark.parametrize("legacy_active", [True, False])
-    def test_from_limits_yields_the_fixed_cap(
-        self, monkeypatch: pytest.MonkeyPatch, legacy_active: bool
-    ) -> None:
-        monkeypatch.setattr(policy_mod, "LEGACY_ANSWER_BOUNDS_ACTIVE", legacy_active)
+    def test_from_limits_yields_the_fixed_cap(self) -> None:
         policy = ImageModePolicy.from_limits(
             [BEDROCK], token_budgets=[200_000], **policy_mod.extraction_bound_kwargs()
         )
@@ -709,13 +694,39 @@ class TestEnforceSwitchInsideTheBuilders:
         assert policy.page_budget.max_pages == 10
         assert policy.bytes_ceiling == 1000
 
-    def test_extraction_bounds_are_the_fixed_cap_after_rollout(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setattr(policy_mod, "LEGACY_ANSWER_BOUNDS_ACTIVE", False)
+    def test_extraction_bounds_are_the_fixed_cap(self) -> None:
         assert policy_mod.extraction_bound_kwargs() == (
             policy_mod.fixed_cap_bound_kwargs()
         )
+
+    def test_env_ceiling_cannot_raise_the_fixed_cap(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("VLM_IMAGE_ANSWER_PAGE_CAP", "200")
+        monkeypatch.setenv("VLM_IMAGE_ANSWER_MAX_TOTAL_MB", "50")
+        policy = ImageModePolicy.from_limits(
+            [OPENAI], **policy_mod.extraction_bound_kwargs()
+        )
+        assert (policy.page_budget.max_pages, policy.page_budget.binding) == (
+            90,
+            "legacy",
+        )
+        assert policy.raw_byte_budget(page_count=10) == 14 * 1024 * 1024
+
+    def test_env_ceiling_tightens_the_fixed_cap(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("VLM_IMAGE_ANSWER_PAGE_CAP", "40")
+        policy = ImageModePolicy.from_limits(
+            [OPENAI], **policy_mod.extraction_bound_kwargs()
+        )
+        assert (policy.page_budget.max_pages, policy.page_budget.binding) == (
+            40,
+            "ceiling",
+        )
+        # Also without kwargs: fixed_cap() reads the ceiling itself.
+        assert ImageModePolicy.from_limits([OPENAI]).page_budget.max_pages == 40
+        assert compute_page_budget(OPENAI, context_tokens=None).max_pages == 40
 
     def test_compute_page_budget_yields_the_fixed_cap(self) -> None:
         budget = compute_page_budget(BEDROCK, context_tokens=200_000)

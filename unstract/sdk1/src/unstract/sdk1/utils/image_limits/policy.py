@@ -2,7 +2,9 @@
 
 Two ceilings bound how many page images one request can carry: the
 provider's image count and LLMWhisperer's 999-page conversion maximum,
-plus optional operator ceilings. ``compute_page_budget`` picks the
+plus optional operator ceilings (``VLM_IMAGE_ANSWER_PAGE_CAP`` /
+``VLM_IMAGE_ANSWER_MAX_TOTAL_MB``, which only ever lower a limit).
+``compute_page_budget`` picks the
 binding one and remembers why, so every error message can say which
 limit the user hit and where the number came from. The model's context
 window, estimated from a per-page token figure, is WARN ONLY: a token
@@ -24,8 +26,9 @@ and, through ``ImageModePolicy.with_advisory_sink``, to the user's run log.
 ``VLM_IMAGE_LIMITS_ENFORCE=false`` turns the model-aware checks off at
 runtime, inside this module: ``ImageModePolicy.from_limits``,
 ``compute_page_budget`` and ``extraction_bound_kwargs`` then yield the
-fixed 90-page / 14 MiB cap (``ImageModePolicy.fixed_cap``) whatever limits
-they are given, so every consumer honours the switch without checking it.
+fixed 90-page / 14 MiB cap, lowered by the operator ceilings
+(``ImageModePolicy.fixed_cap``), whatever limits they are given, so every
+consumer honours the switch without checking it.
 
 Tunables are module constants so a product decision is one edit.
 """
@@ -42,13 +45,13 @@ from typing import TYPE_CHECKING
 
 from unstract.sdk1.adapters.x2text.constants import ImageOutputConstants
 from unstract.sdk1.adapters.x2text.page_image_loader import (
+    DEFAULT_PAGE_CAP,
     PageCapExceededError,
     PageImageSetTooLargeError,
     PageImageTooLargeError,
-    configured_max_total_bytes,
-    configured_page_cap,
     configured_page_ceiling,
     configured_request_bytes_ceiling,
+    fixed_max_total_bytes,
     is_page_selection,
 )
 from unstract.sdk1.utils.image_limits.source import MAX_REMOTE_RAISE_FACTOR
@@ -80,18 +83,10 @@ PAGE_LABEL_OVERHEAD_BYTES = 64
 # Median raw size of a 150-DPI page PNG (354-PDF sample); used ONLY for the
 # pre-conversion size advisory, never to reject.
 ASSUMED_PAGE_BYTES = 250_000
-# TEMPORARY rollout bound (UN-4427). While True, every image-mode policy
-# (extraction here, answering in the cloud vlm-image-answer plugin, through
-# extraction_bound_kwargs) is also held to the legacy limits: 90 pages /
-# 14 MiB, or their env overrides, which REPLACE those values rather than cap
-# them. Set to False — and delete with the legacy accessors — once the cloud
-# plugin that answers with model-aware limits is released; the env vars then
-# become ceilings on the model's limits.
-LEGACY_ANSWER_BOUNDS_ACTIVE = True
 # base64 inflates 3 raw bytes to 4 characters.
 _B64_NUM, _B64_DEN = 4, 3
 _MB = 1_000_000  # the table's byte limits are decimal
-_MIB = 1024 * 1024  # operator / legacy ceilings are MiB (VLM_IMAGE_ANSWER_MAX_TOTAL_MB)
+_MIB = 1024 * 1024  # operator ceilings and the fixed cap are MiB
 
 
 def _mb(n: float) -> str:
@@ -100,7 +95,7 @@ def _mb(n: float) -> str:
 
 
 def _mib(n: float) -> str:
-    """Mebibytes, for the operator and legacy ceilings (configured in MiB)."""
+    """Mebibytes, for the operator ceilings and the fixed cap (configured in MiB)."""
     return f"{n / _MIB:.1f} MiB"
 
 
@@ -168,30 +163,31 @@ def _report_invalid_switch_once(raw: str) -> None:
 
 
 def fixed_cap_bound_kwargs() -> dict[str, int | None]:
-    """The fixed 90-page / 14 MiB cap (or its env overrides), for ``ceiling_only``.
+    """The fixed 90-page / 14 MiB cap, lowered by the operator ceilings.
 
     What image mode enforced before model-aware limits, and what it falls
-    back to when ``VLM_IMAGE_LIMITS_ENFORCE=false``.
+    back to when ``VLM_IMAGE_LIMITS_ENFORCE=false``. A page ceiling below 90
+    binds as ``ceiling`` (the message names the administrator); the env
+    vars never raise the cap. Pass to ``ImageModePolicy.ceiling_only``.
     """
     return {
-        "page_ceiling": None,
-        "bytes_ceiling": configured_max_total_bytes(),
-        "legacy_cap": configured_page_cap(),
+        "page_ceiling": configured_page_ceiling(),
+        "bytes_ceiling": fixed_max_total_bytes(),
+        "legacy_cap": DEFAULT_PAGE_CAP,
     }
 
 
 def extraction_bound_kwargs() -> dict[str, int | None]:
     """Ceilings every image-mode policy applies on top of the model's limits.
 
-    Operator ceilings (``VLM_IMAGE_ANSWER_PAGE_CAP`` /
-    ``VLM_IMAGE_ANSWER_MAX_TOTAL_MB``) always apply; while
-    ``LEGACY_ANSWER_BOUNDS_ACTIVE``, or when ``VLM_IMAGE_LIMITS_ENFORCE=false``,
-    the fixed 90-page / 14 MiB limits are used instead, so extraction is
-    never looser than the plugin. Pass the result to
+    The operator ceilings (``VLM_IMAGE_ANSWER_PAGE_CAP`` /
+    ``VLM_IMAGE_ANSWER_MAX_TOTAL_MB``), which only ever lower a limit; unset
+    means none beyond LLMWhisperer's 999. With
+    ``VLM_IMAGE_LIMITS_ENFORCE=false`` the fixed cap
+    (``fixed_cap_bound_kwargs``). Pass the result to
     ``ImageModePolicy.from_limits`` / ``ceiling_only``.
     """
-    if LEGACY_ANSWER_BOUNDS_ACTIVE or not model_aware_limits_enabled():
-        # The legacy accessors already fold the same env vars in.
+    if not model_aware_limits_enabled():
         return fixed_cap_bound_kwargs()
     return {
         "page_ceiling": configured_page_ceiling(),
@@ -217,7 +213,7 @@ class PageBudget:
     """The effective page cap and the term that produced it."""
 
     max_pages: int
-    binding: str  # images | llmwhisperer | ceiling | legacy
+    binding: str  # images | llmwhisperer | ceiling | legacy (the fixed cap)
     limits: ImageRequestLimits | None
     context_tokens: int | None
     advisory_max_images: int | None
@@ -504,12 +500,12 @@ class ImageModePolicy:
     ) -> ImageModePolicy:
         """The fixed 90-page / 14 MiB policy ``VLM_IMAGE_LIMITS_ENFORCE=false`` uses.
 
-        ``fixed_cap_bound_kwargs`` (90 pages / 14 MiB or their env
-        overrides), tightened by any stricter bound given; never looser.
+        ``fixed_cap_bound_kwargs`` (90 pages / 14 MiB, lowered by the
+        operator ceilings), tightened by any stricter bound given; never looser.
         """
         fixed = fixed_cap_bound_kwargs()
         policy = cls.ceiling_only(
-            page_ceiling=page_ceiling,
+            page_ceiling=_stricter(page_ceiling, fixed["page_ceiling"]),
             bytes_ceiling=_stricter(bytes_ceiling, fixed["bytes_ceiling"]),
             legacy_cap=_stricter(legacy_cap, fixed["legacy_cap"]),
         )
@@ -620,7 +616,7 @@ class ImageModePolicy:
         )
 
     def ceiling_binds_bytes(self) -> bool:
-        """True when the operator/legacy ceiling is below the model's byte limit.
+        """True when the operator ceiling or fixed cap is below the model's byte limit.
 
         Compared on raw bytes, ignoring the prompt text, so it is the same
         answer for every page count that matters for a summary line.
@@ -1056,7 +1052,7 @@ def request_too_large_message(
             limit = None  # the ceiling bound, not the model's limit
     limits = policy.request_bytes_source() if limit is not None else None
     # The total and the limit are printed in the limit's own unit: decimal
-    # MB for a provider limit, MiB for the (raw-byte) operator/legacy ceiling.
+    # MB for a provider limit, MiB for the (raw-byte) operator ceiling or fixed cap.
     total = "total at least" if at_least else "total"
     if limit is not None and limit.value is not None and limits is not None:
         size = f"{total} {_mb(raw_total)} ({_mb(wire)} once encoded)"
