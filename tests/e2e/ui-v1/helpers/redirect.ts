@@ -30,13 +30,14 @@ export async function expectV0RedirectsToV1(
     throw new Error(`${pageKey} has no v0 -> v1 mappings in the registry`);
   }
   for (const [v0, v1] of mappings) {
-    await test.step(`redirect ${v0} -> ${v1}`, async () => {
+    const body = async () => {
       const target = fillPattern(v1, params);
       await page.goto(fillPattern(v0, params), {
         waitUntil: "domcontentloaded",
       });
       await expect(page).toHaveURL(routeRegex(target));
       await expect(page.locator(V1_ROOT_SELECTOR)).toBeVisible();
-    });
+    };
+    await test.step(`redirect ${v0} -> ${v1}`, body); // NOSONAR: steps share one page, so they run in order
   }
 }

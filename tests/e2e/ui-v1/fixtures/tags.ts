@@ -46,5 +46,5 @@ export function currentDistribution(): Distribution {
 
 /** The `grep` the config applies: tests tagged for this distribution only. */
 export function distributionGrep(): RegExp {
-  return new RegExp(`${TAG[currentDistribution()]}\\b`);
+  return new RegExp(String.raw`${TAG[currentDistribution()]}\b`);
 }

@@ -74,12 +74,12 @@ export const test = authTest.extend<{ seed: Seed }>({
           ];
           const deletePath =
             options.deletePath?.(created) ??
-            (id === undefined
-              ? undefined
-              : `${path.replace(/\/$/, "")}/${String(id)}/`);
+            (typeof id === "string" || typeof id === "number"
+              ? `${path.replace(/\/$/, "")}/${id}/`
+              : undefined);
           if (!deletePath) {
             throw new Error(
-              `returned no "${options.idField ?? "id"}"; pass idField or deletePath`,
+              `returned no string or number "${options.idField ?? "id"}"; pass idField or deletePath`,
             );
           }
           cleanups.push({ url: join(prefix, deletePath), label: path });
@@ -93,10 +93,14 @@ export const test = authTest.extend<{ seed: Seed }>({
     });
 
     const leaks = orphans.map((o) => `${o} (never deletable)`);
-    for (const { url, label } of cleanups.reverse()) {
-      const res = await session.api
+    // Newest first: a row can depend on one seeded before it. Sequential on
+    // purpose, for the same reason.
+    cleanups.reverse();
+    const headers = await session.csrfHeaders();
+    for (const { url, label } of cleanups) {
+      const res = await session.api // NOSONAR: deletes must run in order
         .delete(url, {
-          headers: await session.csrfHeaders(),
+          headers,
           failOnStatusCode: false,
         })
         .catch((err: Error) => err);

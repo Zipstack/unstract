@@ -1,20 +1,15 @@
 /** Route-pattern utilities shared by the redirect and old-version helpers. */
 
-import type { RoutePattern } from "../contract/registry.ts";
-
 export type RouteParams = Readonly<Record<string, string>>;
 
-const PARAM = /:([A-Za-z_][A-Za-z0-9_]*)\??/g;
+const PARAM = /:([A-Za-z_]\w*)\??/g;
 
-export function paramNames(pattern: RoutePattern): string[] {
+export function paramNames(pattern: string): string[] {
   return [...pattern.matchAll(PARAM)].map((m) => m[1] as string);
 }
 
 /** `/:orgName/workflows/:id` + params -> `/org_1/workflows/42`. */
-export function fillPattern(
-  pattern: RoutePattern,
-  params: RouteParams,
-): string {
+export function fillPattern(pattern: string, params: RouteParams): string {
   return pattern.replace(PARAM, (_, name: string) => {
     const value = params[name];
     if (value === undefined) {
@@ -25,7 +20,7 @@ export function fillPattern(
 }
 
 function escapeRegex(text: string): string {
-  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return text.replace(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
 }
 
 /**

@@ -196,6 +196,6 @@ export async function expectFiveStates(
   screen: Screen,
 ): Promise<void> {
   for (const state of screen.states ?? ALL_STATES) {
-    await test.step(`state: ${state}`, () => driveState(page, screen, state));
+    await test.step(`state: ${state}`, () => driveState(page, screen, state)); // NOSONAR: steps share one page, so they run in order
   }
 }

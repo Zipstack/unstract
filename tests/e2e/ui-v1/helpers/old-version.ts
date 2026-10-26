@@ -75,7 +75,7 @@ export async function expectOldVersionRoundTrip(
     const v1Url = fillPattern(v1, params);
     const v0Url = fillPattern(v0, params);
 
-    await test.step(`old version on: ${v1} -> ${v0}`, async () => {
+    const on = async () => {
       await setOldVersionPreference(page, true);
       await page.goto(v1Url, { waitUntil: "domcontentloaded" });
       await expect(page).toHaveURL(routeRegex(v0Url));
@@ -84,7 +84,8 @@ export async function expectOldVersionRoundTrip(
       await page.reload({ waitUntil: "domcontentloaded" });
       await expect(page).toHaveURL(routeRegex(v0Url));
       await expectV0Rendered();
-    });
+    };
+    await test.step(`old version on: ${v1} -> ${v0}`, on); // NOSONAR: steps share one page, so they run in order
 
     // A v1-only sub-route maps to its nearest v0 route, so the way back lands
     // on whatever v1 route that v0 route redirects to, not always on `v1`.
@@ -92,11 +93,12 @@ export async function expectOldVersionRoundTrip(
     if (!back) {
       throw new Error(`${pageKey}: ${v0} has no v1 mapping to return to`);
     }
-    await test.step(`old version off: ${v0} -> ${back}`, async () => {
+    const off = async () => {
       await setOldVersionPreference(page, false);
       await page.goto(v0Url, { waitUntil: "domcontentloaded" });
       await expect(page).toHaveURL(routeRegex(fillPattern(back, params)));
       await expect(v1Root).toBeVisible();
-    });
+    };
+    await test.step(`old version off: ${v0} -> ${back}`, off); // NOSONAR: steps share one page, so they run in order
   }
 }

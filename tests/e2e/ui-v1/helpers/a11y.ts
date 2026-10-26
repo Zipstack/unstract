@@ -68,7 +68,8 @@ export async function expectAccessible(
   const results = await builder.analyze();
 
   const info = test.info();
-  await info.attach(`axe${options.label ? `-${options.label}` : ""}`, {
+  const attachment = options.label ? `axe-${options.label}` : "axe";
+  await info.attach(attachment, {
     body: JSON.stringify(results, null, 2),
     contentType: "application/json",
   });

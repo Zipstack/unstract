@@ -8,8 +8,9 @@
  *
  *   oss    Django mock-login: form POST to /api/v1/login (302 + session), then
  *          GET /organization (csrftoken) and POST /organization/<id>/set.
- *   auth0  Cloud: the IdP owns the credential exchange, so drive its hosted
- *          form in the browser and let the app complete its own callback.
+ *   auth0  Cloud: the IdP owns the credential exchange, so start the login the
+ *          way the Login button does, drive the hosted form in the browser
+ *          and let the app complete its own callback.
  *
  * UNSTRACT_AUTH_MODE pins the mode; otherwise OSS is tried first and auth0 is
  * the fallback.
@@ -25,6 +26,7 @@ import {
   type AuthMode,
   BACKEND_URL,
   configuredAuthMode,
+  FRONTEND_URL,
   ORG_ID,
   RIG_MANAGED,
 } from "./env.ts";
@@ -144,29 +146,78 @@ async function loginOss(
   return await selectOrg(context);
 }
 
+/** Per IdP wait: the hosted form and the callback are a round trip to it. */
+const AUTH0_STEP_TIMEOUT_MS = 20_000;
+
+/**
+ * The session fixture's own budget. Its setup counts against the test
+ * timeout otherwise, and a slow failed login would surface as a generic
+ * timeout instead of the skip or the sign-in error below.
+ */
+const SESSION_TIMEOUT_MS = 120_000;
+
+/** Resolves true when `action` completes in time, false when it does not. */
+function settled(action: Promise<unknown>): Promise<boolean> {
+  return action.then(
+    () => true,
+    () => false,
+  );
+}
+
 async function loginAuth0(
   page: Page,
   context: BrowserContext,
   creds: Credentials,
 ): Promise<string | null> {
-  await page.goto("/", { waitUntil: "domcontentloaded" }).catch(() => null);
-  // Field names are stable across Auth0's Universal Login and classic Lock.
-  const user = page
-    .locator('input[name="username"], input[name="email"], input#username')
-    .first();
-  if ((await user.count()) > 0) {
-    await user.fill(creds.username);
-    await page
-      .locator('input[name="password"], input#password')
-      .first()
-      .fill(creds.password);
-    await page
-      .locator('button[type="submit"], button[name="action"]')
-      .first()
-      .click();
-    // The callback bounces through the app; the landing URL differs by tenant.
-    await page.waitForLoadState("networkidle").catch(() => null);
+  // `/` only renders the app's own login page. Its Login button navigates to
+  // <app origin>/api/v1/login, and the backend builds the callback URL from
+  // the Referer, so go there the same way.
+  const appOrigin = new URL(FRONTEND_URL).origin;
+  const opened = await settled(
+    page.goto("/api/v1/login", {
+      referer: `${appOrigin}/`,
+      waitUntil: "domcontentloaded",
+    }),
+  );
+  if (!opened) {
+    return null;
   }
+  // Still on the app means the IdP had a session and skipped its form.
+  if (new URL(page.url()).origin !== appOrigin) {
+    // Field names are stable across Auth0's Universal Login and classic Lock.
+    const user = page
+      .locator('input[name="username"], input[name="email"], input#username')
+      .first();
+    const password = page
+      .locator('input[name="password"], input#password')
+      .first();
+    const submit = page
+      .locator('button[type="submit"], button[name="action"]')
+      .first();
+    const timeout = AUTH0_STEP_TIMEOUT_MS;
+    if (!(await settled(user.fill(creds.username, { timeout })))) {
+      return null;
+    }
+    // Identifier-first tenants ask for the password on a second screen.
+    if (
+      !(await password.isVisible()) &&
+      !(await settled(submit.click({ timeout })))
+    ) {
+      return null;
+    }
+    const signedIn =
+      (await settled(password.fill(creds.password, { timeout }))) &&
+      (await settled(submit.click({ timeout }))) &&
+      // Wrong credentials, MFA or consent all leave the browser on the IdP.
+      (await settled(
+        page.waitForURL((url) => url.origin === appOrigin, { timeout }),
+      ));
+    if (!signedIn) {
+      return null;
+    }
+  }
+  // The callback bounces through the app; the landing URL differs by tenant.
+  await page.waitForLoadState("networkidle").catch(() => null);
   return await selectOrg(context);
 }
 
@@ -195,36 +246,39 @@ interface AuthFixtures {
 export const test = base.extend<AuthFixtures>({
   role: ["admin", { option: true }],
 
-  session: async ({ page, context, role }, use) => {
-    const creds = credentialsFor(role);
-    test.skip(
-      !creds,
-      `no credentials for role "${role}": set UNSTRACT_E2E_${role.toUpperCase()}_USER and _PASSWORD`,
-    );
-    if (!creds) {
-      return;
-    }
-    const { orgId, mode } = await authenticate(page, context, creds);
-    if (!orgId) {
-      const reason =
-        `could not sign in as "${role}" against ${BACKEND_URL} (mode=${mode}). ` +
-        "Set UNSTRACT_AUTH_MODE=oss|auth0 plus credentials, or let the rig " +
-        "boot a stack (`python -m tests.rig run frontend-v1-e2e`).";
-      // Under the rig the stack is known to be up, so a failed login is a bug.
-      if (RIG_MANAGED) {
-        throw new Error(reason);
+  session: [
+    async ({ page, context, role }, use) => {
+      const creds = credentialsFor(role);
+      test.skip(
+        !creds,
+        `no credentials for role "${role}": set UNSTRACT_E2E_${role.toUpperCase()}_USER and _PASSWORD`,
+      );
+      if (!creds) {
+        return;
       }
-      test.skip(true, reason);
-      return;
-    }
-    await use({
-      role,
-      mode,
-      orgId,
-      api: context.request,
-      csrfHeaders: () => csrfHeaders(context),
-    });
-  },
+      const { orgId, mode } = await authenticate(page, context, creds);
+      if (!orgId) {
+        const reason =
+          `could not sign in as "${role}" against ${BACKEND_URL} (mode=${mode}). ` +
+          "Set UNSTRACT_AUTH_MODE=oss|auth0 plus credentials, or let the rig " +
+          "boot a stack (`python -m tests.rig run frontend-v1-e2e`).";
+        // Under the rig the stack is known to be up, so a failed login is a bug.
+        if (RIG_MANAGED) {
+          throw new Error(reason);
+        }
+        test.skip(true, reason);
+        return;
+      }
+      await use({
+        role,
+        mode,
+        orgId,
+        api: context.request,
+        csrfHeaders: () => csrfHeaders(context),
+      });
+    },
+    { timeout: SESSION_TIMEOUT_MS },
+  ],
 
   app: async ({ page, session }, use) => {
     await use({

@@ -19,19 +19,17 @@ export type Distribution = "oss" | "cloud" | "onprem";
 /** UN01 to UN20 (Document Studio), LW01 to LW07 (LLMWhisperer). */
 export type PageKey = `UN${string}` | `LW${string}`;
 
-/** A React Router pattern, e.g. `/:orgName/workflows/:id`. */
-export type RoutePattern = string;
-
+/** Route patterns are React Router patterns, e.g. `/:orgName/workflows/:id`. */
 export interface RegistryEntry {
   page: PageKey;
   /** v1 route patterns, including v1-only sub-routes (tabs, stages). */
-  v1Routes: readonly RoutePattern[];
+  v1Routes: readonly string[];
   /** v0 route patterns this page takes over. */
-  replaces: readonly RoutePattern[];
+  replaces: readonly string[];
   /** v1 pattern -> v0 pattern; read only by Human Review's old-version mode. */
-  toV0: Readonly<Record<RoutePattern, RoutePattern>>;
+  toV0: Readonly<Record<string, string>>;
   /** v0 pattern -> v1 pattern it redirects to. */
-  toV1: Readonly<Record<RoutePattern, RoutePattern>>;
+  toV1: Readonly<Record<string, string>>;
   /** Honours the old-version preference. True for UN11 only (D14). */
   toggle: boolean;
   distributions: readonly Distribution[];
@@ -43,7 +41,10 @@ export type RegistrySource = "stub" | "frontend";
 
 // ── stub: replace this block when P0-T03 lands ───────────────────────────────
 export const REGISTRY_SOURCE: RegistrySource = "stub";
-export const REGISTRY: readonly RegistryEntry[] = [];
+export const REGISTRY: readonly RegistryEntry[] = stubRegistry();
+function stubRegistry(): readonly RegistryEntry[] {
+  return [];
+}
 /**
  * Where the Human Review old-version preference lives. P0-T03 says per user,
  * per browser, no backend, so browser storage; the key itself is a

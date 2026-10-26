@@ -60,9 +60,10 @@ export async function forEachTheme(
   { themes = THEMES, setTheme = defaultSetTheme }: ThemeOptions = {},
 ): Promise<void> {
   for (const theme of themes) {
-    await test.step(`theme: ${theme}`, async () => {
+    const body = async () => {
       await setTheme(page, theme);
       await check(theme);
-    });
+    };
+    await test.step(`theme: ${theme}`, body); // NOSONAR: steps share one page, so they run in order
   }
 }

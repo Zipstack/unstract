@@ -18,7 +18,7 @@ const LOW_CONTRAST = `<!doctype html><html lang="en"><head><title>contrast</titl
 test.describe("harness: accessibility scan", { tag: DIST.all }, () => {
   test("a clean page passes", async ({ page }) => {
     await page.setContent(CLEAN);
-    await expectAccessible(page);
+    await expect(expectAccessible(page)).resolves.toBeUndefined();
   });
 
   test("violations at or above the level fail with their rule ids", async ({
@@ -55,9 +55,11 @@ test.describe("harness: accessibility scan", { tag: DIST.all }, () => {
     page,
   }) => {
     await page.setContent(DIRTY);
-    await expectAccessible(page, {
-      disableRules: ["image-alt"],
-      exclude: ["button"],
-    });
+    await expect(
+      expectAccessible(page, {
+        disableRules: ["image-alt"],
+        exclude: ["button"],
+      }),
+    ).resolves.toBeUndefined();
   });
 });
