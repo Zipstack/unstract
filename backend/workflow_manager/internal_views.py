@@ -979,10 +979,11 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
         """Count this execution's file rows, total and ERROR, in one query.
 
         Returns ``{"total": int, "errored": int}``, or ``None`` if the count failed
-        (logged). Deliberately NOT in its own savepoint: as on main, a failed count
-        aborts the caller's transaction, so the request fails and is retried rather
-        than committing counters the floor never checked (an under-counted
-        failed_files would read as a success and skip failure notifications).
+        (logged; the floor is then skipped, as on main). Deliberately NOT in its own
+        savepoint: as on main, a database error here aborts the caller's
+        transaction, so the request fails and is retried rather than committing
+        counters the floor never checked (an under-counted failed_files would read
+        as a success and skip failure notifications).
         """
         from django.db.models import Count, Q
 
