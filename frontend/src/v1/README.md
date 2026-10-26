@@ -1,0 +1,49 @@
+# Frontend v1
+
+The v1 frontend, built alongside v0 (everything else under `src/`) until v0 is
+retired. The full guide is the Frontend Developer Guide for v1 (P0-T11); this
+file holds only the rules that tooling enforces.
+
+## Rules
+
+- **TypeScript only.** `.ts` / `.tsx`, `strict`, unused locals and parameters
+  are errors, no explicit `any`.
+- **Nothing outside `src/v1`.** No v0 component, store, hook, helper, CSS or
+  shim. Import with `./` within a folder and `@v1/...` across folders; `../` is
+  never used.
+- **v0 imports only the public entry**, `@v1` (`src/v1/index.ts`).
+- **No PropTypes, no component `.css`, no antd** (package, shim or `ant-`
+  class). Global v1 styles live in `styles/`.
+
+## Folders and what each may import
+
+Every folder may import from itself. Test files (`*.test.ts(x)`) may also
+import `test/`.
+
+| Folder | Holds | May import from |
+| --- | --- | --- |
+| `index.ts` | Public entry, used by the version switch | everything |
+| `app/` | Entry, providers, router, route registry | everything |
+| `components/ui/` | Core components | `lib/`, `styles/` |
+| `components/patterns/` | Composites built from core components | `components/ui/`, `lib/`, `services/`, `stores/`, `hooks/` |
+| `shell/` | Top bar, rail, context bar, tab bar | `components/ui/`, `components/patterns/`, `services/`, `stores/`, `hooks/`, `lib/` |
+| `pages/<page>/` | One folder per target page | everything except other pages |
+| `services/` | Typed service modules; the only place a URL appears | `lib/` |
+| `stores/` | Zustand stores | `lib/` |
+| `hooks/` | Shared hooks | `lib/` |
+| `lib/` | Pure helpers | — |
+| `styles/` | Tokens and global v1 styles | `lib/` |
+| `plugins/` | Cloud overlay target; empty in the public repository | everything |
+| `test/` | Render helpers, fixtures, network mocks | everything |
+
+## Scripts
+
+| Script | Checks |
+| --- | --- |
+| `bun run typecheck:v1` | TypeScript-only files and folder taxonomy, then `tsc` with `src/v1/tsconfig.json` |
+| `bun run lint:v1` | Biome on `src/v1/`, then the folder contract, PropTypes and `ant-` checks |
+| `bun run test:v1` | v1 unit tests, then the guardrail fixtures in `test-fixtures/v1-boundary/` |
+
+The v0 ↔ v1 boundary and the banned imports are Biome rules in `biome.json`,
+so `biome ci src/` (CI) and editors report them too. The rest live in
+`scripts/check-v1.mjs`.

@@ -41,8 +41,12 @@ eggs/
 lib/
 lib64/
 # The Python `lib/` rule above also matches the frontend's shadcn/ui helper
-# directory (`@/lib/utils` per components.json). Keep that tracked.
+# directory (`@/lib/utils` per components.json), the v1 `lib/` folder and the
+# v1 guardrail fixtures. Keep those tracked, or their files are silently left
+# out of commits.
 !frontend/src/lib/
+!frontend/src/v1/lib/
+!frontend/test-fixtures/**/lib/
 parts/
 sdist/
 var/
