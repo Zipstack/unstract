@@ -501,16 +501,19 @@ self.assertRegex(connector.get_id(), r"^[a-z_]+\|[a-f0-9-]+$")
 
 # JSON schema validity
 import json
+
 schema = json.loads(connector.get_json_schema())
 self.assertIn("title", schema)
 self.assertIn("type", schema)
 
 # Connection returns correct type
 from psycopg2.extensions import connection
+
 self.assertIsInstance(connector.get_engine(), connection)
 
 # Exception handling
 from unstract.connectors.exceptions import ConnectorError
+
 with self.assertRaises(ConnectorError) as ctx:
     connector.test_credentials()
 self.assertIn("expected message", str(ctx.exception))

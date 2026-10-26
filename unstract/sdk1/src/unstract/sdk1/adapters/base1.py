@@ -12,6 +12,7 @@ if TYPE_CHECKING:
     from typing import Any
 
 from pydantic import BaseModel, Field, model_validator
+
 from unstract.sdk1.adapters.constants import AdapterDocs, Common
 from unstract.sdk1.adapters.enums import AdapterTypes
 
@@ -410,10 +411,8 @@ def _is_openai_reasoning_model(model: str) -> bool:
     """
     if not model:
         return False
-    if model.startswith(_CUSTOM_OPENAI_PROVIDER_PREFIX):
-        model = model[len(_CUSTOM_OPENAI_PROVIDER_PREFIX) :]
-    if model.startswith(_OPENAI_PROVIDER_PREFIX):
-        model = model[len(_OPENAI_PROVIDER_PREFIX) :]
+    model = model.removeprefix(_CUSTOM_OPENAI_PROVIDER_PREFIX)
+    model = model.removeprefix(_OPENAI_PROVIDER_PREFIX)
     return bool(_OPENAI_REASONING_MODEL_PATTERN.match(model.lower()))
 
 

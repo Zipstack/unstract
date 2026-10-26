@@ -5,11 +5,11 @@ import json
 import pdfplumber
 from django.conf import settings
 from rest_framework import serializers
-
-from agent_kv.constants import EXTRACTOR_ROUTES, TABLE_EXTRACTOR_NAME, V1_EXTRACTOR_NAME
 from unstract.agent_kv_schema import SchemaError, compile_schema
 from unstract.core.network.ssrf import webhook_url_refusal
 from unstract.sdk1.constants import AdapterTypes
+
+from agent_kv.constants import EXTRACTOR_ROUTES, TABLE_EXTRACTOR_NAME, V1_EXTRACTOR_NAME
 
 # Images are deliberately ABSENT, and that is a cross-repo contract, not an
 # oversight. The cloud engine's `_build_agent_graph` (agentic_kv
@@ -398,7 +398,7 @@ class SubmitSerializer(serializers.Serializer):
         reason = webhook_url_refusal(value, allowed_schemes=("https",), resolve=False)
         if reason is not None:
             raise serializers.ValidationError(
-                "webhook_url must be an https URL on a public host " f"({reason})"
+                f"webhook_url must be an https URL on a public host ({reason})"
             )
         return value
 

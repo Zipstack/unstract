@@ -17,7 +17,6 @@ from typing import Any
 
 from queue_backend import worker_task
 from shared.utils.webhook_notify import send_webhook
-
 from unstract.core.network.ssrf import (
     is_retryable_refusal,
     webhook_url_refusal,

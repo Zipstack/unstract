@@ -56,8 +56,7 @@ class InboxViewSet(viewsets.GenericViewSet):
             409: OpenApiResponse(
                 InboxReadConflictSerializer,
                 description=(
-                    "Refreshed by a later failure since the client listed it; "
-                    "left unread"
+                    "Refreshed by a later failure since the client listed it; left unread"
                 ),
             ),
         },

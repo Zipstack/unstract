@@ -276,8 +276,7 @@ class PhotoUrlTests(TestCase):
         version = int(self.user.profile_photo_updated_at.timestamp())
         self.assertEqual(
             user_profile.photo_url(self.user, "org-a"),
-            f"/{settings.TENANT_SUBFOLDER_PREFIX}/org-a/users/profile/photo/"
-            f"?v={version}",
+            f"/{settings.TENANT_SUBFOLDER_PREFIX}/org-a/users/profile/photo/?v={version}",
         )
 
 
