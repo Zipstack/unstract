@@ -617,7 +617,7 @@ class TestConfiguredCeilings:
         assert len([r for r in caplog.records if r.levelname == "ERROR"]) == 1
 
     @pytest.mark.parametrize("raw", ["lots", "10MB", "0", "-5"])
-    def test_unusable_value_keeps_the_legacy_default(
+    def test_unusable_value_keeps_the_fixed_default(
         self,
         monkeypatch: pytest.MonkeyPatch,
         caplog: pytest.LogCaptureFixture,

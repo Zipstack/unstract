@@ -60,7 +60,7 @@ def _own_estimate(limits: ImageRequestLimits, per_page: int = 1500) -> ImageRequ
 
 @pytest.fixture(autouse=True)
 def _no_ambient_image_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    # Rollout and ceiling expectations must not depend on the shell running
+    # Ceiling and fixed-cap expectations must not depend on the shell running
     # the tests (``assert 200 == 90`` when VLM_IMAGE_ANSWER_PAGE_CAP is set).
     for name in (
         "VLM_IMAGE_ANSWER_PAGE_CAP",
@@ -159,7 +159,7 @@ class TestComputePageBudget:
         assert budget.max_pages == 50
         assert budget.binding == "ceiling"
 
-    def test_legacy_cap_binds_during_rollout(self) -> None:
+    def test_fixed_cap_binds_as_legacy(self) -> None:
         budget = compute_page_budget(OPENAI, context_tokens=None, legacy_cap=90)
         assert budget.max_pages == 90
         assert budget.binding == "legacy"
