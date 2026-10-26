@@ -121,6 +121,14 @@ jobs:
         working-directory: frontend
         run: bun run typecheck
 
+      # v1 (src/v1) has its own strict tsconfig, which the root typecheck
+      # excludes, and an import boundary that only these scripts enforce.
+      - name: Run v1 typecheck and import boundary
+        working-directory: frontend
+        run: |
+          bun run typecheck:v1
+          bun run lint:v1
+
   # ci-test.yaml runs the same suite as the rig's `frontend` group, but its
   # tiers skip frontend-only PRs; this job is what gates those.
   vitest:
@@ -145,3 +153,7 @@ jobs:
         working-directory: frontend
         # The package script, so the lockfile's vitest runs, never a fetched one.
         run: bun run test --run
+
+      - name: Run v1 tests and script fixtures
+        working-directory: frontend
+        run: bun run test:v1

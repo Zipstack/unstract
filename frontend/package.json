@@ -77,7 +77,10 @@
     "check:fix": "biome check --write src/",
     "lint:all": "biome check --write src/",
     "lint:changed": "(git diff --name-only --diff-filter=ACMR; git ls-files --others --exclude-standard) | grep -E '\\.[jt]sx?$' | sed 's|^frontend/||' | sort -u | xargs -r biome check --write",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "typecheck:v1": "node scripts/v1-boundary.mjs files && tsc --noEmit -p tsconfig.v1.json",
+    "lint:v1": "biome lint src/v1 && node scripts/v1-boundary.mjs imports",
+    "test:v1": "vitest run src/v1 && node --test scripts/*.fixtures.mjs"
   },
   "browserslist": {
     "production": [

@@ -1,0 +1,15 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "allowJs": false,
+    "checkJs": false,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "paths": {
+      "@v1": ["./src/v1/index.ts"],
+      "@v1/*": ["./src/v1/*"]
+    }
+  },
+  "include": ["src/v1/**/*.ts", "src/v1/**/*.tsx", "vite-env.d.ts"],
+  "exclude": ["node_modules", "build", "dist"]
+}

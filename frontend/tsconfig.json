@@ -44,5 +44,6 @@
     }
   },
   "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.d.ts"],
-  "exclude": ["node_modules", "build", "dist"]
+  /* src/v1 has its own, stricter config: tsconfig.v1.json. */
+  "exclude": ["node_modules", "build", "dist", "src/v1"]
 }

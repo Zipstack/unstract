@@ -51,7 +51,12 @@ function optionalPluginImports() {
   return {
     name: "optional-plugin-imports",
     resolveId(source, importer) {
-      if (!importer || !source.startsWith(".")) {
+      // v1 has no optional imports; a missing module there must fail.
+      if (
+        !importer ||
+        !source.startsWith(".") ||
+        importer.includes("/src/v1/")
+      ) {
         return null;
       }
       const sourcePath = source.split("?")[0].split("#")[0];
@@ -94,6 +99,7 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(import.meta.dirname, "./src"),
+      "@v1": path.resolve(import.meta.dirname, "./src/v1"),
     },
   },
   test: {
