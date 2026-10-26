@@ -548,7 +548,7 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
             # with failed_files=None, which is_failure_run() reads as a success and
             # silently bypasses notify_on_failures subscribers.
             with transaction.atomic():
-                locked_row = None
+                row_locked = False
                 # Concurrency guard for PG-transport executions, identified by the
                 # durable ``queue_message_id`` marker — NOT a re-evaluated Flipt flag.
                 # Keying on the row's own transport keeps the invariant correct even
@@ -575,7 +575,7 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
                 # legacy path.
                 #
                 # ONE lock per call: the row read here is handed to update_execution()
-                # as locked_row, so it does not lock the same row a second time. The
+                # with row_locked=True, so it does not lock the same row a second time. The
                 # Celery path takes no lock here and lets update_execution() take its
                 # own — still one. FOR NO KEY UPDATE (no_key=True) keeps writers
                 # mutually exclusive without blocking the FOR KEY SHARE that every
@@ -584,7 +584,7 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
                     execution = WorkflowExecution.objects.select_for_update(
                         no_key=True
                     ).get(pk=execution.pk)
-                    locked_row = execution.status_lock_snapshot()
+                    row_locked = True
                     protected = {
                         ExecutionStatus.COMPLETED.value,
                         ExecutionStatus.STOPPED.value,
@@ -611,7 +611,7 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
                     status=status_enum,
                     error=error_message,
                     increment_attempt=increment_attempt,
-                    locked_row=locked_row,
+                    row_locked=row_locked,
                 )
 
                 # File aggregates are not handled by update_execution; persist
@@ -848,9 +848,7 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
                     computed = ExecutionStatus.COMPLETED
                 # Already locked above; hand the locked read over so the row is
                 # not locked a second time.
-                execution.update_execution(
-                    status=computed, locked_row=execution.status_lock_snapshot()
-                )
+                execution.update_execution(status=computed, row_locked=True)
                 self._restamp_execution_time_from_files(execution)
                 self._update_file_aggregates(
                     execution,
@@ -981,22 +979,22 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
         """Count this execution's file rows, total and ERROR, in one query.
 
         Returns ``{"total": int, "errored": int}``, or ``None`` if the count failed
-        (logged; the counters are then written as given). The query runs in its own
-        savepoint so a failed statement does not abort the caller's transaction and
-        take the status write down with it.
+        (logged). Deliberately NOT in its own savepoint: as on main, a failed count
+        aborts the caller's transaction, so the request fails and is retried rather
+        than committing counters the floor never checked (an under-counted
+        failed_files would read as a success and skip failure notifications).
         """
         from django.db.models import Count, Q
 
         from workflow_manager.workflow_v2.enums import ExecutionStatus
 
         try:
-            with transaction.atomic():
-                return WorkflowFileExecution.objects.filter(
-                    workflow_execution_id=execution.pk
-                ).aggregate(
-                    total=Count("id"),
-                    errored=Count("id", filter=Q(status=ExecutionStatus.ERROR.value)),
-                )
+            return WorkflowFileExecution.objects.filter(
+                workflow_execution_id=execution.pk
+            ).aggregate(
+                total=Count("id"),
+                errored=Count("id", filter=Q(status=ExecutionStatus.ERROR.value)),
+            )
         except Exception:
             logger.exception(
                 "Could not read file rows to floor the counters for execution %s",

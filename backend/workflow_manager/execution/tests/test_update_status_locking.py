@@ -160,9 +160,10 @@ class SingleLockTests(TestCase):
         ex.refresh_from_db()
         assert ex.total_files == 0 and ex.failed_files == 0
 
-    def test_failed_count_query_does_not_roll_back_the_status_write(self):
-        """A statement error in the count aborts a Postgres transaction; the count's
-        own savepoint must contain it so the status and counters still commit.
+    def test_failed_count_query_fails_the_request_and_commits_nothing(self):
+        """As on main: a statement error in the count aborts the transaction, so the
+        request fails (500, retried by the worker) instead of committing counters
+        the floor never checked. Nothing is half-written.
         """
         ex = self._exec(files=[ExecutionStatus.ERROR])
         calls = []
@@ -185,11 +186,12 @@ class SingleLockTests(TestCase):
                     "failed_files": 0,
                 },
             )
-        assert out.data["status"] == "updated", out.data
-        assert len(calls) == 1  # tried once, not retried
+        assert out.status_code == 500, out.data
+        assert len(calls) == 1  # tried once, not retried under the lock
         ex.refresh_from_db()
-        assert ex.status == ExecutionStatus.ERROR.value
-        assert ex.total_files == 0 and ex.failed_files == 0
+        assert ex.status == ExecutionStatus.EXECUTING.value
+        assert ex.total_files == 0  # the floor would have made it 1
+        assert not ex.failed_files
 
     def test_reaper_recovery_takes_one_no_key_lock(self):
         from datetime import timedelta
@@ -220,7 +222,7 @@ class SingleLockTests(TestCase):
             ex.update_execution(status=ExecutionStatus.COMPLETED)
         self._assert_one_no_key_lock(ctx.captured_queries)
 
-    def test_locked_row_skips_the_second_lock(self):
+    def test_row_locked_skips_the_second_lock(self):
         ex = self._exec()
         with transaction.atomic():
             locked = WorkflowExecution.objects.select_for_update(no_key=True).get(
@@ -229,27 +231,20 @@ class SingleLockTests(TestCase):
             with CaptureQueriesContext(connection) as ctx:
                 locked.update_execution(
                     status=ExecutionStatus.COMPLETED,
-                    locked_row=locked.status_lock_snapshot(),
+                    row_locked=True,
                 )
         _, no_key, full = _lock_statements(ctx.captured_queries)
         assert no_key == [] and full == []
         ex.refresh_from_db()
         assert ex.status == ExecutionStatus.COMPLETED.value
 
-    def test_locked_row_outside_a_transaction_is_rejected(self):
+    def test_row_locked_outside_a_transaction_is_rejected(self):
         ex = self._exec()
         # TestCase wraps each test in a transaction; step outside it the way a
         # real autocommit caller would be.
         with patch.object(connections["default"], "in_atomic_block", False):
-            with pytest.raises(RuntimeError, match="locked_row"):
-                ex.update_execution(
-                    status=ExecutionStatus.COMPLETED,
-                    locked_row={
-                        "queue_message_id": 123,
-                        "status": ExecutionStatus.EXECUTING.value,
-                        "attempts": 0,
-                    },
-                )
+            with pytest.raises(RuntimeError, match="row_locked"):
+                ex.update_execution(status=ExecutionStatus.COMPLETED, row_locked=True)
         ex.refresh_from_db()
         assert ex.status == ExecutionStatus.EXECUTING.value
 

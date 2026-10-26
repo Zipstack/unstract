@@ -396,26 +396,13 @@ class WorkflowExecution(BaseModel):
             f"error message: {self.error_message})"
         )
 
-    # The persisted fields update_execution() routes and guards on, read under the
-    # row lock. One list, so a caller's locked_row and the method's own locked read
-    # cannot drift apart.
-    STATUS_LOCK_FIELDS = ("queue_message_id", "status", "attempts")
-
-    def status_lock_snapshot(self) -> dict:
-        """The ``locked_row`` for :meth:`update_execution`, taken from this instance.
-
-        Only valid when this instance was itself read with ``select_for_update()``
-        in the still-open transaction.
-        """
-        return {field: getattr(self, field) for field in self.STATUS_LOCK_FIELDS}
-
     def update_execution(
         self,
         status: ExecutionStatus | None = None,
         error: str | None = None,
         increment_attempt: bool = False,
         *,
-        locked_row: dict | None = None,
+        row_locked: bool = False,
     ) -> None:
         """Update the execution status and related fields.
 
@@ -423,21 +410,21 @@ class WorkflowExecution(BaseModel):
             status (Optional[ExecutionStatus], optional): New execution status. Defaults to None.
             error (Optional[str], optional): Error message if any. Defaults to None.
             increment_attempt (bool, optional): Whether to increment attempt counter. Defaults to False.
-            locked_row (Optional[dict], optional): For a caller that ALREADY holds
-                this row's lock in the current transaction: the persisted
-                ``queue_message_id`` / ``status`` / ``attempts`` it read under that
-                lock. Skips the second ``SELECT ... FOR NO KEY UPDATE`` round-trip.
-                Must come from a locked read in the same, still-open transaction —
-                a value read without the lock reintroduces the stale-routing race
-                described below.
+            row_locked (bool, optional): True only when THIS instance was itself
+                read with ``select_for_update()`` in the current, still-open
+                transaction. Its ``queue_message_id`` / ``status`` / ``attempts``
+                are then the persisted values under the lock, so the second
+                ``SELECT ... FOR NO KEY UPDATE`` round-trip is skipped. Passing it
+                for an instance read without the lock reintroduces the
+                stale-routing race described below.
         """
         from django.db import connection, transaction
 
-        if locked_row is not None and not connection.in_atomic_block:
+        if row_locked and not connection.in_atomic_block:
             # Outside a transaction the caller's lock was already released when its
-            # statement autocommitted, so the snapshot proves nothing.
+            # statement autocommitted, so the instance proves nothing.
             raise RuntimeError(
-                "update_execution(locked_row=...) requires the caller's open "
+                "update_execution(row_locked=True) requires the caller's open "
                 "transaction that holds the row lock"
             )
 
@@ -457,12 +444,17 @@ class WorkflowExecution(BaseModel):
             # inserts and log writes for this execution stop queueing behind a
             # status update. Nothing here changes the primary key, which is the only
             # thing FOR KEY SHARE protects.
-            locked = locked_row
-            if locked is None:
+            if row_locked:
+                locked = {
+                    "queue_message_id": self.queue_message_id,
+                    "status": self.status,
+                    "attempts": self.attempts,
+                }
+            else:
                 locked = (
                     WorkflowExecution.objects.select_for_update(no_key=True)
                     .filter(pk=self.pk)
-                    .values(*self.STATUS_LOCK_FIELDS)
+                    .values("queue_message_id", "status", "attempts")
                     .first()
                 )
             if locked is None:
