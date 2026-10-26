@@ -1,0 +1,36 @@
+name: Release state
+
+# Read-only: prints every release/X.Y branch with its state. It writes nothing.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  state:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0 # relmgr needs full history and tags
+
+      - name: Derive branch and target state
+        id: state
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          start=$(date +%s.%N)
+          python3 .github/release/relstate.py > state.json
+          echo "relstate took $(echo "$(date +%s.%N) - $start" | bc) s"
+          cat state.json
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: relstate
+          path: state.json
+
+      - name: Summary table
+        working-directory: .github/release
+        run: python3 -c 'import json, relstate; print(relstate.summary(json.load(open("../../state.json"))))' >> "$GITHUB_STEP_SUMMARY"

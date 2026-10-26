@@ -1,0 +1,69 @@
+name: Lint PR
+
+# Every PR into main or a release branch carries a recognised `[TYPE]` title prefix, the ticket before it optional
+# (`UN-123 [FIX] ...` or `[FIX] ...`, the same class either way), and its labels are
+# at most one of fix/security, fix/critical plus an optional fix/needs-backport.
+# Release branches too, because the release changelog is built from their PR titles. A branch cut before this file
+# existed runs no check. Not a required check until a ruleset makes it one.
+# The backport class is only printed here; Backport recomputes it with pr_fix_class at pick time.
+# Label `release-branch-only` marks a change that lives only on its release branch: refused on main. On a release
+# branch, Release branch CI's bot commit writes `Release-branch-only: <TICKET>` (or `#<PR>` without a ticket), which
+# Squash and merge keeps in the message.
+on:
+  pull_request:
+    branches: [main, 'release/**']
+    types: [opened, edited, reopened, synchronize, labeled, unlabeled]
+
+permissions:
+  contents: read
+
+jobs:
+  lint-pr:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      # The rule comes from main, so a PR's edit to relmgr cannot pass its own check. That guards relmgr only: a
+      # pull_request run uses the PR's copy of this file, so a PR can edit the workflow to pass. Closing that needs
+      # a ruleset-required workflow or CODEOWNERS on .github/.
+      - uses: actions/checkout@v6
+        with:
+          ref: main
+          sparse-checkout: .github/release
+          persist-credentials: false
+
+      - name: Classify PR
+        id: class
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+          LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+          BASE: ${{ github.base_ref }}
+        run: |
+          if [ ! -f .github/release/relmgr.py ]; then  # main before the release tooling lands: nothing to check against
+            echo "::notice title=Lint PR::skipped: main has no .github/release/relmgr.py yet"
+            exit 0
+          fi
+          python3 -I - <<'PY'  # isolated: no working-directory module shadows the stdlib
+          import json, os, sys
+          sys.path.insert(0, ".github/release")
+          import relmgr
+
+          title, labels = os.environ["TITLE"], json.loads(os.environ["LABELS"])
+          summary = open(os.environ["GITHUB_STEP_SUMMARY"], "a")
+          try:
+              if "release-branch-only" in labels:
+                  if not os.environ["BASE"].startswith("release/"):
+                      raise ValueError("label `release-branch-only` is for PRs into a release/X.Y branch; remove it "
+                                       "here (a main change reaches release branches through Backport)")
+              cls = relmgr.pr_fix_class(title, labels) or "none"
+          except ValueError as e:
+              msg = (f"{e}\nFix: title as `[TYPE] text` or `TICKET [TYPE] text` (e.g. `UN-123 [FIX] ...`); allowed labels are "
+                     "fix/security or fix/critical (at most one), and fix/needs-backport.")
+              print("::error title=Lint PR::" + msg.replace("\n", "%0A"))  # workflow commands end at a raw newline
+              summary.write(f"### Lint PR: failed\n\n{msg}\n")
+              sys.exit(1)
+          print(f"class={cls}")
+          open(os.environ["GITHUB_OUTPUT"], "a").write(f"class={cls}\n")
+          summary.write(f"### Lint PR\n\nBackport class: `{cls}`\n")
+          if cls != "none":
+              summary.write("\nKeep this PR to the fix; a bundled fix cannot be cherry-picked.\n")
+          PY
