@@ -1,6 +1,4 @@
-from enum import Enum
+# Kept so existing imports resolve to the single definition in account_v2.
+from account_v2.enums import UserRole
 
-
-class UserRole(Enum):
-    USER = "user"
-    ADMIN = "admin"
+__all__ = ["UserRole"]

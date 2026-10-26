@@ -23,7 +23,7 @@ from workflow_manager.file_execution.models import WorkflowFileExecution
 from workflow_manager.workflow_v2.models.execution import WorkflowExecution
 from workflow_manager.workflow_v2.models.workflow import Workflow
 
-from dashboard_metrics.models import Granularity
+from dashboard_metrics.models import ActivitySurface, Granularity
 from unstract.core.data_models import ExecutionStatus
 
 
@@ -48,6 +48,139 @@ def _get_usage_queryset():
     causing queries to return empty results. Use _base_manager instead.
     """
     return Usage._base_manager.all()
+
+
+def _activity_source_ids(organization_id: str) -> dict[str, set]:
+    """Pipeline and API deployment ids by the surface they belong to."""
+    # Use _base_manager to bypass DefaultOrganizationManagerMixin
+    # (UserContext is None in Celery tasks)
+    pipelines = Pipeline._base_manager.filter(organization_id=organization_id)
+    return {
+        ActivitySurface.ETL: set(
+            pipelines.filter(pipeline_type=Pipeline.PipelineType.ETL).values_list(
+                "id", flat=True
+            )
+        ),
+        ActivitySurface.TASK: set(
+            pipelines.filter(pipeline_type=Pipeline.PipelineType.TASK).values_list(
+                "id", flat=True
+            )
+        ),
+        ActivitySurface.API: set(
+            APIDeployment._base_manager.filter(
+                organization_id=organization_id,
+            ).values_list("id", flat=True)
+        ),
+    }
+
+
+def _org_file_executions(organization_id: str):
+    return WorkflowFileExecution.objects.filter(
+        workflow_execution__workflow__organization_id=organization_id,
+    ).select_related(
+        "workflow_execution",
+        "workflow_execution__workflow",
+    )
+
+
+def _surface_filter(organization_id: str, surfaces: list[str]) -> Q:
+    """Rows whose run came from any of ``surfaces``.
+
+    ``workflow`` is every run that is not from an ETL or Task pipeline or an
+    API deployment: manual runs, and default and app pipelines.
+    """
+    pipelines = Pipeline._base_manager.filter(organization_id=organization_id)
+    subqueries = {
+        ActivitySurface.ETL: pipelines.filter(
+            pipeline_type=Pipeline.PipelineType.ETL
+        ).values("id"),
+        ActivitySurface.TASK: pipelines.filter(
+            pipeline_type=Pipeline.PipelineType.TASK
+        ).values("id"),
+        ActivitySurface.API: APIDeployment._base_manager.filter(
+            organization_id=organization_id
+        ).values("id"),
+    }
+    pipeline_id = "workflow_execution__pipeline_id"
+    q = Q()
+    for surface in surfaces:
+        if surface == ActivitySurface.WORKFLOW:
+            from_known_source = Q()
+            for subquery in subqueries.values():
+                from_known_source |= Q(**{f"{pipeline_id}__in": subquery})
+            # Django's negation keeps rows whose pipeline_id is NULL.
+            q |= ~from_known_source
+        else:
+            q |= Q(**{f"{pipeline_id}__in": subqueries[surface]})
+    return q
+
+
+def _activity_rows(
+    executions, source_ids: dict[str, set], with_surface: bool
+) -> list[dict[str, Any]]:
+    """Serialize file executions as activity rows, with tokens and cost.
+
+    ``with_surface`` adds the DG-03 ``surface`` field. The default response
+    leaves it out, so it stays byte-identical for existing callers.
+    """
+    results = []
+    for execution in executions:
+        pipeline_id = execution.workflow_execution.pipeline_id
+
+        # Determine execution type based on pipeline_id
+        if pipeline_id and pipeline_id in source_ids[ActivitySurface.ETL]:
+            exec_type = "etl"
+        elif pipeline_id and pipeline_id in source_ids[ActivitySurface.API]:
+            exec_type = "api"
+        else:
+            exec_type = "workflow"
+
+        row = {
+            "id": str(execution.id),
+            "execution_id": str(execution.workflow_execution.id),
+            "type": exec_type,
+            "file_name": execution.file_name,
+            "status": execution.status,
+            "workflow_name": execution.workflow_execution.workflow.workflow_name,
+            "created_at": execution.created_at.isoformat(),
+            "execution_time": execution.execution_time,
+        }
+        if with_surface:
+            row["surface"] = (
+                ActivitySurface.TASK.value
+                if pipeline_id and pipeline_id in source_ids[ActivitySurface.TASK]
+                else exec_type
+            )
+        results.append(row)
+
+    # Batch query: get aggregated token/cost per file execution
+    file_exec_ids = [r["id"] for r in results]
+    usage_agg: dict[str, dict[str, Any]] = {}
+    if file_exec_ids:
+        agg_qs = (
+            _get_usage_queryset()
+            .filter(run_id__in=file_exec_ids)
+            .values("run_id")
+            .annotate(
+                total_tokens=Sum("total_tokens"),
+                cost=Sum("cost_in_dollars"),
+            )
+        )
+        usage_agg = {
+            str(row["run_id"]): {
+                "total_tokens": row["total_tokens"] or 0,
+                "cost": round(row["cost"] or 0, 4),
+            }
+            for row in agg_qs
+        }
+
+    # Enrich results with LLM usage data
+    for r in results:
+        agg = usage_agg.get(r["id"], {})
+        r["total_tokens"] = agg.get("total_tokens", 0)
+        r["cost"] = agg.get("cost", 0)
+
+    return results
 
 
 class MetricsQueryService:
@@ -410,6 +543,29 @@ class MetricsQueryService:
         """
         trunc_func = MetricsQueryService._get_trunc_func(granularity)
 
+        # Main query: failed executions with their pages, grouped by period
+        return list(
+            MetricsQueryService.failed_file_executions_with_pages(
+                organization_id, start_date, end_date
+            )
+            .annotate(period=trunc_func("created_at"))
+            .values("period")
+            .annotate(value=Sum("pages"))
+            .order_by("period")
+        )
+
+    @staticmethod
+    def failed_file_executions_with_pages(
+        organization_id: str,
+        start_date: datetime,
+        end_date: datetime,
+    ):
+        """Failed file executions in the range, each annotated with ``pages``.
+
+        The one definition of a failed page: ``get_failed_pages`` and the
+        dashboard's failure attribution both group this queryset, so their
+        totals agree by construction.
+        """
         # Subquery: get pages for each file execution from page_usage
         # Join on: page_usage.run_id = workflow_file_execution.id::text
         pages_subquery = (
@@ -418,23 +574,12 @@ class MetricsQueryService:
             .annotate(total=Sum("pages_processed"))
             .values("total")[:1]
         )
-
-        # Main query: failed executions with their pages, grouped by period
-        return list(
-            WorkflowFileExecution.objects.filter(
-                workflow_execution__workflow__organization_id=organization_id,
-                status=ExecutionStatus.ERROR,
-                created_at__gte=start_date,
-                created_at__lte=end_date,
-            )
-            .annotate(
-                pages=Coalesce(Subquery(pages_subquery), 0),
-                period=trunc_func("created_at"),
-            )
-            .values("period")
-            .annotate(value=Sum("pages"))
-            .order_by("period")
-        )
+        return WorkflowFileExecution.objects.filter(
+            workflow_execution__workflow__organization_id=organization_id,
+            status=ExecutionStatus.ERROR,
+            created_at__gte=start_date,
+            created_at__lte=end_date,
+        ).annotate(pages=Coalesce(Subquery(pages_subquery), 0))
 
     @staticmethod
     def get_hitl_reviews(
@@ -617,86 +762,71 @@ class MetricsQueryService:
         Returns:
             List of dicts with execution details including type
         """
-        # Use _base_manager to bypass DefaultOrganizationManagerMixin
-        # (UserContext is None in Celery tasks)
-        etl_pipeline_ids = set(
-            Pipeline._base_manager.filter(
-                organization_id=organization_id,
-                pipeline_type="ETL",
-            ).values_list("id", flat=True)
+        source_ids = _activity_source_ids(organization_id)
+        recent = _org_file_executions(organization_id).order_by("-created_at")[:limit]
+        return _activity_rows(recent, source_ids, with_surface=False)
+
+    @staticmethod
+    def get_activity_page(
+        organization_id: str,
+        start_date: datetime,
+        end_date: datetime,
+        statuses: list[str] | None,
+        surfaces: list[str] | None,
+        page: int,
+        page_size: int,
+    ) -> dict[str, Any]:
+        """Get one page of activity in a date range, with counts (DG-02).
+
+        ``status_counts`` covers the range and surfaces but ignores
+        ``statuses``, so every status filter chip can show its count;
+        ``count`` is the number of rows matching every filter.
+
+        Args:
+            organization_id: Organization UUID string
+            start_date: Start of range, inclusive
+            end_date: End of range, inclusive
+            statuses: File execution statuses to keep, or None for all
+            surfaces: ActivitySurface values to keep, or None for all
+            page: 1-based page number
+            page_size: Rows per page
+
+        Returns:
+            Dict with ``activity`` (rows with ``surface``), ``count`` and
+            ``status_counts``
+        """
+        source_ids = _activity_source_ids(organization_id)
+        # Accepted for now: no index leads on created_at, so a wide range scans
+        # the org's rows in it. Responses are cached.
+        in_range = _org_file_executions(organization_id).filter(
+            created_at__gte=start_date,
+            created_at__lte=end_date,
         )
+        if surfaces:
+            in_range = in_range.filter(_surface_filter(organization_id, surfaces))
 
-        api_deployment_ids = set(
-            APIDeployment._base_manager.filter(
-                organization_id=organization_id,
-            ).values_list("id", flat=True)
-        )
+        by_status = {
+            row["status"]: row["n"]
+            for row in in_range.order_by().values("status").annotate(n=Count("id"))
+        }
+        status_counts = {s.value: by_status.pop(s.value, 0) for s in ExecutionStatus}
+        # Keep any status the enum does not know, so the counts still add up.
+        status_counts.update(by_status)
 
-        # Query recent file executions with related data
-        recent = (
-            WorkflowFileExecution.objects.filter(
-                workflow_execution__workflow__organization_id=organization_id,
-            )
-            .select_related(
-                "workflow_execution",
-                "workflow_execution__workflow",
-            )
-            .order_by("-created_at")[:limit]
-        )
+        rows = in_range
+        if statuses:
+            rows = rows.filter(status__in=statuses)
+            count = sum(status_counts.get(s, 0) for s in statuses)
+        else:
+            count = sum(status_counts.values())
 
-        results = []
-        for execution in recent:
-            pipeline_id = execution.workflow_execution.pipeline_id
-
-            # Determine execution type based on pipeline_id
-            if pipeline_id and pipeline_id in etl_pipeline_ids:
-                exec_type = "etl"
-            elif pipeline_id and pipeline_id in api_deployment_ids:
-                exec_type = "api"
-            else:
-                exec_type = "workflow"
-
-            results.append(
-                {
-                    "id": str(execution.id),
-                    "execution_id": str(execution.workflow_execution.id),
-                    "type": exec_type,
-                    "file_name": execution.file_name,
-                    "status": execution.status,
-                    "workflow_name": execution.workflow_execution.workflow.workflow_name,
-                    "created_at": execution.created_at.isoformat(),
-                    "execution_time": execution.execution_time,
-                }
-            )
-
-        # Batch query: get aggregated token/cost per file execution
-        file_exec_ids = [r["id"] for r in results]
-        usage_agg: dict[str, dict[str, Any]] = {}
-        if file_exec_ids:
-            agg_qs = (
-                _get_usage_queryset()
-                .filter(run_id__in=file_exec_ids)
-                .values("run_id")
-                .annotate(
-                    total_tokens=Sum("total_tokens"),
-                    cost=Sum("cost_in_dollars"),
-                )
-            )
-            usage_agg = {
-                str(row["run_id"]): {
-                    "total_tokens": row["total_tokens"] or 0,
-                    "cost": round(row["cost"] or 0, 4),
-                }
-                for row in agg_qs
-            }
-
-        # Enrich results with LLM usage data
-        for r in results:
-            agg = usage_agg.get(r["id"], {})
-            r["total_tokens"] = agg.get("total_tokens", 0)
-            r["cost"] = agg.get("cost", 0)
-
-        return results
+        offset = (page - 1) * page_size
+        page_rows = rows.order_by("-created_at", "-id")[offset : offset + page_size]
+        return {
+            "activity": _activity_rows(page_rows, source_ids, with_surface=True),
+            "count": count,
+            "status_counts": status_counts,
+        }
 
     @staticmethod
     def _get_deployment_names(

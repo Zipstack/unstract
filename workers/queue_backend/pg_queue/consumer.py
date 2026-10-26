@@ -73,8 +73,16 @@ _DEFAULT_LEASE_SECONDS = 120
 # Bounded join so a wedged renewal thread can't block the ack — it's a daemon and
 # dies with the process regardless.
 _LEASE_JOIN_TIMEOUT_SECONDS = 10.0
-_DEFAULT_POLL_INTERVAL = 0.1
-_DEFAULT_BACKOFF_MAX = 2.0
+# Empty-queue poll backoff: after a cycle that handles nothing, sleep POLL_INTERVAL,
+# doubling up to BACKOFF_MAX; a cycle that handles a message resets it. Each slot
+# makes one claim per cycle however many queues it serves (read_any), so idle DB
+# load is slots / BACKOFF_MAX and tracks worker count, not work. At 0.1/2.0 that
+# was the second-largest statement source on the DB and kept a shared instance
+# busy with nothing queued (UN-4254). The cost of a higher cap is pickup latency
+# on an idle queue: up to BACKOFF_MAX. Keep BACKOFF_MAX well under
+# HEALTH_STALE_SECONDS, which the poll loop must beat between heartbeats.
+_DEFAULT_POLL_INTERVAL = 0.5
+_DEFAULT_BACKOFF_MAX = 5.0
 # A task claimed more than this many times keeps failing — drop it (poison)
 # rather than redeliver forever.
 _DEFAULT_MAX_ATTEMPTS = 5
