@@ -14,6 +14,8 @@ from permissions.permission import (
 )
 from permissions.resource_share_views import ResourceShareManagementMixin
 from platform_api.openapi_schema import PlatformKeyAutoSchema
+from platform_audit.actions import Action
+from platform_audit.resources import record_resource_event, resource_ref
 from plugins import get_plugin
 from prompt_studio.prompt_studio_registry_v2.models import PromptStudioRegistry
 from rest_framework import serializers, status, views, viewsets
@@ -21,6 +23,7 @@ from rest_framework.decorators import action
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.serializers import Serializer
+from tenant_account_v2.capabilities import Capability, RequiresCapability
 from tool_instance_v2.models import ToolInstance
 from utils.enums import CeleryTaskState
 from utils.hubspot_notify import notify_hubspot_event
@@ -102,7 +105,7 @@ class DeploymentExecution(views.APIView):
             context={
                 "api": api,
                 "api_key": api_key,
-                "is_global_key": deployment_execution_dto.is_global_key,
+                "global_key": deployment_execution_dto.global_key,
             },
         )
         serializer.is_valid(raise_exception=True)
@@ -291,8 +294,13 @@ class APIDeploymentViewSet(
             self.request, flag="is_active"
         ):
             return [IsOwnerOrSharedUserOrSharedToOrg()]
+        if self.action == "destroy":
+            # Ownership as before, narrowed by the org's deletion capability.
+            return [
+                IsOwner(),
+                RequiresCapability(Capability.DELETE_WORKFLOWS_AND_DEPLOYMENTS),
+            ]
         if self.action in [
-            "destroy",
             "partial_update",
             "update",
             "add_co_owner",
@@ -383,6 +391,7 @@ class APIDeploymentViewSet(
         # OWNER membership row (UN-2202 co-owners).
         serializer.instance.grant_owner(request.user)
         api_key = DeploymentHelper.create_api_key(serializer=serializer, request=request)
+        record_resource_event(request, Action.RESOURCE_CREATED, serializer.instance)
         response_serializer = DeploymentResponseSerializer(
             {"api_key": api_key.api_key, **serializer.data}
         )
@@ -401,6 +410,11 @@ class APIDeploymentViewSet(
             status=status.HTTP_201_CREATED,
             headers=headers,
         )
+
+    def perform_destroy(self, instance: APIDeployment) -> None:
+        deleted = resource_ref(instance)
+        super().perform_destroy(instance)
+        record_resource_event(self.request, Action.RESOURCE_DELETED, deleted)
 
     @action(detail=False, methods=["get"])
     def by_prompt_studio_tool(self, request: Request) -> Response:

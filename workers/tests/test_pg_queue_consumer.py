@@ -534,6 +534,18 @@ class TestConstruction:
         with pytest.raises(ValueError, match="backoff_max"):
             PgQueueConsumer(["q"], client=client, poll_interval=0.5, backoff_max=0.1)
 
+    def test_default_backoff_max_stays_under_default_health_stale(self):
+        # An idle loop sleeps up to backoff_max between heartbeats, so the
+        # default cap must stay below the default staleness threshold or idle
+        # consumers fail their liveness probe.
+        from queue_backend.pg_queue import consumer as consumer_mod
+
+        assert (
+            consumer_mod._DEFAULT_POLL_INTERVAL
+            <= consumer_mod._DEFAULT_BACKOFF_MAX
+            < consumer_mod._DEFAULT_HEALTH_STALE_SECONDS
+        )
+
 
 class TestRunLoop:
     def test_run_stops_gracefully(self, monkeypatch):

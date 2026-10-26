@@ -38,11 +38,13 @@ class GlobalApiDeploymentKeyListSerializer(serializers.ModelSerializer):
             "key",
             "is_active",
             "allow_all_deployments",
+            "created_by_member",
             "api_deployments",
             "created_at",
             "modified_at",
             "created_by_email",
         ]
+        read_only_fields = ["created_by_member"]
 
     def get_key(self, obj):
         key_str = str(obj.key)
@@ -56,7 +58,9 @@ class GlobalApiDeploymentKeyDetailSerializer(serializers.ModelSerializer):
     """Exposes the full plaintext key.
 
     Used by the create/rotate responses and by ``retrieve`` (GET keys/<pk>/),
-    so the full key stays retrievable by an org admin for the key's lifetime —
+    so the full key stays retrievable for the key's lifetime by an org admin
+    (and by the member who created it, as a member, while members may manage
+    keys and they still own its deployments) —
     consistent with the platform_api key flow (not a one-time reveal).
     """
 
@@ -189,7 +193,14 @@ class GlobalApiDeploymentKeyUpdateSerializer(_GlobalApiDeploymentKeyWriteSeriali
 
     def update(self, instance, validated_data):
         api_deployments = validated_data.pop("api_deployments", None)
-        instance = super().update(instance, validated_data)
+        request = self.context.get("request")
+        if request:
+            validated_data["modified_by"] = request.user
+        for field, value in validated_data.items():
+            setattr(instance, field, value)
+        # Only the fields this edit sets: a whole-row save would write back a
+        # key value rotated while the edit was in flight.
+        instance.save(update_fields=list(validated_data))
         if api_deployments is not None:
             instance.api_deployments.set(api_deployments)
         return instance

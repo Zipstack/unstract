@@ -1,3 +1,4 @@
+import logging
 import uuid
 
 from account_v2.models import User
@@ -5,6 +6,34 @@ from api_v2.models import APIDeployment
 from django.db import models
 from utils.models.base_model import BaseModel
 from utils.models.organization_mixin import DefaultOrganizationMixin
+
+logger = logging.getLogger(__name__)
+
+
+def deployments_keyable_by(user):
+    """API deployments a global key ``user`` creates may cover (UN-4399):
+    every one for an org admin, otherwise the ones they own (creator or
+    co-owner) -- the rule for minting a deployment's own key
+    (``IsParentDeploymentOwner``). An empty queryset for anyone outside the
+    organisation.
+    """
+    # Lazy: tenant_account_v2 imports account_v2, which imports this app.
+    from permissions.roles import ResourceRole
+    from tenant_account_v2.models import OrganizationMember
+    from tenant_account_v2.organization_member_service import (
+        OrganizationMemberService,
+    )
+    from tenant_account_v2.sharing_helpers import resources_visible_via_memberships
+
+    if user is None or not OrganizationMember.objects.filter(user=user).exists():
+        return APIDeployment.objects.none()
+    if OrganizationMemberService.is_user_organization_admin(user):
+        return APIDeployment.objects.all()
+    return APIDeployment.objects.filter(
+        pk__in=resources_visible_via_memberships(
+            APIDeployment, user, role=ResourceRole.OWNER
+        )
+    )
 
 
 class GlobalApiDeploymentKey(DefaultOrganizationMixin, BaseModel):
@@ -29,6 +58,13 @@ class GlobalApiDeploymentKey(DefaultOrganizationMixin, BaseModel):
         on_delete=models.SET_NULL,
         null=True,
         related_name="global_api_deployment_keys_created",
+    )
+    created_by_member = models.BooleanField(
+        default=False,
+        db_comment=(
+            "True if a non-admin created this key (UN-4399): it then works only "
+            "within the deployments its creator may key (deployments_keyable_by)"
+        ),
     )
     modified_by = models.ForeignKey(
         User,
@@ -65,6 +101,36 @@ class GlobalApiDeploymentKey(DefaultOrganizationMixin, BaseModel):
         # ``clean()`` runs before M2M rows exist), so the serializers own the
         # invariant — see ``_GlobalApiDeploymentKeyWriteSerializer`` subclasses,
         # which reject/clear a list whenever allow-all is set.
+        if self.created_by_member and not self._creator_can_access(api_deployment):
+            return False
         if self.allow_all_deployments:
             return True
         return self.api_deployments.filter(id=api_deployment.id).exists()
+
+    def _creator_can_access(self, api_deployment: APIDeployment) -> bool:
+        """A member's key works only within ``deployments_keyable_by`` its
+        creator (UN-4399), so its deployments' other owners never have to find
+        and revoke it.
+        """
+        # Lazy: tenant_account_v2 imports account_v2, which imports this app.
+        from tenant_account_v2.models import OrganizationMember
+
+        creator = self.created_by
+        if creator is None:
+            reason = "its creator was deleted"
+        # Both lookups use the organisation the request resolved, which
+        # has_access_to_deployment has already matched to this key's.
+        elif not OrganizationMember.objects.filter(user=creator).exists():
+            reason = "its creator left the organization"
+        elif not deployments_keyable_by(creator).filter(pk=api_deployment.pk).exists():
+            reason = "its creator does not own the deployment"
+        else:
+            return True
+        logger.warning(
+            "Global API key %s refused for deployment %s: %s (creator %s).",
+            self.id,
+            api_deployment.id,
+            reason,
+            self.created_by_id,
+        )
+        return False
