@@ -13,6 +13,15 @@ user_profile = OrganizationUserViewSet.as_view(
     {
         "get": OrganizationUserViewSet.get_user_profile.__name__,
         "put": OrganizationUserViewSet.update_flags.__name__,
+        "patch": OrganizationUserViewSet.update_profile.__name__,
+    }
+)
+
+user_profile_photo = OrganizationUserViewSet.as_view(
+    {
+        "get": OrganizationUserViewSet.get_profile_photo.__name__,
+        "post": OrganizationUserViewSet.upload_profile_photo.__name__,
+        "delete": OrganizationUserViewSet.delete_profile_photo.__name__,
     }
 )
 
@@ -33,6 +42,7 @@ organization_users = OrganizationUserViewSet.as_view(
 urlpatterns = [
     path("", organization_users, name="organization_user"),
     path("profile/", user_profile, name="user_profile"),
+    path("profile/photo/", user_profile_photo, name="user_profile_photo"),
     path("role/", organization_user_role, name="organization_user_role"),
     path("invite/", invite_user, name="invite_user"),
 ]

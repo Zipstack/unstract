@@ -164,3 +164,108 @@ class WithMemberDetailsTests(TestCase):
 
     def test_no_organizations(self) -> None:
         self.assertEqual(with_member_details([], self.caller), [])
+
+
+# Cloud stamps the region an organization was created in on its identity
+# provider metadata, which the auth service returns with each organization.
+@override_settings(REGION="US")
+class HomeRegionTests(TestCase):
+    def setUp(self) -> None:
+        self.caller = _user("caller@example.com")
+        self.org = _org("org-a", "Org A")
+        OrganizationMember.objects.create(
+            organization=self.org, user=self.caller, role="admin"
+        )
+
+    def _row(self, metadata: object, org_id: str = "org-a") -> dict:
+        org = SimpleNamespace(
+            id=org_id, display_name="Org A", name=org_id, metadata=metadata
+        )
+        return with_member_details([org], self.caller)[0]
+
+    def test_home_organisation_keeps_this_regions_details(self) -> None:
+        row = self._row({"region": "US"})
+        self.assertEqual((row["region"], row["member_count"]), ("US", 1))
+
+    def test_local_copy_shows_its_home_region(self) -> None:
+        row = self._row({"region": "EU"})
+        self.assertEqual(row["region"], "EU")
+        # This deployment's count covers only the people who opened the copy here.
+        self.assertNotIn("member_count", row)
+        self.assertEqual(row["role"], "admin")
+
+    def test_organisation_with_no_data_here_still_shows_its_region(self) -> None:
+        row = self._row({"region": "EU"}, org_id="org-x")
+        self.assertEqual(row["region"], "EU")
+        self.assertNotIn("member_count", row)
+        self.assertNotIn("role", row)
+
+    def test_unstamped_organisation_falls_back_to_this_region(self) -> None:
+        # Organizations created before the stamp, until they are back-filled.
+        row = self._row({"environment": "cloud-production"})
+        self.assertEqual((row["region"], row["member_count"]), ("US", 1))
+
+    @override_settings(REGION=None)
+    def test_deployment_without_regions_ignores_the_stamp(self) -> None:
+        # OSS and on-prem: a region key in the provider's metadata changes nothing.
+        row = self._row({"region": "EU"})
+        self.assertNotIn("region", row)
+        self.assertEqual(row["member_count"], 1)
+
+    def test_stamp_that_is_not_a_non_empty_string_is_ignored(self) -> None:
+        for stamp in ("", " ", ["EU"], 7):
+            with self.subTest(stamp=repr(stamp)):
+                with self.assertLogs("account_v2.organization_details", "WARNING"):
+                    row = self._row({"region": stamp})
+                self.assertEqual((row["region"], row["member_count"]), ("US", 1))
+
+    def test_stamp_is_compared_without_case_or_padding(self) -> None:
+        for stamp, region, count in (
+            ("us", "US", 1),
+            (" US ", "US", 1),
+            ("eu", "EU", None),
+        ):
+            with self.subTest(stamp=stamp):
+                row = self._row({"region": stamp})
+                self.assertEqual(
+                    (row["region"], row.get("member_count")), (region, count)
+                )
+
+    @override_settings(REGION="us")
+    def test_this_deployments_region_is_compared_without_case(self) -> None:
+        row = self._row({"region": "US"})
+        self.assertEqual((row["region"], row["member_count"]), ("US", 1))
+
+    def test_metadata_that_is_not_a_dict_counts_as_unstamped(self) -> None:
+        for metadata in (None, "EU", ["EU"]):
+            with self.subTest(metadata=repr(metadata)):
+                row = self._row(metadata)
+                self.assertEqual((row["region"], row["member_count"]), ("US", 1))
+                self.assertEqual(row["metadata"], metadata)
+
+    def test_this_regions_organisation_with_no_data_here(self) -> None:
+        row = self._row({"region": "US"}, org_id="org-x")
+        self.assertEqual(row["region"], "US")
+        self.assertNotIn("member_count", row)
+        self.assertNotIn("role", row)
+
+    def test_mixed_list_keeps_order_and_queries(self) -> None:
+        _org("org-b", "Org B")
+        orgs = [
+            CloudOrg(id="org-a", display_name="A", name="a", metadata={"region": "EU"}),
+            CloudOrg(id="org-b", display_name="B", name="b", metadata=None),
+            CloudOrg(id="org-x", display_name="X", name="x", metadata={"region": "US"}),
+        ]
+        with self.assertNumQueries(2):
+            rows = with_member_details(orgs, self.caller)
+        self.assertEqual(
+            [
+                (r["id"], r.get("region"), r.get("member_count"), r.get("role"))
+                for r in rows
+            ],
+            [
+                ("org-a", "EU", None, "admin"),
+                ("org-b", "US", 0, None),
+                ("org-x", "US", None, None),
+            ],
+        )
