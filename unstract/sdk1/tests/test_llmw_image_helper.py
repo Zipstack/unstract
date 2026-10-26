@@ -1097,3 +1097,146 @@ class TestModelAwarePostDownload:
         assert (
             not hasattr(excinfo.value, "error_code") or excinfo.value.error_code is None
         )
+
+
+class TestMaxTotalImageBytes:
+    """LLMWhisperer stops at sdk1's byte budget and rejects unbilled (LW-460)."""
+
+    _CONFIG = {"url": "u", "unstract_key": "k"}
+
+    def _submit_kwargs(
+        self,
+        monkeypatch: MonkeyPatch,
+        page_count: int | None,
+        image_limits: "ImageModePolicy | None" = None,
+    ) -> dict:
+        monkeypatch.setattr(
+            H, "_safe_pdf_page_count", staticmethod(lambda _b: page_count)
+        )
+        submit = MagicMock(name="submit", side_effect=RuntimeError("stop"))
+        monkeypatch.setattr(H, "submit_pdf_to_images", staticmethod(submit))
+        fs = MagicMock(name="FileStorage")
+        fs.read.return_value = b"%PDF-1.7 fake"
+        with pytest.raises(RuntimeError, match="stop"):
+            H.get_page_images(
+                {}, "/in/doc.pdf", "/out/doc.txt", fs=fs, image_limits=image_limits
+            )
+        return submit.call_args.kwargs
+
+    def test_submit_sends_the_param(self, monkeypatch: MonkeyPatch) -> None:
+        captured: dict = {}
+        monkeypatch.setattr(
+            H, "_send_raw_request", lambda **kw: captured.update(kw) or object()
+        )
+        monkeypatch.setattr(H, "_safe_json", lambda _r: {"whisper_hash": "wh1"})
+        H.submit_pdf_to_images(self._CONFIG, io.BytesIO(b"pdf"), max_total_image_bytes=7)
+        assert captured["params"]["max_total_image_bytes"] == 7
+        H.submit_pdf_to_images(self._CONFIG, io.BytesIO(b"pdf"))
+        assert "max_total_image_bytes" not in captured["params"]
+
+    def test_fixed_budget_is_sent_without_a_policy(
+        self, monkeypatch: MonkeyPatch
+    ) -> None:
+        kwargs = self._submit_kwargs(monkeypatch, 3)
+        assert kwargs["max_total_image_bytes"] == helper_mod.configured_max_total_bytes()
+
+    def test_policy_budget_for_the_selected_count_is_sent(
+        self, monkeypatch: MonkeyPatch
+    ) -> None:
+        policy = _bedrock_policy()
+        expected = policy.raw_byte_budget(page_count=3)
+        assert expected is not None and expected > 0
+        kwargs = self._submit_kwargs(monkeypatch, 3, policy)
+        assert kwargs["max_total_image_bytes"] == expected
+
+    def test_omitted_when_there_is_no_bound(self, monkeypatch: MonkeyPatch) -> None:
+        policy = MagicMock(name="policy")
+        policy.raw_byte_budget.return_value = None
+        assert H.submit_byte_limit(policy, 3) is None
+        # A policy's bound needs the page count; unreadable -> omitted.
+        assert (
+            self._submit_kwargs(monkeypatch, None, _bedrock_policy())[
+                "max_total_image_bytes"
+            ]
+            is None
+        )
+
+    @staticmethod
+    def _rejected(monkeypatch: MonkeyPatch, metadata: dict) -> None:
+        body = {
+            "status": "error",
+            "message": "error_in_conversion: size_limit_exceeded: ...",
+            "metadata": metadata,
+        }
+        monkeypatch.setattr(H, "_send_raw_request", lambda **kw: _json_response(body))
+
+    _META = {
+        "error_code": "size_limit_exceeded",
+        "max_total_image_bytes": 20 * 1024 * 1024,
+        "rendered_bytes": 21 * 1024 * 1024,
+        "pages_rendered": 2,
+        "page_count": 5,
+    }
+
+    def test_rejection_maps_to_the_fixed_byte_error(
+        self, monkeypatch: MonkeyPatch
+    ) -> None:
+        self._rejected(monkeypatch, self._META)
+        with pytest.raises(ExtractorError) as excinfo:
+            H.poll_pdf_to_images_status(_NET_CONFIG, "wh")
+        assert excinfo.value.status_code == 400
+        msg = str(excinfo.value)
+        budget_mb = helper_mod.configured_max_total_bytes() // (1024 * 1024)
+        assert msg.startswith(
+            "This document is too large for image output mode. Its 5 page "
+            "images total at least 21.0 MB, over the "
+            f"{budget_mb} MB limit for one LLM request. Split the document"
+        )
+        assert msg.endswith("nothing was charged.")
+        assert "already been charged" not in msg
+
+    def test_rejection_maps_to_the_policy_error_and_code(
+        self, monkeypatch: MonkeyPatch
+    ) -> None:
+        from unstract.sdk1.adapters.exceptions import ImageLimitExceededError
+        from unstract.sdk1.utils.image_limits import codes
+        from unstract.sdk1.utils.image_limits import policy as policy_mod
+
+        policy = _bedrock_policy()
+        self._rejected(monkeypatch, self._META)
+        with pytest.raises(ImageLimitExceededError) as excinfo:
+            H.poll_pdf_to_images_status(_NET_CONFIG, "wh", policy)
+        err = excinfo.value
+        assert err.error_code == codes.IMAGE_PAGES_TOO_LARGE
+        assert err.charged is False and err.status_code == 400
+        after_download = policy_mod.request_too_large_message(
+            policy,
+            page_count=5,
+            raw_total=21 * 1024 * 1024,
+            prompt_text_bytes=None,
+            charged=True,
+        )
+        msg = str(err)
+        assert msg.split(" total at least ")[0] == after_download.split(" total ")[0]
+        assert (
+            msg.split(" total at least ")[1].split(" Split ")[0]
+            == (after_download.split(" total ")[1].split(" Split ")[0])
+        )
+        assert msg.endswith("nothing was charged.")
+
+    @pytest.mark.parametrize(
+        "metadata",
+        [
+            {"error_code": "invalid_page_range"},
+            {**_META, "rendered_bytes": None},
+            {},
+        ],
+        ids=["other-code", "malformed", "no-metadata"],
+    )
+    def test_other_failures_keep_the_generic_error(
+        self, monkeypatch: MonkeyPatch, metadata: dict
+    ) -> None:
+        self._rejected(monkeypatch, metadata)
+        with pytest.raises(ExtractorError, match="unexpected status 'error'") as excinfo:
+            H.poll_pdf_to_images_status(_NET_CONFIG, "wh")
+        assert excinfo.value.status_code == 502

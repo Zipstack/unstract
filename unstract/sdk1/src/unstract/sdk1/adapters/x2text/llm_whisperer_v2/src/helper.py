@@ -616,6 +616,7 @@ class LLMWhispererHelper:
         tag: str | list[str] | None = None,
         file_name: str | None = None,
         pages_to_extract: str | None = None,
+        max_total_image_bytes: int | None = None,
     ) -> str:
         """Submit a ``pdf-to-images`` job; returns the job id (whisper_hash).
 
@@ -626,6 +627,8 @@ class LLMWhispererHelper:
         ``tag`` falls back to the adapter config, then the default.
         ``pages_to_extract`` is the canonical setting when the caller already
         checked it; otherwise it is read from the adapter config.
+        ``max_total_image_bytes`` (when set) makes LLMWhisperer stop rendering
+        and reject the job unbilled once the images pass it.
 
         Raises:
             ExtractorError: The 'Pages to extract' setting is invalid (400).
@@ -643,6 +646,8 @@ class LLMWhispererHelper:
             pages_to_extract = LLMWhispererHelper._pages_to_extract_or_error(config)
         if pages_to_extract:
             params[WhispererConfig.PAGES_TO_EXTRACT] = pages_to_extract
+        if max_total_image_bytes is not None:
+            params[ImageOutputConfig.MAX_TOTAL_IMAGE_BYTES_PARAM] = max_total_image_bytes
         headers = {
             **LLMWhispererHelper.get_request_headers(config),
             "Content-Type": "application/octet-stream",
@@ -669,14 +674,18 @@ class LLMWhispererHelper:
 
     @staticmethod
     def poll_pdf_to_images_status(
-        config: dict[str, Any], whisper_hash: str
+        config: dict[str, Any],
+        whisper_hash: str,
+        image_limits: "ImageModePolicy | None" = None,
     ) -> dict[str, Any]:
         """Poll the status endpoint until a terminal state is reached.
 
         Returns the terminal status payload on success (``status`` reaches
         ``PROCESSED``); raises ``ExtractorError`` on a failed/unknown state or
         once the poll budget is exhausted. Mirrors the submit-then-poll pattern
-        already used for text extraction.
+        already used for text extraction. A byte-budget rejection raises the
+        same error as the post-download byte check (``image_limits`` picks
+        which), so the user sees one message whichever side caught it.
         """
         headers = LLMWhispererHelper.get_request_headers(config)
         params = {WhisperStatus.WHISPER_HASH: whisper_hash}
@@ -705,6 +714,7 @@ class LLMWhispererHelper:
                 # A failure state, an unknown status, or an empty body (non-JSON)
                 # raises immediately with the observed status echoed, instead of
                 # hanging until the poll budget is exhausted.
+                LLMWhispererHelper._raise_if_size_limit_rejection(body, image_limits)
                 msg = body.get(ImageOutputConfig.MESSAGE, "unknown error")
                 raise ExtractorError(
                     f"LLMWhisperer pdf-to-images job {whisper_hash} returned an "
@@ -913,15 +923,106 @@ class LLMWhispererHelper:
         total = sum(len(data) for _, data in pages)
         if total <= budget:
             return
-        mb = 1024 * 1024
         raise ExtractorError(
-            "This document is too large for image output mode. Its "
-            f"{len(pages)} page images total {total / mb:.1f} MB, over the "
-            f"{budget // mb} MB limit for one LLM request. Split the document "
-            "into smaller files, or use a text output mode instead. The page "
-            "conversion has already been charged, because image sizes are "
-            "only known after the pages are rendered.",
+            LLMWhispererHelper._fixed_bytes_message(len(pages), total, budget),
             status_code=400,
+        )
+
+    @staticmethod
+    def _fixed_bytes_message(
+        page_count: int, total: int, budget: int, *, stopped_early: bool = False
+    ) -> str:
+        """The fixed-budget byte error, after download or from LLMWhisperer.
+
+        ``stopped_early``: LLMWhisperer stopped rendering once ``total`` passed
+        the budget, so ``total`` is a lower bound and nothing was charged.
+        """
+        mb = 1024 * 1024
+        size = "total at least" if stopped_early else "total"
+        charge = (
+            "The conversion stopped once the limit was passed; nothing was charged."
+            if stopped_early
+            else "The page conversion has already been charged, because image "
+            "sizes are only known after the pages are rendered."
+        )
+        return (
+            "This document is too large for image output mode. Its "
+            f"{page_count} page images {size} {total / mb:.1f} MB, over the "
+            f"{budget // mb} MB limit for one LLM request. Split the document "
+            f"into smaller files, or use a text output mode instead. {charge}"
+        )
+
+    @staticmethod
+    def submit_byte_limit(
+        image_limits: "ImageModePolicy | None", page_count: int | None
+    ) -> int | None:
+        """``max_total_image_bytes`` to send: the post-download check's budget.
+
+        The same raw-byte bound ``_check_pages_after_download`` enforces for
+        ``page_count`` images, so LLMWhisperer stops where sdk1 would reject.
+        None (param omitted) when there is no enforceable bound, or when a
+        policy's bound needs a page count that could not be read locally.
+        """
+        if image_limits is None:
+            budget: int | None = configured_max_total_bytes()
+        elif page_count is None:
+            return None
+        else:
+            budget = image_limits.raw_byte_budget(page_count=page_count)
+        return budget if budget is not None and budget > 0 else None
+
+    @staticmethod
+    def _raise_if_size_limit_rejection(
+        body: dict[str, Any], image_limits: "ImageModePolicy | None"
+    ) -> None:
+        """Raise the post-download byte error for an LLMWhisperer size rejection.
+
+        LLMWhisperer (LW-460) fails the job with ``metadata.error_code`` =
+        ``size_limit_exceeded`` and the bytes rendered when it stopped (a lower
+        bound on the total). Anything else returns, for the generic error.
+        """
+        metadata = body.get("metadata")
+        if not isinstance(metadata, dict):
+            return
+        if metadata.get("error_code") != ImageOutputConfig.SIZE_LIMIT_EXCEEDED:
+            return
+        rendered, limit = (
+            metadata.get("rendered_bytes"),
+            metadata.get("max_total_image_bytes"),
+        )
+        if not all(
+            isinstance(v, int) and not isinstance(v, bool) and v > 0
+            for v in (rendered, limit)
+        ):
+            return
+        page_count = LLMWhispererHelper.status_page_count(body) or 0
+        logger.info(
+            "Image mode: LLMWhisperer stopped rendering at %d bytes "
+            "(limit %d, %d pages); nothing was charged",
+            rendered,
+            limit,
+            page_count,
+        )
+        if image_limits is None:
+            raise ExtractorError(
+                LLMWhispererHelper._fixed_bytes_message(
+                    page_count, rendered, configured_max_total_bytes(), stopped_early=True
+                ),
+                status_code=400,
+            )
+        from unstract.sdk1.utils.image_limits import policy as _policy
+
+        raise ImageLimitExceededError(
+            _policy.request_too_large_message(
+                image_limits,
+                page_count=page_count,
+                raw_total=rendered,
+                prompt_text_bytes=None,
+                charged=False,
+                at_least=True,
+            ),
+            error_code=limit_codes.IMAGE_PAGES_TOO_LARGE,
+            charged=False,
         )
 
     # Single canonical derivation of ``{extract_dir}/{stem}/pages`` shared
@@ -1341,8 +1442,16 @@ class LLMWhispererHelper:
             tag=tag,
             file_name=Path(input_file_path).name,
             pages_to_extract=pages_to_extract,
+            # LLMWhisperer stops at the byte budget the post-download check
+            # enforces and rejects unbilled, instead of billing the whole
+            # selection first. That check stays as the backstop.
+            max_total_image_bytes=LLMWhispererHelper.submit_byte_limit(
+                image_limits, expected_page_count
+            ),
         )
-        status = LLMWhispererHelper.poll_pdf_to_images_status(config, whisper_hash)
+        status = LLMWhispererHelper.poll_pdf_to_images_status(
+            config, whisper_hash, image_limits
+        )
 
         pages = LLMWhispererHelper._download_and_extract(
             config=config, whisper_hash=whisper_hash

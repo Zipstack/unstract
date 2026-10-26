@@ -919,6 +919,9 @@ def _charged_clause(charged: bool | None, *, size_known_late: bool = False) -> s
                 "sizes are only known after the pages are rendered."
             )
         return " The page conversion was already charged."
+    if size_known_late:
+        # LLMWhisperer stopped rendering once the limit was passed (LW-460).
+        return " The conversion stopped once the limit was passed; nothing was charged."
     return " No pages were converted or charged."
 
 
@@ -1012,8 +1015,13 @@ def request_too_large_message(
     raw_total: int,
     prompt_text_bytes: int | None,
     charged: bool | None,
+    at_least: bool = False,
 ) -> str:
-    """User-facing text for a page set over the request-size limit."""
+    """User-facing text for a page set over the request-size limit.
+
+    ``at_least`` marks ``raw_total`` as a lower bound: LLMWhisperer stopped
+    rendering once the limit was passed.
+    """
     wire = estimate_wire_bytes(
         raw_total, page_count=page_count, prompt_text_bytes=prompt_text_bytes
     )
@@ -1027,15 +1035,16 @@ def request_too_large_message(
     limits = policy.request_bytes_source() if limit is not None else None
     # The total and the limit are printed in the limit's own unit: decimal
     # MB for a provider limit, MiB for the (raw-byte) operator/legacy ceiling.
+    total = "total at least" if at_least else "total"
     if limit is not None and limit.value is not None and limits is not None:
-        size = f"total {_mb(raw_total)} ({_mb(wire)} once encoded)"
+        size = f"{total} {_mb(raw_total)} ({_mb(wire)} once encoded)"
         bound = (
             f"over the {_mb(limit.value)} request limit of "
             f"{_model_label(limits)} "
             f"({format_limit_source(limit, limits)})"
         )
     else:
-        size = f"total {_mib(raw_total)}"
+        size = f"{total} {_mib(raw_total)}"
         bound = (
             f"over the {_mib(policy.bytes_ceiling or 0)} limit for one image-mode "
             "request"
