@@ -8,9 +8,15 @@ from typing import Any
 
 import socketio
 from django.conf import settings
-from django.contrib.auth import SESSION_KEY
+from django.contrib.auth import (
+    BACKEND_SESSION_KEY,
+    HASH_SESSION_KEY,
+    SESSION_KEY,
+    load_backend,
+)
 from django.core.wsgi import WSGIHandler
 from django.db import close_old_connections
+from django.utils.crypto import constant_time_compare
 
 from unstract.core.cache.redis_client import create_redis_client
 from unstract.core.data_models import LogDataDTO
@@ -130,7 +136,14 @@ def _get_user_session_id_from_cookies(sid: str, environ: Any) -> str | None:
 
 
 def _get_user_id(sid: str, session_id: str) -> str | None:
-    """The signed-in user of a session, or None."""
+    """The signed-in user of a session, or None.
+
+    Applies the checks django.contrib.auth.get_user applies to an HTTP request
+    with the same cookie: the session's backend is still configured and still
+    returns the user (a deactivated user is refused), and the session hash still
+    matches (a password change signs the session out). Unlike get_user, it never
+    flushes or rotates the session, which the browser's cookie still names.
+    """
     # Socket handlers run outside Django's request cycle, which is what normally
     # closes stale connections.
     close_old_connections()
@@ -138,7 +151,24 @@ def _get_user_id(sid: str, session_id: str) -> str | None:
         store = import_module(settings.SESSION_ENGINE).SessionStore(
             session_key=session_id
         )
-        return store.get(SESSION_KEY)
+        user_id = store.get(SESSION_KEY)
+        backend_path = store.get(BACKEND_SESSION_KEY)
+        if user_id is None or backend_path not in settings.AUTHENTICATION_BACKENDS:
+            return None
+        user = load_backend(backend_path).get_user(user_id)
+        if user is None:
+            return None
+        if hasattr(user, "get_session_auth_hash"):
+            session_hash = store.get(HASH_SESSION_KEY)
+            hashes = [
+                user.get_session_auth_hash(),
+                *user.get_session_auth_fallback_hash(),
+            ]
+            if not session_hash or not any(
+                constant_time_compare(session_hash, h) for h in hashes
+            ):
+                return None
+        return user_id
     except Exception:
         logger.exception(f"Could not read the session of socket {sid}")
         return None
