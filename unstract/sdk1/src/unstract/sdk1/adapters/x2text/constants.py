@@ -12,7 +12,7 @@ class X2TextConstants:
     WHISPER_HASH_V2 = "whisper_hash"
     # ``process()`` kwarg carrying an ``ImageModePolicy`` for image output
     # mode, so the extraction-time checks run against the LLM that will
-    # consume the pages. Absent -> the fixed legacy limits apply.
+    # consume the pages. Absent -> the fixed cap applies.
     IMAGE_LIMITS = "image_limits"
 
 
