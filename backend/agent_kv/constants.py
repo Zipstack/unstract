@@ -6,6 +6,8 @@
 #: wrong, on line 1 of the file that defines the routing table: `kv` is the one
 #: extractor this deployment does NOT accept, and `AgentKVJob.extractor` has
 #: carried the name since migration 0002.
+from extractor_registry import api_routes
+
 V1_EXTRACTOR_NAME = "kv"
 
 STAGE_NAMES = [
@@ -49,9 +51,20 @@ OPERATION_TABLE_EXTRACT_API = "table_extract_api"
 #: `V1_EXTRACTOR_NAME`, `STAGE_NAMES` and the KV options serializer stay in the
 #: tree, dormant and still under test, so re-enabling is one line rather than a
 #: content merge against the branch that carries the engine.
-EXTRACTOR_ROUTES = {
-    TABLE_EXTRACTOR_NAME: (TABLE_EXECUTOR_NAME, OPERATION_TABLE_EXTRACT_API),
-}
+#:
+#: DERIVED, as of UN-4214, from the shared catalogue in `extractor_registry`
+#: rather than written out here. The absence of `kv` is unchanged and still
+#: load-bearing for exactly the reason above -- it is now expressed as
+#: `available=False` on the catalogue's `multi_stage` row, which is the same
+#: fact the Studio's door already read from its own separate copy of this
+#: table. Before this, the two doors stated "the KV engine is not deployed" in
+#: two different shapes -- a missing key here, a boolean there -- so
+#: re-enabling the engine meant finding and flipping both.
+#:
+#: Re-enabling is still one line, just one line in ONE place: set
+#: `available=True` on that row. Doing it without the plugin deployed remains
+#: the failure described above.
+EXTRACTOR_ROUTES = api_routes()
 
 #: The table engine reports one coarse stage: it has no node-level progress
 #: hooks (the IDE path gets `stream_log` only), so inventing finer stages here
