@@ -255,10 +255,19 @@ class TestModelAwareUploadCheck:
     def test_strict_provider_accepts_at_its_limit(self) -> None:
         check(_pdf(20), _PDF, _llm_profile(_BEDROCK_ID, _BEDROCK_META))
 
-    def test_generous_provider_is_held_at_the_rollout_cap(self) -> None:
-        # Until the cloud plugin answers with model-aware limits, 90 stays.
-        with pytest.raises(ImageModePageLimitExceeded):
-            check(_pdf(91), _PDF, _llm_profile(_OPENAI_ID, _OPENAI_META))
+    def test_generous_provider_accepts_above_the_old_fixed_cap(self) -> None:
+        check(_pdf(91), _PDF, _llm_profile(_OPENAI_ID, _OPENAI_META))
+
+    def test_env_ceiling_cannot_raise_the_fixed_cap(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # No LLM: the fixed cap. A ceiling above 90 leaves 90 in force.
+        monkeypatch.setenv("VLM_IMAGE_ANSWER_PAGE_CAP", "200")
+        profile = _profile({"output_mode": "image"})
+        profile.llm = None
+        with pytest.raises(ImageModePageLimitExceeded) as excinfo:
+            check(_pdf(91), _PDF, profile)
+        assert "the limit is 90" in str(excinfo.value.detail)
 
     def test_unresolvable_llm_falls_back_to_the_fixed_cap(
         self, monkeypatch: pytest.MonkeyPatch

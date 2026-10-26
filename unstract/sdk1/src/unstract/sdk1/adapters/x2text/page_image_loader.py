@@ -157,36 +157,6 @@ def _first_report(name: str, raw: str) -> bool:
     return True
 
 
-def _positive_int_env(name: str, default: int, *, scale: int = 1) -> int:
-    """Parse a positive-integer env override, logging and defaulting otherwise.
-
-    An unset or empty variable is the normal case and returns ``default``
-    silently. A present-but-unusable value is an operator mistake: log it
-    (once per value) and fall back rather than failing extraction over a
-    malformed env var. ``scale`` converts the parsed value into the unit of
-    ``default`` (e.g. MB → bytes).
-    """
-    raw = _env_value(name)
-    if raw is None:
-        return default
-    value = _parse_positive(raw)
-    if value is None:
-        if _first_report(name, raw):
-            logger.warning("Invalid %s value %r; using default %d", name, raw, default)
-        return default
-    return value * scale
-
-
-def configured_page_cap() -> int:
-    """The effective page cap: ``PAGE_CAP_ENV`` or ``DEFAULT_PAGE_CAP``."""
-    return _positive_int_env(PAGE_CAP_ENV, DEFAULT_PAGE_CAP)
-
-
-def configured_max_total_bytes() -> int:
-    """The effective byte budget: ``MAX_TOTAL_MB_ENV`` (in MB) or the default."""
-    return _positive_int_env(MAX_TOTAL_MB_ENV, DEFAULT_MAX_TOTAL_BYTES, scale=1024 * 1024)
-
-
 def _optional_positive_int_env(name: str, default: int, *, scale: int = 1) -> int | None:
     """An optional ceiling: None when unset or empty, ``default`` when unusable.
 
