@@ -618,7 +618,7 @@ over-cap output now **fails the job** — in both places it can be detected:
 
 A malformed JSONL row likewise fails the job (`"calculations produced invalid output"`)
 rather than being dropped, and so does an output file that cannot be READ at all
-(`"calculations produced no readable output; the extraction was kept"`) — the engine
+(`"calculations produced no readable output; the extraction could not be returned"`) — the engine
 reported that codegen ran, so an unreadable file is a real I/O fault rather than an
 empty result, and the previous behaviour reported `calculation_rows: []` for it on a
 fully billed job with no log at any level.
@@ -627,14 +627,24 @@ So `calculation_rows` on a `success: true` job is complete: there is no truncati
 to check, because there is no truncated success.
 
 **On a failed calculation the extraction is retained inside the executor but does NOT
-reach you.** Two of these errors say "the extraction was kept", and that is a statement
-about the executor's own result object: the document's `record`, `normalized_record` and
-`keys` survive the failure there rather than being discarded, because the job was billed
-for them. They are dropped before the API: the callback forwards no `data` on the
-failure arm, and the finalize view writes only the error. So a `FAILED` body still
-carries no engine blob, exactly as the status bullets above say. The retention exists so
-that wiring it through is a change to those two hops rather than a re-extraction; until
-then, do not write a consumer that expects a partial record on a failed job.
+reach you**, and the error strings say so rather than implying otherwise. They went
+through two wrong wordings first, both worth knowing because a consumer may have been
+written against either: `"the extraction is in \`data\`"` pointed at a field no caller
+can reach, and `"the extraction was kept"` made the same promise one step vaguer
+instead of retracting it. They now say **"the extraction could not be returned"**.
+
+What is retained, and where: the document's `record`, `normalized_record` and `keys`
+survive the failure inside the executor's own result object rather than being
+discarded, because the job was billed for them — and the markers that qualify them
+(`extraction_degraded`, `extraction_dropped`, `qa_passed`, `qa_unchecked`,
+`qa_partial`, `challenge_passed`, `challenge_unchecked`, `budget_exhausted`,
+`budget_skipped_stages`, `document_class`) travel with them, so a salvaged record can
+never read as fully validated. They are all dropped before the API: the callback
+forwards no `data` on the failure arm, and the finalize view writes only the error. So
+a `FAILED` body still carries no engine blob, exactly as the status bullets above say.
+The retention exists so that wiring it through is a change to those two hops rather
+than a re-extraction; until then, do not write a consumer that expects a partial
+record on a failed job.
 
 **Drift from the spec:** §7.3 sketches the failed-job body as
 `{success: false, error, timing}`. The shipped body
@@ -698,16 +708,17 @@ failure belongs to the job, not to one extractor.
 ### `qa_passed` / `challenge_passed`, and the advisory markers that qualify them
 
 `qa_passed` and `challenge_passed` are positive assertions, and on their own they
-**cannot distinguish "checked and clean" from "nothing was checked"**. Four advisory
-markers (five keys — `budget_exhausted` travels with a companion list) carry that
-distinction. They are the whole mitigation, so a consumer that acts on either flag must
+**cannot distinguish "checked and clean" from "nothing was checked"**. Advisory
+markers carry that distinction — the table below is the list; do not count them
+from this sentence. They are the whole mitigation, so a consumer that acts on either flag must
 read them. They sit in the **same per-extractor block** as `qa_passed` itself
 (`extractors.<name>.*`), not at the top level.
 
 **Convention: each marker is present only when it applies, and its absence means the
 benign state.** The boolean markers are never emitted as `false` — read a missing key as
-`false` (`result.get("qa_unchecked", False)`), not as missing data; for the one list
-marker read a missing key as `[]` (`result.get("budget_skipped_stages", [])`). An
+`false` (`result.get("qa_unchecked", False)`), not as missing data; for the **two**
+list markers — `budget_skipped_stages` and `extraction_dropped` — read a missing key
+as `[]` (`result.get("budget_skipped_stages", [])`). An
 ordinary clean job's shape is unchanged by any of this, which is why they are omitted
 rather than always present.
 
@@ -719,7 +730,7 @@ rather than always present.
 | `budget_skipped_stages` | `string[]` | the ceiling skipped at least one whole stage | Names the stages that never started, e.g. `["kv_qa", "code_generator"]`. **Never present as `[]`** — see the first edge case below. |
 | `qa_partial` | `true` | QA ran and the ceiling bit mid-loop | QA started but abandoned part of its work, so `qa_passed` reflects an incomplete pass. Distinct from `qa_unchecked`, which means the stage never started; the two are mutually exclusive. |
 | `extraction_degraded` | `true` | the engine isolated at least one failure | The record may be short through no fault of the document. Paired with `extraction_dropped`; `success: true` with missing keys is otherwise indistinguishable from "the document does not contain them". |
-| `extraction_dropped` | `string[]` | alongside `extraction_degraded` | Sorted reason codes for what was isolated. **Closed vocabulary of exactly nine values.** Key extraction: `empty_response`, `unparseable_response`, `results_not_a_list`, `whole_doc:error`, `page:error`. Array extraction: `array:error` (the fan-out isolated a whole array), plus `array_empty_response`, `array_unparseable_response`, `array_rows_not_a_list` (the array agent itself returned no rows). Classes only, never document content. An earlier revision suffixed the exception class name (`page:OSError`), which exported a third-party implementation detail as contract; a guard test now fails if the emitted set drifts from these nine, so a new code arrives as a deliberate change to this table. |
+| `extraction_dropped` | `string[]` | alongside `extraction_degraded` | Sorted reason codes for what was isolated. **Closed vocabulary of exactly thirteen values.** Key extraction: `empty_response`, `unparseable_response`, `results_not_a_list`, `results_wrong_shape`, `whole_doc:error`, `page:error`. Array extraction: `array:error` (the fan-out isolated a whole array), plus `array_empty_response`, `array_unparseable_response`, `array_rows_not_a_list`, `array_rows_wrong_shape`, `array_rows_no_declared_column`, `array_tool_args_not_a_dict`. The two `*_wrong_shape` codes mean the response's top-level shape was right and its per-row shape was not — a positional table instead of an array of objects, or a row missing its `key` field — so **some or all** rows were discarded; `array_rows_no_declared_column` means a row matched none of the declared columns, i.e. the model renamed or re-cased one. Classes only, never document content, and counts go to the log rather than onto the wire. An earlier revision suffixed the exception class name (`page:OSError`), which exported a third-party implementation detail as contract; a guard test asserts EQUALITY between this set and what the code emits, across every emitting module, so a new code arrives as a deliberate change to this table. |
 | `codegen_validation_skipped` | `true` | the flake8 lint could not run | `codegen_validation_passed: false` means "not linted", not "lint failed". See the calculation result shape above. |
 
 Three edge cases that a reader checking only the happy path gets wrong:

@@ -11,8 +11,14 @@ contained by the OTHER layers, which are the real security boundary:
   * Layer 2 — the runner scrubs the environment and applies rlimits before
     exec'ing the generated script.
   * Layer 3 — the pod runs non-root on a read-only rootfs with default-deny
-    egress and per-job isolation. NOT "with no mounted secrets": an earlier
-    version of this line said that, and it is false. `workerPgSandbox`
+    egress. NOT "with per-job isolation", and NOT "with no mounted secrets":
+    earlier versions of this line said each of those, and both are false.
+    There is NO per-job isolation -- R12 below establishes that the sandboxed
+    child runs as the SAME UID as the worker process, and `workerPgSandbox`
+    runs CONCURRENCY 2 sharing one PID namespace and one `/tmp` emptyDir, so
+    co-resident lanes are two jobs of possibly different tenants with no
+    boundary between them. Claiming isolation here while citing R12 two lines
+    down made this block contradict its own reference. `workerPgSandbox`
     attaches the `database` shared-config group, because on the PG transport
     the queue IS Postgres, so the pod necessarily carries
     `DB_HOST/DB_USER/DB_PASSWORD/DB_NAME` and the NetworkPolicy necessarily
