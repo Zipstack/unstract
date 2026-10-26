@@ -543,13 +543,6 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
 
             status_enum = ExecutionStatus(validated_data["status"])
             logger.info(f"Updating status for execution {id} to {status_enum}")
-            # Count the file rows BEFORE taking the row lock, so the COUNTs no
-            # longer run while every other status writer for this execution waits.
-            # The lock never froze the file rows anyway — they are a separate table —
-            # so reading them first sees the same committed state the old in-lock
-            # read did, just without holding anyone up.
-            file_row_counts = self._count_file_rows_for_floor(execution, validated_data)
-
             # Status and file-count aggregates must commit together. Otherwise a
             # failure between the two writes can leave the row at a terminal status
             # with failed_files=None, which is_failure_run() reads as a success and
@@ -625,10 +618,12 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
                     locked_row=locked_row,
                 )
 
-                # File aggregates are not handled by update_execution; persist separately.
-                self._update_file_aggregates(
-                    execution, validated_data, file_row_counts=file_row_counts
-                )
+                # File aggregates are not handled by update_execution; persist
+                # separately. The floor's file-row count runs here, AFTER the lock,
+                # on purpose: a writer we waited behind (e.g. the reaper cascading
+                # files to ERROR) has committed by now, and a count taken before the
+                # wait would miss its rows and let failed_files be written too low.
+                self._update_file_aggregates(execution, validated_data)
 
                 # Reaper recovery: cascade the terminal status to any non-terminal
                 # file executions so the execution and its files agree (atomic with
@@ -977,8 +972,9 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
 
         Floored at what the file rows say, because the worker's aggregate only
         counts files it was dispatched and misses any rejected before that.
-        *file_row_counts* is the ``{"total", "errored"}`` the caller already read
-        (see :meth:`_count_file_rows`); without it the rows are counted here.
+        *file_row_counts* is the ``{"total", "errored"}`` a caller already read
+        under the row lock (the reaper's own aggregate); without it the rows are
+        counted here, which must also be under the lock.
         """
         update_fields: list[str] = []
         for field in ("total_files", "successful_files", "failed_files"):
@@ -994,35 +990,26 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
         execution.save(update_fields=update_fields)
 
     @staticmethod
-    def _count_file_rows_for_floor(execution, validated_data) -> "dict | None":
-        """The file-row counts :meth:`_floor_counters_at_file_rows` will need, or
-        ``None`` when the request writes no counter the floor applies to.
-        """
-        if (
-            validated_data.get("total_files") is None
-            and validated_data.get("failed_files") is None
-        ):
-            return None
-        return WorkflowExecutionInternalViewSet._count_file_rows(execution)
-
-    @staticmethod
     def _count_file_rows(execution) -> "dict | None":
         """Count this execution's file rows, total and ERROR, in one query.
 
         Returns ``{"total": int, "errored": int}``, or ``None`` if the count failed
-        (logged; the counters are then written as given, exactly as before).
+        (logged; the counters are then written as given). The query runs in its own
+        savepoint so a failed statement does not abort the caller's transaction and
+        take the status write down with it.
         """
         from django.db.models import Count, Q
 
         from workflow_manager.workflow_v2.enums import ExecutionStatus
 
         try:
-            return WorkflowFileExecution.objects.filter(
-                workflow_execution_id=execution.pk
-            ).aggregate(
-                total=Count("id"),
-                errored=Count("id", filter=Q(status=ExecutionStatus.ERROR.value)),
-            )
+            with transaction.atomic():
+                return WorkflowFileExecution.objects.filter(
+                    workflow_execution_id=execution.pk
+                ).aggregate(
+                    total=Count("id"),
+                    errored=Count("id", filter=Q(status=ExecutionStatus.ERROR.value)),
+                )
         except Exception:
             logger.exception(
                 "Could not read file rows to floor the counters for execution %s",

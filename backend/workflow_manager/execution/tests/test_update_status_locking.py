@@ -6,8 +6,9 @@ while holding it. ``FOR UPDATE`` conflicts with the ``FOR KEY SHARE`` every chil
 INSERT takes for its foreign-key check, so file-execution inserts for the same
 execution queued behind each status write.
 
-These tests pin the fix: ONE ``FOR NO KEY UPDATE`` per call, the COUNTs before it,
-child inserts not blocked — and status writers still serialized against each other,
+These tests pin the fix: ONE ``FOR NO KEY UPDATE`` per call, one COUNT query (taken
+after the lock, so it sees what any writer it waited behind committed), child inserts
+not blocked — and status writers still serialized against each other,
 so the terminal-one-way guard and the attempt counter stay correct under concurrency.
 """
 
@@ -102,7 +103,7 @@ class SingleLockTests(TestCase):
         ex.refresh_from_db()
         assert ex.status == ExecutionStatus.COMPLETED.value
 
-    def test_file_row_counts_run_before_the_lock_and_only_once(self):
+    def test_file_row_count_runs_once_and_after_the_lock(self):
         ex = self._exec(files=[ExecutionStatus.COMPLETED, ExecutionStatus.ERROR])
         with CaptureQueriesContext(connection) as ctx:
             _update_status(
@@ -121,7 +122,7 @@ class SingleLockTests(TestCase):
             if "COUNT(" in s and "WORKFLOW_FILE_EXECUTION" in s
         ]
         assert len(counts) == 1, sqls
-        assert counts[0] < lock_at
+        assert counts[0] > lock_at
         # The floor still applies: the rows say 2 total / 1 errored.
         ex.refresh_from_db()
         assert ex.total_files == 2
@@ -157,6 +158,37 @@ class SingleLockTests(TestCase):
             )
         assert out.data["status"] == "updated"
         ex.refresh_from_db()
+        assert ex.total_files == 0 and ex.failed_files == 0
+
+    def test_failed_count_query_does_not_roll_back_the_status_write(self):
+        """A statement error in the count aborts a Postgres transaction; the count's
+        own savepoint must contain it so the status and counters still commit.
+        """
+        ex = self._exec(files=[ExecutionStatus.ERROR])
+        calls = []
+
+        def broken_aggregate(*args, **kwargs):
+            calls.append(1)
+            with connection.cursor() as cur:
+                cur.execute("SELECT 1/0")
+
+        with patch(
+            "django.db.models.query.QuerySet.aggregate",
+            side_effect=broken_aggregate,
+            autospec=True,
+        ):
+            out = _update_status(
+                ex.id,
+                {
+                    "status": ExecutionStatus.ERROR.value,
+                    "total_files": 0,
+                    "failed_files": 0,
+                },
+            )
+        assert out.data["status"] == "updated", out.data
+        assert len(calls) == 1  # tried once, not retried
+        ex.refresh_from_db()
+        assert ex.status == ExecutionStatus.ERROR.value
         assert ex.total_files == 0 and ex.failed_files == 0
 
     def test_reaper_recovery_takes_one_lock_and_no_extra_count(self):
@@ -335,6 +367,48 @@ class ConcurrentStatusWriteTests(TransactionTestCase):
             assert (
                 WorkflowFileExecution.objects.filter(workflow_execution=ex).count() == 1
             )
+
+    def test_count_sees_file_errors_committed_while_waiting_for_the_lock(self):
+        """A callback that waited behind another writer must floor its counters at
+        what that writer committed. Here the holder (reaper-style) cascades the
+        files to ERROR; the waiting success callback corrects the status to
+        COMPLETED (ERROR is correctable) but must not write failed_files=0.
+        """
+        ex = self._exec()
+        WorkflowFileExecution.objects.create(
+            workflow_execution=ex,
+            file_name="f",
+            status=ExecutionStatus.EXECUTING.value,
+        )
+        t, box, release = self._hold_lock_inside_update_status(
+            ex.id,
+            {
+                "status": ExecutionStatus.ERROR.value,
+                "cascade_terminal_files": True,
+                "error_message": "reaper",
+            },
+        )
+        st, sbox = self._run(
+            _update_status,
+            ex.id,
+            {
+                "status": ExecutionStatus.COMPLETED.value,
+                "total_files": 1,
+                "successful_files": 1,
+                "failed_files": 0,
+            },
+        )
+        try:
+            st.join(1.0)
+            assert st.is_alive(), f"callback did not wait for the row lock: {sbox}"
+        finally:
+            release.set()
+            t.join(WAIT_SECONDS)
+            st.join(WAIT_SECONDS)
+        assert box["result"].data["status"] == "updated", box
+        assert sbox["result"].data["status"] == "updated", sbox
+        ex.refresh_from_db()
+        assert ex.failed_files == 1, "count missed rows committed during the wait"
 
     def test_status_writers_still_exclude_each_other(self):
         """A second writer must wait for the first to commit, then see its result:
