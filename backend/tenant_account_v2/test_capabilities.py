@@ -38,6 +38,7 @@ from platform_api.views import PlatformApiKeyViewSet
 from platform_audit.tests.base import AuditTestBase, make_user
 from rest_framework.exceptions import PermissionDenied
 from utils.tests.auth_seam import builtin_auth_service
+from utils.user_context import UserContext
 from workflow_manager.workflow_v2.models.workflow import Workflow
 from workflow_manager.workflow_v2.views import WorkflowViewSet
 
@@ -139,6 +140,10 @@ class CapabilityTestBase(AuditTestBase):
         spec = next(s for s in SPECS if s.key == key)
         Organization.objects.filter(pk=self.org.pk).update(**{spec.field: restricted})
         self.org.refresh_from_db()
+        # Stands in for an admin's change made in another request. The cached
+        # organization is dropped at every request end (request_finished), so
+        # no real request is served a row cached before the change.
+        UserContext.clear_organization_cache()
 
     def capabilities(self, user) -> dict[str, dict]:
         response = self.call(organization_capabilities, "get", user=user)
@@ -268,6 +273,19 @@ class CapabilitiesApiTests(CapabilityTestBase):
             response.data,
             {"restrict_llm_adapter_creation": True, "restrict_connector_creation": True},
         )
+
+    def test_a_change_is_seen_by_later_reads_in_the_same_request(self) -> None:
+        """Both views write through their own locked row. The organization the
+        request cached when the view looked it up must not keep the old values.
+        """
+        self.call(
+            organization_settings, "patch", data={"restrict_llm_adapter_creation": True}
+        )
+        self.assertTrue(UserContext.get_organization().restrict_llm_adapter_creation)
+        self.call(
+            organization_capabilities, "patch", data={"create_connectors": "admins_only"}
+        )
+        self.assertTrue(UserContext.get_organization().restrict_connector_creation)
 
     def test_each_change_is_audited_once(self) -> None:
         self.call(
