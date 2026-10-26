@@ -1,7 +1,7 @@
 """Row locking on the workflow-execution status write.
 
-``update_status`` used to take ``SELECT ... FOR UPDATE`` on the execution row twice
-(once in the view, again inside ``update_execution()``) and ran the file-row COUNTs
+For PG-transport executions, ``update_status`` used to take ``SELECT ... FOR UPDATE``
+on the execution row twice (once in the view, again inside ``update_execution()``) and ran the file-row COUNTs
 while holding it. ``FOR UPDATE`` conflicts with the ``FOR KEY SHARE`` every child-row
 INSERT takes for its foreign-key check, so file-execution inserts for the same
 execution queued behind each status write.
@@ -13,6 +13,7 @@ so the terminal-one-way guard and the attempt counter stay correct under concurr
 """
 
 import threading
+import time
 import uuid
 from unittest.mock import MagicMock, patch
 
@@ -27,8 +28,7 @@ from workflow_manager.workflow_v2.enums import ExecutionStatus
 from workflow_manager.workflow_v2.models.execution import WorkflowExecution
 from workflow_manager.workflow_v2.models.workflow import Workflow
 
-# Generous: only a broken lock makes the threads wait at all, and a hang must fail
-# the test rather than the CI job.
+# Generous: a hang must fail the test rather than the CI job.
 WAIT_SECONDS = 10
 
 
@@ -141,12 +141,19 @@ class SingleLockTests(TestCase):
         assert out.data.get("reason") == "already_final"
         self._assert_one_no_key_lock(ctx.captured_queries)
 
-    def test_count_failure_writes_counters_as_given(self):
+    def test_count_error_fails_the_request_and_commits_nothing(self):
+        """Any error in the count, not only a database one, fails the request
+        rather than committing counters the floor never checked.
+        """
         ex = self._exec(files=[ExecutionStatus.ERROR])
+
+        def broken_count(execution):
+            raise RuntimeError("count failed")
+
         with patch.object(
             WorkflowExecutionInternalViewSet,
             "_count_file_rows",
-            staticmethod(lambda execution: None),
+            staticmethod(broken_count),
         ):
             out = _update_status(
                 ex.id,
@@ -156,12 +163,14 @@ class SingleLockTests(TestCase):
                     "failed_files": 0,
                 },
             )
-        assert out.data["status"] == "updated"
+        assert out.status_code == 500, out.data
         ex.refresh_from_db()
-        assert ex.total_files == 0 and ex.failed_files == 0
+        assert ex.status == ExecutionStatus.EXECUTING.value
+        assert ex.total_files == 0
+        assert not ex.failed_files
 
     def test_failed_count_query_fails_the_request_and_commits_nothing(self):
-        """As on main: a statement error in the count aborts the transaction, so the
+        """A statement error in the count aborts the transaction, so the
         request fails (500, retried by the worker) instead of committing counters
         the floor never checked. Nothing is half-written.
         """
@@ -282,6 +291,25 @@ class ConcurrentStatusWriteTests(TransactionTestCase):
         t.start()
         return t, box
 
+    @staticmethod
+    def _wait_until_a_backend_waits_on_a_lock(thread, box):
+        """Block until some other connection to this database is waiting on a
+        lock, so "it waited" is observed rather than inferred from a timeout.
+        """
+        deadline = time.monotonic() + WAIT_SECONDS
+        while time.monotonic() < deadline:
+            assert thread.is_alive(), f"finished without waiting for the lock: {box}"
+            with connection.cursor() as cur:
+                cur.execute(
+                    "SELECT count(*) FROM pg_stat_activity "
+                    "WHERE datname = current_database() "
+                    "AND pid <> pg_backend_pid() AND wait_event_type = 'Lock'"
+                )
+                if cur.fetchone()[0]:
+                    return
+            time.sleep(0.05)
+        raise AssertionError(f"no backend ever waited on the row lock: {box}")
+
     def _hold_lock_inside_update_status(self, execution_id, data):
         """Start an update_status that pauses while it holds the row lock.
 
@@ -384,8 +412,7 @@ class ConcurrentStatusWriteTests(TransactionTestCase):
             },
         )
         try:
-            st.join(1.0)
-            assert st.is_alive(), f"callback did not wait for the row lock: {sbox}"
+            self._wait_until_a_backend_waits_on_a_lock(st, sbox)
         finally:
             release.set()
             t.join(WAIT_SECONDS)
@@ -448,8 +475,7 @@ class ConcurrentStatusWriteTests(TransactionTestCase):
             _update_status, ex.id, {"status": ExecutionStatus.EXECUTING.value}
         )
         try:
-            st.join(1.0)
-            assert st.is_alive(), f"second writer did not wait for the row lock: {sbox}"
+            self._wait_until_a_backend_waits_on_a_lock(st, sbox)
         finally:
             release.set()
             t.join(WAIT_SECONDS)
@@ -476,6 +502,7 @@ class ConcurrentStatusWriteTests(TransactionTestCase):
             ]
             for t, _ in runs:
                 t.join(WAIT_SECONDS)
+                assert not t.is_alive(), "a writer hung"
             for _, b in runs:
                 assert "error" not in b, b
             ex.refresh_from_db()
@@ -499,6 +526,7 @@ class ConcurrentStatusWriteTests(TransactionTestCase):
         runs = [self._run(bump) for _ in range(n)]
         for t, _ in runs:
             t.join(WAIT_SECONDS)
+            assert not t.is_alive(), "a writer hung"
         for _, b in runs:
             assert "error" not in b and b["result"].data["status"] == "updated", b
         ex.refresh_from_db()

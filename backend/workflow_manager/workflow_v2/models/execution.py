@@ -411,7 +411,7 @@ class WorkflowExecution(BaseModel):
             error (Optional[str], optional): Error message if any. Defaults to None.
             increment_attempt (bool, optional): Whether to increment attempt counter. Defaults to False.
             row_locked (bool, optional): True only when THIS instance was itself
-                read with ``select_for_update()`` in the current, still-open
+                read with ``select_for_update()`` (either mode) in the current, still-open
                 transaction. Its ``queue_message_id`` / ``status`` / ``attempts``
                 are then the persisted values under the lock, so the second
                 ``SELECT ... FOR NO KEY UPDATE`` round-trip is skipped. Passing it
@@ -432,7 +432,8 @@ class WorkflowExecution(BaseModel):
         with transaction.atomic():
             # Lock the row and read the PERSISTED marker + status together, so routing
             # AND the write are atomic. Never trust the (possibly stale) in-memory
-            # self.queue_message_id: a PG row snapshotted before dispatch recorded its
+            # self.queue_message_id — unless the caller passes row_locked=True, i.e.
+            # this instance was itself read under the lock (see the docstring): a PG row snapshotted before dispatch recorded its
             # handle, mis-routed to an unlocked legacy full save(), would write NULL
             # back into queue_message_id and permanently disable every guard. Under
             # this lock a concurrent _record_dispatch_handle serializes after us.

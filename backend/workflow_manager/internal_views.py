@@ -975,33 +975,24 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
         execution.save(update_fields=update_fields)
 
     @staticmethod
-    def _count_file_rows(execution) -> "dict | None":
+    def _count_file_rows(execution) -> dict:
         """Count this execution's file rows, total and ERROR, in one query.
 
-        Returns ``{"total": int, "errored": int}``, or ``None`` if the count failed
-        (logged; the floor is then skipped, as on main). Deliberately NOT in its own
-        savepoint: as on main, a database error here aborts the caller's
-        transaction, so the request fails and is retried rather than committing
-        counters the floor never checked (an under-counted failed_files would read
-        as a success and skip failure notifications).
+        Returns ``{"total": int, "errored": int}``. Errors are left to propagate:
+        the request then fails and the transaction rolls back, so the worker retries
+        instead of committing counters the floor never checked (an under-counted
+        failed_files would read as a success and skip failure notifications).
         """
         from django.db.models import Count, Q
 
         from workflow_manager.workflow_v2.enums import ExecutionStatus
 
-        try:
-            return WorkflowFileExecution.objects.filter(
-                workflow_execution_id=execution.pk
-            ).aggregate(
-                total=Count("id"),
-                errored=Count("id", filter=Q(status=ExecutionStatus.ERROR.value)),
-            )
-        except Exception:
-            logger.exception(
-                "Could not read file rows to floor the counters for execution %s",
-                execution.id,
-            )
-            return None
+        return WorkflowFileExecution.objects.filter(
+            workflow_execution_id=execution.pk
+        ).aggregate(
+            total=Count("id"),
+            errored=Count("id", filter=Q(status=ExecutionStatus.ERROR.value)),
+        )
 
     @staticmethod
     def _floor_counters_at_file_rows(execution, update_fields: "list[str]") -> None:
@@ -1016,9 +1007,6 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
             return
 
         counts = WorkflowExecutionInternalViewSet._count_file_rows(execution)
-        if counts is None:
-            return
-
         if wants_failed:
             execution.failed_files = max(execution.failed_files or 0, counts["errored"])
         if wants_total:
