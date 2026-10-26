@@ -584,11 +584,7 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
                     execution = WorkflowExecution.objects.select_for_update(
                         no_key=True
                     ).get(pk=execution.pk)
-                    locked_row = {
-                        "queue_message_id": execution.queue_message_id,
-                        "status": execution.status,
-                        "attempts": execution.attempts,
-                    }
+                    locked_row = execution.status_lock_snapshot()
                     protected = {
                         ExecutionStatus.COMPLETED.value,
                         ExecutionStatus.STOPPED.value,
@@ -620,9 +616,13 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
 
                 # File aggregates are not handled by update_execution; persist
                 # separately. The floor's file-row count runs here, AFTER the lock,
-                # on purpose: a writer we waited behind (e.g. the reaper cascading
-                # files to ERROR) has committed by now, and a count taken before the
-                # wait would miss its rows and let failed_files be written too low.
+                # on purpose: any status writer we waited behind (e.g. the reaper
+                # cascading files to ERROR) has committed by now, and a count taken
+                # before the wait would miss its rows and let failed_files be written
+                # too low. (A file row whose INSERT has not committed is not counted
+                # either way: Django's foreign keys are DEFERRABLE INITIALLY DEFERRED,
+                # so an open insert holds no lock on this row until it commits, and
+                # FOR UPDATE never waited for it.)
                 self._update_file_aggregates(execution, validated_data)
 
                 # Reaper recovery: cascade the terminal status to any non-terminal
@@ -849,16 +849,9 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
                 # Already locked above; hand the locked read over so the row is
                 # not locked a second time.
                 execution.update_execution(
-                    status=computed,
-                    locked_row={
-                        "queue_message_id": execution.queue_message_id,
-                        "status": execution.status,
-                        "attempts": execution.attempts,
-                    },
+                    status=computed, locked_row=execution.status_lock_snapshot()
                 )
                 self._restamp_execution_time_from_files(execution)
-                # The aggregate above already counted the file rows; reuse it rather
-                # than counting them again under the lock.
                 self._update_file_aggregates(
                     execution,
                     {
@@ -866,7 +859,6 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
                         "successful_files": counts["completed"],
                         "failed_files": counts["errored"],
                     },
-                    file_row_counts={"total": total, "errored": counts["errored"]},
                 )
                 logger.warning(
                     "Reaper safety-net: finalized stranded PG execution %s to %s "
@@ -965,16 +957,11 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
         execution.save(update_fields=["execution_time"])
 
     @staticmethod
-    def _update_file_aggregates(
-        execution, validated_data, file_row_counts: "dict | None" = None
-    ) -> None:
+    def _update_file_aggregates(execution, validated_data) -> None:
         """Persist total / failed / successful file counts when present.
 
         Floored at what the file rows say, because the worker's aggregate only
         counts files it was dispatched and misses any rejected before that.
-        *file_row_counts* is the ``{"total", "errored"}`` a caller already read
-        under the row lock (the reaper's own aggregate); without it the rows are
-        counted here, which must also be under the lock.
         """
         update_fields: list[str] = []
         for field in ("total_files", "successful_files", "failed_files"):
@@ -985,7 +972,7 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
             return
 
         WorkflowExecutionInternalViewSet._floor_counters_at_file_rows(
-            execution, update_fields, file_row_counts
+            execution, update_fields
         )
         execution.save(update_fields=update_fields)
 
@@ -1018,9 +1005,7 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
             return None
 
     @staticmethod
-    def _floor_counters_at_file_rows(
-        execution, update_fields: "list[str]", file_row_counts: "dict | None" = None
-    ) -> None:
+    def _floor_counters_at_file_rows(execution, update_fields: "list[str]") -> None:
         """Raise the counters being written to match the file rows on disk.
 
         Only ever corrects upward, and only to a count already true, so a run
@@ -1031,9 +1016,7 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
         if not (wants_failed or wants_total):
             return
 
-        counts = file_row_counts
-        if counts is None:
-            counts = WorkflowExecutionInternalViewSet._count_file_rows(execution)
+        counts = WorkflowExecutionInternalViewSet._count_file_rows(execution)
         if counts is None:
             return
 

@@ -191,7 +191,7 @@ class SingleLockTests(TestCase):
         assert ex.status == ExecutionStatus.ERROR.value
         assert ex.total_files == 0 and ex.failed_files == 0
 
-    def test_reaper_recovery_takes_one_lock_and_no_extra_count(self):
+    def test_reaper_recovery_takes_one_no_key_lock(self):
         from datetime import timedelta
 
         from django.utils import timezone
@@ -210,12 +210,6 @@ class SingleLockTests(TestCase):
         assert out["recovered"] == 1
         sqls, no_key, full = _lock_statements(ctx.captured_queries)
         assert len(no_key) == 1 and full == [], sqls
-        lock_at = sqls.index(no_key[0])
-        # Only the reaper's own aggregate counts the files under the lock.
-        counts_after_lock = [
-            s for s in sqls[lock_at:] if "COUNT(" in s and "WORKFLOW_FILE_EXECUTION" in s
-        ]
-        assert len(counts_after_lock) == 1, counts_after_lock
         ex.refresh_from_db()
         assert ex.status == ExecutionStatus.ERROR.value
         assert ex.total_files == 2 and ex.failed_files == 1
@@ -235,11 +229,7 @@ class SingleLockTests(TestCase):
             with CaptureQueriesContext(connection) as ctx:
                 locked.update_execution(
                     status=ExecutionStatus.COMPLETED,
-                    locked_row={
-                        "queue_message_id": locked.queue_message_id,
-                        "status": locked.status,
-                        "attempts": locked.attempts,
-                    },
+                    locked_row=locked.status_lock_snapshot(),
                 )
         _, no_key, full = _lock_statements(ctx.captured_queries)
         assert no_key == [] and full == []
@@ -307,11 +297,11 @@ class ConcurrentStatusWriteTests(TransactionTestCase):
         original = WorkflowExecutionInternalViewSet._update_file_aggregates
         state = {"thread": None}
 
-        def paused(execution, validated_data, file_row_counts=None):
+        def paused(execution, validated_data):
             if threading.get_ident() == state["thread"]:
                 locked.set()
                 assert release.wait(WAIT_SECONDS), "holder was never released"
-            return original(execution, validated_data, file_row_counts=file_row_counts)
+            return original(execution, validated_data)
 
         patcher = patch.object(
             WorkflowExecutionInternalViewSet,
@@ -409,6 +399,47 @@ class ConcurrentStatusWriteTests(TransactionTestCase):
         assert sbox["result"].data["status"] == "updated", sbox
         ex.refresh_from_db()
         assert ex.failed_files == 1, "count missed rows committed during the wait"
+
+    def test_uncommitted_file_insert_holds_no_lock_on_the_execution_row(self):
+        """Why counting after the lock can't "wait for" in-flight file inserts, under
+        either lock mode: Django's foreign keys are DEFERRABLE INITIALLY DEFERRED,
+        so an open INSERT takes its FOR KEY SHARE only at commit. Even main's plain
+        FOR UPDATE is granted at once, and the open row is invisible to the count.
+        """
+        ex = self._exec()
+        inserted, release = threading.Event(), threading.Event()
+
+        def insert_batch(execution_id=ex.id):
+            with transaction.atomic():
+                WorkflowFileExecution.objects.create(
+                    workflow_execution_id=execution_id,
+                    file_name="new",
+                    status=ExecutionStatus.PENDING.value,
+                )
+                inserted.set()
+                assert release.wait(WAIT_SECONDS), "inserter was never released"
+            return True
+
+        it, ibox = self._run(insert_batch)
+        assert inserted.wait(WAIT_SECONDS), ibox
+
+        def lock_and_count(execution_id=ex.id):
+            with transaction.atomic():
+                with connection.cursor() as cur:
+                    cur.execute("SET LOCAL lock_timeout = '2s'")
+                WorkflowExecution.objects.select_for_update().get(pk=execution_id)
+                return WorkflowFileExecution.objects.filter(
+                    workflow_execution_id=execution_id
+                ).count()
+
+        try:
+            lt, lbox = self._run(lock_and_count)
+            lt.join(WAIT_SECONDS)
+            assert lbox.get("result") == 0, lbox
+        finally:
+            release.set()
+            it.join(WAIT_SECONDS)
+        assert ibox.get("result") is True, ibox
 
     def test_status_writers_still_exclude_each_other(self):
         """A second writer must wait for the first to commit, then see its result:

@@ -396,6 +396,19 @@ class WorkflowExecution(BaseModel):
             f"error message: {self.error_message})"
         )
 
+    # The persisted fields update_execution() routes and guards on, read under the
+    # row lock. One list, so a caller's locked_row and the method's own locked read
+    # cannot drift apart.
+    STATUS_LOCK_FIELDS = ("queue_message_id", "status", "attempts")
+
+    def status_lock_snapshot(self) -> dict:
+        """The ``locked_row`` for :meth:`update_execution`, taken from this instance.
+
+        Only valid when this instance was itself read with ``select_for_update()``
+        in the still-open transaction.
+        """
+        return {field: getattr(self, field) for field in self.STATUS_LOCK_FIELDS}
+
     def update_execution(
         self,
         status: ExecutionStatus | None = None,
@@ -449,7 +462,7 @@ class WorkflowExecution(BaseModel):
                 locked = (
                     WorkflowExecution.objects.select_for_update(no_key=True)
                     .filter(pk=self.pk)
-                    .values("queue_message_id", "status", "attempts")
+                    .values(*self.STATUS_LOCK_FIELDS)
                     .first()
                 )
             if locked is None:
