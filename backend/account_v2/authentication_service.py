@@ -15,7 +15,7 @@ from utils.user_context import UserContext
 
 from account_v2.authentication_helper import AuthenticationHelper
 from account_v2.constants import DefaultOrg, ErrorMessage, UserLoginTemplate
-from account_v2.custom_exceptions import Forbidden, MethodNotImplemented
+from account_v2.custom_exceptions import MethodNotImplemented
 from account_v2.dto import (
     CallbackData,
     MemberData,
@@ -282,9 +282,8 @@ class AuthenticationService:
         role_ids: list[str],
         request: Request,
     ) -> list[str]:
-        if admin.role == UserRole.ADMIN.value:
-            return role_ids
-        raise Forbidden
+        # Authorised by AuthenticationController.authorize_role_change.
+        return role_ids
 
     def remove_organization_user_role(
         self,
@@ -294,9 +293,20 @@ class AuthenticationService:
         role_ids: list[str],
         request: Request,
     ) -> list[str]:
-        if admin.role == UserRole.ADMIN.value:
-            return role_ids
-        raise Forbidden
+        # Authorised by AuthenticationController.authorize_role_change.
+        return role_ids
+
+    def is_member_invite_role(self, role: str | None) -> bool:
+        """Whether a non-admin may invite with ``role`` (when the org lets
+        members manage members). Plugins with their own role names override.
+        """
+        return role is None or role == UserRole.USER.value
+
+    def is_member_assignable_role(self, role: str | None) -> bool:
+        """Whether a non-admin may grant ``role`` to someone else.
+        Never an admin role; plugins with more roles override.
+        """
+        return role == UserRole.USER.value
 
     def get_organization_by_org_id(self, id: str) -> OrganizationData:
         organizationData: OrganizationData = OrganizationData(

@@ -4,6 +4,7 @@ from tenant_account_v2 import groups_urls, invitation_urls, users_urls
 from tenant_account_v2.views import (
     get_organization,
     get_roles,
+    organization_capabilities,
     organization_settings,
     reset_password,
 )
@@ -17,6 +18,11 @@ urlpatterns = [
         "organization/settings",
         organization_settings,
         name="organization_settings",
+    ),
+    path(
+        "organization/capabilities/",
+        organization_capabilities,
+        name="organization_capabilities",
     ),
     path("reset_password", reset_password, name="reset_password"),
     path("", include(groups_urls)),

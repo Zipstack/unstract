@@ -202,6 +202,11 @@ class ResourceShareManagementMixin:
             if "shared_groups" in desired
             else set()
         )
+        org_before = (
+            bool(getattr(resource, "shared_to_org", False))
+            if "shared_to_org" in desired
+            else None
+        )
         ShareAuthorizationService.authorize_and_commit(
             actor=request.user, resource=resource, desired=desired
         )
@@ -222,6 +227,19 @@ class ResourceShareManagementMixin:
             self._read_axis(resource, "shared_groups")
             if "shared_groups" in desired
             else groups_before
+        )
+        from platform_audit.resources import record_sharing_change
+
+        record_sharing_change(
+            request,
+            resource,
+            users=(users_before, users_after) if "shared_users" in desired else None,
+            groups=(groups_before, groups_after) if "shared_groups" in desired else None,
+            shared_to_org=(
+                (org_before, bool(resource.shared_to_org))
+                if org_before is not None
+                else None
+            ),
         )
         notify_resource_group_share_changed(
             resource=resource,

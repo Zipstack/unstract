@@ -10,8 +10,16 @@ from django.db.models import Avg, Max, Min, Sum
 from django.db.models.functions import TruncDay, TruncHour, TruncWeek
 from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter, extend_schema, inline_serializer
+from drf_standardized_errors.openapi_serializers import (
+    ErrorResponse401Serializer,
+    ErrorResponse403Serializer,
+    ErrorResponse429Serializer,
+    ValidationErrorResponseSerializer,
+)
 from permissions.permission import IsOrganizationMember
-from rest_framework import status, viewsets
+from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.permissions import IsAuthenticated
@@ -21,12 +29,15 @@ from rest_framework.throttling import UserRateThrottle
 from utils.filters.ordering_filter import DeterministicOrderingFilter
 from utils.user_context import UserContext
 
+from .attention import collect_attention
+from .attribution import failure_attribution
 from .cache import (
     cache_metrics_response,
     mget_metrics_buckets,
     mset_metrics_buckets,
 )
 from .models import (
+    ActivitySurface,
     EventMetricsDaily,
     EventMetricsHourly,
     EventMetricsMonthly,
@@ -37,6 +48,7 @@ from .serializers import (
     DeploymentUsageQuerySerializer,
     EventMetricsHourlySerializer,
     MetricsQuerySerializer,
+    RecentActivityQuerySerializer,
 )
 from .services import MetricsQueryService
 
@@ -883,6 +895,86 @@ class DashboardMetricsViewSet(viewsets.ReadOnlyModelViewSet):
 
         return Response(response_data, status=status.HTTP_200_OK)
 
+    @extend_schema(
+        operation_id="metrics_recent_activity",
+        tags=["dashboard-metrics"],
+        parameters=[
+            RecentActivityQuerySerializer,
+            OpenApiParameter(
+                "limit",
+                OpenApiTypes.INT,
+                description="Default form only: rows to return (default 10, max 50).",
+            ),
+            OpenApiParameter(
+                "refresh", OpenApiTypes.BOOL, description="true bypasses the cache."
+            ),
+        ],
+        request=None,
+        responses={
+            200: inline_serializer(
+                name="RecentActivityResponse",
+                fields={
+                    "activity": inline_serializer(
+                        name="RecentActivityRow",
+                        many=True,
+                        fields={
+                            "id": serializers.UUIDField(),
+                            "execution_id": serializers.UUIDField(),
+                            "type": serializers.ChoiceField(
+                                choices=["etl", "api", "workflow"]
+                            ),
+                            "surface": serializers.ChoiceField(
+                                choices=ActivitySurface.choices,
+                                required=False,
+                                help_text="Paged form only.",
+                            ),
+                            "file_name": serializers.CharField(),
+                            "status": serializers.CharField(),
+                            "workflow_name": serializers.CharField(),
+                            "created_at": serializers.DateTimeField(),
+                            "execution_time": serializers.FloatField(allow_null=True),
+                            "total_tokens": serializers.IntegerField(),
+                            "cost": serializers.FloatField(),
+                        },
+                    ),
+                    "start_date": serializers.DateTimeField(
+                        required=False, help_text="Paged form only."
+                    ),
+                    "end_date": serializers.DateTimeField(
+                        required=False, help_text="Paged form only."
+                    ),
+                    "page": serializers.IntegerField(
+                        required=False, help_text="Paged form only."
+                    ),
+                    "page_size": serializers.IntegerField(
+                        required=False, help_text="Paged form only."
+                    ),
+                    "count": serializers.IntegerField(
+                        required=False,
+                        help_text="Paged form only: rows matching every filter.",
+                    ),
+                    "status_counts": serializers.DictField(
+                        child=serializers.IntegerField(),
+                        required=False,
+                        help_text=(
+                            "Paged form only: rows per status in the range and "
+                            "surfaces, ignoring the status filter."
+                        ),
+                    ),
+                },
+            ),
+            400: ValidationErrorResponseSerializer,
+            401: ErrorResponse401Serializer,
+            403: ErrorResponse403Serializer,
+            429: ErrorResponse429Serializer,
+        },
+        description=(
+            "Recent file executions, newest first. Without any of start_date, "
+            "end_date, status, surface, page or page_size (with a value) the response is the "
+            "original one: limit rows and no counts. Passing any of them returns "
+            "the paged form with counts. See dashboard_metrics/README.md."
+        ),
+    )
     @action(detail=False, methods=["get"], url_path="recent-activity")
     @cache_metrics_response(endpoint="recent_activity")
     def recent_activity(self, request: Request) -> Response:
@@ -895,13 +987,21 @@ class DashboardMetricsViewSet(viewsets.ReadOnlyModelViewSet):
 
         Query Parameters:
             limit: Maximum records to return (default 10, max 50)
+            The paged form (DG-02) is described in the README.
 
         Returns:
             200: List of recent activity items
-            500: Error occurred
+            400: Invalid paged-form parameters
         """
         organization = self._get_organization()
         org_id = str(organization.id)
+
+        if any(
+            request.query_params.get(param)
+            for param in RecentActivityQuerySerializer.PAGED_PARAMS
+        ):
+            return self._recent_activity_page(request, org_id)
+
         try:
             limit = min(int(request.query_params.get("limit", 10)), 50)
         except (ValueError, TypeError):
@@ -909,6 +1009,30 @@ class DashboardMetricsViewSet(viewsets.ReadOnlyModelViewSet):
 
         data = MetricsQueryService.get_recent_activity(org_id, limit)
         return Response({"activity": data})
+
+    def _recent_activity_page(self, request: Request, org_id: str) -> Response:
+        serializer = RecentActivityQuerySerializer(data=request.query_params)
+        serializer.is_valid(raise_exception=True)
+        params = serializer.validated_data
+
+        page = MetricsQueryService.get_activity_page(
+            org_id,
+            start_date=params["start_date"],
+            end_date=params["end_date"],
+            statuses=params.get("status"),
+            surfaces=params.get("surface"),
+            page=params["page"],
+            page_size=params["page_size"],
+        )
+        return Response(
+            {
+                "start_date": params["start_date"].isoformat(),
+                "end_date": params["end_date"].isoformat(),
+                "page": params["page"],
+                "page_size": params["page_size"],
+                **page,
+            }
+        )
 
     @action(detail=False, methods=["get"], url_path="workflow-token-usage")
     @cache_metrics_response(endpoint="workflow_token_usage")
@@ -946,6 +1070,60 @@ class DashboardMetricsViewSet(viewsets.ReadOnlyModelViewSet):
                 "range_truncated": params["range_truncated"],
                 "deployments": data,
             }
+        )
+
+    @action(detail=False, methods=["get"], url_path="attention")
+    def attention(self, request: Request) -> Response:
+        """Open items that need attention in the range (PB-T14).
+
+        Failing pipelines and API deployments in OSS; cloud apps add their own
+        kinds. Read live, not cached. Contract:
+        ``contract/attention-response.schema.json``.
+
+        Query Parameters:
+            start_date: Start of date range (ISO 8601). Default: 30 days ago
+            end_date: End of date range (ISO 8601). Default: now
+
+        Returns:
+            200: Items, and ``failed_kinds`` naming any kind that could not load
+        """
+        query_serializer = MetricsQuerySerializer(data=request.query_params)
+        query_serializer.is_valid(raise_exception=True)
+        params = query_serializer.validated_data
+        organization = self._get_organization()
+
+        items, failed_kinds = collect_attention(
+            organization, params["start_date"], params["end_date"]
+        )
+        return Response(
+            {
+                "start_date": params["start_date"].isoformat(),
+                "end_date": params["end_date"].isoformat(),
+                "items": items,
+                "failed_kinds": failed_kinds,
+            }
+        )
+
+    @action(detail=False, methods=["get"], url_path="attribution")
+    def attribution(self, request: Request) -> Response:
+        """Failed pages by source and by day for the range (PB-T14).
+
+        Totals equal the ``failed_pages`` metric for the same range. Read
+        live, not cached. Contract: ``contract/attribution-response.schema.json``.
+
+        Query Parameters:
+            start_date: Start of date range (ISO 8601). Default: 30 days ago
+            end_date: End of date range (ISO 8601). Default: now
+        """
+        query_serializer = MetricsQuerySerializer(data=request.query_params)
+        query_serializer.is_valid(raise_exception=True)
+        params = query_serializer.validated_data
+        organization = self._get_organization()
+
+        return Response(
+            failure_attribution(
+                str(organization.id), params["start_date"], params["end_date"]
+            )
         )
 
     @action(detail=False, methods=["get"], url_path="health")

@@ -1,8 +1,11 @@
 import logging
+from collections.abc import Callable
+from contextlib import nullcontext
 from typing import Any
 
 from django.conf import settings
 from django.contrib.auth import logout as django_logout
+from django.db import connection, transaction
 from django.db.utils import IntegrityError
 from django.http import HttpRequest
 from django.middleware import csrf
@@ -45,12 +48,14 @@ from account_v2.enums import UserRole
 from account_v2.exceptions import OrganizationNotExist
 from account_v2.models import Organization, User
 from account_v2.organization import OrganizationService
+from account_v2.organization_details import with_member_details
 from account_v2.serializer import (
     GetOrganizationsResponseSerializer,
     OrganizationSerializer,
     SetOrganizationsResponseSerializer,
 )
 from account_v2.user import UserService
+from account_v2.user_profile import with_profile_overrides
 
 logger = logging.getLogger(__name__)
 
@@ -109,11 +114,12 @@ class AuthenticationController:
         """List a user's organizations.
 
         Args:
-            user (User): User instance
-            z_code (str): _description_
+            request: the authenticated request.
 
         Returns:
-            list[OrganizationData]: _description_
+            Response with ``message`` and ``organizations`` (see
+            account_v2/ReadMe.md), or 412 with the session logged out if the
+            organizations can't be listed.
         """
         try:
             organizations = self.auth_service.user_organizations(request)
@@ -142,8 +148,23 @@ class AuthenticationController:
 
         CacheService.set_user_organizations(user.user_id, list(org_ids))
 
+        # Under ATOMIC_REQUESTS a failed query aborts the request's
+        # transaction; a savepoint keeps the rest of the request usable.
+        guard = transaction.atomic() if connection.in_atomic_block else nullcontext()
+        try:
+            with guard:
+                listed: list[Any] = with_member_details(organizations, user)
+        except Exception:
+            # The details are optional; the list itself must still load.
+            logger.exception(
+                "Could not add member details to the organization list "
+                "for user %s (%d organizations)",
+                user.user_id,
+                len(organizations),
+            )
+            listed = organizations
         serialized_organizations = GetOrganizationsResponseSerializer(
-            organizations, many=True
+            listed, many=True
         ).data
         response = Response(
             status=status.HTTP_200_OK,
@@ -227,7 +248,9 @@ class AuthenticationController:
                         user.email,
                     )
 
-            user_info: UserInfo | None = self.get_user_info(request)
+            user_info: UserInfo | None = self.get_user_info(
+                request, organization_id=organization_id
+            )
             serialized_user_info = SetOrganizationsResponseSerializer(user_info).data
             organization_info = OrganizationSerializer(organization).data
             response: Response = Response(
@@ -253,8 +276,25 @@ class AuthenticationController:
             return response
         return Response(status=status.HTTP_403_FORBIDDEN)
 
-    def get_user_info(self, request: Request) -> UserInfo | None:
-        return self.auth_service.get_user_info(request)
+    def get_user_info(
+        self, request: Request, organization_id: str | None = None
+    ) -> UserInfo | None:
+        """The auth service's user info, with the locally edited name and photo.
+
+        Every auth plugin's result passes through here, so the edits show in the
+        profile and set-organization responses whichever provider signed the
+        user in. `organization_id` scopes the photo URL; it defaults to the
+        session's organization.
+        """
+        user_info = self.auth_service.get_user_info(request)
+        user = getattr(request, "user", None)
+        if not user_info or not isinstance(user, User):
+            return user_info
+        return with_profile_overrides(
+            user_info,
+            user,
+            organization_id or UserSessionUtils.get_organization_id(request),
+        )
 
     def is_admin_by_role(self, role: str) -> bool:
         """Check the role is act as admin in the context of authentication
@@ -341,6 +381,7 @@ class AuthenticationController:
         org_id: str,
         user_list: list[dict[str, str | None]],
         request: HttpRequest,
+        on_invited: Callable[[dict[str, str | None]], None] | None = None,
     ) -> list[UserInviteResponse]:
         """Invites users to join an organization.
 
@@ -349,14 +390,16 @@ class AuthenticationController:
             org_id (str): ID of the organization to which users are invited.
             user_list (list[dict[str, Union[str, None]]]):
                 List of user details for invitation.
+            on_invited: Called with each item the identity provider accepted,
+                as soon as it does, so a later item raising cannot lose the
+                record of the invitations already sent.
 
         Returns:
             list[UserInviteResponse]: List of responses for each
                 user invitation.
         """
         admin_user = OrganizationMemberService.get_user_by_id(id=admin.id)
-        if not self.auth_service.is_organization_admin(admin_user):
-            raise Forbidden()
+        self.authorize_invite(admin_user, [item.get("role") for item in user_list])
         response = []
         for user_item in user_list:
             email = user_item.get("email")
@@ -373,6 +416,8 @@ class AuthenticationController:
                         admin_user, org_id, email, role=role, request=request
                     )
                     message = "User invitation successful."
+                    if status and on_invited:
+                        on_invited(user_item)
 
                 response.append(
                     UserInviteResponse(
@@ -433,6 +478,67 @@ class AuthenticationController:
             if admin_count <= 1:
                 raise Forbidden("Cannot demote the only admin of the organization")
 
+    def _member_management_open(self, actor: OrganizationMember) -> bool:
+        """Whether ``actor`` (not an admin) may manage members at all."""
+        from tenant_account_v2.capabilities import Capability, opened_to_members
+
+        return opened_to_members(
+            actor.user, UserContext.get_organization(), Capability.MANAGE_MEMBERS
+        )
+
+    def _refuse_members(self) -> None:
+        from tenant_account_v2.capabilities import SPECS_BY_KEY, Capability
+
+        raise Forbidden(SPECS_BY_KEY[Capability.MANAGE_MEMBERS].message())
+
+    def authorize_invite(self, actor: OrganizationMember | None, roles: list) -> None:
+        """Admins invite with any role. A member may, when the org lets members
+        manage members, invite with the member role only.
+        """
+        if actor is None:  # not a member of this org
+            raise Forbidden()
+        if self.auth_service.is_organization_admin(actor):
+            return
+        if not self._member_management_open(actor):
+            self._refuse_members()
+        is_member_role = getattr(self.auth_service, "is_member_invite_role", None)
+        # A plugin that does not say which roles members may use refuses them
+        # (plugins need not inherit AuthenticationService).
+        if is_member_role is None or not all(is_member_role(role) for role in roles):
+            raise Forbidden("Members can invite with the user role only.")
+
+    def authorize_role_change(
+        self,
+        actor: OrganizationMember | None,
+        target: OrganizationMember,
+        role: str,
+        removing: bool = False,
+    ) -> None:
+        """Admins change any role. A member may, when the org lets members
+        manage members, grant a member-assignable role to another member who
+        is not an admin. Removing roles, granting admin, and changing one's own
+        role stay admin-only.
+
+        The check reads the target's role before the write without a lock, so
+        an admin promotion landing in between can be overwritten. Accepted: it
+        needs an admin and a member acting on the same person at once.
+        """
+        if actor is None:  # not a member of this org
+            raise Forbidden()
+        if self.auth_service.is_organization_admin(actor):
+            return
+        if not self._member_management_open(actor):
+            self._refuse_members()
+        if removing:
+            raise Forbidden("Only admins can remove a member's role.")
+        if target.user_id == actor.user_id:
+            raise Forbidden("You cannot change your own role.")
+        if self.is_admin_by_role(target.role):
+            raise Forbidden("Only admins can change an admin's role.")
+        is_assignable = getattr(self.auth_service, "is_member_assignable_role", None)
+        if is_assignable is None or not is_assignable(role):
+            raise Forbidden("Only admins can grant this role.")
+
     def add_user_role(
         self, request: Request, org_id: str, email: str, role: str
     ) -> str | None:
@@ -441,6 +547,7 @@ class AuthenticationController:
         admin_user = OrganizationMemberService.get_user_by_id(id=admin.id)
         user = OrganizationMemberService.get_user_by_email(email=email)
         if user:
+            self.authorize_role_change(admin_user, user, role)
             current_roles = self.auth_service.add_organization_user_role(
                 admin_user, org_id, user.user.user_id, [role], request
             )
@@ -463,6 +570,9 @@ class AuthenticationController:
         admin_user = OrganizationMemberService.get_user_by_id(id=admin.id)
         organization_member = OrganizationMemberService.get_user_by_email(email=email)
         if organization_member:
+            self.authorize_role_change(
+                admin_user, organization_member, role, removing=True
+            )
             current_roles = self.auth_service.remove_organization_user_role(
                 admin_user, org_id, organization_member.user.user_id, [role], request
             )
