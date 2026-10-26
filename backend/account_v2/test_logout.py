@@ -14,16 +14,20 @@ from unittest.mock import patch
 
 from django.conf import settings
 from django.http import HttpResponse, HttpResponseRedirect
-from django.test import Client, TestCase
+from django.test import Client, TestCase, override_settings
 
 from account_v2.models import User
 
 LOGOUT_URL = f"/{settings.PATH_PREFIX}/logout"
+# Pinned rather than read from the environment: the built-in sign-out redirects
+# here, and a cloud build's settings leave it None when the variable is unset.
+WEB_APP_ORIGIN = "https://app.example.com"
 # Shaped like the cloud auth plugin's answer: a cross-origin identity-provider
 # sign-out that a fetch or XHR caller cannot follow.
 IDP_LOGOUT_URL = "https://id.example.com/v2/logout?returnTo=https%3A%2F%2Fapp.example.com"
 
 
+@override_settings(WEB_APP_ORIGIN_URL=WEB_APP_ORIGIN)
 class LogoutEndpointTests(TestCase):
     def setUp(self) -> None:
         for target, value in (
@@ -72,13 +76,13 @@ class LogoutEndpointTests(TestCase):
     def test_get_redirects_and_ends_session(self) -> None:
         response = self.client.get(LOGOUT_URL)
         self.assertEqual(response.status_code, 302)
-        self.assertEqual(response["Location"], settings.WEB_APP_ORIGIN_URL)
+        self.assertEqual(response["Location"], WEB_APP_ORIGIN)
         self.assertFalse(self._signed_in())
 
     def test_post_with_csrf_token_returns_redirect_url_and_ends_session(self) -> None:
         response = self._send("post")
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json(), {"redirect_url": settings.WEB_APP_ORIGIN_URL})
+        self.assertEqual(response.json(), {"redirect_url": WEB_APP_ORIGIN})
         self.assertFalse(self._signed_in())
 
     def test_get_passes_identity_provider_redirect_through(self) -> None:
