@@ -20,6 +20,11 @@ def authentication_middleware(func: Any) -> Any:
     return wrapper
 
 
+def _mask_token(token: str) -> str:
+    """Return a short prefix of a token that is safe to log."""
+    return f"{token[:4]}..."
+
+
 class AuthenticationMiddleware:
     @classmethod
     def validate_bearer_token(cls, token: str | None) -> bool:
@@ -34,20 +39,22 @@ class AuthenticationMiddleware:
             cursor.close()
             if not result_row or len(result_row) == 0:
                 current_app.logger.error(
-                    f"Authentication failed. bearer token not found {token}"
+                    "Authentication failed. bearer token not found %s",
+                    _mask_token(token),
                 )
                 return False
             platform_key = str(result_row[1])
             is_active = bool(result_row[2])
             if not is_active:
                 current_app.logger.error(
-                    f"Token is not active. Activate \
-                        before using it. token {token}"
+                    "Token is not active. Activate before using it. token %s",
+                    _mask_token(token),
                 )
                 return False
             if platform_key != token:
                 current_app.logger.error(
-                    f"Authentication failed. Invalid bearer token: {token}"
+                    "Authentication failed. Invalid bearer token: %s",
+                    _mask_token(token),
                 )
                 return False
 

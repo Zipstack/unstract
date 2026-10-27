@@ -56,3 +56,26 @@ def test_db_error_denies_access(app_ctx: None, monkeypatch: pytest.MonkeyPatch) 
 
     monkeypatch.setattr(platform, "safe_cursor", _boom)
     assert platform.validate_bearer_token("test-token") is False
+
+
+SECRET_TOKEN = "abcd-1234-secret-platform-key"
+
+
+@pytest.mark.parametrize(
+    "result_row",
+    [None, ("id", SECRET_TOKEN, False), ("id", "some-other-key", True)],
+    ids=["unknown", "inactive", "mismatched"],
+)
+def test_rejection_logs_only_a_token_prefix(
+    app_ctx: None,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    result_row: Any,
+) -> None:
+    _mock_safe_cursor(monkeypatch, result_row)
+
+    with caplog.at_level("ERROR"):
+        assert platform.validate_bearer_token(SECRET_TOKEN) is False
+
+    assert "abcd..." in caplog.text
+    assert SECRET_TOKEN not in caplog.text

@@ -155,6 +155,10 @@ function Header({
     };
     setIsExportLoading(true);
     getAllUsers().then((users) => {
+      // getAllUsers has already shown the error and cleared the loading state.
+      if (!users) {
+        return;
+      }
       if (users.length < 2) {
         handleExport([details?.created_by], details, false);
       } else {

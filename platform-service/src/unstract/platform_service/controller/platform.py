@@ -78,6 +78,11 @@ def execute_query(query: str, params: tuple = ()) -> Any:
         return result_row[0]
 
 
+def _mask_token(token: str) -> str:
+    """Return a short prefix of a token that is safe to log."""
+    return f"{token[:4]}..."
+
+
 def validate_bearer_token(token: str | None) -> bool:
     if token is None:
         app.logger.error("Authentication failed. Empty bearer token")
@@ -93,17 +98,24 @@ def validate_bearer_token(token: str | None) -> bool:
         with safe_cursor(query, (token,)) as cursor:
             result_row = cursor.fetchone()
             if not result_row or len(result_row) == 0:
-                app.logger.error(f"Authentication failed. bearer token not found {token}")
+                app.logger.error(
+                    "Authentication failed. bearer token not found %s",
+                    _mask_token(token),
+                )
                 return False
             platform_key = str(result_row[1])
             is_active = bool(result_row[2])
             if not is_active:
                 app.logger.error(
-                    f"Token is not active. Activate before using it. token {token}"
+                    "Token is not active. Activate before using it. token %s",
+                    _mask_token(token),
                 )
                 return False
             if platform_key != token:
-                app.logger.error(f"Authentication failed. Invalid bearer token: {token}")
+                app.logger.error(
+                    "Authentication failed. Invalid bearer token: %s",
+                    _mask_token(token),
+                )
                 return False
             return True
     except Exception as e:
