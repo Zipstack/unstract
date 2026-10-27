@@ -93,13 +93,19 @@ def test_malformed_token_is_rejected_before_the_query(
     """A non-UUID token would make Postgres quote it back in a logged error."""
     malformed = SECRET_TOKEN + "x"
 
-    def _no_query(query: str, params: tuple = ()) -> Any:
-        raise AssertionError("malformed token reached the database")
+    queries: list[tuple] = []
+    _mock_safe_cursor(monkeypatch, None)
+    recording_cursor = platform.safe_cursor
 
-    monkeypatch.setattr(platform, "safe_cursor", _no_query)
+    def _recording(query: str, params: tuple = ()) -> Any:
+        queries.append(params)
+        return recording_cursor(query, params)
+
+    monkeypatch.setattr(platform, "safe_cursor", _recording)
 
     with caplog.at_level("ERROR"):
         assert platform.validate_bearer_token(malformed) is False
 
+    assert queries == []
     assert "abcd..." in caplog.text
     assert malformed not in caplog.text
