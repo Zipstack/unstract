@@ -9,47 +9,49 @@ classification and convergence stay in relmgr.py.
 
 import argparse
 import datetime as dt
+import http.client
 import json
 import os
 import re
-import subprocess
 import sys
 import time
+import traceback
+import urllib.error
 import urllib.parse
+import urllib.request
 
 import relmgr as rm
 
-WINDOW = dt.timedelta(
-    days=184
-)  # on-prem support window from the chart push date: 6 months + 1 day buffer
+# On-prem support window from the line's latest stable chart push, so each patch restarts it.
+WINDOW = dt.timedelta(days=184)  # 184 days covers the longest 6-month span
 WINDOW_LINES = (
     6  # and only the newest 6 on-prem GA lines are supported, whichever ends first
 )
-# Per repo, so both repos run this same file: (probe artifact, targets, targets where only the latest GA line is
-# supported, targets supported while the branch exists: retired only when another repo's Retire names the line,
-# repo whose tags this repo's lines pin in pyproject.toml or None, tag prefix of this repo's lines).
-# PROBE is an artifact known to exist; it proves the token can read packages (a 404 alone is ambiguous).
+# Per repo, so both repos run this same file: (targets, targets where only the latest GA line is supported,
+# targets supported while the branch exists: retired only when another repo's Retire names the line, repo whose
+# tags this repo's lines pin in pyproject.toml or None, tag prefix of this repo's lines).
+# Artifacts are <kind>/<package> in Artifact Registry; RELSTATE_AR_<KIND> names the repository (ar_repository).
 # TARGETS: target -> (artifact holding RC / promoted builds, GA anchor artifact). Cloud GA = the vX.Y.Z retag
 # of the build artifact; on-prem GA = the chart push. GIT instead of an artifact: the line's own git tags, the stable
 # tag's date as the GA date (OSS lines: cloud builds them from source, so they have no artifact).
 # OSS lines are tagged ee-vX.Y.Z(-rc.N); plain vX.Y.Z tags there are community releases from main, never a line's.
 GIT = "git"
 REPOS = {
+    # Cloud: each target's build artifact is backend, since every build pushes it (all services share one tag).
     "unstract-cloud": (
-        "cloud/smoke",
         {
-            "cloud": ("cloud/release", "cloud/release"),
-            "on-prem": ("on-prem/release", "on-prem/chart"),
+            "cloud": ("cloud/backend", "cloud/backend"),
+            "on-prem": ("on-prem/backend", "chart/unstract-platform"),
         },
         {"cloud"},
         set(),
         "Zipstack/unstract",
         "",
     ),
-    "unstract": (None, {"oss": (GIT, GIT)}, set(), {"oss"}, None, "ee-"),
+    "unstract": ({"oss": (GIT, GIT)}, set(), {"oss"}, None, "ee-"),
 }
-OWNER, PKG_PREFIX = (
-    os.environ.get("GITHUB_REPOSITORY", "zipstack/unstract-cloud").lower().split("/")
+SLUG = (
+    os.environ.get("GITHUB_REPOSITORY", "zipstack/unstract-cloud").lower().split("/")[1]
 )
 
 
@@ -59,52 +61,102 @@ def ver_re(prefix):
 
 def use(slug):
     """Load the REPOS config of slug (a repo name) into the module globals."""
-    global PROBE, TARGETS, LATEST_ONLY, KEPT, PINS, PREFIX, VER_RE
+    global TARGETS, LATEST_ONLY, KEPT, PINS, PREFIX, VER_RE
     if slug not in REPOS:
         raise RuntimeError(
             f"relstate has no config for repo {slug!r} (GITHUB_REPOSITORY); known: {', '.join(REPOS)}"
         )
-    PROBE, TARGETS, LATEST_ONLY, KEPT, PINS, PREFIX = REPOS[slug]
+    TARGETS, LATEST_ONLY, KEPT, PINS, PREFIX = REPOS[slug]
     VER_RE = ver_re(PREFIX)
 
 
-use(PKG_PREFIX)
+use(SLUG)
 
 
-def _gh(*args):
-    return subprocess.run(
-        ["gh", "api", "--paginate", *args], capture_output=True, text=True
-    )
+AR_API = "https://artifactregistry.googleapis.com/v1"
 
 
-def _versions_url(artifact):
-    return f"/orgs/{OWNER}/packages/container/{urllib.parse.quote(f'{PKG_PREFIX}/{artifact}', safe='')}/versions?per_page=100"
+def ar_repository(kind):
+    """The Artifact Registry repository resource (projects/<p>/locations/<l>/repositories/<r>) of an artifact kind,
+    from RELSTATE_AR_<KIND>: the calling workflow sets it, so no registry location lives in this file.
+    """
+    var = "RELSTATE_AR_" + kind.upper().replace("-", "_")
+    if not (repo := os.environ.get(var)):
+        raise RuntimeError(
+            f"registry read {kind}/*: set {var} to projects/<p>/locations/<l>/repositories/<r>"
+        )
+    return repo
+
+
+def _ar_get(url, what):
+    """GET an Artifact Registry API url as JSON, or None when it answers 404. Raises on any other failure."""
+    if not (token := os.environ.get("RELSTATE_AR_TOKEN")):
+        raise RuntimeError(
+            f"registry read {what}: set RELSTATE_AR_TOKEN to an access token"
+        )
+    req = urllib.request.Request(url, headers={"Authorization": f"Bearer {token}"})
+    try:
+        with urllib.request.urlopen(req, timeout=60) as r:
+            return json.load(r)
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            return None
+        try:
+            detail = e.read().decode(errors="replace")[:300]
+        except (OSError, http.client.HTTPException) as r:  # the error body itself cut off
+            detail = repr(r)
+        raise RuntimeError(f"registry read {what}: HTTP {e.code}: {detail}") from e
+    except (
+        OSError,
+        http.client.HTTPException,
+        ValueError,
+    ) as e:  # network (URLError), timeout, a cut-off response, bad JSON
+        raise RuntimeError(f"registry read {what}: {e!r}") from e
+
+
+def _ar_versions(artifact):
+    """Every version of artifact (<kind>/<package>) with its tags, or None when its first page answers 404."""
+    kind, package = artifact.split("/", 1)
+    url = f"{AR_API}/{ar_repository(kind)}/packages/{urllib.parse.quote(package, safe='')}/versions"
+    out, page = [], ""
+    while True:
+        q = {"view": "FULL", "pageSize": 1000, **({"pageToken": page} if page else {})}
+        if (body := _ar_get(f"{url}?{urllib.parse.urlencode(q)}", artifact)) is None:
+            if page:  # a later page vanished: the list is incomplete, not empty
+                raise RuntimeError(f"registry read {artifact}: HTTP 404 on page {page}")
+            return None
+        out += body.get("versions", [])
+        if not (page := body.get("nextPageToken")):
+            return out
 
 
 def registry_tags(artifact):
-    """{tag: {digest, pushed_at}} for one GHCR artifact of this repo. Raises on any read failure.
+    """{tag: {id, digest, pushed_at}} for one Artifact Registry artifact (<kind>/<package>). Raises on any read
+    failure. pushed_at is the version's createTime, to the second.
 
-    A 404 is only read as "artifact not pushed yet" when the token can read PROBE; otherwise it may be
-    a token that cannot read packages, and an empty registry would read as "nothing enabled".
+    A 404 is only read as "artifact not pushed yet" when the artifact's own repository reads; otherwise it may be
+    a wrong RELSTATE_AR_<KIND>, and an empty registry would read as "nothing enabled".
     """
-    r = _gh(
-        _versions_url(artifact),
-        "--jq",
-        ".[] | {id, digest: .name, pushed_at: .created_at, tags: .metadata.container.tags}",
-    )
-    if r.returncode:
-        if "HTTP 404" not in r.stderr:
-            raise RuntimeError(f"registry read {artifact}: {r.stderr.strip()}")
-        if artifact == PROBE or _gh(_versions_url(PROBE), "--jq", "length").returncode:
+    versions = _ar_versions(artifact)
+    if versions is None:
+        repo = ar_repository(artifact.split("/", 1)[0])
+        if _ar_get(f"{AR_API}/{repo}", artifact) is None:
             raise RuntimeError(
-                f"registry read {artifact}: 404 and probe {PROBE} unreadable: {r.stderr.strip()}"
+                f"registry read {artifact}: 404 and repository {repo} not found"
             )
         return {}
     out = {}
-    for line in r.stdout.splitlines():
-        v = json.loads(line)
-        for tag in v["tags"] or []:
-            out[tag] = {"id": v["id"], "digest": v["digest"], "pushed_at": v["pushed_at"]}
+    for v in versions:
+        pushed = re.sub(
+            r"\.\d+(?=Z$)", "", v["createTime"]
+        )  # AR returns up to 9 fraction digits
+        for t in v.get("relatedTags") or []:
+            tag = t["name"].rsplit("/tags/", 1)[1]
+            out[tag] = {
+                "id": v["name"],
+                "digest": v["name"].rsplit("/versions/", 1)[1],
+                "pushed_at": pushed,
+            }
     return out
 
 
@@ -207,8 +259,8 @@ def rc_slack(repo, tag):
 def target_state(t, name, rows, now):
     """State of target t on an enabled branch. The one place the GA/supported convention lives.
 
-    On-prem: stabilized for WINDOW after the chart push, and only while among the newest WINDOW_LINES lines with an
-    on-prem GA. A LATEST_ONLY target (cloud): only the latest GA branch
+    On-prem: stabilized for WINDOW after the line's latest stable chart push (a patch restarts it), and only while
+    among the newest WINDOW_LINES lines with an on-prem GA. A LATEST_ONLY target (cloud): only the latest GA branch
     for it stays stabilized; older GA branches are past-eos for it. A KEPT target (OSS): stabilized from its GA
     while the branch exists; the cloud lines pinning it decide its retirement, and cloud Retire names it.
     """
@@ -244,9 +296,12 @@ def _main(repo):
 
 def _next_minor(repo, ordered):
     """One minor past the highest release/X.Y line, shipped retired line or stable vX.Y.Z on main, so a cut never
-    reuses a shipped minor. A line retired early before any GA (retired/X.Y-<sha7>, its RCs deleted) is reused.
+    reuses a minor shipped by this flow. A line retired early before any GA (retired/X.Y-<sha7>, its RCs deleted) is
+    reused.
 
-    With no release/X.Y branch yet (cutover) only the tags count.
+    With no release/X.Y branch yet (cutover) only the tags count. A stable tag that is not on main does not count
+    (that keeps strays such as v100.0.x out), so an old-flow release not yet merged back can be proposed again:
+    check the proposal against `git tag -l` before the first cut.
     """
     main = _main(repo)
     lines = [
@@ -305,10 +360,11 @@ def derive(repo, now, registry=registry_tags, rc=None):
             if not m:
                 continue  # not a release version (e.g. smoke tags)
             name = f"release/{m[1]}.{m[2]}"
-            if name not in refs and shipped.setdefault(
-                name, bool(rm._tags(repo, m[1], m[2], PREFIX)[0])
-            ):
-                continue
+            if name not in refs:
+                if name not in shipped:  # one git tag read per line, not per registry tag
+                    shipped[name] = bool(rm._tags(repo, m[1], m[2], PREFIX)[0])
+                if shipped[name]:
+                    continue
             sha = _tag_commit(repo, tag)
             if name not in refs or not sha or not rm.is_ancestor(repo, sha, refs[name]):
                 why = (
@@ -338,6 +394,8 @@ def derive(repo, now, registry=registry_tags, rc=None):
             if not tt:
                 continue
             tt["rcs"].sort(key=_vkey)
+            # On-prem GA reads the chart artifact: RC chart pushes are tagged 0.0.0-rc.N and match no line; the
+            # stable chart push is tagged vX.Y.Z (push-charts-to-gcr.yaml checks it against the release tag).
             stable = re.compile(rf"{re.escape(PREFIX)}v{re.escape(row['line'])}\.\d+")
             # ga anchors state and the support window; promoted (the build artifact's latest stable) is what ships next
             for key, artifact in (("ga", anchor), ("promoted", builds)):
@@ -418,7 +476,7 @@ def abandon_plan(repo, branch, registry=registry_tags):
     {"ga": [...], "used": [...], "rc_tags": [...], "versions": {artifact: [{id, digest, tags}]}, "kept": [...]}.
     A non-empty ga (git stable tag or GA-anchor registry tag) or used (commits that are not bot, pick or
     decline) refuses the abandon. A registry version is deleted only when every tag on it is an RC of
-    this line. GitHub refuses to delete a package's last version: such a version is kept and listed.
+    this line. An artifact's last tagged version is kept and listed, so an abandon never empties an artifact.
     """
     x, y = rm._line(branch)
     rc_re = re.compile(rf"{re.escape(PREFIX)}v{x}\.{y}\.\d+-rc\.\d+")
@@ -565,6 +623,7 @@ def main(argv=None, registry=registry_tags):
     except (
         Exception
     ) as e:  # registry or git failure: no JSON, never a silently empty state
+        traceback.print_exc()
         print(f"relstate: {e}", file=sys.stderr)
         return 1
     print(json.dumps(state, indent=2))

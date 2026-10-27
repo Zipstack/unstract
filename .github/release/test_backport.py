@@ -1,4 +1,4 @@
-"""backport helpers: held_filter and the held summary line; PR body of a pick PR; picks in main order; branches filter; accept= and UNCLASSIFIABLE; owed-picks summary; dispatch route for a non-fix; push summary (status rows, latest tag, stale mark, quiet line); push rescan plan; PR listing classes; push retry; stuck clean pick PR; open conflict PRs per line. Run: python test_backport.py"""
+"""backport helpers: held_filter and the held summary line; PR body of a pick PR; picks in main order; branches filter; accept= and UNCLASSIFIABLE; owed-picks summary; dispatch route for a non-fix; push summary (status rows, latest tag, stale mark, quiet line); push rescan plan; PR listing classes; push retry; stuck clean pick PR; open conflict PRs per line; pick against real git (no untracked file in a conflict commit, a path with a space, a pick merged after the fetch). Run: python test_backport.py"""
 
 import io
 import json
@@ -483,12 +483,14 @@ class PushSummary(unittest.TestCase):
                 "-",
             ),
             (a, "#251", "fix", "release/0.189", "skipped: already on branch", "-"),
+            (a, "#251", "fix", "release/0.188", "merged 89abcde (#262, retried)", "-"),
         ]
         self.assertEqual(
             bp.this_run(rows),
             [
                 "- #251 → `release/0.192`: merged as `1234567` (#260)",
                 "- #251 → `release/0.190`: conflict, #261 to resolve",
+                "- #251 → `release/0.188`: merged as `89abcde` (#262)",
             ],
         )
         out = bp.pending_block(
@@ -675,6 +677,9 @@ class FinishOpen(unittest.TestCase):
         self.assertEqual(out[0], "merged")
         self.assertEqual(self.merged[0][0], 4)
         self.assertIn("(cherry picked from commit " + "a" * 40 + ")", self.merged[0][1])
+        # The push summary parses this detail: a format change must not drop the row from it.
+        row = ("a" * 40, "#1", "fix", "release/1.0", " ".join(out), "-")
+        self.assertEqual(len(bp.this_run([row])), 1)
 
     def test_waits_for_a_person(self):
         pending = ("skipped", "conflict PR pending on `backport/1.0/aaaaaaa`")
@@ -921,6 +926,102 @@ class Relevance(unittest.TestCase):
                 rel(c_d="1\nadded\n"), "unknown"
             )  # lines added to an existing file
             self.assertEqual(rel(c_d="one\n"), "relevant")  # a path with a space
+
+
+class PickGit(unittest.TestCase):
+    """pick() against real git: a conflict commit carries no untracked file, and a pick another run merged after
+    this run fetched is skipped.
+    """
+
+    PATH = "f"
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        ident = {
+            "GIT_AUTHOR_NAME": "Dev",
+            "GIT_AUTHOR_EMAIL": "dev@example.com",
+            "GIT_COMMITTER_NAME": "Dev",
+            "GIT_COMMITTER_EMAIL": "dev@example.com",
+            "GIT_CONFIG_GLOBAL": os.devnull,
+            "GIT_CONFIG_NOSYSTEM": "1",
+        }
+        p = mock.patch.dict(os.environ, ident)
+        p.start()
+        self.addCleanup(p.stop)
+        origin, self.dev, self.work = (
+            os.path.join(tmp.name, d) for d in ("origin", "dev", "work")
+        )
+        rm.git(tmp.name, "init", "-q", "--bare", "-b", "main", origin)
+        rm.git(tmp.name, "clone", "-q", origin, self.dev)
+        self.commit(self.PATH, "a\n", "base")
+        rm.git(self.dev, "push", "-q", "origin", "main")
+        rm.git(self.dev, "checkout", "-q", "-b", "release/1.0")
+        self.commit(self.PATH, "b\n", "line change")
+        rm.git(self.dev, "push", "-q", "origin", "release/1.0")
+        rm.git(self.dev, "checkout", "-q", "main")
+        self.fix = self.commit(self.PATH, "c\n", "fix")
+        rm.git(self.dev, "push", "-q", "origin", "main")
+        rm.git(tmp.name, "clone", "-q", origin, self.work)
+        with open(os.path.join(self.work, "state.json"), "w") as f:
+            f.write("{}\n")  # relstate's output, untracked in the job's checkout
+        cwd = os.getcwd()
+        os.chdir(self.work)  # backport.REPO is "."
+        self.addCleanup(os.chdir, cwd)
+        self.pushed = []
+        for name, fake in (
+            ("push_head", lambda *a: self.pushed.append(a) or ("failed", "stop")),
+            ("fix_labels", lambda *a: []),
+        ):
+            p = mock.patch.object(bp, name, fake)
+            p.start()
+            self.addCleanup(p.stop)
+
+    def commit(self, path, text, msg):
+        os.makedirs(os.path.dirname(os.path.join(self.dev, path)), exist_ok=True)
+        with open(os.path.join(self.dev, path), "w") as f:
+            f.write(text)
+        rm.git(self.dev, "add", path)
+        rm.git(self.dev, "commit", "-q", "-m", msg)
+        return rm.git(self.dev, "rev-parse", "HEAD")
+
+    def test_conflict_commit_has_no_untracked_file(self):
+        self.assertEqual(
+            bp.pick("o/r", self.fix, "release/1.0", "t", "#1"), ("failed", "stop")
+        )
+        self.assertEqual(len(self.pushed), 1)
+        self.assertEqual(
+            rm.git(".", "show", "-z", "--name-only", "--format=", "HEAD")
+            .rstrip("\0")
+            .split("\0"),
+            [self.PATH],
+        )
+        self.assertIn(
+            f"Conflicts:\n\t{self.PATH}\n", rm.git(".", "log", "-1", "--format=%B") + "\n"
+        )
+
+    def test_pick_merged_by_another_run_after_this_one_fetched(self):
+        rm.git(self.dev, "checkout", "-q", "release/1.0")
+        rm.git(
+            self.dev,
+            "commit",
+            "-q",
+            "--allow-empty",
+            "-m",
+            f"fix\n\n(cherry picked from commit {self.fix})",
+        )
+        rm.git(self.dev, "push", "-q", "origin", "release/1.0")
+        self.assertEqual(
+            bp.pick("o/r", self.fix, "release/1.0", "t", "#1"),
+            ("skipped", "already on branch"),
+        )
+        self.assertEqual(self.pushed, [])
+
+
+class PickGitPathWithSpace(PickGit):
+    """The same against a conflicted path with a space and a non-ASCII name (this repo has paths with spaces)."""
+
+    PATH = "docker (deprecated)/é.txt"
 
 
 if __name__ == "__main__":

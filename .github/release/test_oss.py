@@ -346,6 +346,105 @@ class Lines(unittest.TestCase):
         )
         self.assertEqual(len(self.remote("tag", "-l", "retired/1.7-*").split()), 2)
 
+    def test_retire_keeps_a_branch_pushed_after_its_tip_was_read(self):
+        self.quiet(oss.cut, self.oss, "1.7")
+        self.clone()
+        self.g(self.dev, "fetch", "-q", "origin")  # a commit lands after this run fetched
+        self.g(self.dev, "checkout", "-q", "-B", "release/1.7", "origin/release/1.7")
+        self.g(self.dev, "commit", "-q", "--allow-empty", "-m", "late fix")
+        self.g(self.dev, "push", "-q", "origin", "release/1.7")
+        late = self.g(self.dev, "rev-parse", "HEAD")
+        self.g(self.dev, "checkout", "-q", "main")
+        with self.assertRaises(RuntimeError):
+            oss.retire(self.oss, "release/1.7", "x", dry_run=False)
+        self.assertEqual(self.remote("rev-parse", "release/1.7"), late)
+        self.assertEqual(self.remote("tag", "-l", "ee-v1.7.*"), "ee-v1.7.0-rc.1")
+        self.assertEqual(self.remote("tag", "-l", "retired/*"), "")
+        self.assertEqual(
+            self.g(self.oss, "tag", "-l", "retired/*"), ""
+        )  # nor left in the clone
+
+    def test_retire_rerun_in_the_same_clone_archives_the_tip(self):
+        self.quiet(oss.cut, self.oss, "1.7")
+        self.clone()
+        tip = self.remote("rev-parse", "release/1.7")
+        push, calls = oss._push, []
+
+        def flaky(
+            *a,
+        ):  # the first push fails (network, a remote hook), the re-run's goes through
+            calls.append(a)
+            if len(calls) == 1:
+                raise RuntimeError("push failed")
+            return push(*a)
+
+        with mock.patch.object(oss, "_push", flaky):
+            with self.assertRaises(RuntimeError):
+                oss.retire(self.oss, "release/1.7", "x", dry_run=False)
+            oss.retire(self.oss, "release/1.7", "x", dry_run=False)
+        self.assertEqual(
+            self.remote("rev-parse", f"retired/1.7-{tip[:7]}^{{commit}}"), tip
+        )
+        self.assertEqual(self.remote("branch", "-l", "release/1.7"), "")
+
+    def test_retire_pushes_an_archive_tag_left_in_the_clone(self):
+        self.quiet(oss.cut, self.oss, "1.7")
+        self.clone()
+        tip = self.remote("rev-parse", "release/1.7")
+        oss._tag(self.oss, f"retired/1.7-{tip[:7]}", tip, "a run killed before its push")
+        oss.retire(self.oss, "release/1.7", "x", dry_run=False)
+        self.assertEqual(
+            self.remote("rev-parse", f"retired/1.7-{tip[:7]}^{{commit}}"), tip
+        )
+
+    def test_rc_refuses_a_branch_deleted_after_its_tip_was_read(self):
+        self.quiet(oss.cut, self.oss, "1.7")
+        self.work("release/1.7", "oss fix")  # an untagged tip, so rc bumps
+        self.clone()
+        self.remote(
+            "update-ref", "-d", "refs/heads/release/1.7"
+        )  # a retire lands after this run fetched
+        with self.assertRaises(RuntimeError):
+            self.quiet(oss.rc, self.oss, "release/1.7")
+        self.assertEqual(self.remote("branch", "-l", "release/1.7"), "")
+
+    def test_cut_refuses_a_branch_created_after_it_fetched(self):
+        self.clone()
+        main = self.remote("rev-parse", "main")
+        self.remote(
+            "update-ref", "refs/heads/release/1.7", main
+        )  # another run cut the line after this run fetched
+        with self.assertRaises(RuntimeError):
+            self.quiet(oss.cut, self.oss, "1.7")
+        self.assertEqual(self.remote("rev-parse", "release/1.7"), main)
+        self.assertEqual(
+            rm.git(self.oss, "tag", "-l", "ee-v1.7.0-rc.*"), ""
+        )  # nor left in the clone, where a re-run would read the minor as used
+
+    def test_promote_rerun_in_the_same_clone_pushes_the_tag(self):
+        self.quiet(oss.cut, self.oss, "1.7")
+        self.pin("ee-v1.7.0-rc.1", "v1.7.0-rc.1")
+        push, calls = oss._push, []
+
+        def flaky(*a):  # the first push fails, the re-run's goes through
+            calls.append(a)
+            if len(calls) == 1:
+                raise RuntimeError("push failed")
+            return push(*a)
+
+        with mock.patch.object(oss, "_push", flaky):
+            with self.assertRaises(RuntimeError):
+                oss.promote(self.cloud, self.oss, "v1.7.0-rc.1")
+            self.assertEqual(rm.git(self.oss, "tag", "-l", "ee-v1.7.0"), "")
+            self.assertEqual(
+                oss.promote(self.cloud, self.oss, "v1.7.0-rc.1"), "ee-v1.7.0"
+            )
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(
+            self.remote("rev-parse", "ee-v1.7.0^{commit}"),
+            self.remote("rev-parse", "ee-v1.7.0-rc.1^{commit}"),
+        )
+
     def test_retire_refuses_a_line_moved_after_its_archive(self):
         self.quiet(oss.cut, self.oss, "1.7")
         tip = self.remote("rev-parse", "release/1.7")

@@ -61,6 +61,10 @@ def decline_reason(comments, sender, closed_at):
     for c in sorted(comments, key=lambda c: c["created_at"], reverse=True):
         if c["user"] == sender and end - REASON_WINDOW <= at(c["created_at"]) <= end:
             line = (c["body"].strip().splitlines() or [""])[0]
+            # A pick trailer in the reason would mark that other commit declined in the decline commit's message.
+            # Strip until none is left: a trailer nested in another reassembles after one pass.
+            while rm.PICK_RE.search(line):
+                line = rm.PICK_RE.sub("", line)
             return line.removeprefix("Declined:").strip() or None
     return None
 
@@ -149,9 +153,10 @@ def squash(slug, pr, msg, sleep=time.sleep):
             )
             return True
         except RuntimeError as e:
-            if (
-                "status check" in str(e).lower()
-            ):  # a required check GitHub still waits for: the caller reports it
+            # A required check GitHub still waits for: the caller reports it. Accepted: this matches GitHub's
+            # "Required status check ... is expected/in progress" wording, which GitHub does not document as stable.
+            if "status check" in str(e).lower():
+                print(f"#{pr['number']}: {str(e).splitlines()[0]}")
                 return False
             if wait is None or "base branch was modified" not in str(e).lower():
                 raise

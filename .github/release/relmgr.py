@@ -59,14 +59,16 @@ def run_link(run_id):
 
 
 def image_link(target, tag):
-    """The GHCR package page of <repo>/<target>/release, the tag in the text."""
-    text = f"`{target}/release:{tag}`"
-    if not _web():
-        return text
-    owner, repo = os.environ["GITHUB_REPOSITORY"].split("/")
+    """The Artifact Registry console page of target's repository (RELSTATE_AR_<TARGET>), the tag in the text;
+    plain text when that variable is unset.
+    """
+    text = f"`{target}:{tag}`"
+    repo = os.environ.get("RELSTATE_AR_" + target.upper().replace("-", "_"), "")
+    m = re.fullmatch(r"projects/([^/]+)/locations/([^/]+)/repositories/([^/]+)", repo)
     return (
-        f"[{text}]({os.environ['GITHUB_SERVER_URL']}/orgs/{owner}/packages/container/package/"
-        f"{repo.lower()}%2F{target}%2Frelease)"
+        f"[{text}](https://console.cloud.google.com/artifacts/docker/{m[1]}/{m[2]}/{m[3]})"
+        if m
+        else text
     )
 
 
@@ -181,7 +183,8 @@ def classify_commit(repo, sha, bot_email=BOT_EMAIL, main="main"):
 def pr_commits(repo, base, head_ref, head="HEAD"):
     """The commits the PR check classifies on a PR from head_ref into base. A backport/* PR lands as its squash, whose
     message keeps the first commit's pick trailer: only that commit is judged, so a plain resolution commit after it
-    passes. Any other PR: every commit in base..head.
+    passes. This relies on release/* allowing squash merges only (a ruleset, set before Backport runs); a rebase
+    merge would land the unjudged commits as they are. Any other PR: every commit in base..head.
     """
     out = git(repo, "rev-list", "--reverse", f"{base}..{head}")
     commits = out.split() if out else []
@@ -284,9 +287,10 @@ def pr_fix_class(title, labels=()):
     if len(classes) > 1:
         raise ValueError(f"conflicting fix labels: {sorted('fix/' + c for c in classes)}")
     # A revert takes the reverted PR's class: it must follow the original onto every branch that carries it.
-    inner = title
+    # Stripped: GitHub keeps a title's leading space, and a typo'd space must not leave a merged fix unclassifiable.
+    inner = title.strip()
     while r := REVERT_RE.match(inner):
-        inner = r.group(1)
+        inner = r.group(1).strip()
     m = PR_TITLE_RE.match(inner)
     if not m and not set(labels) & set(FIX_LABELS):
         raise ValueError(
@@ -302,11 +306,23 @@ def pr_fix_class(title, labels=()):
     )
 
 
+def release_only_refusal(base, labels):
+    """Why Lint PR refuses the release-branch-only label on a PR into `base`, or None. The label is for PRs into
+    a release/X.Y branch; a main change reaches release branches through Backport.
+    """
+    if "release-branch-only" in labels and not base.startswith("release/"):
+        return (
+            "label `release-branch-only` is for PRs into a release/X.Y branch; remove it here "
+            "(a main change reaches release branches through Backport)"
+        )
+    return None
+
+
 def rbo_key(title, pr):
     """The `Release-branch-only:` value for PR `pr`: the title's ticket, else `#<pr>`. A `#<pr>` key matches no
     other line's, so the convergence report always lists that change on the newer line for a human to check.
     """
-    m = PR_TITLE_RE.match(title)
+    m = PR_TITLE_RE.match(title.strip())
     return m["ticket"] if m and m["ticket"] else f"#{pr}"
 
 

@@ -4,7 +4,7 @@ never ships a fix a newer one lacks.
 Usage: convgate.py --branch release/X.Y --target T [--promote-ref vX.Y.Z-rc.N] [--state state.json] [--repo DIR]
                    [--oss-repo DIR] [--annotate warning|error] [--out FILE]
 
-Wraps relmgr.convergence_report unchanged and adds four things:
+Wraps relmgr.convergence_report unchanged and adds:
 - scope: relstate `supported[T]` minus the branch. Retired and not-enabled branches are out by construction.
 - direction: an older branch's picks are checked against the newer branch, whichever side is being promoted.
 - reference: a newer branch with a promoted stable tag for T is scanned at that tag (what ships next), not at its tip,
@@ -162,6 +162,8 @@ def oss_pins(repo, oss_repo, branch, target, scope, ref, rows, annotate):
                     main=main,
                     newer_branch=oss_refs.get(line_new),
                 )
+                # Accepted: only CONVERGED and MISSING count for a pin; DECLINED, UNCLASSIFIABLE and RBO-ABSENT
+                # OSS picks are left out of the counts and the detail.
                 if r[1] in ("CONVERGED", "MISSING")
             ]
         )
@@ -416,6 +418,8 @@ def checks(lines, order, out, split=False):
         return "<br>".join(parts).replace("|", "\\|") or none
 
     def fixes(name, ls):
+        # Accepted: a line whose only finding is UNCLASSIFIABLE has no todo, so it is counted as converged here and
+        # the row reads ✅. The line's summary in the folded gate detail (out) still counts them.
         named = [x for x in ls if x["state"] == "stabilizing" or x["todo"] or x["rbo"]]
         rest = [x for x in ls if x not in named]
         counts = [f"`{x['line']}` {x['summary']}" for x in named]

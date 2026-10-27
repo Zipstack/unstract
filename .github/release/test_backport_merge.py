@@ -36,6 +36,22 @@ class Reason(unittest.TestCase):
             "superseded by #12",
         )
 
+    def test_pick_trailer_dropped(
+        self,
+    ):  # it would mark that commit declined in the decline commit's message
+        self.assertEqual(
+            bm.decline_reason(
+                [comment(f"Declined: dup of (cherry picked from commit {'a' * 40})")],
+                ME,
+                CLOSED,
+            ),
+            "dup of",
+        )
+        nested = f"(cherry picked from (cherry picked from commit {'b' * 40})commit {'a' * 40})"
+        self.assertEqual(
+            bm.decline_reason([comment(f"Declined: dup {nested}")], ME, CLOSED), "dup"
+        )
+
     def test_none(self):
         self.assertIsNone(bm.decline_reason([], ME, CLOSED))
         self.assertIsNone(bm.decline_reason([comment("Declined:   ")], ME, CLOSED))
@@ -390,10 +406,14 @@ class SquashRetry(unittest.TestCase):
             self.run_squash([self.MOVED] * 3)
 
     def test_pending_check_is_not_retried(self):
-        self.assertEqual(
-            self.run_squash([RuntimeError("Required status check is expected")]),
-            (False, 1, []),
-        )
+        with mock.patch("builtins.print") as out:
+            self.assertEqual(
+                self.run_squash([RuntimeError("Required status check is expected")]),
+                (False, 1, []),
+            )
+        out.assert_called_once_with(
+            "#4: Required status check is expected"
+        )  # GitHub's words reach the log
 
     def test_other_error_is_not_retried(self):
         with self.assertRaisesRegex(RuntimeError, "HTTP 409"):

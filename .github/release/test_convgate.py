@@ -37,8 +37,8 @@ class Gate(unittest.TestCase):
             self.change(f"work on {line}", f"release/{line}")
         self.c = self.change("C: the fix", "main")
         self.pick(self.c, "release/1.5")
-        self.push("cloud/release", "v1.5.0-rc.1", "release/1.5")
-        self.push("cloud/release", "v1.6.0-rc.1", "release/1.6")
+        self.push("cloud/backend", "v1.5.0-rc.1", "release/1.5")
+        self.push("cloud/backend", "v1.6.0-rc.1", "release/1.6")
 
     def g(self, *args):
         return rm.git(
@@ -175,7 +175,7 @@ class Gate(unittest.TestCase):
         """Newer is GA at a tag without the fix; its decline was undone by a later pick: older's promote waits for
         newer's next patch instead of reading the stale decline as converged.
         """
-        self.reg["cloud/release"]["v1.6.0"] = self.reg["cloud/release"]["v1.6.0-rc.1"]
+        self.reg["cloud/backend"]["v1.6.0"] = self.reg["cloud/backend"]["v1.6.0-rc.1"]
         self.g("tag", "v1.6.0", "v1.6.0-rc.1")
         self.decline(self.c, "release/1.6")
         self.pick(self.c, "release/1.6")
@@ -337,7 +337,7 @@ class Gate(unittest.TestCase):
         self.assertIn(msg, out)
 
     def test_7d_on_newer_tip_not_shipped(self):
-        self.reg["cloud/release"]["v1.6.0"] = self.reg["cloud/release"][
+        self.reg["cloud/backend"]["v1.6.0"] = self.reg["cloud/backend"][
             "v1.6.0-rc.1"
         ]  # 1.6 GA at v1.6.0
         self.g("tag", "v1.6.0", "v1.6.0-rc.1")
@@ -365,11 +365,11 @@ class Gate(unittest.TestCase):
     def onprem(self):
         """On-prem RCs on both lines (the cloud RC commits), then on-prem Promote of 1.6 at v1.6.0, chart not published."""
         for tag in ("v1.5.0-rc.1", "v1.6.0-rc.1"):
-            self.reg.setdefault("on-prem/release", {})[tag] = self.reg["cloud/release"][
+            self.reg.setdefault("on-prem/backend", {})[tag] = self.reg["cloud/backend"][
                 tag
             ]
         self.g("tag", "v1.6.0", "v1.6.0-rc.1")
-        self.reg["on-prem/release"]["v1.6.0"] = self.reg["on-prem/release"]["v1.6.0-rc.1"]
+        self.reg["on-prem/backend"]["v1.6.0"] = self.reg["on-prem/backend"]["v1.6.0-rc.1"]
 
     def test_7f_promoted_not_published_read_at_its_tag(self):
         self.onprem()
@@ -390,13 +390,13 @@ class Gate(unittest.TestCase):
 
     def test_7g_patch_promoted_read_over_published(self):
         self.onprem()
-        self.reg["on-prem/chart"] = {
-            "v1.6.0": self.reg["on-prem/release"]["v1.6.0"]
+        self.reg["chart/unstract-platform"] = {
+            "v1.6.0": self.reg["on-prem/backend"]["v1.6.0"]
         }  # Publish v1.6.0
         self.pick(self.c, "release/1.6")
         self.g("tag", "v1.6.1-rc.1", "release/1.6")
         self.g("tag", "v1.6.1", "release/1.6")
-        self.reg["on-prem/release"]["v1.6.1-rc.1"] = self.reg["on-prem/release"][
+        self.reg["on-prem/backend"]["v1.6.1-rc.1"] = self.reg["on-prem/backend"][
             "v1.6.1"
         ] = {
             "digest": "sha256:61",
@@ -517,7 +517,7 @@ class Gate(unittest.TestCase):
         self.assertNotIn(old[:12], out)
         self.assertNotIn(workflow[:12], out)
         # 1.6 GA for cloud: its GA tag's date is the window
-        self.reg["cloud/release"]["v1.6.0"] = self.reg["cloud/release"]["v1.6.0-rc.1"]
+        self.reg["cloud/backend"]["v1.6.0"] = self.reg["cloud/backend"]["v1.6.0-rc.1"]
         with mock.patch.dict(os.environ, GIT_COMMITTER_DATE="2031-01-01T00:00:00Z"):
             self.g("tag", "-a", "v1.6.0", "-m", "promote", "v1.6.0-rc.1")
         later = self.rbo("after the GA", "2032-01-01T00:00:00Z")
@@ -527,7 +527,7 @@ class Gate(unittest.TestCase):
         self.assertNotIn(new[:12], out)
 
     def test_9f_checks_name_lines_as_needed(self):
-        self.reg["cloud/release"]["v1.5.0"] = self.reg["cloud/release"][
+        self.reg["cloud/backend"]["v1.5.0"] = self.reg["cloud/backend"][
             "v1.5.0-rc.1"
         ]  # 1.5 GA: stabilized
         self.g("tag", "v1.5.0", "v1.5.0-rc.1")
@@ -559,7 +559,7 @@ class Gate(unittest.TestCase):
             "into `refs/tags/v1.6.0-rc.1`): 1 picks, 0 in the RC, 1 missing, 1 unclassifiable\n",
             out,
         )
-        self.reg["cloud/release"]["v1.6.0"] = self.reg["cloud/release"]["v1.6.0-rc.1"]
+        self.reg["cloud/backend"]["v1.6.0"] = self.reg["cloud/backend"]["v1.6.0-rc.1"]
         self.g(
             "tag", "v1.6.0", "release/1.6"
         )  # 1.6 GA at a tag with the pick: named by its tag
@@ -575,7 +575,7 @@ class Gate(unittest.TestCase):
             self.checks(out)[2],
         )
         self.push(
-            "cloud/release", "v1.6.1-rc.1", "release/1.6"
+            "cloud/backend", "v1.6.1-rc.1", "release/1.6"
         )  # a patch RC of a GA line: "the RC" again
         _, out = self.run_gate("release/1.6", promote_ref="v1.6.1-rc.1")
         self.assertIn(
@@ -647,14 +647,14 @@ class Gate(unittest.TestCase):
             )
 
     def test_3_scope_is_the_target(self):
-        self.push("on-prem/release", "v1.5.0-rc.2", "release/1.5")
+        self.push("on-prem/backend", "v1.5.0-rc.2", "release/1.5")
         code, out = self.run_gate("release/1.5", "on-prem")
         self.assertEqual(code, 0)
         self.assertIn("scanned branches: none", out)
         self.assertEqual(self.run_gate("release/1.5", "cloud")[0], 2)
 
     def test_4_ga_branch_scanned_at_its_ga_tag(self):
-        self.reg["cloud/release"]["v1.6.0"] = self.reg["cloud/release"][
+        self.reg["cloud/backend"]["v1.6.0"] = self.reg["cloud/backend"][
             "v1.6.0-rc.1"
         ]  # promote, same digest
         self.g("tag", "v1.6.0", "v1.6.0-rc.1")
@@ -667,7 +667,7 @@ class Gate(unittest.TestCase):
         self.assertEqual(code, 0, out)
 
     def test_5_plain_fix_owed_to_stabilized(self):
-        self.reg["cloud/release"]["v1.6.0"] = self.reg["cloud/release"]["v1.6.0-rc.1"]
+        self.reg["cloud/backend"]["v1.6.0"] = self.reg["cloud/backend"]["v1.6.0-rc.1"]
         self.g("tag", "v1.6.0", "v1.6.0-rc.1")  # 1.6 GA = stabilized for cloud
         code, out = self.run_gate("release/1.5")
         self.assertEqual(code, 2, out)
@@ -835,7 +835,7 @@ class OssPins(unittest.TestCase):
         )
         self.g(self.cloud, "tag", rc)
         self.g(self.cloud, "checkout", "-q", "main")
-        reg = self.reg.setdefault("cloud/release", {})
+        reg = self.reg.setdefault("cloud/backend", {})
         reg[rc] = {
             "digest": f"sha256:{len(reg):064x}",
             "pushed_at": "2026-09-28T00:00:00Z",

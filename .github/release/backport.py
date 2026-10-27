@@ -6,9 +6,11 @@ Usage: backport.py --state state.json (--commits SHA|PR[,...] | --rescan) [--con
 --rescan (every push to main): ignore the pushed commits and pick, for each target, every main commit since its cut
 that no pick or decline trailer there names: plain fixes too on fix targets (held accept=OWED), security/critical
 only on stabilized ones (accept=HELD, held for the RM without --confirm-stabilized). A run cancelled by a newer push
-costs nothing: the next run rescans. A decline carries the pick trailer, so a declined fix is never re-picked; an
-open conflict PR is left alone (`skipped: conflict PR pending`) until a person merges or closes it; an open clean
-pick PR whose merge failed in an earlier run is merged by the next run.
+costs nothing: the next run rescans. The exception is a run stopped after pushing a pick head and before opening
+its PR: after PICK_TIMEOUT that head fails later runs until a person deletes it (finish_open).
+A decline carries the pick trailer, so a declined fix is never re-picked; an open conflict PR is left alone
+(`skipped: conflict PR pending`) until a person merges or closes it; an open clean pick PR whose merge failed in
+an earlier run is merged by the next run.
 --commits (dispatch): only these commits.
 
 Run from a full clone whose `origin` pushes with the bot token, with GH_TOKEN set to the bot token.
@@ -257,7 +259,8 @@ def this_run(rows):
     out = []
     for sha, pr, _, b, res, _ in rows:
         src = link_pr(pr) if pr.startswith("#") else rm.commit_link(sha)
-        if m := re.fullmatch(r"merged (\w+) \(#(\d+)\)", res):
+        # finish_open adds ", retried" when it merges a pick PR an earlier run left open.
+        if m := re.fullmatch(r"merged (\w+) \(#(\d+)(?:, retried)?\)", res):
             out.append(
                 f"- {src} → `{b}`: merged as {rm.commit_link(m[1])} ({rm.pr_link(int(m[2]))})"
             )
@@ -596,14 +599,8 @@ def rescan(slug, targets, confirm, listed):
     }
     print(f"rescan: {listed_n} PRs listed, {len(classes) - listed_n} fallback lookup(s)")
     plan, awaiting, unclassifiable = rescan_plan(targets, held_by_branch, confirm)
-    for (
-        sha,
-        b,
-        pr,
-        title,
-    ) in (
-        unclassifiable
-    ):  # a human dispatches with a class or declines it; re-warned each push
+    # A human fixes the merged PR's title or adds a fix/ label (declines it when there is no PR); re-warned each push.
+    for sha, b, pr, title in unclassifiable:
         print(
             f"::warning::{sha[:7]} ({pr}, {title}) cannot be classed for {b}: not picked"
         )
@@ -686,6 +683,7 @@ def push_head(slug, sha, branch, head, src, sleep=time.sleep):
         f"Rerun Backport for {sha[:7]} on {branch}."
     )
     print(f"::error::{sentence}")
+    # Not de-duplicated: a push rejected on every run comments on every run (convgate reads only the newest).
     if url and re.fullmatch(r"#\d+", src):
         soft(
             f"comment on {src}",
@@ -799,6 +797,8 @@ def finish_open(slug, branch, head):
 def pick(slug, sha, branch, title, src):
     """Returns (outcome, detail); outcome in merged | pr | skipped | failed. title: PR title; src: original PR ref."""
     remote = f"origin/{branch}"
+    # Fresh tip: an overlapping run may have merged this pick after this run fetched.
+    run("git", "fetch", "-q", "origin", f"+refs/heads/{branch}:refs/remotes/{remote}")
     if rm.is_converged(REPO, sha, remote, main="origin/main"):
         return "skipped", "already on branch"
     head = f"backport/{branch.split('/', 1)[1]}/{sha[:7]}"
@@ -852,7 +852,13 @@ def pick(slug, sha, branch, title, src):
             "git", "fetch", "-q", "origin", f"+refs/heads/{branch}:refs/remotes/{remote}"
         )  # later picks stack on it
         return "merged", f"{rm.git(REPO, 'rev-parse', '--short=7', remote)} (#{n})"
-    files = rm.git(REPO, "diff", "--name-only", "--diff-filter=U").split()
+    # -z: a path with a space or a non-ASCII name comes back unquoted and in one piece (rm.git's strip can still
+    # drop a leading space on the first path; only the commit message and PR body read this list).
+    files = [
+        f
+        for f in rm.git(REPO, "diff", "--name-only", "-z", "--diff-filter=U").split("\0")
+        if f
+    ]
     if not files:  # not a conflict a human can resolve on a PR
         empty = rm.git(
             REPO, "rev-parse", "-q", "--verify", "CHERRY_PICK_HEAD", check=False
@@ -874,7 +880,8 @@ def pick(slug, sha, branch, title, src):
     with open(os.path.join(REPO, ".git", "MERGE_MSG")) as f:
         msg = "".join(line for line in f if not line.startswith("#")).strip()
     msg += "\n\nConflicts:\n" + "".join(f"\t{p}\n" for p in files)
-    run("git", "add", "-A")
+    # -u: tracked and unmerged paths only; -A would also commit untracked files such as state.json.
+    run("git", "add", "-u")
     run("git", "commit", "-q", "--no-verify", "-F", "-", input=msg)
     if failed := push_head(slug, sha, branch, head, src):
         return failed

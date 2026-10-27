@@ -23,7 +23,7 @@ import relmgr as rm
 import relstate as rs
 
 OSS = rs.PINS or "Zipstack/unstract"  # the OSS repo the cloud lines pin
-PREFIX = rs.REPOS[OSS.split("/")[1].lower()][5]
+PREFIX = rs.REPOS[OSS.split("/")[1].lower()][4]
 VER = rs.ver_re(PREFIX)
 PIN_RE = re.compile(r'^unstract-platform-version = "([^"]*)"$', re.M)
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -104,9 +104,24 @@ def _push(oss, *refspecs):
     rm.git(oss, "push", "-q", "--atomic", "origin", *refspecs)
 
 
-def _bump(oss, branch, base, tag, slack_url):
+def _tag_push(oss, name, sha, msgs, *refspecs):
+    """Tag sha as name (_tag) and push refspecs. A failed push drops the tag when this call made it, so a re-run in
+    this clone does not take a tag origin never got as already done.
+    """
+    new = _tag(oss, name, sha, *msgs)
+    try:
+        _push(oss, *refspecs)
+    except RuntimeError:
+        if new:
+            rm.git(oss, "tag", "-d", name)
+        raise
+
+
+def _bump(oss, branch, base, tag, slack_url, old):
     """One empty bot commit `release: <tag>` on base, tagged, pushed as branch's new tip with its tag. The commit gives
-    the RC its own commit, so a line never shares a tag's commit with main or another line.
+    the RC its own commit, so a line never shares a tag's commit with main or another line. The push is leased on
+    old, the branch tip it read: for rc, a branch deleted or moved since then fails it instead of being re-created or
+    overwritten; for cut, old is "" (no branch), so a branch created since then fails it.
     """
     sha = _bot(
         oss,
@@ -117,8 +132,15 @@ def _bump(oss, branch, base, tag, slack_url):
         "-m",
         f"release: {tag.removeprefix('v')}",
     )
-    _tag(oss, tag, sha, *([f"Slack: {slack_url}"] if slack_url else []))
-    _push(oss, f"{sha}:refs/heads/{branch}", f"refs/tags/{tag}")
+    _tag_push(
+        oss,
+        tag,
+        sha,
+        [f"Slack: {slack_url}"] if slack_url else [],
+        f"--force-with-lease=refs/heads/{branch}:{old}",
+        f"{sha}:refs/heads/{branch}",
+        f"refs/tags/{tag}",
+    )
     rm.git(oss, "update-ref", f"refs/remotes/origin/{branch}", sha)
     return sha
 
@@ -191,7 +213,12 @@ def cut(oss, line, slack_url=""):
             f"OSS minor {line} already has tags ({', '.join(sorted(used, key=rs._vkey))})"
         )
     _bump(
-        oss, branch, rm.git(oss, "rev-parse", "refs/remotes/origin/main"), tag, slack_url
+        oss,
+        branch,
+        rm.git(oss, "rev-parse", "refs/remotes/origin/main"),
+        tag,
+        slack_url,
+        "",
     )
     return tag
 
@@ -205,7 +232,7 @@ def rc(oss, branch, slack_url=""):
         raise RuntimeError(f"OSS {branch} does not exist: cloud Cut makes it")
     if not (tag := choose(tags_on(oss, sha, branch))):
         tag = rm.rc_version(oss, f"refs/remotes/origin/{branch}", PREFIX)
-        _bump(oss, branch, sha, tag, slack_url)
+        _bump(oss, branch, sha, tag, slack_url, sha)
         print(f"OSS {branch}: new RC {tag}", file=sys.stderr)
     if "-rc." in tag and gate(oss, branch, tag, "warning") == 1:
         print(
@@ -269,14 +296,19 @@ def promote(repo, oss, cloud_rc, force=False, reason=""):
         + unchecked
         + ([f"open conflict PRs: {', '.join(prs)}"] if prs else [])
     )
-    _tag(oss, stable, sha, f"promote: {pinned} -> {stable} (cloud {cloud_rc})", *forced)
-    _push(oss, f"refs/tags/{stable}")
+    _tag_push(
+        oss,
+        stable,
+        sha,
+        [f"promote: {pinned} -> {stable} (cloud {cloud_rc})", *forced],
+        f"refs/tags/{stable}",
+    )
     return stable
 
 
 def retire(oss, branch, reason, dry_run=True):
-    """Retire OSS release/X.Y with its cloud line: archive tag retired/X.Y-<tip sha7>, then (no OSS GA) its RC tags,
-    then the branch. With a GA its tags stay and the minor is never reused; without one it is. Summary lines.
+    """Retire OSS release/X.Y with its cloud line, in one atomic push: archive tag retired/X.Y-<tip sha7>, delete
+    (no OSS GA) its RC tags and the branch. With a GA its tags stay and the minor is never reused; without one it is. Summary lines.
     """
     line = branch.removeprefix("release/")
     sha = tip(oss, branch)
@@ -313,11 +345,19 @@ def retire(oss, branch, reason, dry_run=True):
     ]
     if dry_run:
         return out
-    if _tag(oss, archive, sha, f"retired {branch}: {reason}"):
-        _push(oss, f"refs/tags/{archive}")
-    if rcs:
-        _push(oss, *(f":refs/tags/{t}" for t in rcs))
-    _push(oss, f":refs/heads/{branch}")
+    # One atomic push leased on the tip read above: a commit pushed since then fails the whole retire, so on origin
+    # the branch, its RC tags and the archive tag all stay as they were. The archive tag is always sent (a no-op when
+    # origin has it), so a re-run in this clone archives the tip too.
+    _tag_push(
+        oss,
+        archive,
+        sha,
+        [f"retired {branch}: {reason}"],
+        f"--force-with-lease=refs/heads/{branch}:{sha}",
+        f"refs/tags/{archive}",
+        *(f":refs/tags/{t}" for t in rcs),
+        f":refs/heads/{branch}",
+    )
     return out
 
 
