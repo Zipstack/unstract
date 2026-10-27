@@ -1,0 +1,174 @@
+name: Release branch CI
+
+# Every commit after the cut must be a cherry-pick of a main commit (or its decline), release-branch-only,
+# or build-generated. Anything else fails.
+# On a PR into release/** this is the required check `check` over the PR's own commits, so a human change
+# is checked before it lands. A backport/X.Y/<sha7> PR is judged as its squash: only its first commit (the pick, whose
+# trailer the squash message keeps) is classified, so a plain resolution commit passes; conflict markers in the
+# head's tree fail it. The push run stays as the backstop for bot pushes and alerts on failure.
+# A pull_request run uses the workflow file from the PR head: a branch cut before this trigger existed gets no PR
+# check, and a PR can edit this file. Job `check` runs there; it holds no secret.
+# A PR labelled `release-branch-only` passes with commits of any kind. On the label, job `trailer` pushes one
+# empty commit `Release-branch-only: <TICKET>` onto the PR head (unless a commit already has the line); Squash and
+# merge keeps it in the message, and the push run checks that merged commit like any other. It holds the bot token,
+# so it runs on pull_request_target: the base line's copy of this file, which a PR cannot edit. A line cut before
+# that trigger existed gets no bot commit; add the line to a commit yourself there.
+# Label changes on a closed PR run nothing.
+# No push builds an RC: a security or critical pick lands and waits for the RM's Take RC build, like any other pick.
+on:
+  push:
+    branches: ["release/**"]
+  pull_request:
+    branches: ["release/**"]
+    types: [opened, synchronize, reopened, labeled, unlabeled] # the label changes the verdict
+  pull_request_target:
+    branches: ["release/**"]
+    types: [labeled] # job trailer only
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.state != 'closed')
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      BRANCH: ${{ github.base_ref || github.ref_name }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0 # relmgr needs full history and tags
+          persist-credentials: false # the head is only read
+
+      # The classifier comes from main, so a PR's edit to relmgr cannot pass its own check. That guards relmgr
+      # only: a PR can still edit this workflow file, which its pull_request run uses, to pass `check`. Closing
+      # that needs a ruleset-required workflow or CODEOWNERS on .github/.
+      - uses: actions/checkout@v6
+        with:
+          ref: main
+          path: .relmgr
+          sparse-checkout: .github/release
+          persist-credentials: false
+
+      - name: Check commit kinds
+        id: classify
+        env:
+          EVENT: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+          RBO_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'release-branch-only') }}
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          python3 -I - <<'PY'  # isolated: a module file in the head checkout never shadows the stdlib
+          import os, sys
+          sys.path.insert(0, ".relmgr/.github/release")
+          import relmgr as rm
+          repo, branch = os.environ["GITHUB_WORKSPACE"], f"origin/{os.environ['BRANCH']}"
+          try:
+              rows, where = rm.ci_commits(repo, branch, os.environ["EVENT"], os.environ["BEFORE"], os.environ["HEAD_REF"],
+                                          os.environ["RBO_LABEL"] == "true")
+          except ValueError as e:
+              sys.exit(f"::error::{e}")
+          for c, kind in rows:
+              print(f"{'::error::' if kind == 'invalid' else ''}{c[:12]} {kind:20} {rm.git(repo, 'log', '-1', '--format=%s', c)}")
+          bad = sum(kind == "invalid" for _, kind in rows)
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write(f"invalid={bad}\npicks={' '.join(c for c, kind in rows if kind == 'cherry-pick')}\n")
+          sys.exit(f"{bad} invalid commit(s) on {where}" if bad else 0)
+          PY
+
+      - name: Merge note
+        if: always() && github.event_name == 'pull_request'
+        env:
+          RBO_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'release-branch-only') }}
+          INVALID: ${{ steps.classify.outputs.invalid || '0' }}
+        run: |
+          if [ "$INVALID" != 0 ]; then
+            hint="A commit here is not a pick from main. A change only for $BRANCH: add the \`release-branch-only\` label. A fix on main: cherry-pick it with \`git cherry-pick -x\`."
+            echo "::notice::$hint"
+            echo "$hint" >> "$GITHUB_STEP_SUMMARY"
+          elif [ "$RBO_LABEL" = true ]; then
+            echo "Squash and merge: the \`Release-branch-only: <TICKET>\` commit the bot added carries the line." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Merge with squash; the squash message keeps each commit's trailer (a backport PR's from its first commit)." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Branch state (informational)
+        if: always()
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 .relmgr/.github/release/relstate.py | jq --arg b "$BRANCH" '.branches[] | select(.branch == $b)'
+
+  # On the `release-branch-only` label: one empty bot commit carrying `Release-branch-only: <TICKET>` (ticket from
+  # the title, else `#<PR number>`), so the squash message has the line. A commit already carrying it -> nothing pushed. The push fires
+  # `synchronize`, so `check` runs once more. A fork head cannot take a bot push: fail and say so.
+  # pull_request_target: this job is the base line's copy. The head is only data here: read without a token, its
+  # files never imported, and the push ignores its git config.
+  trailer:
+    if: github.event_name == 'pull_request_target' && github.event.action == 'labeled' && github.event.label.name == 'release-branch-only'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+      HEAD_REF: ${{ github.event.pull_request.head.ref }}
+      BASE_REF: ${{ github.base_ref }}
+      TITLE: ${{ github.event.pull_request.title }}
+      PR: ${{ github.event.pull_request.number }}
+    steps:
+      - name: Same-repo head
+        run: |
+          [ "$HEAD_REPO" = "$GITHUB_REPOSITORY" ] || { echo "::error::release-branch-only: the head is on $HEAD_REPO, a fork; the bot cannot push the \`Release-branch-only:\` commit there. Push the branch to $GITHUB_REPOSITORY and open the PR from it, or add the line to a commit yourself."; exit 1; }
+
+      # The head is checked out without the bot token; only the push below gets it. The logic comes from main.
+      # Run on the head's tip SHA, so a push to the head after the label makes the bot push fail, not skip a check.
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0 # every branch, so origin/<base> is current
+          persist-credentials: false
+
+      - uses: actions/checkout@v6
+        with:
+          ref: main
+          path: .relmgr
+          sparse-checkout: .github/release
+          persist-credentials: false
+
+      - name: Add the Release-branch-only commit
+        id: rbo
+        run: |
+          python3 -I - <<'PY'  # isolated: a module file in the head checkout never shadows the stdlib
+          import os, subprocess, sys
+          sys.path.insert(0, ".relmgr/.github/release")
+          import relmgr as rm
+          ticket = rm.rbo_key(os.environ["TITLE"], os.environ["PR"])
+          msgs = rm.git(".", "log", "--format=%B", f"origin/{os.environ['BASE_REF']}..HEAD")
+          if have := rm.RBO_RE.findall(msgs):
+              print(f"A commit on the PR already has Release-branch-only: {', '.join(sorted(set(have)))}; nothing pushed.")
+              sys.exit(0)
+          subprocess.run(["git", "-c", "core.hooksPath=/dev/null", "-c", "user.name=releases-bot", "-c", f"user.email={rm.BOT_EMAIL}",
+                          "commit", "--allow-empty", "-m", f"Release-branch-only: {ticket}"], check=True)
+          print(f"Committed {rm.git('.', 'rev-parse', 'HEAD')[:12]} Release-branch-only: {ticket}")
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write("push=true\n")
+          PY
+
+      # The repo's GitHub App, as in create-release.yaml: a GITHUB_TOKEN push or PR starts no workflow.
+      - name: Bot token
+        id: bot
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.PUSH_TO_MAIN_APP_CLIENT_ID }}
+          private-key: ${{ secrets.PUSH_TO_MAIN_APP_PRIVATE_KEY }}
+
+      - name: Push it
+        if: steps.rbo.outputs.push == 'true'
+        env:
+          BOT_TOKEN: ${{ steps.bot.outputs.token }} # a GITHUB_TOKEN push would not start the `check` re-run
+        run: |
+          # No hooks, and an explicit URL rather than the checkout's remote config.
+          helper='!f() { echo username=x-access-token; echo "password=$BOT_TOKEN"; }; f'
+          git -c core.hooksPath=/dev/null -c credential.helper= -c credential.helper="$helper" \
+            push "https://github.com/${GITHUB_REPOSITORY}.git" "HEAD:refs/heads/$HEAD_REF"
