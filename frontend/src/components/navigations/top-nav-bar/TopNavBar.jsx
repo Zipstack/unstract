@@ -30,7 +30,7 @@ import "./TopNavBar.css";
 import config from "../../../config";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
 import { useAlertStore } from "../../../store/alert-store.js";
-import { ConfirmModal } from "../../widgets/confirm-modal/ConfirmModal.jsx";
+import { openConfirm } from "../../widgets/confirm-modal/confirmStore.js";
 
 let TrialDaysInfo;
 try {
@@ -254,8 +254,9 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
       return {
         key: org?.id,
         /*
-         * On the menu item rather than a wrapper div: the item is what the
-         * keyboard focuses, and Radix turns Enter/Space on it into a click.
+         * Both actions sit on the menu item, not inside its label: the item is
+         * what the keyboard focuses, and Radix turns Enter/Space on it into a
+         * click on the item itself, which never reaches a descendant's handler.
          */
         onClick: isCurrentOrg
           ? () =>
@@ -263,17 +264,15 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
                 type: "error",
                 content: `You are already in ${org?.display_name}`,
               })
-          : undefined,
-        label: isCurrentOrg ? (
-          org?.display_name
-        ) : (
-          <ConfirmModal
-            handleConfirm={() => handleContinue(org?.id)}
-            content={`Want to switch to ${org?.display_name}?`}
-          >
-            <div>{org?.display_name}</div>
-          </ConfirmModal>
-        ),
+          : () =>
+              openConfirm({
+                title: "Are you sure?",
+                content: `Want to switch to ${org?.display_name}?`,
+                okText: "Confirm",
+                cancelText: "Cancel",
+                onOk: () => handleContinue(org?.id),
+              }),
+        label: org?.display_name,
       };
     });
   }, [allOrganization, handleContinue]);

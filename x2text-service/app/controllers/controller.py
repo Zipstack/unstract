@@ -89,6 +89,9 @@ def process() -> Any:
     if uploaded_file.filename == "":
         return {"message": "No selected file"}, 400
 
+    # Missing (chunked upload) or non-integer Content-Length used to raise and
+    # return a 500. Untested: x2text-service has no test suite; this branch was
+    # exercised by hand through a Flask request context (see PR #2393).
     content_length = request.headers.get("Content-Length")
     try:
         file_size_in_kb = int(content_length) / 1024

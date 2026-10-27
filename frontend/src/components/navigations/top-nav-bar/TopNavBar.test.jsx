@@ -55,6 +55,7 @@ async function openSwitchOrg(user) {
 }
 
 beforeEach(() => {
+  useAlertStore.setState({ alertDetails: {} });
   useSessionStore.setState({
     sessionDetails: {
       isLoggedIn: true,
@@ -104,6 +105,29 @@ describe("TopNavBar Switch Org", () => {
     expect(
       await screen.findByText("Want to switch to Org B?"),
     ).toBeInTheDocument();
+    expect(useAlertStore.getState().alertDetails).toEqual({});
+    await user.click(screen.getByRole("button", { name: "Confirm" }));
+
+    expect(axios).toHaveBeenCalledWith(
+      expect.objectContaining({
+        method: "POST",
+        url: "/api/v1/organization/org-b/set",
+      }),
+    );
+  });
+
+  it("asks to switch when a keyboard user picks another org", async () => {
+    axios.mockResolvedValue({});
+    const user = userEvent.setup();
+    renderTopNavBar();
+
+    await openSwitchOrg(user);
+    const otherOrg = await screen.findByRole("menuitem", { name: "Org B" });
+    otherOrg.focus();
+    await user.keyboard("{Enter}");
+    expect(
+      await screen.findByText("Want to switch to Org B?"),
+    ).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Confirm" }));
 
     expect(axios).toHaveBeenCalledWith(
@@ -116,10 +140,6 @@ describe("TopNavBar Switch Org", () => {
 });
 
 describe("TopNavBar current org", () => {
-  beforeEach(() => {
-    useAlertStore.setState({ alertDetails: {} });
-  });
-
   it("tells a keyboard user they are already in the org", async () => {
     const user = userEvent.setup();
     renderTopNavBar();
@@ -133,7 +153,9 @@ describe("TopNavBar current org", () => {
       type: "error",
       content: "You are already in Org A",
     });
-    expect(axios).not.toHaveBeenCalled();
+    expect(
+      screen.queryByText("Want to switch to Org A?"),
+    ).not.toBeInTheDocument();
   });
 
   it("tells a mouse user they are already in the org", async () => {
@@ -147,6 +169,8 @@ describe("TopNavBar current org", () => {
       type: "error",
       content: "You are already in Org A",
     });
-    expect(axios).not.toHaveBeenCalled();
+    expect(
+      screen.queryByText("Want to switch to Org A?"),
+    ).not.toBeInTheDocument();
   });
 });
