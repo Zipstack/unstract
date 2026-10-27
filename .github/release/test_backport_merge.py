@@ -89,7 +89,7 @@ class Landed(unittest.TestCase):
 class Gh:
     """Stand-in for bm.gh: records each call; serves the PR view, its comments and the decline commit's sha."""
 
-    def __init__(self, state, labels=(), comments=(), ref="a" * 40):
+    def __init__(self, state, labels=(), comments=()):
         self.pr = {
             "number": 7,
             "state": state,
@@ -101,7 +101,7 @@ class Gh:
             "isCrossRepository": False,
             "author": {"login": BOT, "is_bot": True},
         }
-        self.comments, self.calls, self.ref = list(comments), [], ref
+        self.comments, self.calls = list(comments), []
 
     def __call__(self, *args, token=None):
         self.calls.append(args)
@@ -109,10 +109,6 @@ class Gh:
             return json.dumps(self.pr)
         if args[:2] == ("api", "--paginate"):
             return "\n".join(json.dumps(c) for c in self.comments)
-        if args[:2] == ("api", "repos/o/r/git/ref/heads/backport/0.187/ccccccc"):
-            if not self.ref:
-                raise RuntimeError("gh api (exit 1): Not Found (HTTP 404)")
-            return json.dumps({"object": {"sha": self.ref}})
         if args[:4] == ("api", "-X", "POST", "repos/o/r/git/commits"):
             return json.dumps({"sha": "e" * 40})
         return ""
@@ -123,7 +119,6 @@ class Gh:
             a[:2] if a[0] == "pr" else a[1:4]
             for a in self.calls
             if a[:2] not in (("pr", "view"), ("api", "--paginate"), ("api", "user"))
-            and not a[1].startswith("repos/o/r/git/ref/")
         ]
 
     def said(self):
@@ -265,30 +260,25 @@ class Close(unittest.TestCase):
         self.assertTrue(bm.gh.said()[0].startswith("Bot could not record the decline"))
 
     def test_head_without_a_pick_declines_nothing(self):
-        # A head moved onto the base still owes its fix: no decline or label; the bot deletes the head, which would
-        # fail every later Backport run, and says once how to decline by hand. The run passes.
+        # A head moved onto the base still owes its fix: no decline, label or delete (removing the head is manual);
+        # one comment says so and how to decline by hand. The run passes.
         bm.first_pick = lambda pr: (None, [])
-        delete = ("-X", "DELETE", "repos/o/r/git/refs/heads/backport/0.187/ccccccc")
         self.assertEqual(
             self.close("CLOSED", labels=["backport-conflict"]), "skipped: no pick"
         )
-        self.assertEqual(bm.gh.writes(), [delete, ("pr", "comment")])
+        self.assertEqual(bm.gh.writes(), [("pr", "comment")])
         said = bm.gh.said()[0]
         self.assertTrue(
             said.startswith(bm.NO_PICK + " release/0.187, so nothing was declined")
         )
+        self.assertIn("Delete `backport/0.187/ccccccc` by hand", said)
         self.assertIn("Declined: <reason>", said)
         out = self.close("CLOSED", comments=[comment(said, user="bot")])  # a re-run
-        self.assertEqual((out, bm.gh.writes()), ("skipped: no pick", [delete]))
-        # A re-run after the next Backport run re-picked onto the same name, or after a person deleted the head:
-        # that head is not this PR's, so it stays.
-        for ref in ("b" * 40, None):
-            out = self.close("CLOSED", comments=[comment(said, user="bot")], ref=ref)
-            self.assertEqual((out, bm.gh.writes()), ("skipped: no pick", []))
+        self.assertEqual((out, bm.gh.writes()), ("skipped: no pick", []))
         # A comment from an earlier close does not count for this one.
         early = comment(said, at="2026-10-12T09:00:00Z", user="bot")
         self.close("CLOSED", comments=[early])
-        self.assertEqual(bm.gh.writes(), [delete, ("pr", "comment")])
+        self.assertEqual(bm.gh.writes(), [("pr", "comment")])
 
     def test_reopened_sets_conflict_only(self):
         self.assertEqual(self.close("OPEN", labels=["backport-declined"]), "reopened")
@@ -423,8 +413,8 @@ class Summary(unittest.TestCase):
                 [
                     "**Backport PR** #246 on `release/0.189`: **skipped**: its head has no commit past the base, "
                     "so nothing was declined",
-                    "Next: the next Backport run treats the fix as not picked; the PR comment says how to decline "
-                    "it by hand.",
+                    "Next: delete the head by hand, or re-pick onto it; the PR comment says how to decline the fix "
+                    "by hand.",
                 ],
             )
 
