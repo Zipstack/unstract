@@ -1,3 +1,5 @@
+from extractor_registry import api_routes
+
 #: The `kv` extractor's name. Kept as a constant, but NOT routable on this
 #: deployment -- see `EXTRACTOR_ROUTES` below, which carries `table` only.
 #:
@@ -6,7 +8,6 @@
 #: wrong, on line 1 of the file that defines the routing table: `kv` is the one
 #: extractor this deployment does NOT accept, and `AgentKVJob.extractor` has
 #: carried the name since migration 0002.
-from extractor_registry import api_routes
 
 V1_EXTRACTOR_NAME = "kv"
 
@@ -42,11 +43,12 @@ OPERATION_TABLE_EXTRACT_API = "table_extract_api"
 #: plugin and not `agentic_kv`, so nothing drains `celery_executor_agentic_kv`.
 #: `SUPPORTED_EXTRACTORS` is derived from this table's keys
 #: (`execution_serializers.py`), so the omission turns a `kv` submit into a 400
-#: at the serializer. Restoring the entry below is all it takes to re-enable
-#: the extractor once the plugin ships -- and restoring it WITHOUT the plugin
-#: is the failure this guards: the submit would be accepted with a 202,
-#: dispatched to a queue with no consumer, and sit in DISPATCHED forever with
-#: no error at the producer and nothing in any log to find.
+#: at the serializer. Re-enabling it WITHOUT the plugin is the failure this
+#: guards: the submit would be accepted with a 202, dispatched to a queue with
+#: no consumer, and sit in DISPATCHED until the stuck-job sweep force-fails it
+#: as "Job timed out" -- up to AGENT_KV_STUCK_JOB_GRACE_SECONDS (6h by
+#: default) later, with no error at the producer and nothing naming the real
+#: cause. The re-enable procedure itself is below.
 #:
 #: `V1_EXTRACTOR_NAME`, `STAGE_NAMES` and the KV options serializer stay in the
 #: tree, dormant and still under test, so re-enabling is one line rather than a
@@ -61,12 +63,16 @@ OPERATION_TABLE_EXTRACT_API = "table_extract_api"
 #: two different shapes -- a missing key here, a boolean there -- so
 #: re-enabling the engine meant finding and flipping both.
 #:
-#: Re-enabling THIS door -- the blind API route -- is one line: set
-#: `available=True` on that row. That is no longer sufficient to make the
-#: engine runnable, because the Studio's door also requires a parameter
-#: builder registered in the cloud tree; see the `available` entry in
-#: `extractor_registry.spec`. Doing either without the plugin deployed remains
-#: the failure described above.
+#: Re-enabling THIS door -- the blind API route -- starts with
+#: `available=True` on that row, but it is NOT a one-line change. It is not
+#: sufficient (the Studio's door also needs a parameter builder registered in
+#: the cloud tree -- see the `available` entry in `extractor_registry.spec`),
+#: and it is not self-contained: the flip reds 12 assertions across 5 files,
+#: and two of them pin the ABSENCE and must be retired with it rather than
+#: updated -- `test_submit_serializer.py`, `test_table_extractor_routing.py`,
+#: `test_queue_wiring_is_derived.py`, `test_models.py` and
+#: `extractor_registry/tests/test_catalogue.py`. Doing it without the plugin
+#: deployed is the 202-onto-a-dead-queue failure described above.
 EXTRACTOR_ROUTES = api_routes()
 
 #: The table engine reports one coarse stage: it has no node-level progress

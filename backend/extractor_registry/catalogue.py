@@ -2,6 +2,13 @@
 
 See ``spec.py`` for why the operation and the agent's name are per-door
 columns rather than single fields.
+
+"Both front doors" means both BACKEND doors. The worker tier cannot import
+this package and keeps its own copies of the executor and operation literals
+(``workers/executor/tasks.py``), so a field added to a row here does NOT
+reach workers. The cross-tier agreement is enforced instead by
+``agent_kv/tests/test_queue_wiring_is_derived.py``, which derives its
+expectations from ``EXTRACTOR_ROUTES``.
 """
 
 from __future__ import annotations
@@ -27,9 +34,10 @@ EXTRACTOR_AGENTS: dict[str, ExtractorAgentSpec] = {
         kind=ExtractorAgentKind.PRIMARY,
         executor=EXECUTOR_AGENTIC,
         ide_operation="agentic_extract",
-        # No blind-API door: the API exposes `kv` and `table` only. Declared as
-        # None rather than omitted from the catalogue, because the Studio does
-        # offer this agent and `api_routes()` is what decides API exposure.
+        # No blind-API door at all. The API's namespace declares `kv` and
+        # `table`; only `table` is routable today. Declared as None rather than
+        # omitted from the catalogue, because the Studio does offer this agent
+        # and `api_routes()` is what decides API exposure.
         api_operation=None,
         api_extractor=None,
         supports_multimodal=True,
@@ -72,8 +80,9 @@ EXTRACTOR_AGENTS: dict[str, ExtractorAgentSpec] = {
         multimodal_required=True,
         requires_target_table=True,
         schema_placeholder="{{TABLE_EXTRACTOR_AGENT_OUTPUT}}",
-        # ExtractionOutput.to_dict() wraps the rows in run metadata
-        # (page_count / table_pages / headers / row_count).
+        # ExtractionOutput.to_dict() wraps the rows in run metadata, which is
+        # why the rows must be unwrapped by this key rather than substituted
+        # whole.
         output_key="tables",
     ),
 }
@@ -144,6 +153,11 @@ def api_agent(extractor: str) -> ExtractorAgentSpec | None:
     nothing outside the tests depends on the non-filtering behaviour. Wire it
     or delete it; do not assume it is already load-bearing.
     """
+    # Guard the falsy case before comparing: `simple` declares
+    # `api_extractor=None`, so a bare `== extractor` matches None == None and
+    # hands the caller the one agent with no API door.
+    if not extractor:
+        return None
     for spec in EXTRACTOR_AGENTS.values():
         if spec.api_extractor == extractor:
             return spec

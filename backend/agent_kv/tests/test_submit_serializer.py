@@ -124,9 +124,11 @@ def test_a_kv_submit_is_refused_at_the_serializer():
     `agentic_kv` is not deployed here, so nothing consumes
     `celery_executor_agentic_kv`. If `kv` were routable, this submit would
     return 202, dispatch into a queue with no consumer, and sit in DISPATCHED
-    forever -- no error at the producer, nothing in any log to find. A 400 at
-    the serializer is the whole difference between a clear refusal and a job
-    that silently never runs.
+    until the stuck-job sweep force-fails it as "Job timed out" -- up to
+    AGENT_KV_STUCK_JOB_GRACE_SECONDS (6h by default) later, with no error at
+    the producer and nothing naming the real cause. A 400 at the serializer is
+    the whole difference between a clear refusal and a job that appears to
+    have been accepted and then times out hours later.
     """
     s = SubmitSerializer(
         data=_data(

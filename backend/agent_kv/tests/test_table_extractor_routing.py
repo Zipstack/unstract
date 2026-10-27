@@ -21,7 +21,9 @@ if not apps.ready:
 
 from agent_kv.constants import (  # noqa: E402
     EXTRACTOR_ROUTES,
+    OPERATION_TABLE_EXTRACT_API,
     STAGE_NAMES_BY_EXTRACTOR,
+    TABLE_EXECUTOR_NAME,
     TABLE_EXTRACTOR_NAME,
     V1_EXTRACTOR_NAME,
 )
@@ -61,10 +63,37 @@ def test_the_table_route_targets_the_existing_executor():
     """R1: the queue is derived from the executor name, and
     celery_executor_agentic_table is already wired. A new executor name here
     would be accepted, dispatch silently, and never drain.
+
+    Asserted against this module's own constants rather than bare strings, so
+    `OPERATION_TABLE_EXTRACT_API` and `TABLE_EXECUTOR_NAME` stay load-bearing:
+    they lost their only other reader when `EXTRACTOR_ROUTES` became derived,
+    and an unread constant sitting above the routing table can be edited with
+    no effect and no failing test.
     """
-    executor, operation = EXTRACTOR_ROUTES[TABLE_EXTRACTOR_NAME]
-    assert executor == "agentic_table"
-    assert operation == "table_extract_api"
+    assert EXTRACTOR_ROUTES[TABLE_EXTRACTOR_NAME] == (
+        TABLE_EXECUTOR_NAME,
+        OPERATION_TABLE_EXTRACT_API,
+    )
+
+
+def test_extractor_routes_is_derived_from_the_shared_catalogue():
+    """UN-4214's whole point, and otherwise pinned by nothing.
+
+    `EXTRACTOR_ROUTES` is now `api_routes()` rather than a literal dict, and
+    the two were byte-identical on the day of the change -- so reverting the
+    derivation would pass every other test in both suites. Without this, the
+    consolidation is invisible to CI in both directions, and the two front
+    doors could silently drift back apart.
+
+    This lives with the CONSUMER, not in the registry's own suite: a shared
+    package should not import the things that depend on it. It also cannot be
+    written as a patch-based test, because `EXTRACTOR_ROUTES` is a snapshot
+    taken when the app registry imports this module.
+    """
+    from extractor_registry import api_routes
+
+    assert EXTRACTOR_ROUTES == api_routes()
+    assert SUPPORTED_EXTRACTORS == tuple(api_routes())
 
 
 def test_a_table_entry_validates_with_its_own_options():

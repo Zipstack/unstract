@@ -48,9 +48,17 @@ class ApiRoutesEnforcesAvailabilityTest(SimpleTestCase):
     def test_flipping_available_adds_the_route(self) -> None:
         """The inverse, so the omission above is attributable to the flag.
 
-        Also the documented re-enable procedure: one line, one place. If this
-        ever fails, `available=True` no longer re-enables an extractor and the
-        comment in `agent_kv.constants` is lying.
+        This pins the FLAG's effect on `api_routes()` and nothing more. It is
+        deliberately not evidence for the re-enable procedure as a whole: a
+        real flip also reds the guards that pin the omission (see
+        `agent_kv.constants`), and it cannot reach `EXTRACTOR_ROUTES` at all,
+        which is an import-time snapshot taken before any test body runs. The
+        derivation itself is pinned in
+        `agent_kv/tests/test_table_extractor_routing.py`.
+
+        If `kv` is ever deliberately re-enabled, this test and
+        `test_an_unavailable_agent_is_omitted` both invert; delete them and
+        say so, rather than editing them green.
         """
         kv = get_agent(ExtractorAgentKey.MULTI_STAGE)
         with patch.dict(
@@ -63,8 +71,18 @@ class ApiRoutesEnforcesAvailabilityTest(SimpleTestCase):
         self.assertEqual(routes["kv"], ("agentic_kv", "kv_extract"))
 
     def test_an_agent_with_no_api_door_never_appears(self) -> None:
-        """`simple` is Studio-only; the blind API exposes `kv` and `table`."""
-        self.assertNotIn("simple", api_routes())
+        """`simple` is Studio-only. The API's namespace declares `kv` and
+        `table`; only `table` is routable today.
+
+        Assert on the namespace `api_routes()` actually keys on -- its own
+        `api_extractor` -- not on the Studio key. `assertNotIn("simple", ...)`
+        cannot fail under any implementation, because `spec.key` is never a
+        key of that mapping; dropping the door halves from the filter yields a
+        None key instead, which is what the first two assertions catch.
+        """
+        routes = api_routes()
+        self.assertEqual(set(routes), {"table"})
+        self.assertNotIn(None, routes)
         simple = get_agent(ExtractorAgentKey.SIMPLE)
         self.assertTrue(simple.available, "simple IS deployed")
         self.assertIsNone(simple.api_operation, "it just has no API door")
@@ -128,6 +146,27 @@ class PerDoorColumnsTest(SimpleTestCase):
         # Neither is fine: that is the Studio-only shape.
         self.assertIsNone(ExtractorAgentSpec(**base).api_operation)
 
+    def test_multimodality_cannot_be_required_without_being_supported(self) -> None:
+        """The other half-declared shape. `multimodal_required` is the Table
+        Extractor's "no non-multimodal run is meaningful"; `supports_multimodal`
+        is the Studio checkbox's existence. Required-but-unsupported describes
+        an agent that can neither be run nor configured.
+        """
+        base = dict(
+            key="x", name="X", kind=ExtractorAgentKind.PRIMARY,
+            executor="e", ide_operation="o",
+        )
+        with self.assertRaises(ValueError):
+            ExtractorAgentSpec(
+                **base, multimodal_required=True, supports_multimodal=False
+            )
+        # Both set is the Table shape, and is fine.
+        self.assertTrue(
+            ExtractorAgentSpec(
+                **base, multimodal_required=True, supports_multimodal=True
+            ).multimodal_required
+        )
+
 
 class CatalogueShapeTest(SimpleTestCase):
     """Invariants the Studio's binding relies on."""
@@ -144,6 +183,39 @@ class CatalogueShapeTest(SimpleTestCase):
         self.assertEqual(len(defaults), 1)
         self.assertEqual(default_primary_key(), defaults[0].key)
 
+    def test_the_default_is_chosen_by_the_flag_not_by_insertion_order(self) -> None:
+        """`simple` is BOTH the first Primary and the flagged one, so deleting
+        the `is_default` scan entirely still returns `simple` via the
+        defensive fallback. Move the flag to prove the scan is load-bearing.
+
+        What this guards is persisted content: `default_primary_key()` is the
+        `agent_key` written onto new and backfilled profile rows, so a
+        regression here is silent until profiles are inspected.
+        """
+        simple = get_agent(ExtractorAgentKey.SIMPLE)
+        multi = get_agent(ExtractorAgentKey.MULTI_STAGE)
+        with patch.dict(
+            EXTRACTOR_AGENTS,
+            {
+                ExtractorAgentKey.SIMPLE: ExtractorAgentSpec(
+                    **{**simple.__dict__, "is_default": False}
+                ),
+                ExtractorAgentKey.MULTI_STAGE: ExtractorAgentSpec(
+                    **{**multi.__dict__, "is_default": True}
+                ),
+            },
+        ):
+            self.assertEqual(default_primary_key(), ExtractorAgentKey.MULTI_STAGE)
+
+    def test_the_fallback_applies_when_no_primary_is_flagged(self) -> None:
+        """The `catalogue.py` fallback branch, otherwise reached by no test."""
+        patched = {
+            key: ExtractorAgentSpec(**{**spec.__dict__, "is_default": False})
+            for key, spec in EXTRACTOR_AGENTS.items()
+        }
+        with patch.dict(EXTRACTOR_AGENTS, patched):
+            self.assertEqual(default_primary_key(), primary_agents()[0].key)
+
     def test_the_default_primary_is_available(self) -> None:
         """A new profile must not be born pointing at an agent that cannot run."""
         self.assertTrue(get_agent(default_primary_key()).available)
@@ -153,6 +225,27 @@ class CatalogueShapeTest(SimpleTestCase):
         for spec in specialized_agents():
             self.assertIsNotNone(spec.schema_placeholder, spec.key)
 
+    def test_the_table_rows_cross_repo_literals_are_pinned(self) -> None:
+        """Each of these has its authoritative counterpart in a repo this CI
+        never checks out, which is the same reason the enum values are pinned
+        below.
+
+        `output_key` must match the envelope key that
+        `workers/plugins/agentic_table` emits: its consumer returns the WHOLE
+        envelope on a key miss and then reports the value as placed, so a
+        typo substitutes run metadata into the user's schema slot with no
+        exception and no log line. `schema_placeholder` is the token the
+        Studio substitutes on. `requires_target_table` gates the cloud
+        serializer's validation; silently False saves a Table agent config
+        that the engine cannot run.
+        """
+        table = get_agent(ExtractorAgentKey.TABLE)
+        self.assertEqual(table.output_key, "tables")
+        self.assertEqual(
+            table.schema_placeholder, "{{TABLE_EXTRACTOR_AGENT_OUTPUT}}"
+        )
+        self.assertTrue(table.requires_target_table)
+
     def test_primary_agents_carry_no_placeholder(self) -> None:
         for spec in primary_agents():
             self.assertIsNone(spec.schema_placeholder, spec.key)
@@ -160,6 +253,14 @@ class CatalogueShapeTest(SimpleTestCase):
     def test_every_kind_is_one_of_the_two(self) -> None:
         for spec in EXTRACTOR_AGENTS.values():
             self.assertIn(spec.kind, set(ExtractorAgentKind.values), spec.key)
+
+    def test_api_agent_refuses_a_falsy_extractor(self) -> None:
+        """`simple` declares `api_extractor=None`, so an unguarded
+        `spec.api_extractor == extractor` matches None == None and returns the
+        one agent with no API door at all.
+        """
+        self.assertIsNone(api_agent(None))
+        self.assertIsNone(api_agent(""))
 
     def test_api_extractor_names_are_unique(self) -> None:
         """`api_agent` scans linearly and returns the first match."""
@@ -173,8 +274,9 @@ class EnumValuesArePersistedLiteralsTest(SimpleTestCase):
     These strings are what ``agentic_extractor_agent_config.agent_key`` and
     ``.kind`` hold, and they are frozen again as literal tuples in the cloud
     app's migration ``0009_extraction_profiles`` -- a repository this CI never
-    checks out. A rename is silent at run time: ``get_agent("simple")`` returns None for every row already
-    written, and ``kind``-filtered queries stop matching.
+    checks out. A rename is silent at run time: ``get_agent("simple")``
+    returns None for every row already written, and ``kind``-filtered queries
+    stop matching.
 
     The sibling tests compare ``EXTRACTOR_AGENTS`` against
     ``ExtractorAgentKey.values``; both sides move together under a rename, so

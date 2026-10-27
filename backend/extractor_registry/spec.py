@@ -65,9 +65,10 @@ class ExtractorAgentSpec:
             addable once each).
         executor: Worker executor that runs this agent (e.g. ``"agentic"`` or
             ``"agentic_table"``). Shared by both doors — the executor is the
-            same process either way, which is why the blind API deliberately
-            reuses the already-wired ``celery_executor_<executor>`` queue
-            rather than minting a second one.
+            same process either way. Whether this executor's derived
+            ``celery_executor_<executor>`` queue has a consumer is a separate
+            fact, per row: ``agentic_table``'s does, ``agentic_kv``'s
+            deliberately does not (see ``available`` below).
         ide_operation: Operation the STUDIO dispatches. Resolves adapters from
             stored configuration.
         api_operation: Operation the BLIND API dispatches, or ``None`` where
@@ -100,7 +101,8 @@ class ExtractorAgentSpec:
             requires a parameter builder, which lives in the cloud tree where
             OSS CI cannot see it. Flipping this True without the matching
             cloud-side builder is the mistake it guards -- see
-            ``agentic_studio_v1.services.agent_dispatch.is_dispatchable``.
+            ``agentic_studio_v1.services.agent_dispatch.is_dispatchable``,
+            which cloud PR #1894 adds (it is not on cloud main yet).
     """
 
     key: str
@@ -122,11 +124,13 @@ class ExtractorAgentSpec:
         """Reject the half-declared API door.
 
         ``api_operation`` and ``api_extractor`` are meaningless apart: a route
-        needs both a name to be requested by and an operation to dispatch. One
-        without the other would either drop the agent out of ``api_routes()``
-        silently or put an un-dispatchable entry in it, and both failures are
-        invisible until a submit lands.
+        needs both a name to be requested by and an operation to dispatch.
+        Either half alone drops the agent out of ``api_routes()`` silently --
+        its filter requires both -- and that silence lasts until a submit
+        lands.
         """
+        if self.multimodal_required and not self.supports_multimodal:
+            raise ValueError(f"{self.key}: multimodal_required needs supports_multimodal")
         if bool(self.api_operation) != bool(self.api_extractor):
             raise ValueError(
                 f"{self.key}: api_operation and api_extractor must be set "
