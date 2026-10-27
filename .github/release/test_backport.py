@@ -11,6 +11,11 @@ from unittest import mock
 os.environ["GITHUB_REPOSITORY"] = (
     "Zipstack/unstract-cloud"  # relstate loads the cloud config, whatever the runner sets
 )
+os.environ["RELEASE_BOT_APP_SLUG"] = "zipstack-push-to-main"  # the release App
+BOT = {
+    "login": "app/zipstack-push-to-main",
+    "is_bot": True,
+}  # gh pr view's author of the App's PRs
 import backport as bp
 import relmgr as rm
 
@@ -692,12 +697,13 @@ class FinishOpen(unittest.TestCase):
         os.chdir(self.cwd)
         self.tmp.cleanup()
 
-    def finish(self, labels=(), oid=None, prs=None):
+    def finish(self, labels=(), oid=None, prs=None, author=BOT):
         listing = [
             {
                 "number": 4,
                 "headRefOid": oid or self.oid,
                 "labels": [{"name": x} for x in labels],
+                "author": author,
             }
         ]
         squash = lambda slug, pr, msg: self.merged.append((pr["number"], msg)) or True
@@ -784,6 +790,29 @@ class FinishOpen(unittest.TestCase):
                 "or reopen its PR, then rerun",
             ),
         )
+
+    def test_not_the_bots_pick_is_not_squashed(self):
+        # The squash bypasses the release ruleset: a person's PR on a pick head, or a commit that is not the pick
+        # of the head's sha7, must not land through it.
+        for author in (
+            {"login": "dev", "is_bot": False},
+            {"login": "app/other", "is_bot": True},
+        ):
+            out = self.finish(author=author)
+            self.assertEqual(out[0], "failed")
+            self.assertIn(
+                "not by the bot (@app/zipstack-push-to-main): not merged", out[1]
+            )
+        for msg in ("fix: x", "fix: x\n\n(cherry picked from commit " + "b" * 40 + ")"):
+            out = self.finish(oid=self.push(msg))
+            self.assertEqual(
+                out,
+                (
+                    "failed",
+                    "#4: its commit is not the pick backport/1.0/aaaaaaa names: not merged",
+                ),
+            )
+        self.assertEqual(self.merged, [])
 
     def test_unlabelled_conflict_pick_is_not_squashed(self):
         trailer = "(cherry picked from commit " + "a" * 40 + ")"

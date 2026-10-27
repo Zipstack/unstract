@@ -97,6 +97,7 @@ jobs:
       - name: Pick
         env:
           GH_TOKEN: ${{ steps.bot.outputs.token }}
+          RELEASE_BOT_APP_SLUG: ${{ steps.bot.outputs.app-slug }} # a leftover pick PR is squashed only if this App opened it
           COMMITS: ${{ inputs.commits }}
           CONFIRM: ${{ inputs.confirm_stabilized }}
           BRANCHES: ${{ inputs.branches }}

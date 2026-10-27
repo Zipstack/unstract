@@ -26,7 +26,7 @@ the run reports it.
 A rejected push of the pick head is retried (3 attempts, 5 s then 20 s apart); a final rejection is one
 sentence naming the cause and the fix, in the run's ::error::, on the source PR and in the gate's MISSING row.
 Conflict: committed with markers and left open with label backport-conflict. A person resolves it, gets one
-approving review and merges it, or closes it; the Backport PR workflow (backport_merge.py) then records the merge,
+approving review and merges it, or closes it; Backport's record job (backport_merge.py) then records the merge,
 or the close as a decline (the close comment is the reason). Reopening and merging undoes a decline.
 Never builds. Targets come from relstate's backport_targets only, never from input: a branch is a
 target when its state accepts the fix. --branches only narrows those targets; it never adds one.
@@ -732,13 +732,13 @@ def fix_labels(slug, src):
 
 
 def finish_open(slug, branch, head):
-    """The pick head already exists. An open unlabelled PR with only the pick on it is a clean pick whose merge
-    failed in an earlier run: squash it now, unless it is a conflict pick that lost its label. A conflict PR or a
-    person's commits wait for a person; a head with no open PR waits PICK_TIMEOUT for the run that pushed it, then
-    fails until a person deletes it or reopens its PR.
-    Known limits: the open PR's author is not checked, so a PR a person opened on a backport/* head is squashed like
-    the bot's when it holds only a pick. A head whose PR was closed but whose decline record failed also reads as
-    "no open PR": deleting that head re-picks the declined fix; re-run the record job instead.
+    """The pick head already exists. An open unlabelled PR the bot opened, with one commit carrying the pick trailer
+    of the head's sha7, is a clean pick whose merge failed in an earlier run: squash it now, unless it is a conflict
+    pick that lost its label. A conflict PR or a person's commits wait for a person; a PR a person opened, or one
+    commit that is not that pick, fails unmerged. A head with no open PR waits PICK_TIMEOUT for the run that pushed
+    it, then fails until a person deletes it or reopens its PR.
+    Known limit: a head whose PR was closed but whose decline record failed also reads as "no open PR": deleting
+    that head re-picks the declined fix; re-run the record job instead.
     """
     pending = "skipped", f"conflict PR pending on `{head}`"
     prs = json.loads(
@@ -754,7 +754,7 @@ def finish_open(slug, branch, head):
             "--state",
             "open",
             "--json",
-            "number,headRefOid,labels",
+            "number,headRefOid,labels,author",
         )
     )
     if (
@@ -785,17 +785,22 @@ def finish_open(slug, branch, head):
     run("git", "fetch", "-q", "origin", f"+refs/heads/{head}:refs/remotes/origin/{head}")
     if rm.git(REPO, "rev-list", "--count", f"{remote}..{pr['headRefOid']}") != "1":
         return pending
-    if rm.conflict_markers(REPO, pr["headRefOid"]) or CONFLICTS_RE.search(
-        rm.git(REPO, "log", "-1", "--format=%B", pr["headRefOid"])
-    ):
+    msg = rm.git(REPO, "log", "-1", "--format=%B", pr["headRefOid"])
+    # The bot squashes with a token that bypasses the release ruleset: only its own PR, holding only its pick.
+    if why := bm.bot_refusal(pr):
+        return "failed", f"{why}: not merged"
+    if not rm.pick_trailer(head, msg):
+        return (
+            "failed",
+            f"#{pr['number']}: its commit is not the pick {head} names: not merged",
+        )
+    if rm.conflict_markers(REPO, pr["headRefOid"]) or CONFLICTS_RE.search(msg):
         return "failed", (
             f"#{pr['number']} is a conflict pick without the backport-conflict label: label it "
             "backport-conflict, then resolve and merge it, or close it to decline"
         )
     try:
-        if not bm.squash(
-            slug, pr, rm.git(REPO, "log", "-1", "--format=%B", pr["headRefOid"])
-        ):
+        if not bm.squash(slug, pr, msg):
             return "failed", f"#{pr['number']} merge pending check"
     except RuntimeError as e:
         return "failed", f"#{pr['number']} merge retry: {str(e).splitlines()[0]}"
@@ -927,10 +932,11 @@ def pick(slug, sha, branch, title, src):
 
 def push_title(slug, sha):
     """The push summary's head line: the pushed commit and its class."""
+    # Known limit: a gh failure that survives fix_class's retry (RuntimeError) is not caught here and ends the run
+    # before its summary.
     try:
         cls, pr, _ = fix_class(slug, sha)
     except ValueError as e:  # a title Lint PR should have stopped: the picks are done, only this line is left
-        # Known limit: a gh failure (RuntimeError) is not caught here and ends the run before its summary.
         print(f"::warning::{sha[:7]}: fix class: {e}")
         cls, pr = UNCLASSIFIABLE, "-"
     return f"Backport · push {rm.commit_link(sha)} ({link_pr(pr)}, {cls or 'not a fix'})"

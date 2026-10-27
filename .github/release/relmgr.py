@@ -13,8 +13,8 @@ PICK_RE = re.compile(r"\(cherry picked from commit ([0-9a-f]{7,40})\)")
 # Anywhere in the message, at a line start; `* ` too, because a squash with COMMIT_MESSAGES lists each commit's
 # subject as `* <subject>` and the bot's Release-branch-only commit is subject-only.
 RBO_RE = re.compile(r"^(?:\* )?Release-branch-only: (\S+)", re.M)
-# `UN-1 [FIX] x` or `[FIX] x`: the ticket is optional. Known limit: one ticket only, so `UN-1 UN-2 [FIX] x` fails
-# Lint PR and is unclassifiable for Backport.
+# `UN-1 [FIX] x` or `[FIX] x`: the ticket is optional. Known limit: one ticket only, so `UN-1 UN-2 [FIX] x` without
+# a fix/ label fails Lint PR and is unclassifiable for Backport.
 PR_TITLE_RE = re.compile(
     r"^(?:(?P<ticket>[A-Z][A-Z0-9]*-\d+) )?\[(?P<type>FIX|HOT-FIX|FEAT|GATED-FEAT|DOCS|DEPS|MISC|DEV|WIP)\] \S"
 )
@@ -27,10 +27,10 @@ REVERTS_RE = re.compile(
 )  # git revert's body line
 DECLINED_RE = re.compile(
     r"^Declined: (.+)$", re.M
-)  # the reason line Backport PR writes on a decline commit
+)  # the reason line Backport's record job writes on a decline commit
 BACKPORT_HEAD_RE = re.compile(
     r"backport/(\d+\.\d+)/([0-9a-f]{7})"
-)  # the head Backport PR opens: line, sha7; fullmatch
+)  # the head Backport opens a pick PR from: line, sha7; fullmatch
 
 
 def _web():
@@ -193,7 +193,7 @@ def pr_commits(repo, base, head_ref, head="HEAD"):
 
 
 def is_backport(head_ref):
-    """Is head_ref a branch Backport PR names (backport/X.Y/<sha7>)? Any other name is judged commit by commit."""
+    """Is head_ref a pick head Backport names (backport/X.Y/<sha7>)? Any other name is judged commit by commit."""
     return bool(BACKPORT_HEAD_RE.fullmatch(head_ref))
 
 

@@ -616,6 +616,11 @@ class Scenario(unittest.TestCase):
                 self.ga("on-prem/backend", "v1.5.1"),
             ),
         )
+        self.push(
+            "on-prem/backend", "v1.5.2", git_ref="release/1.5"
+        )  # a patch: promoted is the newer stable
+        onprem = self.branch(self.state(), "release/1.5")["targets"]["on-prem"]
+        self.assertEqual(onprem["promoted"], self.ga("on-prem/backend", "v1.5.2"))
 
     def test_20_tip_rc_slack(self):
         self.s1()

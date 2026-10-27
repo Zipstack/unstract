@@ -1,7 +1,7 @@
 """The bot's side of a backport PR: Backport's squash of a clean pick, and the reaction when a person closes or
 reopens one.
 
-Usage: backport_merge.py --pr N --sender LOGIN   (Backport PR workflow, on `pull_request_target` closed or reopened
+Usage: backport_merge.py --pr N --sender LOGIN   (Backport's record job, on `pull_request_target` closed or reopened
 for a backport/* head into release/*; LOGIN is the event's sender; a failed run is recovered with "Re-run jobs").
 Anything but a same-repo backport/X.Y/<sha7> head into release/X.Y, opened by the bot, is refused.
 
@@ -261,6 +261,23 @@ def close(slug, n, sender):
     return record(slug, n, sender)["result"]
 
 
+def bot_refusal(pr):
+    """Why `pr` (gh's number and author) is not a PR the bot opened, or None.
+
+    A head name and trailer are strings any writer can push; only a PR the bot opened is its pick. Backport opens
+    pick PRs with the release App's installation token, so they are authored by app/<its slug>. That token cannot
+    read `gh api user`, so the slug comes from the workflow.
+    """
+    if not (app := os.environ.get("RELEASE_BOT_APP_SLUG")):
+        return f"#{pr['number']}: RELEASE_BOT_APP_SLUG is unset (the release App's slug)"
+    author, bot = pr["author"], f"app/{app}"
+    if not author.get("is_bot") or author["login"] != bot:
+        return (
+            f"#{pr['number']} was opened by @{author['login']}, not by the bot (@{bot})"
+        )
+    return None
+
+
 def record(slug, n, sender):
     """What close did: {result, base, sha, reason}; sha is the squash, decline or existing pick, reason the decline's."""
     pr = json.loads(
@@ -279,18 +296,8 @@ def record(slug, n, sender):
         raise RuntimeError(
             f"#{n} is not a backport PR ({head} into {base}): nothing recorded"
         )
-    # A head name and trailer are strings any writer can push; only a PR the bot opened is its pick. Backport opens
-    # pick PRs with the release App's installation token, so they are authored by app/<its slug>. That token cannot
-    # read `gh api user`, so the slug comes from the workflow.
-    if not (app := os.environ.get("RELEASE_BOT_APP_SLUG")):
-        raise RuntimeError(
-            f"#{n}: RELEASE_BOT_APP_SLUG is unset (the release App's slug): nothing recorded"
-        )
-    author, bot = pr["author"], f"app/{app}"
-    if not author.get("is_bot") or author["login"] != bot:
-        raise RuntimeError(
-            f"#{n} was opened by @{author['login']}, not by the bot (@{bot}): nothing recorded"
-        )
+    if why := bot_refusal(pr):
+        raise RuntimeError(f"{why}: nothing recorded")
     if pr["state"] == "OPEN":
         set_label(slug, pr, CONFLICT)
         return {"result": "reopened", "base": base, "sha": None, "reason": None}
