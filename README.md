@@ -23,9 +23,6 @@
   </p>
   <p>
     <a href="https://results.pre-commit.ci/latest/github/Zipstack/unstract/main"><img src="https://results.pre-commit.ci/badge/github/Zipstack/unstract/main.svg" alt="pre-commit.ci status"></a>
-    <a href="https://sonarcloud.io/summary/new_code?id=Zipstack_unstract"><img src="https://sonarcloud.io/api/project_badges/measure?project=Zipstack_unstract&metric=alert_status" alt="Quality Gate Status"></a>
-    <a href="https://sonarcloud.io/summary/new_code?id=Zipstack_unstract"><img src="https://sonarcloud.io/api/project_badges/measure?project=Zipstack_unstract&metric=code_smells" alt="Code Smells"></a>
-    <a href="https://sonarcloud.io/summary/new_code?id=Zipstack_unstract"><img src="https://sonarcloud.io/api/project_badges/measure?project=Zipstack_unstract&metric=duplicated_lines_density" alt="Duplicated Lines (%)"></a>
   </p>
 </div>
 
