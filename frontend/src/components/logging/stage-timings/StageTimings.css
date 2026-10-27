@@ -1,0 +1,151 @@
+/* Stage palette (UN-3451).
+ *
+ * Deliberately NOT --chart-1..5: that ramp is five shades of one blue, which
+ * is a sequential palette. Stages are categorical, so they need distinct hues
+ * or a stacked bar reads as a gradient. Hues are held at a consistent
+ * lightness/chroma so no stage shouts, and queue wait is the one intentional
+ * exception — desaturated, because it is time waiting rather than time
+ * working.
+ *
+ * Semantic tokens (--success, --warning) are not reused here: a green
+ * "finalization" or amber "destination" would imply a health signal these
+ * stages do not carry.
+ */
+:root {
+  --stage-queue-wait: #8b8b95;
+  --stage-setup: #2f6f9f;
+  --stage-source-fetch: #0f8a7e;
+  --stage-tool-execution: var(--violet-500);
+  --stage-destination: #c2652a;
+  --stage-finalization: #9a4a8f;
+  --stage-unaccounted: #c9c9cf;
+}
+
+.dark {
+  --stage-queue-wait: #9a9aa4;
+  --stage-setup: #6fa8d8;
+  --stage-source-fetch: #46c2b4;
+  --stage-tool-execution: #9b8cf7;
+  --stage-destination: #e0944f;
+  --stage-finalization: #cc8ac2;
+  --stage-unaccounted: #4a4a52;
+}
+
+.stage-timings {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 560px;
+}
+
+.stage-timings-compact {
+  gap: 6px;
+  max-width: 100%;
+}
+
+.stage-timings-title {
+  font-size: 13px;
+}
+
+.stage-timings-bar {
+  display: flex;
+  width: 100%;
+  height: 10px;
+  border-radius: var(--radius-full, 9999px);
+  overflow: hidden;
+  background-color: var(--muted);
+}
+
+.stage-timings-bar-segment {
+  display: block;
+  height: 100%;
+  /* Hairline between adjacent segments so two similar hues stay separable. */
+  box-shadow: inset -1px 0 0 0 var(--card);
+}
+
+.stage-timings-bar-segment:last-child {
+  box-shadow: none;
+}
+
+.stage-timings-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  /* Two columns on wide layouts, one when the panel is narrow. */
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 2px 20px;
+}
+
+.stage-timings-row {
+  display: grid;
+  grid-template-columns: 10px 1fr auto 48px;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  line-height: 20px;
+}
+
+.stage-timings-swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  flex: 0 0 auto;
+}
+
+.stage-timings-label {
+  color: var(--foreground);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stage-timings-value {
+  font-variant-numeric: tabular-nums;
+  color: var(--foreground);
+}
+
+.stage-timings-pct {
+  font-variant-numeric: tabular-nums;
+  color: var(--muted-foreground);
+  text-align: right;
+}
+
+/* The total sits under the legend, separated by a rule, so it reads as the sum
+ * of the rows above rather than another stage. */
+.stage-timings-total {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  padding-top: 4px;
+  border-top: 1px solid var(--separator);
+  font-size: 12px;
+  line-height: 20px;
+  font-weight: var(--font-weight-semibold, 600);
+}
+
+.stage-timings-sub {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-left: 18px;
+  border-left: 2px solid var(--separator);
+}
+
+.stage-timings-sub-title {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-wide, 0.025em);
+}
+
+.stage-timings-footnote {
+  font-size: 11px;
+}
+
+/* Header card variant — the aggregate split sits in the cards row, which is
+ * narrower than an expanded table row, so the legend goes to one column.
+ * The card's own sizing lives in DetailedLogs.css, next to the fixed width it
+ * has to override. */
+.stage-timings-card .stage-timings-rows {
+  grid-template-columns: 1fr;
+}

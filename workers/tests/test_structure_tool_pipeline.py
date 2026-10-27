@@ -907,7 +907,9 @@ class TestStructureToolParamsPassthrough:
         service._build_and_execute_workflow(mock_exec_service, "test.pdf")
 
         # Verify _execute_structure_tool_workflow was called
-        mock_exec_struct.assert_called_once_with(mock_exec_service, "test.pdf")
+        mock_exec_struct.assert_called_once_with(
+            mock_exec_service, "test.pdf", stage_timings=None
+        )
 
     @patch(
         "shared.workflow.execution.service.WorkerWorkflowExecutionService."

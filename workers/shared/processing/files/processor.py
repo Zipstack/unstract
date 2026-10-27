@@ -397,6 +397,7 @@ class WorkflowExecutionProcessor:
                         "workflow_execution_failed": True,
                     },
                     execution_time=context.get_processing_duration(),
+                    stage_timings=execution_result.stage_timings,
                 )
 
             logger.info(
@@ -431,6 +432,7 @@ class WorkflowExecutionProcessor:
                 destination_processed=destination_processed,
                 destination_error=destination_error,
                 is_duplicate_skip=is_duplicate,
+                stage_timings=execution_result.stage_timings,
             )
 
         except Exception as execution_error:

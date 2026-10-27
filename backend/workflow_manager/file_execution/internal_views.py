@@ -103,6 +103,7 @@ class FileExecutionInternalViewSet(viewsets.ModelViewSet):
                     status=validated_data["status"],
                     execution_error=validated_data.get("error_message"),
                     execution_time=validated_data.get("execution_time"),
+                    stage_timings=validated_data.get("stage_timings"),
                 )
 
                 logger.info(
@@ -438,6 +439,23 @@ class FileExecutionBatchStatusUpdateAPIView(APIView):
                             )
                             continue
 
+                        # Validate each item the way the single-object endpoint
+                        # does. These fields are written straight to the model,
+                        # so without this a negative execution_time or a
+                        # malformed stage_timings blob would persist unchecked.
+                        item_serializer = FileExecutionStatusUpdateSerializer(
+                            data=update_data
+                        )
+                        if not item_serializer.is_valid():
+                            failed_updates.append(
+                                {
+                                    "file_execution_id": file_execution_id,
+                                    "error": item_serializer.errors,
+                                }
+                            )
+                            continue
+                        validated_item = item_serializer.validated_data
+
                         # Get file execution with organization filtering
                         base_queryset = WorkflowFileExecution.objects.all()
                         base_queryset = filter_queryset_by_organization(
@@ -459,9 +477,10 @@ class FileExecutionBatchStatusUpdateAPIView(APIView):
 
                         # Update file execution using the model's update_status method
                         file_execution.update_status(
-                            status=status_value,
-                            execution_error=update_data.get("error_message"),
-                            execution_time=update_data.get("execution_time"),
+                            status=validated_item["status"],
+                            execution_error=validated_item.get("error_message"),
+                            execution_time=validated_item.get("execution_time"),
+                            stage_timings=validated_item.get("stage_timings"),
                         )
 
                         successful_updates.append(

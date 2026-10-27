@@ -1054,7 +1054,9 @@ class LegacyExecutor(BaseExecutor):
 
         elapsed = time.monotonic() - indexing_start
         output_name = output.get("name", "")
-        index_metrics[output_name] = {"indexing": {PSKeys.TIME_TAKEN: elapsed}}
+        index_metrics[output_name] = {
+            PSKeys.INDEXING_METRICS: {PSKeys.TIME_TAKEN: elapsed}
+        }
 
     @staticmethod
     def _merge_pipeline_metrics(metrics1: dict, metrics2: dict) -> dict:

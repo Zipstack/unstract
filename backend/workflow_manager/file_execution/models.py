@@ -1,3 +1,4 @@
+import logging
 import uuid
 from datetime import timedelta
 from typing import Any
@@ -6,8 +7,11 @@ from django.db import models
 from utils.common_utils import CommonUtils
 from utils.models.base_model import BaseModel, BaseModelManager
 
+from unstract.core.stage_timings import WorkflowStage
 from workflow_manager.endpoint_v2.dto import FileHash
 from workflow_manager.workflow_v2.enums import ExecutionStatus
+
+logger = logging.getLogger(__name__)
 
 FILE_NAME_LENGTH = 255
 FILE_PATH_LENGTH = 255
@@ -104,7 +108,27 @@ class WorkflowFileExecution(BaseModel):
         choices=ExecutionStatus.choices,
         db_comment="Current status of the execution",
     )
+    # UN-3451 narrowed this to processing time only (it previously also counted
+    # the queue wait, because update_status ignored the worker's measurement).
+    # On a retry or resumed run it is the last attempt's span, not the sum of
+    # all attempts. For elapsed time from queued to done, read
+    # `stage_timings["total"]`.
+    #
+    # The db_comment is deliberately left as-is: changing it emits an
+    # AlterField whose SQL is `ALTER COLUMN ... TYPE double precision`, and
+    # Postgres can rewrite this whole high-volume table under an ACCESS
+    # EXCLUSIVE lock for what is only a comment. Not worth it — the semantics
+    # are documented here and on `update_status`.
     execution_time = models.FloatField(null=True, db_comment="Execution time in seconds")
+    stage_timings = models.JSONField(
+        null=True,
+        blank=True,
+        db_comment=(
+            "Per-stage execution timing breakdown in seconds "
+            "(queue wait, source fetch, tool execution with its extraction/"
+            "indexing/prompt split, destination, finalization)"
+        ),
+    )
     execution_error = models.TextField(
         blank=True, null=True, db_comment="Error message if execution failed"
     )
@@ -123,30 +147,95 @@ class WorkflowFileExecution(BaseModel):
         status: ExecutionStatus | str,
         execution_error: str = None,
         execution_time: float = None,
+        stage_timings: dict[str, Any] = None,
     ) -> None:
         """Updates the status and execution details of an input file.
 
         Args:
         execution_file: The `WorkflowExecutionFile` object to update
         status: The new status of the file (ExecutionStatus enum or string)
-        execution_time: The execution time for processing the file (optional)
+        execution_time: Seconds the worker spent processing the file. When
+            given it is stored as-is; the queue wait is deliberately not
+            included (see the field's db_comment). Omitted only by callers
+            that have no measurement, which fall back to elapsed-since-created.
         execution_error: (Optional) Error message if processing failed
+        stage_timings: (Optional) Per-stage timing payload from the worker
 
         Return:
             The updated `WorkflowExecutionInputFile` object
         """
-        # Set execution_time if provided, otherwise calculate it for final states
         status = ExecutionStatus(status)
         self.status = status.value
-        if status in [
+        # Prefer the worker's own measurement: time_since(created_at) also
+        # counts the queue wait before a worker picked the file up, which is
+        # not time spent processing it.
+        if execution_time is not None:
+            self.execution_time = execution_time
+        elif status in [
             ExecutionStatus.COMPLETED,
             ExecutionStatus.ERROR,
             ExecutionStatus.STOPPED,
         ]:
             self.execution_time = CommonUtils.time_since(self.created_at, 3)
 
+        # isinstance, not truthiness alone: the field is a bare JSONField on the
+        # internal API, so a list/string/number would otherwise be persisted and
+        # then have to be defended against by every reader.
+        if isinstance(stage_timings, dict) and stage_timings:
+            self.stage_timings = self._finalize_stage_timings(stage_timings)
+
         self.execution_error = execution_error
         self.save()
+
+    def _finalize_stage_timings(self, stage_timings: dict[str, Any]) -> dict[str, Any]:
+        """Add the queue wait and restate the totals to span every stage.
+
+        The worker cannot measure queue wait — it has no view of ``created_at``
+        — and its own total covers only the span it ran for.
+
+        ``total`` is therefore **not** ``execution_time``: it is the file's
+        whole lifetime, ``queue_wait + execution_time``. ``execution_time``
+        covers processing only, so using it as the total would leave the stage
+        map summing to more than the total whenever a file waited in the queue
+        — percentages over 100% and a negative remainder. Readers divide by
+        ``total``, so it has to span everything ``stages`` holds.
+        """
+        try:
+            payload = dict(stage_timings)
+            stages = dict(payload.get("stages") or {})
+
+            queue_wait = 0.0
+            started_at = payload.pop("started_at", None)
+            if (
+                isinstance(started_at, (int, float))
+                and not isinstance(started_at, bool)
+                and self.created_at
+            ):
+                measured = started_at - self.created_at.timestamp()
+                # Clock skew between the backend and the worker can push this
+                # negative; omit it rather than report a negative wait.
+                if measured > 0:
+                    queue_wait = round(measured, 3)
+                    stages[WorkflowStage.QUEUE_WAIT] = queue_wait
+
+            payload["stages"] = stages
+
+            processing = self.execution_time
+            if isinstance(processing, (int, float)) and processing > 0:
+                total = round(processing + queue_wait, 3)
+                payload["total"] = total
+                unaccounted = round(total - sum(stages.values()), 3)
+                # Stages can still outrun the total if two spans overlap;
+                # report nothing rather than a number that cannot be true.
+                payload["unaccounted"] = unaccounted if unaccounted > 0 else 0.0
+            return payload
+        except Exception:
+            logger.warning(
+                "Failed to finalize stage timings for file execution %s",
+                self.id,
+                exc_info=True,
+            )
+            return stage_timings
 
     @property
     def pretty_file_size(self) -> str:
