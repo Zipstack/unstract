@@ -262,25 +262,30 @@ const MAY_IMPORT = Object.fromEntries(
   `).map(([from, to]) => [from, to === "*" ? EVERYTHING : to.split(/\s+/)]),
 );
 
-/* One file per folder pair, importing the target by file and by folder; and
- * the problems check-v1 must report for them. */
+/* The file for one folder pair: it imports the target by file and by folder.
+ * The entry is a file, so it has only the one form. */
+function pairFile(to) {
+  const target = FOLDERS[to];
+  return to === "entry"
+    ? ['import "@v1";']
+    : [`import "@v1/${target}/target";`, `import "@v1/${target}";`];
+}
+
+/* One file per folder pair, and the problems check-v1 must report for them. */
 function contractMatrix() {
   const files = {};
   const expected = [];
   for (const [from, allowed] of Object.entries(MAY_IMPORT)) {
     for (const to of EVERYTHING) {
       const rel = `src/v1/${FOLDERS[from]}/m-${to.replace("/", "-")}.ts`;
-      // The entry is a file, so it has only the one form.
-      const target = FOLDERS[to];
-      files[rel] =
-        to === "entry"
-          ? 'import "@v1";\n'
-          : `import "@v1/${target}/target";\nimport "@v1/${target}";\n`;
+      const imports = pairFile(to);
+      files[rel] = `${imports.join("\n")}\n`;
       const denied = from !== to && !allowed.includes(to);
-      const lines = to === "entry" ? [1] : [1, 2];
-      for (const line of denied ? lines : []) {
-        expected.push(`${rel}:${line}: ${from}/ may not import from ${to}/`);
-      }
+      expected.push(
+        ...(denied ? imports : []).map(
+          (_, i) => `${rel}:${i + 1}: ${from}/ may not import from ${to}/`,
+        ),
+      );
     }
   }
   return { files, expected };
