@@ -108,9 +108,31 @@ def test_refresh_failure_serves_last_snapshot(cache, redis, clock):
         cache.resolve(group)
 
     assert failed.value.snapshot.data == {"value": 3}
-    assert not redis.locks
     # The stale value stays in Redis for the other pods.
     assert json.loads(redis.data[DATA_KEY])["data"] == {"value": 3}
+
+
+def test_failed_refresh_holds_the_lock_for_one_ttl(cache, redis, clock):
+    _seed(redis, 3, clock.now - 60)
+    group = StubGroup("g")
+    group.error = RuntimeError("db down")
+    with pytest.raises(RefreshFailed):
+        cache.resolve(group)
+
+    assert LOCK_KEY in redis.locks, "held, so the next scrape does not retry"
+    assert redis.lock_ttls[LOCK_KEY] == 15
+
+    # Scrapes meanwhile serve the last snapshot without touching the DB.
+    clock.now += 1
+    assert cache.resolve(group).data == {"value": 3}
+    assert group.fetches == 1
+
+    # Once the lock expires, the next scrape retries.
+    redis.locks.discard(LOCK_KEY)
+    group.error = None
+    group.value = 7
+    assert cache.resolve(group).data == {"value": 7}
+    assert group.fetches == 2
 
 
 def test_refresh_failure_with_nothing_cached_has_no_snapshot(cache):
@@ -138,6 +160,25 @@ def test_redis_down_refreshes_locally_at_most_once_per_ttl(cache, redis, clock):
     assert group.fetches == 1, "DB load stays bounded per pod while Redis is down"
 
     clock.now += 10
+    with pytest.raises(RefreshFailed):
+        cache.resolve(group)
+    assert group.fetches == 2
+
+
+def test_redis_down_and_db_failing_retries_at_most_once_per_ttl(
+    cache, redis, clock
+):
+    redis.down = True
+    group = StubGroup("g")
+    group.error = RuntimeError("db down")
+
+    for _ in range(3):
+        with pytest.raises(RefreshFailed):
+            cache.resolve(group)
+        clock.now += 1
+    assert group.fetches == 1
+
+    clock.now += 15
     with pytest.raises(RefreshFailed):
         cache.resolve(group)
     assert group.fetches == 2

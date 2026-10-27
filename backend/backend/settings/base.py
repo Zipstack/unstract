@@ -1175,6 +1175,13 @@ PLATFORM_METRICS_RECENT_LOOKBACK_SECONDS = int(
 PLATFORM_METRICS_BATCH_STUCK_TIMEOUT_SECONDS = int(
     os.environ.get("WORKER_PG_BATCH_STUCK_TIMEOUT_SECONDS", 9000)
 )
+# Queue counts older than this are left out of the scrape instead of being
+# served as current, so a dashboard shows a gap and a KEDA trigger errors into
+# its fallback rather than scaling on a frozen value. Kept above the worst
+# healthy age (the cache TTL plus the 30s refresh-lock floor).
+PLATFORM_METRICS_QUEUE_MAX_STALENESS_SECONDS = int(
+    os.environ.get("PLATFORM_METRICS_QUEUE_MAX_STALENESS_SECONDS", 60)
+)
 # Queues always reported (as 0 when empty), on top of any queue that currently
 # holds messages. Defaults to the queues the PG consumers in
 # docker/docker-compose.yaml consume; override with a comma-separated list
@@ -1204,6 +1211,10 @@ PLATFORM_METRICS_QUEUES = [
                 "file_processing_priority",
                 "ide_callback",
                 "notifications",
+                "notifications_email",
+                "notifications_priority",
+                "notifications_sms",
+                "notifications_webhook",
                 "scheduler",
             ]
         ),

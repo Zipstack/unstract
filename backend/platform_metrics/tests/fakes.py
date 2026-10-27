@@ -21,6 +21,12 @@ class FakeLock:
         self.owned = True
         return True
 
+    def extend(self, additional_time: float, replace_ttl: bool = False) -> bool:
+        if not self.owned:
+            raise RuntimeError("not owned")
+        self._redis.lock_ttls[self._name] = additional_time
+        return True
+
     def release(self) -> None:
         if not self.owned:
             raise RuntimeError("not owned")
@@ -33,6 +39,8 @@ class FakeRedis:
         self.data: dict[str, str] = {}
         self.expiry: dict[str, int | None] = {}
         self.locks: set[str] = set()
+        #: TTL set by Lock.extend(); expiry itself is simulated by the test.
+        self.lock_ttls: dict[str, float] = {}
         self.hashes: dict[str, dict[str, int]] = {}
         self.down = False
 

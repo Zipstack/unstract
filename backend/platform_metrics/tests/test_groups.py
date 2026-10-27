@@ -92,3 +92,16 @@ def test_group_names_are_unique():
 
     names = [group.name for group in METRIC_GROUPS]
     assert sorted(names) == ["batches", "executions", "queues"]
+
+
+@override_settings(PLATFORM_METRICS_QUEUE_MAX_STALENESS_SECONDS=60)
+def test_only_queue_counts_are_bounded_by_staleness():
+    from platform_metrics.groups import (
+        BatchMetricGroup,
+        ExecutionMetricGroup,
+        QueueMetricGroup,
+    )
+
+    assert QueueMetricGroup().max_staleness_seconds == 60
+    assert ExecutionMetricGroup().max_staleness_seconds is None
+    assert BatchMetricGroup().max_staleness_seconds is None

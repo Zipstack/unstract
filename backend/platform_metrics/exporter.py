@@ -1,29 +1,29 @@
 """Assembles the platform metric groups into one Prometheus exposition.
 
-One process-wide registry holds a collector that resolves every group through
+A collector resolves every group through
 the shared :class:`~platform_metrics.cache.SnapshotCache` at scrape time and
 reports refresh failures from the Redis-shared
 :class:`~platform_metrics.cache.FailureCounter`. Each group is resolved inside
 its own ``try``, so one failing group never blanks the others and the scrape
 itself always succeeds.
 
-The registry is instance-owned rather than ``prometheus_client``'s default
-``REGISTRY``, so nothing else in the process can leak series into this
-endpoint and building it twice (tests) cannot double-register.
+Each render builds its own registry rather than using ``prometheus_client``'s
+default ``REGISTRY``, so nothing else in the process can leak series into this
+endpoint, and a scrape can select a subset of groups.
 """
 
 from __future__ import annotations
 
 import logging
 import threading
-from collections.abc import Iterable, Sequence
+import time
+from collections.abc import Callable, Iterable, Sequence
 from typing import TYPE_CHECKING
 
 from .cache import FailureCounter, RefreshFailed, SnapshotCache
 from .groups import METRIC_GROUPS, MetricGroup
 
 if TYPE_CHECKING:
-    from prometheus_client import CollectorRegistry
     from prometheus_client.core import Metric
 
 logger = logging.getLogger(__name__)
@@ -35,10 +35,12 @@ class _GroupsCollector:
         groups: Sequence[MetricGroup],
         cache: SnapshotCache,
         failures: FailureCounter,
+        clock: Callable[[], float],
     ) -> None:
         self._groups = groups
         self._cache = cache
         self._failures = failures
+        self._clock = clock
 
     def describe(self) -> Iterable[Metric]:
         # Present so register() does not run collect() (and the DB) on import.
@@ -66,6 +68,16 @@ class _GroupsCollector:
                 snapshot = None
             if snapshot is None:
                 continue
+            # The refresh timestamp is still reported, so the age stays visible.
+            refreshed.add_metric([group.name], snapshot.refreshed_at)
+            limit = group.max_staleness_seconds
+            if limit is not None and snapshot.age(self._clock()) > limit:
+                logger.warning(
+                    "platform metrics: group %r is %.0fs old; leaving it out",
+                    group.name,
+                    snapshot.age(self._clock()),
+                )
+                continue
             try:
                 families.extend(group.families(snapshot.data))
             except Exception:
@@ -76,7 +88,6 @@ class _GroupsCollector:
                 )
                 self._failures.record(group.name)
                 continue
-            refreshed.add_metric([group.name], snapshot.refreshed_at)
         families.append(refreshed)
         # Read after the groups, so failures from this scrape are included.
         totals = self._failures.totals()
@@ -105,26 +116,46 @@ class _GroupsCollector:
         return families
 
 
+class UnknownGroup(ValueError):
+    """A requested group name matches no registered metric group."""
+
+
 class PlatformMetricsExporter:
     def __init__(
         self,
         groups: Sequence[MetricGroup] = METRIC_GROUPS,
         cache: SnapshotCache | None = None,
         failures: FailureCounter | None = None,
+        clock: Callable[[], float] = time.time,
     ) -> None:
-        from prometheus_client import CollectorRegistry
+        self._groups = tuple(groups)
+        self._cache = cache or SnapshotCache()
+        self._failures = failures or FailureCounter()
+        self._clock = clock
 
-        self.registry: CollectorRegistry = CollectorRegistry()
-        self.registry.register(
-            _GroupsCollector(
-                groups, cache or SnapshotCache(), failures or FailureCounter()
-            )
+    def render(self, group_names: Sequence[str] | None = None) -> bytes:
+        """The exposition for every group, or only ``group_names``.
+
+        Selecting groups lets a reader that needs one group (an autoscaler
+        polling queue depth, with a short HTTP timeout) skip the others'
+        refreshes. Raises :class:`UnknownGroup` for a name that matches none.
+        """
+        from prometheus_client import CollectorRegistry, generate_latest
+
+        groups = self._groups
+        if group_names:
+            known = {group.name for group in groups}
+            unknown = sorted(set(group_names) - known)
+            if unknown:
+                raise UnknownGroup(", ".join(unknown))
+            groups = tuple(group for group in groups if group.name in group_names)
+        # A registry per render, so it holds exactly the selected groups. It
+        # is instance-owned, so nothing else in the process leaks series in.
+        registry = CollectorRegistry()
+        registry.register(
+            _GroupsCollector(groups, self._cache, self._failures, self._clock)
         )
-
-    def render(self) -> bytes:
-        from prometheus_client import generate_latest
-
-        return generate_latest(self.registry)
+        return generate_latest(registry)
 
 
 _exporter: PlatformMetricsExporter | None = None

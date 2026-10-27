@@ -60,6 +60,15 @@ class MetricGroup(ABC):
     #: the refresh lock is sized from this.
     statements: int = 1
 
+    @property
+    def max_staleness_seconds(self) -> float | None:
+        """Oldest snapshot still worth serving; ``None`` serves any age.
+
+        Past it, the group's series are left out of the scrape: a reader
+        sees the value as unknown rather than taking a frozen one as current.
+        """
+        return None
+
     def fetch(self) -> Snapshot:
         """Read a fresh snapshot, bounded by the configured statement timeout.
 
@@ -98,6 +107,11 @@ class QueueMetricGroup(MetricGroup):
     """
 
     name = "queues"
+
+    @property
+    def max_staleness_seconds(self) -> float | None:
+        # Autoscalers read these, and a frozen count is worse than none.
+        return float(settings.PLATFORM_METRICS_QUEUE_MAX_STALENESS_SECONDS)
 
     def query(self) -> Snapshot:
         from pg_queue.models import PgQueueMessage

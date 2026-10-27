@@ -58,3 +58,22 @@ def test_token_configured_accepts_the_right_bearer(client):
 
 def test_only_get_is_allowed(client):
     assert client.post("/metrics").status_code == 405
+
+
+@override_settings(PLATFORM_METRICS_TOKEN="")
+def test_group_query_selects_groups(client, exporter):
+    response = client.get("/metrics?group=queues&group=batches")
+
+    assert response.status_code == 200
+    exporter.render.assert_called_once_with(["queues", "batches"])
+
+
+@override_settings(PLATFORM_METRICS_TOKEN="")
+def test_unknown_group_is_a_400(client, exporter):
+    from platform_metrics.exporter import UnknownGroup
+
+    exporter.render.side_effect = UnknownGroup("nope")
+
+    response = client.get("/metrics?group=nope")
+
+    assert response.status_code == 400

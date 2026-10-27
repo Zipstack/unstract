@@ -8,6 +8,9 @@ The data is platform-wide, so it is also exempt from session auth
 (``WHITELISTED_PATHS``) and guarded instead by an optional bearer token,
 ``PLATFORM_METRICS_TOKEN``, for environments that want one.
 
+``?group=<name>`` (repeatable) limits the scrape to those metric groups, e.g.
+``?group=queues`` for an autoscaler that only needs queue depth.
+
 A plain Django view rather than DRF: the response is the exposition bytes as
 they are, with no content negotiation or renderer in between.
 """
@@ -19,7 +22,7 @@ from django.db import transaction
 from django.http import HttpRequest, HttpResponse
 from django.views.decorators.http import require_GET
 
-from .exporter import get_exporter
+from .exporter import UnknownGroup, get_exporter
 
 _BEARER = "Bearer "
 # The text format generate_latest() writes, spelled out rather than taken from
@@ -48,4 +51,12 @@ def metrics(request: HttpRequest) -> HttpResponse:
         response = HttpResponse("Unauthorized\n", status=401, content_type="text/plain")
         response["WWW-Authenticate"] = 'Bearer realm="metrics"'
         return response
-    return HttpResponse(get_exporter().render(), content_type=METRICS_CONTENT_TYPE)
+    # ?group=queues (repeatable) serves only those groups, so a reader that
+    # needs one never waits on another group's refresh.
+    try:
+        body = get_exporter().render(request.GET.getlist("group") or None)
+    except UnknownGroup as e:
+        return HttpResponse(
+            f"Unknown metric group: {e}\n", status=400, content_type="text/plain"
+        )
+    return HttpResponse(body, content_type=METRICS_CONTENT_TYPE)

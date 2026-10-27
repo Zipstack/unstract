@@ -11,9 +11,10 @@ many replicas there are.
 Failure handling, per group and independent of the others:
 
 * the refresh query fails: serve the last snapshot (Redis, else this
-  process's copy) and count the failure;
+  process's copy) and count the failure. The refresh lock is then held for
+  one TTL, so the DB is retried about once per TTL, not on every scrape;
 * Redis is unreachable: fall back to this process's copy, refreshing it from
-  the DB at most once per TTL, so DB load stays bounded per gunicorn worker
+  the DB (successfully or not) at most once per TTL, so DB load stays bounded per gunicorn worker
   process rather than per scrape. The failure is counted;
 * the Redis entry is unreadable (e.g. written by another version): treated as
   missing, so the next refresh overwrites it;
@@ -65,6 +66,7 @@ def _lock_timeout_seconds(group: MetricGroup) -> float:
 class _Lock(Protocol):
     def acquire(self, blocking: bool = ...) -> bool: ...
     def release(self) -> None: ...
+    def extend(self, additional_time: float, replace_ttl: bool = ...) -> bool: ...
 
 
 class RedisLike(Protocol):
@@ -114,6 +116,9 @@ class SnapshotCache:
         # scrapes waiting on another.
         self._local_locks: dict[str, threading.Lock] = {}
         self._local_locks_guard = threading.Lock()
+        # When each group last tried a Redis-less refresh, so a failing DB is
+        # retried at most once per TTL per process.
+        self._local_attempts: dict[str, float] = {}
 
     @staticmethod
     def _ttl() -> float:
@@ -156,6 +161,7 @@ class SnapshotCache:
             # Another pod is refreshing; its result lands for the next scrape.
             return cached
 
+        held_for_backoff = False
         try:
             # Re-read under the lock: another pod may have refreshed between
             # our read and our acquire.
@@ -170,7 +176,11 @@ class SnapshotCache:
                 return self._resolve_local(group, fallback=cached)
             if latest is not None and latest.age(self._clock()) < self._ttl():
                 return latest
-            snapshot = self._refresh(group, fallback=latest)
+            try:
+                snapshot = self._refresh(group, fallback=latest)
+            except RefreshFailed:
+                held_for_backoff = self._hold_for_backoff(lock, group)
+                raise
             try:
                 client.set(
                     self._data_key(group),
@@ -193,11 +203,26 @@ class SnapshotCache:
             return snapshot
         finally:
             try:
-                lock.release()
+                if not held_for_backoff:
+                    lock.release()
             except Exception:
                 # Expired under us (a refresh slower than the lock timeout):
                 # nothing to release.
                 logger.debug("platform metrics: lock for %r already gone", group.name)
+
+    def _hold_for_backoff(self, lock: _Lock, group: MetricGroup) -> bool:
+        """Keep the lock for one TTL after a failed refresh.
+
+        Every pod then serves the last snapshot until it expires, instead of
+        the next scrape (KEDA polls several times a second) retrying the same
+        queries against a struggling DB. Retries stay at about one per TTL
+        cluster-wide. Returns whether the lock is now held.
+        """
+        try:
+            return bool(lock.extend(max(1, int(self._ttl())), replace_ttl=True))
+        except Exception:
+            logger.debug("platform metrics: could not hold lock for %r", group.name)
+            return False
 
     def _resolve_local(
         self, group: MetricGroup, fallback: CachedSnapshot | None = None
@@ -210,8 +235,14 @@ class SnapshotCache:
         """
         with self._local_lock(group):
             local = self._local.get(group.name)
-            if local is not None and local.age(self._clock()) < self._ttl():
+            now = self._clock()
+            if local is not None and local.age(now) < self._ttl():
                 raise RefreshFailed(local)
+            last_attempt = self._local_attempts.get(group.name)
+            if last_attempt is not None and now - last_attempt < self._ttl():
+                # Failed within the TTL: back off rather than retry per scrape.
+                raise RefreshFailed(local or fallback)
+            self._local_attempts[group.name] = now
             raise RefreshFailed(self._refresh(group, fallback=local or fallback))
 
     def _local_lock(self, group: MetricGroup) -> threading.Lock:

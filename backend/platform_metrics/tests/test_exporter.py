@@ -5,7 +5,7 @@ from django.test import override_settings
 from prometheus_client.parser import text_string_to_metric_families
 
 from platform_metrics.cache import FailureCounter, SnapshotCache
-from platform_metrics.exporter import PlatformMetricsExporter
+from platform_metrics.exporter import PlatformMetricsExporter, UnknownGroup
 from platform_metrics.tests.fakes import Clock, FakeRedis, StubGroup
 
 
@@ -30,12 +30,13 @@ def _exporter(groups, redis, clock):
         groups=groups,
         cache=SnapshotCache(client_factory=lambda: redis, clock=clock),
         failures=FailureCounter(client_factory=lambda: redis),
+        clock=clock,
     )
 
 
-def _samples(exporter):
+def _samples(exporter, groups=None):
     out = {}
-    for family in text_string_to_metric_families(exporter.render().decode()):
+    for family in text_string_to_metric_families(exporter.render(groups).decode()):
         for sample in family.samples:
             out[(sample.name, tuple(sorted(sample.labels.items())))] = sample.value
     return out
@@ -87,6 +88,53 @@ def test_failing_group_serves_its_last_values(redis, clock):
     assert samples[("unstract_metrics_refresh_failures_total", (("group", "a"),))] == 1
 
 
+class BoundedGroup(StubGroup):
+    max_staleness_seconds = 60
+
+
+def test_group_past_its_staleness_bound_is_left_out(redis, clock):
+    bounded, other = BoundedGroup("q", 1), StubGroup("o", 2)
+    exporter = _exporter([bounded, other], redis, clock)
+    _samples(exporter)
+    first_refresh = clock.now
+
+    bounded.error = RuntimeError("db down")
+    other.error = RuntimeError("db down")
+    # Lock held for backoff after each failure; let it lapse every scrape.
+    clock.now += 30
+    samples = _samples(exporter)
+    redis.locks.clear()
+    assert samples[("stub_q", ())] == 1, "within the bound: last value served"
+
+    clock.now += 31
+    samples = _samples(exporter)
+
+    assert ("stub_q", ()) not in samples, "past the bound: unknown, not frozen"
+    refreshed = "unstract_metrics_last_successful_refresh_timestamp"
+    assert samples[(refreshed, (("group", "q"),))] == first_refresh
+    assert samples[("stub_o", ())] == 2, "unbounded groups keep serving"
+
+
+def test_render_can_select_groups(redis, clock):
+    a, b = StubGroup("a", 1), StubGroup("b", 2)
+    exporter = _exporter([a, b], redis, clock)
+
+    samples = _samples(exporter, ["a"])
+
+    assert samples[("stub_a", ())] == 1
+    assert ("stub_b", ()) not in samples
+    assert b.fetches == 0, "an unselected group is not refreshed"
+    failures = "unstract_metrics_refresh_failures_total"
+    assert (failures, (("group", "b"),)) not in samples
+
+
+def test_render_rejects_an_unknown_group(redis, clock):
+    exporter = _exporter([StubGroup("a")], redis, clock)
+
+    with pytest.raises(UnknownGroup):
+        exporter.render(["nope"])
+
+
 def test_unexpected_cache_error_is_counted_not_raised(redis, clock):
     class BrokenCache:
         def resolve(self, group):
@@ -128,8 +176,12 @@ def test_failure_total_is_shared_across_processes(redis, clock):
     worker_2 = _exporter([broken], redis, clock)
 
     _samples(worker_1)
+    # Each failure holds the refresh lock for a TTL; let it lapse between
+    # scrapes so every one is a real refresh attempt.
     clock.now += 60
+    redis.locks.clear()
     samples_2 = _samples(worker_2)
+    redis.locks.clear()
     samples_1 = _samples(worker_1)
 
     assert samples_2[(FAILURES, (("group", "a"),))] == 2
