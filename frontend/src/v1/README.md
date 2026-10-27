@@ -39,7 +39,7 @@ Every folder may import from itself. Test files (`*.test.ts(x)`,
 
 ## Plugins
 
-`lib/plugins/` is the extension-point contract. Pages and the shell import `Slot` and `pluginRoutes` from `@v1/lib/plugins`; they never import a plugin.
+`lib/plugins/` is the extension-point contract. Pages and the shell import `Slot` from `@v1/lib/plugins`; they never import a plugin. `plugins/index.ts` builds the registry from the manifests and exports `PluginSlot` and `pluginRoutes()`; `app/` passes `PluginSlot` to `PluginProvider` and the routes to the router. With no provider, every slot shows its fallback.
 
 - `types.ts` names every slot and its props. Adding a slot is one line there.
 - A plugin is `plugins/<id>/manifest.ts` exporting `manifest` (`satisfies PluginManifest`), with `distributions` (`cloud`, `onprem`) and lazy `slots` and `routes`. The folder name is the id. A manifest may only `import type`: the build check loads it without bundling.

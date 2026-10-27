@@ -639,9 +639,10 @@ workers/pluggable_worker/*
 # FE Plugins
 frontend/src/plugins/*
 frontend/public/llm-whisperer/
-# v1 plugins come from the cloud overlay; only the placeholder file is OSS.
+# v1 plugins come from the cloud overlay; only the placeholder and the loader are OSS.
 frontend/src/v1/plugins/*
 !frontend/src/v1/plugins/.gitkeep
+!frontend/src/v1/plugins/index.ts
 
 
 # TODO: Ensure its made generic to abstract subfolder and file names

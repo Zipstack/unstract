@@ -1,15 +1,18 @@
 /*
- * v1's extension points. Plugins are found at build time from
- * src/v1/plugins/<id>/manifest.ts (copied in by the cloud overlay), so an
- * absent plugin has no manifest and its slots show their fallbacks. Every
- * import error left is a real failure and is reported.
+ * Builds the plugin registry from the manifests the cloud overlay copies in
+ * as `plugins/<id>/manifest.ts`. An absent plugin has no manifest, so its
+ * slots show their fallbacks; every import error left is a real failure and
+ * is reported. `app/` passes `PluginSlot` to `PluginProvider` and
+ * `pluginRoutes()` to the router.
  */
-import { buildRegistry, type RouteEntry } from "./registry";
-import { makeSlot, type PluginErrorReporter } from "./Slot";
-import type { Distribution, PluginManifest } from "./types";
-
-export type { SlotComponentProps } from "./Slot";
-export type * from "./types";
+import {
+  buildRegistry,
+  type Distribution,
+  makeSlot,
+  type PluginErrorReporter,
+  type PluginManifest,
+  type RouteEntry,
+} from "@v1/lib/plugins";
 
 const DISTRIBUTIONS: readonly Distribution[] = ["oss", "cloud", "onprem"];
 
@@ -24,7 +27,7 @@ function currentDistribution(): Distribution {
 }
 
 const manifests = Object.values(
-  import.meta.glob<PluginManifest>("../../plugins/*/manifest.ts", {
+  import.meta.glob<PluginManifest>("./*/manifest.ts", {
     eager: true,
     import: "manifest",
   }),
@@ -37,7 +40,7 @@ const report: PluginErrorReporter = (owner, slot, error) => {
   console.error(`v1 plugin ${owner} failed in slot ${slot}`, error);
 };
 
-export const Slot = makeSlot(registry, report);
+export const PluginSlot = makeSlot(registry, report);
 
 /** Routes contributed by plugins in this distribution, for the v1 router. */
 export function pluginRoutes(): readonly RouteEntry[] {
