@@ -12,7 +12,8 @@ resolves it here.
   providers that is a hard cap; on `kind: pass_through` providers (Ollama,
   OpenAI-compatible servers, NVIDIA Build, unknown OpenRouter upstreams) it
   is advisory: the policy logs what the default would have been and sends
-  the request.
+  the request. What is enforced for them is the fixed cap (see "Operator
+  ceilings").
 - `providers.<key>`: `adapter` (the llm1 adapter), `display_name`, `kind`,
   `defaults` and ordered `model_overrides`. Each limit field is
   `{value, confidence, source, scope?, base64_counted?, note?}`; `source`
@@ -122,13 +123,28 @@ LLMWhisperer's 999 pages. An invalid value is logged at ERROR and the fixed
 cap's value (90 / 14 MiB) is used instead, never "no ceiling". Set them on
 the backend and every worker alike.
 
-Pass-through providers (Ollama, OpenAI-compatible servers, NVIDIA Build,
-Anyscale, unknown OpenRouter upstreams) publish no limits, so their
-count/byte defaults are advisory: without a ceiling, image mode accepts up
-to 999 pages for them with no byte budget, and the server's own limit
-decides. Generous hosted models get large budgets too (OpenAI: 999 pages,
-about 384 MB of raw page bytes). Set `VLM_IMAGE_ANSWER_MAX_TOTAL_MB` if worker
-memory or request size needs a platform-wide bound.
+The fixed cap is 90 pages / 14 MiB, lowered by these ceilings and never
+raised by them (`fixed_page_cap()` / `fixed_max_total_bytes()`, and
+`fixed_cap_bound_kwargs()` built from them). It applies when no LLM is
+known, with `VLM_IMAGE_LIMITS_ENFORCE=false`, and to an LLM whose limits
+are not published. A ceiling binds, and the message names the
+administrator, only when it is strictly below the fixed cap.
+
+So, with the ceilings unset:
+
+- providers that publish limits use the model's own: OpenAI and Gemini up
+  to LLMWhisperer's 999 pages (OpenAI: about 384 MB of raw page bytes),
+  Claude 100 or 600, Bedrock 20;
+- pass-through providers (Ollama, OpenAI-compatible servers, NVIDIA Build,
+  Anyscale, unknown OpenRouter upstreams) publish nothing, so their table
+  defaults stay advisory (warned, not enforced) and the fixed cap is
+  enforced, which keeps worker memory bounded. An OpenRouter route that
+  inherits a published provider (`anthropic/...`) uses that provider's
+  limits;
+- an extraction or upload that knows no LLM uses the fixed cap.
+
+Set `VLM_IMAGE_ANSWER_MAX_TOTAL_MB` if worker memory or request size needs
+a platform-wide bound for generous models too.
 
 ### Runtime switch: `VLM_IMAGE_LIMITS_ENFORCE`
 

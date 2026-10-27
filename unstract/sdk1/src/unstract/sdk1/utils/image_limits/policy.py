@@ -20,8 +20,11 @@ Pass-through providers (Ollama, OpenAI-compatible servers, NVIDIA Build,
 unknown OpenRouter upstreams) publish no limits. Their count/byte values
 come from the table's conservative default and are ADVISORY: the policy
 reports what the default would have been instead of rejecting a document
-the operator's server might well accept. Advisories go to the worker log
-and, through ``ImageModePolicy.with_advisory_sink``, to the user's run log.
+the operator's server might well accept. What IS enforced for them is the
+fixed cap (90 pages / 14 MiB, lowered by the operator ceilings), as when
+no LLM is known, so worker memory stays bounded. Advisories go to the
+worker log and, through ``ImageModePolicy.with_advisory_sink``, to the
+user's run log.
 
 ``VLM_IMAGE_LIMITS_ENFORCE=false`` turns the model-aware checks off at
 runtime, inside this module: ``ImageModePolicy.from_limits``,
@@ -45,6 +48,7 @@ from typing import TYPE_CHECKING
 
 from unstract.sdk1.adapters.x2text.constants import ImageOutputConstants
 from unstract.sdk1.adapters.x2text.page_image_loader import (
+    DEFAULT_MAX_TOTAL_BYTES,
     DEFAULT_PAGE_CAP,
     PageCapExceededError,
     PageImageSetTooLargeError,
@@ -52,6 +56,7 @@ from unstract.sdk1.adapters.x2text.page_image_loader import (
     configured_page_ceiling,
     configured_request_bytes_ceiling,
     fixed_max_total_bytes,
+    fixed_page_cap,
     is_page_selection,
 )
 from unstract.sdk1.utils.image_limits.source import MAX_REMOTE_RAISE_FACTOR
@@ -166,12 +171,17 @@ def fixed_cap_bound_kwargs() -> dict[str, int | None]:
     """The fixed 90-page / 14 MiB cap, lowered by the operator ceilings.
 
     What image mode enforced before model-aware limits, and what it falls
-    back to when ``VLM_IMAGE_LIMITS_ENFORCE=false``. A page ceiling below 90
-    binds as ``ceiling`` (the message names the administrator); the env
-    vars never raise the cap. Pass to ``ImageModePolicy.ceiling_only``.
+    back to when ``VLM_IMAGE_LIMITS_ENFORCE=false`` or no LLM is known.
+    Derived from ``fixed_page_cap`` / ``fixed_max_total_bytes``, so every
+    path enforces the same numbers. The page ceiling is passed only when it
+    is strictly below the cap: then it binds as ``ceiling`` (the message
+    names the administrator); a ceiling equal to the cap, or an invalid one
+    falling back to it, reports the fixed cap. Pass to
+    ``ImageModePolicy.ceiling_only``.
     """
+    page_cap = fixed_page_cap()
     return {
-        "page_ceiling": configured_page_ceiling(),
+        "page_ceiling": page_cap if page_cap < DEFAULT_PAGE_CAP else None,
         "bytes_ceiling": fixed_max_total_bytes(),
         "legacy_cap": DEFAULT_PAGE_CAP,
     }
@@ -259,7 +269,8 @@ def compute_page_budget(
     it. The token term (context window / tokens per page) is computed for
     the advisory only and never lowers ``max_pages``. An unknown context
     skips it rather than inventing a number. An advisory image count
-    (pass-through provider on the default) is recorded but not applied.
+    (pass-through provider on the default) is recorded but not applied;
+    the fixed page cap is enforced instead (``legacy`` term).
 
     With ``VLM_IMAGE_LIMITS_ENFORCE=false`` it returns the fixed cap's
     budget instead (``ImageModePolicy.fixed_cap``), ignoring ``limits``.
@@ -276,6 +287,9 @@ def compute_page_budget(
     count = limits.max_images_per_request
     advisory_count = count.value if count.advisory else None
     terms["images"] = None if count.advisory else count.value
+    if count.advisory:
+        # No published limit: the fixed cap bounds it, as for an unknown LLM.
+        legacy_cap = _stricter(legacy_cap, DEFAULT_PAGE_CAP)
 
     context = limits.max_input_tokens.value or context_tokens
     per_page = limits.tokens_per_image.value
@@ -290,8 +304,10 @@ def compute_page_budget(
     binding = "llmwhisperer"
     max_pages = ImageOutputConstants.LLMWHISPERER_MAX_PAGES
     # Order decides ties: a model limit equal to the ceiling is still the
-    # model's limit, which is the more useful thing to tell the user.
-    for name in ("images", "llmwhisperer", "ceiling", "legacy"):
+    # model's limit, which is the more useful thing to tell the user; a
+    # ceiling equal to the fixed cap is the fixed cap, not an administrator's
+    # choice.
+    for name in ("images", "llmwhisperer", "legacy", "ceiling"):
         value = terms[name]
         if value is not None and value < max_pages:
             max_pages, binding = value, name
@@ -411,6 +427,10 @@ class ImageModePolicy:
         ]
         page_budget = min(budgets, key=lambda b: b.max_pages)
 
+        if any(lim.max_request_bytes.advisory for lim in resolved):
+            # A pass-through LLM publishes no request-size limit: the fixed
+            # byte cap bounds the page set it shares with any other LLM.
+            bytes_ceiling = _stricter(bytes_ceiling, DEFAULT_MAX_TOTAL_BYTES)
         request = _min_limit((lim.max_request_bytes, lim) for lim in resolved)
         advisory_bytes = next(
             (lim.max_request_bytes for lim in resolved if lim.max_request_bytes.advisory),
@@ -462,7 +482,8 @@ class ImageModePolicy:
         """Policy for callers that do not know the LLM: ceilings only."""
         max_pages = ImageOutputConstants.LLMWHISPERER_MAX_PAGES
         binding = "llmwhisperer"
-        for name, value in (("ceiling", page_ceiling), ("legacy", legacy_cap)):
+        # The fixed cap first: a ceiling only binds when strictly below it.
+        for name, value in (("legacy", legacy_cap), ("ceiling", page_ceiling)):
             if value is not None and value < max_pages:
                 max_pages, binding = value, name
         budget = PageBudget(

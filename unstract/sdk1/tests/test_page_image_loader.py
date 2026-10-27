@@ -382,6 +382,22 @@ class TestFixedPageCap:
         assert fixed_max_total_bytes() == DEFAULT_MAX_TOTAL_BYTES
 
 
+class TestDeprecatedAccessorAliases:
+    """The released cloud answer plugin imports configured_page_cap."""
+
+    def test_aliases_return_the_fixed_cap(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from unstract.sdk1.adapters.x2text.page_image_loader import (
+            configured_max_total_bytes,
+            configured_page_cap,
+        )
+
+        for page, mib in (("40", "6"), ("200", "50"), ("", "")):
+            monkeypatch.setenv(PAGE_CAP_ENV, page)
+            monkeypatch.setenv(MAX_TOTAL_MB_ENV, mib)
+            assert configured_page_cap() == fixed_page_cap()
+            assert configured_max_total_bytes() == fixed_max_total_bytes()
+
+
 class TestLoaderReadsConfiguredLimits:
     """Left unset, the loader's limits come from the env, not fixed defaults."""
 

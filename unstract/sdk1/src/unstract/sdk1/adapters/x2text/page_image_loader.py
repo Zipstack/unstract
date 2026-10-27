@@ -218,6 +218,24 @@ def fixed_max_total_bytes() -> int:
     )
 
 
+def configured_page_cap() -> int:
+    """Deprecated alias of ``fixed_page_cap``.
+
+    Kept for the released cloud answer plugin, which imports it; remove after
+    Zipstack/unstract-cloud#1869 is deployed.
+    """
+    return fixed_page_cap()
+
+
+def configured_max_total_bytes() -> int:
+    """Deprecated alias of ``fixed_max_total_bytes``.
+
+    Kept for the released cloud answer plugin; remove after
+    Zipstack/unstract-cloud#1869 is deployed.
+    """
+    return fixed_max_total_bytes()
+
+
 class _UseConfigured:
     """Sentinel type: read the limit from the environment at call time."""
 
