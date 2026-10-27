@@ -15,6 +15,7 @@ context and ``time`` are mocked. ``TestReleaseAgainstRealConnection`` needs a
 real Postgres, so the conftest marks it ``integration``.
 """
 
+import logging
 from unittest.mock import MagicMock, call, patch
 
 import pytest
@@ -185,14 +186,49 @@ class TestReleaseDbConnection:
     def test_skips_a_closed_connection_without_reconnecting(self, db_connection):
         db_connection.connection = None
         WorkflowHelper._release_db_connection()
-        # get_autocommit() would ensure_connection() — i.e. open one to close it.
-        db_connection.get_autocommit.assert_not_called()
-        db_connection.ensure_connection.assert_not_called()
         db_connection.close_if_unusable_or_obsolete.assert_not_called()
 
     def test_a_failing_release_does_not_raise(self, db_connection):
         db_connection.close_if_unusable_or_obsolete.side_effect = RuntimeError("boom")
         WorkflowHelper._release_db_connection()  # must not propagate
+
+    @pytest.mark.parametrize(
+        ("quiet", "level"), [(False, logging.WARNING), (True, logging.DEBUG)]
+    )
+    def test_skip_is_logged_loudly_only_when_not_quiet(self, db_connection, quiet, level):
+        db_connection.in_atomic_block = True
+        with patch(f"{_MOD}.logger") as log:
+            WorkflowHelper._release_db_connection(quiet=quiet)
+        assert log.log.call_args.args[0] == level
+
+
+class TestReleaseLogsOncePerWait:
+    def test_only_the_first_poll_is_loud(self, db_connection, async_deps):
+        _, get_status = async_deps
+        get_status.side_effect = [ExecutionStatus.EXECUTING] * 2 + [
+            ExecutionStatus.COMPLETED
+        ]
+        with patch.object(WorkflowHelper, "_release_db_connection") as release:
+            _run_async(timeout=10)
+        assert release.call_args_list == [
+            call(quiet=False),
+            call(quiet=True),
+            call(quiet=True),
+        ]
+
+    def test_wait_for_execution_only_the_first_poll_is_loud(self):
+        result = ExecutionResponse("wf-1", "exec-1", ExecutionStatus.EXECUTING.value)
+        with (
+            patch(f"{_MOD}.time"),
+            patch.object(
+                WorkflowHelper,
+                "_get_execution_status",
+                side_effect=[ExecutionStatus.EXECUTING, ExecutionStatus.COMPLETED],
+            ),
+            patch.object(WorkflowHelper, "_release_db_connection") as release,
+        ):
+            WorkflowHelper.wait_for_execution(result, timeout=10)
+        assert release.call_args_list == [call(quiet=False), call(quiet=True)]
 
     def test_releases_every_initialized_alias(self, db_connections):
         default, other = _open_conn("default"), _open_conn("other")
@@ -239,13 +275,25 @@ class TestReleaseAgainstRealConnection:
         from workflow_manager.workflow_v2.models.execution import WorkflowExecution
 
         WorkflowExecution.objects.count()
-        # What CONN_MAX_AGE=None (persistent) sets at connect time.
+        # What CONN_MAX_AGE=None (persistent) sets at connect time. Restored, so
+        # the shared connection is recyclable again for later tests.
+        saved_close_at = real_connection.close_at
         real_connection.close_at = None
-        raw = real_connection.connection
+        try:
+            raw = real_connection.connection
+            WorkflowHelper._release_db_connection()
+            assert real_connection.connection is raw
+        finally:
+            real_connection.close_at = saved_close_at
+
+    def test_closed_connection_is_not_reopened(self):
+        from django.db import connection as real_connection
+
+        real_connection.close()
 
         WorkflowHelper._release_db_connection()
 
-        assert real_connection.connection is raw
+        assert real_connection.connection is None
 
     def test_release_inside_atomic_keeps_transaction_usable(self):
         from django.db import connection as real_connection

@@ -488,7 +488,7 @@ class WorkflowHelper:
         return execution_cache.status
 
     @staticmethod
-    def _release_db_connection() -> None:
+    def _release_db_connection(*, quiet: bool = False) -> None:
         """Hand the request's DB connections back before a long sleep-poll.
 
         Django holds a connection for the whole request, and behind pgbouncer's
@@ -502,16 +502,25 @@ class WorkflowHelper:
         ones. Unlike ``close_old_connections`` it never touches a connection
         with work in flight — an atomic block (e.g. ``ATOMIC_REQUESTS``) or
         autocommit turned off — since closing would discard that work.
+
+        Args:
+            quiet (bool): Log a skipped or failed release at DEBUG instead of
+                WARNING. Callers pass it after the first poll, so one wait logs
+                once rather than every 2 s.
         """
+        level = logging.DEBUG if quiet else logging.WARNING
         for conn in connections.all(initialized_only=True):
             # `.autocommit`, not get_autocommit(): that one ensure_connection()s,
             # i.e. would open a connection only to close it.
             if conn.connection is None:
                 continue
             if conn.in_atomic_block or not conn.autocommit:
-                logger.debug(
+                # WARNING, not DEBUG: this silently undoes the release (e.g. under
+                # ATOMIC_REQUESTS), and a capped session pool would then starve.
+                logger.log(
+                    level,
                     f"Keeping DB connection '{conn.alias}' through the sync wait: "
-                    "a transaction is open"
+                    "a transaction is open, so it stays pinned for the whole wait",
                 )
                 continue
             # Never let the release abort the wait it is there to serve: a raise
@@ -520,7 +529,8 @@ class WorkflowHelper:
             try:
                 conn.close_if_unusable_or_obsolete()
             except Exception:
-                logger.warning(
+                logger.log(
+                    level,
                     f"Could not release DB connection '{conn.alias}' before the "
                     "sync wait; continuing with it held",
                     exc_info=True,
@@ -727,10 +737,12 @@ class WorkflowHelper:
 
             execution_status = workflow_execution.status
             if timeout > -1:
+                first_poll = True
                 while not ExecutionStatus.is_completed(execution_status) and timeout > 0:
                     # Before every sleep, not just the first: a cache miss in
                     # _get_execution_status reads the row and reopens one.
-                    cls._release_db_connection()
+                    cls._release_db_connection(quiet=not first_poll)
+                    first_poll = False
                     time.sleep(2)
                     timeout -= 2
 
@@ -1031,8 +1043,10 @@ class WorkflowHelper:
         workflow_id = result.workflow_id
         execution_id = result.execution_id
         if timeout > 0:
+            first_poll = True
             while not ExecutionStatus.is_completed(execution_status) and timeout > 0:
-                cls._release_db_connection()
+                cls._release_db_connection(quiet=not first_poll)
+                first_poll = False
                 time.sleep(2)
                 timeout -= 2
 
