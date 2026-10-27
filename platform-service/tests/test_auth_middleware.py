@@ -1,5 +1,6 @@
 """Tests for bearer token validation used by `authentication_middleware`."""
 
+import uuid
 from collections.abc import Iterator
 from contextlib import contextmanager
 from typing import Any
@@ -7,6 +8,9 @@ from typing import Any
 import pytest
 from flask import Flask
 from unstract.platform_service.controller import platform
+
+# Platform keys are UUIDs (the key column is a UUID field).
+TOKEN = str(uuid.UUID(int=1))
 
 
 @pytest.fixture
@@ -29,8 +33,8 @@ def _mock_safe_cursor(monkeypatch: pytest.MonkeyPatch, result_row: Any) -> None:
 
 
 def test_valid_active_token(app_ctx: None, monkeypatch: pytest.MonkeyPatch) -> None:
-    _mock_safe_cursor(monkeypatch, ("id", "test-token", True))
-    assert platform.validate_bearer_token("test-token") is True
+    _mock_safe_cursor(monkeypatch, ("id", TOKEN, True))
+    assert platform.validate_bearer_token(TOKEN) is True
 
 
 def test_rejects_missing_token(app_ctx: None) -> None:
@@ -39,12 +43,12 @@ def test_rejects_missing_token(app_ctx: None) -> None:
 
 def test_rejects_unknown_token(app_ctx: None, monkeypatch: pytest.MonkeyPatch) -> None:
     _mock_safe_cursor(monkeypatch, None)
-    assert platform.validate_bearer_token("test-token") is False
+    assert platform.validate_bearer_token(TOKEN) is False
 
 
 def test_rejects_inactive_token(app_ctx: None, monkeypatch: pytest.MonkeyPatch) -> None:
-    _mock_safe_cursor(monkeypatch, ("id", "test-token", False))
-    assert platform.validate_bearer_token("test-token") is False
+    _mock_safe_cursor(monkeypatch, ("id", TOKEN, False))
+    assert platform.validate_bearer_token(TOKEN) is False
 
 
 def test_db_error_denies_access(app_ctx: None, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -55,10 +59,10 @@ def test_db_error_denies_access(app_ctx: None, monkeypatch: pytest.MonkeyPatch) 
         raise RuntimeError("db down")
 
     monkeypatch.setattr(platform, "safe_cursor", _boom)
-    assert platform.validate_bearer_token("test-token") is False
+    assert platform.validate_bearer_token(TOKEN) is False
 
 
-SECRET_TOKEN = "abcd-1234-secret-platform-key"
+SECRET_TOKEN = str(uuid.UUID(hex="abcd" + "1" * 28))
 
 
 @pytest.mark.parametrize(
@@ -79,3 +83,23 @@ def test_rejection_logs_only_a_token_prefix(
 
     assert "abcd..." in caplog.text
     assert SECRET_TOKEN not in caplog.text
+
+
+def test_malformed_token_is_rejected_before_the_query(
+    app_ctx: None,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A non-UUID token would make Postgres quote it back in a logged error."""
+    malformed = SECRET_TOKEN + "x"
+
+    def _no_query(query: str, params: tuple = ()) -> Any:
+        raise AssertionError("malformed token reached the database")
+
+    monkeypatch.setattr(platform, "safe_cursor", _no_query)
+
+    with caplog.at_level("ERROR"):
+        assert platform.validate_bearer_token(malformed) is False
+
+    assert "abcd..." in caplog.text
+    assert malformed not in caplog.text

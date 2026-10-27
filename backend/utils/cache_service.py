@@ -120,6 +120,11 @@ class CacheService:
             OSError,
         ) as e:
             logger.error(f"Failed to clear cache pattern '{key_pattern}': {str(e)}")
+            # The fallback goes through the default Django cache, so it can only
+            # stand in for a clear of the default DB. For any other DB it would
+            # delete nothing and report success, so re-raise instead.
+            if db is not None:
+                raise
             # Fallback to old method for backward compatibility
             try:
                 cache.delete_pattern(key_pattern)

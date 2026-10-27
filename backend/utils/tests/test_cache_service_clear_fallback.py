@@ -41,4 +41,22 @@ def test_fallback_failure_reraises_original_error() -> None:
         with pytest.raises(RedisConnectionError) as exc_info:
             CacheService.clear_cache_optimized("file_active:*")
 
+    cache.delete_pattern.assert_called_once_with("file_active:*")
+    assert exc_info.value is original
+
+
+def test_redis_error_on_a_specific_db_is_not_masked_by_the_fallback() -> None:
+    """The fallback clears the default cache's DB, never the one asked for."""
+    connection = MagicMock()
+    original = RedisTimeoutError("slow")
+    connection.scan.side_effect = original
+
+    with (
+        patch.object(cache_service, "create_redis_client", return_value=connection),
+        patch.object(cache_service, "cache") as cache,
+    ):
+        with pytest.raises(RedisTimeoutError) as exc_info:
+            CacheService.clear_cache_optimized("file_active:*", db=1)
+
+    cache.delete_pattern.assert_not_called()
     assert exc_info.value is original

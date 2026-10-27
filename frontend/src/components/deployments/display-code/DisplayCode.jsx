@@ -121,6 +121,7 @@ const DisplayCode = ({ isDialogOpen, setDialogOpen, url }) => {
     setCode(jsCode);
   };
 
+  // Not useCopyToClipboard: success here is shown by the icon, not a toast.
   const handleCopyClick = () => {
     if (!navigator.clipboard) {
       setAlertDetails({
