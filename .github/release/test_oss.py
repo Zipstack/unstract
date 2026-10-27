@@ -601,9 +601,10 @@ def inline(workflow, step):
     "the cloud repo's workflows",
 )
 class Workflow(unittest.TestCase):
-    """A cloud and an OSS origin with clones; a stub gh serves the cloud registry (reg.jsonl), the open
-    backport-conflict PRs of each repo (<owner>_<repo>.json; a `prfail` file fails the listing) and the PRs of a main
-    commit (pulls.json). gh.log: each pr list and commit PRs call, as its token.
+    """A cloud and an OSS origin with clones; a sitecustomize stands in for Artifact Registry with reg.jsonl as
+    cloud/backend's versions (other artifacts empty); a stub gh serves the open backport-conflict PRs of each repo
+    (<owner>_<repo>.json; a `prfail` file fails the listing) and the PRs of a main commit (pulls.json). gh.log:
+    each pr list and commit PRs call, as its token.
     """
 
     def setUp(self):
@@ -620,12 +621,26 @@ class Workflow(unittest.TestCase):
             self.repos[name] = (origin, work)
         os.makedirs(os.path.join(self.cloud, ".relmgr", ".github"))
         os.symlink(HERE, os.path.join(self.cloud, ".relmgr", ".github", "release"))
+        self.site = os.path.join(d, "site")
+        os.mkdir(self.site)
+        with open(os.path.join(self.site, "sitecustomize.py"), "w") as fh:
+            fh.write(f"""import json, os, sys
+sys.path.insert(0, {HERE!r})
+import relstate
+def _ar_versions(artifact):  # reg.jsonl as Artifact Registry versions of cloud/backend; other artifacts empty
+    if artifact != "cloud/backend" or not os.path.exists({os.path.join(d, "reg.jsonl")!r}):
+        return []
+    with open({os.path.join(d, "reg.jsonl")!r}) as fh:
+        rows = [json.loads(line) for line in fh]
+    return [{{"name": f"r/packages/backend/versions/{{v['digest']}}", "createTime": v["pushed_at"],
+              "relatedTags": [{{"name": f"r/packages/backend/tags/{{t}}"}} for t in v["tags"]]}} for v in rows]
+relstate._ar_versions = _ar_versions
+""")
         bin_ = os.path.join(d, "bin")
         os.mkdir(bin_)
-        with open(os.path.join(bin_, "gh"), "w") as fh:  # other artifacts empty
+        with open(os.path.join(bin_, "gh"), "w") as fh:
             fh.write(f"""#!/bin/sh
 case "$*" in
-  *%2Fcloud%2Frelease/versions*) cat {d}/reg.jsonl 2>/dev/null;;
   "pr list -R "*) echo "$GH_TOKEN $*" >> {d}/gh.log; [ -e {d}/prfail ] && exit 1
     cat "{d}/$(echo "$4" | tr / _).json" 2>/dev/null || echo "[]";;
   *"/pulls"*) echo "$GH_TOKEN $*" >> {d}/gh.log; [ -e {d}/pullsfail ] && exit 1
@@ -664,6 +679,7 @@ true
         env = {
             **os.environ,
             "PATH": self.path,
+            "PYTHONPATH": self.site,
             "FORCE": "false",
             "REASON": "",
             "OSS_REPO": self.repos["oss"][1],
@@ -991,8 +1007,8 @@ class TakeRcVersion(Workflow):
 
 
 class PublishWorkflow(Workflow):
-    """Publish's Plan reads the OSS pins of the RC and the previous stable; its Changelog step points the fetcher at
-    this repo and the OSS repo, and swaps in the bot token for the OSS call only.
+    """Publish's Plan reads the OSS pins of the RC and the previous stable; its Changelog step runs the fetcher
+    against this repo and the OSS repo with one token (the release bot's, which reads both).
     """
 
     def release(
@@ -1050,7 +1066,7 @@ class PublishWorkflow(Workflow):
             (out["prev_oss"], out["oss"]), ("ee-v1.7.0-rc.1", "ee-v1.7.0-rc.1")
         )  # same pin: skipped
 
-    def test_changelog_reads_both_repos_with_the_bot_token_for_oss_only(self):
+    def test_changelog_reads_both_repos_with_one_token(self):
         # The real fetcher with a stand-in requests that logs each call and a main that calls it.
         action = os.path.join(self.cloud, ".github", "actions", "update-changelogs")
         os.makedirs(action)
@@ -1097,7 +1113,7 @@ def main():
             self.read("calls").splitlines(),
             [
                 "Zipstack/unstract-cloud token workflow-token",
-                "Zipstack/unstract token oss-token",
+                "Zipstack/unstract token workflow-token",
                 "Zipstack/unstract-cloud token workflow-token",
             ],
         )

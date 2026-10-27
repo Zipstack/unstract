@@ -162,6 +162,19 @@ def registry_tags(artifact):
     return out
 
 
+def _read(artifact, registry):
+    """registry(artifact), with a chart push's X.Y.Z tag read as vX.Y.Z. A chart push is tagged with its Chart.yaml
+    version, which has no v; pushes before the release-line flow were tagged vX.Y.Z and read as they are.
+    """
+    tags = registry(artifact)
+    if not artifact.startswith("chart/"):
+        return tags
+    return {
+        ("v" + t if re.fullmatch(r"\d+\.\d+\.\d+", t) else t): info
+        for t, info in tags.items()
+    }
+
+
 def taken_tags(reg=None, registry=registry_tags):
     """Every tag on every registry artifact of TARGETS: an RC there is never allocated again (rc_version taken).
     reg: {artifact: tags} already read; artifacts missing from it are read.
@@ -268,6 +281,8 @@ def target_state(t, name, rows, now):
     while the branch exists; the cloud lines pinning it decide its retirement, and cloud Retire names it.
     """
     ga = rows[name]["targets"][t]["ga"]
+    # Known limit: a target built but never GA (on-prem RCs with no chart push) stays stabilizing for good, so its
+    # line never reaches the retire list; a person retires it with Retire `retire_line`.
     if not ga:
         return "stabilizing"
     if t in KEPT:
@@ -323,7 +338,7 @@ def _next_minor(repo, ordered):
 def derive(repo, now, registry=registry_tags, rc=None):
     t0 = time.monotonic()
     reg = {
-        a: git_tags(repo) if a == GIT else registry(a)
+        a: git_tags(repo) if a == GIT else _read(a, registry)
         for a in sorted({a for pair in TARGETS.values() for a in pair})
     }
     print(
@@ -396,8 +411,8 @@ def derive(repo, now, registry=registry_tags, rc=None):
             if not tt:
                 continue
             tt["rcs"].sort(key=_vkey)
-            # On-prem GA reads the chart artifact: RC chart pushes are tagged 0.0.0-rc.N and match no line; the
-            # stable chart push is tagged vX.Y.Z (push-charts-to-gcr.yaml checks it against the release tag).
+            # On-prem GA reads the chart artifact. Publish pushes the stable chart as X.Y.Z, read as vX.Y.Z (_read);
+            # RC charts are never pushed, and legacy 0.0.0-rc.N pushes match no line.
             stable = re.compile(rf"{re.escape(PREFIX)}v{re.escape(row['line'])}\.\d+")
             # ga (the anchor's first stable) anchors state and the support window; promoted (the build artifact's
             # latest stable) is what ships next
@@ -486,7 +501,7 @@ def abandon_plan(repo, branch, registry=registry_tags):
     x, y = rm._line(branch)
     rc_re = re.compile(rf"{re.escape(PREFIX)}v{x}\.{y}\.\d+-rc\.\d+")
     reg = {
-        a: registry(a)
+        a: _read(a, registry)
         for a in sorted({a for pair in TARGETS.values() for a in pair} - {GIT})
     }
     main = _main(repo)

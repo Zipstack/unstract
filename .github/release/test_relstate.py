@@ -1,4 +1,4 @@
-"""Synthetic-repo tests for relstate (derive 1-11, on-prem newest six 7b, cutover fallback 12, retired-line history 13, tip_rc 14, summary 15, tip_rc Slack link 20, Release-branch-only line in a squash message 21, abandon_plan 16-17, pr_fix_class 18, revert titles 18b, ticketless titles 18c, Release-branch-only key 18d, release-branch-only label 18e, ahead_of_ga 19, promote order per target 22, enable a target on the newest line only 23, no order block on a GA line 23b, already_bumped 24, promoted from the build artifact 25, OSS repo config 26 (ee- git tags, plain v* ignored, lines kept while the branch exists), next_minor past a stable tag on main 27, bump with no chart 28, retire_line refusals and the retired line's minor 29, RC allocation past registry RCs 30, a reused minor past its kept RC 31, shallow clone refused 32, conflict-marker grep error 33, a revert of another line's pick 34, release-branch CI commit selection 35, backport head names 36, unknown repo config 37, Artifact Registry reads 38-41 and 39b). Run: python test_relstate.py. release-tooling-tests.yaml runs all six on a pull request
+"""Synthetic-repo tests for relstate (derive 1-11, on-prem newest six 7b, cutover fallback 12, retired-line history 13, tip_rc 14, summary 15, tip_rc Slack link 20, Release-branch-only line in a squash message 21, abandon_plan 16-17, pr_fix_class 18, revert titles 18b, ticketless titles 18c, Release-branch-only key 18d, release-branch-only label 18e, ahead_of_ga 19, promote order per target 22, enable a target on the newest line only 23, no order block on a GA line 23b, already_bumped 24, promoted from the build artifact 25, OSS repo config 26 (ee- git tags, plain v* ignored, lines kept while the branch exists), next_minor past a stable tag on main 27, bump with no chart 28, retire_line refusals and the retired line's minor 29, RC allocation past registry RCs 30, a reused minor past its kept RC 31, shallow clone refused 32, conflict-marker grep error 33, a revert of another line's pick 34, release-branch CI commit selection 35, backport head names 36, unknown repo config 37, Artifact Registry reads 38-41 and 39b, a chart push without v 42). Run: python test_relstate.py. release-tooling-tests.yaml runs all six on a pull request
 that changes this directory.
 """
 
@@ -718,6 +718,34 @@ class Scenario(unittest.TestCase):
         self.assertEqual(plan()["ga"], ["v1.9.0", "chart/unstract-platform:v1.9.0"])
         human = self.commit("human RBO-less work", "release/1.9")
         self.assertEqual(plan()["used"], [human[:12]])
+
+    def test_42_chart_push_without_v(self):
+        # Publish pushes the chart as its Chart.yaml version, X.Y.Z: it anchors on-prem GA as vX.Y.Z.
+        self.s3()
+        self.push("chart/unstract-platform", "1.5.1")
+        tt = self.branch(self.state(), "release/1.5")["targets"]["on-prem"]
+        self.assertEqual(
+            (tt["state"], tt["ga"]),
+            (
+                "stabilized",
+                {"tag": "v1.5.1", **self.reg["chart/unstract-platform"]["1.5.1"]},
+            ),
+        )
+        self.push("cloud/backend", "1.5.1")  # only a chart tag is read this way
+        self.assertEqual(
+            self.branch(self.state(), "release/1.5")["targets"]["cloud"]["promoted"][
+                "tag"
+            ],
+            "v1.5.0",
+        )
+        self.built_by_mistake()
+        self.push("chart/unstract-platform", "1.9.0")
+        self.assertEqual(
+            rs.abandon_plan(self.repo, "release/1.9", lambda a: self.reg.get(a, {}))[
+                "ga"
+            ],
+            ["chart/unstract-platform:v1.9.0"],
+        )
 
     def test_26_oss_repo_config(self):
         # The OSS repo runs this same file: one target, oss, read from the line's own ee- git tags (no registry),
