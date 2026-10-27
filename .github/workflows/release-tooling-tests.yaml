@@ -1,0 +1,35 @@
+name: Release tooling tests
+
+# Runs every .github/release test suite when the release tooling or a workflow that runs it changes.
+# The suites use only temporary local git repos and mocks: no token, no network.
+on:
+  pull_request:
+    paths:
+      - ".github/release/**"
+      - ".github/workflows/backport.yaml"
+      - ".github/workflows/lint-pr.yaml"
+      - ".github/workflows/release-branch-ci.yaml"
+      - ".github/workflows/release-tooling-tests.yaml"
+      - ".github/workflows/state.yaml"
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Run the suites
+        run: |
+          rc=0
+          for t in .github/release/test_*.py; do
+            echo "::group::$t"
+            python3 "$t" || rc=1
+            echo "::endgroup::"
+          done
+          exit "$rc"
