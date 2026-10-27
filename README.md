@@ -29,7 +29,7 @@
   </p>
 </div>
 
-## What is Unstract?
+Testing CLA
 
 Unstract uses LLMs to extract structured JSON from documents — PDFs, images, scans, you name it. Define what you want to extract using natural language prompts, and deploy as an API or ETL pipeline.
 
