@@ -27,7 +27,24 @@ jobs:
     if: github.event_name == 'pull_request_target' || github.event.issue.pull_request
     runs-on: ubuntu-latest
     steps:
+      # Runs triggered by Dependabot get only Dependabot secrets, so the token
+      # step below would fail and leave the check pending. Dependabot is exempt
+      # from the CLA anyway, so set the status directly. Comments Dependabot
+      # posts need no check. Runs triggered by anyone else on a Dependabot PR
+      # still go through the action.
+      - name: Pass Dependabot runs
+        if: github.actor == 'dependabot[bot]' && github.event_name == 'pull_request_target'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+        run: >-
+          gh api -X POST "repos/$REPO/statuses/$SHA"
+          -f state=success -f context=license/cla
+          -f description="Dependabot pull request; no CLA needed."
+
       - name: Mint signatures token
+        if: github.actor != 'dependabot[bot]'
         id: app-token
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
@@ -36,7 +53,8 @@ jobs:
           owner: Zipstack
           repositories: cla-signatures
 
-      - uses: Zipstack/cla-action@b68f7dda08f8e4d075b2c357609e20e5ef6f646e # v1.0.0
+      - if: github.actor != 'dependabot[bot]'
+        uses: Zipstack/cla-action@b68f7dda08f8e4d075b2c357609e20e5ef6f646e # v1.0.0
         with:
           cla-document-url: https://gist.github.com/arun-venkataswamy/0dec44b8e5155c43461caf62c38ddac3
           signatures-repository: Zipstack/cla-signatures
