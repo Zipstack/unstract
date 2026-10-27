@@ -1,3 +1,11 @@
+# Keeps the SHA-pinned actions in .github/workflows current: one grouped PR a
+# week that bumps each pin and its "# vX.Y.Z" comment.
+#
+# Known precondition, not yet met: Dependabot-triggered runs get only
+# Dependabot secrets, and none are set, so ci-test.yaml's Docker Hub login
+# gets empty credentials, fails, and the required `report` check goes red.
+# Before relying on these PRs, either add DOCKERHUB_USERNAME/DOCKERHUB_TOKEN
+# as Dependabot secrets or skip that login step for dependabot[bot].
 version: 2
 updates:
   - package-ecosystem: "github-actions"
@@ -9,4 +17,6 @@ updates:
         patterns:
           - "*"
     commit-message:
-      prefix: "[DEPS]"
+      # Trailing space stops Dependabot inserting a colon after the "]",
+      # so titles read "[DEPS] Bump ...", which update-changelogs parses.
+      prefix: "[DEPS] "
