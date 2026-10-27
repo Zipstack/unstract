@@ -589,6 +589,7 @@ SHARED_APPS = (
     "mcp_server",
     "usage_v2",
     "notification_v2",
+    "inbox",
     "prompt_studio.prompt_profile_manager_v2",
     "prompt_studio.prompt_studio_v2",
     "prompt_studio.prompt_studio_core_v2",
