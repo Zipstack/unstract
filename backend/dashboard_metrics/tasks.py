@@ -15,6 +15,7 @@ from enum import StrEnum
 from typing import Any
 from uuid import uuid4
 
+from account_usage.models import PageUsage
 from account_v2.models import Organization
 from celery import shared_task
 from celery.exceptions import SoftTimeLimitExceeded
@@ -854,21 +855,33 @@ def _aggregate_org(
 
 
 def _active_org_ids(end_date: datetime, window_start: datetime) -> set:
-    """Organizations with execution activity in the prefilter lookback.
+    """Organizations with execution or page activity in the prefilter lookback.
 
     Never narrower than the caller's own query window: a widened
     source_window_days must not be prefiltered back down to the default
     lookback, or the reconciliation pass skips the orgs it exists to repair.
+
+    Page usage is unioned in because Prompt Studio records pages without a
+    workflow execution; an org using only Prompt Studio would get no rows.
     """
     cutoff = min(
         window_start,
         end_date - timedelta(days=DASHBOARD_ACTIVE_ORG_LOOKBACK_DAYS),
     )
-    return set(
+    executing = set(
         WorkflowExecution.objects.filter(created_at__gte=cutoff)
         .values_list("workflow__organization_id", flat=True)
         .distinct()
     )
+    # PageUsage keys orgs by their string identifier, not the PK.
+    paging = set(
+        Organization.objects.filter(
+            organization_id__in=PageUsage.objects.filter(created_at__gte=cutoff).values(
+                "organization_id"
+            )
+        ).values_list("id", flat=True)
+    )
+    return executing | paging
 
 
 def _build_result(
