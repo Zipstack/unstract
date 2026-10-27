@@ -9,7 +9,8 @@ name: Lint PR
 # Label `release-branch-only` marks a change that lives only on its release branch: refused on main. On a release
 # branch, Release branch CI's bot commit writes `Release-branch-only: <TICKET>` (or `#<PR>` without a ticket), which
 # Squash and merge keeps in the message.
-# A PR from a fork is not checked: the maintainer fixes its title before merging.
+# A PR from a fork is not checked, title or labels: the maintainer checks both before merging. A fork PR merged with a
+# bad title shows as unclassifiable on each Backport run until its title or fix/ label is fixed.
 on:
   pull_request:
     branches: [main, 'release/**']
