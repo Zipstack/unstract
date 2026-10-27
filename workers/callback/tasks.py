@@ -71,6 +71,9 @@ class CallbackContext:
         # here) — lets the PG duplicate guard skip a redelivered callback without a
         # second round-trip.
         self.execution_status: str | None = None
+        # The full execution context from that same fetch, reused by the status
+        # determination step instead of fetching the execution again.
+        self.execution_data: dict[str, Any] | None = None
 
 
 def _initialize_performance_managers():
@@ -257,6 +260,7 @@ def _determine_execution_status_unified(
     api_client: InternalAPIClient,
     execution_id: str,
     organization_id: str,
+    execution_data: dict[str, Any] | None = None,
 ) -> tuple[dict[str, Any], str, int]:
     """Unified status determination logic with timeout detection for all callback types.
 
@@ -269,6 +273,8 @@ def _determine_execution_status_unified(
         api_client: Internal API client for workflow execution queries
         execution_id: Workflow execution ID
         organization_id: Organization context
+        execution_data: Execution context the callback already fetched. When
+            given, it is reused instead of fetching the execution twice more.
 
     Returns:
         Tuple of (aggregated_results, final_status, expected_files)
@@ -282,6 +288,7 @@ def _determine_execution_status_unified(
         execution_id,
         organization_id,
         aggregated_results.get("file_results", []),
+        execution_data=execution_data,
     )
 
     # Update aggregated results with wall-clock time
@@ -299,18 +306,18 @@ def _determine_execution_status_unified(
     # Step 3: Get expected file count from workflow execution details for timeout detection
     expected_files = 0
     try:
-        execution_response = api_client.get_workflow_execution(
-            execution_id, file_execution=False
-        )
-        if execution_response.success:
-            execution_data = execution_response.data
+        if execution_data is None:
+            execution_response = api_client.get_workflow_execution(execution_id)
+            if execution_response.success:
+                execution_data = execution_response.data
+            else:
+                logger.warning(
+                    f"Could not fetch execution details for {execution_id}: {execution_response.error}"
+                )
+        if execution_data is not None:
             expected_files = execution_data.get("total_files", 0)
             logger.info(
                 f"Expected files from execution details: {expected_files} for execution {execution_id}"
-            )
-        else:
-            logger.warning(
-                f"Could not fetch execution details for {execution_id}: {execution_response.error}"
             )
     except Exception as e:
         logger.warning(f"Could not fetch execution details for {execution_id}: {e}")
@@ -728,8 +735,9 @@ def _extract_callback_parameters(
                 f"Fetching complete context from workflow execution {context.execution_id}"
             )
 
+            # file_execution=True: subscription billing reads context.file_executions.
             execution_response = api_client.get_workflow_execution(
-                context.execution_id, file_execution=False
+                context.execution_id, file_execution=True
             )
 
             if not execution_response.success:
@@ -762,9 +770,10 @@ def _extract_callback_parameters(
             temp_config = WorkerConfig()
             temp_api_client = InternalAPIClient(temp_config)
             try:
+                # file_execution=True: subscription billing reads context.file_executions.
                 execution_response = temp_api_client.get_workflow_execution(
                     context.execution_id,
-                    file_execution=False,
+                    file_execution=True,
                 )
 
                 if not execution_response.success:
@@ -810,6 +819,7 @@ def _extract_callback_parameters(
         ) or workflow_definition.get("workflow_id")
         # Status from the same fetch, for the PG duplicate guard (no extra call).
         context.execution_status = execution_info.get("status")
+        context.execution_data = execution_data
 
         # Use existing API detection from source_config (no additional API calls needed)
         is_api_deployment = source_config.get("is_api", False)
@@ -1479,6 +1489,7 @@ def _process_batch_callback_core(
                         api_client=context.api_client,
                         execution_id=context.execution_id,
                         organization_id=context.organization_id,
+                        execution_data=context.execution_data,
                     )
                 )
                 # Update workflow execution status using unified function
@@ -1668,8 +1679,9 @@ def process_batch_callback_api(
     logger.info(f"Created organization-scoped API client: {organization_id}")
 
     try:
+        # file_execution=True: subscription billing reads context.file_executions.
         execution_response = api_client.get_workflow_execution(
-            execution_id, file_execution=False
+            execution_id, file_execution=True
         )
         if not execution_response.success:
             raise RuntimeError(
@@ -1742,6 +1754,7 @@ def process_batch_callback_api(
                         api_client=api_client,
                         execution_id=execution_id,
                         organization_id=organization_id,
+                        execution_data=execution_context,
                     )
                 )
 

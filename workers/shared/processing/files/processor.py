@@ -477,6 +477,7 @@ class FileProcessor:
         workflow_file_execution_id: str = None,
         workflow_file_execution_object: Any = None,
         workflow_logger: WorkerWorkflowLogger = None,
+        execution_context: dict[str, Any] | None = None,
     ) -> FileProcessingResult:
         """Main orchestrator method that replaces the complex _process_file method.
 
@@ -497,6 +498,7 @@ class FileProcessor:
             workflow_execution: Workflow execution context
             workflow_file_execution_id: Pre-created workflow file execution ID
             workflow_file_execution_object: Pre-created workflow file execution object
+            execution_context: Full execution context the batch already fetched
 
         Returns:
             FileProcessingResult dataclass
@@ -512,6 +514,7 @@ class FileProcessor:
             workflow_logger=workflow_logger,
             current_file_idx=current_file_idx,
             total_files=total_files,
+            execution_context=execution_context,
         )
 
         logger.debug(

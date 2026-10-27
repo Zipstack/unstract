@@ -104,7 +104,7 @@ class ExecutionAPIClient(BaseAPIClient):
         execution_id: str | uuid.UUID,
         organization_id: str | None = None,
         include_cost: bool = False,
-        file_execution: bool = True,
+        file_execution: bool = False,
     ) -> ExecutionResponse:
         """Get workflow execution with context.
 
@@ -112,20 +112,24 @@ class ExecutionAPIClient(BaseAPIClient):
             execution_id: Workflow execution ID
             organization_id: Optional organization ID override
             include_cost: Whether to include aggregated usage cost (expensive operation)
+            file_execution: Whether to include every file-execution row of the
+                execution (expensive for large executions; only the callback's
+                billing step needs them)
 
         Returns:
             ExecutionResponse containing workflow execution data
         """
         try:
-            # Build URL with optional cost parameter
             url = self._build_url("workflow_execution", f"{str(execution_id)}/")
+            # file_execution is always sent: the backend defaults it to true, so
+            # omitting it would load every file-execution row.
+            params = {"file_execution": "true" if file_execution else "false"}
             if include_cost:
-                url += "?include_cost=true"
-            if file_execution:
-                url += "?file_execution=true"
+                params["include_cost"] = "true"
 
             response = self.get(
                 url,
+                params=params,
                 organization_id=organization_id,
             )
             return ExecutionResponse.success_response(

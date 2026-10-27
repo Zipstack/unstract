@@ -691,6 +691,7 @@ def _process_individual_files(context: WorkflowContextData) -> WorkflowContextDa
     use_file_history = context.get_setting("use_file_history", True)
     api_client = context.organization_context.api_client
     workflow_execution = context.metadata["workflow_execution"]
+    execution_context = context.metadata.get("execution_context")
     pre_created_file_executions = context.pre_created_file_executions
     skipped_already_completed = context.metadata.get("skipped_already_completed", [])
     skipped_active_duplicate = context.metadata.get("skipped_active_duplicate", [])
@@ -865,6 +866,7 @@ def _process_individual_files(context: WorkflowContextData) -> WorkflowContextDa
             workflow_file_execution_id=workflow_file_execution_id,  # Pass pre-created ID
             workflow_file_execution_object=workflow_file_execution_object,  # Pass pre-created object
             workflow_logger=workflow_logger,  # Pass workflow logger for UI logging
+            execution_context=execution_context,
         )
 
         # Handle file processing result
@@ -1634,6 +1636,7 @@ def _process_file(
     workflow_file_execution_id: str = None,
     workflow_file_execution_object: Any = None,
     workflow_logger: Any = None,
+    execution_context: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Process a single file matching Django backend _process_file pattern.
 
@@ -1647,6 +1650,7 @@ def _process_file(
         file_hash: FileHashData instance with type-safe access
         api_client: Internal API client
         workflow_execution: Workflow execution context
+        execution_context: Full execution context the batch already fetched
 
     Returns:
         File execution result
@@ -1662,6 +1666,7 @@ def _process_file(
         workflow_file_execution_id=workflow_file_execution_id,
         workflow_file_execution_object=workflow_file_execution_object,
         workflow_logger=workflow_logger,
+        execution_context=execution_context,
     )
 
 
