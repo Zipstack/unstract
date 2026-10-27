@@ -5,8 +5,16 @@ dispatched operation and the agent's name are per-door columns.
 
 Consumers:
 
-* ``pluggable_apps.agentic_studio_v1.extractor_agents`` re-exports the
-  Studio-facing names from here, so every existing import site keeps working.
+* The Studio (``pluggable_apps.agentic_studio_v1``, cloud-only) imports from
+  here directly, at eleven sites across its serializers, views, services,
+  models and tests. There is deliberately NO compatibility façade: the app's
+  own ``extractor_agents`` package was deleted rather than shimmed, because a
+  shim would have let a stale import survive and quietly reintroduce a second
+  catalogue, which is the condition this package exists to remove.
+  ``agentic_studio_v1.models.enums`` re-exports the two ``TextChoices`` only
+  because that module is the Studio's single entry point for them -- five
+  non-test sites import them from there, including the ``choices=`` on its
+  model fields.
 * ``agent_kv.constants`` derives ``EXTRACTOR_ROUTES`` from ``api_routes()``.
 """
 
