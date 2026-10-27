@@ -32,7 +32,6 @@ class FileProcessingContext:
         workflow_logger: Any = None,  # Type as Any to avoid import dependency
         current_file_idx: int = 1,
         total_files: int = 1,
-        execution_context: dict[str, Any] | None = None,
     ):
         self.file_data = file_data
         self.file_hash = file_hash
@@ -43,9 +42,6 @@ class FileProcessingContext:
         self.workflow_logger = workflow_logger
         self.current_file_idx = current_file_idx
         self.total_files = total_files
-        # Full execution context the batch already fetched (execution,
-        # source_config, ...). Reused per file instead of fetching it again.
-        self.execution_context = execution_context
 
         # Extract common identifiers
         self.execution_id = file_data.execution_id

@@ -73,7 +73,7 @@ class CallbackContext:
         self.execution_status: str | None = None
         # The full execution context from that same fetch, reused by the status
         # determination step instead of fetching the execution again.
-        self.execution_data: dict[str, Any] | None = None
+        self.execution_context: dict[str, Any] | None = None
 
 
 def _initialize_performance_managers():
@@ -260,7 +260,7 @@ def _determine_execution_status_unified(
     api_client: InternalAPIClient,
     execution_id: str,
     organization_id: str,
-    execution_data: dict[str, Any] | None = None,
+    execution_context: dict[str, Any],
 ) -> tuple[dict[str, Any], str, int]:
     """Unified status determination logic with timeout detection for all callback types.
 
@@ -273,8 +273,8 @@ def _determine_execution_status_unified(
         api_client: Internal API client for workflow execution queries
         execution_id: Workflow execution ID
         organization_id: Organization context
-        execution_data: Execution context the callback already fetched. When
-            given, it is reused instead of fetching the execution twice more.
+        execution_context: Execution context the callback already fetched,
+            reused here instead of fetching the execution again
 
     Returns:
         Tuple of (aggregated_results, final_status, expected_files)
@@ -288,7 +288,7 @@ def _determine_execution_status_unified(
         execution_id,
         organization_id,
         aggregated_results.get("file_results", []),
-        execution_data=execution_data,
+        execution_context=execution_context,
     )
 
     # Update aggregated results with wall-clock time
@@ -304,23 +304,10 @@ def _determine_execution_status_unified(
         logger.warning(f"Execution time is 0! File results for execution {execution_id}")
 
     # Step 3: Get expected file count from workflow execution details for timeout detection
-    expected_files = 0
-    try:
-        if execution_data is None:
-            execution_response = api_client.get_workflow_execution(execution_id)
-            if execution_response.success:
-                execution_data = execution_response.data
-            else:
-                logger.warning(
-                    f"Could not fetch execution details for {execution_id}: {execution_response.error}"
-                )
-        if execution_data is not None:
-            expected_files = execution_data.get("total_files", 0)
-            logger.info(
-                f"Expected files from execution details: {expected_files} for execution {execution_id}"
-            )
-    except Exception as e:
-        logger.warning(f"Could not fetch execution details for {execution_id}: {e}")
+    expected_files = (execution_context or {}).get("total_files", 0)
+    logger.info(
+        f"Expected files from execution details: {expected_files} for execution {execution_id}"
+    )
 
     # Step 4: Extract file processing metrics for status determination
     total_files_processed = aggregated_results.get("total_files_processed", 0)
@@ -819,7 +806,7 @@ def _extract_callback_parameters(
         ) or workflow_definition.get("workflow_id")
         # Status from the same fetch, for the PG duplicate guard (no extra call).
         context.execution_status = execution_info.get("status")
-        context.execution_data = execution_data
+        context.execution_context = execution_data
 
         # Use existing API detection from source_config (no additional API calls needed)
         is_api_deployment = source_config.get("is_api", False)
@@ -1489,7 +1476,7 @@ def _process_batch_callback_core(
                         api_client=context.api_client,
                         execution_id=context.execution_id,
                         organization_id=context.organization_id,
-                        execution_data=context.execution_data,
+                        execution_context=context.execution_context,
                     )
                 )
                 # Update workflow execution status using unified function
@@ -1754,7 +1741,7 @@ def process_batch_callback_api(
                         api_client=api_client,
                         execution_id=execution_id,
                         organization_id=organization_id,
-                        execution_data=execution_context,
+                        execution_context=execution_context,
                     )
                 )
 

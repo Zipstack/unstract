@@ -8,7 +8,7 @@ rows (quadratic in the file count for an ETL run). These tests pin:
 * the client always sends ``file_execution`` explicitly and defaults it to false;
 * only the callback's context fetch asks for the rows (billing reads them);
 * the callback's status step reuses that fetch instead of two more GETs;
-* a file reuses the batch's context, and its source config reuses that too.
+* a file fetches once, and its source config lookup reuses that fetch.
 """
 
 from __future__ import annotations
@@ -98,11 +98,11 @@ class TestCallbackFetchesOnce:
             )
 
         api.get_workflow_execution.assert_called_once_with("e1", file_execution=True)
-        assert context.execution_data is data
+        assert context.execution_context is data
         # Billing still sees the rows it commits usage for.
         assert context.file_executions == data["file_executions"]
 
-    def test_status_determination_reuses_execution_data(self):
+    def test_status_determination_reuses_execution_context(self):
         created = (datetime.now(UTC) - timedelta(seconds=30)).isoformat()
         data = _execution_context(created_at=created)
         api = MagicMock()
@@ -113,28 +113,13 @@ class TestCallbackFetchesOnce:
             api_client=api,
             execution_id="e1",
             organization_id="org-1",
-            execution_data=data,
+            execution_context=data,
         )
 
         api.get_workflow_execution.assert_not_called()
         # Unchanged semantics: total_files is read from the top level, as before.
         assert expected_files == 0
         assert status == ExecutionStatus.COMPLETED.value
-
-    def test_status_determination_without_data_still_fetches(self):
-        created = (datetime.now(UTC) - timedelta(seconds=30)).isoformat()
-        api = self._api(_execution_context(created_at=created))
-
-        cb._determine_execution_status_unified(
-            file_batch_results=[],
-            api_client=api,
-            execution_id="e1",
-            organization_id="org-1",
-        )
-
-        assert api.get_workflow_execution.call_count == 2
-        for call in api.get_workflow_execution.call_args_list:
-            assert call.kwargs.get("file_execution", False) is False
 
     def test_api_callback_passes_its_context_to_status_step(self):
         data = _execution_context()
@@ -163,7 +148,7 @@ class TestCallbackFetchesOnce:
             )
 
         api.get_workflow_execution.assert_called_once_with("e1", file_execution=True)
-        assert seen["execution_data"] is data
+        assert seen["execution_context"] is data
 
 
 class TestWallClockReuse:
@@ -173,7 +158,7 @@ class TestWallClockReuse:
         api.get_workflow_execution.side_effect = AssertionError("no extra GET")
 
         elapsed = WallClockTimeCalculator.calculate_execution_time(
-            api, "e1", "org-1", [], execution_data=_execution_context(created_at=created)
+            api, "e1", "org-1", [], execution_context=_execution_context(created_at=created)
         )
 
         assert 29 <= elapsed <= 60
@@ -186,50 +171,49 @@ class TestWallClockReuse:
             "e1",
             "org-1",
             [{"processing_time": 2.0}, {"processing_time": 3.0}],
-            execution_data=_execution_context(),
+            execution_context=_execution_context(),
         )
         assert elapsed == pytest.approx(5.0)
         api.get_workflow_execution.assert_not_called()
 
 
 class TestPerFileReuse:
+    """Each file fetches its execution context once, without file-execution rows.
+
+    It is fetched per file, not taken from the batch, so a long batch still sees
+    connector settings (auth tokens) as they are when each file starts.
+    """
+
     def _service(self):
         api = MagicMock()
         api.get_workflow_execution.return_value = MagicMock(
-            success=True, data=_execution_context()
+            success=True, data=_execution_context(pipeline_id="p")
         )
         api.get_tool_instances_by_workflow.return_value = MagicMock(
             tool_instances=[{"id": "t"}]
         )
         return WorkerWorkflowExecutionService(api_client=api), api
 
-    def test_batch_context_is_reused_for_the_file(self):
-        service, api = self._service()
-        batch_context = _execution_context(pipeline_id="p")
-
-        context, tools = service._get_workflow_execution_context(
-            "e1", "wf", "org-1", execution_context=batch_context
-        )
-
-        assert context is batch_context
-        assert tools == [{"id": "t"}]
-        api.get_workflow_execution.assert_not_called()
-        # The source config lookup later in the same file reuses it as well.
-        assert service._get_source_config("wf", "e1") == batch_context["source_config"]
-        assert (
-            service._get_destination_config("wf", "e1")
-            == batch_context["destination_config"]
-        )
-        api.get_workflow_execution.assert_not_called()
-
-    def test_without_batch_context_fetches_once_per_file(self):
+    def test_config_lookups_reuse_the_files_fetch(self):
         service, api = self._service()
 
-        service._get_workflow_execution_context("e1", "wf", "org-1")
-        service._get_source_config("wf", "e1")
-        service._get_destination_config("wf", "e1")
+        context, tools = service._get_workflow_execution_context("e1", "wf", "org-1")
+        source = service._get_source_config("wf", "e1")
+        destination = service._get_destination_config("wf", "e1")
 
         api.get_workflow_execution.assert_called_once_with("e1")
+        assert tools == [{"id": "t"}]
+        assert source == context["source_config"]
+        assert destination == context["destination_config"]
+
+    def test_each_file_fetches_fresh(self):
+        # One service per file (processor.py); a second file must not see the
+        # first file's context.
+        first, api = self._service()
+        first._get_workflow_execution_context("e1", "wf", "org-1")
+        second = WorkerWorkflowExecutionService(api_client=api)
+        second._get_workflow_execution_context("e1", "wf", "org-1")
+        assert api.get_workflow_execution.call_count == 2
 
     def test_source_config_alone_fetches(self):
         service, api = self._service()
@@ -244,25 +228,47 @@ class TestPerFileReuse:
         api.get_workflow_execution.return_value = MagicMock(success=False, error="x")
         assert service._get_source_config("wf", "e1") is None
 
-    def test_file_context_carries_batch_context_to_the_service(self):
+    def test_failed_fetch_is_retried_by_a_later_lookup(self):
         service, api = self._service()
-        batch_context = _execution_context(pipeline_id="p")
-        file_context = MagicMock()
-        file_context.execution_context = batch_context
+        api.get_workflow_execution.return_value = MagicMock(success=False, error="x")
+        assert service._get_source_config("wf", "e1") is None
+        api.get_workflow_execution.return_value = MagicMock(
+            success=True, data=_execution_context()
+        )
+        assert service._get_source_config("wf", "e1") is not None
 
-        with patch.object(
-            service,
-            "_get_workflow_execution_context",
-            wraps=service._get_workflow_execution_context,
-        ) as spy:
-            # Stop right after setup: workflow lookup is the next call.
-            api.get_workflow.side_effect = RuntimeError("stop")
-            service.execute_workflow_for_file(
-                file_processing_context=file_context,
-                organization_id="org-1",
-                workflow_id="wf",
-                execution_id="e1",
-            )
+    def test_cached_context_is_not_served_for_another_execution(self):
+        service, api = self._service()
+        service._get_workflow_execution_context("e1", "wf", "org-1")
+        service._get_source_config("wf", "e2")
+        assert [c.args[0] for c in api.get_workflow_execution.call_args_list] == [
+            "e1",
+            "e2",
+        ]
 
-        assert spy.call_args.kwargs["execution_context"] is batch_context
-        api.get_workflow_execution.assert_not_called()
+
+class TestMissingContextFallbacks:
+    def test_status_step_tolerates_missing_context(self):
+        api = MagicMock()
+        api.get_workflow_execution.return_value = MagicMock(success=False, error="x")
+        _, status, expected_files = cb._determine_execution_status_unified(
+            file_batch_results=[],
+            api_client=api,
+            execution_id="e1",
+            organization_id="org-1",
+            execution_context=None,
+        )
+        assert expected_files == 0
+        assert status == ExecutionStatus.COMPLETED.value
+
+    def test_wall_clock_refetches_on_empty_context(self):
+        created = (datetime.now(UTC) - timedelta(seconds=30)).isoformat()
+        api = MagicMock()
+        api.get_workflow_execution.return_value = MagicMock(
+            success=True, data=_execution_context(created_at=created)
+        )
+        elapsed = WallClockTimeCalculator.calculate_execution_time(
+            api, "e1", "org-1", [], execution_context={}
+        )
+        assert 29 <= elapsed <= 60
+        api.get_workflow_execution.assert_called_once()

@@ -20,7 +20,7 @@ class WallClockTimeCalculator:
         execution_id: str,
         organization_id: str,
         fallback_results: list[dict[str, Any]] = None,
-        execution_data: dict[str, Any] | None = None,
+        execution_context: dict[str, Any] | None = None,
     ) -> float:
         """Calculate wall-clock execution time with multiple fallback strategies.
 
@@ -29,7 +29,7 @@ class WallClockTimeCalculator:
             execution_id: Workflow execution ID
             organization_id: Organization context
             fallback_results: List of file results for summing as fallback
-            execution_data: Already-fetched execution context to reuse, if any
+            execution_context: Already-fetched execution context to reuse, if any
 
         Returns:
             Execution time in seconds
@@ -37,7 +37,7 @@ class WallClockTimeCalculator:
         try:
             # Primary: Get workflow execution start time from backend
             return WallClockTimeCalculator._get_wall_clock_time(
-                api_client, execution_id, organization_id, execution_data
+                api_client, execution_id, organization_id, execution_context
             )
         except Exception as e:
             logger.error(f"Error calculating wall-clock time: {e}")
@@ -56,7 +56,7 @@ class WallClockTimeCalculator:
         ``execution_context`` is an already-fetched execution context; when given,
         no API call is made (created_at never changes).
         """
-        if execution_context is None:
+        if not execution_context:
             execution_response = api_client.get_workflow_execution(
                 execution_id, organization_id
             )
@@ -66,15 +66,15 @@ class WallClockTimeCalculator:
             execution_context = execution_response.data
 
         # Extract execution data from the nested structure
-        execution_data = execution_context.get("execution", {})
-        if not execution_data:
+        execution = execution_context.get("execution", {})
+        if not execution:
             logger.error(
                 f"No 'execution' key in API response. Available keys: {list(execution_context.keys())}"
             )
             raise ValueError("No execution data found in API response")
 
         # Get created_at from the execution data
-        created_at_str = execution_data.get("created_at")
+        created_at_str = execution.get("created_at")
 
         if not created_at_str:
             logger.error(

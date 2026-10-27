@@ -70,9 +70,9 @@ class WorkerWorkflowExecutionService:
         self.api_client = api_client
         self.logger = logger
         self._last_execution_error = None
-        # Execution context fetched (or handed in) for the file being processed,
-        # keyed by execution_id so the source/destination config lookups reuse it.
-        self._execution_context_cache: dict[str, dict] = {}
+        # (execution_id, context) of the file being processed, reused by the
+        # source/destination config lookups.
+        self._execution_context: tuple[str, dict] | None = None
 
     def execute_workflow_for_file(
         self,
@@ -158,12 +158,7 @@ class WorkerWorkflowExecutionService:
                 raise ValueError("API client required for workflow execution")
 
             execution_context, tool_instances_data = self._get_workflow_execution_context(
-                execution_id,
-                workflow_id,
-                organization_id,
-                execution_context=getattr(
-                    file_processing_context, "execution_context", None
-                ),
+                execution_id, workflow_id, organization_id
             )
 
             workflow_context = self._get_workflow(workflow_id, organization_id)
@@ -562,20 +557,15 @@ class WorkerWorkflowExecutionService:
             )
 
     def _get_workflow_execution_context(
-        self,
-        execution_id: str,
-        workflow_id: str,
-        organization_id: str,
-        execution_context: dict | None = None,
+        self, execution_id: str, workflow_id: str, organization_id: str
     ) -> tuple[dict, list]:
         """Get workflow execution context and tool instances.
 
-        ``execution_context`` is the context the batch already fetched; when
-        given, it is reused instead of fetching the execution again.
+        The context is fetched fresh for each file (connector settings can change
+        during a long batch) and kept for this file's config lookups.
         """
-        if not isinstance(execution_context, dict):
-            execution_context = self._fetch_execution_context(execution_id)
-        self._execution_context_cache[execution_id] = execution_context
+        execution_context = self._fetch_execution_context(execution_id)
+        self._execution_context = (str(execution_id), execution_context)
 
         tool_instances_response = self.api_client.get_tool_instances_by_workflow(
             workflow_id=workflow_id,
@@ -595,10 +585,11 @@ class WorkerWorkflowExecutionService:
 
     def _get_cached_execution_context(self, execution_id: str) -> dict:
         """Execution context already loaded for this file, else fetch it."""
-        execution_context = self._execution_context_cache.get(execution_id)
-        if execution_context is None:
-            execution_context = self._fetch_execution_context(execution_id)
-            self._execution_context_cache[execution_id] = execution_context
+        cached = self._execution_context
+        if cached is not None and cached[0] == str(execution_id):
+            return cached[1]
+        execution_context = self._fetch_execution_context(execution_id)
+        self._execution_context = (str(execution_id), execution_context)
         return execution_context
 
     def _get_workflow(
