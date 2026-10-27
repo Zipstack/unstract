@@ -12,6 +12,7 @@ from unstract.sdk1.adapters.llm1.ollama import OllamaLLMAdapter
 from unstract.sdk1.adapters.llm1.openai import OpenAILLMAdapter
 from unstract.sdk1.adapters.llm1.openai_compatible import OpenAICompatibleLLMAdapter
 from unstract.sdk1.adapters.llm1.openrouter import OpenRouterLLMAdapter
+from unstract.sdk1.adapters.llm1.orcarouter import OrcaRouterLLMAdapter
 from unstract.sdk1.adapters.llm1.vertexai import VertexAILLMAdapter
 
 adapters: dict[str, dict[str, Any]] = {}
@@ -30,5 +31,6 @@ __all__ = [
     "OpenAILLMAdapter",
     "OpenAICompatibleLLMAdapter",
     "OpenRouterLLMAdapter",
+    "OrcaRouterLLMAdapter",
     "VertexAILLMAdapter",
 ]
