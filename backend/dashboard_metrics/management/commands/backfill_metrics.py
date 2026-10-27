@@ -15,7 +15,8 @@ Usage:
     python manage.py backfill_metrics --days=90 --org-id=5
     python manage.py backfill_metrics --days=7 --dry-run
     python manage.py backfill_metrics --days=90 --active-only
-    python manage.py backfill_metrics --start-date=2026-03-12 --end-date=2026-04-08
+    python manage.py backfill_metrics --start-date=2026-03-12 --end-date=2026-04-08 \
+        --skip-hourly --skip-monthly
 """
 
 import logging
@@ -157,6 +158,17 @@ class Command(BaseCommand):
             days, options["start_date"], options["end_date"]
         )
 
+        if (
+            options["start_date"]
+            and not skip_monthly
+            and not self._covers_whole_months(start_date, end_date, options["end_date"])
+        ):
+            raise CommandError(
+                "The range covers part of a month, and its monthly total would be "
+                "replaced with only these days. Pass --skip-monthly, or give whole "
+                "months."
+            )
+
         self.stdout.write(f"Backfill period: {start_date.date()} to {end_date.date()}")
 
         if skip_daily and not skip_monthly:
@@ -297,6 +309,20 @@ class Command(BaseCommand):
         if start_date > end_date:
             raise CommandError("--start-date is after --end-date")
         return start_date, end_date
+
+    @staticmethod
+    def _covers_whole_months(
+        start_date: datetime, end_date: datetime, end_day: str | None
+    ) -> bool:
+        """Whether every month in the range is complete in it.
+
+        Without --end-date the range ends now, in the current month, which the
+        aggregation task rederives from daily anyway.
+        """
+        ends_on_month_end = end_day is None or (
+            (end_date + timedelta(microseconds=1)).day == 1
+        )
+        return start_date.day == 1 and ends_on_month_end
 
     def _resolve_org_ids(
         self,
