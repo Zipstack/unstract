@@ -805,6 +805,19 @@ class FinishOpen(unittest.TestCase):
                 "or reopen its PR, then rerun",
             ),
         )
+        # A head moved onto the release tip: reopening its PR would park it with nothing to merge.
+        self.g(
+            "push", "-q", "-f", "origin", f"{self.oid}^:refs/heads/backport/1.0/aaaaaaa"
+        )
+        with mock.patch.object(bp, "PICK_TIMEOUT", 0):
+            out = self.finish(prs=[])
+        self.assertEqual(
+            out,
+            (
+                "failed",
+                "head backport/1.0/aaaaaaa exists with no open PR: delete it, then rerun",
+            ),
+        )
 
     def test_not_the_bots_pick_is_not_squashed(self):
         # The squash bypasses the release ruleset: a person's PR on a pick head, or a commit that is not the pick

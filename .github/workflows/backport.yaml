@@ -17,7 +17,7 @@ run-name: >-
 #   merged -> label backport-merged, head deleted; closed unmerged -> a decline: empty decline commit on the base
 #   (the closer's close comment is the reason), label backport-declined, head kept so the PR can be reopened;
 #   a head with no commit past the base declines and deletes nothing: the bot comments once that a person deletes the
-#   head or re-picks onto it, and how to decline by hand;
+#   head to have the fix picked again, or keeps it until a hand-made decline is on the base;
 #   reopened -> label backport-conflict. Reopen and merge undoes a decline: the newest trailer on the line wins.
 #   pull_request_target, not pull_request: GitHub runs no pull_request workflow on a PR that conflicts with its base
 #   at the git level (no merge ref), and a conflict PR whose base later changed the same lines is one.

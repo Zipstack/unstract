@@ -102,6 +102,7 @@ class Gh:
             "author": {"login": BOT, "is_bot": True},
         }
         self.comments, self.calls = list(comments), []
+        self.head_ref = "a" * 40  # the head branch still at this PR's head
 
     def __call__(self, *args, token=None):
         self.calls.append(args)
@@ -109,6 +110,14 @@ class Gh:
             return json.dumps(self.pr)
         if args[:2] == ("api", "--paginate"):
             return "\n".join(json.dumps(c) for c in self.comments)
+        if args[:2] == ("api", "repos/o/r/git/ref/heads/backport/0.187/ccccccc"):
+            if isinstance(self.head_ref, Exception):
+                raise self.head_ref
+            if self.head_ref is None:
+                raise RuntimeError(
+                    "gh api repos/o/r/git/ref/heads/... (exit 1): gh: Not Found (HTTP 404)"
+                )
+            return self.head_ref
         if args[:4] == ("api", "-X", "POST", "repos/o/r/git/commits"):
             return json.dumps({"sha": "e" * 40})
         return ""
@@ -119,6 +128,7 @@ class Gh:
             a[:2] if a[0] == "pr" else a[1:4]
             for a in self.calls
             if a[:2] not in (("pr", "view"), ("api", "--paginate"), ("api", "user"))
+            and "/git/ref/heads/" not in a[1]
         ]
 
     def said(self):
@@ -271,7 +281,8 @@ class Close(unittest.TestCase):
         self.assertTrue(
             said.startswith(bm.NO_PICK + " release/0.187, so nothing was declined")
         )
-        self.assertIn("Delete `backport/0.187/ccccccc` by hand", said)
+        self.assertIn("delete `backport/0.187/ccccccc` by hand", said)
+        self.assertIn("do not delete the head yet", said)
         self.assertIn("Declined: <reason>", said)
         out = self.close("CLOSED", comments=[comment(said, user="bot")])  # a re-run
         self.assertEqual((out, bm.gh.writes()), ("skipped: no pick", []))
@@ -279,6 +290,23 @@ class Close(unittest.TestCase):
         early = comment(said, at="2026-10-12T09:00:00Z", user="bot")
         self.close("CLOSED", comments=[early])
         self.assertEqual(bm.gh.writes(), [("pr", "comment")])
+        # The head already deleted (that closed the PR), or holding a later run's pick: no delete advice.
+        for ref in (None, "d" * 40):
+            bm.gh = Gh("CLOSED")
+            bm.gh.head_ref = ref
+            self.assertEqual(bm.close("o/r", 7, ME), "skipped: no pick, head gone")
+            self.assertEqual(bm.gh.writes(), [("pr", "comment")])
+            said = bm.gh.said()[0]
+            self.assertIn("no longer holds this PR's head", said)
+            self.assertNotIn("delete `", said)
+        # A ref read that fails for another reason (auth, outage) is not read as "head gone".
+        bm.gh = Gh("CLOSED")
+        bm.gh.head_ref = RuntimeError(
+            "gh api repos/o/r/git/ref/heads/... (exit 1): gh: Bad credentials (HTTP 401)"
+        )
+        with self.assertRaisesRegex(RuntimeError, "HTTP 401"):
+            bm.close("o/r", 7, ME)
+        self.assertEqual(bm.gh.writes(), [])
 
     def test_reopened_sets_conflict_only(self):
         self.assertEqual(self.close("OPEN", labels=["backport-declined"]), "reopened")
@@ -413,9 +441,13 @@ class Summary(unittest.TestCase):
                 [
                     "**Backport PR** #246 on `release/0.189`: **skipped**: its head has no commit past the base, "
                     "so nothing was declined",
-                    "Next: delete the head by hand, or re-pick onto it; the PR comment says how to decline the fix "
-                    "by hand.",
+                    "Next: delete the head by hand to have the fix picked again; to decline it, keep the head "
+                    "until the release manager's decline commit is on the base (the PR comment says how).",
                 ],
+            )
+            self.assertEqual(
+                bm.summary(246, ME, rec("skipped: no pick, head gone", sha=None))[1],
+                "Next: nothing here; its head no longer holds this PR's commit.",
             )
 
 

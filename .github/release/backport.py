@@ -8,7 +8,8 @@ that no pick or decline trailer there names: plain fixes too on fix targets (hel
 only on stabilized ones (accept=HELD, held for the RM without --confirm-stabilized). A run cancelled by a newer push
 costs nothing: the next run rescans. The exception is a run stopped after pushing a pick head and before opening
 its PR, or whose `gh pr create` failed: after PICK_TIMEOUT that head fails later runs until a person deletes it
-(finish_open).
+(finish_open). So does a pick PR closed with no commit past its base, whose head the record job keeps. Keeping the
+run red until a person acts is deliberate: a passing run would hide a fix that is neither picked nor declined.
 A decline carries the pick trailer, so a declined fix is never re-picked; an open conflict PR is left alone
 (`skipped: conflict PR pending`) until a person merges or closes it; an open clean pick PR whose merge failed in
 an earlier run is merged by the next run.
@@ -741,7 +742,10 @@ def finish_open(slug, branch, head):
     Known limits: the trailer is checked, not the commit's content, so a writer who force-pushes the bot's open pick
     PR with one commit carrying that trailer gets it squashed (a writer can already run a workflow with the App's
     token). A head whose PR was closed but whose decline record failed also reads as "no open PR": deleting that
-    head re-picks the declined fix; re-run the record job instead.
+    head re-picks the declined fix; re-run the record job instead. A closed pick PR whose head has no commit past
+    the base also fails every run until the head is deleted (deliberately, see the module docstring). The age is
+    the head tip's commit time, so a head moved onto a fresh base tip reads as "another run is picking it" for up
+    to PICK_TIMEOUT.
     """
     pending = "skipped", f"conflict PR pending on `{head}`"
     prs = json.loads(
@@ -778,9 +782,15 @@ def finish_open(slug, branch, head):
                 "skipped",
                 f"head {head} is {int(age // 60)} min old with no open PR: another run is picking it",
             )
+        # A head with no commit past the base: reopening its PR only parks it as a conflict PR with nothing to merge.
+        empty = (
+            rm.git(REPO, "rev-list", "--count", f"origin/{branch}..origin/{head}") == "0"
+        )
         return (
             "failed",
-            f"head {head} exists with no open PR: delete it or reopen its PR, then rerun",
+            f"head {head} exists with no open PR: delete it"
+            + ("" if empty else " or reopen its PR")
+            + ", then rerun",
         )
     if len(prs) != 1:
         return pending
