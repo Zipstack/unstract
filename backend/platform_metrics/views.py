@@ -55,8 +55,8 @@ def metrics(request: HttpRequest) -> HttpResponse:
     # needs one never waits on another group's refresh.
     try:
         body = get_exporter().render(request.GET.getlist("group") or None)
-    except UnknownGroup as e:
+    except UnknownGroup:
         return HttpResponse(
-            f"Unknown metric group: {e}\n", status=400, content_type="text/plain"
+            "Unknown metric group\n", status=400, content_type="text/plain"
         )
     return HttpResponse(body, content_type=METRICS_CONTENT_TYPE)
