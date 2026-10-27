@@ -735,8 +735,8 @@ def fix_labels(slug, src):
 def finish_open(slug, branch, head):
     """The pick head already exists. An open unlabelled PR the bot opened, with one commit carrying the pick trailer
     of the head's sha7, is a clean pick whose merge failed in an earlier run: squash it now, unless it is a conflict
-    pick that lost its label. A PR carrying any backport-* label waits for a person; a PR a person opened, more than one commit
-    or none, or one commit without that trailer, fails unmerged. A head with no open PR waits PICK_TIMEOUT for the run
+    pick that lost its label. A PR a person opened fails unmerged; a bot PR carrying any backport-* label waits for a
+    person; more than one commit or none, or one commit without that trailer, fails unmerged. A head with no open PR waits PICK_TIMEOUT for the run
     that pushed it, then fails until a person deletes it or reopens its PR.
     Known limits: the trailer is checked, not the commit's content, so a writer who force-pushes the bot's open pick
     PR with one commit carrying that trailer gets it squashed (a writer can already run a workflow with the App's
@@ -799,8 +799,8 @@ def finish_open(slug, branch, head):
             "failed",
             f"#{pr['number']} has {n} commits, not the one pick: not merged; "
             + (
-                f"its head has no pick on {branch}: delete {head} (this closes #{pr['number']}) and the next "
-                "run re-picks the fix"
+                f"its head has no pick on {branch}: delete {head} (this closes #{pr['number']}), and the next "
+                "Backport run treats the fix as not picked"
                 if n == "0"
                 else "label it backport-conflict, then merge it, or close it to decline"
             ),

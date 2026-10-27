@@ -779,7 +779,7 @@ class FinishOpen(unittest.TestCase):
             (
                 "failed",
                 "#4 has 0 commits, not the one pick: not merged; its head has no pick on release/1.0: delete "
-                "backport/1.0/aaaaaaa (this closes #4) and the next run re-picks the fix",
+                "backport/1.0/aaaaaaa (this closes #4), and the next Backport run treats the fix as not picked",
             ),
         )
         self.assertEqual(self.merged, [])

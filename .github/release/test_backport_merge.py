@@ -260,12 +260,21 @@ class Close(unittest.TestCase):
         self.assertTrue(bm.gh.said()[0].startswith("Bot could not record the decline"))
 
     def test_head_without_a_pick_declines_nothing(self):
-        # A head moved onto the base still owes its fix: no decline, label or comment, and the run passes.
+        # A head moved onto the base still owes its fix: no decline or label; the bot deletes the head, which would
+        # fail every later Backport run, and says once how to decline by hand. The run passes.
         bm.first_pick = lambda pr: (None, [])
+        delete = ("-X", "DELETE", "repos/o/r/git/refs/heads/backport/0.187/ccccccc")
         self.assertEqual(
             self.close("CLOSED", labels=["backport-conflict"]), "skipped: no pick"
         )
-        self.assertEqual(bm.gh.writes(), [])
+        self.assertEqual(bm.gh.writes(), [delete, ("pr", "comment")])
+        said = bm.gh.said()[0]
+        self.assertTrue(
+            said.startswith(bm.NO_PICK + " release/0.187, so nothing was declined")
+        )
+        self.assertIn("Declined: <reason>", said)
+        out = self.close("CLOSED", comments=[comment(said, user="bot")])  # a re-run
+        self.assertEqual((out, bm.gh.writes()), ("skipped: no pick", [delete]))
 
     def test_reopened_sets_conflict_only(self):
         self.assertEqual(self.close("OPEN", labels=["backport-declined"]), "reopened")
@@ -399,7 +408,9 @@ class Summary(unittest.TestCase):
                 bm.summary(246, ME, rec("skipped: no pick", sha=None)),
                 [
                     "**Backport PR** #246 on `release/0.189`: **skipped**: its head has no commit past the base, "
-                    "so nothing was declined"
+                    "so nothing was declined",
+                    "Next: the head is deleted and the next Backport run treats the fix as not picked; the PR "
+                    "comment says how to decline it by hand.",
                 ],
             )
 
