@@ -515,8 +515,9 @@ class WorkflowHelper:
             if conn.connection is None:
                 continue
             if conn.in_atomic_block or not conn.autocommit:
-                # WARNING, not DEBUG: this silently undoes the release (e.g. under
-                # ATOMIC_REQUESTS), and a capped session pool would then starve.
+                # WARNING on a wait's first poll: this undoes the release (e.g.
+                # under ATOMIC_REQUESTS), and a capped session pool would then
+                # starve. Later polls of the same wait log at DEBUG.
                 logger.log(
                     level,
                     f"Keeping DB connection '{conn.alias}' through the sync wait: "

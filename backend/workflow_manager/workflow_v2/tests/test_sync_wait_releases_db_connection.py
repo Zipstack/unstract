@@ -40,10 +40,12 @@ def db_connections():
 
 @pytest.fixture
 def db_connection(db_connections):
-    """The single open ``default`` connection; ``.close`` is the release call."""
+    """The single open ``default`` connection."""
     conn = db_connections.all.return_value[0]
-    conn.close = conn.close_if_unusable_or_obsolete
-    return conn
+    yield conn
+    # The release goes through Django's expiry check, never a hard close: a
+    # hard close would also drop persistent (CONN_MAX_AGE) connections.
+    conn.close.assert_not_called()
 
 
 @pytest.fixture
@@ -86,7 +88,7 @@ class TestExecuteWorkflowAsyncWait:
             ExecutionStatus.COMPLETED,
         ]
         order = MagicMock()
-        order.attach_mock(db_connection.close, "close")
+        order.attach_mock(db_connection.close_if_unusable_or_obsolete, "close")
         order.attach_mock(time_mod.sleep, "sleep")
 
         response = _run_async(timeout=10)
@@ -111,7 +113,7 @@ class TestExecuteWorkflowAsyncWait:
 
         _run_async(timeout=-1)
 
-        db_connection.close.assert_not_called()
+        db_connection.close_if_unusable_or_obsolete.assert_not_called()
         time_mod.sleep.assert_not_called()
         get_status.assert_not_called()
 
@@ -123,7 +125,7 @@ class TestExecuteWorkflowAsyncWait:
             )
             _run_async(timeout=10)
 
-        db_connection.close.assert_not_called()
+        db_connection.close_if_unusable_or_obsolete.assert_not_called()
         get_status.assert_not_called()
 
     def test_atomic_block_is_never_closed(self, db_connection, async_deps):
@@ -133,7 +135,7 @@ class TestExecuteWorkflowAsyncWait:
 
         response = _run_async(timeout=10)
 
-        db_connection.close.assert_not_called()
+        db_connection.close_if_unusable_or_obsolete.assert_not_called()
         # The wait itself still runs normally.
         assert get_status.called
         assert response.execution_status == ExecutionStatus.COMPLETED
@@ -151,7 +153,7 @@ class TestWaitForExecution:
             ),
         ):
             order = MagicMock()
-            order.attach_mock(db_connection.close, "close")
+            order.attach_mock(db_connection.close_if_unusable_or_obsolete, "close")
             order.attach_mock(time_mod.sleep, "sleep")
 
             WorkflowHelper.wait_for_execution(result, timeout=10)
@@ -164,7 +166,7 @@ class TestWaitForExecution:
 
         WorkflowHelper.wait_for_execution(result, timeout=None)
 
-        db_connection.close.assert_not_called()
+        db_connection.close_if_unusable_or_obsolete.assert_not_called()
 
 
 class TestReleaseDbConnection:
@@ -201,6 +203,16 @@ class TestReleaseDbConnection:
             WorkflowHelper._release_db_connection(quiet=quiet)
         assert log.log.call_args.args[0] == level
 
+    def test_releases_every_initialized_alias(self, db_connections):
+        default, other = _open_conn("default"), _open_conn("other")
+        db_connections.all.return_value = [default, other]
+
+        WorkflowHelper._release_db_connection()
+
+        db_connections.all.assert_called_once_with(initialized_only=True)
+        default.close_if_unusable_or_obsolete.assert_called_once_with()
+        other.close_if_unusable_or_obsolete.assert_called_once_with()
+
 
 class TestReleaseLogsOncePerWait:
     def test_only_the_first_poll_is_loud(self, db_connection, async_deps):
@@ -229,16 +241,6 @@ class TestReleaseLogsOncePerWait:
         ):
             WorkflowHelper.wait_for_execution(result, timeout=10)
         assert release.call_args_list == [call(quiet=False), call(quiet=True)]
-
-    def test_releases_every_initialized_alias(self, db_connections):
-        default, other = _open_conn("default"), _open_conn("other")
-        db_connections.all.return_value = [default, other]
-
-        WorkflowHelper._release_db_connection()
-
-        db_connections.all.assert_called_once_with(initialized_only=True)
-        default.close_if_unusable_or_obsolete.assert_called_once_with()
-        other.close_if_unusable_or_obsolete.assert_called_once_with()
 
 
 @pytest.mark.django_db(transaction=True)
