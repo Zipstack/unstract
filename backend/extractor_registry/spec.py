@@ -105,11 +105,28 @@ class ExtractorAgentSpec:
             in ``ExtractorAgentConfig.agent_settings`` -- true for the Table
             Extractor, whose engine cannot run without one.
         available: Whether the agent's executor is deployed and can actually
-            run. This is the single switch both doors read: the Studio lists a
-            declared-but-unavailable agent (so the intent stays visible) and
-            refuses it at dispatch, and ``api_routes()`` omits it entirely so a
-            submit is rejected at the serializer instead of being accepted and
-            dispatched to a queue with no consumer.
+            run. Both doors read it, and for neither is it sufficient alone --
+            each adds a condition this package cannot see:
+
+            * The blind API also needs a declared API door, so
+              ``api_routes()`` admits an agent only when it is available AND
+              carries both ``api_operation`` and ``api_extractor``. An omitted
+              agent's submit is rejected at the serializer rather than accepted
+              and dispatched to a queue with no consumer.
+            * The Studio also needs executor parameters it can build. It lists
+              a declared-but-unavailable agent (so the intent stays visible)
+              and refuses it at dispatch; its accept path separately refuses an
+              agent with no registered parameter builder. That map
+              (``_PARAM_BUILDERS``) lives in the cloud tree, so it can
+              disagree with this flag. Cloud CI does see both -- it checks this
+              tree out and copies the cloud app over it -- but OSS CI checks
+              out no cloud tree, so an OSS-only change to this flag can land
+              with the cross-check never having run. See
+              ``agentic_studio_v1.services.agent_dispatch.is_dispatchable``.
+
+            So flipping this to True is necessary but not sufficient to make an
+            agent runnable: the Studio needs its builder registered in the same
+            change, and the blind API needs its two API columns set.
     """
 
     key: str

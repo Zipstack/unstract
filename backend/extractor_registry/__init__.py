@@ -12,9 +12,10 @@ Consumers:
   shim would have let a stale import survive and quietly reintroduce a second
   catalogue, which is the condition this package exists to remove.
   ``agentic_studio_v1.models.enums`` re-exports the two ``TextChoices`` only
-  because that module is the Studio's single entry point for them -- five
-  non-test sites import them from there, including the ``choices=`` on its
-  model fields.
+  because that module is the Studio's single entry point for them, including
+  the ``choices=`` on its model fields. (No count here on purpose: the one
+  that used to be here was wrong, and a corrected one is just a fresh surface
+  for the same defect. Grep it.)
 * ``agent_kv.constants`` derives ``EXTRACTOR_ROUTES`` from ``api_routes()``.
 """
 

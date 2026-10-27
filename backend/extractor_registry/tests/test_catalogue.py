@@ -163,3 +163,35 @@ class CatalogueShapeTest(SimpleTestCase):
         """`api_agent` scans linearly and returns the first match."""
         names = [s.api_extractor for s in EXTRACTOR_AGENTS.values() if s.api_extractor]
         self.assertEqual(len(names), len(set(names)))
+
+class EnumValuesArePersistedLiteralsTest(SimpleTestCase):
+    """The enum VALUES are database content, so pin them, not just their shape.
+
+    These strings are what ``agentic_extractor_agent_config.agent_key`` and
+    ``.kind`` physically hold, and they are frozen a second time as literal
+    tuples in that app's migration ``0009_extraction_profiles`` (``_KIND_CHOICES``
+    / ``_KEY_CHOICES``) -- in the CLOUD repository, which this repository's CI
+    never checks out. So an edit here that renames a value cannot be caught by
+    anything on this side unless it is caught here.
+
+    It would not be caught on the other side either, and this is measured, not
+    assumed: renaming ``SIMPLE`` to ``"simple_x"`` and ``SPECIALIZED`` to
+    ``"specialized_x"`` left the whole 447-test unit tier of both repositories
+    green. The consequence is silent -- ``get_agent("simple")`` returns None for
+    every row already written, so every saved profile raises "Unknown Primary
+    Extractor Agent", and ``kind``-filtered queries stop matching, which makes
+    an existing profile look like it has no primary agent at all.
+
+    The sibling tests here deliberately do NOT cover this: they compare
+    ``EXTRACTOR_AGENTS`` against ``ExtractorAgentKey.values``, and both sides
+    move together under a rename, so they are self-referential for this
+    purpose. Asserting the literals is the only form that fails.
+    """
+
+    def test_agent_key_values_are_the_persisted_literals(self) -> None:
+        self.assertEqual(
+            set(ExtractorAgentKey.values), {"simple", "multi_stage", "table"}
+        )
+
+    def test_agent_kind_values_are_the_persisted_literals(self) -> None:
+        self.assertEqual(set(ExtractorAgentKind.values), {"primary", "specialized"})
