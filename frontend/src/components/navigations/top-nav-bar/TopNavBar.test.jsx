@@ -156,6 +156,7 @@ describe("TopNavBar current org", () => {
     expect(
       screen.queryByText("Want to switch to Org A?"),
     ).not.toBeInTheDocument();
+    expect(axios).not.toHaveBeenCalled();
   });
 
   it("tells a mouse user they are already in the org", async () => {
@@ -172,5 +173,6 @@ describe("TopNavBar current org", () => {
     expect(
       screen.queryByText("Want to switch to Org A?"),
     ).not.toBeInTheDocument();
+    expect(axios).not.toHaveBeenCalled();
   });
 });
