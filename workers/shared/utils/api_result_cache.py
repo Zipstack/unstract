@@ -104,7 +104,7 @@ class APIResultCacheManager:
             return True
 
         except Exception as e:
-            logger.exception(
+            logger.error(
                 f"Failed to cache API result for file {file_hash.file_name} "
                 f"in execution {execution_id}: {str(e)}"
             )
@@ -204,7 +204,7 @@ class APIResultCacheManager:
             )
 
         except Exception as e:
-            logger.exception(
+            logger.error(
                 f"Failed to cache file history result for API for file {file_hash.file_name}: {str(e)}"
             )
             return False
@@ -254,7 +254,7 @@ class APIResultCacheManager:
             )
 
         except Exception as e:
-            logger.exception(
+            logger.error(
                 f"Failed to cache error result for API for file {file_hash.file_name}: {str(e)}"
             )
             return False
@@ -326,7 +326,7 @@ class APIResultCacheManager:
             return True
 
         except Exception as e:
-            logger.exception(
+            logger.error(
                 f"Failed to cache direct API result for file {file_name} "
                 f"in execution {execution_id}: {str(e)}"
             )
