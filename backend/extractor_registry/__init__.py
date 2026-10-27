@@ -6,11 +6,8 @@ dispatched operation and the agent's name are per-door columns.
 Consumers:
 
 * The Studio (``pluggable_apps.agentic_studio_v1``, cloud-only) imports from
-  here directly **as of cloud PR #1894**, which also deletes its own
-  ``extractor_agents`` package rather than shimming it, so a stale import
-  cannot quietly reintroduce a second catalogue, and re-exports the two
-  ``TextChoices`` from ``agentic_studio_v1.models.enums``. None of that is on
-  cloud main yet; this package merges first.
+  here as of cloud PR #1894, which deletes its own ``extractor_agents``
+  package. Not on cloud main yet -- this package merges first.
 * ``agent_kv.constants`` derives ``EXTRACTOR_ROUTES`` from ``api_routes()``.
 """
 

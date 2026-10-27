@@ -4,11 +4,9 @@ See ``spec.py`` for why the operation and the agent's name are per-door
 columns rather than single fields.
 
 "Both front doors" means both BACKEND doors. The worker tier cannot import
-this package and keeps its own copies of the executor and operation literals
-(``workers/executor/tasks.py``), so a field added to a row here does NOT
-reach workers. The cross-tier agreement is enforced instead by
-``agent_kv/tests/test_queue_wiring_is_derived.py``, which derives its
-expectations from ``EXTRACTOR_ROUTES``.
+this package and keeps its own copies of these literals, so a field added here
+does not reach workers; ``agent_kv/tests/test_queue_wiring_is_derived.py``
+enforces the agreement.
 """
 
 from __future__ import annotations
@@ -56,12 +54,10 @@ EXTRACTOR_AGENTS: dict[str, ExtractorAgentSpec] = {
         api_extractor="kv",
         # Multi-modality is a checkbox on both Primary agents.
         supports_multimodal=True,
-        # NOT DEPLOYED. `workers/plugins/agentic_kv` lives on the UN-4044
-        # branch and is not on main in either repo, so neither door may run
-        # it. Flipping this True without the plugin deployed would accept a
-        # submit with a 202 onto a queue with no consumer; the row then sits
-        # DISPATCHED until the stuck-job sweep force-fails it. It is also not
-        # sufficient on its own -- see the `available` entry in `spec.py`.
+        # NOT DEPLOYED: `workers/plugins/agentic_kv` is on no main branch in
+        # either repo, so neither door may run it. Flipping this True without
+        # the plugin accepts a submit with a 202 onto a queue with no consumer.
+        # Not sufficient on its own either -- see `available` in `spec.py`.
         available=False,
     ),
     ExtractorAgentKey.TABLE: ExtractorAgentSpec(
@@ -80,9 +76,9 @@ EXTRACTOR_AGENTS: dict[str, ExtractorAgentSpec] = {
         multimodal_required=True,
         requires_target_table=True,
         schema_placeholder="{{TABLE_EXTRACTOR_AGENT_OUTPUT}}",
-        # ExtractionOutput.to_dict() wraps the rows in run metadata, which is
-        # why the rows must be unwrapped by this key rather than substituted
-        # whole.
+        # ExtractionOutput.to_dict() wraps the rows in run metadata, so the
+        # rows are unwrapped by this key rather than substituted whole. The
+        # key is locked against the producer in tests/test_cross_repo_*.py.
         output_key="tables",
     ),
 }
@@ -112,12 +108,25 @@ def specialized_agents() -> list[ExtractorAgentSpec]:
 
 
 def default_primary_key() -> str:
-    """Key of the default Primary agent used for new/backfilled profiles."""
+    """Key of the default Primary agent used for new/backfilled profiles.
+
+    The return value is PERSISTED as ``ExtractorAgentConfig.agent_key``, and
+    the cloud profile writer does not re-check availability, so both branches
+    must respect "a new profile is never born pointing at an agent that cannot
+    run" -- not just the flagged one.
+    """
     for spec in primary_agents():
         if spec.is_default:
             return spec.key
-    # Defensive fallback: the first Primary if no explicit default is flagged.
-    return primary_agents()[0].key
+    # No flag set. Fall back to the first AVAILABLE Primary rather than the
+    # first Primary: insertion order is not an availability guarantee.
+    for spec in primary_agents():
+        if spec.available:
+            return spec.key
+    raise ValueError(
+        "No Primary extractor agent is available; a profile cannot be given a "
+        "default that cannot run."
+    )
 
 
 def api_routes() -> dict[str, tuple[str, str]]:
@@ -133,6 +142,10 @@ def api_routes() -> dict[str, tuple[str, str]]:
 
     Built fresh on each call rather than computed once at import, so a test may
     patch ``EXTRACTOR_AGENTS`` and see the derived view change with it.
+
+    Assumes ``api_extractor`` is unique across rows: this comprehension is
+    last-wins while ``api_agent`` is first-match, so a duplicate would remap a
+    live wire name. ``tests/test_catalogue.py`` enforces the uniqueness.
     """
     return {
         spec.api_extractor: (spec.executor, spec.api_operation)
@@ -141,7 +154,7 @@ def api_routes() -> dict[str, tuple[str, str]]:
     }
 
 
-def api_agent(extractor: str) -> ExtractorAgentSpec | None:
+def api_agent(extractor: str | None) -> ExtractorAgentSpec | None:
     """Return the spec behind a blind-API ``extractor`` name, or ``None``.
 
     Resolves the API's namespace rather than the Studio's — ``"kv"`` finds the

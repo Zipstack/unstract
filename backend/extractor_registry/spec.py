@@ -80,10 +80,13 @@ class ExtractorAgentSpec:
             the API calls the KV engine ``kv`` where the Studio calls it
             ``multi_stage``, and changing either is a wire-format break for
             that door.
-        supports_multimodal: Whether the multi-modal (text + image) toggle is
-            offered for this agent.
-        multimodal_required: Whether multi-modality is mandatory (no toggle) --
-            true for the Table Extractor.
+        supports_multimodal: Whether this agent's engine accepts multi-modal
+            (text + image) input at all.
+        multimodal_required: And the Studio offers no toggle, because it cannot
+            be turned off -- true for the Table Extractor. Implies
+            ``supports_multimodal``; ``__post_init__`` enforces it.
+            CONFIGURATION SURFACE ONLY: no dispatch path on either door reads
+            either flag, or the ``is_multimodal`` column they govern.
         schema_placeholder: For Specialized agents, the token in the schema
             that this agent's output is substituted into at runtime; ``None``
             for Primary agents.
@@ -121,7 +124,7 @@ class ExtractorAgentSpec:
     available: bool = True
 
     def __post_init__(self) -> None:
-        """Reject the half-declared API door.
+        """Reject half-declared shapes.
 
         ``api_operation`` and ``api_extractor`` are meaningless apart: a route
         needs both a name to be requested by and an operation to dispatch.

@@ -422,9 +422,9 @@ def test_unknown_key_on_the_extractor_entry_is_rejected():
 #
 # The class is dormant on this deployment -- `kv` is not routable, so nothing
 # reaches it through a submit -- but it stays in the tree so the branch that
-# carries the KV engine re-enables the extractor with one line rather than a
-# content merge. Dormant and untested is how a one-line re-enable turns into a
-# regression, so its rules are asserted here against the serializer itself.
+# carries the KV engine needs no content merge to re-enable the extractor.
+# Dormant and untested is how that re-enable turns into a regression, so its
+# rules are asserted here against the serializer itself.
 # ---------------------------------------------------------------------------
 def _kv_options(**over):
     s = KVOptionsSerializer(data=over)

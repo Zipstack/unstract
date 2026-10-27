@@ -19,11 +19,11 @@ os.environ.setdefault("DJANGO_SETTINGS_MODULE", "backend.settings.test")
 if not apps.ready:
     django.setup()
 
+from unittest.mock import patch  # noqa: E402
+
 from agent_kv.constants import (  # noqa: E402
     EXTRACTOR_ROUTES,
-    OPERATION_TABLE_EXTRACT_API,
     STAGE_NAMES_BY_EXTRACTOR,
-    TABLE_EXECUTOR_NAME,
     TABLE_EXTRACTOR_NAME,
     V1_EXTRACTOR_NAME,
 )
@@ -64,34 +64,54 @@ def test_the_table_route_targets_the_existing_executor():
     celery_executor_agentic_table is already wired. A new executor name here
     would be accepted, dispatch silently, and never drain.
 
-    Asserted against this module's own constants rather than bare strings, so
-    `OPERATION_TABLE_EXTRACT_API` and `TABLE_EXECUTOR_NAME` stay load-bearing:
-    they lost their only other reader when `EXTRACTOR_ROUTES` became derived,
-    and an unread constant sitting above the routing table can be edited with
-    no effect and no failing test.
+    Stated as literals: these two strings are the wire contract with the
+    deployed worker, so the test says what it expects independently of the
+    catalogue. That the route is DERIVED from the catalogue is pinned
+    separately, below.
     """
     assert EXTRACTOR_ROUTES[TABLE_EXTRACTOR_NAME] == (
-        TABLE_EXECUTOR_NAME,
-        OPERATION_TABLE_EXTRACT_API,
+        "agentic_table",
+        "table_extract_api",
     )
 
 
 def test_extractor_routes_is_derived_from_the_shared_catalogue():
-    """UN-4214's whole point, and otherwise pinned by nothing.
+    """UN-4214's whole point, and asserted BEHAVIOURALLY, not by value.
 
-    `EXTRACTOR_ROUTES` is now `api_routes()` rather than a literal dict, and
-    the two were byte-identical on the day of the change -- so reverting the
-    derivation would pass every other test in both suites. Without this, the
-    consolidation is invisible to CI in both directions, and the two front
-    doors could silently drift back apart.
+    A value comparison cannot do this job: the literal `api_routes()` replaced
+    equals what it returns, so `EXTRACTOR_ROUTES == api_routes()` passes just
+    as well with the literal restored. The first version of this test made
+    exactly that mistake and read as a guard while pinning nothing.
 
-    This lives with the CONSUMER, not in the registry's own suite: a shared
-    package should not import the things that depend on it. It also cannot be
-    written as a patch-based test, because `EXTRACTOR_ROUTES` is a snapshot
-    taken when the app registry imports this module.
+    So re-execute this module under a patched catalogue and check the value
+    MOVED. A fresh module object, not `importlib.reload` -- reloading would
+    mutate the live `agent_kv.constants` that the rest of the suite imports.
     """
-    from extractor_registry import api_routes
+    import importlib.util
+    from dataclasses import replace
 
+    from extractor_registry import EXTRACTOR_AGENTS, ExtractorAgentKey, api_routes
+
+    from agent_kv import constants as _constants
+
+    kv = EXTRACTOR_AGENTS[ExtractorAgentKey.MULTI_STAGE]
+    spec = importlib.util.spec_from_file_location("_probe", _constants.__file__)
+    probe = importlib.util.module_from_spec(spec)
+    with patch.dict(
+        EXTRACTOR_AGENTS,
+        {ExtractorAgentKey.MULTI_STAGE: replace(kv, available=True)},
+    ):
+        spec.loader.exec_module(probe)
+
+    assert "kv" in probe.EXTRACTOR_ROUTES, (
+        "EXTRACTOR_ROUTES did not follow the catalogue, so it is no longer "
+        "derived from it. If it has gone back to a literal dict, the blind API "
+        "and the Studio are reading two separate tables again -- the "
+        "divergence UN-4214 removed. Equality with api_routes() cannot catch "
+        "this, because the literal and the derived value are equal."
+    )
+
+    # ...and the live value agrees with what the serializer admits.
     assert EXTRACTOR_ROUTES == api_routes()
     assert SUPPORTED_EXTRACTORS == tuple(api_routes())
 
@@ -165,7 +185,7 @@ def _job(extractor=TABLE_EXTRACTOR_NAME, **overrides):
 def test_the_kv_route_constants_survive_for_re_enablement():
     """`kv` is unroutable, not deleted. The executor/operation pair, the stage
     list and the options serializer all stay so the branch carrying the engine
-    re-enables the extractor by restoring one dict entry -- not by merging
+    re-enables the extractor (see the procedure in `agent_kv/constants.py`) -- not by merging
     content back into the files it rewrites most.
     """
     from agent_kv.constants import (

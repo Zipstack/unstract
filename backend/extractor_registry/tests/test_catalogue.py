@@ -56,11 +56,18 @@ class ApiRoutesEnforcesAvailabilityTest(SimpleTestCase):
         derivation itself is pinned in
         `agent_kv/tests/test_table_extractor_routing.py`.
 
-        If `kv` is ever deliberately re-enabled, this test and
-        `test_an_unavailable_agent_is_omitted` both invert; delete them and
-        say so, rather than editing them green.
+        If `kv` is ever deliberately re-enabled this test does NOT go red --
+        it patches `available=True` onto a row that is already True and
+        becomes tautological, which is harder to notice than a failure. The
+        assertion below is what makes that loud. Delete this test then, and
+        say so, rather than leaving it passing for no reason.
         """
         kv = get_agent(ExtractorAgentKey.MULTI_STAGE)
+        self.assertFalse(
+            kv.available,
+            "multi_stage is now available, so this test is tautological -- "
+            "delete it rather than leaving it green.",
+        )
         with patch.dict(
             EXTRACTOR_AGENTS,
             {ExtractorAgentKey.MULTI_STAGE: ExtractorAgentSpec(
@@ -74,11 +81,18 @@ class ApiRoutesEnforcesAvailabilityTest(SimpleTestCase):
         """`simple` is Studio-only. The API's namespace declares `kv` and
         `table`; only `table` is routable today.
 
-        Assert on the namespace `api_routes()` actually keys on -- its own
+        Assert on the namespace `api_routes()` keys on -- its own
         `api_extractor` -- not on the Studio key. `assertNotIn("simple", ...)`
-        cannot fail under any implementation, because `spec.key` is never a
-        key of that mapping; dropping the door halves from the filter yields a
-        None key instead, which is what the first two assertions catch.
+        could not fail under any implementation, because `simple` declares
+        `api_extractor=None` and so is never a key of that mapping. (The Table
+        row's key and api_extractor coincide; `simple`'s do not, which is why
+        the old assertion was vacuous.)
+
+        What this does NOT guard: dropping ONE half of `api_routes()`' door
+        conjunction. `__post_init__` enforces both-or-neither, so either half
+        alone filters the same rows -- those mutants are equivalent, not
+        defects, and no test should pin a state the type forbids. Dropping
+        BOTH halves yields a None key, which `assertNotIn` below catches.
         """
         routes = api_routes()
         self.assertEqual(set(routes), {"table"})
@@ -208,13 +222,35 @@ class CatalogueShapeTest(SimpleTestCase):
             self.assertEqual(default_primary_key(), ExtractorAgentKey.MULTI_STAGE)
 
     def test_the_fallback_applies_when_no_primary_is_flagged(self) -> None:
-        """The `catalogue.py` fallback branch, otherwise reached by no test."""
+        """The `catalogue.py` fallback branch, otherwise reached by no test.
+
+        Asserts AVAILABILITY, not insertion order. The sibling test says a new
+        profile must never be born pointing at an agent that cannot run, and
+        this branch has to honour that too -- `primary_agents()[0]` does not,
+        since order is not an availability guarantee.
+        """
         patched = {
             key: ExtractorAgentSpec(**{**spec.__dict__, "is_default": False})
             for key, spec in EXTRACTOR_AGENTS.items()
         }
         with patch.dict(EXTRACTOR_AGENTS, patched):
-            self.assertEqual(default_primary_key(), primary_agents()[0].key)
+            self.assertTrue(get_agent(default_primary_key()).available)
+
+    def test_the_fallback_skips_an_unavailable_primary(self) -> None:
+        """Order alone would return `multi_stage` here."""
+        reordered = {
+            ExtractorAgentKey.MULTI_STAGE: ExtractorAgentSpec(
+                **{
+                    **get_agent(ExtractorAgentKey.MULTI_STAGE).__dict__,
+                    "is_default": False,
+                }
+            ),
+            ExtractorAgentKey.SIMPLE: ExtractorAgentSpec(
+                **{**get_agent(ExtractorAgentKey.SIMPLE).__dict__, "is_default": False}
+            ),
+        }
+        with patch.dict(EXTRACTOR_AGENTS, reordered, clear=True):
+            self.assertEqual(default_primary_key(), ExtractorAgentKey.SIMPLE)
 
     def test_the_default_primary_is_available(self) -> None:
         """A new profile must not be born pointing at an agent that cannot run."""
@@ -225,19 +261,14 @@ class CatalogueShapeTest(SimpleTestCase):
         for spec in specialized_agents():
             self.assertIsNotNone(spec.schema_placeholder, spec.key)
 
-    def test_the_table_rows_cross_repo_literals_are_pinned(self) -> None:
-        """Each of these has its authoritative counterpart in a repo this CI
-        never checks out, which is the same reason the enum values are pinned
-        below.
+    def test_the_table_rows_literals_are_pinned(self) -> None:
+        """Change-detection on the Table row's three load-bearing strings.
 
-        `output_key` must match the envelope key that
-        `workers/plugins/agentic_table` emits: its consumer returns the WHOLE
-        envelope on a key miss and then reports the value as placed, so a
-        typo substitutes run metadata into the user's schema slot with no
-        exception and no log line. `schema_placeholder` is the token the
-        Studio substitutes on. `requires_target_table` gates the cloud
-        serializer's validation; silently False saves a Table agent config
-        that the engine cannot run.
+        After cloud #1894 deletes the cloud registry, this row is their only
+        definition, so these are single-source pins rather than cross-repo
+        ones. `output_key` IS cross-repo and has its own two-sided lock in
+        `test_cross_repo_output_key.py`; it is repeated here only so a reader
+        of this row sees all three together.
         """
         table = get_agent(ExtractorAgentKey.TABLE)
         self.assertEqual(table.output_key, "tables")

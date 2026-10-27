@@ -2,12 +2,6 @@ from extractor_registry import api_routes
 
 #: The `kv` extractor's name. Kept as a constant, but NOT routable on this
 #: deployment -- see `EXTRACTOR_ROUTES` below, which carries `table` only.
-#:
-#: An earlier version of this comment said "v1 accepts exactly one extractor
-#: (`kv`), so the job row does not carry which one it ran". Both halves are now
-#: wrong, on line 1 of the file that defines the routing table: `kv` is the one
-#: extractor this deployment does NOT accept, and `AgentKVJob.extractor` has
-#: carried the name since migration 0002.
 
 V1_EXTRACTOR_NAME = "kv"
 
@@ -26,53 +20,34 @@ OPERATION_KV_EXTRACT = "kv_extract"
 EXECUTION_SOURCE = "agent_kv_api"
 
 #: The table extractor, served by the cloud `agentic_table` plugin's blind-API
-#: operation. Same executor as the IDE table path (and therefore the same,
-#: already-wired `celery_executor_agentic_table` queue) with a second operation
-#: -- a new executor name would derive a new queue needing wiring at five
-#: sites, and an unwired queue accepts work and drains nothing, silently.
+#: operation. It reuses the IDE table path's executor, and therefore its
+#: already-wired `celery_executor_agentic_table` queue, with a second
+#: operation; a new executor name would derive a queue nothing drains.
 TABLE_EXTRACTOR_NAME = "table"
 
+#: Read by `test_queue_wiring_is_derived.py`'s ALL_KNOWN_EXECUTORS. The
+#: blind-API operation is NOT duplicated here: the catalogue row is its only
+#: statement, and the route test pins the wire value directly.
 TABLE_EXECUTOR_NAME = "agentic_table"
-OPERATION_TABLE_EXTRACT_API = "table_extract_api"
 
-#: Which executor and operation each extractor dispatches to. `dispatch_job`
-#: reads this rather than hardcoding one pair, so adding an extractor is one
-#: entry here plus its options serializer and stage list.
+#: Which executor and operation each extractor dispatches to. DERIVED from the
+#: shared catalogue in `extractor_registry`, so this is the blind API's view of
+#: it and the Studio reads the same rows through its own view.
 #:
-#: **`kv` is deliberately absent.** This deployment ships the `agentic_table`
-#: plugin and not `agentic_kv`, so nothing drains `celery_executor_agentic_kv`.
-#: `SUPPORTED_EXTRACTORS` is derived from this table's keys
-#: (`execution_serializers.py`), so the omission turns a `kv` submit into a 400
-#: at the serializer. Re-enabling it WITHOUT the plugin is the failure this
-#: guards: the submit would be accepted with a 202, dispatched to a queue with
-#: no consumer, and sit in DISPATCHED until the stuck-job sweep force-fails it
-#: as "Job timed out" -- up to AGENT_KV_STUCK_JOB_GRACE_SECONDS (6h by
-#: default) later, with no error at the producer and nothing naming the real
-#: cause. The re-enable procedure itself is below.
+#: **`kv` is deliberately absent**, because nothing drains
+#: `celery_executor_agentic_kv` on this deployment. `SUPPORTED_EXTRACTORS` is
+#: derived from these keys, so the omission turns a `kv` submit into a 400 at
+#: the serializer instead of a 202 onto a queue with no consumer. The absence
+#: is expressed as `available=False` on the catalogue's `multi_stage` row.
 #:
-#: `V1_EXTRACTOR_NAME`, `STAGE_NAMES` and the KV options serializer stay in the
-#: tree, dormant and still under test, so re-enabling is one line rather than a
-#: content merge against the branch that carries the engine.
-#:
-#: DERIVED, as of UN-4214, from the shared catalogue in `extractor_registry`
-#: rather than written out here. The absence of `kv` is unchanged and still
-#: load-bearing for exactly the reason above -- it is now expressed as
-#: `available=False` on the catalogue's `multi_stage` row, which is the same
-#: fact the Studio's door already read from its own separate copy of this
-#: table. Before this, the two doors stated "the KV engine is not deployed" in
-#: two different shapes -- a missing key here, a boolean there -- so
-#: re-enabling the engine meant finding and flipping both.
-#:
-#: Re-enabling THIS door -- the blind API route -- starts with
-#: `available=True` on that row, but it is NOT a one-line change. It is not
-#: sufficient (the Studio's door also needs a parameter builder registered in
-#: the cloud tree -- see the `available` entry in `extractor_registry.spec`),
-#: and it is not self-contained: the flip reds 12 assertions across 5 files,
-#: and two of them pin the ABSENCE and must be retired with it rather than
-#: updated -- `test_submit_serializer.py`, `test_table_extractor_routing.py`,
-#: `test_queue_wiring_is_derived.py`, `test_models.py` and
-#: `extractor_registry/tests/test_catalogue.py`. Doing it without the plugin
-#: deployed is the 202-onto-a-dead-queue failure described above.
+#: Re-enabling is NOT a one-line change, and this comment deliberately does not
+#: enumerate the rest -- every attempt to state the blast radius as a count or
+#: a file list has been wrong. Flip `available=True` on that row, run the
+#: backend and worker unit tiers, and read the failures: the guards name their
+#: own fixes. Several pin the ABSENCE and must be retired rather than edited
+#: green. It is also not sufficient on its own -- the Studio's door needs a
+#: parameter builder in the cloud tree (see `extractor_registry.spec`), and the
+#: queue needs worker-tier wiring.
 EXTRACTOR_ROUTES = api_routes()
 
 #: The table engine reports one coarse stage: it has no node-level progress
