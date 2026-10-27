@@ -16,7 +16,8 @@ the bot's: each case sets exactly one `backport-*` label and removes the others.
   The head is kept so the PR can be reopened. A pick or decline already on the base (newest first) -> no commit,
   label and comment still fixed. The decline's message is the main commit's own, so a head edited by hand never
   names other fixes: the head's first commit must carry exactly one pick trailer, naming the main commit of the
-  head's sha7. Otherwise -> no decline commit: the bot comments and the run fails.
+  head's sha7. Otherwise -> no decline commit: the bot comments and the run fails. A head with no commit past the
+  base (moved onto it) -> nothing declined, no label or comment.
 - open (reopened): label `backport-conflict`, nothing else. Merging it then lands the pick after the decline, and
   the newest trailer on the line wins (relmgr.trailer_states): the fix counts as shipped again.
 Run from a full clone of main, GH_TOKEN = the release App's installation token, RELEASE_BOT_APP_SLUG = its slug.
@@ -90,9 +91,12 @@ def head_messages(pr):
 
 def first_pick(pr):
     """(message, [original]) for the decline: the main commit the head's first commit picks, its message plus the
-    pick trailer. ("", []) when that commit has no single pick trailer naming the head's sha7 on main.
+    pick trailer. ("", []) when that commit has no single pick trailer naming the head's sha7 on main; (None, []) when
+    the head has no commit past the base (moved onto it), so there is nothing to decline.
     """
     msgs = head_messages(pr)
+    if not msgs:
+        return None, []
     o = rm.pick_trailer(pr["headRefName"], msgs[0] if msgs else "")
     if not o or not rm.on_main(".", o, "origin/main"):
         return "", []
@@ -209,6 +213,8 @@ def decline(slug, pr, reason):
     """(sha, written): the pick or decline for this PR's originals on the base, newest first, else a new decline."""
     n, base = pr["number"], pr["baseRefName"]
     msg, originals = first_pick(pr)
+    if msg is None:
+        return None, False
     if not originals:
         gh(
             "pr",
@@ -316,6 +322,8 @@ def record(slug, n, sender):
         or f"Closed by @{sender} without a reason (PR #{n})"
     )
     sha, written = decline(slug, pr, reason)
+    if not sha:  # no pick on the head: nothing declined; Backport re-picks the fix once the head is deleted
+        return {"result": "skipped: no pick", "base": base, "sha": None, "reason": None}
     set_label(slug, pr, DECLINED)
     if not any(
         c["body"].startswith("Recorded as a decline")
@@ -357,6 +365,11 @@ def summary(n, sender, rec):
         return [
             head + f"**reopened** (@{sender})",
             "Next: merge it to land the pick, or close it again to keep the decline.",
+        ]
+    if not sha:
+        return [
+            head
+            + "**skipped**: its head has no commit past the base, so nothing was declined"
         ]
     return [head + f"**skipped**: already on `{base}` as {rm.commit_link(sha)}"]
 

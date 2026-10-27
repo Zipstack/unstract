@@ -259,6 +259,14 @@ class Close(unittest.TestCase):
         self.assertEqual(bm.gh.writes(), [("pr", "comment")])
         self.assertTrue(bm.gh.said()[0].startswith("Bot could not record the decline"))
 
+    def test_head_without_a_pick_declines_nothing(self):
+        # A head moved onto the base still owes its fix: no decline, label or comment, and the run passes.
+        bm.first_pick = lambda pr: (None, [])
+        self.assertEqual(
+            self.close("CLOSED", labels=["backport-conflict"]), "skipped: no pick"
+        )
+        self.assertEqual(bm.gh.writes(), [])
+
     def test_reopened_sets_conflict_only(self):
         self.assertEqual(self.close("OPEN", labels=["backport-declined"]), "reopened")
         self.assertEqual(
@@ -352,6 +360,8 @@ class FirstPick(unittest.TestCase):
                 self.assertEqual(
                     bm.first_pick({"headRefName": "backport/0.187/ddddddd"}), ("", [])
                 )  # not on main
+            with mock.patch.object(bm, "head_messages", lambda pr: []):
+                self.assertEqual(bm.first_pick(pr), (None, []))  # no commit past the base
 
 
 class Summary(unittest.TestCase):
@@ -385,6 +395,13 @@ class Summary(unittest.TestCase):
                 ],
             )
             self.assertEqual(len(bm.summary(246, ME, rec("reopened", sha=None))), 2)
+            self.assertEqual(
+                bm.summary(246, ME, rec("skipped: no pick", sha=None)),
+                [
+                    "**Backport PR** #246 on `release/0.189`: **skipped**: its head has no commit past the base, "
+                    "so nothing was declined"
+                ],
+            )
 
 
 class SquashRetry(unittest.TestCase):

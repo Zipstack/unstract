@@ -778,7 +778,8 @@ class FinishOpen(unittest.TestCase):
             self.finish(oid=self.g("rev-parse", f"{self.oid}^")),
             (
                 "failed",
-                "#4 has 0 commits, not the one pick: not merged; close it, it adds nothing",
+                "#4 has 0 commits, not the one pick: not merged; its head has no pick on release/1.0: delete "
+                "backport/1.0/aaaaaaa (this closes #4) and the next run re-picks the fix",
             ),
         )
         self.assertEqual(self.merged, [])
