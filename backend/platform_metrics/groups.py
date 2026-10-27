@@ -201,7 +201,11 @@ class ExecutionMetricGroup(MetricGroup):
             When(
                 execution_time__gt=0,
                 then=ExpressionWrapper(
-                    F("created_at") + F("execution_time") * Value(timedelta(seconds=1)),
+                    F("created_at")
+                    + ExpressionWrapper(
+                        F("execution_time") * Value(timedelta(seconds=1)),
+                        output_field=DurationField(),
+                    ),
                     output_field=DateTimeField(),
                 ),
             ),
