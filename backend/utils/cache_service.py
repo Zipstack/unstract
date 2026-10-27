@@ -115,9 +115,7 @@ class CacheService:
         except (
             RedisConnectionError,
             RedisTimeoutError,
-            ConnectionError,
-            TimeoutError,
-            OSError,
+            OSError,  # includes the builtin ConnectionError and TimeoutError
         ) as e:
             logger.error(f"Failed to clear cache pattern '{key_pattern}': {str(e)}")
             # The fallback goes through the default Django cache, so it is used
@@ -133,9 +131,7 @@ class CacheService:
             except (
                 RedisConnectionError,
                 RedisTimeoutError,
-                ConnectionError,
-                TimeoutError,
-                OSError,
+                OSError,  # includes the builtin ConnectionError and TimeoutError
             ) as fallback_error:
                 logger.error(
                     f"Fallback cache clearing also failed: {str(fallback_error)}"

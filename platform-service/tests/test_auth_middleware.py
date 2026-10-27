@@ -107,5 +107,5 @@ def test_malformed_token_is_rejected_before_the_query(
         assert platform.validate_bearer_token(malformed) is False
 
     assert queries == []
-    assert "abcd..." in caplog.text
-    assert malformed not in caplog.text
+    assert "Malformed bearer token" in caplog.text
+    assert "abcd" not in caplog.text

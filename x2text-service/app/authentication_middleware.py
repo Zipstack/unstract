@@ -48,10 +48,7 @@ class AuthenticationMiddleware:
                 return False
             key_param = _canonical_uuid(token)
             if key_param is None:
-                current_app.logger.error(
-                    "Authentication failed. Malformed bearer token %s",
-                    _mask_token(token),
-                )
+                current_app.logger.error("Authentication failed. Malformed bearer token")
                 return False
             platform_key_table = f'"{Env.DB_SCHEMA}".{DBTable.PLATFORM_KEY}'
             query = f"SELECT * FROM {platform_key_table} WHERE key = %s"
@@ -61,7 +58,7 @@ class AuthenticationMiddleware:
             if not result_row or len(result_row) == 0:
                 current_app.logger.error(
                     "Authentication failed. bearer token not found %s",
-                    _mask_token(token),
+                    _mask_token(key_param),
                 )
                 return False
             platform_key = str(result_row[1])
@@ -69,13 +66,13 @@ class AuthenticationMiddleware:
             if not is_active:
                 current_app.logger.error(
                     "Token is not active. Activate before using it. token %s",
-                    _mask_token(token),
+                    _mask_token(key_param),
                 )
                 return False
             if platform_key != token:
                 current_app.logger.error(
                     "Authentication failed. Invalid bearer token: %s",
-                    _mask_token(token),
+                    _mask_token(key_param),
                 )
                 return False
 

@@ -102,9 +102,7 @@ def validate_bearer_token(token: str | None) -> bool:
         return False
     key_param = _canonical_uuid(token)
     if key_param is None:
-        app.logger.error(
-            "Authentication failed. Malformed bearer token %s", _mask_token(token)
-        )
+        app.logger.error("Authentication failed. Malformed bearer token")
         return False
 
     platform_key_table = DBTable.PLATFORM_KEY
@@ -119,7 +117,7 @@ def validate_bearer_token(token: str | None) -> bool:
             if not result_row or len(result_row) == 0:
                 app.logger.error(
                     "Authentication failed. bearer token not found %s",
-                    _mask_token(token),
+                    _mask_token(key_param),
                 )
                 return False
             platform_key = str(result_row[1])
@@ -127,13 +125,13 @@ def validate_bearer_token(token: str | None) -> bool:
             if not is_active:
                 app.logger.error(
                     "Token is not active. Activate before using it. token %s",
-                    _mask_token(token),
+                    _mask_token(key_param),
                 )
                 return False
             if platform_key != token:
                 app.logger.error(
                     "Authentication failed. Invalid bearer token: %s",
-                    _mask_token(token),
+                    _mask_token(key_param),
                 )
                 return False
             return True
