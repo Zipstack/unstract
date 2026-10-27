@@ -572,6 +572,8 @@ SHARED_APPS = (
     "commands",
     # health checks
     "health",
+    # Platform-wide Prometheus /metrics
+    "platform_metrics",
     "migrating.v2",
     "connector_auth_v2",
     "tenant_account_v2",
@@ -1143,6 +1145,71 @@ WHITELISTED_PATHS.extend(
 
 # Whitelisting health check API
 WHITELISTED_PATHS.append("/health")
+
+# Platform-wide Prometheus /metrics (platform_metrics). Mounted at the root
+# like /health, outside every public ingress prefix, so it is served on the
+# backend service for in-cluster scraping only. Exempt from session auth; set
+# PLATFORM_METRICS_TOKEN to additionally require `Authorization: Bearer <token>`.
+WHITELISTED_PATHS.append("/metrics")
+PLATFORM_METRICS_TOKEN = os.environ.get("PLATFORM_METRICS_TOKEN", "")
+# How long one pod's refresh of a metric group is shared via Redis.
+PLATFORM_METRICS_CACHE_TTL_SECONDS = int(
+    os.environ.get("PLATFORM_METRICS_CACHE_TTL_SECONDS", 15)
+)
+# Postgres statement timeout for each group's refresh.
+PLATFORM_METRICS_QUERY_TIMEOUT_MS = int(
+    os.environ.get("PLATFORM_METRICS_QUERY_TIMEOUT_MS", 5000)
+)
+# unstract_workflow_executions_recent counts executions that went terminal
+# within this window...
+PLATFORM_METRICS_RECENT_WINDOW_SECONDS = int(
+    os.environ.get("PLATFORM_METRICS_RECENT_WINDOW_SECONDS", 3600)
+)
+# ...among executions created within this lookback, which keeps the query on
+# the created_at index instead of scanning the whole history.
+PLATFORM_METRICS_RECENT_LOOKBACK_SECONDS = int(
+    os.environ.get("PLATFORM_METRICS_RECENT_LOOKBACK_SECONDS", 86400)
+)
+# Same variable and default as the PG reaper, so unstract_batches_stuck counts
+# exactly what the reaper treats as stranded.
+PLATFORM_METRICS_BATCH_STUCK_TIMEOUT_SECONDS = int(
+    os.environ.get("WORKER_PG_BATCH_STUCK_TIMEOUT_SECONDS", 9000)
+)
+# Queues always reported (as 0 when empty), on top of any queue that currently
+# holds messages. Defaults to the queues the PG consumers in
+# docker/docker-compose.yaml consume; override with a comma-separated list
+# where a deployment runs others.
+PLATFORM_METRICS_QUEUES = [
+    queue.strip()
+    for queue in os.environ.get(
+        "PLATFORM_METRICS_QUEUES",
+        ",".join(
+            [
+                "agent_kv_callback",
+                "api_file_processing",
+                "api_file_processing_callback",
+                "celery",
+                "celery_api_deployments",
+                "celery_callback",
+                "celery_executor_agentic",
+                "celery_executor_agentic_table",
+                "celery_executor_legacy",
+                "celery_executor_lookup_test",
+                "celery_executor_simple_prompt_studio",
+                "celery_executor_smart_table",
+                "celery_executor_table",
+                "dashboard_metric_events",
+                "file_processing",
+                "file_processing_callback",
+                "file_processing_priority",
+                "ide_callback",
+                "notifications",
+                "scheduler",
+            ]
+        ),
+    ).split(",")
+    if queue.strip()
+]
 
 # These path will work without organization in request.
 # `whoami` resolves the organisation from the API key itself, so it carries no
