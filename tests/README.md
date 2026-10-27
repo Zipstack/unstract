@@ -333,6 +333,27 @@ List what a group would run (no DB required):
 cd backend && uv run --group test pytest . -m integration --collect-only -q
 ```
 
+### Backend: tests that touch auth or roles
+
+A distribution can install an auth plugin that replaces the built-in
+`AuthenticationService`, and the same backend tests then run under it. Such a
+plugin names roles its own way and makes its own identity-provider calls. A
+test that hardcodes the built-in behaviour passes here and fails there. So ask
+the active service, with the helpers in `backend/utils/tests/auth_seam.py`:
+
+| Instead of | Use |
+|---|---|
+| `role="admin"` / `role="user"` on a membership row | `admin_role()` / `member_role()` |
+| `patch.object(AuthenticationService, "invite_user", ...)` | `patch_auth_service("invite_user", ...)` |
+| patching `is_admin_by_role` or `is_user_organization_admin` | a row with `admin_role()`; let the role check run |
+| patching `AuthenticationPluginRegistry.is_plugin_available` | `builtin_auth_service()`, only when the built-in service is the subject |
+
+`builtin_auth_service()` turns any plugin off, so the test stops checking the
+distribution it runs in. Use it only when the test's subject is the built-in
+service (its session login, or a role change through its identity-provider
+path). Say why in a comment. `backend/tenant_account_v2/test_capabilities.py`
+shows both cases.
+
 ### Other services / new areas
 
 Outside backend, markers are manual (`workers` enforces `--strict-markers`).

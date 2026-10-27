@@ -1,7 +1,7 @@
 """One test per recorded event type, through the view that records it.
 
-Identity-provider calls are patched (OSS has no auth plugin); everything else
-runs for real so the stored row is what production would store.
+Identity-provider calls are patched, and the membership rows take the active
+auth service's role names, so the stored row is what production would store.
 """
 
 import uuid
@@ -9,12 +9,12 @@ from unittest.mock import patch
 
 from account_v2.dto import MemberInvitation
 from account_v2.models import PlatformKey
-from configuration.enums import ConfigKey
-from configuration.models import Configuration
-from django.db import OperationalError
-from django.conf import settings
 from adapter_processor_v2.models import AdapterInstance, UserDefaultAdapter
 from adapter_processor_v2.views import DefaultAdapterViewSet
+from configuration.enums import ConfigKey
+from configuration.models import Configuration
+from django.conf import settings
+from django.db import OperationalError
 from global_api_deployment_key.models import GlobalApiDeploymentKey
 from global_api_deployment_key.views import GlobalApiDeploymentKeyViewSet
 from notification_v2.views import NotificationSettingsView
@@ -23,16 +23,20 @@ from platform_api.views import PlatformApiKeyViewSet
 from platform_settings_v2.views import PlatformKeyViewSet
 from tenant_account_v2.group_views import OrganizationGroupViewSet
 from tenant_account_v2.invitation_views import InvitationViewSet
-from tenant_account_v2.models import GroupMembership, OrganizationGroup, OrganizationMember
+from tenant_account_v2.models import (
+    GroupMembership,
+    OrganizationGroup,
+    OrganizationMember,
+)
 from tenant_account_v2.users_view import OrganizationUserViewSet
 from tenant_account_v2.views import organization_settings
+from utils.tests.auth_seam import patch_auth_service
+from utils.user_context import UserContext
 
 from platform_audit.models import PlatformAuditEvent
-from utils.user_context import UserContext
 from platform_audit.tests.base import AuditTestBase, make_user
 
 _CONTROLLER = "account_v2.authentication_controller.AuthenticationController"
-_SERVICE = "account_v2.authentication_service.AuthenticationService"
 
 
 class MemberEventTests(AuditTestBase):
@@ -44,10 +48,16 @@ class MemberEventTests(AuditTestBase):
         return side_effect
 
     def test_role_changed_on_assign(self) -> None:
-        view = OrganizationUserViewSet.as_view({"post": "assign_organization_role_to_user"})
-        with patch(f"{_CONTROLLER}.add_user_role", side_effect=self._set_role("admin")):
+        view = OrganizationUserViewSet.as_view(
+            {"post": "assign_organization_role_to_user"}
+        )
+        with patch(
+            f"{_CONTROLLER}.add_user_role", side_effect=self._set_role(self.admin_role)
+        ):
             response = self.call(
-                view, "post", data={"email": "member@example.com", "role": "admin"}
+                view,
+                "post",
+                data={"email": "member@example.com", "role": self.admin_role},
             )
         self.assertEqual(response.status_code, 200)
         event = self.only_event(action="member.role_changed")
@@ -56,46 +66,71 @@ class MemberEventTests(AuditTestBase):
         self.assertEqual(event.target_id, str(self.member.id))
         self.assertEqual(event.target_name, "member@example.com")
         self.assertEqual(
-            event.changes, {"before": {"role": "user"}, "after": {"role": "admin"}}
+            event.changes,
+            {"before": {"role": self.member_role}, "after": {"role": self.admin_role}},
         )
-        self.assertEqual(event.summary, "user → admin")
+        self.assertEqual(event.summary, f"{self.member_role} → {self.admin_role}")
 
     def test_role_changed_on_remove(self) -> None:
         view = OrganizationUserViewSet.as_view(
             {"delete": "remove_organization_role_from_user"}
         )
-        OrganizationMember.objects.filter(user=self.member).update(role="admin")
-        with patch(f"{_CONTROLLER}.remove_user_role", side_effect=self._set_role("user")):
-            self.call(view, "delete", data={"email": "member@example.com", "role": "admin"})
+        OrganizationMember.objects.filter(user=self.member).update(role=self.admin_role)
+        with patch(
+            f"{_CONTROLLER}.remove_user_role",
+            side_effect=self._set_role(self.member_role),
+        ):
+            self.call(
+                view,
+                "delete",
+                data={"email": "member@example.com", "role": self.admin_role},
+            )
         event = self.only_event(action="member.role_changed")
         self.assertEqual(
-            event.changes, {"before": {"role": "admin"}, "after": {"role": "user"}}
+            event.changes,
+            {"before": {"role": self.admin_role}, "after": {"role": self.member_role}},
         )
 
     def test_role_change_with_unknown_previous_role_omits_before(self) -> None:
-        view = OrganizationUserViewSet.as_view({"post": "assign_organization_role_to_user"})
+        view = OrganizationUserViewSet.as_view(
+            {"post": "assign_organization_role_to_user"}
+        )
         with (
             patch(
                 "tenant_account_v2.users_view.OrganizationMemberService.get_user_by_email",
                 side_effect=RuntimeError("db"),
             ),
-            patch(f"{_CONTROLLER}.add_user_role", return_value="admin"),
+            patch(f"{_CONTROLLER}.add_user_role", return_value=self.admin_role),
         ):
             with self.assertLogs("platform_audit.recorder", "ERROR"):
-                self.call(view, "post", data={"email": "member@example.com", "role": "admin"})
+                self.call(
+                    view,
+                    "post",
+                    data={"email": "member@example.com", "role": self.admin_role},
+                )
         event = self.only_event(action="member.role_changed")
-        self.assertEqual(event.changes, {"after": {"role": "admin"}})
-        self.assertEqual(event.summary, "role → admin (previous value unavailable)")
+        self.assertEqual(event.changes, {"after": {"role": self.admin_role}})
+        self.assertEqual(
+            event.summary, f"role → {self.admin_role} (previous value unavailable)"
+        )
 
     def test_failed_or_unchanged_role_records_nothing(self) -> None:
-        view = OrganizationUserViewSet.as_view({"post": "assign_organization_role_to_user"})
+        view = OrganizationUserViewSet.as_view(
+            {"post": "assign_organization_role_to_user"}
+        )
         with patch(f"{_CONTROLLER}.add_user_role", return_value=None):
             response = self.call(
-                view, "post", data={"email": "member@example.com", "role": "admin"}
+                view,
+                "post",
+                data={"email": "member@example.com", "role": self.admin_role},
             )
         self.assertEqual(response.status_code, 400)
-        with patch(f"{_CONTROLLER}.add_user_role", return_value="user"):
-            self.call(view, "post", data={"email": "member@example.com", "role": "user"})
+        with patch(f"{_CONTROLLER}.add_user_role", return_value=self.member_role):
+            self.call(
+                view,
+                "post",
+                data={"email": "member@example.com", "role": self.member_role},
+            )
         self.assertEqual(self.events(), [])
 
     def _invite(self, users: list[dict], idp_results: list) -> object:
@@ -103,19 +138,16 @@ class MemberEventTests(AuditTestBase):
         identity provider's per-user call answering ``idp_results`` in order.
         """
         view = OrganizationUserViewSet.as_view({"post": "invite_user"})
-        with (
-            patch(f"{_SERVICE}.is_organization_admin", return_value=True),
-            patch(f"{_SERVICE}.invite_user", side_effect=idp_results),
-        ):
+        with patch_auth_service("invite_user", side_effect=idp_results):
             return self.call(view, "post", data={"users": users})
 
     def test_invited_records_only_successful_invites(self) -> None:
         # member@ is already a member, so the IdP is never asked about them.
         response = self._invite(
             [
-                {"email": "new@example.com", "role": "user"},
-                {"email": "member@example.com", "role": "user"},
-                {"email": "refused@example.com", "role": "user"},
+                {"email": "new@example.com", "role": self.member_role},
+                {"email": "member@example.com", "role": self.member_role},
+                {"email": "refused@example.com", "role": self.member_role},
             ],
             [True, False],
         )
@@ -126,16 +158,16 @@ class MemberEventTests(AuditTestBase):
             (event.target_type, event.target_id, event.target_name),
             ("invitation", "new@example.com", "new@example.com"),
         )
-        self.assertEqual(event.changes, {"after": {"role": "user"}})
-        self.assertEqual(event.summary, "as user")
+        self.assertEqual(event.changes, {"after": {"role": self.member_role}})
+        self.assertEqual(event.summary, f"as {self.member_role}")
 
     def test_invites_sent_before_a_failing_one_are_still_recorded(self) -> None:
         # The IdP raises on the third: the first two invitations were sent.
         response = self._invite(
             [
-                {"email": "a@example.com", "role": "user"},
-                {"email": "b@example.com", "role": "admin"},
-                {"email": "c@example.com", "role": "user"},
+                {"email": "a@example.com", "role": self.member_role},
+                {"email": "b@example.com", "role": self.admin_role},
+                {"email": "c@example.com", "role": self.member_role},
             ],
             [True, True, RuntimeError("idp 429")],
         )
@@ -145,7 +177,7 @@ class MemberEventTests(AuditTestBase):
                 (e.target_name, e.changes["after"]["role"])
                 for e in self.events(action="member.invited")
             ),
-            [("a@example.com", "user"), ("b@example.com", "admin")],
+            [("a@example.com", self.member_role), ("b@example.com", self.admin_role)],
         )
 
     def test_a_failing_organisation_lookup_does_not_stop_invites(self) -> None:
@@ -157,7 +189,7 @@ class MemberEventTests(AuditTestBase):
             view_context.get_organization.side_effect = OperationalError("db")
             recorder_context.get_organization.side_effect = OperationalError("db")
             response = self._invite(
-                [{"email": "new@example.com", "role": "user"}], [True]
+                [{"email": "new@example.com", "role": self.member_role}], [True]
             )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(self.events(), [])
@@ -165,18 +197,20 @@ class MemberEventTests(AuditTestBase):
     def test_each_invite_records_its_own_role(self) -> None:
         self._invite(
             [
-                {"email": "twice@example.com", "role": "admin"},
-                {"email": "twice@example.com", "role": "user"},
+                {"email": "twice@example.com", "role": self.admin_role},
+                {"email": "twice@example.com", "role": self.member_role},
             ],
             [True, True],
         )
         self.assertEqual(
             sorted(e.summary for e in self.events(action="member.invited")),
-            ["as admin", "as user"],
+            sorted([f"as {self.admin_role}", f"as {self.member_role}"]),
         )
 
     def test_removed_records_the_previous_role(self) -> None:
-        view = OrganizationUserViewSet.as_view({"delete": "remove_members_from_organization"})
+        view = OrganizationUserViewSet.as_view(
+            {"delete": "remove_members_from_organization"}
+        )
         with patch(f"{_CONTROLLER}.remove_users_from_organization", return_value=True):
             response = self.call(view, "delete", data={"emails": ["member@example.com"]})
         self.assertEqual(response.status_code, 200)
@@ -184,11 +218,13 @@ class MemberEventTests(AuditTestBase):
         self.assert_admin_actor(event)
         self.assertEqual(event.target_id, str(self.member.id))
         self.assertEqual(event.target_name, "member@example.com")
-        self.assertEqual(event.changes, {"before": {"role": "user"}})
-        self.assertEqual(event.summary, "was user")
+        self.assertEqual(event.changes, {"before": {"role": self.member_role}})
+        self.assertEqual(event.summary, f"was {self.member_role}")
 
     def test_removal_with_an_unreadable_snapshot_is_still_recorded(self) -> None:
-        view = OrganizationUserViewSet.as_view({"delete": "remove_members_from_organization"})
+        view = OrganizationUserViewSet.as_view(
+            {"delete": "remove_members_from_organization"}
+        )
         with (
             patch(
                 "tenant_account_v2.users_view.OrganizationMemberService.get_user_by_email",
@@ -208,14 +244,18 @@ class MemberEventTests(AuditTestBase):
         )
 
     def test_a_failed_removal_records_nothing(self) -> None:
-        view = OrganizationUserViewSet.as_view({"delete": "remove_members_from_organization"})
+        view = OrganizationUserViewSet.as_view(
+            {"delete": "remove_members_from_organization"}
+        )
         with patch(f"{_CONTROLLER}.remove_users_from_organization", return_value=False):
             response = self.call(view, "delete", data={"emails": ["member@example.com"]})
         self.assertEqual(response.status_code, 400)
         self.assertEqual(self.events(), [])
 
     def test_a_non_member_in_the_list_is_skipped_not_fatal(self) -> None:
-        view = OrganizationUserViewSet.as_view({"delete": "remove_members_from_organization"})
+        view = OrganizationUserViewSet.as_view(
+            {"delete": "remove_members_from_organization"}
+        )
         with patch(f"{_CONTROLLER}.remove_users_from_organization", return_value=True):
             self.call(
                 view,
@@ -227,7 +267,9 @@ class MemberEventTests(AuditTestBase):
 
     def test_invitation_revoked_resolves_the_email(self) -> None:
         view = InvitationViewSet.as_view({"delete": "delete_invitation"})
-        invitation = MemberInvitation(id="inv-1", email="new@example.com", roles=["user"])
+        invitation = MemberInvitation(
+            id="inv-1", email="new@example.com", roles=[self.member_role]
+        )
         with (
             patch(f"{_CONTROLLER}.get_user_invitations", return_value=[invitation]),
             patch(f"{_CONTROLLER}.delete_user_invitation", return_value=True),
@@ -243,7 +285,9 @@ class MemberEventTests(AuditTestBase):
 
     def test_a_failed_revoke_records_nothing(self) -> None:
         view = InvitationViewSet.as_view({"delete": "delete_invitation"})
-        invitation = MemberInvitation(id="inv-1", email="new@example.com", roles=["user"])
+        invitation = MemberInvitation(
+            id="inv-1", email="new@example.com", roles=[self.member_role]
+        )
         with (
             patch(f"{_CONTROLLER}.get_user_invitations", return_value=[invitation]),
             patch(f"{_CONTROLLER}.delete_user_invitation", return_value=False),
@@ -339,14 +383,17 @@ class GroupEventTests(AuditTestBase):
             users = [make_user(email) for email in emails]
             for user in users:
                 OrganizationMember.objects.create(
-                    organization=self.org, user=user, role="user"
+                    organization=self.org, user=user, role=self.member_role
                 )
             with patch(
                 "utils.user_context.UserContext.get_organization",
                 wraps=UserContext.get_organization,
             ) as spy:
                 self.call(
-                    add, "post", data={"user_ids": [u.id for u in users]}, pk=self.group.pk
+                    add,
+                    "post",
+                    data={"user_ids": [u.id for u in users]},
+                    pk=self.group.pk,
                 )
             lookups.append(spy.call_count)
         self.assertEqual(lookups[0], lookups[1])
@@ -405,7 +452,10 @@ class PlatformApiKeyEventTests(AuditTestBase):
         event = self.only_event(action="key.changed")
         self.assertEqual(
             event.changes,
-            {"before": {"permission": "read_write"}, "after": {"permission": "full_access"}},
+            {
+                "before": {"permission": "read_write"},
+                "after": {"permission": "full_access"},
+            },
         )
         self.assertEqual(event.summary, "changed permission")
 
@@ -685,7 +735,8 @@ class DefaultProfileEventTests(AuditTestBase):
 class PlatformSettingEventTests(AuditTestBase):
     def test_organization_setting_changed(self) -> None:
         """Its flags are the storage of two capabilities (UN-4399), so a change
-        is recorded once, as the capability changing."""
+        is recorded once, as the capability changing.
+        """
         response = self.call(
             organization_settings,
             "patch",

@@ -548,6 +548,7 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
             # with failed_files=None, which is_failure_run() reads as a success and
             # silently bypasses notify_on_failures subscribers.
             with transaction.atomic():
+                row_locked = False
                 # Concurrency guard for PG-transport executions, identified by the
                 # durable ``queue_message_id`` marker — NOT a re-evaluated Flipt flag.
                 # Keying on the row's own transport keeps the invariant correct even
@@ -572,10 +573,18 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
                 # succeeded — blocking that would freeze a genuinely successful run at
                 # a premature ERROR. Celery executions (queue_message_id NULL) keep the
                 # legacy path.
+                #
+                # ONE lock per call: the row read here is handed to update_execution()
+                # with row_locked=True, so it does not lock the same row a second time. The
+                # Celery path takes no lock here and lets update_execution() take its
+                # own — still one. FOR NO KEY UPDATE (no_key=True) keeps writers
+                # mutually exclusive without blocking the FOR KEY SHARE that every
+                # child-row INSERT takes on this row for its foreign-key check.
                 if execution.queue_message_id is not None:
-                    execution = WorkflowExecution.objects.select_for_update().get(
-                        pk=execution.pk
-                    )
+                    execution = WorkflowExecution.objects.select_for_update(
+                        no_key=True
+                    ).get(pk=execution.pk)
+                    row_locked = True
                     protected = {
                         ExecutionStatus.COMPLETED.value,
                         ExecutionStatus.STOPPED.value,
@@ -602,9 +611,18 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
                     status=status_enum,
                     error=error_message,
                     increment_attempt=increment_attempt,
+                    row_locked=row_locked,
                 )
 
-                # File aggregates are not handled by update_execution; persist separately.
+                # File aggregates are not handled by update_execution; persist
+                # separately. The floor's file-row count runs here, AFTER the lock,
+                # on purpose: any status writer we waited behind (e.g. the reaper
+                # cascading files to ERROR) has committed by now, and a count taken
+                # before the wait would miss its rows and let failed_files be written
+                # too low. (A file row whose INSERT has not committed is not counted
+                # either way: Django's foreign keys are DEFERRABLE INITIALLY DEFERRED,
+                # so an open insert holds no lock on this row until it commits, and
+                # FOR UPDATE never waited for it.)
                 self._update_file_aggregates(execution, validated_data)
 
                 # Reaper recovery: cascade the terminal status to any non-terminal
@@ -791,7 +809,9 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
 
         try:
             with transaction.atomic():
-                execution = WorkflowExecution.objects.select_for_update().get(pk=exec_id)
+                execution = WorkflowExecution.objects.select_for_update(no_key=True).get(
+                    pk=exec_id
+                )
                 # Re-check under lock: skip if it reached terminal or was just
                 # touched (no longer stuck) — never race a live execution.
                 if execution.status in terminal or execution.modified_at >= cutoff:
@@ -826,7 +846,9 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
                     computed = ExecutionStatus.STOPPED
                 else:
                     computed = ExecutionStatus.COMPLETED
-                execution.update_execution(status=computed)
+                # Already locked above; hand the locked read over so the row is
+                # not locked a second time.
+                execution.update_execution(status=computed, row_locked=True)
                 self._restamp_execution_time_from_files(execution)
                 self._update_file_aggregates(
                     execution,
@@ -953,6 +975,26 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
         execution.save(update_fields=update_fields)
 
     @staticmethod
+    def _count_file_rows(execution) -> dict:
+        """Count this execution's file rows, total and ERROR, in one query.
+
+        Returns ``{"total": int, "errored": int}``. Errors are left to propagate:
+        the request then fails and the transaction rolls back, so the worker retries
+        instead of committing counters the floor never checked (an under-counted
+        failed_files would read as a success and skip failure notifications).
+        """
+        from django.db.models import Count, Q
+
+        from workflow_manager.workflow_v2.enums import ExecutionStatus
+
+        return WorkflowFileExecution.objects.filter(
+            workflow_execution_id=execution.pk
+        ).aggregate(
+            total=Count("id"),
+            errored=Count("id", filter=Q(status=ExecutionStatus.ERROR.value)),
+        )
+
+    @staticmethod
     def _floor_counters_at_file_rows(execution, update_fields: "list[str]") -> None:
         """Raise the counters being written to match the file rows on disk.
 
@@ -964,23 +1006,11 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
         if not (wants_failed or wants_total):
             return
 
-        from workflow_manager.workflow_v2.enums import ExecutionStatus
-
-        try:
-            rows = execution.file_executions
-            error_rows = rows.filter(status=ExecutionStatus.ERROR.value).count()
-            row_total = rows.count()
-        except Exception:
-            logger.exception(
-                "Could not read file rows to floor the counters for execution %s",
-                execution.id,
-            )
-            return
-
+        counts = WorkflowExecutionInternalViewSet._count_file_rows(execution)
         if wants_failed:
-            execution.failed_files = max(execution.failed_files or 0, error_rows)
+            execution.failed_files = max(execution.failed_files or 0, counts["errored"])
         if wants_total:
-            execution.total_files = max(execution.total_files or 0, row_total)
+            execution.total_files = max(execution.total_files or 0, counts["total"])
 
 
 class FileBatchCreateAPIView(APIView):
