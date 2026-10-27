@@ -250,28 +250,30 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
   // Prepare org list for switching
   const cascadeOptions = useMemo(() => {
     return allOrganization?.map((org) => {
+      const isCurrentOrg = org?.id === sessionDetails?.orgId;
       return {
         key: org?.id,
-        label:
-          org?.id === sessionDetails?.orgId ? (
-            <div
-              onClick={() =>
-                setAlertDetails({
-                  type: "error",
-                  content: `You are already in ${org?.display_name}`,
-                })
-              }
-            >
-              {org?.display_name}
-            </div>
-          ) : (
-            <ConfirmModal
-              handleConfirm={() => handleContinue(org?.id)}
-              content={`Want to switch to ${org?.display_name}?`}
-            >
-              <div>{org?.display_name}</div>
-            </ConfirmModal>
-          ),
+        /*
+         * On the menu item rather than a wrapper div: the item is what the
+         * keyboard focuses, and Radix turns Enter/Space on it into a click.
+         */
+        onClick: isCurrentOrg
+          ? () =>
+              setAlertDetails({
+                type: "error",
+                content: `You are already in ${org?.display_name}`,
+              })
+          : undefined,
+        label: isCurrentOrg ? (
+          org?.display_name
+        ) : (
+          <ConfirmModal
+            handleConfirm={() => handleContinue(org?.id)}
+            content={`Want to switch to ${org?.display_name}?`}
+          >
+            <div>{org?.display_name}</div>
+          </ConfirmModal>
+        ),
       };
     });
   }, [allOrganization, handleContinue]);

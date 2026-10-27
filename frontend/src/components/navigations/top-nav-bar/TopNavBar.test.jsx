@@ -4,6 +4,7 @@ import axios from "axios";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { useAlertStore } from "../../../store/alert-store.js";
 import { useSessionStore } from "../../../store/session-store.js";
 import { ConfirmHost } from "../../widgets/confirm-modal/ConfirmHost.jsx";
 import { resetConfirm } from "../../widgets/confirm-modal/confirmStore.js";
@@ -111,5 +112,41 @@ describe("TopNavBar Switch Org", () => {
         url: "/api/v1/organization/org-b/set",
       }),
     );
+  });
+});
+
+describe("TopNavBar current org", () => {
+  beforeEach(() => {
+    useAlertStore.setState({ alertDetails: {} });
+  });
+
+  it("tells a keyboard user they are already in the org", async () => {
+    const user = userEvent.setup();
+    renderTopNavBar();
+
+    await openSwitchOrg(user);
+    const currentOrg = await screen.findByRole("menuitem", { name: "Org A" });
+    currentOrg.focus();
+    await user.keyboard("{Enter}");
+
+    expect(useAlertStore.getState().alertDetails).toMatchObject({
+      type: "error",
+      content: "You are already in Org A",
+    });
+    expect(axios).not.toHaveBeenCalled();
+  });
+
+  it("tells a mouse user they are already in the org", async () => {
+    const user = userEvent.setup();
+    renderTopNavBar();
+
+    await openSwitchOrg(user);
+    await user.click(await screen.findByText("Org A"));
+
+    expect(useAlertStore.getState().alertDetails).toMatchObject({
+      type: "error",
+      content: "You are already in Org A",
+    });
+    expect(axios).not.toHaveBeenCalled();
   });
 });

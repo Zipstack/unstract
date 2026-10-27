@@ -77,7 +77,6 @@
   width: 100%;
   padding: 8px 12px;
   background-color: #f5f7f9;
-  row-gap: 2;
 }
 
 .prompt-card-actions-dropdowns {
@@ -94,7 +93,6 @@
   background-color: #fff8e6;
   max-height: 300px;
   overflow-y: scroll;
-  scrollbar-color: inherit #fff8e6 !important;
   display: flex;
   flex-grow: 1;
 }
@@ -186,7 +184,6 @@
 
 .prompt-card-llm-container {
   border-right: 1px solid #0000000f;
-  width: fill-available !important;
 }
 
 .prompt-profile-run-expanded {
