@@ -5,7 +5,7 @@ name: Release branch CI
 # On a PR into release/** this is the required check `check` over the PR's own commits, so a human change
 # is checked before it lands. A backport/X.Y/<sha7> PR is judged as its squash: only its first commit (the pick, whose
 # trailer the squash message keeps) is classified, so a plain resolution commit passes; conflict markers in the
-# head's tree fail it. The push run stays as the backstop for bot pushes and alerts on failure.
+# head's tree fail it. The push run stays as the backstop for bot pushes.
 # A pull_request run uses the workflow file from the PR head: a branch cut before this trigger existed gets no PR
 # check, and a PR can edit this file. Job `check` runs there; it holds no secret.
 # A PR labelled `release-branch-only` passes with commits of any kind. On the label, job `trailer` pushes one
@@ -100,6 +100,8 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: python3 .relmgr/.github/release/relstate.py | jq --arg b "$BRANCH" '.branches[] | select(.branch == $b)'
+
+      # TODO: alert on a failed push run once a release alert channel and webhook secret exist.
 
   # On the `release-branch-only` label: one empty bot commit carrying `Release-branch-only: <TICKET>` (ticket from
   # the title, else `#<PR number>`), so the squash message has the line. A commit already carrying it -> nothing pushed. The push fires
