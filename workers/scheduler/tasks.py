@@ -26,7 +26,7 @@ from queue_backend.fairness import WorkloadType
 #
 # The same reasoning covers agent_kv_tasks, which registers the Agent-KV
 # sweep/TTL-cleanup periodics (spec §5.4) on this worker type.
-from scheduler import agent_kv_tasks, dashboard_metrics_tasks
+from scheduler import agent_kv_tasks, dashboard_metrics_tasks, inbox_tasks
 from shared.enums.status_enums import PipelineStatus
 from shared.enums.worker_enums import QueueName
 from shared.infrastructure.config import WorkerConfig
@@ -70,7 +70,7 @@ from unstract.core.data_models import (
 #
 # Deleting this tuple re-arms that failure, and it fails SILENTLY: the worker
 # starts fine and only the scheduled messages are rejected as unknown tasks.
-_PERIODIC_TASK_MODULES = (dashboard_metrics_tasks, agent_kv_tasks)
+_PERIODIC_TASK_MODULES = (dashboard_metrics_tasks, agent_kv_tasks, inbox_tasks)
 
 logger = WorkerLogger.get_logger(__name__)
 

@@ -2482,6 +2482,11 @@ class BatchStatusUpdateAPIView(APIView):
                             execution.execution_time = update["execution_time"]
 
                         execution.save()
+                        # This write bypasses update_execution, so it registers
+                        # the inbox hook itself.
+                        from inbox.events import notify_on_terminal_status
+
+                        notify_on_terminal_status(execution.pk, status_value)
 
                         successful_updates.append(
                             {

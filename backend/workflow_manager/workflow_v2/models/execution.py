@@ -479,6 +479,12 @@ class WorkflowExecution(BaseModel):
             # txn) it runs immediately. So the happy path is unchanged for both
             # transports, only the rollback leak is closed.
             transaction.on_commit(self._release_api_deployment_rate_limit)
+        if status is not None:
+            # On commit. Callers must write the file counts in the same
+            # transaction, or the callback sees stale counts.
+            from inbox.events import notify_on_terminal_status
+
+            notify_on_terminal_status(self.pk, status)
 
     def _apply_legacy_update(
         self,
