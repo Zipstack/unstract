@@ -1,12 +1,9 @@
 # Keeps the SHA-pinned actions in .github/workflows current: one grouped PR a
 # week that bumps each pin and its version comment.
 #
-# Known precondition, not yet met: Dependabot-triggered runs get only
-# Dependabot secrets (none are set) and a read-only GITHUB_TOKEN. In
-# ci-test.yaml the e2e job's Docker Hub login then gets empty credentials and
-# fails, so the required `report` check goes red; report's sticky PR comment
-# step may also be refused by the read-only token. Resolve both before relying
-# on these PRs (see the PR that added this file).
+# Dependabot-triggered runs get only Dependabot secrets (none are set) and a
+# read-only GITHUB_TOKEN. ci-test.yaml therefore skips its Docker Hub login
+# (pulls go anonymous) and its sticky PR comment for dependabot[bot].
 version: 2
 updates:
   - package-ecosystem: "github-actions"
