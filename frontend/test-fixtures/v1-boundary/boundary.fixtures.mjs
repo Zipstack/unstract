@@ -50,6 +50,7 @@ const CASES = parseTable(`
   # Import boundary, v0 -> v1 (Biome).
   v0-imports-v1-internal         | biome lint src/ | v0 may import only the v1 public entry
   v0-imports-v1-relative         | biome lint src/ | v0 may import only the v1 public entry
+  v0-imports-v1-template         | lint:v1         | v0 may import only the v1 public entry
   v0-imports-v1-entry            | biome lint src/ | -
   # Banned under v1.
   v1-prop-types                  | lint:v1         | PropTypes are not used
@@ -168,7 +169,7 @@ function checkCode(files) {
       writeFile(dir, rel, content);
     }
     const { output } = runAll(dir, ["node scripts/check-v1.mjs --code"]);
-    return output.split("\n").filter((l) => l.startsWith("src/v1/"));
+    return output.split("\n").filter((l) => l.startsWith("src/"));
   } finally {
     removeTree(dir);
   }
@@ -320,6 +321,8 @@ test("folder contract: every import form is read", () => {
     afterDoubleSlashInString:
       'const u = "a//b"; export { a } from "@v1/services/a";',
     glob: 'export const a = import.meta.glob("@v1/services/*.ts");',
+    globArrayLater:
+      'export const a = import.meta.glob(["@v1/components/ui/*.tsx", "@v1/services/*.ts"]);',
     afterTemplateExpression:
       // biome-ignore lint/suspicious/noTemplateCurlyInString: source text containing a template literal.
       'const t = `${"}"}/*`;\nimport { a } from "@v1/services/a";\n/** doc */',
@@ -378,4 +381,42 @@ test("v1 imports nothing outside src/v1, in any spelling", () => {
       `'${spec}': not reported\n${reported.join("\n")}`,
     );
   });
+});
+
+test("v0 reaches v1 only through @v1, in any form", () => {
+  const denied = {
+    "static.jsx": 'import x from "@v1/lib/x";',
+    "template.jsx": "export const a = () => import(`@v1/plugins/manifest`);",
+    "glob.jsx": 'export const a = import.meta.glob("@v1/pages/*/index.ts");',
+    "globArrayLater.jsx":
+      'export const a = import.meta.glob(["./*.jsx", "../v1/lib/*.ts"]);',
+    "require.jsx": 'export const a = require("../v1/lib/x");',
+    "aliasV0.jsx": 'export const a = () => import("@/v1/lib/x");',
+    "srcPath.jsx": 'export const a = () => import("src/v1/lib/x");',
+    "relativeEntry.jsx": 'import "../v1";',
+    "styles.css": '@import "../v1/styles/tokens.css";',
+  };
+  const allowed = {
+    "entry.jsx": 'import "@v1";',
+    "entryTemplate.jsx": "export const a = () => import(`@v1`);",
+    "v0Only.jsx": 'import x from "../helpers/x";\nexport const y = x;',
+  };
+  const files = {};
+  for (const [name, code] of Object.entries({ ...denied, ...allowed })) {
+    files[`src/pages/${name}`] = `${code}\n`;
+  }
+  const reported = checkCode(files);
+  const v0Lines = reported.filter((l) => l.startsWith("src/pages/"));
+  for (const name of Object.keys(denied)) {
+    assert.ok(
+      v0Lines.some((l) => l.startsWith(`src/pages/${name}:`)),
+      `${name}: not reported\n${reported.join("\n")}`,
+    );
+  }
+  for (const name of Object.keys(allowed)) {
+    assert.ok(
+      !v0Lines.some((l) => l.startsWith(`src/pages/${name}:`)),
+      `${name}: reported but allowed\n${reported.join("\n")}`,
+    );
+  }
 });

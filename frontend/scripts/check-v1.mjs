@@ -7,15 +7,17 @@
  *            file inside the v1 folder taxonomy. Run by `typecheck:v1`.
  *   --code   Imports: nothing outside src/v1 and the folder import contract
  *            (which v1 folder may import which). No PropTypes, no antd `ant-`
- *            class names. Run by `lint:v1`.
+ *            class names. Also scans v0 (the rest of src/) for imports that
+ *            reach into v1 other than through `@v1`. Run by `lint:v1`.
  *
  * With neither flag, both run. It always checks the src/v1 beside this
  * script; the fixtures in test-fixtures/v1-boundary/ copy it into each
  * throwaway tree for that reason.
  *
  * The v0 <-> v1 boundary is also a Biome rule (biome.json `overrides`), so CI
- * and editors report it. The script repeats the v1 -> outside half because it
- * also reads template-literal imports, which Biome does not. Biome overrides
+ * and editors report it. The script repeats both halves because it also reads
+ * template-literal imports, Vite globs, require() and CSS @import, which
+ * Biome does not. Biome overrides
  * replace rule options rather than merge them, which is why the per-folder
  * contract lives here and not as one override per folder.
  *
@@ -25,7 +27,8 @@
 import fs from "node:fs";
 import path from "node:path";
 
-const ROOT = path.join(import.meta.dirname, "..", "src", "v1");
+const SRC = path.join(import.meta.dirname, "..", "src");
+const ROOT = path.join(SRC, "v1");
 const args = new Set(process.argv.slice(2));
 const runFiles = args.has("--files") || !args.has("--code");
 const runCode = args.has("--code") || !args.has("--files");
@@ -229,12 +232,28 @@ const IMPORT_RES = [
   ),
   new RegExp(String.raw`\bimport\s*\(\s*${SPEC}\s*[,)]`, "g"),
   new RegExp(String.raw`\brequire\s*\(\s*${SPEC}\s*\)`, "g"),
-  // Vite globs; the first pattern of an array is checked.
-  new RegExp(
-    String.raw`\bimport\.meta\.glob\s*(?:<[^>]*>)?\(\s*\[?\s*${SPEC}`,
-    "g",
-  ),
 ];
+// Vite globs: one pattern or an array of them. Every pattern is checked.
+const GLOB_RE = new RegExp(
+  String.raw`\bimport\.meta\.glob\s*(?:<[^>]*>)?\(\s*(\[[^\]]*\]|${SPEC})`,
+  "g",
+);
+const SPEC_RE = new RegExp(SPEC, "g");
+
+/* Every import specifier in comment-blanked source, with its offset. */
+function* importSpecs(text) {
+  for (const re of IMPORT_RES) {
+    for (const m of text.matchAll(re)) {
+      yield { spec: m[1], index: m.index };
+    }
+  }
+  for (const m of text.matchAll(GLOB_RE)) {
+    const start = m.index + m[0].indexOf(m[1]);
+    for (const s of m[1].matchAll(SPEC_RE)) {
+      yield { spec: s[1], index: start + s.index };
+    }
+  }
+}
 // CSS `@import` and `url()` targets, for the files in styles/.
 const CSS_IMPORT_RE = /(?:@import\s+(?:url\(\s*)?|url\(\s*)["']?([^"')\s;]+)/g;
 
@@ -280,10 +299,10 @@ function walk(dir) {
     .filter((d) => (d.isFile() || d.isSymbolicLink()) && !IGNORED.has(d.name))
     .map((d) =>
       path
-        .relative(ROOT, path.join(d.parentPath, d.name))
+        .relative(dir, path.join(d.parentPath, d.name))
         .replaceAll(path.sep, "/"),
     )
-    .sort();
+    .toSorted((a, b) => a.localeCompare(b));
 }
 
 const problems = [];
@@ -347,28 +366,26 @@ for (const rel of walk(ROOT)) {
   const text = blankComments(fs.readFileSync(path.join(ROOT, rel), "utf8"));
   const isTestFile = TEST_FILE.test(name);
 
-  for (const re of IMPORT_RES) {
-    for (const m of text.matchAll(re)) {
-      const to = targetFolder(m[1], rel);
-      const line = lineAt(text, m.index);
-      if (to === undefined) {
-        continue;
-      }
-      if (to === "outside") {
-        report(
-          rel,
-          line,
-          `'${m[1]}' is outside src/v1; v1 imports nothing outside it.`,
-        );
-      } else if (to === null) {
-        report(rel, line, `'${m[1]}' is outside the v1 folder taxonomy.`);
-      } else if (!mayImport(folder, to, isTestFile)) {
-        report(
-          rel,
-          line,
-          `${folder}/ may not import from ${to}/ ('${m[1]}'); see the folder contract in src/v1/README.md.`,
-        );
-      }
+  for (const { spec, index } of importSpecs(text)) {
+    const to = targetFolder(spec, rel);
+    const line = lineAt(text, index);
+    if (to === undefined) {
+      continue;
+    }
+    if (to === "outside") {
+      report(
+        rel,
+        line,
+        `'${spec}' is outside src/v1; v1 imports nothing outside it.`,
+      );
+    } else if (to === null) {
+      report(rel, line, `'${spec}' is outside the v1 folder taxonomy.`);
+    } else if (!mayImport(folder, to, isTestFile)) {
+      report(
+        rel,
+        line,
+        `${folder}/ may not import from ${to}/ ('${spec}'); see the folder contract in src/v1/README.md.`,
+      );
     }
   }
   for (const m of text.matchAll(/\.propTypes\b|\bpropTypes\s*[:=]/g)) {
@@ -382,6 +399,60 @@ for (const rel of walk(ROOT)) {
   for (const m of text.matchAll(/(?<![\w$-])ant-/g)) {
     report(rel, lineAt(text, m.index), "No antd 'ant-' class names under v1.");
   }
+}
+
+/*
+ * The v0 -> v1 half: v0 (everything in src/ outside v1, including the cloud
+ * src/plugins/ overlay) reaches v1 only through the `@v1` entry.
+ */
+const V0_CODE_EXT = /\.(js|jsx|mjs|cjs|ts|tsx|mts|cts)$/;
+
+/* Whether a v0 specifier (fileRel is relative to src/) reaches into v1. */
+function intoV1(spec, fileRel) {
+  if (spec === "@v1" || /^@v1\/index(\.ts)?$/.test(spec)) {
+    return false;
+  }
+  if (spec.startsWith("@v1/") || /^(@\/|src\/)v1(\/|$)/.test(spec)) {
+    return true;
+  }
+  if (!spec.startsWith(".")) {
+    return false;
+  }
+  const rel = path.posix.join(path.posix.dirname(fileRel), spec);
+  return rel === "v1" || rel.startsWith("v1/");
+}
+
+function v0Specs(rel, text) {
+  if (!STYLE_EXT.test(rel)) {
+    return importSpecs(text);
+  }
+  return [...text.matchAll(CSS_IMPORT_RE)].map((m) => ({
+    spec: m[1],
+    index: m.index,
+  }));
+}
+
+function checkV0() {
+  for (const rel of walk(SRC)) {
+    const full = path.join(SRC, rel);
+    const inV1 = rel.startsWith("v1/");
+    const scanned = STYLE_EXT.test(rel) || V0_CODE_EXT.test(rel);
+    if (inV1 || !scanned || fs.lstatSync(full).isSymbolicLink()) {
+      continue;
+    }
+    const text = blankComments(fs.readFileSync(full, "utf8"));
+    for (const { spec, index } of v0Specs(rel, text)) {
+      if (intoV1(spec, rel)) {
+        problems.push(
+          `src/${rel}:${lineAt(text, index)}: '${spec}' reaches into src/v1; v0 may import only the v1 public entry, as '@v1'.`,
+        );
+      }
+    }
+  }
+}
+
+if (runCode) {
+  checkV0();
 }
 
 if (problems.length > 0) {
