@@ -65,7 +65,10 @@ EXTRACTOR_AGENTS: dict[str, ExtractorAgentSpec] = {
         # entry in `spec.py` for what each door needs besides this flag. For
         # the Studio that is a parameter builder, which lives in the cloud
         # tree: setting this True here without it lands an agent the Studio
-        # offers and then refuses on every run.
+        # offers in its picker and then refuses when the profile is SAVED --
+        # not at run time. The Studio's accept path gates on dispatchability,
+        # so no profile naming such an agent is ever stored and no run ever
+        # happens. See `is_dispatchable` in the cloud app's agent_dispatch.
         available=False,
     ),
     ExtractorAgentKey.TABLE: ExtractorAgentSpec(

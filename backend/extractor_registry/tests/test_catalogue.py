@@ -174,10 +174,15 @@ class EnumValuesArePersistedLiteralsTest(SimpleTestCase):
     never checks out. So an edit here that renames a value cannot be caught by
     anything on this side unless it is caught here.
 
-    It would not be caught on the other side either, and this is measured, not
-    assumed: renaming ``SIMPLE`` to ``"simple_x"`` and ``SPECIALIZED`` to
-    ``"specialized_x"`` left the whole 447-test unit tier of both repositories
-    green. The consequence is silent -- ``get_agent("simple")`` returns None for
+    It was not caught on the other side either, until the cloud app grew
+    ``EnumsMatchTheMigrationLiteralsTest`` to compare the enums against those
+    same migration literals -- that one now fails a rename too, from the other
+    direction. Before either test existed this was measured, not assumed:
+    renaming ``SIMPLE`` to ``"simple_x"`` and ``SPECIALIZED`` to
+    ``"specialized_x"`` left every test green in the selection this work is run
+    against (``pytest pluggable_apps/agentic_studio_v1 agent_kv
+    extractor_registry -m 'not integration'``) -- a few hundred tests, not the
+    whole backend unit tier, which is an order of magnitude larger. The consequence is silent -- ``get_agent("simple")`` returns None for
     every row already written, so every saved profile raises "Unknown Primary
     Extractor Agent", and ``kind``-filtered queries stop matching, which makes
     an existing profile look like it has no primary agent at all.
@@ -188,10 +193,20 @@ class EnumValuesArePersistedLiteralsTest(SimpleTestCase):
     purpose. Asserting the literals is the only form that fails.
     """
 
-    def test_agent_key_values_are_the_persisted_literals(self) -> None:
+    # MEMBER -> VALUE, not a set of values. A set is invariant under
+    # PERMUTATION: swap SIMPLE's and TABLE's values and `set(values)` is
+    # unchanged, so a set-equality pin passes while every caller referring to
+    # `ExtractorAgentKey.SIMPLE` silently starts resolving to "table". Found
+    # the hard way -- a permutation sat live in this tree and the whole
+    # selection stayed green.
+    def test_agent_key_members_map_to_the_persisted_literals(self) -> None:
         self.assertEqual(
-            set(ExtractorAgentKey.values), {"simple", "multi_stage", "table"}
+            {member.name: member.value for member in ExtractorAgentKey},
+            {"SIMPLE": "simple", "MULTI_STAGE": "multi_stage", "TABLE": "table"},
         )
 
-    def test_agent_kind_values_are_the_persisted_literals(self) -> None:
-        self.assertEqual(set(ExtractorAgentKind.values), {"primary", "specialized"})
+    def test_agent_kind_members_map_to_the_persisted_literals(self) -> None:
+        self.assertEqual(
+            {member.name: member.value for member in ExtractorAgentKind},
+            {"PRIMARY": "primary", "SPECIALIZED": "specialized"},
+        )

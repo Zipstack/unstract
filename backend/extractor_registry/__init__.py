@@ -6,8 +6,8 @@ dispatched operation and the agent's name are per-door columns.
 Consumers:
 
 * The Studio (``pluggable_apps.agentic_studio_v1``, cloud-only) imports from
-  here directly, at eleven sites across its serializers, views, services,
-  models and tests. There is deliberately NO compatibility façade: the app's
+  here directly, across its serializers, views, services, models and tests.
+  There is deliberately NO compatibility façade: the app's
   own ``extractor_agents`` package was deleted rather than shimmed, because a
   shim would have let a stale import survive and quietly reintroduce a second
   catalogue, which is the condition this package exists to remove.
