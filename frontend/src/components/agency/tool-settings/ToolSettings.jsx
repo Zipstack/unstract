@@ -89,7 +89,6 @@ function ToolSettings({ spec, isSpecLoading }) {
       url: `/api/v1/unstract/${sessionDetails?.orgId}/tool_instance/${toolSettings?.id}/`,
       headers: {
         "Content-Type": "application/json",
-        "X-CSRFToken": sessionDetails?.csrfToken,
       },
       data: { metadata },
     };

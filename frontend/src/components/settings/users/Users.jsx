@@ -49,7 +49,6 @@ function Users() {
       url: `/api/v1/unstract/${sessionDetails?.orgId}/users/`,
       data: { emails: [selectedUserEmail?.email] },
       headers: {
-        "X-CSRFToken": sessionDetails?.csrfToken,
         "Content-Type": "application/json",
       },
     };

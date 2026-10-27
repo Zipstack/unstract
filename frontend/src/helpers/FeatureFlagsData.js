@@ -1,12 +1,11 @@
 import axios from "axios";
 
-async function makeApiCall(method, url, data, csrfToken) {
-  const headers = {
-    "X-CSRFToken": csrfToken,
-  };
-
+// Raw axios on purpose: flags are listed during session bootstrap
+// (useSessionValid), before useAxiosPrivate's logout handling applies. CSRF
+// comes from the global interceptor in App.jsx.
+async function makeApiCall(method, url, data) {
   try {
-    const response = await axios({ method, url, data, headers });
+    const response = await axios({ method, url, data });
     return response?.data;
   } catch (error) {
     console.error(`Error making API call to ${url}: ${error}`);
@@ -14,19 +13,19 @@ async function makeApiCall(method, url, data, csrfToken) {
   }
 }
 
-export async function evaluateFeatureFlag(orgId, csrfToken, featureFlag) {
+export async function evaluateFeatureFlag(orgId, featureFlag) {
   const url = `/api/v1/unstract/${orgId}/evaluate/`;
   const data = {
     flag_key: featureFlag,
   };
 
-  const response = await makeApiCall("POST", url, data, csrfToken);
+  const response = await makeApiCall("POST", url, data);
   return response?.flag_status ?? false;
 }
 
-export async function listFlags(orgId, csrfToken) {
+export async function listFlags(orgId) {
   const url = `/api/v1/unstract/${orgId}/flags/`;
 
-  const response = await makeApiCall("GET", url, null, csrfToken);
+  const response = await makeApiCall("GET", url, null);
   return response.feature_flags.flags ?? {};
 }

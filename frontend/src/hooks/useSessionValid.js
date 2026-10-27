@@ -63,6 +63,10 @@ function useSessionValid() {
     }
     return false;
   };
+  // Raw axios on purpose: this hook establishes the session, so a 401 here
+  // means "not signed in" and must not trigger useAxiosPrivate's logout. CSRF
+  // comes from the global interceptor in App.jsx (cookie fallback, since the
+  // session store is not hydrated yet).
   return async () => {
     let userAndOrgDetails = null;
     try {
@@ -104,9 +108,6 @@ function useSessionValid() {
       // API to set the organization and get the user details
       requestOptions["method"] = "POST";
       requestOptions["url"] = `/api/v1/organization/${orgId}/set`;
-      requestOptions["headers"] = {
-        "X-CSRFToken": csrfToken,
-      };
       const setOrgRes = await axios(requestOptions).catch((error) => {
         if (error?.response && error?.response?.status === 403) {
           navigate("/", { state: null });
@@ -124,9 +125,6 @@ function useSessionValid() {
       requestOptions["method"] = "GET";
 
       requestOptions["url"] = `/api/v1/unstract/${orgId}/users/profile/`;
-      requestOptions["headers"] = {
-        "X-CSRFToken": csrfToken,
-      };
       const getUserInfo = await axios(requestOptions);
       userAndOrgDetails["isAdmin"] = getUserInfo?.data?.user?.is_admin;
       userAndOrgDetails["loginOnboardingMessage"] =
@@ -143,9 +141,6 @@ function useSessionValid() {
         requestOptions["method"] = "GET";
 
         requestOptions["url"] = `/api/v1/unstract/${orgId}/adapter/`;
-        requestOptions["headers"] = {
-          "X-CSRFToken": csrfToken,
-        };
         const getAdapterDetails = await axios(requestOptions);
         const adapterTypes = [
           ...new Set(
@@ -158,7 +153,7 @@ function useSessionValid() {
       }
 
       if (isUnstract) {
-        const flags = await listFlags(orgId, csrfToken);
+        const flags = await listFlags(orgId);
         userAndOrgDetails["flags"] = flags;
       }
 

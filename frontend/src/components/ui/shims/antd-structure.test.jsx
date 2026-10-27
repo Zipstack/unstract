@@ -1233,7 +1233,7 @@ describe("antd-compatible structural shims (P4)", () => {
         <Upload.Dragger
           name="file"
           action="/api/v1/upload"
-          headers={{ "X-CSRFToken": "tok" }}
+          headers={{ "X-Test": "tok" }}
         >
           <p>drop here</p>
         </Upload.Dragger>,
@@ -1247,7 +1247,7 @@ describe("antd-compatible structural shims (P4)", () => {
       const [url, init] = fetchMock.mock.calls[0];
       expect(url).toBe("/api/v1/upload");
       expect(init.method).toBe("POST");
-      expect(init.headers).toEqual({ "X-CSRFToken": "tok" });
+      expect(init.headers).toEqual({ "X-Test": "tok" });
       expect(init.body.get("file")).toBe(file);
     });
 

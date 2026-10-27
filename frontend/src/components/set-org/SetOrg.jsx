@@ -1,4 +1,3 @@
-import Cookies from "js-cookie";
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/shims/antd-button";
@@ -46,13 +45,12 @@ function SetOrg() {
   const handleContinue = (id) => {
     setLoading(true);
     setLoadingOrgId(id);
-    const csrfToken = Cookies.get("csrftoken");
+    // Raw axios on purpose: this runs before an org session exists, so a 401
+    // must surface here rather than trigger useAxiosPrivate's logout. CSRF
+    // comes from the global interceptor in App.jsx.
     const requestOptions = {
       method: "POST",
       url: `/api/v1/organization/${id}/set`,
-      headers: {
-        "X-CSRFToken": csrfToken,
-      },
     };
 
     axios(requestOptions)

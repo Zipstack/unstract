@@ -149,7 +149,6 @@ function DefaultTriad() {
     );
 
     const header = {
-      "X-CSRFToken": sessionDetails?.csrfToken,
       "Content-Type": "application/json",
     };
     const requestOptions = {
