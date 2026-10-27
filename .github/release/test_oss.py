@@ -237,6 +237,22 @@ class Lines(unittest.TestCase):
         )
         self.assertEqual(self.remote("rev-parse", "on-prem-ga/1.7^{commit}"), ga)
 
+    def test_cli_on_prem_flag(self):
+        self.quiet(oss.cut, self.oss, "1.7")
+        self.pin("ee-v1.7.0-rc.1", "v1.7.0-rc.1")
+        self.addCleanup(os.chdir, os.getcwd())
+        os.chdir(self.cloud)  # main promotes the cloud clone in the working directory
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            code = oss.main(
+                ["--oss-repo", self.oss, "promote", "--rc", "v1.7.0-rc.1", "--on-prem"]
+            )
+        self.assertEqual((code, out.getvalue()), (0, "ee-v1.7.0\n"))
+        self.assertEqual(
+            self.remote("rev-parse", "on-prem-ga/1.7^{commit}"),
+            self.remote("rev-parse", "ee-v1.7.0^{commit}"),
+        )
+
     def test_promote_refuses_a_downgrade(self):
         self.quiet(oss.cut, self.oss, "1.7")
         self.work("release/1.7", "oss fix")

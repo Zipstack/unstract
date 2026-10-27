@@ -773,6 +773,14 @@ class FinishOpen(unittest.TestCase):
                 "or close it to decline",
             ),
         )
+        # A head at the release tip adds nothing: close, not merge.
+        self.assertEqual(
+            self.finish(oid=self.g("rev-parse", f"{self.oid}^")),
+            (
+                "failed",
+                "#4 has 0 commits, not the one pick: not merged; close it, it adds nothing",
+            ),
+        )
         self.assertEqual(self.merged, [])
 
     def test_head_without_a_pr_fails(self):
