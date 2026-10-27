@@ -22,7 +22,7 @@ run-name: >-
 #   pull_request_target runs the base line's copy of this file, so it fires only on lines that carry it. Safe:
 #   the job checks out main and never runs head code; backport_merge.py refuses a head that is not
 #   backport/X.Y/<sha7> into release/X.Y (an expression cannot match that pattern, so the job filter is coarser). A failed record run is recovered with "Re-run jobs".
-#   Scripts run from main's tree, like Promote and Take RC build.
+#   Scripts run from main's tree.
 on:
   push:
     branches: [main]
@@ -60,8 +60,6 @@ jobs:
       # deleted the head first, the loser can open a second pick PR for a fix already on the line. A squash after
       # the base moved is retried by backport_merge.squash.
       group: backport-${{ github.event_name == 'workflow_dispatch' && github.run_id || 'rescan' }}
-    env:
-      PYTHONDONTWRITEBYTECODE: "1" # the conflict path runs `git add -A`
     steps:
       - name: Inputs
         if: github.event_name == 'workflow_dispatch'

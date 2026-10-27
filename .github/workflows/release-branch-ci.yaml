@@ -13,7 +13,7 @@ name: Release branch CI
 # merge keeps it in the message, and the push run checks that merged commit like any other. It holds the bot token,
 # so it runs on pull_request_target: the base line's copy of this file, which a PR cannot edit. A line cut before
 # that trigger existed gets no bot commit; add the line to a commit yourself there.
-# Label changes on a closed PR run nothing.
+# Label changes on a closed PR run nothing. The bot never pushes to a head named main, release/* or backport/*.
 # No push builds an RC: a security or critical pick lands and waits for the RM's Take RC build, like any other pick.
 on:
   push:
@@ -83,11 +83,14 @@ jobs:
         env:
           RBO_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'release-branch-only') }}
           INVALID: ${{ steps.classify.outputs.invalid || '0' }}
+          OUTCOME: ${{ steps.classify.outcome }}
         run: |
           if [ "$INVALID" != 0 ]; then
             hint="A commit here is not a pick from main. A change only for $BRANCH: add the \`release-branch-only\` label. A fix on main: cherry-pick it with \`git cherry-pick -x\`."
             echo "::notice::$hint"
             echo "$hint" >> "$GITHUB_STEP_SUMMARY"
+          elif [ "$OUTCOME" != success ]; then
+            echo "The commit check did not finish; see its log. Do not merge until it passes." >> "$GITHUB_STEP_SUMMARY"
           elif [ "$RBO_LABEL" = true ]; then
             echo "Squash and merge: the \`Release-branch-only: <TICKET>\` commit the bot added carries the line." >> "$GITHUB_STEP_SUMMARY"
           else
@@ -109,7 +112,7 @@ jobs:
   # pull_request_target: this job is the base line's copy. The head is only data here: read without a token, its
   # files never imported, and the push ignores its git config.
   trailer:
-    if: github.event_name == 'pull_request_target' && github.event.action == 'labeled' && github.event.label.name == 'release-branch-only'
+    if: github.event_name == 'pull_request_target' && github.event.action == 'labeled' && github.event.label.name == 'release-branch-only' && github.event.pull_request.state == 'open'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
@@ -122,6 +125,9 @@ jobs:
       - name: Same-repo head
         run: |
           [ "$HEAD_REPO" = "$GITHUB_REPOSITORY" ] || { echo "::error::release-branch-only: the head is on $HEAD_REPO, a fork; the bot cannot push the \`Release-branch-only:\` commit there. Push the branch to $GITHUB_REPOSITORY and open the PR from it, or add the line to a commit yourself."; exit 1; }
+          case "$HEAD_REF" in
+            main | release/* | backport/*) echo "::error::release-branch-only: the head is $HEAD_REF; the bot pushes only to a topic branch. Add the line to a commit yourself."; exit 1 ;;
+          esac
 
       # The head is checked out without the bot token; only the push below gets it. The logic comes from main.
       # Run on the head's tip SHA, so a push to the head after the label makes the bot push fail, not skip a check.

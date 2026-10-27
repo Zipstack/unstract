@@ -1,7 +1,7 @@
 name: Lint PR
 
 # Every PR into main or a release branch carries a recognised `[TYPE]` title prefix, the ticket before it optional
-# (`UN-123 [FIX] ...` or `[FIX] ...`, the same class either way), and its labels are
+# (`UN-123 [FIX] ...` or `[FIX] ...`, the same class either way), unless a fix/ label gives its class; its labels are
 # at most one of fix/security, fix/critical plus an optional fix/needs-backport.
 # Release branches too, because the release changelog is built from their PR titles. A branch cut before this file
 # existed runs no check. Not a required check until a ruleset makes it one.
@@ -50,10 +50,8 @@ jobs:
           title, labels = os.environ["TITLE"], json.loads(os.environ["LABELS"])
           summary = open(os.environ["GITHUB_STEP_SUMMARY"], "a")
           try:
-              if "release-branch-only" in labels:
-                  if not os.environ["BASE"].startswith("release/"):
-                      raise ValueError("label `release-branch-only` is for PRs into a release/X.Y branch; remove it "
-                                       "here (a main change reaches release branches through Backport)")
+              if refusal := relmgr.release_only_refusal(os.environ["BASE"], labels):
+                  raise ValueError(refusal)
               cls = relmgr.pr_fix_class(title, labels) or "none"
           except ValueError as e:
               msg = (f"{e}\nFix: title as `[TYPE] text` or `TICKET [TYPE] text` (e.g. `UN-123 [FIX] ...`); allowed labels are "
