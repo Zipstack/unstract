@@ -9,8 +9,17 @@ document and the run still reports success.
 from unstract.sdk1.exceptions import is_vector_store_not_found
 
 
+class _Response:
+    def __init__(self, status_code: int) -> None:
+        self.status_code = status_code
+
+
 class _HttpError(Exception):
-    def __init__(self, status_code=None, response=None):
+    def __init__(
+        self,
+        status_code: int | None = None,
+        response: _Response | None = None,
+    ) -> None:
         super().__init__(f"HTTP {status_code}")
         if status_code is not None:
             self.status_code = status_code
@@ -18,28 +27,23 @@ class _HttpError(Exception):
             self.response = response
 
 
-class _Response:
-    def __init__(self, status_code):
-        self.status_code = status_code
-
-
-def test_status_code_404_is_not_found():
+def test_status_code_404_is_not_found() -> None:
     assert is_vector_store_not_found(_HttpError(status_code=404))
 
 
-def test_response_status_code_404_is_not_found():
+def test_response_status_code_404_is_not_found() -> None:
     assert is_vector_store_not_found(_HttpError(response=_Response(404)))
 
 
-def test_other_status_code_is_not_treated_as_missing_index():
+def test_other_status_code_is_not_treated_as_missing_index() -> None:
     assert not is_vector_store_not_found(_HttpError(status_code=500))
 
 
-def test_timeout_is_not_treated_as_missing_index():
+def test_timeout_is_not_treated_as_missing_index() -> None:
     assert not is_vector_store_not_found(TimeoutError("read timed out"))
 
 
-def test_wrapped_404_is_not_found():
+def test_wrapped_404_is_not_found() -> None:
     try:
         try:
             raise _HttpError(status_code=404)
@@ -49,11 +53,11 @@ def test_wrapped_404_is_not_found():
         assert is_vector_store_not_found(error)
 
 
-def test_plain_error_is_not_missing_index():
+def test_plain_error_is_not_missing_index() -> None:
     assert not is_vector_store_not_found(ValueError("bad query"))
 
 
-def test_cyclic_cause_chain_terminates():
+def test_cyclic_cause_chain_terminates() -> None:
     first = RuntimeError("first")
     second = RuntimeError("second")
     first.__cause__ = second
