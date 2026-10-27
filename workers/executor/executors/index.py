@@ -20,9 +20,12 @@ from executor.executors.dto import (
     InstanceIdentifiers,
     ProcessingOptions,
 )
-
 from unstract.sdk1.constants import LogLevel
-from unstract.sdk1.exceptions import SdkError, parse_litellm_err
+from unstract.sdk1.exceptions import (
+    SdkError,
+    is_vector_store_not_found,
+    parse_litellm_err,
+)
 from unstract.sdk1.file_storage.impl import FileStorage
 from unstract.sdk1.file_storage.provider import FileStorageProvider
 from unstract.sdk1.platform import PlatformHelper as ToolAdapter
@@ -123,10 +126,11 @@ class Index:
             else:
                 self.tool.stream_log(f"No nodes found for {doc_id}")
         except Exception as e:
-            logger.warning(
-                f"Error querying {self.instance_identifiers.vector_db_instance_id}:"
-                f" {str(e)}, proceeding to index",
-                exc_info=True,
+            if not is_vector_store_not_found(e):
+                raise
+            logger.info(
+                f"No index yet for {self.instance_identifiers.vector_db_instance_id}:"
+                f" {e}, proceeding to index"
             )
 
         if doc_id_found and not self.processing_options.reindex:

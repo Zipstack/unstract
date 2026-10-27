@@ -21,7 +21,13 @@ from unstract.sdk1.adapters.x2text.constants import X2TextConstants
 from unstract.sdk1.adapters.x2text.llm_whisperer_v2.src import LLMWhispererV2
 from unstract.sdk1.constants import LogLevel
 from unstract.sdk1.embedding import EmbeddingCompat
-from unstract.sdk1.exceptions import IndexingError, SdkError, VectorDBError, X2TextError
+from unstract.sdk1.exceptions import (
+    IndexingError,
+    SdkError,
+    VectorDBError,
+    X2TextError,
+    is_vector_store_not_found,
+)
 from unstract.sdk1.file_storage import FileStorage, FileStorageProvider
 from unstract.sdk1.platform import PlatformHelper
 from unstract.sdk1.utils.common import Utils, capture_metrics, log_elapsed
@@ -311,9 +317,11 @@ class Index:
                 else:
                     self.tool.stream_log(f"No nodes found for {doc_id}")
             except Exception as e:
+                if not is_vector_store_not_found(e):
+                    raise
                 self.tool.stream_log(
-                    f"Error querying {vector_db_instance_id}: {e}, proceeding to index",
-                    level=LogLevel.ERROR,
+                    f"No index yet for {vector_db_instance_id}: {e}, proceeding to index",
+                    level=LogLevel.INFO,
                 )
 
             if doc_id_found and not reindex:
