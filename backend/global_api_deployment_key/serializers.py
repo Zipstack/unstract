@@ -1,9 +1,9 @@
 from api_v2.models import APIDeployment
+from backend.serializers import AuditSerializer
 from rest_framework import serializers
 from utils.input_sanitizer import validate_safe_text
 from utils.user_context import UserContext
 
-from backend.serializers import AuditSerializer
 from global_api_deployment_key.models import GlobalApiDeploymentKey
 
 ALLOW_ALL_WITH_LIST_ERROR = {

@@ -8,7 +8,6 @@ falls back to minimal OSS null service otherwise.
 from typing import Any, Protocol
 
 from client_plugin_registry import get_client_plugin, has_client_plugin
-
 from unstract.core.data_models import WorkerFileData
 
 from ..infrastructure.logging import WorkerLogger

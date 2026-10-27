@@ -15,12 +15,12 @@ import magic
 from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
 from django.utils import timezone
+from unstract.sdk1.file_storage.constants import StorageType
+from unstract.sdk1.file_storage.env_helper import EnvHelper
 from utils.file_storage.constants import FileStorageConstants, FileStorageKeys
 
 from account_v2.dto import UserInfo
 from account_v2.models import User
-from unstract.sdk1.file_storage.constants import StorageType
-from unstract.sdk1.file_storage.env_helper import EnvHelper
 
 PHOTO_TYPES = ("image/png", "image/jpeg")
 MAX_PHOTO_BYTES = 2 * 1024 * 1024

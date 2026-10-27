@@ -2,6 +2,7 @@ import io
 from typing import Any
 
 import pdfplumber
+
 from unstract.sdk1.adapters.constants import Common
 from unstract.sdk1.adapters.x2text import adapters
 from unstract.sdk1.adapters.x2text.constants import X2TextConstants

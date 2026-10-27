@@ -30,7 +30,6 @@ from executor.executors.vlm_image_answer import (
     detect_image_mode_config,
     run_vlm_image_answer,
 )
-
 from unstract.sdk1.adapters.exceptions import AdapterError
 from unstract.sdk1.adapters.x2text.constants import X2TextConstants
 from unstract.sdk1.adapters.x2text.llm_whisperer_v2.src import LLMWhispererV2
@@ -353,7 +352,6 @@ class LegacyExecutor(BaseExecutor):
         Wrapped in a method so tests can mock it cleanly.
         """
         from executor.executors.index import Index
-
         from unstract.sdk1.embedding import EmbeddingCompat
         from unstract.sdk1.vector_db import VectorDB
 
@@ -1302,7 +1300,6 @@ class LegacyExecutor(BaseExecutor):
         from executor.executors.variable_replacement import (
             VariableReplacementService,
         )
-
         from unstract.sdk1.embedding import EmbeddingCompat
         from unstract.sdk1.llm import LLM
         from unstract.sdk1.vector_db import VectorDB
@@ -1665,7 +1662,6 @@ class LegacyExecutor(BaseExecutor):
         """Run one prompt end-to-end; return its usage rows."""
         from executor.executors.constants import PromptServiceConstants as PSKeys
         from executor.executors.constants import RetrievalStrategy
-
         from unstract.sdk1.utils.indexing import IndexingUtils
 
         (
