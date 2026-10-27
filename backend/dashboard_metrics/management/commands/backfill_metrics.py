@@ -15,10 +15,11 @@ Usage:
     python manage.py backfill_metrics --days=90 --org-id=5
     python manage.py backfill_metrics --days=7 --dry-run
     python manage.py backfill_metrics --days=90 --active-only
+    python manage.py backfill_metrics --start-date=2026-03-12 --end-date=2026-04-08
 """
 
 import logging
-from datetime import datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
 
 from account_v2.models import Organization
@@ -82,6 +83,21 @@ class Command(BaseCommand):
             help="Number of days to backfill (default: 30)",
         )
         parser.add_argument(
+            "--start-date",
+            type=str,
+            default=None,
+            help="First UTC day to backfill (YYYY-MM-DD). Overrides --days.",
+        )
+        parser.add_argument(
+            "--end-date",
+            type=str,
+            default=None,
+            help=(
+                "Last UTC day to backfill, inclusive (YYYY-MM-DD). Requires "
+                "--start-date. Default: now."
+            ),
+        )
+        parser.add_argument(
             "--org-id",
             type=str,
             default=None,
@@ -137,14 +153,11 @@ class Command(BaseCommand):
         skip_monthly = options["skip_monthly"]
         active_only = options["active_only"]
 
-        end_date = timezone.now()
-        # Truncated to match the cron's daily_start: an untruncated boundary writes the
-        # oldest day covering only part of it, and the monthly rollup now sums the
-        # persisted daily tier rather than recomputing that day from source.
-        start_date = truncate_to_day(end_date - timedelta(days=days))
+        start_date, end_date = self._resolve_window(
+            days, options["start_date"], options["end_date"]
+        )
 
         self.stdout.write(f"Backfill period: {start_date.date()} to {end_date.date()}")
-        self.stdout.write(f"Days: {days}")
 
         if skip_daily and not skip_monthly:
             self.stdout.write(
@@ -253,6 +266,37 @@ class Command(BaseCommand):
                 f"{failed} error(s) during backfill; the metrics tiers are "
                 "incomplete. Re-run before the next aggregation."
             )
+
+    @staticmethod
+    def _resolve_window(
+        days: int, start_day: str | None, end_day: str | None
+    ) -> tuple[datetime, datetime]:
+        """Return the (start, end) instants to backfill, both whole UTC days."""
+        if end_day and not start_day:
+            raise CommandError("--end-date requires --start-date")
+        if not start_day:
+            end_date = timezone.now()
+            # Truncated to match the cron's daily_start: an untruncated boundary
+            # writes the oldest day covering only part of it, and the monthly rollup
+            # sums the persisted daily tier rather than recomputing it from source.
+            return truncate_to_day(end_date - timedelta(days=days)), end_date
+
+        try:
+            start_date = datetime.combine(date.fromisoformat(start_day), time.min, UTC)
+            end_date = timezone.now()
+            if end_day:
+                # The source queries are end-inclusive, so stop just short of the
+                # next midnight: ending on it would rewrite that day with only the
+                # rows stamped at exactly 00:00.
+                next_day = date.fromisoformat(end_day) + timedelta(days=1)
+                end_date = datetime.combine(next_day, time.min, UTC) - timedelta(
+                    microseconds=1
+                )
+        except ValueError as e:
+            raise CommandError(f"Dates must be YYYY-MM-DD: {e}") from e
+        if start_date > end_date:
+            raise CommandError("--start-date is after --end-date")
+        return start_date, end_date
 
     def _resolve_org_ids(
         self,

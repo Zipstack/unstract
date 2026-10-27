@@ -238,3 +238,68 @@ class TestAWholesaleQueryFailureIsNotReportedAsSuccess(TestCase):
             "backfill_metrics", days=1, skip_hourly=True, skip_monthly=True, stdout=out
         )
         assert "BACKFILL COMPLETE" in out.getvalue()
+
+
+class TestExplicitDateRange(TestCase):
+    """--start-date/--end-date repairs a past window that --days cannot reach.
+
+    The source queries are end-inclusive, so a range ending at the next midnight
+    would rewrite the day after it with only the rows stamped at exactly 00:00.
+    """
+
+    def setUp(self):
+        self.org = Organization.objects.create(
+            organization_id="range-org", name="range", display_name="Range"
+        )
+        self.workflow = Workflow.objects.create(
+            workflow_name="range-wf", organization=self.org
+        )
+        self.day = truncate_to_day(timezone.now() - timedelta(days=200))
+
+    def _seed(self, stamp):
+        execution = WorkflowExecution.objects.create(
+            workflow=self.workflow, status=ExecutionStatus.COMPLETED
+        )
+        fe = WorkflowFileExecution.objects.create(
+            workflow_execution=execution,
+            file_name=f"{stamp.isoformat()}.pdf",
+            status=ExecutionStatus.COMPLETED.value,
+        )
+        WorkflowFileExecution.objects.filter(pk=fe.pk).update(created_at=stamp)
+        WorkflowExecution.objects.filter(pk=execution.pk).update(created_at=stamp)
+
+    def _daily(self, day):
+        return EventMetricsDaily._base_manager.get(
+            organization=self.org, date=day.date(), metric_name="documents_processed"
+        ).metric_value
+
+    def test_the_range_is_written_whole_and_the_next_day_is_untouched(self):
+        next_day = self.day + timedelta(days=1)
+        self._seed(self.day + timedelta(hours=1))
+        self._seed(self.day + timedelta(hours=23))
+        self._seed(next_day)  # exactly midnight: inside an end-inclusive midnight end
+        EventMetricsDaily._base_manager.create(
+            organization=self.org,
+            date=next_day.date(),
+            metric_name="documents_processed",
+            project="default",
+            tag="",
+            metric_value=5,
+            metric_count=1,
+        )
+
+        call_command(
+            "backfill_metrics",
+            start_date=self.day.date().isoformat(),
+            end_date=self.day.date().isoformat(),
+            skip_hourly=True,
+            skip_monthly=True,
+            stdout=StringIO(),
+        )
+
+        assert self._daily(self.day) == 2
+        assert self._daily(next_day) == 5, "the day after the range was overwritten"
+
+    def test_end_date_without_start_date_is_refused(self):
+        with self.assertRaises(CommandError):
+            call_command("backfill_metrics", end_date="2026-04-08", stdout=StringIO())
