@@ -10,8 +10,9 @@ These tests pin that the connection is closed before each sleep, that nothing
 changes on the async path (``timeout=-1``), and that an open atomic block is
 never closed under the caller.
 
-DB-free: the module's ``connection``, the model, the context and ``time`` are
-mocked.
+The unit tests are DB-free: the module's ``connections``, the model, the
+context and ``time`` are mocked. ``TestReleaseAgainstRealConnection`` needs a
+real Postgres, so the conftest marks it ``integration``.
 """
 
 from unittest.mock import MagicMock, call, patch
@@ -25,11 +26,23 @@ from workflow_manager.workflow_v2.workflow_helper import WorkflowHelper
 _MOD = "workflow_manager.workflow_v2.workflow_helper"
 
 
+def _open_conn(alias: str = "default") -> MagicMock:
+    return MagicMock(alias=alias, in_atomic_block=False, autocommit=True)
+
+
 @pytest.fixture
-def db_connection():
-    with patch(f"{_MOD}.connection") as conn:
-        conn.in_atomic_block = False
-        yield conn
+def db_connections():
+    with patch(f"{_MOD}.connections") as conns:
+        conns.all.return_value = [_open_conn()]
+        yield conns
+
+
+@pytest.fixture
+def db_connection(db_connections):
+    """The single open ``default`` connection; ``.close`` is the release call."""
+    conn = db_connections.all.return_value[0]
+    conn.close = conn.close_if_unusable_or_obsolete
+    return conn
 
 
 @pytest.fixture
@@ -81,6 +94,16 @@ class TestExecuteWorkflowAsyncWait:
         # Close precedes each sleep — including the ones after a status read,
         # since a cache miss there reopens the connection.
         assert order.mock_calls == [call.close(), call.sleep(2)] * 3
+
+    def test_failing_release_does_not_skip_the_wait(self, db_connection, async_deps):
+        _, get_status = async_deps
+        db_connection.close_if_unusable_or_obsolete.side_effect = RuntimeError("boom")
+        get_status.side_effect = [ExecutionStatus.EXECUTING, ExecutionStatus.COMPLETED]
+
+        response = _run_async(timeout=10)
+
+        assert get_status.call_count == 2
+        assert response.execution_status == ExecutionStatus.COMPLETED
 
     def test_async_path_leaves_connection_alone(self, db_connection, async_deps):
         time_mod, get_status = async_deps
@@ -144,14 +167,42 @@ class TestWaitForExecution:
 
 
 class TestReleaseDbConnection:
-    def test_closes_outside_atomic(self, db_connection):
+    def test_releases_outside_a_transaction(self, db_connection):
         WorkflowHelper._release_db_connection()
-        db_connection.close.assert_called_once_with()
+        db_connection.close_if_unusable_or_obsolete.assert_called_once_with()
 
     def test_skips_inside_atomic(self, db_connection):
         db_connection.in_atomic_block = True
         WorkflowHelper._release_db_connection()
-        db_connection.close.assert_not_called()
+        db_connection.close_if_unusable_or_obsolete.assert_not_called()
+
+    def test_skips_when_autocommit_is_off(self, db_connection):
+        # Pending writes outside an atomic block: closing would roll them back.
+        db_connection.autocommit = False
+        WorkflowHelper._release_db_connection()
+        db_connection.close_if_unusable_or_obsolete.assert_not_called()
+
+    def test_skips_a_closed_connection_without_reconnecting(self, db_connection):
+        db_connection.connection = None
+        WorkflowHelper._release_db_connection()
+        # get_autocommit() would ensure_connection() — i.e. open one to close it.
+        db_connection.get_autocommit.assert_not_called()
+        db_connection.ensure_connection.assert_not_called()
+        db_connection.close_if_unusable_or_obsolete.assert_not_called()
+
+    def test_a_failing_release_does_not_raise(self, db_connection):
+        db_connection.close_if_unusable_or_obsolete.side_effect = RuntimeError("boom")
+        WorkflowHelper._release_db_connection()  # must not propagate
+
+    def test_releases_every_initialized_alias(self, db_connections):
+        default, other = _open_conn("default"), _open_conn("other")
+        db_connections.all.return_value = [default, other]
+
+        WorkflowHelper._release_db_connection()
+
+        db_connections.all.assert_called_once_with(initialized_only=True)
+        default.close_if_unusable_or_obsolete.assert_called_once_with()
+        other.close_if_unusable_or_obsolete.assert_called_once_with()
 
 
 @pytest.mark.django_db(transaction=True)
@@ -179,8 +230,22 @@ class TestReleaseAgainstRealConnection:
         assert real_connection.connection is not None
         # ...and custom_db re-applies the schema on that new connection.
         with real_connection.cursor() as cursor:
-            cursor.execute("SHOW search_path")
+            cursor.execute("SELECT current_schema()")
             assert cursor.fetchone()[0] == settings.DB_SCHEMA
+
+    def test_unexpired_persistent_connection_is_kept(self):
+        from django.db import connection as real_connection
+
+        from workflow_manager.workflow_v2.models.execution import WorkflowExecution
+
+        WorkflowExecution.objects.count()
+        # What CONN_MAX_AGE=None (persistent) sets at connect time.
+        real_connection.close_at = None
+        raw = real_connection.connection
+
+        WorkflowHelper._release_db_connection()
+
+        assert real_connection.connection is raw
 
     def test_release_inside_atomic_keeps_transaction_usable(self):
         from django.db import connection as real_connection

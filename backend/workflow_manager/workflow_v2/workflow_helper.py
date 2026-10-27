@@ -11,7 +11,7 @@ from celery import chord, current_task
 from celery.result import AsyncResult
 from configuration.enums import ConfigKey
 from configuration.models import Configuration
-from django.db import IntegrityError, connection
+from django.db import IntegrityError, connections
 from pg_queue.producer import DEFAULT_PRIORITY as PG_DEFAULT_PRIORITY
 from pg_queue.producer import enqueue_task as pg_enqueue_task
 from pipeline_v2.models import Pipeline
@@ -489,20 +489,42 @@ class WorkflowHelper:
 
     @staticmethod
     def _release_db_connection() -> None:
-        """Hand the request's DB connection back before a long sleep-poll.
+        """Hand the request's DB connections back before a long sleep-poll.
 
-        Django holds one connection for the whole request (no CONN_MAX_AGE),
-        and behind pgbouncer's session pool that pins a server connection for
-        as long as the sync wait runs — up to the API timeout, doing nothing.
-        Closing it here returns the slot; the next ORM call reconnects lazily
-        (and ``custom_db`` re-applies ``search_path`` on connect).
+        Django holds a connection for the whole request, and behind pgbouncer's
+        session pool that pins a server connection for as long as the sync wait
+        runs — up to the API timeout, doing nothing. The next ORM call
+        reconnects lazily (and ``custom_db`` re-applies ``search_path``).
 
-        Skipped inside an atomic block (e.g. ``ATOMIC_REQUESTS``): closing
-        there would poison the transaction for everything after the wait.
+        Uses Django's own expiry check rather than a hard close, so it closes
+        exactly what ``close_old_connections`` would: with no ``CONN_MAX_AGE``
+        (today) every connection, and with persistent connections only expired
+        ones. Unlike ``close_old_connections`` it never touches a connection
+        with work in flight — an atomic block (e.g. ``ATOMIC_REQUESTS``) or
+        autocommit turned off — since closing would discard that work.
         """
-        if connection.in_atomic_block:
-            return
-        connection.close()
+        for conn in connections.all(initialized_only=True):
+            # `.autocommit`, not get_autocommit(): that one ensure_connection()s,
+            # i.e. would open a connection only to close it.
+            if conn.connection is None:
+                continue
+            if conn.in_atomic_block or not conn.autocommit:
+                logger.debug(
+                    f"Keeping DB connection '{conn.alias}' through the sync wait: "
+                    "a transaction is open"
+                )
+                continue
+            # Never let the release abort the wait it is there to serve: a raise
+            # here would land in the post-dispatch handler and return EXECUTING
+            # without waiting (the UN-3602 failure mode).
+            try:
+                conn.close_if_unusable_or_obsolete()
+            except Exception:
+                logger.warning(
+                    f"Could not release DB connection '{conn.alias}' before the "
+                    "sync wait; continuing with it held",
+                    exc_info=True,
+                )
 
     @staticmethod
     def _dispatch_orchestrator_task(
