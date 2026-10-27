@@ -8,7 +8,9 @@ Wraps relmgr.convergence_report unchanged and adds:
 - scope: relstate `supported[T]` minus the branch. Retired and not-enabled branches are out by construction.
 - direction: an older branch's picks are checked against the newer branch, whichever side is being promoted.
 - reference: a newer branch with a promoted stable tag for T is scanned at that tag (what ships next), not at its tip,
-  even before it is GA (on-prem: promoted, chart not published yet). The branch being promoted is scanned at --promote-ref.
+  even before it is GA (on-prem: promoted, chart not published yet). The branch being promoted is scanned at
+  --promote-ref where it is the newer side. As the older side it is scanned at its tip, deliberately: a fix picked
+  onto it after the RC still blocks the promote until the newer line has it.
 - declines shown: an older line's pick the newer line declined prints as DECLINED, with the reason and the decline
   commit (relmgr.decline_records). It counts as converged. A decline on the older line owes the newer line nothing.
 - release-branch-only window: an RBO-ABSENT row is kept only for a commit dated after the newer line's latest GA
@@ -117,7 +119,10 @@ def missing_message(
     if unshipped:  # nothing to pick or decline: the fix only waits for newer's next patch
         return f"{head}: {fix} is on {newer} but not in its latest stable {unshipped}: promote a {newer} patch first."
     if branch == older:
-        msg = f"{head}: {fix} is not on newer {newer} yet."
+        msg = (
+            f"{head}: {fix} is not on newer {newer} yet; an older line never ships a fix its newer line lacks, "
+            "even one picked after the RC being promoted."
+        )
         act = (
             f"Conflict PR #{pr[0]} on {newer}: resolve, get one approval and merge, or close the PR to decline (the close comment is the reason)."
             if pr

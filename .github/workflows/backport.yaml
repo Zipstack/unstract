@@ -133,6 +133,7 @@ jobs:
       - name: Record the close
         env:
           GH_TOKEN: ${{ steps.bot.outputs.token }} # labels, comments, the decline commit and the head delete
+          RELEASE_BOT_APP_SLUG: ${{ steps.bot.outputs.app-slug }} # the pick PR's author must be this App
           PR: ${{ github.event.pull_request.number }}
           # who closed it: their close comment is the decline reason
           SENDER: ${{ github.event.sender.login }}

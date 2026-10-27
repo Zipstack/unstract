@@ -14,7 +14,9 @@ import backport_merge as bm
 O = "c" * 40  # the main original
 CLOSED = "2026-10-12T10:00:00Z"
 ME = "closer"
-BOT = "release-bot"
+APP = "zipstack-push-to-main"  # the release App: gh pr view shows its PRs authored by app/<slug>, is_bot true
+BOT = f"app/{APP}"
+os.environ["RELEASE_BOT_APP_SLUG"] = APP
 
 
 def comment(body, at=CLOSED, user=ME):
@@ -97,7 +99,7 @@ class Gh:
             "headRefOid": "a" * 40,
             "labels": [{"name": n} for n in labels],
             "isCrossRepository": False,
-            "author": {"login": BOT},
+            "author": {"login": BOT, "is_bot": True},
         }
         self.comments, self.calls = list(comments), []
 
@@ -105,8 +107,6 @@ class Gh:
         self.calls.append(args)
         if args[:2] == ("pr", "view"):
             return json.dumps(self.pr)
-        if args[:2] == ("api", "user"):
-            return BOT
         if args[:2] == ("api", "--paginate"):
             return "\n".join(json.dumps(c) for c in self.comments)
         if args[:4] == ("api", "-X", "POST", "repos/o/r/git/commits"):
@@ -162,7 +162,9 @@ class Close(unittest.TestCase):
                 ("-X", "DELETE", "repos/o/r/git/refs/heads/backport/0.187/ccccccc"),
             ],
         )
-        self.assertEqual(bm.gh.calls[4][-1], "labels[]=backport-merged")
+        self.assertEqual(
+            bm.gh.calls[3][-1], "labels[]=backport-merged"
+        )  # after pr view and two deletes
 
     def test_close_with_comment_declines_and_keeps_head(self):
         out = self.close(
@@ -274,13 +276,22 @@ class Close(unittest.TestCase):
             {"headRefName": "backport/0.186/ccccccc"},
             {"headRefName": "backport/0.187/ccccccc-x"},
             {"headRefName": "backport/0.187/cccccc"},
-            {"author": {"login": ME}},
+            {"author": {"login": ME, "is_bot": False}},
+            {"author": {"login": BOT, "is_bot": False}},
+            {"author": {"login": "app/other-app", "is_bot": True}},
         ):
             bm.gh = Gh("CLOSED", labels=["backport-conflict"])
             bm.gh.pr.update(change)
             with self.assertRaises(RuntimeError):
                 bm.close("o/r", 7, ME)
             self.assertEqual(bm.gh.writes(), [])
+
+    def test_unset_app_slug_refused(self):
+        bm.gh = Gh("CLOSED", labels=["backport-conflict"])
+        with mock.patch.dict(os.environ, {"RELEASE_BOT_APP_SLUG": ""}):
+            with self.assertRaisesRegex(RuntimeError, "RELEASE_BOT_APP_SLUG is unset"):
+                bm.close("o/r", 7, ME)
+        self.assertEqual(bm.gh.writes(), [])
 
     def test_head_already_gone(self):
         def gh(*args, token=None):

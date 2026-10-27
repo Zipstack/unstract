@@ -7,7 +7,8 @@ Usage: backport.py --state state.json (--commits SHA|PR[,...] | --rescan) [--con
 that no pick or decline trailer there names: plain fixes too on fix targets (held accept=OWED), security/critical
 only on stabilized ones (accept=HELD, held for the RM without --confirm-stabilized). A run cancelled by a newer push
 costs nothing: the next run rescans. The exception is a run stopped after pushing a pick head and before opening
-its PR: after PICK_TIMEOUT that head fails later runs until a person deletes it (finish_open).
+its PR, or whose `gh pr create` failed: after PICK_TIMEOUT that head fails later runs until a person deletes it
+(finish_open).
 A decline carries the pick trailer, so a declined fix is never re-picked; an open conflict PR is left alone
 (`skipped: conflict PR pending`) until a person merges or closes it; an open clean pick PR whose merge failed in
 an earlier run is merged by the next run.
@@ -414,8 +415,22 @@ def held(slug, repo, branch, accept=HELD, cache=None, token=None):
     """
     remote = f"origin/{branch}"
     base = rm.git(repo, "merge-base", "origin/main", remote)
-    out = rm.git(repo, "rev-list", "--reverse", f"{base}..origin/main")
-    commits = out.split() if out else []
+    # First parent, no merges: a merge-back's merge and the old release commits it brings in are not main's own. The
+    # bot's direct commits (RC Helm bumps) are build-generated, as relmgr.classify_commit classes them.
+    out = rm.git(
+        repo,
+        "log",
+        "--reverse",
+        "--first-parent",
+        "--no-merges",
+        "--format=%H %ae",
+        f"{base}..origin/main",
+    )
+    commits = [
+        sha
+        for sha, email in (row.split(" ", 1) for row in out.splitlines())
+        if email.lower() != rm.BOT_EMAIL.lower()
+    ]
     classes = {} if cache is None else cache
     looked = 0
     for s in commits:
@@ -575,7 +590,9 @@ def pick_row(slug, sha, b, cls, pr, title):
 
 
 def rescan(slug, targets, confirm, listed):
-    """Push mode: (rows, awaiting, {branch: missing}) over every target since its cut (see the module doc)."""
+    """Push mode: (rows, awaiting, {branch: missing}) over every target since its cut (see the module doc).
+    Known limit: no test drives rescan itself; rescan_plan and held are tested on their own.
+    """
     scan, others = rescan_targets(targets, listed)
     rows = []
     for b in others:
@@ -719,6 +736,9 @@ def finish_open(slug, branch, head):
     failed in an earlier run: squash it now, unless it is a conflict pick that lost its label. A conflict PR or a
     person's commits wait for a person; a head with no open PR waits PICK_TIMEOUT for the run that pushed it, then
     fails until a person deletes it or reopens its PR.
+    Known limits: the open PR's author is not checked, so a PR a person opened on a backport/* head is squashed like
+    the bot's when it holds only a pick. A head whose PR was closed but whose decline record failed also reads as
+    "no open PR": deleting that head re-picks the declined fix; re-run the record job instead.
     """
     pending = "skipped", f"conflict PR pending on `{head}`"
     prs = json.loads(
@@ -807,7 +827,7 @@ def pick(slug, sha, branch, title, src):
             "git", "ls-remote", "--exit-code", "--heads", "origin", head, check=False
         ).returncode
         == 0
-    ):
+    ):  # known limit: any other ls-remote failure (network, auth) reads as "no head", and the pick push then fails
         return finish_open(slug, branch, head)
     labels = [x for name in fix_labels(slug, src) for x in ("--label", name)]
     run("git", "checkout", "-q", "--detach", remote)
@@ -910,6 +930,7 @@ def push_title(slug, sha):
     try:
         cls, pr, _ = fix_class(slug, sha)
     except ValueError as e:  # a title Lint PR should have stopped: the picks are done, only this line is left
+        # Known limit: a gh failure (RuntimeError) is not caught here and ends the run before its summary.
         print(f"::warning::{sha[:7]}: fix class: {e}")
         cls, pr = UNCLASSIFIABLE, "-"
     return f"Backport · push {rm.commit_link(sha)} ({link_pr(pr)}, {cls or 'not a fix'})"

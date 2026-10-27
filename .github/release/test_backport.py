@@ -149,7 +149,26 @@ class Listing(unittest.TestCase):
                 git("commit", "-q", "--allow-empty", "-m", f"c{i}")
                 shas.append(git("rev-parse", "HEAD"))
             cut, fix, sec, misc, bad, nopr = shas
-            git("update-ref", "refs/remotes/origin/main", nopr)
+            # Not held: the bot's direct commit, and a merge-back with the old release commit it brings in.
+            rm.git(
+                repo,
+                "-c",
+                "user.name=bot",
+                "-c",
+                f"user.email={rm.BOT_EMAIL}",
+                "commit",
+                "-q",
+                "--allow-empty",
+                "-m",
+                "Update Helm files for RC rc.1",
+            )
+            git("checkout", "-q", "-b", "old", cut)
+            git("commit", "-q", "--allow-empty", "-m", "old release fix")
+            git("checkout", "-q", "main")
+            git(
+                "merge", "-q", "--no-ff", "old", "-m", "Merge release v0.0.1 back to main"
+            )
+            git("update-ref", "refs/remotes/origin/main", "HEAD")
             git("update-ref", "refs/remotes/origin/release/0.1", cut)
             pr = lambda n, sha, title, labels=(): {
                 "number": n,
@@ -371,6 +390,47 @@ class DispatchNonFix(unittest.TestCase):
             ],
         )
         self.assertEqual(awaiting, [])
+
+
+class DispatchHold(unittest.TestCase):
+    def test_security_waits_for_rm_on_a_stabilized_line(self):
+        sec, fix = "s" * 40, "f" * 40
+        classes = {
+            sec: ("security", "#3", "UN-3 [FIX] x"),
+            fix: ("fix", "#4", "UN-4 [FIX] y"),
+        }
+        targets = {
+            "fix": ["release/0.191"],
+            "security_critical": [
+                {"branch": "release/0.191", "needs_rm_confirmation": False},
+                {"branch": "release/0.190", "needs_rm_confirmation": True},
+            ],
+        }
+        with (
+            mock.patch.object(bp, "resolve", lambda slug, c: c),
+            mock.patch.object(bp, "main_order", lambda repo, shas: shas),
+            mock.patch.object(bp, "fix_class", lambda slug, sha: classes[sha]),
+            mock.patch.object(bp, "pick_row", lambda slug, sha, b, *a: (sha, b)),
+        ):
+            run = lambda confirm: bp.dispatch("o/r", targets, f"{sec} {fix}", confirm, [])
+            self.assertEqual(
+                run(False),
+                (
+                    [(sec, "release/0.191"), (fix, "release/0.191")],
+                    [(sec, "release/0.190", "security", "#3")],
+                ),
+            )
+            self.assertEqual(
+                run(True),
+                (
+                    [
+                        (sec, "release/0.191"),
+                        (sec, "release/0.190"),
+                        (fix, "release/0.191"),
+                    ],
+                    [],
+                ),
+            )
 
 
 class PushSummary(unittest.TestCase):

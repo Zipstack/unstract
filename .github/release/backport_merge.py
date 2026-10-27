@@ -19,7 +19,7 @@ the bot's: each case sets exactly one `backport-*` label and removes the others.
   head's sha7. Otherwise -> no decline commit: the bot comments and the run fails.
 - open (reopened): label `backport-conflict`, nothing else. Merging it then lands the pick after the decline, and
   the newest trailer on the line wins (relmgr.trailer_states): the fix counts as shipped again.
-Run from a full clone of main, GH_TOKEN = bot token.
+Run from a full clone of main, GH_TOKEN = the release App's installation token, RELEASE_BOT_APP_SLUG = its slug.
 """
 
 import argparse
@@ -155,6 +155,7 @@ def squash(slug, pr, msg, sleep=time.sleep):
         except RuntimeError as e:
             # A required check GitHub still waits for: the caller reports it. Accepted: this matches GitHub's
             # "Required status check ... is expected/in progress" wording, which GitHub does not document as stable.
+            # Known limit: a 405 naming a failed status check matches too and reads as pending.
             if "status check" in str(e).lower():
                 print(f"#{pr['number']}: {str(e).splitlines()[0]}")
                 return False
@@ -278,11 +279,17 @@ def record(slug, n, sender):
         raise RuntimeError(
             f"#{n} is not a backport PR ({head} into {base}): nothing recorded"
         )
-    # A head name and trailer are strings any writer can push; only a PR the bot opened is its pick. GH_TOKEN is the
-    # bot token Backport opens pick PRs with, so its own login is the one to compare.
-    if (author := pr["author"]["login"]) != (bot := gh("api", "user", "--jq", ".login")):
+    # A head name and trailer are strings any writer can push; only a PR the bot opened is its pick. Backport opens
+    # pick PRs with the release App's installation token, so they are authored by app/<its slug>. That token cannot
+    # read `gh api user`, so the slug comes from the workflow.
+    if not (app := os.environ.get("RELEASE_BOT_APP_SLUG")):
         raise RuntimeError(
-            f"#{n} was opened by @{author}, not by the bot (@{bot}): nothing recorded"
+            f"#{n}: RELEASE_BOT_APP_SLUG is unset (the release App's slug): nothing recorded"
+        )
+    author, bot = pr["author"], f"app/{app}"
+    if not author.get("is_bot") or author["login"] != bot:
+        raise RuntimeError(
+            f"#{n} was opened by @{author['login']}, not by the bot (@{bot}): nothing recorded"
         )
     if pr["state"] == "OPEN":
         set_label(slug, pr, CONFLICT)

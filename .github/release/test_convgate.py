@@ -292,7 +292,7 @@ class Gate(unittest.TestCase):
         )
         self.assertEqual(code, 2)
         msg = (
-            f"Cannot promote release/1.5 for cloud: fix {c7} is not on newer release/1.6 yet. "
+            f"Cannot promote release/1.5 for cloud: fix {c7} is not on newer release/1.6 yet; an older line never ships a fix its newer line lacks, even one picked after the RC being promoted. "
             "Conflict PR #12 on release/1.6: resolve, get one approval and merge, or close the PR to decline (the close comment is the reason)."
         )
         self.assertIn(f"::error::{msg}", self.printed)
@@ -318,7 +318,8 @@ class Gate(unittest.TestCase):
         self.assertEqual(code, 2)
         msg = (
             f"Promote of release/1.5 for cloud will be blocked: fix {d[:7]} (PR #9) is not on newer release/1.6 "
-            f"yet. No Backport PR found for it: run Backport for {d[:7]}, or decline it on release/1.6."
+            "yet; an older line never ships a fix its newer line lacks, even one picked after the RC being promoted. "
+            f"No Backport PR found for it: run Backport for {d[:7]}, or decline it on release/1.6."
         )
         self.assertIn(f"::warning::{msg}", self.printed)
         self.assertNotIn("::error::", self.printed)
@@ -327,7 +328,7 @@ class Gate(unittest.TestCase):
             "release/1.5", failures={(9, "release/1.6"): "https://x/runs/5"}
         )
         self.assertIn(
-            f"(PR #9) is not on newer release/1.6 yet. Backport for {d[:7]} to release/1.6 failed: push "
+            f"(PR #9) is not on newer release/1.6 yet; an older line never ships a fix its newer line lacks, even one picked after the RC being promoted. Backport for {d[:7]} to release/1.6 failed: push "
             f"rejected (run https://x/runs/5). Rerun Backport for {d[:7]} on release/1.6.",
             out,
         )

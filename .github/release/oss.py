@@ -188,6 +188,7 @@ def gate(oss, branch, ref, annotate):
     return r.returncode
 
 
+# Known limit: line is not checked to be X.Y.
 def cut(oss, line, slack_url=""):
     """Cut OSS release/<line> from OSS main's tip plus its first RC. Refused when the OSS line exists, unless it is
     this cut's own result from an earlier run (its tip the bot bump carrying ee-v<line>.0-rc.1), or when the minor
@@ -242,6 +243,7 @@ def rc(oss, branch, slack_url=""):
     return tag
 
 
+# Known limit: force accepts an empty reason.
 def promote(repo, oss, cloud_rc, force=False, reason=""):
     """The stable OSS tag of the OSS RC cloud_rc pins, tagging it when it has none yet. Open backport conflict PRs on
     the OSS line (or a failed listing of them) and its gate block first unless force; the other cloud product finds

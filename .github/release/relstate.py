@@ -22,7 +22,7 @@ import urllib.request
 
 import relmgr as rm
 
-# On-prem support window from the line's latest stable chart push, so each patch restarts it.
+# On-prem support window from the line's first stable chart push (its GA); a patch does not extend it.
 WINDOW = dt.timedelta(days=184)  # 184 days covers the longest 6-month span
 WINDOW_LINES = (
     6  # and only the newest 6 on-prem GA lines are supported, whichever ends first
@@ -259,10 +259,12 @@ def rc_slack(repo, tag):
 def target_state(t, name, rows, now):
     """State of target t on an enabled branch. The one place the GA/supported convention lives.
 
-    On-prem: stabilized for WINDOW after the line's latest stable chart push (a patch restarts it), and only while
+    On-prem: stabilized for WINDOW after the line's first stable chart push (a patch does not extend it), and only while
     among the newest WINDOW_LINES lines with an on-prem GA. A LATEST_ONLY target (cloud): only the latest GA branch
     for it stays stabilized; older GA branches are past-eos for it. A KEPT target (OSS): stabilized from its GA
     while the branch exists; the cloud lines pinning it decide its retirement, and cloud Retire names it.
+    Known limit: a KEPT target is stabilized from its first ee-vX.Y.0 while its cloud line may still be stabilizing,
+    so plain fixes stop going to the OSS line before the cloud line's GA.
     """
     ga = rows[name]["targets"][t]["ga"]
     if not ga:
@@ -296,12 +298,9 @@ def _main(repo):
 
 def _next_minor(repo, ordered):
     """One minor past the highest release/X.Y line, shipped retired line or stable vX.Y.Z on main, so a cut never
-    reuses a minor shipped by this flow. A line retired early before any GA (retired/X.Y-<sha7>, its RCs deleted) is
-    reused.
+    reuses a shipped minor. A line retired early before any GA (retired/X.Y-<sha7>, its RCs deleted) is reused.
 
-    With no release/X.Y branch yet (cutover) only the tags count. A stable tag that is not on main does not count
-    (that keeps strays such as v100.0.x out), so an old-flow release not yet merged back can be proposed again:
-    check the proposal against `git tag -l` before the first cut.
+    With no release/X.Y branch yet (cutover) only the tags count.
     """
     main = _main(repo)
     lines = [
@@ -397,12 +396,13 @@ def derive(repo, now, registry=registry_tags, rc=None):
             # On-prem GA reads the chart artifact: RC chart pushes are tagged 0.0.0-rc.N and match no line; the
             # stable chart push is tagged vX.Y.Z (push-charts-to-gcr.yaml checks it against the release tag).
             stable = re.compile(rf"{re.escape(PREFIX)}v{re.escape(row['line'])}\.\d+")
-            # ga anchors state and the support window; promoted (the build artifact's latest stable) is what ships next
-            for key, artifact in (("ga", anchor), ("promoted", builds)):
+            # ga (the anchor's first stable) anchors state and the support window; promoted (the build artifact's
+            # latest stable) is what ships next
+            for key, artifact, pick in (("ga", anchor, 0), ("promoted", builds, -1)):
                 if tags := sorted(
                     (g for g in reg[artifact] if stable.fullmatch(g)), key=_vkey
                 ):
-                    tt[key] = {"tag": tags[-1], **reg[artifact][tags[-1]]}
+                    tt[key] = {"tag": tags[pick], **reg[artifact][tags[pick]]}
 
     for name, row in rows.items():
         for t, tt in row["targets"].items():
@@ -501,6 +501,7 @@ def abandon_plan(repo, branch, registry=registry_tags):
     versions, kept = {}, []
     for a, tags in reg.items():
         by_digest = {}
+        # Known limit: string order, so the version kept as last below can be rc.9's when rc.10 exists.
         for t, info in sorted(tags.items()):
             by_digest.setdefault(
                 info["digest"],
@@ -539,9 +540,8 @@ def promote_blockers(state, branch, target):
     promote retag or the on-prem chart push. A retired line is gone from the state, so it never blocks.
     """
     # Not applied to a KEPT target (OSS). The order protects customers who stay on a line and upgrade later
-    # (on-prem windows). OSS community users run only :latest, which moves only on the newest line, so an older
-    # line shipping after a newer one reaches nobody. Each OSS line goes GA with its cloud line, so the order
-    # would hold a community release on the newest line until the previous cloud line is GA.
+    # (on-prem windows). Each OSS line goes GA with its cloud line, so the order would hold an OSS line until the
+    # previous cloud line is GA.
     if target in KEPT:
         return []
     line = _key(branch.split("/", 1)[1])

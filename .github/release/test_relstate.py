@@ -219,6 +219,14 @@ class Scenario(unittest.TestCase):
         self.assertEqual(st["supported"], {"cloud": ["release/1.5"], "on-prem": []})
         self.assertEqual(st["retire"], [])
 
+    def test_5b_onprem_window_from_first_ga(self):
+        # A patch chart push does not extend the window: it runs from the line's first stable chart push.
+        self.s4(chart_days=200)
+        self.push("chart/unstract-platform", "v1.5.2", days=1)
+        tt = self.branch(self.state(), "release/1.5")["targets"]["on-prem"]
+        self.assertEqual(tt["state"], "past-eos")
+        self.assertEqual(tt["ga"], self.ga("chart/unstract-platform", "v1.5.1"))
+
     def test_6_newer_cloud_ga(self):
         self.s6()
         st = self.state()
@@ -922,6 +930,21 @@ class Scenario(unittest.TestCase):
                 self.repo,
                 self.commit(f"Revert\n\nThis reverts commit {fix}.", "release/1.5"),
             )
+        )
+
+    def test_35b_forged_pick_trailer_is_invalid(self):
+        # A trailer naming a commit that is not on main is not a pick of a main original.
+        self.cut("1.5")
+        work = self.g("rev-parse", "release/1.5")  # on the line only
+        before = work
+        forged = self.commit(f"fix\n\n(cherry picked from commit {work})", "release/1.5")
+        self.assertEqual(rm.classify_commit(self.repo, forged, main="main"), "invalid")
+        self.g("checkout", "-q", "release/1.5")
+        self.assertEqual(
+            rm.ci_commits(self.repo, "release/1.5", "push", before=before, main="main")[
+                0
+            ],
+            [(forged, "invalid")],
         )
 
     def test_35_ci_commits(self):

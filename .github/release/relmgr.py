@@ -13,7 +13,8 @@ PICK_RE = re.compile(r"\(cherry picked from commit ([0-9a-f]{7,40})\)")
 # Anywhere in the message, at a line start; `* ` too, because a squash with COMMIT_MESSAGES lists each commit's
 # subject as `* <subject>` and the bot's Release-branch-only commit is subject-only.
 RBO_RE = re.compile(r"^(?:\* )?Release-branch-only: (\S+)", re.M)
-# `UN-1 [FIX] x` or `[FIX] x`: the ticket is optional.
+# `UN-1 [FIX] x` or `[FIX] x`: the ticket is optional. Known limit: one ticket only, so `UN-1 UN-2 [FIX] x` fails
+# Lint PR and is unclassifiable for Backport.
 PR_TITLE_RE = re.compile(
     r"^(?:(?P<ticket>[A-Z][A-Z0-9]*-\d+) )?\[(?P<type>FIX|HOT-FIX|FEAT|GATED-FEAT|DOCS|DEPS|MISC|DEV|WIP)\] \S"
 )
@@ -249,6 +250,8 @@ def ci_commits(
             and not pick_trailer(head_ref, git(repo, "log", "-1", "--format=%B", c))
         ):
             kind = "invalid"
+        # Known limit: the label passes every invalid commit; it does not check that a Release-branch-only line will
+        # be in the squash (a fork PR, or a merge before the bot pushes that commit).
         rows.append(
             (c, "release-branch-only (label)" if labelled and kind == "invalid" else kind)
         )
@@ -440,7 +443,9 @@ def promote_version(repo, rc_tag):
 
 
 def is_converged(repo, c_main, branch, main="main"):
-    """Inherited (ancestor) or picked/declined after the cut (trailer in merge-base..branch)."""
+    """Inherited (ancestor) or picked/declined after the cut (trailer in merge-base..branch).
+    Known limit: no test covers the inherited path (a commit from before the cut) on its own.
+    """
     full = git(repo, "rev-parse", f"{c_main}^{{commit}}")
     if is_ancestor(repo, full, branch):
         return True
