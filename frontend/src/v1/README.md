@@ -28,7 +28,7 @@ Every folder may import from itself. Test files (`*.test.ts(x)`,
 | `components/ui/` | Core components | `lib/`, `styles/` |
 | `components/patterns/` | Composites built from core components | `components/ui/`, `lib/`, `services/`, `stores/`, `hooks/` |
 | `shell/` | Top bar, rail, context bar, tab bar | `components/ui/`, `components/patterns/`, `services/`, `stores/`, `hooks/`, `lib/` |
-| `pages/<page>/` | One folder per target page | everything except other pages |
+| `pages/<page>/` | One folder per target page | `components/ui/`, `components/patterns/`, `shell/`, `services/`, `stores/`, `hooks/`, `lib/`, `styles/`, `plugins/` — not other pages, `app/`, `test/` or the entry |
 | `services/` | Typed service modules; the only place a URL appears | `lib/` |
 | `stores/` | Zustand stores | `lib/` |
 | `hooks/` | Shared hooks | `lib/` |

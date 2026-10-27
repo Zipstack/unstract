@@ -33,7 +33,8 @@ const runCode = args.includes("--code") || !args.includes("--files");
 const ALL = "*";
 /*
  * Folder -> folders it may import from, besides itself. `entry` is
- * src/v1/index.ts. Pages may import everything except other pages.
+ * src/v1/index.ts. Pages may not import other pages, app/, test/ (except
+ * from test files) or the entry.
  * Mirrors the table in src/v1/README.md; change both together.
  */
 const CONTRACT = {
@@ -41,7 +42,17 @@ const CONTRACT = {
   app: ALL,
   plugins: ALL,
   test: ALL,
-  pages: ALL,
+  pages: [
+    "components/ui",
+    "components/patterns",
+    "shell",
+    "services",
+    "stores",
+    "hooks",
+    "lib",
+    "styles",
+    "plugins",
+  ],
   "components/ui": ["lib", "styles"],
   "components/patterns": [
     "components/ui",

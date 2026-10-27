@@ -343,7 +343,17 @@ const MAY_IMPORT = {
   app: EVERYTHING,
   plugins: EVERYTHING,
   test: EVERYTHING,
-  "pages/a": EVERYTHING.filter((f) => f !== "pages/b"),
+  "pages/a": [
+    "components/ui",
+    "components/patterns",
+    "shell",
+    "services",
+    "stores",
+    "hooks",
+    "lib",
+    "styles",
+    "plugins",
+  ],
   "components/ui": ["lib", "styles"],
   "components/patterns": [
     "components/ui",
