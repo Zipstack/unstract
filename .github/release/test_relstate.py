@@ -1,5 +1,5 @@
-"""Synthetic-repo tests for relstate (derive 1-11, on-prem newest six 7b, cutover fallback 12, retired-line history 13, tip_rc 14, summary 15, tip_rc Slack link 20, Release-branch-only line in a squash message 21, abandon_plan 16-17, pr_fix_class 18, revert titles 18b, ticketless titles 18c, Release-branch-only key 18d, release-branch-only label 18e, ahead_of_ga 19, promote order per target 22, enable a target on the newest line only 23, no order block on a GA line 23b, already_bumped 24, promoted from the build artifact 25, OSS repo config 26 (ee- git tags, plain v* ignored, lines kept while the branch exists), next_minor past a stable tag on main 27, bump with no chart 28, retire_line refusals and the retired line's minor 29, RC allocation past registry RCs 30, a reused minor past its kept RC 31, shallow clone refused 32, conflict-marker grep error 33, a revert of another line's pick 34, release-branch CI commit selection 35, backport head names 36, unknown repo config 37, Artifact Registry reads 38-41 and 39b). Run: python test_relstate.py. No workflow runs the .github/release suites yet: run all six locally before
-changing this directory.
+"""Synthetic-repo tests for relstate (derive 1-11, on-prem newest six 7b, cutover fallback 12, retired-line history 13, tip_rc 14, summary 15, tip_rc Slack link 20, Release-branch-only line in a squash message 21, abandon_plan 16-17, pr_fix_class 18, revert titles 18b, ticketless titles 18c, Release-branch-only key 18d, release-branch-only label 18e, ahead_of_ga 19, promote order per target 22, enable a target on the newest line only 23, no order block on a GA line 23b, already_bumped 24, promoted from the build artifact 25, OSS repo config 26 (ee- git tags, plain v* ignored, lines kept while the branch exists), next_minor past a stable tag on main 27, bump with no chart 28, retire_line refusals and the retired line's minor 29, RC allocation past registry RCs 30, a reused minor past its kept RC 31, shallow clone refused 32, conflict-marker grep error 33, a revert of another line's pick 34, release-branch CI commit selection 35, backport head names 36, unknown repo config 37, Artifact Registry reads 38-41 and 39b). Run: python test_relstate.py. release-tooling-tests.yaml runs all six on a pull request
+that changes this directory.
 """
 
 import contextlib
@@ -721,7 +721,7 @@ class Scenario(unittest.TestCase):
 
     def test_26_oss_repo_config(self):
         # The OSS repo runs this same file: one target, oss, read from the line's own ee- git tags (no registry),
-        # supported while its branch exists. Plain v* tags are community releases from main and never count.
+        # supported while its branch exists once its on-prem-ga/X.Y tag is there. Plain v* tags are community releases from main and never count.
         self.addCleanup(rs.use, rs.SLUG)
         rs.use("unstract")
         self.state = lambda: rs.derive(
@@ -735,6 +735,13 @@ class Scenario(unittest.TestCase):
             self.g("tag", f"v{line}.7", f"release/{line}")  # never the line's GA
         self.cut("1.7")
         self.g("tag", "ee-v1.7.0-rc.1", "release/1.7")
+        # Stabilizing past its own ee-vX.Y.0 until the paired cloud line's on-prem GA tags it.
+        self.g("tag", "on-prem-ga/1.5", "release/1.5")
+        self.assertEqual(
+            [(b["branch"], b["state"]) for b in self.state()["branches"]][1:],
+            [("release/1.6", "stabilizing"), ("release/1.5", "stabilized")],
+        )
+        self.g("tag", "on-prem-ga/1.6", "release/1.6")
         st = self.state()
         self.assertEqual(
             [(b["branch"], b["state"]) for b in st["branches"]],

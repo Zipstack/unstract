@@ -218,6 +218,25 @@ class Lines(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "did not run"):
             oss.promote(self.cloud, self.oss, "v1.7.1-rc.2", force=True, reason="x")
 
+    def test_on_prem_promote_tags_on_prem_ga_once(self):
+        # The OSS line stays stabilizing until its cloud line's on-prem GA: only --on-prem writes the tag, once.
+        self.quiet(oss.cut, self.oss, "1.7")
+        self.pin("ee-v1.7.0-rc.1", "v1.7.0-rc.1")
+        oss.promote(self.cloud, self.oss, "v1.7.0-rc.1")  # the cloud product
+        self.assertEqual(self.remote("tag", "-l", "on-prem-ga/*"), "")
+        self.clone()
+        oss.promote(self.cloud, self.oss, "v1.7.0-rc.1", on_prem=True)
+        ga = self.remote("rev-parse", "ee-v1.7.0^{commit}")
+        self.assertEqual(self.remote("rev-parse", "on-prem-ga/1.7^{commit}"), ga)
+        self.work("release/1.7", "oss fix")
+        self.quiet(oss.rc, self.oss, "release/1.7")
+        self.pin("ee-v1.7.1-rc.1", "v1.7.1-rc.1")
+        self.clone()
+        self.assertEqual(
+            oss.promote(self.cloud, self.oss, "v1.7.1-rc.1", on_prem=True), "ee-v1.7.1"
+        )
+        self.assertEqual(self.remote("rev-parse", "on-prem-ga/1.7^{commit}"), ga)
+
     def test_promote_refuses_a_downgrade(self):
         self.quiet(oss.cut, self.oss, "1.7")
         self.work("release/1.7", "oss fix")

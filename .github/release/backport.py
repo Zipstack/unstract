@@ -782,16 +782,23 @@ def finish_open(slug, branch, head):
             "failed",
             f"head {head} exists with no open PR: delete it or reopen its PR, then rerun",
         )
-    if len(prs) != 1 or any(x["name"].startswith("backport-") for x in prs[0]["labels"]):
+    if len(prs) != 1:
         return pending
     pr, remote = prs[0], f"origin/{branch}"
-    run("git", "fetch", "-q", "origin", f"+refs/heads/{head}:refs/remotes/origin/{head}")
     # The bot squashes with a token that bypasses the release ruleset: only its own PR, with one commit carrying
-    # its pick trailer (the trailer, not the content: see the docstring).
+    # its pick trailer (the trailer, not the content: see the docstring). A person's PR fails even when labelled:
+    # the record job would refuse it once merged.
     if why := bm.bot_refusal(pr):
         return "failed", f"{why}: not merged"
-    if rm.git(REPO, "rev-list", "--count", f"{remote}..{pr['headRefOid']}") != "1":
+    if any(x["name"].startswith("backport-") for x in pr["labels"]):
         return pending
+    run("git", "fetch", "-q", "origin", f"+refs/heads/{head}:refs/remotes/origin/{head}")
+    # A person's commit on the bot's unlabelled PR (say a fixup after a failed squash): no conflict PR lists it.
+    if (n := rm.git(REPO, "rev-list", "--count", f"{remote}..{pr['headRefOid']}")) != "1":
+        return "failed", (
+            f"#{pr['number']} has {n} commits, not the one pick: not merged; label it backport-conflict, then "
+            "merge it, or close it to decline"
+        )
     msg = rm.git(REPO, "log", "-1", "--format=%B", pr["headRefOid"])
     if not rm.pick_trailer(head, msg):
         return (

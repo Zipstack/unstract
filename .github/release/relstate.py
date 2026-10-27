@@ -74,6 +74,8 @@ use(SLUG)
 
 
 AR_API = "https://artifactregistry.googleapis.com/v1"
+# OSS tag on-prem-ga/X.Y: the paired cloud line reached on-prem GA. OSS git cannot see the cloud registry.
+ON_PREM_GA = "on-prem-ga/"
 
 
 def ar_repository(kind):
@@ -261,16 +263,15 @@ def target_state(t, name, rows, now):
 
     On-prem: stabilized for WINDOW after the line's first stable chart push (a patch does not extend it), and only while
     among the newest WINDOW_LINES lines with an on-prem GA. A LATEST_ONLY target (cloud): only the latest GA branch
-    for it stays stabilized; older GA branches are past-eos for it. A KEPT target (OSS): stabilized from its GA
+    for it stays stabilized; older GA branches are past-eos for it. A KEPT target (OSS): stabilizing until its
+    paired cloud line's on-prem GA (the ON_PREM_GA tag, which `oss.py promote --on-prem` writes), then stabilized
     while the branch exists; the cloud lines pinning it decide its retirement, and cloud Retire names it.
-    Known limit: a KEPT target is stabilized from its first ee-vX.Y.0 while its cloud line may still be stabilizing,
-    so plain fixes stop going to the OSS line before the cloud line's GA.
     """
     ga = rows[name]["targets"][t]["ga"]
     if not ga:
         return "stabilizing"
     if t in KEPT:
-        return "stabilized"
+        return "stabilized" if rows[name]["targets"][t]["on_prem_ga"] else "stabilizing"
     t_ga = sorted(
         (n for n, r in rows.items() if r["targets"].get(t, {}).get("ga")),
         key=lambda n: _key(rows[n]["line"]),
@@ -405,6 +406,8 @@ def derive(repo, now, registry=registry_tags, rc=None):
                     (g for g in reg[artifact] if stable.fullmatch(g)), key=_vkey
                 ):
                     tt[key] = {"tag": tags[pick], **reg[artifact][tags[pick]]}
+            if t in KEPT:
+                tt["on_prem_ga"] = bool(_tag_commit(repo, ON_PREM_GA + row["line"]))
 
     for name, row in rows.items():
         for t, tt in row["targets"].items():

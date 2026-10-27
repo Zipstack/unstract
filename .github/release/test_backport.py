@@ -764,9 +764,15 @@ class FinishOpen(unittest.TestCase):
             "person",
         )
         self.g("push", "-q", "origin", "HEAD:refs/heads/backport/1.0/aaaaaaa")
+        # A person's commit on top of the bot's unlabelled PR: failed, so the run's summary shows it.
         self.assertEqual(
-            self.finish(oid=self.g("rev-parse", "HEAD")), pending
-        )  # a person's commit on top
+            self.finish(oid=self.g("rev-parse", "HEAD")),
+            (
+                "failed",
+                "#4 has 2 commits, not the one pick: not merged; label it backport-conflict, then merge it, "
+                "or close it to decline",
+            ),
+        )
         self.assertEqual(self.merged, [])
 
     def test_head_without_a_pr_fails(self):
@@ -798,11 +804,15 @@ class FinishOpen(unittest.TestCase):
             {"login": "dev", "is_bot": False},
             {"login": "app/other", "is_bot": True},
         ):
-            out = self.finish(author=author)
-            self.assertEqual(out[0], "failed")
-            self.assertIn(
-                "not by the bot (@app/zipstack-push-to-main): not merged", out[1]
-            )
+            for labels in (
+                [],
+                ["backport-conflict"],
+            ):  # labelled too: it never waits as a conflict PR
+                out = self.finish(author=author, labels=labels)
+                self.assertEqual(out[0], "failed")
+                self.assertIn(
+                    "not by the bot (@app/zipstack-push-to-main): not merged", out[1]
+                )
         # A person's PR with two commits fails too, rather than waiting silently as a conflict PR.
         self.g(
             "-c",
@@ -819,6 +829,7 @@ class FinishOpen(unittest.TestCase):
             oid=self.g("rev-parse", "HEAD"), author={"login": "dev", "is_bot": False}
         )
         self.assertEqual(out[0], "failed")
+        self.assertIn("not by the bot", out[1])
         for msg in ("fix: x", "fix: x\n\n(cherry picked from commit " + "b" * 40 + ")"):
             out = self.finish(oid=self.push(msg))
             self.assertEqual(

@@ -5,7 +5,10 @@ Usage (OSS_REPO: a clone of the OSS repo with full history, tags and origin/rele
   oss.py cut --line X.Y [--slack-url URL]               cut OSS release/X.Y from OSS main; prints ee-vX.Y.0-rc.1
   oss.py rc --branch release/X.Y [--slack-url URL]      the tag to pin for the next RC of a cloud line: the tag on
                                                         its OSS line's tip, after a new OSS RC when the tip has none
-  oss.py promote --rc vX.Y.Z-rc.N [--force --reason R]  promote the OSS RC the cloud RC pins; prints the stable tag
+  oss.py promote --rc vX.Y.Z-rc.N [--force --reason R] [--on-prem]
+                                                        promote the OSS RC the cloud RC pins; prints the stable tag.
+                                                        --on-prem (the cloud line's on-prem promote) also tags the
+                                                        OSS line on-prem-ga/X.Y once, which makes it stabilized
 retire(): called by cloud Retire for each cloud line it retires.
 
 cut, rc and promote print one OSS tag on stdout. Every write is re-runnable: a tag already on the same commit is
@@ -244,7 +247,29 @@ def rc(oss, branch, slack_url=""):
 
 
 # Known limit: force accepts an empty reason.
-def promote(repo, oss, cloud_rc, force=False, reason=""):
+def promote(repo, oss, cloud_rc, force=False, reason="", on_prem=False):
+    """The stable OSS tag of the OSS RC cloud_rc pins (_promote). on_prem: the cloud line's on-prem promote, so the
+    OSS line's on-prem-ga/X.Y tag goes on that stable tag's commit when the line has none (a later patch keeps it).
+    Known limit: the tag marks the promote, not the chart push after it; a failed chart push leaves the OSS line
+    stabilized before its cloud line's on-prem GA.
+    """
+    stable = _promote(repo, oss, cloud_rc, force, reason)
+    mark = rs.ON_PREM_GA + line_of(stable).split("/", 1)[1]
+    if on_prem and not rs._tag_commit(oss, mark):
+        sha = rs._tag_commit(oss, stable)
+        if not sha:
+            raise RuntimeError(f"no OSS tag {stable}")
+        _tag_push(
+            oss,
+            mark,
+            sha,
+            [f"on-prem GA: {stable} (cloud {cloud_rc})"],
+            f"refs/tags/{mark}",
+        )
+    return stable
+
+
+def _promote(repo, oss, cloud_rc, force, reason):
     """The stable OSS tag of the OSS RC cloud_rc pins, tagging it when it has none yet. Open backport conflict PRs on
     the OSS line (or a failed listing of them) and its gate block first unless force; the other cloud product finds
     the tag and skips both.
@@ -381,6 +406,7 @@ def main(argv=None):
     m.add_argument("--rc", required=True)
     m.add_argument("--force", action="store_true")
     m.add_argument("--reason", default="")
+    m.add_argument("--on-prem", action="store_true")
     a = p.parse_args(argv)
     try:
         if not a.oss_repo:
@@ -390,7 +416,7 @@ def main(argv=None):
             if a.cmd == "cut"
             else rc(a.oss_repo, a.branch, a.slack_url)
             if a.cmd == "rc"
-            else promote(".", a.oss_repo, a.rc, a.force, a.reason)
+            else promote(".", a.oss_repo, a.rc, a.force, a.reason, a.on_prem)
         )
     except RuntimeError as e:
         print(f"::error::{e}", file=sys.stderr)  # stdout is the tag the workflow captures
