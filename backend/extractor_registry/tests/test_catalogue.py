@@ -165,40 +165,24 @@ class CatalogueShapeTest(SimpleTestCase):
         self.assertEqual(len(names), len(set(names)))
 
 class EnumValuesArePersistedLiteralsTest(SimpleTestCase):
-    """The enum VALUES are database content, so pin them, not just their shape.
+    """The enum VALUES are database content; pin them, not just their shape.
 
     These strings are what ``agentic_extractor_agent_config.agent_key`` and
-    ``.kind`` physically hold, and they are frozen a second time as literal
-    tuples in that app's migration ``0009_extraction_profiles`` (``_KIND_CHOICES``
-    / ``_KEY_CHOICES``) -- in the CLOUD repository, which this repository's CI
-    never checks out. So an edit here that renames a value cannot be caught by
-    anything on this side unless it is caught here.
+    ``.kind`` hold, and they are frozen again as literal tuples in the cloud
+    app's migration ``0009_extraction_profiles`` -- a repository this CI never
+    checks out, so a rename here is catchable only here. A rename is silent at
+    run time: ``get_agent("simple")`` returns None for every row already
+    written, and ``kind``-filtered queries stop matching.
 
-    It was not caught on the other side either, until the cloud app grew
-    ``EnumsMatchTheMigrationLiteralsTest`` to compare the enums against those
-    same migration literals -- that one now fails a rename too, from the other
-    direction. Before either test existed this was measured, not assumed:
-    renaming ``SIMPLE`` to ``"simple_x"`` and ``SPECIALIZED`` to
-    ``"specialized_x"`` left every test green in the selection this work is run
-    against (``pytest pluggable_apps/agentic_studio_v1 agent_kv
-    extractor_registry -m 'not integration'``) -- a few hundred tests, not the
-    whole backend unit tier, which is an order of magnitude larger. The consequence is silent -- ``get_agent("simple")`` returns None for
-    every row already written, so every saved profile raises "Unknown Primary
-    Extractor Agent", and ``kind``-filtered queries stop matching, which makes
-    an existing profile look like it has no primary agent at all.
-
-    The sibling tests here deliberately do NOT cover this: they compare
-    ``EXTRACTOR_AGENTS`` against ``ExtractorAgentKey.values``, and both sides
-    move together under a rename, so they are self-referential for this
-    purpose. Asserting the literals is the only form that fails.
+    The sibling tests compare ``EXTRACTOR_AGENTS`` against
+    ``ExtractorAgentKey.values``; both sides move together under a rename, so
+    only asserting the literals fails.
     """
 
-    # MEMBER -> VALUE, not a set of values. A set is invariant under
-    # PERMUTATION: swap SIMPLE's and TABLE's values and `set(values)` is
-    # unchanged, so a set-equality pin passes while every caller referring to
-    # `ExtractorAgentKey.SIMPLE` silently starts resolving to "table". Found
-    # the hard way -- a permutation sat live in this tree and the whole
-    # selection stayed green.
+    # MEMBER -> VALUE, not a set of values: a set is invariant under
+    # permutation, so swapping two members' values passes a set-equality pin
+    # while every caller of `ExtractorAgentKey.SIMPLE` resolves to the wrong
+    # string.
     def test_agent_key_members_map_to_the_persisted_literals(self) -> None:
         self.assertEqual(
             {member.name: member.value for member in ExtractorAgentKey},

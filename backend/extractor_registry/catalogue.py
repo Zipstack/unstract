@@ -50,25 +50,10 @@ EXTRACTOR_AGENTS: dict[str, ExtractorAgentSpec] = {
         supports_multimodal=True,
         # NOT DEPLOYED. `workers/plugins/agentic_kv` lives on the UN-4044
         # branch and is not on main in either repo, so neither door may run
-        # it. Both doors read this flag: the Studio lists the agent and
-        # refuses it at dispatch (rather than silently falling back to the
-        # Simple pipeline, which is what happened while both Studio entries
-        # pointed at `agentic`/`agentic_extract`), and `api_routes()` drops it
-        # so a submit is rejected at the serializer.
-        #
-        # Flipping this to True without the plugin deployed is the failure it
-        # guards: the submit would be accepted with a 202, dispatched to a
-        # queue with no consumer, and sit in DISPATCHED forever with no error
-        # at the producer and nothing in any log to find.
-        #
-        # Flipping it is also not sufficient on its own -- see the `available`
-        # entry in `spec.py` for what each door needs besides this flag. For
-        # the Studio that is a parameter builder, which lives in the cloud
-        # tree: setting this True here without it lands an agent the Studio
-        # offers in its picker and then refuses when the profile is SAVED --
-        # not at run time. The Studio's accept path gates on dispatchability,
-        # so no profile naming such an agent is ever stored and no run ever
-        # happens. See `is_dispatchable` in the cloud app's agent_dispatch.
+        # it. Flipping this True without the plugin deployed would accept a
+        # submit with a 202 onto a queue with no consumer, leaving it
+        # DISPATCHED forever with nothing in any log. It is also not
+        # sufficient on its own -- see the `available` entry in `spec.py`.
         available=False,
     ),
     ExtractorAgentKey.TABLE: ExtractorAgentSpec(

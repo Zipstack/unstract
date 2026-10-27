@@ -9,22 +9,12 @@ There are TWO front doors onto the same executor plugins:
   dispatches the plugin's *API* operation, which takes its adapters in the
   request.
 
-Before this module each door carried its own table — ``EXTRACTOR_AGENTS`` in
-``pluggable_apps.agentic_studio_v1.extractor_agents`` and ``EXTRACTOR_ROUTES``
-in ``agent_kv.constants`` — and the two stated the same facts in different
-shapes. Most importantly they stated AVAILABILITY differently: the Studio
-marked an undeployed agent ``available=False``, while the API simply omitted
-its row. One catalogue now carries both, and each door derives its own view.
-
-WHY THE OPERATION IS PER-DOOR, not per-agent. This is the constraint that made
-two tables grow in the first place, and it is why a single ``operation`` field
-would not work. ``agentic_table`` registers two distinct operations with
-different required parameters — ``table_extract`` for the IDE and
-``table_extract_api`` for the blind API — so the operation belongs to the
-binding, not to the agent. The same is true of the agent's NAME: the Studio
-calls the KV engine ``multi_stage`` while the API calls it ``kv``. Both are
-modelled as per-door columns on one row so the divergence is visible here
-rather than implicit in two files.
+WHY THE OPERATION IS PER-DOOR, not per-agent: ``agentic_table`` registers two
+distinct operations with different required parameters — ``table_extract`` for
+the IDE and ``table_extract_api`` for the blind API — so the operation belongs
+to the binding. The agent's NAME diverges too: the Studio calls the KV engine
+``multi_stage`` where the API calls it ``kv``. Both are per-door columns on one
+row so a single ``operation`` field cannot be reintroduced by accident.
 
 This package lives in the OSS tree deliberately. ``pluggable_apps`` is
 cloud-only, so a registry living there cannot be imported by
@@ -104,29 +94,13 @@ class ExtractorAgentSpec:
         requires_target_table: Whether the agent needs a ``target_table`` hint
             in ``ExtractorAgentConfig.agent_settings`` -- true for the Table
             Extractor, whose engine cannot run without one.
-        available: Whether the agent's executor is deployed and can actually
-            run. Both doors read it, and for neither is it sufficient alone --
-            each adds a condition this package cannot see:
-
-            * The blind API also needs a declared API door, so
-              ``api_routes()`` admits an agent only when it is available AND
-              carries both ``api_operation`` and ``api_extractor``. An omitted
-              agent's submit is rejected at the serializer rather than accepted
-              and dispatched to a queue with no consumer.
-            * The Studio also needs executor parameters it can build. It lists
-              a declared-but-unavailable agent (so the intent stays visible)
-              and refuses it at dispatch; its accept path separately refuses an
-              agent with no registered parameter builder. That map
-              (``_PARAM_BUILDERS``) lives in the cloud tree, so it can
-              disagree with this flag. Cloud CI does see both -- it checks this
-              tree out and copies the cloud app over it -- but OSS CI checks
-              out no cloud tree, so an OSS-only change to this flag can land
-              with the cross-check never having run. See
-              ``agentic_studio_v1.services.agent_dispatch.is_dispatchable``.
-
-            So flipping this to True is necessary but not sufficient to make an
-            agent runnable: the Studio needs its builder registered in the same
-            change, and the blind API needs its two API columns set.
+        available: Whether the agent's executor is deployed. Necessary but
+            NOT sufficient at either door: ``api_routes()`` also requires
+            ``api_operation`` and ``api_extractor``, and the Studio also
+            requires a parameter builder, which lives in the cloud tree where
+            OSS CI cannot see it. Flipping this True without the matching
+            cloud-side builder is the mistake it guards -- see
+            ``agentic_studio_v1.services.agent_dispatch.is_dispatchable``.
     """
 
     key: str
