@@ -30,7 +30,13 @@ def _message(queue, state, enqueued_ago=timedelta(0)):
     )
 
 
-def _execution(status, created_ago=timedelta(minutes=5), modified_ago=None):
+def _execution(status, created_ago=timedelta(minutes=5), ran_for=None):
+    """An execution created ``created_ago``, terminal after ``ran_for``.
+
+    ``modified_at`` is set to now on purpose: later writes (an API result being
+    acknowledged, for one) bump it, so the group must not read it as the
+    completion time.
+    """
     from workflow_manager.workflow_v2.models import Workflow, WorkflowExecution
 
     ex = WorkflowExecution.objects.create(
@@ -41,7 +47,8 @@ def _execution(status, created_ago=timedelta(minutes=5), modified_ago=None):
     now = timezone.now()
     WorkflowExecution.objects.filter(id=ex.id).update(
         created_at=now - created_ago,
-        modified_at=now - (modified_ago if modified_ago is not None else created_ago),
+        execution_time=(ran_for or timedelta(0)).total_seconds(),
+        modified_at=now,
     )
     return ex
 
@@ -94,24 +101,25 @@ class TestExecutionGroup:
         _execution(ExecutionStatus.PENDING.value)
         _execution(ExecutionStatus.EXECUTING.value)
         _execution(ExecutionStatus.EXECUTING.value)
-        # Old execution, but went terminal recently: counted.
+        # Old execution, but finished recently: counted.
         _execution(
             ExecutionStatus.COMPLETED.value,
             created_ago=timedelta(hours=5),
-            modified_ago=timedelta(minutes=10),
+            ran_for=timedelta(hours=4, minutes=50),
         )
         _execution(ExecutionStatus.ERROR.value)
-        # Went terminal before the window: not counted.
+        # Finished before the window, touched since (e.g. its result was
+        # acknowledged just now): not counted.
         _execution(
             ExecutionStatus.COMPLETED.value,
             created_ago=timedelta(hours=3),
-            modified_ago=timedelta(hours=2),
+            ran_for=timedelta(hours=1),
         )
         # Created before the lookback: outside the scan, by design.
         _execution(
             ExecutionStatus.STOPPED.value,
             created_ago=timedelta(days=2),
-            modified_ago=timedelta(minutes=1),
+            ran_for=timedelta(days=2) - timedelta(minutes=1),
         )
 
         snapshot = ExecutionMetricGroup().fetch()

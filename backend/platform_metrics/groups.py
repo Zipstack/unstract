@@ -22,7 +22,16 @@ from typing import TYPE_CHECKING, Any
 
 from django.conf import settings
 from django.db import connection, transaction
-from django.db.models import Count, DurationField, ExpressionWrapper, Min, Q
+from django.db.models import (
+    Count,
+    DateTimeField,
+    DurationField,
+    ExpressionWrapper,
+    F,
+    Min,
+    Q,
+    Value,
+)
 from django.db.models.functions import Now
 from django.utils import timezone
 
@@ -139,12 +148,14 @@ class ExecutionMetricGroup(MetricGroup):
     * active (``PENDING`` / ``EXECUTING``) is implied by the predicate of the
       partial ``we_active_by_workflow_idx``, so it costs O(active executions);
     * recent terminal is bounded by ``created_at`` (``we_created_at_idx``) to
-      ``PLATFORM_METRICS_RECENT_LOOKBACK_SECONDS``, then filtered on
-      ``modified_at`` — the time the row last changed, i.e. when it went
-      terminal. ``modified_at`` is deliberately not indexed (it is rewritten on
-      every status update), so an execution that ran longer than the lookback
-      before finishing is not counted. The default lookback (24h) is far above
-      any normal run.
+      ``PLATFORM_METRICS_RECENT_LOOKBACK_SECONDS``, then filtered on when the
+      execution finished: ``created_at + execution_time``. Both status writers
+      stamp ``execution_time`` on the terminal transition, so this is the
+      completion time. ``modified_at`` is not, because later writes bump it
+      (acknowledging an API result, for one, would make an old completion
+      count as new). An execution that ran longer than the lookback before
+      finishing is not counted; the default lookback (24h) is far above any
+      normal run.
     """
 
     name = "executions"
@@ -163,12 +174,17 @@ class ExecutionMetricGroup(MetricGroup):
             .annotate(n=Count("id"))
             .order_by()
         )
+        finished_at = ExpressionWrapper(
+            F("created_at") + F("execution_time") * Value(timedelta(seconds=1)),
+            output_field=DateTimeField(),
+        )
         recent = (
             WorkflowExecution.objects.filter(
                 status__in=_TERMINAL_STATUSES,
                 created_at__gte=now - max(lookback, window),
-                modified_at__gte=now - window,
             )
+            .annotate(finished_at=finished_at)
+            .filter(finished_at__gte=now - window)
             .values("status")
             .annotate(n=Count("id"))
             .order_by()

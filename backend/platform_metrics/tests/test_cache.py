@@ -156,7 +156,8 @@ def test_redis_down_after_a_good_read_serves_the_local_copy(cache, redis, clock)
     assert group.fetches == 0
 
 
-def test_redis_write_failure_still_serves_the_fresh_snapshot(cache, redis):
+def test_redis_write_failure_serves_fresh_snapshot_and_counts(cache, redis, clock):
+    _seed(redis, 3, clock.now - 60)
     group = StubGroup("g", value=4)
 
     def broken_set(*args, **kwargs):
@@ -164,7 +165,37 @@ def test_redis_write_failure_still_serves_the_fresh_snapshot(cache, redis):
 
     redis.set = broken_set
 
+    with pytest.raises(RefreshFailed) as failed:
+        cache.resolve(group)
+    assert failed.value.snapshot.data == {"value": 4}
+    assert not redis.locks
+
+    # The older Redis value must not displace the newer local copy, and the
+    # next scrape inside the TTL must not hit the DB again.
+    clock.now += 5
     assert cache.resolve(group).data == {"value": 4}
+    assert group.fetches == 1
+
+
+def test_redis_failing_on_the_reread_under_the_lock_serves_cached(cache, redis, clock):
+    _seed(redis, 3, clock.now - 60)
+    group = StubGroup("g")
+    group.error = RuntimeError("db down")
+    real_get = redis.get
+    calls = {"n": 0}
+
+    def get_failing_second_time(name):
+        calls["n"] += 1
+        if calls["n"] > 1:
+            raise ConnectionError("redis dropped")
+        return real_get(name)
+
+    redis.get = get_failing_second_time
+
+    with pytest.raises(RefreshFailed) as failed:
+        cache.resolve(group)
+
+    assert failed.value.snapshot.data == {"value": 3}
     assert not redis.locks
 
 

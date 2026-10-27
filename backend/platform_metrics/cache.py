@@ -105,7 +105,7 @@ class SnapshotCache:
         """
         try:
             client = self._client_factory()
-            cached = self._read(client, group)
+            cached = self._newest(group, self._read(client, group))
         except Exception:
             logger.warning(
                 "platform metrics: Redis unavailable for group %r; using the "
@@ -130,15 +130,23 @@ class SnapshotCache:
             return self._resolve_local(group, fallback=cached)
         if not acquired:
             # Another pod is refreshing; its result lands for the next scrape.
-            return cached or self._local.get(group.name)
+            return cached
 
         try:
             # Re-read under the lock: another pod may have refreshed between
             # our read and our acquire.
-            latest = self._read(client, group)
+            try:
+                latest = self._newest(group, self._read(client, group))
+            except Exception:
+                logger.warning(
+                    "platform metrics: Redis failed re-reading group %r under the lock",
+                    group.name,
+                    exc_info=True,
+                )
+                return self._resolve_local(group, fallback=cached)
             if latest is not None and latest.age(self._clock()) < self._ttl():
                 return latest
-            snapshot = self._refresh(group, fallback=latest or cached)
+            snapshot = self._refresh(group, fallback=latest)
             try:
                 client.set(
                     self._data_key(group),
@@ -147,13 +155,17 @@ class SnapshotCache:
                     ),
                     ex=_RETENTION_SECONDS,
                 )
-            except Exception:
-                # The fresh snapshot is still good to serve from this pod.
+            except Exception as e:
+                # Still good to serve, and kept as this process's copy, which
+                # _newest() prefers over the older Redis value until it goes
+                # stale, so a write-failing Redis does not turn every scrape
+                # into a DB refresh. Counted, since the other pods miss it.
                 logger.warning(
                     "platform metrics: could not cache group %r in Redis",
                     group.name,
                     exc_info=True,
                 )
+                raise RefreshFailed(snapshot) from e
             return snapshot
         finally:
             try:
@@ -195,11 +207,25 @@ class SnapshotCache:
         if raw is None:
             return None
         payload = json.loads(raw)
-        snapshot = CachedSnapshot(
+        return CachedSnapshot(
             data=payload["data"], refreshed_at=float(payload["refreshed_at"])
         )
-        self._local[group.name] = snapshot
-        return snapshot
+
+    def _newest(
+        self, group: MetricGroup, shared: CachedSnapshot | None
+    ) -> CachedSnapshot | None:
+        """The newer of the Redis snapshot and this process's copy, kept locally.
+
+        The local copy can be the newer one when this pod refreshed but could
+        not write the result back to Redis.
+        """
+        local = self._local.get(group.name)
+        if shared is None or (
+            local is not None and local.refreshed_at >= shared.refreshed_at
+        ):
+            return local
+        self._local[group.name] = shared
+        return shared
 
     @staticmethod
     def _data_key(group: MetricGroup) -> str:
