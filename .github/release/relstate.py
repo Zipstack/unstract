@@ -298,8 +298,8 @@ def _main(repo):
 
 def _next_minor(repo, ordered):
     """One minor past the highest release/X.Y line, shipped retired line or stable vX.Y.Z on main, so a cut never
-    reuses a minor this flow shipped. Only stable tags merged into main count, so one off main (an old-flow release
-    not merged back, or a stray such as v100.0.x) does not. A line retired early before any GA (retired/X.Y-<sha7>,
+    reuses a minor this flow shipped. Of the stable vX.Y.Z tags, only those merged into main count, so one off main (an
+    old-flow release not merged back, or a stray such as v100.0.x) does not. A line retired early before any GA (retired/X.Y-<sha7>,
     its RCs deleted) is reused.
 
     With no release/X.Y branch yet (cutover) only the tags count.

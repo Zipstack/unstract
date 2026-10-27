@@ -14,7 +14,8 @@ A decline carries the pick trailer, so a declined fix is never re-picked; an ope
 an earlier run is merged by the next run.
 --commits (dispatch): only these commits.
 
-Run from a full clone whose `origin` pushes with the bot token, with GH_TOKEN set to the bot token.
+Run from a full clone whose `origin` pushes with the bot token, with GH_TOKEN set to the bot token and
+RELEASE_BOT_APP_SLUG set to the release App's slug.
 Every pick is a PR from backport/X.Y/<sha7> to release/X.Y titled with the original main PR's title (every pick
 is its own PR), so PR-title changelogs list it. The class comes from that PR's title and fix/ labels.
 Clean pick: the bot squash-merges the PR in the same run through backport_merge.squash with the pick's own
@@ -734,11 +735,13 @@ def fix_labels(slug, src):
 def finish_open(slug, branch, head):
     """The pick head already exists. An open unlabelled PR the bot opened, with one commit carrying the pick trailer
     of the head's sha7, is a clean pick whose merge failed in an earlier run: squash it now, unless it is a conflict
-    pick that lost its label. A conflict PR or a person's commits wait for a person; a PR a person opened, or one
-    commit that is not that pick, fails unmerged. A head with no open PR waits PICK_TIMEOUT for the run that pushed
-    it, then fails until a person deletes it or reopens its PR.
-    Known limit: a head whose PR was closed but whose decline record failed also reads as "no open PR": deleting
-    that head re-picks the declined fix; re-run the record job instead.
+    pick that lost its label. A conflict PR or a person's commits on the bot's PR wait for a person; a PR a person
+    opened, or one commit without that trailer, fails unmerged. A head with no open PR waits PICK_TIMEOUT for the run
+    that pushed it, then fails until a person deletes it or reopens its PR.
+    Known limits: the trailer is checked, not the commit's content, so a writer who force-pushes the bot's open pick
+    PR with one commit carrying that trailer gets it squashed (a writer can already run a workflow with the App's
+    token). A head whose PR was closed but whose decline record failed also reads as "no open PR": deleting that
+    head re-picks the declined fix; re-run the record job instead.
     """
     pending = "skipped", f"conflict PR pending on `{head}`"
     prs = json.loads(
@@ -783,16 +786,17 @@ def finish_open(slug, branch, head):
         return pending
     pr, remote = prs[0], f"origin/{branch}"
     run("git", "fetch", "-q", "origin", f"+refs/heads/{head}:refs/remotes/origin/{head}")
+    # The bot squashes with a token that bypasses the release ruleset: only its own PR, with one commit carrying
+    # its pick trailer (the trailer, not the content: see the docstring).
+    if why := bm.bot_refusal(pr):
+        return "failed", f"{why}: not merged"
     if rm.git(REPO, "rev-list", "--count", f"{remote}..{pr['headRefOid']}") != "1":
         return pending
     msg = rm.git(REPO, "log", "-1", "--format=%B", pr["headRefOid"])
-    # The bot squashes with a token that bypasses the release ruleset: only its own PR, holding only its pick.
-    if why := bm.bot_refusal(pr):
-        return "failed", f"{why}: not merged"
     if not rm.pick_trailer(head, msg):
         return (
             "failed",
-            f"#{pr['number']}: its commit is not the pick {head} names: not merged",
+            f"#{pr['number']}: its commit lacks the pick trailer {head} names: not merged",
         )
     if rm.conflict_markers(REPO, pr["headRefOid"]) or CONFLICTS_RE.search(msg):
         return "failed", (

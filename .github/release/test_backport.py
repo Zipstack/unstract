@@ -803,13 +803,29 @@ class FinishOpen(unittest.TestCase):
             self.assertIn(
                 "not by the bot (@app/zipstack-push-to-main): not merged", out[1]
             )
+        # A person's PR with two commits fails too, rather than waiting silently as a conflict PR.
+        self.g(
+            "-c",
+            "user.name=t",
+            "-c",
+            "user.email=t@t",
+            "commit",
+            "-q",
+            "--allow-empty",
+            "-m",
+            "second",
+        )
+        out = self.finish(
+            oid=self.g("rev-parse", "HEAD"), author={"login": "dev", "is_bot": False}
+        )
+        self.assertEqual(out[0], "failed")
         for msg in ("fix: x", "fix: x\n\n(cherry picked from commit " + "b" * 40 + ")"):
             out = self.finish(oid=self.push(msg))
             self.assertEqual(
                 out,
                 (
                     "failed",
-                    "#4: its commit is not the pick backport/1.0/aaaaaaa names: not merged",
+                    "#4: its commit lacks the pick trailer backport/1.0/aaaaaaa names: not merged",
                 ),
             )
         self.assertEqual(self.merged, [])
