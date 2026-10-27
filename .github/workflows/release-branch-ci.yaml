@@ -13,7 +13,7 @@ name: Release branch CI
 # merge keeps it in the message, and the push run checks that merged commit like any other. It holds the bot token,
 # so it runs on pull_request_target: the base line's copy of this file, which a PR cannot edit. A line cut before
 # that trigger existed gets no bot commit; add the line to a commit yourself there.
-# Label changes on a closed PR run nothing. The bot never pushes to a head named main, release/* or backport/*.
+# Label changes on a closed PR run nothing. Job `trailer` never pushes to a head named main, release/* or backport/*.
 # No push builds an RC: a security or critical pick lands and waits for the RM's Take RC build, like any other pick.
 on:
   push:
@@ -90,7 +90,7 @@ jobs:
             echo "::notice::$hint"
             echo "$hint" >> "$GITHUB_STEP_SUMMARY"
           elif [ "$OUTCOME" != success ]; then
-            echo "The commit check did not finish; see its log. Do not merge until it passes." >> "$GITHUB_STEP_SUMMARY"
+            echo "The commit check failed or did not run; see the job log. Do not merge until it passes." >> "$GITHUB_STEP_SUMMARY"
           elif [ "$RBO_LABEL" = true ]; then
             echo "Squash and merge: the \`Release-branch-only: <TICKET>\` commit the bot added carries the line." >> "$GITHUB_STEP_SUMMARY"
           else
