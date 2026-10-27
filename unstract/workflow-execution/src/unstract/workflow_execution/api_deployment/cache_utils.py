@@ -84,7 +84,7 @@ class WorkerResultCacheUtils:
                     result_dict = json.loads(result_string.decode("utf-8"))
                     results.append(result_dict)
                 except Exception as parse_error:
-                    logger.exception(f"Failed to parse cached result: {parse_error}")
+                    logger.error(f"Failed to parse cached result: {parse_error}")
                     continue
 
             return results

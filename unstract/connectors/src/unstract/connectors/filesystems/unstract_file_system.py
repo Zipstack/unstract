@@ -314,9 +314,7 @@ class UnstractFileSystem(UnstractConnector, ABC):
 
             return serialized_metadata
         except Exception as e:
-            logger.exception(
-                f"Error getting file system metadata for {file_path}: {str(e)}"
-            )
+            logger.error(f"Error getting file system metadata for {file_path}: {str(e)}")
             return {}
 
     def get_file_system_uuid(

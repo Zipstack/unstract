@@ -208,7 +208,7 @@ def _emit_websocket_event(room: str, event: str, data: dict[str, Any]) -> None:
         logger.debug(f"[{os.getpid()}] Push websocket event: {event}, {payload}")
         sio.emit(event, data=payload, room=room)
     except Exception as e:
-        logger.exception(f"Error emitting WebSocket event: {e}")
+        logger.error(f"Error emitting WebSocket event: {e}")
 
 
 def handle_user_logs(room: str, event: str, message: dict[str, Any]) -> None:

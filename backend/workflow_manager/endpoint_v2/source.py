@@ -354,7 +354,7 @@ class SourceConnector(BaseConnector):
 
             except Exception as e:
                 error_msg = f"Failed to collect files from {input_directory}"
-                logger.exception(f"{error_msg}: {e}")
+                logger.error(f"{error_msg}: {e}")
                 self.workflow_log.publish_log(error_msg, level=LogLevel.ERROR)
 
         # Log warning if collection limit was reached

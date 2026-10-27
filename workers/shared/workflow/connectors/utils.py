@@ -109,5 +109,5 @@ def get_connector_capabilities(connector_id: str) -> dict[str, bool]:
         }
 
     except Exception as e:
-        logger.exception(f"Failed to get connector capabilities: {e}")
+        logger.error(f"Failed to get connector capabilities: {e}")
         return {"error": str(e)}

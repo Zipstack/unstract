@@ -115,4 +115,4 @@ def store_execution_log(
         redis_client.rpush(log_queue_name, log_data.to_json())
 
     except Exception as e:
-        logger.exception(f"Error storing execution log: {e}")
+        logger.error(f"Error storing execution log: {e}")

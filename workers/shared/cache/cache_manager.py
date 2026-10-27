@@ -83,7 +83,7 @@ class CacheManager:
 
         except Exception as e:
             self.stats["errors"] += 1
-            logger.exception(f"Error getting cache for {key}: {e}")
+            logger.error(f"Error getting cache for {key}: {e}")
             return None
 
     def set(
@@ -131,7 +131,7 @@ class CacheManager:
 
         except Exception as e:
             self.stats["errors"] += 1
-            logger.exception(f"Error setting cache for {key}: {e}")
+            logger.error(f"Error setting cache for {key}: {e}")
             return False
 
     def delete(self, key: str) -> bool:
@@ -146,7 +146,7 @@ class CacheManager:
             return success
         except Exception as e:
             self.stats["errors"] += 1
-            logger.exception(f"Error deleting cache key {key}: {e}")
+            logger.error(f"Error deleting cache key {key}: {e}")
             return False
 
     def invalidate_workflow(self, workflow_id: str):

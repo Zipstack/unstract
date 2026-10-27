@@ -124,7 +124,7 @@ class WebhookAPIClient(BaseAPIClient):
             )
 
         except Exception as e:
-            logger.exception(f"Failed to send webhook to {url}: {str(e)}")
+            logger.error(f"Failed to send webhook to {url}: {str(e)}")
             return APIResponse(success=False, error=str(e))
 
     def get_webhook_status(

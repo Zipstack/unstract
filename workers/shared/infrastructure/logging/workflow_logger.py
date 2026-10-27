@@ -134,7 +134,7 @@ class WorkerWorkflowLogger:
                 logger.warning(f"Failed to publish WebSocket log: {message}")
 
         except Exception as e:
-            logger.exception(f"Error publishing WebSocket log: {e}")
+            logger.error(f"Error publishing WebSocket log: {e}")
 
     def log_error(self, worker_logger: logging.Logger, message: str, **kwargs) -> None:
         """Log an error message both to worker logs and WebSocket.
@@ -201,7 +201,7 @@ class WorkerWorkflowLogger:
                 logger.warning(f"Failed to publish WebSocket update: {message}")
 
         except Exception as e:
-            logger.exception(f"Error publishing WebSocket update: {e}")
+            logger.error(f"Error publishing WebSocket update: {e}")
 
     def publish_initial_workflow_logs(self, total_files: int) -> None:
         """Publish initial workflow startup logs.

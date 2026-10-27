@@ -117,7 +117,7 @@ def tool_by_id_internal(request, tool_id):
             tool = ToolProcessor.get_tool_by_uid(tool_id)
             logger.info(f"Successfully retrieved tool from ToolProcessor: {tool_id}")
         except Exception as tool_fetch_error:
-            logger.exception(
+            logger.error(
                 f"Failed to fetch tool {tool_id} from ToolProcessor: {tool_fetch_error}"
             )
             # Return fallback using Structure Tool image (which actually exists)

@@ -71,9 +71,7 @@ class FliptClient:
             return result.enabled if hasattr(result, "enabled") else False
 
         except Exception as e:
-            logger.exception(
-                f"Error evaluating flag {flag_key} for entity {entity_id}: {e}"
-            )
+            logger.error(f"Error evaluating flag {flag_key} for entity {entity_id}: {e}")
             return False
         finally:
             # Always close the client to free resources
@@ -81,7 +79,7 @@ class FliptClient:
                 try:
                     client.close()
                 except Exception as e:
-                    logger.exception(f"Error closing Flipt client: {e}")
+                    logger.error(f"Error closing Flipt client: {e}")
 
     def evaluate_variant(
         self,
@@ -135,7 +133,7 @@ class FliptClient:
             }
 
         except Exception as e:
-            logger.exception(
+            logger.error(
                 f"Error evaluating variant flag {flag_key} for entity {entity_id}: {e}"
             )
             return default_result
@@ -144,7 +142,7 @@ class FliptClient:
                 try:
                     client.close()
                 except Exception as e:
-                    logger.exception(f"Error closing Flipt client: {e}")
+                    logger.error(f"Error closing Flipt client: {e}")
 
     def list_feature_flags(self, namespace_key: str | None = None) -> dict:
         """List all feature flags in a namespace.
@@ -190,9 +188,7 @@ class FliptClient:
             return {"flags": parsed_flags, "total_count": total_count}
 
         except Exception as e:
-            logger.exception(
-                f"Error listing flags for namespace {self.namespace_key}: {e}"
-            )
+            logger.error(f"Error listing flags for namespace {self.namespace_key}: {e}")
             return {"flags": {}, "total_count": 0}
         finally:
             # Always close the client to free resources
@@ -200,4 +196,4 @@ class FliptClient:
                 try:
                     client.close()
                 except Exception as e:
-                    logger.exception(f"Error closing Flipt client: {e}")
+                    logger.error(f"Error closing Flipt client: {e}")
