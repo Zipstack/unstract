@@ -1,3 +1,3 @@
 import { Button } from "antd";
 
-export const AntButton = Button;
+export const buttonName = Button.name;

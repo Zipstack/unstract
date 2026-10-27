@@ -11,7 +11,7 @@
  * pre-commit hook and typecheck never see them.
  */
 import assert from "node:assert/strict";
-import { execFileSync, spawnSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -23,162 +23,69 @@ const { scripts } = JSON.parse(
   fs.readFileSync(path.join(FRONTEND, "package.json"), "utf8"),
 );
 
+/* Rows of "a | b | c" cells; blank lines and "#" comments are skipped. */
+function parseTable(text) {
+  return text
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line && !line.startsWith("#"))
+    .map((line) => line.split("|").map((cell) => cell.trim()));
+}
+
+const sorted = (items) => items.toSorted((a, b) => a.localeCompare(b));
+
 /*
- * `run` holds package.json script names, or raw commands for the v0 side,
- * which has no v1 script. `fails` is a substring the tool output must
- * contain; cases without it must pass.
+ * One case per row: the folder under cases/ ("-" for the empty scaffold);
+ * the steps, joined by "+", each a package.json script name or a raw command
+ * (the v0 side has no v1 script); and a substring the tool output must
+ * contain, or "-" when the steps must pass.
  */
-const CASES = [
-  // The empty scaffold passes everything.
-  { name: null, run: ["typecheck:v1", "lint:v1"] },
-
-  // Import boundary, v1 -> v0 (Biome).
-  {
-    name: "v1-imports-v0-alias",
-    run: ["lint:v1"],
-    fails: "v1 imports nothing outside src/v1",
-  },
-  {
-    name: "v1-imports-v0-relative",
-    run: ["lint:v1"],
-    fails: "v1 imports nothing outside src/v1",
-  },
-  {
-    name: "v1-imports-root-absolute",
-    run: ["lint:v1"],
-    fails: "v1 imports nothing outside src/v1",
-  },
-
-  // Import boundary, v0 -> v1 (Biome).
-  {
-    name: "v0-imports-v1-internal",
-    run: ["biome lint src/"],
-    fails: "v0 may import only the v1 public entry",
-  },
-  {
-    name: "v0-imports-v1-relative",
-    run: ["biome lint src/"],
-    fails: "v0 may import only the v1 public entry",
-  },
-  { name: "v0-imports-v1-entry", run: ["biome lint src/"] },
-
-  // Banned under v1.
-  { name: "v1-prop-types", run: ["lint:v1"], fails: "PropTypes are not used" },
-  {
-    name: "v1-prop-types-assignment",
-    run: ["lint:v1"],
-    fails: "No PropTypes under v1",
-  },
-  {
-    name: "v1-antd-import",
-    run: ["lint:v1"],
-    fails: "antd is not used under src/v1",
-  },
-  {
-    name: "v1-antd-subpath",
-    run: ["lint:v1"],
-    fails: "antd is not used under src/v1",
-  },
-  {
-    name: "v1-prop-types-subpath",
-    run: ["lint:v1"],
-    fails: "PropTypes are not used",
-  },
-  {
-    name: "v1-styles-import-outside",
-    run: ["lint:v1"],
-    fails: "v1 styles import nothing outside it",
-  },
-  {
-    name: "v1-styles-ant-class",
-    run: ["lint:v1"],
-    fails: "No antd 'ant-' class names",
-  },
-  {
-    name: "v1-component-css-import",
-    run: ["lint:v1"],
-    fails: "No component .css under src/v1",
-  },
-  {
-    name: "v1-component-css-file",
-    run: ["typecheck:v1"],
-    fails: "No component style files",
-  },
-  {
-    name: "v1-ant-class-prefix",
-    run: ["lint:v1"],
-    fails: "No antd 'ant-' class names",
-  },
-  {
-    name: "v1-ant-built-class",
-    run: ["lint:v1"],
-    fails: "No antd 'ant-' class names",
-  },
-  { name: "v1-explicit-any", run: ["lint:v1"], fails: "noExplicitAny" },
-  // The v1 override must add to the shared rules, not replace them.
-  {
-    name: "v1-base-rules-still-apply",
-    run: ["lint:v1"],
-    fails: "noDoubleEquals",
-  },
-
-  // TypeScript only, strict.
-  { name: "v1-js-file", run: ["typecheck:v1"], fails: "TypeScript only" },
-  {
-    name: "v1-implicit-any",
-    run: ["typecheck:v1"],
-    fails: "TS7006",
-  },
-  {
-    name: "v1-strict-null",
-    run: ["typecheck:v1"],
-    fails: "TS18048",
-  },
-  {
-    name: "v1-unused-local",
-    run: ["typecheck:v1"],
-    fails: "TS6133",
-  },
-  {
-    name: "v1-unused-parameter",
-    run: ["typecheck:v1"],
-    fails: "TS6133",
-  },
-
-  // Folder taxonomy and contract (the full contract is the matrix below).
-  {
-    name: "v1-outside-taxonomy",
-    run: ["typecheck:v1"],
-    fails: "Outside the v1 folder taxonomy",
-  },
-  {
-    name: "v1-root-file",
-    run: ["typecheck:v1"],
-    fails: "Outside the v1 folder taxonomy",
-  },
-  {
-    name: "v1-ui-imports-services",
-    run: ["lint:v1"],
-    fails: "components/ui/ may not import from services/",
-  },
-  {
-    name: "v1-page-imports-other-page",
-    run: ["lint:v1"],
-    fails: "pages/projects/ may not import from pages/settings/",
-  },
-  // Only test files may use test/, and being a test file allows nothing else.
-  {
-    name: "v1-non-test-imports-test",
-    run: ["lint:v1"],
-    fails: "components/ui/ may not import from test/",
-  },
-  {
-    name: "v1-test-file-imports-services",
-    run: ["lint:v1"],
-    fails: "components/ui/ may not import from services/",
-  },
-  { name: "v1-allowed-imports", run: ["typecheck:v1", "lint:v1"] },
-];
+const CASES = parseTable(`
+  # The empty scaffold passes everything.
+  -                              | typecheck:v1 + lint:v1 | -
+  # Import boundary, v1 -> v0 (Biome).
+  v1-imports-v0-alias            | lint:v1         | v1 imports nothing outside src/v1
+  v1-imports-v0-relative         | lint:v1         | v1 imports nothing outside src/v1
+  v1-imports-root-absolute       | lint:v1         | v1 imports nothing outside src/v1
+  # Import boundary, v0 -> v1 (Biome).
+  v0-imports-v1-internal         | biome lint src/ | v0 may import only the v1 public entry
+  v0-imports-v1-relative         | biome lint src/ | v0 may import only the v1 public entry
+  v0-imports-v1-entry            | biome lint src/ | -
+  # Banned under v1.
+  v1-prop-types                  | lint:v1         | PropTypes are not used
+  v1-prop-types-subpath          | lint:v1         | PropTypes are not used
+  v1-prop-types-assignment       | lint:v1         | No PropTypes under v1
+  v1-antd-import                 | lint:v1         | antd is not used under src/v1
+  v1-antd-subpath                | lint:v1         | antd is not used under src/v1
+  v1-styles-import-outside       | lint:v1         | v1 styles import nothing outside it
+  v1-styles-ant-class            | lint:v1         | No antd 'ant-' class names
+  v1-component-css-import        | lint:v1         | No component .css under src/v1
+  v1-component-css-file          | typecheck:v1    | No component style files
+  v1-ant-class-prefix            | lint:v1         | No antd 'ant-' class names
+  v1-ant-built-class             | lint:v1         | No antd 'ant-' class names
+  v1-explicit-any                | lint:v1         | noExplicitAny
+  # The v1 override must add to the shared rules, not replace them.
+  v1-base-rules-still-apply      | lint:v1         | noDoubleEquals
+  # TypeScript only, strict.
+  v1-js-file                     | typecheck:v1    | TypeScript only
+  v1-implicit-any                | typecheck:v1    | TS7006
+  v1-strict-null                 | typecheck:v1    | TS18048
+  v1-unused-local                | typecheck:v1    | TS6133
+  v1-unused-parameter            | typecheck:v1    | TS6133
+  # Folder taxonomy and contract (the full contract is the matrix below).
+  v1-outside-taxonomy            | typecheck:v1    | Outside the v1 folder taxonomy
+  v1-root-file                   | typecheck:v1    | Outside the v1 folder taxonomy
+  v1-ui-imports-services         | lint:v1         | components/ui/ may not import from services/
+  v1-page-imports-other-page     | lint:v1         | pages/projects/ may not import from pages/settings/
+  # Only test files may use test/, and being a test file allows nothing else.
+  v1-non-test-imports-test       | lint:v1         | components/ui/ may not import from test/
+  v1-test-file-imports-services  | lint:v1         | components/ui/ may not import from services/
+  v1-allowed-imports             | typecheck:v1 + lint:v1 | -
+`).map(([name, run, fails]) => ({
+  name: name === "-" ? null : name,
+  run: run.split(" + "),
+  fails: fails === "-" ? null : fails,
+}));
 
 function makeTree(caseName) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "v1-boundary-"));
@@ -200,9 +107,8 @@ function makeTree(caseName) {
   if (caseName) {
     fs.cpSync(path.join(CASES_DIR, caseName), dir, { recursive: true });
   }
-  // biome.json enables VCS integration with `useIgnoreFile`, which needs a
-  // repository root holding an ignore file.
-  execFileSync("git", ["init", "-q"], { cwd: dir });
+  // biome.json enables VCS integration with `useIgnoreFile`, which needs an
+  // ignore file at the root.
   fs.writeFileSync(path.join(dir, ".gitignore"), "node_modules\n");
   return dir;
 }
@@ -229,7 +135,7 @@ function runAll(dir, run) {
   let log = "";
   for (const step of run) {
     const command = scripts[step] ?? step;
-    const result = spawnSync("sh", ["-c", command], {
+    const result = spawnSync("/bin/sh", ["-c", command], {
       cwd: dir,
       encoding: "utf8",
       env: {
@@ -285,18 +191,18 @@ test("no v1 or fixture file is git-ignored", () => {
   );
   // A lib/ folder anywhere under v1, not only the top-level one.
   files.push("src/v1/pages/projects/lib/x.ts", "src/v1/lib/sub/lib/x.ts");
-  const result = spawnSync("git", ["check-ignore", "--no-index", "--stdin"], {
-    cwd: FRONTEND,
-    encoding: "utf8",
-    input: files.join("\n"),
-  });
+  const gitArgs = ["check-ignore", "--no-index", "--stdin"];
+  const options = { cwd: FRONTEND, encoding: "utf8", input: files.join("\n") };
+  // git from PATH on purpose: this is a developer/CI test, and git has no
+  // fixed location across macOS and Linux.
+  const result = spawnSync("git", gitArgs, options); // NOSONAR
   // Exit 1 means "nothing matched"; 0 means some file is ignored.
   assert.equal(result.status, 1, `git-ignored:\n${result.stdout}`);
 });
 
 test("every case folder is listed", () => {
   const listed = new Set(CASES.map((c) => c.name).filter(Boolean));
-  assert.deepEqual(fs.readdirSync(CASES_DIR).sort(), [...listed].sort());
+  assert.deepEqual(sorted(fs.readdirSync(CASES_DIR)), sorted([...listed]));
 });
 
 for (const { name, run, fails } of CASES) {
@@ -339,65 +245,51 @@ const FOLDERS = {
   test: "test",
 };
 const EVERYTHING = Object.keys(FOLDERS);
-const MAY_IMPORT = {
-  app: EVERYTHING,
-  plugins: EVERYTHING,
-  test: EVERYTHING,
-  "pages/a": [
-    "components/ui",
-    "components/patterns",
-    "shell",
-    "services",
-    "stores",
-    "hooks",
-    "lib",
-    "styles",
-    "plugins",
-  ],
-  "components/ui": ["lib", "styles"],
-  "components/patterns": [
-    "components/ui",
-    "lib",
-    "services",
-    "stores",
-    "hooks",
-  ],
-  shell: [
-    "components/ui",
-    "components/patterns",
-    "services",
-    "stores",
-    "hooks",
-    "lib",
-  ],
-  services: ["lib"],
-  stores: ["lib"],
-  hooks: ["lib"],
-  lib: [],
-  styles: ["lib"],
-};
+const MAY_IMPORT = Object.fromEntries(
+  parseTable(`
+    app                 | *
+    plugins             | *
+    test                | *
+    pages/a             | components/ui components/patterns shell services stores hooks lib styles plugins
+    components/ui       | lib styles
+    components/patterns | components/ui lib services stores hooks
+    shell               | components/ui components/patterns services stores hooks lib
+    services            | lib
+    stores              | lib
+    hooks               | lib
+    lib                 |
+    styles              | lib
+  `).map(([from, to]) => [from, to === "*" ? EVERYTHING : to.split(/\s+/)]),
+);
 
-test("folder contract: every folder pair, by file and by folder", () => {
+/* One file per folder pair, importing the target by file and by folder; and
+ * the problems check-v1 must report for them. */
+function contractMatrix() {
   const files = {};
   const expected = [];
   for (const [from, allowed] of Object.entries(MAY_IMPORT)) {
     for (const to of EVERYTHING) {
       const rel = `src/v1/${FOLDERS[from]}/m-${to.replace("/", "-")}.ts`;
       // The entry is a file, so it has only the one form.
+      const target = FOLDERS[to];
       files[rel] =
         to === "entry"
           ? 'import "@v1";\n'
-          : `import "@v1/${FOLDERS[to]}/target";\nimport "@v1/${FOLDERS[to]}";\n`;
-      if (from !== to && !allowed.includes(to)) {
-        const lines = to === "entry" ? [1] : [1, 2];
-        for (const line of lines) {
-          expected.push(`${rel}:${line}: ${from}/ may not import from ${to}/`);
-        }
+          : `import "@v1/${target}/target";\nimport "@v1/${target}";\n`;
+      const denied = from !== to && !allowed.includes(to);
+      const lines = to === "entry" ? [1] : [1, 2];
+      for (const line of denied ? lines : []) {
+        expected.push(`${rel}:${line}: ${from}/ may not import from ${to}/`);
       }
     }
   }
+  return { files, expected };
+}
+
+test("folder contract: every folder pair, by file and by folder", () => {
+  const { files, expected } = contractMatrix();
   const reported = checkCode(files).map((l) => l.replace(/ \(.*$/, ""));
-  assert.deepEqual(reported.sort(), expected.sort());
+  assert.deepEqual(sorted(reported), sorted(expected));
 });
 
 test("folder contract: every import form is read", () => {

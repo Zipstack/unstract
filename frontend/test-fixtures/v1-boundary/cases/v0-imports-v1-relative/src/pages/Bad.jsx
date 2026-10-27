@@ -1,3 +1,3 @@
 import { pluginManifest } from "../v1/plugins/manifest";
 
-export const manifest = pluginManifest;
+export const manifestSize = () => pluginManifest.length;

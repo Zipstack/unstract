@@ -26,9 +26,9 @@ import fs from "node:fs";
 import path from "node:path";
 
 const ROOT = path.join(import.meta.dirname, "..", "src", "v1");
-const args = process.argv.slice(2);
-const runFiles = args.includes("--files") || !args.includes("--code");
-const runCode = args.includes("--code") || !args.includes("--files");
+const args = new Set(process.argv.slice(2));
+const runFiles = args.has("--files") || !args.has("--code");
+const runCode = args.has("--code") || !args.has("--files");
 
 const ALL = "*";
 /*
@@ -152,66 +152,86 @@ function blankComments(src) {
   // "`" = inside a template literal; "{" = inside a `${}` or a brace in one.
   const stack = [];
   while (i < src.length) {
-    const c = src[i];
-    const next = src[i + 1];
+    let end;
     if (stack.at(-1) === "`") {
-      if (c === "\\") {
-        out += src.slice(i, i + 2);
-        i += 2;
-      } else if (c === "`") {
-        stack.pop();
-        out += c;
-        i += 1;
-      } else if (c === "$" && next === "{") {
-        stack.push("{");
-        out += "${";
-        i += 2;
-      } else {
-        out += c;
-        i += 1;
-      }
-      continue;
-    }
-    if (c === "/" && (next === "/" || next === "*")) {
-      const close =
-        next === "/" ? src.indexOf("\n", i) : src.indexOf("*/", i + 2);
-      const end = close === -1 ? src.length : next === "/" ? close : close + 2;
+      end = i + templateStep(src, i, stack);
+    } else if (src[i] === "/" && (src[i + 1] === "/" || src[i + 1] === "*")) {
+      end = commentEnd(src, i);
       out += src.slice(i, end).replace(/[^\n]/g, " ");
       i = end;
-    } else if (c === '"' || c === "'") {
-      let j = i + 1;
-      while (j < src.length && src[j] !== c && src[j] !== "\n") {
-        j += src[j] === "\\" ? 2 : 1;
-      }
-      out += src.slice(i, j + 1);
-      i = j + 1;
+      continue;
+    } else if (src[i] === '"' || src[i] === "'") {
+      end = stringEnd(src, i);
     } else {
-      if (c === "`") {
-        stack.push("`");
-      } else if (c === "{" && stack.length > 0) {
-        stack.push("{");
-      } else if (c === "}" && stack.length > 0) {
-        stack.pop();
-      }
-      out += c;
-      i += 1;
+      codeStep(src[i], stack);
+      end = i + 1;
     }
+    out += src.slice(i, end);
+    i = end;
   }
   return out;
+}
+
+/* Index just past the line or block comment that starts at i. */
+function commentEnd(src, i) {
+  if (src[i + 1] === "/") {
+    const newline = src.indexOf("\n", i);
+    return newline === -1 ? src.length : newline;
+  }
+  const close = src.indexOf("*/", i + 2);
+  return close === -1 ? src.length : close + 2;
+}
+
+/* Index just past the '...' or "..." string that starts at i. An unclosed
+ * string ends at the newline. */
+function stringEnd(src, i) {
+  let j = i + 1;
+  while (j < src.length && src[j] !== src[i] && src[j] !== "\n") {
+    j += src[j] === "\\" ? 2 : 1;
+  }
+  return j + 1;
+}
+
+/* One step inside a template literal: how many characters to copy. Closing
+ * the literal or opening `${` updates the stack. */
+function templateStep(src, i, stack) {
+  if (src[i] === "\\") {
+    return 2;
+  }
+  if (src[i] === "`") {
+    stack.pop();
+    return 1;
+  }
+  if (src[i] === "$" && src[i + 1] === "{") {
+    stack.push("{");
+    return 2;
+  }
+  return 1;
+}
+
+/* Tracks template literals and the braces inside their `${}` expressions. */
+function codeStep(c, stack) {
+  if (c === "`") {
+    stack.push("`");
+  } else if (c === "{" && stack.length > 0) {
+    stack.push("{");
+  } else if (c === "}" && stack.length > 0) {
+    stack.pop();
+  }
 }
 
 // A specifier: a quoted or backtick string with no interpolation.
 const SPEC = "[\"'`]([^\"'`$]+)[\"'`]";
 const IMPORT_RES = [
   new RegExp(
-    `\\b(?:import|export)\\s+(?:type\\s+)?(?:[\\w$*{}\\s,]+?\\s+from\\s+)?${SPEC}`,
+    String.raw`\b(?:import|export)\s+(?:type\s+)?(?:[\w$*{}\s,]+?\s+from\s+)?${SPEC}`,
     "g",
   ),
-  new RegExp(`\\bimport\\s*\\(\\s*${SPEC}\\s*[,)]`, "g"),
-  new RegExp(`\\brequire\\s*\\(\\s*${SPEC}\\s*\\)`, "g"),
+  new RegExp(String.raw`\bimport\s*\(\s*${SPEC}\s*[,)]`, "g"),
+  new RegExp(String.raw`\brequire\s*\(\s*${SPEC}\s*\)`, "g"),
   // Vite globs; the first pattern of an array is checked.
   new RegExp(
-    `\\bimport\\.meta\\.glob\\s*(?:<[^>]*>)?\\(\\s*\\[?\\s*${SPEC}`,
+    String.raw`\bimport\.meta\.glob\s*(?:<[^>]*>)?\(\s*\[?\s*${SPEC}`,
     "g",
   ),
 ];
@@ -267,8 +287,10 @@ function walk(dir) {
 }
 
 const problems = [];
-const report = (rel, line, msg) =>
-  problems.push(`src/v1/${rel}${line ? `:${line}` : ""}: ${msg}`);
+const report = (rel, line, msg) => {
+  const where = line ? `${rel}:${line}` : rel;
+  problems.push(`src/v1/${where}: ${msg}`);
+};
 
 if (!fs.existsSync(ROOT)) {
   console.error(`check-v1: ${ROOT} does not exist`);
