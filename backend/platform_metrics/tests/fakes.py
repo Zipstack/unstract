@@ -33,6 +33,7 @@ class FakeRedis:
         self.data: dict[str, str] = {}
         self.expiry: dict[str, int | None] = {}
         self.locks: set[str] = set()
+        self.hashes: dict[str, dict[str, int]] = {}
         self.down = False
 
     def _check(self) -> None:
@@ -52,7 +53,41 @@ class FakeRedis:
 
     def lock(self, name: str, timeout: float | None = None) -> FakeLock:
         self._check()
+        self.last_lock_timeout = timeout
         return FakeLock(self, name)
+
+    def pipeline(self, transaction: bool = True) -> FakePipeline:
+        return FakePipeline(self)
+
+    def hincrby(self, name: str, key: str, amount: int = 1) -> int:
+        self._check()
+        bucket = self.hashes.setdefault(name, {})
+        bucket[key] = bucket.get(key, 0) + amount
+        return bucket[key]
+
+    def hgetall(self, name: str) -> dict[bytes, bytes]:
+        self._check()
+        return {
+            k.encode(): str(v).encode() for k, v in self.hashes.get(name, {}).items()
+        }
+
+
+class FakePipeline:
+    """Queues calls and applies them on execute(), all or nothing."""
+
+    def __init__(self, redis: FakeRedis) -> None:
+        self._redis = redis
+        self._calls: list[tuple[str, tuple]] = []
+
+    def hincrby(self, *args) -> None:
+        self._calls.append(("hincrby", args))
+
+    def hgetall(self, *args) -> None:
+        self._calls.append(("hgetall", args))
+
+    def execute(self) -> list:
+        self._redis._check()
+        return [getattr(self._redis, name)(*args) for name, args in self._calls]
 
 
 class StubGroup(MetricGroup):

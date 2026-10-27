@@ -13,10 +13,17 @@ Failure handling, per group and independent of the others:
 * the refresh query fails: serve the last snapshot (Redis, else this
   process's copy) and count the failure;
 * Redis is unreachable: fall back to this process's copy, refreshing it from
-  the DB at most once per TTL, so DB load stays bounded per pod rather than
-  per scrape. The failure is counted;
+  the DB at most once per TTL, so DB load stays bounded per gunicorn worker
+  process rather than per scrape. The failure is counted;
+* the Redis entry is unreadable (e.g. written by another version): treated as
+  missing, so the next refresh overwrites it;
 * nothing has ever been fetched (first scrape, while another pod holds the
   lock): the group is left out of this scrape.
+
+Refresh failures are counted in Redis too (:class:`FailureCounter`), so every
+pod and worker process reports the same monotonic total. A per-process counter
+would jump between processes from scrape to scrape, which Prometheus reads as
+counter resets.
 """
 
 from __future__ import annotations
@@ -39,9 +46,20 @@ _KEY_PREFIX = "platform_metrics:v1"
 #: How long a snapshot stays in Redis. Far beyond the TTL on purpose: it is the
 #: last-known-good value served while refreshes fail.
 _RETENTION_SECONDS = 3600
-#: Lock expiry. Above the statement timeout, so a pod that dies mid-refresh
-#: frees the group within one window instead of wedging it.
-_LOCK_TIMEOUT_SECONDS = 30
+#: Floor for the lock expiry. A pod that dies mid-refresh frees the group
+#: within this long instead of wedging it.
+_MIN_LOCK_TIMEOUT_SECONDS = 30
+
+
+def _lock_timeout_seconds(group: MetricGroup) -> float:
+    """Lock expiry, kept above the longest refresh the statement timeout allows.
+
+    The timeout bounds each statement, so a group's refresh can take its
+    statement count times that. A shorter lock could expire mid-refresh and
+    let a second pod start the same queries.
+    """
+    query_timeout = int(settings.PLATFORM_METRICS_QUERY_TIMEOUT_MS) / 1000
+    return max(_MIN_LOCK_TIMEOUT_SECONDS, group.statements * query_timeout + 10)
 
 
 class _Lock(Protocol):
@@ -53,6 +71,7 @@ class RedisLike(Protocol):
     def get(self, name: str) -> Any: ...
     def set(self, name: str, value: str, ex: int | None = ...) -> Any: ...
     def lock(self, name: str, timeout: float | None = ...) -> _Lock: ...
+    def pipeline(self, transaction: bool = ...) -> Any: ...
 
 
 @dataclass(frozen=True)
@@ -91,7 +110,10 @@ class SnapshotCache:
         self._clock = clock
         # Per-process last-known-good copies: the fallback when Redis is down.
         self._local: dict[str, CachedSnapshot] = {}
-        self._local_lock = threading.Lock()
+        # One lock per group, so a slow refresh of one group never holds up
+        # scrapes waiting on another.
+        self._local_locks: dict[str, threading.Lock] = {}
+        self._local_locks_guard = threading.Lock()
 
     @staticmethod
     def _ttl() -> float:
@@ -119,7 +141,9 @@ class SnapshotCache:
             return cached
 
         try:
-            lock = client.lock(self._lock_key(group), timeout=_LOCK_TIMEOUT_SECONDS)
+            lock = client.lock(
+                self._lock_key(group), timeout=_lock_timeout_seconds(group)
+            )
             acquired = lock.acquire(blocking=False)
         except Exception:
             logger.warning(
@@ -184,11 +208,15 @@ class SnapshotCache:
         unusable counts as a failure for the group, even when the snapshot it
         serves is fresh, so a Redis outage shows on the failure counter.
         """
-        with self._local_lock:
+        with self._local_lock(group):
             local = self._local.get(group.name)
             if local is not None and local.age(self._clock()) < self._ttl():
                 raise RefreshFailed(local)
             raise RefreshFailed(self._refresh(group, fallback=local or fallback))
+
+    def _local_lock(self, group: MetricGroup) -> threading.Lock:
+        with self._local_locks_guard:
+            return self._local_locks.setdefault(group.name, threading.Lock())
 
     def _refresh(
         self, group: MetricGroup, fallback: CachedSnapshot | None
@@ -203,13 +231,22 @@ class SnapshotCache:
         return snapshot
 
     def _read(self, client: RedisLike, group: MetricGroup) -> CachedSnapshot | None:
-        raw = client.get(self._data_key(group))
+        raw = client.get(self._data_key(group))  # a Redis error propagates
         if raw is None:
             return None
-        payload = json.loads(raw)
-        return CachedSnapshot(
-            data=payload["data"], refreshed_at=float(payload["refreshed_at"])
-        )
+        try:
+            payload = json.loads(raw)
+            return CachedSnapshot(
+                data=payload["data"], refreshed_at=float(payload["refreshed_at"])
+            )
+        except (ValueError, TypeError, KeyError):
+            # Not a Redis outage: treat as missing so a refresh overwrites it,
+            # rather than falling back to per-process refreshes until it expires.
+            logger.warning(
+                "platform metrics: ignoring unreadable cache entry for group %r",
+                group.name,
+            )
+            return None
 
     def _newest(
         self, group: MetricGroup, shared: CachedSnapshot | None
@@ -234,3 +271,68 @@ class SnapshotCache:
     @staticmethod
     def _lock_key(group: MetricGroup) -> str:
         return f"{_KEY_PREFIX}:lock:{group.name}"
+
+
+class FailureCounter:
+    """Refresh-failure totals per group, shared through Redis.
+
+    Increments are buffered in-process and flushed with ``HINCRBY`` together
+    with the read, in one transactional pipeline. A failure recorded while
+    Redis is down is added on this process's next successful scrape; it is
+    lost if the process exits first, so the total is best-effort during a
+    Redis outage. While Redis is unreachable, :meth:`totals` returns ``None``
+    and the counter is left out of the scrape rather than dropping to this
+    process's partial count, which Prometheus would read as a reset; the
+    exporter's ``unstract_metrics_cache_up`` gauge reports the outage instead.
+    """
+
+    def __init__(self, client_factory: Callable[[], RedisLike] = _default_client) -> None:
+        self._client_factory = client_factory
+        self._pending: dict[str, int] = {}
+        self._lock = threading.Lock()
+
+    def record(self, group: str) -> None:
+        with self._lock:
+            self._pending[group] = self._pending.get(group, 0) + 1
+
+    def totals(self) -> dict[str, int] | None:
+        """Flush pending increments, then read the shared totals."""
+        # Take the pending counts and do the Redis I/O outside the lock, so a
+        # slow Redis never blocks record() on another thread.
+        with self._lock:
+            pending, self._pending = self._pending, {}
+        try:
+            pipe = self._client_factory().pipeline(transaction=True)
+            for group, amount in pending.items():
+                pipe.hincrby(_FAILURES_KEY, group, amount)
+            pipe.hgetall(_FAILURES_KEY)
+            raw = pipe.execute()[-1]
+        except Exception:
+            self._restore(pending)
+            logger.warning(
+                "platform metrics: could not read refresh-failure totals", exc_info=True
+            )
+            return None
+        totals: dict[str, int] = {}
+        for key, value in raw.items():
+            try:
+                totals[_text(key)] = int(value)
+            except (ValueError, TypeError):
+                logger.warning(
+                    "platform metrics: ignoring unreadable failure total %r", key
+                )
+        return totals
+
+    def _restore(self, pending: dict[str, int]) -> None:
+        with self._lock:
+            for group, amount in pending.items():
+                self._pending[group] = self._pending.get(group, 0) + amount
+
+
+#: No expiry: the totals must only grow. A Redis flush resets them to 0, which
+#: Prometheus handles as an ordinary counter reset.
+_FAILURES_KEY = f"{_KEY_PREFIX}:refresh_failures"
+
+
+def _text(value: Any) -> str:
+    return value.decode() if isinstance(value, bytes) else str(value)

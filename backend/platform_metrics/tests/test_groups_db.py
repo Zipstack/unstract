@@ -30,7 +30,9 @@ def _message(queue, state, enqueued_ago=timedelta(0)):
     )
 
 
-def _execution(status, created_ago=timedelta(minutes=5), ran_for=None):
+def _execution(
+    status, created_ago=timedelta(minutes=5), ran_for=None, modified_ago=timedelta(0)
+):
     """An execution created ``created_ago``, terminal after ``ran_for``.
 
     ``modified_at`` is set to now on purpose: later writes (an API result being
@@ -48,7 +50,7 @@ def _execution(status, created_ago=timedelta(minutes=5), ran_for=None):
     WorkflowExecution.objects.filter(id=ex.id).update(
         created_at=now - created_ago,
         execution_time=(ran_for or timedelta(0)).total_seconds(),
-        modified_at=now,
+        modified_at=now - modified_ago,
     )
     return ex
 
@@ -107,7 +109,16 @@ class TestExecutionGroup:
             created_ago=timedelta(hours=5),
             ran_for=timedelta(hours=4, minutes=50),
         )
-        _execution(ExecutionStatus.ERROR.value)
+        _execution(ExecutionStatus.ERROR.value, ran_for=timedelta(minutes=4))
+        # Terminalised by the undispatched sweep just now: execution_time is
+        # never stamped, so modified_at stands in as the finish time.
+        _execution(ExecutionStatus.ERROR.value, created_ago=timedelta(hours=2))
+        # Swept, but before the window: not counted.
+        _execution(
+            ExecutionStatus.ERROR.value,
+            created_ago=timedelta(hours=5),
+            modified_ago=timedelta(hours=3),
+        )
         # Finished before the window, touched since (e.g. its result was
         # acknowledged just now): not counted.
         _execution(
@@ -125,7 +136,7 @@ class TestExecutionGroup:
         snapshot = ExecutionMetricGroup().fetch()
 
         assert snapshot["active"] == {"PENDING": 1, "EXECUTING": 2}
-        assert snapshot["recent"] == {"COMPLETED": 1, "ERROR": 1}
+        assert snapshot["recent"] == {"COMPLETED": 1, "ERROR": 2}
 
 
 class TestBatchGroup:

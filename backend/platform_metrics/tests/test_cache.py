@@ -227,3 +227,21 @@ def test_rechecks_redis_after_taking_the_lock(cache, redis, clock):
 
     assert cache.resolve(group).data == {"value": 8}
     assert group.fetches == 0
+
+
+def test_unreadable_entry_is_treated_as_missing_and_overwritten(cache, redis):
+    redis.data[DATA_KEY] = '{"data": {"value": 1}}'  # no refreshed_at
+    group = StubGroup("g", value=6)
+
+    assert cache.resolve(group).data == {"value": 6}
+    assert json.loads(redis.data[DATA_KEY])["data"] == {"value": 6}
+
+
+def test_lock_outlives_the_longest_refresh_the_timeout_allows(cache, redis):
+    group = StubGroup("g")
+    group.statements = 3
+    with override_settings(PLATFORM_METRICS_QUERY_TIMEOUT_MS=20000):
+        cache.resolve(group)
+
+    # Three statements of up to 20s each, plus headroom.
+    assert redis.last_lock_timeout >= 60

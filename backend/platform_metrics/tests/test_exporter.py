@@ -4,7 +4,7 @@ import pytest
 from django.test import override_settings
 from prometheus_client.parser import text_string_to_metric_families
 
-from platform_metrics.cache import SnapshotCache
+from platform_metrics.cache import FailureCounter, SnapshotCache
 from platform_metrics.exporter import PlatformMetricsExporter
 from platform_metrics.tests.fakes import Clock, FakeRedis, StubGroup
 
@@ -29,6 +29,7 @@ def _exporter(groups, redis, clock):
     return PlatformMetricsExporter(
         groups=groups,
         cache=SnapshotCache(client_factory=lambda: redis, clock=clock),
+        failures=FailureCounter(client_factory=lambda: redis),
     )
 
 
@@ -91,7 +92,11 @@ def test_unexpected_cache_error_is_counted_not_raised(redis, clock):
         def resolve(self, group):
             raise ValueError("bug")
 
-    exporter = PlatformMetricsExporter(groups=[StubGroup("a")], cache=BrokenCache())
+    exporter = PlatformMetricsExporter(
+        groups=[StubGroup("a")],
+        cache=BrokenCache(),
+        failures=FailureCounter(client_factory=lambda: redis),
+    )
 
     samples = _samples(exporter)
 
@@ -110,6 +115,53 @@ def test_snapshot_that_no_longer_renders_is_dropped_and_counted(redis, clock):
     assert ("stub_a", ()) not in samples
     assert samples[("stub_b", ())] == 2
     assert samples[("unstract_metrics_refresh_failures_total", (("group", "a"),))] == 1
+
+
+FAILURES = "unstract_metrics_refresh_failures_total"
+
+
+def test_failure_total_is_shared_across_processes(redis, clock):
+    """Every gunicorn worker reports the same total, so it never jumps back."""
+    broken = StubGroup("a")
+    broken.error = RuntimeError("db down")
+    worker_1 = _exporter([broken], redis, clock)
+    worker_2 = _exporter([broken], redis, clock)
+
+    _samples(worker_1)
+    clock.now += 60
+    samples_2 = _samples(worker_2)
+    samples_1 = _samples(worker_1)
+
+    assert samples_2[(FAILURES, (("group", "a"),))] == 2
+    assert samples_1[(FAILURES, (("group", "a"),))] == 3
+
+
+def test_failures_while_redis_is_down_are_kept_and_flushed_later(redis, clock):
+    group = StubGroup("a")
+    exporter = _exporter([group], redis, clock)
+    redis.down = True
+
+    samples = _samples(exporter)
+
+    assert (FAILURES, (("group", "a"),)) not in samples, (
+        "absent, not this process's partial count"
+    )
+    assert samples[("unstract_metrics_cache_up", ())] == 0
+    redis.down = False
+    clock.now += 60
+    samples = _samples(exporter)
+    assert samples[(FAILURES, (("group", "a"),))] == 1
+    assert samples[("unstract_metrics_cache_up", ())] == 1
+
+
+def test_unreadable_failure_total_does_not_break_the_scrape(redis, clock):
+    redis.hashes["platform_metrics:v1:refresh_failures"] = {"a": "1.5", "b": 2}
+    exporter = _exporter([StubGroup("a"), StubGroup("b")], redis, clock)
+
+    samples = _samples(exporter)
+
+    assert samples[(FAILURES, (("group", "a"),))] == 0
+    assert samples[(FAILURES, (("group", "b"),))] == 2
 
 
 def test_output_is_prometheus_text_with_help_and_type(redis, clock):

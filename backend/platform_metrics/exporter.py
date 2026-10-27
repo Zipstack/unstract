@@ -1,10 +1,11 @@
 """Assembles the platform metric groups into one Prometheus exposition.
 
-One process-wide registry holds two things: the refresh-failure counter, which
-must survive across scrapes, and a collector that resolves every group through
-the shared :class:`~platform_metrics.cache.SnapshotCache` at scrape time. Each
-group is resolved inside its own ``try``, so one failing group never blanks the
-others and the scrape itself always succeeds.
+One process-wide registry holds a collector that resolves every group through
+the shared :class:`~platform_metrics.cache.SnapshotCache` at scrape time and
+reports refresh failures from the Redis-shared
+:class:`~platform_metrics.cache.FailureCounter`. Each group is resolved inside
+its own ``try``, so one failing group never blanks the others and the scrape
+itself always succeeds.
 
 The registry is instance-owned rather than ``prometheus_client``'s default
 ``REGISTRY``, so nothing else in the process can leak series into this
@@ -18,11 +19,11 @@ import threading
 from collections.abc import Iterable, Sequence
 from typing import TYPE_CHECKING
 
-from .cache import RefreshFailed, SnapshotCache
+from .cache import FailureCounter, RefreshFailed, SnapshotCache
 from .groups import METRIC_GROUPS, MetricGroup
 
 if TYPE_CHECKING:
-    from prometheus_client import CollectorRegistry, Counter
+    from prometheus_client import CollectorRegistry
     from prometheus_client.core import Metric
 
 logger = logging.getLogger(__name__)
@@ -33,7 +34,7 @@ class _GroupsCollector:
         self,
         groups: Sequence[MetricGroup],
         cache: SnapshotCache,
-        failures: Counter,
+        failures: FailureCounter,
     ) -> None:
         self._groups = groups
         self._cache = cache
@@ -44,7 +45,7 @@ class _GroupsCollector:
         return []
 
     def collect(self) -> Iterable[Metric]:
-        from prometheus_client.core import GaugeMetricFamily
+        from prometheus_client.core import CounterMetricFamily, GaugeMetricFamily
 
         refreshed = GaugeMetricFamily(
             "unstract_metrics_last_successful_refresh_timestamp",
@@ -57,11 +58,11 @@ class _GroupsCollector:
             try:
                 snapshot = self._cache.resolve(group)
             except RefreshFailed as failed:
-                self._failures.labels(group=group.name).inc()
+                self._failures.record(group.name)
                 snapshot = failed.snapshot
             except Exception:
                 logger.exception("platform metrics: group %r failed", group.name)
-                self._failures.labels(group=group.name).inc()
+                self._failures.record(group.name)
                 snapshot = None
             if snapshot is None:
                 continue
@@ -73,10 +74,34 @@ class _GroupsCollector:
                 logger.exception(
                     "platform metrics: rendering group %r failed", group.name
                 )
-                self._failures.labels(group=group.name).inc()
+                self._failures.record(group.name)
                 continue
             refreshed.add_metric([group.name], snapshot.refreshed_at)
         families.append(refreshed)
+        # Read after the groups, so failures from this scrape are included.
+        totals = self._failures.totals()
+        families.append(
+            GaugeMetricFamily(
+                "unstract_metrics_cache_up",
+                "1 when this process could reach the Redis metrics cache on this "
+                "scrape, else 0 (groups then serve per-process copies and the "
+                "failure counter is left out)",
+                value=0 if totals is None else 1,
+            )
+        )
+        if totals is not None:
+            failures = CounterMetricFamily(
+                "unstract_metrics_refresh_failures",
+                "Failed refreshes per metric group. One cluster-wide total kept "
+                "in Redis, so every backend pod reports the same value: "
+                "aggregate across instances with max(), not sum(). The group "
+                "serves its last cached values meanwhile",
+                labels=["group"],
+            )
+            for group in self._groups:
+                # Every group's series exists, so one that never failed reads 0.
+                failures.add_metric([group.name], totals.get(group.name, 0))
+            families.append(failures)
         return families
 
 
@@ -85,27 +110,16 @@ class PlatformMetricsExporter:
         self,
         groups: Sequence[MetricGroup] = METRIC_GROUPS,
         cache: SnapshotCache | None = None,
+        failures: FailureCounter | None = None,
     ) -> None:
-        from prometheus_client import CollectorRegistry, Counter
+        from prometheus_client import CollectorRegistry
 
         self.registry: CollectorRegistry = CollectorRegistry()
-        self.failures = Counter(
-            "unstract_metrics_refresh_failures",
-            "Failed refreshes per metric group; the group serves its last "
-            "cached values meanwhile",
-            ["group"],
-            registry=None,
-        )
-        for group in groups:
-            # Pre-create every series so a group that has never failed reads 0.
-            self.failures.labels(group=group.name)
-        # Order matters: a registry collects in registration order, and the
-        # groups collector is what increments the counter, so it goes first
-        # for a failure to show in the same scrape that hit it.
         self.registry.register(
-            _GroupsCollector(groups, cache or SnapshotCache(), self.failures)
+            _GroupsCollector(
+                groups, cache or SnapshotCache(), failures or FailureCounter()
+            )
         )
-        self.registry.register(self.failures)
 
     def render(self) -> bytes:
         from prometheus_client import generate_latest

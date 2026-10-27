@@ -23,6 +23,7 @@ from typing import TYPE_CHECKING, Any
 from django.conf import settings
 from django.db import connection, transaction
 from django.db.models import (
+    Case,
     Count,
     DateTimeField,
     DurationField,
@@ -31,6 +32,7 @@ from django.db.models import (
     Min,
     Q,
     Value,
+    When,
 )
 from django.db.models.functions import Now
 from django.utils import timezone
@@ -54,6 +56,9 @@ class MetricGroup(ABC):
     #: Label value for this group on the exporter-health metrics, and the
     #: suffix of its Redis cache / lock keys.
     name: str
+    #: SQL statements ``query`` runs. The statement timeout bounds each one, so
+    #: the refresh lock is sized from this.
+    statements: int = 1
 
     def fetch(self) -> Snapshot:
         """Read a fresh snapshot, bounded by the configured statement timeout.
@@ -124,7 +129,8 @@ class QueueMetricGroup(MetricGroup):
             "unstract_queue_messages",
             "Messages in pg_queue_message by queue and claim state (ready = "
             "waiting, claimed = held by a consumer, scheduled = delayed until "
-            "available_at)",
+            "available_at). PG queue transport only: work dispatched through "
+            "Celery sits in RabbitMQ and is not counted here",
             labels=["queue", "state"],
         )
         oldest = GaugeMetricFamily(
@@ -153,12 +159,15 @@ class ExecutionMetricGroup(MetricGroup):
       stamp ``execution_time`` on the terminal transition, so this is the
       completion time. ``modified_at`` is not, because later writes bump it
       (acknowledging an API result, for one, would make an old completion
-      count as new). An execution that ran longer than the lookback before
-      finishing is not counted; the default lookback (24h) is far above any
-      normal run.
+      count as new). The exception is a row terminalised without
+      ``execution_time`` (still 0), such as the undispatched-execution sweep's
+      ERROR: its ``modified_at`` is the sweep time, so it is used instead. An
+      execution that ran longer than the lookback before finishing is not
+      counted; the default lookback (24h) is far above any normal run.
     """
 
     name = "executions"
+    statements = 2
 
     def query(self) -> Snapshot:
         from workflow_manager.workflow_v2.models.execution import WorkflowExecution
@@ -174,8 +183,15 @@ class ExecutionMetricGroup(MetricGroup):
             .annotate(n=Count("id"))
             .order_by()
         )
-        finished_at = ExpressionWrapper(
-            F("created_at") + F("execution_time") * Value(timedelta(seconds=1)),
+        finished_at = Case(
+            When(
+                execution_time__gt=0,
+                then=ExpressionWrapper(
+                    F("created_at") + F("execution_time") * Value(timedelta(seconds=1)),
+                    output_field=DateTimeField(),
+                ),
+            ),
+            default=F("modified_at"),
             output_field=DateTimeField(),
         )
         recent = (
