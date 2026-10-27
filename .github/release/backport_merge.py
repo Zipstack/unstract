@@ -17,8 +17,8 @@ the bot's: each case but a head with no pick sets exactly one `backport-*` label
   label and comment still fixed. The decline's message is the main commit's own, so a head edited by hand never
   names other fixes: the head's first commit must carry exactly one pick trailer, naming the main commit of the
   head's sha7. Otherwise -> no decline commit: the bot comments and the run fails. A head with no commit past the
-  base (moved onto it) -> nothing declined and no label: the bot deletes the head, so the next Backport run treats
-  the fix as not picked, and comments once how to decline it by hand.
+  base (moved onto it) -> nothing declined and no label: the bot deletes the head while it is still the PR's commit,
+  so the next Backport run treats the fix as not picked, and comments once how to decline it by hand.
 - open (reopened): label `backport-conflict`, nothing else. Merging it then lands the pick after the decline, and
   the newest trailer on the line wins (relmgr.trailer_states): the fix counts as shipped again.
 Run from a full clone of main, GH_TOKEN = the release App's installation token, RELEASE_BOT_APP_SLUG = its slug.
@@ -200,6 +200,18 @@ def delete_head(slug, head):
             raise
 
 
+def head_sha(slug, head):
+    """The head branch's commit, or None when it is gone."""
+    try:
+        return json.loads(gh("api", f"repos/{slug}/git/ref/heads/{head}"))["object"][
+            "sha"
+        ]
+    except RuntimeError as e:
+        if "404" not in str(e) and "Not Found" not in str(e):
+            raise
+        return None
+
+
 def comments(slug, n):
     out = gh(
         "api",
@@ -327,7 +339,10 @@ def record(slug, n, sender):
     )
     sha, written = decline(slug, pr, reason)
     if not sha:  # no pick on the head: nothing to decline, and the kept head would fail every Backport run
-        delete_head(slug, head)
+        # Only while it is still this PR's commit: a later run may have re-picked onto the same name, and deleting
+        # that head would close its PR as a decline nobody made.
+        if head_sha(slug, head) == pr["headRefOid"]:
+            delete_head(slug, head)
         if not any(
             c["body"].startswith(NO_PICK) and c["created_at"] >= pr["closedAt"]
             for c in cs
@@ -339,10 +354,10 @@ def record(slug, n, sender):
                 "-R",
                 slug,
                 "--body",
-                f"{NO_PICK} {base}, so nothing was declined. Deleted `{head}`: the next Backport run treats the fix "
-                f"as not picked. To decline it, push an empty commit onto {base} with the pick's message, its "
-                "`(cherry picked from commit <main sha>)` line and a final `Declined: <reason>` line, or ask the "
-                "release manager.",
+                f"{NO_PICK} {base}, so nothing was declined, and the bot removes `{head}` while it is still at this "
+                "PR's commit. The next Backport run treats the fix as not picked. To decline it, ask the release "
+                "manager for a hand-made empty commit with the pick's message, its `(cherry picked from commit "
+                "<main sha>)` line and a final `Declined: <reason>` line.",
             )
         return {"result": "skipped: no pick", "base": base, "sha": None, "reason": None}
     set_label(slug, pr, DECLINED)
@@ -391,8 +406,8 @@ def summary(n, sender, rec):
         return [
             head
             + "**skipped**: its head has no commit past the base, so nothing was declined",
-            "Next: the head is deleted and the next Backport run treats the fix as not picked; the PR comment says "
-            "how to decline it by hand.",
+            "Next: the next Backport run treats the fix as not picked; the PR comment says how to decline it by "
+            "hand.",
         ]
     return [head + f"**skipped**: already on `{base}` as {rm.commit_link(sha)}"]
 
