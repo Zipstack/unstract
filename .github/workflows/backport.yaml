@@ -132,6 +132,8 @@ jobs:
           token: ${{ steps.bot.outputs.token }}
 
       - name: Record the close
+        # Each release line runs its own copy of this job with main's script, so main's backport_merge.py must
+        # accept the env and arguments of every live line's copy.
         env:
           GH_TOKEN: ${{ steps.bot.outputs.token }} # labels, comments, the decline commit and the head delete
           RELEASE_BOT_APP_SLUG: ${{ steps.bot.outputs.app-slug }} # the pick PR's author must be this App
