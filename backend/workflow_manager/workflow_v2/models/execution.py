@@ -401,6 +401,8 @@ class WorkflowExecution(BaseModel):
         status: ExecutionStatus | None = None,
         error: str | None = None,
         increment_attempt: bool = False,
+        *,
+        row_locked: bool = False,
     ) -> None:
         """Update the execution status and related fields.
 
@@ -408,23 +410,54 @@ class WorkflowExecution(BaseModel):
             status (Optional[ExecutionStatus], optional): New execution status. Defaults to None.
             error (Optional[str], optional): Error message if any. Defaults to None.
             increment_attempt (bool, optional): Whether to increment attempt counter. Defaults to False.
+            row_locked (bool, optional): True only when THIS instance was itself
+                read with ``select_for_update()`` (either mode) in the current, still-open
+                transaction. Its ``queue_message_id`` / ``status`` / ``attempts``
+                are then the persisted values under the lock, so the second
+                ``SELECT ... FOR NO KEY UPDATE`` round-trip is skipped. Passing it
+                for an instance read without the lock reintroduces the
+                stale-routing race described below.
         """
-        from django.db import transaction
+        from django.db import connection, transaction
+
+        if row_locked and not connection.in_atomic_block:
+            # Outside a transaction the caller's lock was already released when its
+            # statement autocommitted, so the instance proves nothing.
+            raise RuntimeError(
+                "update_execution(row_locked=True) requires the caller's open "
+                "transaction that holds the row lock"
+            )
 
         should_release_rate_limit = False
         with transaction.atomic():
             # Lock the row and read the PERSISTED marker + status together, so routing
             # AND the write are atomic. Never trust the (possibly stale) in-memory
-            # self.queue_message_id: a PG row snapshotted before dispatch recorded its
+            # self.queue_message_id — unless the caller passes row_locked=True, i.e.
+            # this instance was itself read under the lock (see the docstring): a PG row snapshotted before dispatch recorded its
             # handle, mis-routed to an unlocked legacy full save(), would write NULL
             # back into queue_message_id and permanently disable every guard. Under
             # this lock a concurrent _record_dispatch_handle serializes after us.
-            locked = (
-                WorkflowExecution.objects.select_for_update()
-                .filter(pk=self.pk)
-                .values("queue_message_id", "status", "attempts")
-                .first()
-            )
+            #
+            # no_key=True takes FOR NO KEY UPDATE rather than FOR UPDATE. Status
+            # writers still exclude each other (the mode conflicts with itself), but
+            # it no longer conflicts with the FOR KEY SHARE that every child-row
+            # INSERT takes on this row for its foreign-key check — so file-execution
+            # inserts and log writes for this execution stop queueing behind a
+            # status update. Nothing here changes the primary key, which is the only
+            # thing FOR KEY SHARE protects.
+            if row_locked:
+                locked = {
+                    "queue_message_id": self.queue_message_id,
+                    "status": self.status,
+                    "attempts": self.attempts,
+                }
+            else:
+                locked = (
+                    WorkflowExecution.objects.select_for_update(no_key=True)
+                    .filter(pk=self.pk)
+                    .values("queue_message_id", "status", "attempts")
+                    .first()
+                )
             if locked is None:
                 return
             if locked["queue_message_id"] is None:
@@ -446,6 +479,12 @@ class WorkflowExecution(BaseModel):
             # txn) it runs immediately. So the happy path is unchanged for both
             # transports, only the rollback leak is closed.
             transaction.on_commit(self._release_api_deployment_rate_limit)
+        if status is not None:
+            # On commit. Callers must write the file counts in the same
+            # transaction, or the callback sees stale counts.
+            from inbox.events import notify_on_terminal_status
+
+            notify_on_terminal_status(self.pk, status)
 
     def _apply_legacy_update(
         self,
