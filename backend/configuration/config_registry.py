@@ -62,7 +62,7 @@ def _load_cloud_config_specs() -> dict[str, ConfigSpec]:
     except ImportError as e:
         logger.debug("Could not import plugins module: %s", e)
     except Exception as e:
-        logger.error("Error loading cloud configuration plugin: %s", e)
+        logger.exception("Error loading cloud configuration plugin: %s", e)
 
     return cloud_specs
 

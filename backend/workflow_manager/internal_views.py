@@ -101,7 +101,7 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
             return Response(serializer.data)
 
         except Exception as e:
-            logger.error(f"Error in WorkflowExecution list: {str(e)}")
+            logger.exception(f"Error in WorkflowExecution list: {str(e)}")
             return Response(
                 {"error": "Failed to list workflow executions", "detail": str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -194,7 +194,7 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
         except Exception as e:
-            logger.error(
+            logger.exception(
                 f"Failed to retrieve workflow execution {kwargs.get('id')}: {str(e)}"
             )
             return Response(
@@ -626,7 +626,7 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
             )
 
         except Exception as e:
-            logger.error(f"Failed to update workflow execution status {id}: {str(e)}")
+            logger.exception(f"Failed to update workflow execution status {id}: {str(e)}")
             return Response(
                 {"error": "Failed to update workflow execution status", "detail": str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -1062,7 +1062,7 @@ class FileBatchCreateAPIView(APIView):
             return Response(response_serializer.data, status=status.HTTP_201_CREATED)
 
         except Exception as e:
-            logger.error(f"Failed to create file batch: {str(e)}")
+            logger.exception(f"Failed to create file batch: {str(e)}")
             return Response(
                 {"error": "Failed to create file batch", "detail": str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -1126,7 +1126,7 @@ class ToolExecutionInternalAPIView(APIView):
             return Response(response_data)
 
         except Exception as e:
-            logger.error(
+            logger.exception(
                 f"Failed to get tool instances for workflow {workflow_id}: {str(e)}"
             )
             return Response(
@@ -1532,7 +1532,7 @@ class WorkflowFileExecutionAPIView(APIView):
             )
 
         except Exception as e:
-            logger.error(f"Failed to get/create workflow file execution: {str(e)}")
+            logger.exception(f"Failed to get/create workflow file execution: {str(e)}")
             return Response(
                 {
                     "error": "Failed to get/create workflow file execution",
@@ -1609,7 +1609,7 @@ class WorkflowExecuteFileAPIView(APIView):
                 )
 
             except Exception as exec_error:
-                logger.error(f"Workflow execution failed: {str(exec_error)}")
+                logger.exception(f"Workflow execution failed: {str(exec_error)}")
                 return Response(
                     {
                         "status": "error",
@@ -1620,7 +1620,7 @@ class WorkflowExecuteFileAPIView(APIView):
                 )
 
         except Exception as e:
-            logger.error(f"Failed to execute workflow for file: {str(e)}")
+            logger.exception(f"Failed to execute workflow for file: {str(e)}")
             return Response(
                 {"error": "Failed to execute workflow for file", "detail": str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -1738,7 +1738,9 @@ class WorkflowEndpointAPIView(APIView):
             return Response(response_data, status=status.HTTP_200_OK)
 
         except Exception as e:
-            logger.error(f"Failed to get workflow endpoints for {workflow_id}: {str(e)}")
+            logger.exception(
+                f"Failed to get workflow endpoints for {workflow_id}: {str(e)}"
+            )
             return Response(
                 {"error": "Failed to get workflow endpoints", "detail": str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -1944,7 +1946,7 @@ class FileCountIncrementAPIView(APIView):
             )
 
         except Exception as e:
-            logger.error(f"Failed to increment file count: {str(e)}")
+            logger.exception(f"Failed to increment file count: {str(e)}")
             return Response(
                 {"error": "Failed to increment file count", "detail": str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -2388,7 +2390,9 @@ class PipelineTypeAPIView(APIView):
                 )
 
         except Exception as e:
-            logger.error(f"Failed to determine pipeline type for {pipeline_id}: {str(e)}")
+            logger.exception(
+                f"Failed to determine pipeline type for {pipeline_id}: {str(e)}"
+            )
             return Response(
                 {"error": "Failed to determine pipeline type", "detail": str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -2490,7 +2494,7 @@ class BatchStatusUpdateAPIView(APIView):
             )
 
         except Exception as e:
-            logger.error(f"Failed to process batch status update: {str(e)}")
+            logger.exception(f"Failed to process batch status update: {str(e)}")
             return Response(
                 {"error": "Failed to process batch status update", "detail": str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -2597,7 +2601,7 @@ class WorkflowExecutionCleanupAPIView(APIView):
             )
 
         except Exception as e:
-            logger.error(f"Failed to process cleanup request: {str(e)}")
+            logger.exception(f"Failed to process cleanup request: {str(e)}")
             return Response(
                 {"error": "Failed to process cleanup request", "detail": str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -2686,7 +2690,7 @@ class WorkflowExecutionMetricsAPIView(APIView):
             return Response(metrics)
 
         except Exception as e:
-            logger.error(f"Failed to get execution metrics: {str(e)}")
+            logger.exception(f"Failed to get execution metrics: {str(e)}")
             return Response(
                 {"error": "Failed to get execution metrics", "detail": str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -2804,7 +2808,7 @@ class FileHistoryBatchCheckView(APIView):
             )
 
         except Exception as e:
-            logger.error(f"File history batch check failed: {str(e)}")
+            logger.exception(f"File history batch check failed: {str(e)}")
             return Response(
                 {"error": "File history batch check failed", "detail": str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -2945,7 +2949,7 @@ class FileHistoryCreateView(APIView):
             )
 
         except Exception as e:
-            logger.error(f"File history creation failed: {str(e)}")
+            logger.exception(f"File history creation failed: {str(e)}")
             return Response(
                 {"error": "File history creation failed", "detail": str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -3056,7 +3060,7 @@ class PipelineNameAPIView(APIView):
             )
 
         except Exception as e:
-            logger.error(f"Error fetching pipeline name for {pipeline_id}: {str(e)}")
+            logger.exception(f"Error fetching pipeline name for {pipeline_id}: {str(e)}")
             return Response(
                 {
                     "error": "Failed to fetch pipeline name",

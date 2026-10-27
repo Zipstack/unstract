@@ -215,7 +215,7 @@ class WorkerSourceConnector:
                 )
 
             except Exception as e:
-                logger.error(
+                logger.exception(
                     f"[exec:{self.execution_id}] Error accessing directory '{input_directory}': {e}"
                 )
                 continue

@@ -509,7 +509,7 @@ class DestinationConnector(BaseConnector):
             try:
                 engine.close()
             except Exception as e:
-                logger.error(
+                logger.exception(
                     f"Failed to close database engine for {input_file_path}: {str(e)}"
                 )
 

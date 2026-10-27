@@ -84,13 +84,13 @@ class WorkerResultCacheUtils:
                     result_dict = json.loads(result_string.decode("utf-8"))
                     results.append(result_dict)
                 except Exception as parse_error:
-                    logger.error(f"Failed to parse cached result: {parse_error}")
+                    logger.exception(f"Failed to parse cached result: {parse_error}")
                     continue
 
             return results
 
         except Exception as e:
-            logger.error(
+            logger.exception(
                 f"Failed to retrieve API results for execution {execution_id}: {e}"
             )
             return []
@@ -103,7 +103,7 @@ class WorkerResultCacheUtils:
             redis_client.delete(cache_key)
 
         except Exception as e:
-            logger.error(
+            logger.exception(
                 f"Failed to delete API results for execution {execution_id}: {e}"
             )
 

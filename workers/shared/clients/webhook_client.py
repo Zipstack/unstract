@@ -124,7 +124,7 @@ class WebhookAPIClient(BaseAPIClient):
             )
 
         except Exception as e:
-            logger.error(f"Failed to send webhook to {url}: {str(e)}")
+            logger.exception(f"Failed to send webhook to {url}: {str(e)}")
             return APIResponse(success=False, error=str(e))
 
     def get_webhook_status(
@@ -264,7 +264,7 @@ class WebhookAPIClient(BaseAPIClient):
             )
 
         except Exception as e:
-            logger.error(f"Failed to send batch webhooks: {str(e)}")
+            logger.exception(f"Failed to send batch webhooks: {str(e)}")
             return BatchOperationResponse(
                 operation_id=str(uuid.uuid4()),
                 total_items=len(webhooks),
@@ -323,7 +323,7 @@ class WebhookAPIClient(BaseAPIClient):
             return APIResponse(success=True, data=response, status_code=200)
 
         except Exception as e:
-            logger.error(f"Failed to get webhook delivery history: {str(e)}")
+            logger.exception(f"Failed to get webhook delivery history: {str(e)}")
             return APIResponse(success=False, error=str(e))
 
     @circuit_breaker(failure_threshold=3, recovery_timeout=60.0)
@@ -374,7 +374,7 @@ class WebhookAPIClient(BaseAPIClient):
                 error="Circuit breaker open - webhook retry service unavailable",
             )
         except Exception as e:
-            logger.error(f"Failed to retry webhook task {task_id}: {str(e)}")
+            logger.exception(f"Failed to retry webhook task {task_id}: {str(e)}")
             return APIResponse(success=False, error=str(e))
 
     def cancel_webhook(
@@ -408,7 +408,7 @@ class WebhookAPIClient(BaseAPIClient):
             )
 
         except Exception as e:
-            logger.error(f"Failed to cancel webhook task {task_id}: {str(e)}")
+            logger.exception(f"Failed to cancel webhook task {task_id}: {str(e)}")
             return APIResponse(success=False, error=str(e))
 
     def get_webhook_metrics(
@@ -453,5 +453,5 @@ class WebhookAPIClient(BaseAPIClient):
             return APIResponse(success=True, data=response, status_code=200)
 
         except Exception as e:
-            logger.error(f"Failed to get webhook metrics: {str(e)}")
+            logger.exception(f"Failed to get webhook metrics: {str(e)}")
             return APIResponse(success=False, error=str(e))

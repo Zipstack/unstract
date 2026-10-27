@@ -64,7 +64,9 @@ class MetricsMixin:
         try:
             self.redis_client = create_redis_client(db=_metrics_redis_db())
         except Exception as e:
-            logger.error(f"Failed to initialize Redis client for run_id={run_id}: {e}")
+            logger.exception(
+                f"Failed to initialize Redis client for run_id={run_id}: {e}"
+            )
 
         self.redis_key = f"metrics:{self.run_id}:{self.op_id}"
 
@@ -79,7 +81,7 @@ class MetricsMixin:
         try:
             self.redis_client.set(self.redis_key, time.time(), ex=ttl)
         except Exception as e:
-            logger.error(f"Failed to set start time in Redis: {e}")
+            logger.exception(f"Failed to set start time in Redis: {e}")
             self.redis_client = None
 
     def collect_metrics(self) -> dict[str, Any]:
@@ -102,5 +104,5 @@ class MetricsMixin:
 
             return {self.TIME_TAKEN_KEY: time_taken}
         except Exception as e:
-            logger.error(f"Failed to collect metrics from Redis: {e}")
+            logger.exception(f"Failed to collect metrics from Redis: {e}")
             return {self.TIME_TAKEN_KEY: None}

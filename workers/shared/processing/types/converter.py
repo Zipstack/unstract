@@ -110,7 +110,7 @@ class TypeConverter:
                 connector_id=file_dict.get("connector_id"),
             )
         except Exception as e:
-            logger.error(f"Failed to convert dict to FileHashData: {e}")
+            logger.exception(f"Failed to convert dict to FileHashData: {e}")
             # Return minimal valid FileHashData
             return FileHashData(
                 file_name=file_dict.get("file_name", "unknown.txt"),

@@ -336,5 +336,5 @@ class ExecutionFileHandler:
                     )
 
         except Exception as e:
-            logger.error(f"Failed to update execution timing in metadata: {e}")
+            logger.exception(f"Failed to update execution timing in metadata: {e}")
             # Don't re-raise - timing update failure shouldn't stop execution

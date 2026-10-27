@@ -33,7 +33,7 @@ class OrganizationContextAPIView(APIView):
             return Response(serializer.data)
 
         except Exception as e:
-            logger.error(f"Failed to get organization context for {org_id}: {str(e)}")
+            logger.exception(f"Failed to get organization context for {org_id}: {str(e)}")
             return Response(
                 {"error": "Failed to get organization context", "detail": str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,

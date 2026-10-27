@@ -280,7 +280,7 @@ class APIDeploymentRateLimiter:
             return True, None
 
         except Exception as e:
-            logger.error(f"Error in rate limit check for org {org_id}: {e}")
+            logger.exception(f"Error in rate limit check for org {org_id}: {e}")
             # Fail open: allow request on errors
             return True, None
 
@@ -334,7 +334,7 @@ class APIDeploymentRateLimiter:
             return True, None
         except Exception as e:
             # If Redis fails, allow the request to proceed (fail open)
-            logger.error(
+            logger.exception(
                 f"Rate limit check failed for org {organization.organization_id}: {e}. "
                 "Allowing request to proceed."
             )
@@ -361,4 +361,4 @@ class APIDeploymentRateLimiter:
                 f"Rate limit slot released for org {organization_id}, execution {execution_id}"
             )
         except Exception as e:
-            logger.error(f"Failed to release rate limit slot: {e}")
+            logger.exception(f"Failed to release rate limit slot: {e}")

@@ -164,7 +164,7 @@ class UsageAPIClient(BaseAPIClient, UsageOperationMixin):
                 )
 
         except Exception as e:
-            logger.error(
+            logger.exception(
                 f"Failed to get usage data for {validated_file_execution_id}: {str(e)}"
             )
             return UsageResponse.error_response(
@@ -230,7 +230,7 @@ class UsageAPIClient(BaseAPIClient, UsageOperationMixin):
             return None
 
         except Exception as e:
-            logger.error(
+            logger.exception(
                 f"Failed to get pages processed for {file_execution_id}: {str(e)}"
             )
             return None

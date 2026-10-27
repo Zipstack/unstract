@@ -143,7 +143,7 @@ class RedisCacheBackend(BaseCacheBackend):
                 return {"data": data, "cached_at": datetime.now(UTC).isoformat()}
             return None
         except Exception as e:
-            logger.error(f"Error getting cache key {key}: {e}")
+            logger.exception(f"Error getting cache key {key}: {e}")
             return None
 
     def set(self, key: str, value: dict[str, Any], ttl: int) -> bool:
@@ -163,7 +163,7 @@ class RedisCacheBackend(BaseCacheBackend):
             logger.debug(f"Cached key {key} with TTL {ttl}s")
             return True
         except Exception as e:
-            logger.error(f"Error setting cache key {key}: {e}")
+            logger.exception(f"Error setting cache key {key}: {e}")
             return False
 
     def delete(self, key: str) -> bool:
@@ -176,7 +176,7 @@ class RedisCacheBackend(BaseCacheBackend):
             logger.debug(f"Deleted cache key {key} (count: {deleted_count})")
             return deleted_count > 0
         except Exception as e:
-            logger.error(f"Error deleting cache key {key}: {e}")
+            logger.exception(f"Error deleting cache key {key}: {e}")
             return False
 
     def keys(self, pattern: str) -> list[str]:
@@ -201,7 +201,7 @@ class RedisCacheBackend(BaseCacheBackend):
                 key.decode("utf-8") if isinstance(key, bytes) else key for key in keys
             ]
         except Exception as e:
-            logger.error(f"Error getting keys for pattern {pattern}: {e}")
+            logger.exception(f"Error getting keys for pattern {pattern}: {e}")
             return []
 
     def delete_pattern(self, pattern: str) -> int:
@@ -220,7 +220,7 @@ class RedisCacheBackend(BaseCacheBackend):
                 return count
             return 0
         except Exception as e:
-            logger.error(f"Error deleting pattern {pattern}: {e}")
+            logger.exception(f"Error deleting pattern {pattern}: {e}")
             return 0
 
     def scan_keys(self, pattern: str, count: int = 100) -> list[str]:
@@ -265,7 +265,7 @@ class RedisCacheBackend(BaseCacheBackend):
             return keys
 
         except Exception as e:
-            logger.error(f"Error scanning keys for pattern {pattern}: {e}")
+            logger.exception(f"Error scanning keys for pattern {pattern}: {e}")
             return []
 
     def mget(self, keys: list[str]) -> dict[str, Any]:
@@ -306,7 +306,7 @@ class RedisCacheBackend(BaseCacheBackend):
             return result
 
         except Exception as e:
-            logger.error(f"Error batch getting cache keys: {e}")
+            logger.exception(f"Error batch getting cache keys: {e}")
             return {}
 
     def mset(self, data: dict[str, tuple[dict[str, Any], int]]) -> int:
@@ -350,5 +350,5 @@ class RedisCacheBackend(BaseCacheBackend):
             return successful_keys
 
         except Exception as e:
-            logger.error(f"Error batch setting cache keys: {e}")
+            logger.exception(f"Error batch setting cache keys: {e}")
             return 0

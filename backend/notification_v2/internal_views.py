@@ -101,7 +101,7 @@ class WebhookInternalViewSet(viewsets.ReadOnlyModelViewSet):
             return Response({"count": len(notifications), "notifications": notifications})
 
         except Exception as e:
-            logger.error(f"Failed to list notifications: {str(e)}")
+            logger.exception(f"Failed to list notifications: {str(e)}")
             return Response(
                 {"error": "Failed to list notifications", "detail": str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -127,7 +127,7 @@ class WebhookInternalViewSet(viewsets.ReadOnlyModelViewSet):
             return Response(serializer.data)
 
         except Exception as e:
-            logger.error(f"Failed to get webhook configuration {id}: {str(e)}")
+            logger.exception(f"Failed to get webhook configuration {id}: {str(e)}")
             return Response(
                 {"error": "Failed to get webhook configuration", "detail": str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -317,7 +317,7 @@ class WebhookMetricsAPIView(APIView):
             return Response(metrics)
 
         except Exception as e:
-            logger.error(f"Failed to get webhook metrics: {str(e)}")
+            logger.exception(f"Failed to get webhook metrics: {str(e)}")
             return Response(
                 {"error": "Failed to get webhook metrics", "detail": str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,

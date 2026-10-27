@@ -60,7 +60,7 @@ def _emit_websocket(
         payload = {"room": room, "event": event, "data": data}
         api_client.post(_EMIT_WEBSOCKET_ENDPOINT, data=payload)
     except Exception as e:
-        logger.error("Failed to emit WebSocket event: %s", e)
+        logger.exception("Failed to emit WebSocket event: %s", e)
 
 
 def _emit_event(
