@@ -106,7 +106,9 @@ class PerDoorColumnsTest(SimpleTestCase):
     def test_api_agent_resolves_a_withdrawn_extractor(self) -> None:
         """Lookup must not filter on availability.
 
-        A job row records the extractor that ran. If `api_agent` hid
+        No caller depends on this yet (see the function's docstring). The
+        behaviour is pinned because it is the point of the function: a job row
+        records the extractor that ran, and if `api_agent` hid
         unavailable agents, a status read for an in-flight or historical `kv`
         job would stop describing it the moment the agent was withdrawn.
         """
@@ -164,14 +166,14 @@ class CatalogueShapeTest(SimpleTestCase):
         names = [s.api_extractor for s in EXTRACTOR_AGENTS.values() if s.api_extractor]
         self.assertEqual(len(names), len(set(names)))
 
+
 class EnumValuesArePersistedLiteralsTest(SimpleTestCase):
     """The enum VALUES are database content; pin them, not just their shape.
 
     These strings are what ``agentic_extractor_agent_config.agent_key`` and
     ``.kind`` hold, and they are frozen again as literal tuples in the cloud
     app's migration ``0009_extraction_profiles`` -- a repository this CI never
-    checks out, so a rename here is catchable only here. A rename is silent at
-    run time: ``get_agent("simple")`` returns None for every row already
+    checks out. A rename is silent at run time: ``get_agent("simple")`` returns None for every row already
     written, and ``kind``-filtered queries stop matching.
 
     The sibling tests compare ``EXTRACTOR_AGENTS`` against

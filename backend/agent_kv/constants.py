@@ -61,8 +61,11 @@ OPERATION_TABLE_EXTRACT_API = "table_extract_api"
 #: two different shapes -- a missing key here, a boolean there -- so
 #: re-enabling the engine meant finding and flipping both.
 #:
-#: Re-enabling is still one line, just one line in ONE place: set
-#: `available=True` on that row. Doing it without the plugin deployed remains
+#: Re-enabling THIS door -- the blind API route -- is one line: set
+#: `available=True` on that row. That is no longer sufficient to make the
+#: engine runnable, because the Studio's door also requires a parameter
+#: builder registered in the cloud tree; see the `available` entry in
+#: `extractor_registry.spec`. Doing either without the plugin deployed remains
 #: the failure described above.
 EXTRACTOR_ROUTES = api_routes()
 

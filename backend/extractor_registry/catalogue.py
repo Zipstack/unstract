@@ -51,8 +51,8 @@ EXTRACTOR_AGENTS: dict[str, ExtractorAgentSpec] = {
         # NOT DEPLOYED. `workers/plugins/agentic_kv` lives on the UN-4044
         # branch and is not on main in either repo, so neither door may run
         # it. Flipping this True without the plugin deployed would accept a
-        # submit with a 202 onto a queue with no consumer, leaving it
-        # DISPATCHED forever with nothing in any log. It is also not
+        # submit with a 202 onto a queue with no consumer; the row then sits
+        # DISPATCHED until the stuck-job sweep force-fails it. It is also not
         # sufficient on its own -- see the `available` entry in `spec.py`.
         available=False,
     ),
@@ -136,10 +136,13 @@ def api_agent(extractor: str) -> ExtractorAgentSpec | None:
     """Return the spec behind a blind-API ``extractor`` name, or ``None``.
 
     Resolves the API's namespace rather than the Studio's — ``"kv"`` finds the
-    agent the Studio knows as ``multi_stage``. Does NOT filter on
-    availability: callers that need routability use ``api_routes()``, while
-    this is for describing an extractor the job row already recorded, which
-    stays readable after an agent is withdrawn.
+    agent the Studio knows as ``multi_stage``. Does NOT filter on availability,
+    so a withdrawn agent still resolves; callers that need routability use
+    ``api_routes()``.
+
+    NO CALLER YET. ``agent_kv``'s status path does not route through this, so
+    nothing outside the tests depends on the non-filtering behaviour. Wire it
+    or delete it; do not assume it is already load-bearing.
     """
     for spec in EXTRACTOR_AGENTS.values():
         if spec.api_extractor == extractor:
