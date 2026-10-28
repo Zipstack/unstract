@@ -1,0 +1,42 @@
+{
+  /*
+   * TypeScript config for the v1 frontend, checked by `bun run typecheck:v1`.
+   * It lives here rather than beside tsconfig.json so editors pick it up for
+   * files under src/v1; tsconfig.json and jsconfig.json exclude this folder.
+   *
+   * `allowJs: false` makes tsc skip a .js file rather than fail on it, so the
+   * "TypeScript only" rule is enforced by scripts/check-v1.mjs, which
+   * typecheck:v1 runs first.
+   */
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+
+    "allowJs": false,
+    "noEmit": true,
+    /* Off so hand-written .d.ts under v1 are checked too; with it on, an
+     * unresolved name in one silently becomes `any`. */
+    "skipLibCheck": false,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "forceConsistentCasingInFileNames": true,
+
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+
+    /* Only `@v1` and `@v1/*` — deliberately no `@/*`, so an `@/` import
+     * fails typecheck as well as lint (`../` imports are caught by lint). The
+     * alias is also declared in vite.config.js and vitest.config.mjs. */
+    "paths": {
+      "@v1": ["./index.ts"],
+      "@v1/*": ["./*"]
+    }
+  },
+  "include": ["./**/*", "../../vite-env.d.ts"]
+}

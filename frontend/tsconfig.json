@@ -40,9 +40,12 @@
      * `baseUrl` was removed in TypeScript 6, so the paths are relative to
      * this file's directory. */
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      /* v0 may import only the v1 public entry, so only that is mapped. */
+      "@v1": ["./src/v1/index.ts"]
     }
   },
   "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.d.ts"],
-  "exclude": ["node_modules", "build", "dist"]
+  /* src/v1 is checked by src/v1/tsconfig.json under stricter settings. */
+  "exclude": ["node_modules", "build", "dist", "src/v1"]
 }

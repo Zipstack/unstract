@@ -121,6 +121,18 @@ jobs:
         working-directory: frontend
         run: bun run typecheck
 
+      # src/v1 is excluded from the step above and checked under its own
+      # stricter tsconfig, after scripts/check-v1.mjs rejects non-TS files.
+      - name: Run v1 typecheck
+        working-directory: frontend
+        run: bun run typecheck:v1
+
+      # Biome on src/v1, then the folder import contract, PropTypes and `ant-`
+      # checks in scripts/check-v1.mjs, which `biome ci` cannot express.
+      - name: Run v1 lint
+        working-directory: frontend
+        run: bun run lint:v1
+
   # ci-test.yaml runs the same suite as the rig's `frontend` group, but its
   # tiers skip frontend-only PRs; this job is what gates those.
   vitest:
