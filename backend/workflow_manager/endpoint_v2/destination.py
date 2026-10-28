@@ -635,22 +635,10 @@ class DestinationConnector(BaseConnector):
                 result = file_content.encode("utf-8").decode("unicode-escape")
             else:
                 raise InvalidToolOutputType()
-        except FileNotFoundError as err:
-            # The error carries the execution-storage path, which stays in the
-            # server log; the caller gets a message without it.
-            logger.error(
-                f"Error while getting result from the tool ({output_file}): {err}"
-            )
-            raise APIException(
-                detail="Error while getting result from the tool: output not found"
-            )
-        except json.JSONDecodeError as err:
-            logger.error(
-                f"Error while getting result from the tool ({output_file}): {err}"
-            )
-            raise APIException(
-                detail="Error while getting result from the tool: output is not valid JSON"
-            )
+        except (FileNotFoundError, json.JSONDecodeError) as err:
+            msg = f"Error while getting result from the tool: {err}"
+            logger.error(msg)
+            raise APIException(detail=msg)
 
         return result
 
@@ -1131,7 +1119,7 @@ class DestinationConnector(BaseConnector):
 
         Args:
             input_file_path: Path to the file to read
-            file_name: Name of the file, used in the log and the caller-facing error
+            file_name: Name of the file for logging purposes
 
         Returns:
             Base64 encoded file content
@@ -1144,14 +1132,12 @@ class DestinationConnector(BaseConnector):
             file_storage = file_system.get_file_storage()
 
             if not file_storage.exists(input_file_path):
-                raise FileNotFoundError(f"File not found: {input_file_path}")
+                raise APIException(f"File not found: {input_file_path}")
 
             file_bytes = file_storage.read(input_file_path, mode="rb")
             if isinstance(file_bytes, str):
                 file_bytes = file_bytes.encode("utf-8")
             return base64.b64encode(file_bytes).decode("utf-8")
         except Exception as e:
-            # The error names the execution-storage path: log it, but keep it
-            # out of the message returned to the caller.
             logger.error(f"Failed to read file content for {file_name}: {e}")
-            raise APIException(f"Failed to read file content for queue: {file_name}")
+            raise APIException(f"Failed to read file content for queue: {e}")

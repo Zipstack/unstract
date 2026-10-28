@@ -1,8 +1,11 @@
 import logging
+import uuid
 from typing import Any
 
 from django.conf import settings
+from django.db import transaction
 from django.db.models.query import QuerySet
+from django.shortcuts import get_object_or_404
 from django.views.decorators.csrf import csrf_exempt
 from permissions.membership_views import OwnerManagementMixin
 from permissions.permission import IsOwner, IsOwnerOrSharedUserOrSharedToOrg
@@ -17,8 +20,10 @@ from rest_framework.decorators import action, api_view
 from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
+from rest_framework.views import APIView
 from tenant_account_v2.capabilities import Capability, RequiresCapability
 from utils.filtering import FilterHelper
+from utils.organization_utils import filter_queryset_by_organization, resolve_organization
 from utils.pagination import OptionalPagination
 
 from backend.constants import RequestKey
@@ -27,6 +32,15 @@ from workflow_manager.endpoint_v2.destination import DestinationConnector
 from workflow_manager.endpoint_v2.dto import FileHash
 from workflow_manager.endpoint_v2.endpoint_utils import WorkflowEndpointUtils
 from workflow_manager.endpoint_v2.source import SourceConnector
+from workflow_manager.file_execution.models import WorkflowFileExecution
+from workflow_manager.internal_serializers import (
+    FileBatchCreateSerializer,
+    FileBatchResponseSerializer,
+    WorkflowExecutionContextSerializer,
+    WorkflowExecutionSerializer,
+    WorkflowExecutionStatusUpdateSerializer,
+    WorkflowFileExecutionSerializer,
+)
 from workflow_manager.workflow_v2.constants import WorkflowKey
 from workflow_manager.workflow_v2.dto import ExecutionResponse
 from workflow_manager.workflow_v2.enums import SchemaEntity, SchemaType
@@ -346,6 +360,269 @@ class WorkflowViewSet(
         workflow = self.get_object()
         serializer = SharedUserListSerializer(workflow)
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+# =============================================================================
+# INTERNAL API VIEWS - Used by Celery workers for service-to-service communication
+# =============================================================================
+
+
+class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
+    """Internal API ViewSet for Workflow Execution operations.
+    Used by Celery workers for service-to-service communication.
+    """
+
+    serializer_class = WorkflowExecutionSerializer
+    lookup_field = "id"
+    # OrganizationFilterBackend is off here; get_queryset() scopes instead, via
+    # filter_queryset_by_organization, which fails closed. X-Organization-ID is
+    # therefore required in practice: a worker that omits it gets zero rows.
+    skip_org_filter = True
+
+    def get_queryset(self):
+        """Get workflow executions filtered by organization context."""
+        queryset = WorkflowExecution.objects.all()
+        return filter_queryset_by_organization(queryset, self.request)
+
+    def retrieve(self, request, *args, **kwargs):
+        """Get specific workflow execution with context."""
+        try:
+            execution = self.get_object()
+
+            # Build comprehensive context
+            context_data = {
+                "execution": WorkflowExecutionSerializer(execution).data,
+                "workflow_definition": execution.workflow.workflow_definition
+                if execution.workflow
+                else {},
+                "source_config": self._get_source_config(execution),
+                "destination_config": self._get_destination_config(execution),
+                "organization_context": self._get_organization_context(execution),
+                "file_executions": WorkflowFileExecutionSerializer(
+                    execution.file_executions.all(), many=True
+                ).data,
+            }
+
+            serializer = WorkflowExecutionContextSerializer(context_data)
+            return Response(serializer.data)
+
+        except Exception as e:
+            logger.error(
+                f"Failed to retrieve workflow execution {kwargs.get('id')}: {str(e)}"
+            )
+            return Response(
+                {"error": "Failed to retrieve workflow execution", "detail": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+    def _get_source_config(self, execution: WorkflowExecution) -> dict:
+        """Get source configuration for execution."""
+        try:
+            if execution.pipeline_id:
+                # Add organization filtering for pipeline lookup
+                org_id = getattr(self.request, "organization_id", None)
+                if org_id:
+                    # Use shared utility to resolve organization
+                    organization = resolve_organization(org_id, raise_on_not_found=False)
+                    if organization:
+                        pipeline = Pipeline.objects.get(
+                            id=execution.pipeline_id, organization=organization
+                        )
+                    else:
+                        logger.warning(
+                            f"Organization {org_id} not found for pipeline lookup"
+                        )
+                        return {}
+                else:
+                    pipeline = Pipeline.objects.get(id=execution.pipeline_id)
+                return {
+                    "type": "pipeline",
+                    "pipeline_id": str(pipeline.id),
+                    "source_settings": pipeline.source,
+                    "is_api": False,
+                }
+            else:
+                api_deployment = execution.workflow.api_deployments.first()
+                if api_deployment:
+                    return {
+                        "type": "api_deployment",
+                        "deployment_id": str(api_deployment.id),
+                        "is_api": True,
+                    }
+            return {}
+        except Pipeline.DoesNotExist:
+            logger.warning(
+                f"Pipeline {execution.pipeline_id} not found for execution {execution.id}"
+            )
+            return {}
+        except Exception as e:
+            logger.warning(
+                f"Failed to get source config for execution {execution.id}: {str(e)}"
+            )
+            return {}
+
+    def _get_destination_config(self, execution: WorkflowExecution) -> dict:
+        """Get destination configuration for execution."""
+        try:
+            if execution.pipeline_id:
+                # Add organization filtering for pipeline lookup
+                org_id = getattr(self.request, "organization_id", None)
+                if org_id:
+                    # Use shared utility to resolve organization
+                    organization = resolve_organization(org_id, raise_on_not_found=False)
+                    if organization:
+                        pipeline = Pipeline.objects.get(
+                            id=execution.pipeline_id, organization=organization
+                        )
+                    else:
+                        logger.warning(
+                            f"Organization {org_id} not found for destination pipeline lookup"
+                        )
+                        return {}
+                else:
+                    pipeline = Pipeline.objects.get(id=execution.pipeline_id)
+                return {"destination_settings": pipeline.destination}
+            return {}
+        except Pipeline.DoesNotExist:
+            logger.warning(
+                f"Pipeline {execution.pipeline_id} not found for destination config in execution {execution.id}"
+            )
+            return {}
+        except Exception as e:
+            logger.warning(
+                f"Failed to get destination config for execution {execution.id}: {str(e)}"
+            )
+            return {}
+
+    def _get_organization_context(self, execution: WorkflowExecution) -> dict:
+        """Get organization context for execution."""
+        try:
+            return {
+                "organization_id": str(execution.organization.id),
+                "organization_name": execution.organization.display_name,
+                "settings": {},
+            }
+        except Exception as e:
+            logger.warning(
+                f"Failed to get organization context for execution {execution.id}: {str(e)}"
+            )
+            return {}
+
+    @action(detail=True, methods=["post"])
+    def status(self, request, id=None):
+        """Update workflow execution status."""
+        try:
+            execution = self.get_object()
+            serializer = WorkflowExecutionStatusUpdateSerializer(data=request.data)
+
+            if serializer.is_valid():
+                validated_data = serializer.validated_data
+
+                execution.status = validated_data["status"]
+                if validated_data.get("error_message"):
+                    execution.error_message = validated_data["error_message"]
+                if validated_data.get("total_files") is not None:
+                    execution.total_files = validated_data["total_files"]
+                if validated_data.get("attempts") is not None:
+                    execution.attempts = validated_data["attempts"]
+                if validated_data.get("execution_time") is not None:
+                    execution.execution_time = validated_data["execution_time"]
+
+                execution.save()
+
+                logger.info(
+                    f"Updated workflow execution {id} status to {validated_data['status']}"
+                )
+
+                return Response(
+                    {
+                        "status": "updated",
+                        "execution_id": str(execution.id),
+                        "new_status": execution.status,
+                    }
+                )
+
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        except Exception as e:
+            logger.error(f"Failed to update workflow execution status {id}: {str(e)}")
+            return Response(
+                {"error": "Failed to update execution status", "detail": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+
+class FileBatchCreateInternalAPIView(APIView):
+    """Internal API endpoint for creating file batches for workflow execution.
+    Used by Celery workers for service-to-service communication.
+    """
+
+    def post(self, request):
+        """Create file execution records in batches."""
+        try:
+            serializer = FileBatchCreateSerializer(data=request.data)
+
+            if not serializer.is_valid():
+                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+            validated_data = serializer.validated_data
+            workflow_execution_id = validated_data["workflow_execution_id"]
+            files_data = validated_data["files"]
+            is_api = validated_data["is_api"]
+
+            workflow_execution = get_object_or_404(
+                WorkflowExecution, id=workflow_execution_id
+            )
+
+            created_file_executions = []
+
+            with transaction.atomic():
+                for file_data in files_data:
+                    file_hash = FileHash(
+                        file_name=file_data["file_name"],
+                        file_path=file_data.get("file_path"),
+                        file_size=file_data.get("file_size"),
+                        file_hash=file_data.get("file_hash"),
+                        provider_file_uuid=file_data.get("provider_file_uuid"),
+                        mime_type=file_data.get("mime_type"),
+                        fs_metadata=file_data.get("fs_metadata"),
+                    )
+
+                    file_execution = (
+                        WorkflowFileExecution.objects.get_or_create_file_execution(
+                            workflow_execution=workflow_execution,
+                            file_hash=file_hash,
+                            is_api=is_api,
+                        )
+                    )
+
+                    created_file_executions.append(file_execution)
+
+            batch_id = str(uuid.uuid4())
+
+            response_data = {
+                "batch_id": batch_id,
+                "workflow_execution_id": workflow_execution_id,
+                "total_files": len(created_file_executions),
+                "created_file_executions": WorkflowFileExecutionSerializer(
+                    created_file_executions, many=True
+                ).data,
+            }
+
+            response_serializer = FileBatchResponseSerializer(response_data)
+
+            logger.info(
+                f"Created file batch {batch_id} with {len(created_file_executions)} files for execution {workflow_execution_id}"
+            )
+
+            return Response(response_serializer.data, status=status.HTTP_201_CREATED)
+
+        except Exception as e:
+            logger.error(f"Failed to create file batch: {str(e)}")
+            return Response(
+                {"error": "Failed to create file batch", "detail": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
 
 
 # =============================================================================
