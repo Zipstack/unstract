@@ -80,7 +80,7 @@
     "typecheck": "tsc --noEmit",
     "tokens:v1": "node scripts/build-v1-tokens.mjs",
     "typecheck:v1": "node scripts/check-v1.mjs --files && tsc -p src/v1/tsconfig.json",
-    "lint:v1": "biome lint src/v1/ && node scripts/check-v1.mjs --code",
+    "lint:v1": "biome lint src/v1/ && node scripts/check-v1.mjs --code && node scripts/check-v1-styles.mjs",
     "test:v1": "vitest run --dir src/v1 --passWithNoTests && node --test test-fixtures/v1-boundary/boundary.fixtures.mjs"
   },
   "browserslist": {
