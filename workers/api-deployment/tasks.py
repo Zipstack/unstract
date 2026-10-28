@@ -24,7 +24,6 @@ from shared.patterns.retry.utils import retry
 from shared.processing.files import FileProcessingUtils
 from shared.utils.manual_review_factory import (
     AUTO_ENABLE_HIGHLIGHT,
-    HIGHLIGHT_AUTO_ENABLED_MESSAGE,
     get_manual_review_workflow_util,
     has_confidence_rules,
 )
@@ -672,15 +671,8 @@ def _run_workflow_api(
     )
 
     auto_enable_highlight = has_confidence_rules(
-        get_manual_review_workflow_util(api_client, schema_name), workflow_id
+        get_manual_review_workflow_util(api_client, schema_name), workflow_id, "API"
     )
-    if auto_enable_highlight:
-        _log_api_statistics_to_ui(
-            execution_id=execution_id,
-            organization_id=schema_name,
-            pipeline_id=pipeline_id,
-            message=HIGHLIGHT_AUTO_ENABLED_MESSAGE,
-        )
 
     # Create batch tasks following the exact Django pattern
     batch_tasks = []

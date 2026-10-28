@@ -776,20 +776,30 @@ class TestApiDeploymentManualReviewContract:
 class TestAutoEnableHighlightOrchestration:
     """HITL confidence rules set ``auto_enable_highlight`` (UN-4435).
 
-    The orchestrators check the rules once and put the flag in
+    The orchestrators check their own flow's rules once (API deployments the
+    API rules, the rest the DB rules) and put the flag in
     ``manual_review_config``, which the file workers read.
     """
 
-    @pytest.mark.parametrize("has_rules", [True, False])
-    def test_api_deployment_sets_flag_on_every_batch(self, monkeypatch, has_rules):
-        from shared.utils.manual_review_factory import (
-            AUTO_ENABLE_HIGHLIGHT,
-            HIGHLIGHT_AUTO_ENABLED_MESSAGE,
+    @staticmethod
+    def _util(confidence_rule_type):
+        """A workflow util with a confidence rule of one type, or none."""
+        util = MagicMock(name="workflow_util")
+        util.has_confidence_rules.side_effect = (
+            lambda workflow_id, rule_type: rule_type == confidence_rule_type
         )
+        return util
+
+    @pytest.mark.parametrize(
+        "confidence_rule_type, has_rules", [("API", True), ("DB", False), (None, False)]
+    )
+    def test_api_deployment_sets_flag_on_every_batch(
+        self, monkeypatch, confidence_rule_type, has_rules
+    ):
+        from shared.utils.manual_review_factory import AUTO_ENABLE_HIGHLIGHT
 
         mocks = _setup_workflow_api_mocks(monkeypatch, num_batches=2)
-        util = MagicMock(name="workflow_util")
-        util.has_confidence_rules.return_value = has_rules
+        util = self._util(confidence_rule_type)
         monkeypatch.setattr(
             mocks.api_tasks, "get_manual_review_workflow_util", lambda *a: util
         )
@@ -806,8 +816,6 @@ class TestAutoEnableHighlightOrchestration:
                 dict(kwargs["file_data"].manual_review_config)
             ),
         )
-        ui_log = MagicMock(name="_log_api_statistics_to_ui")
-        monkeypatch.setattr(mocks.api_tasks, "_log_api_statistics_to_ui", ui_log)
 
         mocks.api_tasks._run_workflow_api(
             api_client=mocks.api_client,
@@ -822,23 +830,21 @@ class TestAutoEnableHighlightOrchestration:
             task_id="task-1",
         )
 
-        util.has_confidence_rules.assert_called_once_with("wf-1")
+        util.has_confidence_rules.assert_called_once_with("wf-1", "API")
         assert len(configs) == 2
         assert all(c.get(AUTO_ENABLE_HIGHLIGHT, False) is has_rules for c in configs)
-        messages = [c.kwargs.get("message") for c in ui_log.call_args_list]
-        assert (HIGHLIGHT_AUTO_ENABLED_MESSAGE in messages) is has_rules
 
-    @pytest.mark.parametrize("has_rules", [True, False])
-    def test_general_sets_flag_on_global_file_data(self, monkeypatch, has_rules):
+    @pytest.mark.parametrize(
+        "confidence_rule_type, has_rules", [("DB", True), ("API", False), (None, False)]
+    )
+    def test_general_sets_flag_on_global_file_data(
+        self, monkeypatch, confidence_rule_type, has_rules
+    ):
         from general import tasks as general_tasks
-        from shared.utils.manual_review_factory import (
-            AUTO_ENABLE_HIGHLIGHT,
-            HIGHLIGHT_AUTO_ENABLED_MESSAGE,
-        )
+        from shared.utils.manual_review_factory import AUTO_ENABLE_HIGHLIGHT
 
         api_client = MagicMock(name="api_client")
-        util = MagicMock(name="workflow_util")
-        util.has_confidence_rules.return_value = has_rules
+        util = self._util(confidence_rule_type)
         util.create_workflow_file_data_with_manual_review.return_value = MagicMock(
             manual_review_config={}
         )
@@ -861,8 +867,7 @@ class TestAutoEnableHighlightOrchestration:
         monkeypatch.setattr(
             general_tasks, "_create_batch_data_general", create_batch_data
         )
-        ui_log = MagicMock(name="_log_batch_statistics_to_ui")
-        monkeypatch.setattr(general_tasks, "_log_batch_statistics_to_ui", ui_log)
+        monkeypatch.setattr(general_tasks, "_log_batch_statistics_to_ui", MagicMock())
         monkeypatch.setattr(
             general_tasks.WorkflowOrchestrationUtils,
             "create_chord_execution",
@@ -881,10 +886,8 @@ class TestAutoEnableHighlightOrchestration:
             organization_id="org_test",
         )
 
-        util.has_confidence_rules.assert_called_once_with("wf-1")
+        util.has_confidence_rules.assert_called_once_with("wf-1", "DB")
         assert configs[0].get(AUTO_ENABLE_HIGHLIGHT, False) is has_rules
-        messages = [c.kwargs.get("message") for c in ui_log.call_args_list]
-        assert (HIGHLIGHT_AUTO_ENABLED_MESSAGE in messages) is has_rules
 
 
 if __name__ == "__main__":

@@ -1045,11 +1045,6 @@ class WorkerWorkflowExecutionService:
         file_handler = execution_service.file_handler
 
         tool_instance_metadata = tool_instance.metadata
-        if auto_enable_highlight:
-            # HITL confidence rules need highlight data. Override a copy so the
-            # user's saved setting is unchanged. Agentic projects produce no
-            # confidence, so for them this only adds source refs and cost.
-            tool_instance_metadata = {**tool_instance_metadata, "enable_highlight": True}
 
         # Read metadata from METADATA.json for file_hash and exec_metadata
         metadata = {}
@@ -1082,6 +1077,7 @@ class WorkerWorkflowExecutionService:
             "messaging_channel": getattr(execution_service, "messaging_channel", ""),
             "file_hash": metadata.get("source_hash", ""),
             "exec_metadata": metadata,
+            AUTO_ENABLE_HIGHLIGHT: auto_enable_highlight,
         }
 
         # Call synchronously (same process, in-band)
