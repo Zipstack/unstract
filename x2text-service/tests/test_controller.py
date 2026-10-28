@@ -82,7 +82,7 @@ def test_test_connection_upstream_body_is_json_and_not_in_detail(client):
     # sdk1 shows ``detail`` to the user; the upstream body must not be in it.
     assert r.get_json() == {
         "message": "<script>x</script>",
-        "detail": "Unstructured API returned HTTP 401; check the API key",
+        "detail": "Unstructured API returned HTTP 401; check the API key, or whether this server needs one",
     }
     assert rq.call_args.kwargs["timeout"] == TIMEOUT
     # Default mode: requests follows redirects itself, as before the guard.
@@ -131,7 +131,14 @@ def test_block_mode_follows_allowed_307_replaying_upload(client, audit, block_pr
     sent = []
 
     def record(method, url, **kwargs):
-        sent.append((method, url, kwargs["files"]["files"][1].read()))
+        sent.append(
+            (
+                method,
+                url,
+                kwargs["files"]["files"][1].read(),
+                kwargs["headers"].get("unstructured-api-key"),
+            )
+        )
         return [hop, done][len(sent) - 1]
 
     with mock.patch.object(controller.requests, "request", side_effect=record):
@@ -139,8 +146,9 @@ def test_block_mode_follows_allowed_307_replaying_upload(client, audit, block_pr
     assert r.status_code == 200
     assert r.data == b"hello"
     assert sent == [
-        ("POST", PUBLIC, b"abc"),
-        ("POST", "http://93.184.215.14/v1/general", b"abc"),
+        ("POST", PUBLIC, b"abc", "k"),
+        # Same host: the key goes with the upload.
+        ("POST", "http://93.184.215.14/v1/general", b"abc", "k"),
     ]
 
 
@@ -224,7 +232,14 @@ def test_transport_error_log_omits_url_query(
     assert "SECRET" not in caplog.text
 
 
-@pytest.mark.parametrize(("status", "hint"), [(500, ""), (404, "; check the URL path")])
+@pytest.mark.parametrize(
+    ("status", "hint"),
+    [
+        (500, ""),
+        (404, "; check the URL path"),
+        (403, "; check the API key, or whether this server needs one"),
+    ],
+)
 def test_test_connection_status_detail(client, status, hint):
     upstream = _response(status, "internal page")
     with mock.patch.object(controller.requests, "request", return_value=upstream):
@@ -239,3 +254,59 @@ def test_test_connection_unexpected_error_has_detail(client):
         r = _post(client, "/x2text/test-connection", "http://localhost:8000/x")
     assert r.status_code == 400
     assert r.get_json()["detail"] == "Test connection failed"
+
+
+def test_block_mode_process_303_drops_body(client, audit, block_private):
+    hop = _response(303, "", {"Location": "/v1/result"})
+    done = _response(200, '[{"text": "hello"}]', {"Content-Type": "application/json"})
+    with mock.patch.object(controller.requests, "request", side_effect=[hop, done]) as rq:
+        r = _post(client, "/x2text/process", PUBLIC, with_file=True)
+    assert r.status_code == 200
+    second = rq.call_args_list[1]
+    assert second.args[0] == "GET"
+    assert second.kwargs["data"] is None
+    assert second.kwargs["files"] is None
+    assert rq.call_args_list[0].kwargs["data"] is not None
+
+
+@pytest.mark.parametrize(
+    ("location", "keeps_key"),
+    [
+        ("https://93.184.215.14/general/v0/general", True),  # http->https upgrade
+        ("http://93.184.215.14:8081/general/v0/general", False),  # port change
+    ],
+)
+def test_block_mode_key_follows_requests_strip_rule(
+    client, block_private, location, keeps_key
+):
+    hop = _response(307, "", {"Location": location})
+    with mock.patch.object(
+        controller.requests, "request", side_effect=[hop, _response(400)]
+    ) as rq:
+        _post(client, "/x2text/test-connection", PUBLIC)
+    assert ("unstructured-api-key" in rq.call_args_list[1].kwargs["headers"]) is keeps_key
+
+
+def test_block_mode_https_to_http_drops_key(client, block_private):
+    start = "https://93.184.215.14/general/v0/general"
+    hop = _response(307, "", {"Location": PUBLIC})
+    with mock.patch.object(
+        controller.requests, "request", side_effect=[hop, _response(400)]
+    ) as rq:
+        _post(client, "/x2text/test-connection", start)
+    assert "unstructured-api-key" not in rq.call_args_list[1].kwargs["headers"]
+
+
+@pytest.mark.parametrize(
+    ("path", "with_file"), [("/x2text/test-connection", False), ("/x2text/process", True)]
+)
+def test_block_mode_unparseable_location_is_refused(
+    client, audit, block_private, path, with_file
+):
+    hop = _response(307, "", {"Location": "http://[abc/x"})
+    with mock.patch.object(controller.requests, "request", return_value=hop):
+        r = _post(client, path, PUBLIC, with_file)
+    assert r.status_code == 400
+    assert "unparseable Location" in r.get_json()["detail"]
+    if with_file:
+        assert audit.status == "Failed"

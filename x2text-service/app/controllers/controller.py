@@ -42,8 +42,8 @@ def _error(message: str, status: int = 400) -> tuple[dict[str, str], int]:
 def _status_detail(status: int) -> str:
     """A user-facing reason for an upstream status, without its body."""
     hint = {
-        401: "; check the API key",
-        403: "; check the API key",
+        401: "; check the API key, or whether this server needs one",
+        403: "; check the API key, or whether this server needs one",
         404: "; check the URL path",
     }.get(status, "")
     return f"Unstructured API returned HTTP {status}{hint}"
@@ -91,7 +91,7 @@ def test_connection() -> Any:
             return {"message": "Test connection sucessful"}, 200
         # The upstream body stays under ``message``, which sdk1 does not show:
         # where private destinations are allowed it may be an internal
-        # service's error page. ``detail`` carries only the status.
+        # service's error page.
         return {
             "message": response.text,
             "detail": _status_detail(response.status_code),

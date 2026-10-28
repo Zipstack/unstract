@@ -6,9 +6,9 @@ in ``unstract.core.network.ssrf`` decides whether that URL may be dialled.
 
 Whether a private, loopback or link-local destination is allowed depends on the
 deployment. docker-compose (OSS) installs routinely run Unstructured on
-localhost or a private host, so it is allowed when the setting is unset. Helm
-deployments refuse it by setting ``UNSTRUCTURED_URL_ALLOW_PRIVATE=false`` in the
-chart's values.
+localhost or a private host, so it is allowed when the setting is unset. A
+deployment serving untrusted tenants must refuse it by setting
+``UNSTRUCTURED_URL_ALLOW_PRIVATE=false``.
 
 Redirects follow the same rule. Where private destinations are allowed they
 are followed as ``requests`` always did. Where they are refused, each hop is
@@ -24,7 +24,7 @@ import math
 import os
 from collections.abc import Callable
 from typing import Any
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urljoin
 
 import requests
 
@@ -62,6 +62,10 @@ _TRUE_VALUES = ("1", "true", "yes")
 
 MAX_REDIRECTS = 5
 API_KEY_HEADER = "unstructured-api-key"
+
+
+# Only its should_strip_auth is used; it holds no connections.
+_STRIP_AUTH = requests.Session()
 
 
 class RedirectRefused(Exception):
@@ -178,13 +182,18 @@ def post(
         if not response.is_redirect:
             return response
         response.close()
-        next_url = urljoin(url, response.headers["Location"])
+        try:
+            next_url = urljoin(url, response.headers["Location"])
+        except ValueError:
+            raise RedirectRefused(
+                "Redirect refused: the Unstructured API sent an unparseable Location"
+            ) from None
         if refusal := refusal_message(next_url):
             raise RedirectRefused(f"Redirect refused: {refusal}")
-        if urlparse(next_url).hostname != urlparse(url).hostname:
-            # The key is for the host the adapter names, not wherever it sends
-            # us; requests drops Authorization on a host change for the same
-            # reason.
+        if _STRIP_AUTH.should_strip_auth(url, next_url):
+            # The key is for the origin the adapter names. Same rule requests
+            # applies to Authorization: dropped on a host, scheme or port
+            # change, except an http->https upgrade on the default ports.
             headers = {k: v for k, v in headers.items() if k.lower() != API_KEY_HEADER}
         if response.status_code in (301, 302, 303):
             # What requests does: these turn a POST into a GET with no body.
