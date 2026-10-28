@@ -3,7 +3,7 @@ import "@v1/styles/index.css";
 import { cn } from "@v1/lib/cn";
 import { applyThemeMode } from "@v1/lib/portal";
 import { selectThemeMode, useThemeStore } from "@v1/stores/theme";
-import { type JSX, type ReactNode, useEffect } from "react";
+import { type JSX, type ReactNode, useLayoutEffect } from "react";
 
 export type ThemeProviderProps = Readonly<{
   children: ReactNode;
@@ -28,7 +28,8 @@ export function ThemeProvider({
 }: ThemeProviderProps): JSX.Element {
   const mode = useThemeStore(selectThemeMode);
 
-  useEffect(() => {
+  // Layout effect: a saved dark or unstract preference must not paint a light frame first.
+  useLayoutEffect(() => {
     const { hydrate, setSystemPrefersDark } = useThemeStore.getState();
     hydrate(readLocalStorage());
     if (typeof window.matchMedia !== "function") {
@@ -45,7 +46,7 @@ export function ThemeProvider({
     };
   }, []);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     applyThemeMode(document, mode);
   }, [mode]);
 
