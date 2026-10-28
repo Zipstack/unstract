@@ -8,6 +8,7 @@ import requests
 from flask import Flask
 
 import app.authentication_middleware as am
+from app import unstructured_url
 from app.controllers import controller
 
 TIMEOUT = (10.0, 900.0)
@@ -117,7 +118,7 @@ def test_block_mode_refuses_redirect_to_private(
     with mock.patch.object(controller.requests, "request", return_value=upstream) as rq:
         r = _post(client, path, PUBLIC, with_file)
     assert r.status_code == 400
-    assert "private" in r.get_json()["detail"]
+    assert r.get_json()["detail"] == unstructured_url.RedirectNotAllowed.user_message
     assert rq.call_count == 1
     assert rq.call_args.kwargs["allow_redirects"] is False
     if with_file:
@@ -171,14 +172,8 @@ def test_block_mode_caps_redirects(client, block_private):
     with mock.patch.object(controller.requests, "request", return_value=loop) as rq:
         r = _post(client, "/x2text/test-connection", PUBLIC)
     assert r.status_code == 400
-    assert "redirects" in r.get_json()["detail"]
-    assert rq.call_count == controller_max_redirects() + 1
-
-
-def controller_max_redirects():
-    from app import unstructured_url
-
-    return unstructured_url.MAX_REDIRECTS
+    assert r.get_json()["detail"] == unstructured_url.TooManyRedirects.user_message
+    assert rq.call_count == unstructured_url.MAX_REDIRECTS + 1
 
 
 @pytest.mark.parametrize(
@@ -307,6 +302,6 @@ def test_block_mode_unparseable_location_is_refused(
     with mock.patch.object(controller.requests, "request", return_value=hop):
         r = _post(client, path, PUBLIC, with_file)
     assert r.status_code == 400
-    assert "unparseable Location" in r.get_json()["detail"]
+    assert r.get_json()["detail"] == unstructured_url.RedirectUnparseable.user_message
     if with_file:
         assert audit.status == "Failed"

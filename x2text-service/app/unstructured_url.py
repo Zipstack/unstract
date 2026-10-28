@@ -69,7 +69,29 @@ _STRIP_AUTH = requests.Session()
 
 
 class RedirectRefused(Exception):
-    """A redirect from the Unstructured API that will not be followed."""
+    """A redirect from the Unstructured API that will not be followed.
+
+    The exception text is the detailed reason, for the log. What the caller
+    sees is ``user_message``, a fixed string per subclass, so nothing from the
+    exception reaches the response.
+    """
+
+    user_message = "Redirect refused: the Unstructured API redirected elsewhere"
+
+
+class RedirectNotAllowed(RedirectRefused):
+    user_message = (
+        "Redirect refused: the Unstructured API redirected to a destination "
+        "that is not allowed on this deployment"
+    )
+
+
+class RedirectUnparseable(RedirectRefused):
+    user_message = "Redirect refused: the Unstructured API sent an unparseable Location"
+
+
+class TooManyRedirects(RedirectRefused):
+    user_message = f"Redirect refused: more than {MAX_REDIRECTS} redirects"
 
 
 def allow_private() -> bool:
@@ -185,11 +207,9 @@ def post(
         try:
             next_url = urljoin(url, response.headers["Location"])
         except ValueError:
-            raise RedirectRefused(
-                "Redirect refused: the Unstructured API sent an unparseable Location"
-            ) from None
+            raise RedirectUnparseable("unparseable Location") from None
         if refusal := refusal_message(next_url):
-            raise RedirectRefused(f"Redirect refused: {refusal}")
+            raise RedirectNotAllowed(refusal)
         if _STRIP_AUTH.should_strip_auth(url, next_url):
             # The key is for the origin the adapter names. Same rule requests
             # applies to Authorization: dropped on a host, scheme or port
@@ -201,6 +221,4 @@ def post(
         elif upload is not None:
             upload = files()
         url = next_url
-    raise RedirectRefused(
-        f"More than {MAX_REDIRECTS} redirects from the Unstructured API"
-    )
+    raise TooManyRedirects(f"more than {MAX_REDIRECTS} redirects")

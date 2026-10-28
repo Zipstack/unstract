@@ -50,8 +50,9 @@ def _status_detail(status: int) -> str:
 
 
 def _redirect_refused(error: RedirectRefused, url: str) -> tuple[dict[str, str], int]:
-    logging.warning("%s (host=%s)", error, safe_host(url))
-    return _error(str(error))
+    logging.warning("Redirect refused: %s (host=%s)", error, safe_host(url))
+    # A fixed string chosen by the exception's class, never its text.
+    return _error(type(error).user_message)
 
 
 @basic.route("/health", methods=["GET"])
