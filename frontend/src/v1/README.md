@@ -18,18 +18,19 @@ file holds only the rules that tooling enforces.
 
 ## Styling
 
-- Utilities carry the `ui:` prefix (`ui:bg-background`): v0's stylesheet also
-  scans `src/v1`, so an unprefixed class renders with v0's theme. Merge with
-  `cn` from `@v1/lib/cn`. Tokens live in `styles/tokens.ts`; `tokens.css` is
-  generated from them by `bun run tokens:v1`.
-- `ThemeProvider` sets `data-theme` (`light`, `dark`, `unstract`; key
-  `unstract.v1.theme`); portals use `getPortalContainer()`. `ui:focus-ring` is
-  the one focus style; Geist Mono only for model output, JSON and token counts.
-- `lint:v1` rejects: S1 inline `style`; S2 raw colours; S3 raw pixel values;
-  S4 `!important`; S5 CSS imports outside `app/` and `styles/`; S6 selectors
-  not starting with `.v1`; S7 `prefers-color-scheme` in CSS; S8 unprefixed
-  utilities. In code, S2 to S4 and S8 read class strings only (`className`
-  values, `cn()`/`cva()` arguments, constants holding classes), not every string.
+- `ui:` on every utility: an unprefixed class renders with v0's theme whenever
+  v0 already uses that class name, and silently does nothing otherwise. Merge
+  with `cn` (`@v1/lib/cn`); tokens live in `styles/tokens.ts`.
+- `ThemeProvider` sets `data-theme`; portals use `getPortalContainer()`; focus
+  is `ui:focus-visible:focus-ring`; Geist Mono only for model output and JSON.
+- `lint:v1` S1–S8: no inline style, raw colour or pixel, `!important`, CSS
+  import outside `app/` or `styles/`, selector outside `.v1`,
+  `prefers-color-scheme` or unprefixed utility (code: class and colour strings).
+  Pixel escape, CSS only: `/* v1-styles-allow: forced-colors outline */`.
+- Known v0 rules that reach v1 (unlayered, so v1 loses without `!important`):
+  - `scrollbar-color`, `::-webkit-scrollbar*`: the thumb stays light in dark.
+  - `[data-radix-popper-content-wrapper] { z-index: 1500 !important }`.
+  - `[data-sonner-toaster] { pointer-events: auto }`.
 
 ## Folders and what each may import
 
