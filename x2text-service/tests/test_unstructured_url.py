@@ -92,7 +92,7 @@ def test_timeout_override(monkeypatch):
     assert uu.request_timeout() == (10.0, 1200.0)
 
 
-@pytest.mark.parametrize("value", ["abc", "0", "-5", "nan", "inf", "-inf"])
+@pytest.mark.parametrize("value", ["abc", "0", "-5", "nan", "inf", "-inf", "1e10"])
 def test_invalid_timeout_falls_back(monkeypatch, value):
     monkeypatch.setenv(uu.REQUEST_TIMEOUT_ENV, value)
     assert uu.request_timeout() == (10.0, 900.0)

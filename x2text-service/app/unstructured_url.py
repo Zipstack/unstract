@@ -35,10 +35,16 @@ REQUEST_TIMEOUT_ENV = "UNSTRUCTURED_REQUEST_TIMEOUT"
 # document spends its time.
 CONNECT_TIMEOUT = 10.0
 # How long to wait for Unstructured to send data. It bounds each wait on the
-# socket, not the whole call, and Unstructured sends nothing until it has
-# processed the document, so in practice it caps processing time. Matches the
-# extraction wait default for LLMWhisperer (ADAPTER_LLMW_WAIT_TIMEOUT, 900s).
+# socket, not the whole call; Unstructured sends nothing until it has processed
+# the document, so in practice it caps processing time. Matches the extraction
+# wait default for LLMWhisperer (ADAPTER_LLMW_WAIT_TIMEOUT, 900s).
+#
+# It only takes effect while gunicorn lets the request run. The sync worker in
+# x2text.Dockerfile is killed at its --timeout (930s), so that must stay above
+# this; the Helm chart's gthread workers are not killed by a long request.
 DEFAULT_READ_TIMEOUT = 900.0
+# Larger values overflow the socket layer's timeout on some platforms.
+MAX_READ_TIMEOUT = 86400.0
 
 _TRUE_VALUES = ("1", "true", "yes")
 
@@ -63,7 +69,7 @@ def request_timeout() -> tuple[float, float]:
     except ValueError:
         read = math.nan
     # nan and inf parse, but the socket layer rejects them on every call.
-    if not math.isfinite(read) or read <= 0:
+    if not math.isfinite(read) or not 0 < read <= MAX_READ_TIMEOUT:
         logger.warning(
             "Ignoring invalid %s=%r; using %ss",
             REQUEST_TIMEOUT_ENV,

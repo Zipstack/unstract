@@ -33,6 +33,7 @@ REDIRECT_REFUSED = (
     "Unstructured URL redirected to another location; configure the final URL"
 )
 TIMED_OUT = "Timed out waiting for the Unstructured API"
+UNREACHABLE = "Unable to reach the Unstructured API"
 
 
 def _error(message: str, status: int = 400) -> tuple[dict[str, str], int]:
@@ -98,16 +99,27 @@ def test_connection() -> Any:
             """
 
             return {"message": "Test connection sucessful"}, 200
-        return _error(response.text, response.status_code)
+        # The upstream body stays under ``message``, which sdk1 does not show:
+        # where private destinations are allowed it may be an internal
+        # service's error page. ``detail`` carries only the status.
+        return {
+            "message": response.text,
+            "detail": f"Unstructured API returned HTTP {response.status_code}",
+        }, response.status_code
     except requests.Timeout:
         logging.error("Test connection timed out waiting for the Unstructured API")
         return _error(TIMED_OUT, 504)
-    except requests.ConnectionError as e:
-        logging.error(e)
-        return {"message": "Test connection Failed"}, 400
-    except Exception as ex:
-        logging.error(ex)
-        return {"message": "Test connection Failed"}, 400
+    except requests.RequestException as e:
+        # Not ``str(e)``: it carries the full URL, query string included.
+        logging.error(
+            "Test connection could not reach the Unstructured API: %s (host=%s)",
+            type(e).__name__,
+            safe_host(url),
+        )
+        return _error(UNREACHABLE)
+    except Exception:
+        logging.exception("Test connection failed (host=%s)", safe_host(url))
+        return _error("Test connection failed")
 
 
 @basic.route("/process", methods=["POST"])
@@ -173,8 +185,12 @@ def process() -> Any:
     except requests.RequestException as e:
         x2_text_audit.status = "Failed"
         x2_text_audit.save()
-        logging.error("Text extraction could not reach the Unstructured API: %s", e)
-        return _error("Unable to reach the Unstructured API", 502)
+        logging.error(
+            "Text extraction could not reach the Unstructured API: %s (host=%s)",
+            type(e).__name__,
+            safe_host(url),
+        )
+        return _error(UNREACHABLE, 502)
     if response.is_redirect:
         x2_text_audit.status = "Failed"
         x2_text_audit.save()

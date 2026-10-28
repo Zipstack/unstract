@@ -76,4 +76,6 @@ ARG VERSION=dev
 ENV UNSTRACT_APPS_VERSION=${VERSION}
 
 # During debugging, this entry point will be overridden.
-CMD [".venv/bin/gunicorn", "--bind", "0.0.0.0:3004", "--timeout", "300", "run:app"]
+# --timeout stays above the Unstructured read timeout (UNSTRUCTURED_REQUEST_TIMEOUT,
+# 900s by default) so a slow call ends in a 504, not a killed sync worker.
+CMD [".venv/bin/gunicorn", "--bind", "0.0.0.0:3004", "--timeout", "930", "run:app"]

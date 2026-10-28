@@ -68,13 +68,17 @@ def test_refused_url_is_400_and_never_dialled(client, audit, monkeypatch, path, 
     upstream.assert_not_called()
 
 
-def test_test_connection_upstream_body_is_json_with_detail(client):
+def test_test_connection_upstream_body_is_json_and_not_in_detail(client):
     upstream = _response(401, "<script>x</script>")
     with mock.patch.object(controller.requests, "request", return_value=upstream) as rq:
         r = _post(client, "/x2text/test-connection", "http://localhost:8000/x")
     assert r.status_code == 401
     assert r.content_type == "application/json"
-    assert r.get_json()["detail"] == "<script>x</script>"
+    # sdk1 shows ``detail`` to the user; the upstream body must not be in it.
+    assert r.get_json() == {
+        "message": "<script>x</script>",
+        "detail": "Unstructured API returned HTTP 401",
+    }
     assert rq.call_args.kwargs["timeout"] == TIMEOUT
     assert rq.call_args.kwargs["allow_redirects"] is False
 
@@ -122,3 +126,22 @@ def test_process_success_unchanged(client, audit):
     assert audit.status == "Success"
     assert rq.call_args.kwargs["timeout"] == TIMEOUT
     assert rq.call_args.kwargs["allow_redirects"] is False
+
+
+def test_test_connection_unreachable_has_detail(client):
+    with mock.patch.object(controller.requests, "request", side_effect=requests.ConnectionError()):
+        r = _post(client, "/x2text/test-connection", "http://localhost:8000/x")
+    assert r.status_code == 400
+    assert r.get_json()["detail"] == controller.UNREACHABLE
+
+
+@pytest.mark.parametrize(
+    ("path", "with_file"), [("/x2text/test-connection", False), ("/x2text/process", True)]
+)
+def test_transport_error_log_omits_url_query(client, audit, caplog, path, with_file):
+    url = "http://localhost:8000/general?api_key=SECRET"
+    error = requests.ConnectionError(f"Max retries exceeded with url: {url}")
+    with mock.patch.object(controller.requests, "request", side_effect=error):
+        _post(client, path, url, with_file)
+    assert "localhost" in caplog.text
+    assert "SECRET" not in caplog.text
