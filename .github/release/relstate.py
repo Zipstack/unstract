@@ -563,11 +563,11 @@ def stabilizes(row, target, done=()):
     )
 
 
-def reopens(row, built):
-    """Whether an RC building targets built reopens the line row: one of them has no GA on it yet (on-prem enabled
-    after cloud GA, say), so the line is no longer GA on every enabled target and its OSS line's STABILIZED tag goes.
+def reopens(row, targets):
+    """Whether an RC for targets reopens the line row: one of them has no GA on it yet (on-prem enabled after cloud
+    GA, say), so the line is no longer GA on every enabled target and its OSS line's STABILIZED tag goes.
     """
-    return not all(row["targets"].get(t, {}).get("ga") for t in built)
+    return not all(row["targets"].get(t, {}).get("ga") for t in targets)
 
 
 def promote_blockers(state, branch, target):

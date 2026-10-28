@@ -621,9 +621,9 @@ def inline(workflow, step):
 )
 class Workflow(unittest.TestCase):
     """A cloud and an OSS origin with clones; a sitecustomize stands in for Artifact Registry with reg.jsonl as
-    cloud/backend's versions (other artifacts empty); a stub gh serves the open backport-conflict PRs of each repo
-    (<owner>_<repo>.json; a `prfail` file fails the listing) and the PRs of a main commit (pulls.json). gh.log:
-    each pr list and commit PRs call, as its token.
+    cloud/backend's versions and reg-<kind>_<package>.jsonl as another artifact's (empty when absent); a stub gh
+    serves the open backport-conflict PRs of each repo (<owner>_<repo>.json; a `prfail` file fails the listing) and
+    the PRs of a main commit (pulls.json). gh.log: each pr list and commit PRs call, as its token.
     """
 
     def setUp(self):
@@ -646,10 +646,11 @@ class Workflow(unittest.TestCase):
             fh.write(f"""import json, os, sys
 sys.path.insert(0, {HERE!r})
 import relstate
-def _ar_versions(artifact):  # reg.jsonl as Artifact Registry versions of cloud/backend; other artifacts empty
-    if artifact != "cloud/backend" or not os.path.exists({os.path.join(d, "reg.jsonl")!r}):
+def _ar_versions(artifact):  # reg.jsonl for cloud/backend, reg-<kind>_<package>.jsonl for the others
+    f = os.path.join({d!r}, "reg.jsonl" if artifact == "cloud/backend" else "reg-" + artifact.replace("/", "_") + ".jsonl")
+    if not os.path.exists(f):
         return []
-    with open({os.path.join(d, "reg.jsonl")!r}) as fh:
+    with open(f) as fh:
         rows = [json.loads(line) for line in fh]
     return [{{"name": f"r/packages/backend/versions/{{v['digest']}}", "createTime": v["pushed_at"],
               "relatedTags": [{{"name": f"r/packages/backend/tags/{{t}}"}} for t in v["tags"]]}} for v in rows]
@@ -1102,6 +1103,38 @@ class TakeRcVersion(Workflow):
         self.assertEqual(
             self.read("output"),
             "tag=v1.7.1-rc.1\nbump=true\ntargets=cloud\nreopen=false\n",
+        )
+
+    def test_rerun_on_a_tagged_tip_reopens_for_a_target_already_built(self):
+        # An earlier run tagged v1.7.1-rc.1 for cloud and on-prem on a line GA for cloud only; its on-prem build
+        # pushed, its cloud build failed. A fresh run builds only cloud, yet on-prem still has no GA: reopen.
+        self.line("1.7", "v1.7.0")
+        self.g(self.cloud, "checkout", "-q", "-b", "release/1.7", "origin/release/1.7")
+        self.g(
+            self.cloud, "commit", "-q", "--allow-empty", "-m", "release: chart 1.7.1-rc.1"
+        )
+        self.g(self.cloud, "tag", "v1.7.1-rc.1")
+        self.g(
+            self.cloud,
+            "push",
+            "-q",
+            "origin",
+            "HEAD:refs/heads/release/1.7",
+            "v1.7.1-rc.1",
+        )
+        self.write(
+            "reg-on-prem_backend.jsonl",
+            '{"id": 1, "digest": "sha256:p", "pushed_at": "2026-09-02T00:00:00Z", "tags": ["v1.7.1-rc.1"]}\n',
+        )
+        r = self.run_step(
+            inline("take-rc-build.yaml", "Plan version and targets"),
+            BRANCH="release/1.7",
+            TARGETS="cloud,on-prem",
+        )
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(
+            self.read("output"),
+            "tag=v1.7.1-rc.1\nbump=false\ntargets=cloud\nreopen=true\n",
         )
 
 
