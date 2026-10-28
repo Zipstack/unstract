@@ -185,4 +185,148 @@ describe("OrganizationSwitcher", () => {
     ).toBeInTheDocument();
     expect(assign).not.toHaveBeenCalled();
   });
+
+  async function openConfirm() {
+    list.mockResolvedValue([zipstack, personal]);
+    await open();
+    await userEvent.click(
+      await screen.findByRole("button", {
+        name: "Switch to Tanushree’s organisation",
+      }),
+    );
+    return screen.getByRole("alertdialog");
+  }
+
+  test("while the switch is in flight Cancel and Escape keep the dialog open", async () => {
+    let finish: () => void = () => undefined;
+    switchTo.mockReturnValue(
+      new Promise<void>((resolve) => {
+        finish = resolve;
+      }),
+    );
+    const dialog = await openConfirm();
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: "Switch organisation" }),
+    );
+    expect(
+      within(dialog).getByRole("button", { name: "Cancel" }),
+    ).toBeDisabled();
+    await userEvent.keyboard("{Escape}");
+    expect(screen.getByRole("alertdialog")).toBeInTheDocument();
+    finish();
+    await waitFor(() => expect(assign).toHaveBeenCalledTimes(1));
+  });
+
+  test("a failed switch enables the confirm button again", async () => {
+    switchTo.mockRejectedValue(new Error("HTTP 403"));
+    const dialog = await openConfirm();
+    const confirm = within(dialog).getByRole("button", {
+      name: "Switch organisation",
+    });
+    await userEvent.click(confirm);
+    await screen.findByText("Could not switch. Try again.");
+    expect(confirm).toBeEnabled();
+    expect(
+      within(dialog).getByRole("button", { name: "Cancel" }),
+    ).toBeEnabled();
+  });
+
+  test("a 412 from the list means the session is gone: go to sign-in", async () => {
+    list.mockRejectedValue({ isAxiosError: true, response: { status: 412 } });
+    await open();
+    await waitFor(() => expect(assign).toHaveBeenCalledWith("/landing"));
+    expect(
+      screen.queryByText("Could not load your organisations."),
+    ).not.toBeInTheDocument();
+  });
+
+  test("a search with no match says so instead of an empty list", async () => {
+    list.mockResolvedValue([zipstack, personal]);
+    await open();
+    await screen.findByText("Tanushree’s organisation");
+    await userEvent.type(
+      screen.getByRole("searchbox", { name: "Find an organisation" }),
+      "zzz",
+    );
+    expect(screen.getByText("No organisations match")).toBeInTheDocument();
+    expect(screen.queryByText(/you belong to/i)).not.toBeInTheDocument();
+    expect(screen.queryAllByRole("listitem")).toHaveLength(0);
+  });
+
+  test("the confirm dialog takes the from side from the current organisation, listed or not", async () => {
+    list.mockResolvedValue([personal]);
+    switchTo.mockResolvedValue();
+    await open();
+    await userEvent.click(
+      await screen.findByRole("button", {
+        name: "Switch to Tanushree’s organisation",
+      }),
+    );
+    const dialog = screen.getByRole("alertdialog");
+    expect(within(dialog).getByText("Zipstack")).toBeInTheDocument();
+    await userEvent.click(
+      within(dialog).getByRole("button", { name: "Switch organisation" }),
+    );
+    await waitFor(() =>
+      expect(assign).toHaveBeenCalledWith("/tanushree/tools"),
+    );
+  });
+
+  test("marks the current row", async () => {
+    list.mockResolvedValueOnce([zipstack, personal]);
+    await open();
+    await screen.findByText("Tanushree’s organisation");
+    const rows = screen.getAllByRole("listitem");
+    expect(rows[0]).toHaveAttribute("aria-current", "true");
+    expect(rows[1]).not.toHaveAttribute("aria-current");
+  });
+
+  test("the loading text is a polite live region", async () => {
+    list.mockReturnValue(new Promise(() => undefined));
+    await open();
+    expect(await screen.findByText("Loading…")).toHaveAttribute(
+      "aria-live",
+      "polite",
+    );
+  });
+
+  test("ignores a list response that is not from the latest request", async () => {
+    let first: (orgs: Organization[]) => void = () => undefined;
+    list
+      .mockReturnValueOnce(
+        new Promise<Organization[]>((resolve) => {
+          first = resolve;
+        }),
+      )
+      .mockResolvedValueOnce([zipstack, personal]);
+    await open();
+    await userEvent.keyboard("{Escape}");
+    await userEvent.click(
+      screen.getByRole("button", { name: /Organisation: Zipstack/ }),
+    );
+    expect(await screen.findByText(/^you belong to 2/i)).toBeInTheDocument();
+    first([zipstack]);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(screen.getByText(/^you belong to 2/i)).toBeInTheDocument();
+  });
+
+  test("avatars show two letters for a one-word name, the pill one", async () => {
+    list.mockResolvedValue([zipstack, personal]);
+    await open();
+    await screen.findByText("Tanushree’s organisation");
+    const rows = screen.getAllByRole("listitem");
+    expect(within(rows[0]).getByText("ZI")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: /Organisation: Zipstack/ }),
+    ).toHaveTextContent(/^Z/);
+  });
+
+  test("the Switch button carries the arrows icon", async () => {
+    list.mockResolvedValue([zipstack, personal]);
+    await open();
+    const button = await screen.findByRole("button", {
+      name: "Switch to Tanushree’s organisation",
+    });
+    expect(button.querySelector("svg.lucide-arrow-left-right")).not.toBeNull();
+  });
 });

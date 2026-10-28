@@ -1,21 +1,24 @@
 import {
   describeOrganization,
-  initials,
+  initial,
   landingPath,
+  organizationInitials,
 } from "@v1/lib/organizations";
 import {
   listOrganizations,
   type Organization,
   switchOrganization,
 } from "@v1/services/organizations";
+import axios from "axios";
 import {
+  ArrowLeftRight,
   ArrowRightLeft,
   ChevronRight,
   ChevronsUpDown,
   Search,
 } from "lucide-react";
 import { AlertDialog, Popover } from "radix-ui";
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 
 // Frames NEW10 (1638:44855) and page 19, O01 to O04 (2259:182 to 2259:656).
 const AVATAR_COLOURS = [
@@ -25,6 +28,7 @@ const AVATAR_COLOURS = [
   "bg-rose-100 text-rose-700",
   "bg-violet-100 text-violet-700",
 ];
+const SIGN_IN_PATH = "/landing";
 const BUTTON =
   "inline-flex h-8 items-center gap-1.5 rounded-[10px] border border-[var(--border)] bg-[var(--card)] px-3 text-[13px] font-medium text-[var(--foreground)] hover:bg-[var(--muted)] disabled:opacity-50";
 
@@ -41,11 +45,27 @@ type ListState =
 
 function useOrganizationList() {
   const [state, setState] = useState<ListState>({ status: "idle" });
+  const latest = useRef(0);
   const load = useCallback(() => {
+    const request = ++latest.current;
     setState({ status: "loading" });
     listOrganizations().then(
-      (organizations) => setState({ status: "ready", organizations }),
-      () => setState({ status: "error" }),
+      (organizations) => {
+        if (request === latest.current) {
+          setState({ status: "ready", organizations });
+        }
+      },
+      (error: unknown) => {
+        if (request !== latest.current) {
+          return;
+        }
+        // 412: the backend logged the session out while building the list.
+        if (axios.isAxiosError(error) && error.response?.status === 412) {
+          window.location.assign(SIGN_IN_PATH);
+          return;
+        }
+        setState({ status: "error" });
+      },
     );
   }, []);
   return { state, load };
@@ -74,7 +94,7 @@ function OrgAvatar({
       aria-hidden
       className={`flex shrink-0 items-center justify-center font-semibold ${box} ${colour}`}
     >
-      {initials(name)}
+      {organizationInitials(name)}
     </span>
   );
 }
@@ -97,7 +117,7 @@ function ConfirmSwitch({
   to,
   onClose,
 }: {
-  from: Organization | undefined;
+  from: Organization;
   to: Organization;
   onClose: () => void;
 }) {
@@ -111,7 +131,7 @@ function ConfirmSwitch({
       await switchOrganization(to.id);
       // A full load clears every client store, so nothing of the old organisation survives.
       window.location.assign(
-        landingPath(window.location.pathname, from?.name ?? "", to.name),
+        landingPath(window.location.pathname, from.name, to.name),
       );
     } catch {
       setFailed(true);
@@ -120,7 +140,7 @@ function ConfirmSwitch({
   }
 
   return (
-    <AlertDialog.Root open onOpenChange={(open) => !open && onClose()}>
+    <AlertDialog.Root open onOpenChange={(open) => !open && !busy && onClose()}>
       <AlertDialog.Portal>
         <AlertDialog.Overlay className="fixed inset-0 z-50 bg-black/30" />
         <AlertDialog.Content className="fixed top-1/2 left-1/2 z-50 w-[520px] max-w-[calc(100vw-32px)] -translate-x-1/2 -translate-y-1/2 rounded-xl border border-[var(--border)] bg-[var(--sidebar)] shadow-[0_12px_32px_0_#0000002e]">
@@ -143,16 +163,12 @@ function ConfirmSwitch({
             </div>
           </div>
           <div className="mx-6 mb-6 flex items-center gap-3 rounded-[10px] bg-[var(--muted)] px-4 py-3.5">
-            {from && (
-              <>
-                <OrgAvatar id={from.id} name={from.display_name} size="sm" />
-                <OrgLine org={{ ...from, region: undefined }} />
-                <ChevronRight
-                  aria-hidden
-                  className="size-[18px] text-[var(--muted-foreground)]"
-                />
-              </>
-            )}
+            <OrgAvatar id={from.id} name={from.display_name} size="sm" />
+            <OrgLine org={{ ...from, region: undefined }} />
+            <ChevronRight
+              aria-hidden
+              className="size-[18px] text-[var(--muted-foreground)]"
+            />
             <OrgAvatar id={to.id} name={to.display_name} size="sm" />
             <OrgLine org={{ ...to, region: undefined }} />
           </div>
@@ -165,7 +181,7 @@ function ConfirmSwitch({
             </p>
           )}
           <div className="flex justify-end gap-2 border-t border-[var(--border)] px-6 py-5">
-            <AlertDialog.Cancel className={`${BUTTON} h-9`}>
+            <AlertDialog.Cancel disabled={busy} className={`${BUTTON} h-9`}>
               Cancel
             </AlertDialog.Cancel>
             <button
@@ -222,7 +238,7 @@ export function OrganizationSwitcher({
           className="flex h-9 w-[171px] items-center gap-2 rounded-[10px] border border-[var(--border)] bg-[var(--card)] px-2 outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
         >
           <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-[var(--primary)] text-[11px] font-semibold text-[var(--primary-foreground)]">
-            {initials(current.displayName)}
+            {initial(current.displayName)}
           </span>
           <span className="flex-1 truncate text-left text-[13px] font-medium leading-5 text-[var(--foreground)]">
             {current.displayName}
@@ -250,7 +266,10 @@ export function OrganizationSwitcher({
               />
             </label>
             {(state.status === "loading" || state.status === "idle") && (
-              <p className="px-3 py-4 text-[13px] text-[var(--muted-foreground)]">
+              <p
+                aria-live="polite"
+                className="px-3 py-4 text-[13px] text-[var(--muted-foreground)]"
+              >
                 Loading…
               </p>
             )}
@@ -269,15 +288,22 @@ export function OrganizationSwitcher({
             )}
             {state.status === "ready" && (
               <>
-                <p className="px-1.5 pt-1 pb-2 text-[11px] font-semibold uppercase leading-4 tracking-[0.08em] text-[var(--muted-foreground)]">
-                  You belong to {count} organisation{count === 1 ? "" : "s"}
-                </p>
+                {shown.length === 0 ? (
+                  <p className="px-3 py-4 text-[13px] text-[var(--muted-foreground)]">
+                    No organisations match
+                  </p>
+                ) : (
+                  <p className="px-1.5 pt-1 pb-2 text-[11px] font-semibold uppercase leading-4 tracking-[0.08em] text-[var(--muted-foreground)]">
+                    You belong to {count} organisation{count === 1 ? "" : "s"}
+                  </p>
+                )}
                 <ul className="flex flex-col">
                   {shown.map((org) => {
                     const isCurrent = org.id === current.id;
                     return (
                       <li
                         key={org.id}
+                        {...(isCurrent ? { "aria-current": "true" } : {})}
                         className={`flex h-14 items-center gap-2.5 rounded-lg px-2.5 ${isCurrent ? "bg-[#f5f5fa]" : ""}`}
                       >
                         <OrgAvatar
@@ -297,6 +323,7 @@ export function OrganizationSwitcher({
                             className={BUTTON}
                             onClick={() => setTarget(org)}
                           >
+                            <ArrowLeftRight aria-hidden className="size-4" />
                             Switch
                           </button>
                         )}
@@ -316,7 +343,12 @@ export function OrganizationSwitcher({
       </Popover.Root>
       {target && (
         <ConfirmSwitch
-          from={organizations.find((org) => org.id === current.id)}
+          from={{
+            ...organizations.find((org) => org.id === current.id),
+            id: current.id,
+            name: current.name,
+            display_name: current.displayName,
+          }}
           to={target}
           onClose={() => setTarget(undefined)}
         />
