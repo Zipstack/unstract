@@ -46,6 +46,7 @@ from shared.utils.manual_review_factory import (
     AUTO_ENABLE_HIGHLIGHT,
     HIGHLIGHT_AUTO_ENABLED_MESSAGE,
     get_manual_review_service,
+    has_confidence_rules,
 )
 from shared.workflow.connectors.source import WorkerSourceConnector
 from shared.workflow.execution import (
@@ -982,7 +983,7 @@ def _orchestrate_file_processing_general(
             total_files=len(source_files),
         )
         logger.debug("Global file data configured for manual review")
-        if workflow_util.has_confidence_rules(workflow_id):
+        if has_confidence_rules(workflow_util, workflow_id):
             global_file_data.manual_review_config[AUTO_ENABLE_HIGHLIGHT] = True
             _log_batch_statistics_to_ui(
                 execution_id=execution_id,

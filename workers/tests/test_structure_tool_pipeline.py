@@ -894,7 +894,10 @@ class TestStructureToolParamsPassthrough:
         "_is_structure_tool_workflow",
         return_value=True,
     )
-    def test_structure_tool_params_passthrough(self, mock_is_struct, mock_exec_struct):
+    @pytest.mark.parametrize("auto_enable", [True, False])
+    def test_structure_tool_params_passthrough(
+        self, mock_is_struct, mock_exec_struct, auto_enable
+    ):
         from shared.workflow.execution.service import (
             WorkerWorkflowExecutionService,
         )
@@ -904,10 +907,66 @@ class TestStructureToolParamsPassthrough:
         mock_exec_service = MagicMock()
         mock_exec_service.tool_instances = [MagicMock()]
 
-        service._build_and_execute_workflow(mock_exec_service, "test.pdf")
+        service._build_and_execute_workflow(
+            mock_exec_service, "test.pdf", auto_enable_highlight=auto_enable
+        )
 
         # Verify _execute_structure_tool_workflow was called
-        mock_exec_struct.assert_called_once_with(mock_exec_service, "test.pdf", False)
+        mock_exec_struct.assert_called_once_with(
+            mock_exec_service, "test.pdf", auto_enable
+        )
+
+    @pytest.mark.parametrize(
+        "review_config, expected",
+        [({"auto_enable_highlight": True}, True), ({}, False)],
+    )
+    @patch(
+        "shared.workflow.execution.service.WorkerWorkflowExecutionService."
+        "_build_and_execute_workflow"
+    )
+    @patch(
+        "shared.workflow.execution.service.WorkerWorkflowExecutionService."
+        "_prepare_workflow_input_file",
+        return_value=None,
+    )
+    @patch(
+        "shared.workflow.execution.service.WorkerWorkflowExecutionService."
+        "_compile_workflow",
+        return_value=True,
+    )
+    def test_auto_enable_highlight_read_from_review_config(
+        self, mock_compile, mock_prepare, mock_build, review_config, expected
+    ):
+        from shared.workflow.execution.service import (
+            WorkerWorkflowExecutionService,
+        )
+
+        context = MagicMock()
+        context.file_data.manual_review_config = review_config
+
+        assert WorkerWorkflowExecutionService()._execute_workflow_with_service(
+            execution_service=MagicMock(),
+            file_processing_context=context,
+            file_name="invoice.pdf",
+            workflow_file_execution_id="",
+            execution_id="exec-1",
+            workflow_id="wf-1",
+        )
+        assert mock_build.call_args.kwargs["auto_enable_highlight"] is expected
+
+    @pytest.mark.parametrize(
+        "util, expected",
+        [
+            (MagicMock(has_confidence_rules=MagicMock(return_value=True)), True),
+            (MagicMock(has_confidence_rules=MagicMock(return_value=False)), False),
+            # Older plugin without the method
+            (object(), False),
+        ],
+    )
+    def test_has_confidence_rules_helper(self, util, expected):
+        from shared.utils.manual_review_factory import has_confidence_rules
+
+        assert has_confidence_rules(util, "wf-1") is expected
 
     @patch(
         "shared.workflow.execution.service.WorkerWorkflowExecutionService."

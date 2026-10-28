@@ -390,6 +390,17 @@ def get_manual_review_workflow_util(api_client: Any, organization_id: str) -> An
         return _create_null_workflow_util()
 
 
+def has_confidence_rules(workflow_util: Any, workflow_id: str) -> bool:
+    """Whether the workflow's HITL rules contain a confidence condition.
+
+    False in OSS, and with an older plugin that lacks the method. The plugin
+    checks both DB and API rules whichever flow runs; a leftover rule of the
+    other type can turn highlight on needlessly. Accepted to keep one check.
+    """
+    check = getattr(workflow_util, "has_confidence_rules", None)
+    return bool(check and check(workflow_id))
+
+
 def has_manual_review_plugin():
     return has_client_plugin(MANUAL_REVIEW_PLUGIN_NAME)
 
@@ -465,9 +476,6 @@ def _create_null_workflow_util():
 
         def get_manual_review_config(self, workflow_id, total_files):
             return {}
-
-        def has_confidence_rules(self, workflow_id):
-            return False
 
     return WorkflowUtilNull()
 

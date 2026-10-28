@@ -1047,7 +1047,8 @@ class WorkerWorkflowExecutionService:
         tool_instance_metadata = tool_instance.metadata
         if auto_enable_highlight:
             # HITL confidence rules need highlight data. Override a copy so the
-            # user's saved setting is unchanged.
+            # user's saved setting is unchanged. Agentic projects produce no
+            # confidence, so for them this only adds source refs and cost.
             tool_instance_metadata = {**tool_instance_metadata, "enable_highlight": True}
 
         # Read metadata from METADATA.json for file_hash and exec_metadata

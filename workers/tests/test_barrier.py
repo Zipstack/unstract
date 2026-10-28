@@ -773,5 +773,124 @@ class TestApiDeploymentManualReviewContract:
         )
 
 
+class TestAutoEnableHighlightOrchestration:
+    """HITL confidence rules set ``auto_enable_highlight`` (UN-4435).
+
+    The orchestrators check the rules once and put the flag in
+    ``manual_review_config``, which the file workers read.
+    """
+
+    @pytest.mark.parametrize("has_rules", [True, False])
+    def test_api_deployment_sets_flag_on_every_batch(self, monkeypatch, has_rules):
+        from shared.utils.manual_review_factory import (
+            AUTO_ENABLE_HIGHLIGHT,
+            HIGHLIGHT_AUTO_ENABLED_MESSAGE,
+        )
+
+        mocks = _setup_workflow_api_mocks(monkeypatch, num_batches=2)
+        util = MagicMock(name="workflow_util")
+        util.has_confidence_rules.return_value = has_rules
+        monkeypatch.setattr(
+            mocks.api_tasks, "get_manual_review_workflow_util", lambda *a: util
+        )
+        configs = []
+        monkeypatch.setattr(
+            mocks.api_tasks,
+            "_create_file_data",
+            lambda **kwargs: MagicMock(manual_review_config={}),
+        )
+        monkeypatch.setattr(
+            mocks.api_tasks,
+            "_create_batch_data",
+            lambda **kwargs: configs.append(
+                dict(kwargs["file_data"].manual_review_config)
+            ),
+        )
+        ui_log = MagicMock(name="_log_api_statistics_to_ui")
+        monkeypatch.setattr(mocks.api_tasks, "_log_api_statistics_to_ui", ui_log)
+
+        mocks.api_tasks._run_workflow_api(
+            api_client=mocks.api_client,
+            schema_name="org_test",
+            workflow_id="wf-1",
+            execution_id="exec-1",
+            hash_values_of_files={"f1": MagicMock(name="file_1")},
+            scheduled=False,
+            execution_mode=None,
+            pipeline_id="pipe-1",
+            use_file_history=False,
+            task_id="task-1",
+        )
+
+        util.has_confidence_rules.assert_called_once_with("wf-1")
+        assert len(configs) == 2
+        assert all(c.get(AUTO_ENABLE_HIGHLIGHT, False) is has_rules for c in configs)
+        messages = [c.kwargs.get("message") for c in ui_log.call_args_list]
+        assert (HIGHLIGHT_AUTO_ENABLED_MESSAGE in messages) is has_rules
+
+    @pytest.mark.parametrize("has_rules", [True, False])
+    def test_general_sets_flag_on_global_file_data(self, monkeypatch, has_rules):
+        from general import tasks as general_tasks
+        from shared.utils.manual_review_factory import (
+            AUTO_ENABLE_HIGHLIGHT,
+            HIGHLIGHT_AUTO_ENABLED_MESSAGE,
+        )
+
+        api_client = MagicMock(name="api_client")
+        util = MagicMock(name="workflow_util")
+        util.has_confidence_rules.return_value = has_rules
+        util.create_workflow_file_data_with_manual_review.return_value = MagicMock(
+            manual_review_config={}
+        )
+        service = MagicMock(name="manual_review_service")
+        service.get_workflow_util.return_value = util
+        monkeypatch.setattr(
+            general_tasks, "get_manual_review_service", lambda **kwargs: service
+        )
+        monkeypatch.setattr(
+            general_tasks,
+            "_get_file_batches_general",
+            lambda **kwargs: [MagicMock(name="batch_1")],
+        )
+        configs = []
+        monkeypatch.setattr(
+            general_tasks,
+            "_create_batch_data_general",
+            lambda **kwargs: configs.append(
+                dict(kwargs["file_data"].manual_review_config)
+            ),
+        )
+        ui_log = MagicMock(name="_log_batch_statistics_to_ui")
+        monkeypatch.setattr(general_tasks, "_log_batch_statistics_to_ui", ui_log)
+        monkeypatch.setattr(
+            general_tasks.WorkflowOrchestrationUtils,
+            "create_chord_execution",
+            MagicMock(return_value=MagicMock(id="chord-id")),
+        )
+
+        try:
+            general_tasks._orchestrate_file_processing_general(
+                api_client=api_client,
+                workflow_id="wf-1",
+                execution_id="exec-1",
+                source_files={"f1": MagicMock(name="file_1")},
+                pipeline_id="pipe-1",
+                scheduled=False,
+                execution_mode=None,
+                use_file_history=False,
+                organization_id="org_test",
+            )
+        except Exception:
+            # Post-chord status updates hit the mocked client; the flag is
+            # already captured by then.
+            if not configs:
+                raise
+
+        util.has_confidence_rules.assert_called_once_with("wf-1")
+        assert configs[0].get(AUTO_ENABLE_HIGHLIGHT, False) is has_rules
+        messages = [c.kwargs.get("message") for c in ui_log.call_args_list]
+        assert (HIGHLIGHT_AUTO_ENABLED_MESSAGE in messages) is has_rules
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

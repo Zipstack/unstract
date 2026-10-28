@@ -26,6 +26,7 @@ from shared.utils.manual_review_factory import (
     AUTO_ENABLE_HIGHLIGHT,
     HIGHLIGHT_AUTO_ENABLED_MESSAGE,
     get_manual_review_workflow_util,
+    has_confidence_rules,
 )
 from shared.workflow.execution import WorkerExecutionContext, WorkflowOrchestrationUtils
 from shared.workflow.execution.tool_validation import validate_workflow_tool_instances
@@ -670,9 +671,9 @@ def _run_workflow_api(
         total_files=total_files,
     )
 
-    auto_enable_highlight = get_manual_review_workflow_util(
-        api_client, schema_name
-    ).has_confidence_rules(workflow_id)
+    auto_enable_highlight = has_confidence_rules(
+        get_manual_review_workflow_util(api_client, schema_name), workflow_id
+    )
     if auto_enable_highlight:
         _log_api_statistics_to_ui(
             execution_id=execution_id,
