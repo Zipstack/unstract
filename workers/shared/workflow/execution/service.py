@@ -53,6 +53,7 @@ from unstract.workflow_execution.workflow_execution import WorkflowExecutionServ
 from ...api.internal_client import InternalAPIClient
 from ...infrastructure.logging import WorkerLogger
 from ...utils.error_utils import get_user_friendly_error_message
+from ...utils.manual_review_factory import AUTO_ENABLE_HIGHLIGHT
 from ..destination_connector import (
     DestinationConfig,
     WorkerDestinationConnector,
@@ -847,7 +848,12 @@ class WorkerWorkflowExecutionService:
                     # Continue with normal execution if check fails
 
             # Step 3: Build and execute workflow
-            self._build_and_execute_workflow(execution_service, file_name)
+            review_config = file_processing_context.file_data.manual_review_config
+            self._build_and_execute_workflow(
+                execution_service,
+                file_name,
+                auto_enable_highlight=review_config.get(AUTO_ENABLE_HIGHLIGHT, False),
+            )
 
             return True
 
@@ -969,7 +975,10 @@ class WorkerWorkflowExecutionService:
             raise file_prep_error
 
     def _build_and_execute_workflow(
-        self, execution_service: WorkflowExecutionService, file_name: str
+        self,
+        execution_service: WorkflowExecutionService,
+        file_name: str,
+        auto_enable_highlight: bool = False,
     ) -> None:
         """Build and execute the workflow.
 
@@ -977,7 +986,9 @@ class WorkerWorkflowExecutionService:
         execute_structure_tool task instead of the Docker container flow.
         """
         if self._is_structure_tool_workflow(execution_service):
-            self._execute_structure_tool_workflow(execution_service, file_name)
+            self._execute_structure_tool_workflow(
+                execution_service, file_name, auto_enable_highlight
+            )
         else:
             # Original Docker-based flow (unchanged)
             execution_service.build_workflow()
@@ -1015,7 +1026,10 @@ class WorkerWorkflowExecutionService:
         return False
 
     def _execute_structure_tool_workflow(
-        self, execution_service: WorkflowExecutionService, file_name: str
+        self,
+        execution_service: WorkflowExecutionService,
+        file_name: str,
+        auto_enable_highlight: bool = False,
     ) -> None:
         """Execute structure tool as a task instead of a Docker container.
 
@@ -1029,6 +1043,12 @@ class WorkerWorkflowExecutionService:
 
         tool_instance = execution_service.tool_instances[0]
         file_handler = execution_service.file_handler
+
+        tool_instance_metadata = tool_instance.metadata
+        if auto_enable_highlight:
+            # HITL confidence rules need highlight data. Override a copy so the
+            # user's saved setting is unchanged.
+            tool_instance_metadata = {**tool_instance_metadata, "enable_highlight": True}
 
         # Read metadata from METADATA.json for file_hash and exec_metadata
         metadata = {}
@@ -1047,7 +1067,7 @@ class WorkerWorkflowExecutionService:
             "workflow_id": execution_service.workflow_id,
             "execution_id": execution_service.execution_id,
             "file_execution_id": execution_service.file_execution_id,
-            "tool_instance_metadata": tool_instance.metadata,
+            "tool_instance_metadata": tool_instance_metadata,
             "platform_service_api_key": platform_api_key,
             "input_file_path": str(file_handler.infile),
             "output_dir_path": str(file_handler.execution_dir),

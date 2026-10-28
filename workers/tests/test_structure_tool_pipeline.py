@@ -907,7 +907,7 @@ class TestStructureToolParamsPassthrough:
         service._build_and_execute_workflow(mock_exec_service, "test.pdf")
 
         # Verify _execute_structure_tool_workflow was called
-        mock_exec_struct.assert_called_once_with(mock_exec_service, "test.pdf")
+        mock_exec_struct.assert_called_once_with(mock_exec_service, "test.pdf", False)
 
     @patch(
         "shared.workflow.execution.service.WorkerWorkflowExecutionService."
@@ -962,6 +962,50 @@ class TestStructureToolParamsPassthrough:
         params = mock_execute_struct.call_args[0][0]
         assert params["source_file_name"] == "invoice.pdf"
         assert params["source_file_name"] != "SOURCE"
+
+    @pytest.mark.parametrize(
+        "user_highlight, auto_enable, expected",
+        [
+            (False, True, True),  # HITL confidence rule present
+            (True, False, True),  # user setting respected
+            (False, False, False),
+        ],
+    )
+    @patch(
+        "shared.workflow.execution.service.WorkerWorkflowExecutionService."
+        "_get_platform_service_api_key",
+        return_value="sk-test",
+    )
+    @patch("file_processing.structure_tool_task.execute_structure_tool")
+    def test_auto_enable_highlight_overrides_a_copy(
+        self, mock_execute_struct, mock_get_key, user_highlight, auto_enable, expected
+    ):
+        """HITL confidence rules turn highlight on for the run only.
+
+        Word confidence and the saved tool instance metadata stay as the
+        user set them.
+        """
+        from shared.workflow.execution.service import (
+            WorkerWorkflowExecutionService,
+        )
+
+        saved_metadata = {
+            "enable_highlight": user_highlight,
+            "enable_word_confidence": False,
+        }
+        mock_exec_service = MagicMock()
+        mock_exec_service.tool_instances = [MagicMock(metadata=saved_metadata)]
+        mock_exec_service.file_handler.get_workflow_metadata.return_value = {}
+        mock_execute_struct.return_value = {"success": True}
+
+        WorkerWorkflowExecutionService()._execute_structure_tool_workflow(
+            mock_exec_service, "invoice.pdf", auto_enable_highlight=auto_enable
+        )
+
+        sent = mock_execute_struct.call_args[0][0]["tool_instance_metadata"]
+        assert sent["enable_highlight"] is expected
+        assert sent["enable_word_confidence"] is False
+        assert saved_metadata["enable_highlight"] is user_highlight
 
 
 class TestHelperFunctions:

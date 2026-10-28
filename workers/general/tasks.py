@@ -42,7 +42,11 @@ from shared.patterns.notification.helper import notify_execution_failure
 from shared.patterns.retry.utils import circuit_breaker
 from shared.processing.files import FileProcessingUtils
 from shared.processing.types import FileDataValidator, TypeConverter
-from shared.utils.manual_review_factory import get_manual_review_service
+from shared.utils.manual_review_factory import (
+    AUTO_ENABLE_HIGHLIGHT,
+    HIGHLIGHT_AUTO_ENABLED_MESSAGE,
+    get_manual_review_service,
+)
 from shared.workflow.connectors.source import WorkerSourceConnector
 from shared.workflow.execution import (
     WorkerExecutionContext,
@@ -978,6 +982,14 @@ def _orchestrate_file_processing_general(
             total_files=len(source_files),
         )
         logger.debug("Global file data configured for manual review")
+        if workflow_util.has_confidence_rules(workflow_id):
+            global_file_data.manual_review_config[AUTO_ENABLE_HIGHLIGHT] = True
+            _log_batch_statistics_to_ui(
+                execution_id=execution_id,
+                organization_id=organization_id,
+                pipeline_id=pipeline_id,
+                message=HIGHLIGHT_AUTO_ENABLED_MESSAGE,
+            )
         # Pre-calculate file decisions for ALL files based on total count - not per batch!
         q_file_no_list = global_file_data.manual_review_config.get("q_file_no_list", [])
         logger.info(

@@ -17,6 +17,13 @@ logger = WorkerLogger.get_logger(__name__)
 
 MANUAL_REVIEW_PLUGIN_NAME = "manual_review"
 
+# manual_review_config key: the workflow has HITL confidence rules, so the
+# structure tool runs with highlight on to produce confidence scores.
+AUTO_ENABLE_HIGHLIGHT = "auto_enable_highlight"
+HIGHLIGHT_AUTO_ENABLED_MESSAGE = (
+    "Highlight enabled automatically because HITL confidence rules are configured"
+)
+
 
 class ManualReviewServiceProtocol(Protocol):
     """Protocol defining the interface for manual review services."""
@@ -458,6 +465,9 @@ def _create_null_workflow_util():
 
         def get_manual_review_config(self, workflow_id, total_files):
             return {}
+
+        def has_confidence_rules(self, workflow_id):
+            return False
 
     return WorkflowUtilNull()
 
