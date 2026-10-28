@@ -22,14 +22,14 @@ file holds only the rules that tooling enforces.
   scans `src/v1`, so an unprefixed class renders with v0's theme. Merge with
   `cn` from `@v1/lib/cn`. Tokens live in `styles/tokens.ts`; `tokens.css` is
   generated from them by `bun run tokens:v1`.
-- `ThemeProvider` sets `data-theme` (`light`, `dark`, `unstract`; preference
-  key `unstract.v1.theme`). Portals render into `getPortalContainer()`.
-  `ui:focus-ring` is the one focus style; Geist Mono only for model output,
-  JSON and token counts.
+- `ThemeProvider` sets `data-theme` (`light`, `dark`, `unstract`; key
+  `unstract.v1.theme`); portals use `getPortalContainer()`. `ui:focus-ring` is
+  the one focus style; Geist Mono only for model output, JSON and token counts.
 - `lint:v1` rejects: S1 inline `style`; S2 raw colours; S3 raw pixel values;
   S4 `!important`; S5 CSS imports outside `app/` and `styles/`; S6 selectors
   not starting with `.v1`; S7 `prefers-color-scheme` in CSS; S8 unprefixed
-  utilities.
+  utilities. In code, S2 to S4 and S8 read class strings only (`className`
+  values, `cn()`/`cva()` arguments, constants holding classes), not every string.
 
 ## Folders and what each may import
 

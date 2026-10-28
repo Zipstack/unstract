@@ -95,6 +95,7 @@ const CASES = parseTable(`
   v1-styles-color-scheme-media   | lint:v1         | prefers-color-scheme
   v1-unprefixed-utility          | lint:v1         | No unprefixed Tailwind utility under v1
   v1-styles-policy-ok            | lint:v1         | -
+  v1-plain-strings-ok            | lint:v1         | -
 `).map(([name, run, fails]) => ({
   name: name === "-" ? null : name,
   run: run.split(" + "),

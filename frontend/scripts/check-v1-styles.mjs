@@ -3,10 +3,11 @@
  * Styling policy for the v1 frontend (src/v1/). Run by `lint:v1` after
  * check-v1.mjs; the rules and their reasons are in src/v1/README.md.
  *
- *   S1  No inline style (JSX `style=`).
+ *   S1  No inline style (a JSX `style` attribute).
  *   S2  No raw colour: hex, rgb()/hsl()/oklch()/oklab()/color(), or a
  *       Tailwind palette utility (`-red-500`, `-white`).
- *   S3  No raw pixel value: `[13px]` arbitrary values, or px/rem/em/pt in CSS.
+ *   S3  No raw pixel value: `[13px]` or `[100vh]` arbitrary values, or
+ *       px/rem/em/pt in CSS.
  *   S4  No !important: a `!` class modifier, or `!important` in CSS.
  *   S5  CSS is imported only from app/ and styles/.
  *   S6  Every CSS selector starts with `.v1`, except inside @theme, @utility,
@@ -15,9 +16,11 @@
  *   S8  Every Tailwind utility carries the `ui:` prefix. v0's stylesheet also
  *       scans src/v1, so an unprefixed class would render with v0's theme.
  *
- * In TypeScript, S2 to S4 and S8 read only the contents of string and template
- * literals, so a non-null `!` or a hex-looking identifier never matches. Test
- * files and styles/tokens.ts (the raw values, by design) are skipped for them.
+ * In TypeScript, S2 to S4 and S8 read only class strings: string and template
+ * literals that look like a class list (see isClassString), so a non-null `!`,
+ * a hex-looking identifier or a value such as "outline" or "pt-BR" never
+ * matches. Test files and styles/tokens.ts (the raw values, by design) are
+ * skipped for them. S1 matches only a JSX `style=` attribute.
  * In CSS, comments are blanked first; the generated styles/tokens.css is
  * skipped for S2 and S3 only.
  *
@@ -26,7 +29,9 @@
  * so a string such as "font" or "top" is not flagged.
  *
  * blankComments and its helpers are copied from check-v1.mjs, which runs on
- * import and so cannot be imported; keep the two in step.
+ * import and so cannot be imported; keep the two in step. As there, JSX text
+ * is parsed as code, so an apostrophe in it ("don't") opens a string to the
+ * end of the line; the class-string test keeps such text from being reported.
  *
  * It always checks the src/v1 beside this script, like
  * check-v1.mjs; the fixtures in test-fixtures/v1-boundary/ rely on that.
@@ -65,13 +70,14 @@ const RAW_COLOUR_RES = [
   new RegExp(String.raw`-(?:${PALETTE})-\d{2,3}(?![\w-])`, "g"),
   /-(?:white|black)(?![\w-])/g,
 ];
-// A Tailwind arbitrary value in a unit: `w-[13px]`, `p-[1.5rem]`.
-const ARBITRARY_UNIT_RE = /\[[^\]\s]*\d(?:px|rem|em|pt)\]/g;
+// A Tailwind arbitrary value in a unit: `w-[13px]`, `p-[1.5rem]`, `h-[100vh]`.
+const ARBITRARY_UNIT_RE = /\[[^\]\s]*\d(?:px|rem|em|vh|vw|pt)\]/g;
 // A CSS length in a unit: `3px`, `.5rem`, `-1em`.
 const CSS_UNIT_RE = /(?<![\w.])(?:\d+\.?\d*|\.\d+)(?:px|rem|em|pt)(?![\w-])/g;
 const CSS_IMPORTANT_RE = /!\s*important\b/g;
 const COLOUR_SCHEME_RE = /prefers-color-scheme/g;
-const INLINE_STYLE_RE = /(?<![\w-])style\s*=\s*[{"']/g;
+// A JSX attribute: `<div style={…}` or `style="…"`, not `const style = {…}`.
+const INLINE_STYLE_RE = /(?<=[\s{])style=[{"]/g;
 
 // Stems that are a complete utility on their own, so a bare `flex` counts.
 const WHOLE_STEMS = [
@@ -186,7 +192,8 @@ function codeStep(c, stack) {
 
 /*
  * The text of every string and template literal in comment-blanked source,
- * as { text, index } with index the offset of the text's first character.
+ * as { text, index, id } with index the offset of the text's first character
+ * and id shared by the pieces of one template literal.
  * Code outside literals is replaced by spaces, and a `${}` expression ends one
  * piece of template text and starts the next (its own literals are yielded
  * too), so a match can never span code.
@@ -194,12 +201,19 @@ function codeStep(c, stack) {
 function literals(src) {
   const pieces = [];
   const stack = [];
+  // The id of each open template literal, innermost last.
+  const templates = [];
+  let nextId = 0;
   let piece = null;
   let i = 0;
   while (i < src.length) {
     if (stack.at(-1) === "`") {
-      piece ??= { text: "", index: i };
+      piece ??= { text: "", index: i, id: templates.at(-1) };
+      const depth = stack.length;
       const step = templateStep(src, i, stack);
+      if (stack.length < depth) {
+        templates.pop();
+      }
       if (stack.at(-1) !== "`") {
         // The literal closed, or a `${` opened.
         pieces.push(piece);
@@ -211,9 +225,16 @@ function literals(src) {
     } else if (src[i] === '"' || src[i] === "'") {
       const end = stringEnd(src, i);
       const close = src[end - 1] === src[i] ? end - 1 : end;
-      pieces.push({ text: src.slice(i + 1, close), index: i + 1 });
+      pieces.push({
+        text: src.slice(i + 1, close),
+        index: i + 1,
+        id: nextId++,
+      });
       i = end;
     } else {
+      if (src[i] === "`") {
+        templates.push(nextId++);
+      }
       codeStep(src[i], stack);
       i += 1;
     }
@@ -258,6 +279,28 @@ function isUnprefixedUtility(token) {
     }
   }
   return UTILITY_RE.test(rest);
+}
+
+const DEFINITE_CLASS_RES = [
+  /^!?ui:/,
+  /-\[[^\]]*\]/,
+  new RegExp(String.raw`-(?:${PALETTE})-\d{2,3}(?![\w-])`),
+];
+
+/*
+ * Ruling R7-3: S2, S3, S4 and S8 apply only to class strings. A literal is
+ * one when it holds at least one definite utility (`ui:` prefix, an arbitrary
+ * value `-[…]`, or a stock palette colour such as `-red-500`) or at least two
+ * utility-shaped tokens (isUnprefixedUtility). So "outline", "pt-BR",
+ * "Run #1234" and "Try re-running!" are values, while
+ * "flex items-center gap-2" is a class list.
+ */
+function isClassString(text) {
+  const words = text.split(/\s+/).filter(Boolean);
+  if (words.some((w) => DEFINITE_CLASS_RES.some((re) => re.test(w)))) {
+    return true;
+  }
+  return words.filter(isUnprefixedUtility).length >= 2;
 }
 
 /* A class token with the `!` important modifier at either end. */
@@ -386,7 +429,16 @@ function checkCode(rel) {
   if (rel === RAW_VALUES_TS) {
     return;
   }
-  for (const literal of literals(text)) {
+  const pieces = literals(text);
+  // A template literal is judged as a whole, across its `${}` expressions.
+  const textById = new Map();
+  for (const { id, text: t } of pieces) {
+    textById.set(id, `${textById.get(id) ?? ""} ${t}`);
+  }
+  for (const literal of pieces) {
+    if (!isClassString(textById.get(literal.id))) {
+      continue;
+    }
     for (const re of RAW_COLOUR_RES) {
       for (const m of literal.text.matchAll(re)) {
         report(rel, lineAt(text, literal.index + m.index), MSG.colour);
