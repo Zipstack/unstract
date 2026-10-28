@@ -1,8 +1,12 @@
-/* What preflight would give the v1 tree, scoped to .v1 so v0 is untouched. */
+/* What preflight would give the v1 tree, scoped to .v1 so v0 is untouched.
+ * The app root (data-ui-version) fills and paints its area; every .v1 element,
+ * the portal container included, only sets the inherited text defaults. */
 @layer base {
-  .v1 {
+  .v1[data-ui-version="v1"] {
     min-height: 100%;
     background-color: var(--background);
+  }
+  .v1 {
     color: var(--foreground);
     font-family: var(--font-sans);
     font-size: var(--type-body-size);

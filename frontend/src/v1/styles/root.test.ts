@@ -25,6 +25,9 @@ const CANDIDATES = [
   "ui:text-sm",
   "ui:shadow-2xl",
   "ui:rounded-2xl",
+  "ui:drop-shadow-lg",
+  "ui:inset-shadow-sm",
+  "ui:text-shadow-lg",
 ];
 
 async function build(stylesheet: string): Promise<string> {
@@ -91,26 +94,37 @@ it("emits only prefixed utilities bound to runtime variables", () => {
     // Tailwind wraps the tracking in --tw-tracking so a tracking-* utility can override it.
     /\.ui\\:text-overline\s*\{[^}]*letter-spacing:\s*var\((--tw-tracking,\s*var\()?--type-overline-tracking\)/,
   );
-  expect(css).toMatch(/\.ui\\:focus-ring\s*\{/);
   expect(css).not.toMatch(/(^|[^\\:])\.bg-background\b/);
   expect(css).not.toMatch(/(^|[^\\:])\.flex\b/);
 });
 
-it("has no stock palette, text scale, shadow scale or radius scale", () => {
+it("has no stock palette, text scale, shadow scales or radius scale", () => {
   expect(css).not.toContain("bg-red-500");
   expect(css).not.toContain("text-sm");
   expect(css).not.toContain("shadow-2xl");
   expect(css).not.toContain("rounded-2xl");
+  expect(css).not.toContain("drop-shadow-lg");
+  expect(css).not.toContain("inset-shadow-sm");
+  expect(css).not.toContain("text-shadow-lg");
 });
 
-it("dark and unstract variants key on data-theme, never on prefers-color-scheme", () => {
+it("the focus ring keeps a transparent outline for forced-colors mode beside the box-shadow ring", () => {
+  const rule = css.match(/\.ui\\:focus-ring\s*\{([^}]*)\}/)?.[1] ?? "";
+  expect(rule).toMatch(/outline(-style)?:\s*(solid|2px solid transparent)/);
+  expect(rule).toContain("border-color: var(--ring)");
+  expect(rule).toContain(
+    "color-mix(in srgb, var(--ring) var(--focus-ring-alpha), transparent)",
+  );
+});
+
+it("dark and unstract variants key on the v1 root's data-theme, never on prefers-color-scheme", () => {
   // Name the variant rules and their binding: tokens.css alone also contains
   // [data-theme=…] selectors, so matching those would pass with no variants.
   expect(css).toMatch(
-    /\.ui\\:dark\\:bg-card:where\(\[data-theme="?dark"?\],\s*\[data-theme="?dark"?\]\s*\*\s*\)\s*\{[^}]*background-color:\s*var\(--card\)/,
+    /\.ui\\:dark\\:bg-card:where\(\.v1\[data-theme="?dark"?\],\s*\.v1\[data-theme="?dark"?\]\s*\*\s*\)\s*\{[^}]*background-color:\s*var\(--card\)/,
   );
   expect(css).toMatch(
-    /\.ui\\:unstract\\:bg-card:where\(\[data-theme="?unstract"?\],\s*\[data-theme="?unstract"?\]\s*\*\s*\)\s*\{[^}]*background-color:\s*var\(--card\)/,
+    /\.ui\\:unstract\\:bg-card:where\(\.v1\[data-theme="?unstract"?\],\s*\.v1\[data-theme="?unstract"?\]\s*\*\s*\)\s*\{[^}]*background-color:\s*var\(--card\)/,
   );
   expect(css).not.toContain("prefers-color-scheme");
 });
@@ -133,4 +147,11 @@ it("declares no !important, and every custom property is a Tailwind ui variable 
       !v.startsWith("--ui-") && !v.startsWith("--tw-") && !tokenVars.has(v),
   );
   expect(strays).toEqual([]);
+});
+
+it("only the app root fills and paints its area, so the portal container is not a painted block", () => {
+  expect(css).toMatch(
+    /\.v1\[data-ui-version="?v1"?\]\s*\{\s*min-height:\s*100%;\s*background-color:\s*var\(--background\);?\s*\}/,
+  );
+  expect(css).not.toMatch(/\.v1\s*\{[^}]*(min-height|background-color)/);
 });

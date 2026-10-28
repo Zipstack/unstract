@@ -18,10 +18,14 @@
 /* Scan only the v1 tree (source(none) above turns off automatic detection). */
 @source "../";
 
-@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+/* Keyed on the v1 root, so a data-theme elsewhere (v0's <html>) cannot flip them. */
+@custom-variant dark (&:where(
+    .v1[data-theme="dark"],
+    .v1[data-theme="dark"] *
+  ));
 @custom-variant unstract (&:where(
-    [data-theme="unstract"],
-    [data-theme="unstract"] *
+    .v1[data-theme="unstract"],
+    .v1[data-theme="unstract"] *
   ));
 
 /* Every theme key reads a runtime token from tokens.css; the stock namespaces
@@ -71,6 +75,9 @@
   --shadow-md: var(--shadow-md);
   --shadow-lg: var(--shadow-lg);
   --shadow-xl: var(--shadow-xl);
+  --inset-shadow-*: initial;
+  --drop-shadow-*: initial;
+  --text-shadow-*: initial;
 
   --text-*: initial;
   --text-display: var(--type-display-size);
@@ -104,9 +111,13 @@
   --font-mono: var(--font-mono);
 }
 
-/* Board section 6: "border → ring, plus 3px ring at 50% outside". */
+/* Board section 6: "border → ring, plus 3px ring at 50% outside". Use it as
+ * `ui:focus-visible:focus-ring`; a bare `ui:focus-ring` rings the element all
+ * the time. The transparent outline is what forced-colors mode paints (it
+ * drops box-shadow), so the ring stays visible in Windows High Contrast. */
 @utility focus-ring {
-  outline: 0;
+  outline: 2px solid transparent; /* v1-styles-allow: forced-colors outline */
+  outline-offset: 2px; /* v1-styles-allow: forced-colors outline */
   border-color: var(--ring);
   box-shadow: 0 0 0 var(--focus-ring-width)
     color-mix(in srgb, var(--ring) var(--focus-ring-alpha), transparent);

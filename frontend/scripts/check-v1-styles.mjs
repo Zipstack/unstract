@@ -26,7 +26,10 @@
  * "Run #1234" does not. Test files and styles/tokens.ts (the raw values, by
  * design) are skipped for them. S1 matches only a JSX `style=` attribute.
  * In CSS, comments are blanked first; the generated styles/tokens.css is
- * skipped for S2 and S3 only.
+ * skipped for S2 and S3 only. One escape hatch, for S3 only: a CSS line that
+ * ends with the comment `/* v1-styles-allow: forced-colors outline *\/` may
+ * hold a pixel value. It exists for the focus utility's transparent outline,
+ * which forced-colors mode paints in place of the box-shadow ring.
  *
  * S8 checks a list of utility stems, not a Tailwind parse: a missing stem is a
  * false negative. A bare stem counts only when it is a whole utility (`flex`),
@@ -123,6 +126,9 @@ const ARBITRARY_WORD_RE = /(?:-|(?<![\w-]))\[(?:[\w-]+:)?([a-zA-Z]+)\]/g;
 const ARBITRARY_UNIT_RE = /\[[^\]\s]*\d(?:px|rem|em|vh|vw|pt)\]/g;
 // A CSS length in a unit: `3px`, `.5rem`, `-1em`.
 const CSS_UNIT_RE = /(?<![\w.])(?:\d+\.?\d*|\.\d+)(?:px|rem|em|pt)(?![\w-])/g;
+// The S3 escape hatch for a CSS line (see the header).
+const PIXEL_ALLOW_RE =
+  /\/\*\s*v1-styles-allow: forced-colors outline\s*\*\/\s*$/;
 const CSS_IMPORTANT_RE = /!\s*important\b/g;
 const COLOUR_SCHEME_RE = /prefers-color-scheme/g;
 // A JSX attribute: `<div style={…}` or `style="…"`, not `const style = {…}`.
@@ -520,17 +526,27 @@ function checkCode(rel) {
 }
 
 function checkCss(rel) {
-  const css = blankCssComments(fs.readFileSync(path.join(ROOT, rel), "utf8"));
-  const at = (re, msg) => {
+  const source = fs.readFileSync(path.join(ROOT, rel), "utf8");
+  const css = blankCssComments(source);
+  // 1-based numbers of the lines that carry the S3 escape-hatch marker.
+  const pixelAllowed = new Set(
+    source
+      .split("\n")
+      .flatMap((line, i) => (PIXEL_ALLOW_RE.test(line) ? [i + 1] : [])),
+  );
+  const at = (re, msg, skip = new Set()) => {
     for (const m of css.matchAll(re)) {
-      report(rel, lineAt(css, m.index), msg);
+      const line = lineAt(css, m.index);
+      if (!skip.has(line)) {
+        report(rel, line, msg);
+      }
     }
   };
   if (rel !== GENERATED_CSS) {
     for (const re of RAW_COLOUR_RES) {
       at(re, MSG.colour);
     }
-    at(CSS_UNIT_RE, MSG.pixel);
+    at(CSS_UNIT_RE, MSG.pixel, pixelAllowed);
   }
   at(CSS_IMPORTANT_RE, MSG.important);
   at(COLOUR_SCHEME_RE, MSG.colourScheme);
