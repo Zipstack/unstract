@@ -12,7 +12,7 @@
     <a href="https://status.unstract.com"><img src="https://img.shields.io/badge/uptime-status-brightgreen" alt="Uptime Status"></a>
     <a href="https://hub.docker.com/u/unstract"><img src="https://img.shields.io/docker/pulls/unstract/backend" alt="Docker Pulls"></a>
     <a href="https://deepwiki.com/Zipstack/unstract"><img src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki"></a>
-    <a href="https://cla-assistant.io/Zipstack/unstract"><img src="https://cla-assistant.io/readme/badge/Zipstack/unstract" alt="CLA assistant"></a>
+    <a href="https://gist.github.com/arun-venkataswamy/0dec44b8e5155c43461caf62c38ddac3"><img src="https://img.shields.io/badge/CLA-required-blue" alt="CLA required"></a>
   </p>
   <p>
     <img src="https://img.shields.io/python/required-version-toml?tomlFilePath=https%3A%2F%2Fraw.githubusercontent.com%2FZipstack%2Funstract%2Frefs%2Fheads%2Fmain%2Fpyproject.toml" alt="Python Version from PEP 621 TOML">

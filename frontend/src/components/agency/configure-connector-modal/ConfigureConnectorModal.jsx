@@ -675,13 +675,15 @@ function ConfigureConnectorModal({
 
         {/* API connectors: Show only HITL rules (no connector selection needed) */}
         {connMode === "API" && RuleEngine && (
-          <div className={roClass}>
-            <RuleEngine
-              ref={ruleEngineRef}
-              workflowDetails={workflowDetails}
-              ruleType="API"
-              onDirtyStateChange={setRuleEngineHasChanges}
-            />
+          <div className="conn-modal-hitl-body">
+            <div className={roClass}>
+              <RuleEngine
+                ref={ruleEngineRef}
+                workflowDetails={workflowDetails}
+                ruleType="API"
+                onDirtyStateChange={setRuleEngineHasChanges}
+              />
+            </div>
           </div>
         )}
 

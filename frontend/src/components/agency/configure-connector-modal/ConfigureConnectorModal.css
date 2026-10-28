@@ -10,6 +10,10 @@
   overflow-x: hidden;
 }
 
+.conn-modal-hitl-body {
+  overflow-y: auto;
+}
+
 .conn-modal-row {
   flex: 1;
   overflow-y: hidden;
