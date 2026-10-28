@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 /*
  * Build check for v1 plugins (src/v1/plugins/<id>/manifest.ts, copied in by
- * the cloud overlay). Transpiles every manifest and the registry with esbuild
- * (so it runs on any Node the frontend supports), runs the registry's conflict checks for every distribution, and returns the
- * distribution matrix. vite.config.js runs it in every build and publishes
+ * the cloud overlay). Under Bun it imports the TypeScript directly; under Node
+ * it transpiles with esbuild, loaded only then, because the cloud overlay runs
+ * this with Bun before any dependency is installed. Runs the registry's
+ * conflict checks for every distribution and returns the distribution matrix. vite.config.js runs it in every build and publishes
  * the matrix as plugin-matrix.json.
  *
  *   node scripts/v1-plugins.mjs [out.json] [--dir plugins]   check, print or write the matrix
@@ -11,7 +12,6 @@
 import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { build, transform } from "esbuild";
 
 const DEFAULT_DIR = path.join(import.meta.dirname, "../src/v1/plugins");
 const REGISTRY = path.join(
@@ -22,19 +22,33 @@ const REGISTRY = path.join(
 const dataUrl = (code) =>
   `data:text/javascript;base64,${Buffer.from(code).toString("base64")}`;
 
+const BUN = Boolean(process.versions.bun);
+
 let registry;
 function loadRegistry() {
-  registry ??= build({
-    entryPoints: [REGISTRY],
-    bundle: true,
-    write: false,
-    format: "esm",
-    platform: "node",
-  }).then((r) => import(dataUrl(r.outputFiles[0].text)));
+  if (BUN) {
+    registry ??= import(pathToFileURL(REGISTRY).href);
+    return registry;
+  }
+  registry ??= import("esbuild")
+    .then(({ build }) =>
+      build({
+        entryPoints: [REGISTRY],
+        bundle: true,
+        write: false,
+        format: "esm",
+        platform: "node",
+      }),
+    )
+    .then((r) => import(dataUrl(r.outputFiles[0].text)));
   return registry;
 }
 
 async function importManifest(file) {
+  if (BUN) {
+    return import(pathToFileURL(file).href);
+  }
+  const { transform } = await import("esbuild");
   const { code } = await transform(fs.readFileSync(file, "utf8"), {
     loader: "ts",
     format: "esm",
