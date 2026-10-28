@@ -8,6 +8,7 @@ LABEL maintainer="Zipstack Inc." \
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     BUILD_CONTEXT_PATH=x2text-service \
+    BUILD_PACKAGES_PATH=unstract \
     APP_USER=unstract \
     APP_HOME=/app \
     # OpenTelemetry configuration (disabled by default, enable in docker-compose)
@@ -41,6 +42,9 @@ FROM base AS ext-dependencies
 
 # Copy dependency-related files
 COPY ${BUILD_CONTEXT_PATH}/pyproject.toml ${BUILD_CONTEXT_PATH}/uv.lock ${BUILD_CONTEXT_PATH}/README.md ./
+
+# Copy local package dependencies (unstract-core provides the SSRF guard)
+COPY --chown=${APP_USER}:${APP_USER} ${BUILD_PACKAGES_PATH}/core /unstract/core
 
 # Switch to non-root user
 USER ${APP_USER}

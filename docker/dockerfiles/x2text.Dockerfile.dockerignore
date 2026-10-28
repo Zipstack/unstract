@@ -58,5 +58,6 @@ platform-service
 prompt-service
 tools
 unstract
+!unstract/core
 runner
 !x2text-service

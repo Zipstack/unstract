@@ -12,6 +12,7 @@ from app.authentication_middleware import (
     authentication_middleware,
 )
 from app.models import X2TextAudit
+from app.unstructured_url import refusal_message, request_timeout
 from app.util import X2TextUtil
 
 basic = Blueprint("basic", __name__)
@@ -22,6 +23,19 @@ logging.basicConfig(
 
 UNSTRUCTURED_URL = "unstructured-url"
 UNSTRUCTURED_API_KEY = "unstructured-api-key"
+
+REDIRECT_REFUSED = (
+    "Unstructured URL redirected to another location; configure the final URL"
+)
+
+
+def _error(message: str, status: int = 400) -> tuple[dict[str, str], int]:
+    """An error response whose reason reaches the user.
+
+    ``detail`` is the key sdk1 reads an error message from; ``message`` matches
+    this service's other responses.
+    """
+    return {"message": message, "detail": message}, status
 
 
 @basic.route("/health", methods=["GET"])
@@ -39,6 +53,8 @@ def test_connection() -> Any:
     url = X2TextUtil.get_value_for_key(UNSTRUCTURED_URL, form_data)
     if not url:
         return {"message": "Missing or empty url in form data"}, 400
+    if refusal := refusal_message(url):
+        return _error(refusal)
 
     headers = {
         "accept": "application/json",
@@ -54,9 +70,12 @@ def test_connection() -> Any:
             headers=headers,
             data=None,
             files=files,
-            timeout=None,
+            timeout=request_timeout(),
+            allow_redirects=False,
         )
 
+        if response.is_redirect:
+            return _error(REDIRECT_REFUSED)
         if response.status_code == 400:
             """Response is 400 as we are not sending a file to test connection.
 
@@ -64,7 +83,7 @@ def test_connection() -> Any:
             """
 
             return {"message": "Test connection sucessful"}, 200
-        return response.text, response.status_code
+        return {"message": response.text}, response.status_code
     except requests.ConnectionError as e:
         logging.error(e)
         return {"message": "Test connection Failed"}, 400
@@ -81,6 +100,8 @@ def process() -> Any:
     url = X2TextUtil.get_value_for_key(UNSTRUCTURED_URL, form_data)
     if not url:
         return {"message": "Missing or empty url in form data"}, 400
+    if refusal := refusal_message(url):
+        return _error(refusal)
     if "file" not in request.files:
         return {"message": "No file part"}, 400
 
@@ -116,14 +137,25 @@ def process() -> Any:
     }
     payload = form_data
 
-    response = requests.request(
-        "POST",
-        url,
-        headers=headers,
-        data=payload,
-        files=files,
-        timeout=None,
-    )
+    try:
+        response = requests.request(
+            "POST",
+            url,
+            headers=headers,
+            data=payload,
+            files=files,
+            timeout=request_timeout(),
+            allow_redirects=False,
+        )
+    except requests.Timeout:
+        x2_text_audit.status = "Failed"
+        x2_text_audit.save()
+        logging.error("Text extraction timed out waiting for the Unstructured API")
+        return _error("Timed out waiting for the Unstructured API", 504)
+    if response.is_redirect:
+        x2_text_audit.status = "Failed"
+        x2_text_audit.save()
+        return _error(REDIRECT_REFUSED)
     if response.ok:
         json_response = response.json()
         response_text = X2TextUtil.get_text_content(json_response)
