@@ -170,12 +170,9 @@ function CreateNotification({
       label: "Authorization Key",
       name: "authorization_key",
       // A credential: masked until revealed. new-password keeps the browser
-      // from filling a saved login password into it; a password manager may
-      // still offer to generate or save a password here, as on any secret
-      // field (PasswordWidget). The mask is on screen only: the form sends the
-      // stored key back on update, so the key is still the input's value and
-      // React mirrors it into the value attribute. Keeping it out of the page
-      // needs the API to stop returning it.
+      // from filling a saved login password into it. The mask is on screen
+      // only: the API returns the stored key, so it is still the input's
+      // value (and value attribute) until the API stops sending it.
       component: <Input.Password autoComplete="new-password" />,
       tooltip:
         "Provide the authorization key used to validate the notification.",
