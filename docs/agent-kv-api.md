@@ -1106,7 +1106,8 @@ beyond `docker compose up`:
    > the name appears anywhere in the chart, because a queue with a consumer and no
    > producer wastes a fleet lane, and one with a producer and no consumer accepts
    > work and drains nothing with no error anywhere. It becomes the right queue only
-   > when `kv` is re-enabled in `EXTRACTOR_ROUTES`, and
+   > when `kv` is re-enabled on the shared extractor catalogue that
+   > `EXTRACTOR_ROUTES` derives from (`backend/extractor_registry/`), and
    > `backend/agent_kv/tests/test_queue_wiring_is_derived.py` derives the expectation
    > from that constant so the two cannot disagree.
 

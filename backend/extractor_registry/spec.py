@@ -124,7 +124,11 @@ class ExtractorAgentSpec:
     available: bool = True
 
     def __post_init__(self) -> None:
-        """Reject half-declared shapes.
+        """Reject half-declared shapes. Two of them, in this order.
+
+        ``multimodal_required`` without ``supports_multimodal`` says the Studio
+        must offer no toggle for a mode the engine does not accept, which
+        describes no reachable configuration.
 
         ``api_operation`` and ``api_extractor`` are meaningless apart: a route
         needs both a name to be requested by and an operation to dispatch.
