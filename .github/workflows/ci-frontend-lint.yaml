@@ -50,7 +50,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Setup Biome
-        uses: biomejs/setup-biome@v2
+        uses: biomejs/setup-biome@4c91541eaada48f67d7dbd7833600ce162b68f51 # v2.7.1
         with:
           version: "2.3.13"
 
