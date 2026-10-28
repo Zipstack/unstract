@@ -542,6 +542,7 @@ def _execute_structure_tool_impl(params: dict) -> dict:
             "PLATFORM_SERVICE_API_KEY": platform_service_api_key,
             "group_key": at_settings.get("group_key", ""),
             "enable_header_mapping": at_settings.get("enable_header_mapping", False),
+            "extraction_priority": at_settings.get("extraction_priority"),
             # Set on the output at export by prompt_studio_registry_helper.py
             # when a lookup is assigned; None otherwise.
             "lookup_config": at_output.get("lookup_config"),
