@@ -178,6 +178,10 @@
       }
     },
     {
+      "includes": ["src/v1/styles/tokens.css"],
+      "formatter": { "enabled": false }
+    },
+    {
       "includes": ["src/**", "!src/v1/**"],
       "linter": {
         "rules": {
