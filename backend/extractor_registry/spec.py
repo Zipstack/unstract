@@ -124,11 +124,19 @@ class ExtractorAgentSpec:
     available: bool = True
 
     def __post_init__(self) -> None:
-        """Reject half-declared shapes. Two of them, in this order.
+        """Reject half-declared shapes. Three of them, in this order.
 
         ``multimodal_required`` without ``supports_multimodal`` says the Studio
         must offer no toggle for a mode the engine does not accept, which
         describes no reachable configuration.
+
+        ``is_default`` without ``available`` says new profiles should be born
+        pointing at an engine that cannot run. ``default_primary_key()``
+        returns this row's key and the cloud profile writer persists it as
+        ``ExtractorAgentConfig.agent_key`` without re-checking, so the bad
+        value would reach the database and no UI action could repair it.
+        Enforced here rather than in that function because a row the
+        catalogue cannot hold needs no branch to handle it.
 
         ``api_operation`` and ``api_extractor`` are meaningless apart: a route
         needs both a name to be requested by and an operation to dispatch.
@@ -138,6 +146,11 @@ class ExtractorAgentSpec:
         """
         if self.multimodal_required and not self.supports_multimodal:
             raise ValueError(f"{self.key}: multimodal_required needs supports_multimodal")
+        if self.is_default and not self.available:
+            raise ValueError(
+                f"{self.key}: is_default needs available -- a new profile would "
+                f"be born pointing at an engine that cannot run"
+            )
         if bool(self.api_operation) != bool(self.api_extractor):
             raise ValueError(
                 f"{self.key}: api_operation and api_extractor must be set "

@@ -3,21 +3,30 @@
 ``EXTRACTOR_AGENTS[TABLE].output_key`` here is the key the Studio unwraps the
 table rows from. ``ExtractionOutput.to_dict()`` in the cloud repo's
 ``workers/plugins/agentic_table_engine/src/interface/runner.py`` is what
-actually emits it. They must be equal, and nothing enforces it: the consumer
+actually emits it. They must be equal. The consumer
 (``agentic_studio_v1.services.schema_placeholder.unwrap_agent_output``) falls
 back to returning the WHOLE envelope on a key miss, and ``apply_agent_output``
 then counts that as placed -- so the "not placed" warning never fires.
 
 On drift the job completes normally, bills normally, and the user's schema
 field holds ``{"tables": [...], "page_count": 7, ...}`` where their rows were
-supposed to go. No exception, no log line. This file is one half of the lock;
-the cloud half belongs in
-``workers/plugins/agentic_table_engine/tests/`` asserting the same literal
-against ``to_dict()``.
+supposed to go. No exception is raised; the cloud-side fallback does log a
+WARNING naming the missing key, and that is the only runtime signal there is.
+
+THIS FILE IS ONLY THE CONSUMER HALF. On its own it fires when someone edits
+the two adjacent lines below -- the side a reader is already looking at -- and
+NOT on the drift that actually happens, a rename in ``to_dict()``. The producer
+half is
+``workers/plugins/agentic_table_engine/tests/test_cross_repo_output_key.py``
+in the cloud repo, added by cloud PR #1894. **That PR merges after this one**,
+so between the two merges the lock is one-sided in the direction that matters;
+there is no window in which it is one-sided the other way. Both halves are
+mutation-verified against a rename of the key they pin.
 
 A literal, not an import: the two repos are separate checkouts and the
-producer is not tracked here at all (``workers/plugins/`` is gitignored in
-OSS), so an import would make this pass vacuously in exactly the environment
+producer is not tracked here at all (``workers/plugins/``'s plugin
+subdirectories are gitignored in OSS; the directory itself is tracked for its
+infrastructure files), so an import would pass vacuously in the environment
 where drift is introduced.
 """
 

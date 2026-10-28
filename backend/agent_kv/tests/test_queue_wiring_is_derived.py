@@ -270,9 +270,19 @@ def _llm_bearing_ops_literal() -> set[str]:
 def test_every_routed_operation_has_a_billing_backstop():
     """The derived assertion the two literal lists cannot make.
 
-    Give an extractor an API door on the shared catalogue -- which is what puts
-    it in `EXTRACTOR_ROUTES` -- and forget the backstop, and this fails, without
-    anyone having had to remember a second list.
+    Make an extractor routable on the shared catalogue -- an API door AND
+    `available=True`, since `api_routes()` requires both -- and forget the
+    backstop, and this fails, without anyone having had to remember a second
+    list.
+
+    SCOPE, because this reads wider than it is: `EXTRACTOR_ROUTES` is the blind
+    API's view, so this derives `api_operation` only. The catalogue's
+    `ide_operation` column is not covered, and two live LLM-bearing Studio
+    operations -- `agentic_extract` and `table_extract` -- are absent from
+    `_LLM_BEARING_OPS` and so have no zero-usage alarm at all. That gap
+    pre-dates the shared catalogue and closing it means editing the worker
+    tier's billing set, which is not this module's to do; it needs its own
+    ticket. Do not read a green run here as "every paid operation is covered".
     """
     declared = _llm_bearing_ops_literal()
     routed_ops = {operation for _executor, operation in EXTRACTOR_ROUTES.values()}

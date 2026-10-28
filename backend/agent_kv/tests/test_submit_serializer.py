@@ -124,11 +124,18 @@ def test_a_kv_submit_is_refused_at_the_serializer():
     `agentic_kv` is not deployed here, so nothing consumes
     `celery_executor_agentic_kv`. If `kv` were routable, this submit would
     return 202, dispatch into a queue with no consumer, and sit in DISPATCHED
-    until the stuck-job sweep force-fails it as "Job timed out" -- up to
-    AGENT_KV_STUCK_JOB_GRACE_SECONDS (6h by default) later, with no error at
-    the producer and nothing naming the real cause. A 400 at the serializer is
-    the whole difference between a clear refusal and a job that appears to
-    have been accepted and then times out hours later.
+    with no error at the producer and nothing naming the real cause.
+
+    How long it sits depends on the deployment, and an earlier version of this
+    docstring got it wrong in both directions. Nothing in this repo schedules
+    the stuck-job sweep (`workers/scheduler/agent_kv_tasks.py` says so), and
+    the cloud chart disables its CronJobs by default so on-prem does not run
+    them -- so off SaaS the row never terminalizes at all. Where the sweep DOES
+    run, `AGENT_KV_STUCK_JOB_GRACE_SECONDS` is a floor rather than a ceiling:
+    the sweep selects rows older than the cutoff, so the wait is at least that
+    long plus the CronJob interval. A 400 at the serializer is the whole
+    difference between a clear refusal and a job that looks accepted and then
+    never runs.
     """
     s = SubmitSerializer(
         data=_data(

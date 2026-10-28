@@ -202,6 +202,12 @@ class CatalogueShapeTest(SimpleTestCase):
         the `is_default` scan entirely still returns `simple` via the
         defensive fallback. Move the flag to prove the scan is load-bearing.
 
+        The flag moves onto an AVAILABLE row. An earlier version moved it onto
+        `multi_stage` as shipped -- `available=False` -- and asserted the
+        result, which pinned a value the docstring on the function forbids and
+        would have reddened the fix for it. `__post_init__` now refuses that
+        row outright, so the mistake is no longer expressible here.
+
         What this guards is persisted content: `default_primary_key()` is the
         `agent_key` written onto new and backfilled profile rows, so a
         regression here is silent until profiles are inspected.
@@ -215,42 +221,69 @@ class CatalogueShapeTest(SimpleTestCase):
                     **{**simple.__dict__, "is_default": False}
                 ),
                 ExtractorAgentKey.MULTI_STAGE: ExtractorAgentSpec(
-                    **{**multi.__dict__, "is_default": True}
+                    **{**multi.__dict__, "is_default": True, "available": True}
                 ),
             },
         ):
             self.assertEqual(default_primary_key(), ExtractorAgentKey.MULTI_STAGE)
 
-    def test_the_fallback_applies_when_no_primary_is_flagged(self) -> None:
-        """The `catalogue.py` fallback branch, otherwise reached by no test.
+    def test_a_flagged_default_cannot_be_undeployed(self) -> None:
+        """The invariant that lets `default_primary_key()` trust the flag.
 
-        Asserts AVAILABILITY, not insertion order. The sibling test says a new
-        profile must never be born pointing at an agent that cannot run, and
-        this branch has to honour that too -- `primary_agents()[0]` does not,
-        since order is not an availability guarantee.
+        Without this the flagged branch would have to re-check `available`,
+        and for four revisions its docstring claimed it did while it did not.
         """
-        patched = {
-            key: ExtractorAgentSpec(**{**spec.__dict__, "is_default": False})
-            for key, spec in EXTRACTOR_AGENTS.items()
-        }
-        with patch.dict(EXTRACTOR_AGENTS, patched):
-            self.assertTrue(get_agent(default_primary_key()).available)
+        multi = get_agent(ExtractorAgentKey.MULTI_STAGE)
+        self.assertFalse(multi.available, "fixture assumes multi_stage is undeployed")
+
+        with self.assertRaises(ValueError) as caught:
+            ExtractorAgentSpec(**{**multi.__dict__, "is_default": True})
+
+        self.assertIn("is_default needs available", str(caught.exception))
 
     def test_the_fallback_skips_an_unavailable_primary(self) -> None:
-        """Order alone would return `multi_stage` here."""
+        """No row flagged, and the first Primary cannot run.
+
+        Fixtured on a SYNTHETIC unavailable Primary rather than on
+        `multi_stage`'s real flag. Leaning on the shipped `available=False`
+        made this test red the moment that flag was flipped -- and the
+        re-enable procedure in `agent_kv/constants.py` says to retire the
+        guards that pin the absence, which would have retired the only test
+        that kills this mutant. It pins a general property; the absence was
+        never the point.
+        """
+        simple = get_agent(ExtractorAgentKey.SIMPLE)
         reordered = {
-            ExtractorAgentKey.MULTI_STAGE: ExtractorAgentSpec(
+            "synthetic_undeployed": ExtractorAgentSpec(
                 **{
-                    **get_agent(ExtractorAgentKey.MULTI_STAGE).__dict__,
+                    **simple.__dict__,
+                    "key": "synthetic_undeployed",
                     "is_default": False,
+                    "available": False,
                 }
             ),
             ExtractorAgentKey.SIMPLE: ExtractorAgentSpec(
-                **{**get_agent(ExtractorAgentKey.SIMPLE).__dict__, "is_default": False}
+                **{**simple.__dict__, "is_default": False}
             ),
         }
         with patch.dict(EXTRACTOR_AGENTS, reordered, clear=True):
             self.assertEqual(default_primary_key(), ExtractorAgentKey.SIMPLE)
+
+    def test_no_available_primary_raises(self) -> None:
+        """The terminal branch. Its mutant survived every test until now:
+        replacing the raise with `return None` wrote a null `agent_key`.
+        """
+        simple = get_agent(ExtractorAgentKey.SIMPLE)
+        none_available = {
+            ExtractorAgentKey.SIMPLE: ExtractorAgentSpec(
+                **{**simple.__dict__, "is_default": False, "available": False}
+            )
+        }
+        with patch.dict(EXTRACTOR_AGENTS, none_available, clear=True):
+            with self.assertRaises(ValueError) as caught:
+                default_primary_key()
+
+        self.assertIn("No Primary extractor agent is available", str(caught.exception))
 
     def test_the_default_primary_is_available(self) -> None:
         """A new profile must not be born pointing at an agent that cannot run."""
@@ -293,10 +326,33 @@ class CatalogueShapeTest(SimpleTestCase):
         self.assertIsNone(api_agent(None))
         self.assertIsNone(api_agent(""))
 
+    def test_api_agent_refuses_an_unknown_extractor(self) -> None:
+        """The trailing `return None`, whose mutant otherwise survives."""
+        self.assertIsNone(api_agent("not-an-extractor"))
+
     def test_api_extractor_names_are_unique(self) -> None:
         """`api_agent` scans linearly and returns the first match."""
         names = [s.api_extractor for s in EXTRACTOR_AGENTS.values() if s.api_extractor]
         self.assertEqual(len(names), len(set(names)))
+
+    def test_a_duplicate_api_extractor_is_refused(self) -> None:
+        """`api_routes()` is last-wins and `api_agent` first-match, so a
+        duplicate would dispatch to one row while describing another. The
+        sibling above covers only the shipped catalogue; this covers any
+        catalogue a caller patches in.
+        """
+        table = get_agent(ExtractorAgentKey.TABLE)
+        clash = {
+            ExtractorAgentKey.TABLE: table,
+            "table_clone": ExtractorAgentSpec(
+                **{**table.__dict__, "key": "table_clone", "is_default": False}
+            ),
+        }
+        with patch.dict(EXTRACTOR_AGENTS, clash, clear=True):
+            with self.assertRaises(ValueError) as caught:
+                api_routes()
+
+        self.assertIn("must be unique", str(caught.exception))
 
 
 class EnumValuesArePersistedLiteralsTest(SimpleTestCase):

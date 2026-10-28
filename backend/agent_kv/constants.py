@@ -2,7 +2,6 @@ from extractor_registry import api_routes
 
 #: The `kv` extractor's name. Kept as a constant, but NOT routable on this
 #: deployment -- see `EXTRACTOR_ROUTES` below, which carries `table` only.
-
 V1_EXTRACTOR_NAME = "kv"
 
 STAGE_NAMES = [
@@ -26,13 +25,21 @@ EXECUTION_SOURCE = "agent_kv_api"
 TABLE_EXTRACTOR_NAME = "table"
 
 #: Read by `test_queue_wiring_is_derived.py`'s ALL_KNOWN_EXECUTORS. The
-#: blind-API operation is NOT duplicated here: the catalogue row is its only
-#: statement, and the route test pins the wire value directly.
+#: blind-API operation is not duplicated in THIS module -- it is still stated
+#: independently in `workers/executor/tasks.py`, which cannot import the
+#: catalogue -- and the route test pins the wire value directly.
+#:
+#: `EXECUTOR_NAME` and `OPERATION_KV_EXTRACT` above are the same shape of
+#: restatement for the `kv` row and are kept, because `ALL_KNOWN_EXECUTORS`
+#: needs a literal the worker-side suite can read. They are cross-checked
+#: against the catalogue by `test_the_kv_route_constants_match_the_catalogue`;
+#: before that they were asserted against their own values.
 TABLE_EXECUTOR_NAME = "agentic_table"
 
 #: Which executor and operation each extractor dispatches to. DERIVED from the
-#: shared catalogue in `extractor_registry`, so this is the blind API's view of
-#: it and the Studio reads the same rows through its own view.
+#: shared catalogue in `extractor_registry` -- this is the blind API's view of
+#: it. The Studio gets its own view of the same rows once cloud #1894 merges;
+#: see `extractor_registry/__init__.py` for the current cross-repo state.
 #:
 #: **`kv` is deliberately absent**, because nothing drains
 #: `celery_executor_agentic_kv` on this deployment. `SUPPORTED_EXTRACTORS` is
@@ -43,11 +50,18 @@ TABLE_EXECUTOR_NAME = "agentic_table"
 #: Re-enabling is NOT a one-line change, and this comment deliberately does not
 #: enumerate the rest -- every attempt to state the blast radius as a count or
 #: a file list has been wrong. Flip `available=True` on that row, run the
-#: backend and worker unit tiers, and read the failures: the guards name their
-#: own fixes. Several pin the ABSENCE and must be retired rather than edited
-#: green. It is also not sufficient on its own -- the Studio's door needs a
-#: parameter builder in the cloud tree (see `extractor_registry.spec`), and the
-#: queue needs worker-tier wiring.
+#: BACKEND unit tier, and read the failures. Several pin the ABSENCE; retire
+#: those rather than editing them green, but check first that a failing test
+#: pins the absence rather than merely using it as a fixture.
+#:
+#: Two guards do NOT fail in that tier, so the procedure above will not find
+#: them. `workers/tests/test_queue_consumer_wiring.py` pins queue names as
+#: literals and cannot import this module, so it reds only once the queue is
+#: also wired into the fleet; and the cloud chart's `agent_kv_wiring_test.yaml`
+#: fails the chart build if `celery_executor_agentic_kv` appears anywhere.
+#: Flipping the flag is also not sufficient on its own -- the Studio's door
+#: needs a parameter builder in the cloud tree (see `extractor_registry.spec`),
+#: and the queue needs worker-tier wiring.
 EXTRACTOR_ROUTES = api_routes()
 
 #: The table engine reports one coarse stage: it has no node-level progress

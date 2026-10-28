@@ -195,10 +195,35 @@ def test_the_kv_route_constants_survive_for_re_enablement():
     )
     from agent_kv.execution_serializers import _OPTIONS_SERIALIZERS
 
-    assert EXECUTOR_NAME == "agentic_kv"
-    assert OPERATION_KV_EXTRACT == "kv_extract"
     assert V1_EXTRACTOR_NAME in STAGE_NAMES_BY_EXTRACTOR
     assert V1_EXTRACTOR_NAME in _OPTIONS_SERIALIZERS
+    assert EXECUTOR_NAME and OPERATION_KV_EXTRACT
+
+
+def test_the_kv_route_constants_match_the_catalogue():
+    """The pair above used to be asserted against its own literals.
+
+    `EXECUTOR_NAME == "agentic_kv"` and `OPERATION_KV_EXTRACT == "kv_extract"`
+    compared each constant to a copy of itself, so renaming the catalogue's kv
+    row left both green. That matters for `EXECUTOR_NAME` in particular: it
+    feeds `ALL_KNOWN_EXECUTORS` in `test_queue_wiring_is_derived.py`, so the
+    drift would leave the carve-out's inverse guard forbidding a queue name
+    nothing uses while not forbidding the live one.
+    """
+    from extractor_registry import EXTRACTOR_AGENTS, ExtractorAgentKey
+
+    from agent_kv.constants import EXECUTOR_NAME, OPERATION_KV_EXTRACT
+
+    kv = EXTRACTOR_AGENTS[ExtractorAgentKey.MULTI_STAGE]
+    assert EXECUTOR_NAME == kv.executor, (
+        f"agent_kv.constants.EXECUTOR_NAME is {EXECUTOR_NAME!r} but the "
+        f"catalogue's multi_stage row says {kv.executor!r}; ALL_KNOWN_EXECUTORS "
+        f"reads the former, so the queue guards would follow the stale name."
+    )
+    assert OPERATION_KV_EXTRACT == kv.api_operation, (
+        f"agent_kv.constants.OPERATION_KV_EXTRACT is {OPERATION_KV_EXTRACT!r} "
+        f"but the catalogue's multi_stage row says {kv.api_operation!r}."
+    )
 
 
 def test_the_status_document_keys_stages_by_the_extractor_that_ran():

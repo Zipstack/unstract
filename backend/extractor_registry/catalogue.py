@@ -3,10 +3,26 @@
 See ``spec.py`` for why the operation and the agent's name are per-door
 columns rather than single fields.
 
-"Both front doors" means both BACKEND doors. The worker tier cannot import
-this package and keeps its own copies of these literals, so a field added here
-does not reach workers; ``agent_kv/tests/test_queue_wiring_is_derived.py``
-enforces the agreement.
+"Both front doors" means both BACKEND doors, and that is a consequence of
+where this package sits rather than a necessity. The worker tier cannot import
+it, so it keeps its own copies of these literals -- including in production
+code (``workers/executor/tasks.py``'s billing gate), where the agreement is
+held only by a test that parses that file as text.
+
+OPEN QUESTION, deliberately recorded rather than answered: ``unstract/core`` is
+Django-free, is already an editable dependency of both ``backend`` and
+``workers``, and already hosts a shared enum moved there for this exact reason
+(see ``workers/shared/enums.py``'s note on ``AuthorizationType``). Only the two
+``TextChoices`` classes here need Django. That is plausibly the better home and
+would let the worker tier derive rather than copy; it was not chosen, and the
+choice has not been argued either way. Decide it before a second package
+copies this pattern.
+
+Per-field test coverage of the cross-tier agreement is uneven and worth knowing
+before relying on it: ``agent_kv/tests/test_queue_wiring_is_derived.py`` covers
+``executor`` and ``api_operation``, ``tests/test_cross_repo_output_key.py``
+covers ``output_key`` from this side only, and ``ide_operation`` is covered by
+nothing.
 """
 
 from __future__ import annotations
@@ -19,8 +35,10 @@ from extractor_registry.spec import (
 
 #: Executor plugin names. The blind API reuses the IDE's executor for the table
 #: path on purpose: a second executor name would derive a second
-#: ``celery_executor_<name>`` queue needing wiring at five sites, and an
-#: unwired queue accepts work and drains nothing, silently.
+#: ``celery_executor_<name>`` queue, and an unwired queue accepts work and
+#: drains nothing, silently. No count of the wiring sites here -- two reviewers
+#: counted them independently and got different answers from equally
+#: defensible sets, which is the argument against stating one.
 EXECUTOR_AGENTIC = "agentic"
 EXECUTOR_AGENTIC_KV = "agentic_kv"
 EXECUTOR_AGENTIC_TABLE = "agentic_table"
@@ -110,10 +128,15 @@ def specialized_agents() -> list[ExtractorAgentSpec]:
 def default_primary_key() -> str:
     """Key of the default Primary agent used for new/backfilled profiles.
 
-    The return value is PERSISTED as ``ExtractorAgentConfig.agent_key``, and
-    the cloud profile writer does not re-check availability, so both branches
-    must respect "a new profile is never born pointing at an agent that cannot
-    run" -- not just the flagged one.
+    The return value is PERSISTED as ``ExtractorAgentConfig.agent_key`` and the
+    cloud profile writer does not re-check availability, so this must never
+    return an agent that cannot run.
+
+    Neither branch below checks ``available`` on the flagged row, and does not
+    need to: ``ExtractorAgentSpec.__post_init__`` refuses
+    ``is_default`` without ``available``, so a flagged-but-undeployed row
+    cannot exist to be found. The fallback's check is not redundant with that
+    -- it covers the different case where NO row is flagged.
     """
     for spec in primary_agents():
         if spec.is_default:
@@ -143,15 +166,24 @@ def api_routes() -> dict[str, tuple[str, str]]:
     Built fresh on each call rather than computed once at import, so a test may
     patch ``EXTRACTOR_AGENTS`` and see the derived view change with it.
 
-    Assumes ``api_extractor`` is unique across rows: this comprehension is
-    last-wins while ``api_agent`` is first-match, so a duplicate would remap a
-    live wire name. ``tests/test_catalogue.py`` enforces the uniqueness.
+    ``api_extractor`` must be unique across rows, and this raises when it is
+    not. A dict comprehension here is last-wins while ``api_agent`` is
+    first-match, so a duplicate would have the two views disagree about one
+    live wire name -- dispatching to one row and describing another. Checked
+    here rather than only in a test, because a test covers the shipped
+    catalogue and this covers any catalogue a caller patches in.
     """
-    return {
-        spec.api_extractor: (spec.executor, spec.api_operation)
+    doors = [
+        spec
         for spec in EXTRACTOR_AGENTS.values()
         if spec.available and spec.api_operation and spec.api_extractor
-    }
+    ]
+    names = [spec.api_extractor for spec in doors]
+    if len(names) != len(set(names)):
+        raise ValueError(
+            f"api_extractor names must be unique across rows; got {sorted(names)}"
+        )
+    return {spec.api_extractor: (spec.executor, spec.api_operation) for spec in doors}
 
 
 def api_agent(extractor: str | None) -> ExtractorAgentSpec | None:
