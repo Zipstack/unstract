@@ -1161,9 +1161,11 @@ class DashboardMetricsViewSet(viewsets.ReadOnlyModelViewSet):
         try:
             EventMetricsHourly.objects.exists()
             return {"status": "ok"}
-        except Exception as e:
+        except Exception:
+            # The exception text names the DB host, port and user, and this
+            # endpoint answers any org member, so it stays in the server log.
             logger.exception("Database health check failed")
-            return {"status": "error", "message": str(e)}
+            return {"status": "error", "message": "Database unavailable"}
 
     def _check_cache(self) -> dict:
         """Check cache connectivity."""
@@ -1173,6 +1175,7 @@ class DashboardMetricsViewSet(viewsets.ReadOnlyModelViewSet):
             if result == "ok":
                 return {"status": "ok"}
             return {"status": "error", "message": "Cache read/write mismatch"}
-        except Exception as e:
+        except Exception:
+            # Same as the database check: the Redis error names host and port.
             logger.exception("Cache health check failed")
-            return {"status": "error", "message": str(e)}
+            return {"status": "error", "message": "Cache unavailable"}
