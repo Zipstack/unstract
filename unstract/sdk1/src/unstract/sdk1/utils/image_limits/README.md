@@ -67,24 +67,25 @@ This is the one statement of the matching rule; the code and
    for a provider the bundled table knows:
    - `kind` is the bundled one, and the advisory flag of every
      default-filled field follows that kind;
-   - `max_images_per_request` and `max_request_bytes` are
-     `min(remote, 2 x bundled)` (`MAX_REMOTE_RAISE_FACTOR`), request bytes
-     compared as raw bytes so `base64_counted` differences count. A
-     bundled value that is unknown or advisory leaves the remote value as
-     it is; a remote value that is not enforced counts as unlimited.
-     Tightening always passes.
-   A capped value carries `clamped=True`, `clamped_from` (what the remote
-   table asked for) and `confidence: unverified`; `format_limit_source`
+   - `max_images_per_request`, `max_request_bytes`, `max_image_bytes`,
+     `max_image_px`, `many_images_threshold` and `many_images_max_px`
+     (`GUARDED_FIELDS`) are `min(remote, 2 x bundled)`
+     (`MAX_REMOTE_RAISE_FACTOR`), byte limits compared as raw bytes so
+     `base64_counted` differences count. A raised or removed
+     `many_images_threshold` counts as loosening. A bundled value that is
+     unknown or advisory leaves the remote value as it is; a remote value
+     that is not enforced counts as unlimited. Tightening always passes.
+   A capped value carries `clamped=True`, `clamped_from` (the remote
+   value, or None when the remote value was not enforced) and
+   `confidence: unverified`; `format_limit_source`
    says it was capped, and the process logs one WARNING per (provider,
    model, field) with both numbers, so a maintainer can see that main is
    being clamped. A provider the bundled table does not know uses the
    remote data as-is. Fields and provider entries that come from the
    operator override file (layer `override`) are never clamped; the
-   override applies after the clamp's remote layer. The per-image fields
-   (`max_image_px`, `max_image_bytes`, `many_images_*`,
-   `max_image_patches`) and `tokens_per_image` / `max_input_tokens` are
-   not clamped (product decision, UN-4427): a remote copy may change them
-   freely.
+   override applies after the clamp's remote layer. `max_image_patches`,
+   `tokens_per_image` and `max_input_tokens` are not clamped (product
+   decision, UN-4427): a remote copy may change them freely.
 
 ## Checks (`policy.py`)
 

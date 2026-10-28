@@ -77,7 +77,8 @@ class LimitValue:
     layer: str  # shipped | override
     # True when a remote table asked for more than a data refresh may give
     # and the value was capped from the bundled one (``_clamp_to_bundled``);
-    # ``clamped_from`` is what the remote table asked for (None: no limit).
+    # ``clamped_from`` is the remote value (None: the remote value was not
+    # enforced).
     clamped: bool = False
     clamped_from: int | None = None
 
@@ -372,16 +373,21 @@ def _with_kind(limit: LimitValue, advisory_defaults: bool) -> LimitValue:
     return limit
 
 
+# Limits measured in bytes, whose ``base64_counted`` flag changes their meaning.
+_BYTE_FIELDS = frozenset({"max_request_bytes", "max_image_bytes"})
+
+
 def _quarter_bytes(limit: LimitValue) -> int | None:
     """An enforced limit scaled to compare exactly across ``base64_counted``.
 
-    Request bytes are compared as raw bytes; a base64-counted limit carries
-    3 raw bytes per 4 counted ones. Returning 4x raw keeps it an integer.
+    Byte limits (``_BYTE_FIELDS``) are compared as raw bytes; a
+    base64-counted limit carries 3 raw bytes per 4 counted ones. Returning
+    4x raw keeps it an integer (counts and pixels are just scaled by 4).
     None when nothing is enforced (no value, or advisory only).
     """
     if limit.value is None or limit.advisory:
         return None
-    if limit.name == "max_request_bytes" and limit.base64_counted:
+    if limit.name in _BYTE_FIELDS and limit.base64_counted:
         return limit.value * 3
     return limit.value * 4
 
@@ -424,7 +430,7 @@ def _describe_limit(limit: LimitValue) -> str:
     if limit.value is None:
         return "none"
     text = str(limit.value)
-    if limit.name == "max_request_bytes":
+    if limit.name in _BYTE_FIELDS:
         text += " (base64-counted)" if limit.base64_counted else " (raw)"
     if limit.advisory:
         text += " advisory"
@@ -441,7 +447,7 @@ def _warn_clamp(key: str, model: str, name: str, detail: str) -> None:
         name,
         model,
         key,
-        f"kind is locked; count/byte limits at most {MAX_REMOTE_RAISE_FACTOR}x "
+        f"kind is locked; count/byte/pixel limits at most {MAX_REMOTE_RAISE_FACTOR}x "
         "the bundled value",
         detail,
     )

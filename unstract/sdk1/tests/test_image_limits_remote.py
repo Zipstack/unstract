@@ -659,7 +659,9 @@ class TestOverrideFileOverRemoteMissingProvider:
         limits = resolve_image_limits("openrouter", _OPENROUTER_CLAUDE, table=table)
         assert limits.inherited_from is None
         assert limits.provider_kind == "pass_through"
-        assert limits.max_image_px.value is None
+        # The remote row drops the per-image limits; removing one is
+        # loosening, so it is held to 2x the bundled (inherited) 8000 px.
+        assert (limits.max_image_px.value, limits.max_image_px.clamped) == (16000, True)
         # anthropic itself still resolves from the bundled entry.
         direct = resolve_image_limits(
             "anthropic", "anthropic/claude-sonnet-4-5", table=table
@@ -983,6 +985,104 @@ class TestRemoteIsClampedAtLookup:
         )
         text = format_limit_source(limits.max_images_per_request, limits)
         assert "capped at 2x" in text and "999" in text
+
+
+ANTHROPIC_SONNET = "anthropic/claude-sonnet-4-5-20250929"
+
+
+def _drop_anthropic_default(field: str) -> Callable[[dict], None]:
+    def mutate(data: dict) -> None:
+        del data["providers"]["anthropic"]["defaults"][field]
+
+    return mutate
+
+
+class TestPerImageLimitsAreClamped:
+    """Per-image byte/pixel limits and the many-images rule are guarded too.
+
+    Bundled anthropic: 10 MB per image (base64-counted), 8000 px per side,
+    and over 20 images each side is at most 2000 px.
+    """
+
+    @pytest.mark.parametrize(
+        ("field", "remote_value", "expected"),
+        [
+            ("max_image_bytes", 900_000_000, 20_000_000),
+            ("max_image_px", 100_000, 16_000),
+            ("many_images_threshold", 600, 40),
+            ("many_images_max_px", 8000, 4000),
+        ],
+    )
+    def test_loosening_past_twice_bundled_is_clamped(
+        self,
+        caplog: pytest.LogCaptureFixture,
+        field: str,
+        remote_value: int,
+        expected: int,
+    ) -> None:
+        table = _remote_table(_mutated(_set("anthropic", field, remote_value)))
+        value = resolve_image_limits("anthropic", ANTHROPIC_SONNET, table=table).field(
+            field
+        )
+        assert value.value == expected
+        assert value.clamped is True
+        assert value.clamped_from == remote_value
+        assert value.confidence == "unverified"
+        assert any(field in line for line in _clamp_warnings(caplog))
+
+    @pytest.mark.parametrize(
+        ("field", "remote_value"),
+        [
+            ("max_image_px", 16_000),  # exactly 2x
+            ("many_images_threshold", 40),
+            ("many_images_max_px", 4000),
+            ("max_image_px", 100),  # tightening has no floor
+            ("many_images_threshold", 1),
+        ],
+    )
+    def test_within_twice_bundled_or_tighter_passes(
+        self, field: str, remote_value: int
+    ) -> None:
+        table = _remote_table(_mutated(_set("anthropic", field, remote_value)))
+        value = resolve_image_limits("anthropic", ANTHROPIC_SONNET, table=table).field(
+            field
+        )
+        assert (value.value, value.clamped) == (remote_value, False)
+
+    def test_removed_many_images_threshold_counts_as_loosening(self) -> None:
+        table = _remote_table(_mutated(_drop_anthropic_default("many_images_threshold")))
+        value = resolve_image_limits(
+            "anthropic", ANTHROPIC_SONNET, table=table
+        ).many_images_threshold
+        assert (value.value, value.clamped, value.clamped_from) == (40, True, None)
+
+    @pytest.mark.parametrize(
+        ("value", "base64_counted", "clamped"),
+        [
+            # bundled: 10 MB base64-counted = 7.5 MB raw; ceiling 15 MB raw.
+            (20_000_000, True, False),
+            (15_000_000, False, False),
+            (15_000_001, False, True),
+            (20_000_000, False, True),  # same number, raw: 2.67x
+        ],
+    )
+    def test_image_bytes_compare_as_raw_bytes(
+        self, value: int, base64_counted: bool, clamped: bool
+    ) -> None:
+        def mutate(data: dict) -> None:
+            data["providers"]["anthropic"]["defaults"]["max_image_bytes"] = _field(
+                value, base64_counted=base64_counted
+            )
+
+        limits = resolve_image_limits(
+            "anthropic", ANTHROPIC_SONNET, table=_remote_table(_mutated(mutate))
+        )
+        image = limits.max_image_bytes
+        assert image.clamped is clamped
+        if clamped:
+            assert (image.value, image.base64_counted) == (20_000_000, True)
+        else:
+            assert (image.value, image.base64_counted) == (value, base64_counted)
 
 
 class TestOldInstallKeepsGettingFixes:

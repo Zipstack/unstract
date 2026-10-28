@@ -78,16 +78,25 @@ MIN_REFRESH_SECONDS = 60
 # by waiting on the fetch thread (``_fetch_with_deadline``), so a hung DNS
 # lookup or a server that trickles bytes cannot stretch it.
 FETCH_TIMEOUT_SECONDS = 3.0
-# The bundled file is ~80 KB; anything far larger is not a limits table.
+# The bundled file is ~90 KB; anything far larger is not a limits table.
 MAX_REMOTE_BYTES = 1_000_000
 
-# How far a remote copy may raise an enforced image-count or request-byte
+# How far a remote copy may loosen an enforced image-count, byte or pixel
 # limit over the bundled value (product decision, UN-4427). A data fix that
-# needs more than this ships in an sdk1 release. Lowering is unlimited.
+# needs more than this ships in an sdk1 release. Tightening is unlimited.
 # Applied at lookup time (``resolve._clamp_to_bundled``).
 MAX_REMOTE_RAISE_FACTOR = 2
-# The enforced limits a remote copy may raise only that far.
-GUARDED_FIELDS: tuple[str, ...] = ("max_images_per_request", "max_request_bytes")
+# The enforced limits a remote copy may loosen only that far. Raising
+# ``many_images_threshold`` (or removing it) loosens too: fewer requests
+# get the smaller ``many_images_max_px``.
+GUARDED_FIELDS: tuple[str, ...] = (
+    "max_images_per_request",
+    "max_request_bytes",
+    "max_image_bytes",
+    "max_image_px",
+    "many_images_threshold",
+    "many_images_max_px",
+)
 REMOTE_SOURCE = "remote"
 
 # Seams for tests: the clock, the HTTP client and how a refresh is started.

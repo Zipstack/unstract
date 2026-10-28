@@ -191,3 +191,37 @@ class TestCachedImageExtractionIsRecheckedForTheLLM:
         assert parse(_summary(321)) == 321
         assert parse("ordinary extracted text") is None
         assert parse(None) is None
+
+    # Today's summary text, written out: extracts already cached carry it, so
+    # a format change must keep parsing these.
+    _ONE_PAGE = (
+        "[LLMWhisperer image output mode] 1 page image extracted from the PDF "
+        "and stored in FileStorage. Per-page references are available in the "
+        "page_images extraction metadata."
+    )
+    _21_PAGES = (
+        "[LLMWhisperer image output mode] 21 page images extracted from the PDF "
+        "and stored in FileStorage. Per-page references are available in the "
+        "page_images extraction metadata."
+    )
+
+    def test_cached_summary_literals_parse(self) -> None:
+        from unstract.sdk1.adapters.x2text.llm_whisperer_v2.src.helper import (
+            LLMWhispererHelper,
+        )
+
+        parse = LLMWhispererHelper.page_count_from_image_output_summary
+        assert parse(self._ONE_PAGE) == 1
+        assert parse(self._21_PAGES) == 21
+
+    def test_cached_21_page_literal_is_rejected_for_bedrock(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        profile = self._cache_hit(monkeypatch, pages=1)
+        with pytest.raises(_psh_mod.ExtractionAPIError) as excinfo:
+            PromptStudioHelper._check_cached_image_extraction(
+                profile, self._21_PAGES, "doc.pdf"
+            )
+        msg = str(excinfo.value)
+        assert "IMAGE_PAGE_CAP_EXCEEDED: This document has 21 pages" in msg
+        assert "Amazon Bedrock" in msg

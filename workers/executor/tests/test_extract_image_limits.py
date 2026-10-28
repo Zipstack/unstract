@@ -239,9 +239,7 @@ class TestUnresolvedErrorsNeverQuoteMetadata:
         # The executor logs this exception with its traceback: no cause
         # chain may carry the validation text either.
         assert err.__cause__ is None and err.__suppress_context__
-        rendered = "".join(
-            traceback.format_exception(type(err), err, err.__traceback__)
-        )
+        rendered = "".join(traceback.format_exception(type(err), err, err.__traceback__))
         assert CANARY not in rendered
         assert CANARY not in caplog.text
 
@@ -409,6 +407,46 @@ class TestHandleExtractWiring:
                     )
                 )
         x2text.process.assert_not_called()
+
+    def test_highlight_in_image_mode_reports_the_highlight_error(self) -> None:
+        # The adapter rejects highlight in image mode; a limits lookup run
+        # first would make a needless platform call and, if it failed, hide
+        # that error behind IMAGE_LIMITS_UNRESOLVED.
+        x2text = _x2text(
+            image_mode=True,
+            process_side_effect=ExtractorError(
+                "Highlighting is not supported in image output mode",
+                status_code=400,
+            ),
+        )
+        build = MagicMock(
+            side_effect=ExtractionError(message="IMAGE_LIMITS_UNRESOLVED: x", code=503)
+        )
+        with (
+            patch("executor.executors.legacy_executor.X2Text", return_value=x2text),
+            patch("executor.executors.legacy_executor.FileUtils.get_fs_instance"),
+            patch.object(LegacyExecutor, "_build_shim", return_value=MagicMock()),
+            patch(
+                "executor.executors.legacy_executor.build_extraction_image_policy", build
+            ),
+            pytest.raises(ExtractionError) as excinfo,
+        ):
+            LegacyExecutor()._handle_extract(
+                _extract_context(
+                    {
+                        IKeys.X2TEXT_INSTANCE_ID: "x2t-1",
+                        IKeys.FILE_PATH: "/data/doc.pdf",
+                        IKeys.OUTPUT_FILE_PATH: "/data/extract/doc.txt",
+                        IKeys.ENABLE_HIGHLIGHT: True,
+                        IKeys.LLM_INSTANCE_IDS: ["llm-1"],
+                        "platform_api_key": "k",
+                    }
+                )
+            )
+        build.assert_not_called()
+        assert "Highlighting is not supported" in excinfo.value.message
+        assert "IMAGE_LIMITS_UNRESOLVED" not in excinfo.value.message
+        assert X2TextConstants.IMAGE_LIMITS not in x2text.process.call_args.kwargs
 
 
 class TestExtractionErrorCodes:

@@ -251,11 +251,16 @@ class LegacyExecutor(BaseExecutor):
             context.run_id,
         )
         extractor_name = type(x2text.x2text_instance).__name__
+        use_highlight = enable_highlight and isinstance(
+            x2text.x2text_instance, LLMWhispererV2
+        )
         # Image output mode: resolve the consuming LLM's limits BEFORE the
         # adapter submits the per-page-billed conversion. Raises (nothing
-        # converted) when the supplied LLM ids cannot be resolved.
+        # converted) when the supplied LLM ids cannot be resolved. Not on the
+        # highlight path: the adapter rejects highlight in image mode itself,
+        # and a limits lookup failure there would hide that error.
         image_kwargs: dict[str, Any] = {}
-        if self._is_image_mode_extractor(x2text):
+        if not use_highlight and self._is_image_mode_extractor(x2text):
             policy = build_extraction_image_policy(
                 shim, params.get(IKeys.LLM_INSTANCE_IDS) or []
             ).with_advisory_sink(lambda line: shim.stream_log(line, level=LogLevel.WARN))
@@ -266,7 +271,7 @@ class LegacyExecutor(BaseExecutor):
                 f"Extracting text using `{extractor_name}`"
                 + (" (with highlight)" if enable_highlight else "")
             )
-            if enable_highlight and isinstance(x2text.x2text_instance, LLMWhispererV2):
+            if use_highlight:
                 process_response: TextExtractionResult = x2text.process(
                     input_file_path=file_path,
                     output_file_path=output_file_path,

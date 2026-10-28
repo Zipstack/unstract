@@ -330,6 +330,7 @@ def _execute_structure_tool_impl(params: dict) -> dict:
 
     # ---- Step 1: Setup ----
     from executor.executor_tool_shim import ExecutorToolShim
+    from executor.executors.constants import IndexingConstants as IKeys
 
     # Workflow IDs on the pre-dispatch shim let X2Text/platform helper logs
     # reach the workflow logs UI before the executor dispatch happens.
@@ -480,7 +481,7 @@ def _execute_structure_tool_impl(params: dict) -> dict:
         # Every LLM that will read an image-mode document's pages, so the
         # extraction checks their image-request limits before the billed
         # conversion.
-        "llm_instance_ids": _image_mode_llm_ids(outputs),
+        IKeys.LLM_INSTANCE_IDS: _image_mode_llm_ids(outputs),
         "file_path": input_file_path,
         "enable_highlight": is_highlight_enabled,
         "output_file_path": str(execution_run_data_folder / _SK.EXTRACT),

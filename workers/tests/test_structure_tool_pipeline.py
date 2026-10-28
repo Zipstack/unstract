@@ -1065,7 +1065,13 @@ class TestStructureToolImageLimitLlms:
             for call in dispatcher_instance.dispatch.call_args_list
             if "extract_params" in call.args[0].executor_params
         )
-        ids = pipeline_ctx.executor_params["extract_params"]["llm_instance_ids"]
+        from executor.executors.constants import IndexingConstants as IKeys
+
+        # The key the executor's extract handler reads.
+        assert IKeys.LLM_INSTANCE_IDS == "llm_instance_ids"
+        extract_params = pipeline_ctx.executor_params["extract_params"]
+        assert IKeys.LLM_INSTANCE_IDS in extract_params
+        ids = extract_params[IKeys.LLM_INSTANCE_IDS]
         # Each prompt's LLM, de-duplicated and sorted; blanks are dropped
         # and the tool-level LLM is not included.
         assert ids == ["llm-1", "llm-2"]
