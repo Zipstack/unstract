@@ -71,7 +71,7 @@ test.describe("harness: registry-driven checks", { tag: DIST.all }, () => {
 
     test(`${entry.page}: v0 URLs redirect to v1`, async ({ page, app }) => {
       test.skip(!filled, "routes need ids; the page spec covers them");
-      await expectV0RedirectsToV1(page, entry.page, { orgName: app.orgId });
+      await expectV0RedirectsToV1(page, entry.page, { orgName: app.orgName });
     });
 
     if (entry.toggle) {
@@ -81,7 +81,7 @@ test.describe("harness: registry-driven checks", { tag: DIST.all }, () => {
           "routes need ids; the page spec covers them",
         );
         await expectOldVersionRoundTrip(page, entry.page, {
-          orgName: app.orgId,
+          orgName: app.orgName,
         });
       });
     }

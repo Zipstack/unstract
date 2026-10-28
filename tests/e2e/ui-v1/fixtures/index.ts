@@ -8,7 +8,7 @@
  */
 
 export { expect } from "@playwright/test";
-export type { App, Role, Session } from "./auth.ts";
+export type { App, Organization, Role, Session } from "./auth.ts";
 export { enableV1Preview, test } from "./preview.ts";
 export type { CreateOptions, Seed } from "./seed.ts";
 export { currentDistribution, DIST, TAG } from "./tags.ts";

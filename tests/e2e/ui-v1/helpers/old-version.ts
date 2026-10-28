@@ -1,7 +1,7 @@
 /**
  * Human Review's old-version round trip (page 11 only, D14).
  *
- *   await expectOldVersionRoundTrip(page, "UN11", { orgName: app.orgId });
+ *   await expectOldVersionRoundTrip(page, "UN11", { orgName: app.orgName });
  *
  * For each v1 review route: with the preference on, the v1 URL lands on its
  * mapped v0 route and v0 renders, and that holds across a reload; with it

@@ -2,7 +2,7 @@
  * Opens each v0 URL a registered page replaces and asserts it lands on the
  * mapped v1 route, rendered by the v1 tree.
  *
- *   await expectV0RedirectsToV1(page, "UN06", { orgName: app.orgId });
+ *   await expectV0RedirectsToV1(page, "UN06", { orgName: app.orgName });
  *
  * Reads the mapping (`toV1`) from contract/registry.ts only. Params fill the
  * `:name` segments of both patterns; a mapping whose pattern needs a param

@@ -69,7 +69,10 @@ function credentialsFor(role: Role): Credentials | null {
 export interface Session {
   role: Role;
   mode: AuthMode;
+  /** For API calls: `/api/v1/organization/<orgId>/...`. */
   orgId: string;
+  /** For browser routes: the app's URLs carry the org's name, not its id. */
+  orgName: string;
   /** Shares cookies with the browser context, so API and UI are one user. */
   api: APIRequestContext;
   /** Headers a mutating API call needs (Django CSRF). */
@@ -78,15 +81,37 @@ export interface Session {
 
 export interface App {
   orgId: string;
-  /** Opens an org-scoped route (`workflows` -> `/<orgId>/workflows`). */
+  /** The `:orgName` route param for this session's organisation. */
+  orgName: string;
+  /** Opens an org-scoped route (`workflows` -> `/<orgName>/workflows`). */
   goto(route: string): ReturnType<Page["goto"]>;
 }
 
-interface Organization {
+export interface Organization {
   id: string;
+  name: string;
 }
 
-async function listOrgIds(context: BrowserContext): Promise<string[] | null> {
+/**
+ * The organisation as the frontend sees it once it is set. Routes carry
+ * `organization.name` from the set response (useSessionValid), which need not
+ * equal the id (cloud: `org_…` id, slug name); the listed name is the fallback.
+ */
+export function routedOrganization(
+  listed: Organization,
+  setBody: unknown,
+): Organization {
+  const name = (setBody as { organization?: { name?: unknown } } | null)
+    ?.organization?.name;
+  return {
+    id: listed.id,
+    name: typeof name === "string" && name ? name : listed.name,
+  };
+}
+
+async function listOrgs(
+  context: BrowserContext,
+): Promise<Organization[] | null> {
   const res = await context.request
     .get(`${BACKEND_URL}/api/v1/organization`, { failOnStatusCode: false })
     .catch(() => null);
@@ -94,7 +119,7 @@ async function listOrgIds(context: BrowserContext): Promise<string[] | null> {
     return null;
   }
   const body = (await res.json()) as { organizations?: Organization[] };
-  return (body.organizations ?? []).map((o) => o.id);
+  return body.organizations ?? [];
 }
 
 async function csrfHeaders(
@@ -107,31 +132,33 @@ async function csrfHeaders(
 }
 
 /** Picks UNSTRACT_E2E_ORG_ID when the user belongs to it, else the first. */
-async function selectOrg(context: BrowserContext): Promise<string | null> {
-  const orgIds = await listOrgIds(context);
-  if (!orgIds?.length) {
+async function selectOrg(
+  context: BrowserContext,
+): Promise<Organization | null> {
+  const orgs = await listOrgs(context);
+  if (!orgs?.length) {
     return null;
   }
-  if (ORG_ID && !orgIds.includes(ORG_ID)) {
+  const org = ORG_ID ? orgs.find((o) => o.id === ORG_ID) : orgs[0];
+  if (!org) {
     throw new Error(
-      `UNSTRACT_E2E_ORG_ID=${ORG_ID} is not one of this user's organisations: ${orgIds.join(", ")}`,
+      `UNSTRACT_E2E_ORG_ID=${ORG_ID} is not one of this user's organisations: ${orgs.map((o) => o.id).join(", ")}`,
     );
   }
-  const orgId = ORG_ID ?? orgIds[0] ?? null;
-  if (!orgId) {
-    return null;
-  }
   const res = await context.request.post(
-    `${BACKEND_URL}/api/v1/organization/${orgId}/set`,
+    `${BACKEND_URL}/api/v1/organization/${org.id}/set`,
     { headers: await csrfHeaders(context), failOnStatusCode: false },
   );
-  return res.ok() ? orgId : null;
+  if (!res.ok()) {
+    return null;
+  }
+  return routedOrganization(org, await res.json().catch(() => null));
 }
 
 async function loginOss(
   context: BrowserContext,
   creds: Credentials,
-): Promise<string | null> {
+): Promise<Organization | null> {
   const login = await context.request
     .post(`${BACKEND_URL}/api/v1/login`, {
       form: { username: creds.username, password: creds.password },
@@ -168,7 +195,7 @@ async function loginAuth0(
   page: Page,
   context: BrowserContext,
   creds: Credentials,
-): Promise<string | null> {
+): Promise<Organization | null> {
   // `/` only renders the app's own login page. Its Login button navigates to
   // <app origin>/api/v1/login, and the backend builds the callback URL from
   // the Referer, so go there the same way.
@@ -225,15 +252,15 @@ async function authenticate(
   page: Page,
   context: BrowserContext,
   creds: Credentials,
-): Promise<{ orgId: string | null; mode: AuthMode }> {
+): Promise<{ org: Organization | null; mode: AuthMode }> {
   const mode = configuredAuthMode();
   if (mode !== "auth0") {
-    const orgId = await loginOss(context, creds);
-    if (orgId || mode === "oss") {
-      return { orgId, mode: "oss" };
+    const org = await loginOss(context, creds);
+    if (org || mode === "oss") {
+      return { org, mode: "oss" };
     }
   }
-  return { orgId: await loginAuth0(page, context, creds), mode: "auth0" };
+  return { org: await loginAuth0(page, context, creds), mode: "auth0" };
 }
 
 interface AuthFixtures {
@@ -256,8 +283,8 @@ export const test = base.extend<AuthFixtures>({
       if (!creds) {
         return;
       }
-      const { orgId, mode } = await authenticate(page, context, creds);
-      if (!orgId) {
+      const { org, mode } = await authenticate(page, context, creds);
+      if (!org) {
         const reason =
           `could not sign in as "${role}" against ${BACKEND_URL} (mode=${mode}). ` +
           "Set UNSTRACT_AUTH_MODE=oss|auth0 plus credentials, or let the rig " +
@@ -272,7 +299,8 @@ export const test = base.extend<AuthFixtures>({
       await use({
         role,
         mode,
-        orgId,
+        orgId: org.id,
+        orgName: org.name,
         api: context.request,
         csrfHeaders: () => csrfHeaders(context),
       });
@@ -283,9 +311,10 @@ export const test = base.extend<AuthFixtures>({
   app: async ({ page, session }, use) => {
     await use({
       orgId: session.orgId,
+      orgName: session.orgName,
       async goto(route) {
         const path = route.replace(/^\//, "");
-        const response = await page.goto(`/${session.orgId}/${path}`, {
+        const response = await page.goto(`/${session.orgName}/${path}`, {
           waitUntil: "domcontentloaded",
         });
         // The SPA renders after hydration; wait for it, not a fixed sleep.

@@ -7,7 +7,12 @@
  * here (or have those tasks adopt them) and every helper follows.
  */
 
-/** Attribute on the v1 tree root that tells v1 apart from v0. */
+/**
+ * Attribute on the v1 tree root that tells v1 apart from v0. Still assumed:
+ * the P0-T01 scaffold (frontend/src/v1, unstract#2380) renders nothing, and
+ * its entry stays empty until the version switch (UN-4271) mounts v1. Set
+ * this to what that mount renders.
+ */
 export const V1_ROOT_SELECTOR = '[data-ui-version="v1"]';
 
 /**
