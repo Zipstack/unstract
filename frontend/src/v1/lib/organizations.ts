@@ -47,6 +47,22 @@ export function initials(name: string): string {
     .join("");
 }
 
+/** One letter, for the small marks (the account trigger, the organisation pill). */
+export function initial(name: string): string {
+  return name.trim()[0]?.toUpperCase() ?? "?";
+}
+
+/** Two letters for an organisation avatar; a one-word name gives its first two. */
+export function organizationInitials(name: string): string {
+  const words = name.trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0) {
+    return "?";
+  }
+  const letters =
+    words.length === 1 ? [...words[0]].slice(0, 2) : words.map((w) => w[0]);
+  return letters.slice(0, 2).join("").toUpperCase();
+}
+
 /**
  * Where the app lands after switching: the same section in the new
  * organisation, else its dashboard. Paths are `/<org name>/<section>/...`.

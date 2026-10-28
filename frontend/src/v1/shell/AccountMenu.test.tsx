@@ -1,21 +1,14 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { beforeEach, describe, expect, test, vi } from "vitest";
 import { AccountMenu } from "./AccountMenu";
 
-const signOut = vi.fn<() => Promise<string>>();
-vi.mock("@v1/services/session", () => ({ signOut: () => signOut() }));
-const reset = vi.fn();
-vi.mock("posthog-js", () => ({ default: { reset: () => reset() } }));
+const signOutAndLeave = vi.fn<() => Promise<void>>();
+vi.mock("@v1/services/session", () => ({
+  signOutAndLeave: () => signOutAndLeave(),
+}));
 
-const assign = vi.fn();
-beforeEach(() => {
-  signOut.mockReset();
-  reset.mockReset();
-  assign.mockReset();
-  vi.stubGlobal("location", { ...window.location, assign });
-});
-afterEach(() => vi.unstubAllGlobals());
+beforeEach(() => signOutAndLeave.mockReset());
 
 const user = { name: "Tanushree Daga", email: "tanushree@zipstack.com" };
 
@@ -25,11 +18,24 @@ async function open() {
 }
 
 describe("AccountMenu", () => {
-  test("the trigger shows the user's initials", () => {
+  test("the trigger shows one letter; the menu header keeps two-letter initials", async () => {
     render(<AccountMenu user={user} profileHref="/zipstack/profile" />);
+    const trigger = screen.getByRole("button", { name: "Account menu" });
+    expect(trigger).toHaveTextContent(/^T$/);
+    await userEvent.click(trigger);
+    expect(screen.getByText("TD")).toBeInTheDocument();
+  });
+
+  test("a user without a name gets the e-mail's first letter on the trigger", () => {
+    render(
+      <AccountMenu
+        user={{ name: "", email: "athul@zipstack.com" }}
+        profileHref="/zipstack/profile"
+      />,
+    );
     expect(
       screen.getByRole("button", { name: "Account menu" }),
-    ).toHaveTextContent("TD");
+    ).toHaveTextContent(/^A$/);
   });
 
   test("lists identity, profile, help and sign out, as frame NEW09 shows", async () => {
@@ -42,6 +48,11 @@ describe("AccountMenu", () => {
     expect(
       screen.getByRole("menuitem", { name: /Help & docs/ }),
     ).toHaveAttribute("href", "https://docs.unstract.com");
+    expect(
+      screen.getByRole("menuitem", {
+        name: "Help & docs (opens in a new tab)",
+      }),
+    ).toBeInTheDocument();
     expect(
       screen.getByRole("menuitem", { name: "Sign out" }),
     ).toBeInTheDocument();
@@ -67,20 +78,10 @@ describe("AccountMenu", () => {
     expect(screen.queryByText(/old version/i)).not.toBeInTheDocument();
   });
 
-  test("sign out ends the session, resets analytics and opens the returned URL", async () => {
-    signOut.mockResolvedValue("https://id.example.com/v2/logout");
+  test("sign out hands over to the shared sign-out sequence", async () => {
+    signOutAndLeave.mockResolvedValue();
     await open();
     await userEvent.click(screen.getByRole("menuitem", { name: "Sign out" }));
-    await waitFor(() =>
-      expect(assign).toHaveBeenCalledWith("https://id.example.com/v2/logout"),
-    );
-    expect(reset).toHaveBeenCalled();
-  });
-
-  test("a failed sign-out falls back to the GET logout, which still ends the session", async () => {
-    signOut.mockRejectedValue(new Error("HTTP 403"));
-    await open();
-    await userEvent.click(screen.getByRole("menuitem", { name: "Sign out" }));
-    await waitFor(() => expect(assign).toHaveBeenCalledWith("/api/v1/logout"));
+    await waitFor(() => expect(signOutAndLeave).toHaveBeenCalledTimes(1));
   });
 });

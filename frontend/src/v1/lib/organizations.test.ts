@@ -1,8 +1,10 @@
 import { describe, expect, test } from "vitest";
 import {
   describeOrganization,
+  initial,
   initials,
   landingPath,
+  organizationInitials,
   roleLabel,
 } from "./organizations";
 
@@ -52,6 +54,28 @@ describe("initials", () => {
     ["  ", "?"],
   ])("%s gives %s", (name, expected) => {
     expect(initials(name)).toBe(expected);
+  });
+});
+
+describe("initial", () => {
+  test.each([
+    ["Tanushree Daga", "T"],
+    ["athul@zipstack.com", "A"],
+    ["  ", "?"],
+  ])("%s gives %s", (name, expected) => {
+    expect(initial(name)).toBe(expected);
+  });
+});
+
+describe("organizationInitials", () => {
+  test.each([
+    ["Zipstack", "ZI"],
+    ["Tanushree’s organisation", "TO"],
+    ["Acme Data Labs", "AD"],
+    ["X", "X"],
+    ["  ", "?"],
+  ])("%s gives %s", (name, expected) => {
+    expect(organizationInitials(name)).toBe(expected);
   });
 });
 

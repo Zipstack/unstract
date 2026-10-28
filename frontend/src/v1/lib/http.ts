@@ -7,9 +7,15 @@ function cookie(name: string): string | undefined {
   const entry = document.cookie
     .split("; ")
     .find((part) => part.startsWith(prefix));
-  return entry === undefined
-    ? undefined
-    : decodeURIComponent(entry.slice(prefix.length));
+  if (entry === undefined) {
+    return undefined;
+  }
+  try {
+    return decodeURIComponent(entry.slice(prefix.length));
+  } catch {
+    // A malformed value is no token: send no header and let the server refuse.
+    return undefined;
+  }
 }
 
 /**

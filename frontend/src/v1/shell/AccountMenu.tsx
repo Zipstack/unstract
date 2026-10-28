@@ -1,6 +1,6 @@
-import { initials } from "@v1/lib/organizations";
+import { initial, initials } from "@v1/lib/organizations";
 import { Slot } from "@v1/lib/plugins";
-import { signOut } from "@v1/services/session";
+import { signOutAndLeave } from "@v1/services/session";
 import {
   ChevronDown,
   CircleHelp,
@@ -8,7 +8,6 @@ import {
   ExternalLink,
   LogOut,
 } from "lucide-react";
-import posthog from "posthog-js";
 import { DropdownMenu } from "radix-ui";
 import type { ReactNode } from "react";
 
@@ -23,17 +22,6 @@ export interface AccountMenuProps {
   user: { name: string; email: string };
   /** The profile page (P3-T10) in the current organisation. */
   profileHref: string;
-}
-
-async function leave(): Promise<void> {
-  try {
-    const url = await signOut();
-    posthog.reset();
-    window.location.assign(url);
-  } catch {
-    // The GET logout ends the session too and redirects itself (v0's path).
-    window.location.assign("/api/v1/logout");
-  }
 }
 
 function Item({ children, href }: { children: ReactNode; href: string }) {
@@ -56,7 +44,7 @@ function Item({ children, href }: { children: ReactNode; href: string }) {
  * "Switch to old version" item: that control lives only on Human Review (D14).
  */
 export function AccountMenu({ user, profileHref }: AccountMenuProps) {
-  const mark = initials(user.name || user.email);
+  const label = user.name || user.email;
   return (
     <DropdownMenu.Root>
       <DropdownMenu.Trigger
@@ -64,7 +52,7 @@ export function AccountMenu({ user, profileHref }: AccountMenuProps) {
         className="flex h-10 items-center gap-2 rounded-[10px] pr-1.5 pl-1 outline-none hover:bg-[var(--muted)] focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
       >
         <span className="flex size-8 items-center justify-center rounded-lg bg-[var(--primary)] text-[13px] font-semibold text-[var(--primary-foreground)]">
-          {mark}
+          {initial(label)}
         </span>
         <ChevronDown
           aria-hidden
@@ -79,7 +67,7 @@ export function AccountMenu({ user, profileHref }: AccountMenuProps) {
         >
           <div className="flex items-center gap-2.5 px-[9px] pt-1.5 pb-2">
             <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-[var(--primary-muted)] text-[13px] font-semibold text-[var(--primary)]">
-              {mark}
+              {initials(label)}
             </span>
             <span className="flex min-w-0 flex-col gap-px">
               <span className="truncate text-sm font-semibold leading-5 text-[var(--foreground)]">
@@ -100,14 +88,19 @@ export function AccountMenu({ user, profileHref }: AccountMenuProps) {
           <Slot id="account-menu.plan-billing" props={{}} fallback={null} />
           <Item href={HELP_URL}>
             <CircleHelp aria-hidden className={ICON} />
-            <span className="flex-1">Help & docs</span>
+            <span className="flex-1">
+              Help & docs<span className="sr-only"> (opens in a new tab)</span>
+            </span>
             <ExternalLink
               aria-hidden
               className="size-4 text-[var(--muted-foreground)]"
             />
           </Item>
           <DropdownMenu.Separator className="h-px bg-[var(--border)]" />
-          <DropdownMenu.Item className={ITEM} onSelect={() => void leave()}>
+          <DropdownMenu.Item
+            className={ITEM}
+            onSelect={() => void signOutAndLeave()}
+          >
             <LogOut aria-hidden className={ICON} />
             Sign out
           </DropdownMenu.Item>
