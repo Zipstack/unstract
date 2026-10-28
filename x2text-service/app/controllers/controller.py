@@ -14,6 +14,7 @@ from app.authentication_middleware import (
 from app.models import X2TextAudit
 from app.unstructured_url import refusal_message, request_timeout
 from app.util import X2TextUtil
+from unstract.core.network.ssrf import safe_host
 
 basic = Blueprint("basic", __name__)
 # Configure the logging format and level
@@ -24,9 +25,14 @@ logging.basicConfig(
 UNSTRUCTURED_URL = "unstructured-url"
 UNSTRUCTURED_API_KEY = "unstructured-api-key"
 
+# Redirects are not followed: the guard approved this URL, not wherever it
+# points next. That also refuses a 307/308 that requests used to replay, so an
+# adapter saved with a redirecting URL (http->https, trailing slash) has to be
+# updated to the final URL; the message says so.
 REDIRECT_REFUSED = (
     "Unstructured URL redirected to another location; configure the final URL"
 )
+TIMED_OUT = "Timed out waiting for the Unstructured API"
 
 
 def _error(message: str, status: int = 400) -> tuple[dict[str, str], int]:
@@ -36,6 +42,15 @@ def _error(message: str, status: int = 400) -> tuple[dict[str, str], int]:
     this service's other responses.
     """
     return {"message": message, "detail": message}, status
+
+
+def _redirect_refused(response: requests.Response) -> tuple[dict[str, str], int]:
+    logging.warning(
+        "Refusing redirect from the Unstructured API: %s -> host=%s",
+        response.status_code,
+        safe_host(response.headers.get("Location")),
+    )
+    return _error(REDIRECT_REFUSED)
 
 
 @basic.route("/health", methods=["GET"])
@@ -75,7 +90,7 @@ def test_connection() -> Any:
         )
 
         if response.is_redirect:
-            return _error(REDIRECT_REFUSED)
+            return _redirect_refused(response)
         if response.status_code == 400:
             """Response is 400 as we are not sending a file to test connection.
 
@@ -83,7 +98,10 @@ def test_connection() -> Any:
             """
 
             return {"message": "Test connection sucessful"}, 200
-        return {"message": response.text}, response.status_code
+        return _error(response.text, response.status_code)
+    except requests.Timeout:
+        logging.error("Test connection timed out waiting for the Unstructured API")
+        return _error(TIMED_OUT, 504)
     except requests.ConnectionError as e:
         logging.error(e)
         return {"message": "Test connection Failed"}, 400
@@ -151,11 +169,16 @@ def process() -> Any:
         x2_text_audit.status = "Failed"
         x2_text_audit.save()
         logging.error("Text extraction timed out waiting for the Unstructured API")
-        return _error("Timed out waiting for the Unstructured API", 504)
+        return _error(TIMED_OUT, 504)
+    except requests.RequestException as e:
+        x2_text_audit.status = "Failed"
+        x2_text_audit.save()
+        logging.error("Text extraction could not reach the Unstructured API: %s", e)
+        return _error("Unable to reach the Unstructured API", 502)
     if response.is_redirect:
         x2_text_audit.status = "Failed"
         x2_text_audit.save()
-        return _error(REDIRECT_REFUSED)
+        return _redirect_refused(response)
     if response.ok:
         json_response = response.json()
         response_text = X2TextUtil.get_text_content(json_response)

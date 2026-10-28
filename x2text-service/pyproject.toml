@@ -18,6 +18,7 @@ dependencies = [
 ]
 
 [dependency-groups]
+test = ["pytest>=9.0.3"]
 deploy = [
     "gunicorn[gevent]~=23.0",
     # OpenTelemetry for tracing and profiling

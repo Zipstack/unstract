@@ -6,12 +6,16 @@ in ``unstract.core.network.ssrf`` decides whether that URL may be dialled.
 
 Whether a private, loopback or link-local destination is allowed depends on the
 deployment. Self-hosted (OSS and on-prem) installs routinely run Unstructured on
-localhost or a private host, so it is allowed by default. A multi-tenant cloud
-deployment must refuse it, and does so by setting
-``UNSTRUCTURED_URL_ALLOW_PRIVATE=false``.
+localhost or a private host, so it is allowed by default. A multi-tenant
+deployment must refuse it by setting ``UNSTRUCTURED_URL_ALLOW_PRIVATE=false``.
+
+With private destinations refused, the name is resolved here and again by
+``requests``, so a name re-resolved to an internal address in between is not
+caught. The control for that is an egress policy on the pods (see ``ssrf.py``).
 """
 
 import logging
+import math
 import os
 
 from unstract.core.network.ssrf import (
@@ -30,9 +34,11 @@ REQUEST_TIMEOUT_ENV = "UNSTRUCTURED_REQUEST_TIMEOUT"
 # Connecting is quick or it is not going to work; reading is where a large
 # document spends its time.
 CONNECT_TIMEOUT = 10.0
-# Just under the gunicorn worker timeout (300s in x2text.Dockerfile), so a slow
-# Unstructured call ends in an error response rather than a killed worker.
-DEFAULT_READ_TIMEOUT = 290.0
+# How long to wait for Unstructured to send data. It bounds each wait on the
+# socket, not the whole call, and Unstructured sends nothing until it has
+# processed the document, so in practice it caps processing time. Matches the
+# extraction wait default for LLMWhisperer (ADAPTER_LLMW_WAIT_TIMEOUT, 900s).
+DEFAULT_READ_TIMEOUT = 900.0
 
 _TRUE_VALUES = ("1", "true", "yes")
 
@@ -40,26 +46,30 @@ _TRUE_VALUES = ("1", "true", "yes")
 def allow_private() -> bool:
     """Whether private, loopback and link-local destinations are allowed.
 
-    Defaults to allowed, so a self-hosted install keeps working unchanged. Any
-    value other than a recognised true value refuses them.
+    Unset or empty means allowed. Any other value that is not a recognised true
+    value refuses them.
     """
-    return os.environ.get(ALLOW_PRIVATE_ENV, "true").strip().lower() in _TRUE_VALUES
+    raw = os.environ.get(ALLOW_PRIVATE_ENV, "").strip().lower()
+    return not raw or raw in _TRUE_VALUES
 
 
 def request_timeout() -> tuple[float, float]:
     """The ``(connect, read)`` timeout for calls to the Unstructured API."""
-    raw = os.environ.get(REQUEST_TIMEOUT_ENV, "")
+    raw = os.environ.get(REQUEST_TIMEOUT_ENV, "").strip()
+    if not raw:
+        return CONNECT_TIMEOUT, DEFAULT_READ_TIMEOUT
     try:
-        read = float(raw) if raw.strip() else DEFAULT_READ_TIMEOUT
+        read = float(raw)
     except ValueError:
+        read = math.nan
+    # nan and inf parse, but the socket layer rejects them on every call.
+    if not math.isfinite(read) or read <= 0:
         logger.warning(
             "Ignoring invalid %s=%r; using %ss",
             REQUEST_TIMEOUT_ENV,
             raw,
             DEFAULT_READ_TIMEOUT,
         )
-        read = DEFAULT_READ_TIMEOUT
-    if read <= 0:
         read = DEFAULT_READ_TIMEOUT
     return CONNECT_TIMEOUT, read
 
@@ -69,7 +79,7 @@ def refusal_message(url: str) -> str | None:
 
     The scheme, credential and parser-agreement checks always apply. The
     destination check applies only when private destinations are not allowed;
-    when they are, no lookup is made here and the URL is dialled as before.
+    when they are, no lookup is made here.
     """
     if allow_private():
         reason = webhook_url_refusal(url, resolve=False)

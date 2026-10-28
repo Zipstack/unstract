@@ -48,7 +48,8 @@ def _patched_storage(storage: mock.Mock):
             "Error while getting result from the tool: output not found",
         ),
         (
-            destination.json.JSONDecodeError("Expecting value", STORAGE_PATH, 0),
+            # ``doc`` is the file content, as json.loads would raise it.
+            destination.json.JSONDecodeError("Expecting value", "", 0),
             "Error while getting result from the tool: output is not valid JSON",
         ),
     ],

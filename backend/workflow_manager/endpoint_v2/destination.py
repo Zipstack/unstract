@@ -1131,7 +1131,7 @@ class DestinationConnector(BaseConnector):
 
         Args:
             input_file_path: Path to the file to read
-            file_name: Name of the file for logging purposes
+            file_name: Name of the file, used in the log and the caller-facing error
 
         Returns:
             Base64 encoded file content
