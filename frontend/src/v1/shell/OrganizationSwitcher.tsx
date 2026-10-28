@@ -4,6 +4,7 @@ import {
   landingPath,
   organizationInitials,
 } from "@v1/lib/organizations";
+import { getPortalContainer } from "@v1/lib/portal";
 import {
   listOrganizations,
   type Organization,
@@ -21,16 +22,12 @@ import { AlertDialog, Popover } from "radix-ui";
 import { useCallback, useRef, useState } from "react";
 
 // Frames NEW10 (1638:44855) and page 19, O01 to O04 (2259:182 to 2259:656).
-const AVATAR_COLOURS = [
-  "bg-blue-100 text-blue-700",
-  "bg-teal-100 text-teal-700",
-  "bg-amber-100 text-amber-700",
-  "bg-rose-100 text-rose-700",
-  "bg-violet-100 text-violet-700",
-];
+// ponytail: one colour for every organisation avatar; the frames rotate five,
+// which have no tokens yet. Rotate again once the tokens include an avatar palette.
+const AVATAR_COLOUR = "ui:bg-primary-muted ui:text-primary";
 const SIGN_IN_PATH = "/landing";
 const BUTTON =
-  "inline-flex h-8 items-center gap-1.5 rounded-[10px] border border-[var(--border)] bg-[var(--card)] px-3 text-[13px] font-medium text-[var(--foreground)] hover:bg-[var(--muted)] disabled:opacity-50";
+  "ui:inline-flex ui:h-8 ui:items-center ui:gap-1.5 ui:rounded-lg ui:border ui:border-border ui:bg-card ui:px-3 ui:text-body-small ui:font-medium ui:text-foreground ui:hover:bg-muted ui:disabled:opacity-50";
 
 export interface CurrentOrganization {
   id: string;
@@ -71,28 +68,15 @@ function useOrganizationList() {
   return { state, load };
 }
 
-function OrgAvatar({
-  id,
-  name,
-  size,
-}: {
-  id: string;
-  name: string;
-  size: "md" | "sm";
-}) {
-  const colour =
-    AVATAR_COLOURS[
-      [...id].reduce((sum, c) => sum + c.charCodeAt(0), 0) %
-        AVATAR_COLOURS.length
-    ];
+function OrgAvatar({ name, size }: { name: string; size: "md" | "sm" }) {
   const box =
     size === "md"
-      ? "size-8 rounded-[10px] text-xs"
-      : "size-7 rounded-md text-[11px]";
+      ? "ui:size-8 ui:rounded-lg ui:text-caption"
+      : "ui:size-7 ui:rounded-sm ui:text-overline";
   return (
     <span
       aria-hidden
-      className={`flex shrink-0 items-center justify-center font-semibold ${box} ${colour}`}
+      className={`ui:flex ui:shrink-0 ui:items-center ui:justify-center ui:font-semibold ${box} ${AVATAR_COLOUR}`}
     >
       {organizationInitials(name)}
     </span>
@@ -101,11 +85,11 @@ function OrgAvatar({
 
 function OrgLine({ org }: { org: Organization }) {
   return (
-    <span className="flex min-w-0 flex-1 flex-col">
-      <span className="truncate text-[13px] font-medium leading-5 text-[var(--foreground)]">
+    <span className="ui:flex ui:min-w-0 ui:flex-1 ui:flex-col">
+      <span className="ui:truncate ui:text-body-small ui:font-medium ui:text-foreground">
         {org.display_name}
       </span>
-      <span className="truncate text-xs leading-4 text-[var(--muted-foreground)]">
+      <span className="ui:truncate ui:text-caption ui:text-muted-foreground">
         {describeOrganization(org)}
       </span>
     </span>
@@ -141,56 +125,56 @@ function ConfirmSwitch({
 
   return (
     <AlertDialog.Root open onOpenChange={(open) => !open && !busy && onClose()}>
-      <AlertDialog.Portal>
-        <AlertDialog.Overlay className="fixed inset-0 z-50 bg-black/30" />
-        <AlertDialog.Content className="fixed top-1/2 left-1/2 z-50 w-[520px] max-w-[calc(100vw-32px)] -translate-x-1/2 -translate-y-1/2 rounded-xl border border-[var(--border)] bg-[var(--sidebar)] shadow-[0_12px_32px_0_#0000002e]">
-          <div className="flex gap-3 p-6">
-            <span className="flex size-9 shrink-0 items-center justify-center rounded-[10px] bg-[var(--primary-muted)]">
+      <AlertDialog.Portal container={getPortalContainer()}>
+        <AlertDialog.Overlay className="ui:fixed ui:inset-0 ui:z-50 ui:bg-scrim" />
+        <AlertDialog.Content className="ui:fixed ui:top-1/2 ui:left-1/2 ui:z-50 ui:w-130 ui:max-w-[calc(100vw-var(--space-8))] ui:-translate-x-1/2 ui:-translate-y-1/2 ui:rounded-lg ui:border ui:border-border ui:bg-sidebar ui:shadow-lg">
+          <div className="ui:flex ui:gap-3 ui:p-6">
+            <span className="ui:flex ui:size-9 ui:shrink-0 ui:items-center ui:justify-center ui:rounded-lg ui:bg-primary-muted">
               <ArrowRightLeft
                 aria-hidden
-                className="size-[18px] text-[var(--primary)]"
+                className="ui:size-4.5 ui:text-primary"
               />
             </span>
-            <div className="flex min-w-0 flex-1 flex-col gap-1">
-              <AlertDialog.Title className="text-base font-semibold leading-6 text-[var(--foreground)]">
+            <div className="ui:flex ui:min-w-0 ui:flex-1 ui:flex-col ui:gap-1">
+              <AlertDialog.Title className="ui:text-section-title ui:font-semibold ui:text-foreground">
                 Switch to {to.display_name}?
               </AlertDialog.Title>
-              <AlertDialog.Description className="text-[13px] leading-5 text-[var(--muted-foreground)]">
+              <AlertDialog.Description className="ui:text-body-small ui:text-muted-foreground">
                 Every screen is replaced — projects, workflows, deployments,
                 logs, members and the plan. Nothing is lost; you can switch back
                 from here.
               </AlertDialog.Description>
             </div>
           </div>
-          <div className="mx-6 mb-6 flex items-center gap-3 rounded-[10px] bg-[var(--muted)] px-4 py-3.5">
-            <OrgAvatar id={from.id} name={from.display_name} size="sm" />
+          <div className="ui:mx-6 ui:mb-6 ui:flex ui:items-center ui:gap-3 ui:rounded-lg ui:bg-muted ui:px-4 ui:py-3.5">
+            <OrgAvatar name={from.display_name} size="sm" />
             <OrgLine org={{ ...from, region: undefined }} />
             <ChevronRight
               aria-hidden
-              className="size-[18px] text-[var(--muted-foreground)]"
+              className="ui:size-4.5 ui:text-muted-foreground"
             />
-            <OrgAvatar id={to.id} name={to.display_name} size="sm" />
+            <OrgAvatar name={to.display_name} size="sm" />
             <OrgLine org={{ ...to, region: undefined }} />
           </div>
           {failed && (
             <p
               role="alert"
-              className="mx-6 -mt-3 mb-4 text-[13px] text-[var(--destructive)]"
+              className="ui:mx-6 ui:-mt-3 ui:mb-4 ui:text-body-small ui:text-destructive"
             >
               Could not switch. Try again.
             </p>
           )}
-          <div className="flex justify-end gap-2 border-t border-[var(--border)] px-6 py-5">
-            <AlertDialog.Cancel disabled={busy} className={`${BUTTON} h-9`}>
+          <div className="ui:flex ui:justify-end ui:gap-2 ui:border-t ui:border-border ui:px-6 ui:py-5">
+            <AlertDialog.Cancel disabled={busy} className={`${BUTTON} ui:h-9`}>
               Cancel
             </AlertDialog.Cancel>
             <button
               type="button"
               disabled={busy}
               onClick={() => void confirm()}
-              className="inline-flex h-9 items-center gap-2 rounded-[10px] bg-[var(--primary)] px-3.5 text-sm font-medium text-[var(--primary-foreground)] disabled:opacity-60"
+              className="ui:inline-flex ui:h-9 ui:items-center ui:gap-2 ui:rounded-lg ui:bg-primary ui:px-3.5 ui:text-body ui:font-medium ui:text-primary-foreground ui:disabled:opacity-60"
             >
-              <ArrowRightLeft aria-hidden className="size-4" />
+              <ArrowRightLeft aria-hidden className="ui:size-4" />
               Switch organisation
             </button>
           </div>
@@ -235,40 +219,40 @@ export function OrganizationSwitcher({
       >
         <Popover.Trigger
           aria-label={`Organisation: ${current.displayName}`}
-          className="flex h-9 w-[171px] items-center gap-2 rounded-[10px] border border-[var(--border)] bg-[var(--card)] px-2 outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+          className="ui:flex ui:h-9 ui:w-42.75 ui:items-center ui:gap-2 ui:rounded-lg ui:border ui:border-border ui:bg-card ui:px-2 ui:outline-none ui:focus-visible:focus-ring "
         >
-          <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-[var(--primary)] text-[11px] font-semibold text-[var(--primary-foreground)]">
+          <span className="ui:flex ui:size-6 ui:shrink-0 ui:items-center ui:justify-center ui:rounded-sm ui:bg-primary ui:text-overline ui:font-semibold ui:text-primary-foreground">
             {initial(current.displayName)}
           </span>
-          <span className="flex-1 truncate text-left text-[13px] font-medium leading-5 text-[var(--foreground)]">
+          <span className="ui:flex-1 ui:truncate ui:text-left ui:text-body-small ui:font-medium ui:text-foreground">
             {current.displayName}
           </span>
           <ChevronsUpDown
             aria-hidden
-            className="size-3.5 text-[var(--muted-foreground)]"
+            className="ui:size-3.5 ui:text-muted-foreground"
           />
         </Popover.Trigger>
-        <Popover.Portal>
+        <Popover.Portal container={getPortalContainer()}>
           <Popover.Content
             align="end"
             sideOffset={8}
-            className="z-50 flex w-[360px] flex-col rounded-xl border border-[var(--border)] bg-[var(--popover)] p-1.5 shadow-[0_8px_24px_-4px_#0000001a]"
+            className="ui:z-50 ui:flex ui:w-90 ui:flex-col ui:rounded-lg ui:border ui:border-border ui:bg-popover ui:p-1.5 ui:shadow-lg"
           >
-            <label className="mb-1 flex h-9 items-center gap-2 rounded-lg px-2.5 text-[var(--muted-foreground)]">
-              <Search aria-hidden className="size-4" />
+            <label className="ui:mb-1 ui:flex ui:h-9 ui:items-center ui:gap-2 ui:rounded-md ui:px-2.5 ui:text-muted-foreground">
+              <Search aria-hidden className="ui:size-4" />
               <input
                 type="search"
                 aria-label="Find an organisation"
                 placeholder="Find an organisation"
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
-                className="flex-1 bg-transparent text-[13px] text-[var(--foreground)] outline-none placeholder:text-[var(--muted-foreground)]"
+                className="ui:flex-1 ui:bg-transparent ui:text-body-small ui:text-foreground ui:outline-none ui:placeholder:text-muted-foreground"
               />
             </label>
             {(state.status === "loading" || state.status === "idle") && (
               <p
                 aria-live="polite"
-                className="px-3 py-4 text-[13px] text-[var(--muted-foreground)]"
+                className="ui:px-3 ui:py-4 ui:text-body-small ui:text-muted-foreground"
               >
                 Loading…
               </p>
@@ -276,9 +260,9 @@ export function OrganizationSwitcher({
             {state.status === "error" && (
               <div
                 role="alert"
-                className="flex items-center justify-between gap-3 px-3 py-3"
+                className="ui:flex ui:items-center ui:justify-between ui:gap-3 ui:px-3 ui:py-3"
               >
-                <span className="text-[13px] text-[var(--muted-foreground)]">
+                <span className="ui:text-body-small ui:text-muted-foreground">
                   Could not load your organisations.
                 </span>
                 <button type="button" className={BUTTON} onClick={load}>
@@ -289,31 +273,27 @@ export function OrganizationSwitcher({
             {state.status === "ready" && (
               <>
                 {shown.length === 0 ? (
-                  <p className="px-3 py-4 text-[13px] text-[var(--muted-foreground)]">
+                  <p className="ui:px-3 ui:py-4 ui:text-body-small ui:text-muted-foreground">
                     No organisations match
                   </p>
                 ) : (
-                  <p className="px-1.5 pt-1 pb-2 text-[11px] font-semibold uppercase leading-4 tracking-[0.08em] text-[var(--muted-foreground)]">
+                  <p className="ui:px-1.5 ui:pt-1 ui:pb-2 ui:text-overline ui:uppercase ui:text-muted-foreground">
                     You belong to {count} organisation{count === 1 ? "" : "s"}
                   </p>
                 )}
-                <ul className="flex flex-col">
+                <ul className="ui:flex ui:flex-col">
                   {shown.map((org) => {
                     const isCurrent = org.id === current.id;
                     return (
                       <li
                         key={org.id}
                         {...(isCurrent ? { "aria-current": "true" } : {})}
-                        className={`flex h-14 items-center gap-2.5 rounded-lg px-2.5 ${isCurrent ? "bg-[#f5f5fa]" : ""}`}
+                        className={`ui:flex ui:h-14 ui:items-center ui:gap-2.5 ui:rounded-md ui:px-2.5 ${isCurrent ? "ui:bg-muted" : ""}`}
                       >
-                        <OrgAvatar
-                          id={org.id}
-                          name={org.display_name}
-                          size="md"
-                        />
+                        <OrgAvatar name={org.display_name} size="md" />
                         <OrgLine org={org} />
                         {isCurrent ? (
-                          <span className="rounded bg-[var(--primary-muted)] px-2 py-[3px] text-xs font-medium text-[var(--primary)]">
+                          <span className="ui:rounded-sm ui:bg-primary-muted ui:px-2 ui:py-0.75 ui:text-caption ui:font-medium ui:text-primary">
                             Current
                           </span>
                         ) : (
@@ -323,7 +303,7 @@ export function OrganizationSwitcher({
                             className={BUTTON}
                             onClick={() => setTarget(org)}
                           >
-                            <ArrowLeftRight aria-hidden className="size-4" />
+                            <ArrowLeftRight aria-hidden className="ui:size-4" />
                             Switch
                           </button>
                         )}
@@ -332,7 +312,7 @@ export function OrganizationSwitcher({
                   })}
                 </ul>
                 {count === 1 && (
-                  <p className="px-3 py-2 text-[13px] text-[var(--muted-foreground)]">
+                  <p className="ui:px-3 ui:py-2 ui:text-body-small ui:text-muted-foreground">
                     Nothing to switch to.
                   </p>
                 )}
