@@ -5,10 +5,10 @@ Usage (OSS_REPO: a clone of the OSS repo with full history, tags and origin/rele
   oss.py cut --line X.Y [--slack-url URL]               cut OSS release/X.Y from OSS main; prints ee-vX.Y.0-rc.1
   oss.py rc --branch release/X.Y [--slack-url URL]      the tag to pin for the next RC of a cloud line: the tag on
                                                         its OSS line's tip, after a new OSS RC when the tip has none
-  oss.py promote --rc vX.Y.Z-rc.N [--force --reason R] [--on-prem]
+  oss.py promote --rc vX.Y.Z-rc.N [--force --reason R] [--stabilized]
                                                         promote the OSS RC the cloud RC pins; prints the stable tag.
-                                                        --on-prem (the cloud line's on-prem promote) also tags the
-                                                        OSS line on-prem-ga/X.Y once, which makes it stabilized
+                                                        --stabilized (the promote that leaves every enabled cloud
+                                                        target GA) also tags the OSS line stabilized/X.Y once
 retire(): called by cloud Retire for each cloud line it retires.
 
 cut, rc and promote print one OSS tag on stdout. Every write is re-runnable: a tag already on the same commit is
@@ -247,15 +247,16 @@ def rc(oss, branch, slack_url=""):
 
 
 # Known limit: force accepts an empty reason.
-def promote(repo, oss, cloud_rc, force=False, reason="", on_prem=False):
-    """The stable OSS tag of the OSS RC cloud_rc pins (_promote). on_prem: the cloud line's on-prem promote, so the
-    OSS line's on-prem-ga/X.Y tag goes on that stable tag's commit when the line has none (a later patch keeps it).
-    Known limit: the tag marks the promote, not the chart push after it; a failed chart push leaves the OSS line
-    stabilized before its cloud line's on-prem GA.
+def promote(repo, oss, cloud_rc, force=False, reason="", stabilized=False):
+    """The stable OSS tag of the OSS RC cloud_rc pins (_promote). stabilized: this promote leaves every enabled
+    target of the cloud line GA, so the OSS line's stabilized/X.Y tag goes on that stable tag's commit when the line
+    has none (a later promote keeps it).
+    Known limit: the tag marks the promote, not the retag or chart push after it; if those fail, the OSS line is
+    stabilized before its cloud line is GA.
     """
     stable = _promote(repo, oss, cloud_rc, force, reason)
-    mark = rs.ON_PREM_GA + line_of(stable).split("/", 1)[1]
-    if on_prem and not rs._tag_commit(oss, mark):
+    mark = rs.STABILIZED + line_of(stable).split("/", 1)[1]
+    if stabilized and not rs._tag_commit(oss, mark):
         sha = rs._tag_commit(oss, stable)
         if not sha:
             raise RuntimeError(f"no OSS tag {stable}")
@@ -263,7 +264,7 @@ def promote(repo, oss, cloud_rc, force=False, reason="", on_prem=False):
             oss,
             mark,
             sha,
-            [f"on-prem GA: {stable} (cloud {cloud_rc})"],
+            [f"stabilized: {stable} (cloud {cloud_rc})"],
             f"refs/tags/{mark}",
         )
     return stable
@@ -335,7 +336,8 @@ def _promote(repo, oss, cloud_rc, force, reason):
 
 def retire(oss, branch, reason, dry_run=True):
     """Retire OSS release/X.Y with its cloud line, in one atomic push: archive tag retired/X.Y-<tip sha7>, delete
-    (no OSS GA) its RC tags and the branch. With a GA its tags stay and the minor is never reused; without one it is. Summary lines.
+    (no OSS GA) its RC tags and the branch. With a GA its tags stay, stabilized/X.Y with them, and the minor is never
+    reused; without one it is. Summary lines.
     """
     line = branch.removeprefix("release/")
     sha = tip(oss, branch)
@@ -406,7 +408,7 @@ def main(argv=None):
     m.add_argument("--rc", required=True)
     m.add_argument("--force", action="store_true")
     m.add_argument("--reason", default="")
-    m.add_argument("--on-prem", action="store_true")
+    m.add_argument("--stabilized", action="store_true")
     a = p.parse_args(argv)
     try:
         if not a.oss_repo:
@@ -416,7 +418,7 @@ def main(argv=None):
             if a.cmd == "cut"
             else rc(a.oss_repo, a.branch, a.slack_url)
             if a.cmd == "rc"
-            else promote(".", a.oss_repo, a.rc, a.force, a.reason, a.on_prem)
+            else promote(".", a.oss_repo, a.rc, a.force, a.reason, a.stabilized)
         )
     except RuntimeError as e:
         print(f"::error::{e}", file=sys.stderr)  # stdout is the tag the workflow captures

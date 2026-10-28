@@ -74,8 +74,9 @@ use(SLUG)
 
 
 AR_API = "https://artifactregistry.googleapis.com/v1"
-# OSS tag on-prem-ga/X.Y: the paired cloud line reached on-prem GA. OSS git cannot see the cloud registry.
-ON_PREM_GA = "on-prem-ga/"
+# OSS tag stabilized/X.Y: every enabled target of the paired cloud line reached GA. OSS git cannot see the cloud
+# registry, so cloud Promote writes it.
+STABILIZED = "stabilized/"
 
 
 def ar_repository(kind):
@@ -276,9 +277,9 @@ def target_state(t, name, rows, now):
 
     On-prem: stabilized for WINDOW after the line's first stable chart push (a patch does not extend it), and only while
     among the newest WINDOW_LINES lines with an on-prem GA. A LATEST_ONLY target (cloud): only the latest GA branch
-    for it stays stabilized; older GA branches are past-eos for it. A KEPT target (OSS): stabilizing until its
-    paired cloud line's on-prem GA (the ON_PREM_GA tag, which `oss.py promote --on-prem` writes), then stabilized
-    while the branch exists; the cloud lines pinning it decide its retirement, and cloud Retire names it.
+    for it stays stabilized; older GA branches are past-eos for it. A KEPT target (OSS): stabilizing until every
+    enabled target of its paired cloud line is GA (the STABILIZED tag, which `oss.py promote --stabilized` writes),
+    then stabilized while the branch exists; the cloud lines pinning it decide its retirement, and cloud Retire names it.
     """
     ga = rows[name]["targets"][t]["ga"]
     # Known limit: a target built but never GA (on-prem RCs with no chart push) stays stabilizing for good, so its
@@ -286,7 +287,7 @@ def target_state(t, name, rows, now):
     if not ga:
         return "stabilizing"
     if t in KEPT:
-        return "stabilized" if rows[name]["targets"][t]["on_prem_ga"] else "stabilizing"
+        return "stabilized" if rows[name]["targets"][t]["stabilized"] else "stabilizing"
     t_ga = sorted(
         (n for n, r in rows.items() if r["targets"].get(t, {}).get("ga")),
         key=lambda n: _key(rows[n]["line"]),
@@ -422,7 +423,7 @@ def derive(repo, now, registry=registry_tags, rc=None):
                 ):
                     tt[key] = {"tag": tags[pick], **reg[artifact][tags[pick]]}
             if t in KEPT:
-                tt["on_prem_ga"] = bool(_tag_commit(repo, ON_PREM_GA + row["line"]))
+                tt["stabilized"] = bool(_tag_commit(repo, STABILIZED + row["line"]))
 
     for name, row in rows.items():
         for t, tt in row["targets"].items():
@@ -551,6 +552,15 @@ def abandon_plan(repo, branch, registry=registry_tags):
         "versions": versions,
         "kept": kept,
     }
+
+
+def stabilizes(row, target, done=()):
+    """Whether promoting target leaves every enabled target of the line row GA: each is target, in done (promoted
+    earlier in the same run), or already GA. Cloud Promote then marks the pinned OSS line stabilized.
+    """
+    return all(
+        u == target or u in done or row["targets"][u]["ga"] for u in row["enabled"]
+    )
 
 
 def promote_blockers(state, branch, target):

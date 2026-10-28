@@ -747,9 +747,29 @@ class Scenario(unittest.TestCase):
             ["chart/unstract-platform:v1.9.0"],
         )
 
+    def test_43_stabilizes_when_every_enabled_target_is_ga(self):
+        # Cloud Promote marks the OSS line stabilized/X.Y on the promote that leaves every enabled target GA.
+        def row():
+            return self.branch(self.state(), "release/1.5")
+
+        self.s1()  # a cloud-only line: its cloud GA
+        self.assertTrue(rs.stabilizes(row(), "cloud"))
+        self.push("on-prem/backend", "v1.5.0-rc.1")  # on-prem enabled, nothing GA
+        self.assertEqual(row()["enabled"], ["cloud", "on-prem"])
+        self.assertFalse(rs.stabilizes(row(), "cloud"))
+        self.assertFalse(rs.stabilizes(row(), "on-prem"))
+        # One run promoting both: on-prem counts the cloud promote before it.
+        self.assertTrue(rs.stabilizes(row(), "on-prem", ["cloud"]))
+        self.push("cloud/backend", "v1.5.0", git_ref="release/1.5")  # cloud GA alone
+        self.assertFalse(rs.stabilizes(row(), "cloud"))
+        self.assertTrue(rs.stabilizes(row(), "on-prem"))  # on-prem goes last
+        self.push("chart/unstract-platform", "1.5.0")
+        # A later patch: oss.promote keeps the tag.
+        self.assertTrue(rs.stabilizes(row(), "cloud"))
+
     def test_26_oss_repo_config(self):
         # The OSS repo runs this same file: one target, oss, read from the line's own ee- git tags (no registry),
-        # supported while its branch exists once its on-prem-ga/X.Y tag is there. Plain v* tags are community releases from main and never count.
+        # supported while its branch exists once its stabilized/X.Y tag is there. Plain v* tags are community releases from main and never count.
         self.addCleanup(rs.use, rs.SLUG)
         rs.use("unstract")
         self.state = lambda: rs.derive(
@@ -763,13 +783,13 @@ class Scenario(unittest.TestCase):
             self.g("tag", f"v{line}.7", f"release/{line}")  # never the line's GA
         self.cut("1.7")
         self.g("tag", "ee-v1.7.0-rc.1", "release/1.7")
-        # Stabilizing past its own ee-vX.Y.0 until the paired cloud line's on-prem GA tags it.
-        self.g("tag", "on-prem-ga/1.5", "release/1.5")
+        # Stabilizing past its own ee-vX.Y.0 until the paired cloud line is GA on every enabled target and tags it.
+        self.g("tag", "stabilized/1.5", "release/1.5")
         self.assertEqual(
             [(b["branch"], b["state"]) for b in self.state()["branches"]][1:],
             [("release/1.6", "stabilizing"), ("release/1.5", "stabilized")],
         )
-        self.g("tag", "on-prem-ga/1.6", "release/1.6")
+        self.g("tag", "stabilized/1.6", "release/1.6")
         st = self.state()
         self.assertEqual(
             [(b["branch"], b["state"]) for b in st["branches"]],

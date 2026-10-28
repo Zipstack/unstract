@@ -218,26 +218,28 @@ class Lines(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "did not run"):
             oss.promote(self.cloud, self.oss, "v1.7.1-rc.2", force=True, reason="x")
 
-    def test_on_prem_promote_tags_on_prem_ga_once(self):
-        # The OSS line stays stabilizing until its cloud line's on-prem GA: only --on-prem writes the tag, once.
+    def test_stabilized_promote_tags_the_line_once(self):
+        # The OSS line stays stabilizing until its cloud line is GA on every enabled target: only --stabilized
+        # writes the tag, once; a later promote keeps it on the GA commit.
         self.quiet(oss.cut, self.oss, "1.7")
         self.pin("ee-v1.7.0-rc.1", "v1.7.0-rc.1")
-        oss.promote(self.cloud, self.oss, "v1.7.0-rc.1")  # the cloud product
-        self.assertEqual(self.remote("tag", "-l", "on-prem-ga/*"), "")
+        # Cloud GA, on-prem still enabled.
+        oss.promote(self.cloud, self.oss, "v1.7.0-rc.1")
+        self.assertEqual(self.remote("tag", "-l", "stabilized/*"), "")
         self.clone()
-        oss.promote(self.cloud, self.oss, "v1.7.0-rc.1", on_prem=True)
+        oss.promote(self.cloud, self.oss, "v1.7.0-rc.1", stabilized=True)
         ga = self.remote("rev-parse", "ee-v1.7.0^{commit}")
-        self.assertEqual(self.remote("rev-parse", "on-prem-ga/1.7^{commit}"), ga)
+        self.assertEqual(self.remote("rev-parse", "stabilized/1.7^{commit}"), ga)
         self.work("release/1.7", "oss fix")
         self.quiet(oss.rc, self.oss, "release/1.7")
         self.pin("ee-v1.7.1-rc.1", "v1.7.1-rc.1")
         self.clone()
         self.assertEqual(
-            oss.promote(self.cloud, self.oss, "v1.7.1-rc.1", on_prem=True), "ee-v1.7.1"
+            oss.promote(self.cloud, self.oss, "v1.7.1-rc.1", stabilized=True), "ee-v1.7.1"
         )
-        self.assertEqual(self.remote("rev-parse", "on-prem-ga/1.7^{commit}"), ga)
+        self.assertEqual(self.remote("rev-parse", "stabilized/1.7^{commit}"), ga)
 
-    def test_cli_on_prem_flag(self):
+    def test_cli_stabilized_flag(self):
         self.quiet(oss.cut, self.oss, "1.7")
         self.pin("ee-v1.7.0-rc.1", "v1.7.0-rc.1")
         self.addCleanup(os.chdir, os.getcwd())
@@ -245,11 +247,11 @@ class Lines(unittest.TestCase):
         out = io.StringIO()
         with contextlib.redirect_stdout(out):
             code = oss.main(
-                ["--oss-repo", self.oss, "promote", "--rc", "v1.7.0-rc.1", "--on-prem"]
+                ["--oss-repo", self.oss, "promote", "--rc", "v1.7.0-rc.1", "--stabilized"]
             )
         self.assertEqual((code, out.getvalue()), (0, "ee-v1.7.0\n"))
         self.assertEqual(
-            self.remote("rev-parse", "on-prem-ga/1.7^{commit}"),
+            self.remote("rev-parse", "stabilized/1.7^{commit}"),
             self.remote("rev-parse", "ee-v1.7.0^{commit}"),
         )
 
@@ -827,7 +829,13 @@ class PendingPicksWorkflow(Workflow):
         )
 
     def promote(self, rc="v1.7.0-rc.1", **env):
-        return self.run_step(inline("promote.yaml", "Plan"), RC=rc, TARGET="cloud", **env)
+        return self.run_step(
+            inline("promote.yaml", "Plan"),
+            RC=rc,
+            TARGET="cloud",
+            PRODUCTS='["cloud"]',
+            **env,
+        )
 
     def blocked(self, r, msg):
         self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
@@ -863,6 +871,13 @@ class PendingPicksWorkflow(Workflow):
             self.forced(self.promote(FORCE="true", REASON="ship it")),
             f"ship it; open conflict PRs: {oss.OSS}#40",
         )
+
+    def test_promote_marks_a_cloud_only_line_stabilized(self):
+        # A cloud-only line: its cloud promote leaves every enabled target GA, so the OSS step gets --stabilized.
+        self.line("1.7", "v1.7.0-rc.1")
+        r = self.promote()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("stabilized=true\n", self.read("output"))
 
     def test_promote_fails_closed(self):
         self.line("1.7", "v1.7.0-rc.1")
