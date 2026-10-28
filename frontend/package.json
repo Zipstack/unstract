@@ -97,6 +97,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.3.13",
+    "@tailwindcss/node": "4.3.3",
     "@tailwindcss/postcss": "^4",
     "@tailwindcss/typography": "^0.5.20",
     "@tailwindcss/vite": "^4",

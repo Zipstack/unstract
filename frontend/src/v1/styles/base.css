@@ -1,0 +1,25 @@
+/* What preflight would give the v1 tree, scoped to .v1 so v0 is untouched. */
+@layer base {
+  .v1 {
+    min-height: 100%;
+    background-color: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans);
+    font-size: var(--type-body-size);
+    line-height: var(--type-body-line-height);
+    font-weight: var(--type-body-weight);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  .v1 *,
+  .v1 ::before,
+  .v1 ::after {
+    border-color: var(--border);
+  }
+  .v1 code,
+  .v1 kbd,
+  .v1 pre,
+  .v1 samp {
+    font-family: var(--font-mono);
+  }
+}
