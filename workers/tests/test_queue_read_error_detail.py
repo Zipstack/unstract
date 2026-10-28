@@ -44,7 +44,10 @@ def test_queue_file_read_error_hides_storage_path(storage_setup):
         mock.patch.object(
             destination_connector.logger,
             "exception",
-            side_effect=lambda msg, *a, **k: logged.append((msg, sys.exc_info()[1])),
+            # exc_info=False would log no traceback, so record nothing handled.
+            side_effect=lambda msg, *a, **k: logged.append(
+                (msg, sys.exc_info()[1] if k.get("exc_info", True) else None)
+            ),
         ),
     ):
         with pytest.raises(OSError) as exc_info:

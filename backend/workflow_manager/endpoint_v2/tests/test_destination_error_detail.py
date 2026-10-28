@@ -46,7 +46,10 @@ def _logged_exceptions(logger):
     patcher = mock.patch.object(
         logger,
         "exception",
-        side_effect=lambda msg, *a, **k: records.append((msg, sys.exc_info()[1])),
+        # exc_info=False would log no traceback, so record nothing handled.
+        side_effect=lambda msg, *a, **k: records.append(
+            (msg, sys.exc_info()[1] if k.get("exc_info", True) else None)
+        ),
     )
     return patcher, records
 
