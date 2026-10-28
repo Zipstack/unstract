@@ -1904,10 +1904,10 @@ class WorkerDestinationConnector:
             if isinstance(file_bytes, str):
                 file_bytes = file_bytes.encode("utf-8")
             return base64.b64encode(file_bytes).decode("utf-8")
-        except Exception as e:
-            # The error names the execution-storage path: log it, but keep it
-            # out of the message that reaches the caller.
-            logger.error(f"Failed to read file content for {file_name}: {e}")
+        except Exception:
+            # The error names the execution-storage path: log it with the
+            # traceback, but keep it out of the message that reaches the caller.
+            logger.exception(f"Failed to read file content for {file_name}")
             raise OSError(f"Failed to read file content for queue: {file_name}")
 
     def _read_file_from_source_connector(

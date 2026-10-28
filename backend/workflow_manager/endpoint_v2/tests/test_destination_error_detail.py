@@ -7,6 +7,7 @@ The path (bucket/org/workflow/execution layout) still goes to the server log.
 from __future__ import annotations
 
 import os
+import sys
 from unittest import mock
 
 import django
@@ -34,6 +35,22 @@ def _connector() -> DestinationConnector:
     return connector
 
 
+def _logged_exceptions(logger):
+    """Patch ``logger.exception``, recording (message, exception being handled).
+
+    ``logger.exception`` writes the handled exception's traceback, so the
+    exception recorded here is what reaches the server log alongside the
+    message.
+    """
+    records: list[tuple[str, BaseException | None]] = []
+    patcher = mock.patch.object(
+        logger,
+        "exception",
+        side_effect=lambda msg, *a, **k: records.append((msg, sys.exc_info()[1])),
+    )
+    return patcher, records
+
+
 def _patched_storage(storage: mock.Mock):
     file_system = mock.Mock()
     file_system.return_value.get_file_storage.return_value = storage
@@ -59,16 +76,18 @@ def test_tool_result_error_hides_storage_path(read_error, expected_detail):
     storage.mime_type.return_value = "application/json"
     storage.read.side_effect = read_error
 
-    with (
-        _patched_storage(storage),
-        mock.patch.object(destination.logger, "error") as log_error,
-        pytest.raises(APIException) as exc_info,
-    ):
-        _connector().get_tool_execution_result_from_metadata()
+    connector = _connector()
+    log_patch, logged = _logged_exceptions(destination.logger)
+
+    with _patched_storage(storage), log_patch:
+        with pytest.raises(APIException) as exc_info:
+            connector.get_tool_execution_result_from_metadata()
 
     assert str(exc_info.value.detail) == expected_detail
     assert STORAGE_PATH not in str(exc_info.value.detail)
-    assert STORAGE_PATH in log_error.call_args.args[0]
+    [(message, handled)] = logged
+    assert STORAGE_PATH in message
+    assert handled is read_error
 
 
 @pytest.mark.parametrize(
@@ -87,14 +106,17 @@ def test_tool_result_error_hides_storage_path(read_error, expected_detail):
 def test_queue_file_read_error_hides_storage_path(storage_setup):
     storage = mock.Mock(**storage_setup)
 
-    with (
-        _patched_storage(storage),
-        mock.patch.object(destination.logger, "error") as log_error,
-        pytest.raises(APIException) as exc_info,
-    ):
-        _connector()._read_file_content_for_queue(STORAGE_PATH, "invoice.pdf")
+    connector = _connector()
+    log_patch, logged = _logged_exceptions(destination.logger)
+
+    with _patched_storage(storage), log_patch:
+        with pytest.raises(APIException) as exc_info:
+            connector._read_file_content_for_queue(STORAGE_PATH, "invoice.pdf")
 
     detail = str(exc_info.value.detail)
     assert detail == "Failed to read file content for queue: invoice.pdf"
     assert STORAGE_PATH not in detail
-    assert STORAGE_PATH in log_error.call_args.args[0]
+    # The path reaches the log through the handled exception's traceback.
+    [(message, handled)] = logged
+    assert message == "Failed to read file content for invoice.pdf"
+    assert STORAGE_PATH in str(handled)

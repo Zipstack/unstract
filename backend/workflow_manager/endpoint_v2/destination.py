@@ -635,18 +635,19 @@ class DestinationConnector(BaseConnector):
                 result = file_content.encode("utf-8").decode("unicode-escape")
             else:
                 raise InvalidToolOutputType()
-        except FileNotFoundError as err:
+        except FileNotFoundError:
             # The error carries the execution-storage path, which stays in the
-            # server log; the caller gets a message without it.
-            logger.error(
-                f"Error while getting result from the tool ({output_file}): {err}"
+            # server log (with the traceback); the caller gets a message
+            # without it.
+            logger.exception(
+                f"Error while getting result from the tool ({output_file})"
             )
             raise APIException(
                 detail="Error while getting result from the tool: output not found"
             )
-        except json.JSONDecodeError as err:
-            logger.error(
-                f"Error while getting result from the tool ({output_file}): {err}"
+        except json.JSONDecodeError:
+            logger.exception(
+                f"Error while getting result from the tool ({output_file})"
             )
             raise APIException(
                 detail="Error while getting result from the tool: output is not valid JSON"
@@ -1150,8 +1151,8 @@ class DestinationConnector(BaseConnector):
             if isinstance(file_bytes, str):
                 file_bytes = file_bytes.encode("utf-8")
             return base64.b64encode(file_bytes).decode("utf-8")
-        except Exception as e:
-            # The error names the execution-storage path: log it, but keep it
-            # out of the message returned to the caller.
-            logger.error(f"Failed to read file content for {file_name}: {e}")
+        except Exception:
+            # The error names the execution-storage path: log it with the
+            # traceback, but keep it out of the message returned to the caller.
+            logger.exception(f"Failed to read file content for {file_name}")
             raise APIException(f"Failed to read file content for queue: {file_name}")

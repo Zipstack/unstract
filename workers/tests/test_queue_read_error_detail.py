@@ -7,6 +7,7 @@ The path still goes to the worker log.
 
 from __future__ import annotations
 
+import sys
 from unittest import mock
 
 import pytest
@@ -36,12 +37,21 @@ def test_queue_file_read_error_hides_storage_path(storage_setup):
     file_system.return_value.get_file_storage.return_value = storage
     connector = WorkerDestinationConnector.__new__(WorkerDestinationConnector)
 
+    logged = []
+
     with (
         mock.patch.object(destination_connector, "FileSystem", file_system),
-        mock.patch.object(destination_connector.logger, "error") as log_error,
-        pytest.raises(OSError) as exc_info,
+        mock.patch.object(
+            destination_connector.logger,
+            "exception",
+            side_effect=lambda msg, *a, **k: logged.append((msg, sys.exc_info()[1])),
+        ),
     ):
-        connector._read_file_content_for_queue(STORAGE_PATH, "invoice.pdf")
+        with pytest.raises(OSError) as exc_info:
+            connector._read_file_content_for_queue(STORAGE_PATH, "invoice.pdf")
 
     assert str(exc_info.value) == "Failed to read file content for queue: invoice.pdf"
-    assert STORAGE_PATH in log_error.call_args.args[0]
+    # The path reaches the log through the handled exception's traceback.
+    [(message, handled)] = logged
+    assert message == "Failed to read file content for invoice.pdf"
+    assert STORAGE_PATH in str(handled)
