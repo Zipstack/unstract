@@ -639,16 +639,12 @@ class DestinationConnector(BaseConnector):
             # The error carries the execution-storage path, which stays in the
             # server log (with the traceback); the caller gets a message
             # without it.
-            logger.exception(
-                f"Error while getting result from the tool ({output_file})"
-            )
+            logger.exception(f"Error while getting result from the tool ({output_file})")
             raise APIException(
                 detail="Error while getting result from the tool: output not found"
             )
         except json.JSONDecodeError:
-            logger.exception(
-                f"Error while getting result from the tool ({output_file})"
-            )
+            logger.exception(f"Error while getting result from the tool ({output_file})")
             raise APIException(
                 detail="Error while getting result from the tool: output is not valid JSON"
             )
