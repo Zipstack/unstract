@@ -82,7 +82,15 @@ class RedirectRefused(Exception):
 class RedirectNotAllowed(RedirectRefused):
     user_message = (
         "Redirect refused: the Unstructured API redirected to a destination "
-        "that is not allowed on this deployment"
+        "that is not allowed"
+    )
+
+
+class RedirectUnresolvable(RedirectRefused):
+    # Unlike the others, this one can clear: the resolver may be down.
+    user_message = (
+        "Redirect refused: the host the Unstructured API redirected to could "
+        "not be resolved"
     )
 
 
@@ -129,8 +137,8 @@ def request_timeout() -> tuple[float, float]:
     return CONNECT_TIMEOUT, read
 
 
-def refusal_message(url: str) -> str | None:
-    """A message for the caller if ``url`` may not be dialled, else None.
+def refusal_reason(url: str) -> str | None:
+    """The guard's reason ``url`` may not be dialled, or None if it may.
 
     The scheme, credential and parser-agreement checks always apply. The
     destination check applies only when private destinations are not allowed;
@@ -145,17 +153,23 @@ def refusal_message(url: str) -> str | None:
     else:
         reason = webhook_url_refusal(url)
 
+    if reason is not None:
+        # The host only: the URL can carry a key in its query string.
+        logger.warning(
+            "Refusing unstructured-url: %s (host=%s, %s=%s)",
+            reason,
+            safe_host(url),
+            ALLOW_PRIVATE_ENV,
+            allow_private(),
+        )
+    return reason
+
+
+def refusal_message(url: str) -> str | None:
+    """A message for the caller if ``url`` may not be dialled, else None."""
+    reason = refusal_reason(url)
     if reason is None:
         return None
-
-    # The host only: the URL can carry a key in its query string.
-    logger.warning(
-        "Refusing unstructured-url: %s (host=%s, %s=%s)",
-        reason,
-        safe_host(url),
-        ALLOW_PRIVATE_ENV,
-        allow_private(),
-    )
     if reason == UNRESOLVABLE:
         return "Unstructured URL host could not be resolved"
     if reason in (REFUSED_INTERNAL_LITERAL, REFUSED_NON_PUBLIC):
@@ -208,8 +222,10 @@ def post(
             next_url = urljoin(url, response.headers["Location"])
         except ValueError:
             raise RedirectUnparseable("unparseable Location") from None
-        if refusal := refusal_message(next_url):
-            raise RedirectNotAllowed(refusal)
+        if reason := refusal_reason(next_url):
+            if reason == UNRESOLVABLE:
+                raise RedirectUnresolvable(reason)
+            raise RedirectNotAllowed(reason)
         if _STRIP_AUTH.should_strip_auth(url, next_url):
             # The key is for the origin the adapter names. Same rule requests
             # applies to Authorization: dropped on a host, scheme or port

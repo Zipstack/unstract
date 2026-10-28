@@ -167,12 +167,13 @@ def test_block_mode_303_becomes_get_and_cross_host_drops_key(client, block_priva
     assert "unstructured-api-key" in rq.call_args_list[0].kwargs["headers"]
 
 
-def test_block_mode_caps_redirects(client, block_private):
+def test_block_mode_caps_redirects(client, block_private, caplog):
     loop = _response(302, "", {"Location": PUBLIC})
     with mock.patch.object(controller.requests, "request", return_value=loop) as rq:
         r = _post(client, "/x2text/test-connection", PUBLIC)
     assert r.status_code == 400
     assert r.get_json()["detail"] == unstructured_url.TooManyRedirects.user_message
+    assert "more than 5 redirects" in caplog.text
     assert rq.call_count == unstructured_url.MAX_REDIRECTS + 1
 
 
@@ -296,12 +297,26 @@ def test_block_mode_https_to_http_drops_key(client, block_private):
     ("path", "with_file"), [("/x2text/test-connection", False), ("/x2text/process", True)]
 )
 def test_block_mode_unparseable_location_is_refused(
-    client, audit, block_private, path, with_file
+    client, audit, block_private, caplog, path, with_file
 ):
     hop = _response(307, "", {"Location": "http://[abc/x"})
     with mock.patch.object(controller.requests, "request", return_value=hop):
         r = _post(client, path, PUBLIC, with_file)
     assert r.status_code == 400
     assert r.get_json()["detail"] == unstructured_url.RedirectUnparseable.user_message
+    assert "unparseable Location" in caplog.text
     if with_file:
         assert audit.status == "Failed"
+
+
+def test_block_mode_unresolvable_hop_is_labelled_so(client, block_private, caplog):
+    hop = _response(307, "", {"Location": "http://nope.invalid/x"})
+    with (
+        # The start URL is an IP literal and needs no lookup; the hop's name fails.
+        mock.patch("socket.getaddrinfo", side_effect=OSError("resolver down")),
+        mock.patch.object(controller.requests, "request", return_value=hop),
+    ):
+        r = _post(client, "/x2text/test-connection", PUBLIC)
+    assert r.status_code == 400
+    assert r.get_json()["detail"] == unstructured_url.RedirectUnresolvable.user_message
+    assert "unresolvable" in caplog.text
