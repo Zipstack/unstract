@@ -103,8 +103,10 @@ def test_connection() -> Any:
         logging.error("Test connection timed out waiting for the Unstructured API")
         return _error(TIMED_OUT, 504)
     except requests.RequestException as e:
-        # Not ``str(e)``: it carries the full URL, query string included.
-        logging.error(
+        # An expected outcome of a wrong or unreachable adapter URL, so a
+        # warning without the traceback. Neither ``str(e)`` nor the traceback:
+        # both carry the full URL, query string (and any key in it) included.
+        logging.warning(
             "Test connection could not reach the Unstructured API: %s (host=%s)",
             type(e).__name__,
             safe_host(url),
@@ -177,7 +179,8 @@ def process() -> Any:
     except requests.RequestException as e:
         x2_text_audit.status = "Failed"
         x2_text_audit.save()
-        logging.error(
+        # As in test_connection: expected, and the traceback would carry the URL.
+        logging.warning(
             "Text extraction could not reach the Unstructured API: %s (host=%s)",
             type(e).__name__,
             safe_host(url),

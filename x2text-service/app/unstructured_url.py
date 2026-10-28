@@ -180,6 +180,24 @@ def refusal_message(url: str) -> str | None:
     return f"Unstructured URL is not allowed ({reason})"
 
 
+def _checked_redirect_target(url: str, response: requests.Response) -> str:
+    """Where a redirect from ``url`` points, once the guard allows it.
+
+    Raises:
+        RedirectRefused: the Location cannot be parsed, its host does not
+            resolve, or the guard refuses it.
+    """
+    try:
+        next_url = urljoin(url, response.headers["Location"])
+    except ValueError:
+        raise RedirectUnparseable("unparseable Location") from None
+    if reason := refusal_reason(next_url):
+        if reason == UNRESOLVABLE:
+            raise RedirectUnresolvable(reason)
+        raise RedirectNotAllowed(reason)
+    return next_url
+
+
 def post(
     url: str,
     *,
@@ -218,14 +236,7 @@ def post(
         if not response.is_redirect:
             return response
         response.close()
-        try:
-            next_url = urljoin(url, response.headers["Location"])
-        except ValueError:
-            raise RedirectUnparseable("unparseable Location") from None
-        if reason := refusal_reason(next_url):
-            if reason == UNRESOLVABLE:
-                raise RedirectUnresolvable(reason)
-            raise RedirectNotAllowed(reason)
+        next_url = _checked_redirect_target(url, response)
         if _STRIP_AUTH.should_strip_auth(url, next_url):
             # The key is for the origin the adapter names. Same rule requests
             # applies to Authorization: dropped on a host, scheme or port
