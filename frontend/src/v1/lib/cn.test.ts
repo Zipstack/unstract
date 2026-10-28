@@ -15,3 +15,16 @@ it("keeps unrelated and variant classes", () => {
 it("leaves unprefixed classes alone, so the merge is scoped to the ui prefix", () => {
   expect(cn("p-2 p-4")).toBe("p-2 p-4");
 });
+
+it("keeps a type role beside a text colour, and lets the last of two roles win", () => {
+  expect(cn("ui:text-body ui:text-foreground")).toBe(
+    "ui:text-body ui:text-foreground",
+  );
+  expect(cn("ui:text-body-small ui:text-muted-foreground")).toBe(
+    "ui:text-body-small ui:text-muted-foreground",
+  );
+  expect(cn("ui:text-caption ui:text-primary")).toBe(
+    "ui:text-caption ui:text-primary",
+  );
+  expect(cn("ui:text-body ui:text-caption")).toBe("ui:text-caption");
+});

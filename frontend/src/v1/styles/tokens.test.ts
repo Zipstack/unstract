@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { TYPE_ROLES } from "@v1/lib/cn";
 import { THEME_MODES } from "@v1/lib/theme";
 import { renderTokensCss, renderTokenTable } from "@v1/lib/tokens";
 import { expect, it } from "vitest";
@@ -73,6 +74,15 @@ it("covers the families the board defines", () => {
   }
   expect(byFamily("font")).toEqual(["font-sans", "font-mono"]);
   expect(byFamily("focus")).toEqual(["focus-ring-width", "focus-ring-alpha"]);
+});
+
+it("cn's type roles are exactly the roles of the type family, in order", () => {
+  const roles = TOKENS.filter((t) => t.family === "type").map((t) =>
+    t.name
+      .replace(/^type-/, "")
+      .replace(/-(size|line-height|weight|tracking)$/, ""),
+  );
+  expect([...TYPE_ROLES]).toEqual([...new Set(roles)]);
 });
 
 it("Unstract mode is the navy theme from the collection, not a copy of light", () => {
