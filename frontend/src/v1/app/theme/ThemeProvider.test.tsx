@@ -53,15 +53,20 @@ it("follows the system preference while set to system and stops after an explici
     </ThemeProvider>,
   );
   const root = screen.getByText("hi").parentElement as HTMLElement;
+  // Created before any change, so only the [mode] effect can update it.
+  const portal = getPortalContainer();
+  expect(portal.dataset.theme).toBe("light");
   act(() => {
     for (const l of listeners) {
       l({ matches: true });
     }
   });
   expect(root.dataset.theme).toBe("dark");
+  expect(portal.dataset.theme).toBe("dark");
   act(() => {
     useThemeStore.getState().setPreference("light");
   });
+  expect(portal.dataset.theme).toBe("light");
   act(() => {
     for (const l of listeners) {
       l({ matches: false });
@@ -73,7 +78,8 @@ it("follows the system preference while set to system and stops after an explici
     }
   });
   expect(root.dataset.theme).toBe("light");
-  expect(getPortalContainer().dataset.theme).toBe("light");
+  expect(portal.dataset.theme).toBe("light");
+  expect(getPortalContainer()).toBe(portal);
 });
 
 it("removes the media listener on unmount", () => {
