@@ -51,8 +51,10 @@ const ManageKeys = ({
   const [openDeleteModal, setOpenDeleteModal] = useState(false);
   const [visibleKeyIds, setVisibleKeyIds] = useState(new Set());
 
-  // The modal stays mounted between deployments, so a key revealed for one
-  // must not still be showing when the modal next opens.
+  // ManageKeys stays mounted while the modal is closed (its callers render it
+  // unconditionally), so a key revealed for one deployment or pipeline must not
+  // still be showing when the modal next opens. Clearing on close means a
+  // revealed key is masked again while the modal fades out; that is intended.
   useEffect(() => {
     if (!isDialogOpen) {
       setVisibleKeyIds(new Set());

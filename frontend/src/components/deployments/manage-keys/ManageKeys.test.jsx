@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
@@ -82,6 +88,28 @@ describe("ManageKeys key column", () => {
 
     fireEvent.click(screen.getByLabelText("Hide API key"));
     expect(document.body.innerHTML).not.toContain(FULL_KEY);
+  });
+
+  it("reveals only the row that was asked for", async () => {
+    const OTHER_KEY = "095d76b2-2589-488b-98e6-e2d9981dade4";
+    renderKeys({
+      apiKeys: [
+        ...KEYS,
+        {
+          id: "key-2",
+          description: "Batch",
+          api_key: OTHER_KEY,
+          is_active: true,
+        },
+      ],
+    });
+
+    const firstRow = (await screen.findByText("CI")).closest("tr");
+    fireEvent.click(within(firstRow).getByLabelText("Show API key"));
+
+    expect(screen.getByText(FULL_KEY)).toBeInTheDocument();
+    expect(screen.getByText("••••••••ade4")).toBeInTheDocument();
+    expect(document.body.innerHTML).not.toContain(OTHER_KEY);
   });
 
   it("masks a revealed key again when the modal is reopened", async () => {
