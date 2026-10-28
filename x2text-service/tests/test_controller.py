@@ -320,3 +320,22 @@ def test_block_mode_unresolvable_hop_is_labelled_so(client, block_private, caplo
     assert r.status_code == 400
     assert r.get_json()["detail"] == unstructured_url.RedirectUnresolvable.user_message
     assert "unresolvable" in caplog.text
+
+
+@pytest.mark.parametrize(
+    ("error", "level"),
+    [
+        (requests.ConnectionError(), "WARNING"),
+        (requests.exceptions.InvalidURL(), "WARNING"),
+        (requests.exceptions.SSLError(), "ERROR"),
+        (requests.exceptions.ProxyError(), "ERROR"),
+        (requests.exceptions.ChunkedEncodingError(), "ERROR"),
+    ],
+)
+def test_transport_error_level_separates_adapter_from_egress(
+    client, audit, caplog, error, level
+):
+    with mock.patch.object(controller.requests, "request", side_effect=error):
+        _post(client, "/x2text/process", "http://localhost:8000/x", with_file=True)
+    [record] = [r for r in caplog.records if "could not reach" in r.getMessage()]
+    assert record.levelname == level

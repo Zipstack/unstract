@@ -49,6 +49,37 @@ def _status_detail(status: int) -> str:
     return f"Unstructured API returned HTTP {status}{hint}"
 
 
+# What a wrong or unreachable adapter URL raises: the tenant's to fix, so a
+# warning. SSL and proxy errors subclass ConnectionError but point at this
+# service's own egress, so they stay errors along with every other transport
+# fault (a reset mid-body, too many redirects, ...).
+_ADAPTER_URL_ERRORS = (
+    requests.ConnectionError,
+    requests.exceptions.InvalidURL,
+    requests.exceptions.MissingSchema,
+    requests.exceptions.InvalidSchema,
+)
+_EGRESS_ERRORS = (requests.exceptions.SSLError, requests.exceptions.ProxyError)
+
+
+def _log_transport_error(what: str, error: requests.RequestException, url: str) -> None:
+    """Log a transport failure by type and host only.
+
+    Neither ``str(error)`` nor the traceback: both carry the full URL, query
+    string (and any key in it) included.
+    """
+    expected = isinstance(error, _ADAPTER_URL_ERRORS) and not isinstance(
+        error, _EGRESS_ERRORS
+    )
+    logging.log(
+        logging.WARNING if expected else logging.ERROR,
+        "%s could not reach the Unstructured API: %s (host=%s)",
+        what,
+        type(error).__name__,
+        safe_host(url),
+    )
+
+
 def _redirect_refused(error: RedirectRefused, url: str) -> tuple[dict[str, str], int]:
     logging.warning("Redirect refused: %s (host=%s)", error, safe_host(url))
     # A fixed string chosen by the exception's class, never its text.
@@ -103,14 +134,7 @@ def test_connection() -> Any:
         logging.error("Test connection timed out waiting for the Unstructured API")
         return _error(TIMED_OUT, 504)
     except requests.RequestException as e:
-        # An expected outcome of a wrong or unreachable adapter URL, so a
-        # warning without the traceback. Neither ``str(e)`` nor the traceback:
-        # both carry the full URL, query string (and any key in it) included.
-        logging.warning(
-            "Test connection could not reach the Unstructured API: %s (host=%s)",
-            type(e).__name__,
-            safe_host(url),
-        )
+        _log_transport_error("Test connection", e, url)
         return _error(UNREACHABLE)
     except Exception:
         logging.exception("Test connection failed (host=%s)", safe_host(url))
@@ -179,12 +203,7 @@ def process() -> Any:
     except requests.RequestException as e:
         x2_text_audit.status = "Failed"
         x2_text_audit.save()
-        # As in test_connection: expected, and the traceback would carry the URL.
-        logging.warning(
-            "Text extraction could not reach the Unstructured API: %s (host=%s)",
-            type(e).__name__,
-            safe_host(url),
-        )
+        _log_transport_error("Text extraction", e, url)
         return _error(UNREACHABLE, 502)
     if response.ok:
         json_response = response.json()
