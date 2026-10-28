@@ -4,8 +4,9 @@
  * check-v1.mjs; the rules and their reasons are in src/v1/README.md.
  *
  *   S1  No inline style (a JSX `style` attribute).
- *   S2  No raw colour: hex, rgb()/hsl()/oklch()/oklab()/color(), or a
- *       Tailwind palette utility (`-red-500`, `-white`).
+ *   S2  No raw colour: hex, rgb()/hsl()/oklch()/oklab()/color(), a
+ *       Tailwind palette utility (`-red-500`, `-white`), or a named colour
+ *       as an arbitrary value (`text-[red]`, `[color:tomato]`).
  *   S3  No raw pixel value: `[13px]` or `[100vh]` arbitrary values, or
  *       px/rem/em/pt in CSS.
  *   S4  No !important: a `!` class modifier, or `!important` in CSS.
@@ -13,14 +14,17 @@
  *   S6  Every CSS selector starts with `.v1`, except inside @theme, @utility,
  *       @custom-variant, @font-face and @keyframes.
  *   S7  CSS never reads prefers-color-scheme; data-theme sets the mode.
- *   S8  Every Tailwind utility carries the `ui:` prefix. v0's stylesheet also
- *       scans src/v1, so an unprefixed class would render with v0's theme.
+ *   S8  Every Tailwind utility carries the `ui:` prefix. An unprefixed class
+ *       in v1 renders with v0's theme whenever v0 already uses that class
+ *       name, and silently does nothing otherwise.
  *
  * In TypeScript, S2 to S4 and S8 read only class strings: string and template
  * literals that look like a class list (see isClassString), so a non-null `!`,
  * a hex-looking identifier or a value such as "outline" or "pt-BR" never
- * matches. Test files and styles/tokens.ts (the raw values, by design) are
- * skipped for them. S1 matches only a JSX `style=` attribute.
+ * matches. One S2 check reads every literal: a string that is entirely a
+ * colour (`fill="#ff0000"`, "rgb(1 2 3)") fails wherever it appears, while
+ * "Run #1234" does not. Test files and styles/tokens.ts (the raw values, by
+ * design) are skipped for them. S1 matches only a JSX `style=` attribute.
  * In CSS, comments are blanked first; the generated styles/tokens.css is
  * skipped for S2 and S3 only.
  *
@@ -59,7 +63,7 @@ const MSG = {
   colourScheme:
     "v1 never reads prefers-color-scheme in CSS; mode comes from data-theme.",
   unprefixed:
-    "No unprefixed Tailwind utility under v1; write ui:<utility>. v0's stylesheet also scans src/v1, so an unprefixed class would render with v0's theme.",
+    "No unprefixed Tailwind utility under v1; write ui:<utility>. An unprefixed class renders with v0's theme whenever v0 already uses that class name, and silently does nothing otherwise.",
 };
 
 const PALETTE =
@@ -70,6 +74,51 @@ const RAW_COLOUR_RES = [
   new RegExp(String.raw`-(?:${PALETTE})-\d{2,3}(?![\w-])`, "g"),
   /-(?:white|black)(?![\w-])/g,
 ];
+// A literal that is nothing but a colour: `fill="#ff0000"`, "rgb(1 2 3)".
+const WHOLE_COLOUR_RES = [
+  /^#[0-9a-fA-F]{3,8}$/,
+  /^(?:rgba?|hsla?|oklch|oklab|color)\(/,
+];
+// CSS named colours an arbitrary value might carry. Not all 148: the common
+// ones. transparent and currentcolor are listed but allowed (see below).
+const NAMED_COLOURS = new Set([
+  "black",
+  "white",
+  "red",
+  "green",
+  "blue",
+  "yellow",
+  "orange",
+  "purple",
+  "pink",
+  "gray",
+  "grey",
+  "silver",
+  "tomato",
+  "navy",
+  "teal",
+  "maroon",
+  "olive",
+  "lime",
+  "aqua",
+  "cyan",
+  "magenta",
+  "fuchsia",
+  "gold",
+  "indigo",
+  "violet",
+  "brown",
+  "coral",
+  "crimson",
+  "salmon",
+  "transparent",
+  "currentcolor",
+]);
+// The focus utility and shadcn patterns use these, so they stay allowed.
+const ALLOWED_NAMED_COLOURS = new Set(["transparent", "currentcolor"]);
+// An arbitrary value holding one word, after an optional `property:` label:
+// `text-[red]`, `[color:tomato]`, `bg-[color:navy]`.
+const ARBITRARY_WORD_RE = /(?:-|(?<![\w-]))\[(?:[\w-]+:)?([a-zA-Z]+)\]/g;
 // A Tailwind arbitrary value in a unit: `w-[13px]`, `p-[1.5rem]`, `h-[100vh]`.
 const ARBITRARY_UNIT_RE = /\[[^\]\s]*\d(?:px|rem|em|vh|vw|pt)\]/g;
 // A CSS length in a unit: `3px`, `.5rem`, `-1em`.
@@ -282,7 +331,8 @@ function isUnprefixedUtility(token) {
 }
 
 const DEFINITE_CLASS_RES = [
-  /^!?ui:/,
+  // `ui:` first or after a variant: `ui:p-2`, `!ui:p-2`, `md:ui:h-8!`.
+  /(?:^!?|:)ui:/,
   /-\[[^\]]*\]/,
   new RegExp(String.raw`-(?:${PALETTE})-\d{2,3}(?![\w-])`),
 ];
@@ -436,11 +486,22 @@ function checkCode(rel) {
     textById.set(id, `${textById.get(id) ?? ""} ${t}`);
   }
   for (const literal of pieces) {
+    const trimmed = literal.text.trim();
+    if (WHOLE_COLOUR_RES.some((re) => re.test(trimmed))) {
+      report(rel, lineAt(text, literal.index), MSG.colour);
+      continue;
+    }
     if (!isClassString(textById.get(literal.id))) {
       continue;
     }
     for (const re of RAW_COLOUR_RES) {
       for (const m of literal.text.matchAll(re)) {
+        report(rel, lineAt(text, literal.index + m.index), MSG.colour);
+      }
+    }
+    for (const m of literal.text.matchAll(ARBITRARY_WORD_RE)) {
+      const word = m[1].toLowerCase();
+      if (NAMED_COLOURS.has(word) && !ALLOWED_NAMED_COLOURS.has(word)) {
         report(rel, lineAt(text, literal.index + m.index), MSG.colour);
       }
     }

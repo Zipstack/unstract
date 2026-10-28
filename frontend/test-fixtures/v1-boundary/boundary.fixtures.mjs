@@ -86,8 +86,11 @@ const CASES = parseTable(`
   v1-inline-style                | lint:v1         | No inline style under v1
   v1-raw-colour-palette          | lint:v1         | No raw colour under v1
   v1-raw-colour-arbitrary        | lint:v1         | No raw colour under v1
+  v1-raw-colour-prop             | lint:v1         | No raw colour under v1
+  v1-raw-colour-named            | lint:v1         | No raw colour under v1
   v1-raw-pixel-arbitrary         | lint:v1         | No raw pixel value under v1
   v1-important-utility           | lint:v1         | No !important under v1
+  v1-important-variant-utility   | lint:v1         | No !important under v1
   v1-important-css               | lint:v1         | No !important under v1
   v1-css-import-from-page        | lint:v1         | CSS is imported only from app/ and styles/
   v1-styles-raw-colour           | lint:v1         | No raw colour under v1
