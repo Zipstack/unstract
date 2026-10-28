@@ -13,10 +13,10 @@ it("every token is defined in every mode with a non-empty value", () => {
   }
 });
 
-it("token names and CSS variables are unique and runtime variables never use Tailwind's --v1- namespace", () => {
+it("token names and CSS variables are unique and runtime variables never use Tailwind's --ui- namespace", () => {
   expect(new Set(TOKENS.map((t) => t.name)).size).toBe(TOKENS.length);
   expect(new Set(TOKENS.map((t) => t.cssVar)).size).toBe(TOKENS.length);
-  expect(TOKENS.filter((t) => t.cssVar.startsWith("--v1-"))).toEqual([]);
+  expect(TOKENS.filter((t) => t.cssVar.startsWith("--ui-"))).toEqual([]);
 });
 
 it("covers the families the board defines", () => {

@@ -10,14 +10,14 @@ const radius: Token = {
   family: "radius",
   name: "radius-sm",
   cssVar: "--radius-sm",
-  utility: "v1:rounded-sm",
+  utility: "ui:rounded-sm",
   values: sameInEveryMode("6px"),
 };
 const bg: Token = {
   family: "colour",
   name: "background",
   cssVar: "--background",
-  utility: "v1:bg-background",
+  utility: "ui:bg-background",
   values: { light: "#fafafa", dark: "#1a1a1a", unstract: "#0f0a1f" },
 };
 
@@ -36,6 +36,6 @@ it("renders the gallery table with one row per token", () => {
     "| Family | Token | CSS variable | Utility | Light | Dark | Unstract |",
   );
   expect(table).toContain(
-    "| colour | background | `--background` | `v1:bg-background` | #fafafa | #1a1a1a | #0f0a1f |",
+    "| colour | background | `--background` | `ui:bg-background` | #fafafa | #1a1a1a | #0f0a1f |",
   );
 });
