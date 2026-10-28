@@ -9,14 +9,31 @@ it, so it keeps its own copies of these literals -- including in production
 code (``workers/executor/tasks.py``'s billing gate), where the agreement is
 held only by a test that parses that file as text.
 
-OPEN QUESTION, deliberately recorded rather than answered: ``unstract/core`` is
-Django-free, is already an editable dependency of both ``backend`` and
-``workers``, and already hosts a shared enum moved there for this exact reason
-(see ``workers/shared/enums.py``'s note on ``AuthorizationType``). Only the two
-``TextChoices`` classes here need Django. That is plausibly the better home and
-would let the worker tier derive rather than copy; it was not chosen, and the
-choice has not been argued either way. Decide it before a second package
-copies this pattern.
+WHY NOT ``unstract/core``, which both tiers already depend on. It was the
+obvious alternative and was rejected on three grounds, recorded here so the
+next reader does not have to re-derive them.
+
+First, moving this would not remove the duplication it appears to remove.
+``workers/executor/tasks.py``'s ``_LLM_BEARING_OPS`` holds five operations and
+four of them are not extractor agents at all, so the set would become "derived
+from the catalogue, union four hand-maintained literals". The twin-literal
+failure class survives the move; it shrinks.
+
+Second, ``unstract-core`` is a dependency of ten packages here -- the tool
+sandbox, the runner and the platform service among them. Six of the columns on
+``ExtractorAgentSpec`` are read only by the Studio. Putting Studio product
+configuration in that package would place every catalogue edit in the
+dependency graph of services that have no interest in a placeholder token.
+
+Third, the shapes differ. This catalogue answers which agent each BACKEND door
+dispatches and how the Studio configures it. The worker tier needs two much
+narrower facts: which operations are paid, and which queues exist. Sharing
+twelve columns to share two is the wrong trade.
+
+If the worker-tier duplication is to go, what belongs in ``unstract/core`` is
+the operation and executor NAME VOCABULARY alone, not this table -- a smaller
+change, and the one that would actually fix the missing billing alarm. That is
+UN-4528's business, not this package's.
 
 Per-field test coverage of the cross-tier agreement is uneven and worth knowing
 before relying on it: ``agent_kv/tests/test_queue_wiring_is_derived.py`` covers
