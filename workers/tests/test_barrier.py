@@ -777,8 +777,9 @@ class TestAutoEnableHighlightOrchestration:
     """HITL confidence rules set ``auto_enable_highlight`` (UN-4435).
 
     The orchestrators check their own flow's rules once (API deployments the
-    API rules, only for a ``hitl_queue_name`` request; the rest the DB rules)
-    and put the flag in ``manual_review_config``, which the file workers read.
+    API rules, only for a ``hitl_queue_name`` request without a
+    ``hitl_packet_id``; the rest the DB rules) and put the flag in
+    ``manual_review_config``, which the file workers read.
     """
 
     @staticmethod

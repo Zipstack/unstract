@@ -674,6 +674,8 @@ def _run_workflow_api(
     # a hitl_packet_id skips rule evaluation, so highlight would go unused.
     # ponytail: the API + file-history path evaluates DB rules, which this
     # check does not cover; add a "DB" check there if that path needs it.
+    # Highlight adds confidence_data, line_numbers and whisper_hash to the
+    # result metadata, which include_metadata callers receive.
     auto_enable_highlight = (
         bool(kwargs.get("hitl_queue_name"))
         and not kwargs.get("hitl_packet_id")

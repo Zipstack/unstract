@@ -1044,8 +1044,6 @@ class WorkerWorkflowExecutionService:
         tool_instance = execution_service.tool_instances[0]
         file_handler = execution_service.file_handler
 
-        tool_instance_metadata = tool_instance.metadata
-
         # Read metadata from METADATA.json for file_hash and exec_metadata
         metadata = {}
         try:
@@ -1063,7 +1061,7 @@ class WorkerWorkflowExecutionService:
             "workflow_id": execution_service.workflow_id,
             "execution_id": execution_service.execution_id,
             "file_execution_id": execution_service.file_execution_id,
-            "tool_instance_metadata": tool_instance_metadata,
+            "tool_instance_metadata": tool_instance.metadata,
             "platform_service_api_key": platform_api_key,
             "input_file_path": str(file_handler.infile),
             "output_dir_path": str(file_handler.execution_dir),
