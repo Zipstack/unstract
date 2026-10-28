@@ -169,7 +169,9 @@ function CreateNotification({
     {
       label: "Authorization Key",
       name: "authorization_key",
-      component: <Input />,
+      // A credential: masked until revealed. new-password keeps the browser
+      // from filling a saved login password into it.
+      component: <Input.Password autoComplete="new-password" />,
       tooltip:
         "Provide the authorization key used to validate the notification.",
       rules:
