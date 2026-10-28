@@ -5,9 +5,14 @@ configure, and this service POSTs the uploaded document to it. The shared guard
 in ``unstract.core.network.ssrf`` decides whether that URL may be dialled.
 
 Whether a private, loopback or link-local destination is allowed depends on the
-deployment. Self-hosted (OSS and on-prem) installs routinely run Unstructured on
-localhost or a private host, so it is allowed by default. A multi-tenant
-deployment must refuse it by setting ``UNSTRUCTURED_URL_ALLOW_PRIVATE=false``.
+deployment. docker-compose (OSS) installs routinely run Unstructured on
+localhost or a private host, so it is allowed when the setting is unset. Helm
+deployments refuse it by setting ``UNSTRUCTURED_URL_ALLOW_PRIVATE=false`` in the
+chart's values.
+
+Redirects follow the same rule. Where private destinations are allowed they
+are followed as ``requests`` always did. Where they are refused, each hop is
+checked with the same guard before it is dialled, up to ``MAX_REDIRECTS``.
 
 With private destinations refused, the name is resolved here and again by
 ``requests``, so a name re-resolved to an internal address in between is not
@@ -17,6 +22,11 @@ caught. The control for that is an egress policy on the pods (see ``ssrf.py``).
 import logging
 import math
 import os
+from collections.abc import Callable
+from typing import Any
+from urllib.parse import urljoin, urlparse
+
+import requests
 
 from unstract.core.network.ssrf import (
     REFUSED_INTERNAL_LITERAL,
@@ -40,14 +50,22 @@ CONNECT_TIMEOUT = 10.0
 # wait default for LLMWhisperer (ADAPTER_LLMW_WAIT_TIMEOUT, 900s).
 #
 # It only takes effect while gunicorn lets the request run. The sync worker in
-# x2text.Dockerfile is killed at its --timeout (930s), so that must stay above
-# this; the Helm chart's gthread workers are not killed by a long request.
+# x2text.Dockerfile's CMD is killed once busy past --timeout (930s), so that
+# must stay above this. The Helm chart's gthread workers keep heartbeating
+# during a request, so its --timeout does not end long calls.
 DEFAULT_READ_TIMEOUT = 900.0
 # A sanity bound: a day is far beyond any real extraction. (Far larger values,
 # around 1e10, overflow CPython's socket timeout.)
 MAX_READ_TIMEOUT = 86400.0
 
 _TRUE_VALUES = ("1", "true", "yes")
+
+MAX_REDIRECTS = 5
+API_KEY_HEADER = "unstructured-api-key"
+
+
+class RedirectRefused(Exception):
+    """A redirect from the Unstructured API that will not be followed."""
 
 
 def allow_private() -> bool:
@@ -120,3 +138,60 @@ def refusal_message(url: str) -> str | None:
             "address, which is not allowed on this deployment"
         )
     return f"Unstructured URL is not allowed ({reason})"
+
+
+def post(
+    url: str,
+    *,
+    headers: dict[str, Any],
+    data: Any,
+    files: Callable[[], Any],
+) -> requests.Response:
+    """POST to the Unstructured API at ``url``, which the caller has checked.
+
+    ``files`` builds the multipart files afresh, because a 307/308 replays the
+    body and a file stream is consumed by each send.
+
+    Raises:
+        RedirectRefused: private destinations are refused and a hop is not
+            allowed, or there are more than ``MAX_REDIRECTS`` of them.
+        requests.RequestException: as ``requests`` raises it.
+    """
+    timeout = request_timeout()
+    if allow_private():
+        # Unchanged from before the guard: requests follows redirects itself.
+        return requests.request(
+            "POST", url, headers=headers, data=data, files=files(), timeout=timeout
+        )
+
+    method, body, upload = "POST", data, files()
+    for _ in range(MAX_REDIRECTS + 1):
+        response = requests.request(
+            method,
+            url,
+            headers=headers,
+            data=body,
+            files=upload,
+            timeout=timeout,
+            allow_redirects=False,
+        )
+        if not response.is_redirect:
+            return response
+        response.close()
+        next_url = urljoin(url, response.headers["Location"])
+        if refusal := refusal_message(next_url):
+            raise RedirectRefused(f"Redirect refused: {refusal}")
+        if urlparse(next_url).hostname != urlparse(url).hostname:
+            # The key is for the host the adapter names, not wherever it sends
+            # us; requests drops Authorization on a host change for the same
+            # reason.
+            headers = {k: v for k, v in headers.items() if k.lower() != API_KEY_HEADER}
+        if response.status_code in (301, 302, 303):
+            # What requests does: these turn a POST into a GET with no body.
+            method, body, upload = "GET", None, None
+        elif upload is not None:
+            upload = files()
+        url = next_url
+    raise RedirectRefused(
+        f"More than {MAX_REDIRECTS} redirects from the Unstructured API"
+    )

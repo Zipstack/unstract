@@ -76,9 +76,13 @@ ARG VERSION=dev
 ENV UNSTRACT_APPS_VERSION=${VERSION}
 
 # During debugging, this entry point will be overridden.
-# --timeout stays above the Unstructured read timeout (UNSTRUCTURED_REQUEST_TIMEOUT,
-# 900s by default), so a call that spends its time in processing ends in a 504
-# rather than a killed sync worker; the 30s of headroom also has to cover the
-# connect and the upload. This runs one sync worker, so a long call holds it and
-# other requests queue; set GUNICORN_CMD_ARGS (e.g. "--workers 4") for more.
+# This CMD runs gunicorn's default sync worker, which the arbiter kills once it
+# has been busy in one request for longer than --timeout. 930s keeps that above
+# the Unstructured read timeout (UNSTRUCTURED_REQUEST_TIMEOUT, 900s default), so
+# a call that spends its time in processing ends in a 504 rather than a killed
+# worker; the 30s of headroom also has to cover the connect and the upload.
+# (The Helm chart runs its own entrypoint with gthread workers, which keep
+# heartbeating during a request, so --timeout does not end long calls there.)
+# One sync worker means a long call holds it; GUNICORN_CMD_ARGS="--workers 4"
+# adds workers, but cannot override --timeout, which is set here on the CLI.
 CMD [".venv/bin/gunicorn", "--bind", "0.0.0.0:3004", "--timeout", "930", "run:app"]

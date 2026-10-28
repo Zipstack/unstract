@@ -20,7 +20,9 @@ def client(monkeypatch):
     app = Flask(__name__)
     app.register_blueprint(controller.basic, url_prefix="/x2text")
     with (
-        mock.patch.object(am.AuthenticationMiddleware, "validate_bearer_token", return_value=True),
+        mock.patch.object(
+            am.AuthenticationMiddleware, "validate_bearer_token", return_value=True
+        ),
         mock.patch.object(
             am.AuthenticationMiddleware,
             "get_organization_from_bearer_token",
@@ -40,6 +42,7 @@ def _response(status, text="", headers=None):
     r = requests.models.Response()
     r.status_code = status
     r._content = text.encode()
+    r._content_consumed = True  # as after a real read; close() then skips raw
     r.headers.update(headers or {})
     return r
 
@@ -59,7 +62,9 @@ def _post(client, path, url, with_file=False):
 @pytest.mark.parametrize(
     ("path", "with_file"), [("/x2text/test-connection", False), ("/x2text/process", True)]
 )
-def test_refused_url_is_400_and_never_dialled(client, audit, monkeypatch, path, with_file):
+def test_refused_url_is_400_and_never_dialled(
+    client, audit, monkeypatch, path, with_file
+):
     monkeypatch.setenv("UNSTRUCTURED_URL_ALLOW_PRIVATE", "false")
     with mock.patch.object(controller.requests, "request") as upstream:
         r = _post(client, path, "http://169.254.169.254/latest/meta-data", with_file)
@@ -80,28 +85,92 @@ def test_test_connection_upstream_body_is_json_and_not_in_detail(client):
         "detail": "Unstructured API returned HTTP 401; check the API key",
     }
     assert rq.call_args.kwargs["timeout"] == TIMEOUT
-    assert rq.call_args.kwargs["allow_redirects"] is False
+    # Default mode: requests follows redirects itself, as before the guard.
+    assert "allow_redirects" not in rq.call_args.kwargs
 
 
 def test_test_connection_timeout_is_504(client):
-    with mock.patch.object(controller.requests, "request", side_effect=requests.ReadTimeout()):
+    with mock.patch.object(
+        controller.requests, "request", side_effect=requests.ReadTimeout()
+    ):
         r = _post(client, "/x2text/test-connection", "http://localhost:8000/x")
     assert r.status_code == 504
     assert r.get_json()["detail"] == controller.TIMED_OUT
 
 
+PUBLIC = "http://93.184.215.14/general/v0/general"
+OTHER_PUBLIC = "http://93.184.215.15/general/v0/general"
+
+
+@pytest.fixture
+def block_private(monkeypatch):
+    monkeypatch.setenv("UNSTRUCTURED_URL_ALLOW_PRIVATE", "false")
+
+
 @pytest.mark.parametrize(
     ("path", "with_file"), [("/x2text/test-connection", False), ("/x2text/process", True)]
 )
-def test_redirect_is_refused(client, audit, path, with_file):
-    upstream = _response(307, "", {"Location": "http://169.254.169.254/"})
-    with mock.patch.object(controller.requests, "request", return_value=upstream):
-        r = _post(client, path, "http://localhost:8000/x", with_file)
+def test_block_mode_refuses_redirect_to_private(
+    client, audit, block_private, path, with_file
+):
+    upstream = _response(307, "", {"Location": "http://169.254.169.254/latest"})
+    with mock.patch.object(controller.requests, "request", return_value=upstream) as rq:
+        r = _post(client, path, PUBLIC, with_file)
     assert r.status_code == 400
-    assert r.get_json()["detail"] == controller.REDIRECT_REFUSED
+    assert "private" in r.get_json()["detail"]
+    assert rq.call_count == 1
+    assert rq.call_args.kwargs["allow_redirects"] is False
     if with_file:
         assert audit.status == "Failed"
         audit.save.assert_called()
+
+
+def test_block_mode_follows_allowed_307_replaying_upload(client, audit, block_private):
+    hop = _response(307, "", {"Location": "/v1/general"})
+    done = _response(200, '[{"text": "hello"}]', {"Content-Type": "application/json"})
+    sent = []
+
+    def record(method, url, **kwargs):
+        sent.append((method, url, kwargs["files"]["files"][1].read()))
+        return [hop, done][len(sent) - 1]
+
+    with mock.patch.object(controller.requests, "request", side_effect=record):
+        r = _post(client, "/x2text/process", PUBLIC, with_file=True)
+    assert r.status_code == 200
+    assert r.data == b"hello"
+    assert sent == [
+        ("POST", PUBLIC, b"abc"),
+        ("POST", "http://93.184.215.14/v1/general", b"abc"),
+    ]
+
+
+def test_block_mode_303_becomes_get_and_cross_host_drops_key(client, block_private):
+    hop = _response(303, "", {"Location": OTHER_PUBLIC})
+    with mock.patch.object(
+        controller.requests, "request", side_effect=[hop, _response(400)]
+    ) as rq:
+        r = _post(client, "/x2text/test-connection", PUBLIC)
+    assert r.status_code == 200
+    second = rq.call_args_list[1]
+    assert second.args[:2] == ("GET", OTHER_PUBLIC)
+    assert second.kwargs["files"] is None
+    assert "unstructured-api-key" not in second.kwargs["headers"]
+    assert "unstructured-api-key" in rq.call_args_list[0].kwargs["headers"]
+
+
+def test_block_mode_caps_redirects(client, block_private):
+    loop = _response(302, "", {"Location": PUBLIC})
+    with mock.patch.object(controller.requests, "request", return_value=loop) as rq:
+        r = _post(client, "/x2text/test-connection", PUBLIC)
+    assert r.status_code == 400
+    assert "redirects" in r.get_json()["detail"]
+    assert rq.call_count == controller_max_redirects() + 1
+
+
+def controller_max_redirects():
+    from app import unstructured_url
+
+    return unstructured_url.MAX_REDIRECTS
 
 
 @pytest.mark.parametrize(
@@ -125,11 +194,14 @@ def test_process_success_unchanged(client, audit):
     assert r.data == b"hello"
     assert audit.status == "Success"
     assert rq.call_args.kwargs["timeout"] == TIMEOUT
-    assert rq.call_args.kwargs["allow_redirects"] is False
+    # Default mode: requests follows redirects itself, as before the guard.
+    assert "allow_redirects" not in rq.call_args.kwargs
 
 
 def test_test_connection_unreachable_has_detail(client):
-    with mock.patch.object(controller.requests, "request", side_effect=requests.ConnectionError()):
+    with mock.patch.object(
+        controller.requests, "request", side_effect=requests.ConnectionError()
+    ):
         r = _post(client, "/x2text/test-connection", "http://localhost:8000/x")
     assert r.status_code == 400
     assert r.get_json()["detail"] == controller.UNREACHABLE
@@ -138,7 +210,9 @@ def test_test_connection_unreachable_has_detail(client):
 @pytest.mark.parametrize(
     ("path", "with_file"), [("/x2text/test-connection", False), ("/x2text/process", True)]
 )
-@pytest.mark.parametrize("error_type", [requests.ConnectionError, requests.exceptions.InvalidURL])
+@pytest.mark.parametrize(
+    "error_type", [requests.ConnectionError, requests.exceptions.InvalidURL]
+)
 def test_transport_error_log_omits_url_query(
     client, audit, caplog, path, with_file, error_type
 ):
@@ -159,7 +233,9 @@ def test_test_connection_status_detail(client, status, hint):
 
 
 def test_test_connection_unexpected_error_has_detail(client):
-    with mock.patch.object(controller.requests, "request", side_effect=RuntimeError("boom")):
+    with mock.patch.object(
+        controller.requests, "request", side_effect=RuntimeError("boom")
+    ):
         r = _post(client, "/x2text/test-connection", "http://localhost:8000/x")
     assert r.status_code == 400
     assert r.get_json()["detail"] == "Test connection failed"

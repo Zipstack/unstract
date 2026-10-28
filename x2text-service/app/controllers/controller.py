@@ -12,7 +12,8 @@ from app.authentication_middleware import (
     authentication_middleware,
 )
 from app.models import X2TextAudit
-from app.unstructured_url import refusal_message, request_timeout
+from app.unstructured_url import RedirectRefused, refusal_message
+from app.unstructured_url import post as post_to_unstructured
 from app.util import X2TextUtil
 from unstract.core.network.ssrf import safe_host
 
@@ -25,13 +26,6 @@ logging.basicConfig(
 UNSTRUCTURED_URL = "unstructured-url"
 UNSTRUCTURED_API_KEY = "unstructured-api-key"
 
-# Redirects are not followed: the guard approved this URL, not wherever it
-# points next. That also refuses a 307/308 that requests used to replay, so an
-# adapter saved with a redirecting URL (http->https, trailing slash) has to be
-# updated to the final URL; the message says so.
-REDIRECT_REFUSED = (
-    "Unstructured URL redirected to another location; configure the final URL"
-)
 TIMED_OUT = "Timed out waiting for the Unstructured API"
 UNREACHABLE = "Unable to reach the Unstructured API"
 
@@ -55,13 +49,9 @@ def _status_detail(status: int) -> str:
     return f"Unstructured API returned HTTP {status}{hint}"
 
 
-def _redirect_refused(response: requests.Response) -> tuple[dict[str, str], int]:
-    logging.warning(
-        "Refusing redirect from the Unstructured API: %s -> host=%s",
-        response.status_code,
-        safe_host(response.headers.get("Location")),
-    )
-    return _error(REDIRECT_REFUSED)
+def _redirect_refused(error: RedirectRefused, url: str) -> tuple[dict[str, str], int]:
+    logging.warning("%s (host=%s)", error, safe_host(url))
+    return _error(str(error))
 
 
 @basic.route("/health", methods=["GET"])
@@ -87,21 +77,11 @@ def test_connection() -> Any:
         "unstructured-api-key": unstructured_api_key,
     }
 
-    files = {"files": ("test")}
-
     try:
-        response = requests.request(
-            "POST",
-            url,
-            headers=headers,
-            data=None,
-            files=files,
-            timeout=request_timeout(),
-            allow_redirects=False,
+        response = post_to_unstructured(
+            url, headers=headers, data=None, files=lambda: {"files": ("test")}
         )
 
-        if response.is_redirect:
-            return _redirect_refused(response)
         if response.status_code == 400:
             """Response is 400 as we are not sending a file to test connection.
 
@@ -116,6 +96,8 @@ def test_connection() -> Any:
             "message": response.text,
             "detail": _status_detail(response.status_code),
         }, response.status_code
+    except RedirectRefused as e:
+        return _redirect_refused(e, url)
     except requests.Timeout:
         logging.error("Test connection timed out waiting for the Unstructured API")
         return _error(TIMED_OUT, 504)
@@ -162,13 +144,16 @@ def process() -> Any:
         file_size_in_kb=round(file_size_in_kb, 2),
     )
 
-    files = {
-        "files": (
-            uploaded_file.filename,
-            uploaded_file.stream,
-            uploaded_file.content_type,
-        )
-    }
+    def files() -> dict[str, Any]:
+        # Rewound for each send: a 307/308 replays the upload.
+        uploaded_file.stream.seek(0)
+        return {
+            "files": (
+                uploaded_file.filename,
+                uploaded_file.stream,
+                uploaded_file.content_type,
+            )
+        }
 
     unstructured_api_key = X2TextUtil.get_value_for_key(UNSTRUCTURED_API_KEY, form_data)
     headers = {
@@ -178,15 +163,11 @@ def process() -> Any:
     payload = form_data
 
     try:
-        response = requests.request(
-            "POST",
-            url,
-            headers=headers,
-            data=payload,
-            files=files,
-            timeout=request_timeout(),
-            allow_redirects=False,
-        )
+        response = post_to_unstructured(url, headers=headers, data=payload, files=files)
+    except RedirectRefused as e:
+        x2_text_audit.status = "Failed"
+        x2_text_audit.save()
+        return _redirect_refused(e, url)
     except requests.Timeout:
         x2_text_audit.status = "Failed"
         x2_text_audit.save()
@@ -201,10 +182,6 @@ def process() -> Any:
             safe_host(url),
         )
         return _error(UNREACHABLE, 502)
-    if response.is_redirect:
-        x2_text_audit.status = "Failed"
-        x2_text_audit.save()
-        return _redirect_refused(response)
     if response.ok:
         json_response = response.json()
         response_text = X2TextUtil.get_text_content(json_response)
