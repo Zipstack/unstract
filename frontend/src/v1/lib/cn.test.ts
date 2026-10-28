@@ -11,3 +11,7 @@ it("keeps unrelated and variant classes", () => {
     "v1:flex v1:dark:bg-card v1:gap-2",
   );
 });
+
+it("leaves unprefixed classes alone, so the merge is scoped to the v1 prefix", () => {
+  expect(cn("p-2 p-4")).toBe("p-2 p-4");
+});
