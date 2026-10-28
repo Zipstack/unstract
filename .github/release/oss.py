@@ -9,6 +9,7 @@ Usage (OSS_REPO: a clone of the OSS repo with full history, tags and origin/rele
                                                         promote the OSS RC the cloud RC pins; prints the stable tag.
                                                         --stabilized (the promote that leaves every enabled cloud
                                                         target GA) also tags the OSS line stabilized/X.Y once
+reopen(): called by cloud Take RC build after an RC that reopens the cloud line builds.
 retire(): called by cloud Retire for each cloud line it retires.
 
 cut, rc and promote print one OSS tag on stdout. Every write is re-runnable: a tag already on the same commit is
@@ -244,6 +245,21 @@ def rc(oss, branch, slack_url=""):
             file=sys.stderr,
         )
     return tag
+
+
+def reopen(oss, branch):
+    """Delete OSS release/X.Y's stabilized/X.Y tag: its cloud line built a target with no GA yet, so the OSS line is
+    stabilizing again and its next main push catches up the plain fixes it skipped. Promote writes the tag again at
+    the line's last GA. A missing tag is a no-op. Summary lines.
+    """
+    mark = rs.STABILIZED + branch.removeprefix("release/")
+    if not rs._tag_commit(oss, mark):
+        return []
+    _push(oss, f":refs/tags/{mark}")
+    rm.git(oss, "tag", "-d", mark)
+    return [
+        f"- OSS `{branch}`: deleted `{mark}`, stabilizing until Promote's last GA tags it again"
+    ]
 
 
 # Known limit: force accepts an empty reason.

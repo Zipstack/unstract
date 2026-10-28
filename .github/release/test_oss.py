@@ -239,6 +239,23 @@ class Lines(unittest.TestCase):
         )
         self.assertEqual(self.remote("rev-parse", "stabilized/1.7^{commit}"), ga)
 
+    def test_reopen_deletes_the_stabilized_tag(self):
+        # Cloud Take RC built a target with no GA: the OSS line is stabilizing again. No tag is a no-op.
+        self.quiet(oss.cut, self.oss, "1.7")
+        self.assertEqual(oss.reopen(self.oss, "release/1.7"), [])
+        self.pin("ee-v1.7.0-rc.1", "v1.7.0-rc.1")
+        oss.promote(self.cloud, self.oss, "v1.7.0-rc.1", stabilized=True)
+        self.clone()
+        self.assertEqual(
+            oss.reopen(self.oss, "release/1.7"),
+            [
+                "- OSS `release/1.7`: deleted `stabilized/1.7`, stabilizing until Promote's last GA tags it again"
+            ],
+        )
+        self.assertEqual(self.remote("tag", "-l", "stabilized/*"), "")
+        self.assertEqual(self.remote("tag", "-l", "ee-v1.7.0"), "ee-v1.7.0")
+        self.assertEqual(oss.reopen(self.oss, "release/1.7"), [])  # a rerun
+
     def test_cli_stabilized_flag(self):
         self.quiet(oss.cut, self.oss, "1.7")
         self.pin("ee-v1.7.0-rc.1", "v1.7.0-rc.1")
@@ -1017,7 +1034,23 @@ class TakeRcVersion(Workflow):
         )
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertEqual(
-            self.read("output"), "tag=v1.7.0-rc.2\nbump=true\ntargets=cloud\n"
+            self.read("output"),
+            "tag=v1.7.0-rc.2\nbump=true\ntargets=cloud\nreopen=true\n",
+        )
+
+    def test_patch_rc_on_a_ga_line_does_not_reopen(self):
+        # Every enabled target (cloud) is GA: a cloud patch RC keeps the OSS line's stabilized tag.
+        self.line("1.7", "v1.7.0")
+        self.g(self.cloud, "checkout", "-q", "-b", "release/1.7", "origin/release/1.7")
+        r = self.run_step(
+            inline("take-rc-build.yaml", "Plan version and targets"),
+            BRANCH="release/1.7",
+            TARGETS="cloud",
+        )
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(
+            self.read("output"),
+            "tag=v1.7.1-rc.1\nbump=true\ntargets=cloud\nreopen=false\n",
         )
 
 

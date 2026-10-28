@@ -767,6 +767,19 @@ class Scenario(unittest.TestCase):
         # A later patch: oss.promote keeps the tag.
         self.assertTrue(rs.stabilizes(row(), "cloud"))
 
+    def test_44_reopens_when_a_built_target_has_no_ga(self):
+        # Take RC deletes the OSS line's stabilized tag when it builds a target with no GA on the line.
+        def row():
+            return self.branch(self.state(), "release/1.5")
+
+        self.s2()  # cloud GA, cloud only
+        self.assertFalse(rs.reopens(row(), ["cloud"]))  # a cloud patch RC
+        self.assertTrue(rs.reopens(row(), ["on-prem"]))  # on-prem enabled late
+        self.assertTrue(rs.reopens(row(), ["cloud", "on-prem"]))
+        self.push("on-prem/backend", "v1.5.1-rc.1", git_ref="release/1.5")
+        self.push("chart/unstract-platform", "1.5.1")  # on-prem GA too
+        self.assertFalse(rs.reopens(row(), ["cloud", "on-prem"]))
+
     def test_26_oss_repo_config(self):
         # The OSS repo runs this same file: one target, oss, read from the line's own ee- git tags (no registry),
         # supported while its branch exists once its stabilized/X.Y tag is there. Plain v* tags are community releases from main and never count.
