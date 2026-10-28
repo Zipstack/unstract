@@ -77,7 +77,7 @@ def test_test_connection_upstream_body_is_json_and_not_in_detail(client):
     # sdk1 shows ``detail`` to the user; the upstream body must not be in it.
     assert r.get_json() == {
         "message": "<script>x</script>",
-        "detail": "Unstructured API returned HTTP 401",
+        "detail": "Unstructured API returned HTTP 401; check the API key",
     }
     assert rq.call_args.kwargs["timeout"] == TIMEOUT
     assert rq.call_args.kwargs["allow_redirects"] is False
@@ -138,10 +138,28 @@ def test_test_connection_unreachable_has_detail(client):
 @pytest.mark.parametrize(
     ("path", "with_file"), [("/x2text/test-connection", False), ("/x2text/process", True)]
 )
-def test_transport_error_log_omits_url_query(client, audit, caplog, path, with_file):
+@pytest.mark.parametrize("error_type", [requests.ConnectionError, requests.exceptions.InvalidURL])
+def test_transport_error_log_omits_url_query(
+    client, audit, caplog, path, with_file, error_type
+):
     url = "http://localhost:8000/general?api_key=SECRET"
-    error = requests.ConnectionError(f"Max retries exceeded with url: {url}")
+    error = error_type(f"Max retries exceeded with url: {url}")
     with mock.patch.object(controller.requests, "request", side_effect=error):
         _post(client, path, url, with_file)
     assert "localhost" in caplog.text
     assert "SECRET" not in caplog.text
+
+
+@pytest.mark.parametrize(("status", "hint"), [(500, ""), (404, "; check the URL path")])
+def test_test_connection_status_detail(client, status, hint):
+    upstream = _response(status, "internal page")
+    with mock.patch.object(controller.requests, "request", return_value=upstream):
+        r = _post(client, "/x2text/test-connection", "http://localhost:8000/x")
+    assert r.get_json()["detail"] == f"Unstructured API returned HTTP {status}{hint}"
+
+
+def test_test_connection_unexpected_error_has_detail(client):
+    with mock.patch.object(controller.requests, "request", side_effect=RuntimeError("boom")):
+        r = _post(client, "/x2text/test-connection", "http://localhost:8000/x")
+    assert r.status_code == 400
+    assert r.get_json()["detail"] == "Test connection failed"

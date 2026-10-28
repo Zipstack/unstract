@@ -43,7 +43,8 @@ CONNECT_TIMEOUT = 10.0
 # x2text.Dockerfile is killed at its --timeout (930s), so that must stay above
 # this; the Helm chart's gthread workers are not killed by a long request.
 DEFAULT_READ_TIMEOUT = 900.0
-# Larger values overflow the socket layer's timeout on some platforms.
+# A sanity bound: a day is far beyond any real extraction. (Far larger values,
+# around 1e10, overflow CPython's socket timeout.)
 MAX_READ_TIMEOUT = 86400.0
 
 _TRUE_VALUES = ("1", "true", "yes")
@@ -68,8 +69,12 @@ def request_timeout() -> tuple[float, float]:
         read = float(raw)
     except ValueError:
         read = math.nan
-    # nan and inf parse, but the socket layer rejects them on every call.
-    if not math.isfinite(read) or not 0 < read <= MAX_READ_TIMEOUT:
+    if read > MAX_READ_TIMEOUT:
+        logger.warning("Capping %s=%r at %ss", REQUEST_TIMEOUT_ENV, raw, MAX_READ_TIMEOUT)
+        return CONNECT_TIMEOUT, MAX_READ_TIMEOUT
+    # nan parses, but the socket layer rejects it on every call. (inf is
+    # capped above.)
+    if not math.isfinite(read) or read <= 0:
         logger.warning(
             "Ignoring invalid %s=%r; using %ss",
             REQUEST_TIMEOUT_ENV,

@@ -77,5 +77,8 @@ ENV UNSTRACT_APPS_VERSION=${VERSION}
 
 # During debugging, this entry point will be overridden.
 # --timeout stays above the Unstructured read timeout (UNSTRUCTURED_REQUEST_TIMEOUT,
-# 900s by default) so a slow call ends in a 504, not a killed sync worker.
+# 900s by default), so a call that spends its time in processing ends in a 504
+# rather than a killed sync worker; the 30s of headroom also has to cover the
+# connect and the upload. This runs one sync worker, so a long call holds it and
+# other requests queue; set GUNICORN_CMD_ARGS (e.g. "--workers 4") for more.
 CMD [".venv/bin/gunicorn", "--bind", "0.0.0.0:3004", "--timeout", "930", "run:app"]

@@ -92,7 +92,16 @@ def test_timeout_override(monkeypatch):
     assert uu.request_timeout() == (10.0, 1200.0)
 
 
-@pytest.mark.parametrize("value", ["abc", "0", "-5", "nan", "inf", "-inf", "1e10"])
+@pytest.mark.parametrize("value", ["abc", "0", "-5", "nan", "-inf"])
 def test_invalid_timeout_falls_back(monkeypatch, value):
     monkeypatch.setenv(uu.REQUEST_TIMEOUT_ENV, value)
     assert uu.request_timeout() == (10.0, 900.0)
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [("86400", 86400.0), ("86401", 86400.0), ("1e10", 86400.0), ("inf", 86400.0)],
+)
+def test_timeout_above_cap_is_clamped(monkeypatch, value, expected):
+    monkeypatch.setenv(uu.REQUEST_TIMEOUT_ENV, value)
+    assert uu.request_timeout() == (10.0, expected)

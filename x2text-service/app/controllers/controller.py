@@ -45,6 +45,16 @@ def _error(message: str, status: int = 400) -> tuple[dict[str, str], int]:
     return {"message": message, "detail": message}, status
 
 
+def _status_detail(status: int) -> str:
+    """A user-facing reason for an upstream status, without its body."""
+    hint = {
+        401: "; check the API key",
+        403: "; check the API key",
+        404: "; check the URL path",
+    }.get(status, "")
+    return f"Unstructured API returned HTTP {status}{hint}"
+
+
 def _redirect_refused(response: requests.Response) -> tuple[dict[str, str], int]:
     logging.warning(
         "Refusing redirect from the Unstructured API: %s -> host=%s",
@@ -104,7 +114,7 @@ def test_connection() -> Any:
         # service's error page. ``detail`` carries only the status.
         return {
             "message": response.text,
-            "detail": f"Unstructured API returned HTTP {response.status_code}",
+            "detail": _status_detail(response.status_code),
         }, response.status_code
     except requests.Timeout:
         logging.error("Test connection timed out waiting for the Unstructured API")
