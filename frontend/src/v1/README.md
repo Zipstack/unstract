@@ -20,9 +20,10 @@ file holds only the rules that tooling enforces.
 
 - `ui:` on every utility: an unprefixed class renders with v0's theme whenever
   v0 already uses that class name, and silently does nothing otherwise. Merge
-  with `cn` (`@v1/lib/cn`); tokens live in `styles/tokens.ts`.
-- `ThemeProvider` sets `data-theme`; portals use `getPortalContainer()`; focus
-  is `ui:focus-visible:focus-ring`; Geist Mono only for model output and JSON.
+  with `cn` (`@v1/lib/cn`); `bun run tokens:v1` makes tokens.css from tokens.ts.
+- The user chooses the mode, stored per browser under `unstract.v1.theme` and
+  applied as `data-theme` by `ThemeProvider`. Portals: `getPortalContainer()`;
+  focus: `ui:focus-visible:focus-ring`; Geist Mono only for model output, JSON.
 - `lint:v1` S1–S8: no inline style, raw colour or pixel, `!important`, CSS
   import outside `app/` or `styles/`, selector outside `.v1`,
   `prefers-color-scheme` or unprefixed utility (code: class and colour strings).
