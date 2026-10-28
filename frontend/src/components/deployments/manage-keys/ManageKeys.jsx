@@ -1,6 +1,7 @@
-import { Copy, Pencil, Plus, Trash2 } from "lucide-react";
+import { Copy, Eye, EyeOff, Pencil, Plus, Trash2 } from "lucide-react";
 import PropTypes from "prop-types";
 import { useEffect, useState } from "react";
+import { Button } from "@/components/ui/shims/antd-button";
 import { Input, Switch } from "@/components/ui/shims/antd-inputs";
 import { Space } from "@/components/ui/shims/antd-layout";
 import { Modal, Tooltip } from "@/components/ui/shims/antd-overlays";
@@ -17,6 +18,12 @@ import { SpinnerLoader } from "../../widgets/spinner-loader/SpinnerLoader.jsx";
 import { DeleteModal } from "../delete-modal/DeleteModal.jsx";
 import "./ManageKeys.css";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
+
+// A key is a credential, so the table shows only its last four characters
+// until someone asks to see it. Anything on screen is also in the page text
+// a browsing agent reads. Copy takes the full key from the row, so copying
+// never needs a reveal.
+const maskApiKey = (key) => (key ? `••••••••${String(key).slice(-4)}` : "");
 
 const ManageKeys = ({
   isDialogOpen,
@@ -42,6 +49,15 @@ const ManageKeys = ({
   const [canAdd, setCanAdd] = useState(false);
   const [selectedKeyRow, setSelectedKeyRow] = useState({});
   const [openDeleteModal, setOpenDeleteModal] = useState(false);
+  const [visibleKeyIds, setVisibleKeyIds] = useState(new Set());
+
+  // The modal stays mounted between deployments, so a key revealed for one
+  // must not still be showing when the modal next opens.
+  useEffect(() => {
+    if (!isDialogOpen) {
+      setVisibleKeyIds(new Set());
+    }
+  }, [isDialogOpen]);
 
   useEffect(() => {
     if (isNewKey) {
@@ -228,6 +244,18 @@ const ManageKeys = ({
       });
   };
 
+  const toggleKeyVisibility = (id) => {
+    setVisibleKeyIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
   const columns = [
     {
       title: "Description",
@@ -238,22 +266,34 @@ const ManageKeys = ({
       title: "API Key",
       dataIndex: "api_key",
       key: "api_key",
-      render: (_, record) => (
-        <Space direction="horizontal" className="action-items">
-          <div>
-            <Tooltip
-              title="click to copy"
-              className="cursorPointer"
-              onClick={() => copyText(record?.api_key)}
-            >
-              <Copy />
+      render: (_, record) => {
+        const isVisible = visibleKeyIds.has(record?.id);
+        return (
+          <Space direction="horizontal" className="action-items">
+            <Tooltip title="Copy key">
+              <Button
+                type="text"
+                size="small"
+                icon={<Copy />}
+                aria-label="Copy API key"
+                onClick={() => copyText(record?.api_key)}
+              />
             </Tooltip>
-          </div>
-          <div>
-            <Typography.Text>{record?.api_key}</Typography.Text>
-          </div>
-        </Space>
-      ),
+            <Typography.Text>
+              {isVisible ? record?.api_key : maskApiKey(record?.api_key)}
+            </Typography.Text>
+            <Tooltip title={isVisible ? "Hide key" : "Show key"}>
+              <Button
+                type="text"
+                size="small"
+                icon={isVisible ? <EyeOff /> : <Eye />}
+                aria-label={isVisible ? "Hide API key" : "Show API key"}
+                onClick={() => toggleKeyVisibility(record?.id)}
+              />
+            </Tooltip>
+          </Space>
+        );
+      },
     },
     {
       title: "Active",
