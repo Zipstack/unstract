@@ -802,6 +802,57 @@ class RetireWorkflow(Workflow):
         self.assertEqual(rm.git(origin, "tag", "-l", "retired/*"), tag)
         self.assertIn(f"release/{x_y}", rm.git(origin, "branch", "-l", "release/*"))
 
+    def lands_mid_run(self, x_y):
+        """A push to release/x_y lands on origin after this run read its tip: origin's hook moves the branch on the
+        run's first other push (an RC tag delete or the archive tag), before the branch delete.
+        """
+        origin = self.repos["cloud"][0]
+        self.g(self.cloud, "commit", "-q", "--allow-empty", "-m", "late fix")
+        late = self.g(self.cloud, "rev-parse", "HEAD")
+        self.g(self.cloud, "push", "-q", "origin", "HEAD:refs/keep/late")
+        self.g(self.cloud, "reset", "-q", "--hard", "HEAD~1")
+        hook = os.path.join(origin, "hooks", "post-receive")
+        with open(hook, "w") as fh:
+            fh.write(
+                f"#!/bin/sh\ngrep -q refs/heads/ || git update-ref refs/heads/release/{x_y} {late}\n"
+            )
+        os.chmod(hook, 0o755)
+        return late
+
+    def kept(self, x_y, late, **env):
+        r = self.run_step(
+            inline("retire.yaml", "Derive and retire"),
+            **{"ABANDON": "", "RETIRE_LINE": "", "NOW": "", "DRY_RUN": "false", **env},
+        )
+        self.assertNotEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(
+            rm.git(self.repos["cloud"][0], "rev-parse", f"release/{x_y}"), late
+        )
+
+    def test_abandon_keeps_a_branch_pushed_after_its_tip_was_read(self):
+        # Its RC tag delete is the push the hook waits for.
+        self.line("1.7", "v1.7.0-rc.1")
+        self.kept(
+            "1.7",
+            self.lands_mid_run("1.7"),
+            ABANDON="release/1.7",
+            REASON="cut by mistake",
+        )
+
+    def test_retire_line_keeps_a_branch_pushed_after_its_tip_was_read(self):
+        self.line("1.7")
+        self.kept(
+            "1.7",
+            self.lands_mid_run("1.7"),
+            RETIRE_LINE="release/1.7",
+            REASON="not shipping",
+        )
+
+    def test_derived_list_keeps_a_branch_pushed_after_its_tip_was_read(self):
+        self.line("1.6", "v1.6.0-rc.1", "v1.6.0")
+        self.line("1.7", "v1.7.0-rc.1", "v1.7.0")
+        self.kept("1.6", self.lands_mid_run("1.6"))
+
     def test_retire_line_refuses_a_line_moved_after_its_archive(self):
         self.line("1.7")
         self.refused(
