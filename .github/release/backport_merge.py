@@ -239,7 +239,7 @@ def decline(slug, pr, reason):
             slug,
             "--body",
             "Bot could not record the decline: the first commit's message needs exactly one `(cherry picked from "
-            "commit <main sha>)` line, naming the main commit of this branch's name. Decline it with a hand-made empty "
+            "commit <full main sha>)` line, naming the main commit of this branch's name. Decline it with a hand-made empty "
             "commit carrying that line, or ask the release manager.",
         )
         raise RuntimeError(
@@ -357,7 +357,7 @@ def record(slug, n, sender):
                     f"Until `{head}` is deleted, Backport fails on it. To have the fix picked again, delete "
                     f"`{head}` by hand. To decline the fix instead, do not delete the head yet: ask the release "
                     f"manager for a hand-made empty commit on {base} with the pick's message, its `(cherry picked "
-                    "from commit <main sha>)` line and a final `Declined: <reason>` line. Once it is on "
+                    "from commit <full main sha>)` line and a final `Declined: <reason>` line. Once it is on "
                     f"{base}, Backport stops failing and the head can be deleted."
                     if kept
                     else f"`{head}` no longer holds this PR's head, so there is nothing to delete here."

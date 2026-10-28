@@ -126,8 +126,15 @@ def _is_empty(repo, sha):
 
 
 def picked_from(repo, sha):
-    """Main originals named by the commit's `-x` trailers."""
-    return PICK_RE.findall(git(repo, "log", "-1", "--format=%B", sha))
+    """Main originals named by the commit's `-x` trailers, each resolved to its full sha so that callers keying on
+    them see a hand-written short sha and the bot's full one as the same original. A trailer that does not resolve
+    (unknown or ambiguous) is kept as written.
+    """
+    out = []
+    for o in PICK_RE.findall(git(repo, "log", "-1", "--format=%B", sha)):
+        r = git(repo, "rev-parse", "-q", "--verify", f"{o}^{{commit}}", check=False)
+        out.append(r.stdout.strip() if r.returncode == 0 else o)
+    return out
 
 
 def branch_range(repo, branch, main):

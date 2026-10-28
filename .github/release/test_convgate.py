@@ -171,6 +171,20 @@ class Gate(unittest.TestCase):
             self.assertEqual(code, 0, out)
             self.assertIn("1 picks, 1 in the RC, 1 unclassifiable", out)
 
+    def test_2e2_pick_after_short_sha_decline_ships(self):
+        """A hand-written decline may name the original by a short sha; the bot's later pick names it in full. Both
+        are one original, so the pick still wins.
+        """
+        self.decline(self.c[:7], "release/1.6")
+        self.pick(self.c, "release/1.6")
+        self.assertEqual(
+            rm.trailer_states(self.repo, "release/1.6"), {self.c: "cherry-pick"}
+        )
+        self.assertEqual(rm.decline_records(self.repo, "release/1.6"), {})
+        code, out = self.run_gate("release/1.5")
+        self.assertEqual(code, 0, out)
+        self.assertIn("1 picks, 1 in the RC, 1 unclassifiable", out)
+
     def test_2f_pick_after_decline_past_ga_still_owed(self):
         """Newer is GA at a tag without the fix; its decline was undone by a later pick: older's promote waits for
         newer's next patch instead of reading the stale decline as converged.
