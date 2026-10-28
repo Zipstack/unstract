@@ -85,6 +85,9 @@ from unstract.sdk1.adapters.x2text.constants import ImageOutputConstants
 from unstract.sdk1.adapters.x2text.llm_whisperer_v2.src.helper import (
     LLMWhispererHelper,
 )
+from unstract.sdk1.adapters.x2text.llm_whisperer_v2.src.page_range import (
+    PageRangeError,
+)
 from unstract.sdk1.adapters.x2text.page_image_loader import configured_page_cap
 from unstract.sdk1.constants import LogLevel
 from unstract.sdk1.exceptions import IndexingError, SdkError
@@ -1613,7 +1616,7 @@ class PromptStudioHelper:
         file_data.seek(0)
         if total_page_count is None:
             return
-        page_count = PromptStudioHelper._selected_page_count(
+        page_count, selection_valid = PromptStudioHelper._selected_page_count(
             profile_manager, total_page_count
         )
         # Named in the message only when the selection narrowed the count,
@@ -1627,7 +1630,11 @@ class PromptStudioHelper:
             raise ImageModePageLimitExceeded(
                 detail=(
                     page_cap_message(
-                        page_count, budget, charged=None, selected_from=selected_from
+                        page_count,
+                        budget,
+                        charged=None,
+                        selected_from=selected_from,
+                        invalid_selection=not selection_valid,
                     )
                     + " This check uses the project's default profile "
                     f"('{profile_name}'); other profiles may allow a different "
@@ -1643,34 +1650,48 @@ class PromptStudioHelper:
                 page_cap,
                 switch_to="switch the project's default profile to a text output mode",
                 selected_from=selected_from,
+                invalid_selection=not selection_valid,
             )
         )
 
     @staticmethod
     def _selected_page_count(
         profile_manager: ProfileManager | None, total_page_count: int
-    ) -> int:
-        """Pages the profile's 'Pages to extract' selects.
+    ) -> tuple[int, bool]:
+        """``(pages the profile's 'Pages to extract' selects, setting valid)``.
 
         Image mode converts and sends only the selected pages, so the upload
         check counts those, with the SDK's own counting. Fails open to the
-        whole document when the setting is unreadable or invalid; extraction
-        reports an invalid setting before anything is converted. A failure is
-        logged with its type only: the adapter metadata can hold credentials,
-        and the setting's value is user input.
+        whole document when the setting is invalid (``False``: the message
+        must not suggest a smaller range) or unreadable; extraction reports
+        an invalid setting before anything is converted. Failures are logged
+        with their type only: the setting's value is user input, and reading
+        the adapter metadata decrypts it, so an error there can quote
+        credentials (hence no traceback either).
         """
         try:
             x2text = getattr(profile_manager, "x2text", None)
             metadata = (getattr(x2text, "metadata", None) or {}) if x2text else {}
-            return LLMWhispererHelper.selected_page_count(metadata, total_page_count)
-        except Exception as e:
+            return (
+                LLMWhispererHelper.selected_page_count(metadata, total_page_count),
+                True,
+            )
+        except PageRangeError as e:
             logger.warning(
+                "The default profile's 'Pages to extract' setting is invalid "
+                "(%s); the upload page check counts all %d pages",
+                type(e).__name__,
+                total_page_count,
+            )
+            return total_page_count, False
+        except Exception as e:
+            logger.error(
                 "Could not apply the default profile's 'Pages to extract' setting "
                 "to the upload page check (%s); counting all %d pages",
                 type(e).__name__,
                 total_page_count,
             )
-            return total_page_count
+            return total_page_count, True
 
     @staticmethod
     def _validate_image_output_pdf_only(

@@ -193,10 +193,9 @@ class TestPersistence:
         H.persist_page_images(fs, "doc/pages", [(1, b"a"), (2, b"b")], document_pages)
         assert not fs.exists("doc/pages/pages.json")
 
-    def test_labels_write_failure_does_not_fail_extraction(
-        self, monkeypatch: MonkeyPatch
-    ) -> None:
-        fs = InMemoryFileStorage()
+    @staticmethod
+    def _labels_write_fails(fs: InMemoryFileStorage, monkeypatch: MonkeyPatch) -> None:
+        monkeypatch.setattr(helper_mod.WhispererDefaults, "RETRY_MIN_WAIT", 0.0)
         real_write = fs.write
 
         def write(path: str, **kwargs: object) -> None:
@@ -205,8 +204,39 @@ class TestPersistence:
             real_write(path=path, **kwargs)
 
         monkeypatch.setattr(fs, "write", write)
-        refs = H.persist_page_images(fs, "doc/pages", [(1, b"a")], [7])
-        assert [r.page_number for r in refs] == [1]
+
+    def test_labels_write_failure_fails_a_selection_and_removes_the_set(
+        self, monkeypatch: MonkeyPatch
+    ) -> None:
+        # Without pages.json a selection would be labelled by position.
+        fs = InMemoryFileStorage()
+        self._labels_write_fails(fs, monkeypatch)
+        with pytest.raises(ExtractorError, match="page labels") as excinfo:
+            H.persist_page_images(fs, "doc/pages", [(1, b"a"), (2, b"b")], [7, 9])
+        assert excinfo.value.status_code == 500
+        assert not fs.exists("doc/pages/page_001.png")
+        assert not fs.exists("doc/pages/page_002.png")
+
+    def test_identity_labels_never_write_so_cannot_fail(
+        self, monkeypatch: MonkeyPatch
+    ) -> None:
+        fs = InMemoryFileStorage()
+        self._labels_write_fails(fs, monkeypatch)
+        refs = H.persist_page_images(fs, "doc/pages", [(1, b"a"), (2, b"b")], [1, 2])
+        assert [r.page_number for r in refs] == [1, 2]
+
+    def test_labels_round_trip_to_the_vision_message(self) -> None:
+        from unstract.sdk1.adapters.x2text.page_image_loader import (
+            build_vision_message_content,
+            load_page_images,
+        )
+
+        fs = InMemoryFileStorage()
+        H.persist_page_images(fs, "doc/pages", [(1, b"a"), (2, b"b")], [10, 12])
+        loaded = load_page_images(fs, "doc/pages")
+        content = build_vision_message_content(loaded, "Q")
+        labels = [b["text"] for b in content[1:] if b["type"] == "text"]
+        assert labels == ["Page 10", "Page 12"]
 
     def test_reextraction_without_labels_removes_old_labels(self) -> None:
         fs = InMemoryFileStorage()
@@ -639,6 +669,22 @@ class TestPreSubmitPageCap:
         assert "'Pages to extract'" in msg
         assert "No pages were converted or charged" in msg
         assert excinfo.value.status_code == 400
+        submit.assert_not_called()
+
+    def test_range_past_the_end_fails_before_submitting(
+        self, monkeypatch: MonkeyPatch
+    ) -> None:
+        # Valid syntax, but no page of this 30-page PDF is selected.
+        fs = self._fs_with_pdf(monkeypatch, 30)
+        submit = self._stub_after_submit(monkeypatch, 1)
+
+        with pytest.raises(ExtractorError) as excinfo:
+            H.get_page_images(
+                {"pages_to_extract": "40-"}, "/in/d.pdf", "/out/d.txt", fs=fs
+            )
+
+        assert excinfo.value.status_code == 400
+        assert "No pages were converted or charged" in str(excinfo.value)
         submit.assert_not_called()
 
     @pytest.mark.parametrize("spec", ["1-", "1-999999", "7"])
@@ -1224,14 +1270,107 @@ class TestMaxTotalImageBytes:
         )
         assert msg.endswith("nothing was charged.")
 
+    _NO_COUNT = {k: v for k, v in _META.items() if k != "page_count"}
+
+    def test_rejection_without_a_page_count_never_says_zero(
+        self, monkeypatch: MonkeyPatch
+    ) -> None:
+        self._rejected(monkeypatch, self._NO_COUNT)
+        with pytest.raises(ExtractorError) as excinfo:
+            H.poll_pdf_to_images_status(_NET_CONFIG, "wh")
+        msg = str(excinfo.value)
+        assert excinfo.value.status_code == 400
+        assert " 0 page images" not in msg
+        assert "Its page images total at least 21.0 MB" in msg
+        assert msg.endswith("nothing was charged.")
+
+    def test_rejection_without_a_page_count_uses_the_local_count(
+        self, monkeypatch: MonkeyPatch
+    ) -> None:
+        from unstract.sdk1.adapters.exceptions import ImageLimitExceededError
+
+        self._rejected(monkeypatch, self._NO_COUNT)
+        with pytest.raises(ImageLimitExceededError) as excinfo:
+            H.poll_pdf_to_images_status(_NET_CONFIG, "wh", _bedrock_policy(), 7)
+        assert "The 7 page images of this document" in str(excinfo.value)
+        self._rejected(monkeypatch, self._NO_COUNT)
+        with pytest.raises(ImageLimitExceededError) as excinfo:
+            H.poll_pdf_to_images_status(_NET_CONFIG, "wh", _bedrock_policy())
+        msg = str(excinfo.value)
+        assert " 0 page images" not in msg
+        assert "The page images of this document" in msg
+        assert excinfo.value.charged is False
+
+    _BAD_FIGURES = {
+        "rendered-none": {**_META, "rendered_bytes": None},
+        "rendered-missing": {k: v for k, v in _META.items() if k != "rendered_bytes"},
+        "rendered-text": {**_META, "rendered_bytes": "22020096"},
+        "limit-bool": {**_META, "max_total_image_bytes": True},
+        "limit-zero": {**_META, "max_total_image_bytes": 0},
+    }
+
+    @pytest.mark.parametrize("case", sorted(_BAD_FIGURES))
+    def test_bad_byte_figures_still_give_the_typed_uncharged_error(
+        self, monkeypatch: MonkeyPatch, caplog: pytest.LogCaptureFixture, case: str
+    ) -> None:
+        from unstract.sdk1.adapters.exceptions import ImageLimitExceededError
+        from unstract.sdk1.utils.image_limits import codes
+
+        metadata = self._BAD_FIGURES[case]
+        bad_field = (
+            "rendered_bytes" if case.startswith("rendered") else ("max_total_image_bytes")
+        )
+        expected = (
+            "This document is too large for image output mode: LLMWhisperer "
+            "stopped converting its pages once they passed the size limit for "
+            "one LLM request. Split the document, select fewer pages with "
+            "'Pages to extract', or use a text output mode. Nothing was charged."
+        )
+        self._rejected(monkeypatch, metadata)
+        with caplog.at_level("WARNING"), pytest.raises(ExtractorError) as excinfo:
+            H.poll_pdf_to_images_status(_NET_CONFIG, "wh")
+        assert type(excinfo.value) is ExtractorError
+        assert excinfo.value.status_code == 400
+        assert str(excinfo.value) == expected
+        assert any(
+            bad_field in r.getMessage() and r.levelname == "WARNING"
+            for r in caplog.records
+        )
+
+        self._rejected(monkeypatch, metadata)
+        with pytest.raises(ImageLimitExceededError) as excinfo:
+            H.poll_pdf_to_images_status(_NET_CONFIG, "wh", _bedrock_policy())
+        err = excinfo.value
+        assert err.error_code == codes.IMAGE_PAGES_TOO_LARGE
+        assert err.charged is False and err.status_code == 400
+        assert str(err) == expected
+
+    def test_get_page_images_passes_the_local_count_to_the_poll(
+        self, monkeypatch: MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(H, "_safe_pdf_page_count", staticmethod(lambda _b: 3))
+        poll = MagicMock(name="poll", return_value={})
+        monkeypatch.setattr(
+            H, "submit_pdf_to_images", staticmethod(MagicMock(return_value="h"))
+        )
+        monkeypatch.setattr(H, "poll_pdf_to_images_status", staticmethod(poll))
+        images = [(n, minimal_png()) for n in (1, 2, 3)]
+        monkeypatch.setattr(H, "_download_and_extract", staticmethod(lambda **_k: images))
+        monkeypatch.setattr(H, "persist_page_images", staticmethod(lambda *_a: []))
+        fs = MagicMock(name="FileStorage")
+        fs.read.return_value = b"%PDF-1.7 fake"
+
+        H.get_page_images({}, "/in/doc.pdf", "/out/doc.txt", fs=fs)
+
+        assert poll.call_args.args[3] == 3
+
     @pytest.mark.parametrize(
         "metadata",
         [
             {"error_code": "invalid_page_range"},
-            {**_META, "rendered_bytes": None},
             {},
         ],
-        ids=["other-code", "malformed", "no-metadata"],
+        ids=["other-code", "no-metadata"],
     )
     def test_other_failures_keep_the_generic_error(
         self, monkeypatch: MonkeyPatch, metadata: dict

@@ -189,7 +189,8 @@ class ImageOutputConfig:
     DEFAULT_IMAGE_FORMAT = "png"
     FILE_NAME_PARAM = "file_name"
     # Raw image bytes LLMWhisperer may render before it stops and rejects the
-    # job unbilled (LW-460); its failed status carries SIZE_LIMIT_EXCEEDED.
+    # job unbilled (LW-460); its failed status carries ``metadata.error_code``
+    # = ``size_limit_exceeded``.
     MAX_TOTAL_IMAGE_BYTES_PARAM = "max_total_image_bytes"
     SIZE_LIMIT_EXCEEDED = "size_limit_exceeded"
 

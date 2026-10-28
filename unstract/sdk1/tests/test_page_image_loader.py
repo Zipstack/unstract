@@ -671,9 +671,34 @@ class TestDocumentPageLabels:
             "bool",
         ],
     )
-    def test_invalid_file_falls_back_to_file_numbers(self, raw: bytes) -> None:
+    def test_invalid_file_falls_back_to_file_numbers(
+        self, raw: bytes, caplog: pytest.LogCaptureFixture
+    ) -> None:
         fs = _store({1: b"a", 2: b"b"}, extra={"pages.json": raw})
         assert self._labels(fs) == ["Page 1", "Page 2"]
+        # The extraction wrote it for a selection: the labels are now wrong.
+        assert any(
+            r.levelname == "ERROR" and PAGE_LABELS_FILENAME in r.getMessage()
+            for r in caplog.records
+        )
+
+    def test_unreadable_file_is_logged_at_error(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        fs = _store({1: b"a"}, extra={"pages.json": b'{"pages": [3]}'})
+        original_read = fs.read
+
+        def read(path: str, **kw: object) -> bytes:
+            if path.endswith(PAGE_LABELS_FILENAME):
+                raise OSError("connection reset")
+            return original_read(path, **kw)
+
+        fs.read = read
+        assert self._labels(fs) == ["Page 1"]
+        assert any(
+            r.levelname == "ERROR" and "connection reset" in r.getMessage()
+            for r in caplog.records
+        )
 
     def test_labels_file_is_not_a_page(self) -> None:
         fs = _store({1: b"a"}, extra={"pages.json": b'{"pages": [3]}'})
@@ -712,13 +737,44 @@ class TestDocumentPageInLoaderMessages:
         assert "This document has too many pages" in str(excinfo.value)
         assert "It has 3 pages, and the limit is 2" in str(excinfo.value)
 
-    def test_missing_labels_file_is_read_without_an_exists_check(self) -> None:
+    def test_missing_labels_file_is_never_probed(self) -> None:
+        # The listing shows no pages.json, so it is neither checked nor read
+        # (a read of a missing object costs failed GETs and a cache flush).
         fs = _store({1: b"a"})
-        original_exists = fs.exists
+        original_exists, original_read = fs.exists, fs.read
+        reads: list[str] = []
 
         def exists(path: str) -> bool:
-            assert not path.endswith(PAGE_LABELS_FILENAME), "labels: read, not exists"
+            assert not path.endswith(PAGE_LABELS_FILENAME), "labels: not probed"
             return original_exists(path)
 
         fs.exists = exists
+        fs.read = lambda path, **kw: reads.append(path) or original_read(path, **kw)
         assert [p.page_number for p in load_page_images(fs, _DIR)] == [1]
+        assert not [p for p in reads if p.endswith(PAGE_LABELS_FILENAME)]
+
+    def test_listed_labels_file_is_read_once(self) -> None:
+        fs = _store({1: b"a", 2: b"b"}, extra={"pages.json": b'{"pages": [10, 12]}'})
+        original_read = fs.read
+        reads: list[str] = []
+        fs.read = lambda path, **kw: reads.append(path) or original_read(path, **kw)
+        load_page_images(fs, _DIR)
+        assert [p for p in reads if p.endswith(PAGE_LABELS_FILENAME)] == [
+            f"{_DIR}/{PAGE_LABELS_FILENAME}"
+        ]
+
+    def test_labels_removed_after_the_listing_fall_back_quietly(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        fs = _store({1: b"a"}, extra={"pages.json": b'{"pages": [3]}'})
+        original_read = fs.read
+
+        def read(path: str, **kw: object) -> bytes:
+            if path.endswith(PAGE_LABELS_FILENAME):
+                raise FileNotFoundError(path)
+            return original_read(path, **kw)
+
+        fs.read = read
+        loaded = load_page_images(fs, _DIR)
+        assert [p.document_page for p in loaded] == [None]
+        assert not [r for r in caplog.records if r.levelname == "ERROR"]

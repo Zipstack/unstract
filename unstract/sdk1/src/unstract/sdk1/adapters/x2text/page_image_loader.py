@@ -355,7 +355,8 @@ class LoadedPageImage:
 
 # Written next to the page images when a selection makes the document page
 # numbers differ from the image positions: {"pages": [10, 12, ...]}, one
-# entry per image in order. Used for the "Page N" labels only.
+# entry per image in order. Used for the "Page N" labels and for naming
+# document pages in limit errors.
 PAGE_LABELS_FILENAME = "pages.json"
 # Up to 999 six-digit page numbers fit comfortably; bounds a corrupt object.
 _PAGE_LABELS_MAX_BYTES = 64 * 1024
@@ -398,17 +399,25 @@ def read_document_pages(
 ) -> list[int] | None:
     """Document page numbers recorded in ``pages.json``, or None.
 
-    Fails open: a missing, unreadable or invalid file means the labels fall
-    back to the image positions; it never fails the prompt.
+    Call it only when the directory listing showed the file (see
+    ``load_page_images``): a read of a missing file costs failed GETs and an
+    fsspec cache flush. Fails open: a missing (removed since the listing),
+    unreadable or invalid file means the labels fall back to the image
+    positions; it never fails the prompt. An existing file that cannot be
+    used is logged at ERROR: the extraction wrote it for a selection, so the
+    labels shown are wrong.
     """
     path = str(PurePosixPath(page_store_dir) / PAGE_LABELS_FILENAME)
     try:
-        # Most page sets have no labels file: a missing one is the common case.
         raw = fs.read(path=path, mode="rb", length=_PAGE_LABELS_MAX_BYTES + 1)
     except FileNotFoundError:
-        return None
+        return None  # removed between the listing and this read
     except Exception as e:
-        logger.warning("Image mode: could not read page labels %s: %s", path, e)
+        logger.error(
+            "Image mode: could not read page labels %s (%s); labelling by position",
+            path,
+            e,
+        )
         return None
     try:
         if len(raw) > _PAGE_LABELS_MAX_BYTES:
@@ -420,7 +429,7 @@ def read_document_pages(
         if pages is None:
             raise ValueError("does not match the page images")
     except ValueError as e:
-        logger.warning(
+        logger.error(
             "Image mode: ignoring page labels %s (%s); labelling by position", path, e
         )
         return None
@@ -440,12 +449,24 @@ def _not_found(page_store_dir: str) -> PageImagesNotFoundError:
 def discover_page_images(fs: FileStorage, page_store_dir: str) -> list[tuple[int, str]]:
     """Discover persisted page images, ordered by integer page number.
 
+    See ``_discover_page_set``, which also reports whether ``pages.json``
+    was listed.
+    """
+    return _discover_page_set(fs, page_store_dir)[0]
+
+
+def _discover_page_set(
+    fs: FileStorage, page_store_dir: str
+) -> tuple[list[tuple[int, str]], bool]:
+    """Discover persisted page images, ordered by integer page number.
+
     Lists ``page_store_dir`` through FileStorage, keeps entries whose
     basename matches the shared ``PAGE_NUMBER_REGEX`` (others are logged
     and skipped), and validates the set is exactly 1..N.
 
     Returns:
-        ``[(page_number, full_path), ...]`` sorted by page number.
+        ``([(page_number, full_path), ...] sorted by page number, whether
+        PAGE_LABELS_FILENAME was in the listing)``.
 
     Raises:
         PageImagesNotFoundError: directory missing or no page images in it.
@@ -470,10 +491,12 @@ def discover_page_images(fs: FileStorage, page_store_dir: str) -> list[tuple[int
         raise _not_found(page_store_dir)
 
     pages: dict[int, str] = {}
+    has_labels = False
     for entry in entries:
         name = PurePosixPath(str(entry)).name
         match = _PAGE_NAME_RE.fullmatch(name)
         if not match:
+            has_labels = has_labels or name == PAGE_LABELS_FILENAME
             logger.debug("Skipping non-page entry in %s: %s", page_store_dir, name)
             continue
         page_number = int(match.group(1))
@@ -505,7 +528,7 @@ def discover_page_images(fs: FileStorage, page_store_dir: str) -> list[tuple[int
             missing_pages=missing,
         )
 
-    return [(number, pages[number]) for number in found]
+    return [(number, pages[number]) for number in found], has_labels
 
 
 def load_page_images(  # noqa: C901 - legacy and policy paths share one bounded-read loop
@@ -551,10 +574,13 @@ def load_page_images(  # noqa: C901 - legacy and policy paths share one bounded-
             page_cap = configured_page_cap()
         if isinstance(max_total_bytes, _UseConfigured):
             max_total_bytes = configured_max_total_bytes()
-    discovered = discover_page_images(fs, page_store_dir)
+    discovered, has_labels = _discover_page_set(fs, page_store_dir)
     page_count = len(discovered)
-    # Read first so a cap message can say the pages are a selection.
-    document_pages = read_document_pages(fs, page_store_dir, page_count)
+    # Read first so a cap message can say the pages are a selection; only
+    # when the listing has the file (most page sets have none).
+    document_pages = (
+        read_document_pages(fs, page_store_dir, page_count) if has_labels else None
+    )
     selected = is_page_selection(document_pages)
     if limits is not None:
         # Imported here: the policy module imports this module's exceptions.

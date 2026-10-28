@@ -107,7 +107,10 @@ class TestPagesToExtract:
         with patch.object(
             _psh_mod.LLMWhispererHelper, "selected_page_count", return_value=4
         ) as count:
-            assert PromptStudioHelper._selected_page_count(self._ranged("1-4"), 30) == 4
+            assert PromptStudioHelper._selected_page_count(self._ranged("1-4"), 30) == (
+                4,
+                True,
+            )
         assert count.call_args.args[1] == 30
 
     def test_unreadable_setting_is_logged_without_its_value(
@@ -119,7 +122,9 @@ class TestPagesToExtract:
         )
         with caplog.at_level(logging.WARNING):
             count = PromptStudioHelper._selected_page_count(profile, 30)
-        assert count == 30
+        # Not a range error: counted whole, logged at ERROR by type only.
+        assert count == (30, True)
+        assert any(r.levelname == "ERROR" for r in caplog.records)
         assert "ValueError" in caplog.text
         assert "Pages to extract" in caplog.text
         assert "secret-key-material" not in caplog.text
@@ -129,7 +134,7 @@ class TestPagesToExtract:
     ) -> None:
         with caplog.at_level(logging.WARNING):
             count = PromptStudioHelper._selected_page_count(self._ranged("5-3"), 30)
-        assert count == 30
+        assert count == (30, False)
         assert "PageRangeError" in caplog.text
         assert "5-3" not in caplog.text
 
@@ -138,6 +143,23 @@ class TestPagesToExtract:
             check(_pdf(30), _PDF, self._ranged("5-3"))
         assert "selects" not in str(excinfo.value.detail)
         check(_pdf(5), _PDF, self._ranged("5-3"))
+
+    @pytest.mark.parametrize("with_llm", [False, True], ids=["fixed-cap", "model"])
+    def test_invalid_range_never_suggests_a_smaller_range(self, with_llm: bool) -> None:
+        profile = self._ranged("0-5")
+        if with_llm:
+            profile.llm = MagicMock(name="llm")
+            profile.llm.adapter_id = "bedrock|8d18571f-5e96-4505-bd28-ad0379c64064"
+            profile.llm.metadata = {
+                "model": "anthropic.claude-sonnet-4-5-20250929-v1:0",
+                "aws_region_name": "us-east-1",
+            }
+        with pytest.raises(ImageModePageLimitExceeded) as excinfo:
+            check(_pdf(30), _PDF, profile)
+        msg = str(excinfo.value.detail)
+        assert "smaller range" not in msg
+        assert "'Pages to extract' setting is invalid" in msg
+        assert "selects" not in msg
 
 
 class TestGate:

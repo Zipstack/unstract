@@ -65,6 +65,13 @@ logger = logging.getLogger(__name__)
 
 # Shared by the image-mode extract summary and its parser.
 _IMAGE_SUMMARY_PREFIX = "[LLMWhisperer image output mode]"
+# LLMWhisperer's size rejection when its byte figures cannot be read.
+_SIZE_REJECTION_WITHOUT_FIGURES = (
+    "This document is too large for image output mode: LLMWhisperer stopped "
+    "converting its pages once they passed the size limit for one LLM request. "
+    "Split the document, select fewer pages with 'Pages to extract', or use a "
+    "text output mode. Nothing was charged."
+)
 _IMAGE_SUMMARY_COUNT_RE = re.compile(
     re.escape(_IMAGE_SUMMARY_PREFIX) + r" (\d+) page image"
 )
@@ -677,6 +684,7 @@ class LLMWhispererHelper:
         config: dict[str, Any],
         whisper_hash: str,
         image_limits: "ImageModePolicy | None" = None,
+        expected_page_count: int | None = None,
     ) -> dict[str, Any]:
         """Poll the status endpoint until a terminal state is reached.
 
@@ -684,8 +692,10 @@ class LLMWhispererHelper:
         ``PROCESSED``); raises ``ExtractorError`` on a failed/unknown state or
         once the poll budget is exhausted. Mirrors the submit-then-poll pattern
         already used for text extraction. A byte-budget rejection raises the
-        same error as the post-download byte check (``image_limits`` picks
-        which), so the user sees one message whichever side caught it.
+        same error type and code as the post-download byte check
+        (``image_limits`` picks which), worded as a lower bound and uncharged.
+        ``expected_page_count`` (the local selection's count) names the pages
+        when the status carries no ``metadata.page_count``.
         """
         headers = LLMWhispererHelper.get_request_headers(config)
         params = {WhisperStatus.WHISPER_HASH: whisper_hash}
@@ -714,7 +724,9 @@ class LLMWhispererHelper:
                 # A failure state, an unknown status, or an empty body (non-JSON)
                 # raises immediately with the observed status echoed, instead of
                 # hanging until the poll budget is exhausted.
-                LLMWhispererHelper._raise_if_size_limit_rejection(body, image_limits)
+                LLMWhispererHelper._raise_if_size_limit_rejection(
+                    body, image_limits, expected_page_count
+                )
                 msg = body.get(ImageOutputConfig.MESSAGE, "unknown error")
                 raise ExtractorError(
                     f"LLMWhisperer pdf-to-images job {whisper_hash} returned an "
@@ -898,8 +910,9 @@ class LLMWhispererHelper:
             expected, source = service_page_count, "reported by the service"
         else:
             logger.warning(
-                "Image mode: input PDF page count unavailable; skipping "
-                "page-count verification (relying on the 1..N contiguity check)"
+                "Image mode: neither the selected nor the service page count is "
+                "available; skipping page-count verification (relying on the 1..N "
+                "contiguity check)"
             )
             return
         actual = len(pages)
@@ -930,7 +943,7 @@ class LLMWhispererHelper:
 
     @staticmethod
     def _fixed_bytes_message(
-        page_count: int, total: int, budget: int, *, stopped_early: bool = False
+        page_count: int | None, total: int, budget: int, *, stopped_early: bool = False
     ) -> str:
         """The fixed-budget byte error, after download or from LLMWhisperer.
 
@@ -945,9 +958,10 @@ class LLMWhispererHelper:
             else "The page conversion has already been charged, because image "
             "sizes are only known after the pages are rendered."
         )
+        images = f"{page_count} page images" if page_count else "page images"
         return (
             "This document is too large for image output mode. Its "
-            f"{page_count} page images {size} {total / mb:.1f} MB, over the "
+            f"{images} {size} {total / mb:.1f} MB, over the "
             f"{budget // mb} MB limit for one LLM request. Split the document "
             f"into smaller files, or use a text output mode instead. {charge}"
         )
@@ -973,56 +987,71 @@ class LLMWhispererHelper:
 
     @staticmethod
     def _raise_if_size_limit_rejection(
-        body: dict[str, Any], image_limits: "ImageModePolicy | None"
+        body: dict[str, Any],
+        image_limits: "ImageModePolicy | None",
+        expected_page_count: int | None = None,
     ) -> None:
-        """Raise the post-download byte error for an LLMWhisperer size rejection.
+        """Raise the uncharged size error for an LLMWhisperer size rejection.
 
         LLMWhisperer (LW-460) fails the job with ``metadata.error_code`` =
         ``size_limit_exceeded`` and the bytes rendered when it stopped (a lower
-        bound on the total). Anything else returns, for the generic error.
+        bound on the total). That code always raises the typed, uncharged
+        error (``IMAGE_PAGES_TOO_LARGE`` with a policy, else a 400); when the
+        byte figures are missing or unusable the message omits them. Any
+        other failure returns, for the generic error.
         """
         metadata = body.get("metadata")
         if not isinstance(metadata, dict):
             return
         if metadata.get("error_code") != ImageOutputConfig.SIZE_LIMIT_EXCEEDED:
             return
-        rendered, limit = (
-            metadata.get("rendered_bytes"),
-            metadata.get("max_total_image_bytes"),
-        )
-        if not all(
-            isinstance(v, int) and not isinstance(v, bool) and v > 0
-            for v in (rendered, limit)
-        ):
-            return
-        page_count = LLMWhispererHelper.status_page_count(body) or 0
-        logger.info(
-            "Image mode: LLMWhisperer stopped rendering at %d bytes "
-            "(limit %d, %d pages); nothing was charged",
-            rendered,
-            limit,
-            page_count,
-        )
-        if image_limits is None:
-            raise ExtractorError(
-                LLMWhispererHelper._fixed_bytes_message(
-                    page_count, rendered, configured_max_total_bytes(), stopped_early=True
-                ),
-                status_code=400,
+        page_count = LLMWhispererHelper.status_page_count(body) or expected_page_count
+        figures = {
+            name: metadata.get(name)
+            for name in ("rendered_bytes", ImageOutputConfig.MAX_TOTAL_IMAGE_BYTES_PARAM)
+        }
+        bad = [
+            name
+            for name, value in figures.items()
+            if not (isinstance(value, int) and not isinstance(value, bool) and value > 0)
+        ]
+        if bad:
+            logger.warning(
+                "Image mode: LLMWhisperer rejected the page set as too large "
+                "(%s) but its %s is missing or not a positive integer; "
+                "reporting the rejection without the figures",
+                ImageOutputConfig.SIZE_LIMIT_EXCEEDED,
+                " and ".join(bad),
             )
-        from unstract.sdk1.utils.image_limits import policy as _policy
+            message = _SIZE_REJECTION_WITHOUT_FIGURES
+        else:
+            rendered = figures["rendered_bytes"]
+            logger.info(
+                "Image mode: LLMWhisperer stopped rendering at %d bytes "
+                "(limit %d, %s pages); nothing was charged",
+                rendered,
+                figures[ImageOutputConfig.MAX_TOTAL_IMAGE_BYTES_PARAM],
+                page_count if page_count else "unknown",
+            )
+            if image_limits is None:
+                message = LLMWhispererHelper._fixed_bytes_message(
+                    page_count, rendered, configured_max_total_bytes(), stopped_early=True
+                )
+            else:
+                from unstract.sdk1.utils.image_limits import policy as _policy
 
+                message = _policy.request_too_large_message(
+                    image_limits,
+                    page_count=page_count,
+                    raw_total=rendered,
+                    prompt_text_bytes=None,
+                    charged=False,
+                    at_least=True,
+                )
+        if image_limits is None:
+            raise ExtractorError(message, status_code=400)
         raise ImageLimitExceededError(
-            _policy.request_too_large_message(
-                image_limits,
-                page_count=page_count,
-                raw_total=rendered,
-                prompt_text_bytes=None,
-                charged=False,
-                at_least=True,
-            ),
-            error_code=limit_codes.IMAGE_PAGES_TOO_LARGE,
-            charged=False,
+            message, error_code=limit_codes.IMAGE_PAGES_TOO_LARGE, charged=False
         )
 
     # Single canonical derivation of ``{extract_dir}/{stem}/pages`` shared
@@ -1101,7 +1130,12 @@ class LLMWhispererHelper:
         image_count: int,
         write: Callable[..., None],
     ) -> None:
-        """Write ``pages.json`` when the document pages differ from 1..N."""
+        """Write ``pages.json`` when the document pages differ from 1..N.
+
+        A failed write (after ``write``'s retries) raises: without the file
+        a selection's pages would be labelled, and named in limit errors, by
+        position, which is wrong. The caller removes the partial set.
+        """
         pages = validate_document_pages(document_pages, image_count)
         if pages is None or pages == list(range(1, image_count + 1)):
             return
@@ -1109,12 +1143,12 @@ class LLMWhispererHelper:
         try:
             write(fs=fs, path=path, data=json.dumps({"pages": pages}).encode())
         except Exception as e:
-            logger.warning(
-                "Image mode: could not write page labels %s (%s); prompts will "
-                "label pages by position",
-                path,
-                e,
-            )
+            raise ExtractorError(
+                "Failed to persist the page labels after retries: "
+                f"provider={fs.provider.value}, path={path}",
+                status_code=500,
+                actual_err=e,
+            ) from e
 
     @staticmethod
     def persist_page_images(
@@ -1125,11 +1159,12 @@ class LLMWhispererHelper:
     ) -> list[PageImageReference]:
         """Write every page image to FileStorage with per-page retry.
 
-        ``document_pages`` (from the status' ``metadata.pages``) records each
-        image's page number in the source document. When valid and different
-        from the positions 1..N, it is written as ``pages.json`` next to the
-        images so the "Page N" labels match the document; it is best-effort
-        and never fails the extraction (labels fall back to the positions).
+        ``document_pages`` (the local 'Pages to extract' selection, else the
+        status' ``metadata.pages``) records each image's page number in the
+        source document. When valid and different from the positions 1..N, it
+        is written as ``pages.json`` next to the images so the "Page N" labels
+        and limit errors name the document's pages; a failed write fails the
+        extraction like a failed page write (the set is removed).
 
         Fail-closed on disk as well as in the return value: if any page exhausts
         its retries, the pages already written are removed (best-effort) before
@@ -1221,9 +1256,13 @@ class LLMWhispererHelper:
                 )
             )
         references.sort(key=lambda ref: ref.page_number)
-        LLMWhispererHelper._write_page_labels(
-            fs, page_store_dir, document_pages, len(references), write_with_retry
-        )
+        try:
+            LLMWhispererHelper._write_page_labels(
+                fs, page_store_dir, document_pages, len(references), write_with_retry
+            )
+        except ExtractorError:
+            LLMWhispererHelper._cleanup_partial_pages(fs, page_store_dir)
+            raise
         logger.info(
             "Image mode: persisted %d page image(s) under %s (provider=%s)",
             len(references),
@@ -1450,7 +1489,7 @@ class LLMWhispererHelper:
             ),
         )
         status = LLMWhispererHelper.poll_pdf_to_images_status(
-            config, whisper_hash, image_limits
+            config, whisper_hash, image_limits, expected_page_count
         )
 
         pages = LLMWhispererHelper._download_and_extract(
