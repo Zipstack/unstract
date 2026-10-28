@@ -1031,6 +1031,22 @@ class TestModelAwarePreSubmit:
         assert "No pages were converted or charged" in msg
         stubs["submit"].assert_not_called()
 
+    def test_page_cap_env_cannot_raise_the_fixed_cap_without_a_policy(
+        self, monkeypatch: MonkeyPatch
+    ) -> None:
+        # No policy: the fixed 90 pages. A ceiling above it leaves 90 in force.
+        monkeypatch.setenv("VLM_IMAGE_ANSWER_PAGE_CAP", "500")
+        monkeypatch.setattr(H, "_safe_pdf_page_count", staticmethod(lambda _b: 91))
+        stubs = _stub_flow(monkeypatch, [])
+        fs = MagicMock(name="FileStorage")
+        fs.read.return_value = b"%PDF-1.7 fake"
+
+        with pytest.raises(ExtractorError) as excinfo:
+            H.get_page_images({}, "/in/doc.pdf", "/out/doc.txt", fs=fs)
+
+        assert "90" in str(excinfo.value)
+        stubs["submit"].assert_not_called()
+
     def test_generous_model_passes_above_the_old_fixed_cap(
         self, monkeypatch: MonkeyPatch
     ) -> None:

@@ -118,8 +118,9 @@ of raw page-image bytes) are optional platform ceilings. They are read by
 `configured_page_ceiling()` / `configured_request_bytes_ceiling()` and
 applied with `min()`: on top of the model's limits through
 `extraction_bound_kwargs()`, and on top of the fixed cap (below). They only
-ever lower a limit, never raise one. Unset means no ceiling beyond
-LLMWhisperer's 999 pages. An invalid value is logged at ERROR and the fixed
+ever lower a limit, never raise one. Unset means no platform ceiling:
+pages stay bounded by LLMWhisperer's 999, bytes by the model's own request
+limit. An invalid value is logged at ERROR and the fixed
 cap's value (90 / 14 MiB) is used instead, never "no ceiling". Set them on
 the backend and every worker alike.
 
@@ -127,8 +128,9 @@ The fixed cap is 90 pages / 14 MiB, lowered by these ceilings and never
 raised by them (`fixed_page_cap()` / `fixed_max_total_bytes()`, and
 `fixed_cap_bound_kwargs()` built from them). It applies when no LLM is
 known, with `VLM_IMAGE_LIMITS_ENFORCE=false`, and to an LLM whose limits
-are not published. A ceiling binds, and the message names the
-administrator, only when it is strictly below the fixed cap.
+are not published. On the fixed-cap path, a ceiling binds (and the message
+names the administrator) only when it is strictly below 90 pages / 14 MiB;
+on the model-aware path, whenever it is below the model's own limit.
 
 So, with the ceilings unset:
 

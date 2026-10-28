@@ -607,11 +607,17 @@ class ImageModePolicy:
         for limits in self.sources:
             request = limits.max_request_bytes
             if request.advisory and request.value:
-                lines.append(
+                line = (
                     f"{_model_label(limits)} publishes no request-size limit; "
                     f"Unstract's conservative default is {_mb(request.value)} per "
-                    "request and is not enforced for this provider."
+                    "request and is not enforced for this provider"
                 )
+                if self.bytes_ceiling is not None:
+                    line += (
+                        f", but image mode's {_mib(self.bytes_ceiling)} "
+                        "platform limit applies"
+                    )
+                lines.append(line + ".")
         return lines
 
     def size_advisory(self, *, page_count: int) -> str | None:

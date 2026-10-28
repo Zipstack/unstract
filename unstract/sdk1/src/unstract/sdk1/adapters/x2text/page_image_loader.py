@@ -53,8 +53,9 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # The FIXED image-mode page cap: the whole limit when model-aware limits are
-# off (``VLM_IMAGE_LIMITS_ENFORCE=false``) or a caller knows no LLM (no
-# ``ImageModePolicy``). The operator ceiling can lower it, never raise it
+# off (``VLM_IMAGE_LIMITS_ENFORCE=false``), a caller knows no LLM (no
+# ``ImageModePolicy``), or the LLM is a pass-through provider that publishes
+# no limits. The operator ceiling can lower it, never raise it
 # (``fixed_page_cap``). Model-aware limits come from
 # ``unstract.sdk1.utils.image_limits``. Above the cap a
 # document is rejected rather than windowed, because this path answers in a
@@ -205,7 +206,8 @@ def fixed_page_cap() -> int:
     """The fixed page cap, lowered by ``PAGE_CAP_ENV`` but never raised.
 
     What image mode enforces without the LLM's limits: with
-    ``VLM_IMAGE_LIMITS_ENFORCE=false``, or when the caller knows no LLM.
+    ``VLM_IMAGE_LIMITS_ENFORCE=false``, when the caller knows no LLM, or for
+    a pass-through provider that publishes no limits.
     """
     return min(DEFAULT_PAGE_CAP, configured_page_ceiling() or DEFAULT_PAGE_CAP)
 
@@ -221,6 +223,7 @@ def fixed_max_total_bytes() -> int:
 def configured_page_cap() -> int:
     """Deprecated alias of ``fixed_page_cap``.
 
+    Unlike the old accessor, an env value can no longer raise the cap.
     Kept for the released cloud answer plugin, which imports it; remove after
     Zipstack/unstract-cloud#1869 is deployed.
     """
@@ -230,6 +233,7 @@ def configured_page_cap() -> int:
 def configured_max_total_bytes() -> int:
     """Deprecated alias of ``fixed_max_total_bytes``.
 
+    Unlike the old accessor, an env value can no longer raise the budget.
     Kept for the released cloud answer plugin; remove after
     Zipstack/unstract-cloud#1869 is deployed.
     """

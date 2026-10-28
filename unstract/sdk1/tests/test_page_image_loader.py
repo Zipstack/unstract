@@ -407,6 +407,15 @@ class TestLoaderReadsConfiguredLimits:
         with pytest.raises(PageCapExceededError):
             load_page_images(fs, _DIR)
 
+    def test_env_above_the_fixed_cap_does_not_raise_it(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv(PAGE_CAP_ENV, "500")
+        monkeypatch.setenv(MAX_TOTAL_MB_ENV, "500")
+        fs = _store({n: b"x" for n in range(1, 92)})
+        with pytest.raises(PageCapExceededError):
+            load_page_images(fs, _DIR)
+
     def test_explicit_none_still_disables(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv(PAGE_CAP_ENV, "2")
         monkeypatch.setenv("VLM_IMAGE_ANSWER_MAX_TOTAL_MB", "1")

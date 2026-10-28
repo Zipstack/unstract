@@ -1528,13 +1528,22 @@ class PromptStudioHelper:
             limits, tokens = LLM.image_input_limits_for(
                 str(llm.adapter_id), llm.metadata or {}
             )
-        except Exception as e:
+        except SdkError as e:
             # The error type only, no traceback: the adapter's validation
             # error quotes the stored metadata, credentials included.
             logger.warning(
                 "Could not resolve image limits for the default profile's LLM "
                 "(%s); using the fixed page cap for the upload check",
                 type(e).__name__,
+            )
+            return None
+        except Exception:
+            # Not the adapter's fault: a defect while resolving the limits.
+            # The upload still falls back to the fixed cap; extraction
+            # re-resolves and fails with a clear reason if this persists.
+            logger.exception(
+                "Internal error resolving image limits for the default "
+                "profile's LLM; using the fixed page cap for the upload check"
             )
             return None
         bounds = extraction_bound_kwargs()

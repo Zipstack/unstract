@@ -317,6 +317,21 @@ class TestModelAwareUploadCheck:
         with pytest.raises(ImageModePageLimitExceeded):
             check(_pdf(6), _PDF, profile)
 
+    def test_internal_error_is_logged_with_traceback_and_uses_the_fixed_cap(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        # A defect (not an adapter validation error) is logged loudly; the
+        # upload check still falls back to the fixed cap.
+        caplog.set_level(logging.ERROR)
+        profile = _llm_profile(_OPENAI_ID, _OPENAI_META)
+        with patch.object(
+            _psh_mod.LLM, "image_input_limits_for", side_effect=RuntimeError("boom")
+        ):
+            with pytest.raises(ImageModePageLimitExceeded) as excinfo:
+                check(_pdf(91), _PDF, profile)
+        assert "the limit is 90" in str(excinfo.value.detail)
+        assert any(rec.exc_info for rec in caplog.records)
+
     def test_upload_passes_the_default_profile(self) -> None:
         source = inspect.getsource(_views_mod.PromptStudioCoreView.upload_for_ide)
         call = source[source.index("validate_upload_page_count_for_image_mode") :]
@@ -356,6 +371,15 @@ class TestCacheHitCheck:
                 _llm_profile(_BEDROCK_ID, _BEDROCK_META), _cached_summary(21), "a.pdf"
             )
         assert "20 page images" in str(excinfo.value.detail)
+
+    def test_generous_provider_accepts_above_the_old_fixed_cap(self) -> None:
+        # The fixed cap applies only without an LLM budget: OpenAI's own
+        # limit (LLMWhisperer's 999 pages) holds on a cache hit too.
+        profile = _llm_profile(_OPENAI_ID, _OPENAI_META)
+        self.cached_check(profile, _cached_summary(91), "a.pdf")
+        with pytest.raises(_psh_mod.ExtractionAPIError) as excinfo:
+            self.cached_check(profile, _cached_summary(1000), "a.pdf")
+        assert "999" in str(excinfo.value.detail)
 
     def test_profile_without_llm_applies_the_fixed_cap(self) -> None:
         # As at upload: no resolvable LLM means the fixed cap, not no check.

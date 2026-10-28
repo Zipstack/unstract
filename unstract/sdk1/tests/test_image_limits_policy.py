@@ -313,7 +313,8 @@ class TestByteBudgets:
         policy = ImageModePolicy.from_limits([OLLAMA])
         assert policy.request_bytes is None
         assert policy.raw_byte_budget(page_count=3) == 14 * 1024 * 1024
-        assert any("20.0 MB" in line for line in policy.advisories(page_count=3))
+        advisory = [line for line in policy.advisories(page_count=3) if "20.0 MB" in line]
+        assert advisory and "14.0 MiB platform limit applies" in advisory[0]
 
     def test_gemma_tiny_request_limit_binds(self) -> None:
         policy = ImageModePolicy.from_limits([GEMMA])
