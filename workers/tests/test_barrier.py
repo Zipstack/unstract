@@ -853,12 +853,13 @@ class TestAutoEnableHighlightOrchestration:
             lambda **kwargs: [MagicMock(name="batch_1")],
         )
         configs = []
+
+        def create_batch_data(**kwargs):
+            configs.append(dict(kwargs["file_data"].manual_review_config))
+            return MagicMock(files=[])
+
         monkeypatch.setattr(
-            general_tasks,
-            "_create_batch_data_general",
-            lambda **kwargs: configs.append(
-                dict(kwargs["file_data"].manual_review_config)
-            ),
+            general_tasks, "_create_batch_data_general", create_batch_data
         )
         ui_log = MagicMock(name="_log_batch_statistics_to_ui")
         monkeypatch.setattr(general_tasks, "_log_batch_statistics_to_ui", ui_log)
@@ -868,23 +869,17 @@ class TestAutoEnableHighlightOrchestration:
             MagicMock(return_value=MagicMock(id="chord-id")),
         )
 
-        try:
-            general_tasks._orchestrate_file_processing_general(
-                api_client=api_client,
-                workflow_id="wf-1",
-                execution_id="exec-1",
-                source_files={"f1": MagicMock(name="file_1")},
-                pipeline_id="pipe-1",
-                scheduled=False,
-                execution_mode=None,
-                use_file_history=False,
-                organization_id="org_test",
-            )
-        except Exception:
-            # Post-chord status updates hit the mocked client; the flag is
-            # already captured by then.
-            if not configs:
-                raise
+        general_tasks._orchestrate_file_processing_general(
+            api_client=api_client,
+            workflow_id="wf-1",
+            execution_id="exec-1",
+            source_files={"f1": MagicMock(name="file_1")},
+            pipeline_id="pipe-1",
+            scheduled=False,
+            execution_mode=None,
+            use_file_history=False,
+            organization_id="org_test",
+        )
 
         util.has_confidence_rules.assert_called_once_with("wf-1")
         assert configs[0].get(AUTO_ENABLE_HIGHLIGHT, False) is has_rules
