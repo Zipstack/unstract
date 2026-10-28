@@ -372,6 +372,9 @@ def _execute_structure_tool_impl(params: dict) -> dict:
     # HITL confidence rules need highlight data. Override a copy so the
     # user's saved setting is unchanged. Agentic projects are skipped above:
     # workflow runs give them no highlight data, so confidence can't work.
+    # Known limit: with an extractor other than LLMWhisperer V2, no highlight
+    # plugin, or summarize-as-source, highlight still gives no confidence and
+    # rules still score 100; this line is logged anyway.
     if params.get(AUTO_ENABLE_HIGHLIGHT):
         tool_instance_metadata = {**tool_instance_metadata, _SK.ENABLE_HIGHLIGHT: True}
         shim.stream_log(HIGHLIGHT_AUTO_ENABLED_MESSAGE)

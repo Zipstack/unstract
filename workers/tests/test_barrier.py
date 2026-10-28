@@ -777,8 +777,8 @@ class TestAutoEnableHighlightOrchestration:
     """HITL confidence rules set ``auto_enable_highlight`` (UN-4435).
 
     The orchestrators check their own flow's rules once (API deployments the
-    API rules, the rest the DB rules) and put the flag in
-    ``manual_review_config``, which the file workers read.
+    API rules, only for a ``hitl_queue_name`` request; the rest the DB rules)
+    and put the flag in ``manual_review_config``, which the file workers read.
     """
 
     @staticmethod
@@ -791,10 +791,18 @@ class TestAutoEnableHighlightOrchestration:
         return util
 
     @pytest.mark.parametrize(
-        "confidence_rule_type, has_rules", [("API", True), ("DB", False), (None, False)]
+        "confidence_rule_type, hitl_kwargs, has_rules",
+        [
+            ("API", {"hitl_queue_name": "q"}, True),
+            ("DB", {"hitl_queue_name": "q"}, False),
+            (None, {"hitl_queue_name": "q"}, False),
+            # The destination evaluates no API rules for these requests.
+            ("API", {}, False),
+            ("API", {"hitl_queue_name": "q", "hitl_packet_id": "p"}, False),
+        ],
     )
     def test_api_deployment_sets_flag_on_every_batch(
-        self, monkeypatch, confidence_rule_type, has_rules
+        self, monkeypatch, confidence_rule_type, hitl_kwargs, has_rules
     ):
         from shared.utils.manual_review_factory import AUTO_ENABLE_HIGHLIGHT
 
@@ -828,9 +836,13 @@ class TestAutoEnableHighlightOrchestration:
             pipeline_id="pipe-1",
             use_file_history=False,
             task_id="task-1",
+            **hitl_kwargs,
         )
 
-        util.has_confidence_rules.assert_called_once_with("wf-1", "API")
+        if hitl_kwargs.get("hitl_queue_name") and not hitl_kwargs.get("hitl_packet_id"):
+            util.has_confidence_rules.assert_called_once_with("wf-1", "API")
+        else:
+            util.has_confidence_rules.assert_not_called()
         assert len(configs) == 2
         assert all(c.get(AUTO_ENABLE_HIGHLIGHT, False) is has_rules for c in configs)
 

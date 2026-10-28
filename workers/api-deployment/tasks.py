@@ -670,8 +670,16 @@ def _run_workflow_api(
         total_files=total_files,
     )
 
-    auto_enable_highlight = has_confidence_rules(
-        get_manual_review_workflow_util(api_client, schema_name), workflow_id, "API"
+    # The destination evaluates API rules only for a hitl_queue_name request;
+    # a hitl_packet_id skips rule evaluation, so highlight would go unused.
+    # ponytail: the API + file-history path evaluates DB rules, which this
+    # check does not cover; add a "DB" check there if that path needs it.
+    auto_enable_highlight = (
+        bool(kwargs.get("hitl_queue_name"))
+        and not kwargs.get("hitl_packet_id")
+        and has_confidence_rules(
+            get_manual_review_workflow_util(api_client, schema_name), workflow_id, "API"
+        )
     )
 
     # Create batch tasks following the exact Django pattern

@@ -982,6 +982,9 @@ def _orchestrate_file_processing_general(
             total_files=len(source_files),
         )
         logger.debug("Global file data configured for manual review")
+        # Run-wide: rules are evaluated after extraction, so every file needs
+        # confidence data. Each file gets the highlight prompt postamble and
+        # highlight/confidence metadata, including files not sent to review.
         if has_confidence_rules(workflow_util, workflow_id, "DB"):
             global_file_data.manual_review_config[AUTO_ENABLE_HIGHLIGHT] = True
         # Pre-calculate file decisions for ALL files based on total count - not per batch!
