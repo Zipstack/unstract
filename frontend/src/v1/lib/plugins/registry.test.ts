@@ -94,4 +94,25 @@ describe("buildRegistry", () => {
       /plugin id switcher is used twice/,
     );
   });
+
+  it("fails on a slot id no plugin contract defines, naming the plugin", () => {
+    const typo = {
+      id: "typo",
+      distributions: ["cloud"],
+      slots: { "shell.product-swicher": load },
+    } as unknown as PluginManifest;
+    expect(() => buildRegistry([typo], "cloud")).toThrow(PluginConflictError);
+    expect(() => buildRegistry([typo], "cloud")).toThrow(
+      /typo.*shell\.product-swicher/,
+    );
+  });
+
+  it("fails on a distribution no build offers, naming the plugin", () => {
+    const stray = {
+      id: "stray",
+      distributions: ["cloud", "onprm"],
+    } as unknown as PluginManifest;
+    expect(() => buildRegistry([stray], "cloud")).toThrow(PluginConflictError);
+    expect(() => buildRegistry([stray], "cloud")).toThrow(/stray.*onprm/);
+  });
 });

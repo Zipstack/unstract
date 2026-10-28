@@ -102,4 +102,48 @@ describe("Slot", () => {
       expect.objectContaining({ message: "render" }),
     );
   });
+
+  it("loads again on a later mount after a failed load", async () => {
+    const load = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("chunk"))
+      .mockResolvedValue({ default: () => <span>switcher</span> });
+    const { Slot, report } = slotFor([
+      {
+        id: "flaky",
+        distributions: ["cloud"],
+        slots: { "shell.product-switcher": load },
+      },
+    ]);
+    const first = render(
+      <Slot id="shell.product-switcher" props={{}} fallback={fallback} />,
+    );
+    await vi.waitFor(() => expect(report).toHaveBeenCalledTimes(1));
+    first.unmount();
+    render(<Slot id="shell.product-switcher" props={{}} fallback={fallback} />);
+    expect(await screen.findByText("switcher")).toBeInTheDocument();
+    expect(load).toHaveBeenCalledTimes(2);
+  });
+
+  it("recovers in place on the next render after a failed load", async () => {
+    const load = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("chunk"))
+      .mockResolvedValue({ default: () => <span>switcher</span> });
+    const { Slot, report } = slotFor([
+      {
+        id: "flaky",
+        distributions: ["cloud"],
+        slots: { "shell.product-switcher": load },
+      },
+    ]);
+    const tree = (
+      <Slot id="shell.product-switcher" props={{}} fallback={fallback} />
+    );
+    const { rerender } = render(tree);
+    await vi.waitFor(() => expect(report).toHaveBeenCalledTimes(1));
+    rerender(<div>{tree}</div>);
+    rerender(tree);
+    expect(await screen.findByText("switcher")).toBeInTheDocument();
+  });
 });

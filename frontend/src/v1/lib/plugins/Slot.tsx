@@ -23,16 +23,35 @@ export interface SlotComponentProps<K extends SlotId> {
 }
 
 interface BoundaryProps {
+  /** A new value clears an earlier failure, so a fresh filler gets a try. */
+  resetKey: unknown;
   fallback: ReactNode;
   onError: (error: unknown) => void;
   children: ReactNode;
 }
 
-class SlotBoundary extends Component<BoundaryProps, { failed: boolean }> {
-  override state = { failed: false };
+interface BoundaryState {
+  failed: boolean;
+  resetKey: unknown;
+}
 
-  static getDerivedStateFromError(): { failed: boolean } {
+class SlotBoundary extends Component<BoundaryProps, BoundaryState> {
+  override state: BoundaryState = {
+    failed: false,
+    resetKey: this.props.resetKey,
+  };
+
+  static getDerivedStateFromError(): Partial<BoundaryState> {
     return { failed: true };
+  }
+
+  static getDerivedStateFromProps(
+    props: BoundaryProps,
+    state: BoundaryState,
+  ): Partial<BoundaryState> | null {
+    return props.resetKey === state.resetKey
+      ? null
+      : { failed: false, resetKey: props.resetKey };
   }
 
   override componentDidCatch(error: unknown, _info: ErrorInfo): void {
@@ -61,7 +80,17 @@ export function makeSlot(
       return null;
     }
     if (!fillers.has(id)) {
-      fillers.set(id, lazy(entry.load) as ComponentType<never>);
+      // React caches a rejected lazy promise, so a failed load drops the
+      // filler and the next render imports the chunk again.
+      const lazyFiller = lazy(() =>
+        entry.load().catch((err: unknown) => {
+          if (fillers.get(id) === lazyFiller) {
+            fillers.delete(id);
+          }
+          throw err;
+        }),
+      ) as ComponentType<never>;
+      fillers.set(id, lazyFiller);
     }
     return fillers.get(id) as ComponentType<SlotProps[K]>;
   }
@@ -77,7 +106,11 @@ export function makeSlot(
     }
     const owner = registry.slot(id)?.owner ?? "unknown";
     return (
-      <SlotBoundary fallback={fallback} onError={(e) => report(owner, id, e)}>
+      <SlotBoundary
+        resetKey={Filler}
+        fallback={fallback}
+        onError={(e) => report(owner, id, e)}
+      >
         <Suspense fallback={fallback}>
           <Filler {...props} />
         </Suspense>

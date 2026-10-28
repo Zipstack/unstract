@@ -1,26 +1,54 @@
 #!/usr/bin/env node
 /*
  * Build check for v1 plugins (src/v1/plugins/<id>/manifest.ts, copied in by
- * the cloud overlay). Loads every manifest with Node or Bun type stripping,
- * runs the registry's conflict checks for every distribution, and returns the
+ * the cloud overlay). Transpiles every manifest and the registry with esbuild
+ * (so it runs on any Node the frontend supports), runs the registry's conflict checks for every distribution, and returns the
  * distribution matrix. vite.config.js runs it in every build and publishes
  * the matrix as plugin-matrix.json.
  *
- *   node scripts/v1-plugins.mjs [out.json]   check, print or write the matrix
+ *   node scripts/v1-plugins.mjs [out.json] [--dir plugins]   check, print or write the matrix
  */
 import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
-import { buildRegistry } from "../src/v1/lib/plugins/registry.ts";
+import { build, transform } from "esbuild";
 
 const DEFAULT_DIR = path.join(import.meta.dirname, "../src/v1/plugins");
+const REGISTRY = path.join(
+  import.meta.dirname,
+  "../src/v1/lib/plugins/registry.ts",
+);
+
+const dataUrl = (code) =>
+  `data:text/javascript;base64,${Buffer.from(code).toString("base64")}`;
+
+let registry;
+function loadRegistry() {
+  registry ??= build({
+    entryPoints: [REGISTRY],
+    bundle: true,
+    write: false,
+    format: "esm",
+    platform: "node",
+  }).then((r) => import(dataUrl(r.outputFiles[0].text)));
+  return registry;
+}
+
+async function importManifest(file) {
+  const { code } = await transform(fs.readFileSync(file, "utf8"), {
+    loader: "ts",
+    format: "esm",
+    sourcefile: file,
+  });
+  return import(dataUrl(code));
+}
 
 async function load(dir, id) {
   const file = path.join(dir, id, "manifest.ts");
   const rel = `${id}/manifest.ts`;
   let mod;
   try {
-    mod = await import(pathToFileURL(file).href);
+    mod = await importManifest(file);
   } catch (err) {
     throw new Error(
       `${rel} could not be loaded (${err.message}). A manifest may only ` +
@@ -43,11 +71,17 @@ export async function check(dir = DEFAULT_DIR) {
   const ids = fs.existsSync(dir)
     ? fs
         .readdirSync(dir, { withFileTypes: true })
-        .filter((e) => fs.existsSync(path.join(dir, e.name, "manifest.ts")))
+        .filter((e) => e.isDirectory() && !e.name.startsWith("."))
         .map((e) => e.name)
         .sort()
     : [];
+  for (const id of ids) {
+    if (!fs.existsSync(path.join(dir, id, "manifest.ts"))) {
+      throw new Error(`${id}/ has no manifest.ts`);
+    }
+  }
   const manifests = await Promise.all(ids.map((id) => load(dir, id)));
+  const { buildRegistry } = await loadRegistry();
   // Throws on any conflict in any distribution.
   const offered = (d) => [...buildRegistry(manifests, d).plugins];
   return {
@@ -67,11 +101,18 @@ export async function check(dir = DEFAULT_DIR) {
 
 // No top-level await: vite.config.js imports this file and Vite bundles the
 // config as CommonJS.
-if (import.meta.url === pathToFileURL(process.argv[1]).href) {
-  check()
+const isMain =
+  process.argv[1] !== undefined &&
+  import.meta.url === pathToFileURL(fs.realpathSync(process.argv[1])).href;
+
+if (isMain) {
+  const args = process.argv.slice(2);
+  const flag = args.indexOf("--dir");
+  const dir = flag === -1 ? DEFAULT_DIR : path.resolve(args[flag + 1]);
+  const out = args.find((a, i) => !a.startsWith("--") && i !== flag + 1);
+  check(dir)
     .then((matrix) => {
       const json = `${JSON.stringify(matrix, null, 2)}\n`;
-      const out = process.argv[2];
       if (out) {
         fs.writeFileSync(out, json);
       } else {

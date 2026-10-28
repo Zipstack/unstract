@@ -1,17 +1,13 @@
-import type {
-  ComponentLoader,
-  Distribution,
-  PluginDistribution,
-  PluginManifest,
-  PluginRoute,
-  SlotId,
-  SlotProps,
+import {
+  type ComponentLoader,
+  type Distribution,
+  PLUGIN_DISTRIBUTIONS,
+  type PluginManifest,
+  type PluginRoute,
+  SLOT_IDS,
+  type SlotId,
+  type SlotProps,
 } from "./types";
-
-/*
- * Runtime imports stay at zero: scripts/v1-plugins.mjs loads this file with
- * Node or Bun type stripping, so it may only `import type`.
- */
 
 export class PluginConflictError extends Error {
   override name = "PluginConflictError";
@@ -33,8 +29,6 @@ export interface PluginRegistry {
   slot<K extends SlotId>(id: K): SlotEntry<K> | undefined;
 }
 
-const PLUGIN_DISTRIBUTIONS: readonly PluginDistribution[] = ["cloud", "onprem"];
-
 function assertDeclared(manifests: readonly PluginManifest[]): void {
   const seen = new Set<string>();
   for (const m of manifests) {
@@ -44,6 +38,18 @@ function assertDeclared(manifests: readonly PluginManifest[]): void {
     seen.add(m.id);
     if (m.distributions.length === 0) {
       throw new PluginConflictError(`${m.id} declares no distributions`);
+    }
+    for (const d of m.distributions as readonly string[]) {
+      if (!(PLUGIN_DISTRIBUTIONS as readonly string[]).includes(d)) {
+        throw new PluginConflictError(
+          `${m.id} declares unknown distribution ${d}`,
+        );
+      }
+    }
+    for (const id of Object.keys(m.slots ?? {})) {
+      if (!(SLOT_IDS as readonly string[]).includes(id)) {
+        throw new PluginConflictError(`${m.id} fills unknown slot ${id}`);
+      }
     }
   }
 }
@@ -88,7 +94,8 @@ function collect(
 /**
  * The plugins, slots and routes one distribution offers. Throws
  * PluginConflictError when any distribution would have a slot filled twice,
- * a route defined twice, or a plugin that declares nowhere to ship.
+ * a route defined twice, a plugin that declares nowhere to ship, or a
+ * manifest naming a slot or distribution that does not exist.
  */
 export function buildRegistry(
   manifests: readonly PluginManifest[],
