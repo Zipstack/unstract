@@ -1,0 +1,124 @@
+/* The v1 Tailwind root. Prefixed `ui` (Tailwind accepts letters only, so not
+ * `v1`): utilities are `ui:…` and theme variables `--ui-…`, so they never
+ * collide with v0's, which compiles from src/index.css in the same document.
+ * Preflight is deliberately not imported: the document already has v0's, and
+ * a second copy would reset v0's border colours. P9 adds it when v0 goes. */
+@layer theme, base, components, utilities;
+@import "tailwindcss/theme.css" layer(theme) prefix(ui);
+@import "tailwindcss/utilities.css" layer(utilities) prefix(ui) source(none);
+
+@import "@fontsource/inter/400.css";
+@import "@fontsource/inter/500.css";
+@import "@fontsource/inter/600.css";
+@import "@fontsource/geist-mono/400.css";
+
+@import "./tokens.css";
+@import "./base.css";
+
+/* Scan only the v1 tree (source(none) above turns off automatic detection). */
+@source "../";
+
+/* Keyed on the v1 root, so a data-theme elsewhere (v0's <html>) cannot flip them. */
+@custom-variant dark (&:where(
+    .v1[data-theme="dark"],
+    .v1[data-theme="dark"] *
+  ));
+@custom-variant unstract (&:where(
+    .v1[data-theme="unstract"],
+    .v1[data-theme="unstract"] *
+  ));
+
+/* Every theme key reads a runtime token from tokens.css; the stock namespaces
+ * are reset so only the token-backed utilities exist. */
+@theme inline {
+  --color-*: initial;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary-muted: var(--primary-muted);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-muted-foreground: var(--sidebar-muted-foreground);
+  --color-header: var(--header);
+  --color-header-foreground: var(--header-foreground);
+  --color-scrim: var(--scrim);
+
+  --radius-*: initial;
+  --radius-sm: var(--radius-sm);
+  --radius-md: var(--radius-md);
+  --radius-lg: var(--radius-lg);
+  --radius-xl: var(--radius-xl);
+
+  --shadow-*: initial;
+  --shadow-sm: var(--shadow-sm);
+  --shadow-md: var(--shadow-md);
+  --shadow-lg: var(--shadow-lg);
+  --shadow-xl: var(--shadow-xl);
+  --inset-shadow-*: initial;
+  --drop-shadow-*: initial;
+  --text-shadow-*: initial;
+
+  --text-*: initial;
+  --text-display: var(--type-display-size);
+  --text-display--line-height: var(--type-display-line-height);
+  --text-display--font-weight: var(--type-display-weight);
+  --text-page-title: var(--type-page-title-size);
+  --text-page-title--line-height: var(--type-page-title-line-height);
+  --text-page-title--font-weight: var(--type-page-title-weight);
+  --text-section-title: var(--type-section-title-size);
+  --text-section-title--line-height: var(--type-section-title-line-height);
+  --text-section-title--font-weight: var(--type-section-title-weight);
+  --text-body: var(--type-body-size);
+  --text-body--line-height: var(--type-body-line-height);
+  --text-body--font-weight: var(--type-body-weight);
+  --text-body-small: var(--type-body-small-size);
+  --text-body-small--line-height: var(--type-body-small-line-height);
+  --text-body-small--font-weight: var(--type-body-small-weight);
+  --text-caption: var(--type-caption-size);
+  --text-caption--line-height: var(--type-caption-line-height);
+  --text-caption--font-weight: var(--type-caption-weight);
+  --text-overline: var(--type-overline-size);
+  --text-overline--line-height: var(--type-overline-line-height);
+  --text-overline--font-weight: var(--type-overline-weight);
+  --text-mono: var(--type-mono-size);
+  --text-mono--line-height: var(--type-mono-line-height);
+  --text-mono--font-weight: var(--type-mono-weight);
+  --text-overline--letter-spacing: var(--type-overline-tracking);
+
+  --font-*: initial;
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+}
+
+/* Board section 6: "border → ring, plus 3px ring at 50% outside". Use it as
+ * `ui:focus-visible:focus-ring`; a bare `ui:focus-ring` rings the element all
+ * the time. The transparent outline is what forced-colors mode paints (it
+ * drops box-shadow), so the ring stays visible in Windows High Contrast. */
+@utility focus-ring {
+  outline: 2px solid transparent; /* v1-styles-allow: forced-colors outline */
+  outline-offset: 2px; /* v1-styles-allow: forced-colors outline */
+  border-color: var(--ring);
+  box-shadow: 0 0 0 var(--focus-ring-width)
+    color-mix(in srgb, var(--ring) var(--focus-ring-alpha), transparent);
+}

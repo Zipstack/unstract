@@ -1,0 +1,5 @@
+.v1 .demo,
+.v1 .demo::after {
+  color: var(--foreground);
+  margin: 0;
+}
