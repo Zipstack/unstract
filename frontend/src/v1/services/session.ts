@@ -13,7 +13,11 @@ export async function signOut(): Promise<string> {
   if (typeof data?.redirect_url !== "string" || data.redirect_url === "") {
     throw new Error("Sign-out reply carried no redirect URL");
   }
-  return data.redirect_url;
+  const url = new URL(data.redirect_url, window.location.origin);
+  if (url.protocol !== "https:" && url.protocol !== "http:") {
+    throw new Error("Sign-out reply carried a non-http redirect URL");
+  }
+  return url.href;
 }
 
 /** Signs out, forgets the analytics identity and leaves the app. */

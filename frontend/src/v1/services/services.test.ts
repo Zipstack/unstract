@@ -104,6 +104,13 @@ describe("signOut", () => {
     reply.data = { redirect_url: "" };
     await expect(signOut()).rejects.toThrow();
   });
+
+  test("only an http(s) redirect is followed; a relative one resolves on this origin", async () => {
+    reply.data = { redirect_url: "javascript:alert(1)" };
+    await expect(signOut()).rejects.toThrow();
+    reply.data = { redirect_url: "/landing" };
+    await expect(signOut()).resolves.toBe(`${window.location.origin}/landing`);
+  });
 });
 
 describe("signOutAndLeave", () => {
