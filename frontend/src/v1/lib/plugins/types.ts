@@ -1,34 +1,36 @@
 import type { ComponentType } from "react";
 
 /*
- * Type-only module. Plugin manifests import from here with `import type`, so
- * Node and Bun can load a manifest without bundling it (the build check in
- * scripts/v1-plugins.mjs does exactly that).
+ * Plugin manifests import from here with `import type`, so the build check in
+ * scripts/v1-plugins.mjs can load a manifest without bundling it. The runtime
+ * lists below let the registry reject a value tsc never saw.
  */
 
 /** Builds a cloud plugin can ship in. The public OSS build has no plugins. */
-export type PluginDistribution = "cloud" | "onprem";
+export const PLUGIN_DISTRIBUTIONS = ["cloud", "onprem"] as const;
+export type PluginDistribution = (typeof PLUGIN_DISTRIBUTIONS)[number];
 export type Distribution = "oss" | PluginDistribution;
 
+/** Every extension point. Adding a slot is one line here. */
+export const SLOT_IDS = [
+  "prompt-studio.lookups",
+  "prompt-studio.cloud-tools",
+  "workflows.human-review",
+  "account-menu.plan-billing",
+  "shell.product-switcher",
+  "platform.hitl-keys",
+  "platform.hitl-settings",
+  "dashboard.subscription-usage",
+  "dashboard.attention-items",
+] as const;
+export type SlotId = (typeof SLOT_IDS)[number];
+
 /*
- * Every extension point and its props. A filler receives these props; the
- * host passes them. Adding a slot is one line here.
+ * The props a filler receives; the host passes them.
  * ponytail: props are empty until the host page that renders each slot is
  * built; that task adds the fields it passes.
  */
-export interface SlotProps {
-  "prompt-studio.lookups": Record<string, never>;
-  "prompt-studio.cloud-tools": Record<string, never>;
-  "workflows.human-review": Record<string, never>;
-  "account-menu.plan-billing": Record<string, never>;
-  "shell.product-switcher": Record<string, never>;
-  "platform.hitl-keys": Record<string, never>;
-  "platform.hitl-settings": Record<string, never>;
-  "dashboard.subscription-usage": Record<string, never>;
-  "dashboard.attention-items": Record<string, never>;
-}
-
-export type SlotId = keyof SlotProps;
+export type SlotProps = { [K in SlotId]: Record<string, never> };
 
 export type ComponentLoader<P> = () => Promise<{ default: ComponentType<P> }>;
 

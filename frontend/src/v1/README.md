@@ -46,6 +46,8 @@ Every folder may import from itself. Test files (`*.test.ts(x)`,
 - `<Slot id props fallback />` shows the fallback when no plugin fills the slot, silently. A filler that fails to load or render shows the fallback and is reported; each slot has its own error boundary.
 - `VITE_DISTRIBUTION` (`oss`, the default, `cloud` or `onprem`) picks the plugins the build offers. The frontend Dockerfile takes it as a build arg.
 - Every build runs `scripts/v1-plugins.mjs`. It fails on a slot filled twice or a route defined twice in any distribution, or a plugin with no distribution, and writes `plugin-matrix.json` to the build output. `node scripts/v1-plugins.mjs` prints the matrix.
+- `plugin-matrix.json` lists, for `oss`, `cloud` and `onprem`, the plugin ids each build offers, and for every plugin its distributions, slots and routes. Release tooling reads it to see which plugins ship where.
+- The check also fails on a slot id or distribution the contract does not define, and on a `plugins/` folder with no `manifest.ts`.
 - v0's optional-plugin stub skips `src/v1`, so a missing module in v1 fails the build.
 
 ## Scripts

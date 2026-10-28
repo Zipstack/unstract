@@ -1,5 +1,6 @@
 // Fixtures for v1-plugins.mjs. Run with `node --test` (bun run test:v1).
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -86,4 +87,51 @@ test("a manifest with a runtime import fails with a clear message", async () => 
     bad: `import { x } from "@v1/lib/plugins/registry";\nexport const manifest = x;\n`,
   });
   await assert.rejects(check(dir), /bad\/manifest\.ts.*import type/);
+});
+
+test("a slot id the contract does not define fails, naming the plugin", async () => {
+  const dir = plugins({
+    typo: manifest(
+      "typo",
+      ["cloud"],
+      `slots: { "shell.product-swicher": () => import("./X") },`,
+    ),
+  });
+  await assert.rejects(check(dir), /typo.*shell\.product-swicher/);
+});
+
+test("a distribution no build offers fails, naming the plugin", async () => {
+  const dir = plugins({ stray: manifest("stray", ["cloud", "onprem-x"]) });
+  await assert.rejects(check(dir), /stray.*onprem-x/);
+});
+
+test("a folder without a manifest fails, but dotfiles are ignored", async () => {
+  const dir = plugins({ billing: manifest("billing", ["cloud"]) });
+  fs.mkdirSync(path.join(dir, ".cache"));
+  fs.writeFileSync(path.join(dir, "index.ts"), "export {};\n");
+  assert.deepEqual((await check(dir)).distributions.cloud, ["billing"]);
+  fs.mkdirSync(path.join(dir, "empty"));
+  await assert.rejects(check(dir), /empty\/ has no manifest\.ts/);
+});
+
+const script = path.join(import.meta.dirname, "v1-plugins.mjs");
+const cli = (dir) =>
+  spawnSync(process.execPath, [script, "--dir", dir], { encoding: "utf8" });
+
+test("the CLI exits 1 on a conflict, naming both plugins", () => {
+  const slot = `slots: { "shell.product-switcher": () => import("./X") },`;
+  const result = cli(
+    plugins({
+      a: manifest("a", ["cloud"], slot),
+      b: manifest("b", ["cloud"], slot),
+    }),
+  );
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /shell\.product-switcher.*\ba\b.*\bb\b/);
+});
+
+test("the CLI exits 0 and prints the matrix on a clean directory", () => {
+  const result = cli(plugins({ billing: manifest("billing", ["cloud"]) }));
+  assert.equal(result.status, 0);
+  assert.deepEqual(JSON.parse(result.stdout).distributions.cloud, ["billing"]);
 });
