@@ -17,9 +17,11 @@
 
     "allowJs": false,
     "noEmit": true,
-    /* Off so hand-written .d.ts under v1 are checked too; with it on, an
-     * unresolved name in one silently becomes `any`. */
-    "skipLibCheck": false,
+    /* On: vitest 3.2 ships its own chai typings and also requires
+     * @types/chai ^5.2, and both declare containSubset, so library checking
+     * fails TS2300 for every v1 test file. This also skips hand-written .d.ts
+     * under v1. Turn this back off once vitest no longer clashes. */
+    "skipLibCheck": true,
     "esModuleInterop": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
