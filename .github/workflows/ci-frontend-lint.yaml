@@ -14,6 +14,10 @@ on:
     types: [opened, synchronize, reopened, ready_for_review]
     branches: [main]
 
+# The repo default token is write; grant only what each job needs.
+permissions:
+  contents: read
+
 jobs:
   # Gating jobs below run when `changes` finds frontend files, AND whenever
   # `changes` itself did not succeed: a skipped job satisfies a required
@@ -22,6 +26,10 @@ jobs:
   changes:
     if: github.event.pull_request.draft == false
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # dorny/paths-filter lists PR files via the API.
+      pull-requests: read
     outputs:
       # Push is already path-filtered by its trigger, so force true off-PR.
       frontend: ${{ github.event_name != 'pull_request' || steps.filter.outputs.frontend == 'true' }}
@@ -44,10 +52,16 @@ jobs:
     needs: changes
     if: ${{ !cancelled() && github.event.pull_request.draft != true && (needs.changes.result != 'success' || needs.changes.outputs.frontend == 'true') }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # marocchino/sticky-pull-request-comment posts the lint report.
+      pull-requests: write
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       - name: Setup Biome
         uses: biomejs/setup-biome@4c91541eaada48f67d7dbd7833600ce162b68f51 # v2.7.1
@@ -107,6 +121,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
@@ -131,6 +147,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
