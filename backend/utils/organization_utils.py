@@ -6,6 +6,7 @@ import logging
 from typing import Any
 
 from account_v2.models import Organization
+from django.db.models import QuerySet
 from django.shortcuts import get_object_or_404
 
 logger = logging.getLogger(__name__)
@@ -71,7 +72,9 @@ def get_organization_context(organization: Organization) -> dict[str, Any]:
     }
 
 
-def filter_queryset_by_organization(queryset, request, organization_field="organization"):
+def filter_queryset_by_organization(
+    queryset: QuerySet, request: Any, organization_field: str = "organization"
+) -> QuerySet:
     """Filter a Django queryset by the request's organization context.
 
     Fails closed. For every caller, this function is the only tenant boundary

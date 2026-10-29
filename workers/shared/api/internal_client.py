@@ -497,6 +497,14 @@ class InternalAPIClient(CachedAPIClientMixin):
             response_dict = response
         return WorkflowExecutionResponse.from_api_response(response_dict)
 
+    def get_workflow_execution_status(
+        self, execution_id: str | uuid.UUID, organization_id: str | None = None
+    ) -> str | None:
+        """Current execution status, without the execution context. Raises on failure."""
+        return self.execution_client.get_workflow_execution_status(
+            execution_id, organization_id
+        )
+
     @with_cache(
         CacheType.WORKFLOW,
         lambda self, workflow_id, organization_id=None: str(workflow_id),
