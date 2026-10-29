@@ -1,7 +1,7 @@
 import { act, render } from "@testing-library/react";
 import type { PDFDocumentProxy } from "pdfjs-dist";
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { createRef } from "react";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { PdfPageList, type PdfPageListHandle } from "./PdfPageList";
 
 /** An IntersectionObserver whose "in view" set the test controls. */

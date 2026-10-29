@@ -2,8 +2,8 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { OpenedPdf, PdfSource } from "@v1/lib/pdf/types";
 import type { PDFDocumentProxy } from "pdfjs-dist";
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { createRef } from "react";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { DocumentViewer, type DocumentViewerHandle } from "./DocumentViewer";
 
 const opening = vi.hoisted(
