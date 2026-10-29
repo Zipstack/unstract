@@ -135,3 +135,22 @@ test("the CLI exits 0 and prints the matrix on a clean directory", () => {
   assert.equal(result.status, 0);
   assert.deepEqual(JSON.parse(result.stdout).distributions.cloud, ["billing"]);
 });
+
+test("the CLI writes the matrix to the file argument, with or without --dir", () => {
+  const out = path.join(
+    fs.mkdtempSync(path.join(os.tmpdir(), "v1-out-")),
+    "m.json",
+  );
+  const bare = spawnSync(process.execPath, [script, out], { encoding: "utf8" });
+  assert.equal(bare.status, 0, bare.stderr);
+  assert.equal(bare.stdout, "");
+  assert.ok(JSON.parse(fs.readFileSync(out, "utf8")).distributions);
+
+  const dir = plugins({ billing: manifest("billing", ["cloud"]) });
+  const before = spawnSync(process.execPath, [script, out, "--dir", dir], {
+    encoding: "utf8",
+  });
+  assert.equal(before.status, 0, before.stderr);
+  const matrix = JSON.parse(fs.readFileSync(out, "utf8"));
+  assert.deepEqual(matrix.distributions.cloud, ["billing"]);
+});
