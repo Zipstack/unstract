@@ -127,7 +127,7 @@ def _default_client() -> RedisLike:
 def with_timeouts(client: Any, timeout: float) -> Any:
     """A client on a new pool like ``client``'s, with socket timeouts set."""
     import redis
-    from redis.sentinel import SentinelConnectionPool
+    from redis.sentinel import Sentinel, SentinelConnectionPool
 
     pool = client.connection_pool
     # A Sentinel pool stores a back-reference to itself here; the new pool
@@ -135,9 +135,29 @@ def with_timeouts(client: Any, timeout: float) -> Any:
     kwargs = {k: v for k, v in pool.connection_kwargs.items() if k != "connection_pool"}
     kwargs.update(socket_timeout=timeout, socket_connect_timeout=timeout)
     if isinstance(pool, SentinelConnectionPool):
+        # Discovering the master queries the sentinels on their own clients,
+        # which can stall just the same, so those get the timeouts too.
+        shared = pool.sentinel_manager
+        manager = Sentinel(
+            [
+                (
+                    s.connection_pool.connection_kwargs["host"],
+                    s.connection_pool.connection_kwargs["port"],
+                )
+                for s in shared.sentinels
+            ],
+            min_other_sentinels=shared.min_other_sentinels,
+            sentinel_kwargs={
+                **shared.sentinel_kwargs,
+                "socket_timeout": timeout,
+                "socket_connect_timeout": timeout,
+            },
+            force_master_ip=getattr(shared, "_force_master_ip", None),
+            **shared.connection_kwargs,
+        )
         bounded = SentinelConnectionPool(
             pool.service_name,
-            pool.sentinel_manager,
+            manager,
             connection_class=pool.connection_class,
             is_master=pool.is_master,
             check_connection=pool.check_connection,
