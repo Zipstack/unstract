@@ -188,7 +188,10 @@ test("no v1 or fixture file is git-ignored", () => {
         withFileTypes: true,
       })
       .filter((d) => d.isFile() && d.name !== ".DS_Store")
-      .map((d) => path.relative(FRONTEND, path.join(d.parentPath, d.name))),
+      .map((d) => path.relative(FRONTEND, path.join(d.parentPath, d.name)))
+      // Cloud plugins copied into src/v1/plugins/<id>/ are git-ignored on
+      // purpose; they belong to the cloud repository.
+      .filter((rel) => !/^src\/v1\/plugins\/[^/]+\//.test(rel)),
   );
   // A lib/ folder anywhere under v1, not only the top-level one.
   files.push("src/v1/pages/projects/lib/x.ts", "src/v1/lib/sub/lib/x.ts");

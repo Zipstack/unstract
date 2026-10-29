@@ -17,9 +17,11 @@
 
     "allowJs": false,
     "noEmit": true,
-    /* Off so hand-written .d.ts under v1 are checked too; with it on, an
-     * unresolved name in one silently becomes `any`. */
-    "skipLibCheck": false,
+    /* On, as in tsconfig.json. Off also type-checks third-party typings, and
+     * those conflict: @types/chai 5.2.3 and vitest 3.2.6 both declare
+     * `containSubset`, so any v1 test importing vitest failed. The cost is
+     * that hand-written .d.ts files under v1 are not checked either. */
+    "skipLibCheck": true,
     "esModuleInterop": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
