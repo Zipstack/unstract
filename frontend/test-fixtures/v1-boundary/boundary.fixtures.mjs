@@ -348,6 +348,11 @@ test("folder contract: every import form is read", () => {
     afterDoubleSlashInString:
       'const u = "a//b"; export { a } from "@v1/services/a";',
     glob: 'export const a = import.meta.glob("@v1/services/*.ts");',
+    // An apostrophe in JSX text is not a string opener.
+    afterJsxContraction:
+      'export const A = () => <span>It\'s <button onClick={() => import("@v1/services/a")}>ready</button></span>;',
+    afterJsxBraceApostrophe:
+      'export const B = (n: string) => <p>{n}\'s <b onClick={() => import("@v1/services/a")}>x</b></p>;',
     globArrayLater:
       'export const a = import.meta.glob(["@v1/components/ui/*.tsx", "@v1/services/*.ts"]);',
     afterTemplateExpression:
@@ -362,6 +367,8 @@ test("folder contract: every import form is read", () => {
     // Example source text in strings, templates and regexes is not an import.
     "importsInStrings.ts":
       'export const a = "import(name)";\nexport const b = \'import x from "@/helpers/x"\';\nexport const c = `require(n) or import.meta.glob(x)`;\nexport const d = /import\\(x\\)/;',
+    "jsxQuotes.tsx":
+      "export const C = () => <p title=\"It's fine\">Don't 'quote' me</p>;",
     "jsx.tsx":
       'export const T = () => <div className="x">a / b</div>;\nexport const n = 2 / 1;',
   };

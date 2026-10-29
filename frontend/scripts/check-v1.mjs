@@ -161,7 +161,8 @@ function mayImport(from, to, isTestFile) {
  * Blanks comments, keeping line numbers so matches can be reported. Tracks
  * strings, template literals (including `${}` expressions) and regex
  * literals, so a `/*` or `//` inside any of them does not swallow the code
- * after it. A regex literal is told from division by the token before it.
+ * after it. A regex literal is told from division, and a string from a JSX
+ * apostrophe, by the token before it; a string must also close on its line.
  */
 function blankComments(src) {
   let out = "";
@@ -214,8 +215,11 @@ function tokenEnd(src, i, out, stack) {
   if (isComment(src, i)) {
     return commentEnd(src, i);
   }
-  if (src[i] === '"' || src[i] === "'") {
-    return stringEnd(src, i);
+  if ((src[i] === '"' || src[i] === "'") && stringMayStart(out)) {
+    const end = stringEnd(src, i);
+    if (end !== -1) {
+      return end;
+    }
   }
   if (src[i] === "/" && regexMayStart(out)) {
     const end = regexEnd(src, i);
@@ -230,7 +234,15 @@ function tokenEnd(src, i, out, stack) {
 // A `/` after one of these (or a keyword below) starts a regex, not division.
 // `<` is left out so JSX closing tags (`</div>`) stay code.
 const REGEX_AFTER = new Set("(,=:[!&|?{};+-*%>~^");
-const REGEX_KEYWORDS = new Set([
+// A quote after one of these (or a keyword) starts a string. Anywhere else it
+// is JSX text: the apostrophe in `It's` or `{name}'s` follows a letter or a
+// `}`, and reading it as a string would hide the code after it.
+const STRING_AFTER = new Set("(,=:[!&|?{;+-*%>~^");
+const LITERAL_KEYWORDS = new Set([
+  "import",
+  "from",
+  "export",
+  "throw",
   "return",
   "typeof",
   "case",
@@ -246,16 +258,24 @@ const REGEX_KEYWORDS = new Set([
 ]);
 
 function regexMayStart(out) {
+  return literalMayStart(out, REGEX_AFTER);
+}
+
+function stringMayStart(out) {
+  return literalMayStart(out, STRING_AFTER);
+}
+
+/* Whether a literal may start here, judged by the code token before it. */
+function literalMayStart(out, after) {
   const before = out.trimEnd();
   if (before === "") {
     return true;
   }
-  const last = before.at(-1);
-  if (REGEX_AFTER.has(last)) {
+  if (after.has(before.at(-1))) {
     return true;
   }
   const word = /[\w$]+$/.exec(before);
-  return word !== null && REGEX_KEYWORDS.has(word[0]);
+  return word !== null && LITERAL_KEYWORDS.has(word[0]);
 }
 
 /* Index just past the regex literal at i, or -1 if it does not close on its
@@ -290,14 +310,14 @@ function commentEnd(src, i) {
   return close === -1 ? src.length : close + 2;
 }
 
-/* Index just past the '...' or "..." string that starts at i. An unclosed
- * string ends at the newline. */
+/* Index just past the '...' or "..." string that starts at i, or -1 if it
+ * does not close on its line (then the quote was text, not a string). */
 function stringEnd(src, i) {
   let j = i + 1;
   while (j < src.length && src[j] !== src[i] && src[j] !== "\n") {
     j += src[j] === "\\" ? 2 : 1;
   }
-  return j + 1;
+  return src[j] === src[i] ? j + 1 : -1;
 }
 
 /* One step inside a template literal: how many characters to copy. Closing
