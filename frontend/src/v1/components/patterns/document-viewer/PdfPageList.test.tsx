@@ -220,3 +220,45 @@ it("draws nothing for a page that leaves before its frame comes", async () => {
   expect(drawn.has(1)).toBe(false);
   expect(renderPage.mock.calls.length).toBeLessThanOrEqual(3);
 });
+
+it("draws each highlight on its own page", () => {
+  const { document } = fakeDocument(3);
+  const { container } = render(
+    <PdfPageList
+      document={document}
+      pageSizes={sizes(3)}
+      zoom={1}
+      highlights={[
+        {
+          id: "a",
+          page: 2,
+          x: 0,
+          y: 0.1,
+          w: 1,
+          h: 0.02,
+          variant: "line",
+          tone: "default",
+        },
+        {
+          id: "b",
+          page: 0,
+          x: 0,
+          y: 0.5,
+          w: 1,
+          h: 0.02,
+          variant: "line",
+          tone: "default",
+        },
+      ]}
+    />,
+  );
+  expect(
+    container.querySelector('[data-page-index="2"] [data-highlight-id="a"]'),
+  ).not.toBeNull();
+  expect(
+    container.querySelector('[data-page-index="0"] [data-highlight-id="b"]'),
+  ).not.toBeNull();
+  expect(
+    container.querySelector('[data-page-index="1"] [data-highlight-id]'),
+  ).toBeNull();
+});

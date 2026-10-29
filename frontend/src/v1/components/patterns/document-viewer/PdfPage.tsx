@@ -1,3 +1,4 @@
+import type { Highlight } from "@v1/lib/pdf/highlights";
 import type { PageSize } from "@v1/lib/pdf/types";
 import {
   CSS_PIXELS_PER_POINT,
@@ -14,6 +15,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { HighlightLayer } from "./HighlightLayer";
 
 export interface PdfPageProps {
   document: PDFDocumentProxy;
@@ -27,7 +29,11 @@ export interface PdfPageProps {
   /** Whether this page is inside the render window and should hold a canvas. */
   rendered: boolean;
   observe: (element: HTMLElement | null) => (() => void) | undefined;
-  /** Drawn over the page, in a box the same size as the page. */
+  /** This page's highlights. Keep the array stable: the page is memoised. */
+  highlights: readonly Highlight[];
+  activeHighlightId?: string | null;
+  onHighlightClick?: (highlight: Highlight) => void;
+  /** Drawn over the page, above its highlights, in a box the page's size. */
   children?: ReactNode;
 }
 
@@ -55,6 +61,9 @@ export const PdfPage = memo(function PdfPage({
   zoom,
   rendered,
   observe,
+  highlights,
+  activeHighlightId,
+  onHighlightClick,
   children,
 }: PdfPageProps) {
   const frameRef = useRef<HTMLDivElement | null>(null);
@@ -155,6 +164,11 @@ export const PdfPage = memo(function PdfPage({
           className="ui:absolute ui:inset-0 ui:block ui:size-full"
         />
       )}
+      <HighlightLayer
+        highlights={highlights}
+        activeId={activeHighlightId}
+        onHighlightClick={onHighlightClick}
+      />
       {children}
     </div>
   );
