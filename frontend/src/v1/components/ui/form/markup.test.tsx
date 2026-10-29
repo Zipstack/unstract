@@ -31,7 +31,15 @@ const VARIANTS: [string, ReactElement][] = [
     "search field",
     <SearchField key="v" aria-label="Search" defaultValue="q" />,
   ],
-  ["secret field", <SecretField key="v" aria-label="Key" defaultValue="sk" />],
+  [
+    "secret field",
+    <SecretField
+      key="v"
+      aria-label="Key"
+      defaultValue="sk"
+      onCopyResult={() => undefined}
+    />,
+  ],
   [
     "field with helper and error",
     <Field key="v" id="f" label="Name" helperText="Help" error="Required">

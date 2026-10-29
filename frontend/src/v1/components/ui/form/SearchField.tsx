@@ -10,7 +10,7 @@ import {
   useState,
 } from "react";
 import { FieldAction } from "./FieldAction";
-import { useFieldContext } from "./field-context";
+import { useFieldControl } from "./field-context";
 import { Input, type InputProps } from "./Input";
 import { isComposing } from "./keyboard";
 
@@ -28,10 +28,12 @@ export type SearchFieldProps = Omit<
 
 /*
  * Escape clears the field when it has a value, and stops there; on an empty
- * field Escape bubbles so a dialog or menu can close. Radix layers listen for
- * Escape on the document in the capture phase, before this handler runs, so a
- * dialog that holds a SearchField must skip dismissal for a target that
- * carries data-escape-clears.
+ * field Escape bubbles so a dialog or menu can close. Radix layers see Escape
+ * on the document in the capture phase, before this handler, so a dialog that
+ * holds a SearchField skips dismissal for a target carrying
+ * data-escape-clears by calling preventDefault in onEscapeKeyDown. The clear
+ * therefore ignores a preventDefault made before it; only the caller's own
+ * onKeyDown can cancel it.
  */
 export function SearchField({
   value,
@@ -46,15 +48,15 @@ export function SearchField({
   controlClassName,
   ...props
 }: SearchFieldProps): JSX.Element {
-  const field = useFieldContext();
   const [uncontrolled, setUncontrolled] = useState(defaultValue);
   const current = value ?? uncontrolled;
   const inputRef = useRef<HTMLInputElement>(null);
   const composedRef = useMemo(() => composeRefs(inputRef, ref), [ref]);
-  const locked =
-    (disabled ?? field?.disabled ?? false) ||
-    (readOnly ?? field?.readOnly ?? false);
-  const clearable = current !== "" && !locked;
+  const state = useFieldControl({ disabled, readOnly });
+  // A controlled field without onValueChange cannot be cleared, so it lets Escape through.
+  const canClear = value === undefined || onValueChange !== undefined;
+  const clearable =
+    canClear && current !== "" && !state.disabled && !state.readOnly;
 
   const update = (next: string) => {
     if (value === undefined) {
@@ -64,9 +66,11 @@ export function SearchField({
   };
 
   const handleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    const preventedBefore = event.isDefaultPrevented();
     onKeyDown?.(event);
+    const callerCancelled = !preventedBefore && event.isDefaultPrevented();
     if (
-      event.defaultPrevented ||
+      callerCancelled ||
       event.key !== "Escape" ||
       !clearable ||
       isComposing(event)

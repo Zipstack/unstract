@@ -1,6 +1,8 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { type JSX, useState } from "react";
 import { afterEach, expect, it, vi } from "vitest";
+import { Field } from "./Field";
 import { PromptTextarea } from "./PromptTextarea";
 
 afterEach(() => vi.unstubAllGlobals());
@@ -74,4 +76,81 @@ it("sizes itself from scrollHeight where field-sizing is unsupported", () => {
   Object.defineProperty(textarea, "scrollHeight", { value: 180 });
   fireEvent.input(textarea, { target: { value: "long text" } });
   expect(textarea.style.getPropertyValue("--prompt-height")).toBe("180px");
+});
+
+/** Makes scrollHeight follow the text, as a laid-out textarea would. */
+function measureByLength(textarea: HTMLTextAreaElement) {
+  Object.defineProperty(textarea, "scrollHeight", {
+    configurable: true,
+    get: () => (textarea.value === "" ? 104 : 104 + textarea.value.length),
+  });
+}
+
+it("re-fits a controlled value cleared after submit, without an input event", async () => {
+  vi.stubGlobal("CSS", { supports: () => false });
+  const user = userEvent.setup();
+  function Controlled() {
+    const [value, setValue] = useState("");
+    return (
+      <PromptTextarea
+        aria-label="Prompt"
+        value={value}
+        onChange={(event) => setValue(event.target.value)}
+        onSubmit={() => setValue("")}
+      />
+    );
+  }
+  render(<Controlled />);
+  const textarea = screen.getByLabelText("Prompt") as HTMLTextAreaElement;
+  measureByLength(textarea);
+  await user.type(textarea, "twelve chars");
+  expect(textarea.style.getPropertyValue("--prompt-height")).toBe("116px");
+  await user.keyboard("{Enter}");
+  expect(textarea.value).toBe("");
+  expect(textarea.style.getPropertyValue("--prompt-height")).toBe("104px");
+});
+
+it("re-fits an uncontrolled value after its form resets", async () => {
+  vi.stubGlobal("CSS", { supports: () => false });
+  render(
+    <form>
+      <PromptTextarea aria-label="Prompt" defaultValue="" />
+    </form>,
+  );
+  const textarea = screen.getByLabelText("Prompt") as HTMLTextAreaElement;
+  measureByLength(textarea);
+  fireEvent.input(textarea, { target: { value: "abcd" } });
+  expect(textarea.style.getPropertyValue("--prompt-height")).toBe("108px");
+  textarea.form?.reset();
+  await new Promise((resolve) => requestAnimationFrame(resolve));
+  expect(textarea.value).toBe("");
+  expect(textarea.style.getPropertyValue("--prompt-height")).toBe("104px");
+});
+
+it("keeps the height automatic while there is no layout to measure", () => {
+  vi.stubGlobal("CSS", { supports: () => false });
+  const { textarea } = setup();
+  Object.defineProperty(textarea, "scrollHeight", { value: 0 });
+  fireEvent.input(textarea, { target: { value: "hidden" } });
+  expect(textarea.style.getPropertyValue("--prompt-height")).toBe("");
+});
+
+it.each([
+  ["prop", (node: JSX.Element) => node, { readOnly: true }],
+  [
+    "Field",
+    (node: JSX.Element) => (
+      <Field label="Prompt" readOnly>
+        {node}
+      </Field>
+    ),
+    {},
+  ],
+])("does not submit when read-only by %s", (_, wrap, props) => {
+  const onSubmit = vi.fn();
+  render(
+    wrap(<PromptTextarea aria-label="Prompt" onSubmit={onSubmit} {...props} />),
+  );
+  fireEvent.keyDown(screen.getByLabelText("Prompt"), { key: "Enter" });
+  expect(onSubmit).not.toHaveBeenCalled();
 });

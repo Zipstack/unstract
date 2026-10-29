@@ -3,10 +3,12 @@ import { composeRefs } from "@v1/lib/compose-refs";
 import {
   type JSX,
   type KeyboardEvent,
+  useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
 } from "react";
+import { useFieldControl } from "./field-context";
 import { isComposing } from "./keyboard";
 import { Textarea, type TextareaProps } from "./Textarea";
 
@@ -34,6 +36,11 @@ function fitToContent(element: HTMLTextAreaElement | null): void {
     return;
   }
   element.style.setProperty("--prompt-height", "auto");
+  // 0 means no layout yet (hidden or detached); keep auto until it has one.
+  if (element.scrollHeight === 0) {
+    element.style.removeProperty("--prompt-height");
+    return;
+  }
   element.style.setProperty("--prompt-height", `${element.scrollHeight}px`);
 }
 
@@ -44,10 +51,12 @@ export function PromptTextarea({
   onInput,
   value,
   ref,
+  readOnly,
   className,
   controlClassName,
   ...props
 }: PromptTextareaProps): JSX.Element {
+  const state = useFieldControl({ readOnly });
   const innerRef = useRef<HTMLTextAreaElement>(null);
   const textareaRef = useMemo(() => composeRefs(innerRef, ref), [ref]);
 
@@ -57,6 +66,24 @@ export function PromptTextarea({
     fitToContent(innerRef.current);
   }, [value]);
 
+  // A form reset changes an uncontrolled value without an input event. The
+  // reset event fires before the values change, so fit on the next frame.
+  useEffect(() => {
+    const form = innerRef.current?.form;
+    if (!form) {
+      return undefined;
+    }
+    let frame = 0;
+    const onReset = () => {
+      frame = requestAnimationFrame(() => fitToContent(innerRef.current));
+    };
+    form.addEventListener("reset", onReset);
+    return () => {
+      form.removeEventListener("reset", onReset);
+      cancelAnimationFrame(frame);
+    };
+  }, []);
+
   const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     onKeyDown?.(event);
     if (
@@ -64,6 +91,7 @@ export function PromptTextarea({
       event.key !== "Enter" ||
       event.shiftKey ||
       !onSubmit ||
+      state.readOnly ||
       isComposing(event)
     ) {
       return;
@@ -76,6 +104,7 @@ export function PromptTextarea({
     <Textarea
       ref={textareaRef}
       value={value}
+      readOnly={readOnly}
       onKeyDown={handleKeyDown}
       onInput={(event) => {
         onInput?.(event);

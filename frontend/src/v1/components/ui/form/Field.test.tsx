@@ -1,4 +1,5 @@
 import { render, screen } from "@testing-library/react";
+import type { JSX } from "react";
 import { expect, it } from "vitest";
 import { ErrorText } from "./ErrorText";
 import { Field } from "./Field";
@@ -9,16 +10,66 @@ import { SearchField } from "./SearchField";
 import { SecretField } from "./SecretField";
 import { Textarea } from "./Textarea";
 
-it.each([
-  ["Input", <Input key="c" />],
-  ["Textarea", <Textarea key="c" />],
-  ["PromptTextarea", <PromptTextarea key="c" />],
-  ["SearchField", <SearchField key="c" />],
-  ["SecretField", <SecretField key="c" />],
-])("associates the Field label with a %s", (_, control) => {
-  render(<Field label="Name">{control}</Field>);
+/** Every text control, rendered with the given props. */
+const CONTROLS: [string, (props: ControlProps) => JSX.Element][] = [
+  ["Input", (p) => <Input {...p} />],
+  ["Textarea", (p) => <Textarea {...p} />],
+  ["PromptTextarea", (p) => <PromptTextarea {...p} />],
+  ["SearchField", (p) => <SearchField {...p} />],
+  ["SecretField", (p) => <SecretField onCopyResult={() => undefined} {...p} />],
+];
+
+type ControlProps = Readonly<{
+  invalid?: boolean;
+  disabled?: boolean;
+  readOnly?: boolean;
+  "aria-label"?: string;
+}>;
+
+const frameOf = (control: HTMLElement) =>
+  control.closest("[data-slot=field-frame]") as HTMLElement;
+
+it.each(CONTROLS)("associates the Field label with a %s", (_, make) => {
+  render(<Field label="Name">{make({})}</Field>);
   const named = screen.getByLabelText("Name");
   expect(named.dataset.slot).toBe("control");
+});
+
+it.each(
+  CONTROLS,
+)("wires a %s to the Field's error, helper and states", (_, make) => {
+  render(
+    <Field label="Name" id="name" helperText="Help" error="Bad" disabled>
+      {make({})}
+    </Field>,
+  );
+  const control = screen.getByLabelText("Name") as HTMLInputElement;
+  expect(control.getAttribute("aria-invalid")).toBe("true");
+  expect(control.getAttribute("aria-describedby")).toBe(
+    "name-helper name-error",
+  );
+  expect(control.disabled).toBe(true);
+  expect(frameOf(control).hasAttribute("data-invalid")).toBe(true);
+  expect(frameOf(control).hasAttribute("data-disabled")).toBe(true);
+});
+
+it.each(
+  CONTROLS,
+)("takes a %s's own state props over an empty frame", (_, make) => {
+  const { rerender } = render(make({ "aria-label": "C" }));
+  const control = () => screen.getByLabelText("C") as HTMLInputElement;
+  expect(control().hasAttribute("aria-invalid")).toBe(false);
+  for (const flag of ["data-invalid", "data-disabled", "data-readonly"]) {
+    expect(frameOf(control()).hasAttribute(flag)).toBe(false);
+  }
+  rerender(make({ "aria-label": "C", invalid: true, readOnly: true }));
+  expect(control().getAttribute("aria-invalid")).toBe("true");
+  expect(control().readOnly).toBe(true);
+  expect(frameOf(control()).hasAttribute("data-invalid")).toBe(true);
+  expect(frameOf(control()).hasAttribute("data-readonly")).toBe(true);
+  rerender(make({ "aria-label": "C", disabled: true }));
+  expect(control().disabled).toBe(true);
+  expect(frameOf(control()).hasAttribute("data-disabled")).toBe(true);
 });
 
 it("associates a standalone Label through htmlFor", () => {
