@@ -31,6 +31,7 @@ dependencies = [
     # contract published clients are generated from.
     "drf-spectacular==0.30.0",
     "psycopg2-binary==2.9.9",
+    "prometheus-client>=0.17.0,<1.0.0", # Platform /metrics exporter
     "python-dotenv==1.2.2",
     "python-magic==0.4.27", # For file upload/download
     "python-socketio==5.17.0", # For log_events
