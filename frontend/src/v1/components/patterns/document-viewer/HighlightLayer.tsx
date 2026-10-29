@@ -1,6 +1,5 @@
 import { cn } from "@v1/lib/cn";
 import type { Highlight, HighlightTone } from "@v1/lib/pdf/highlights";
-import { useCallback } from "react";
 
 export interface HighlightLayerProps {
   /** This page's highlights. */
@@ -21,24 +20,6 @@ function percent(fraction: number): string {
   return `${fraction * 100}%`;
 }
 
-/**
- * Positions a highlight from its page fractions. They are percentages of the
- * page box, so the box needs no update when the zoom changes. Set as custom
- * properties because v1 bans the style attribute.
- */
-function usePlacement(highlight: Highlight) {
-  const { x, y, w, h } = highlight;
-  return useCallback(
-    (element: HTMLElement | null) => {
-      element?.style.setProperty("--hl-x", percent(x));
-      element?.style.setProperty("--hl-y", percent(y));
-      element?.style.setProperty("--hl-w", percent(w));
-      element?.style.setProperty("--hl-h", percent(h));
-    },
-    [x, y, w, h],
-  );
-}
-
 function label(highlight: Highlight, pageNumber: number): string {
   const confidence =
     highlight.confidence === undefined
@@ -56,7 +37,12 @@ function HighlightBox({
   active: boolean;
   onClick?: (highlight: Highlight) => void;
 }) {
-  const place = usePlacement(highlight);
+  // Page fractions as percentages of the page box, so the box needs no update
+  // when the zoom changes. Runtime geometry: custom properties the classes read.
+  const x = percent(highlight.x);
+  const y = percent(highlight.y);
+  const w = percent(highlight.w);
+  const h = percent(highlight.h);
   const tone: HighlightTone = active ? "active" : highlight.tone;
   const className = cn(
     "ui:absolute ui:top-(--hl-y) ui:left-(--hl-x) ui:h-(--hl-h) ui:w-(--hl-w) ui:rounded-sm ui:mix-blend-multiply",
@@ -68,12 +54,18 @@ function HighlightBox({
     "data-tone": tone,
   };
   if (onClick === undefined) {
-    return <div ref={place} className={className} {...data} />;
+    return (
+      <div
+        className={className}
+        style={{ "--hl-x": x, "--hl-y": y, "--hl-w": w, "--hl-h": h }}
+        {...data}
+      />
+    );
   }
   return (
     <button
-      ref={place}
       type="button"
+      style={{ "--hl-x": x, "--hl-y": y, "--hl-w": w, "--hl-h": h }}
       aria-label={label(highlight, highlight.page + 1)}
       aria-current={active ? "true" : undefined}
       onClick={() => onClick(highlight)}
