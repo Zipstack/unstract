@@ -1,0 +1,8 @@
+# CODEOWNERS
+#
+# The vision-LLM image limits table is runtime data: when a deployment sets
+# VLM_IMAGE_LIMITS_URL (SaaS does), a merge to main changes which image-mode
+# documents every such deployment accepts within the refresh window, without a
+# release. Changes to it need an owner's review. See
+# unstract/sdk1/src/unstract/sdk1/utils/image_limits/README.md.
+/unstract/sdk1/src/unstract/sdk1/utils/image_limits/limits.json @Zipstack/unstract-maintainers @praveen-formido
