@@ -27,8 +27,8 @@ import jsonschema
 from django.db import IntegrityError
 from django.test import SimpleTestCase, TestCase
 from django.utils import timezone
+from utils.tests.auth_seam import builtin_auth_service
 
-from account_v2.authentication_plugin_registry import AuthenticationPluginRegistry
 from account_v2.enums import Product
 from account_v2.models import User, UserProductPreference
 from account_v2.product_preference import (
@@ -65,11 +65,9 @@ EXISTING_SESSION_FIELDS = {
 
 class _BuiltInSessionAuth(TestCase):
     def setUp(self) -> None:
-        no_plugin = mock.patch.object(
-            AuthenticationPluginRegistry, "is_plugin_available", return_value=False
-        )
-        no_plugin.start()
-        self.addCleanup(no_plugin.stop)
+        # The built-in session auth: a plugin's middleware would 401 a session
+        # it did not seed. Test sessions have no plugin hook yet.
+        self.enterContext(builtin_auth_service())
 
 
 def _user(email: str, **fields) -> User:

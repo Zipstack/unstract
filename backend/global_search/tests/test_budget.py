@@ -23,7 +23,6 @@ from django.contrib.contenttypes.models import ContentType
 from django.db import connection
 from django.test import TestCase
 from django.test.utils import CaptureQueriesContext
-from unittest.mock import patch
 from permissions.roles import ResourceRole
 from pipeline_v2.models import Pipeline
 from prompt_studio.prompt_studio_core_v2.models import CustomTool
@@ -35,6 +34,7 @@ from tenant_account_v2.models import (
     ResourceMembership,
 )
 from tenant_account_v2.organization_member_service import OrganizationMemberService
+from utils.tests.auth_seam import admin_role, member_role
 from utils.user_context import UserContext
 from workflow_manager.workflow_v2.models.workflow import Workflow
 
@@ -76,8 +76,9 @@ class SearchBudgetTests(TestCase):
         users = User.objects.bulk_create(
             User(username=f"u{i}@big.test", email=f"u{i}@big.test") for i in range(USERS)
         )
+        role = member_role()
         OrganizationMember.objects.bulk_create(
-            OrganizationMember(organization=cls.org, user=u, role="user") for u in users
+            OrganizationMember(organization=cls.org, user=u, role=role) for u in users
         )
         groups = OrganizationGroup.objects.bulk_create(
             OrganizationGroup(organization=cls.org, name=f"g{i}", created_by=users[0])
@@ -88,10 +89,10 @@ class SearchBudgetTests(TestCase):
         )
         cls.member = users[0]
         cls.admin = users[1]
-        # The role lookup a request pays is counted: only the role-name check
-        # is patched (see setUp), never the predicate that queries it.
+        # The role lookup a request pays is counted: nothing on the admin
+        # predicate is patched.
         OrganizationMember.objects.filter(organization=cls.org, user=cls.admin).update(
-            role="admin"
+            role=admin_role()
         )
 
         common = {"organization": cls.org}
@@ -101,7 +102,9 @@ class SearchBudgetTests(TestCase):
         )
         rows = [
             *Workflow.objects.bulk_create(
-                Workflow(workflow_name=_name("wf", i), description=_name("d", i), **common)
+                Workflow(
+                    workflow_name=_name("wf", i), description=_name("d", i), **common
+                )
                 for i in n
             ),
             *CustomTool.objects.bulk_create(
@@ -146,7 +149,9 @@ class SearchBudgetTests(TestCase):
                 for i in n
             ),
             *ConnectorInstance.objects.bulk_create(
-                ConnectorInstance(connector_name=_name("conn", i), connector_id="minio|seed", **common)
+                ConnectorInstance(
+                    connector_name=_name("conn", i), connector_id="minio|seed", **common
+                )
                 for i in n
             ),
         ]
@@ -177,7 +182,14 @@ class SearchBudgetTests(TestCase):
                 row.shared_to_org = True
         ResourceMembership.objects.bulk_create(memberships, batch_size=2_000)
         ResourceGroupShare.objects.bulk_create(shares, batch_size=2_000)
-        for model in (Workflow, CustomTool, APIDeployment, Pipeline, AdapterInstance, ConnectorInstance):
+        for model in (
+            Workflow,
+            CustomTool,
+            APIDeployment,
+            Pipeline,
+            AdapterInstance,
+            ConnectorInstance,
+        ):
             model.objects.filter(
                 pk__in=[r.pk for r in rows if isinstance(r, model) and r.shared_to_org]
             ).update(shared_to_org=True)
@@ -186,17 +198,6 @@ class SearchBudgetTests(TestCase):
 
     def setUp(self) -> None:
         UserContext.set_organization_identifier(self.org.organization_id)
-        # Each auth plugin names the admin role differently ("admin" in OSS,
-        # "unstract_admin" in cloud). Pin the name check, which is pure
-        # Python, so the admin subtest measures an admin in every
-        # distribution; the membership query still runs and is counted.
-        name_check = patch(
-            "account_v2.authentication_controller.AuthenticationController"
-            ".is_admin_by_role",
-            new=lambda _self, role: role == "admin",
-        )
-        name_check.start()
-        self.addCleanup(name_check.stop)
         self.assertTrue(
             OrganizationMemberService.is_user_organization_admin(
                 User.objects.get(pk=self.admin.pk)
@@ -205,7 +206,8 @@ class SearchBudgetTests(TestCase):
 
     def _queries(self, user: User, limit: int) -> list[str]:
         """SQL issued for one search, minus the per-provider savepoints the
-        view opens inside a transaction (TestCase always has one)."""
+        view opens inside a transaction (TestCase always has one).
+        """
         # A fresh user object, as each request gets: the admin-role memo
         # lives on the user, so reusing one would hide that lookup.
         user = User.objects.get(pk=user.pk)
@@ -254,6 +256,8 @@ class SearchBudgetTests(TestCase):
         for user in (self.member, self.admin):
             with self.subTest(user=user.email):
                 p95 = self._p95_ms(user)
-                print(f"[global_search budget] {user.email} p95={p95:.1f}ms (budget {BUDGET_MS}ms)")
+                print(
+                    f"[global_search budget] {user.email} p95={p95:.1f}ms (budget {BUDGET_MS}ms)"
+                )
                 if ASSERT_P95:
                     self.assertLessEqual(p95, CEILING_MS)
