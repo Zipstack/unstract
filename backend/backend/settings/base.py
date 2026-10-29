@@ -470,6 +470,9 @@ PLATFORM_AUDIT_RETENTION_DAYS = int(
 API_KEY_USAGE_FLUSH_INTERVAL_SECONDS = int(
     os.environ.get("API_KEY_USAGE_FLUSH_INTERVAL_SECONDS", "300")
 )
+# Whether the first use in each interval starts that flush in a background
+# thread. Off only in tests, which flush inline.
+API_KEY_USAGE_BACKGROUND_FLUSH = True
 ATOMIC_REQUESTS = CommonUtils.str_to_bool(
     os.environ.get("DJANGO_ATOMIC_REQUESTS", "False")
 )

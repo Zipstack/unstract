@@ -1,10 +1,12 @@
 """Move pending API key usage from Redis to the database.
 
-A flush renames each pending hash out of the way, so uses recorded while it
-runs land in a fresh hash for the next flush, then adds the counts to the
-daily tables in one transaction. If the write fails, the counts are put back
-and the next flush retries them. A flush also deletes rows older than
-``RETENTION_DAYS``.
+A flush moves every pending hash, in one atomic step, into a batch named by a
+token, so uses recorded while it runs land in fresh hashes for the next flush.
+It then applies each batch waiting in Redis, its own and any a failed or killed
+flush left behind: the counts and the batch's token are written in one
+transaction, and only after that commits is the batch deleted from Redis. A
+batch whose token is already written is only deleted, so no count is added
+twice and none is lost. A flush also deletes rows older than ``RETENTION_DAYS``.
 
 Runs from ``recorder.record_key_use`` (in the background, at most once per
 interval) and before a read that wants current numbers. It needs no scheduler,
@@ -21,9 +23,11 @@ from account_v2.models import Organization
 from django.db import connection, transaction
 from django.utils import timezone
 from django_redis import get_redis_connection
-from redis.exceptions import ResponseError
 
 from api_key_usage.constants import (
+    APPLIED_BATCH_KEEP_DAYS,
+    BATCH_PREFIX,
+    BATCHES_KEY,
     FIELD_SEPARATOR,
     FLUSH_LOCK_KEY,
     FLUSH_LOCK_SECONDS,
@@ -34,7 +38,12 @@ from api_key_usage.constants import (
     PENDING_LAST_USED,
     RETENTION_DAYS,
 )
-from api_key_usage.models import ApiKeyCallerDaily, ApiKeyLastUsed, ApiKeyUsageDaily
+from api_key_usage.models import (
+    ApiKeyCallerDaily,
+    ApiKeyLastUsed,
+    ApiKeyUsageAppliedBatch,
+    ApiKeyUsageDaily,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -47,12 +56,31 @@ end
 return 0
 """
 
+# KEYS: the pending hashes, then their batch names in the same order, then
+# BATCHES_KEY. ARGV: the batch token. Moves whichever pending hashes exist and
+# lists the batch, all in one step.
+_TAKE = """
+local count = (#KEYS - 1) / 2
+local moved = false
+for i = 1, count do
+    if redis.call('exists', KEYS[i]) == 1 then
+        redis.call('rename', KEYS[i], KEYS[i + count])
+        moved = true
+    end
+end
+if moved then
+    redis.call('sadd', KEYS[#KEYS], ARGV[1])
+end
+return moved and 1 or 0
+"""
+
 
 @dataclass
 class FlushResult:
     """What one flush wrote. ``skipped`` means another flush held the lock."""
 
     skipped: bool = False
+    batches: int = 0
     calls: int = 0
     last_used: int = 0
     callers: int = 0
@@ -67,74 +95,63 @@ class _Pending:
     callers: dict[str, int] = field(default_factory=dict)
     caller_last: dict[str, float] = field(default_factory=dict)
 
-    def is_empty(self) -> bool:
-        return not (self.calls or self.last_used or self.callers or self.caller_last)
-
 
 def flush_pending_usage() -> FlushResult:
-    """Write pending usage to the database. Returns at once if a flush is running."""
+    """Write pending usage to the database. Returns at once if a flush is running.
+
+    Raises if a batch cannot be written; that batch and any after it stay in
+    Redis for the next flush.
+    """
     redis = get_redis_connection("default")
-    token = uuid.uuid4().hex
-    if not redis.set(FLUSH_LOCK_KEY, token, nx=True, ex=FLUSH_LOCK_SECONDS):
+    lock = uuid.uuid4().hex
+    if not redis.set(FLUSH_LOCK_KEY, lock, nx=True, ex=FLUSH_LOCK_SECONDS):
         return FlushResult(skipped=True)
     try:
-        pending = _take_pending(redis, token)
         result = FlushResult()
-        if not pending.is_empty():
-            try:
-                _write(pending, result)
-            except Exception:
-                _restore(redis, pending)
-                raise
+        _take_pending(redis, uuid.uuid4().hex)
+        for token in sorted(_text(t) for t in redis.smembers(BATCHES_KEY)):
+            _apply_batch(redis, token, result)
         result.pruned = _prune(timezone.now())
         if result.calls or result.pruned or result.dropped:
             logger.info("API key usage flush: %s", result)
         return result
     finally:
-        redis.eval(_RELEASE_LOCK, 1, FLUSH_LOCK_KEY, token)
+        redis.eval(_RELEASE_LOCK, 1, FLUSH_LOCK_KEY, lock)
 
 
-def _take_pending(redis, token: str) -> _Pending:
-    """Atomically move each pending hash aside and read it."""
-    taken = {}
-    for name in PENDING_HASHES:
-        flushing = f"{name}:flushing:{token}"
-        try:
-            redis.rename(name, flushing)
-        except ResponseError:
-            # No such key: nothing was recorded since the last flush.
-            taken[name] = {}
-            continue
-        raw = redis.hgetall(flushing)
-        redis.delete(flushing)
-        taken[name] = {_text(k): _text(v) for k, v in raw.items()}
+def _batch_names(token: str) -> list[str]:
+    return [f"{BATCH_PREFIX}:{token}:{name}" for name in PENDING_HASHES]
+
+
+def _take_pending(redis, token: str) -> None:
+    """Move the pending hashes into batch ``token``, if anything is pending."""
+    keys = [*PENDING_HASHES, *_batch_names(token), BATCHES_KEY]
+    redis.eval(_TAKE, len(keys), *keys, token)
+
+
+def _read_batch(redis, token: str) -> _Pending:
+    raw = {
+        name: {_text(k): _text(v) for k, v in redis.hgetall(batch_name).items()}
+        for name, batch_name in zip(PENDING_HASHES, _batch_names(token), strict=True)
+    }
     return _Pending(
-        calls={k: int(v) for k, v in taken[PENDING_CALLS].items()},
-        last_used={k: float(v) for k, v in taken[PENDING_LAST_USED].items()},
-        callers={k: int(v) for k, v in taken[PENDING_CALLERS].items()},
-        caller_last={k: float(v) for k, v in taken[PENDING_CALLER_LAST].items()},
+        calls={k: int(v) for k, v in raw[PENDING_CALLS].items()},
+        last_used={k: float(v) for k, v in raw[PENDING_LAST_USED].items()},
+        callers={k: int(v) for k, v in raw[PENDING_CALLERS].items()},
+        caller_last={k: float(v) for k, v in raw[PENDING_CALLER_LAST].items()},
     )
 
 
-def _restore(redis, pending: _Pending) -> None:
-    """Put counts back after a failed write. Newer timestamps are kept."""
-    try:
-        pipe = redis.pipeline(transaction=False)
-        for name, counts in (
-            (PENDING_CALLS, pending.calls),
-            (PENDING_CALLERS, pending.callers),
-        ):
-            for fld, count in counts.items():
-                pipe.hincrby(name, fld, count)
-        for name, stamps in (
-            (PENDING_LAST_USED, pending.last_used),
-            (PENDING_CALLER_LAST, pending.caller_last),
-        ):
-            for fld, seen in stamps.items():
-                pipe.hsetnx(name, fld, seen)
-        pipe.execute()
-    except Exception:
-        logger.exception("Could not restore API key usage after a failed flush")
+def _apply_batch(redis, token: str, result: FlushResult) -> None:
+    """Write batch ``token`` once, then delete it from Redis."""
+    pending = _read_batch(redis, token)
+    with transaction.atomic():
+        _, created = ApiKeyUsageAppliedBatch.objects.get_or_create(token=token)
+        if created:
+            _write(pending, result)
+            result.batches += 1
+    redis.delete(*_batch_names(token))
+    redis.srem(BATCHES_KEY, token)
 
 
 def _write(pending: _Pending, result: FlushResult) -> None:
@@ -183,7 +200,7 @@ def _write(pending: _Pending, result: FlushResult) -> None:
             """,
             rows,
         )
-        result.calls = sum(row[-1] for row in rows)
+        result.calls += sum(row[-1] for row in rows)
 
         rows = [(*key, at) for key, at in last_used.items() if key[0] in live]
         result.dropped += len(last_used) - len(rows)
@@ -200,7 +217,7 @@ def _write(pending: _Pending, result: FlushResult) -> None:
             """,
             rows,
         )
-        result.last_used = len(rows)
+        result.last_used += len(rows)
 
         rows = [
             (*key, n, at)
@@ -224,7 +241,7 @@ def _write(pending: _Pending, result: FlushResult) -> None:
             """,
             rows,
         )
-        result.callers = len(rows)
+        result.callers += len(rows)
 
 
 def _prune(now: datetime) -> int:
@@ -232,6 +249,9 @@ def _prune(now: datetime) -> int:
     cutoff = oldest_kept_day(now)
     pruned, _ = ApiKeyUsageDaily.objects.filter(day__lt=cutoff).delete()
     callers, _ = ApiKeyCallerDaily.objects.filter(day__lt=cutoff).delete()
+    ApiKeyUsageAppliedBatch.objects.filter(
+        applied_at__lt=now - timedelta(days=APPLIED_BATCH_KEEP_DAYS)
+    ).delete()
     return pruned + callers
 
 
@@ -243,7 +263,7 @@ def oldest_kept_day(now: datetime) -> date:
 def _split(fld: str, parts: int, result: FlushResult) -> list[str] | None:
     """The field's parts, or None (logged and counted as dropped) if malformed.
 
-    Dropped rather than raised: a raise would restore the field and fail every
+    Dropped rather than raised: a raise would keep its batch and fail every
     later flush on it.
     """
     values = fld.split(FIELD_SEPARATOR)

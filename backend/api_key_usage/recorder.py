@@ -1,10 +1,10 @@
 """Count a key's use when it authenticates a request, without a database write.
 
-Each use is two to four Redis commands in one round trip. The counts wait in
-the ``PENDING_*`` hashes until ``flush.flush_pending_usage`` moves them to the
-database. Recording also triggers that flush, at most once per
-``API_KEY_USAGE_FLUSH_INTERVAL_SECONDS`` across every process, and runs it in a
-background thread so the request that triggers it does not wait.
+Each use is one Redis script call, so a flush sees all of a use or none of it.
+The counts wait in the ``PENDING_*`` hashes until ``flush.flush_pending_usage``
+moves them to the database. Recording also triggers that flush, at most once
+per ``API_KEY_USAGE_FLUSH_INTERVAL_SECONDS`` across every process, and runs it
+in a background thread so the request that triggers it does not wait.
 
 Hash fields, joined by ``FIELD_SEPARATOR``:
 
@@ -13,6 +13,9 @@ Hash fields, joined by ``FIELD_SEPARATOR``:
 * ``PENDING_CALLERS``: ``key_type|key_id|organization_id|api_deployment_id|day``
   -> call count
 * ``PENDING_CALLER_LAST``: same field as ``PENDING_CALLERS`` -> epoch seconds
+
+Timestamps only move forward, so a request that records late never replaces a
+newer use.
 """
 
 import logging
@@ -35,6 +38,28 @@ from api_key_usage.constants import (
 )
 
 logger = logging.getLogger(__name__)
+
+# KEYS: calls, last_used, callers, caller_last, flush_due.
+# ARGV: calls field, key field, seen, caller field ("" for none), interval.
+# Returns 1 when this use set the flush trigger.
+_RECORD = """
+local function keep_latest(hash, field, seen)
+    local current = redis.call('hget', hash, field)
+    if not current or tonumber(current) < tonumber(seen) then
+        redis.call('hset', hash, field, seen)
+    end
+end
+redis.call('hincrby', KEYS[1], ARGV[1], 1)
+keep_latest(KEYS[2], ARGV[2], ARGV[3])
+if ARGV[4] ~= '' then
+    redis.call('hincrby', KEYS[3], ARGV[4], 1)
+    keep_latest(KEYS[4], ARGV[4], ARGV[3])
+end
+if redis.call('set', KEYS[5], 1, 'NX', 'EX', ARGV[5]) then
+    return 1
+end
+return 0
+"""
 
 
 def join_field(*parts: Any) -> str:
@@ -59,25 +84,27 @@ def record_key_use(
     try:
         at = at or timezone.now()
         day = at.astimezone(UTC).date().isoformat()
-        seen = at.timestamp()
         key = join_field(key_type, key_id, organization_id)
+        caller = join_field(key, api_deployment_id, day) if api_deployment_id else ""
 
-        pipe = get_redis_connection("default").pipeline(transaction=False)
-        pipe.hincrby(PENDING_CALLS, join_field(key, day), 1)
-        pipe.hset(PENDING_LAST_USED, key, seen)
-        if api_deployment_id:
-            caller = join_field(key, api_deployment_id, day)
-            pipe.hincrby(PENDING_CALLERS, caller, 1)
-            pipe.hset(PENDING_CALLER_LAST, caller, seen)
-        pipe.set(
+        flush_due = get_redis_connection("default").eval(
+            _RECORD,
+            5,
+            PENDING_CALLS,
+            PENDING_LAST_USED,
+            PENDING_CALLERS,
+            PENDING_CALLER_LAST,
             FLUSH_DUE_KEY,
-            1,
-            nx=True,
-            ex=settings.API_KEY_USAGE_FLUSH_INTERVAL_SECONDS,
+            join_field(key, day),
+            key,
+            repr(at.timestamp()),
+            caller,
+            settings.API_KEY_USAGE_FLUSH_INTERVAL_SECONDS,
         )
-        flush_due = pipe.execute()[-1]
     except Exception:
-        logger.exception("Could not record use of %s key %s", key_type, key_id)
+        # The key's identifiers stay out of the log: its type is enough to
+        # tell which auth path lost a count.
+        logger.exception("Could not record an API key use (%s)", key_type)
         return
 
     if flush_due:
@@ -86,6 +113,8 @@ def record_key_use(
 
 def start_background_flush() -> None:
     """Run a flush in a daemon thread. Tests replace this to flush inline."""
+    if not settings.API_KEY_USAGE_BACKGROUND_FLUSH:
+        return
     threading.Thread(
         target=_flush_and_close, name="api-key-usage-flush", daemon=True
     ).start()

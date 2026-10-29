@@ -17,3 +17,7 @@ CSRF_COOKIE_SECURE = False
 # Ships disabled, but its tests drive the full URL stack to exercise the auth
 # middleware — an unmounted route would 404 and pass them vacuously.
 MCP_PLATFORM_SERVER_ENABLED = True
+
+# API key usage: a background flush thread would read the pending Redis counts
+# of whichever test runs next, from outside its transaction. Tests flush inline.
+API_KEY_USAGE_BACKGROUND_FLUSH = False

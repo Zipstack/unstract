@@ -83,3 +83,16 @@ class ApiKeyLastUsed(models.Model):
                 name="unique_api_key_last_used",
             ),
         ]
+
+
+class ApiKeyUsageAppliedBatch(models.Model):
+    """A pending-usage batch already written, so it is never added twice.
+
+    Inserted in the same transaction as the batch's counts.
+    """
+
+    token = models.CharField(max_length=32, primary_key=True)
+    applied_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "api_key_usage_applied_batch"

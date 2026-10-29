@@ -11,19 +11,28 @@ from django_redis import get_redis_connection
 from api_key_usage import flush as flush_module
 from api_key_usage import recorder
 from api_key_usage.constants import (
+    BATCH_PREFIX,
+    BATCHES_KEY,
     FLUSH_DUE_KEY,
     FLUSH_LOCK_KEY,
     PENDING_CALLS,
     PENDING_HASHES,
     RETENTION_DAYS,
 )
-from api_key_usage.flush import flush_pending_usage
-from api_key_usage.models import ApiKeyCallerDaily, ApiKeyLastUsed, ApiKeyUsageDaily
+from api_key_usage.flush import _take_pending, flush_pending_usage
+from api_key_usage.models import (
+    ApiKeyCallerDaily,
+    ApiKeyLastUsed,
+    ApiKeyUsageAppliedBatch,
+    ApiKeyUsageDaily,
+)
 from api_key_usage.recorder import record_key_use
+from api_key_usage.recorder import start_background_flush as REAL_START_BACKGROUND_FLUSH
 
 KEY_TYPE = "platform_api_key"
 DAY_1 = datetime(2026, 10, 1, 9, 30, tzinfo=UTC)
 DAY_2 = datetime(2026, 10, 2, 23, 59, tzinfo=UTC)
+DEPLOYMENT = uuid.uuid4()
 
 
 class UsageTestBase(TestCase):
@@ -41,7 +50,10 @@ class UsageTestBase(TestCase):
         self.key_id = uuid.uuid4()
 
     def _clear_redis(self) -> None:
-        self.redis.delete(*PENDING_HASHES, FLUSH_DUE_KEY, FLUSH_LOCK_KEY)
+        batches = list(self.redis.scan_iter(f"{BATCH_PREFIX}:*"))
+        self.redis.delete(
+            *PENDING_HASHES, *batches, BATCHES_KEY, FLUSH_DUE_KEY, FLUSH_LOCK_KEY
+        )
 
     def record(self, at: datetime = DAY_1, **kwargs) -> None:
         kwargs.setdefault("key_type", KEY_TYPE)
@@ -84,6 +96,18 @@ class RecordAndFlushTests(UsageTestBase):
         flush_pending_usage()
 
         self.assertEqual(self.daily(), {DAY_1.date(): 3})
+
+    def test_a_late_recording_does_not_replace_a_newer_pending_use(self) -> None:
+        # A request that took its time first but records last.
+        self.record(at=DAY_2, api_deployment_id=DEPLOYMENT)
+        self.record(at=DAY_1, api_deployment_id=DEPLOYMENT)
+
+        flush_pending_usage()
+
+        self.assertEqual(ApiKeyLastUsed.objects.get().last_used_at, DAY_2)
+        self.assertEqual(
+            ApiKeyCallerDaily.objects.get(day=DAY_2.date()).last_call_at, DAY_2
+        )
 
     def test_last_used_never_moves_backwards(self) -> None:
         self.record(at=DAY_2)
@@ -188,6 +212,24 @@ class FlushTriggerTests(UsageTestBase):
         self.assertEqual(self.daily(), {DAY_1.date(): 1})
         close.assert_called_once_with()
 
+    def test_no_thread_starts_while_background_flush_is_off(self) -> None:
+        with (
+            override_settings(API_KEY_USAGE_BACKGROUND_FLUSH=False),
+            mock.patch.object(recorder.threading, "Thread") as thread,
+        ):
+            REAL_START_BACKGROUND_FLUSH()
+
+        thread.assert_not_called()
+
+    def test_a_thread_starts_while_background_flush_is_on(self) -> None:
+        with (
+            override_settings(API_KEY_USAGE_BACKGROUND_FLUSH=True),
+            mock.patch.object(recorder.threading, "Thread") as thread,
+        ):
+            REAL_START_BACKGROUND_FLUSH()
+
+        thread.return_value.start.assert_called_once_with()
+
     def test_a_failing_background_flush_is_logged_not_raised(self) -> None:
         with (
             mock.patch.object(
@@ -211,12 +253,14 @@ class FailureTests(UsageTestBase):
 
         self.start_flush.assert_not_called()
 
-    def test_a_failed_write_puts_the_counts_back_for_the_next_flush(self) -> None:
+    def test_a_failed_write_keeps_the_batch_for_the_next_flush(self) -> None:
         self.record(api_deployment_id=uuid.uuid4())
         self.record()
 
         with (
-            mock.patch.object(flush_module, "_write", side_effect=RuntimeError("db down")),
+            mock.patch.object(
+                flush_module, "_write", side_effect=RuntimeError("db down")
+            ),
             self.assertRaises(RuntimeError),
         ):
             flush_pending_usage()
@@ -227,6 +271,42 @@ class FailureTests(UsageTestBase):
         self.assertEqual(self.daily(), {DAY_1.date(): 2})
         self.assertEqual(ApiKeyCallerDaily.objects.get().calls, 1)
         self.assertEqual(ApiKeyLastUsed.objects.get().last_used_at, DAY_1)
+
+    def test_a_batch_left_by_a_killed_flush_is_applied_by_the_next(self) -> None:
+        self.record(api_deployment_id=DEPLOYMENT)
+        _take_pending(self.redis, "killed")  # moved aside, then the process died
+        self.record()
+
+        result = flush_pending_usage()
+
+        self.assertEqual((result.batches, result.calls, result.callers), (2, 2, 1))
+        self.assertEqual(self.daily(), {DAY_1.date(): 2})
+        self.assertEqual(ApiKeyCallerDaily.objects.get().calls, 1)
+        self.assertFalse(self.redis.exists(BATCHES_KEY))
+        self.assertFalse(list(self.redis.scan_iter(f"{BATCH_PREFIX}:*")))
+
+    def test_a_batch_already_written_is_never_added_twice(self) -> None:
+        # Its write committed, then the flush died before clearing Redis.
+        self.record()
+        _take_pending(self.redis, "written")
+        ApiKeyUsageAppliedBatch.objects.create(token="written")
+
+        result = flush_pending_usage()
+
+        self.assertEqual((result.batches, result.calls), (0, 0))
+        self.assertFalse(ApiKeyUsageDaily.objects.exists())
+        self.assertFalse(self.redis.exists(BATCHES_KEY))
+
+    def test_a_use_moves_aside_whole_with_its_caller(self) -> None:
+        self.record(api_deployment_id=DEPLOYMENT)
+
+        _take_pending(self.redis, "t")
+
+        self.assertFalse(any(self.redis.exists(name) for name in PENDING_HASHES))
+        self.assertEqual(
+            len(list(self.redis.scan_iter(f"{BATCH_PREFIX}:t:*"))),
+            len(PENDING_HASHES),
+        )
 
     def test_a_failed_flush_releases_its_lock(self) -> None:
         with (
@@ -280,12 +360,19 @@ class RetentionTests(UsageTestBase):
         oldest_kept = now.date() - timedelta(days=RETENTION_DAYS - 1)
         for day in (oldest_kept - timedelta(days=1), oldest_kept):
             ApiKeyUsageDaily.objects.create(
-                organization=self.org, key_type=KEY_TYPE, key_id=self.key_id,
-                day=day, calls=5,
+                organization=self.org,
+                key_type=KEY_TYPE,
+                key_id=self.key_id,
+                day=day,
+                calls=5,
             )
             ApiKeyCallerDaily.objects.create(
-                organization=self.org, key_type=KEY_TYPE, key_id=self.key_id,
-                api_deployment_id=uuid.uuid4(), day=day, calls=5,
+                organization=self.org,
+                key_type=KEY_TYPE,
+                key_id=self.key_id,
+                api_deployment_id=uuid.uuid4(),
+                day=day,
+                calls=5,
                 last_call_at=now,
             )
 

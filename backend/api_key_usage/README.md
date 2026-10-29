@@ -193,6 +193,10 @@ Platform key rotate also checks the `manage_api_keys` capability
   (default 300) starts one in a background thread, and every read starts one.
   No scheduler is needed, so it works the same on Celery and PG-queue
   deployments.
+- Each use is one atomic Redis script, and a flush moves all pending counts
+  aside in one atomic step. The counts and the batch's token commit in one
+  transaction before the batch leaves Redis, so a flush killed midway loses
+  nothing and a retried batch is never counted twice.
 - Daily rows older than 30 days are deleted on flush. `last_used_at` is kept for
   as long as the key exists, so `idle` can be computed.
 
