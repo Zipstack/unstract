@@ -64,10 +64,6 @@ MAX_REDIRECTS = 5
 API_KEY_HEADER = "unstructured-api-key"
 
 
-# Only its should_strip_auth is used; it holds no connections.
-_STRIP_AUTH = requests.Session()
-
-
 class RedirectRefused(Exception):
     """A redirect from the Unstructured API that will not be followed.
 
@@ -223,29 +219,35 @@ def post(
         )
 
     method, body, upload = "POST", data, files()
-    for _ in range(MAX_REDIRECTS + 1):
-        response = requests.request(
-            method,
-            url,
-            headers=headers,
-            data=body,
-            files=upload,
-            timeout=timeout,
-            allow_redirects=False,
-        )
-        if not response.is_redirect:
-            return response
-        response.close()
-        next_url = _checked_redirect_target(url, response)
-        if _STRIP_AUTH.should_strip_auth(url, next_url):
-            # The key is for the origin the adapter names. Same rule requests
-            # applies to Authorization: dropped on a host, scheme or port
-            # change, except an http->https upgrade on the default ports.
-            headers = {k: v for k, v in headers.items() if k.lower() != API_KEY_HEADER}
-        if response.status_code in (301, 302, 303):
-            # What requests does: these turn a POST into a GET with no body.
-            method, body, upload = "GET", None, None
-        elif upload is not None:
-            upload = files()
-        url = next_url
+    # One session per call, so a cookie set by a hop goes with the next one
+    # (as when requests follows redirects itself) and goes nowhere else.
+    with requests.Session() as session:
+        for _ in range(MAX_REDIRECTS + 1):
+            response = session.request(
+                method,
+                url,
+                headers=headers,
+                data=body,
+                files=upload,
+                timeout=timeout,
+                allow_redirects=False,
+            )
+            if not response.is_redirect:
+                return response
+            response.close()
+            next_url = _checked_redirect_target(url, response)
+            if session.should_strip_auth(url, next_url):
+                # The key is for the origin the adapter names. Same rule
+                # requests applies to Authorization: dropped on a host, scheme
+                # or port change, except an http->https upgrade on the default
+                # ports.
+                headers = {
+                    k: v for k, v in headers.items() if k.lower() != API_KEY_HEADER
+                }
+            if response.status_code in (301, 302, 303):
+                # What requests does: these turn a POST into a GET with no body.
+                method, body, upload = "GET", None, None
+            elif upload is not None:
+                upload = files()
+            url = next_url
     raise TooManyRedirects(f"more than {MAX_REDIRECTS} redirects")

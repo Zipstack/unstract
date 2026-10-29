@@ -67,7 +67,8 @@ def test_refused_url_is_400_and_never_dialled(
     client, audit, monkeypatch, path, with_file
 ):
     monkeypatch.setenv("UNSTRUCTURED_URL_ALLOW_PRIVATE", "false")
-    with mock.patch.object(controller.requests, "request") as upstream:
+    # Session.request: both modes dial through it.
+    with mock.patch.object(controller.requests.Session, "request") as upstream:
         r = _post(client, path, "http://169.254.169.254/latest/meta-data", with_file)
     assert r.status_code == 400
     assert "private" in r.get_json()["detail"]
@@ -115,7 +116,9 @@ def test_block_mode_refuses_redirect_to_private(
     client, audit, block_private, path, with_file
 ):
     upstream = _response(307, "", {"Location": "http://169.254.169.254/latest"})
-    with mock.patch.object(controller.requests, "request", return_value=upstream) as rq:
+    with mock.patch.object(
+        controller.requests.Session, "request", return_value=upstream
+    ) as rq:
         r = _post(client, path, PUBLIC, with_file)
     assert r.status_code == 400
     assert r.get_json()["detail"] == unstructured_url.RedirectNotAllowed.user_message
@@ -142,7 +145,7 @@ def test_block_mode_follows_allowed_307_replaying_upload(client, audit, block_pr
         )
         return [hop, done][len(sent) - 1]
 
-    with mock.patch.object(controller.requests, "request", side_effect=record):
+    with mock.patch.object(controller.requests.Session, "request", side_effect=record):
         r = _post(client, "/x2text/process", PUBLIC, with_file=True)
     assert r.status_code == 200
     assert r.data == b"hello"
@@ -156,7 +159,7 @@ def test_block_mode_follows_allowed_307_replaying_upload(client, audit, block_pr
 def test_block_mode_303_becomes_get_and_cross_host_drops_key(client, block_private):
     hop = _response(303, "", {"Location": OTHER_PUBLIC})
     with mock.patch.object(
-        controller.requests, "request", side_effect=[hop, _response(400)]
+        controller.requests.Session, "request", side_effect=[hop, _response(400)]
     ) as rq:
         r = _post(client, "/x2text/test-connection", PUBLIC)
     assert r.status_code == 200
@@ -169,7 +172,9 @@ def test_block_mode_303_becomes_get_and_cross_host_drops_key(client, block_priva
 
 def test_block_mode_caps_redirects(client, block_private, caplog):
     loop = _response(302, "", {"Location": PUBLIC})
-    with mock.patch.object(controller.requests, "request", return_value=loop) as rq:
+    with mock.patch.object(
+        controller.requests.Session, "request", return_value=loop
+    ) as rq:
         r = _post(client, "/x2text/test-connection", PUBLIC)
     assert r.status_code == 400
     assert r.get_json()["detail"] == unstructured_url.TooManyRedirects.user_message
@@ -255,7 +260,9 @@ def test_test_connection_unexpected_error_has_detail(client):
 def test_block_mode_process_303_drops_body(client, audit, block_private):
     hop = _response(303, "", {"Location": "/v1/result"})
     done = _response(200, '[{"text": "hello"}]', {"Content-Type": "application/json"})
-    with mock.patch.object(controller.requests, "request", side_effect=[hop, done]) as rq:
+    with mock.patch.object(
+        controller.requests.Session, "request", side_effect=[hop, done]
+    ) as rq:
         r = _post(client, "/x2text/process", PUBLIC, with_file=True)
     assert r.status_code == 200
     second = rq.call_args_list[1]
@@ -277,7 +284,7 @@ def test_block_mode_key_follows_requests_strip_rule(
 ):
     hop = _response(307, "", {"Location": location})
     with mock.patch.object(
-        controller.requests, "request", side_effect=[hop, _response(400)]
+        controller.requests.Session, "request", side_effect=[hop, _response(400)]
     ) as rq:
         _post(client, "/x2text/test-connection", PUBLIC)
     assert ("unstructured-api-key" in rq.call_args_list[1].kwargs["headers"]) is keeps_key
@@ -287,7 +294,7 @@ def test_block_mode_https_to_http_drops_key(client, block_private):
     start = "https://93.184.215.14/general/v0/general"
     hop = _response(307, "", {"Location": PUBLIC})
     with mock.patch.object(
-        controller.requests, "request", side_effect=[hop, _response(400)]
+        controller.requests.Session, "request", side_effect=[hop, _response(400)]
     ) as rq:
         _post(client, "/x2text/test-connection", start)
     assert "unstructured-api-key" not in rq.call_args_list[1].kwargs["headers"]
@@ -300,7 +307,7 @@ def test_block_mode_unparseable_location_is_refused(
     client, audit, block_private, caplog, path, with_file
 ):
     hop = _response(307, "", {"Location": "http://[abc/x"})
-    with mock.patch.object(controller.requests, "request", return_value=hop):
+    with mock.patch.object(controller.requests.Session, "request", return_value=hop):
         r = _post(client, path, PUBLIC, with_file)
     assert r.status_code == 400
     assert r.get_json()["detail"] == unstructured_url.RedirectUnparseable.user_message
@@ -314,7 +321,7 @@ def test_block_mode_unresolvable_hop_is_labelled_so(client, block_private, caplo
     with (
         # The start URL is an IP literal and needs no lookup; the hop's name fails.
         mock.patch("socket.getaddrinfo", side_effect=OSError("resolver down")),
-        mock.patch.object(controller.requests, "request", return_value=hop),
+        mock.patch.object(controller.requests.Session, "request", return_value=hop),
     ):
         r = _post(client, "/x2text/test-connection", PUBLIC)
     assert r.status_code == 400

@@ -1,5 +1,7 @@
 """The unstructured-url egress guard and the timeout setting."""
 
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from unittest import mock
 
 import pytest
@@ -71,7 +73,9 @@ def test_block_mode_refuses_name_resolving_private(monkeypatch):
 def test_block_mode_allows_public_name(monkeypatch):
     monkeypatch.setenv(uu.ALLOW_PRIVATE_ENV, "false")
     with _resolve_to("93.184.215.14"):
-        assert uu.refusal_message("https://api.unstructured.io/general/v0/general") is None
+        assert (
+            uu.refusal_message("https://api.unstructured.io/general/v0/general") is None
+        )
 
 
 def test_block_mode_unresolvable(monkeypatch):
@@ -105,3 +109,42 @@ def test_invalid_timeout_falls_back(monkeypatch, value):
 def test_timeout_above_cap_is_clamped(monkeypatch, value, expected):
     monkeypatch.setenv(uu.REQUEST_TIMEOUT_ENV, value)
     assert uu.request_timeout() == (10.0, expected)
+
+
+class _CookieThenRedirect(BaseHTTPRequestHandler):
+    """/start sets a cookie and 302s to /done, which needs that cookie."""
+
+    def do_POST(self):  # noqa: N802
+        self.rfile.read(int(self.headers.get("Content-Length", 0)))
+        self.send_response(302)
+        self.send_header("Set-Cookie", "sid=abc; Path=/")
+        self.send_header("Location", "/done")
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
+    def do_GET(self):  # noqa: N802
+        ok = "sid=abc" in (self.headers.get("Cookie") or "")
+        body = b"ok" if ok else b"no cookie"
+        self.send_response(200 if ok else 403)
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, *args):
+        pass
+
+
+def test_block_mode_redirect_carries_cookie_set_by_earlier_hop(monkeypatch):
+    monkeypatch.setenv(uu.ALLOW_PRIVATE_ENV, "false")
+    server = HTTPServer(("127.0.0.1", 0), _CookieThenRedirect)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    url = f"http://127.0.0.1:{server.server_port}/start"
+    try:
+        # The guard is not under test here; let the loopback server through so
+        # the checked-hop loop talks to a real HTTP stack.
+        with mock.patch.object(uu, "webhook_url_refusal", return_value=None):
+            r = uu.post(url, headers={}, data={"a": "b"}, files=lambda: None)
+    finally:
+        server.shutdown()
+        server.server_close()
+    assert (r.status_code, r.text) == (200, "ok")
