@@ -1150,7 +1150,8 @@ class GuardSteps(unittest.TestCase):
     update step, retag's copy and the build workflows' image roots. Stubs: curl (the GET answers get.json with the
     HTTP code in code, the PATCH body lands in patch.json); crane (img/<image> holds an image's digest, a missing one
     prints crane_err and fails, each copy is logged to copies, drift makes a copy land at another digest); docker
-    (login; buildx imagetools inspect and create over the same img/ and copies, inspect_err failing every inspect).
+    (login; buildx imagetools inspect and create over the same img/ and copies, inspect_err failing every inspect,
+    img/<image>.json the image config that --format '{{json .Image}}' prints).
     """
 
     APP = {
@@ -1189,9 +1190,10 @@ img() {{ echo "{d}/img/$(echo "$1" | tr '/:' '__')"; }}
 case "$1 $2 $3" in
   "buildx imagetools inspect")
     [ ! -e {d}/inspect_err ] || {{ cat {d}/inspect_err; exit 1; }}
-    [ -e "$(img "$4")" ] || {{ echo "ERROR: $4: not found"; exit 1; }}
-    cat "$(img "$4")";;
+    [ -e "$(img "${{4%@*}}")" ] || {{ echo "ERROR: $4: not found"; exit 1; }}
+    if [ "$6" = '{{{{json .Image}}}}' ]; then cat "$(img "${{4%@*}}").json"; else cat "$(img "$4")"; fi;;
   "buildx imagetools create") echo "$6 $5" >> {d}/copies; cp "$(img "${{6%@*}}")" "$(img "$5")"
+    cp "$(img "${{6%@*}}").json" "$(img "$5").json"
     [ ! -e {d}/drift ] || echo sha256:other > "$(img "$5")";;
   *) cat > /dev/null;;
 esac
@@ -1468,14 +1470,22 @@ esac
         r = self.bash(roots, CLOUD_RC="bogus", **env)
         self.assertEqual(r.returncode, 1)
 
-    def skip(self, images, tag="v1.2.0-rc.1", err="", drift=False):
-        """Run the runner's Skip if already pushed step over images (ref -> digest)."""
+    LABELLED = '{"config": {"Labels": {"org.opencontainers.image.revision": "r1"}}, "rootfs": {}}'
+
+    def skip(self, images, tag="v1.2.0-rc.1", err="", drift=False, config=LABELLED):
+        """Run the runner's Skip at commit r1 over images (ref -> digest, or ref -> (digest, config))."""
         for image, digest in images.items():
-            with open(
-                os.path.join(self.d, "img", image.replace("/", "_").replace(":", "_")),
-                "w",
-            ) as fh:
+            digest, cfg = digest if isinstance(digest, tuple) else (digest, config)
+            path = os.path.join(self.d, "img", image.replace("/", "_").replace(":", "_"))
+            with open(path, "w") as fh:
                 fh.write(digest)
+            with open(path + ".json", "w") as fh:
+                fh.write(cfg)
+        git = os.path.join(self.d, "git")
+        os.makedirs(git, exist_ok=True)
+        with open(os.path.join(git, "git"), "w") as fh:
+            fh.write('#!/bin/sh\n[ "$*" = "rev-parse HEAD" ] && echo r1\n')
+        os.chmod(os.path.join(git, "git"), 0o755)
         if err:
             with open(os.path.join(self.d, "inspect_err"), "w") as fh:
                 fh.write(err)
@@ -1485,6 +1495,7 @@ esac
             step("cloud-runner-docker-build-push.yaml", "Skip if already pushed"),
             TAG=tag,
             IMAGES="c/runner o/runner",
+            PATH=f"{git}:{self.d}:{os.environ['PATH']}",
         )
         out = {}
         for name in ("out", "copies"):
@@ -1498,18 +1509,18 @@ esac
             {"c/runner:v1.2.0-rc.1": "sha256:a", "o/runner:v1.2.0-rc.1": "sha256:a"}
         )
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        self.assertEqual((out, copies), ("skip=true\n", ""))
+        self.assertEqual((out, copies), ("revision=r1\nskip=true\n", ""))
 
     def test_build_when_no_root_has_the_rc(self):
         r, out, copies = self.skip({})
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        self.assertEqual((out, copies), ("", ""))
+        self.assertEqual((out, copies), ("revision=r1\n", ""))
         self.assertIn("not pushed yet", r.stdout)
 
     def test_copy_the_rc_to_a_root_that_lacks_it(self):
         r, out, copies = self.skip({"o/runner:v1.2.0-rc.1": "sha256:a"})
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        self.assertEqual(out, "skip=true\n")
+        self.assertEqual(out, "revision=r1\nskip=true\n")
         self.assertEqual(copies, "o/runner:v1.2.0-rc.1@sha256:a c/runner:v1.2.0-rc.1\n")
         with open(os.path.join(self.d, "img", "c_runner_v1.2.0-rc.1")) as fh:
             self.assertEqual(fh.read().strip(), "sha256:a")
@@ -1517,23 +1528,74 @@ esac
     def test_copy_refuses_another_digest(self):
         r, out, _ = self.skip({"c/runner:v1.2.0-rc.1": "sha256:a"}, drift=True)
         self.assertEqual(r.returncode, 1)
-        self.assertEqual(out, "")
+        self.assertEqual(out, "revision=r1\n")
         self.assertIn("landed at sha256:other, not sha256:a", r.stdout)
 
     def test_skip_fails_when_a_root_cannot_be_read(self):
         r, out, _ = self.skip({}, err="ERROR: unauthorized")
         self.assertEqual(r.returncode, 1)
-        self.assertEqual(out, "")
+        self.assertEqual(out, "revision=r1\n")
         self.assertIn(
             "cannot inspect c/runner:v1.2.0-rc.1: ERROR: unauthorized", r.stdout
         )
 
     def test_skip_leaves_other_tags_alone(self):
         for tag in ("rc.12", "v1.2.0", "v1.2.0-rc.1-snapshot", "dev-abc"):
+            self.setUp()
             r, out, _ = self.skip(
                 {f"c/runner:{tag}": "sha256:a", f"o/runner:{tag}": "sha256:a"}, tag=tag
             )
-            self.assertEqual((r.returncode, out), (0, ""), tag)
+            self.assertEqual((r.returncode, out), (0, "revision=r1\n"), tag)
+
+    def test_skip_refuses_an_image_of_another_commit(self):
+        other = self.LABELLED.replace("r1", "r0")
+        for images in (
+            {"c/runner:v1.2.0-rc.1": ("sha256:a", other)},
+            {
+                "c/runner:v1.2.0-rc.1": "sha256:a",
+                "o/runner:v1.2.0-rc.1": ("sha256:a", other),
+            },
+        ):
+            with self.subTest(images=images):
+                self.setUp()
+                r, out, copies = self.skip(images)
+                self.assertEqual(r.returncode, 1)
+                self.assertEqual((out, copies), ("revision=r1\n", ""))
+                self.assertIn(
+                    "was built from r0, not r1: the tag was used before", r.stdout
+                )
+
+    def test_skip_refuses_an_unlabelled_image(self):
+        r, out, copies = self.skip(
+            {"c/runner:v1.2.0-rc.1": "sha256:a"}, config='{"config": {}, "rootfs": {}}'
+        )
+        self.assertEqual(r.returncode, 1)
+        self.assertEqual((out, copies), ("revision=r1\n", ""))
+        self.assertIn("was built from an unlabelled commit, not r1", r.stdout)
+
+    def test_skip_reads_the_label_of_every_platform(self):
+        def per_platform(*revs):
+            return json.dumps(
+                {
+                    f"linux/p{n}": {
+                        "config": {"Labels": {"org.opencontainers.image.revision": rev}}
+                    }
+                    for n, rev in enumerate(revs)
+                }
+            )
+
+        r, out, _ = self.skip(
+            {"c/runner:v1.2.0-rc.1": "sha256:a"}, config=per_platform("r1", "r1")
+        )
+        self.assertEqual(
+            (r.returncode, out), (0, "revision=r1\nskip=true\n"), r.stdout + r.stderr
+        )
+        self.setUp()
+        r, out, _ = self.skip(
+            {"c/runner:v1.2.0-rc.1": "sha256:a"}, config=per_platform("r1", "r0")
+        )
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("was built from r0 r1, not r1", r.stdout)
 
     def test_skip_if_already_pushed_is_the_same_in_every_build_workflow(self):
         # the same script before every bake, gated on a release build, its images the ones the bake tags
@@ -1556,6 +1618,20 @@ esac
             images = re.search(r"IMAGES: (.*)", block).group(1)
             tags = re.findall(r"tags=(\$\{\{ env\.IMAGE_ROOT_\w+ \}\}/[\w-]+):", text)
             self.assertEqual(images, " ".join(tags), f)
+            # the bake labels its images with the commit the step compares
+            self.assertEqual(
+                re.findall(
+                    r"\n +(\*|\w+)\.labels\.org\.opencontainers\.image\.revision=(.*)\n",
+                    text,
+                ),
+                [
+                    (
+                        re.search(r"\n +(\*|\w+)\.tags=", text).group(1),
+                        "${{ steps.pushed.outputs.revision || github.sha }}",
+                    )
+                ],
+                f,
+            )
             bake = text.index("uses: docker/bake-action@v7")
             self.assertLess(at, bake, f)
             self.assertEqual(text.count("uses: docker/bake-action@v7"), 1, f)
