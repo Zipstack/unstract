@@ -4,8 +4,8 @@
  * is not a vitest test (vitest.config.mjs excludes test-fixtures/).
  *
  * Each case builds a minimal throwaway copy of the frontend (biome.json,
- * package.json, vite-env.d.ts, scripts/, the real src/v1 scaffold, a
- * node_modules symlink and a git root), overlays the files under
+ * package.json, tsconfig.json, vite-env.d.ts, scripts/, the real src/v1
+ * scaffold, a node_modules symlink and a .gitignore), overlays the files under
  * cases/<name>/ and runs the real package.json scripts, or a raw command,
  * inside it. The known-bad files live here, outside src/, so CI lint, the
  * pre-commit hook and typecheck never see them.
@@ -47,11 +47,15 @@ const CASES = parseTable(`
   v1-imports-v0-alias            | lint:v1         | v1 imports nothing outside src/v1
   v1-imports-v0-relative         | lint:v1         | v1 imports nothing outside src/v1
   v1-imports-root-absolute       | lint:v1         | v1 imports nothing outside src/v1
-  # Import boundary, v0 -> v1 (Biome).
+  # Import boundary, v0 -> v1: Biome for aliases, check-v1 for the rest.
   v0-imports-v1-internal         | biome lint src/ | v0 may import only the v1 public entry
-  v0-imports-v1-relative         | biome lint src/ | v0 may import only the v1 public entry
+  v0-imports-v1-relative         | lint:v1         | v0 may import only the v1 public entry
   v0-imports-v1-template         | lint:v1         | v0 may import only the v1 public entry
   v0-imports-v1-entry            | biome lint src/ | -
+  # A v1-looking path that is not src/v1 (a package subpath, a v0 folder).
+  v0-imports-v1-lookalike        | biome lint src/ + lint:v1 | -
+  # v0 typecheck follows the entry into v1, where @v1/... must resolve.
+  v0-tsx-imports-entry           | typecheck + typecheck:v1 + lint:v1 | -
   # Banned under v1.
   v1-prop-types                  | lint:v1         | PropTypes are not used
   v1-prop-types-subpath          | lint:v1         | PropTypes are not used
@@ -60,6 +64,9 @@ const CASES = parseTable(`
   v1-antd-subpath                | lint:v1         | antd is not used under src/v1
   v1-styles-import-outside       | lint:v1         | v1 styles import nothing outside it
   v1-styles-ant-class            | lint:v1         | No antd 'ant-' class names
+  v1-styles-import-antd          | lint:v1         | antd is not used under src/v1
+  v1-styles-ant-after-url        | lint:v1         | No antd 'ant-' class names
+  v1-unanalysable-import         | lint:v1         | unanalysable import
   v1-component-css-import        | lint:v1         | No component .css under src/v1
   v1-component-css-file          | typecheck:v1    | No component style files
   v1-ant-class-prefix            | lint:v1         | No antd 'ant-' class names
@@ -90,7 +97,12 @@ const CASES = parseTable(`
 
 function makeTree(caseName) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "v1-boundary-"));
-  for (const file of ["biome.json", "package.json", "vite-env.d.ts"]) {
+  for (const file of [
+    "biome.json",
+    "package.json",
+    "tsconfig.json",
+    "vite-env.d.ts",
+  ]) {
     fs.copyFileSync(path.join(FRONTEND, file), path.join(dir, file));
   }
   // Copied, not linked: check-v1.mjs finds src/v1 relative to itself.
@@ -188,7 +200,10 @@ test("no v1 or fixture file is git-ignored", () => {
         withFileTypes: true,
       })
       .filter((d) => d.isFile() && d.name !== ".DS_Store")
-      .map((d) => path.relative(FRONTEND, path.join(d.parentPath, d.name))),
+      .map((d) => path.relative(FRONTEND, path.join(d.parentPath, d.name)))
+      // Cloud plugins copied into src/v1/plugins/<id>/ are git-ignored on
+      // purpose; they belong to the cloud repository.
+      .filter((rel) => !/^src\/v1\/plugins\/[^/]+\//.test(rel)),
   );
   // A lib/ folder anywhere under v1, not only the top-level one.
   files.push("src/v1/pages/projects/lib/x.ts", "src/v1/lib/sub/lib/x.ts");
@@ -242,6 +257,7 @@ const FOLDERS = {
   hooks: "hooks",
   lib: "lib",
   styles: "styles",
+  assets: "assets",
   plugins: "plugins",
   test: "test",
 };
@@ -251,15 +267,16 @@ const MAY_IMPORT = Object.fromEntries(
     app                 | *
     plugins             | *
     test                | *
-    pages/a             | components/ui components/patterns shell services stores hooks lib styles plugins
-    components/ui       | lib styles
-    components/patterns | components/ui lib services stores hooks
-    shell               | components/ui components/patterns services stores hooks lib
+    pages/a             | components/ui components/patterns shell services stores hooks lib styles assets plugins
+    components/ui       | lib styles assets
+    components/patterns | components/ui lib services stores hooks assets
+    shell               | components/ui components/patterns services stores hooks lib assets
     services            | lib
     stores              | lib
     hooks               | lib
     lib                 |
-    styles              | lib
+    styles              | lib assets
+    assets              |
   `).map(([from, to]) => [from, to === "*" ? EVERYTHING : to.split(/\s+/)]),
 );
 
@@ -298,8 +315,12 @@ test("folder contract: every folder pair, by file and by folder", () => {
   assert.deepEqual(sorted(reported), sorted(expected));
 });
 
+/* Reported lines for one generated file. */
+const linesFor = (reported, file) =>
+  reported.filter((l) => l.startsWith(`${file}:`));
+
 test("folder contract: every import form is read", () => {
-  // Each file breaks the contract once (components/ui -> services).
+  // Each file breaks the contract exactly once (components/ui -> services).
   const forms = {
     static: 'import { a } from "@v1/services/a";',
     multiline: 'import {\n  a,\n  b,\n} from "@v1/services/a";',
@@ -312,32 +333,63 @@ test("folder contract: every import form is read", () => {
     exportStarAs: 'export * as a from "@v1/services/a";',
     dynamic: 'export const a = () => import("@v1/services/a");',
     dynamicTemplate: "export const a = () => import(`@v1/services/a`);",
+    templatePrefix:
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: source text containing a template literal.
+      "export const a = (n: string) => import(`@v1/services/${n}`);",
     require: 'export const a = require("@v1/services/a");',
+    newUrl: 'export const a = new URL("@v1/services/a.ts", import.meta.url);',
     relative: 'import { a } from "./../../services/a";',
     afterSlashStarInString:
       'export const route = "/projects/*";\nimport { a } from "@v1/services/a";\n/** doc */',
     afterSlashStarInComment:
       '// matches /api/*\nimport { a } from "@v1/services/a";\n/** doc */',
+    afterSlashStarInRegex:
+      'export const strip = (p: string) => p.replace(/\\/*$/, "");\nimport { a } from "@v1/services/a";\n/** doc */',
     afterDoubleSlashInString:
       'const u = "a//b"; export { a } from "@v1/services/a";',
     glob: 'export const a = import.meta.glob("@v1/services/*.ts");',
+    // An apostrophe in JSX text is not a string opener.
+    afterJsxContraction:
+      'export const A = () => <span>It\'s <button onClick={() => import("@v1/services/a")}>ready</button></span>;',
+    afterJsxBraceApostrophe:
+      'export const B = (n: string) => <p>{n}\'s <b onClick={() => import("@v1/services/a")}>x</b></p>;',
     globArrayLater:
       'export const a = import.meta.glob(["@v1/components/ui/*.tsx", "@v1/services/*.ts"]);',
     afterTemplateExpression:
       // biome-ignore lint/suspicious/noTemplateCurlyInString: source text containing a template literal.
       'const t = `${"}"}/*`;\nimport { a } from "@v1/services/a";\n/** doc */',
   };
+  // None of these may be reported: comments, JSX, look-alike class names.
+  const quiet = {
+    "commentedOut.ts":
+      '// import "@v1/services/a";\n/* import("@/helpers/x"); */\nexport const v = 1;',
+    "lookalikeClasses.ts": 'export const c = "variant-outline tenant-id";',
+    // Example source text in strings, templates and regexes is not an import.
+    "importsInStrings.ts":
+      'export const a = "import(name)";\nexport const b = \'import x from "@/helpers/x"\';\nexport const c = `require(n) or import.meta.glob(x)`;\nexport const d = /import\\(x\\)/;',
+    "jsxQuotes.tsx":
+      "export const C = () => <p title=\"It's fine\">Don't 'quote' me</p>;",
+    "jsx.tsx":
+      'export const T = () => <div className="x">a / b</div>;\nexport const n = 2 / 1;',
+  };
   const files = {};
   for (const [form, code] of Object.entries(forms)) {
     files[`src/v1/components/ui/${form}.ts`] = `${code}\n`;
   }
+  for (const [name, code] of Object.entries(quiet)) {
+    files[`src/v1/components/ui/${name}`] = `${code}\n`;
+  }
   const reported = checkCode(files);
   for (const form of Object.keys(forms)) {
-    const file = `src/v1/components/ui/${form}.ts:`;
+    const lines = linesFor(reported, `src/v1/components/ui/${form}.ts`);
+    assert.equal(lines.length, 1, `${form}:\n${reported.join("\n")}`);
     assert.ok(
-      reported.some((l) => l.startsWith(file)),
-      `${form}: not reported\n${reported.join("\n")}`,
+      lines[0].includes("components/ui/ may not import from services/"),
+      `${form}: ${lines[0]}`,
     );
+  }
+  for (const name of Object.keys(quiet)) {
+    assert.deepEqual(linesFor(reported, `src/v1/components/ui/${name}`), []);
   }
 });
 
@@ -357,66 +409,102 @@ test("a symlinked file under v1 fails typecheck:v1", () => {
 });
 
 test("v1 imports nothing outside src/v1, in any spelling", () => {
-  const specs = [
-    "@/helpers/x",
-    "../helpers/x",
-    "..",
-    "./../../helpers/x",
-    "/src/assets/logo.svg",
-    "src/helpers/x",
+  const imports = [
+    "import(`@/helpers/x`)",
+    "import(`../helpers/x`)",
+    "import(`..`)",
+    "import(`./../../helpers/x`)",
+    "import(`/src/assets/logo.svg`)",
+    "import(`src/helpers/x`)",
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: source text containing a template literal.
+    "import(`../../helpers/${name}`)",
+    'new URL("../../assets/logo.svg", import.meta.url)',
   ];
   const files = {};
-  specs.forEach((spec, i) => {
+  imports.forEach((code, i) => {
     files[`src/v1/lib/outside-${i}.ts`] =
-      `export const a = () => import(\`${spec}\`);\n`;
+      `export const a = (name: string) => ${code};\n`;
   });
   const reported = checkCode(files);
-  specs.forEach((spec, i) => {
-    assert.ok(
-      reported.some(
-        (l) =>
-          l.startsWith(`src/v1/lib/outside-${i}.ts:`) &&
-          l.includes("is outside src/v1"),
-      ),
-      `'${spec}': not reported\n${reported.join("\n")}`,
-    );
+  imports.forEach((code, i) => {
+    const lines = linesFor(reported, `src/v1/lib/outside-${i}.ts`);
+    assert.equal(lines.length, 1, `${code}:\n${reported.join("\n")}`);
+    assert.ok(lines[0].includes("is outside src/v1"), `${code}: ${lines[0]}`);
   });
+});
+
+test("v1: an import the guard cannot read fails closed", () => {
+  const files = {
+    "src/v1/lib/variable.ts": "export const a = (n: string) => import(n);\n",
+    "src/v1/lib/fullyComputed.ts":
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: source text containing a template literal.
+      "export const a = (n: string) => import(`${n}`);\n",
+    "src/v1/components/ui/computedPage.ts":
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: source text containing a template literal.
+      "export const a = (n: string) => import(`@v1/pages/${n}/index.tsx`);\n",
+    // The lazy route registry: app/ may import any v1 folder.
+    "src/v1/app/routes.ts":
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: source text containing a template literal.
+      "export const a = (n: string) => import(`@v1/pages/${n}/index.tsx`);\n",
+    // A non-module `new URL` is not an import.
+    "src/v1/lib/link.ts":
+      'export const u = (p: string) => new URL(p, "https://example.com");\n',
+  };
+  const reported = checkCode(files);
+  for (const file of ["variable", "fullyComputed"]) {
+    const lines = linesFor(reported, `src/v1/lib/${file}.ts`);
+    assert.equal(lines.length, 1, reported.join("\n"));
+    assert.ok(lines[0].includes("unanalysable import"), lines[0]);
+  }
+  const page = linesFor(reported, "src/v1/components/ui/computedPage.ts");
+  assert.equal(page.length, 1, reported.join("\n"));
+  assert.ok(page[0].includes("may not import a computed v1 path"), page[0]);
+  assert.deepEqual(linesFor(reported, "src/v1/app/routes.ts"), []);
+  assert.deepEqual(linesFor(reported, "src/v1/lib/link.ts"), []);
 });
 
 test("v0 reaches v1 only through @v1, in any form", () => {
   const denied = {
     "static.jsx": 'import x from "@v1/lib/x";',
     "template.jsx": "export const a = () => import(`@v1/plugins/manifest`);",
+    "templatePrefix.jsx":
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: source text containing a template literal.
+      "export const a = (n) => import(`../v1/lib/${n}`);",
     "glob.jsx": 'export const a = import.meta.glob("@v1/pages/*/index.ts");',
+    "globRootAbsolute.jsx":
+      'export const a = import.meta.glob("/src/v1/lib/*.ts");',
     "globArrayLater.jsx":
       'export const a = import.meta.glob(["./*.jsx", "../v1/lib/*.ts"]);',
     "require.jsx": 'export const a = require("../v1/lib/x");',
+    "newUrl.jsx":
+      'export const a = new URL("../v1/lib/x.ts", import.meta.url);',
     "aliasV0.jsx": 'export const a = () => import("@/v1/lib/x");',
+    "aliasV0Dot.jsx": "export const a = () => import(`@/./v1/lib/x`);",
     "srcPath.jsx": 'export const a = () => import("src/v1/lib/x");',
     "relativeEntry.jsx": 'import "../v1";',
+    "typed.tsx": 'import x from "../v1/lib/x";\nexport const y = x;',
     "styles.css": '@import "../v1/styles/tokens.css";',
+    "stylesRootAbsolute.css": ".a { background: url(/src/v1/styles/a.png); }",
   };
   const allowed = {
     "entry.jsx": 'import "@v1";',
     "entryTemplate.jsx": "export const a = () => import(`@v1`);",
+    "entryIndex.jsx": 'import "@v1/index";',
     "v0Only.jsx": 'import x from "../helpers/x";\nexport const y = x;',
+    "lookalike.jsx":
+      'import a from "@/api/v1";\nimport { v1 } from "uuid/v1";\nexport const b = [a, v1];',
   };
   const files = {};
   for (const [name, code] of Object.entries({ ...denied, ...allowed })) {
     files[`src/pages/${name}`] = `${code}\n`;
   }
   const reported = checkCode(files);
-  const v0Lines = reported.filter((l) => l.startsWith("src/pages/"));
   for (const name of Object.keys(denied)) {
-    assert.ok(
-      v0Lines.some((l) => l.startsWith(`src/pages/${name}:`)),
-      `${name}: not reported\n${reported.join("\n")}`,
-    );
+    const lines = linesFor(reported, `src/pages/${name}`);
+    assert.equal(lines.length, 1, `${name}:\n${reported.join("\n")}`);
+    assert.ok(lines[0].includes("reaches into src/v1"), `${name}: ${lines[0]}`);
   }
   for (const name of Object.keys(allowed)) {
-    assert.ok(
-      !v0Lines.some((l) => l.startsWith(`src/pages/${name}:`)),
-      `${name}: reported but allowed\n${reported.join("\n")}`,
-    );
+    assert.deepEqual(linesFor(reported, `src/pages/${name}`), [], name);
   }
 });

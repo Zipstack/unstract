@@ -17,9 +17,10 @@
 
     "allowJs": false,
     "noEmit": true,
-    /* TEMPORARY (UN-4286): on, because with it off @types/chai 5.2.3 and
-     * vitest 3.2.6 both declare Chai `containSubset`, so typecheck fails as
-     * soon as a v1 test imports vitest. Drop once the scaffold settles it. */
+    /* On, as in tsconfig.json. Off also type-checks third-party typings, and
+     * those conflict: @types/chai 5.2.3 and vitest 3.2.6 both declare
+     * `containSubset`, so any v1 test importing vitest failed. The cost is
+     * that hand-written .d.ts files under v1 are not checked either. */
     "skipLibCheck": true,
     "esModuleInterop": true,
     "resolveJsonModule": true,
