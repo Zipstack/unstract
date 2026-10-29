@@ -1,4 +1,6 @@
 from api_key_usage.expiry import expires_at_field
+from api_key_usage.serializers import USAGE_FIELDS, KeyUsageFieldsMixin
+from platform_audit.actions import TargetType
 from rest_framework import serializers
 from utils.input_sanitizer import validate_safe_text
 from utils.user_context import UserContext
@@ -7,7 +9,8 @@ from backend.serializers import AuditSerializer
 from platform_api.models import PlatformApiKey
 
 
-class PlatformApiKeyListSerializer(serializers.ModelSerializer):
+class PlatformApiKeyListSerializer(KeyUsageFieldsMixin, serializers.ModelSerializer):
+    usage_key_type = TargetType.PLATFORM_API_KEY
     key = serializers.SerializerMethodField()
     created_by_email = serializers.SerializerMethodField()
 
@@ -21,6 +24,7 @@ class PlatformApiKeyListSerializer(serializers.ModelSerializer):
             "is_active",
             "expires_at",
             "previous_key_expires_at",
+            *USAGE_FIELDS,
             "created_at",
             "modified_at",
             "permission",
@@ -72,9 +76,18 @@ class PlatformApiKeyUpdateSerializer(AuditSerializer):
         return validate_safe_text(value)
 
 
-class PlatformApiKeyDetailSerializer(serializers.ModelSerializer):
+class PlatformApiKeyDetailSerializer(KeyUsageFieldsMixin, serializers.ModelSerializer):
     """Used for create/rotate responses where the full key is shown once."""
+
+    usage_key_type = TargetType.PLATFORM_API_KEY
 
     class Meta:
         model = PlatformApiKey
-        fields = ["id", "name", "key", "is_active", "previous_key_expires_at"]
+        fields = [
+            "id",
+            "name",
+            "key",
+            "is_active",
+            "previous_key_expires_at",
+            *USAGE_FIELDS,
+        ]

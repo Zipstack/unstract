@@ -25,3 +25,7 @@ FLUSH_LOCK_KEY = "api_key_usage:flush_lock"
 FLUSH_LOCK_SECONDS = 60
 
 FIELD_SEPARATOR = "|"
+
+# Usage status thresholds, shared by the key lists and the summary.
+EXPIRING_WITHIN_DAYS = 7
+IDLE_AFTER_DAYS = 90

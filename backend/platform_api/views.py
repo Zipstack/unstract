@@ -1,3 +1,4 @@
+from api_key_usage import reads
 from api_key_usage.expiry import record_expiry_change
 from api_key_usage.rotation import (
     ROTATED_FIELDS,
@@ -5,6 +6,7 @@ from api_key_usage.rotation import (
     grace_summary,
     rotate_secret,
 )
+from api_key_usage.serializers import history_response
 from django.db import transaction
 from platform_audit.actions import Action, TargetType
 from platform_audit.recorder import (
@@ -80,10 +82,26 @@ class PlatformApiKeyViewSet(viewsets.ModelViewSet):
         response_serializer = PlatformApiKeyDetailSerializer(platform_api_key)
         return Response(response_serializer.data, status=status.HTTP_201_CREATED)
 
+    def list(self, request, *args, **kwargs):
+        reads.refresh()
+        keys = list(self.filter_queryset(self.get_queryset()))
+        usage = reads.usage_by_key(TargetType.PLATFORM_API_KEY, keys)
+        serializer = self.get_serializer(
+            keys, many=True, context={**self.get_serializer_context(), "usage": usage}
+        )
+        return Response(serializer.data)
+
     def retrieve(self, request, *args, **kwargs):
         instance = self.get_object()
+        reads.refresh()
         serializer = PlatformApiKeyDetailSerializer(instance)
         return Response(serializer.data)
+
+    def history(self, request, *args, **kwargs):
+        """Daily calls over the last 30 UTC days, oldest first."""
+        instance = self.get_object()
+        reads.refresh()
+        return Response(history_response(TargetType.PLATFORM_API_KEY, instance))
 
     def partial_update(self, request, *args, **kwargs):
         instance = self.get_object()

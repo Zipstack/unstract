@@ -20,4 +20,9 @@ urlpatterns = [
         PlatformApiKeyViewSet.as_view({"post": "rotate"}),
         name="platform_api_key_rotate",
     ),
+    path(
+        "keys/<uuid:pk>/history/",
+        PlatformApiKeyViewSet.as_view({"get": "history"}),
+        name="platform_api_key_history",
+    ),
 ]

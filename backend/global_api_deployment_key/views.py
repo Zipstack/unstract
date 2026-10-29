@@ -1,3 +1,4 @@
+from api_key_usage import reads
 from api_key_usage.expiry import record_expiry_change
 from api_key_usage.rotation import (
     ROTATED_FIELDS,
@@ -5,6 +6,7 @@ from api_key_usage.rotation import (
     grace_summary,
     rotate_secret,
 )
+from api_key_usage.serializers import KeyCallerSerializer, history_response
 from api_v2.models import APIDeployment
 from django.db.models import Prefetch
 from platform_api.permissions import is_org_admin_session
@@ -40,8 +42,17 @@ class GlobalApiDeploymentKeyViewSet(viewsets.ModelViewSet):
 
     def get_permissions(self):
         # Members the org lets manage keys may list, create, view and rotate,
-        # and pick deployments (UN-4399); editing and deleting stay admin-only.
-        if self.action in ("list", "create", "retrieve", "rotate", "deployments"):
+        # see usage, and pick deployments (UN-4399); editing and deleting stay
+        # admin-only.
+        if self.action in (
+            "list",
+            "create",
+            "retrieve",
+            "rotate",
+            "history",
+            "callers",
+            "deployments",
+        ):
             return [IsAuthenticated(), CanManageApiKeys()]
         return super().get_permissions()
 
@@ -130,11 +141,38 @@ class GlobalApiDeploymentKeyViewSet(viewsets.ModelViewSet):
         response_serializer = GlobalApiDeploymentKeyDetailSerializer(instance)
         return Response(response_serializer.data, status=status.HTTP_201_CREATED)
 
+    def list(self, request, *args, **kwargs):
+        reads.refresh()
+        keys = list(self.filter_queryset(self.get_queryset()))
+        usage = reads.usage_by_key(TargetType.GLOBAL_API_DEPLOYMENT_KEY, keys)
+        serializer = self.get_serializer(
+            keys, many=True, context={**self.get_serializer_context(), "usage": usage}
+        )
+        return Response(serializer.data)
+
     def retrieve(self, request, *args, **kwargs):
         instance = self.get_object()
         self._limit_member_to_key(instance)
+        reads.refresh()
         serializer = GlobalApiDeploymentKeyDetailSerializer(instance)
         return Response(serializer.data)
+
+    def history(self, request, *args, **kwargs):
+        """Daily calls over the last 30 UTC days, oldest first."""
+        instance = self.get_object()
+        self._limit_member_to_key(instance)
+        reads.refresh()
+        return Response(history_response(TargetType.GLOBAL_API_DEPLOYMENT_KEY, instance))
+
+    def callers(self, request, *args, **kwargs):
+        """The API deployments the key called in the last 30 UTC days."""
+        instance = self.get_object()
+        self._limit_member_to_key(instance)
+        reads.refresh()
+        rows = reads.callers(
+            TargetType.GLOBAL_API_DEPLOYMENT_KEY, instance.id, instance.organization
+        )
+        return Response(KeyCallerSerializer(rows, many=True).data)
 
     def partial_update(self, request, *args, **kwargs):
         instance = self.get_object()

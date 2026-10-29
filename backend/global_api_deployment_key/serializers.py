@@ -1,5 +1,7 @@
 from api_key_usage.expiry import expires_at_field
+from api_key_usage.serializers import USAGE_FIELDS, KeyUsageFieldsMixin
 from api_v2.models import APIDeployment
+from platform_audit.actions import TargetType
 from rest_framework import serializers
 from utils.input_sanitizer import validate_safe_text
 from utils.user_context import UserContext
@@ -25,7 +27,10 @@ class ApiDeploymentMinimalSerializer(serializers.ModelSerializer):
         fields = ["id", "display_name", "api_name", "is_active"]
 
 
-class GlobalApiDeploymentKeyListSerializer(serializers.ModelSerializer):
+class GlobalApiDeploymentKeyListSerializer(
+    KeyUsageFieldsMixin, serializers.ModelSerializer
+):
+    usage_key_type = TargetType.GLOBAL_API_DEPLOYMENT_KEY
     key = serializers.SerializerMethodField()
     created_by_email = serializers.SerializerMethodField()
     api_deployments = ApiDeploymentMinimalSerializer(many=True, read_only=True)
@@ -40,6 +45,7 @@ class GlobalApiDeploymentKeyListSerializer(serializers.ModelSerializer):
             "is_active",
             "expires_at",
             "previous_key_expires_at",
+            *USAGE_FIELDS,
             "allow_all_deployments",
             "created_by_member",
             "api_deployments",
@@ -57,7 +63,9 @@ class GlobalApiDeploymentKeyListSerializer(serializers.ModelSerializer):
         return obj.created_by.email if obj.created_by else "Deleted user"
 
 
-class GlobalApiDeploymentKeyDetailSerializer(serializers.ModelSerializer):
+class GlobalApiDeploymentKeyDetailSerializer(
+    KeyUsageFieldsMixin, serializers.ModelSerializer
+):
     """Exposes the full plaintext key.
 
     Used by the create/rotate responses and by ``retrieve`` (GET keys/<pk>/),
@@ -67,9 +75,18 @@ class GlobalApiDeploymentKeyDetailSerializer(serializers.ModelSerializer):
     consistent with the platform_api key flow (not a one-time reveal).
     """
 
+    usage_key_type = TargetType.GLOBAL_API_DEPLOYMENT_KEY
+
     class Meta:
         model = GlobalApiDeploymentKey
-        fields = ["id", "name", "key", "is_active", "previous_key_expires_at"]
+        fields = [
+            "id",
+            "name",
+            "key",
+            "is_active",
+            "previous_key_expires_at",
+            *USAGE_FIELDS,
+        ]
 
 
 class _GlobalApiDeploymentKeyWriteSerializer(AuditSerializer):
