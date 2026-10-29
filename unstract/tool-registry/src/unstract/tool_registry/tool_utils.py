@@ -21,7 +21,7 @@ class ToolUtils:
         docker_pattern = r"^docker:[a-zA-Z0-9_.-]+(/[a-zA-Z0-9_.-]+)*/[a-zA-Z0-9_.-]+$"
 
         # Define a regular expression pattern for local tool URLs
-        local_pattern = r"^local:[a-zA-Z0-9_.-:]+$"
+        local_pattern = r"^local:[a-zA-Z0-9_./:-]+$"
 
         # Check if the URL matches either the Docker image or local tool pattern
         if re.match(docker_pattern, image_url) or re.match(local_pattern, image_url):

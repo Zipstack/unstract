@@ -111,7 +111,7 @@ def skip_local_cache(func: object) -> object:
         try:
             return func(*args, **kwargs)
         except FileNotFoundError:
-            _handle_file_not_found(func, *args, **kwargs)
+            return _handle_file_not_found(func, *args, **kwargs)
         except Exception as e:
             raise FileOperationError(str(e)) from e
 
