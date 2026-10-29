@@ -96,9 +96,9 @@ jobs:
           CONFIRM: ${{ inputs.confirm_stabilized }}
           BRANCHES: ${{ inputs.branches }}
         run: |
-          if [ "$GITHUB_EVENT_NAME" = push ]; then args=(--rescan); else args=(--commits "$COMMITS"); fi
+          if [ "$GITHUB_EVENT_NAME" = push ]; then args=(--rescan); else args=(--commits="$COMMITS"); fi
           if [ "$CONFIRM" = true ]; then args+=(--confirm-stabilized); fi
-          python3 "$RUNNER_TEMP/backport.py" --state "$RUNNER_TEMP/state.json" "${args[@]}" --branches "$BRANCHES"
+          python3 "$RUNNER_TEMP/backport.py" --state "$RUNNER_TEMP/state.json" "${args[@]}" --branches="$BRANCHES"
 
   record:
     if: >-
