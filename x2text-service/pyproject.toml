@@ -13,9 +13,12 @@ dependencies = [
     "requests>=2.33.0",
     "peewee>=3.17.0",
     "psycopg2-binary~=2.9",
+    # Shared SSRF guard for the tenant-supplied unstructured-url
+    "unstract-core",
 ]
 
 [dependency-groups]
+test = ["pytest>=9.0.3"]
 deploy = [
     "gunicorn[gevent]~=23.0",
     # OpenTelemetry for tracing and profiling
@@ -23,3 +26,6 @@ deploy = [
     "opentelemetry-exporter-otlp",
 ]
 dev = ["debugpy>=1.8.14"]
+
+[tool.uv.sources]
+unstract-core = { path = "../unstract/core", editable = true }

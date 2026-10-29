@@ -86,6 +86,13 @@ groups:
     coverage_source: src
     optional: true   # service has only a couple of tests today
 
+  unit-x2text-service:
+    tier: unit
+    workdir: x2text-service
+    paths: [tests]
+    uv_sync_group: test
+    coverage_source: app
+
   unit-workers:
     tier: unit
     workdir: workers
