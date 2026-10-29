@@ -6,13 +6,7 @@ import {
   pageCssSize,
 } from "@v1/lib/pdf/windowing";
 import type { PDFDocumentProxy, PDFPageProxy, RenderTask } from "pdfjs-dist";
-import {
-  memo,
-  type ReactNode,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import { memo, type ReactNode, useEffect, useRef, useState } from "react";
 import { HighlightLayer } from "./HighlightLayer";
 
 export interface PdfPageProps {
