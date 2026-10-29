@@ -11,12 +11,14 @@ LLM for a deployment) and this module resolves them into one
 Fail closed: when ids are supplied but cannot be resolved, the extraction
 stops before conversion with ``IMAGE_LIMITS_UNRESOLVED`` rather than billing
 a conversion that may be unanswerable. With no ids at all (pre-upgrade
-payloads), only the platform ceilings apply and answer time re-checks.
+payloads), the fixed cap applies (90 pages / 14 MiB, lowered by the
+operator ceilings) and answer time re-checks against the LLM.
 
 ``VLM_IMAGE_LIMITS_ENFORCE=false`` skips the LLM lookup and applies the
 fixed 90-page / 14 MiB cap (``ImageModePolicy.fixed_cap``), the pre-UN-4427
-behaviour. sdk1's builders honour the switch too; checking it here first
-also skips the adapter lookups, which could otherwise fail closed.
+behaviour, lowered by the operator ceilings. sdk1's builders honour the
+switch too; checking it here first also skips the adapter lookups, which
+could otherwise fail closed.
 """
 
 from __future__ import annotations
@@ -36,6 +38,7 @@ from unstract.sdk1.utils.image_limits import (
     ImageModePolicy,
     codes,
     extraction_bound_kwargs,
+    fixed_cap_bound_kwargs,
     model_aware_limits_enabled,
 )
 
@@ -112,15 +115,15 @@ def build_extraction_image_policy(
             ENFORCE_ENV,
         )
         return ImageModePolicy.fixed_cap()
-    bounds = extraction_bound_kwargs()
     ids = list(dict.fromkeys(str(i) for i in llm_instance_ids if i))
     if not ids:
         logger.warning(
-            "Image mode: no LLM adapter ids supplied with the extraction; only "
-            "platform ceilings apply before conversion (the answer step "
-            "re-checks against the LLM)"
+            "Image mode: no LLM adapter ids supplied with the extraction; the "
+            "fixed page and byte cap applies before conversion (the answer "
+            "step re-checks against the LLM)"
         )
-        return ImageModePolicy.ceiling_only(**bounds)
+        return ImageModePolicy.ceiling_only(**fixed_cap_bound_kwargs())
+    bounds = extraction_bound_kwargs()
 
     resolved = []
     token_budgets = []

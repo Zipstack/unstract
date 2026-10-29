@@ -48,8 +48,8 @@ from unstract.sdk1.adapters.x2text.llm_whisperer_v2.src.page_range import (
 )
 from unstract.sdk1.adapters.x2text.page_image_loader import (
     PAGE_LABELS_FILENAME,
-    configured_max_total_bytes,
-    configured_page_cap,
+    get_fixed_max_total_bytes,
+    get_fixed_page_cap,
     validate_document_pages,
 )
 from unstract.sdk1.constants import MimeType
@@ -932,7 +932,7 @@ class LLMWhispererHelper:
         ``page_image_loader`` — so a document that passes here passes there.
         Raises before anything is persisted.
         """
-        budget = configured_max_total_bytes()
+        budget = get_fixed_max_total_bytes()
         total = sum(len(data) for _, data in pages)
         if total <= budget:
             return
@@ -961,8 +961,8 @@ class LLMWhispererHelper:
         images = f"{page_count} page images" if page_count else "page images"
         return (
             "This document is too large for image output mode. Its "
-            f"{images} {size} {total / mb:.1f} MB, over the "
-            f"{budget // mb} MB limit for one LLM request. Split the document "
+            f"{images} {size} {total / mb:.1f} MiB, over the "
+            f"{budget / mb:.1f} MiB limit for one LLM request. Split the document "
             f"into smaller files, or use a text output mode instead. {charge}"
         )
 
@@ -978,7 +978,7 @@ class LLMWhispererHelper:
         policy's bound needs a page count that could not be read locally.
         """
         if image_limits is None:
-            budget: int | None = configured_max_total_bytes()
+            budget: int | None = get_fixed_max_total_bytes()
         elif page_count is None:
             return None
         else:
@@ -1035,7 +1035,7 @@ class LLMWhispererHelper:
             )
             if image_limits is None:
                 message = LLMWhispererHelper._fixed_bytes_message(
-                    page_count, rendered, configured_max_total_bytes(), stopped_early=True
+                    page_count, rendered, get_fixed_max_total_bytes(), stopped_early=True
                 )
             else:
                 from unstract.sdk1.utils.image_limits import policy as _policy
@@ -1330,7 +1330,7 @@ class LLMWhispererHelper:
         With a model-aware policy the budget is the consuming LLM's (image
         count, LLMWhisperer's 999, operator ceilings; the context-window
         estimate only warns) and the error carries a stable code. Without
-        one the legacy fixed cap applies. Best-effort by design: a PDF whose
+        one the fixed cap applies. Best-effort by design: a PDF whose
         count cannot be read locally falls through and is caught after
         conversion / at answer time.
         """
@@ -1358,7 +1358,7 @@ class LLMWhispererHelper:
                 page_count=expected_page_count, include_size=True
             )
             return
-        page_cap = configured_page_cap()
+        page_cap = get_fixed_page_cap()
         if expected_page_count > page_cap:
             from unstract.sdk1.utils.image_limits.policy import fixed_cap_message
 
@@ -1440,8 +1440,8 @@ class LLMWhispererHelper:
 
         ``image_limits`` is the model-aware policy of the LLM(s) that will
         consume the pages; it drives the pre-submit page budget and the
-        post-download byte and per-image checks. Without it the legacy fixed
-        limits (``configured_page_cap`` / ``configured_max_total_bytes``) apply.
+        post-download byte and per-image checks. Without it the fixed cap
+        (``get_fixed_page_cap`` / ``get_fixed_max_total_bytes``) applies.
 
         Retrieval is intentionally NOT retried: the service marks the job
         RETRIEVED before streaming and (with the default persistence off) a

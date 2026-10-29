@@ -12,7 +12,8 @@ resolves it here.
   providers that is a hard cap; on `kind: pass_through` providers (Ollama,
   OpenAI-compatible servers, NVIDIA Build, unknown OpenRouter upstreams) it
   is advisory: the policy logs what the default would have been and sends
-  the request.
+  the request. What is enforced for them is the fixed cap (see "Operator
+  ceilings").
 - `providers.<key>`: `adapter` (the llm1 adapter), `display_name`, `kind`,
   `defaults` and ordered `model_overrides`. Each limit field is
   `{value, confidence, source, scope?, base64_counted?, note?}`; `source`
@@ -110,23 +111,42 @@ Advisories (that warning, pass-through defaults, the pre-conversion size
 hint) go to the worker log at WARNING and, through
 `ImageModePolicy.with_advisory_sink`, to the user's run log at WARN.
 
-### Rollout bound: `LEGACY_ANSWER_BOUNDS_ACTIVE`
+### Operator ceilings
 
-While `policy.LEGACY_ANSWER_BOUNDS_ACTIVE` is `True` (the UN-4427 rollout,
-until the cloud answer plugin uses model-aware limits) every model-aware
-policy is ALSO held to the legacy 90 pages / 14 MiB, through
-`extraction_bound_kwargs()` and the legacy accessors `configured_page_cap()`
-/ `configured_max_total_bytes()`. So a generous model (Gemini, OpenAI) is
-still capped at 90 pages; only stricter models (Bedrock 20, Mistral 8, ...)
-see their own, lower limits. In this mode `VLM_IMAGE_ANSWER_PAGE_CAP` and
-`VLM_IMAGE_ANSWER_MAX_TOTAL_MB` (MiB) REPLACE the 90 / 14 MiB, so a value
-above them raises the bound for larger models.
+`VLM_IMAGE_ANSWER_PAGE_CAP` (pages) and `VLM_IMAGE_ANSWER_MAX_TOTAL_MB` (MiB
+of raw page-image bytes) are optional platform ceilings. They are read by
+`get_configured_page_ceiling()` / `get_configured_request_bytes_ceiling()` and
+applied with `min()`: on top of the model's limits through
+`extraction_bound_kwargs()`, and on top of the fixed cap (below). They only
+ever lower a limit, never raise one. Unset means no platform ceiling:
+pages stay bounded by LLMWhisperer's 999, bytes by the model's own request
+limit. An invalid value is logged at ERROR and the fixed
+cap's value (90 / 14 MiB) is used instead, never "no ceiling". Set them on
+the backend and every worker alike.
 
-Once the flag is off, the same env vars are read by
-`configured_page_ceiling()` / `configured_request_bytes_ceiling()` and only
-ever tighten a model's limits; unset means no ceiling. An invalid value is
-logged at ERROR and keeps the legacy default (90 / 14 MiB), never "no
-ceiling".
+The fixed cap is 90 pages / 14 MiB, lowered by these ceilings and never
+raised by them (`get_fixed_page_cap()` / `get_fixed_max_total_bytes()`, and
+`fixed_cap_bound_kwargs()` built from them). It applies when no LLM is
+known, with `VLM_IMAGE_LIMITS_ENFORCE=false`, and to an LLM whose limits
+are not published. On the fixed-cap path, a ceiling binds (and the message
+names the administrator) only when it is strictly below 90 pages / 14 MiB;
+on the model-aware path, whenever it is below the model's own limit.
+
+So, with the ceilings unset:
+
+- providers that publish limits use the model's own: OpenAI and Gemini up
+  to LLMWhisperer's 999 pages (OpenAI: about 384 MB of raw page bytes),
+  Claude 100 or 600, Bedrock 20;
+- pass-through providers (Ollama, OpenAI-compatible servers, NVIDIA Build,
+  Anyscale, unknown OpenRouter upstreams) publish nothing, so their table
+  defaults stay advisory (warned, not enforced) and the fixed cap is
+  enforced, which keeps worker memory bounded. An OpenRouter route that
+  inherits a published provider (`anthropic/...`) uses that provider's
+  limits;
+- an extraction or upload that knows no LLM uses the fixed cap.
+
+Set `VLM_IMAGE_ANSWER_MAX_TOTAL_MB` if worker memory or request size needs
+a platform-wide bound for generous models too.
 
 ### Runtime switch: `VLM_IMAGE_LIMITS_ENFORCE`
 
@@ -134,12 +154,16 @@ ceiling".
 model-aware checks off without a deploy of new data. The switch is honoured
 inside sdk1's builders, so every consumer gets it without checking it:
 `ImageModePolicy.from_limits`, `compute_page_budget` and
-`extraction_bound_kwargs()` then yield the fixed 90-page / 14 MiB cap
-(`ImageModePolicy.fixed_cap()`, the pre-UN-4427 behaviour) whatever limits
+`extraction_bound_kwargs()` then yield the fixed 90-page / 14 MiB cap,
+lowered by the operator ceilings (`ImageModePolicy.fixed_cap()`, the
+pre-UN-4427 behaviour) whatever limits
 they are given — extraction, the Prompt Studio upload and cache-hit
 checks, and the cloud answer plugin and its profile summary alike. (The
 extraction worker and the Prompt Studio upload and cache-hit checks also
-test it first, to skip the LLM lookup, and then apply the fixed page cap.) Set it on the backend and every worker. Unset or `true` keeps
+test it first, to skip the LLM lookup, and then apply the fixed page cap.)
+The same fixed cap applies whenever no LLM is known: an extraction without
+LLM ids, or a Prompt Studio upload whose profile LLM cannot be resolved.
+Set it on the backend and every worker. Unset or `true` keeps
 model-aware limits; any other value is logged at ERROR and keeps them on.
 
 ## Where the table comes from

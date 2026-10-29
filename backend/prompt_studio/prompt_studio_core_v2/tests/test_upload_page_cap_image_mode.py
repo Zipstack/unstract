@@ -215,6 +215,8 @@ class TestCheckIsWiredIntoUpload:
 
 _BEDROCK_ID = "bedrock|8d18571f-5e96-4505-bd28-ad0379c64064"
 _OPENAI_ID = "openai|502ecf49-e47c-445c-9907-6d4b90c5cd17"
+_OLLAMA_ID = "ollama|4b8bd31a-ce42-48d4-9d69-f29c12e0f276"
+_OLLAMA_META = {"model": "llava", "api_base": "http://ollama:11434"}
 
 
 def _llm_profile(adapter_id: str, metadata: dict, name: str = "Default") -> MagicMock:
@@ -255,10 +257,29 @@ class TestModelAwareUploadCheck:
     def test_strict_provider_accepts_at_its_limit(self) -> None:
         check(_pdf(20), _PDF, _llm_profile(_BEDROCK_ID, _BEDROCK_META))
 
-    def test_generous_provider_is_held_at_the_rollout_cap(self) -> None:
-        # Until the cloud plugin answers with model-aware limits, 90 stays.
-        with pytest.raises(ImageModePageLimitExceeded):
-            check(_pdf(91), _PDF, _llm_profile(_OPENAI_ID, _OPENAI_META))
+    def test_generous_provider_accepts_above_the_old_fixed_cap(self) -> None:
+        check(_pdf(91), _PDF, _llm_profile(_OPENAI_ID, _OPENAI_META))
+
+    def test_env_ceiling_cannot_raise_the_fixed_cap(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # No LLM: the fixed cap. A ceiling above 90 leaves 90 in force.
+        monkeypatch.setenv("VLM_IMAGE_ANSWER_PAGE_CAP", "200")
+        profile = _profile({"output_mode": "image"})
+        profile.llm = None
+        with pytest.raises(ImageModePageLimitExceeded) as excinfo:
+            check(_pdf(91), _PDF, profile)
+        assert "the limit is 90" in str(excinfo.value.detail)
+
+    def test_pass_through_provider_keeps_the_fixed_cap(self) -> None:
+        # Ollama publishes no limits: the fixed 90 is enforced, as before.
+        profile = _llm_profile(_OLLAMA_ID, _OLLAMA_META)
+        check(_pdf(90), _PDF, profile)
+        with pytest.raises(ImageModePageLimitExceeded) as excinfo:
+            check(_pdf(91), _PDF, profile)
+        msg = str(excinfo.value.detail)
+        assert "at most 90 pages" in msg
+        assert "administrator" not in msg
 
     def test_unresolvable_llm_falls_back_to_the_fixed_cap(
         self, monkeypatch: pytest.MonkeyPatch
@@ -295,6 +316,21 @@ class TestModelAwareUploadCheck:
         profile.llm = None
         with pytest.raises(ImageModePageLimitExceeded):
             check(_pdf(6), _PDF, profile)
+
+    def test_internal_error_is_logged_with_traceback_and_uses_the_fixed_cap(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        # A defect (not an adapter validation error) is logged loudly; the
+        # upload check still falls back to the fixed cap.
+        caplog.set_level(logging.ERROR)
+        profile = _llm_profile(_OPENAI_ID, _OPENAI_META)
+        with patch.object(
+            _psh_mod.LLM, "image_input_limits_for", side_effect=RuntimeError("boom")
+        ):
+            with pytest.raises(ImageModePageLimitExceeded) as excinfo:
+                check(_pdf(91), _PDF, profile)
+        assert "the limit is 90" in str(excinfo.value.detail)
+        assert any(rec.exc_info for rec in caplog.records)
 
     def test_upload_passes_the_default_profile(self) -> None:
         source = inspect.getsource(_views_mod.PromptStudioCoreView.upload_for_ide)
@@ -335,6 +371,35 @@ class TestCacheHitCheck:
                 _llm_profile(_BEDROCK_ID, _BEDROCK_META), _cached_summary(21), "a.pdf"
             )
         assert "20 page images" in str(excinfo.value.detail)
+
+    def test_generous_provider_accepts_above_the_old_fixed_cap(self) -> None:
+        # The fixed cap applies only without an LLM budget: OpenAI's own
+        # limit (LLMWhisperer's 999 pages) holds on a cache hit too.
+        profile = _llm_profile(_OPENAI_ID, _OPENAI_META)
+        self.cached_check(profile, _cached_summary(91), "a.pdf")
+        with pytest.raises(_psh_mod.ExtractionAPIError) as excinfo:
+            self.cached_check(profile, _cached_summary(1000), "a.pdf")
+        assert "999" in str(excinfo.value.detail)
+
+    def test_profile_without_llm_applies_the_fixed_cap(self) -> None:
+        # As at upload: no resolvable LLM means the fixed cap, not no check.
+        profile = _profile({"output_mode": "image"})
+        profile.llm = None
+        self.cached_check(profile, _cached_summary(90), "a.pdf")
+        with pytest.raises(_psh_mod.ExtractionAPIError) as excinfo:
+            self.cached_check(profile, _cached_summary(91), "a.pdf")
+        detail = str(excinfo.value.detail)
+        assert "IMAGE_PAGE_CAP_EXCEEDED" in detail
+        assert "the limit is 90" in detail
+
+    def test_unresolvable_llm_applies_the_fixed_cap(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("VLM_IMAGE_ANSWER_PAGE_CAP", "5")
+        profile = _llm_profile("nope|123", {"model": "x"})
+        with pytest.raises(_psh_mod.ExtractionAPIError) as excinfo:
+            self.cached_check(profile, _cached_summary(6), "a.pdf")
+        assert "the limit is 5" in str(excinfo.value.detail)
 
     def test_switch_off_applies_the_fixed_cap(
         self, monkeypatch: pytest.MonkeyPatch
