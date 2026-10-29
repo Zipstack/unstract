@@ -138,16 +138,29 @@ jobs:
         run: bun run typecheck
 
       # src/v1 is excluded from the step above and checked under its own
-      # stricter tsconfig, after scripts/check-v1.mjs rejects non-TS files.
+      # stricter tsconfig, after scripts/check-v1.mjs checks file types,
+      # placement, symlinks and the folder taxonomy.
       - name: Run v1 typecheck
         working-directory: frontend
         run: bun run typecheck:v1
 
-      # Biome on src/v1, then the folder import contract, PropTypes and `ant-`
-      # checks in scripts/check-v1.mjs, which `biome ci` cannot express.
+      # Biome on src/v1, then scripts/check-v1.mjs: the folder import
+      # contract, v0 reaching v1 only through `@v1`, PropTypes and `ant-`.
       - name: Run v1 lint
         working-directory: frontend
         run: bun run lint:v1
+
+      # The guardrail fixtures run under `node --test` (Node 22 APIs).
+      - name: Setup Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+
+      # v1 unit tests, then the fixtures proving each guard above fails and
+      # passes when it should.
+      - name: Run v1 tests
+        working-directory: frontend
+        run: bun run test:v1
 
   # ci-test.yaml runs the same suite as the rig's `frontend` group, but its
   # tiers skip frontend-only PRs; this job is what gates those.
