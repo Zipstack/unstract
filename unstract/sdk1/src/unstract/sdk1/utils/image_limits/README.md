@@ -238,16 +238,16 @@ and to the run-log summary.
    loosen (Lookup rules, rule 7): a removed provider resolves from the
    bundled entry (directly, and as the `inherit` parent of an operator
    override file's entry, which stays valid), a changed `kind` keeps the
-   bundled one, and an image
-   count or request-byte limit above 2x the bundled value for the same
-   model is capped at 2x (a WARNING per provider, model and field names
+   bundled one, and a guarded limit (image count, request bytes,
+   per-image bytes and pixels, and the many-images rule) above 2x the
+   bundled value for the same model is capped at 2x (a WARNING per provider, model and field names
    both numbers). Ship those changes in an sdk1 release. Lowering limits
    and adding providers takes effect on refresh. A model newly listed
    under a provider the bundled table has is clamped against what the
    bundled table resolves for it (the provider's defaults or the shipped
    `default`), so a generous new entry is capped at 2x that until it ships
-   in a release. Per-image limits are not clamped, so review them with
-   extra care.
+   in a release. `max_image_patches`, `tokens_per_image` and
+   `max_input_tokens` are not clamped, so review them with extra care.
 7. Keep the schema backward compatible. Older installs reject any file
    they cannot read and stay on their bundled copy, so a key they do not
    know (a new limit field, a new field attribute) cuts them off from
