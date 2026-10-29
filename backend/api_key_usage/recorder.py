@@ -102,9 +102,9 @@ def record_key_use(
             settings.API_KEY_USAGE_FLUSH_INTERVAL_SECONDS,
         )
     except Exception:
-        # The key's identifiers stay out of the log: its type is enough to
-        # tell which auth path lost a count.
-        logger.exception("Could not record an API key use (%s)", key_type)
+        # Nothing about the key goes in the log; the traceback shows which
+        # auth path lost the count.
+        logger.exception("Could not record an API key use")
         return
 
     if flush_due:
