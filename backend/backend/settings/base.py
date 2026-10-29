@@ -1177,6 +1177,12 @@ PLATFORM_METRICS_RECENT_LOOKBACK_SECONDS = int(
 PLATFORM_METRICS_BATCH_STUCK_TIMEOUT_SECONDS = int(
     os.environ.get("WORKER_PG_BATCH_STUCK_TIMEOUT_SECONDS", 9000)
 )
+# Connect and read timeout for the metrics endpoint's own Redis pool, so a
+# stalled Redis fails a scrape over to the per-process fallback instead of
+# hanging it (KEDA's metrics-api client gives up after 3s).
+PLATFORM_METRICS_REDIS_TIMEOUT_SECONDS = float(
+    os.environ.get("PLATFORM_METRICS_REDIS_TIMEOUT_SECONDS", 1)
+)
 # Queue counts older than this are left out of the scrape instead of being
 # served as current, so a dashboard shows a gap and a KEDA trigger errors into
 # its fallback rather than scaling on a frozen value. Kept above the worst

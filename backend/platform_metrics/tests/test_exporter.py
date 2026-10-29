@@ -4,7 +4,7 @@ import pytest
 from django.test import override_settings
 from prometheus_client.parser import text_string_to_metric_families
 
-from platform_metrics.cache import FailureCounter, SnapshotCache
+from platform_metrics.cache import FailureCounter, RedisBreaker, SnapshotCache
 from platform_metrics.exporter import PlatformMetricsExporter, UnknownGroup
 from platform_metrics.tests.fakes import Clock, FakeRedis, StubGroup
 
@@ -26,10 +26,11 @@ def redis():
 
 
 def _exporter(groups, redis, clock):
+    breaker = RedisBreaker(clock)
     return PlatformMetricsExporter(
         groups=groups,
-        cache=SnapshotCache(client_factory=lambda: redis, clock=clock),
-        failures=FailureCounter(client_factory=lambda: redis),
+        cache=SnapshotCache(client_factory=lambda: redis, clock=clock, breaker=breaker),
+        failures=FailureCounter(client_factory=lambda: redis, breaker=breaker),
         clock=clock,
     )
 
@@ -222,3 +223,29 @@ def test_output_is_prometheus_text_with_help_and_type(redis, clock):
     assert "# HELP unstract_metrics_refresh_failures_total" in text
     assert "# TYPE unstract_metrics_refresh_failures_total counter" in text
     assert "# TYPE unstract_metrics_last_successful_refresh_timestamp gauge" in text
+
+
+def test_a_redis_failure_spares_the_rest_of_the_scrape_its_timeout(redis, clock):
+    calls = []
+    real_get = redis.get
+
+    def counting_get(name):
+        calls.append(name)
+        return real_get(name)
+
+    redis.get = counting_get
+    exporter = _exporter([StubGroup("a"), StubGroup("b"), StubGroup("c")], redis, clock)
+    redis.down = True
+
+    samples = _samples(exporter)
+
+    assert len(calls) == 1, "only the first group tries Redis; the rest skip it"
+    assert samples[("stub_c", ())] == 1.0, "groups still served from local copies"
+    assert samples[("unstract_metrics_cache_up", ())] == 0
+
+    redis.down = False
+    clock.now += 6
+    calls.clear()
+    samples = _samples(exporter)
+    assert len(calls) == 3, "Redis is tried again once the breaker closes"
+    assert samples[("unstract_metrics_cache_up", ())] == 1

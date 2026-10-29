@@ -20,7 +20,7 @@ import time
 from collections.abc import Callable, Iterable, Sequence
 from typing import TYPE_CHECKING
 
-from .cache import FailureCounter, RefreshFailed, SnapshotCache
+from .cache import FailureCounter, RedisBreaker, RefreshFailed, SnapshotCache
 from .groups import METRIC_GROUPS, MetricGroup
 
 if TYPE_CHECKING:
@@ -129,8 +129,11 @@ class PlatformMetricsExporter:
         clock: Callable[[], float] = time.time,
     ) -> None:
         self._groups = tuple(groups)
-        self._cache = cache or SnapshotCache()
-        self._failures = failures or FailureCounter()
+        # One breaker for both, so a Redis failure seen by the cache also
+        # spares the counter its timeout, and the other way round.
+        breaker = RedisBreaker()
+        self._cache = cache or SnapshotCache(breaker=breaker)
+        self._failures = failures or FailureCounter(breaker=breaker)
         self._clock = clock
 
     def render(self, group_names: Sequence[str] | None = None) -> bytes:

@@ -13,7 +13,9 @@ Failure handling, per group and independent of the others:
 * the refresh query fails: serve the last snapshot (Redis, else this
   process's copy) and count the failure. The refresh lock is then held for
   one TTL, so the DB is retried about once per TTL, not on every scrape;
-* Redis is unreachable: fall back to this process's copy, refreshing it from
+* Redis is unreachable or stalls (its own pool has socket timeouts, and a
+  failure skips Redis for a few seconds after, so a stall costs a scrape at
+  most one timeout): fall back to this process's copy, refreshing it from
   the DB (successfully or not) at most once per TTL, so DB load stays bounded per gunicorn worker
   process rather than per scrape. The failure is counted;
 * the Redis entry is unreadable (e.g. written by another version): treated as
@@ -94,10 +96,84 @@ class RefreshFailed(Exception):
         self.snapshot = snapshot
 
 
-def _default_client() -> RedisLike:
-    from django_redis import get_redis_connection
+_client: Any = None
+_client_lock = threading.Lock()
 
-    return get_redis_connection("default")
+
+def _default_client() -> RedisLike:
+    """The backend's Redis, through a pool of its own with bounded waits.
+
+    The shared ``default`` pool sets no socket timeouts, so a Redis that
+    accepts connections but stops replying would hold a scrape (and its
+    worker thread) indefinitely and the local fallback would never run. The
+    metrics pool copies the shared one's settings, Sentinel included, and adds
+    ``PLATFORM_METRICS_REDIS_TIMEOUT_SECONDS`` for connecting and reading, so
+    a stall surfaces as an error and takes the fallback path. Built once per
+    process, on first scrape.
+    """
+    global _client
+    if _client is None:
+        with _client_lock:
+            if _client is None:
+                from django_redis import get_redis_connection
+
+                _client = with_timeouts(
+                    get_redis_connection("default"),
+                    float(settings.PLATFORM_METRICS_REDIS_TIMEOUT_SECONDS),
+                )
+    return _client
+
+
+def with_timeouts(client: Any, timeout: float) -> Any:
+    """A client on a new pool like ``client``'s, with socket timeouts set."""
+    import redis
+    from redis.sentinel import SentinelConnectionPool
+
+    pool = client.connection_pool
+    # A Sentinel pool stores a back-reference to itself here; the new pool
+    # sets its own.
+    kwargs = {k: v for k, v in pool.connection_kwargs.items() if k != "connection_pool"}
+    kwargs.update(socket_timeout=timeout, socket_connect_timeout=timeout)
+    if isinstance(pool, SentinelConnectionPool):
+        bounded = SentinelConnectionPool(
+            pool.service_name,
+            pool.sentinel_manager,
+            connection_class=pool.connection_class,
+            is_master=pool.is_master,
+            check_connection=pool.check_connection,
+            **kwargs,
+        )
+    else:
+        bounded = type(pool)(
+            connection_class=pool.connection_class,
+            max_connections=pool.max_connections,
+            **kwargs,
+        )
+    return redis.Redis(connection_pool=bounded)
+
+
+#: How long Redis is skipped after a call to it fails, so one stall costs a
+#: scrape at most one timeout rather than one per group.
+_BREAKER_SECONDS = 5.0
+
+
+class RedisBreaker:
+    """Remembers a recent Redis failure so the next calls skip Redis.
+
+    Without it a stalled Redis costs every group, and the failure counter,
+    their own socket timeout in turn on every scrape. Shared by the cache and
+    the counter of one exporter.
+    """
+
+    def __init__(self, clock: Callable[[], float] = time.monotonic) -> None:
+        self._clock = clock
+        self._open_until = 0.0
+
+    def trip(self) -> None:
+        self._open_until = self._clock() + _BREAKER_SECONDS
+
+    def is_open(self) -> bool:
+        return self._clock() < self._open_until
 
 
 class SnapshotCache:
@@ -107,9 +183,11 @@ class SnapshotCache:
         self,
         client_factory: Callable[[], RedisLike] = _default_client,
         clock: Callable[[], float] = time.time,
+        breaker: RedisBreaker | None = None,
     ) -> None:
         self._client_factory = client_factory
         self._clock = clock
+        self._breaker = breaker or RedisBreaker(clock)
         # Per-process last-known-good copies: the fallback when Redis is down.
         self._local: dict[str, CachedSnapshot] = {}
         # One lock per group, so a slow refresh of one group never holds up
@@ -130,10 +208,13 @@ class SnapshotCache:
         Raises :class:`RefreshFailed` (carrying the snapshot to serve anyway)
         when this call tried and failed to refresh the group.
         """
+        if self._breaker.is_open():
+            return self._resolve_local(group)
         try:
             client = self._client_factory()
             cached = self._newest(group, self._read(client, group))
         except Exception:
+            self._breaker.trip()
             logger.warning(
                 "platform metrics: Redis unavailable for group %r; using the "
                 "process-local snapshot",
@@ -151,6 +232,7 @@ class SnapshotCache:
             )
             acquired = lock.acquire(blocking=False)
         except Exception:
+            self._breaker.trip()
             logger.warning(
                 "platform metrics: could not take the refresh lock for %r",
                 group.name,
@@ -168,6 +250,7 @@ class SnapshotCache:
             try:
                 latest = self._newest(group, self._read(client, group))
             except Exception:
+                self._breaker.trip()
                 logger.warning(
                     "platform metrics: Redis failed re-reading group %r under the lock",
                     group.name,
@@ -190,6 +273,7 @@ class SnapshotCache:
                     ex=_RETENTION_SECONDS,
                 )
             except Exception as e:
+                self._breaker.trip()
                 # Still good to serve, and kept as this process's copy, which
                 # _newest() prefers over the older Redis value until it goes
                 # stale, so a write-failing Redis does not turn every scrape
@@ -317,8 +401,13 @@ class FailureCounter:
     exporter's ``unstract_metrics_cache_up`` gauge reports the outage instead.
     """
 
-    def __init__(self, client_factory: Callable[[], RedisLike] = _default_client) -> None:
+    def __init__(
+        self,
+        client_factory: Callable[[], RedisLike] = _default_client,
+        breaker: RedisBreaker | None = None,
+    ) -> None:
         self._client_factory = client_factory
+        self._breaker = breaker or RedisBreaker()
         self._pending: dict[str, int] = {}
         self._lock = threading.Lock()
 
@@ -330,6 +419,8 @@ class FailureCounter:
         """Flush pending increments, then read the shared totals."""
         # Take the pending counts and do the Redis I/O outside the lock, so a
         # slow Redis never blocks record() on another thread.
+        if self._breaker.is_open():
+            return None
         with self._lock:
             pending, self._pending = self._pending, {}
         try:
@@ -339,6 +430,7 @@ class FailureCounter:
             pipe.hgetall(_FAILURES_KEY)
             raw = pipe.execute()[-1]
         except Exception:
+            self._breaker.trip()
             self._restore(pending)
             logger.warning(
                 "platform metrics: could not read refresh-failure totals", exc_info=True
