@@ -165,23 +165,40 @@ function mayImport(from, to, isTestFile) {
  */
 function blankComments(src) {
   let out = "";
+  // The same text with string, template and regex bodies blanked too, so
+  // import statements and calls are found only in executable code.
+  let code = "";
   let i = 0;
   // "`" = inside a template literal; "{" = inside a `${}` or a brace in one.
   const stack = [];
   while (i < src.length) {
     if (stack.at(-1) === "`") {
+      const opensOrCloses =
+        src[i] === "`" || (src[i] === "$" && src[i + 1] === "{");
       const end = i + templateStep(src, i, stack);
-      out += src.slice(i, end);
+      const chunk = src.slice(i, end);
+      out += chunk;
+      code += opensOrCloses ? chunk : blank(chunk);
       i = end;
       continue;
     }
     const end = tokenEnd(src, i, out, stack);
     const token = src.slice(i, end);
-    out += isComment(src, i) ? token.replace(/[^\n]/g, " ") : token;
+    if (isComment(src, i)) {
+      out += blank(token);
+      code += blank(token);
+    } else {
+      out += token;
+      // A string or regex literal keeps only its opening delimiter.
+      const literal = /^["'/]/.test(token) && token.length > 1;
+      code += literal ? token[0] + blank(token.slice(1)) : token;
+    }
     i = end;
   }
-  return out;
+  return { text: out, code };
 }
+
+const blank = (s) => s.replace(/[^\n]/g, " ");
 
 /* CSS has block comments only; a `//` there is part of a URL. */
 function blankCssComments(src) {
@@ -311,9 +328,9 @@ function codeStep(c, stack) {
   }
 }
 
-// Static import/export statements; these take a plain string literal.
+// Static import/export statements, up to the quote of their string literal.
 const STATIC_RE =
-  /\b(?:import|export)\s+(?:type\s+)?(?:[\w$*{}\s,]+?\s+from\s+)?["']([^"']+)["']/g;
+  /\b(?:import|export)\s+(?:type\s+)?(?:[\w$*{}\s,]+?\s+from\s+)?(?=["'])/g;
 // Calls whose first argument Vite resolves as a module or asset.
 const CALL_RE =
   /\b(import\.meta\.glob|import|require|new\s+URL)\s*(?:<[^>]*>)?\(\s*/g;
@@ -342,12 +359,19 @@ function readArg(text, j) {
     : { kind: "prefix", spec: body.slice(0, hole), end: end + 1 };
 }
 
-/* Every import in comment-blanked source: { kind, spec, index }. */
-function* importSpecs(text) {
-  for (const m of text.matchAll(STATIC_RE)) {
-    yield { kind: "literal", spec: m[1], index: m.index };
+/*
+ * Every import, as { kind, spec, index }. Statements and calls are found in
+ * `code` (no string contents), and their argument is read from `text` at the
+ * same offset.
+ */
+function* importSpecs({ text, code }) {
+  for (const m of code.matchAll(STATIC_RE)) {
+    const arg = readArg(text, m.index + m[0].length);
+    if (arg.kind === "literal") {
+      yield { ...arg, index: m.index };
+    }
   }
-  for (const m of text.matchAll(CALL_RE)) {
+  for (const m of code.matchAll(CALL_RE)) {
     yield* callSpecs(text, m);
   }
 }
@@ -547,10 +571,11 @@ for (const rel of walk(ROOT)) {
   if (!runCode || !CODE_EXT.test(name) || folder === null) {
     continue;
   }
-  const text = blankComments(fs.readFileSync(path.join(ROOT, rel), "utf8"));
+  const scanned = blankComments(fs.readFileSync(path.join(ROOT, rel), "utf8"));
+  const { text } = scanned;
   const isTestFile = TEST_FILE.test(name);
 
-  for (const arg of importSpecs(text)) {
+  for (const arg of importSpecs(scanned)) {
     const problem = v1ImportProblem(folder, rel, arg, isTestFile);
     if (problem) {
       report(rel, lineAt(text, arg.index), problem);
@@ -617,8 +642,8 @@ function intoV1(arg, fileRel) {
 
 function v0Specs(rel, raw) {
   if (!STYLE_EXT.test(rel)) {
-    const text = blankComments(raw);
-    return { text, specs: importSpecs(text) };
+    const scanned = blankComments(raw);
+    return { text: scanned.text, specs: importSpecs(scanned) };
   }
   const text = blankCssComments(raw);
   const specs = [...text.matchAll(CSS_IMPORT_RE)].map((m) => ({

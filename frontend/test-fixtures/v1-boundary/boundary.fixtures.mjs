@@ -359,6 +359,9 @@ test("folder contract: every import form is read", () => {
     "commentedOut.ts":
       '// import "@v1/services/a";\n/* import("@/helpers/x"); */\nexport const v = 1;',
     "lookalikeClasses.ts": 'export const c = "variant-outline tenant-id";',
+    // Example source text in strings, templates and regexes is not an import.
+    "importsInStrings.ts":
+      'export const a = "import(name)";\nexport const b = \'import x from "@/helpers/x"\';\nexport const c = `require(n) or import.meta.glob(x)`;\nexport const d = /import\\(x\\)/;',
     "jsx.tsx":
       'export const T = () => <div className="x">a / b</div>;\nexport const n = 2 / 1;',
   };
