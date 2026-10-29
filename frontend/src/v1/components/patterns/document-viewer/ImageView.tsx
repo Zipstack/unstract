@@ -6,7 +6,6 @@ import {
   type Ref,
   type SyntheticEvent,
   useImperativeHandle,
-  useLayoutEffect,
   useRef,
   useState,
 } from "react";
@@ -56,15 +55,6 @@ export function ImageView({
   const rootRef = useRef<HTMLElement | null>(null);
   const frameRef = useRef<HTMLDivElement | null>(null);
   const css = load.status === "ready" ? pageCssSize(load.size, zoom) : null;
-  const width = css?.width;
-  const height = css?.height;
-
-  useLayoutEffect(() => {
-    if (width !== undefined && height !== undefined) {
-      frameRef.current?.style.setProperty("--page-width", `${width}px`);
-      frameRef.current?.style.setProperty("--page-height", `${height}px`);
-    }
-  }, [width, height]);
 
   useImperativeHandle(
     ref,
@@ -144,6 +134,11 @@ export function ImageView({
               ? "ui:relative ui:h-(--page-height) ui:w-(--page-width) ui:shrink-0 ui:bg-card ui:shadow-sm"
               : "ui:invisible ui:absolute"
           }
+          // The image's size is runtime geometry: custom properties the classes read.
+          style={{
+            "--page-width": css ? `${css.width}px` : undefined,
+            "--page-height": css ? `${css.height}px` : undefined,
+          }}
         >
           {/* biome-ignore lint/a11y/noNoninteractiveElementInteractions: load and error are not user interactions */}
           <img
