@@ -137,13 +137,15 @@ describe("Slot", () => {
         slots: { "shell.product-switcher": load },
       },
     ]);
-    const tree = (
+    // A fresh element each time, in the same position: React re-renders the
+    // mounted slot and its boundary instead of mounting new ones.
+    const tree = () => (
       <Slot id="shell.product-switcher" props={{}} fallback={fallback} />
     );
-    const { rerender } = render(tree);
+    const { rerender } = render(tree());
     await vi.waitFor(() => expect(report).toHaveBeenCalledTimes(1));
-    rerender(<div>{tree}</div>);
-    rerender(tree);
+    rerender(tree());
     expect(await screen.findByText("switcher")).toBeInTheDocument();
+    expect(load).toHaveBeenCalledTimes(2);
   });
 });
