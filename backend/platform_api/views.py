@@ -1,5 +1,6 @@
 import uuid
 
+from api_key_usage.expiry import record_expiry_change
 from django.db import transaction
 from platform_audit.actions import Action, TargetType
 from platform_audit.recorder import (
@@ -66,6 +67,7 @@ class PlatformApiKeyViewSet(viewsets.ModelViewSet):
             platform_api_key.name,
             changes={"after": _key_fields(platform_api_key)},
         )
+        _record_expiry_change(request, platform_api_key, before=None)
         response_serializer = PlatformApiKeyDetailSerializer(platform_api_key)
         return Response(response_serializer.data, status=status.HTTP_201_CREATED)
 
@@ -77,6 +79,7 @@ class PlatformApiKeyViewSet(viewsets.ModelViewSet):
     def partial_update(self, request, *args, **kwargs):
         instance = self.get_object()
         before = _key_fields(instance)
+        expires_before = instance.expires_at
 
         serializer = PlatformApiKeyUpdateSerializer(
             instance, data=request.data, partial=True, context={"request": request}
@@ -84,6 +87,7 @@ class PlatformApiKeyViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         updated_instance = serializer.save()
         _record_key_update(request, updated_instance, before)
+        _record_expiry_change(request, updated_instance, before=expires_before)
 
         response_serializer = PlatformApiKeyListSerializer(updated_instance)
         return Response(response_serializer.data)
@@ -127,6 +131,13 @@ def _record_key_event(request, action: Action, key_id, key_name: str, **kwargs) 
         target_name=key_name,
         request=request,
         **kwargs,
+    )
+
+
+@best_effort
+def _record_expiry_change(request, key: PlatformApiKey, before) -> None:
+    record_expiry_change(
+        request, target_type=TargetType.PLATFORM_API_KEY, key=key, before=before
     )
 
 

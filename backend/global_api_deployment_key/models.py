@@ -44,6 +44,11 @@ class GlobalApiDeploymentKey(DefaultOrganizationMixin, BaseModel):
     description = models.CharField(max_length=512)
     key = models.UUIDField(default=uuid.uuid4, unique=True)
     is_active = models.BooleanField(default=True)
+    expires_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        db_comment="Key is rejected from this time on. Null: never expires.",
+    )
     allow_all_deployments = models.BooleanField(
         default=False,
         db_comment="If True, this key can authenticate any API deployment in the org",

@@ -5,11 +5,13 @@ from typing import Any
 from urllib.parse import urlencode, urlparse
 
 import requests
+from api_key_usage.recorder import record_key_use
 from configuration.config_registry import ConfigurationRegistry
 from configuration.models import Configuration
 from django.conf import settings
 from django.core.files.uploadedfile import InMemoryUploadedFile, UploadedFile
 from global_api_deployment_key.models import GlobalApiDeploymentKey
+from platform_audit.actions import TargetType
 from plugins.workflow_manager.workflow_v2.api_hub_usage_utils import APIHubUsageUtil
 from rest_framework.request import Request
 from rest_framework.serializers import Serializer
@@ -115,6 +117,12 @@ class DeploymentHelper(BaseAPIKeyValidator):
             )
             global_key = KeyHelper.validate_global_api_deployment_key(
                 api_key=api_key, api_deployment=api_deployment
+            )
+            record_key_use(
+                key_type=TargetType.GLOBAL_API_DEPLOYMENT_KEY,
+                key_id=global_key.id,
+                organization_id=global_key.organization_id,
+                api_deployment_id=api_deployment.id,
             )
             logger.info(
                 "API '%s' authorized via global API deployment key '%s' (%s).",

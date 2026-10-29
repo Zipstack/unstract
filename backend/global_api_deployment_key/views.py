@@ -1,5 +1,6 @@
 import uuid
 
+from api_key_usage.expiry import record_expiry_change
 from api_v2.models import APIDeployment
 from django.db.models import Prefetch
 from platform_api.permissions import is_org_admin_session
@@ -121,6 +122,7 @@ class GlobalApiDeploymentKeyViewSet(viewsets.ModelViewSet):
             instance.name,
             changes={"after": _key_fields(instance)},
         )
+        _record_expiry_change(request, instance, before=None)
         response_serializer = GlobalApiDeploymentKeyDetailSerializer(instance)
         return Response(response_serializer.data, status=status.HTTP_201_CREATED)
 
@@ -133,6 +135,7 @@ class GlobalApiDeploymentKeyViewSet(viewsets.ModelViewSet):
     def partial_update(self, request, *args, **kwargs):
         instance = self.get_object()
         before = _key_fields(instance)
+        expires_before = instance.expires_at
         serializer = GlobalApiDeploymentKeyUpdateSerializer(
             instance, data=request.data, partial=True, context={"request": request}
         )
@@ -141,6 +144,7 @@ class GlobalApiDeploymentKeyViewSet(viewsets.ModelViewSet):
             _limit_to_creator(instance, serializer.validated_data)
         updated_instance = serializer.save()
         _record_key_update(request, updated_instance, before)
+        _record_expiry_change(request, updated_instance, before=expires_before)
         response_serializer = GlobalApiDeploymentKeyListSerializer(updated_instance)
         return Response(response_serializer.data)
 
@@ -220,6 +224,16 @@ def _record_key_event(request, action: Action, key_id, key_name: str, **kwargs) 
         target_name=key_name,
         request=request,
         **kwargs,
+    )
+
+
+@best_effort
+def _record_expiry_change(request, key: GlobalApiDeploymentKey, before) -> None:
+    record_expiry_change(
+        request,
+        target_type=TargetType.GLOBAL_API_DEPLOYMENT_KEY,
+        key=key,
+        before=before,
     )
 
 

@@ -29,6 +29,11 @@ class PlatformApiKey(DefaultOrganizationMixin, BaseModel):
     # create/rotate, then store hash. Retrieve should return masked value.
     key = models.UUIDField(default=uuid.uuid4, unique=True)
     is_active = models.BooleanField(default=True)
+    expires_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        db_comment="Key is rejected from this time on. Null: never expires.",
+    )
     permission = models.CharField(
         max_length=20,
         choices=ApiKeyPermission.choices,

@@ -1,3 +1,4 @@
+from api_key_usage.expiry import expires_at_field
 from api_v2.models import APIDeployment
 from rest_framework import serializers
 from utils.input_sanitizer import validate_safe_text
@@ -37,6 +38,7 @@ class GlobalApiDeploymentKeyListSerializer(serializers.ModelSerializer):
             "description",
             "key",
             "is_active",
+            "expires_at",
             "allow_all_deployments",
             "created_by_member",
             "api_deployments",
@@ -100,10 +102,17 @@ class _GlobalApiDeploymentKeyWriteSerializer(AuditSerializer):
 
 class GlobalApiDeploymentKeyCreateSerializer(_GlobalApiDeploymentKeyWriteSerializer):
     description = serializers.CharField(required=True, max_length=512)
+    expires_at = expires_at_field()
 
     class Meta:
         model = GlobalApiDeploymentKey
-        fields = ["name", "description", "allow_all_deployments", "api_deployments"]
+        fields = [
+            "name",
+            "description",
+            "allow_all_deployments",
+            "api_deployments",
+            "expires_at",
+        ]
 
     def validate_name(self, value):
         value = validate_safe_text(value)
@@ -134,6 +143,8 @@ class GlobalApiDeploymentKeyCreateSerializer(_GlobalApiDeploymentKeyWriteSeriali
 
 
 class GlobalApiDeploymentKeyUpdateSerializer(_GlobalApiDeploymentKeyWriteSerializer):
+    expires_at = expires_at_field()
+
     class Meta:
         model = GlobalApiDeploymentKey
         fields = [
@@ -141,6 +152,7 @@ class GlobalApiDeploymentKeyUpdateSerializer(_GlobalApiDeploymentKeyWriteSeriali
             "is_active",
             "allow_all_deployments",
             "api_deployments",
+            "expires_at",
         ]
         extra_kwargs = {
             "description": {"required": False},

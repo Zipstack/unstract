@@ -1,3 +1,4 @@
+from api_key_usage.expiry import expires_at_field
 from rest_framework import serializers
 from utils.input_sanitizer import validate_safe_text
 from utils.user_context import UserContext
@@ -18,6 +19,7 @@ class PlatformApiKeyListSerializer(serializers.ModelSerializer):
             "description",
             "key",
             "is_active",
+            "expires_at",
             "created_at",
             "modified_at",
             "permission",
@@ -34,10 +36,11 @@ class PlatformApiKeyListSerializer(serializers.ModelSerializer):
 
 class PlatformApiKeyCreateSerializer(AuditSerializer):
     description = serializers.CharField(required=True, max_length=512)
+    expires_at = expires_at_field()
 
     class Meta:
         model = PlatformApiKey
-        fields = ["name", "description", "permission"]
+        fields = ["name", "description", "permission", "expires_at"]
 
     def validate_name(self, value):
         value = validate_safe_text(value)
@@ -53,9 +56,11 @@ class PlatformApiKeyCreateSerializer(AuditSerializer):
 
 
 class PlatformApiKeyUpdateSerializer(AuditSerializer):
+    expires_at = expires_at_field()
+
     class Meta:
         model = PlatformApiKey
-        fields = ["description", "is_active", "permission"]
+        fields = ["description", "is_active", "permission", "expires_at"]
         extra_kwargs = {
             "description": {"required": False},
             "is_active": {"required": False},

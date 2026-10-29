@@ -117,7 +117,10 @@ class CustomAuthMiddleware:
         Resolves the token to the owning user so all downstream code sees
         a fully authenticated request.
         """
+        from api_key_usage.expiry import EXPIRED_MESSAGE, is_expired
+        from api_key_usage.recorder import record_key_use
         from platform_api.models import ApiKeyPermission, PlatformApiKey
+        from platform_audit.actions import TargetType
 
         token_str = auth_header[len("Bearer ") :]
         try:
@@ -138,6 +141,10 @@ class CustomAuthMiddleware:
         except PlatformApiKey.DoesNotExist:
             _log_key_rejection(request, token_str, "unknown or inactive key")
             return JsonResponse({"message": "Invalid or inactive API key"}, status=401)
+
+        if is_expired(key):
+            _log_key_rejection(request, token_str, "expired key")
+            return JsonResponse({"message": EXPIRED_MESSAGE}, status=401)
 
         # Validate the key belongs to the org in the URL
         if request.organization_id and str(key.organization.organization_id) != str(
@@ -190,6 +197,11 @@ class CustomAuthMiddleware:
                 status=403,
             )
 
+        record_key_use(
+            key_type=TargetType.PLATFORM_API_KEY,
+            key_id=key.id,
+            organization_id=key.organization_id,
+        )
         request.user = key.api_user
         request.platform_api_key = key
         # Skip CSRF for Bearer-authenticated requests
