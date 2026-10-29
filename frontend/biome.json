@@ -187,7 +187,16 @@
               "options": {
                 "patterns": [
                   {
-                    "group": ["@v1/**", "**/v1", "**/v1/**", "!@v1"],
+                    "group": [
+                      "@v1/**",
+                      "@/v1",
+                      "@/v1/**",
+                      "src/v1",
+                      "src/v1/**",
+                      "/src/v1",
+                      "/src/v1/**",
+                      "!@v1"
+                    ],
                     "message": "v0 may import only the v1 public entry, as '@v1'."
                   }
                 ]
