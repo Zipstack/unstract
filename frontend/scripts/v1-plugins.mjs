@@ -123,7 +123,9 @@ if (isMain) {
   const args = process.argv.slice(2);
   const flag = args.indexOf("--dir");
   const dir = flag === -1 ? DEFAULT_DIR : path.resolve(args[flag + 1]);
-  const out = args.find((a, i) => !a.startsWith("--") && i !== flag + 1);
+  const out = args.find(
+    (a, i) => !a.startsWith("--") && (flag === -1 || i !== flag + 1),
+  );
   check(dir)
     .then((matrix) => {
       const json = `${JSON.stringify(matrix, null, 2)}\n`;

@@ -69,7 +69,7 @@ describe("AccountMenu", () => {
     const lines = screen.getAllByText("athul@zipstack.com");
     expect(lines).toHaveLength(1);
     // The bold title line, not an empty title above the e-mail.
-    expect(lines[0]).toHaveClass("font-semibold");
+    expect(lines[0]).toHaveClass("ui:font-semibold");
   });
 
   test("OSS has no Plan & billing item and no version switch (D14)", async () => {
