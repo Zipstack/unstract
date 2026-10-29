@@ -1,6 +1,5 @@
-"""OSS line work by git on a clone of a bare origin: cut (refuses an existing line or used minor, recovers its own
-re-run), rc (tip tag else a new ee- RC; plain v* ignored), promote (open conflict PRs and the gate block unless forced, re-runnable), retire
-(archive tag; RC tags go without a GA), and a tag already on another commit fails. Run: python test_oss.py
+"""Tests for oss line work (cut, rc, promote, retire) on clones of a bare origin, and the workflows'
+inline scripts. Run: python test_oss.py
 """
 
 import contextlib
@@ -15,13 +14,17 @@ import unittest
 from unittest import mock
 
 os.environ["GITHUB_REPOSITORY"] = (
-    "Zipstack/unstract-cloud"  # relstate loads the cloud config, whatever the runner sets
+    "Zipstack/unstract-cloud"  # pin relstate to the cloud config
 )
 import oss
 import relmgr as rm
 
 os.environ.update(GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_NOSYSTEM="1")
 os.environ.pop("GITHUB_STEP_SUMMARY", None)
+
+
+def dev_git(repo, *a):
+    return rm.git(repo, "-c", "user.name=Dev", "-c", "user.email=dev@example.com", *a)
 
 
 class Choose(unittest.TestCase):
@@ -42,19 +45,20 @@ class Lines(unittest.TestCase):
         )
         rm.git(tmp.name, "init", "-q", "--bare", "-b", "main", self.origin)
         rm.git(tmp.name, "clone", "-q", self.origin, self.dev)
-        self.g(self.dev, "commit", "-q", "--allow-empty", "-m", "base")
-        self.g(
+        dev_git(self.dev, "commit", "-q", "--allow-empty", "-m", "base")
+        dev_git(
             self.dev, "tag", "v1.7.3"
         )  # a community release on main: never an OSS line's tag
-        self.g(self.dev, "push", "-q", "origin", "main", "v1.7.3")
+        dev_git(self.dev, "push", "-q", "origin", "main", "v1.7.3")
         self.clone()
         self.gates = []
         self.gate = 0
         p = mock.patch.object(
             oss,
             "gate",
-            lambda o, b, ref, annotate: self.gates.append((b, ref, annotate))
-            or self.gate,
+            lambda o, b, ref, annotate: (
+                self.gates.append((b, ref, annotate)) or self.gate
+            ),
         )
         p.start()
         self.addCleanup(p.stop)
@@ -65,16 +69,13 @@ class Lines(unittest.TestCase):
         p = mock.patch.object(
             oss.bp,
             "conflict_prs",
-            lambda *a: self.listed.append(a)
-            or [{"number": n, "baseRefName": b} for n, b in self.prs if b == a[1]],
+            lambda *a: (
+                self.listed.append(a)
+                or [{"number": n, "baseRefName": b} for n, b in self.prs if b == a[1]]
+            ),
         )
         p.start()
         self.addCleanup(p.stop)
-
-    def g(self, repo, *args):
-        return rm.git(
-            repo, "-c", "user.name=Dev", "-c", "user.email=dev@example.com", *args
-        )
 
     def clone(self):  # a fresh workflow run's OSS clone
         rm.git(
@@ -84,23 +85,23 @@ class Lines(unittest.TestCase):
             "--no-checkout",
             self.origin,
             self.oss,
-        ) if not os.path.isdir(self.oss) else self.g(
+        ) if not os.path.isdir(self.oss) else dev_git(
             self.oss, "fetch", "-q", "--prune", "--prune-tags", "--tags", "origin"
         )
 
     def remote(self, *args):
-        return self.g(self.origin, *args)
+        return dev_git(self.origin, *args)
 
     def quiet(self, f, *args, **kw):
         with contextlib.redirect_stderr(io.StringIO()):
             return f(*args, **kw)
 
     def work(self, branch, msg):  # a developer's commit on the OSS line, pushed
-        self.g(self.dev, "fetch", "-q", "origin")
-        self.g(self.dev, "checkout", "-q", "-B", branch, f"origin/{branch}")
-        self.g(self.dev, "commit", "-q", "--allow-empty", "-m", msg)
-        self.g(self.dev, "push", "-q", "origin", branch)
-        self.g(self.dev, "checkout", "-q", "main")
+        dev_git(self.dev, "fetch", "-q", "origin")
+        dev_git(self.dev, "checkout", "-q", "-B", branch, f"origin/{branch}")
+        dev_git(self.dev, "commit", "-q", "--allow-empty", "-m", msg)
+        dev_git(self.dev, "push", "-q", "origin", branch)
+        dev_git(self.dev, "checkout", "-q", "main")
         self.clone()
 
     def test_cut(self):
@@ -129,7 +130,7 @@ class Lines(unittest.TestCase):
         self.work("release/1.7", "oss work")
         with self.assertRaisesRegex(RuntimeError, "OSS release/1.7 already exists"):
             oss.cut(self.oss, "1.7")
-        self.g(self.dev, "push", "-q", "origin", "main:refs/heads/release/1.8")
+        dev_git(self.dev, "push", "-q", "origin", "main:refs/heads/release/1.8")
         self.clone()
         with self.assertRaisesRegex(RuntimeError, "OSS release/1.8 already exists"):
             oss.cut(self.oss, "1.8")
@@ -181,9 +182,9 @@ class Lines(unittest.TestCase):
             rm.git(os.path.dirname(self.cloud), "init", "-q", "-b", "main", self.cloud)
         with open(os.path.join(self.cloud, "pyproject.toml"), "w") as f:
             f.write(f'unstract-platform-version = "{tag}"\n')
-        self.g(self.cloud, "add", "pyproject.toml")
-        self.g(self.cloud, "commit", "-q", "-m", f"pin {tag}")
-        self.g(self.cloud, "tag", rc)
+        dev_git(self.cloud, "add", "pyproject.toml")
+        dev_git(self.cloud, "commit", "-q", "-m", f"pin {tag}")
+        dev_git(self.cloud, "tag", rc)
 
     def test_promote(self):
         self.quiet(oss.cut, self.oss, "1.7")
@@ -403,19 +404,20 @@ class Lines(unittest.TestCase):
     def test_retire_keeps_a_branch_pushed_after_its_tip_was_read(self):
         self.quiet(oss.cut, self.oss, "1.7")
         self.clone()
-        self.g(self.dev, "fetch", "-q", "origin")  # a commit lands after this run fetched
-        self.g(self.dev, "checkout", "-q", "-B", "release/1.7", "origin/release/1.7")
-        self.g(self.dev, "commit", "-q", "--allow-empty", "-m", "late fix")
-        self.g(self.dev, "push", "-q", "origin", "release/1.7")
-        late = self.g(self.dev, "rev-parse", "HEAD")
-        self.g(self.dev, "checkout", "-q", "main")
+        # a commit lands after this run fetched
+        dev_git(self.dev, "fetch", "-q", "origin")
+        dev_git(self.dev, "checkout", "-q", "-B", "release/1.7", "origin/release/1.7")
+        dev_git(self.dev, "commit", "-q", "--allow-empty", "-m", "late fix")
+        dev_git(self.dev, "push", "-q", "origin", "release/1.7")
+        late = dev_git(self.dev, "rev-parse", "HEAD")
+        dev_git(self.dev, "checkout", "-q", "main")
         with self.assertRaises(RuntimeError):
             oss.retire(self.oss, "release/1.7", "x", dry_run=False)
         self.assertEqual(self.remote("rev-parse", "release/1.7"), late)
         self.assertEqual(self.remote("tag", "-l", "ee-v1.7.*"), "ee-v1.7.0-rc.1")
         self.assertEqual(self.remote("tag", "-l", "retired/*"), "")
         self.assertEqual(
-            self.g(self.oss, "tag", "-l", "retired/*"), ""
+            dev_git(self.oss, "tag", "-l", "retired/*"), ""
         )  # nor left in the clone
 
     def test_retire_rerun_in_the_same_clone_archives_the_tip(self):
@@ -541,9 +543,7 @@ class Gate(unittest.TestCase):
         # OSS 1.6 shipped with OSS fix F picked; OSS 1.7 lacks it. The gate reads only ee- tags and asks the OSS repo
         # (not the cloud one) for Backport conflict PRs.
         with tempfile.TemporaryDirectory() as d:
-            g = lambda *a: rm.git(
-                d, "-c", "user.name=Dev", "-c", "user.email=dev@example.com", *a
-            )
+            g = lambda *a: dev_git(d, *a)
             g("init", "-q", "-b", "main")
             g("commit", "-q", "--allow-empty", "-m", "base")
             g("branch", "release/1.6")
@@ -599,8 +599,73 @@ class Gate(unittest.TestCase):
                         script,
                     )
 
+    def test_gate_refuses_an_option_or_a_clone_outside(self):
+        with tempfile.TemporaryDirectory() as d:
+            with open(os.path.join(d, "convgate.py"), "w") as fh:
+                fh.write("pass")
+            for args in (
+                ("/nonexistent/oss", "release/1.7", "ee-v1.7.0-rc.1"),
+                (d, "-x", "ee-v1.7.0-rc.1"),
+                (d, "release/1.7", "-x"),
+            ):
+                with (
+                    self.subTest(args=args),
+                    mock.patch.object(oss, "HERE", d),
+                    self.assertRaises(ValueError),
+                ):
+                    oss.gate(*args, "error")
+
+    def test_main_refuses_an_option_as_a_ref(self):
+        with tempfile.TemporaryDirectory() as d:
+            for cmd in (
+                ["cut", "--line=-x"],
+                ["rc", "--branch=-x"],
+                ["promote", "--rc=-x"],
+            ):
+                with (
+                    self.subTest(cmd=cmd),
+                    contextlib.redirect_stderr(io.StringIO()),
+                    self.assertRaises(SystemExit),
+                ):
+                    oss.main(["--oss-repo", d, *cmd])
+
+    def test_main_reports_a_clone_outside(self):
+        with contextlib.redirect_stderr(io.StringIO()) as err:
+            code = oss.main(["--oss-repo", "/nonexistent/oss", "cut", "--line", "1.7"])
+        self.assertEqual(code, 1)
+        self.assertIn("::error::", err.getvalue())
+
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+
+
+class TopicBranchHead(unittest.TestCase):
+    """release-branch-only.yaml's head check: the bot never pushes to main, a release line or a backport head."""
+
+    def test_head_ref(self):
+        with open(
+            os.path.join(HERE, "..", "workflows", "release-branch-only.yaml")
+        ) as fh:
+            wf = fh.read()
+        body = wf[wf.index("run: |", wf.index("- name: Topic-branch head\n")) :].split(
+            "\n"
+        )[1:]
+        script = "\n".join(line[10:] for line in body[: body.index("")])
+        for head, code in (
+            ("main", 1),
+            ("release/1.7", 1),
+            ("backport/1.7/abc1234", 1),
+            ("feature/x", 0),
+            ("x-main", 0),
+        ):
+            with self.subTest(head=head):
+                r = subprocess.run(
+                    ["bash", "-c", script],
+                    env={"HEAD_REF": head, "PATH": os.environ["PATH"]},
+                    capture_output=True,
+                    text=True,
+                )
+                self.assertEqual(r.returncode, code, r.stdout)
 
 
 def inline(workflow, step):
@@ -620,10 +685,9 @@ def inline(workflow, step):
     "the cloud repo's workflows",
 )
 class Workflow(unittest.TestCase):
-    """A cloud and an OSS origin with clones; a sitecustomize stands in for Artifact Registry with reg.jsonl as
-    cloud/backend's versions and reg-<kind>_<package>.jsonl as another artifact's (empty when absent); a stub gh
-    serves the open backport-conflict PRs of each repo (<owner>_<repo>.json; a `prfail` file fails the listing) and
-    the PRs of a main commit (pulls.json). gh.log: each pr list and commit PRs call, as its token.
+    """Cloud and OSS origins with clones. sitecustomize serves Artifact Registry from reg.jsonl (cloud/backend)
+    and reg-<kind>_<package>.jsonl; a stub gh serves <owner>_<repo>.json (conflict PRs; a `prfail` file fails it)
+    and pulls.json, logging each call and its token to gh.log.
     """
 
     def setUp(self):
@@ -635,8 +699,8 @@ class Workflow(unittest.TestCase):
             origin, work = os.path.join(d, f"{name}.git"), os.path.join(d, name)
             rm.git(d, "init", "-q", "--bare", "-b", "main", origin)
             rm.git(d, "clone", "-q", origin, work)
-            self.g(work, "commit", "-q", "--allow-empty", "-m", "base")
-            self.g(work, "push", "-q", "origin", "main")
+            dev_git(work, "commit", "-q", "--allow-empty", "-m", "base")
+            dev_git(work, "push", "-q", "origin", "main")
             self.repos[name] = (origin, work)
         os.makedirs(os.path.join(self.cloud, ".relmgr", ".github"))
         os.symlink(HERE, os.path.join(self.cloud, ".relmgr", ".github", "release"))
@@ -673,16 +737,13 @@ true
 
     cloud = property(lambda self: self.repos["cloud"][1])
 
-    def g(self, repo, *a):
-        return rm.git(repo, "-c", "user.name=Dev", "-c", "user.email=dev@example.com", *a)
-
     def line(
         self, x_y, *tags
     ):  # cloud and OSS release/X.Y; tags: cloud tags on the cloud tip, also in the registry
-        self.g(self.cloud, "push", "-q", "origin", f"main:refs/heads/release/{x_y}")
+        dev_git(self.cloud, "push", "-q", "origin", f"main:refs/heads/release/{x_y}")
         for i, t in enumerate(tags):
-            self.g(self.cloud, "tag", t, "main")
-            self.g(self.cloud, "push", "-q", "origin", t)
+            dev_git(self.cloud, "tag", t, "main")
+            dev_git(self.cloud, "push", "-q", "origin", t)
             with open(os.path.join(self.d, "reg.jsonl"), "a") as fh:
                 fh.write(
                     f'{{"id": {len(t) * 10 + i}, "digest": "sha256:{t}", "pushed_at": "2026-09-01T00:00:00Z", '
@@ -692,7 +753,7 @@ true
             oss.cut(self.repos["oss"][1], x_y)
 
     def run_step(self, script, **env):
-        self.g(self.cloud, "fetch", "-q", "--tags", "origin")
+        dev_git(self.cloud, "fetch", "-q", "--tags", "origin")
         for name in ("output", "notes.md"):  # a fresh run's files
             with contextlib.suppress(FileNotFoundError):
                 os.remove(os.path.join(self.d, name))
@@ -788,8 +849,8 @@ class RetireWorkflow(Workflow):
         origin = self.repos["cloud"][0]
         tip = rm.git(origin, "rev-parse", f"release/{x_y}")
         rm.git(origin, "tag", f"retired/{x_y}-{tip[:7]}", tip)
-        self.g(self.cloud, "commit", "-q", "--allow-empty", "-m", "late fix")
-        self.g(self.cloud, "push", "-q", "origin", f"HEAD:refs/heads/release/{x_y}")
+        dev_git(self.cloud, "commit", "-q", "--allow-empty", "-m", "late fix")
+        dev_git(self.cloud, "push", "-q", "origin", f"HEAD:refs/heads/release/{x_y}")
         return f"retired/{x_y}-{tip[:7]}"
 
     def refused(self, x_y, tag, **env):
@@ -808,10 +869,10 @@ class RetireWorkflow(Workflow):
         run's first other push (an RC tag delete or the archive tag), before the branch delete.
         """
         origin = self.repos["cloud"][0]
-        self.g(self.cloud, "commit", "-q", "--allow-empty", "-m", "late fix")
-        late = self.g(self.cloud, "rev-parse", "HEAD")
-        self.g(self.cloud, "push", "-q", "origin", "HEAD:refs/keep/late")
-        self.g(self.cloud, "reset", "-q", "--hard", "HEAD~1")
+        dev_git(self.cloud, "commit", "-q", "--allow-empty", "-m", "late fix")
+        late = dev_git(self.cloud, "rev-parse", "HEAD")
+        dev_git(self.cloud, "push", "-q", "origin", "HEAD:refs/keep/late")
+        dev_git(self.cloud, "reset", "-q", "--hard", "HEAD~1")
         hook = os.path.join(origin, "hooks", "post-receive")
         with open(hook, "w") as fh:
             fh.write(
@@ -868,18 +929,18 @@ class RetireWorkflow(Workflow):
 
 
 class PendingPicksWorkflow(Workflow):
-    """Promote's Plan blocks on open backport-conflict PRs of the cloud line or the OSS line it pins, and on held
-    security/critical fixes, unless forced (recorded). A failed listing blocks too: forced, a failed conflict listing
-    passes and is recorded, a failed held listing still blocks. Take RC only warns.
+    """Promote's Plan blocks on open conflict PRs (cloud line or pinned OSS line) and held security/critical fixes
+    unless forced. A failed listing blocks; forcing passes a failed conflict listing (recorded), never a failed
+    held listing. Take RC only warns.
     """
 
     def setUp(self):
         super().setUp()
         with open(os.path.join(self.cloud, "pyproject.toml"), "w") as fh:
             fh.write('unstract-platform-version = "ee-v1.7.0-rc.1"\n')
-        self.g(self.cloud, "add", "pyproject.toml")
-        self.g(self.cloud, "commit", "-q", "-m", "pin")
-        self.g(self.cloud, "push", "-q", "origin", "main")
+        dev_git(self.cloud, "add", "pyproject.toml")
+        dev_git(self.cloud, "commit", "-q", "-m", "pin")
+        dev_git(self.cloud, "push", "-q", "origin", "main")
 
     def prs(self, slug, *bases):
         self.write(
@@ -959,11 +1020,11 @@ class PendingPicksWorkflow(Workflow):
 
     def test_promote_held_fixes(self):
         self.line("1.7", "v1.7.0-rc.1", "v1.7.0")  # cloud GA: the line is stabilized
-        self.g(
+        dev_git(
             self.cloud, "commit", "-q", "--allow-empty", "-m", "fix: y"
         )  # the next RC's commit
-        self.g(self.cloud, "tag", "v1.7.1-rc.1")
-        self.g(
+        dev_git(self.cloud, "tag", "v1.7.1-rc.1")
+        dev_git(
             self.cloud,
             "push",
             "-q",
@@ -975,10 +1036,10 @@ class PendingPicksWorkflow(Workflow):
             fh.write(
                 '{"id": 9, "digest": "sha256:rc", "pushed_at": "2026-09-01T00:00:00Z", "tags": ["v1.7.1-rc.1"]}\n'
             )
-        self.g(
+        dev_git(
             self.cloud, "commit", "-q", "--allow-empty", "-m", "fix: x (#9)"
         )  # on main only: held for 1.7
-        self.g(self.cloud, "push", "-q", "origin", "main")
+        dev_git(self.cloud, "push", "-q", "origin", "main")
         self.write(
             "pulls.json",
             json.dumps(
@@ -1000,10 +1061,10 @@ class PendingPicksWorkflow(Workflow):
         oss_work = self.repos["oss"][
             1
         ]  # a security fix on OSS main, not picked onto OSS release/1.7: held too
-        self.g(oss_work, "pull", "-q", "origin", "main")
-        self.g(oss_work, "commit", "-q", "--allow-empty", "-m", "fix: z (#9)")
-        self.g(oss_work, "push", "-q", "origin", "main")
-        self.g(oss_work, "fetch", "-q", "origin")
+        dev_git(oss_work, "pull", "-q", "origin", "main")
+        dev_git(oss_work, "commit", "-q", "--allow-empty", "-m", "fix: z (#9)")
+        dev_git(oss_work, "push", "-q", "origin", "main")
+        dev_git(oss_work, "fetch", "-q", "origin")
         r = self.promote("v1.7.1-rc.1")
         self.blocked(r, "::error::pending picks")
         self.assertIn(f"oss-token api repos/{oss.OSS}/commits/", self.read("gh.log"))
@@ -1055,7 +1116,7 @@ class PendingPicksWorkflow(Workflow):
         self.line("1.7")
         self.prs(oss.OSS, "release/1.7")
         script = inline("take-rc-build.yaml", "Plan checks")
-        self.g(self.cloud, "checkout", "-q", "-b", "release/1.7", "origin/release/1.7")
+        dev_git(self.cloud, "checkout", "-q", "-b", "release/1.7", "origin/release/1.7")
         r = self.run_step(script, BRANCH="release/1.7", TARGETS="cloud")
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertIn(
@@ -1074,7 +1135,7 @@ class TakeRcVersion(Workflow):
     def test_allocates_past_a_registry_rc(self):
         # An earlier run pushed the cloud artifact of v1.7.0-rc.1, then its tag push failed and the tip moved.
         self.line("1.7")
-        self.g(self.cloud, "checkout", "-q", "-b", "release/1.7", "origin/release/1.7")
+        dev_git(self.cloud, "checkout", "-q", "-b", "release/1.7", "origin/release/1.7")
         self.write(
             "reg.jsonl",
             '{"id": 1, "digest": "sha256:a", "pushed_at": "2026-09-01T00:00:00Z", "tags": ["v1.7.0-rc.1"]}\n',
@@ -1093,7 +1154,7 @@ class TakeRcVersion(Workflow):
     def test_patch_rc_on_a_ga_line_does_not_reopen(self):
         # Every enabled target (cloud) is GA: a cloud patch RC keeps the OSS line's stabilized tag.
         self.line("1.7", "v1.7.0")
-        self.g(self.cloud, "checkout", "-q", "-b", "release/1.7", "origin/release/1.7")
+        dev_git(self.cloud, "checkout", "-q", "-b", "release/1.7", "origin/release/1.7")
         r = self.run_step(
             inline("take-rc-build.yaml", "Plan version and targets"),
             BRANCH="release/1.7",
@@ -1106,15 +1167,15 @@ class TakeRcVersion(Workflow):
         )
 
     def test_rerun_on_a_tagged_tip_reopens_for_a_target_already_built(self):
-        # An earlier run tagged v1.7.1-rc.1 for cloud and on-prem on a line GA for cloud only; its on-prem build
-        # pushed, its cloud build failed. A fresh run builds only cloud, yet on-prem still has no GA: reopen.
+        # Tip tagged v1.7.1-rc.1 for both targets, on-prem built, cloud failed; a cloud-only rerun still
+        # reopens (on-prem has no GA).
         self.line("1.7", "v1.7.0")
-        self.g(self.cloud, "checkout", "-q", "-b", "release/1.7", "origin/release/1.7")
-        self.g(
+        dev_git(self.cloud, "checkout", "-q", "-b", "release/1.7", "origin/release/1.7")
+        dev_git(
             self.cloud, "commit", "-q", "--allow-empty", "-m", "release: chart 1.7.1-rc.1"
         )
-        self.g(self.cloud, "tag", "v1.7.1-rc.1")
-        self.g(
+        dev_git(self.cloud, "tag", "v1.7.1-rc.1")
+        dev_git(
             self.cloud,
             "push",
             "-q",
@@ -1150,12 +1211,12 @@ class PublishWorkflow(Workflow):
         if pin:
             with open(path, "w") as fh:
                 fh.write(f'unstract-platform-version = "{pin}"\n')
-            self.g(self.cloud, "add", "pyproject.toml")
+            dev_git(self.cloud, "add", "pyproject.toml")
         elif os.path.exists(path):
-            self.g(self.cloud, "rm", "-q", "pyproject.toml")
-        self.g(self.cloud, "commit", "-q", "--allow-empty", "-m", f"pin {pin}")
+            dev_git(self.cloud, "rm", "-q", "pyproject.toml")
+        dev_git(self.cloud, "commit", "-q", "--allow-empty", "-m", f"pin {pin}")
         for t in tags:
-            self.g(
+            dev_git(
                 self.cloud,
                 "tag",
                 *(
@@ -1168,7 +1229,7 @@ class PublishWorkflow(Workflow):
                 fh.write(
                     f'{{"id": {len(t)}, "digest": "sha256:{t}", "pushed_at": "2026-09-01T00:00:00Z", "tags": ["{t}"]}}\n'
                 )
-        self.g(self.cloud, "push", "-q", "--tags", "origin", "main")
+        dev_git(self.cloud, "push", "-q", "--tags", "origin", "main")
 
     def plan(self):
         r = self.run_step(

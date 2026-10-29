@@ -1,14 +1,13 @@
 name: Lint PR
 
-# Every PR into main or a release branch carries a recognised `[TYPE]` title prefix, the ticket before it optional
-# (`UN-123 [FIX] ...` or `[FIX] ...`, the same class either way), unless a fix/ label gives its class; its labels are
-# at most one of fix/security, fix/critical plus an optional fix/needs-backport.
-# Release branches too, because the release changelog is built from their PR titles. A branch cut before this file
+# Every PR into main or a release branch carries a recognised `[TYPE]` title prefix, ticket optional
+# (`ABC-123 [FIX] ...` or `[FIX] ...`), unless a fix/ label gives its class: at most one of fix/security,
+# fix/critical, plus an optional fix/needs-backport.
+# Release branches too: the release changelog is built from their PR titles. A branch cut before this file
 # existed runs no check. Not a required check until a ruleset makes it one.
-# The backport class is only printed here; Backport recomputes it with pr_fix_class at pick time.
-# Label `release-branch-only` marks a change that lives only on its release branch: refused on main. On a release
-# branch, Release branch CI's bot commit writes `Release-branch-only: <TICKET>` (or `#<PR>` without a ticket), which
-# Squash and merge keeps in the message.
+# The backport class is only printed here; Backport recomputes it at pick time.
+# Label `release-branch-only` is refused on main; on a release branch, release-branch-only.yaml adds the
+# `Release-branch-only: <TICKET>` commit.
 # A PR from a fork is checked too: the run reads only the event payload and main's relmgr, with a read-only token.
 on:
   pull_request:
@@ -23,9 +22,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      # The rule comes from main, so a PR's edit to relmgr cannot pass its own check. That guards relmgr only: a
-      # pull_request run uses the PR's copy of this file, so a PR can edit the workflow to pass. Closing that needs
-      # a ruleset-required workflow or CODEOWNERS on .github/.
+      # Rule read from main, so a PR cannot weaken relmgr. Known limit: a PR can still edit this workflow
+      # (needs a required workflow or CODEOWNERS on .github/).
       - uses: actions/checkout@v6
         with:
           ref: main
@@ -39,7 +37,7 @@ jobs:
           LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
           BASE: ${{ github.base_ref }}
         run: |
-          if [ ! -f .github/release/relmgr.py ]; then  # main before the release tooling lands: nothing to check against
+          if [ ! -f .github/release/relmgr.py ]; then  # bootstrap: skip while main has no relmgr
             echo "::notice title=Lint PR::skipped: main has no .github/release/relmgr.py yet"
             exit 0
           fi
@@ -55,7 +53,7 @@ jobs:
                   raise ValueError(refusal)
               cls = relmgr.pr_fix_class(title, labels) or "none"
           except ValueError as e:
-              msg = (f"{e}\nFix: title as `[TYPE] text` or `TICKET [TYPE] text` (e.g. `UN-123 [FIX] ...`); allowed labels are "
+              msg = (f"{e}\nFix: title as `[TYPE] text` or `TICKET [TYPE] text` (e.g. `ABC-123 [FIX] ...`); allowed labels are "
                      "fix/security or fix/critical (at most one), and fix/needs-backport.")
               print("::error title=Lint PR::" + msg.replace("\n", "%0A"))  # workflow commands end at a raw newline
               summary.write(f"### Lint PR: failed\n\n{msg}\n")

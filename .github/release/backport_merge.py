@@ -9,17 +9,11 @@ People land a conflict PR with the normal buttons (resolve, one approving review
 state is read again here, so a re-run or a repeated event acts on what the PR is now. Labels on backport PRs are
 the bot's: each case but a head with no pick sets exactly one `backport-*` label and removes the others.
 - merged: label `backport-merged`; delete the head if it is still there.
-- closed unmerged: a decline. The reason is the closer's newest comment made in the 2 minutes up to the close (the
-  close comment), first line, a leading `Declined:` dropped; with none, `Closed by @<closer> without a reason (PR
-  #<n>)`. Push an empty commit onto the base with the pick's message, the trailer and a final `Declined: <reason>`
-  line; label `backport-declined`; comment `Recorded as a decline on <base> (<sha7>). To undo: ...` once per close.
-  The head is kept so the PR can be reopened. A pick or decline already on the base (newest first) -> no commit,
-  label and comment still fixed. The decline's message is the main commit's own, so a head edited by hand never
-  names other fixes: the head's first commit must carry exactly one pick trailer, naming the main commit of the
-  head's sha7. Otherwise -> no decline commit: the bot comments and the run fails. A head with no commit past the
-  base (moved onto it) -> nothing declined, no label and no delete: the bot comments once. While the head is still
-  this PR's, the comment says to delete it by hand, or to keep it until a hand-made decline is on the base; once
-  the head is gone or holds another pick, it says only that nothing was declined.
+- closed unmerged: a decline. Reason: the closer's last comment within 2 min of the close (first line, Declined:
+  dropped), else "Closed by @<closer> without a reason (PR #<n>)". Push an empty commit on the base with the pick's message,
+  trailer and Declined line; label backport-declined; comment once. Head kept. Already on the base: no commit. Head
+  without exactly one matching trailer: comment, fail. Head with no commit past the base: comment once, nothing
+  declined.
 - open (reopened): label `backport-conflict`, nothing else. Merging it then lands the pick after the decline, and
   the newest trailer on the line wins (relmgr.trailer_states): the fix counts as shipped again.
 Run from a full clone of main, GH_TOKEN = the release App's installation token, RELEASE_BOT_APP_SLUG = its slug.
@@ -42,8 +36,10 @@ NO_PICK = "Nothing to record: this PR's head has no commit past"
 
 def is_backport(head, base):
     """Is head a pick head for base (backport/X.Y/<sha7> into release/X.Y)?"""
-    m = rm.BACKPORT_HEAD_RE.fullmatch(head)
-    return bool(m) and base == f"release/{m[1]}"
+    return (
+        rm.is_backport(head)
+        and base == f"release/{rm.BACKPORT_HEAD_RE.fullmatch(head)[1]}"
+    )
 
 
 def gh(*args, token=None):
@@ -60,13 +56,11 @@ def decline_reason(comments, sender, closed_at):
     """First line of the closer's newest comment in the REASON_WINDOW up to closed_at, a leading `Declined:` dropped;
     None if there is none or it is empty.
     """
-    at = lambda t: datetime.datetime.fromisoformat(t.replace("Z", "+00:00"))
-    end = at(closed_at)
+    end = rm.ts(closed_at)
     for c in sorted(comments, key=lambda c: c["created_at"], reverse=True):
-        if c["user"] == sender and end - REASON_WINDOW <= at(c["created_at"]) <= end:
+        if c["user"] == sender and end - REASON_WINDOW <= rm.ts(c["created_at"]) <= end:
             line = (c["body"].strip().splitlines() or [""])[0]
-            # A pick trailer in the reason would mark that other commit declined in the decline commit's message.
-            # Strip until none is left: a trailer nested in another reassembles after one pass.
+            # Strip pick trailers (repeatedly: nested ones reassemble) so the reason cannot decline another commit.
             while rm.PICK_RE.search(line):
                 line = rm.PICK_RE.sub("", line)
             return line.removeprefix("Declined:").strip() or None
@@ -87,7 +81,7 @@ def head_messages(pr):
         f"+refs/pull/{n}/head:refs/backport/{n}",
     )
     return [
-        rm.git(".", "log", "-1", "--format=%B", c)
+        rm.message(".", c)
         for c in rm.git(".", "rev-list", "--reverse", f"origin/{base}..{sha}").split()
     ]
 
@@ -100,18 +94,18 @@ def first_pick(pr):
     msgs = head_messages(pr)
     if not msgs:
         return None, []
-    o = rm.pick_trailer(pr["headRefName"], msgs[0] if msgs else "")
+    o = rm.pick_trailer(pr["headRefName"], msgs[0])
     if not o or not rm.on_main(".", o, "origin/main"):
         return "", []
     full = rm.git(".", "rev-parse", f"{o}^{{commit}}")
     return (
-        f"{rm.git('.', 'log', '-1', '--format=%B', full).strip()}\n\n(cherry picked from commit {full})",
+        f"{rm.message('.', full).strip()}\n\n(cherry picked from commit {full})",
         [full],
     )
 
 
 def landed(originals, commits):
-    """First (sha, message) in commits whose pick trailer names one of originals; None if the pick is not there."""
+    """Sha of the first (sha, message) whose pick trailer names one of originals, else None."""
     for sha, msg in commits:
         if set(rm.PICK_RE.findall(msg)) & set(originals):
             return sha
@@ -160,9 +154,8 @@ def squash(slug, pr, msg, sleep=time.sleep):
             )
             return True
         except RuntimeError as e:
-            # A required check GitHub still waits for: the caller reports it. Accepted: this matches GitHub's
-            # "Required status check ... is expected/in progress" wording, which GitHub does not document as stable.
-            # Known limit: a 405 naming a failed status check matches too and reads as pending.
+            # Required check pending: the caller reports it. Accepted: matches GitHub's undocumented "status check"
+            # wording, so a failed check also reads as pending.
             if "status check" in str(e).lower():
                 print(f"#{pr['number']}: {str(e).splitlines()[0]}")
                 return False
@@ -245,9 +238,8 @@ def decline(slug, pr, reason):
         raise RuntimeError(
             f"#{n}: no single pick trailer for {pr['headRefName']}, decline not recorded"
         )
-    if done := landed(
-        originals, base_picks(base, originals)
-    ):  # re-run, or a close after a reopen: nothing to write
+    # A re-run, or a close after a reopen: nothing to write.
+    if done := landed(originals, base_picks(base, originals)):
         return done, False
     # Empty commit = the base's own tree. REST, so author and committer are the bot token's user, as on merge.
     tip, tree = base_tip(base)
@@ -278,16 +270,11 @@ def decline(slug, pr, reason):
     return new, True
 
 
-def close(slug, n, sender):
-    return record(slug, n, sender)["result"]
-
-
 def bot_refusal(pr):
     """Why `pr` (gh's number and author) is not a PR the bot opened, or None.
 
-    A head name and trailer are strings any writer can push; only a PR the bot opened is its pick. Backport opens
-    pick PRs with the release App's installation token, so they are authored by app/<its slug>. That token cannot
-    read `gh api user`, so the slug comes from the workflow.
+    Head names and trailers are forgeable; only a PR authored by app/<RELEASE_BOT_APP_SLUG> is the bot's (the App
+    token cannot read gh api user).
     """
     if not (app := os.environ.get("RELEASE_BOT_APP_SLUG")):
         return f"#{pr['number']}: RELEASE_BOT_APP_SLUG is unset (the release App's slug)"
@@ -297,6 +284,39 @@ def bot_refusal(pr):
             f"#{pr['number']} was opened by @{author['login']}, not by the bot (@{bot})"
         )
     return None
+
+
+def _no_pick(slug, n, pr, cs):
+    """What record did for a closed PR whose head has no pick to decline; cs: its comments."""
+    base, head = pr["baseRefName"], pr["headRefName"]
+    kept = head_ref(slug, head) == pr["headRefOid"]
+    if not any(
+        c["body"].startswith(NO_PICK) and c["created_at"] >= pr["closedAt"] for c in cs
+    ):
+        gh(
+            "pr",
+            "comment",
+            str(n),
+            "-R",
+            slug,
+            "--body",
+            f"{NO_PICK} {base}, so nothing was declined. "
+            + (
+                f"Until `{head}` is deleted, Backport fails on it. To have the fix picked again, delete "
+                f"`{head}` by hand. To decline the fix instead, do not delete the head yet: ask the release "
+                f"manager for a hand-made empty commit on {base} with the pick's message, its `(cherry picked "
+                "from commit <full main sha>)` line and a final `Declined: <reason>` line. Once it is on "
+                f"{base}, Backport stops failing and the head can be deleted."
+                if kept
+                else f"`{head}` no longer holds this PR's head, so there is nothing to delete here."
+            ),
+        )
+    return {
+        "result": "skipped: no pick" + ("" if kept else ", head gone"),
+        "base": base,
+        "sha": None,
+        "reason": None,
+    }
 
 
 def record(slug, n, sender):
@@ -340,35 +360,7 @@ def record(slug, n, sender):
     # No pick on the head: nothing to decline. Removing the head is manual: until a person deletes it, every
     # Backport run fails on it. The head may already be gone (deleting it closes the PR) or hold a later run's pick.
     if not sha:
-        kept = head_ref(slug, head) == pr["headRefOid"]
-        if not any(
-            c["body"].startswith(NO_PICK) and c["created_at"] >= pr["closedAt"]
-            for c in cs
-        ):
-            gh(
-                "pr",
-                "comment",
-                str(n),
-                "-R",
-                slug,
-                "--body",
-                f"{NO_PICK} {base}, so nothing was declined. "
-                + (
-                    f"Until `{head}` is deleted, Backport fails on it. To have the fix picked again, delete "
-                    f"`{head}` by hand. To decline the fix instead, do not delete the head yet: ask the release "
-                    f"manager for a hand-made empty commit on {base} with the pick's message, its `(cherry picked "
-                    "from commit <full main sha>)` line and a final `Declined: <reason>` line. Once it is on "
-                    f"{base}, Backport stops failing and the head can be deleted."
-                    if kept
-                    else f"`{head}` no longer holds this PR's head, so there is nothing to delete here."
-                ),
-            )
-        return {
-            "result": "skipped: no pick" + ("" if kept else ", head gone"),
-            "base": base,
-            "sha": None,
-            "reason": None,
-        }
+        return _no_pick(slug, n, pr, cs)
     set_label(slug, pr, DECLINED)
     if not any(
         c["body"].startswith("Recorded as a decline")

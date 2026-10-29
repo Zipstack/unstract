@@ -1,6 +1,4 @@
-"""Synthetic-repo tests for relstate (derive 1-11, on-prem newest six 7b, cutover fallback 12, retired-line history 13, tip_rc 14, summary 15, tip_rc Slack link 20, Release-branch-only line in a squash message 21, abandon_plan 16-17, pr_fix_class 18, revert titles 18b, ticketless titles 18c, Release-branch-only key 18d, release-branch-only label 18e, ahead_of_ga 19, promote order per target 22, enable a target on the newest line only 23, no order block on a GA line 23b, already_bumped 24, promoted from the build artifact 25, OSS repo config 26 (ee- git tags, plain v* ignored, lines kept while the branch exists), next_minor past a stable tag on main 27, bump with no chart 28, retire_line refusals and the retired line's minor 29, RC allocation past registry RCs 30, a reused minor past its kept RC 31, shallow clone refused 32, conflict-marker grep error 33, a revert of another line's pick 34, release-branch CI commit selection 35, backport head names 36, unknown repo config 37, Artifact Registry reads 38-41 and 39b, a chart push without v 42). Run: python test_relstate.py. release-tooling-tests.yaml runs all six on a pull request
-that changes this directory.
-"""
+"""Synthetic-repo tests for relstate and relmgr. Run: python test_relstate.py; release-tooling-tests.yaml runs every test_*.py here on a PR that changes this directory."""
 
 import contextlib
 import datetime as dt
@@ -14,12 +12,12 @@ import urllib.error
 import urllib.parse
 
 os.environ["GITHUB_REPOSITORY"] = (
-    "Zipstack/unstract-cloud"  # relstate loads the cloud config, whatever the runner sets
+    "Zipstack/unstract-cloud"  # pin relstate to the cloud config
 )
 import relmgr as rm
 import relstate as rs
 
-# Isolate from the user's git config (signing, noprefix, hooks...).
+# ignore the user's git config
 os.environ.update(GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_NOSYSTEM="1")
 os.environ.pop("GITHUB_OUTPUT", None)
 NOW = dt.datetime(2026, 9, 29, tzinfo=dt.UTC)
@@ -73,25 +71,25 @@ class Scenario(unittest.TestCase):
     def ga(self, artifact, tag):
         return {"tag": tag, **self.reg[artifact][tag]}
 
-    # Scenarios build on each other as the table does.
-    def s1(self):
+    # Each scenario builds on the previous one.
+    def cut_with_rc(self):
         self.cut("1.5")
         self.push("cloud/backend", "v1.5.0-rc.1", git_ref="release/1.5")
 
-    def s2(self):
-        self.s1()
+    def cloud_ga(self):
+        self.cut_with_rc()
         self.push("cloud/backend", "v1.5.0", git_ref="release/1.5")
 
-    def s3(self):
-        self.s2()
+    def onprem_rc(self):
+        self.cloud_ga()
         self.push("on-prem/backend", "v1.5.0-rc.3", git_ref="release/1.5")
 
-    def s4(self, chart_days=10):
-        self.s3()
+    def onprem_ga(self, chart_days=10):
+        self.onprem_rc()
         self.push("chart/unstract-platform", "v1.5.1", days=chart_days)
 
-    def s6(self, chart_days=10):
-        self.s4(chart_days)
+    def newer_cloud_ga(self, chart_days=10):
+        self.onprem_ga(chart_days)
         self.cut("1.6")
         self.push("cloud/backend", "v1.6.0-rc.1", git_ref="release/1.6")
         self.push("cloud/backend", "v1.6.0", git_ref="release/1.6")
@@ -108,8 +106,8 @@ class Scenario(unittest.TestCase):
             "promoted": None,
         }
 
-    def test_1_cut_with_cloud_rc(self):
-        self.s1()
+    def test_cut_with_cloud_rc(self):
+        self.cut_with_rc()
         st = self.state()
         self.assertEqual(
             self.branch(st, "release/1.5"),
@@ -133,8 +131,8 @@ class Scenario(unittest.TestCase):
         self.assertEqual(st["backport_targets"]["fix"], ["release/1.5"])
         self.assertEqual(st["supported"], {"cloud": ["release/1.5"], "on-prem": []})
 
-    def test_2_cloud_ga(self):
-        self.s2()
+    def test_cloud_ga(self):
+        self.cloud_ga()
         st = self.state()
         self.assertEqual(
             self.branch(st, "release/1.5"),
@@ -158,8 +156,8 @@ class Scenario(unittest.TestCase):
             },
         )
 
-    def test_3_onprem_rc_reopens_branch(self):
-        self.s3()
+    def test_onprem_rc_reopens_branch(self):
+        self.onprem_rc()
         st = self.state()
         self.assertEqual(
             self.branch(st, "release/1.5"),
@@ -178,8 +176,8 @@ class Scenario(unittest.TestCase):
         )
         self.assertEqual(st["backport_targets"]["fix"], ["release/1.5"])
 
-    def test_4_both_stabilized(self):
-        self.s4()
+    def test_both_stabilized(self):
+        self.onprem_ga()
         st = self.state()
         self.assertEqual(
             self.branch(st, "release/1.5"),
@@ -198,8 +196,8 @@ class Scenario(unittest.TestCase):
         )
         self.assertEqual(st["supported"]["on-prem"], ["release/1.5"])
 
-    def test_5_onprem_window_over(self):
-        self.s4(chart_days=200)
+    def test_onprem_window_over(self):
+        self.onprem_ga(chart_days=200)
         st = self.state()
         self.assertEqual(
             self.branch(st, "release/1.5"),
@@ -219,16 +217,16 @@ class Scenario(unittest.TestCase):
         self.assertEqual(st["supported"], {"cloud": ["release/1.5"], "on-prem": []})
         self.assertEqual(st["retire"], [])
 
-    def test_5b_onprem_window_from_first_ga(self):
+    def test_onprem_window_from_first_ga(self):
         # A patch chart push does not extend the window: it runs from the line's first stable chart push.
-        self.s4(chart_days=200)
+        self.onprem_ga(chart_days=200)
         self.push("chart/unstract-platform", "v1.5.2", days=1)
         tt = self.branch(self.state(), "release/1.5")["targets"]["on-prem"]
         self.assertEqual(tt["state"], "past-eos")
         self.assertEqual(tt["ga"], self.ga("chart/unstract-platform", "v1.5.1"))
 
-    def test_6_newer_cloud_ga(self):
-        self.s6()
+    def test_newer_cloud_ga(self):
+        self.newer_cloud_ga()
         st = self.state()
         self.assertEqual(
             self.branch(st, "release/1.5"),
@@ -249,8 +247,8 @@ class Scenario(unittest.TestCase):
             st["supported"], {"cloud": ["release/1.6"], "on-prem": ["release/1.5"]}
         )
 
-    def test_7_retire(self):
-        self.s6(chart_days=200)
+    def test_retire(self):
+        self.newer_cloud_ga(chart_days=200)
         st = self.state()
         self.assertEqual(
             self.branch(st, "release/1.5"),
@@ -270,7 +268,7 @@ class Scenario(unittest.TestCase):
         self.assertEqual(st["retire"], ["release/1.5"])
         self.assertEqual(st["supported"], {"cloud": ["release/1.6"], "on-prem": []})
 
-    def test_7b_onprem_newest_six(self):
+    def test_onprem_newest_six(self):
         for y in range(1, 9):  # 1.1 .. 1.8, each with an on-prem chart inside the window
             self.cut(f"1.{y}")
             self.push("on-prem/backend", f"v1.{y}.0-rc.1", git_ref=f"release/1.{y}")
@@ -283,8 +281,8 @@ class Scenario(unittest.TestCase):
         )
         self.assertEqual(st["retire"], ["release/1.2", "release/1.1"])
 
-    def test_8_cut_no_artifacts(self):
-        self.s4()
+    def test_cut_no_artifacts(self):
+        self.onprem_ga()
         self.cut("1.7")
         st = self.state()
         self.assertEqual(
@@ -303,8 +301,8 @@ class Scenario(unittest.TestCase):
         self.assertTrue(all("release/1.7" not in v for v in st["supported"].values()))
         self.assertIn("release/1.7", st["backport_targets"]["fix"])
 
-    def test_9_tag_not_on_branch(self):
-        self.s1()
+    def test_tag_not_on_branch(self):
+        self.cut_with_rc()
         self.push("on-prem/backend", "v1.5.0-rc.9", git_ref=self.commit("main-only"))
         st = self.state()
         self.assertEqual(self.branch(st, "release/1.5")["enabled"], ["cloud"])
@@ -321,8 +319,8 @@ class Scenario(unittest.TestCase):
             ],
         )
 
-    def test_10_registry_failure(self):
-        self.s1()
+    def test_registry_failure(self):
+        self.cut_with_rc()
 
         def boom(artifact):
             raise RuntimeError("HTTP 403")
@@ -336,7 +334,7 @@ class Scenario(unittest.TestCase):
         self.assertEqual(out.getvalue(), "")
         self.assertIn("HTTP 403", err.getvalue())
 
-    def test_11_next_minor_ignores_legacy(self):
+    def test_next_minor_ignores_legacy(self):
         self.cut("1.5")
         self.cut("1.6")
         self.g("branch", "release/v0.148.1001", "main")
@@ -346,8 +344,8 @@ class Scenario(unittest.TestCase):
             [b["branch"] for b in st["branches"]], ["release/1.6", "release/1.5"]
         )
 
-    def test_13_retired_lines_are_history_not_anomalies(self):
-        self.s4()  # only release/1.5 is live
+    def test_retired_lines_are_history_not_anomalies(self):
+        self.onprem_ga()  # only release/1.5 is live
         retired = self.commit("1.6 work")
         self.push(
             "cloud/backend", "v1.6.0-rc.1", git_ref=retired
@@ -373,8 +371,8 @@ class Scenario(unittest.TestCase):
         )
         self.assertEqual([b["branch"] for b in st["branches"]], ["release/1.5"])
 
-    def test_14_next_rc_moves_after_tip_is_built(self):
-        self.s2()
+    def test_next_rc_moves_after_tip_is_built(self):
+        self.cloud_ga()
         self.commit("pick", "release/1.5")
         self.assertEqual(
             {
@@ -384,8 +382,8 @@ class Scenario(unittest.TestCase):
             {"next_rc": "v1.5.1-rc.1", "tip_rc": None},
         )
 
-    def test_15_summary(self):
-        self.s6()
+    def test_summary(self):
+        self.newer_cloud_ga()
         out = rs.summary(self.state())
         self.assertIn(
             "| release/1.6 | stabilized | stabilized (GA v1.6.0) | - | v1.6.0-rc.1 | - | 0 |",
@@ -397,8 +395,8 @@ class Scenario(unittest.TestCase):
         )
         self.assertIn("next_minor: 1.7", out)
 
-    def test_19_ahead_of_ga(self):
-        self.s2()
+    def test_ahead_of_ga(self):
+        self.cloud_ga()
         self.g("tag", "v1.5.1", "release/1.5")  # latest stable tag counts, not the first
         self.commit("pick 1", "release/1.5")
         self.commit("pick 2", "release/1.5")
@@ -410,27 +408,27 @@ class Scenario(unittest.TestCase):
         )
         self.assertIn("| v1.5.2-rc.1 | 2 |", rs.summary(st))
 
-    def test_21_rbo_line_in_squash_message(self):
+    def test_rbo_line_in_squash_message(self):
         self.cut("1.5")
         squash = (
-            "UN-37 [MISC] pin redis (#9)\n\n* chore: pin redis\n\nwhy it is pinned\n\n"
-            "* Release-branch-only: UN-37\n\n---------\n\nCo-authored-by: x <x@example.com>"
+            "UN-1 [MISC] pin redis (#9)\n\n* chore: pin redis\n\nwhy it is pinned\n\n"
+            "* Release-branch-only: UN-1\n\n---------\n\nCo-authored-by: x <x@example.com>"
         )
         cases = {
             squash: "release-branch-only",  # COMMIT_MESSAGES squash: the bot's subject-only commit as `* ...`
-            "fix: pin\n\nbody\n\nRelease-branch-only: UN-37": "release-branch-only",  # a trailer
-            "fix: pin\n\nsee the Release-branch-only: UN-37 note": "invalid",  # mid-line is not the line
-            "fix: pin\n\n** Release-branch-only: UN-37": "invalid",
+            "fix: pin\n\nbody\n\nRelease-branch-only: UN-1": "release-branch-only",  # a trailer
+            "fix: pin\n\nsee the Release-branch-only: UN-1 note": "invalid",  # mid-line is not the line
+            "fix: pin\n\n** Release-branch-only: UN-1": "invalid",
         }
         for msg, kind in cases.items():
             sha = self.commit(msg, "release/1.5")
             self.assertEqual(rm.classify_commit(self.repo, sha), kind, msg)
-        self.assertEqual(rm.RBO_RE.findall(squash), ["UN-37"])
+        self.assertEqual(rm.RBO_RE.findall(squash), ["UN-1"])
 
-    def test_22_promote_blockers(self):
+    def test_promote_blockers(self):
         """Promote order per target: only an older line with the target enabled and not GA for it blocks."""
         msg = "release/{} is not GA for {} yet: promote and publish it first, retire it, or force with a reason"
-        self.s3()  # 1.5: cloud GA, on-prem RC only
+        self.onprem_rc()  # 1.5: cloud GA, on-prem RC only
         self.cut("1.6")
         self.push("cloud/backend", "v1.6.0-rc.1", git_ref="release/1.6")
         self.cut("1.7")  # nothing built yet
@@ -464,12 +462,12 @@ class Scenario(unittest.TestCase):
         self.g("branch", "-D", "release/1.6")
         self.assertEqual(rs.promote_blockers(self.state(), "release/1.7", "cloud"), [])
 
-    def test_23_enable_blockers(self):
+    def test_enable_blockers(self):
         """A target is enabled only on a line newer than every line already GA for it."""
         msg = "release/{} is older than release/{}, already GA for {}: enable {} on a newer line instead"
         self.cut("1.4")
         self.push("cloud/backend", "v1.4.0-rc.1", git_ref="release/1.4")
-        self.s6()  # 1.5: cloud GA, on-prem GA (chart v1.5.1); 1.6: cloud GA, no on-prem
+        self.newer_cloud_ga()  # 1.5: cloud GA, on-prem GA (chart v1.5.1); 1.6: cloud GA, no on-prem
         st = self.state()
         # (a) an older line enabling on-prem behind a line GA for on-prem is refused
         self.assertEqual(
@@ -482,8 +480,8 @@ class Scenario(unittest.TestCase):
         self.assertEqual(rs.enable_blockers(st, "release/1.4", "cloud"), [])
         self.assertEqual(rs.enable_blockers(st, "release/1.5", "on-prem"), [])
 
-    def test_23b_no_order_block_on_a_ga_line(self):
-        """(d) Invariant: in a state reached only by moves the enable rule and the promote order allow, a patch on a
+    def test_no_order_block_on_a_ga_line(self):
+        """Invariant: in a state reached only by moves the enable rule and the promote order allow, a patch on a
         line already GA for a target is never order-blocked. Without the enable rule it can be.
         """
         rc, ga = (
@@ -573,7 +571,7 @@ class Scenario(unittest.TestCase):
         )
         self.g("checkout", "-q", "main")
 
-    def test_24_already_bumped(self):
+    def test_already_bumped(self):
         self.cut("1.5")
         self.chart("1.5.0-rc.1", "release/1.5", "release: chart 1.5.0-rc.1", rm.BOT_EMAIL)
         self.assertTrue(rm.already_bumped(self.repo, "release/1.5", "v1.5.0-rc.1"))
@@ -589,8 +587,8 @@ class Scenario(unittest.TestCase):
         )  # right subject, not the bot
         self.assertFalse(rm.already_bumped(self.repo, "release/1.5", "v1.5.0-rc.2"))
 
-    def test_25_promoted_from_build_artifact(self):
-        self.s3()
+    def test_promoted_from_build_artifact(self):
+        self.onprem_rc()
         self.push(
             "on-prem/backend", "v1.5.1", git_ref="release/1.5"
         )  # Promote on-prem, chart not published
@@ -622,8 +620,8 @@ class Scenario(unittest.TestCase):
         onprem = self.branch(self.state(), "release/1.5")["targets"]["on-prem"]
         self.assertEqual(onprem["promoted"], self.ga("on-prem/backend", "v1.5.2"))
 
-    def test_20_tip_rc_slack(self):
-        self.s1()
+    def test_tip_rc_slack(self):
+        self.cut_with_rc()
         self.assertNotIn(
             "tip_rc_slack", self.branch(self.state(), "release/1.5")
         )  # lightweight tag: no key
@@ -643,7 +641,7 @@ class Scenario(unittest.TestCase):
         self.assertEqual(self.branch(st, "release/1.5")["tip_rc_slack"], url)
         self.assertIn(f"| v1.5.0-rc.1 ([Slack]({url})) |", rs.summary(st))
 
-    def test_12_next_minor_cutover_fallback(self):
+    def test_next_minor_cutover_fallback(self):
         self.g("tag", "v0.181.0")
         self.g("tag", "v0.181.1001")
         self.g("tag", "v0.182.0-rc.1")  # RC tags do not count
@@ -680,7 +678,7 @@ class Scenario(unittest.TestCase):
             "cloud/backend", "v1.5.0"
         )  # other versions keep the cloud package non-empty
 
-    def test_16_abandon_plan_built_by_mistake(self):
+    def test_abandon_plan_built_by_mistake(self):
         self.built_by_mistake()
         self.push("cloud/backend", "v1.9.0-rc.2")
         self.reg["cloud/backend"]["edge"] = self.reg["cloud/backend"][
@@ -707,7 +705,16 @@ class Scenario(unittest.TestCase):
             rs.abandon_plan(self.repo, "release/1.8", lambda a: {})["versions"], {}
         )
 
-    def test_17_abandon_plan_refusals(self):
+    def test_abandon_plan_keeps_the_newest_rc(self):
+        self.built_by_mistake()
+        for n in range(2, 11):
+            self.push("on-prem/backend", f"v1.9.0-rc.{n}")
+        plan = rs.abandon_plan(self.repo, "release/1.9", lambda a: self.reg.get(a, {}))
+        self.assertIn("on-prem/backend:v1.9.0-rc.10", plan["kept"])
+        dropped = [t for v in plan["versions"]["on-prem/backend"] for t in v["tags"]]
+        self.assertEqual(dropped, [f"v1.9.0-rc.{n}" for n in range(1, 10)])
+
+    def test_abandon_plan_refusals(self):
         self.built_by_mistake()
         plan = lambda: rs.abandon_plan(
             self.repo, "release/1.9", lambda a: self.reg.get(a, {})
@@ -719,9 +726,9 @@ class Scenario(unittest.TestCase):
         human = self.commit("human RBO-less work", "release/1.9")
         self.assertEqual(plan()["used"], [human[:12]])
 
-    def test_42_chart_push_without_v(self):
+    def test_chart_push_without_v(self):
         # Publish pushes the chart as its Chart.yaml version, X.Y.Z: it anchors on-prem GA as vX.Y.Z.
-        self.s3()
+        self.onprem_rc()
         self.push("chart/unstract-platform", "1.5.1")
         tt = self.branch(self.state(), "release/1.5")["targets"]["on-prem"]
         self.assertEqual(
@@ -747,12 +754,12 @@ class Scenario(unittest.TestCase):
             ["chart/unstract-platform:v1.9.0"],
         )
 
-    def test_43_stabilizes_when_every_enabled_target_is_ga(self):
+    def test_stabilizes_when_every_enabled_target_is_ga(self):
         # Cloud Promote marks the OSS line stabilized/X.Y on the promote that leaves every enabled target GA.
         def row():
             return self.branch(self.state(), "release/1.5")
 
-        self.s1()  # a cloud-only line: its cloud GA
+        self.cut_with_rc()  # a cloud-only line: its cloud GA
         self.assertTrue(rs.stabilizes(row(), "cloud"))
         self.push("on-prem/backend", "v1.5.0-rc.1")  # on-prem enabled, nothing GA
         self.assertEqual(row()["enabled"], ["cloud", "on-prem"])
@@ -767,12 +774,12 @@ class Scenario(unittest.TestCase):
         # A later patch: oss.promote keeps the tag.
         self.assertTrue(rs.stabilizes(row(), "cloud"))
 
-    def test_44_reopens_when_a_built_target_has_no_ga(self):
+    def test_reopens_when_a_built_target_has_no_ga(self):
         # Take RC deletes the OSS line's stabilized tag when it builds a target with no GA on the line.
         def row():
             return self.branch(self.state(), "release/1.5")
 
-        self.s2()  # cloud GA, cloud only
+        self.cloud_ga()  # cloud GA, cloud only
         self.assertFalse(rs.reopens(row(), ["cloud"]))  # a cloud patch RC
         self.assertTrue(rs.reopens(row(), ["on-prem"]))  # on-prem enabled late
         self.assertTrue(rs.reopens(row(), ["cloud", "on-prem"]))
@@ -780,7 +787,7 @@ class Scenario(unittest.TestCase):
         self.push("chart/unstract-platform", "1.5.1")  # on-prem GA too
         self.assertFalse(rs.reopens(row(), ["cloud", "on-prem"]))
 
-    def test_26_oss_repo_config(self):
+    def test_oss_repo_config(self):
         # The OSS repo runs this same file: one target, oss, read from the line's own ee- git tags (no registry),
         # supported while its branch exists once its stabilized/X.Y tag is there. Plain v* tags are community releases from main and never count.
         self.addCleanup(rs.use, rs.SLUG)
@@ -846,7 +853,7 @@ class Scenario(unittest.TestCase):
             ],
         )
 
-    def test_27_next_minor_past_stable_tag_on_main(self):
+    def test_next_minor_past_stable_tag_on_main(self):
         # A minor already shipped from main (tags before the first line) is never cut again.
         self.g("tag", "v1.5.14")
         self.commit("more main work")
@@ -854,7 +861,7 @@ class Scenario(unittest.TestCase):
         self.g("branch", "release/1.5", "v1.5.14")
         self.assertEqual(self.state()["next_minor"], "1.7")
 
-    def test_28_already_bumped_no_chart(self):
+    def test_already_bumped_no_chart(self):
         self.cut("1.5")
 
         def bump(msg):
@@ -878,11 +885,11 @@ class Scenario(unittest.TestCase):
         bump("release: chart 1.5.0-rc.2")  # the chart subject needs a chart
         self.assertFalse(rm.already_bumped(self.repo, "release/1.5", "v1.5.0-rc.2"))
 
-    def test_29_retire_line(self):
+    def test_retire_line(self):
         refusal = lambda force=False: rs.retire_line_refusal(
             self.state(), "release/1.5", force
         )
-        self.s3()  # cloud GA newest (production), on-prem RCs only
+        self.onprem_rc()  # cloud GA newest (production), on-prem RCs only
         self.assertEqual(
             refusal(True),
             "cloud is production (newest cloud GA); it retires once a newer line is promoted",
@@ -916,7 +923,7 @@ class Scenario(unittest.TestCase):
         self.g("add", "p.txt")
         self.g("commit", "-q", "-m", f"fix on main\n\n(cherry picked from commit {fix})")
 
-    def test_30_rc_version_skips_registry_rcs(self):
+    def test_rc_version_skips_registry_rcs(self):
         # An artifact pushed by a run whose tag push failed: its RC is never allocated again once the tip moves.
         self.cut("1.5")
         taken = {"v1.5.0-rc.1", "v1.5.0-rc.2", "v1.4.0-rc.9", "v1.5.1-rc.7", "edge"}
@@ -948,9 +955,9 @@ class Scenario(unittest.TestCase):
             self.branch(self.state(), "release/1.5")["next_rc"], "v1.5.0-rc.5"
         )
 
-    def test_31_reused_minor_skips_its_kept_rc(self):
-        # release/1.7 built once, then abandoned: its git RC tag deleted, its registry RC kept (the package's last
-        # version). The minor is cut again, and its first RC is past the kept one.
+    def test_reused_minor_skips_its_kept_rc(self):
+        # 1.7 abandoned: git RC tag deleted, registry RC kept (package's last version); the re-cut's
+        # first RC skips it.
         self.cut("1.6")
         tip = self.cut("1.7")
         self.push("on-prem/backend", "v1.7.0-rc.1")
@@ -962,7 +969,7 @@ class Scenario(unittest.TestCase):
             self.branch(self.state(), "release/1.7")["next_rc"], "v1.7.0-rc.2"
         )
 
-    def test_32_shallow_clone_refused(self):
+    def test_shallow_clone_refused(self):
         clone = os.path.join(self._tmp.name, "shallow")
         self.commit("second")
         rm.git(
@@ -972,7 +979,7 @@ class Scenario(unittest.TestCase):
             rm.git(clone, "log", "-1")
         self.assertNotIn(clone, rm._FULL)
 
-    def test_33_conflict_markers_git_error(self):
+    def test_conflict_markers_git_error(self):
         with open(os.path.join(self.repo, "f.txt"), "w") as f:
             f.write("a\n<<<<<<< ours\nb\n=======\nc\n>>>>>>> theirs\n")
         self.g("add", "f.txt")
@@ -981,7 +988,7 @@ class Scenario(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, r"git grep \(exit 128\)"):
             rm.conflict_markers(self.repo, "no-such-rev")
 
-    def test_34_reverted_pick_only_on_its_own_branch(self):
+    def test_reverted_pick_only_on_its_own_branch(self):
         fix = self.commit("fix on main")
         self.cut("1.5")
         self.cut("1.6")
@@ -1005,7 +1012,7 @@ class Scenario(unittest.TestCase):
             )
         )
 
-    def test_35b_forged_pick_trailer_is_invalid(self):
+    def test_forged_pick_trailer_is_invalid(self):
         # A trailer naming a commit that is not on main is not a pick of a main original.
         self.cut("1.5")
         work = self.g("rev-parse", "release/1.5")  # on the line only
@@ -1020,7 +1027,7 @@ class Scenario(unittest.TestCase):
             [(forged, "invalid")],
         )
 
-    def test_35_ci_commits(self):
+    def test_ci_commits(self):
         fix = self.commit("fix on main")
         self.cut("1.5")  # one invalid commit, `work on 1.5`
         before = self.g("rev-parse", "release/1.5")
@@ -1102,7 +1109,7 @@ class Scenario(unittest.TestCase):
         )  # only a backport PR's tree is checked
         self.g("checkout", "-q", "main")
 
-    def test_36_is_backport(self):
+    def test_is_backport(self):
         for ref, want in (
             ("backport/1.5/abcdef0", True),
             ("backport/0.192/1234567", True),
@@ -1115,7 +1122,7 @@ class Scenario(unittest.TestCase):
         ):
             self.assertEqual(rm.is_backport(ref), want, ref)
 
-    def test_37_unknown_repo_config(self):
+    def test_unknown_repo_config(self):
         with self.assertRaisesRegex(
             RuntimeError, "relstate has no config for repo 'nope'"
         ):
@@ -1126,7 +1133,7 @@ class Scenario(unittest.TestCase):
 class PrFixClass(unittest.TestCase):
     """Lint PR / Backport class rule: title type plus fix/ labels."""
 
-    def test_18_pr_fix_class(self):
+    def test_pr_fix_class(self):
         c = rm.pr_fix_class
         self.assertEqual(c("UN-1 [FIX] x"), "fix")
         self.assertIsNone(c("UN-1 [MISC] x"))
@@ -1152,7 +1159,7 @@ class PrFixClass(unittest.TestCase):
                     "fix/security, fix/critical, fix/needs-backport", str(e.exception)
                 )
 
-    def test_18b_revert_takes_inner_class(self):
+    def test_revert_takes_inner_class(self):
         c = rm.pr_fix_class
         self.assertEqual(c('Revert "UN-1 [FIX] x"'), "fix")
         self.assertIsNone(c('Revert "UN-1 [MISC] x"'))
@@ -1164,7 +1171,7 @@ class PrFixClass(unittest.TestCase):
             c("no prefix")
         self.assertEqual(c("no prefix", ["fix/needs-backport"]), "fix")
 
-    def test_18c_ticketless_title_same_class(self):
+    def test_ticketless_title_same_class(self):
         c = rm.pr_fix_class
         self.assertEqual(c("[FIX] x"), "fix")
         self.assertEqual(c("[HOT-FIX] x"), "fix")
@@ -1179,7 +1186,7 @@ class PrFixClass(unittest.TestCase):
             with self.assertRaises(ValueError, msg=title):
                 c(title)
 
-    def test_18e_release_only_label_refused_off_release(self):
+    def test_release_only_label_refused_off_release(self):
         f = rm.release_only_refusal
         self.assertIn(
             "for PRs into a release/X.Y branch", f("main", ["release-branch-only"])
@@ -1187,7 +1194,7 @@ class PrFixClass(unittest.TestCase):
         self.assertIsNone(f("release/0.192", ["release-branch-only"]))
         self.assertIsNone(f("main", ["fix/critical"]))
 
-    def test_18d_rbo_key_ticket_else_pr(self):
+    def test_rbo_key_ticket_else_pr(self):
         self.assertEqual(rm.rbo_key("UN-1 [FIX] x", "45"), "UN-1")
         self.assertEqual(rm.rbo_key("[FIX] x", "45"), "#45")
         self.assertEqual(rm.rbo_key(" UN-1 [FIX] x", "45"), "UN-1")
@@ -1196,9 +1203,9 @@ class PrFixClass(unittest.TestCase):
 
 
 class ArtifactRegistry(unittest.TestCase):
-    """registry_tags over the Artifact Registry REST API. The response shape (versions[].name, createTime,
-    relatedTags[].name, nextPageToken) follows the API reference for projects.locations.repositories.packages
-    .versions.list with view=FULL; it was not recorded from a live call.
+    """registry_tags over the Artifact Registry REST API.
+
+    Known limit: the response shape follows the versions.list (view=FULL) API reference, not a recorded call.
     """
 
     REPO = "projects/p/locations/us-central1/repositories/unstract"
@@ -1244,7 +1251,7 @@ class ArtifactRegistry(unittest.TestCase):
     def url(self, package, kind="unstract"):
         return f"{rs.AR_API}/projects/p/locations/us-central1/repositories/{kind}/packages/{package}/versions"
 
-    def test_38_tags_across_pages(self):
+    def test_tags_across_pages(self):
         self.pages[(self.url("backend"), "")] = {
             "versions": [
                 self.version(
@@ -1276,7 +1283,7 @@ class ArtifactRegistry(unittest.TestCase):
         )  # an untagged version adds nothing
         self.assertIn("view=FULL", self.urls[0])
 
-    def test_39_404_is_empty_only_when_repository_reads(self):
+    def test_404_is_empty_only_when_repository_reads(self):
         onprem = "projects/p/locations/us-central1/repositories/unstract-on-prem"
         self.pages[(f"{rs.AR_API}/{onprem}", "")] = {"name": onprem}
         self.assertEqual(rs.registry_tags("on-prem/backend"), {})
@@ -1293,7 +1300,7 @@ class ArtifactRegistry(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "HTTP 403: denied"):
             rs.registry_tags("on-prem/backend")
 
-    def test_39b_network_json_and_later_page_errors_raise(self):
+    def test_network_json_and_later_page_errors_raise(self):
         self.pages[(self.url("backend"), "")] = {"versions": [], "nextPageToken": "n2"}
         with self.assertRaisesRegex(RuntimeError, "HTTP 404 on page n2"):  # page n2: 404
             rs.registry_tags("cloud/backend")
@@ -1320,7 +1327,7 @@ class ArtifactRegistry(unittest.TestCase):
         ):
             rs.registry_tags("cloud/backend")
 
-    def test_40_other_http_errors_raise(self):
+    def test_other_http_errors_raise(self):
         self.pages[(self.url("backend"), "")] = 403
         with self.assertRaisesRegex(RuntimeError, "HTTP 403: denied"):
             rs.registry_tags("cloud/backend")
@@ -1334,7 +1341,7 @@ class ArtifactRegistry(unittest.TestCase):
         ):  # the error body itself cut off
             rs.registry_tags("cloud/backend")
 
-    def test_41_unset_location_or_token_raises(self):
+    def test_unset_location_or_token_raises(self):
         os.environ.pop("RELSTATE_AR_CHART", None)
         with self.assertRaisesRegex(RuntimeError, "set RELSTATE_AR_CHART"):
             rs.registry_tags("chart/unstract-platform")
@@ -1342,6 +1349,62 @@ class ArtifactRegistry(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "set RELSTATE_AR_TOKEN"):
             rs.registry_tags("cloud/backend")
         self.assertEqual(self.urls, [])
+
+
+class Guards(unittest.TestCase):
+    OUTSIDE = (
+        "/nonexistent/repo"  # resolves outside the working directory and the temp dirs
+    )
+
+    def test_option_free(self):
+        self.assertEqual(rm.option_free("release/1.2"), "release/1.2")
+        with self.assertRaises(rm.Refused):
+            rm.option_free("--upload-pack=x")
+
+    def test_local_path(self):
+        with tempfile.TemporaryDirectory() as d:
+            self.assertEqual(rm.local_path(d), d)
+            os.symlink("/usr", os.path.join(d, "out"))
+            with self.assertRaises(rm.Refused):  # a link out of the roots
+                rm.local_path(os.path.join(d, "out", "x"))
+        for path in (self.OUTSIDE, "-C"):
+            with self.subTest(path=path), self.assertRaises(rm.Refused):
+                rm.local_path(path)
+
+    def test_local_path_runner_roots(self):
+        """GITHUB_WORKSPACE, RUNNER_TEMP and the step summary file count, each outside the other roots."""
+        with tempfile.TemporaryDirectory() as d:
+            summary = os.path.join(d, "summary", "step.md")
+            for key, path in (
+                ("GITHUB_WORKSPACE", d),
+                ("RUNNER_TEMP", d),
+                ("GITHUB_STEP_SUMMARY", summary),
+            ):
+                env = dict.fromkeys(
+                    ("GITHUB_WORKSPACE", "RUNNER_TEMP", "GITHUB_STEP_SUMMARY"), ""
+                )
+                env[key] = path
+                with (
+                    self.subTest(key=key),
+                    unittest.mock.patch.dict(os.environ, env),
+                    unittest.mock.patch.object(
+                        rm.os, "getcwd", return_value="/nonexistent/cwd"
+                    ),
+                    unittest.mock.patch.object(
+                        rm.tempfile, "gettempdir", return_value="/nonexistent/tmp"
+                    ),
+                ):
+                    self.assertEqual(rm.local_path(path), path)
+                    with self.assertRaises(rm.Refused):
+                        rm.local_path(self.OUTSIDE)
+
+    def test_git_refuses_a_repo_outside(self):
+        with self.assertRaises(rm.Refused):
+            rm.git(self.OUTSIDE, "status")
+
+    def test_main_refuses_an_option_as_rc(self):
+        with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+            rs.main(["--repo", self.OUTSIDE, "--rc=-x"], registry=lambda a: {})
 
 
 if __name__ == "__main__":

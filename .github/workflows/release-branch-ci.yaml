@@ -1,29 +1,21 @@
 name: Release branch CI
 
-# Every commit after the cut must be a cherry-pick of a main commit (or its decline), release-branch-only,
-# or build-generated. Anything else fails.
-# On a PR into release/** this is the required check `check` over the PR's own commits, so a human change
-# is checked before it lands. A backport/X.Y/<sha7> PR is judged as its squash: only its first commit (the pick, whose
-# trailer the squash message keeps) is classified, so a plain resolution commit passes; conflict markers in the
-# head's tree fail it. The push run stays as the backstop for bot pushes.
-# A pull_request run uses the workflow file from the PR head: a branch cut before this trigger existed gets no PR
-# check, and a PR can edit this file. Job `check` runs there; it holds no secret.
-# A PR labelled `release-branch-only` passes with commits of any kind. On the label, job `trailer` pushes one
-# empty commit `Release-branch-only: <TICKET>` onto the PR head (unless a commit already has the line); Squash and
-# merge keeps it in the message, and the push run checks that merged commit like any other. It holds the bot token,
-# so it runs on pull_request_target: the base line's copy of this file, which a PR cannot edit. A line cut before
-# that trigger existed gets no bot commit; add the line to a commit yourself there.
-# Label changes on a closed PR run nothing. Job `trailer` never pushes to a head named main, release/* or backport/*.
-# No push builds an RC: a security or critical pick lands and waits for the RM's Take RC build, like any other pick.
+# Every commit after the cut must be a pick of a main commit (or its decline), release-branch-only, or
+# build-generated. Anything else fails.
+# PR into release/**: required check `check` over the PR's commits; a backport/X.Y/<sha7> PR is judged by its
+# first commit (the squash keeps its trailer), and conflict markers fail it. A PR run holds no secret.
+# Push: backstop for bot pushes.
+# Label `release-branch-only`: the PR passes with commits of any kind; release-branch-only.yaml adds the
+# `Release-branch-only: <TICKET>` commit to its head.
+# Known limit: a branch cut before these triggers existed gets no PR check; a PR can edit this file for its own
+# pull_request run.
+# Label changes on a closed PR run nothing. No push builds an RC: a security or critical pick waits for Take RC build.
 on:
   push:
     branches: ["release/**"]
   pull_request:
     branches: ["release/**"]
     types: [opened, synchronize, reopened, labeled, unlabeled] # the label changes the verdict
-  pull_request_target:
-    branches: ["release/**"]
-    types: [labeled] # job trailer only
 
 permissions:
   contents: read
@@ -42,9 +34,8 @@ jobs:
           fetch-depth: 0 # relmgr needs full history and tags
           persist-credentials: false # the head is only read
 
-      # The classifier comes from main, so a PR's edit to relmgr cannot pass its own check. That guards relmgr
-      # only: a PR can still edit this workflow file, which its pull_request run uses, to pass `check`. Closing
-      # that needs a ruleset-required workflow or CODEOWNERS on .github/.
+      # Classifier read from main, so a PR cannot weaken relmgr. Known limit: a PR can still edit this workflow
+      # (needs a required workflow or CODEOWNERS on .github/).
       - uses: actions/checkout@v6
         with:
           ref: main
@@ -100,83 +91,6 @@ jobs:
       - name: Branch state (informational)
         if: always()
         continue-on-error: true
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: python3 .relmgr/.github/release/relstate.py | jq --arg b "$BRANCH" '.branches[] | select(.branch == $b)'
 
-      # TODO: alert on a failed push run once a release alert channel and webhook secret exist.
-
-  # On the `release-branch-only` label: one empty bot commit carrying `Release-branch-only: <TICKET>` (ticket from
-  # the title, else `#<PR number>`), so the squash message has the line. A commit already carrying it -> nothing pushed. The push fires
-  # `synchronize`, so `check` runs once more. A fork head cannot take a bot push: fail and say so.
-  # pull_request_target: this job is the base line's copy. The head is only data here: read without a token, its
-  # files never imported, and the push ignores its git config.
-  trailer:
-    if: github.event_name == 'pull_request_target' && github.event.action == 'labeled' && github.event.label.name == 'release-branch-only' && github.event.pull_request.state == 'open'
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    env:
-      HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
-      HEAD_REF: ${{ github.event.pull_request.head.ref }}
-      BASE_REF: ${{ github.base_ref }}
-      TITLE: ${{ github.event.pull_request.title }}
-      PR: ${{ github.event.pull_request.number }}
-    steps:
-      - name: Same-repo head
-        run: |
-          [ "$HEAD_REPO" = "$GITHUB_REPOSITORY" ] || { echo "::error::release-branch-only: the head is on $HEAD_REPO, a fork; the bot cannot push the \`Release-branch-only:\` commit there. Push the branch to $GITHUB_REPOSITORY and open the PR from it, or add the line to a commit yourself."; exit 1; }
-          case "$HEAD_REF" in
-            main | release/* | backport/*) echo "::error::release-branch-only: the head is $HEAD_REF; the bot pushes only to a topic branch. Add the line to a commit yourself."; exit 1 ;;
-          esac
-
-      # The head is checked out without the bot token; only the push below gets it. The logic comes from main.
-      # Run on the head's tip SHA, so a push to the head after the label makes the bot push fail, not skip a check.
-      - uses: actions/checkout@v6
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          fetch-depth: 0 # every branch, so origin/<base> is current
-          persist-credentials: false
-
-      - uses: actions/checkout@v6
-        with:
-          ref: main
-          path: .relmgr
-          sparse-checkout: .github/release
-          persist-credentials: false
-
-      - name: Add the Release-branch-only commit
-        id: rbo
-        run: |
-          python3 -I - <<'PY'  # isolated: a module file in the head checkout never shadows the stdlib
-          import os, subprocess, sys
-          sys.path.insert(0, ".relmgr/.github/release")
-          import relmgr as rm
-          ticket = rm.rbo_key(os.environ["TITLE"], os.environ["PR"])
-          msgs = rm.git(".", "log", "--format=%B", f"origin/{os.environ['BASE_REF']}..HEAD")
-          if have := rm.RBO_RE.findall(msgs):
-              print(f"A commit on the PR already has Release-branch-only: {', '.join(sorted(set(have)))}; nothing pushed.")
-              sys.exit(0)
-          subprocess.run(["git", "-c", "core.hooksPath=/dev/null", "-c", "user.name=releases-bot", "-c", f"user.email={rm.BOT_EMAIL}",
-                          "commit", "--allow-empty", "-m", f"Release-branch-only: {ticket}"], check=True)
-          print(f"Committed {rm.git('.', 'rev-parse', 'HEAD')[:12]} Release-branch-only: {ticket}")
-          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
-              f.write("push=true\n")
-          PY
-
-      # The repo's GitHub App, as in create-release.yaml: a GITHUB_TOKEN push or PR starts no workflow.
-      - name: Bot token
-        id: bot
-        uses: actions/create-github-app-token@v3
-        with:
-          client-id: ${{ vars.PUSH_TO_MAIN_APP_CLIENT_ID }}
-          private-key: ${{ secrets.PUSH_TO_MAIN_APP_PRIVATE_KEY }}
-
-      - name: Push it
-        if: steps.rbo.outputs.push == 'true'
-        env:
-          BOT_TOKEN: ${{ steps.bot.outputs.token }} # a GITHUB_TOKEN push would not start the `check` re-run
-        run: |
-          # No hooks, and an explicit URL rather than the checkout's remote config.
-          helper='!f() { echo username=x-access-token; echo "password=$BOT_TOKEN"; }; f'
-          git -c core.hooksPath=/dev/null -c credential.helper= -c credential.helper="$helper" \
-            push "https://github.com/${GITHUB_REPOSITORY}.git" "HEAD:refs/heads/$HEAD_REF"
+      # No alert on a failed push run: this repo has no release alert channel or webhook secret.

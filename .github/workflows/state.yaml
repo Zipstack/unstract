@@ -21,9 +21,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          start=$(date +%s.%N)
           python3 .github/release/relstate.py > state.json
-          echo "relstate took $(echo "$(date +%s.%N) - $start" | bc) s"
           cat state.json
 
       - uses: actions/upload-artifact@v7

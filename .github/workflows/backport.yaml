@@ -5,26 +5,17 @@ run-name: >-
       && format('record #{0}', github.event.pull_request.number)
       || format('picks {0}', inputs.commits || github.sha) }}
 
-# Two jobs, one per trigger family.
-# pick: every fix merged to main is cherry-picked with -x onto each stabilizing release branch.
-#   Each push to main rescans every target since its cut (backport.py --rescan) and picks whatever no pick or
-#   decline trailer names there, so a push run that a newer push replaces while pending costs nothing.
-#   A dispatch with `commits` picks only those; a rescan never picks a held fix, so a push never replaces a dispatch. Every pick is its own PR with the original PR's title;
-#   the bot squash-merges clean ones in the same run, conflicts stay open for a person.
-#   Security/critical fixes reach stabilized branches only with confirm_stabilized. Never builds.
-# record: people land a backport conflict PR with the normal buttons (resolve, one approving review, Squash and merge)
-#   or close it. The bot records what happened (backport_merge.py --pr N):
-#   merged -> label backport-merged, head deleted; closed unmerged -> a decline: empty decline commit on the base
-#   (the closer's close comment is the reason), label backport-declined, head kept so the PR can be reopened;
-#   a head with no commit past the base declines and deletes nothing: the bot comments once that a person deletes the
-#   head to have the fix picked again, or keeps it until a hand-made decline is on the base;
-#   reopened -> label backport-conflict. Reopen and merge undoes a decline: the newest trailer on the line wins.
-#   pull_request_target, not pull_request: GitHub runs no pull_request workflow on a PR that conflicts with its base
-#   at the git level (no merge ref), and a conflict PR whose base later changed the same lines is one.
-#   pull_request_target runs the base line's copy of this file, so it fires only on lines that carry it. Safe:
-#   the job checks out main and never runs head code; backport_merge.py refuses a head that is not
-#   backport/X.Y/<sha7> into release/X.Y (an expression cannot match that pattern, so the job filter is coarser). A failed record run is recovered with "Re-run jobs".
-#   Scripts run from main's tree.
+# pick (push to main, dispatch): cherry-pick -x each fix onto every stabilizing release branch, one PR per pick;
+#   the bot squash-merges clean picks, conflicts stay open. A push rescans every line since its cut; a dispatch
+#   picks only `commits`. Security/critical fixes reach stabilized lines only with confirm_stabilized. Never builds.
+# record (pull_request_target closed/reopened): merged -> backport-merged, head deleted; closed -> empty decline
+#   commit on the base (close comment = reason), backport-declined, head kept; reopened -> backport-conflict.
+#   The newest trailer wins.
+#   Closed with no commit past the base -> nothing recorded; the bot comments once (delete the head to re-pick,
+#   or decline by hand).
+# pull_request_target because GitHub runs no pull_request workflow on a PR that conflicts with its base. It runs
+#   the base line's copy of this file, checks out main and never runs head code; backport_merge.py refuses heads
+#   other than backport/X.Y/<sha7>. A failed record run is recovered with "Re-run jobs".
 on:
   push:
     branches: [main]
@@ -54,14 +45,13 @@ jobs:
     permissions:
       contents: read
     concurrency:
-      # Push runs are serialised, and a newer push replaces a pending one: the next rescan picks what it would have.
-      # A dispatch is its own group, never replaced: it may carry confirm_stabilized, which no rescan has. It can run
-      # beside a push run or another dispatch. Two runs picking one fix onto one line race on its pick head: the
-      # loser's push is rejected (retried; skipped if the winner already landed the pick, else a failed row), and a
-      # head with no open PR yet reads as pending until it is older than timeout-minutes. If the winner merged and
-      # deleted the head first, the loser can open a second pick PR for a fix already on the line. A squash after
-      # the base moved is retried by backport_merge.squash.
+      # Push runs share one group (a newer push replaces a pending one; the next rescan catches up). Each dispatch
+      # has its own group, since it may carry confirm_stabilized.
+      # Known limit: concurrent runs race on a pick head; the loser retries or skips, and can open a duplicate PR
+      # if the winner already merged and deleted the head.
       group: backport-${{ github.event_name == 'workflow_dispatch' && github.run_id || 'rescan' }}
+    env:
+      PYTHONDONTWRITEBYTECODE: "1" # the conflict path runs `git add -A`
     steps:
       - name: Inputs
         if: github.event_name == 'workflow_dispatch'
@@ -88,9 +78,11 @@ jobs:
         # A late push run checks out its event sha as origin/main; rescan the real tip instead.
         run: git fetch origin +refs/heads/main:refs/remotes/origin/main
 
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.12" # relstate uses dt.UTC (3.11+)
+
       - name: Branch state
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
           # Scripts run from outside the tree: the pick checks out release branches, which predate them.
           cp .github/release/*.py "$RUNNER_TEMP/"

@@ -1,4 +1,4 @@
-"""Branch and target state for the V2 release workflows, derived from git + the target registries.
+"""Branch and target state for the release-branch workflows, derived from git and the target registries.
 
 Usage: relstate.py [--repo DIR] [--now 2026-09-29T00:00:00Z] [--rc vX.Y.Z-rc.N]
 
@@ -22,22 +22,18 @@ import urllib.request
 
 import relmgr as rm
 
-# On-prem support window from the line's first stable chart push (its GA); a patch does not extend it.
-WINDOW = dt.timedelta(days=184)  # 184 days covers the longest 6-month span
-WINDOW_LINES = (
-    6  # and only the newest 6 on-prem GA lines are supported, whichever ends first
-)
-# Per repo, so both repos run this same file: (targets, targets where only the latest GA line is supported,
-# targets supported while the branch exists: retired only when another repo's Retire names the line, repo whose
-# tags this repo's lines pin in pyproject.toml or None, tag prefix of this repo's lines).
-# Artifacts are <kind>/<package> in Artifact Registry; RELSTATE_AR_<KIND> names the repository (ar_repository).
-# TARGETS: target -> (artifact holding RC / promoted builds, GA anchor artifact). Cloud GA = the vX.Y.Z retag
-# of the build artifact; on-prem GA = the chart push. GIT instead of an artifact: the line's own git tags, the stable
-# tag's date as the GA date (OSS lines: cloud builds them from source, so they have no artifact).
-# OSS lines are tagged ee-vX.Y.Z(-rc.N); plain vX.Y.Z tags there are community releases from main, never a line's.
+# On-prem support: 184 days (longest 6 months) from the line's first stable chart push, and only the newest 6 GA
+# lines.
+WINDOW = dt.timedelta(days=184)
+WINDOW_LINES = 6
+# Per repo, so both repos run this file; use() loads an entry as (TARGETS, LATEST_ONLY: only the latest GA line is
+# supported, KEPT: supported while the branch exists, PINS: repo whose tags pyproject.toml pins, PREFIX: tag prefix).
+# TARGETS: target -> (build artifact, GA anchor artifact), each <kind>/<package>; RELSTATE_AR_<KIND> names its
+# repository. GIT: the line's own git tags stand in for an artifact (OSS lines). OSS lines are tagged
+# ee-vX.Y.Z(-rc.N).
 GIT = "git"
 REPOS = {
-    # Cloud: each target's build artifact is backend, since every build pushes it (all services share one tag).
+    # backend: every build pushes it, and all services share one tag.
     "unstract-cloud": (
         {
             "cloud": ("cloud/backend", "cloud/backend"),
@@ -164,9 +160,7 @@ def registry_tags(artifact):
 
 
 def _read(artifact, registry):
-    """registry(artifact), with a chart push's X.Y.Z tag read as vX.Y.Z. A chart push is tagged with its Chart.yaml
-    version, which has no v; pushes before the release-line flow were tagged vX.Y.Z and read as they are.
-    """
+    """registry(artifact), with chart tags X.Y.Z read as vX.Y.Z (charts are tagged without the v)."""
     tags = registry(artifact)
     if not artifact.startswith("chart/"):
         return tags
@@ -181,15 +175,17 @@ def taken_tags(reg=None, registry=registry_tags):
     reg: {artifact: tags} already read; artifacts missing from it are read.
     """
     reg = reg or {}
-    return {
-        t
-        for a in sorted({a for pair in TARGETS.values() for a in pair} - {GIT})
-        for t in (reg[a] if a in reg else registry(a))
-    }
+    return {t for a in _artifacts() for t in (reg[a] if a in reg else registry(a))}
 
 
-def _ts(s):
-    return dt.datetime.fromisoformat(s.replace("Z", "+00:00"))
+def _artifacts(git=False):
+    """Sorted registry artifacts of TARGETS; GIT too when git."""
+    return sorted(
+        {a for pair in TARGETS.values() for a in pair} - (set() if git else {GIT})
+    )
+
+
+_ts = rm.ts
 
 
 def _key(line):
@@ -230,10 +226,23 @@ def ahead_of_ga(repo, ref, line):
 
 
 def _tag_commit(repo, tag):
-    r = rm.git(
-        repo, "rev-parse", "-q", "--verify", f"refs/tags/{tag}^{{commit}}", check=False
-    )
-    return r.stdout.strip() if r.returncode == 0 else None
+    return rm.resolve(repo, f"refs/tags/{tag}")
+
+
+def line_tags(repo, line, *args, prefix=None):
+    """Version tags of line X.Y from `git tag <args> -l`; prefix: the tag prefix, this repo's by default."""
+    prefix = PREFIX if prefix is None else prefix
+    ver = ver_re(prefix)
+    return [
+        t
+        for t in rm.git(repo, "tag", *args, "-l", f"{prefix}v{line}.*").split()
+        if (m := ver.fullmatch(t)) and f"{m[1]}.{m[2]}" == line
+    ]
+
+
+def older_newer(a, b):
+    """(older, newer) of two release/X.Y branches."""
+    return tuple(sorted((a, b), key=lambda n: _key(n.split("/", 1)[1])))
 
 
 def moved_archive(repo, line, sha):
@@ -273,7 +282,7 @@ def rc_slack(repo, tag):
 
 
 def target_state(t, name, rows, now):
-    """State of target t on an enabled branch. The one place the GA/supported convention lives.
+    """State of target t on an enabled branch. Single source of the GA/support rules.
 
     On-prem: stabilized for WINDOW after the line's first stable chart push (a patch does not extend it), and only while
     among the newest WINDOW_LINES lines with an on-prem GA. A LATEST_ONLY target (cloud): only the latest GA branch
@@ -282,8 +291,7 @@ def target_state(t, name, rows, now):
     then stabilized while the branch exists; the cloud lines pinning it decide its retirement, and cloud Retire names it.
     """
     ga = rows[name]["targets"][t]["ga"]
-    # Known limit: a target built but never GA (on-prem RCs with no chart push) stays stabilizing for good, so its
-    # line never reaches the retire list; a person retires it with Retire `retire_line`.
+    # Known limit: a target never GA stays stabilizing; retire it with Retire retire_line.
     if not ga:
         return "stabilizing"
     if t in KEPT:
@@ -314,12 +322,8 @@ def _main(repo):
 
 
 def _next_minor(repo, ordered):
-    """One minor past the highest release/X.Y line, shipped retired line or stable vX.Y.Z on main, so a cut never
-    reuses a minor this flow shipped. Of the stable vX.Y.Z tags, only those merged into main count, so one off main (an
-    old-flow release not merged back, or a stray such as v100.0.x) does not. A line retired early before any GA (retired/X.Y-<sha7>,
-    its RCs deleted) is reused.
-
-    With no release/X.Y branch yet (cutover) only the tags count.
+    """One minor past the highest release line, shipped retired line or stable tag merged into main (a stable tag
+    off main, e.g. a release not merged back, does not count). A line retired before GA is reused.
     """
     main = _main(repo)
     lines = [
@@ -336,113 +340,114 @@ def _next_minor(repo, ordered):
     return f"{max(lines)[0]}.{max(lines)[1] + 1}" if lines else None
 
 
-def derive(repo, now, registry=registry_tags, rc=None):
-    t0 = time.monotonic()
-    reg = {
-        a: git_tags(repo) if a == GIT else _read(a, registry)
-        for a in sorted({a for pair in TARGETS.values() for a in pair})
+def _row(repo, name, ref, taken):
+    """The derive() row of one release/X.Y branch, before its targets are filled in."""
+    # The tip's RC tag if built, else the next one.
+    tip = rm.rc_version(repo, ref, PREFIX, taken)
+    built = tip in rm.git(repo, "tag", "--points-at", ref).split()
+    line = name.split("/", 1)[1]
+    row = {
+        "branch": name,
+        "line": line,
+        "state": None,
+        "enabled": [],
+        "next_rc": None if built else tip,
+        "tip_rc": tip if built else None,
+        "ahead_of_ga": ahead_of_ga(repo, ref, line),
+        "targets": {},
     }
-    print(
-        f"relstate: registry read {len(reg)} artifacts in {time.monotonic() - t0:.2f}s",
-        file=sys.stderr,
-    )  # registry read cost
-    refs = _branches(repo)
-    rows, anomalies = {}, []
-    taken = taken_tags(reg)
-    for name, ref in refs.items():
-        tip = rm.rc_version(
-            repo, ref, PREFIX, taken
-        )  # the tip's RC tag if built (one RC per commit), else the next one
-        built = tip in rm.git(repo, "tag", "--points-at", ref).split()
-        rows[name] = {
-            "branch": name,
-            "line": name.split("/", 1)[1],
-            "state": None,
-            "enabled": [],
-            "next_rc": None if built else tip,
-            "tip_rc": tip if built else None,
-            "ahead_of_ga": ahead_of_ga(repo, ref, name.split("/", 1)[1]),
-            "targets": {},
-        }
-        if built and (url := rc_slack(repo, tip)):  # only when the RC has a link
-            rows[name]["tip_rc_slack"] = url
-    # A line with no branch but a git stable tag was promoted and then retired: its registry tags are
-    # history, not anomalies, and are skipped before any per-tag git call. A line that never
-    # promoted (RC-only) stays an anomaly. Retire only lists lines that were GA, so this is exact.
-    shipped = {}
+    if built and (url := rc_slack(repo, tip)):  # only when the RC has a link
+        row["tip_rc_slack"] = url
+    return row
 
-    # enabled: a build tag of T whose git commit is on the branch (derived, never recorded).
-    for t, (builds, anchor) in TARGETS.items():
-        for tag in sorted(reg[builds]):
-            m = VER_RE.fullmatch(tag)
-            if not m:
-                continue  # not a release version (e.g. smoke tags)
-            name = f"release/{m[1]}.{m[2]}"
-            if name not in refs:
-                if name not in shipped:  # one git tag read per line, not per registry tag
-                    shipped[name] = bool(rm._tags(repo, m[1], m[2], PREFIX)[0])
-                if shipped[name]:
-                    continue
-            sha = _tag_commit(repo, tag)
-            if name not in refs or not sha or not rm.is_ancestor(repo, sha, refs[name]):
-                why = (
-                    "no branch"
-                    if name not in refs
-                    else "no git tag"
-                    if not sha
-                    else "commit not on branch"
-                )
-                anomalies.append(
-                    {
-                        "target": t,
-                        "artifact": builds,
-                        "tag": tag,
-                        "branch": name,
-                        "reason": why,
-                    }
-                )
-                continue
-            tt = rows[name]["targets"].setdefault(
-                t, {"state": None, "rcs": [], "ga": None, "promoted": None}
+
+def _anomaly_reason(repo, name, refs, sha):
+    """Why a build tag enables nothing on its line, or None when its commit is on the branch."""
+    if name not in refs:
+        return "no branch"
+    if not sha:
+        return "no git tag"
+    if not rm.is_ancestor(repo, sha, refs[name]):
+        return "commit not on branch"
+    return None
+
+
+def _shipped(repo, name, m, shipped):
+    """Whether the branchless line name (version match m) has a git stable tag, cached in shipped."""
+    if name not in shipped:  # one git tag read per line, not per registry tag
+        shipped[name] = bool(rm._tags(repo, m[1], m[2], PREFIX)[0])
+    return shipped[name]
+
+
+def _enable(repo, t, builds, reg, refs, rows, shipped, anomalies):
+    """Mark target t enabled on each branch holding one of its build tags; anomalies get the rest."""
+    for tag in sorted(reg[builds]):
+        m = VER_RE.fullmatch(tag)
+        if not m:
+            continue  # not a release version (e.g. smoke tags)
+        name = f"release/{m[1]}.{m[2]}"
+        if name not in refs and _shipped(repo, name, m, shipped):
+            continue
+        sha = _tag_commit(repo, tag)
+        if why := _anomaly_reason(repo, name, refs, sha):
+            anomalies.append(
+                {
+                    "target": t,
+                    "artifact": builds,
+                    "tag": tag,
+                    "branch": name,
+                    "reason": why,
+                }
             )
-            if m[4]:
-                tt["rcs"].append(tag)
-        for name, row in rows.items():
-            tt = row["targets"].get(t)
-            if not tt:
-                continue
-            tt["rcs"].sort(key=_vkey)
-            # On-prem GA reads the chart artifact. Publish pushes the stable chart as X.Y.Z, read as vX.Y.Z (_read);
-            # RC charts are never pushed, and legacy 0.0.0-rc.N pushes match no line.
-            stable = re.compile(rf"{re.escape(PREFIX)}v{re.escape(row['line'])}\.\d+")
-            # ga (the anchor's first stable) anchors state and the support window; promoted (the build artifact's
-            # latest stable) is what ships next
-            for key, artifact, pick in (("ga", anchor, 0), ("promoted", builds, -1)):
-                if tags := sorted(
-                    (g for g in reg[artifact] if stable.fullmatch(g)), key=_vkey
-                ):
-                    tt[key] = {"tag": tags[pick], **reg[artifact][tags[pick]]}
-            if t in KEPT:
-                tt["stabilized"] = bool(_tag_commit(repo, STABILIZED + row["line"]))
+            continue
+        tt = rows[name]["targets"].setdefault(
+            t, {"state": None, "rcs": [], "ga": None, "promoted": None}
+        )
+        if m[4]:
+            tt["rcs"].append(tag)
 
+
+def _fill_ga(repo, t, builds, anchor, reg, rows):
+    """Sort target t's RCs and set its ga / promoted (and KEPT stabilized) on every branch it is enabled on."""
+    for row in rows.values():
+        tt = row["targets"].get(t)
+        if not tt:
+            continue
+        tt["rcs"].sort(key=_vkey)
+        # ga: the anchor's first stable (state, window). promoted: the build artifact's latest stable (ships next).
+        # Charts are read as vX.Y.Z (_read).
+        stable = re.compile(rf"{re.escape(PREFIX)}v{re.escape(row['line'])}\.\d+")
+        for key, artifact, pick in (("ga", anchor, 0), ("promoted", builds, -1)):
+            if tags := sorted(
+                (g for g in reg[artifact] if stable.fullmatch(g)), key=_vkey
+            ):
+                tt[key] = {"tag": tags[pick], **reg[artifact][tags[pick]]}
+        if t in KEPT:
+            tt["stabilized"] = bool(_tag_commit(repo, STABILIZED + row["line"]))
+
+
+def _line_state(states):
+    """A line's state from its targets' states."""
+    if not states or "stabilizing" in states:
+        return "stabilizing"
+    if "stabilized" in states:
+        return "stabilized"
+    return "past-eos"
+
+
+def _set_states(rows, now):
+    """Set every target's and line's state and enabled list on rows."""
     for name, row in rows.items():
         for t, tt in row["targets"].items():
             tt["state"] = target_state(t, name, rows, now)
         row["enabled"] = sorted(row["targets"])
-        states = {tt["state"] for tt in row["targets"].values()}
         # No enabled target (cut, nothing built yet) is stabilizing: every line builds cloud by default.
-        row["state"] = (
-            "stabilizing"
-            if not states or "stabilizing" in states
-            else "stabilized"
-            if "stabilized" in states
-            else "past-eos"
-        )
+        row["state"] = _line_state({tt["state"] for tt in row["targets"].values()})
 
-    ordered = sorted(rows.values(), key=lambda r: _key(r["line"]), reverse=True)
-    out = {
-        "now": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "branches": ordered,
+
+def _sets(ordered):
+    """The supported, backport_targets and retire sets of derive() over the ordered rows."""
+    return {
         "supported": {
             t: [
                 r["branch"]
@@ -467,6 +472,38 @@ def derive(repo, now, registry=registry_tags, rc=None):
             for r in ordered
             if r["state"] == "past-eos" and any(tt["ga"] for tt in r["targets"].values())
         ],
+    }
+
+
+def derive(repo, now, registry=registry_tags, rc=None):
+    t0 = time.monotonic()
+    reg = {
+        a: git_tags(repo) if a == GIT else _read(a, registry)
+        for a in _artifacts(git=True)
+    }
+    print(
+        f"relstate: registry read {len(reg)} artifacts in {time.monotonic() - t0:.2f}s",
+        file=sys.stderr,
+    )
+    refs = _branches(repo)
+    anomalies = []
+    taken = taken_tags(reg)
+    rows = {name: _row(repo, name, ref, taken) for name, ref in refs.items()}
+    # A branchless line with a stable tag was retired after GA: its registry tags are history, not anomalies.
+    shipped = {}
+
+    # enabled: a build tag of T whose git commit is on the branch (derived, never recorded).
+    for t, (builds, anchor) in TARGETS.items():
+        _enable(repo, t, builds, reg, refs, rows, shipped, anomalies)
+        _fill_ga(repo, t, builds, anchor, reg, rows)
+
+    _set_states(rows, now)
+
+    ordered = sorted(rows.values(), key=lambda r: _key(r["line"]), reverse=True)
+    out = {
+        "now": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "branches": ordered,
+        **_sets(ordered),
         "next_minor": _next_minor(repo, ordered),
         "anomalies": anomalies,
     }
@@ -480,7 +517,7 @@ def retire_line_refusal(state, branch, force=False):
     promoted, say) may go. A stabilized on-prem target (chart in its window) goes only with force. Stabilized cloud
     is production and never goes: relstate would make the next older cloud GA production again.
     """
-    row = next((b for b in state["branches"] if b["branch"] == branch), None)
+    row = _branch_row(state, branch)
     if not row:
         return "no such branch"
     held = [t for t, tt in sorted(row["targets"].items()) if tt["state"] == "stabilized"]
@@ -489,6 +526,43 @@ def retire_line_refusal(state, branch, force=False):
     if held and not force:
         return f"{', '.join(held)} still supported (stabilized); force to retire it inside the window"
     return None
+
+
+def _branch_row(state, branch):
+    """The row of branch in state, or None."""
+    return next((b for b in state["branches"] if b["branch"] == branch), None)
+
+
+def _by_digest(tags):
+    """{digest: {id, digest, tags}} of an artifact's {tag: info}."""
+    by_digest = {}
+    # Version order, so the last version is the newest RC (rc.10 after rc.9); other tags first.
+    for t, info in sorted(
+        tags.items(),
+        key=lambda kv: (_vkey(kv[0]) if VER_RE.fullmatch(kv[0]) else (-1, -1), kv[0]),
+    ):
+        by_digest.setdefault(
+            info["digest"],
+            {"id": info.get("id"), "digest": info["digest"], "tags": []},
+        )["tags"].append(t)
+    return by_digest
+
+
+def _abandon_versions(reg, rc_re):
+    """abandon_plan's versions to delete per artifact and the last versions kept."""
+    versions, kept = {}, []
+    for a, tags in reg.items():
+        by_digest = _by_digest(tags)
+        drop = [
+            v for v in by_digest.values() if all(rc_re.fullmatch(t) for t in v["tags"])
+        ]
+        # Known limit: untagged versions are not listed, so "last" counts tagged ones only.
+        if drop and len(drop) == len(by_digest):
+            kept.append(f"{a}:{','.join(drop[-1]['tags'])}")
+            drop = drop[:-1]
+        if drop:
+            versions[a] = drop
+    return versions, kept
 
 
 def abandon_plan(repo, branch, registry=registry_tags):
@@ -501,10 +575,7 @@ def abandon_plan(repo, branch, registry=registry_tags):
     """
     x, y = rm._line(branch)
     rc_re = re.compile(rf"{re.escape(PREFIX)}v{x}\.{y}\.\d+-rc\.\d+")
-    reg = {
-        a: _read(a, registry)
-        for a in sorted({a for pair in TARGETS.values() for a in pair} - {GIT})
-    }
+    reg = {a: _read(a, registry) for a in _artifacts()}
     main = _main(repo)
     ga = [f"{PREFIX}v{x}.{y}.{z}" for z in sorted(rm._tags(repo, x, y, PREFIX)[0])]
     ga += [
@@ -519,24 +590,7 @@ def abandon_plan(repo, branch, registry=registry_tags):
         if rm.classify_commit(repo, c, main=main)
         not in ("build-generated", "cherry-pick", "declined")
     ]
-    versions, kept = {}, []
-    for a, tags in reg.items():
-        by_digest = {}
-        # Known limit: string order, so the version kept as last below can be rc.9's when rc.10 exists.
-        for t, info in sorted(tags.items()):
-            by_digest.setdefault(
-                info["digest"],
-                {"id": info.get("id"), "digest": info["digest"], "tags": []},
-            )["tags"].append(t)
-        drop = [
-            v for v in by_digest.values() if all(rc_re.fullmatch(t) for t in v["tags"])
-        ]
-        # ponytail: untagged versions are invisible here, so "last" is counted over tagged ones (conservative).
-        if drop and len(drop) == len(by_digest):
-            kept.append(f"{a}:{','.join(drop[-1]['tags'])}")
-            drop = drop[:-1]
-        if drop:
-            versions[a] = drop
+    versions, kept = _abandon_versions(reg, rc_re)
     rc_tags = sorted(
         (
             t
@@ -575,10 +629,8 @@ def promote_blockers(state, branch, target):
 
     An older line blocks only where `target` is enabled on it and it has no GA for `target`; GA is the cloud
     promote retag or the on-prem chart push. A retired line is gone from the state, so it never blocks.
+    Not applied to KEPT targets: each OSS line goes GA with its cloud line.
     """
-    # Not applied to a KEPT target (OSS). The order protects customers who stay on a line and upgrade later
-    # (on-prem windows). Each OSS line goes GA with its cloud line, so the order would hold an OSS line until the
-    # previous cloud line is GA.
     if target in KEPT:
         return []
     line = _key(branch.split("/", 1)[1])
@@ -598,7 +650,7 @@ def enable_blockers(state, branch, target):
     wait to go GA behind a newer GA line whose patches the promote order would then hold. A target already
     enabled on `branch` is not affected (a patch RC on an old line still builds).
     """
-    row = next((b for b in state["branches"] if b["branch"] == branch), None)
+    row = _branch_row(state, branch)
     if row and target in row["targets"]:
         return []
     line = _key(branch.split("/", 1)[1])
@@ -623,13 +675,17 @@ def summary(state):
             return f"stabilizing (rc.{VER_RE.fullmatch(tt['rcs'][-1])[4]})"
         return tt["state"]
 
+    def slack(b):
+        u = b.get("tip_rc_slack")
+        return f" ([Slack]({u}))" if u else ""
+
     out = [
         f"| branch | state | {' | '.join(TARGETS)} | tip_rc | next_rc | ahead_of_ga |",
         "|---|---|" + "---|" * (len(TARGETS) + 3),
     ]
     out += [
         f"| {b['branch']} | {b['state']} | {' | '.join(cell(b['targets'].get(t)) for t in TARGETS)} "
-        f"| {b['tip_rc'] or '-'}{f' ([Slack]({u}))' if (u := b.get('tip_rc_slack')) else ''} | {b['next_rc'] or '-'} | {'-' if b['ahead_of_ga'] is None else b['ahead_of_ga']} |"
+        f"| {b['tip_rc'] or '-'}{slack(b)} | {b['next_rc'] or '-'} | {'-' if b['ahead_of_ga'] is None else b['ahead_of_ga']} |"
         for b in state["branches"]
     ]
     return (
@@ -653,13 +709,15 @@ def main(argv=None, registry=registry_tags):
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("--repo", default=".")
     p.add_argument("--now", type=_ts, default=None, help="ISO-8601 UTC; default: now")
-    p.add_argument("--rc", help="also report the stable tag promoting this RC would get")
+    p.add_argument(
+        "--rc",
+        type=rm.option_free,
+        help="also report the stable tag promoting this RC would get",
+    )
     a = p.parse_args(argv)
     try:
         state = derive(a.repo, a.now or dt.datetime.now(dt.UTC), registry, a.rc)
-    except (
-        Exception
-    ) as e:  # registry or git failure: no JSON, never a silently empty state
+    except Exception as e:  # never print a silently empty state
         traceback.print_exc()
         print(f"relstate: {e}", file=sys.stderr)
         return 1

@@ -1,36 +1,35 @@
 """Pure-git checks for the release-branch strategy.
 
-Every function reads a local repo only; nothing is stored, everything is derived from git.
+Every function reads a local repo; nothing is stored.
+Repo, state and output paths must resolve under the working directory, GITHUB_WORKSPACE, RUNNER_TEMP or the temp dir.
 """
 
 import ast
+import datetime as dt
 import os
 import re
 import subprocess
+import tempfile
 
 BOT_EMAIL = "releases@unstract.com"
+_FORMAT_BODY = "--format=%B"  # git log: a commit's raw message
 PICK_RE = re.compile(r"\(cherry picked from commit ([0-9a-f]{7,40})\)")
-# Anywhere in the message, at a line start; `* ` too, because a squash with COMMIT_MESSAGES lists each commit's
-# subject as `* <subject>` and the bot's Release-branch-only commit is subject-only.
+# At any line start; also after "* ", as a COMMIT_MESSAGES squash lists each subject that way.
 RBO_RE = re.compile(r"^(?:\* )?Release-branch-only: (\S+)", re.M)
-# `UN-1 [FIX] x` or `[FIX] x`: the ticket is optional. Known limit: one ticket only, so `UN-1 UN-2 [FIX] x` without
-# a fix/ label fails Lint PR and is unclassifiable for Backport.
+# `TICKET [FIX] x` or `[FIX] x`; the ticket is optional. Known limit: one ticket only; `A-1 B-2 [FIX] x` needs a
+# fix/ label.
 PR_TITLE_RE = re.compile(
     r"^(?:(?P<ticket>[A-Z][A-Z0-9]*-\d+) )?\[(?P<type>FIX|HOT-FIX|FEAT|GATED-FEAT|DOCS|DEPS|MISC|DEV|WIP)\] \S"
 )
 FIX_CLASSES = ("fix", "security", "critical")
-REVERT_RE = re.compile(
-    r'^Revert "(.+)"'
-)  # GitHub's revert button; greedy, so a revert of a revert nests
-REVERTS_RE = re.compile(
-    r"^This reverts commit ([0-9a-f]{7,40})", re.M
-)  # git revert's body line
-DECLINED_RE = re.compile(
-    r"^Declined: (.+)$", re.M
-)  # the reason line Backport's record job writes on a decline commit
-BACKPORT_HEAD_RE = re.compile(
-    r"backport/(\d+\.\d+)/([0-9a-f]{7})"
-)  # the head Backport opens a pick PR from: line, sha7; fullmatch
+# GitHub's revert title; greedy, so a revert of a revert nests.
+REVERT_RE = re.compile(r'^Revert "(.+)"')
+# git revert's body line.
+REVERTS_RE = re.compile(r"^This reverts commit ([0-9a-f]{7,40})", re.M)
+# Reason line of a decline commit.
+DECLINED_RE = re.compile(r"^Declined: (.+)$", re.M)
+# Pick-PR head: backport/<X.Y>/<sha7> (use fullmatch).
+BACKPORT_HEAD_RE = re.compile(r"backport/(\d+\.\d+)/([0-9a-f]{7})")
 
 
 def _web():
@@ -55,10 +54,6 @@ def tag_link(tag):
     return f"[`{tag}`]({_web()}/releases/tag/{tag})" if _web() else f"`{tag}`"
 
 
-def run_link(run_id):
-    return f"[run]({_web()}/actions/runs/{run_id})" if _web() else f"run {run_id}"
-
-
 def image_link(target, tag):
     """The Artifact Registry console page of target's repository (RELSTATE_AR_<TARGET>), the tag in the text;
     plain text when that variable is unset.
@@ -73,9 +68,40 @@ def image_link(target, tag):
     )
 
 
-_FULL = (
-    set()
-)  # repos confirmed non-shallow; a failed check is retried, never cached as a pass
+_FULL = set()  # repos confirmed non-shallow; failures are not cached
+
+
+class Refused(RuntimeError, ValueError):
+    """An argument refused by a guard: a RuntimeError for the CLI handlers, a ValueError for argparse `type=`."""
+
+
+def option_free(value):
+    """value, refused when git or a subprocess would read it as an option."""
+    if value.startswith("-"):
+        raise Refused(f"{value!r} starts with '-'")
+    return value
+
+
+def local_path(path):
+    """path, refused unless it is the runner's step summary file or resolves under the working directory,
+    GITHUB_WORKSPACE, RUNNER_TEMP or the temp dir.
+    """
+    if path == os.environ.get("GITHUB_STEP_SUMMARY"):
+        return path
+    real = os.path.realpath(option_free(path))
+    roots = {
+        os.path.realpath(r)
+        for r in (
+            os.getcwd(),
+            os.environ.get("GITHUB_WORKSPACE"),
+            os.environ.get("RUNNER_TEMP"),
+            tempfile.gettempdir(),
+        )
+        if r
+    }
+    if not any(os.path.commonpath([real, r]) == r for r in roots):
+        raise Refused(f"{path} is outside the workspace and temp dirs")
+    return path
 
 
 def _require_full_history(repo):
@@ -97,6 +123,7 @@ def _require_full_history(repo):
 
 
 def git(repo, *args, check=True):
+    repo = local_path(repo)
     _require_full_history(repo)
     r = subprocess.run(["git", "-C", repo, *args], capture_output=True, text=True)
     if check and r.returncode:
@@ -104,6 +131,34 @@ def git(repo, *args, check=True):
             f"git {' '.join(args)} (exit {r.returncode}): {r.stderr.strip()}"
         )
     return r.stdout.strip() if check else r
+
+
+def resolve(repo, rev):
+    """Full sha of the commit rev names, or None."""
+    r = git(repo, "rev-parse", "-q", "--verify", f"{rev}^{{commit}}", check=False)
+    return r.stdout.strip() if r.returncode == 0 else None
+
+
+def message(repo, sha):
+    """The raw commit message of sha."""
+    return git(repo, "log", "-1", _FORMAT_BODY, sha)
+
+
+def subject_pr(repo, sha, check=True):
+    """The `(#n)` at the end of sha's subject, else None. check=False: an unknown sha reads as None."""
+    r = git(repo, "log", "-1", "--format=%s", sha, check=check)
+    m = re.search(r"\(#(\d+)\)$", r if check else r.stdout.strip())
+    return int(m[1]) if m else None
+
+
+def same_sha(a, b):
+    """Do a and b name the same commit, either one abbreviated?"""
+    return a.startswith(b) or b.startswith(a)
+
+
+def ts(s):
+    """An ISO-8601 time; a trailing Z reads as UTC."""
+    return dt.datetime.fromisoformat(s.replace("Z", "+00:00"))
 
 
 def is_ancestor(repo, a, b):
@@ -115,8 +170,8 @@ def is_ancestor(repo, a, b):
 
 def on_main(repo, sha, main="main"):
     """Does `sha` (full or unambiguous prefix) name a commit on `main`?"""
-    r = git(repo, "rev-parse", "-q", "--verify", f"{sha}^{{commit}}", check=False)
-    return r.returncode == 0 and is_ancestor(repo, r.stdout.strip(), main)
+    full = resolve(repo, sha)
+    return full is not None and is_ancestor(repo, full, main)
 
 
 def _is_empty(repo, sha):
@@ -130,11 +185,7 @@ def picked_from(repo, sha):
     them see a hand-written short sha and the bot's full one as the same original. A trailer that does not resolve
     (unknown or ambiguous) is kept as written.
     """
-    out = []
-    for o in PICK_RE.findall(git(repo, "log", "-1", "--format=%B", sha)):
-        r = git(repo, "rev-parse", "-q", "--verify", f"{o}^{{commit}}", check=False)
-        out.append(r.stdout.strip() if r.returncode == 0 else o)
-    return out
+    return [resolve(repo, o) or o for o in PICK_RE.findall(message(repo, sha))]
 
 
 def branch_range(repo, branch, main):
@@ -147,16 +198,16 @@ def branch_range(repo, branch, main):
 def range_messages(repo, branch, main):
     """All commit messages in merge-base(main, branch)..branch, as one string (one git call)."""
     return git(
-        repo, "log", "--format=%B", f"{git(repo, 'merge-base', main, branch)}..{branch}"
+        repo, "log", _FORMAT_BODY, f"{git(repo, 'merge-base', main, branch)}..{branch}"
     )
 
 
-# 1. Commit kinds / release-branch CI gate ---------------------------------------------------------------
+# Commit kinds / release-branch CI gate ---------------------------------------------------------------
 
 
 def reverted_pick(repo, sha, main="main"):
     """The full sha of the pick that `sha` reverts on its own branch (after the cut), else None."""
-    m = REVERTS_RE.search(git(repo, "log", "-1", "--format=%B", sha))
+    m = REVERTS_RE.search(message(repo, sha))
     if not m or git(repo, "cat-file", "-e", f"{m[1]}^{{commit}}", check=False).returncode:
         return None
     t = git(repo, "rev-parse", f"{m[1]}^{{commit}}")
@@ -167,20 +218,16 @@ def reverted_pick(repo, sha, main="main"):
 
 
 def classify_commit(repo, sha, bot_email=BOT_EMAIL, main="main"):
-    body = git(repo, "log", "-1", "--format=%B", sha)
+    body = message(repo, sha)
     if PICK_RE.search(body):
         if not all(on_main(repo, o, main) for o in PICK_RE.findall(body)):
-            return (
-                "invalid"  # trailer names nothing on main: not a pick of a main original
-            )
+            return "invalid"  # trailer names nothing on main
         return "declined" if _is_empty(repo, sha) else "cherry-pick"
-    if reverted_pick(
-        repo, sha, main
-    ):  # backing a pick out of one branch declines it there
+    # A revert of a pick declines it on this branch.
+    if reverted_pick(repo, sha, main):
         return "declined"
-    if RBO_RE.search(
-        body
-    ):  # before the author check: a bot-made pin bump is still owed a report
+    # Checked before the author: a bot-made pin bump still needs a report.
+    if RBO_RE.search(body):
         return "release-branch-only"
     # Trust assumption: the author email is client-set; the review every release-branch PR gets is the backstop.
     if git(repo, "log", "-1", "--format=%ae", sha).lower() == bot_email.lower():
@@ -189,14 +236,14 @@ def classify_commit(repo, sha, bot_email=BOT_EMAIL, main="main"):
 
 
 def pr_commits(repo, base, head_ref, head="HEAD"):
-    """The commits the PR check classifies on a PR from head_ref into base. A backport/* PR lands as its squash, whose
-    message keeps the first commit's pick trailer: only that commit is judged, so a plain resolution commit after it
-    passes. This relies on release/* allowing squash merges only (a ruleset, set before Backport runs); a rebase
-    merge would land the unjudged commits as they are. Any other PR: every commit in base..head.
+    """Commits the PR check classifies. A backport/* PR lands as one squash, so only its first commit is judged
+    (needs squash-only merges on release/*). Any other PR: every commit in base..head.
     """
     out = git(repo, "rev-list", "--reverse", f"{base}..{head}")
     commits = out.split() if out else []
-    return commits[:1] if is_backport(head_ref) else commits
+    if not commits or not is_backport(head_ref):
+        return commits
+    return [commits[0]]
 
 
 def is_backport(head_ref):
@@ -219,6 +266,25 @@ def conflict_markers(repo, rev="HEAD"):
     return [m.split(":", 1)[1] for m in r.stdout.splitlines()]
 
 
+def _ci_scope(repo, branch, event, before, head_ref, main):
+    """ci_commits' ([sha], where) for one event."""
+    if event == "pull_request":
+        if is_backport(head_ref) and (marked := conflict_markers(repo)):
+            raise ValueError(
+                f"conflict markers in {', '.join(marked)}: resolve before merging"
+            )
+        return pr_commits(repo, branch, head_ref), f"PR into {branch}"
+    if (
+        set(before) - {"0"}
+        and git(repo, "cat-file", "-e", f"{before}^{{commit}}", check=False).returncode
+        == 0
+    ):
+        # Pushed commits only, so a revert can clear an earlier invalid commit.
+        out = git(repo, "rev-list", "--reverse", f"{before}..HEAD")
+        return (out.split() if out else []), f"push to {branch}"
+    return branch_range(repo, branch, main), branch
+
+
 def ci_commits(
     repo, branch, event, before="", head_ref="", labelled=False, main="origin/main"
 ):
@@ -229,60 +295,31 @@ def ci_commits(
     release-branch-only, since the squash at merge writes the line. push: the pushed commits before..HEAD, or the
     whole branch when before is all zeros (branch creation) or gone (a force push).
     """
-    if event == "pull_request":
-        if is_backport(head_ref) and (marked := conflict_markers(repo)):
-            raise ValueError(
-                f"conflict markers in {', '.join(marked)}: resolve before merging"
-            )
-        commits, where = pr_commits(repo, branch, head_ref), f"PR into {branch}"
-    elif (
-        set(before) - {"0"}
-        and git(repo, "cat-file", "-e", f"{before}^{{commit}}", check=False).returncode
-        == 0
-    ):
-        # Only the pushed commits. Classifying the whole branch would keep every later push red
-        # after one invalid commit landed, so a revert could never clear it. The PR check covers PR commits.
-        out = git(repo, "rev-list", "--reverse", f"{before}..HEAD")
-        commits, where = out.split() if out else [], f"push to {branch}"
-    else:
-        commits, where = branch_range(repo, branch, main), branch
+    commits, where = _ci_scope(repo, branch, event, before, head_ref, main)
     labelled = labelled and event == "pull_request"
+    backport_pr = event == "pull_request" and is_backport(head_ref)
     rows = []
     for c in commits:
         kind = classify_commit(repo, c, main=main)
-        # The squash keeps every trailer of a backport PR's first commit: one naming the head's fix, or it records others.
-        if (
-            event == "pull_request"
-            and is_backport(head_ref)
-            and not pick_trailer(head_ref, git(repo, "log", "-1", "--format=%B", c))
-        ):
+        # The squash keeps the first commit's trailers: it must name the head's fix only.
+        if backport_pr and not pick_trailer(head_ref, message(repo, c)):
             kind = "invalid"
-        # Known limit: the label passes every invalid commit; it does not check that a Release-branch-only line will
-        # be in the squash (a fork PR, or a merge before the bot pushes that commit).
+        # Known limit: the label passes every invalid commit without checking that the squash will carry a
+        # Release-branch-only line.
         rows.append(
             (c, "release-branch-only (label)" if labelled and kind == "invalid" else kind)
         )
     return rows, where
 
 
-def check_branch(repo, branch, main="main"):
-    """Release-branch CI gate: the invalid commits on the branch. Empty list == pass."""
-    return [
-        c
-        for c in branch_range(repo, branch, main)
-        if classify_commit(repo, c, main=main) == "invalid"
-    ]
-
-
-# 2. PR class (Lint PR) ------------------------------------------------------
+# PR class (Lint PR) ------------------------------------------------------
 
 FIX_LABELS = ("fix/security", "fix/critical", "fix/needs-backport")
 
 
 def pr_fix_class(title, labels=()):
     """'fix' | 'security' | 'critical' for fix PRs, None for non-fix PRs; ValueError = CI rejects."""
-    # Anything that looks like a class label (fix/<x>, the old fix-class/<x>, near-typos) but is
-    # not one of FIX_LABELS: a typo must not silently drop or downgrade the class.
+    # Reject near-miss class labels (fix/<x>, fix-class/<x>, typos) so a typo cannot drop the class.
     bad = [
         l
         for l in labels
@@ -296,8 +333,7 @@ def pr_fix_class(title, labels=()):
     }
     if len(classes) > 1:
         raise ValueError(f"conflicting fix labels: {sorted('fix/' + c for c in classes)}")
-    # A revert takes the reverted PR's class: it must follow the original onto every branch that carries it.
-    # Stripped: GitHub keeps a title's leading space, and a typo'd space must not leave a merged fix unclassifiable.
+    # A revert takes the reverted PR's class. Strip: GitHub keeps a leading space.
     inner = title.strip()
     while r := REVERT_RE.match(inner):
         inner = r.group(1).strip()
@@ -336,7 +372,7 @@ def rbo_key(title, pr):
     return m["ticket"] if m and m["ticket"] else f"#{pr}"
 
 
-# 3. Version allocation (at build time; a version names one commit) ------------------------------------------------
+# Version allocation (at build time; a version names one commit) ------------------------------------------------
 
 
 def _line(branch):
@@ -373,10 +409,8 @@ def rc_version(repo, branch, prefix="", taken=()):
     """Tag for a build of the branch tip, allocated from tags at build time.
 
     If the tip already carries an RC tag of this line, that tag is returned: a commit gets one RC tag.
-    taken: tag names already used elsewhere (every target's registry tags). An RC there is never allocated again:
-    an artifact pushed by a run whose tag push failed would otherwise block the line. The one exception is a tip
-    that is already the bot's bump for it (already_bumped): that run is resumed.
-    Needs the full tag set locally (fetch tags in CI): with no tags every line reads as freshly cut.
+    taken: tags already pushed to a registry; never reallocated, except for a tip that is already the bot's bump
+    for that tag (resumed). Needs all tags fetched.
     """
     x, y = _line(branch)
     for t in git(repo, "tag", "--points-at", branch).split():
@@ -401,10 +435,8 @@ CHART = "charts/unstract-platform/Chart.yaml"
 
 
 def already_bumped(repo, branch, tag):
-    """True when the branch tip is the bot's bump for tag: build-generated with subject `release: chart <version>`
-    and the chart at the version, or, in a repo with no chart, subject `release: <version>` (an empty commit).
-    That tip is left behind when the bump was pushed but the run stopped before the tag push (a failed build);
-    Take RC build then tags it instead of committing another bump.
+    """Is the branch tip the bot's bump for tag (`release: chart <v>` with the chart at <v>, or `release: <v>` with
+    no chart)? Left behind when a run pushed the bump but not the tag.
     """
     ver = tag.removeprefix("v")
     chart = git(repo, "show", f"{branch}:{CHART}", check=False)
@@ -418,18 +450,12 @@ def already_bumped(repo, branch, tag):
 
 
 def promote_version(repo, rc_tag):
-    """Stable tag for promoting rc_tag: the commit's existing stable tag, else one past the highest.
-
-    Stable Z follows commit order, so an upgrade never loses a fix. The Z can differ from the
-    RC's (a target that passes a later RC takes the next patch, so a version names one commit; the
-    RC->stable mapping goes in the release body), which departs from the spec's
-    x.y.(z+1)-rc.N -> vx.y.(z+1) when a promote lands while a later patch is in RC. An RC older than a
-    commit that already has a stable tag is refused as a downgrade. Both are harness choices, open
-    with the spec owner.
+    """Stable tag for rc_tag: the commit's existing stable tag, else one past the highest. Z follows commit order,
+    so it can differ from the RC's Z (the release body maps RC to stable). An RC older than an already-stable commit
+    is refused as a downgrade.
     """
-    m = re.fullmatch(
-        r"((?:[a-z]+-)?)v(\d+)\.(\d+)\.(\d+)-rc\.\d+", rc_tag
-    )  # the stable tag keeps the RC's prefix
+    # The stable tag keeps the RC's prefix.
+    m = re.fullmatch(r"((?:[a-z]+-)?)v(\d+)\.(\d+)\.(\d+)-rc\.\d+", rc_tag)
     if not m:
         raise ValueError(f"not an RC tag: {rc_tag}")
     p, x, y = m.group(1), m.group(2), m.group(3)
@@ -446,19 +472,16 @@ def promote_version(repo, rc_tag):
     return f"{p}v{x}.{y}.{max(stable) + 1 if stable else 0}"
 
 
-# 4. Convergence --------------------------------------------------------------------
+# Convergence --------------------------------------------------------------------
 
 
 def is_converged(repo, c_main, branch, main="main"):
-    """Inherited (ancestor) or picked/declined after the cut (trailer in merge-base..branch).
-    Known limit: no test covers the inherited path (a commit from before the cut) on its own.
-    """
+    """Inherited (ancestor) or picked/declined after the cut (trailer in merge-base..branch)."""
     full = git(repo, "rev-parse", f"{c_main}^{{commit}}")
     if is_ancestor(repo, full, branch):
         return True
     return any(
-        o.startswith(full) or full.startswith(o)
-        for o in PICK_RE.findall(range_messages(repo, branch, main))
+        same_sha(o, full) for o in PICK_RE.findall(range_messages(repo, branch, main))
     )
 
 
@@ -491,13 +514,18 @@ def decline_records(repo, branch, main="main"):
     for c in branch_range(repo, branch, main):
         kind = classify_commit(repo, c, main=main)
         if kind in ("cherry-pick", "declined"):
-            rp = reverted_pick(repo, c, main)
-            body = git(repo, "log", "-1", "--format=%B", c)
-            reasons = DECLINED_RE.findall(body)
-            reason = reasons[-1].strip() if reasons and not rp else body.splitlines()[0]
-            for o in picked_from(repo, rp or c):
-                rec[o] = (c, reason) if kind == "declined" else None
+            _record_decline(repo, c, kind, main, rec)
     return {o: r for o, r in rec.items() if r}
+
+
+def _record_decline(repo, c, kind, main, rec):
+    """decline_records' step for one pick-trailer commit c: set rec[original] for each original it names."""
+    rp = reverted_pick(repo, c, main)
+    body = message(repo, c)
+    reasons = DECLINED_RE.findall(body)
+    reason = reasons[-1].strip() if reasons and not rp else body.splitlines()[0]
+    for o in picked_from(repo, rp or c):
+        rec[o] = (c, reason) if kind == "declined" else None
 
 
 def shipped_prs(repo, tags, main="main", lookup=None, line=None):
@@ -519,23 +547,29 @@ def shipped_prs(repo, tags, main="main", lookup=None, line=None):
     }
     prs = set()
     for o in originals:
-        m = re.search(r"\(#(\d+)\)$", git(repo, "log", "-1", "--format=%s", o))
-        n = int(m[1]) if m else lookup(o) if lookup else None
+        n = subject_pr(repo, o)
+        if n is None and lookup:
+            n = lookup(o)
         if n is None:
             raise RuntimeError(
                 f"no PR number for {o[:12]} (picked into {', '.join(tags)})"
             )
         prs.add(n)
-    for c in branch_range(repo, line, main) if line else []:
+    if line:
+        prs |= _line_pick_prs(repo, line, originals, main, lookup)
+    return prs
+
+
+def _line_pick_prs(repo, line, originals, main, lookup):
+    """shipped_prs' PRs that landed line's picks of `originals`."""
+    prs = set()
+    for c in branch_range(repo, line, main):
         if classify_commit(repo, c, main=main) == "cherry-pick" and any(
-            o.startswith(d) or d.startswith(o)
-            for o in originals
-            for d in picked_from(repo, c)
-        ):  # may be abbreviated
-            m = re.search(r"\(#(\d+)\)$", git(repo, "log", "-1", "--format=%s", c))
+            same_sha(o, d) for o in originals for d in picked_from(repo, c)
+        ):
             prs |= {
                 n
-                for n in (int(m[1]) if m else None, lookup(c) if lookup else None)
+                for n in (subject_pr(repo, c), lookup(c) if lookup else None)
                 if n is not None
             }
     return prs
@@ -544,23 +578,12 @@ def shipped_prs(repo, tags, main="main", lookup=None, line=None):
 def convergence_report(repo, older, newer, main="main", newer_branch=None):
     """[(sha_on_older, status)] with status CONVERGED | MISSING | UNCLASSIFIABLE | RBO-ABSENT. Blocks iff any MISSING.
 
-    RBO-ABSENT is report-only: a Release-branch-only key (the ticket, or `#<PR>`) on `older` with no
-    Release-branch-only commit for that key on `newer`. Case 5 (config/migration) owes nothing;
-    a security fix for code gone from main may need its own equivalent on `newer` if the vulnerable code is still
-    there, so a human looks.
-
-    Both scan directions are this one call: promoting `newer` scans each older branch into it,
-    promoting `older` scans it into each newer branch; either way it is older's picks vs newer.
-    Pass `newer` as a branch while it is in RC. Once it is GA, pass its latest stable tag (for
-    the promoting target) as `newer`, since "shipped in its latest patch" is not the branch tip, and
-    the branch as `newer_branch`: a branch need only carry a decline, not ship it.
-
-    A pick whose original cannot be placed on `main` fails release-branch CI and is MISSING here: it is never
-    report-only, and never CONVERGED (a branch-first fix has no main original to converge on).
+    RBO-ABSENT is report-only (a key on older with no Release-branch-only commit on newer). Pass newer as a branch
+    while in RC, or as its latest stable tag once GA, with the branch as newer_branch (it need only carry a
+    decline). A pick whose original is not on main is MISSING.
     """
     out = []
-    # Newest trailer wins on both sides: a decline on newer that a later pick undid is not a decline, and a pick on
-    # older that a later decline or revert backed out is not owed.
+    # Newest trailer wins on both sides (see trailer_states).
     declined = declined_originals(repo, newer_branch or newer, main)
     newer_picks = {
         o
@@ -569,47 +592,90 @@ def convergence_report(repo, older, newer, main="main", newer_branch=None):
     }
     older_declined = declined_originals(repo, older, main)
     newer_rbo = set(RBO_RE.findall(range_messages(repo, newer, main)))
-    same = lambda o, names: any(
-        o.startswith(d) or d.startswith(o) for d in names
-    )  # trailers may be abbreviated
     for c in branch_range(repo, older, main):
         kind = classify_commit(repo, c, main=main)
-        if kind == "invalid":
-            out.append((c, "MISSING" if picked_from(repo, c) else "UNCLASSIFIABLE"))
-        elif kind == "cherry-pick":
-            if all(
-                same(o, older_declined) for o in picked_from(repo, c)
-            ):  # backed out of `older`: newer owes nothing
-                continue
-            ok = all(
-                is_ancestor(repo, git(repo, "rev-parse", f"{o}^{{commit}}"), newer)
-                or same(o, newer_picks)
-                or same(o, declined)
-                for o in picked_from(repo, c)
-            )
-            out.append((c, "CONVERGED" if ok else "MISSING"))
-        elif kind == "release-branch-only":
-            body = git(repo, "log", "-1", "--format=%B", c)
-            if not set(RBO_RE.findall(body)) & newer_rbo:
-                out.append((c, "RBO-ABSENT"))
-        # build-generated: excluded from convergence.
-        # declined on `older`: older does not carry the fix, so newer owes nothing.
+        status = _older_status(
+            repo, c, kind, newer, older_declined, newer_picks, declined, newer_rbo
+        )
+        if status:
+            out.append((c, status))
     return out
 
 
-# 5. Relevance (advisory: does the branch still have the code a fix touches?) ------------------
+def _older_status(repo, c, kind, newer, older_declined, newer_picks, declined, newer_rbo):
+    """convergence_report's status for commit c on older, None when it is not reported."""
+    if kind == "invalid":
+        return "MISSING" if picked_from(repo, c) else "UNCLASSIFIABLE"
+    if kind == "cherry-pick":
+        return _pick_status(repo, c, newer, older_declined, newer_picks, declined)
+    if kind == "release-branch-only":
+        body = message(repo, c)
+        if not set(RBO_RE.findall(body)) & newer_rbo:
+            return "RBO-ABSENT"
+    # build-generated: excluded from convergence.
+    # declined on `older`: older does not carry the fix, so newer owes nothing.
+    return None
+
+
+def _same(o, names):
+    return any(same_sha(o, d) for d in names)
+
+
+def _pick_status(repo, c, newer, older_declined, newer_picks, declined):
+    """convergence_report's status for a pick on older: CONVERGED | MISSING, None when it owes nothing."""
+    # Backed out of older: newer owes nothing.
+    if all(_same(o, older_declined) for o in picked_from(repo, c)):
+        return None
+    ok = all(
+        is_ancestor(repo, git(repo, "rev-parse", f"{o}^{{commit}}"), newer)
+        or _same(o, newer_picks)
+        or _same(o, declined)
+        for o in picked_from(repo, c)
+    )
+    return "CONVERGED" if ok else "MISSING"
+
+
+# Relevance (advisory: does the branch still have the code a fix touches?) ------------------
 
 
 def relevance(repo, fix_sha, branch):
-    """Are the exact line versions a main fix edits on `branch`? relevant | not-relevant | partial | unknown.
-
-    Blames the pre-image lines the fix modifies/deletes in fix^; each last-modifying commit counts
-    if it is an ancestor of `branch` or was picked onto it. 'not-relevant' means those line versions
-    are absent, not that the code is: a line rewritten on main after the cut still exists on the
-    branch in its older form (adapt the pick by hand, never refactor). Advisory only.
-    Pure additions have no pre-image: 'unknown' (fallback, not implemented: treat as relevant iff
-    the touched files exist on the branch).
+    """Are the line versions a main fix edits on branch? relevant | not-relevant | partial | unknown. Blames the
+    fix's pre-image lines; each introducer counts if it is an ancestor of branch or picked onto it. Pure additions:
+    unknown. Advisory only.
     """
+    introducers = _introducers(repo, fix_sha)
+    if not introducers:
+        return "unknown"
+    # Known limit: scans the branch log once per call.
+    picked = {
+        o
+        for c in git(
+            repo, "log", "--format=%H", "-F", "--grep=(cherry picked from commit", branch
+        ).split()
+        if not _is_empty(repo, c)
+        for o in picked_from(repo, c)
+    }  # a decline carries nothing
+    hits = [
+        is_ancestor(repo, c, branch) or any(c.startswith(p) for p in picked)
+        for c in introducers
+    ]
+    if all(hits):
+        return "relevant"
+    if not any(hits):
+        return "not-relevant"
+    return "partial"
+
+
+def _minus_path(line):
+    """The path of a `--- ` file-header line, None for /dev/null."""
+    p = line[4:].rstrip("\t")  # git tab-suffixes paths with spaces
+    if p.startswith('"'):  # C-quoted (", \, control chars): unquote to the raw bytes
+        p = ast.literal_eval("b" + p).decode()
+    return None if p == "/dev/null" else p[2:]
+
+
+def _introducers(repo, fix_sha):
+    """The last-modifying commits of the pre-image lines fix_sha modifies/deletes (for relevance)."""
     parent, introducers, path, header = f"{fix_sha}^", set(), None, False
     diff = git(
         repo,
@@ -626,15 +692,9 @@ def relevance(repo, fix_sha, branch):
     for line in diff.splitlines():
         if line.startswith("diff --git "):
             path, header = None, True
-        elif header and line.startswith(
-            "--- "
-        ):  # only in the file header: `--- x` in a hunk is content
-            p = line[4:].rstrip("\t")  # git tab-suffixes paths with spaces
-            if p.startswith(
-                '"'
-            ):  # C-quoted (", \, control chars): unquote to the raw bytes
-                p = ast.literal_eval("b" + p).decode()
-            path = None if p == "/dev/null" else p[2:]
+        # Only in the file header: `--- x` in a hunk is content.
+        elif header and line.startswith("--- "):
+            path = _minus_path(line)
         elif line.startswith("@@"):
             header = False
         m = re.match(r"@@ -(\d+)(?:,(\d+))? ", line)
@@ -644,19 +704,4 @@ def relevance(repo, fix_sha, branch):
                 repo, "blame", "--porcelain", "-L", f"{start},+{n}", parent, "--", path
             )
             introducers |= set(re.findall(r"^([0-9a-f]{40}) \d+ \d+", blame, re.M))
-    if not introducers:
-        return "unknown"
-    # ponytail: scans the whole branch log once per call; fine for fixtures, index trailers once if slow.
-    picked = {
-        o
-        for c in git(
-            repo, "log", "--format=%H", "-F", "--grep=(cherry picked from commit", branch
-        ).split()
-        if not _is_empty(repo, c)
-        for o in picked_from(repo, c)
-    }  # a decline carries nothing
-    hits = [
-        is_ancestor(repo, c, branch) or any(c.startswith(p) for p in picked)
-        for c in introducers
-    ]
-    return "relevant" if all(hits) else "not-relevant" if not any(hits) else "partial"
+    return introducers

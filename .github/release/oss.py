@@ -30,6 +30,7 @@ OSS = rs.PINS or "Zipstack/unstract"  # the OSS repo the cloud lines pin
 PREFIX = rs.REPOS[OSS.split("/")[1].lower()][4]
 VER = rs.ver_re(PREFIX)
 PIN_RE = re.compile(r'^unstract-platform-version = "([^"]*)"$', re.M)
+RELEASE = "release/"  # release branch name prefix
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 
@@ -51,27 +52,14 @@ def line_of(tag):
 
 
 def tip(oss, branch):
-    r = rm.git(
-        oss,
-        "rev-parse",
-        "-q",
-        "--verify",
-        f"refs/remotes/origin/{branch}^{{commit}}",
-        check=False,
-    )
-    return r.stdout.strip() if r.returncode == 0 else None
+    return rm.resolve(oss, f"refs/remotes/origin/{branch}")
 
 
 def tags_on(oss, sha, branch):
     """Version tags of branch's minor on commit sha."""
-    line = branch.removeprefix("release/")
-    return [
-        t
-        for t in rm.git(
-            oss, "tag", "--points-at", sha, "-l", f"{PREFIX}v{line}.*"
-        ).split()
-        if (m := VER.fullmatch(t)) and f"{m[1]}.{m[2]}" == line
-    ]
+    return rs.line_tags(
+        oss, branch.removeprefix(RELEASE), "--points-at", sha, prefix=PREFIX
+    )
 
 
 def choose(tags):
@@ -122,10 +110,8 @@ def _tag_push(oss, name, sha, msgs, *refspecs):
 
 
 def _bump(oss, branch, base, tag, slack_url, old):
-    """One empty bot commit `release: <tag>` on base, tagged, pushed as branch's new tip with its tag. The commit gives
-    the RC its own commit, so a line never shares a tag's commit with main or another line. The push is leased on
-    old, the branch tip it read: for rc, a branch deleted or moved since then fails it instead of being re-created or
-    overwritten; for cut, old is "" (no branch), so a branch created since then fails it.
+    """Push one empty bot commit `release: <tag>` on base as branch's new tip, with its tag. Leased on old (the tip
+    read; "" for a cut), so a concurrent change fails the push.
     """
     sha = _bot(
         oss,
@@ -150,18 +136,17 @@ def _bump(oss, branch, base, tag, slack_url, old):
 
 
 def gate(oss, branch, ref, annotate):
-    """The OSS-line convergence gate of branch at tag ref, run on the OSS clone as the OSS repo: 0 pass, 2 block,
-    1 error. Its checks table goes to the step summary. argparse also exits 2, on a usage error: that is an error,
-    never a block a force could override.
-    """
+    """Run convgate on the OSS clone: 0 pass, 2 block, 1 error (an argparse usage exit 2 counts as an error)."""
     if summary := os.environ.get("GITHUB_STEP_SUMMARY"):
         with open(summary, "a") as f:
             f.write(f"#### OSS line `{branch}` at `{ref}`\n\n")
+    oss, branch, ref = rm.local_path(oss), rm.option_free(branch), rm.option_free(ref)
     env = {
         **os.environ,
         "GITHUB_REPOSITORY": OSS,
         "GH_TOKEN": os.environ.get("OSS_TOKEN") or os.environ.get("GH_TOKEN", ""),
     }
+    # convgate stdout -> our stderr: our stdout is the tag the workflow reads.
     r = subprocess.run(
         [
             sys.executable,
@@ -181,7 +166,7 @@ def gate(oss, branch, ref, annotate):
         stdout=2,
         stderr=subprocess.PIPE,
         text=True,
-    )  # stdout is the tag the workflow captures
+    )
     sys.stderr.write(r.stderr)
     if (
         r.returncode not in (0, 2)
@@ -252,7 +237,7 @@ def reopen(oss, branch):
     stabilizing again and its next main push catches up the plain fixes it skipped. Promote writes the tag again at
     the line's last GA. A missing tag is a no-op. Summary lines.
     """
-    mark = rs.STABILIZED + branch.removeprefix("release/")
+    mark = rs.STABILIZED + branch.removeprefix(RELEASE)
     if not rs._tag_commit(oss, mark):
         return []
     _push(oss, f":refs/tags/{mark}")
@@ -286,6 +271,25 @@ def promote(repo, oss, cloud_rc, force=False, reason="", stabilized=False):
     return stable
 
 
+def _conflicts(branch, force):
+    """(open backport conflict PR refs on OSS branch, unchecked notes); a failed listing raises unless force."""
+    unchecked = []
+    try:
+        prs = [
+            f"#{p['number']}"
+            for p in bp.conflict_prs(OSS, branch, os.environ.get("OSS_TOKEN"))
+        ]
+    except RuntimeError as e:
+        if not force:
+            raise
+        print(
+            f"::warning::Could not list open backport conflict PRs on OSS {branch} (forced on): {e}",
+            file=sys.stderr,
+        )
+        prs, unchecked = [], ["conflict PRs unchecked: listing failed"]
+    return prs, unchecked
+
+
 def _promote(repo, oss, cloud_rc, force, reason):
     """The stable OSS tag of the OSS RC cloud_rc pins, tagging it when it has none yet. Open backport conflict PRs on
     the OSS line (or a failed listing of them) and its gate block first unless force; the other cloud product finds
@@ -304,22 +308,7 @@ def _promote(repo, oss, cloud_rc, force, reason):
         raise RuntimeError(f"OSS {e}") from None
     if rs._tag_commit(oss, stable) == sha:
         return stable  # promoted earlier, e.g. by the other cloud product
-    try:
-        prs, unchecked = (
-            [
-                f"#{p['number']}"
-                for p in bp.conflict_prs(OSS, branch, os.environ.get("OSS_TOKEN"))
-            ],
-            [],
-        )
-    except RuntimeError as e:
-        if not force:
-            raise
-        print(
-            f"::warning::Could not list open backport conflict PRs on OSS {branch} (forced on): {e}",
-            file=sys.stderr,
-        )
-        prs, unchecked = [], ["conflict PRs unchecked: listing failed"]
+    prs, unchecked = _conflicts(branch, force)
     if prs and not force:
         raise RuntimeError(
             f"OSS {branch} has open backport conflict PRs {', '.join(prs)}: resolve and merge or close "
@@ -355,7 +344,7 @@ def retire(oss, branch, reason, dry_run=True):
     (no OSS GA) its RC tags and the branch. With a GA its tags stay, stabilized/X.Y with them, and the minor is never
     reused; without one it is. Summary lines.
     """
-    line = branch.removeprefix("release/")
+    line = branch.removeprefix(RELEASE)
     sha = tip(oss, branch)
     if not sha:
         done = rm.git(oss, "tag", "-l", f"retired/{line}-*").split()
@@ -390,9 +379,7 @@ def retire(oss, branch, reason, dry_run=True):
     ]
     if dry_run:
         return out
-    # One atomic push leased on the tip read above: a commit pushed since then fails the whole retire, so on origin
-    # the branch, its RC tags and the archive tag all stay as they were. The archive tag is always sent (a no-op when
-    # origin has it), so a re-run in this clone archives the tip too.
+    # Atomic and leased on the tip read above; the archive tag is always sent so a re-run in this clone archives too.
     _tag_push(
         oss,
         archive,
@@ -415,13 +402,13 @@ def main(argv=None):
     )
     sub = p.add_subparsers(dest="cmd", required=True)
     c = sub.add_parser("cut")
-    c.add_argument("--line", required=True)
+    c.add_argument("--line", type=rm.option_free, required=True)
     c.add_argument("--slack-url", default="")
     r = sub.add_parser("rc")
-    r.add_argument("--branch", required=True)
+    r.add_argument("--branch", type=rm.option_free, required=True)
     r.add_argument("--slack-url", default="")
     m = sub.add_parser("promote")
-    m.add_argument("--rc", required=True)
+    m.add_argument("--rc", type=rm.option_free, required=True)
     m.add_argument("--force", action="store_true")
     m.add_argument("--reason", default="")
     m.add_argument("--stabilized", action="store_true")
@@ -429,13 +416,12 @@ def main(argv=None):
     try:
         if not a.oss_repo:
             raise RuntimeError("--oss-repo (or OSS_REPO) is required")
-        tag = (
-            cut(a.oss_repo, a.line, a.slack_url)
-            if a.cmd == "cut"
-            else rc(a.oss_repo, a.branch, a.slack_url)
-            if a.cmd == "rc"
-            else promote(".", a.oss_repo, a.rc, a.force, a.reason, a.stabilized)
-        )
+        if a.cmd == "cut":
+            tag = cut(a.oss_repo, a.line, a.slack_url)
+        elif a.cmd == "rc":
+            tag = rc(a.oss_repo, a.branch, a.slack_url)
+        else:
+            tag = promote(".", a.oss_repo, a.rc, a.force, a.reason, a.stabilized)
     except RuntimeError as e:
         print(f"::error::{e}", file=sys.stderr)  # stdout is the tag the workflow captures
         return 1

@@ -1,6 +1,4 @@
-"""Pure-logic checks for backport_merge (decline reason, landed, merge, close-is-decline, re-runs, reopen, squash retry), with gh
-and git injected. Run: python test_backport_merge.py
-"""
+"""Tests for backport_merge with gh and git stubbed. Run: python test_backport_merge.py"""
 
 import json
 import os
@@ -158,7 +156,7 @@ class Close(unittest.TestCase):
 
     def close(self, *a, **k):
         bm.gh = Gh(*a, **k)
-        return bm.close("o/r", 7, ME)
+        return bm.record("o/r", 7, ME)["result"]
 
     def test_merged(self):
         out = self.close("MERGED", labels=["backport-conflict", "backport-declined"])
@@ -294,7 +292,9 @@ class Close(unittest.TestCase):
         for ref in (None, "d" * 40):
             bm.gh = Gh("CLOSED")
             bm.gh.head_ref = ref
-            self.assertEqual(bm.close("o/r", 7, ME), "skipped: no pick, head gone")
+            self.assertEqual(
+                bm.record("o/r", 7, ME)["result"], "skipped: no pick, head gone"
+            )
             self.assertEqual(bm.gh.writes(), [("pr", "comment")])
             said = bm.gh.said()[0]
             self.assertIn("no longer holds this PR's head", said)
@@ -305,7 +305,7 @@ class Close(unittest.TestCase):
             "gh api repos/o/r/git/ref/heads/... (exit 1): gh: Bad credentials (HTTP 401)"
         )
         with self.assertRaisesRegex(RuntimeError, "HTTP 401"):
-            bm.close("o/r", 7, ME)
+            bm.record("o/r", 7, ME)["result"]
         self.assertEqual(bm.gh.writes(), [])
 
     def test_reopened_sets_conflict_only(self):
@@ -332,14 +332,14 @@ class Close(unittest.TestCase):
             bm.gh = Gh("CLOSED", labels=["backport-conflict"])
             bm.gh.pr.update(change)
             with self.assertRaises(RuntimeError):
-                bm.close("o/r", 7, ME)
+                bm.record("o/r", 7, ME)["result"]
             self.assertEqual(bm.gh.writes(), [])
 
     def test_unset_app_slug_refused(self):
         bm.gh = Gh("CLOSED", labels=["backport-conflict"])
         with mock.patch.dict(os.environ, {"RELEASE_BOT_APP_SLUG": ""}):
             with self.assertRaisesRegex(RuntimeError, "RELEASE_BOT_APP_SLUG is unset"):
-                bm.close("o/r", 7, ME)
+                bm.record("o/r", 7, ME)["result"]
         self.assertEqual(bm.gh.writes(), [])
 
     def test_head_already_gone(self):
@@ -352,7 +352,7 @@ class Close(unittest.TestCase):
 
         fake = Gh("MERGED", labels=["backport-merged"])
         bm.gh = gh
-        self.assertEqual(bm.close("o/r", 7, ME), "merged")
+        self.assertEqual(bm.record("o/r", 7, ME)["result"], "merged")
 
 
 class FirstPick(unittest.TestCase):
@@ -388,7 +388,7 @@ class FirstPick(unittest.TestCase):
             self.addCleanup(os.chdir, cwd)
             pr = {"headRefName": f"backport/0.187/{o[:7]}"}
             edited = f"fix: edited by hand\n\n(cherry picked from commit {o[:12]})"
-            with mock.patch.object(bm, "head_messages", lambda pr: [edited]):
+            with mock.patch.object(bm, "head_messages", return_value=[edited]):
                 self.assertEqual(
                     bm.first_pick(pr),
                     (f"fix: real (#9)\n\n(cherry picked from commit {o})", [o]),
@@ -396,12 +396,12 @@ class FirstPick(unittest.TestCase):
             with mock.patch.object(
                 bm,
                 "head_messages",
-                lambda pr: ["fix: x\n\n(cherry picked from commit " + "d" * 40 + ")"],
+                return_value=["fix: x\n\n(cherry picked from commit " + "d" * 40 + ")"],
             ):
                 self.assertEqual(
                     bm.first_pick({"headRefName": "backport/0.187/ddddddd"}), ("", [])
                 )  # not on main
-            with mock.patch.object(bm, "head_messages", lambda pr: []):
+            with mock.patch.object(bm, "head_messages", return_value=[]):
                 self.assertEqual(bm.first_pick(pr), (None, []))  # no commit past the base
 
 
@@ -491,8 +491,9 @@ class SquashRetry(unittest.TestCase):
         )  # GitHub's words reach the log
 
     def test_other_error_is_not_retried(self):
+        calls = [RuntimeError("Head branch was modified (HTTP 409)"), None]
         with self.assertRaisesRegex(RuntimeError, "HTTP 409"):
-            self.run_squash([RuntimeError("Head branch was modified (HTTP 409)"), None])
+            self.run_squash(calls)
 
 
 if __name__ == "__main__":

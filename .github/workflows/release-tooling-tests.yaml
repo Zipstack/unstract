@@ -9,6 +9,7 @@ on:
       - ".github/workflows/backport.yaml"
       - ".github/workflows/lint-pr.yaml"
       - ".github/workflows/release-branch-ci.yaml"
+      - ".github/workflows/release-branch-only.yaml"
       - ".github/workflows/release-tooling-tests.yaml"
       - ".github/workflows/state.yaml"
 

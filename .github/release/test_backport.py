@@ -1,4 +1,4 @@
-"""backport helpers: held_filter and the held summary line; PR body of a pick PR; picks in main order; branches filter; accept= and UNCLASSIFIABLE; owed-picks summary; dispatch route for a non-fix; push summary (status rows, latest tag, stale mark, quiet line); push rescan plan; PR listing classes; push retry; stuck clean pick PR; open conflict PRs per line; pick against real git (no untracked file in a conflict commit, a path with a space, a pick merged after the fetch). Run: python test_backport.py"""
+"""Tests for backport helpers, and pick() against real git. Run: python test_backport.py"""
 
 import io
 import json
@@ -9,7 +9,7 @@ import unittest
 from unittest import mock
 
 os.environ["GITHUB_REPOSITORY"] = (
-    "Zipstack/unstract-cloud"  # relstate loads the cloud config, whatever the runner sets
+    "Zipstack/unstract-cloud"  # pin relstate to the cloud config
 )
 os.environ["RELEASE_BOT_APP_SLUG"] = "zipstack-push-to-main"  # the release App
 BOT = {
@@ -18,6 +18,10 @@ BOT = {
 }  # gh pr view's author of the App's PRs
 import backport as bp
 import relmgr as rm
+
+
+def dev_git(repo, *a):
+    return rm.git(repo, "-c", "user.name=Dev", "-c", "user.email=dev@example.com", *a)
 
 
 class Held(unittest.TestCase):
@@ -145,9 +149,7 @@ class Rescan(unittest.TestCase):
 class Listing(unittest.TestCase):
     def test_classes_and_fallback(self):
         with tempfile.TemporaryDirectory() as repo:
-            git = lambda *a: rm.git(
-                repo, "-c", "user.name=Dev", "-c", "user.email=dev@example.com", *a
-            )
+            git = lambda *a: dev_git(repo, *a)
             git("init", "-q", "-b", "main")
             shas = []
             for i in range(6):  # cut, fix, security, misc, bad title, no PR
@@ -201,10 +203,13 @@ class Listing(unittest.TestCase):
             )  # an unmerged row (no merge commit) is skipped
             looked = []
             saved = bp.fix_class
-            bp.fix_class = lambda slug, sha, token=None: looked.append(sha) or (
-                None,
-                "no PR",
-                None,
+            bp.fix_class = lambda slug, sha, token=None: (
+                looked.append(sha)
+                or (
+                    None,
+                    "no PR",
+                    None,
+                )
             )
             try:
                 rows = bp.held("o/r", repo, "release/0.1", accept=bp.OWED, cache=classes)
@@ -254,14 +259,14 @@ class PushRetry(unittest.TestCase):
             self.assertEqual((sleeps, len(calls)), ([5, 20], 3))
             calls.clear(), sleeps.clear()
             bp.run = fake([1, 1, 1])
-            with mock.patch.object(bp.rm, "is_converged", lambda *a, **k: False):
+            with mock.patch.object(bp.rm, "is_converged", return_value=False):
                 out = bp.push_head("o/r", sha, branch, head, "#7", sleep=sleeps.append)
             comment = calls[-1]
             calls.clear(), sleeps.clear()
             bp.run = fake(
                 [1, 1, 1]
             )  # rejected because another run landed the pick: no failure, no comment
-            with mock.patch.object(bp.rm, "is_converged", lambda *a, **k: True):
+            with mock.patch.object(bp.rm, "is_converged", return_value=True):
                 landed = bp.push_head("o/r", sha, branch, head, "#7", sleep=sleeps.append)
         finally:
             bp.run = saved
@@ -284,13 +289,13 @@ class PushRetry(unittest.TestCase):
         )
 
 
-ORIG = "77212a38cc07a0e7fc5f31c691275666976c4c82"
+ORIG = "0123abc" + "d" * 33
 
 
 class Body(unittest.TestCase):
     def test_conflict_body_has_no_stale_rule(self):
         body = bp.pr_body(
-            ORIG, "#57", "release/0.185", "backport/0.185/77212a3", ["NOTES.md"]
+            ORIG, "#5", "release/1.6", f"backport/1.6/{ORIG[:7]}", ["NOTES.md"]
         )
         self.assertNotIn("do not merge by hand", body)
         self.assertIn(
@@ -306,7 +311,7 @@ class Body(unittest.TestCase):
         )
         self.assertIn(
             "Clean pick",
-            bp.pr_body(ORIG, "#57", "release/0.185", "backport/0.185/77212a3"),
+            bp.pr_body(ORIG, "#5", "release/1.6", f"backport/1.6/{ORIG[:7]}"),
         )
 
 
@@ -318,18 +323,7 @@ class MainOrder(unittest.TestCase):
             for i, date in enumerate(("2026-01-01T00:00:00Z", "2026-01-02T00:00:00Z")):
                 os.environ["GIT_COMMITTER_DATE"] = date
                 try:
-                    rm.git(
-                        repo,
-                        "-c",
-                        "user.name=Dev",
-                        "-c",
-                        "user.email=dev@example.com",
-                        "commit",
-                        "-q",
-                        "--allow-empty",
-                        "-m",
-                        f"fix {i}",
-                    )
+                    dev_git(repo, "commit", "-q", "--allow-empty", "-m", f"fix {i}")
                 finally:
                     del os.environ["GIT_COMMITTER_DATE"]
                 shas.append(rm.git(repo, "rev-parse", "HEAD"))
@@ -481,18 +475,7 @@ class PushSummary(unittest.TestCase):
     def test_latest_tag_counts_since_any_tag(self):
         with tempfile.TemporaryDirectory() as repo:
             rm.git(repo, "init", "-q", "-b", "release/0.1")
-            commit = lambda m: rm.git(
-                repo,
-                "-c",
-                "user.name=Dev",
-                "-c",
-                "user.email=dev@example.com",
-                "commit",
-                "-q",
-                "--allow-empty",
-                "-m",
-                m,
-            )
+            commit = lambda m: dev_git(repo, "commit", "-q", "--allow-empty", "-m", m)
             commit("cut")
             rm.git(repo, "tag", "v0.1.0-rc.1")
             rm.git(repo, "tag", "v0.1.0")  # promoted: same commit, the stable tag wins
@@ -709,10 +692,10 @@ class FinishOpen(unittest.TestCase):
         squash = lambda slug, pr, msg: self.merged.append((pr["number"], msg)) or True
         with (
             mock.patch.object(
-                bp, "gh", lambda *a: json.dumps(listing if prs is None else prs)
+                bp, "gh", return_value=json.dumps(listing if prs is None else prs)
             ),
             mock.patch.object(bp.bm, "squash", squash),
-            mock.patch.object(bp, "soft", lambda *a: None),
+            mock.patch.object(bp, "soft", return_value=None),
         ):
             return bp.finish_open("o/r", "release/1.0", "backport/1.0/aaaaaaa")
 
@@ -895,13 +878,12 @@ class Pick(unittest.TestCase):
             ["git", "clone", "-q", d + "/o", d + "/w"], check=True, capture_output=True
         )
         self.write(d + "/w/a.txt", "x\n")
-        (
-            g("add", "a.txt"),
-            g("commit", "-q", "-m", "base"),
-            g("push", "-q", "origin", "HEAD:main", "HEAD:release/1.0"),
-        )
+        g("add", "a.txt")
+        g("commit", "-q", "-m", "base")
+        g("push", "-q", "origin", "HEAD:main", "HEAD:release/1.0")
         self.write(d + "/w/a.txt", "y\n")
-        g("commit", "-q", "-am", "fix: y (#5)"), g("push", "-q", "origin", "HEAD:main")
+        g("commit", "-q", "-am", "fix: y (#5)")
+        g("push", "-q", "origin", "HEAD:main")
         self.fix = g("rev-parse", "HEAD")
         g("fetch", "-q", "origin")
         self.d, cwd = d, os.getcwd()
@@ -923,8 +905,8 @@ class Pick(unittest.TestCase):
     def pick(self):
         with (
             mock.patch.object(bp, "gh", self.gh),
-            mock.patch.object(bp.bm, "squash", lambda *a: True),
-            mock.patch.object(bp, "soft", lambda *a: None),
+            mock.patch.object(bp.bm, "squash", return_value=True),
+            mock.patch.object(bp, "soft", return_value=None),
         ):
             return bp.pick("o/r", self.fix, "release/1.0", "UN-1 [FIX] y", "#5")
 
@@ -939,11 +921,9 @@ class Pick(unittest.TestCase):
     def test_conflict_pick_carries_fix_labels(self):
         self.g("checkout", "-q", "-B", "rel", "origin/release/1.0")
         self.write(self.d + "/w/a.txt", "z\n")
-        (
-            self.g("commit", "-q", "-am", "z"),
-            self.g("push", "-q", "origin", "HEAD:release/1.0"),
-            self.g("fetch", "-q", "origin"),
-        )
+        self.g("commit", "-q", "-am", "z")
+        self.g("push", "-q", "origin", "HEAD:release/1.0")
+        self.g("fetch", "-q", "origin")
         self.assertEqual(self.pick()[0], "pr")
         create = next(a for a in self.calls if a[:2] == ("pr", "create"))
         self.assertEqual(
@@ -955,11 +935,10 @@ class Pick(unittest.TestCase):
         self.g("checkout", "-q", "-B", "rel", "origin/release/1.0")
         self.write(self.d + "/w/a.txt", "y\n")
         self.write(self.d + "/w/b.txt", "b\n")
-        self.g("add", "."), self.g("commit", "-q", "-m", "y and b, by hand")
-        (
-            self.g("push", "-q", "origin", "HEAD:release/1.0"),
-            self.g("fetch", "-q", "origin"),
-        )
+        self.g("add", ".")
+        self.g("commit", "-q", "-m", "y and b, by hand")
+        self.g("push", "-q", "origin", "HEAD:release/1.0")
+        self.g("fetch", "-q", "origin")
         out = self.pick()
         self.assertEqual(out[0], "failed")
         self.assertIn(f"pick of {self.fix[:7]} onto release/1.0 is empty", out[1])
@@ -986,7 +965,7 @@ class PickRow(unittest.TestCase):
             mock.patch.object(
                 bp.rm, "relevance", side_effect=RuntimeError("bad | path\nsecond line")
             ),
-            mock.patch.object(bp, "pick", lambda *a: ("merged", "abc1234 (#8)")),
+            mock.patch.object(bp, "pick", return_value=("merged", "abc1234 (#8)")),
             mock.patch("sys.stdout", io.StringIO()),
         ):
             row = bp.pick_row("o/r", "c" * 40, "release/1.0", "fix", "#5", "t")
@@ -995,7 +974,7 @@ class PickRow(unittest.TestCase):
 
     def test_failure_names_its_type(self):
         with (
-            mock.patch.object(bp.rm, "relevance", lambda *a: "relevant"),
+            mock.patch.object(bp.rm, "relevance", return_value="relevant"),
             mock.patch.object(bp, "pick", side_effect=KeyError("x")),
             mock.patch.object(bp, "run"),
             mock.patch("sys.stdout", io.StringIO()),
@@ -1042,16 +1021,18 @@ class Relevance(unittest.TestCase):
                 for name, text in files.items():
                     with open(os.path.join(d, name.replace("_", " ")), "w") as f:
                         f.write(text)
-                g("add", "-A"), g("commit", "-q", "-m", msg)
+                g("add", "-A")
+                g("commit", "-q", "-m", msg)
                 return g("rev-parse", "HEAD")
 
             g("init", "-q", "-b", "main")
             commit("base", a="1\n2\n", b="1\n", c_d="1\n")
             g("branch", "release/1.0")
             main = commit("rewrite a:2 after the cut", a="1\nTWO\n", b="1\nnew\n")
-            rel = lambda **files: g(
-                "checkout", "-q", "-B", "fix", main
-            ) or bp.rm.relevance(d, commit("fix", **files), "release/1.0")
+            rel = lambda **files: (
+                g("checkout", "-q", "-B", "fix", main)
+                or bp.rm.relevance(d, commit("fix", **files), "release/1.0")
+            )
             self.assertEqual(rel(a="ONE\nTWO\n"), "relevant")  # a:1 is as on the branch
             self.assertEqual(
                 rel(a="ONE\nTWO!\n"), "partial"
@@ -1160,6 +1141,18 @@ class PickGitPathWithSpace(PickGit):
     """The same against a conflicted path with a space and a non-ASCII name (this repo has paths with spaces)."""
 
     PATH = "docker (deprecated)/é.txt"
+
+
+class Guards(unittest.TestCase):
+    def test_resolve_refuses_an_option(self):
+        with mock.patch.object(bp.rm, "resolve") as resolve:
+            self.assertIsNone(bp.resolve("o/r", "#--all"))
+        resolve.assert_not_called()
+
+    def test_main_refuses_a_state_file_outside(self):
+        argv = ["backport.py", "--state", "/nonexistent/state.json", "--rescan"]
+        with mock.patch("sys.argv", argv), self.assertRaises(ValueError):
+            bp.main()
 
 
 if __name__ == "__main__":
