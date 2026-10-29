@@ -479,7 +479,8 @@ SECRET_KEY = get_required_setting("DJANGO_SECRET_KEY")
 ENCRYPTION_KEY = get_required_setting("ENCRYPTION_KEY")
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+# Off unless DJANGO_DEBUG asks for it: the published image runs settings.dev.
+DEBUG = CommonUtils.str_to_bool(os.environ.get("DJANGO_DEBUG", "False"))
 
 ALLOWED_HOSTS = ["*"]
 CSRF_TRUSTED_ORIGINS = [WEB_APP_ORIGIN_URL, WEB_APP_ORIGIN_URL_WITH_WILD_CARD]
