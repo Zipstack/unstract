@@ -473,6 +473,8 @@ API_KEY_USAGE_FLUSH_INTERVAL_SECONDS = int(
 # Whether the first use in each interval starts that flush in a background
 # thread. Off only in tests, which flush inline.
 API_KEY_USAGE_BACKGROUND_FLUSH = True
+# Prefix of every Redis key API key usage writes.
+API_KEY_USAGE_REDIS_PREFIX = "api_key_usage"
 ATOMIC_REQUESTS = CommonUtils.str_to_bool(
     os.environ.get("DJANGO_ATOMIC_REQUESTS", "False")
 )

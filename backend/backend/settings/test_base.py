@@ -3,7 +3,11 @@
 Imports nothing on purpose: `copy_cloud_deps` replaces the OSS `settings/test.py`
 on a cloud build, so deltas kept only there are lost, and star-importing a base
 module here would re-export its names over whatever the importer derived.
+The one exception is `_environ`, which the leading underscore keeps out of a
+star import.
 """
+
+from os import environ as _environ
 
 DEBUG = True
 
@@ -21,3 +25,9 @@ MCP_PLATFORM_SERVER_ENABLED = True
 # API key usage: a background flush thread would read the pending Redis counts
 # of whichever test runs next, from outside its transaction. Tests flush inline.
 API_KEY_USAGE_BACKGROUND_FLUSH = False
+
+# Parallel test workers share one Redis. Each gets its own usage keys, or one
+# worker's flush takes another's pending counts.
+API_KEY_USAGE_REDIS_PREFIX = (
+    f"api_key_usage:test:{_environ.get('PYTEST_XDIST_WORKER', 'main')}"
+)
