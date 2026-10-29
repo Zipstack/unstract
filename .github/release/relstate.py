@@ -29,8 +29,8 @@ WINDOW_LINES = 6
 # Per repo, so both repos run this file; use() loads an entry as (TARGETS, LATEST_ONLY: only the latest GA line is
 # supported, KEPT: supported while the branch exists, PINS: repo whose tags pyproject.toml pins, PREFIX: tag prefix).
 # TARGETS: target -> (build artifact, GA anchor artifact), each <kind>/<package>; RELSTATE_AR_<KIND> names its
-# repository. GIT: the line's own git tags stand in for an artifact (OSS lines). OSS lines are tagged
-# ee-vX.Y.Z(-rc.N).
+# repository and RELSTATE_AR_<KIND>_RC, when set, a second one holding its RC builds. GIT: the line's own git tags
+# stand in for an artifact (OSS lines). OSS lines are tagged ee-vX.Y.Z(-rc.N).
 GIT = "git"
 REPOS = {
     # backend: every build pushes it, and all services share one tag.
@@ -113,10 +113,19 @@ def _ar_get(url, what):
         raise RuntimeError(f"registry read {what}: {e!r}") from e
 
 
-def _ar_versions(artifact):
-    """Every version of artifact (<kind>/<package>) with its tags, or None when its first page answers 404."""
-    kind, package = artifact.split("/", 1)
-    url = f"{AR_API}/{ar_repository(kind)}/packages/{urllib.parse.quote(package, safe='')}/versions"
+def ar_repositories(kind):
+    """The repositories registry_tags reads for an artifact kind: RELSTATE_AR_<KIND> (stable builds), then
+    RELSTATE_AR_<KIND>_RC (RC builds) when it is set to another repository. With _RC unset, one repository holds
+    both. Both are read because Retag promotes an RC into the stable repository, which then holds the GA tag.
+    """
+    stable = ar_repository(kind)
+    rc = os.environ.get("RELSTATE_AR_" + kind.upper().replace("-", "_") + "_RC")
+    return [stable, *([rc] if rc and rc != stable else [])]
+
+
+def _ar_versions(repo, package, artifact):
+    """Every version of package in repo with its tags, or None when its first page answers 404."""
+    url = f"{AR_API}/{repo}/packages/{urllib.parse.quote(package, safe='')}/versions"
     out, page = [], ""
     while True:
         q = {"view": "FULL", "pageSize": 1000, **({"pageToken": page} if page else {})}
@@ -130,32 +139,43 @@ def _ar_versions(artifact):
 
 
 def registry_tags(artifact):
-    """{tag: {id, digest, pushed_at}} for one Artifact Registry artifact (<kind>/<package>). Raises on any read
-    failure. pushed_at is the version's createTime, to the second.
+    """{tag: {id, digest, pushed_at}} for one Artifact Registry artifact (<kind>/<package>), over every repository
+    of its kind (ar_repositories). Raises on any read failure. pushed_at is the version's createTime, to the second.
 
     A 404 is only read as "artifact not pushed yet" when the artifact's own repository reads; otherwise it may be
-    a wrong RELSTATE_AR_<KIND>, and an empty registry would read as "nothing enabled".
+    a wrong RELSTATE_AR_<KIND>, and an empty registry would read as "nothing enabled". A tag held by two
+    repositories at different digests raises: the state would depend on which one was read. That stops every
+    reader, for every line and Retire included, until a person deletes one copy: which one was tested is not
+    something to guess. A tag held by both at one digest reads as its first repository's copy only.
     """
-    versions = _ar_versions(artifact)
-    if versions is None:
-        repo = ar_repository(artifact.split("/", 1)[0])
-        if _ar_get(f"{AR_API}/{repo}", artifact) is None:
-            raise RuntimeError(
-                f"registry read {artifact}: 404 and repository {repo} not found"
-            )
-        return {}
+    kind, package = artifact.split("/", 1)
     out = {}
-    for v in versions:
-        pushed = re.sub(
-            r"\.\d+(?=Z$)", "", v["createTime"]
-        )  # AR returns up to 9 fraction digits
-        for t in v.get("relatedTags") or []:
-            tag = t["name"].rsplit("/tags/", 1)[1]
-            out[tag] = {
-                "id": v["name"],
-                "digest": v["name"].rsplit("/versions/", 1)[1],
-                "pushed_at": pushed,
-            }
+    for repo in ar_repositories(kind):
+        versions = _ar_versions(repo, package, artifact)
+        if versions is None:
+            if _ar_get(f"{AR_API}/{repo}", artifact) is None:
+                raise RuntimeError(
+                    f"registry read {artifact}: 404 and repository {repo} not found"
+                )
+            continue
+        for v in versions:
+            pushed = re.sub(
+                r"\.\d+(?=Z$)", "", v["createTime"]
+            )  # AR returns up to 9 fraction digits
+            for t in v.get("relatedTags") or []:
+                tag = t["name"].rsplit("/tags/", 1)[1]
+                info = {
+                    "id": v["name"],
+                    "digest": v["name"].rsplit("/versions/", 1)[1],
+                    "pushed_at": pushed,
+                }
+                if tag in out and out[tag]["digest"] != info["digest"]:
+                    raise RuntimeError(
+                        f"registry read {artifact}: tag {tag} is {out[tag]['id']} (pushed {out[tag]['pushed_at']})"
+                        f" and {info['id']} (pushed {pushed}); Retag promotes the RC repository's copy. Check"
+                        " which one was tested, delete the other (Artifact Registry console) and rerun"
+                    )
+                out.setdefault(tag, info)
     return out
 
 
@@ -533,33 +553,44 @@ def _branch_row(state, branch):
     return next((b for b in state["branches"] if b["branch"] == branch), None)
 
 
-def _by_digest(tags):
-    """{digest: {id, digest, tags}} of an artifact's {tag: info}."""
-    by_digest = {}
+def _repo_of(version):
+    """The repository of an abandon_plan version (its id up to /packages/); "" for a version with no id."""
+    return (version["id"] or "").split("/packages/", 1)[0]
+
+
+def _by_version(tags):
+    """{id or digest: {id, digest, tags}} of an artifact's {tag: info}. One digest in two repositories is two
+    versions.
+    """
+    by_version = {}
     # Version order, so the last version is the newest RC (rc.10 after rc.9); other tags first.
     for t, info in sorted(
         tags.items(),
         key=lambda kv: (_vkey(kv[0]) if VER_RE.fullmatch(kv[0]) else (-1, -1), kv[0]),
     ):
-        by_digest.setdefault(
-            info["digest"],
+        by_version.setdefault(
+            info.get("id") or info["digest"],
             {"id": info.get("id"), "digest": info["digest"], "tags": []},
         )["tags"].append(t)
-    return by_digest
+    return by_version
 
 
 def _abandon_versions(reg, rc_re):
-    """abandon_plan's versions to delete per artifact and the last versions kept."""
+    """abandon_plan's versions to delete per artifact and the last versions kept. Per repository, when every
+    tagged version would go, the last is kept, so no package is emptied.
+    Known limits: untagged versions are not listed, so "last" counts tagged ones only; one tag at one digest in
+    both repositories reads as the stable copy only, so the RC repository's copy is not deleted.
+    """
     versions, kept = {}, []
     for a, tags in reg.items():
-        by_digest = _by_digest(tags)
-        drop = [
-            v for v in by_digest.values() if all(rc_re.fullmatch(t) for t in v["tags"])
-        ]
-        # Known limit: untagged versions are not listed, so "last" counts tagged ones only.
-        if drop and len(drop) == len(by_digest):
-            kept.append(f"{a}:{','.join(drop[-1]['tags'])}")
-            drop = drop[:-1]
+        by_version, drop = _by_version(tags), []
+        for where in sorted({_repo_of(v) for v in by_version.values()}):
+            mine = [v for v in by_version.values() if _repo_of(v) == where]
+            d = [v for v in mine if all(rc_re.fullmatch(t) for t in v["tags"])]
+            if d and len(d) == len(mine):
+                kept.append(f"{a}:{','.join(d[-1]['tags'])}")
+                d = d[:-1]
+            drop += d
         if drop:
             versions[a] = drop
     return versions, kept
@@ -571,7 +602,8 @@ def abandon_plan(repo, branch, registry=registry_tags):
     {"ga": [...], "used": [...], "rc_tags": [...], "versions": {artifact: [{id, digest, tags}]}, "kept": [...]}.
     A non-empty ga (git stable tag or GA-anchor registry tag) or used (commits that are not bot, pick or
     decline) refuses the abandon. A registry version is deleted only when every tag on it is an RC of
-    this line. An artifact's last tagged version is kept and listed, so an abandon never empties an artifact.
+    this line. When that would delete every tagged version in a repository, the last one is kept and listed,
+    so an abandon never empties a repository's package.
     """
     x, y = rm._line(branch)
     rc_re = re.compile(rf"{re.escape(PREFIX)}v{x}\.{y}\.\d+-rc\.\d+")

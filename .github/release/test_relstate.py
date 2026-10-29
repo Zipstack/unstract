@@ -1219,6 +1219,10 @@ class ArtifactRegistry(unittest.TestCase):
         patcher = unittest.mock.patch.dict(os.environ, env)
         patcher.start()
         self.addCleanup(patcher.stop)
+        for k in ("RELSTATE_AR_CLOUD_RC", "RELSTATE_AR_ON_PREM_RC"):
+            os.environ.pop(
+                k, None
+            )  # a test sets _RC itself; the shell's must not leak in (restored on stop)
         self.urls, self.pages = [], {}
         urlopen = unittest.mock.patch.object(rs.urllib.request, "urlopen", self.urlopen)
         urlopen.start()
@@ -1236,14 +1240,14 @@ class ArtifactRegistry(unittest.TestCase):
             )
         return io.BytesIO(json.dumps(page).encode())
 
-    def version(self, package, digest, created, *tags):
-        name = f"{self.REPO}/packages/{package}/versions/sha256:{digest}"
+    def version(self, package, digest, created, *tags, repo=REPO):
+        name = f"{repo}/packages/{package}/versions/sha256:{digest}"
         return {
             "name": name,
             "createTime": created,
             "updateTime": "2030-01-01T00:00:00Z",  # differs from createTime: pushed_at must not read it
             "relatedTags": [
-                {"name": f"{self.REPO}/packages/{package}/tags/{t}", "version": name}
+                {"name": f"{repo}/packages/{package}/tags/{t}", "version": name}
                 for t in tags
             ],
         }
@@ -1349,6 +1353,136 @@ class ArtifactRegistry(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "set RELSTATE_AR_TOKEN"):
             rs.registry_tags("cloud/backend")
         self.assertEqual(self.urls, [])
+
+    RC = "projects/s/locations/l/repositories/rc"
+
+    def test_42_rc_repository_reads_with_the_stable_one(self):
+        rc_url = f"{rs.AR_API}/{self.RC}/packages/backend/versions"
+        self.pages[(self.url("backend"), "")] = {
+            "versions": [
+                self.version("backend", "aa", "2026-10-02T10:00:00Z", "v0.192.0")
+            ]
+        }
+        self.pages[(rc_url, "")] = {
+            "versions": [
+                self.version(
+                    "backend", "aa", "2026-10-01T10:00:00Z", "v0.192.0-rc.1", repo=self.RC
+                )
+            ]
+        }
+        self.assertEqual(
+            set(rs.registry_tags("cloud/backend")), {"v0.192.0"}
+        )  # _RC unset: one repository
+        with unittest.mock.patch.dict(os.environ, {"RELSTATE_AR_CLOUD_RC": self.RC}):
+            got = rs.registry_tags("cloud/backend")
+            self.assertEqual(
+                got["v0.192.0-rc.1"]["id"],
+                f"{self.RC}/packages/backend/versions/sha256:aa",
+            )
+            self.assertEqual(
+                got["v0.192.0"]["id"], f"{self.REPO}/packages/backend/versions/sha256:aa"
+            )
+            self.assertEqual(rs.ar_repositories("cloud"), [self.REPO, self.RC])
+        with unittest.mock.patch.dict(os.environ, {"RELSTATE_AR_CLOUD_RC": self.REPO}):
+            self.assertEqual(
+                rs.ar_repositories("cloud"), [self.REPO]
+            )  # the same repository is read once
+
+    def test_43_a_tag_at_two_digests_raises(self):
+        self.pages[(self.url("backend"), "")] = {
+            "versions": [
+                self.version("backend", "aa", "2026-10-01T10:00:00Z", "v0.192.0-rc.1")
+            ]
+        }
+        self.pages[(f"{rs.AR_API}/{self.RC}/packages/backend/versions", "")] = {
+            "versions": [
+                self.version(
+                    "backend", "bb", "2026-10-01T10:00:00Z", "v0.192.0-rc.1", repo=self.RC
+                )
+            ]
+        }
+        with (
+            unittest.mock.patch.dict(os.environ, {"RELSTATE_AR_CLOUD_RC": self.RC}),
+            self.assertRaisesRegex(
+                RuntimeError,
+                "tag v0.192.0-rc.1 is .*sha256:aa \\(pushed .*\\) and .*sha256:bb .*promotes the RC repository",
+            ),
+        ):
+            rs.registry_tags("cloud/backend")
+
+    def test_44_rc_repository_404_is_empty_only_when_it_reads(self):
+        self.pages[(self.url("backend"), "")] = {
+            "versions": [
+                self.version("backend", "aa", "2026-10-01T10:00:00Z", "v0.191.0")
+            ]
+        }
+        with unittest.mock.patch.dict(os.environ, {"RELSTATE_AR_CLOUD_RC": self.RC}):
+            with self.assertRaisesRegex(
+                RuntimeError, f"404 and repository {self.RC} not found"
+            ):
+                rs.registry_tags("cloud/backend")  # a wrong _RC never reads as "no RCs"
+            self.pages[(f"{rs.AR_API}/{self.RC}", "")] = {"name": self.RC}
+            self.assertEqual(set(rs.registry_tags("cloud/backend")), {"v0.191.0"})
+
+    def test_47_a_package_only_in_the_rc_repository(self):
+        # a service first built on a release line after the split: stable answers 404 for the package but reads
+        self.pages[(f"{rs.AR_API}/{self.REPO}", "")] = {"name": self.REPO}
+        self.pages[(f"{rs.AR_API}/{self.RC}/packages/backend/versions", "")] = {
+            "versions": [
+                self.version(
+                    "backend", "aa", "2026-10-01T10:00:00Z", "v0.192.0-rc.1", repo=self.RC
+                )
+            ]
+        }
+        with unittest.mock.patch.dict(os.environ, {"RELSTATE_AR_CLOUD_RC": self.RC}):
+            self.assertEqual(set(rs.registry_tags("cloud/backend")), {"v0.192.0-rc.1"})
+
+    def test_45_abandon_keeps_the_last_version_per_repository(self):
+        stable = f"{self.REPO}/packages/backend/versions/sha256:"
+        rc = f"{self.RC}/packages/backend/versions/sha256:"
+        reg = {
+            "cloud/backend": {
+                "v1.9.0-rc.1": {
+                    "id": stable + "01",
+                    "digest": "sha256:01",
+                    "pushed_at": "x",
+                },  # before the split
+                "v1.5.0": {"id": stable + "02", "digest": "sha256:02", "pushed_at": "x"},
+                # rc.1's digest again (a reproducible rebuild): still its own version in the RC repository
+                "v1.9.0-rc.2": {"id": rc + "01", "digest": "sha256:01", "pushed_at": "x"},
+                "v1.9.0-rc.3": {"id": rc + "04", "digest": "sha256:04", "pushed_at": "x"},
+            }
+        }
+        with tempfile.TemporaryDirectory() as d:
+            rm.git(d, "init", "-q", "-b", "main")
+            rm.git(
+                d,
+                "-c",
+                "user.name=t",
+                "-c",
+                "user.email=t@t",
+                "commit",
+                "-q",
+                "--allow-empty",
+                "-m",
+                "base",
+            )
+            rm.git(d, "branch", "release/1.9")
+            plan = rs.abandon_plan(d, "release/1.9", lambda a: reg.get(a, {}))
+        self.assertEqual(
+            [v["id"] for v in plan["versions"]["cloud/backend"]],
+            [stable + "01", rc + "01"],
+        )  # the stable repository keeps v1.5.0; the RC repository keeps its last RC
+        self.assertEqual(plan["kept"], ["cloud/backend:v1.9.0-rc.3"])
+
+    def test_46_image_link_names_the_rc_repository(self):
+        with unittest.mock.patch.dict(
+            os.environ, {"RELSTATE_AR_CLOUD_RC": self.RC, "RELSTATE_AR_CLOUD": self.REPO}
+        ):
+            self.assertIn(
+                "/artifacts/docker/s/l/rc)",
+                rm.image_link("cloud", "v1-rc.1"),
+            )
 
 
 class Guards(unittest.TestCase):

@@ -55,11 +55,12 @@ def tag_link(tag):
 
 
 def image_link(target, tag):
-    """The Artifact Registry console page of target's repository (RELSTATE_AR_<TARGET>), the tag in the text;
-    plain text when that variable is unset.
+    """The Artifact Registry console page of the repository holding target's RC builds (RELSTATE_AR_<TARGET>_RC,
+    else RELSTATE_AR_<TARGET>), the tag in the text; plain text when neither is set.
     """
     text = f"`{target}:{tag}`"
-    repo = os.environ.get("RELSTATE_AR_" + target.upper().replace("-", "_"), "")
+    var = "RELSTATE_AR_" + target.upper().replace("-", "_")
+    repo = os.environ.get(var + "_RC") or os.environ.get(var, "")
     m = re.fullmatch(r"projects/([^/]+)/locations/([^/]+)/repositories/([^/]+)", repo)
     return (
         f"[{text}](https://console.cloud.google.com/artifacts/docker/{m[1]}/{m[2]}/{m[3]})"

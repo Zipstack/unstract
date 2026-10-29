@@ -680,6 +680,29 @@ def inline(workflow, step):
     )
 
 
+def step(workflow, name, exprs=()):
+    """The bash run block of a workflow step, each ${{ }} expression replaced from exprs ("" when absent)."""
+    with open(os.path.join(HERE, "..", "workflows", workflow)) as fh:
+        lines = fh.read().split("\n")
+    i = next(
+        n
+        for n, line in enumerate(lines)
+        if line.strip() in (f"- name: {name}", f"name: {name}")
+    )
+    i = next(n for n in range(i, len(lines)) if lines[n].strip() == "run: |")
+    indent = len(lines[i]) - len(lines[i].lstrip()) + 2
+    body = []
+    for line in lines[i + 1 :]:
+        if line.strip() and len(line) - len(line.lstrip()) < indent:
+            break
+        body.append(line[indent:])
+    return re.sub(
+        r"\$\{\{\s*(.*?)\s*\}\}",
+        lambda m: dict(exprs).get(m.group(1), ""),
+        "\n".join(body),
+    )
+
+
 @unittest.skipUnless(
     os.path.exists(os.path.join(HERE, "..", "workflows", "retire.yaml")),
     "the cloud repo's workflows",
@@ -710,15 +733,23 @@ class Workflow(unittest.TestCase):
             fh.write(f"""import json, os, sys
 sys.path.insert(0, {HERE!r})
 import relstate
-def _ar_versions(artifact):  # reg.jsonl for cloud/backend, reg-<kind>_<package>.jsonl for the others
+def _ar_versions(repo, package, artifact):  # reg.jsonl for cloud/backend, reg-<kind>_<package>.jsonl for the others; a row's "repo" (default r) is its repository, "names" its version ids' repository
     f = os.path.join({d!r}, "reg.jsonl" if artifact == "cloud/backend" else "reg-" + artifact.replace("/", "_") + ".jsonl")
     if not os.path.exists(f):
         return []
     with open(f) as fh:
-        rows = [json.loads(line) for line in fh]
-    return [{{"name": f"r/packages/backend/versions/{{v['digest']}}", "createTime": v["pushed_at"],
-              "relatedTags": [{{"name": f"r/packages/backend/tags/{{t}}"}} for t in v["tags"]]}} for v in rows]
+        rows = [v for v in map(json.loads, fh) if v.get("repo", "r") == repo]
+    return [{{"name": f"{{v.get('names', repo)}}/packages/backend/versions/{{v['digest']}}", "createTime": v["pushed_at"],
+              "relatedTags": [{{"name": f"{{repo}}/packages/backend/tags/{{t}}"}} for t in v["tags"]]}} for v in rows]
 relstate._ar_versions = _ar_versions
+for kind in ("CLOUD", "ON_PREM", "CHART"):
+    os.environ.setdefault("RELSTATE_AR_" + kind, "r")
+import urllib.request
+def _urlopen(req, timeout=None):  # a registry delete, logged to ar.log
+    with open({os.path.join(d, "ar.log")!r}, "a") as fh:
+        fh.write(f"{{req.get_method()}} {{req.full_url}}\\n")
+    return open(os.devnull, "rb")
+urllib.request.urlopen = _urlopen
 """)
         bin_ = os.path.join(d, "bin")
         os.mkdir(bin_)
@@ -816,6 +847,54 @@ class RetireWorkflow(Workflow):
         self.line("1.7")
         self.retire(ABANDON="release/1.7", REASON="cut by mistake")
         self.assert_gone("1.7")
+
+    def test_abandon_deletes_one_rc_and_keeps_the_last(self):
+        self.line("1.7", "v1.7.0-rc.1", "v1.7.0-rc.2")
+        self.retire(ABANDON="release/1.7", REASON="cut by mistake", RELSTATE_AR_TOKEN="t")
+        self.assertRegex(
+            self.read("ar.log"),
+            r"^DELETE \S+/r/packages/backend/versions/sha256:v1\.7\.0-rc\.1\?force=true\n$",
+        )
+
+    def test_abandon_deletes_in_the_rc_repository(self):
+        self.line("1.7")
+        for i in (1, 2):  # RCs built after the split: only in the RC repository
+            with open(os.path.join(self.d, "reg.jsonl"), "a") as fh:
+                fh.write(
+                    f'{{"repo": "rc", "digest": "sha256:rc{i}", "pushed_at": "2026-09-01T00:00:00Z", '
+                    f'"tags": ["v1.7.0-rc.{i}"]}}\n'
+                )
+        self.retire(
+            ABANDON="release/1.7",
+            REASON="cut by mistake",
+            RELSTATE_AR_TOKEN="t",
+            RELSTATE_AR_CLOUD_RC="rc",
+        )
+        self.assertRegex(
+            self.read("ar.log"),
+            r"^DELETE \S+/rc/packages/backend/versions/sha256:rc1\?force=true\n$",
+        )
+
+    def test_abandon_refuses_a_version_outside_its_repositories(self):
+        self.line("1.7")
+        for i in (1, 2):  # read from repository r, but their ids name repository other
+            with open(os.path.join(self.d, "reg.jsonl"), "a") as fh:
+                fh.write(
+                    f'{{"names": "other", "digest": "sha256:rc{i}", "pushed_at": "2026-09-01T00:00:00Z", '
+                    f'"tags": ["v1.7.0-rc.{i}"]}}\n'
+                )
+        r = self.run_step(
+            inline("retire.yaml", "Derive and retire"),
+            ABANDON="release/1.7",
+            REASON="cut by mistake",
+            RETIRE_LINE="",
+            NOW="",
+            DRY_RUN="false",
+            RELSTATE_AR_TOKEN="t",
+        )
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("other/packages/backend/versions/sha256:rc1 is outside r", r.stdout)
+        self.assertFalse(os.path.exists(os.path.join(self.d, "ar.log")))
 
     def test_retire_line_no_ga(self):
         self.line("1.7")
@@ -926,6 +1005,527 @@ class RetireWorkflow(Workflow):
         tag = self.moved("1.6")
         self.line("1.7", "v1.7.0-rc.1", "v1.7.0")
         self.refused("1.6", tag)
+
+
+@unittest.skipUnless(
+    os.path.exists(os.path.join(HERE, "..", "workflows", "sync-argocd.yaml")),
+    "the cloud repo's workflows",
+)
+class SyncArgocdParameters(unittest.TestCase):
+    """The helm.parameters sync-argocd writes back: its own keys replaced, every other parameter on the app kept."""
+
+    OTHER = {
+        "name": "postgresql.enabled",
+        "value": "false",
+    }  # a chart value this workflow does not own
+    REG = "l-docker.pkg.dev/p/rc"
+
+    def merge(self, current, tag="", cloud_rc="", revision="main"):
+        return subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                inline("sync-argocd.yaml", "Update ArgoCD Application"),
+            ],
+            env={
+                **os.environ,
+                "CURRENT": json.dumps(current),
+                "IMAGE_TAG": tag,
+                "CLOUD_RC": cloud_rc,
+                "TARGET_REVISION": revision,
+                "APP_NAME": "dev-unstract-dev",
+            },
+            capture_output=True,
+            text=True,
+        )
+
+    def merged(self, current, *args, **kwargs):
+        r = self.merge(current, *args, **kwargs)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        params = json.loads(r.stdout)
+        self.assertEqual(
+            len(params), len({p["name"] for p in params}), params
+        )  # each name once
+        return {p["name"]: p["value"] for p in params}
+
+    def test_rc_sync_adds_the_registries(self):
+        got = self.merged(
+            [self.OTHER, {"name": "global.unstract.image.tag", "value": "v1"}],
+            "v2.0.0-rc.1",
+            self.REG,
+        )
+        self.assertEqual(got["postgresql.enabled"], "false")
+        self.assertEqual(got["global.unstract.image.tag"], "v2.0.0-rc.1")
+        self.assertEqual(got["backend.image.registry"], self.REG)
+        self.assertEqual(
+            got["runner.configMap.TOOL_SIDECAR_IMAGE_NAME"], f"{self.REG}/tool-sidecar"
+        )
+        self.assertEqual(got["runner.configMap.TOOL_SIDECAR_IMAGE_TAG"], "v2.0.0-rc.1")
+
+    def test_non_rc_sync_drops_the_registries(self):
+        rc = [
+            {"name": n, "value": v}
+            for n, v in self.merged([self.OTHER], "v2.0.0-rc.1", self.REG).items()
+        ]
+        self.assertEqual(
+            self.merged(rc, "v2", self.REG),
+            {"postgresql.enabled": "false", "global.unstract.image.tag": "v2"},
+        )
+
+    def test_no_tag_keeps_the_current_one(self):
+        self.assertEqual(
+            self.merged(
+                [self.OTHER, {"name": "global.unstract.image.tag", "value": "v1"}]
+            ),
+            {"postgresql.enabled": "false", "global.unstract.image.tag": "v1"},
+        )
+
+    def test_a_kept_rc_tag_pulls_from_cloud_rc(self):
+        # a re-sync with no tag keeps the app's RC tag, and rewrites its registries to the RC repository
+        tag = {"name": "global.unstract.image.tag", "value": "v2.0.0-rc.1"}
+        stable = "us-central1-docker.pkg.dev/p/unstract"
+        got = self.merged(
+            [self.OTHER, tag, {"name": "backend.image.registry", "value": stable}],
+            cloud_rc=self.REG,
+        )
+        self.assertEqual(got["global.unstract.image.tag"], "v2.0.0-rc.1")
+        self.assertEqual(got["backend.image.registry"], self.REG)
+        self.assertEqual(got["frontend.image.registry"], self.REG)
+        self.assertEqual(got["runner.configMap.TOOL_SIDECAR_IMAGE_TAG"], "v2.0.0-rc.1")
+
+    def test_an_rc_revision_pulls_from_cloud_rc(self):
+        # no tag anywhere: the chart's own tag at an RC revision is that RC
+        got = self.merged([self.OTHER], cloud_rc=self.REG, revision="v1.1.0-rc.2")
+        self.assertEqual(got["backend.image.registry"], self.REG)
+        self.assertNotIn("global.unstract.image.tag", got)
+        self.assertNotIn("runner.configMap.TOOL_SIDECAR_IMAGE_TAG", got)
+
+    def test_an_rc_tag_without_cloud_rc_fails(self):
+        tag = {"name": "global.unstract.image.tag", "value": "v2.0.0-rc.1"}
+        for current, kwargs in (
+            ([self.OTHER], {"tag": "v2.0.0-rc.1"}),
+            ([self.OTHER, tag], {}),
+            ([self.OTHER], {"revision": "v1.1.0-rc.2"}),
+        ):
+            r = self.merge(current, **kwargs)
+            self.assertEqual(r.returncode, 1, kwargs)
+            self.assertIn("RELSTATE_AR_CLOUD_RC, which is unset", r.stderr, kwargs)
+            self.assertEqual(r.stdout, "", kwargs)
+
+    def test_the_sidecar_tag_follows_a_tag_parameter(self):
+        # no tag parameter: the chart's tag and sidecar tag are the same anchor
+        got = self.merged(
+            [
+                self.OTHER,
+                {"name": "runner.configMap.TOOL_SIDECAR_IMAGE_TAG", "value": "x"},
+            ],
+            cloud_rc=self.REG,
+            revision="v1.1.0-rc.2",
+        )
+        self.assertNotIn("runner.configMap.TOOL_SIDECAR_IMAGE_TAG", got)
+        self.assertEqual(
+            self.merged([self.OTHER], "snapshot.7"),
+            {"postgresql.enabled": "false", "global.unstract.image.tag": "snapshot.7"},
+        )
+
+    def test_cloud_rc_is_not_taken_without_an_rc_tag(self):
+        for tag in ("snapshot.7", "v2.0.0", "rc.3"):
+            for cloud_rc in (self.REG, ""):
+                self.assertEqual(
+                    self.merged([self.OTHER], tag, cloud_rc),
+                    {"postgresql.enabled": "false", "global.unstract.image.tag": tag},
+                )
+
+
+RC = "projects/p/locations/l/repositories/rc"
+RC_HOST = "l-docker.pkg.dev/p/rc"
+
+
+@unittest.skipUnless(
+    os.path.exists(os.path.join(HERE, "..", "workflows", "build-push.yaml")),
+    "the cloud repo's workflows",
+)
+class GuardSteps(unittest.TestCase):
+    """Workflow steps run as bash from the workflow files: the input guards of build-push and dev-deploy, sync-argocd's
+    update step, retag's copy and the build workflows' image roots. Stubs: curl (the GET answers get.json with the
+    HTTP code in code, the PATCH body lands in patch.json); crane (img/<image> holds an image's digest, a missing one
+    prints crane_err and fails, each copy is logged to copies, drift makes a copy land at another digest); docker
+    (login only).
+    """
+
+    APP = {
+        "spec": {
+            "source": {
+                "helm": {"parameters": [{"name": "postgresql.enabled", "value": "false"}]}
+            }
+        }
+    }
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.d = d = tmp.name
+        with open(os.path.join(d, "curl"), "w") as fh:
+            fh.write(f"""#!/bin/sh
+case "$*" in
+  *"-X PATCH"*) cat > {d}/patch.json; printf '{{}}\\n200';;
+  *) cat {d}/get.json; printf '\\n%s' "$(cat {d}/code)";;
+esac
+""")
+        os.chmod(os.path.join(d, "curl"), 0o755)
+        os.mkdir(os.path.join(d, "img"))
+        with open(os.path.join(d, "crane"), "w") as fh:
+            fh.write(f"""#!/bin/sh
+img() {{ echo "{d}/img/$(echo "$1" | tr '/:' '__')"; }}
+case "$1" in
+  auth) cat > /dev/null;;
+  digest) [ -e "$(img "$2")" ] || {{ cat {d}/crane_err; exit 1; }}; cat "$(img "$2")";;
+  copy) echo "$2 $3" >> {d}/copies; cp "$(img "$2")" "$(img "$3")"; [ ! -e {d}/drift ] || echo sha256:other > "$(img "$3")";;
+esac
+""")
+        with open(os.path.join(d, "docker"), "w") as fh:
+            fh.write("#!/bin/sh\ncat > /dev/null\n")
+        for tool in ("crane", "docker"):
+            os.chmod(os.path.join(d, tool), 0o755)
+
+    def bash(self, script, **env):
+        return subprocess.run(
+            ["bash", "-eo", "pipefail", "-c", script],
+            env={
+                "PATH": f"{self.d}:{os.environ['PATH']}",
+                "GITHUB_OUTPUT": os.path.join(self.d, "out"),
+                "GITHUB_STEP_SUMMARY": os.path.join(self.d, "summary"),
+                "GITHUB_ENV": os.path.join(self.d, "env"),
+                **env,
+            },
+            capture_output=True,
+            text=True,
+        )
+
+    def build_push(self, tag, **env):
+        script = step(
+            "build-push.yaml",
+            "Assert tags when manual",
+            {"github.event.inputs.tag || inputs.tag": tag},
+        )
+        return self.bash(
+            script,
+            **{
+                "BUILD_FROM_TAG": "false",
+                "BUILDS": "true",
+                "RC_REPOS": "projects/p/locations/l/repositories/rc",
+                **env,
+            },
+        )
+
+    def test_build_push_refuses_an_rc_tag_built_outside_build_from_tag(self):
+        r = self.build_push("v1.2.0-rc.1")
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("release-line RC tag", r.stdout)
+
+    def test_build_push_passes_an_rc_tag_otherwise(self):
+        for env in ({"BUILD_FROM_TAG": "true"}, {"BUILDS": "false"}, {"RC_REPOS": ""}):
+            r = self.build_push("v1.2.0-rc.1", **env)
+            self.assertEqual(r.returncode, 0, (env, r.stdout))
+        for tag in ("snapshot.7", "v1.2.0", "rc.4"):
+            self.assertEqual(self.build_push(tag).returncode, 0, tag)
+
+    def test_dev_deploy_refuses_frontend_dev_for_an_rc_tag(self):
+        guard = step("dev-deploy.yaml", "Refuse frontend-dev for an RC tag")
+        env = {"TAG": "v1.2.0-rc.1", "FRONTEND_DEV": "true", "CLOUD_RC": RC}
+        r = self.bash(guard, **env)
+        self.assertEqual(r.returncode, 1, r.stdout)
+        for change in ({"TAG": "auto"}, {"FRONTEND_DEV": "false"}, {"CLOUD_RC": ""}):
+            self.assertEqual(self.bash(guard, **{**env, **change}).returncode, 0, change)
+
+    def sync(self, app, code=200, **env):
+        with open(os.path.join(self.d, "get.json"), "w") as fh:
+            fh.write(app if isinstance(app, str) else json.dumps(app))
+        with open(os.path.join(self.d, "code"), "w") as fh:
+            fh.write(str(code))
+        r = self.bash(
+            step("sync-argocd.yaml", "Update ArgoCD Application"),
+            **{
+                "APP_NAME": "dev-unstract-dev",
+                "TARGET_REVISION": "main",
+                "IMAGE_TAG": "",
+                "CLOUD_RC": "",
+                "TRIGGERED_BY": "dev",
+                "ARGOCD_SERVER": "argocd",
+                "ARGOCD_TOKEN": "t",
+                **env,
+            },
+        )
+        patch = os.path.join(self.d, "patch.json")
+        if not os.path.exists(patch):
+            return r, None
+        with open(patch) as fh:
+            params = json.loads(json.load(fh)["patch"])["spec"]["source"]["helm"][
+                "parameters"
+            ]
+        os.remove(patch)
+        return r, {p["name"]: p["value"] for p in params}
+
+    def test_sync_refuses_a_read_with_no_spec_source(self):
+        for body in (
+            '{"error": "permission denied"}',
+            '{"spec": {}}',
+            "<html>login</html>",
+            "",
+        ):
+            r, params = self.sync(body)
+            self.assertEqual(r.returncode, 1, (body, r.stdout))
+            self.assertIn(
+                "returned no .spec.source", r.stdout, body
+            )  # named, not a traceback
+            self.assertIsNone(params, body)
+        r, params = self.sync(self.APP, code=403)
+        self.assertEqual((r.returncode, params), (1, None))
+
+    def test_sync_of_an_app_with_no_parameters(self):
+        r, params = self.sync({"spec": {"source": {}}}, IMAGE_TAG="snapshot.7")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(params, {"global.unstract.image.tag": "snapshot.7"})
+
+    def test_sync_keeps_an_unrelated_parameter_and_takes_cloud_rc(self):
+        r, params = self.sync(self.APP, IMAGE_TAG="v1.2.0-rc.1", CLOUD_RC=RC)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(params["postgresql.enabled"], "false")
+        self.assertEqual(params["backend.image.registry"], RC_HOST)
+        with open(os.path.join(self.d, "env")) as fh:
+            self.assertIn(f"IMAGE_REGISTRY_APPLIED={RC_HOST}", fh.read())
+        r, params = self.sync(self.APP, IMAGE_TAG="snapshot.7", CLOUD_RC=RC)
+        self.assertEqual(
+            params,
+            {"postgresql.enabled": "false", "global.unstract.image.tag": "snapshot.7"},
+        )
+
+    def app(self, revision="", **params):
+        return {
+            "spec": {
+                "source": {
+                    "targetRevision": revision,
+                    "helm": {
+                        "parameters": [{"name": n, "value": v} for n, v in params.items()]
+                    },
+                }
+            }
+        }
+
+    def test_resync_of_an_rc_pulls_from_cloud_rc(self):
+        stable = "us-central1-docker.pkg.dev/p/unstract"
+        regs = {
+            f"{s}.image.registry": stable
+            for s in ("frontend", "backend", "runner", "platform", "x2text", "worker")
+        }
+        regs["runner.configMap.TOOL_SIDECAR_IMAGE_NAME"] = f"{stable}/tool-sidecar"
+        rc_regs = {k: RC_HOST for k in regs if k.endswith("registry")}
+        rc_regs["runner.configMap.TOOL_SIDECAR_IMAGE_NAME"] = f"{RC_HOST}/tool-sidecar"
+        # a dev namespace on an RC tag, re-synced with no tag on any branch: its registries become the RC repository
+        app = self.app("main", **{"global.unstract.image.tag": "v1.1.0-rc.2", **regs})
+        for revision in ("main", "feature/x"):
+            r, params = self.sync(app, TARGET_REVISION=revision, CLOUD_RC=RC)
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            self.assertEqual(
+                params,
+                {
+                    "global.unstract.image.tag": "v1.1.0-rc.2",
+                    "runner.configMap.TOOL_SIDECAR_IMAGE_TAG": "v1.1.0-rc.2",
+                    **rc_regs,
+                },
+            )
+        # an app after a take-rc-build sync: registries and no tag parameter, the chart at the RC git tag
+        for current in (
+            self.app("v1.2.0-rc.1", **rc_regs),
+            self.app("v1.1.0-rc.2", **regs),
+        ):
+            r, params = self.sync(
+                current,
+                APP_NAME="a-unstract-dev",
+                TARGET_REVISION="v1.2.0-rc.1",
+                CLOUD_RC=RC,
+            )
+            self.assertEqual(params, rc_regs)
+
+    def test_an_rc_sync_without_cloud_rc_fails(self):
+        for app, env in (
+            (self.APP, {"IMAGE_TAG": "v1.2.0-rc.1"}),
+            (self.APP, {"TARGET_REVISION": "v1.2.0-rc.1"}),
+            (self.app("main", **{"global.unstract.image.tag": "v1.1.0-rc.2"}), {}),
+        ):
+            r, params = self.sync(app, **env)
+            self.assertEqual((r.returncode, params), (1, None), env)
+            self.assertIn("RELSTATE_AR_CLOUD_RC, which is unset", r.stderr, env)
+        # a non-RC sync drops RC registries an app still has, with the variable unset
+        r, params = self.sync(
+            self.app("v1.2.0-rc.1", **{"backend.image.registry": RC_HOST}),
+            TARGET_REVISION="v1.3.0",
+        )
+        self.assertEqual((r.returncode, params), (0, {}))
+
+    def test_rc_target_revision_with_no_tag_takes_cloud_rc(self):
+        _, params = self.sync(self.APP, TARGET_REVISION="v1.2.0-rc.1", CLOUD_RC=RC)
+        self.assertEqual(params["backend.image.registry"], RC_HOST)
+        _, params = self.sync(self.APP, TARGET_REVISION="feature/x", CLOUD_RC=RC)
+        self.assertEqual(params, {"postgresql.enabled": "false"})
+
+    def test_sync_refuses_a_malformed_repository(self):
+        # a newline would add a line to GITHUB_ENV
+        for bad in ("bogus", "projects/p\nX=1/locations/l/repositories/r"):
+            for tag in ("v1.2.0-rc.1", "snapshot.7"):
+                r, params = self.sync(self.APP, IMAGE_TAG=tag, CLOUD_RC=bad)
+                self.assertEqual((r.returncode, params), (1, None), (bad, tag))
+                self.assertIn("Not an AR repository", r.stderr, bad)
+
+    STABLE = "us-central1-docker.pkg.dev/p/unstract"
+
+    def retag(self, images, err="", drift=False, rc_repo=RC, source="v1.2.0-rc.1"):
+        for image, digest in images.items():
+            with open(
+                os.path.join(self.d, "img", image.replace("/", "_").replace(":", "_")),
+                "w",
+            ) as fh:
+                fh.write(digest)
+        with open(os.path.join(self.d, "crane_err"), "w") as fh:
+            fh.write(err)
+        if drift:
+            open(os.path.join(self.d, "drift"), "w").close()
+        r = self.bash(
+            step("retag-docker-images.yaml", "Retag ${{ matrix.service }} image"),
+            PROJECT_ID="p",
+            SOURCE_TAG=source,
+            TARGET_TAG="v1.2.0",
+            SERVICE="backend",
+            RC_REPO=rc_repo,
+            TOKEN="t",
+        )
+        copies = os.path.join(self.d, "copies")
+        with open(copies) if os.path.exists(copies) else io.StringIO() as fh:
+            return r, fh.read().split("\n")[0]
+
+    def test_retag_copies_the_rc_repository_image(self):
+        r, copy = self.retag(
+            {
+                f"{RC_HOST}/backend:v1.2.0-rc.1": "sha256:rc",
+                f"{self.STABLE}/backend:v1.2.0-rc.1": "sha256:old",
+            }
+        )
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(
+            copy, f"{RC_HOST}/backend:v1.2.0-rc.1 {self.STABLE}/backend:v1.2.0"
+        )
+
+    def test_retag_reads_a_release_line_rc_only_from_its_rc_repository(self):
+        stable = {f"{self.STABLE}/backend:v1.2.0-rc.1": "sha256:old"}
+        for rc_repo in ("", "bogus", "projects/p/locations/l/repositories/r/x"):
+            r, copy = self.retag(stable, rc_repo=rc_repo)
+            self.assertEqual((r.returncode, copy), (1, ""), rc_repo)
+            self.assertIn("is a release-line RC", r.stdout, rc_repo)
+        for source in ("rc.4", "snapshot.7"):
+            r, copy = self.retag(
+                {f"{self.STABLE}/backend:{source}": "sha256:s"}, source=source
+            )
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            self.assertEqual(
+                copy, f"{self.STABLE}/backend:{source} {self.STABLE}/backend:v1.2.0"
+            )
+            os.remove(os.path.join(self.d, "copies"))
+
+    def test_retag_refuses_a_copy_at_another_digest(self):
+        r, _ = self.retag({f"{RC_HOST}/backend:v1.2.0-rc.1": "sha256:rc"}, drift=True)
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("not the RC's sha256:rc", r.stdout)
+
+    def test_image_roots(self):
+        roots = step("cloud-backend-docker-build-push.yaml", "Image roots")
+        env = {"PROJECT_ID": "p", "TOKEN": "t", "ON_PREM_RC": ""}
+        r = self.bash(roots, CLOUD_RC=RC, **env)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        r = self.bash(roots, CLOUD_RC="", **env)
+        with open(os.path.join(self.d, "env")) as fh:
+            self.assertEqual(
+                fh.read().split("\n")[:4],
+                [
+                    f"IMAGE_ROOT_CLOUD={RC_HOST}",
+                    f"IMAGE_ROOT_ON_PREM={self.STABLE}-on-prem",
+                    f"IMAGE_ROOT_CLOUD={self.STABLE}",
+                    f"IMAGE_ROOT_ON_PREM={self.STABLE}-on-prem",
+                ],
+            )
+        r = self.bash(roots, CLOUD_RC="bogus", **env)
+        self.assertEqual(r.returncode, 1)
+
+    def test_image_roots_is_the_same_in_every_build_workflow(self):
+        # on-prem-backend logs in with the credential helper instead of the token (a long compile outlives it)
+        def roots(f):
+            return [
+                line
+                for line in step(f, "Image roots").split("\n")
+                if not re.search(r"docker login|configure-docker|credential helper", line)
+            ]
+
+        files = sorted(
+            f
+            for f in os.listdir(os.path.join(HERE, "..", "workflows"))
+            # multi-doc-service is not built by build-push, so it has no RC image
+            if f.endswith("-docker-build-push.yaml")
+            and f != "cloud-multi-doc-service-docker-build-push.yaml"
+        )
+
+        def env(
+            f,
+        ):  # the step's RC repository env lines, which gate them on a release build
+            with open(os.path.join(HERE, "..", "workflows", f)) as fh:
+                text = fh.read()
+            block = text[
+                text.index("- name: Image roots") : text.index(
+                    "run: |", text.index("- name: Image roots")
+                )
+            ]
+            return [line.strip() for line in block.split("\n") if "_RC:" in line]
+
+        self.assertEqual(len(files), 11)
+        self.assertEqual(len(env("cloud-backend-docker-build-push.yaml")), 2)
+        for f in files:
+            self.assertEqual(roots(f), roots("cloud-backend-docker-build-push.yaml"), f)
+            self.assertEqual(env(f), env("cloud-backend-docker-build-push.yaml"), f)
+            with open(os.path.join(HERE, "..", "workflows", f)) as fh:
+                text = fh.read()
+            tags = re.findall(r"tags=\$\{\{ env\.(IMAGE_ROOT_\w+) \}\}", text)
+            self.assertEqual(len(tags), text.count("tags="), f)  # no tag outside a root
+            # a cloud build pushes its cloud image, and some also their on-prem one; an on-prem build only that
+            want = (
+                [["IMAGE_ROOT_CLOUD"], ["IMAGE_ROOT_CLOUD", "IMAGE_ROOT_ON_PREM"]]
+                if f.startswith("cloud-")
+                else [["IMAGE_ROOT_ON_PREM"]]
+            )
+            self.assertIn(tags, want, f)
+
+    def test_on_prem_retag_is_the_cloud_retag(self):
+        # both jobs' steps share a name, so step() runs the cloud one; the on-prem one differs only in its stable root
+        # and RC repository variable
+        def body(n):
+            with open(
+                os.path.join(HERE, "..", "workflows", "retag-docker-images.yaml")
+            ) as fh:
+                text = fh.read()
+            at = [
+                m.start()
+                for m in re.finditer(
+                    r"- name: Retag \$\{\{ matrix\.service \}\} image", text
+                )
+            ]
+            self.assertEqual(len(at), 2)
+            return text[
+                at[n] : text.index("\n\n  #", at[n])
+            ]  # the whole step, env included
+
+        on_prem = body(1).replace('/unstract-on-prem"', '/unstract"')
+        self.assertEqual(
+            on_prem.replace("RELSTATE_AR_ON_PREM_RC", "RELSTATE_AR_CLOUD_RC"), body(0)
+        )
+        self.assertIn("RELSTATE_AR_ON_PREM_RC", body(1))
+        self.assertIn("crane copy", body(0))
 
 
 class PendingPicksWorkflow(Workflow):
