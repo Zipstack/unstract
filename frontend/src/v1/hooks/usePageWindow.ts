@@ -13,6 +13,28 @@ export interface PageWindow {
   visible: ReadonlySet<number>;
   /** 0-based pages that should hold a canvas: the visible ones ± overscan. */
   rendered: ReadonlySet<number>;
+  /** The 0-based page showing most of itself; the last one while none shows. */
+  current: number;
+}
+
+// Ratios are reported at these steps, which is enough to tell which page
+// shows most without a callback on every scrolled pixel.
+const THRESHOLDS = [0, 0.25, 0.5, 0.75, 1];
+
+/** The page with the largest visible share; the lower index wins a tie. */
+function mostVisible(ratios: ReadonlyMap<number, number>): number | null {
+  let best: number | null = null;
+  let bestRatio = -1;
+  for (const [index, ratio] of ratios) {
+    if (
+      ratio > bestRatio ||
+      (ratio === bestRatio && best !== null && index < best)
+    ) {
+      best = index;
+      bestRatio = ratio;
+    }
+  }
+  return best;
 }
 
 function sameMembers(a: ReadonlySet<number>, b: ReadonlySet<number>): boolean {
@@ -43,6 +65,7 @@ export function usePageWindow(
   const [visible, setVisible] = useState<ReadonlySet<number>>(
     () => new Set<number>(),
   );
+  const [current, setCurrent] = useState(0);
   const observerRef = useRef<IntersectionObserver | null>(null);
   const pages = useRef(new Set<HTMLElement>());
 
@@ -50,23 +73,27 @@ export function usePageWindow(
     if (root === null) {
       return;
     }
-    const inView = new Set<number>();
+    const ratios = new Map<number, number>();
     const observer = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) {
           const index = pageIndexOf(entry.target);
           if (entry.isIntersecting) {
-            inView.add(index);
+            ratios.set(index, entry.intersectionRatio);
           } else {
-            inView.delete(index);
+            ratios.delete(index);
           }
         }
-        const next = new Set(inView);
+        const next = new Set(ratios.keys());
         setVisible((previous) =>
           sameMembers(previous, next) ? previous : next,
         );
+        const top = mostVisible(ratios);
+        if (top !== null) {
+          setCurrent(top);
+        }
       },
-      { root },
+      { root, threshold: THRESHOLDS },
     );
     observerRef.current = observer;
     for (const page of pages.current) {
@@ -95,5 +122,11 @@ export function usePageWindow(
     [visible, pageCount, overscan],
   );
 
-  return { scrollRef: setRoot, observePage, visible, rendered };
+  return {
+    scrollRef: setRoot,
+    observePage,
+    visible,
+    rendered,
+    current: Math.min(current, Math.max(0, pageCount - 1)),
+  };
 }
