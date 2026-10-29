@@ -1,3 +1,4 @@
+from drf_spectacular.utils import extend_schema
 from platform_api.permissions import IsOrganizationAdmin
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -13,6 +14,11 @@ class KeyUsageSummaryView(APIView):
 
     permission_classes = [IsAuthenticated, IsOrganizationAdmin]
 
+    @extend_schema(
+        operation_id="api_key_usage_summary",
+        tags=["api-key-usage"],
+        responses={200: KeyUsageSummarySerializer},
+    )
     def get(self, request):
         reads.refresh()
         counts = reads.summary(UserContext.get_organization())

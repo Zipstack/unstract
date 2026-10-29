@@ -2,6 +2,7 @@
 
 from typing import Any
 
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from api_key_usage.reads import USAGE_STATUSES, KeyUsage, daily_history, usage_by_key
@@ -30,13 +31,16 @@ class KeyUsageFieldsMixin(serializers.Serializer):
             self.context.setdefault("usage", {}).update(usage)
         return usage[obj.id]
 
+    @extend_schema_field(serializers.DateTimeField(allow_null=True))
     def get_last_used_at(self, obj: Any) -> str | None:
         last = self._usage(obj).last_used_at
         return serializers.DateTimeField().to_representation(last) if last else None
 
+    @extend_schema_field(serializers.ChoiceField(choices=USAGE_STATUSES))
     def get_usage_status(self, obj: Any) -> str:
         return self._usage(obj).usage_status
 
+    @extend_schema_field(serializers.IntegerField())
     def get_calls_30d(self, obj: Any) -> int:
         return self._usage(obj).calls_30d
 

@@ -6,9 +6,14 @@ from api_key_usage.rotation import (
     grace_summary,
     rotate_secret,
 )
-from api_key_usage.serializers import KeyCallerSerializer, history_response
+from api_key_usage.serializers import (
+    KeyCallerSerializer,
+    KeyHistorySerializer,
+    history_response,
+)
 from api_v2.models import APIDeployment
 from django.db.models import Prefetch
+from drf_spectacular.utils import extend_schema
 from platform_api.permissions import is_org_admin_session
 from platform_audit.actions import Action, TargetType
 from platform_audit.recorder import (
@@ -157,6 +162,11 @@ class GlobalApiDeploymentKeyViewSet(viewsets.ModelViewSet):
         serializer = GlobalApiDeploymentKeyDetailSerializer(instance)
         return Response(serializer.data)
 
+    @extend_schema(
+        operation_id="global_api_deployment_key_history",
+        tags=["api-key-usage"],
+        responses={200: KeyHistorySerializer},
+    )
     def history(self, request, *args, **kwargs):
         """Daily calls over the last 30 UTC days, oldest first."""
         instance = self.get_object()
@@ -164,6 +174,11 @@ class GlobalApiDeploymentKeyViewSet(viewsets.ModelViewSet):
         reads.refresh()
         return Response(history_response(TargetType.GLOBAL_API_DEPLOYMENT_KEY, instance))
 
+    @extend_schema(
+        operation_id="global_api_deployment_key_callers",
+        tags=["api-key-usage"],
+        responses={200: KeyCallerSerializer(many=True)},
+    )
     def callers(self, request, *args, **kwargs):
         """The API deployments the key called in the last 30 UTC days."""
         instance = self.get_object()
@@ -190,6 +205,11 @@ class GlobalApiDeploymentKeyViewSet(viewsets.ModelViewSet):
         response_serializer = GlobalApiDeploymentKeyListSerializer(updated_instance)
         return Response(response_serializer.data)
 
+    @extend_schema(
+        operation_id="global_api_deployment_key_rotate",
+        request=RotateSerializer,
+        responses={200: GlobalApiDeploymentKeyDetailSerializer},
+    )
     def rotate(self, request, *args, **kwargs):
         instance = self.get_object()
         self._limit_member_to_key(instance)

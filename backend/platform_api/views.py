@@ -6,8 +6,9 @@ from api_key_usage.rotation import (
     grace_summary,
     rotate_secret,
 )
-from api_key_usage.serializers import history_response
+from api_key_usage.serializers import KeyHistorySerializer, history_response
 from django.db import transaction
+from drf_spectacular.utils import extend_schema
 from platform_audit.actions import Action, TargetType
 from platform_audit.recorder import (
     best_effort,
@@ -97,6 +98,11 @@ class PlatformApiKeyViewSet(viewsets.ModelViewSet):
         serializer = PlatformApiKeyDetailSerializer(instance)
         return Response(serializer.data)
 
+    @extend_schema(
+        operation_id="platform_api_key_history",
+        tags=["api-key-usage"],
+        responses={200: KeyHistorySerializer},
+    )
     def history(self, request, *args, **kwargs):
         """Daily calls over the last 30 UTC days, oldest first."""
         instance = self.get_object()
@@ -128,6 +134,11 @@ class PlatformApiKeyViewSet(viewsets.ModelViewSet):
         )
         return Response(status=status.HTTP_204_NO_CONTENT)
 
+    @extend_schema(
+        operation_id="platform_api_key_rotate",
+        request=RotateSerializer,
+        responses={200: PlatformApiKeyDetailSerializer},
+    )
     def rotate(self, request, *args, **kwargs):
         instance = self.get_object()
         options = RotateSerializer(data=request.data)
