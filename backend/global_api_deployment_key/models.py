@@ -44,6 +44,13 @@ class GlobalApiDeploymentKey(DefaultOrganizationMixin, BaseModel):
     description = models.CharField(max_length=512)
     key = models.UUIDField(default=uuid.uuid4, unique=True)
     is_active = models.BooleanField(default=True)
+    previous_key = models.UUIDField(
+        null=True,
+        blank=True,
+        unique=True,
+        db_comment="Secret before the last rotation; works until previous_key_expires_at",
+    )
+    previous_key_expires_at = models.DateTimeField(null=True, blank=True)
     expires_at = models.DateTimeField(
         null=True,
         blank=True,

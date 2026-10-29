@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 
 from api_key_usage.expiry import is_expired
+from api_key_usage.rotation import get_by_secret
 from django.core.exceptions import ValidationError
 from global_api_deployment_key.models import GlobalApiDeploymentKey
 from pipeline_v2.models import Pipeline
@@ -90,7 +91,9 @@ class KeyHelper:
             # UUIDField coerces/validates the key string via to_python, raising
             # ValidationError for a malformed value — the same pattern
             # ``validate_api_key`` relies on, so no manual uuid parsing is needed.
-            global_key = GlobalApiDeploymentKey.objects.get(key=api_key, is_active=True)
+            global_key = get_by_secret(
+                GlobalApiDeploymentKey.objects, api_key, is_active=True
+            )
         except (GlobalApiDeploymentKey.DoesNotExist, ValidationError):
             # Unknown, inactive, or malformed key. Log the reason for
             # observability; the client still gets a generic 401 (we don't

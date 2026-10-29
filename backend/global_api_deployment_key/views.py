@@ -1,6 +1,10 @@
-import uuid
-
 from api_key_usage.expiry import record_expiry_change
+from api_key_usage.rotation import (
+    ROTATED_FIELDS,
+    RotateSerializer,
+    grace_summary,
+    rotate_secret,
+)
 from api_v2.models import APIDeployment
 from django.db.models import Prefetch
 from platform_api.permissions import is_org_admin_session
@@ -151,10 +155,18 @@ class GlobalApiDeploymentKeyViewSet(viewsets.ModelViewSet):
     def rotate(self, request, *args, **kwargs):
         instance = self.get_object()
         self._limit_member_to_key(instance)
-        instance.key = uuid.uuid4()
+        options = RotateSerializer(data=request.data)
+        options.is_valid(raise_exception=True)
+        rotate_secret(instance, options.validated_data["grace"])
         instance.modified_by = request.user
-        instance.save(update_fields=["key", "modified_by", "modified_at"])
-        _record_key_event(request, Action.KEY_ROTATED, instance.id, instance.name)
+        instance.save(update_fields=[*ROTATED_FIELDS, "modified_by", "modified_at"])
+        _record_key_event(
+            request,
+            Action.KEY_ROTATED,
+            instance.id,
+            instance.name,
+            summary=grace_summary(instance),
+        )
         response_serializer = GlobalApiDeploymentKeyDetailSerializer(instance)
         return Response(response_serializer.data)
 

@@ -20,6 +20,7 @@ class PlatformApiKeyListSerializer(serializers.ModelSerializer):
             "key",
             "is_active",
             "expires_at",
+            "previous_key_expires_at",
             "created_at",
             "modified_at",
             "permission",
@@ -76,4 +77,4 @@ class PlatformApiKeyDetailSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = PlatformApiKey
-        fields = ["id", "name", "key", "is_active"]
+        fields = ["id", "name", "key", "is_active", "previous_key_expires_at"]

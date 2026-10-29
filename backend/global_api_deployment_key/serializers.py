@@ -39,6 +39,7 @@ class GlobalApiDeploymentKeyListSerializer(serializers.ModelSerializer):
             "key",
             "is_active",
             "expires_at",
+            "previous_key_expires_at",
             "allow_all_deployments",
             "created_by_member",
             "api_deployments",
@@ -68,7 +69,7 @@ class GlobalApiDeploymentKeyDetailSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = GlobalApiDeploymentKey
-        fields = ["id", "name", "key", "is_active"]
+        fields = ["id", "name", "key", "is_active", "previous_key_expires_at"]
 
 
 class _GlobalApiDeploymentKeyWriteSerializer(AuditSerializer):

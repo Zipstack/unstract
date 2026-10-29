@@ -1,6 +1,10 @@
-import uuid
-
 from api_key_usage.expiry import record_expiry_change
+from api_key_usage.rotation import (
+    ROTATED_FIELDS,
+    RotateSerializer,
+    grace_summary,
+    rotate_secret,
+)
 from django.db import transaction
 from platform_audit.actions import Action, TargetType
 from platform_audit.recorder import (
@@ -11,6 +15,7 @@ from platform_audit.recorder import (
 from rest_framework import status, viewsets
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from tenant_account_v2.capabilities import Capability, RequiresCapability
 from utils.user_context import UserContext
 
 from platform_api.models import PlatformApiKey
@@ -31,7 +36,11 @@ class PlatformApiKeyViewSet(viewsets.ModelViewSet):
         # Rotate allows self-service rotation by a platform API key (UN-3586);
         # all other key-management actions stay admin/session-only.
         if self.action == "rotate":
-            return [IsAuthenticated(), CanRotatePlatformApiKey()]
+            return [
+                IsAuthenticated(),
+                CanRotatePlatformApiKey(),
+                RequiresCapability(Capability.MANAGE_API_KEYS),
+            ]
         return super().get_permissions()
 
     def get_queryset(self):
@@ -103,11 +112,19 @@ class PlatformApiKeyViewSet(viewsets.ModelViewSet):
 
     def rotate(self, request, *args, **kwargs):
         instance = self.get_object()
+        options = RotateSerializer(data=request.data)
+        options.is_valid(raise_exception=True)
 
-        instance.key = uuid.uuid4()
+        rotate_secret(instance, options.validated_data["grace"])
         instance.modified_by = request.user
-        instance.save(update_fields=["key", "modified_by"])
-        _record_key_event(request, Action.KEY_ROTATED, instance.id, instance.name)
+        instance.save(update_fields=[*ROTATED_FIELDS, "modified_by"])
+        _record_key_event(
+            request,
+            Action.KEY_ROTATED,
+            instance.id,
+            instance.name,
+            summary=grace_summary(instance),
+        )
 
         response_serializer = PlatformApiKeyDetailSerializer(instance)
         return Response(response_serializer.data)

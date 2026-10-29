@@ -119,6 +119,7 @@ class CustomAuthMiddleware:
         """
         from api_key_usage.expiry import EXPIRED_MESSAGE, is_expired
         from api_key_usage.recorder import record_key_use
+        from api_key_usage.rotation import get_by_secret
         from platform_api.models import ApiKeyPermission, PlatformApiKey
         from platform_audit.actions import TargetType
 
@@ -135,9 +136,13 @@ class CustomAuthMiddleware:
             return JsonResponse({"message": "Invalid API key format"}, status=401)
 
         try:
-            key = PlatformApiKey.objects.select_related(
-                "created_by", "api_user", "organization"
-            ).get(key=key_uuid, is_active=True)
+            key = get_by_secret(
+                PlatformApiKey.objects.select_related(
+                    "created_by", "api_user", "organization"
+                ),
+                key_uuid,
+                is_active=True,
+            )
         except PlatformApiKey.DoesNotExist:
             _log_key_rejection(request, token_str, "unknown or inactive key")
             return JsonResponse({"message": "Invalid or inactive API key"}, status=401)
