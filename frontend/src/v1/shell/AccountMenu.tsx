@@ -90,8 +90,8 @@ export function AccountMenu({ user, profileHref }: AccountMenuProps) {
           <Item href={HELP_URL}>
             <CircleHelp aria-hidden className={ICON} />
             <span className="ui:flex-1">
-              Help & docs
-              <span className="ui:sr-only"> (opens in a new tab)</span>
+              Help & docs{" "}
+              <span className="ui:sr-only">(opens in a new tab)</span>
             </span>
             <ExternalLink
               aria-hidden
