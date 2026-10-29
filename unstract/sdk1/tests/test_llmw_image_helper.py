@@ -1209,7 +1209,7 @@ class TestMaxTotalImageBytes:
         self, monkeypatch: MonkeyPatch
     ) -> None:
         kwargs = self._submit_kwargs(monkeypatch, 3)
-        assert kwargs["max_total_image_bytes"] == helper_mod.fixed_max_total_bytes()
+        assert kwargs["max_total_image_bytes"] == helper_mod.get_fixed_max_total_bytes()
 
     def test_fixed_budget_sent_is_never_raised_by_the_env(
         self, monkeypatch: MonkeyPatch
@@ -1265,7 +1265,7 @@ class TestMaxTotalImageBytes:
             H.poll_pdf_to_images_status(_NET_CONFIG, "wh")
         assert excinfo.value.status_code == 400
         msg = str(excinfo.value)
-        budget_mib = helper_mod.fixed_max_total_bytes() / (1024 * 1024)
+        budget_mib = helper_mod.get_fixed_max_total_bytes() / (1024 * 1024)
         assert msg.startswith(
             "This document is too large for image output mode. Its 5 page "
             "images total at least 21.0 MiB, over the "

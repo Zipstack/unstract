@@ -48,8 +48,8 @@ from unstract.sdk1.adapters.x2text.llm_whisperer_v2.src.page_range import (
 )
 from unstract.sdk1.adapters.x2text.page_image_loader import (
     PAGE_LABELS_FILENAME,
-    fixed_max_total_bytes,
-    fixed_page_cap,
+    get_fixed_max_total_bytes,
+    get_fixed_page_cap,
     validate_document_pages,
 )
 from unstract.sdk1.constants import MimeType
@@ -932,7 +932,7 @@ class LLMWhispererHelper:
         ``page_image_loader`` — so a document that passes here passes there.
         Raises before anything is persisted.
         """
-        budget = fixed_max_total_bytes()
+        budget = get_fixed_max_total_bytes()
         total = sum(len(data) for _, data in pages)
         if total <= budget:
             return
@@ -978,7 +978,7 @@ class LLMWhispererHelper:
         policy's bound needs a page count that could not be read locally.
         """
         if image_limits is None:
-            budget: int | None = fixed_max_total_bytes()
+            budget: int | None = get_fixed_max_total_bytes()
         elif page_count is None:
             return None
         else:
@@ -1035,7 +1035,7 @@ class LLMWhispererHelper:
             )
             if image_limits is None:
                 message = LLMWhispererHelper._fixed_bytes_message(
-                    page_count, rendered, fixed_max_total_bytes(), stopped_early=True
+                    page_count, rendered, get_fixed_max_total_bytes(), stopped_early=True
                 )
             else:
                 from unstract.sdk1.utils.image_limits import policy as _policy
@@ -1358,7 +1358,7 @@ class LLMWhispererHelper:
                 page_count=expected_page_count, include_size=True
             )
             return
-        page_cap = fixed_page_cap()
+        page_cap = get_fixed_page_cap()
         if expected_page_count > page_cap:
             from unstract.sdk1.utils.image_limits.policy import fixed_cap_message
 
@@ -1441,7 +1441,7 @@ class LLMWhispererHelper:
         ``image_limits`` is the model-aware policy of the LLM(s) that will
         consume the pages; it drives the pre-submit page budget and the
         post-download byte and per-image checks. Without it the fixed cap
-        (``fixed_page_cap`` / ``fixed_max_total_bytes``) applies.
+        (``get_fixed_page_cap`` / ``get_fixed_max_total_bytes``) applies.
 
         Retrieval is intentionally NOT retried: the service marks the job
         RETRIEVED before streaming and (with the default persistence off) a

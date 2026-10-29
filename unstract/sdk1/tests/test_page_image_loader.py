@@ -25,8 +25,8 @@ from unstract.sdk1.adapters.x2text.page_image_loader import (
     PageImagesNotFoundError,
     build_vision_message_content,
     discover_page_images,
-    fixed_max_total_bytes,
-    fixed_page_cap,
+    get_fixed_max_total_bytes,
+    get_fixed_page_cap,
     load_page_images,
 )
 from unstract.sdk1.file_storage import FileStorage, FileStorageProvider
@@ -355,21 +355,21 @@ class TestFixedPageCap:
     def test_absent_env_is_the_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv(PAGE_CAP_ENV, raising=False)
         monkeypatch.delenv(MAX_TOTAL_MB_ENV, raising=False)
-        assert fixed_page_cap() == DEFAULT_PAGE_CAP
-        assert fixed_max_total_bytes() == DEFAULT_MAX_TOTAL_BYTES
+        assert get_fixed_page_cap() == DEFAULT_PAGE_CAP
+        assert get_fixed_max_total_bytes() == DEFAULT_MAX_TOTAL_BYTES
 
     def test_lower_ceiling_tightens(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv(PAGE_CAP_ENV, "42")
         monkeypatch.setenv(MAX_TOTAL_MB_ENV, "6")
-        assert fixed_page_cap() == 42
-        assert fixed_max_total_bytes() == 6 * 1024 * 1024
+        assert get_fixed_page_cap() == 42
+        assert get_fixed_max_total_bytes() == 6 * 1024 * 1024
 
     def test_higher_ceiling_does_not_raise(self, monkeypatch: pytest.MonkeyPatch) -> None:
         # The env vars are ceilings: above the fixed cap they change nothing.
         monkeypatch.setenv(PAGE_CAP_ENV, "200")
         monkeypatch.setenv(MAX_TOTAL_MB_ENV, "50")
-        assert fixed_page_cap() == DEFAULT_PAGE_CAP
-        assert fixed_max_total_bytes() == DEFAULT_MAX_TOTAL_BYTES
+        assert get_fixed_page_cap() == DEFAULT_PAGE_CAP
+        assert get_fixed_max_total_bytes() == DEFAULT_MAX_TOTAL_BYTES
 
     @pytest.mark.parametrize("raw", ["not-a-number", "0", "-5", "", "  "])
     def test_unusable_value_keeps_the_default(
@@ -378,8 +378,8 @@ class TestFixedPageCap:
         # An operator typo must not fail extraction or remove the cap.
         monkeypatch.setenv(PAGE_CAP_ENV, raw)
         monkeypatch.setenv(MAX_TOTAL_MB_ENV, raw)
-        assert fixed_page_cap() == DEFAULT_PAGE_CAP
-        assert fixed_max_total_bytes() == DEFAULT_MAX_TOTAL_BYTES
+        assert get_fixed_page_cap() == DEFAULT_PAGE_CAP
+        assert get_fixed_max_total_bytes() == DEFAULT_MAX_TOTAL_BYTES
 
 
 class TestDeprecatedAccessorAliases:
@@ -394,8 +394,8 @@ class TestDeprecatedAccessorAliases:
         for page, mib in (("40", "6"), ("200", "50"), ("", "")):
             monkeypatch.setenv(PAGE_CAP_ENV, page)
             monkeypatch.setenv(MAX_TOTAL_MB_ENV, mib)
-            assert configured_page_cap() == fixed_page_cap()
-            assert configured_max_total_bytes() == fixed_max_total_bytes()
+            assert configured_page_cap() == get_fixed_page_cap()
+            assert configured_max_total_bytes() == get_fixed_max_total_bytes()
 
 
 class TestLoaderReadsConfiguredLimits:
@@ -583,28 +583,28 @@ class TestConfiguredCeilings:
     def test_absent_env_is_no_ceiling(self, monkeypatch: pytest.MonkeyPatch) -> None:
         from unstract.sdk1.adapters.x2text.page_image_loader import (
             MAX_TOTAL_MB_ENV,
-            configured_page_ceiling,
-            configured_request_bytes_ceiling,
+            get_configured_page_ceiling,
+            get_configured_request_bytes_ceiling,
         )
 
         monkeypatch.delenv(PAGE_CAP_ENV, raising=False)
         monkeypatch.delenv(MAX_TOTAL_MB_ENV, raising=False)
-        assert configured_page_ceiling() is None
-        assert configured_request_bytes_ceiling() is None
+        assert get_configured_page_ceiling() is None
+        assert get_configured_request_bytes_ceiling() is None
 
     def test_env_values_are_ceilings_in_the_legacy_units(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         from unstract.sdk1.adapters.x2text.page_image_loader import (
             MAX_TOTAL_MB_ENV,
-            configured_page_ceiling,
-            configured_request_bytes_ceiling,
+            get_configured_page_ceiling,
+            get_configured_request_bytes_ceiling,
         )
 
         monkeypatch.setenv(PAGE_CAP_ENV, "40")
         monkeypatch.setenv(MAX_TOTAL_MB_ENV, "3")
-        assert configured_page_ceiling() == 40
-        assert configured_request_bytes_ceiling() == 3 * 1024 * 1024
+        assert get_configured_page_ceiling() == 40
+        assert get_configured_request_bytes_ceiling() == 3 * 1024 * 1024
 
     @pytest.mark.parametrize("raw", ["", "   "])
     def test_empty_value_is_unset(
@@ -616,29 +616,29 @@ class TestConfiguredCeilings:
         # A chart that renders VAR: "" means "not set", not an invalid value.
         from unstract.sdk1.adapters.x2text.page_image_loader import (
             MAX_TOTAL_MB_ENV,
-            configured_page_ceiling,
-            configured_request_bytes_ceiling,
+            get_configured_page_ceiling,
+            get_configured_request_bytes_ceiling,
         )
 
         monkeypatch.setenv(PAGE_CAP_ENV, raw)
         monkeypatch.setenv(MAX_TOTAL_MB_ENV, raw)
         with caplog.at_level("WARNING"):
-            assert configured_page_ceiling() is None
-            assert configured_request_bytes_ceiling() is None
-            assert fixed_page_cap() == DEFAULT_PAGE_CAP
+            assert get_configured_page_ceiling() is None
+            assert get_configured_request_bytes_ceiling() is None
+            assert get_fixed_page_cap() == DEFAULT_PAGE_CAP
         assert not [r for r in caplog.records if r.levelno >= logging.WARNING]
 
     def test_a_bad_value_is_logged_once(
         self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
     ) -> None:
         from unstract.sdk1.adapters.x2text.page_image_loader import (
-            configured_page_ceiling,
+            get_configured_page_ceiling,
         )
 
         monkeypatch.setenv(PAGE_CAP_ENV, "lots")
         with caplog.at_level("ERROR"):
             for _ in range(3):
-                assert configured_page_ceiling() == DEFAULT_PAGE_CAP
+                assert get_configured_page_ceiling() == DEFAULT_PAGE_CAP
         assert len([r for r in caplog.records if r.levelname == "ERROR"]) == 1
 
     @pytest.mark.parametrize("raw", ["lots", "10MB", "0", "-5"])
@@ -653,15 +653,15 @@ class TestConfiguredCeilings:
         from unstract.sdk1.adapters.x2text.page_image_loader import (
             DEFAULT_MAX_TOTAL_BYTES,
             MAX_TOTAL_MB_ENV,
-            configured_page_ceiling,
-            configured_request_bytes_ceiling,
+            get_configured_page_ceiling,
+            get_configured_request_bytes_ceiling,
         )
 
         monkeypatch.setenv(PAGE_CAP_ENV, raw)
         monkeypatch.setenv(MAX_TOTAL_MB_ENV, raw)
         with caplog.at_level("ERROR"):
-            assert configured_page_ceiling() == DEFAULT_PAGE_CAP
-            assert configured_request_bytes_ceiling() == DEFAULT_MAX_TOTAL_BYTES
+            assert get_configured_page_ceiling() == DEFAULT_PAGE_CAP
+            assert get_configured_request_bytes_ceiling() == DEFAULT_MAX_TOTAL_BYTES
         errors = [r for r in caplog.records if r.levelname == "ERROR"]
         assert {PAGE_CAP_ENV, MAX_TOTAL_MB_ENV} <= {
             name

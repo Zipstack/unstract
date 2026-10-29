@@ -56,14 +56,14 @@ logger = logging.getLogger(__name__)
 # off (``VLM_IMAGE_LIMITS_ENFORCE=false``), a caller knows no LLM (no
 # ``ImageModePolicy``), or the LLM is a pass-through provider that publishes
 # no limits. The operator ceiling can lower it, never raise it
-# (``fixed_page_cap``). Model-aware limits come from
+# (``get_fixed_page_cap``). Model-aware limits come from
 # ``unstract.sdk1.utils.image_limits``. Above the cap a
 # document is rejected rather than windowed, because this path answers in a
 # single call.
 #
 # Keep the value HERE: the cap is coupled to the byte budget below, and
 # TestCapMatchesBudget can only check the pair when both live in this file.
-# PAGE_CAP_ENV (an operator ceiling, see configured_page_ceiling) only ever
+# PAGE_CAP_ENV (an operator ceiling, see get_configured_page_ceiling) only ever
 # lowers it.
 #
 # RAISING THIS ABOVE 999 ALSO NEEDS LLMWHISPERER CHANGES. Image mode's pages
@@ -112,7 +112,7 @@ DEFAULT_PAGE_CAP = 90
 # Like DEFAULT_PAGE_CAP above, keep the value HERE rather than in a Helm
 # chart: the two are a coupled pair, checked together by
 # TestCapMatchesBudget. VLM_IMAGE_ANSWER_MAX_TOTAL_MB is an operator
-# ceiling (see configured_request_bytes_ceiling) that only ever lowers it.
+# ceiling (see get_configured_request_bytes_ceiling) that only ever lowers it.
 DEFAULT_MAX_TOTAL_BYTES = 14 * 1024 * 1024
 
 _PAGE_NAME_RE = re.compile(ImageOutputConstants.PAGE_NUMBER_REGEX)
@@ -121,9 +121,9 @@ _PAGE_NAME_RE = re.compile(ImageOutputConstants.PAGE_NUMBER_REGEX)
 # every site reads them the same way: the extraction-time checks (before
 # and right after the per-page-billed conversion) and the answer-time
 # enforcement (cloud consumer plugin). They are ceilings applied with min():
-# on top of the LLM's limits (configured_page_ceiling /
-# configured_request_bytes_ceiling) and on top of the fixed cap
-# (fixed_page_cap / fixed_max_total_bytes). See DEFAULT_PAGE_CAP for why the
+# on top of the LLM's limits (get_configured_page_ceiling /
+# get_configured_request_bytes_ceiling) and on top of the fixed cap
+# (get_fixed_page_cap / get_fixed_max_total_bytes). See DEFAULT_PAGE_CAP for why the
 # defaults live in this file.
 PAGE_CAP_ENV = "VLM_IMAGE_ANSWER_PAGE_CAP"
 MAX_TOTAL_MB_ENV = "VLM_IMAGE_ANSWER_MAX_TOTAL_MB"
@@ -182,7 +182,7 @@ def _optional_positive_int_env(name: str, default: int, *, scale: int = 1) -> in
     return value * scale
 
 
-def configured_page_ceiling() -> int | None:
+def get_configured_page_ceiling() -> int | None:
     """``PAGE_CAP_ENV`` read as an optional operator CEILING on the page budget.
 
     Model-aware policies apply it with ``min()`` on top of the model's own
@@ -192,7 +192,7 @@ def configured_page_ceiling() -> int | None:
     return _optional_positive_int_env(PAGE_CAP_ENV, DEFAULT_PAGE_CAP)
 
 
-def configured_request_bytes_ceiling() -> int | None:
+def get_configured_request_bytes_ceiling() -> int | None:
     """``MAX_TOTAL_MB_ENV`` (MiB, as before) as an optional raw-byte ceiling.
 
     An invalid value keeps ``DEFAULT_MAX_TOTAL_BYTES``.
@@ -202,42 +202,42 @@ def configured_request_bytes_ceiling() -> int | None:
     )
 
 
-def fixed_page_cap() -> int:
+def get_fixed_page_cap() -> int:
     """The fixed page cap, lowered by ``PAGE_CAP_ENV`` but never raised.
 
     What image mode enforces without the LLM's limits: with
     ``VLM_IMAGE_LIMITS_ENFORCE=false``, when the caller knows no LLM, or for
     a pass-through provider that publishes no limits.
     """
-    return min(DEFAULT_PAGE_CAP, configured_page_ceiling() or DEFAULT_PAGE_CAP)
+    return min(DEFAULT_PAGE_CAP, get_configured_page_ceiling() or DEFAULT_PAGE_CAP)
 
 
-def fixed_max_total_bytes() -> int:
+def get_fixed_max_total_bytes() -> int:
     """The fixed raw-byte budget, lowered by ``MAX_TOTAL_MB_ENV`` (MiB), never raised."""
     return min(
         DEFAULT_MAX_TOTAL_BYTES,
-        configured_request_bytes_ceiling() or DEFAULT_MAX_TOTAL_BYTES,
+        get_configured_request_bytes_ceiling() or DEFAULT_MAX_TOTAL_BYTES,
     )
 
 
 def configured_page_cap() -> int:
-    """Deprecated alias of ``fixed_page_cap``.
+    """Deprecated alias of ``get_fixed_page_cap``.
 
     Unlike the old accessor, an env value can no longer raise the cap.
     Kept for the released cloud answer plugin, which imports it; remove after
     Zipstack/unstract-cloud#1869 is deployed.
     """
-    return fixed_page_cap()
+    return get_fixed_page_cap()
 
 
 def configured_max_total_bytes() -> int:
-    """Deprecated alias of ``fixed_max_total_bytes``.
+    """Deprecated alias of ``get_fixed_max_total_bytes``.
 
     Unlike the old accessor, an env value can no longer raise the budget.
     Kept for the released cloud answer plugin; remove after
     Zipstack/unstract-cloud#1869 is deployed.
     """
-    return fixed_max_total_bytes()
+    return get_fixed_max_total_bytes()
 
 
 class _UseConfigured:
@@ -561,7 +561,7 @@ def load_page_images(  # noqa: C901 - fixed-cap and policy paths share one bound
     request-size limit (``prompt_text_bytes`` sizes the text share of that
     request) and the per-image byte/pixel checks. Without it the
     fixed cap applies: ``None`` disables either; left unset, each is read
-    from ``fixed_page_cap()`` / ``fixed_max_total_bytes()``.
+    from ``get_fixed_page_cap()`` / ``get_fixed_max_total_bytes()``.
 
     Raises:
         PageCapExceededError: more pages than the budget allows.
@@ -576,9 +576,9 @@ def load_page_images(  # noqa: C901 - fixed-cap and policy paths share one bound
         raise ValueError("pass either limits= or the fixed-cap page_cap/max_total_bytes")
     if limits is None:
         if isinstance(page_cap, _UseConfigured):
-            page_cap = fixed_page_cap()
+            page_cap = get_fixed_page_cap()
         if isinstance(max_total_bytes, _UseConfigured):
-            max_total_bytes = fixed_max_total_bytes()
+            max_total_bytes = get_fixed_max_total_bytes()
     discovered, has_labels = _discover_page_set(fs, page_store_dir)
     page_count = len(discovered)
     # Read first so a cap message can say the pages are a selection; only

@@ -88,7 +88,7 @@ from unstract.sdk1.adapters.x2text.llm_whisperer_v2.src.helper import (
 from unstract.sdk1.adapters.x2text.llm_whisperer_v2.src.page_range import (
     PageRangeError,
 )
-from unstract.sdk1.adapters.x2text.page_image_loader import fixed_page_cap
+from unstract.sdk1.adapters.x2text.page_image_loader import get_fixed_page_cap
 from unstract.sdk1.constants import LogLevel
 from unstract.sdk1.exceptions import IndexingError, SdkError
 from unstract.sdk1.execution.context import ExecutionContext
@@ -1578,7 +1578,7 @@ class PromptStudioHelper:
             return
         budget = PromptStudioHelper._upload_page_budget(profile_manager)
         if budget is None:
-            page_cap = fixed_page_cap()
+            page_cap = get_fixed_page_cap()
             if page_count <= page_cap:
                 return
             raise ExtractionAPIError(
@@ -1650,7 +1650,7 @@ class PromptStudioHelper:
                     "number of pages."
                 )
             )
-        page_cap = fixed_page_cap()
+        page_cap = get_fixed_page_cap()
         if page_count <= page_cap:
             return
         raise ImageModePageLimitExceeded(

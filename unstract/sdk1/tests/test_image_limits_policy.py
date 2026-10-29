@@ -992,13 +992,13 @@ class TestCeilingBindsOnlyBelowTheFixedCap:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         from unstract.sdk1.adapters.x2text.page_image_loader import (
-            fixed_max_total_bytes,
-            fixed_page_cap,
+            get_fixed_max_total_bytes,
+            get_fixed_page_cap,
         )
 
         for page, mib in (("40", "6"), ("200", "50"), ("x", "y")):
             monkeypatch.setenv("VLM_IMAGE_ANSWER_PAGE_CAP", page)
             monkeypatch.setenv("VLM_IMAGE_ANSWER_MAX_TOTAL_MB", mib)
             policy = ImageModePolicy.ceiling_only(**policy_mod.fixed_cap_bound_kwargs())
-            assert policy.page_budget.max_pages == fixed_page_cap()
-            assert policy.raw_byte_budget(page_count=10) == fixed_max_total_bytes()
+            assert policy.page_budget.max_pages == get_fixed_page_cap()
+            assert policy.raw_byte_budget(page_count=10) == get_fixed_max_total_bytes()

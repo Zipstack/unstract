@@ -53,10 +53,10 @@ from unstract.sdk1.adapters.x2text.page_image_loader import (
     PageCapExceededError,
     PageImageSetTooLargeError,
     PageImageTooLargeError,
-    configured_page_ceiling,
-    configured_request_bytes_ceiling,
-    fixed_max_total_bytes,
-    fixed_page_cap,
+    get_configured_page_ceiling,
+    get_configured_request_bytes_ceiling,
+    get_fixed_max_total_bytes,
+    get_fixed_page_cap,
     is_page_selection,
 )
 from unstract.sdk1.utils.image_limits.source import MAX_REMOTE_RAISE_FACTOR
@@ -172,17 +172,17 @@ def fixed_cap_bound_kwargs() -> dict[str, int | None]:
 
     What image mode enforced before model-aware limits, and what it falls
     back to when ``VLM_IMAGE_LIMITS_ENFORCE=false`` or no LLM is known.
-    Derived from ``fixed_page_cap`` / ``fixed_max_total_bytes``, so every
+    Derived from ``get_fixed_page_cap`` / ``get_fixed_max_total_bytes``, so every
     path enforces the same numbers. The page ceiling is passed only when it
     is strictly below the cap: then it binds as ``ceiling`` (the message
     names the administrator); a ceiling equal to the cap, or an invalid one
     falling back to it, reports the fixed cap. Pass to
     ``ImageModePolicy.ceiling_only``.
     """
-    page_cap = fixed_page_cap()
+    page_cap = get_fixed_page_cap()
     return {
         "page_ceiling": page_cap if page_cap < DEFAULT_PAGE_CAP else None,
-        "bytes_ceiling": fixed_max_total_bytes(),
+        "bytes_ceiling": get_fixed_max_total_bytes(),
         "legacy_cap": DEFAULT_PAGE_CAP,
     }
 
@@ -200,8 +200,8 @@ def extraction_bound_kwargs() -> dict[str, int | None]:
     if not model_aware_limits_enabled():
         return fixed_cap_bound_kwargs()
     return {
-        "page_ceiling": configured_page_ceiling(),
-        "bytes_ceiling": configured_request_bytes_ceiling(),
+        "page_ceiling": get_configured_page_ceiling(),
+        "bytes_ceiling": get_configured_request_bytes_ceiling(),
         "legacy_cap": None,
     }
 

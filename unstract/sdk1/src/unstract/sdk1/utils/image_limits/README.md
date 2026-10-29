@@ -115,7 +115,7 @@ hint) go to the worker log at WARNING and, through
 
 `VLM_IMAGE_ANSWER_PAGE_CAP` (pages) and `VLM_IMAGE_ANSWER_MAX_TOTAL_MB` (MiB
 of raw page-image bytes) are optional platform ceilings. They are read by
-`configured_page_ceiling()` / `configured_request_bytes_ceiling()` and
+`get_configured_page_ceiling()` / `get_configured_request_bytes_ceiling()` and
 applied with `min()`: on top of the model's limits through
 `extraction_bound_kwargs()`, and on top of the fixed cap (below). They only
 ever lower a limit, never raise one. Unset means no platform ceiling:
@@ -125,7 +125,7 @@ cap's value (90 / 14 MiB) is used instead, never "no ceiling". Set them on
 the backend and every worker alike.
 
 The fixed cap is 90 pages / 14 MiB, lowered by these ceilings and never
-raised by them (`fixed_page_cap()` / `fixed_max_total_bytes()`, and
+raised by them (`get_fixed_page_cap()` / `get_fixed_max_total_bytes()`, and
 `fixed_cap_bound_kwargs()` built from them). It applies when no LLM is
 known, with `VLM_IMAGE_LIMITS_ENFORCE=false`, and to an LLM whose limits
 are not published. On the fixed-cap path, a ceiling binds (and the message
