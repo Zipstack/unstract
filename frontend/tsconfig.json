@@ -41,8 +41,11 @@
      * this file's directory. */
     "paths": {
       "@/*": ["./src/*"],
-      /* v0 may import only the v1 public entry, so only that is mapped. */
-      "@v1": ["./src/v1/index.ts"]
+      /* v1 code imports across its folders with `@v1/...`, and tsc follows
+       * the entry into src/v1 once v0 imports it, so the whole alias is
+       * mapped. That v0 itself imports only `@v1` is enforced by lint. */
+      "@v1": ["./src/v1/index.ts"],
+      "@v1/*": ["./src/v1/*"]
     }
   },
   "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.d.ts"],
