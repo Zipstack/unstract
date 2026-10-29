@@ -672,12 +672,13 @@ def _run_workflow_api(
 
     # The destination evaluates API rules only for a hitl_queue_name request;
     # a hitl_packet_id skips rule evaluation, so highlight would go unused.
-    # ponytail: the API + file-history path evaluates DB rules, which this
-    # check does not cover; add a "DB" check there if that path needs it.
+    # ponytail: the API + use_file_history path evaluates DB rules, which
+    # this check does not cover. use_file_history is internal-only; add a
+    # "DB" check there if it is ever exposed.
     # Highlight adds confidence_data to the result metadata and fills
     # line_numbers and whisper_hash, which include_metadata callers receive
-    # (highlight_data too, when the org's API highlight flag is on). Whether
-    # to strip these keys is pending a decision.
+    # (highlight_data too, when the org's API highlight flag is on). The keys
+    # are kept on purpose, so callers can see why a document was routed.
     auto_enable_highlight = (
         bool(kwargs.get("hitl_queue_name"))
         and not kwargs.get("hitl_packet_id")
