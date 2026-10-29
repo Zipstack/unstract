@@ -144,13 +144,15 @@ export function ProviderLogo({
   );
 }
 
-export type ProductMarkProps = Readonly<{
-  product: Product;
-  /** Accessible name; omit when a visible product name sits beside the mark. */
+type LabelledMarkProps = Readonly<{
+  /** Accessible name; omit when the name is shown beside the mark. */
   label?: string;
   size?: LogoSize;
   className?: string;
 }>;
+
+export type ProductMarkProps = LabelledMarkProps &
+  Readonly<{ product: Product }>;
 
 /** A product's two-tone mark from the Product Switcher designs. */
 export function ProductMark({
@@ -159,23 +161,13 @@ export function ProductMark({
   size = "md",
   className,
 }: ProductMarkProps): JSX.Element {
+  const { src } = PRODUCT_MARKS[product];
   return (
-    <MarkImage
-      src={PRODUCT_MARKS[product].src}
-      alt={label ?? ""}
-      size={size}
-      className={className}
-    />
+    <MarkImage src={src} alt={label ?? ""} size={size} className={className} />
   );
 }
 
-export type RegionFlagProps = Readonly<{
-  region: Region;
-  /** Accessible name; omit when the region's name is shown beside the flag. */
-  label?: string;
-  size?: LogoSize;
-  className?: string;
-}>;
+export type RegionFlagProps = LabelledMarkProps & Readonly<{ region: Region }>;
 
 /** A region's flag as SVG; emoji flags render as letters on Windows. */
 export function RegionFlag({
@@ -184,12 +176,8 @@ export function RegionFlag({
   size = "md",
   className,
 }: RegionFlagProps): JSX.Element {
+  const { src } = REGION_FLAGS[region];
   return (
-    <MarkImage
-      src={REGION_FLAGS[region].src}
-      alt={label ?? ""}
-      size={size}
-      className={className}
-    />
+    <MarkImage src={src} alt={label ?? ""} size={size} className={className} />
   );
 }
