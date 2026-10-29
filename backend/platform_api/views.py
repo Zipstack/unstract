@@ -1,6 +1,14 @@
-import uuid
-
+from api_key_usage import reads
+from api_key_usage.expiry import record_expiry_change
+from api_key_usage.rotation import (
+    ROTATED_FIELDS,
+    RotateSerializer,
+    grace_summary,
+    rotate_secret,
+)
+from api_key_usage.serializers import KeyHistorySerializer, history_response
 from django.db import transaction
+from drf_spectacular.utils import extend_schema
 from platform_audit.actions import Action, TargetType
 from platform_audit.recorder import (
     best_effort,
@@ -10,6 +18,7 @@ from platform_audit.recorder import (
 from rest_framework import status, viewsets
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+from tenant_account_v2.capabilities import Capability, RequiresCapability
 from utils.user_context import UserContext
 
 from platform_api.models import PlatformApiKey
@@ -30,7 +39,11 @@ class PlatformApiKeyViewSet(viewsets.ModelViewSet):
         # Rotate allows self-service rotation by a platform API key (UN-3586);
         # all other key-management actions stay admin/session-only.
         if self.action == "rotate":
-            return [IsAuthenticated(), CanRotatePlatformApiKey()]
+            return [
+                IsAuthenticated(),
+                CanRotatePlatformApiKey(),
+                RequiresCapability(Capability.MANAGE_API_KEYS),
+            ]
         return super().get_permissions()
 
     def get_queryset(self):
@@ -66,17 +79,40 @@ class PlatformApiKeyViewSet(viewsets.ModelViewSet):
             platform_api_key.name,
             changes={"after": _key_fields(platform_api_key)},
         )
+        _record_expiry_change(request, platform_api_key, before=None)
         response_serializer = PlatformApiKeyDetailSerializer(platform_api_key)
         return Response(response_serializer.data, status=status.HTTP_201_CREATED)
 
+    def list(self, request, *args, **kwargs):
+        reads.refresh()
+        keys = list(self.filter_queryset(self.get_queryset()))
+        usage = reads.usage_by_key(TargetType.PLATFORM_API_KEY, keys)
+        serializer = self.get_serializer(
+            keys, many=True, context={**self.get_serializer_context(), "usage": usage}
+        )
+        return Response(serializer.data)
+
     def retrieve(self, request, *args, **kwargs):
         instance = self.get_object()
+        reads.refresh()
         serializer = PlatformApiKeyDetailSerializer(instance)
         return Response(serializer.data)
+
+    @extend_schema(
+        operation_id="platform_api_key_history",
+        tags=["api-key-usage"],
+        responses={200: KeyHistorySerializer},
+    )
+    def history(self, request, *args, **kwargs):
+        """Daily calls over the last 30 UTC days, oldest first."""
+        instance = self.get_object()
+        reads.refresh()
+        return Response(history_response(TargetType.PLATFORM_API_KEY, instance))
 
     def partial_update(self, request, *args, **kwargs):
         instance = self.get_object()
         before = _key_fields(instance)
+        expires_before = instance.expires_at
 
         serializer = PlatformApiKeyUpdateSerializer(
             instance, data=request.data, partial=True, context={"request": request}
@@ -84,6 +120,7 @@ class PlatformApiKeyViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         updated_instance = serializer.save()
         _record_key_update(request, updated_instance, before)
+        _record_expiry_change(request, updated_instance, before=expires_before)
 
         response_serializer = PlatformApiKeyListSerializer(updated_instance)
         return Response(response_serializer.data)
@@ -97,13 +134,26 @@ class PlatformApiKeyViewSet(viewsets.ModelViewSet):
         )
         return Response(status=status.HTTP_204_NO_CONTENT)
 
+    @extend_schema(
+        operation_id="platform_api_key_rotate",
+        request=RotateSerializer,
+        responses={200: PlatformApiKeyDetailSerializer},
+    )
     def rotate(self, request, *args, **kwargs):
         instance = self.get_object()
+        options = RotateSerializer(data=request.data)
+        options.is_valid(raise_exception=True)
 
-        instance.key = uuid.uuid4()
+        rotate_secret(instance, options.validated_data["grace"])
         instance.modified_by = request.user
-        instance.save(update_fields=["key", "modified_by"])
-        _record_key_event(request, Action.KEY_ROTATED, instance.id, instance.name)
+        instance.save(update_fields=[*ROTATED_FIELDS, "modified_by"])
+        _record_key_event(
+            request,
+            Action.KEY_ROTATED,
+            instance.id,
+            instance.name,
+            summary=grace_summary(instance),
+        )
 
         response_serializer = PlatformApiKeyDetailSerializer(instance)
         return Response(response_serializer.data)
@@ -127,6 +177,13 @@ def _record_key_event(request, action: Action, key_id, key_name: str, **kwargs) 
         target_name=key_name,
         request=request,
         **kwargs,
+    )
+
+
+@best_effort
+def _record_expiry_change(request, key: PlatformApiKey, before) -> None:
+    record_expiry_change(
+        request, target_type=TargetType.PLATFORM_API_KEY, key=key, before=before
     )
 
 

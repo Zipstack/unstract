@@ -1,7 +1,19 @@
-import uuid
-
+from api_key_usage import reads
+from api_key_usage.expiry import record_expiry_change
+from api_key_usage.rotation import (
+    ROTATED_FIELDS,
+    RotateSerializer,
+    grace_summary,
+    rotate_secret,
+)
+from api_key_usage.serializers import (
+    KeyCallerSerializer,
+    KeyHistorySerializer,
+    history_response,
+)
 from api_v2.models import APIDeployment
 from django.db.models import Prefetch
+from drf_spectacular.utils import extend_schema
 from platform_api.permissions import is_org_admin_session
 from platform_audit.actions import Action, TargetType
 from platform_audit.recorder import (
@@ -35,8 +47,17 @@ class GlobalApiDeploymentKeyViewSet(viewsets.ModelViewSet):
 
     def get_permissions(self):
         # Members the org lets manage keys may list, create, view and rotate,
-        # and pick deployments (UN-4399); editing and deleting stay admin-only.
-        if self.action in ("list", "create", "retrieve", "rotate", "deployments"):
+        # see usage, and pick deployments (UN-4399); editing and deleting stay
+        # admin-only.
+        if self.action in (
+            "list",
+            "create",
+            "retrieve",
+            "rotate",
+            "history",
+            "callers",
+            "deployments",
+        ):
             return [IsAuthenticated(), CanManageApiKeys()]
         return super().get_permissions()
 
@@ -121,18 +142,57 @@ class GlobalApiDeploymentKeyViewSet(viewsets.ModelViewSet):
             instance.name,
             changes={"after": _key_fields(instance)},
         )
+        _record_expiry_change(request, instance, before=None)
         response_serializer = GlobalApiDeploymentKeyDetailSerializer(instance)
         return Response(response_serializer.data, status=status.HTTP_201_CREATED)
+
+    def list(self, request, *args, **kwargs):
+        reads.refresh()
+        keys = list(self.filter_queryset(self.get_queryset()))
+        usage = reads.usage_by_key(TargetType.GLOBAL_API_DEPLOYMENT_KEY, keys)
+        serializer = self.get_serializer(
+            keys, many=True, context={**self.get_serializer_context(), "usage": usage}
+        )
+        return Response(serializer.data)
 
     def retrieve(self, request, *args, **kwargs):
         instance = self.get_object()
         self._limit_member_to_key(instance)
+        reads.refresh()
         serializer = GlobalApiDeploymentKeyDetailSerializer(instance)
         return Response(serializer.data)
+
+    @extend_schema(
+        operation_id="global_api_deployment_key_history",
+        tags=["api-key-usage"],
+        responses={200: KeyHistorySerializer},
+    )
+    def history(self, request, *args, **kwargs):
+        """Daily calls over the last 30 UTC days, oldest first."""
+        instance = self.get_object()
+        self._limit_member_to_key(instance)
+        reads.refresh()
+        return Response(history_response(TargetType.GLOBAL_API_DEPLOYMENT_KEY, instance))
+
+    @extend_schema(
+        operation_id="global_api_deployment_key_callers",
+        tags=["api-key-usage"],
+        responses={200: KeyCallerSerializer(many=True)},
+    )
+    def callers(self, request, *args, **kwargs):
+        """The API deployments the key called in the last 30 UTC days."""
+        instance = self.get_object()
+        self._limit_member_to_key(instance)
+        reads.refresh()
+        rows = reads.callers(
+            TargetType.GLOBAL_API_DEPLOYMENT_KEY, instance.id, instance.organization
+        )
+        return Response(KeyCallerSerializer(rows, many=True).data)
 
     def partial_update(self, request, *args, **kwargs):
         instance = self.get_object()
         before = _key_fields(instance)
+        expires_before = instance.expires_at
         serializer = GlobalApiDeploymentKeyUpdateSerializer(
             instance, data=request.data, partial=True, context={"request": request}
         )
@@ -141,16 +201,30 @@ class GlobalApiDeploymentKeyViewSet(viewsets.ModelViewSet):
             _limit_to_creator(instance, serializer.validated_data)
         updated_instance = serializer.save()
         _record_key_update(request, updated_instance, before)
+        _record_expiry_change(request, updated_instance, before=expires_before)
         response_serializer = GlobalApiDeploymentKeyListSerializer(updated_instance)
         return Response(response_serializer.data)
 
+    @extend_schema(
+        operation_id="global_api_deployment_key_rotate",
+        request=RotateSerializer,
+        responses={200: GlobalApiDeploymentKeyDetailSerializer},
+    )
     def rotate(self, request, *args, **kwargs):
         instance = self.get_object()
         self._limit_member_to_key(instance)
-        instance.key = uuid.uuid4()
+        options = RotateSerializer(data=request.data)
+        options.is_valid(raise_exception=True)
+        rotate_secret(instance, options.validated_data["grace"])
         instance.modified_by = request.user
-        instance.save(update_fields=["key", "modified_by", "modified_at"])
-        _record_key_event(request, Action.KEY_ROTATED, instance.id, instance.name)
+        instance.save(update_fields=[*ROTATED_FIELDS, "modified_by", "modified_at"])
+        _record_key_event(
+            request,
+            Action.KEY_ROTATED,
+            instance.id,
+            instance.name,
+            summary=grace_summary(instance),
+        )
         response_serializer = GlobalApiDeploymentKeyDetailSerializer(instance)
         return Response(response_serializer.data)
 
@@ -220,6 +294,16 @@ def _record_key_event(request, action: Action, key_id, key_name: str, **kwargs) 
         target_name=key_name,
         request=request,
         **kwargs,
+    )
+
+
+@best_effort
+def _record_expiry_change(request, key: GlobalApiDeploymentKey, before) -> None:
+    record_expiry_change(
+        request,
+        target_type=TargetType.GLOBAL_API_DEPLOYMENT_KEY,
+        key=key,
+        before=before,
     )
 
 

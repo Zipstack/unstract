@@ -465,6 +465,16 @@ NOTIFICATION_MAX_DISPATCH_ATTEMPTS = int(
 PLATFORM_AUDIT_RETENTION_DAYS = int(
     os.environ.get("PLATFORM_AUDIT_RETENTION_DAYS", "365")
 )
+# How often API key usage (last used, daily call counts) moves from Redis to the
+# database. Usage shown in Settings > API keys can lag by up to this long.
+API_KEY_USAGE_FLUSH_INTERVAL_SECONDS = int(
+    os.environ.get("API_KEY_USAGE_FLUSH_INTERVAL_SECONDS", "300")
+)
+# Whether the first use in each interval starts that flush in a background
+# thread. Off only in tests, which flush inline.
+API_KEY_USAGE_BACKGROUND_FLUSH = True
+# Prefix of every Redis key API key usage writes.
+API_KEY_USAGE_REDIS_PREFIX = "api_key_usage"
 ATOMIC_REQUESTS = CommonUtils.str_to_bool(
     os.environ.get("DJANGO_ATOMIC_REQUESTS", "False")
 )
@@ -606,6 +616,7 @@ SHARED_APPS = (
     "platform_api",
     "global_api_deployment_key",
     "platform_audit",
+    "api_key_usage",
     "global_search",
     "agent_kv",
 )
