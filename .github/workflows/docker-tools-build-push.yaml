@@ -24,6 +24,11 @@ on:
 
 run-name: "[${{ inputs.service_name }}:${{ inputs.tag }}] Docker Image Build and Push (Development)"
 
+# The repo default token is write. The image goes to Docker Hub via secrets,
+# so the token is only used to check out.
+permissions:
+  contents: read
+
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
@@ -33,6 +38,8 @@ jobs:
 
       - name: Checkout code
         uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       # Set up QEMU for ARM64 emulation
       - name: Set up QEMU
