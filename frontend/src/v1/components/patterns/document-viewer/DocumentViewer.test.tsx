@@ -188,3 +188,51 @@ it("runs a scroll asked for while loading once the pages are laid out", async ()
     }
   }
 });
+
+it("shows text line by line, with the switcher but no paging or zoom", () => {
+  render(
+    <DocumentViewer
+      source={{ kind: "text", text: "first\nsecond" }}
+      textHighlights={[{ id: "l", line: 1 }]}
+      switcher={<button type="button">invoice.pdf</button>}
+    />,
+  );
+  expect(screen.getByRole("region", { name: "Document text" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "invoice.pdf" })).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "Zoom in" })).toBeNull();
+  expect(screen.queryByLabelText("Page")).toBeNull();
+});
+
+it("keeps the switcher while a PDF is still loading or has failed", async () => {
+  render(
+    <DocumentViewer
+      source={source}
+      switcher={<button type="button">invoice.pdf</button>}
+    />,
+  );
+  expect(screen.getByRole("button", { name: "invoice.pdf" })).toBeTruthy();
+  await act(async () => opening.reject(new Error("Network error")));
+  expect(screen.getByRole("button", { name: "invoice.pdf" })).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "Zoom in" })).toBeNull();
+});
+
+it("zooms an image with the toolbar, fitted like a page, without paging", () => {
+  render(<DocumentViewer source={{ kind: "image", url: "/scan.png" }} />);
+  const image = screen.getByRole<HTMLImageElement>("img", { hidden: true });
+  Object.defineProperties(image, {
+    naturalWidth: { value: 1632 },
+    naturalHeight: { value: 2112 },
+  });
+  fireEvent.load(image);
+  act(() => resize?.(864, 600));
+  // 1632 natural px into an 816 px fit: 50%.
+  expect(zoomLabel()).toBe("50%");
+  expect(screen.queryByLabelText("Page")).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Zoom in" }));
+  expect(zoomLabel()).toBe("75%");
+});
+
+it("is empty without a source", () => {
+  render(<DocumentViewer source={null} />);
+  expect(screen.getByText("No document")).toBeTruthy();
+});

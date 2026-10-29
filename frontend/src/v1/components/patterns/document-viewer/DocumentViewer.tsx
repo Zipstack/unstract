@@ -3,7 +3,11 @@ import { usePdfDocument } from "@v1/hooks/usePdfDocument";
 import { cn } from "@v1/lib/cn";
 import type { Highlight } from "@v1/lib/pdf/highlights";
 import { viewerKeyAction } from "@v1/lib/pdf/keyboard";
-import type { PageSize, PdfSource } from "@v1/lib/pdf/types";
+import {
+  type DocumentSource,
+  isPdfSource,
+  type PageSize,
+} from "@v1/lib/pdf/types";
 import {
   fitZoom,
   MAX_ZOOM,
@@ -14,6 +18,7 @@ import {
 } from "@v1/lib/pdf/zoom";
 import {
   type KeyboardEvent,
+  type ReactNode,
   type Ref,
   useCallback,
   useEffect,
@@ -22,7 +27,9 @@ import {
   useRef,
   useState,
 } from "react";
+import { ImageView } from "./ImageView";
 import { PdfPageList, type PdfPageListHandle } from "./PdfPageList";
+import { type TextLineHighlight, TextView } from "./TextView";
 import { ViewerStatus } from "./ViewerStatus";
 import { ViewerToolbar } from "./ViewerToolbar";
 
@@ -34,8 +41,15 @@ export interface DocumentViewerHandle {
 }
 
 export interface DocumentViewerProps {
-  source: PdfSource | null;
+  /** A PDF (URL or bytes), an image, or text. */
+  source: DocumentSource | null;
+  /** Page highlights, for a PDF or an image. */
   highlights?: readonly Highlight[];
+  /** Line highlights, for text. */
+  textHighlights?: readonly TextLineHighlight[];
+  onTextHighlightClick?: (highlight: TextLineHighlight) => void;
+  /** Shown at the start of the toolbar, whatever state the document is in. */
+  switcher?: ReactNode;
   /** Shown in the active tone and scrolled into view when it changes. */
   activeHighlightId?: string | null;
   onHighlightClick?: (highlight: Highlight) => void;
@@ -94,20 +108,31 @@ function initialZoomState(
 }
 
 /**
- * A PDF with a toolbar: loads it, shows its states, and renders its pages with
- * highlights. Keys while the pages have focus: PageUp/PageDown, Home/End,
- * + and −.
+ * A document with a toolbar. A PDF is loaded and rendered page by page, an
+ * image as a single page, and text line by line; PDFs and images share zoom
+ * and highlights. Keys while the content has focus: PageUp/PageDown,
+ * Home/End, + and −.
  */
 export function DocumentViewer({
   source,
   highlights,
+  textHighlights,
+  onTextHighlightClick,
+  switcher,
   activeHighlightId,
   onHighlightClick,
   initialZoom,
   className,
   ref,
 }: DocumentViewerProps) {
-  const { state, retry, submitPassword } = usePdfDocument(source);
+  const { state, retry, submitPassword } = usePdfDocument(
+    isPdfSource(source) ? source : null,
+  );
+  // An image's size is known once it loads; kept with its URL so a new image
+  // never borrows the last one's.
+  const [image, setImage] = useState<{ url: string; size: PageSize } | null>(
+    null,
+  );
   const [zoomState, setZoomState] = useState(() =>
     initialZoomState(initialZoom),
   );
@@ -116,9 +141,19 @@ export function DocumentViewer({
   const listRef = useRef<PdfPageListHandle | null>(null);
   const pendingRef = useRef<ScrollRequest | null>(null);
 
-  const ready = state.status === "ready";
-  const pageSizes = ready ? state.pageSizes : undefined;
+  const kind =
+    source === null ? null : isPdfSource(source) ? "pdf" : source.kind;
+  const imageSize =
+    source?.kind === "image" && image?.url === source.url ? image.size : null;
+  const pdfReady = kind === "pdf" && state.status === "ready";
+  const pageSizes = pdfReady
+    ? state.pageSizes
+    : imageSize
+      ? [imageSize]
+      : undefined;
   const pageCount = pageSizes?.length ?? 0;
+  // When the content can take scroll requests.
+  const ready = pdfReady || kind === "text" || imageSize !== null;
 
   const zoom = useMemo(() => {
     if (zoomState.mode === "custom" || !pageSizes || !bodySize) {
@@ -206,13 +241,81 @@ export function DocumentViewer({
         goToPage(pageCount - 1);
         break;
       case "zoom-in":
-        zoomBy(zoomIn);
+        if (kind !== "text") {
+          zoomBy(zoomIn);
+        }
         break;
       case "zoom-out":
-        zoomBy(zoomOut);
+        if (kind !== "text") {
+          zoomBy(zoomOut);
+        }
         break;
     }
   };
+
+  let content: ReactNode;
+  if (source === null || kind === null) {
+    content = (
+      <ViewerStatus
+        state={{ status: "empty" }}
+        onRetry={retry}
+        onSubmitPassword={submitPassword}
+      />
+    );
+  } else if (source.kind === "text") {
+    content = (
+      <TextView
+        ref={listRef}
+        text={source.text}
+        highlights={textHighlights}
+        activeHighlightId={activeHighlightId}
+        onHighlightClick={onTextHighlightClick}
+        onKeyDown={onKeyDown}
+      />
+    );
+  } else if (source.kind === "image") {
+    const { url } = source;
+    content = (
+      <ImageView
+        key={url}
+        ref={listRef}
+        url={url}
+        alt={source.alt}
+        zoom={zoom}
+        highlights={highlights}
+        activeHighlightId={activeHighlightId}
+        onHighlightClick={onHighlightClick}
+        onLoadSize={(size) => setImage({ url, size })}
+        onKeyDown={onKeyDown}
+      />
+    );
+  } else if (state.status === "ready") {
+    content = (
+      <PdfPageList
+        key={documentKey(state.document)}
+        ref={listRef}
+        document={state.document}
+        pageSizes={state.pageSizes}
+        zoom={zoom}
+        highlights={highlights}
+        activeHighlightId={activeHighlightId}
+        onHighlightClick={onHighlightClick}
+        onCurrentPageChange={setPageIndex}
+        onKeyDown={onKeyDown}
+      />
+    );
+  } else {
+    content = (
+      <ViewerStatus
+        state={state}
+        onRetry={retry}
+        onSubmitPassword={submitPassword}
+      />
+    );
+  }
+
+  const showPaging = pdfReady;
+  const showZoom = pdfReady || imageSize !== null;
 
   return (
     <div
@@ -221,8 +324,11 @@ export function DocumentViewer({
         className,
       )}
     >
-      {ready && (
+      {(showPaging || showZoom || switcher) && (
         <ViewerToolbar
+          leading={switcher}
+          showPaging={showPaging}
+          showZoom={showZoom}
           pageIndex={pageIndex}
           pageCount={pageCount}
           zoom={zoom}
@@ -237,26 +343,7 @@ export function DocumentViewer({
         />
       )}
       <div ref={bodyRef} className="ui:min-h-0 ui:flex-1">
-        {ready ? (
-          <PdfPageList
-            key={documentKey(state.document)}
-            ref={listRef}
-            document={state.document}
-            pageSizes={state.pageSizes}
-            zoom={zoom}
-            highlights={highlights}
-            activeHighlightId={activeHighlightId}
-            onHighlightClick={onHighlightClick}
-            onCurrentPageChange={setPageIndex}
-            onKeyDown={onKeyDown}
-          />
-        ) : (
-          <ViewerStatus
-            state={state}
-            onRetry={retry}
-            onSubmitPassword={submitPassword}
-          />
-        )}
+        {content}
       </div>
     </div>
   );

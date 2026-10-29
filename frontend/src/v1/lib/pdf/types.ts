@@ -27,3 +27,25 @@ export type PdfLoadFailure =
   | { kind: "password"; incorrect: boolean }
   | { kind: "unsupported" }
   | { kind: "failed"; message: string };
+
+/** An image shown as a single page. */
+export interface ImageSource {
+  kind: "image";
+  url: string;
+  alt?: string;
+}
+
+/** Extracted or raw text, shown line by line. */
+export interface TextSource {
+  kind: "text";
+  text: string;
+}
+
+/** Anything the document viewer shows. */
+export type DocumentSource = PdfSource | ImageSource | TextSource;
+
+export function isPdfSource(
+  source: DocumentSource | null,
+): source is PdfSource {
+  return source?.kind === "url" || source?.kind === "data";
+}
