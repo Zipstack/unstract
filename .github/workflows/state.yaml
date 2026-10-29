@@ -18,8 +18,6 @@ jobs:
 
       - name: Derive branch and target state
         id: state
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
           python3 .github/release/relstate.py > state.json
           cat state.json
