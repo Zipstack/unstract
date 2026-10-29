@@ -1,4 +1,9 @@
+from typing import Any
+
+from django.db.models import QuerySet
 from rest_framework.pagination import PageNumberPagination
+from rest_framework.request import Request
+from rest_framework.views import APIView
 
 from utils.constants import Pagination
 
@@ -18,7 +23,9 @@ class OptionalPagination(CustomPagination):
     listing page opts in and gets the {count, next, previous, results} envelope.
     """
 
-    def paginate_queryset(self, queryset, request, view=None):
+    def paginate_queryset(
+        self, queryset: QuerySet, request: Request, view: APIView | None = None
+    ) -> Any:
         params = request.query_params
         # Blank values (?page=) count as not opting in, so shared callers keep
         # their bare-array response instead of getting an enveloped page.

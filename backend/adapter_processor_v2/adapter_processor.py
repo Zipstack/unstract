@@ -192,6 +192,21 @@ class AdapterProcessor:
             ) from e
 
     @staticmethod
+    def test_saved_adapter(adapter: AdapterInstance) -> bool:
+        """Test a saved adapter with its stored metadata."""
+        if is_adapter_deprecated(adapter.adapter_id):
+            raise DeprecatedAdapter(get_deprecation_message(adapter.adapter_id))
+        # Stored metadata lacks the name and type that test_adapter reads.
+        adapter_metadata = {
+            **adapter.metadata,
+            AdapterKeys.ADAPTER_NAME: adapter.adapter_name,
+            AdapterKeys.ADAPTER_TYPE: adapter.adapter_type,
+        }
+        return AdapterProcessor.test_adapter(
+            adapter_id=adapter.adapter_id, adapter_metadata=adapter_metadata
+        )
+
+    @staticmethod
     def update_adapter_metadata(adapter_metadata_b: Any, **kwargs) -> Any:
         if add_unstract_key:
             encryption_secret: str = settings.ENCRYPTION_KEY
