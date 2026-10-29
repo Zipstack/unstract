@@ -19,6 +19,10 @@ on:
       - main
   workflow_dispatch:
 
+# The repo default token is write; grant only what each job needs.
+permissions:
+  contents: read
+
 jobs:
   # Path filtering at job level, not trigger paths-ignore: an untriggered
   # workflow reports no check run, so a required check waits forever; a job
@@ -28,6 +32,10 @@ jobs:
   # and docker/** changes must be e2e-tested.
   changes:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # dorny/paths-filter lists PR files via the API.
+      pull-requests: read
     outputs:
       # Filtering is a PR-time saving only. On workflow_dispatch there is no
       # base to diff, so paths-filter resolves against the default branch and a
@@ -270,6 +278,10 @@ jobs:
     # from a real tier failure.
     if: always() && github.event.pull_request.draft == false
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # marocchino/sticky-pull-request-comment posts the test report.
+      pull-requests: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
