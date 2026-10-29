@@ -1055,7 +1055,7 @@ class TestStructureToolParamsPassthrough:
 
 
 class TestAutoEnableHighlight:
-    """``auto_enable_highlight`` turns highlight on for the run (UN-4435)."""
+    """``auto_enable_highlight`` turns highlight on for the run."""
 
     @pytest.mark.parametrize(
         "user_highlight, auto_enable, expected",

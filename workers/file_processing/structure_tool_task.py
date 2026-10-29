@@ -375,6 +375,9 @@ def _execute_structure_tool_impl(params: dict) -> dict:
     # Known limit: with an extractor other than LLMWhisperer V2, no highlight
     # plugin, or summarize-as-source, highlight still gives no confidence and
     # rules still score 100; this line is logged anyway.
+    # Highlight also changes extraction: the prompt gets the line-number
+    # postamble and LLMWhisperer V2 adds line numbers, so answers may differ
+    # from a run with highlight off.
     if params.get(AUTO_ENABLE_HIGHLIGHT):
         tool_instance_metadata = {**tool_instance_metadata, _SK.ENABLE_HIGHLIGHT: True}
         shim.stream_log(HIGHLIGHT_AUTO_ENABLED_MESSAGE)
