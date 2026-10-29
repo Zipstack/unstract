@@ -282,12 +282,12 @@ staff and admin routes, Django admin, invitation acceptance, and cloud-only
 features (until cloud code emits them).
 
 `resource.created` and `resource.deleted` come from the OSS viewsets and, on
-cloud, from Prompt Studio clone (`prompt-studio/clone/`, also on-prem; summary
-`clone of <name>`), the Agentic Studio connector views (adapters), and
-frictionless onboarding (the default adapters and the sample project, recorded
-as the `system` actor). The cloud-only kinds `agentic_project` and `lookup`
-are not recorded on create or delete; only their sharing and co-owner
-changes are.
+cloud, from Prompt Studio clone (`prompt-studio/clone/`, also on-prem; the
+target is the new project, and the summary `clone of <source project name>`
+names the project it was copied from), the Agentic Studio connector views
+(adapters), the Agentic Studio project and lookup views (the cloud-only kinds
+`agentic_project` and `lookup`), and frictionless onboarding (the default
+adapters and the sample project, recorded as the `system` actor).
 
 Side effects that change a member's default adapter are not recorded. Among
 them: creating an adapter when the member has no default of that type makes it
