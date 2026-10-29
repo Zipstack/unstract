@@ -3,6 +3,7 @@ import logging
 from typing import Any
 
 from account_v2.serializer import UserSerializer
+from connection_check.serializers import profile_status_fields
 from cryptography.fernet import Fernet
 from django.conf import settings
 from rest_framework import serializers
@@ -277,6 +278,24 @@ class AdapterListSerializer(BaseAdapterSerializer):
         rep["is_owner"] = instance.is_owner(request.user) if request else False
         rep["co_owners_count"] = instance.co_owners_count()
 
+        return rep
+
+
+class AdapterInstanceWithStatusSerializer(AdapterInstanceSerializer):
+    """Adapter CRUD response plus the stored connection-test status."""
+
+    def to_representation(self, instance: AdapterInstance) -> dict[str, Any]:
+        rep: dict[str, Any] = super().to_representation(instance)
+        rep.update(profile_status_fields(instance))
+        return rep
+
+
+class AdapterListWithStatusSerializer(AdapterListSerializer):
+    """Adapter list row plus the stored connection-test status."""
+
+    def to_representation(self, instance: AdapterInstance) -> dict[str, Any]:
+        rep: dict[str, Any] = super().to_representation(instance)
+        rep.update(profile_status_fields(instance))
         return rep
 
 

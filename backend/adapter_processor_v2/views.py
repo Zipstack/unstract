@@ -3,10 +3,17 @@ import uuid
 from typing import Any
 
 from account_v2.models import User
+from connection_check.filters import filter_by_test_status
+from connection_check.models import AdapterTestResult
+from connection_check.pagination import FailingCountPagination
+from connection_check.schema import LIST_FILTER_PARAMETERS, connection_test_schema
+from connection_check.serializers import ConnectionCheckResultSerializer
+from connection_check.services import run_and_record
 from django.db import IntegrityError
 from django.db.models import ProtectedError, QuerySet
 from django.http import HttpRequest
 from django.http.response import HttpResponse
+from drf_spectacular.utils import extend_schema, extend_schema_view
 from permissions.membership_views import OwnerManagementMixin
 from permissions.permission import (
     IsFrictionLessAdapter,
@@ -35,7 +42,6 @@ from tenant_account_v2.capabilities import Capability, enforce_capability
 from tenant_account_v2.organization_member_service import OrganizationMemberService
 from tool_instance_v2.models import ToolInstance
 from utils.filtering import FilterHelper
-from utils.pagination import OptionalPagination
 from utils.user_context import UserContext
 
 from adapter_processor_v2.adapter_processor import AdapterProcessor
@@ -55,7 +61,8 @@ from adapter_processor_v2.exceptions import (
 from adapter_processor_v2.serializers import (
     AdapterInfoSerializer,
     AdapterInstanceSerializer,
-    AdapterListSerializer,
+    AdapterInstanceWithStatusSerializer,
+    AdapterListWithStatusSerializer,
     DefaultAdapterSerializer,
     SharedUserListSerializer,
     TestAdapterSerializer,
@@ -157,11 +164,12 @@ class AdapterViewSet(GenericViewSet):
         )
 
 
+@extend_schema_view(list=extend_schema(parameters=LIST_FILTER_PARAMETERS))
 class AdapterInstanceViewSet(
     OwnerManagementMixin, ResourceShareManagementMixin, ModelViewSet
 ):
     serializer_class = AdapterInstanceSerializer
-    pagination_class = OptionalPagination
+    pagination_class = FailingCountPagination
     # `pk` tiebreaker keeps paging deterministic when modified_at collides.
     ordering = ["-modified_at", "pk"]
     ordering_fields = ["adapter_name", "created_at", "modified_at"]
@@ -177,9 +185,9 @@ class AdapterInstanceViewSet(
         return adapter_notification_type(resource.adapter_type)
 
     def get_permissions(self) -> list[Any]:
-        # Frictionless adapters: hidden from non-owners (update/retrieve),
+        # Frictionless adapters: hidden from non-owners (update/retrieve/test),
         # deletable by any org member. Others use owner / shared-user gating.
-        if self.action in ["update", "partial_update", "retrieve"]:
+        if self.action in ["update", "partial_update", "retrieve", "test_and_record"]:
             return [IsFrictionLessAdapter()]
         if self.action == "destroy":
             return [IsFrictionLessAdapterDelete()]
@@ -193,10 +201,16 @@ class AdapterInstanceViewSet(
         return [IsOwner()]
 
     def get_queryset(self) -> QuerySet | None:
+        return filter_by_test_status(
+            self.get_status_base_queryset(), self.request.query_params
+        )
+
+    def get_status_base_queryset(self) -> QuerySet:
+        """Visible adapters with every list filter except the test-status ones."""
         # Avoid per-row queries for owner/co-owner + creator fields in list views
         queryset = (
             AdapterInstance.objects.for_user(self.request.user)
-            .select_related("created_by")
+            .select_related("created_by", "test_result")
             .prefetch_related("memberships__user")
         )
         if filter_args := FilterHelper.build_filter_args(
@@ -224,8 +238,8 @@ class AdapterInstanceViewSet(
         self,
     ) -> ModelSerializer:
         if self.action == "list":
-            return AdapterListSerializer
-        return AdapterInstanceSerializer
+            return AdapterListWithStatusSerializer
+        return AdapterInstanceWithStatusSerializer
 
     @staticmethod
     def _enforce_adapter_creation_capability(request: Any, adapter_type: str) -> None:
@@ -511,6 +525,18 @@ class AdapterInstanceViewSet(
         serialized_instances = SharedUserListSerializer(adapter).data
 
         return Response(serialized_instances)
+
+    @connection_test_schema("adapter")
+    @action(detail=True, methods=["post"])
+    def test_and_record(self, request: Request, pk: str | None = None) -> Response:
+        """Test the saved adapter and store the result."""
+        adapter = self.get_object()
+        result = run_and_record(
+            AdapterTestResult,
+            adapter,
+            lambda: AdapterProcessor.test_saved_adapter(adapter),
+        )
+        return Response(ConnectionCheckResultSerializer(result).data)
 
     def update(
         self, request: Request, *args: tuple[Any], **kwargs: dict[str, Any]

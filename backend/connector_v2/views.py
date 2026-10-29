@@ -2,12 +2,20 @@ import logging
 from typing import Any
 
 from account_v2.custom_exceptions import DuplicateData
+from connection_check.filters import filter_by_test_status
+from connection_check.models import ConnectorTestResult
+from connection_check.pagination import FailingCountPagination
+from connection_check.schema import LIST_FILTER_PARAMETERS, connection_test_schema
+from connection_check.serializers import ConnectionCheckResultSerializer
+from connection_check.services import run_and_record
 from connector_auth_v2.constants import ConnectorAuthKey
 from connector_auth_v2.exceptions import CacheMissException, MissingParamException
 from connector_auth_v2.pipeline.common import ConnectorAuthHelper
+from connector_processor.connector_processor import ConnectorProcessor
 from connector_processor.exceptions import OAuthTimeOut
 from django.db import IntegrityError
 from django.db.models import ProtectedError, QuerySet
+from drf_spectacular.utils import extend_schema, extend_schema_view
 from permissions.membership_views import OwnerManagementMixin
 from permissions.permission import IsOwner, IsOwnerOrSharedUserOrSharedToOrg
 from permissions.resource_share_views import ResourceShareManagementMixin
@@ -21,7 +29,6 @@ from rest_framework.response import Response
 from rest_framework.versioning import URLPathVersioning
 from tenant_account_v2.capabilities import Capability, enforce_capability
 from utils.filtering import FilterHelper
-from utils.pagination import OptionalPagination
 from utils.user_context import UserContext
 
 from backend.constants import RequestKey
@@ -31,7 +38,11 @@ from unstract.connectors.enums import ConnectorMode
 
 from .exceptions import DeleteConnectorInUseError
 from .models import ConnectorInstance
-from .serializers import ConnectorInstanceSerializer, SharedUserListSerializer
+from .serializers import (
+    ConnectorInstanceSerializer,
+    ConnectorInstanceWithStatusSerializer,
+    SharedUserListSerializer,
+)
 
 notification_plugin = get_plugin("notification")
 if notification_plugin:
@@ -40,12 +51,13 @@ if notification_plugin:
 logger = logging.getLogger(__name__)
 
 
+@extend_schema_view(list=extend_schema(parameters=LIST_FILTER_PARAMETERS))
 class ConnectorInstanceViewSet(
     OwnerManagementMixin, ResourceShareManagementMixin, viewsets.ModelViewSet
 ):
     versioning_class = URLPathVersioning
-    serializer_class = ConnectorInstanceSerializer
-    pagination_class = OptionalPagination
+    serializer_class = ConnectorInstanceWithStatusSerializer
+    pagination_class = FailingCountPagination
     # `pk` tiebreaker keeps paging deterministic when modified_at collides.
     ordering = ["-modified_at", "pk"]
     ordering_fields = ["connector_name", "created_at", "modified_at"]
@@ -63,6 +75,7 @@ class ConnectorInstanceViewSet(
             "partial_update",
             "add_co_owner",
             "remove_co_owner",
+            "test_and_record",
         ]:
             return [IsOwner()]
 
@@ -79,10 +92,16 @@ class ConnectorInstanceViewSet(
         enforce_capability(request, Capability.CREATE_CONNECTORS)
 
     def get_queryset(self) -> QuerySet | None:
+        return filter_by_test_status(
+            self.get_status_base_queryset(), self.request.query_params
+        )
+
+    def get_status_base_queryset(self) -> QuerySet:
+        """Visible connectors with every list filter except the test-status ones."""
         # Avoid per-row queries for owner/co-owner + creator fields in list views
         queryset = (
             ConnectorInstance.objects.for_user(self.request.user)
-            .select_related("created_by")
+            .select_related("created_by", "test_result")
             .prefetch_related("memberships__user")
         )
 
@@ -255,6 +274,21 @@ class ConnectorInstanceViewSet(
     def list_of_shared_users(self, request: Request, pk: Any = None) -> Response:
         connector = self.get_object()
         return Response(SharedUserListSerializer(connector).data)
+
+    @connection_test_schema("connector")
+    @action(detail=True, methods=["post"])
+    def test_and_record(self, request: Request, pk: str | None = None) -> Response:
+        """Test the saved connector and store the result."""
+        connector = self.get_object()
+        credentials = ConnectorProcessor.get_saved_credentials(connector)
+        result = run_and_record(
+            ConnectorTestResult,
+            connector,
+            lambda: ConnectorProcessor.test_connectors(
+                connector_id=connector.connector_id, credentials=credentials
+            ),
+        )
+        return Response(ConnectionCheckResultSerializer(result).data)
 
     def perform_destroy(self, instance: ConnectorInstance) -> None:
         """Override perform_destroy to handle ProtectedError gracefully.

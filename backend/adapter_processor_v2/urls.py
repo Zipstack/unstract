@@ -29,6 +29,7 @@ adapter_share = AdapterInstanceViewSet.as_view({"post": "share"})
 adapter_effective_members = AdapterInstanceViewSet.as_view({"get": "effective_members"})
 adapter_owners = AdapterInstanceViewSet.as_view({"post": "add_co_owner"})
 adapter_owner_detail = AdapterInstanceViewSet.as_view({"delete": "remove_co_owner"})
+adapter_test_and_record = AdapterInstanceViewSet.as_view({"post": "test_and_record"})
 urlpatterns = format_suffix_patterns(
     [
         path("adapter_schema/", adapter_schema, name="get_adapter_schema"),
@@ -54,6 +55,11 @@ urlpatterns = format_suffix_patterns(
             "adapter/<uuid:pk>/owners/<int:user_id>/",
             adapter_owner_detail,
             name="adapter-owner-detail",
+        ),
+        path(
+            "adapter/<uuid:pk>/test/",
+            adapter_test_and_record,
+            name="adapter-test-and-record",
         ),
     ]
 )
