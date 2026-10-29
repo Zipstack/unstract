@@ -1,4 +1,4 @@
-name: Lint PR
+name: V2 Lint PR
 
 # Every PR into main or a release branch carries a recognised `[TYPE]` title prefix, ticket optional
 # (`ABC-123 [FIX] ...` or `[FIX] ...`), unless a fix/ label gives its class: at most one of fix/security,

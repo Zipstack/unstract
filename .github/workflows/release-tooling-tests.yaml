@@ -1,4 +1,4 @@
-name: Release tooling tests
+name: V2 Release tooling tests
 
 # Runs every .github/release test suite when the release tooling or a workflow that runs it changes.
 # The suites use only temporary local git repos and mocks: no token, no network.

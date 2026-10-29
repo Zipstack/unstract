@@ -1,4 +1,4 @@
-name: Release branch CI
+name: V2 Release branch CI
 
 # Every commit after the cut must be a pick of a main commit (or its decline), release-branch-only, or
 # build-generated. Anything else fails.

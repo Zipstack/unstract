@@ -1,4 +1,4 @@
-name: Release state
+name: V2 Release state
 
 # Read-only: prints every release/X.Y branch with its state. It writes nothing.
 on:

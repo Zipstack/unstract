@@ -1,4 +1,4 @@
-name: Release branch only
+name: V2 Release branch only
 
 # On the `release-branch-only` label on a PR into release/**: one empty bot commit carrying
 # `Release-branch-only: <TICKET>` (ticket from the title, else `#<PR number>`) goes onto the PR head, unless a commit
