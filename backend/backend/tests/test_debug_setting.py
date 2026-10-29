@@ -17,7 +17,13 @@ import sys
 import pytest
 
 _BACKEND_DIR = pathlib.Path(__file__).resolve().parents[2]
-_PROBE = "import importlib, sys; print(importlib.import_module(sys.argv[1]).DEBUG)"
+# base.py loads backend/.env, which may set DJANGO_DEBUG for local work, so the
+# probe disables dotenv and takes every setting from the environment it is given.
+_PROBE = (
+    "import dotenv, importlib, sys; "
+    "dotenv.load_dotenv = lambda *a, **k: False; "
+    "print(importlib.import_module(sys.argv[1]).DEBUG)"
+)
 
 
 def _debug_for(module: str, **env: str) -> bool:
