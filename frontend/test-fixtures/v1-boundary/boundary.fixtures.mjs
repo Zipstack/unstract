@@ -95,6 +95,9 @@ const CASES = parseTable(`
   v1-allowed-imports             | typecheck:v1 + lint:v1 | -
   # Styling policy (check-v1-styles.mjs)
   v1-inline-style                | lint:v1         | No inline style under v1
+  v1-inline-style-variable       | lint:v1         | No inline style under v1
+  v1-inline-style-mixed          | lint:v1         | No inline style under v1
+  v1-inline-style-custom-props-ok | lint:v1        | -
   v1-raw-colour-palette          | lint:v1         | No raw colour under v1
   v1-raw-colour-arbitrary        | lint:v1         | No raw colour under v1
   v1-raw-colour-prop             | lint:v1         | No raw colour under v1
