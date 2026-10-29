@@ -1150,7 +1150,7 @@ class GuardSteps(unittest.TestCase):
     update step, retag's copy and the build workflows' image roots. Stubs: curl (the GET answers get.json with the
     HTTP code in code, the PATCH body lands in patch.json); crane (img/<image> holds an image's digest, a missing one
     prints crane_err and fails, each copy is logged to copies, drift makes a copy land at another digest); docker
-    (login only).
+    (login; buildx imagetools inspect and create over the same img/ and copies, inspect_err failing every inspect).
     """
 
     APP = {
@@ -1184,7 +1184,18 @@ case "$1" in
 esac
 """)
         with open(os.path.join(d, "docker"), "w") as fh:
-            fh.write("#!/bin/sh\ncat > /dev/null\n")
+            fh.write(f"""#!/bin/sh
+img() {{ echo "{d}/img/$(echo "$1" | tr '/:' '__')"; }}
+case "$1 $2 $3" in
+  "buildx imagetools inspect")
+    [ ! -e {d}/inspect_err ] || {{ cat {d}/inspect_err; exit 1; }}
+    [ -e "$(img "$4")" ] || {{ echo "ERROR: $4: not found"; exit 1; }}
+    cat "$(img "$4")";;
+  "buildx imagetools create") echo "$6 $5" >> {d}/copies; cp "$(img "${{6%@*}}")" "$(img "$5")"
+    [ ! -e {d}/drift ] || echo sha256:other > "$(img "$5")";;
+  *) cat > /dev/null;;
+esac
+""")
         for tool in ("crane", "docker"):
             os.chmod(os.path.join(d, tool), 0o755)
 
@@ -1456,6 +1467,103 @@ esac
             )
         r = self.bash(roots, CLOUD_RC="bogus", **env)
         self.assertEqual(r.returncode, 1)
+
+    def skip(self, images, tag="v1.2.0-rc.1", err="", drift=False):
+        """Run the runner's Skip if already pushed step over images (ref -> digest)."""
+        for image, digest in images.items():
+            with open(
+                os.path.join(self.d, "img", image.replace("/", "_").replace(":", "_")),
+                "w",
+            ) as fh:
+                fh.write(digest)
+        if err:
+            with open(os.path.join(self.d, "inspect_err"), "w") as fh:
+                fh.write(err)
+        if drift:
+            open(os.path.join(self.d, "drift"), "w").close()
+        r = self.bash(
+            step("cloud-runner-docker-build-push.yaml", "Skip if already pushed"),
+            TAG=tag,
+            IMAGES="c/runner o/runner",
+        )
+        out = {}
+        for name in ("out", "copies"):
+            path = os.path.join(self.d, name)
+            with open(path) if os.path.exists(path) else io.StringIO() as fh:
+                out[name] = fh.read()
+        return r, out["out"], out["copies"]
+
+    def test_skip_when_every_root_has_the_rc(self):
+        r, out, copies = self.skip(
+            {"c/runner:v1.2.0-rc.1": "sha256:a", "o/runner:v1.2.0-rc.1": "sha256:a"}
+        )
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual((out, copies), ("skip=true\n", ""))
+
+    def test_build_when_no_root_has_the_rc(self):
+        r, out, copies = self.skip({})
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual((out, copies), ("", ""))
+        self.assertIn("not pushed yet", r.stdout)
+
+    def test_copy_the_rc_to_a_root_that_lacks_it(self):
+        r, out, copies = self.skip({"o/runner:v1.2.0-rc.1": "sha256:a"})
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(out, "skip=true\n")
+        self.assertEqual(copies, "o/runner:v1.2.0-rc.1@sha256:a c/runner:v1.2.0-rc.1\n")
+        with open(os.path.join(self.d, "img", "c_runner_v1.2.0-rc.1")) as fh:
+            self.assertEqual(fh.read().strip(), "sha256:a")
+
+    def test_copy_refuses_another_digest(self):
+        r, out, _ = self.skip({"c/runner:v1.2.0-rc.1": "sha256:a"}, drift=True)
+        self.assertEqual(r.returncode, 1)
+        self.assertEqual(out, "")
+        self.assertIn("landed at sha256:other, not sha256:a", r.stdout)
+
+    def test_skip_fails_when_a_root_cannot_be_read(self):
+        r, out, _ = self.skip({}, err="ERROR: unauthorized")
+        self.assertEqual(r.returncode, 1)
+        self.assertEqual(out, "")
+        self.assertIn(
+            "cannot inspect c/runner:v1.2.0-rc.1: ERROR: unauthorized", r.stdout
+        )
+
+    def test_skip_leaves_other_tags_alone(self):
+        for tag in ("rc.12", "v1.2.0", "v1.2.0-rc.1-snapshot", "dev-abc"):
+            r, out, _ = self.skip(
+                {f"c/runner:{tag}": "sha256:a", f"o/runner:{tag}": "sha256:a"}, tag=tag
+            )
+            self.assertEqual((r.returncode, out), (0, ""), tag)
+
+    def test_skip_if_already_pushed_is_the_same_in_every_build_workflow(self):
+        # the same script before every bake, gated on a release build, its images the ones the bake tags
+        files = sorted(
+            f
+            for f in os.listdir(os.path.join(HERE, "..", "workflows"))
+            if f.endswith("-docker-build-push.yaml")
+            and f != "cloud-multi-doc-service-docker-build-push.yaml"
+        )
+        self.assertEqual(len(files), 11)
+        want = step("cloud-backend-docker-build-push.yaml", "Skip if already pushed")
+        for f in files:
+            self.assertEqual(step(f, "Skip if already pushed"), want, f)
+            with open(os.path.join(HERE, "..", "workflows", f)) as fh:
+                text = fh.read()
+            at = text.index("- name: Skip if already pushed")
+            block = text[at : text.index("run: |", at)]
+            self.assertIn("id: pushed\n", block, f)
+            self.assertIn("if: inputs.event == 'release'\n", block, f)
+            images = re.search(r"IMAGES: (.*)", block).group(1)
+            tags = re.findall(r"tags=(\$\{\{ env\.IMAGE_ROOT_\w+ \}\}/[\w-]+):", text)
+            self.assertEqual(images, " ".join(tags), f)
+            bake = text.index("uses: docker/bake-action@v7")
+            self.assertLess(at, bake, f)
+            self.assertEqual(text.count("uses: docker/bake-action@v7"), 1, f)
+            self.assertEqual(
+                text[:bake].rstrip().split("\n")[-1].strip(),
+                "if: steps.pushed.outputs.skip != 'true'",
+                f,
+            )
 
     def test_image_roots_is_the_same_in_every_build_workflow(self):
         # on-prem-backend logs in with the credential helper instead of the token (a long compile outlives it)
