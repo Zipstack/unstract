@@ -4,7 +4,6 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("global_api_deployment_key", "0003_globalapideploymentkey_expires_at"),
     ]

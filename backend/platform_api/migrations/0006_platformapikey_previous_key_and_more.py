@@ -4,7 +4,6 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-
     dependencies = [
         ("platform_api", "0005_platformapikey_expires_at"),
     ]

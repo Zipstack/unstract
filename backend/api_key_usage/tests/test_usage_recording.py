@@ -310,4 +310,3 @@ class RetentionTests(UsageTestBase):
 
         self.assertFalse(ApiKeyUsageDaily.objects.exists())
         self.assertEqual(ApiKeyLastUsed.objects.get().last_used_at, DAY_1)
-
