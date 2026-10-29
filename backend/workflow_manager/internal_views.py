@@ -10,6 +10,7 @@ from django.http import Http404
 from django.shortcuts import get_object_or_404
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
+from rest_framework.request import Request
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from tool_instance_v2.models import ToolInstance
@@ -514,6 +515,27 @@ class WorkflowExecutionInternalViewSet(viewsets.ReadOnlyModelViewSet):
                 "organization_name": "Unknown",
                 "settings": {},
             }
+
+    # Named execution_status because `status` is the imported DRF module.
+    @action(detail=True, methods=["get"], url_path="status")
+    def execution_status(self, request: Request, id: str | None = None) -> Response:
+        """Lightweight status read; workers poll it between files."""
+        try:
+            execution_id = uuid.UUID(str(id))
+        except ValueError:
+            execution_id = None
+        executions = filter_queryset_by_organization(
+            WorkflowExecution.objects.filter(id=execution_id),
+            request,
+            "workflow__organization",
+        )
+        execution_status = executions.values_list("status", flat=True).first()
+        if execution_status is None:
+            return Response(
+                {"error": "WorkflowExecution not found"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+        return Response({"id": str(execution_id), "status": execution_status})
 
     @action(detail=True, methods=["post"])
     def update_status(self, request, id=None):

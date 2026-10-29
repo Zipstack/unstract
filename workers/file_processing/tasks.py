@@ -675,6 +675,67 @@ def _refactored_pre_create_file_executions(
     return context
 
 
+def _file_item_name(file_item: Any) -> str | None:
+    """File name from a batch file item in any of its formats."""
+    name: str | None = None
+    if isinstance(file_item, (list, tuple)) and len(file_item) == 2:
+        name = file_item[0]
+    elif isinstance(file_item, dict):
+        name = file_item.get("file_name")
+    return name
+
+
+def _is_execution_stopped(api_client: InternalAPIClient, execution_id: str) -> bool:
+    """True when the execution was stopped (aborted) while this batch runs.
+
+    Fails open: if the check itself fails, the next file is processed.
+    """
+    try:
+        status = api_client.get_workflow_execution_status(execution_id)
+    except Exception as error:
+        logger.warning(
+            "[exec:%s] status check before the next file failed (%s); "
+            "processing it anyway",
+            execution_id,
+            error,
+        )
+        return False
+    stopped: bool = status == ExecutionStatus.STOPPED.value
+    return stopped
+
+
+def _mark_file_stopped(api_client: InternalAPIClient, file_execution_id: str) -> None:
+    """Mark one unprocessed file row STOPPED; a failed write is logged, not raised."""
+    try:
+        api_client.update_file_execution_status(
+            file_execution_id=file_execution_id,
+            status=ExecutionStatus.STOPPED.value,
+            error_message="Not processed: execution was stopped",
+        )
+    except Exception as error:
+        logger.warning(
+            "Failed to mark file execution %s STOPPED: %s", file_execution_id, error
+        )
+
+
+def _stop_remaining_files(
+    context: WorkflowContextData, remaining: list[Any], result: FileBatchResult
+) -> None:
+    """Count the batch's unprocessed files as failed and mark their rows STOPPED."""
+    api_client = context.organization_context.api_client
+    for file_item in remaining:
+        result.increment_failure()
+        name = _file_item_name(file_item)
+        pre_created = context.pre_created_file_executions.get(name) if name else None
+        if pre_created:
+            _mark_file_stopped(api_client, pre_created.id)
+    logger.warning(
+        "[exec:%s] Execution was stopped; skipped the batch's %s remaining file(s)",
+        context.execution_id,
+        len(remaining),
+    )
+
+
 def _process_individual_files(context: WorkflowContextData) -> WorkflowContextData:
     """Process each file individually through the workflow.
 
@@ -703,6 +764,11 @@ def _process_individual_files(context: WorkflowContextData) -> WorkflowContextDa
 
     # Process each file - handle list, tuple, and dictionary formats
     for file_number, file_item in enumerate(files, 1):
+        # Stop between files once the run is aborted.
+        if _is_execution_stopped(api_client, context.execution_id):
+            _stop_remaining_files(context, files[file_number - 1 :], result)
+            break
+
         # Handle Django list format (from asdict serialization), tuple format, and dictionary format
         if isinstance(file_item, list):
             # Django backend format after asdict(): [file_name, file_hash_dict]

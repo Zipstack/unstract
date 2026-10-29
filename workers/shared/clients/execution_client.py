@@ -143,6 +143,19 @@ class ExecutionAPIClient(BaseAPIClient):
                 status_code=getattr(e, "status_code", None),
             )
 
+    def get_workflow_execution_status(
+        self, execution_id: str | uuid.UUID, organization_id: str | None = None
+    ) -> str | None:
+        """Current status of an execution, from the lightweight status endpoint.
+
+        Raises on a failed request; the caller decides how to fail.
+        """
+        response = self.get(
+            self._build_url("workflow_execution", f"{execution_id}/status/"),
+            organization_id=organization_id,
+        )
+        return response.get("status") if isinstance(response, dict) else None
+
     def get_workflow_definition(
         self, workflow_id: str | uuid.UUID, organization_id: str | None = None
     ) -> ExecutionResponse:
