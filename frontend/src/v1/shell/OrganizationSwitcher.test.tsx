@@ -84,6 +84,19 @@ describe("OrganizationSwitcher", () => {
     ).toBeInTheDocument();
   });
 
+  // happy-dom has no layout, so this pins the CSS contract: the panel is capped
+  // at the space Radix measures, and only the list scrolls under the search.
+  test("a long list scrolls inside a panel capped to the viewport", async () => {
+    list.mockResolvedValue([zipstack, personal]);
+    await open();
+    const rows = await screen.findAllByRole("listitem");
+    const scroller = rows[0].parentElement as HTMLElement;
+    expect(scroller).toHaveClass("overflow-y-auto", "min-h-0");
+    expect(
+      scroller.closest("[data-radix-popper-content-wrapper] > *"),
+    ).toHaveClass("max-h-[var(--radix-popover-content-available-height)]");
+  });
+
   test("a member reads Member (O04)", async () => {
     list.mockResolvedValue([{ ...zipstack, role: "user" }, personal]);
     await open();

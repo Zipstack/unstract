@@ -252,7 +252,8 @@ export function OrganizationSwitcher({
           <Popover.Content
             align="end"
             sideOffset={8}
-            className="z-50 flex w-[360px] flex-col rounded-xl border border-[var(--border)] bg-[var(--popover)] p-1.5 shadow-[0_8px_24px_-4px_#0000001a]"
+            collisionPadding={8}
+            className="z-50 flex max-h-[var(--radix-popover-content-available-height)] w-[360px] flex-col rounded-xl border border-[var(--border)] bg-[var(--popover)] p-1.5 shadow-[0_8px_24px_-4px_#0000001a]"
           >
             <label className="mb-1 flex h-9 items-center gap-2 rounded-lg px-2.5 text-[var(--muted-foreground)]">
               <Search aria-hidden className="size-4" />
@@ -297,7 +298,7 @@ export function OrganizationSwitcher({
                     You belong to {count} organisation{count === 1 ? "" : "s"}
                   </p>
                 )}
-                <ul className="flex flex-col">
+                <ul className="flex min-h-0 flex-col overflow-y-auto">
                   {shown.map((org) => {
                     const isCurrent = org.id === current.id;
                     return (
