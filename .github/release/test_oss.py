@@ -1193,6 +1193,8 @@ esac
             ["bash", "-eo", "pipefail", "-c", script],
             env={
                 "PATH": f"{self.d}:{os.environ['PATH']}",
+                # setup-python's interpreter loads libpython from here
+                **{k: v for k, v in os.environ.items() if k == "LD_LIBRARY_PATH"},
                 "GITHUB_OUTPUT": os.path.join(self.d, "out"),
                 "GITHUB_STEP_SUMMARY": os.path.join(self.d, "summary"),
                 "GITHUB_ENV": os.path.join(self.d, "env"),
