@@ -21,6 +21,9 @@ rules and the "May import from" column below are enforced by tooling; the
   `@v1/styles/...`, including from inside `styles/`.
 - **Static assets live in `assets/`**, imported as `@v1/assets/...` (e.g.
   `@v1/assets/logo.svg?react`). v1 never uses v0's `src/assets/`.
+- **Lucide is the only icon library**, with canonical names (`LoaderCircle`,
+  not the `Loader2` alias). Shared glyphs come by role from `lib/icons.ts`;
+  provider logos, product marks and flags from `components/ui/BrandMark`.
 
 ## Styling
 
