@@ -8,9 +8,7 @@ import type { PDFDocumentProxy, PDFPageProxy, RenderTask } from "pdfjs-dist";
 import {
   memo,
   type ReactNode,
-  useCallback,
   useEffect,
-  useLayoutEffect,
   useRef,
   useState,
 } from "react";
@@ -57,26 +55,9 @@ export const PdfPage = memo(function PdfPage({
   observe,
   children,
 }: PdfPageProps) {
-  const frameRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [state, setState] = useState<RenderState>("idle");
   const css = pageCssSize(size, zoom);
-
-  const setFrame = useCallback(
-    (element: HTMLDivElement | null) => {
-      frameRef.current = element;
-      return observe(element);
-    },
-    [observe],
-  );
-
-  // Runtime geometry goes through custom properties, which the classes read:
-  // v1 bans the style attribute, and a page's size is not a token.
-  useLayoutEffect(() => {
-    const frame = frameRef.current;
-    frame?.style.setProperty("--page-width", `${css.width}px`);
-    frame?.style.setProperty("--page-height", `${css.height}px`);
-  }, [css.width, css.height]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -142,12 +123,18 @@ export const PdfPage = memo(function PdfPage({
 
   return (
     <div
-      ref={setFrame}
+      ref={observe}
       data-page-index={index}
       data-render-state={state}
       role="img"
       aria-label={`Page ${index + 1} of ${pageCount}`}
       className="ui:relative ui:h-(--page-height) ui:w-(--page-width) ui:shrink-0 ui:bg-card ui:shadow-sm"
+      // A page's size is runtime geometry, not a token: it goes through custom
+      // properties, which the classes read.
+      style={{
+        "--page-width": `${css.width}px`,
+        "--page-height": `${css.height}px`,
+      }}
     >
       {rendered && (
         <canvas
