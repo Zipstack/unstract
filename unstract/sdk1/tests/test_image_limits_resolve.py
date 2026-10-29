@@ -7,6 +7,7 @@ depend on which litellm cost map the process happened to load.
 """
 
 import dataclasses
+from urllib.parse import urlparse
 
 import pytest
 from _pytest.monkeypatch import MonkeyPatch
@@ -163,7 +164,9 @@ class TestResolution:
         count = limits.max_images_per_request
         assert count.confidence == "verified"
         assert any(
-            url.startswith("https://docs.aws.amazon.com") for url in count.source_urls
+            urlparse(url).scheme == "https"
+            and urlparse(url).hostname == "docs.aws.amazon.com"
+            for url in count.source_urls
         )
         assert count.verified_on == "2026-10-09"
 
