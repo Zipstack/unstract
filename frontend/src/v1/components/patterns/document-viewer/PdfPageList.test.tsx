@@ -1,7 +1,8 @@
 import { act, render } from "@testing-library/react";
 import type { PDFDocumentProxy } from "pdfjs-dist";
+import { createRef } from "react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { PdfPageList } from "./PdfPageList";
+import { PdfPageList, type PdfPageListHandle } from "./PdfPageList";
 
 /** An IntersectionObserver whose "in view" set the test controls. */
 class FakeIntersectionObserver {
@@ -21,12 +22,20 @@ class FakeIntersectionObserver {
   disconnect() {
     this.targets.clear();
   }
+  emit(entries: object[]) {
+    this.callback(entries as unknown as IntersectionObserverEntry[]);
+  }
   show(indexes: number[]) {
     const entries = [...this.targets].map((target) => ({
       target,
       isIntersecting: indexes.includes(
         Number(target.getAttribute("data-page-index")),
       ),
+      intersectionRatio: indexes.includes(
+        Number(target.getAttribute("data-page-index")),
+      )
+        ? 1
+        : 0,
     }));
     this.callback(entries as unknown as IntersectionObserverEntry[]);
   }
@@ -261,4 +270,129 @@ it("draws each highlight on its own page", () => {
   expect(
     container.querySelector('[data-page-index="1"] [data-highlight-id]'),
   ).toBeNull();
+});
+
+/**
+ * Gives the list a layout, which happy-dom does not compute: pages 800 × 600
+ * at zoom 1, 16 px apart after 16 px of padding, in a 500 × 400 viewport.
+ */
+function layOut(container: HTMLElement, zoom: () => number) {
+  const root = container.querySelector<HTMLElement>("section");
+  if (!root) {
+    throw new Error("no scroll region");
+  }
+  Object.defineProperty(root, "clientHeight", { value: 400 });
+  Object.defineProperty(root, "clientWidth", { value: 500 });
+  for (const page of container.querySelectorAll<HTMLElement>(
+    "[data-page-index]",
+  )) {
+    const index = Number(page.getAttribute("data-page-index"));
+    Object.defineProperties(page, {
+      offsetTop: { get: () => 16 + index * (800 * zoom() + 16) },
+      offsetHeight: { get: () => 800 * zoom() },
+      offsetWidth: { get: () => 600 * zoom() },
+      offsetLeft: { get: () => 16 },
+    });
+  }
+  return root;
+}
+
+it("scrolls a page to the top exactly, with no wait", () => {
+  const { document } = fakeDocument(10);
+  const ref = createRef<PdfPageListHandle>();
+  const { container } = render(
+    <PdfPageList
+      ref={ref}
+      document={document}
+      pageSizes={sizes(10)}
+      zoom={1}
+    />,
+  );
+  const root = layOut(container, () => 1);
+  act(() => ref.current?.scrollToPage(3));
+  expect(root.scrollTop).toBe(3 * 816);
+  act(() => ref.current?.scrollToPage(99));
+  expect(root.scrollTop).toBe(9 * 816);
+});
+
+it("centres a highlight, across as well as down for a box", () => {
+  const { document } = fakeDocument(10);
+  const ref = createRef<PdfPageListHandle>();
+  const highlights = [
+    {
+      id: "w",
+      page: 2,
+      x: 0.5,
+      y: 0.25,
+      w: 0.1,
+      h: 0.05,
+      variant: "box" as const,
+      tone: "default" as const,
+    },
+  ];
+  const { container } = render(
+    <PdfPageList
+      ref={ref}
+      document={document}
+      pageSizes={sizes(10)}
+      zoom={1}
+      highlights={highlights}
+    />,
+  );
+  const root = layOut(container, () => 1);
+  let found = false;
+  act(() => {
+    found = ref.current?.scrollToHighlight("w") ?? false;
+  });
+  expect(found).toBe(true);
+  // Page 2 starts at 1632; the box's centre is 0.275 × 800 = 220 into it.
+  expect(root.scrollTop).toBe(1632 + 220 - 200);
+  // 0.55 × 600 = 330 across, from the page's left edge at 16.
+  expect(root.scrollLeft).toBe(16 + 330 - 250);
+  expect(ref.current?.scrollToHighlight("missing")).toBe(false);
+});
+
+it("keeps the same spot of the same page in view across a zoom change", () => {
+  const { document } = fakeDocument(10);
+  let zoom = 1;
+  const { container, rerender } = render(
+    <PdfPageList document={document} pageSizes={sizes(10)} zoom={zoom} />,
+  );
+  const root = layOut(container, () => zoom);
+  show([0]);
+  // Half way down page 0.
+  root.scrollTop = 400;
+  act(() => {
+    root.dispatchEvent(new Event("scroll"));
+  });
+  zoom = 2;
+  rerender(
+    <PdfPageList document={document} pageSizes={sizes(10)} zoom={zoom} />,
+  );
+  expect(root.scrollTop).toBe(800);
+});
+
+it("reports the page showing most of itself", () => {
+  const { document } = fakeDocument(10);
+  const onCurrentPageChange = vi.fn();
+  render(
+    <PdfPageList
+      document={document}
+      pageSizes={sizes(10)}
+      zoom={1}
+      onCurrentPageChange={onCurrentPageChange}
+    />,
+  );
+  act(() => {
+    const observer = FakeIntersectionObserver.current;
+    const target = (index: number) =>
+      [...(observer?.targets ?? [])].find(
+        (t) => t.getAttribute("data-page-index") === String(index),
+      );
+    observer?.emit([
+      { target: target(4), isIntersecting: true, intersectionRatio: 0.25 },
+      { target: target(5), isIntersecting: true, intersectionRatio: 0.75 },
+    ]);
+  });
+  expect(onCurrentPageChange).toHaveBeenLastCalledWith(5);
 });
