@@ -1365,8 +1365,9 @@ class Guards(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             self.assertEqual(rm.local_path(d), d)
             os.symlink("/usr", os.path.join(d, "out"))
-            with self.assertRaises(rm.Refused):  # a link out of the roots
-                rm.local_path(os.path.join(d, "out", "x"))
+            escape = os.path.join(d, "out", "x")  # a link out of the roots
+            with self.assertRaises(rm.Refused):
+                rm.local_path(escape)
         for path in (self.OUTSIDE, "-C"):
             with self.subTest(path=path), self.assertRaises(rm.Refused):
                 rm.local_path(path)
