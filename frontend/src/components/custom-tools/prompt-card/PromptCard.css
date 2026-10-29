@@ -184,6 +184,7 @@
 
 .prompt-card-llm-container {
   border-right: 1px solid #0000000f;
+  width: -webkit-fill-available !important;
 }
 
 .prompt-profile-run-expanded {
