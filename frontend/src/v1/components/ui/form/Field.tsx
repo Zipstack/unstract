@@ -31,10 +31,11 @@ export function Field({
   className,
   children,
 }: FieldProps): JSX.Element {
-  const baseId = useId();
-  const controlId = id ?? `${baseId}control`;
-  const helperId = helperText ? `${baseId}helper` : undefined;
-  const errorId = error ? `${baseId}error` : undefined;
+  const generatedId = useId();
+  const controlId = id ?? `${generatedId}control`;
+  // Derived from the control id, so a caller that passes `id` gets stable ids.
+  const helperId = helperText ? `${controlId}-helper` : undefined;
+  const errorId = error ? `${controlId}-error` : undefined;
   const isInvalid = invalid ?? Boolean(error);
 
   const context = useMemo<FieldContextValue>(
