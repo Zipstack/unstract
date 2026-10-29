@@ -59,15 +59,17 @@ const CONTRACT = {
     "hooks",
     "lib",
     "styles",
+    "assets",
     "plugins",
   ],
-  "components/ui": ["lib", "styles"],
+  "components/ui": ["lib", "styles", "assets"],
   "components/patterns": [
     "components/ui",
     "lib",
     "services",
     "stores",
     "hooks",
+    "assets",
   ],
   shell: [
     "components/ui",
@@ -76,12 +78,15 @@ const CONTRACT = {
     "stores",
     "hooks",
     "lib",
+    "assets",
   ],
   services: ["lib"],
   stores: ["lib"],
   hooks: ["lib"],
   lib: [],
-  styles: ["lib"],
+  styles: ["lib", "assets"],
+  // Static files (icons, logos, images); a generated icon map may live here.
+  assets: [],
 };
 const TOP_LEVEL = new Set([
   "app",
@@ -91,6 +96,7 @@ const TOP_LEVEL = new Set([
   "hooks",
   "lib",
   "styles",
+  "assets",
   "plugins",
   "test",
 ]);

@@ -257,6 +257,7 @@ const FOLDERS = {
   hooks: "hooks",
   lib: "lib",
   styles: "styles",
+  assets: "assets",
   plugins: "plugins",
   test: "test",
 };
@@ -266,15 +267,16 @@ const MAY_IMPORT = Object.fromEntries(
     app                 | *
     plugins             | *
     test                | *
-    pages/a             | components/ui components/patterns shell services stores hooks lib styles plugins
-    components/ui       | lib styles
-    components/patterns | components/ui lib services stores hooks
-    shell               | components/ui components/patterns services stores hooks lib
+    pages/a             | components/ui components/patterns shell services stores hooks lib styles assets plugins
+    components/ui       | lib styles assets
+    components/patterns | components/ui lib services stores hooks assets
+    shell               | components/ui components/patterns services stores hooks lib assets
     services            | lib
     stores              | lib
     hooks               | lib
     lib                 |
-    styles              | lib
+    styles              | lib assets
+    assets              |
   `).map(([from, to]) => [from, to === "*" ? EVERYTHING : to.split(/\s+/)]),
 );
 

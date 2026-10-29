@@ -19,6 +19,8 @@ rules and the "May import from" column below are enforced by tooling; the
 - **No PropTypes, no component `.css`, no antd** (package, shim or `ant-`
   class). Global v1 styles live in `styles/` and are imported as
   `@v1/styles/...`, including from inside `styles/`.
+- **Static assets live in `assets/`**, imported as `@v1/assets/...` (e.g.
+  `@v1/assets/logo.svg?react`). v1 never uses v0's `src/assets/`.
 
 ## Folders and what each may import
 
@@ -29,15 +31,16 @@ Every folder may import from itself. Test files (`*.test.ts(x)`,
 | --- | --- | --- |
 | `index.ts` | Public entry; the version switch (UN-4271) will mount v1 through it | everything |
 | `app/` | Entry, providers, router, route registry | everything |
-| `components/ui/` | Core components | `lib/`, `styles/` |
-| `components/patterns/` | Composites built from core components | `components/ui/`, `lib/`, `services/`, `stores/`, `hooks/` |
-| `shell/` | Top bar, rail, context bar, tab bar | `components/ui/`, `components/patterns/`, `services/`, `stores/`, `hooks/`, `lib/` |
-| `pages/<page>/` | One folder per target page | `components/ui/`, `components/patterns/`, `shell/`, `services/`, `stores/`, `hooks/`, `lib/`, `styles/`, `plugins/` — not other pages, `app/`, `test/` or the entry |
+| `components/ui/` | Core components | `lib/`, `styles/`, `assets/` |
+| `components/patterns/` | Composites built from core components | `components/ui/`, `lib/`, `services/`, `stores/`, `hooks/`, `assets/` |
+| `shell/` | Top bar, rail, context bar, tab bar | `components/ui/`, `components/patterns/`, `services/`, `stores/`, `hooks/`, `lib/`, `assets/` |
+| `pages/<page>/` | One folder per target page | `components/ui/`, `components/patterns/`, `shell/`, `services/`, `stores/`, `hooks/`, `lib/`, `styles/`, `assets/`, `plugins/` — not other pages, `app/`, `test/` or the entry |
 | `services/` | Typed service modules; the only place a URL appears | `lib/` |
 | `stores/` | Zustand stores | `lib/` |
 | `hooks/` | Shared hooks | `lib/` |
 | `lib/` | Pure helpers | — |
-| `styles/` | Tokens and global v1 styles | `lib/` |
+| `styles/` | Tokens and global v1 styles | `lib/`, `assets/` |
+| `assets/` | Static files: icons, logos, images (and a generated icon map) | — |
 | `plugins/` | Cloud overlay target; only a placeholder in the public repository | everything |
 | `test/` | Render helpers, fixtures, network mocks | everything |
 
