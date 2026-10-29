@@ -51,7 +51,7 @@ export function Field({
 
   return (
     <FieldContext value={context}>
-      <div data-slot="field" className={cn("ui:grid ui:gap-2", className)}>
+      <div data-slot="field" className={cn("ui:grid ui:gap-1.5", className)}>
         <Label htmlFor={controlId} data-disabled={disabled ? "" : undefined}>
           {label}
         </Label>

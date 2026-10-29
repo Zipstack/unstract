@@ -84,7 +84,7 @@ export function PromptTextarea({
       className={cn("ui:min-h-26", className)}
       controlClassName={cn(
         // No Figma frame gives the maximum yet; 240 (ui:max-h-60) is a placeholder on the spacing scale.
-        "ui:h-(--prompt-height) ui:max-h-60 ui:min-h-0 ui:resize-none ui:overflow-y-auto ui:field-sizing-content",
+        "ui:h-(--prompt-height) ui:py-2.5 ui:max-h-60 ui:min-h-0 ui:resize-none ui:overflow-y-auto ui:field-sizing-content",
         controlClassName,
       )}
       {...props}

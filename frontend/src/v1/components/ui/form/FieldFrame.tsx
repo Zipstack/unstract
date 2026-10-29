@@ -10,7 +10,7 @@ import type { ComponentProps, JSX } from "react";
  */
 export const fieldFrameVariants = cva(
   [
-    "ui:box-border ui:flex ui:w-full ui:min-w-0 ui:gap-2 ui:rounded-md ui:border ui:border-input ui:bg-transparent ui:text-body ui:text-foreground ui:transition-[border-color,box-shadow]",
+    "ui:box-border ui:flex ui:w-full ui:min-w-0 ui:gap-1.5 ui:rounded-md ui:border ui:border-input ui:bg-background ui:text-body ui:text-foreground ui:transition-[border-color,box-shadow]",
     "ui:hover:border-muted-foreground",
     "ui:has-[[data-slot=control]:focus-visible]:focus-ring",
     "ui:data-readonly:border-input ui:data-readonly:bg-muted",
@@ -20,7 +20,7 @@ export const fieldFrameVariants = cva(
   {
     variants: {
       multiline: {
-        false: "ui:h-8 ui:items-center ui:px-3",
+        false: "ui:h-8 ui:items-center ui:px-2.5",
         true: "ui:items-stretch",
       },
     },
