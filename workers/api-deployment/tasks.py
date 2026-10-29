@@ -673,8 +673,9 @@ def _run_workflow_api(
     # The destination evaluates API rules only for a hitl_queue_name request;
     # a hitl_packet_id skips rule evaluation, so highlight would go unused.
     # ponytail: the API + use_file_history path evaluates DB rules, which
-    # this check does not cover. use_file_history is internal-only; add a
-    # "DB" check there if it is ever exposed.
+    # this check does not cover, so a DB confidence rule there gets no
+    # highlight. use_file_history is hidden from the API schema and meant for
+    # demos, but a caller can still send it; add a "DB" check if it matters.
     # Highlight adds confidence_data to the result metadata and fills
     # line_numbers and whisper_hash, which include_metadata callers receive
     # (highlight_data too, when the org's API highlight flag is on). The keys
