@@ -121,6 +121,29 @@ describe("ManageKeys key column", () => {
     expect(document.body.innerHTML).not.toContain("cd34");
   });
 
+  it("shows the last four from twelve characters, not before", async () => {
+    renderKeys({
+      apiKeys: [
+        {
+          id: "k11",
+          description: "Eleven",
+          api_key: "abcdefg1111",
+          is_active: true,
+        },
+        {
+          id: "k12",
+          description: "Twelve",
+          api_key: "abcdefgh2222",
+          is_active: true,
+        },
+      ],
+    });
+
+    expect(await screen.findByText("••••••••2222")).toBeInTheDocument();
+    expect(screen.getByText("••••••••")).toBeInTheDocument();
+    expect(document.body.innerHTML).not.toContain("1111");
+  });
+
   it("keeps the masked and revealed key in the same fixed-width cell", async () => {
     renderKeys();
 
