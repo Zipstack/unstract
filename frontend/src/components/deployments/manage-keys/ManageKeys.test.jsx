@@ -19,8 +19,9 @@ vi.mock("../../../hooks/useAxiosPrivate", () => ({
 vi.mock("../../../hooks/useExceptionHandler.jsx", () => ({
   useExceptionHandler: () => (_err, fallback) => ({ content: fallback }),
 }));
+const { setAlertDetails } = vi.hoisted(() => ({ setAlertDetails: vi.fn() }));
 vi.mock("../../../store/alert-store", () => ({
-  useAlertStore: () => ({ setAlertDetails: vi.fn() }),
+  useAlertStore: () => ({ setAlertDetails }),
 }));
 vi.mock("../../../store/session-store", () => ({
   useSessionStore: () => ({
@@ -62,6 +63,7 @@ describe("ManageKeys key column", () => {
 
   afterEach(() => {
     delete navigator.clipboard;
+    setAlertDetails.mockClear();
   });
 
   it("shows only the last four characters by default", async () => {
@@ -78,6 +80,55 @@ describe("ManageKeys key column", () => {
 
     await waitFor(() => expect(writeText).toHaveBeenCalledWith(FULL_KEY));
     expect(document.body.innerHTML).not.toContain(FULL_KEY);
+    await waitFor(() =>
+      expect(setAlertDetails).toHaveBeenCalledWith({
+        type: "success",
+        content: "API key copied to clipboard",
+      }),
+    );
+  });
+
+  // On-prem over plain HTTP is not a secure context, so the browser has no
+  // navigator.clipboard. The copy must say it failed rather than throw.
+  it("reports a failed copy when the clipboard is unavailable", async () => {
+    Object.defineProperty(navigator, "clipboard", {
+      value: undefined,
+      configurable: true,
+    });
+    renderKeys();
+
+    fireEvent.click(await screen.findByLabelText("Copy API key"));
+
+    expect(setAlertDetails).toHaveBeenCalledWith({
+      type: "error",
+      content: "Clipboard not available in this browser",
+    });
+  });
+
+  it("shows none of a key too short to mask by its last four", async () => {
+    renderKeys({
+      apiKeys: [
+        {
+          id: "key-s",
+          description: "Short",
+          api_key: "ab12cd34",
+          is_active: true,
+        },
+      ],
+    });
+
+    expect(await screen.findByText("••••••••")).toBeInTheDocument();
+    expect(document.body.innerHTML).not.toContain("cd34");
+  });
+
+  it("keeps the masked and revealed key in the same fixed-width cell", async () => {
+    renderKeys();
+
+    expect(await screen.findByText("••••••••7c91")).toHaveClass(
+      "manage-keys__key",
+    );
+    fireEvent.click(screen.getByLabelText("Show API key"));
+    expect(screen.getByText(FULL_KEY)).toHaveClass("manage-keys__key");
   });
 
   it("reveals the key on request and hides it again", async () => {

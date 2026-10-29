@@ -10,6 +10,7 @@ import { Typography } from "@/components/ui/shims/antd-typography";
 
 import { canEditResource } from "../../../helpers/resourceAccess";
 import { useAxiosPrivate } from "../../../hooks/useAxiosPrivate";
+import { useCopyToClipboard } from "../../../hooks/useCopyToClipboard";
 import { useAlertStore } from "../../../store/alert-store";
 import { useSessionStore } from "../../../store/session-store";
 import { CustomButton } from "../../widgets/custom-button/CustomButton.jsx";
@@ -22,8 +23,19 @@ import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
 // A key is a credential, so the table shows only its last four characters
 // until someone asks to see it. Anything on screen is also in the page text
 // a browsing agent reads. Copy takes the full key from the row, so copying
-// never needs a reveal.
-const maskApiKey = (key) => (key ? `••••••••${String(key).slice(-4)}` : "");
+// never needs a reveal. A key too short for its last four to be a small part
+// of it shows no characters at all. The list API still sends the full key
+// (UN-4562).
+const MIN_LENGTH_TO_SHOW_TAIL = 12;
+const maskApiKey = (key) => {
+  if (!key) {
+    return "";
+  }
+  const text = String(key);
+  return text.length < MIN_LENGTH_TO_SHOW_TAIL
+    ? "••••••••"
+    : `••••••••${text.slice(-4)}`;
+};
 
 const ManageKeys = ({
   isDialogOpen,
@@ -41,6 +53,7 @@ const ManageKeys = ({
   const ownerOnlyTitle = canEdit ? "" : "Only the owner can change this";
   const axiosPrivate = useAxiosPrivate();
   const handleException = useExceptionHandler();
+  const copyToClipboard = useCopyToClipboard();
   const [isTableLoading, setIsTableLoading] = useState(false);
   const { setAlertDetails } = useAlertStore();
   const [isNewKey, setIsNewKey] = useState(false);
@@ -49,7 +62,7 @@ const ManageKeys = ({
   const [canAdd, setCanAdd] = useState(false);
   const [selectedKeyRow, setSelectedKeyRow] = useState({});
   const [openDeleteModal, setOpenDeleteModal] = useState(false);
-  const [visibleKeyIds, setVisibleKeyIds] = useState(new Set());
+  const [visibleKeyIds, setVisibleKeyIds] = useState(() => new Set());
 
   // ManageKeys stays mounted while the modal is closed (its callers render it
   // unconditionally), so a key revealed for one deployment or pipeline must not
@@ -229,23 +242,6 @@ const ManageKeys = ({
       });
   };
 
-  const copyText = (text) => {
-    navigator.clipboard
-      .writeText(text)
-      .then(() => {
-        setAlertDetails({
-          type: "success",
-          content: "API key copied to clipboard",
-        });
-      })
-      .catch((error) => {
-        setAlertDetails({
-          type: "error",
-          content: "Copy failed",
-        });
-      });
-  };
-
   const toggleKeyVisibility = (id) => {
     setVisibleKeyIds((prev) => {
       const next = new Set(prev);
@@ -278,10 +274,10 @@ const ManageKeys = ({
                 size="small"
                 icon={<Copy />}
                 aria-label="Copy API key"
-                onClick={() => copyText(record?.api_key)}
+                onClick={() => copyToClipboard(record?.api_key, "API key")}
               />
             </Tooltip>
-            <Typography.Text>
+            <Typography.Text className="manage-keys__key">
               {isVisible ? record?.api_key : maskApiKey(record?.api_key)}
             </Typography.Text>
             <Tooltip title={isVisible ? "Hide key" : "Show key"}>

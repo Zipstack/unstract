@@ -41,6 +41,10 @@ describe("CreateNotification authorization key", () => {
     const input = container.querySelector("#authorization_key");
     expect(input).toHaveAttribute("type", "password");
     expect(input).toHaveAttribute("autocomplete", "new-password");
+    // Today's behaviour, not the goal: the API still returns the stored key,
+    // so it is the input's value and editing keeps it. Once the API returns
+    // a placeholder and treats an unchanged value as "keep existing"
+    // (UN-4562), assert the placeholder here instead.
     expect(input).toHaveValue(TOKEN);
   });
 

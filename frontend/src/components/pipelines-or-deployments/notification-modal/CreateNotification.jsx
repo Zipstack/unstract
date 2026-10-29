@@ -172,7 +172,7 @@ function CreateNotification({
       // A credential: masked until revealed. new-password keeps the browser
       // from filling a saved login password into it. The mask is on screen
       // only: the API returns the stored key, so it is still the input's
-      // value (and value attribute) until the API stops sending it.
+      // value (and value attribute) until the API stops sending it (UN-4562).
       component: <Input.Password autoComplete="new-password" />,
       tooltip:
         "Provide the authorization key used to validate the notification.",
