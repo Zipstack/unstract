@@ -3,7 +3,10 @@
  * Styling policy for the v1 frontend (src/v1/). Run by `lint:v1` after
  * check-v1.mjs; the rules and their reasons are in src/v1/README.md.
  *
- *   S1  No inline style (a JSX `style` attribute).
+ *   S1  No inline style: a JSX `style` attribute may hold only an object
+ *       literal whose every key is a CSS custom property (`"--page-aspect"`),
+ *       the channel for runtime geometry that `ui:aspect-(--page-aspect)`
+ *       reads. A string, a variable, a spread or a plain key fails.
  *   S2  No raw colour: hex, rgb()/hsl()/oklch()/oklab()/color(), a
  *       Tailwind palette utility (`-red-500`, `-white`), or a named colour
  *       as an arbitrary value (`text-[red]`, `[color:tomato]`).
@@ -57,7 +60,8 @@ const GENERATED_CSS = "styles/tokens.css";
 const CSS_IMPORTERS = new Set(["app", "styles"]);
 
 const MSG = {
-  inlineStyle: "No inline style under v1; style with tokens and Tailwind.",
+  inlineStyle:
+    "No inline style under v1; style with tokens and Tailwind. A style attribute may set only CSS custom properties (--name) that ui: classes read.",
   colour: "No raw colour under v1; use a token from styles/tokens.ts.",
   pixel: "No raw pixel value under v1; use a token or the spacing scale.",
   important: "No !important under v1.",
@@ -133,6 +137,8 @@ const CSS_IMPORTANT_RE = /!\s*important\b/g;
 const COLOUR_SCHEME_RE = /prefers-color-scheme/g;
 // A JSX attribute: `<div style={…}` or `style="…"`, not `const style = {…}`.
 const INLINE_STYLE_RE = /(?<=[\s{])style=[{"]/g;
+// An object key that names a CSS custom property: "--x", '--x' or `--x`.
+const CUSTOM_PROPERTY_KEY_RE = /^(?:"--[^"]+"|'--[^']+'|`--[^`$]+`)$/;
 
 // Stems that are a complete utility on their own, so a bare `flex` counts.
 const WHOLE_STEMS = [
@@ -464,6 +470,110 @@ const report = (rel, line, msg) => {
   problems.push(`src/v1/${where}: ${msg}`);
 };
 
+/*
+ * S1's one allowance. `open` indexes the `{` of a `style={…}` container (a
+ * `style="…"` string never qualifies). True only when the container holds an
+ * object literal and every entry is `"--name": value`: the attribute then
+ * carries runtime numbers into custom properties that `ui:` classes read
+ * (`ui:aspect-(--page-aspect)`), and the classes still own the visuals. A
+ * variable, a call, a spread or a plain key is rejected: its keys are not
+ * visible at the call site, or it styles the element directly.
+ */
+function isCustomPropertyStyle(text, open) {
+  if (text[open] !== "{") {
+    return false;
+  }
+  const close = matchingBrace(text, open);
+  if (close < 0) {
+    return false;
+  }
+  // The container must hold exactly one object literal: `{ {…} }`.
+  const innerOpen = open + 1 + text.slice(open + 1, close).search(/\S/);
+  const innerClose = matchingBrace(text, innerOpen);
+  if (text[innerOpen] !== "{" || innerClose < 0) {
+    return false;
+  }
+  if (text.slice(innerClose + 1, close).trim() !== "") {
+    return false;
+  }
+  const body = text.slice(innerOpen + 1, innerClose);
+  return topLevelSplit(body, ",").every((entry) => {
+    const e = entry.trim();
+    if (e === "") {
+      return true; // a trailing comma
+    }
+    const [key] = topLevelSplit(e, ":");
+    return key.length < e.length && CUSTOM_PROPERTY_KEY_RE.test(key.trim());
+  });
+}
+
+/* Index of the `}` closing the `{` at `open`, skipping strings; -1 if none. */
+function matchingBrace(text, open) {
+  let depth = 0;
+  let i = open;
+  while (i < text.length) {
+    const c = text[i];
+    if (c === '"' || c === "'" || c === "`") {
+      i = skipString(text, i);
+      continue;
+    }
+    if (c === "{" || c === "(" || c === "[") {
+      depth += 1;
+    } else if (c === "}" || c === ")" || c === "]") {
+      depth -= 1;
+      if (depth === 0) {
+        return c === "}" ? i : -1;
+      }
+    }
+    i += 1;
+  }
+  return -1;
+}
+
+/* Splits `text` on `sep` at bracket depth 0, outside strings. */
+function topLevelSplit(text, sep) {
+  const parts = [];
+  let depth = 0;
+  let start = 0;
+  let i = 0;
+  while (i < text.length) {
+    const c = text[i];
+    if (c === '"' || c === "'" || c === "`") {
+      i = skipString(text, i);
+      continue;
+    }
+    if (c === "{" || c === "(" || c === "[") {
+      depth += 1;
+    } else if (c === "}" || c === ")" || c === "]") {
+      depth -= 1;
+    } else if (c === sep && depth === 0) {
+      parts.push(text.slice(start, i));
+      start = i + 1;
+    }
+    i += 1;
+  }
+  parts.push(text.slice(start));
+  return parts;
+}
+
+/* Index just past the string or template literal that starts at i. */
+function skipString(text, i) {
+  const quote = text[i];
+  let j = i + 1;
+  while (j < text.length && text[j] !== quote) {
+    if (text[j] === "\\") {
+      j += 1;
+    } else if (quote === "`" && text[j] === "$" && text[j + 1] === "{") {
+      j = matchingBrace(text, j + 1);
+      if (j < 0) {
+        return text.length;
+      }
+    }
+    j += 1;
+  }
+  return j + 1;
+}
+
 function checkCode(rel) {
   const text = blankComments(fs.readFileSync(path.join(ROOT, rel), "utf8"));
   const top = rel.split("/")[0];
@@ -480,7 +590,9 @@ function checkCode(rel) {
     return;
   }
   for (const m of text.matchAll(INLINE_STYLE_RE)) {
-    report(rel, lineAt(text, m.index), MSG.inlineStyle);
+    if (!isCustomPropertyStyle(text, m.index + m[0].length - 1)) {
+      report(rel, lineAt(text, m.index), MSG.inlineStyle);
+    }
   }
   if (rel === RAW_VALUES_TS) {
     return;
