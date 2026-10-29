@@ -28,6 +28,12 @@ from scheduler.helper import SchedulerHelper
 from tenant_account_v2.capabilities import Capability, RequiresCapability
 from utils.filters.ordering_filter import DeterministicOrderingFilter
 from utils.pagination import CustomPagination
+from workflow_manager.workflow_v2.list_aggregate_serializers import list_filters_from
+from workflow_manager.workflow_v2.list_aggregates import (
+    RowFields,
+    aggregate_rows,
+    apply_list_filters,
+)
 
 from pipeline_v2.constants import (
     PipelineConstants,
@@ -37,7 +43,9 @@ from pipeline_v2.constants import (
 from pipeline_v2.constants import PipelineKey as PK
 from pipeline_v2.manager import PipelineManager
 from pipeline_v2.models import Pipeline
+from pipeline_v2.openapi_schema import PIPELINE_SCHEMA
 from pipeline_v2.pipeline_processor import PipelineProcessor
+from pipeline_v2.serializers.aggregate import PipelineAggregateSerializer
 from pipeline_v2.serializers.crud import PipelineSerializer
 from pipeline_v2.serializers.execute import (
     PipelineExecuteSerializer as ExecuteSerializer,
@@ -48,7 +56,12 @@ notification_plugin = get_plugin("notification")
 
 logger = logging.getLogger(__name__)
 
+PIPELINE_ROW_FIELDS = RowFields(
+    active="active", last_run="last_run_time", schedule="cron_string"
+)
 
+
+@PIPELINE_SCHEMA
 class PipelineViewSet(
     OwnerManagementMixin, ResourceShareManagementMixin, viewsets.ModelViewSet
 ):
@@ -132,11 +145,23 @@ class PipelineViewSet(
 
         return queryset
 
+    def filter_queryset(self, queryset: QuerySet) -> QuerySet:
+        queryset = super().filter_queryset(queryset)
+        filters = list_filters_from(self.request.query_params)
+        return apply_list_filters(queryset, filters, PIPELINE_ROW_FIELDS)
+
     def get_serializer_class(self) -> serializers.Serializer:
         if self.action == "execute":
             return ExecuteSerializer
         else:
             return PipelineSerializer
+
+    @action(detail=False, methods=["get"])
+    def aggregate(self, request: Request) -> Response:
+        """Status counts and failing rows over the list's filtered rows."""
+        rows = self.filter_queryset(self.get_queryset())
+        summary = aggregate_rows(rows, PIPELINE_ROW_FIELDS)
+        return Response(PipelineAggregateSerializer(summary).data)
 
     # TODO: Refactor to perform an action with explicit arguments
     # For eg, passing pipeline ID and with_log=False -> executes pipeline

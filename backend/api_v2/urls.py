@@ -33,6 +33,9 @@ list_shared_users = APIDeploymentViewSet.as_view(
         "get": APIDeploymentViewSet.list_of_shared_users.__name__,
     }
 )
+deployment_aggregate = APIDeploymentViewSet.as_view(
+    {"get": APIDeploymentViewSet.aggregate.__name__}
+)
 deployment_share = APIDeploymentViewSet.as_view({"post": "share"})
 deployment_effective_members = APIDeploymentViewSet.as_view({"get": "effective_members"})
 deployment_owners = APIDeploymentViewSet.as_view({"post": "add_co_owner"})
@@ -57,6 +60,11 @@ api_key = APIKeyViewSet.as_view(
 urlpatterns = format_suffix_patterns(
     [
         path("deployment/", deployment, name="api_deployment"),
+        path(
+            "deployment/aggregate/",
+            deployment_aggregate,
+            name="api_deployment_aggregate",
+        ),
         path(
             "deployment/<uuid:pk>/",
             deployment_details,

@@ -29,6 +29,12 @@ from utils.enums import CeleryTaskState
 from utils.hubspot_notify import notify_hubspot_event
 from utils.pagination import CustomPagination
 from workflow_manager.workflow_v2.dto import ExecutionResponse
+from workflow_manager.workflow_v2.list_aggregate_serializers import list_filters_from
+from workflow_manager.workflow_v2.list_aggregates import (
+    RowFields,
+    aggregate_rows,
+    apply_list_filters,
+)
 from workflow_manager.workflow_v2.models.execution import WorkflowExecution
 
 from api_v2.api_deployment_dto_registry import ApiDeploymentDTORegistry
@@ -43,6 +49,7 @@ from api_v2.exceptions import (
 )
 from api_v2.models import APIDeployment
 from api_v2.openapi_schema import (
+    API_DEPLOYMENT_AGGREGATE_SCHEMA,
     API_DEPLOYMENT_LIST_SCHEMA,
     DEPLOYMENT_EXECUTION_SCHEMA,
     DeploymentAutoSchema,
@@ -51,6 +58,7 @@ from api_v2.rate_limiter import APIDeploymentRateLimiter
 from api_v2.serializers import (
     APIDeploymentListSerializer,
     APIDeploymentSerializer,
+    DeploymentAggregateSerializer,
     DeploymentResponseSerializer,
     ExecutionQuerySerializer,
     ExecutionRequestSerializer,
@@ -62,6 +70,9 @@ if notification_plugin:
     from plugins.notification.constants import ResourceType
 
 logger = logging.getLogger(__name__)
+
+# The last run is the one the list shows, annotated in get_queryset.
+DEPLOYMENT_ROW_FIELDS = RowFields(active="is_active", last_run="last_run_time_annotated")
 
 
 @DEPLOYMENT_EXECUTION_SCHEMA
@@ -366,10 +377,23 @@ class APIDeploymentViewSet(
 
         return queryset
 
+    def filter_queryset(self, queryset: QuerySet) -> QuerySet:
+        queryset = super().filter_queryset(queryset)
+        filters = list_filters_from(self.request.query_params)
+        return apply_list_filters(queryset, filters, DEPLOYMENT_ROW_FIELDS)
+
     def get_serializer_class(self) -> serializers.Serializer:
         if self.action in ["list"]:
             return APIDeploymentListSerializer
         return APIDeploymentSerializer
+
+    @API_DEPLOYMENT_AGGREGATE_SCHEMA
+    @action(detail=False, methods=["get"])
+    def aggregate(self, request: Request) -> Response:
+        """Status counts and failing rows over the list's filtered rows."""
+        rows = self.filter_queryset(self.get_queryset())
+        summary = aggregate_rows(rows, DEPLOYMENT_ROW_FIELDS)
+        return Response(DeploymentAggregateSerializer(summary).data)
 
     @action(detail=True, methods=["get"])
     def fetch_one(self, request: Request, pk: str | None = None) -> Response:
