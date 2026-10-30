@@ -1,13 +1,16 @@
 import uuid
+from typing import Any
 
 from django.contrib.auth.models import AbstractUser, Group, Permission
 from django.db import models
+from django.utils.crypto import salted_hmac
 
 from account_v2.enums import Product
 from backend.constants import FieldLengthConstants as FieldLength
 
 NAME_SIZE = 64
 KEY_SIZE = 64
+_SESSION_GENERATION_SALT = "account_v2.models.User.session_generation"
 
 
 class Organization(models.Model):
@@ -168,9 +171,52 @@ class User(AbstractUser):
         blank=True,
         db_comment="When the profile photo was stored; null when there is none",
     )
+    session_generation = models.PositiveIntegerField(
+        default=0,
+        editable=False,
+        db_comment="Bumped by sign out everywhere; every session signed in under "
+        "an earlier value stops authenticating",
+    )
 
     def __str__(self):  # type: ignore
         return f"User({self.id}, email: {self.email}, userId: {self.user_id})"
+
+    def _get_session_auth_hash(self, secret: str | None = None) -> str:
+        """Django checks this against the hash stored at sign-in on every request.
+
+        Folding in the generation is what lets sign out everywhere end sessions
+        that have no `SessionRecord`, without finding them first. Generation 0
+        keeps Django's own hash, so sessions signed in before this field existed
+        stay valid until the first sign out everywhere. Both the current hash and
+        the `SECRET_KEY_FALLBACKS` ones come through here.
+        """
+        auth_hash = super()._get_session_auth_hash(secret=secret)
+        if not self.session_generation:
+            return auth_hash
+        return salted_hmac(
+            _SESSION_GENERATION_SALT,
+            f"{auth_hash}:{self.session_generation}",
+            secret=secret,
+            algorithm="sha256",
+        ).hexdigest()
+
+    def save(self, *args: Any, **kwargs: Any) -> None:
+        # Sign out everywhere bumps the generation with a bare UPDATE. A full save
+        # of a User loaded before that bump would write the old value back and
+        # revive every session it revoked, so a full save leaves it alone.
+        if (
+            not args
+            and kwargs.get("update_fields") is None
+            and not kwargs.get("force_insert")
+            and not self._state.adding
+            and self.pk is not None
+        ):
+            kwargs["update_fields"] = [
+                field.name
+                for field in self._meta.concrete_fields
+                if not field.primary_key and field.name != "session_generation"
+            ]
+        super().save(*args, **kwargs)
 
     class Meta:
         verbose_name = "User"
@@ -255,3 +301,34 @@ class PlatformKey(models.Model):
                 name="unique_key_name_organization",
             ),
         ]
+
+
+class SessionRecord(models.Model):
+    """Where a user is signed in: one row per live browser session.
+
+    Django's session table cannot be queried by user (the user id is inside the
+    encoded payload), so this row is what makes a user's sessions listable.
+    Deliberately a plain user FK with no organization scoping: a user's sessions
+    span organizations and must all be listed from any one of them. Liveness is
+    still owned by `django_session`; a row whose session has expired or gone is
+    stale and is pruned when the user's sessions are listed.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    session_key = models.CharField(max_length=40, unique=True)
+    user = models.ForeignKey(
+        "User",
+        on_delete=models.CASCADE,
+        related_name="session_records",
+    )
+    user_agent = models.TextField(blank=True, default="")
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    location = models.CharField(max_length=255, blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    # Indexed for the idle sweep at sign-in.
+    last_active_at = models.DateTimeField(db_index=True)
+
+    class Meta:
+        verbose_name = "Session Record"
+        verbose_name_plural = "Session Records"
+        db_table = "session_record"
