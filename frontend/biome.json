@@ -129,5 +129,86 @@
   "assist": {
     "enabled": true,
     "actions": { "source": { "organizeImports": "on" } }
-  }
+  },
+  "overrides": [
+    {
+      "includes": ["src/v1/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "paths": {
+                  "prop-types": "v1 is typed with TypeScript; PropTypes are not used under src/v1.",
+                  "antd": "antd is not used under src/v1."
+                },
+                "patterns": [
+                  {
+                    "group": [
+                      "../**",
+                      "..",
+                      "./../**",
+                      "/**",
+                      "@/**",
+                      "src/**"
+                    ],
+                    "message": "v1 imports nothing outside src/v1, and never with '../'. Use './' within a folder and '@v1/...' across folders."
+                  },
+                  {
+                    "group": ["@ant-design/**", "antd/**"],
+                    "message": "antd is not used under src/v1."
+                  },
+                  {
+                    "group": ["prop-types/**"],
+                    "message": "v1 is typed with TypeScript; PropTypes are not used under src/v1."
+                  },
+                  {
+                    "group": ["**/*.css", "!@v1/styles/**"],
+                    "message": "No component .css under src/v1; style with tokens and Tailwind. Global v1 styles live in @v1/styles/."
+                  }
+                ]
+              }
+            }
+          },
+          "suspicious": {
+            "noExplicitAny": "error"
+          }
+        }
+      }
+    },
+    {
+      "includes": ["src/**", "!src/v1/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": [
+                      "@v1/**",
+                      "@/v1",
+                      "@/v1/**",
+                      "src/v1",
+                      "src/v1/**",
+                      "/src/v1",
+                      "/src/v1/**",
+                      "./v1",
+                      "./v1/**",
+                      "../**/v1",
+                      "../**/v1/**",
+                      "!@v1"
+                    ],
+                    "message": "v0 may import only the v1 public entry, as '@v1'."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
 }
