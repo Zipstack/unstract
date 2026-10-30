@@ -7,10 +7,12 @@ from enum import Enum
 from functools import cache, lru_cache
 from typing import Any, NoReturn, cast
 
+import httpx
 import litellm
 
 # from litellm import get_supported_openai_params
 from litellm import get_max_tokens
+from litellm.llms.custom_httpx.http_handler import HTTPHandler
 from unstract.sdk1.adapters.constants import Common
 from unstract.sdk1.adapters.llm1 import adapters
 from unstract.sdk1.constants import Common as SdkCommon
@@ -93,6 +95,46 @@ def _inject_mock_response(completion_kwargs: dict[str, object]) -> None:
         return
     _warn_mock_active()
     completion_kwargs["mock_response"] = mock
+
+
+@lru_cache(maxsize=8)
+def _gemini_stream_client(timeout: float) -> HTTPHandler:
+    """One shared HTTP client per timeout value, so connections are pooled.
+
+    Adapters use a handful of timeouts, so a few clients cover them. The cap
+    keeps a worker that sees many distinct values from holding a pool for
+    each; an evicted client is not closed here, because a call in flight may
+    still be using it, and is released once the last reference goes.
+    """
+    return HTTPHandler(timeout=httpx.Timeout(timeout))
+
+
+def _with_gemini_stream_timeout(
+    completion_kwargs: dict[str, object],
+) -> dict[str, object]:
+    """Make a streamed Gemini call honour the adapter's ``timeout``.
+
+    LiteLLM's Gemini handler (``gemini/*`` and ``vertex_ai/*gemini*``) drops
+    ``timeout`` on the sync streaming path: it streams on
+    ``litellm.module_level_client``, whose deadline is
+    ``litellm.request_timeout`` (6000 s by default), so a stalled stream could
+    sit for 100 minutes per attempt. Passing our own client is the only way the
+    handler applies a timeout there. Other providers forward ``timeout`` to the
+    request themselves and are left untouched.
+    """
+    model = str(completion_kwargs.get("model", ""))
+    is_gemini = model.startswith("gemini/") or (
+        model.startswith("vertex_ai/") and "gemini" in model
+    )
+    timeout = completion_kwargs.get("timeout")
+    if (
+        not is_gemini
+        or "client" in completion_kwargs
+        or not isinstance(timeout, int | float)
+        or timeout <= 0
+    ):
+        return completion_kwargs
+    return {**completion_kwargs, "client": _gemini_stream_client(float(timeout))}
 
 
 # Drop unsupported params rather than raising errors.
@@ -575,12 +617,13 @@ class LLM:
         thinking blocks, ``finish_reason``, usage (including cache tokens)
         and the provider response headers.
         """
+        stream_kwargs = _with_gemini_stream_timeout(completion_kwargs)
         chunks = collect_with_retry(
             lambda: litellm.completion(
                 messages=messages,
                 stream=True,
                 stream_options={"include_usage": True},
-                **completion_kwargs,
+                **stream_kwargs,
             ),
             max_retries=max_retries,
             retry_predicate=is_retryable_litellm_error,
@@ -850,13 +893,14 @@ class LLM:
             max_retries = pop_litellm_retry_kwargs(
                 completion_kwargs, self._get_adapter_info()
             )
+            stream_kwargs = _with_gemini_stream_timeout(completion_kwargs)
             has_yielded_content = False
             for chunk in iter_with_retry(
                 lambda: litellm.completion(
                     messages=messages,
                     stream=True,
                     stream_options={"include_usage": True},
-                    **completion_kwargs,
+                    **stream_kwargs,
                 ),
                 max_retries=max_retries,
                 retry_predicate=is_retryable_litellm_error,
