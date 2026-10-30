@@ -2,8 +2,9 @@
 
 The v1 frontend, built alongside v0 (everything else under `src/`) until v0 is
 retired. The full guide is the Frontend Developer Guide for v1 (UN-4378). The
-rules and the "May import from" column below are enforced by tooling; the
-"Holds" column is convention.
+rules below are enforced by tooling unless marked as convention, and so is the
+"May import from" column, for code and for CSS in `styles/`. The "Holds" column
+is convention.
 
 ## Rules
 
@@ -15,12 +16,15 @@ rules and the "May import from" column below are enforced by tooling; the
 - **v0 imports only the public entry**, `@v1` (`src/v1/index.ts`).
 - **Imports must be readable.** Use a string literal, or a template whose fixed
   prefix names the folder (`` `@v1/pages/${name}/index.tsx` ``, allowed only in
-  folders that may import everything). An import of a variable is rejected.
+  folders that may import everything). An import of a variable, a
+  concatenation or a template whose prefix has no `/` is rejected, and so is a
+  file that does not parse.
 - **No PropTypes, no component `.css`, no antd** (package, shim or `ant-`
   class). Global v1 styles live in `styles/` and are imported as
   `@v1/styles/...`, including from inside `styles/`.
 - **Static assets live in `assets/`**, imported as `@v1/assets/...` (e.g.
-  `@v1/assets/logo.svg?react`). v1 never uses v0's `src/assets/`.
+  `@v1/assets/logo.svg?react`). v1 never uses v0's `src/assets/` (enforced);
+  where an asset file sits under v1 is convention, not checked.
 
 ## Folders and what each may import
 
@@ -49,9 +53,13 @@ Every folder may import from itself. Test files (`*.test.ts(x)`,
 | Script | Checks |
 | --- | --- |
 | `bun run typecheck:v1` | TypeScript-only files, CSS only in `styles/`, no symlinks, folder taxonomy; then `tsc` with `src/v1/tsconfig.json` |
-| `bun run lint:v1` | Biome on `src/v1/`, then imports (nothing outside v1, folder contract, and v0 reaching v1 only through `@v1`), PropTypes and `ant-` checks |
+| `bun run lint:v1` | Biome on `src/v1/`, then imports in code and in `styles/` CSS (nothing outside v1, folder contract, and v0 reaching v1 only through `@v1`), PropTypes and `ant-` checks |
 | `bun run test:v1` | v1 unit tests, then the guardrail fixtures in `test-fixtures/v1-boundary/` |
 
-The v0 ↔ v1 boundary and the banned imports are Biome rules in `biome.json`,
-so `biome ci src/` (CI) and editors report them too. The remaining checks are
-`src/v1/tsconfig.json` and `scripts/check-v1.mjs`.
+Biome (`biome.json`) also reports the banned imports and the plain spellings of
+the v0 ↔ v1 boundary, so `biome ci` and editors flag them too: `@/`, `../`,
+`/src/` and `src/` in v1; `@v1/...`, `@/v1`, `src/v1`, `/src/v1` and relative
+`./v1` / `../**/v1` in v0. The relative v0 patterns match any folder named
+`v1`, so no v0 folder may take that name. Everything else (the folder
+contract, templates, globs, `new URL`, CSS, symlinks) is checked only by
+`scripts/check-v1.mjs`, and types by `src/v1/tsconfig.json`.

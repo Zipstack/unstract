@@ -95,6 +95,7 @@
     ]
   },
   "devDependencies": {
+    "@babel/parser": "^7.28.6",
     "@biomejs/biome": "^2.3.13",
     "@tailwindcss/postcss": "^4",
     "@tailwindcss/typography": "^0.5.20",
