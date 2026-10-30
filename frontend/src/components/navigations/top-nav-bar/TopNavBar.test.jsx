@@ -4,6 +4,7 @@ import axios from "axios";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { useAlertStore } from "../../../store/alert-store.js";
 import { useSessionStore } from "../../../store/session-store.js";
 import { ConfirmHost } from "../../widgets/confirm-modal/ConfirmHost.jsx";
 import { resetConfirm } from "../../widgets/confirm-modal/confirmStore.js";
@@ -54,6 +55,7 @@ async function openSwitchOrg(user) {
 }
 
 beforeEach(() => {
+  useAlertStore.setState({ alertDetails: {} });
   useSessionStore.setState({
     sessionDetails: {
       isLoggedIn: true,
@@ -103,6 +105,7 @@ describe("TopNavBar Switch Org", () => {
     expect(
       await screen.findByText("Want to switch to Org B?"),
     ).toBeInTheDocument();
+    expect(useAlertStore.getState().alertDetails).toEqual({});
     await user.click(screen.getByRole("button", { name: "Confirm" }));
 
     expect(axios).toHaveBeenCalledWith(
@@ -111,5 +114,65 @@ describe("TopNavBar Switch Org", () => {
         url: "/api/v1/organization/org-b/set",
       }),
     );
+  });
+
+  it("asks to switch when a keyboard user picks another org", async () => {
+    axios.mockResolvedValue({});
+    const user = userEvent.setup();
+    renderTopNavBar();
+
+    await openSwitchOrg(user);
+    const otherOrg = await screen.findByRole("menuitem", { name: "Org B" });
+    otherOrg.focus();
+    await user.keyboard("{Enter}");
+    expect(
+      await screen.findByText("Want to switch to Org B?"),
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Confirm" }));
+
+    expect(axios).toHaveBeenCalledWith(
+      expect.objectContaining({
+        method: "POST",
+        url: "/api/v1/organization/org-b/set",
+      }),
+    );
+  });
+});
+
+describe("TopNavBar current org", () => {
+  it("tells a keyboard user they are already in the org", async () => {
+    const user = userEvent.setup();
+    renderTopNavBar();
+
+    await openSwitchOrg(user);
+    const currentOrg = await screen.findByRole("menuitem", { name: "Org A" });
+    currentOrg.focus();
+    await user.keyboard("{Enter}");
+
+    expect(useAlertStore.getState().alertDetails).toMatchObject({
+      type: "error",
+      content: "You are already in Org A",
+    });
+    expect(
+      screen.queryByText("Want to switch to Org A?"),
+    ).not.toBeInTheDocument();
+    expect(axios).not.toHaveBeenCalled();
+  });
+
+  it("tells a mouse user they are already in the org", async () => {
+    const user = userEvent.setup();
+    renderTopNavBar();
+
+    await openSwitchOrg(user);
+    await user.click(await screen.findByText("Org A"));
+
+    expect(useAlertStore.getState().alertDetails).toMatchObject({
+      type: "error",
+      content: "You are already in Org A",
+    });
+    expect(
+      screen.queryByText("Want to switch to Org A?"),
+    ).not.toBeInTheDocument();
+    expect(axios).not.toHaveBeenCalled();
   });
 });

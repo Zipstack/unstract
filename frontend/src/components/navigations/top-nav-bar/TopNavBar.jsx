@@ -30,7 +30,7 @@ import "./TopNavBar.css";
 import config from "../../../config";
 import { useExceptionHandler } from "../../../hooks/useExceptionHandler.jsx";
 import { useAlertStore } from "../../../store/alert-store.js";
-import { ConfirmModal } from "../../widgets/confirm-modal/ConfirmModal.jsx";
+import { openConfirm } from "../../widgets/confirm-modal/confirmStore.js";
 
 let TrialDaysInfo;
 try {
@@ -250,28 +250,29 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
   // Prepare org list for switching
   const cascadeOptions = useMemo(() => {
     return allOrganization?.map((org) => {
+      const isCurrentOrg = org?.id === sessionDetails?.orgId;
       return {
         key: org?.id,
-        label:
-          org?.id === sessionDetails?.orgId ? (
-            <div
-              onClick={() =>
-                setAlertDetails({
-                  type: "error",
-                  content: `You are already in ${org?.display_name}`,
-                })
-              }
-            >
-              {org?.display_name}
-            </div>
-          ) : (
-            <ConfirmModal
-              handleConfirm={() => handleContinue(org?.id)}
-              content={`Want to switch to ${org?.display_name}?`}
-            >
-              <div>{org?.display_name}</div>
-            </ConfirmModal>
-          ),
+        /*
+         * Both actions sit on the menu item, not inside its label: the item is
+         * what the keyboard focuses, and Radix turns Enter/Space on it into a
+         * click on the item itself, which never reaches a descendant's handler.
+         */
+        onClick: isCurrentOrg
+          ? () =>
+              setAlertDetails({
+                type: "error",
+                content: `You are already in ${org?.display_name}`,
+              })
+          : () =>
+              openConfirm({
+                title: "Are you sure?",
+                content: `Want to switch to ${org?.display_name}?`,
+                okText: "Confirm",
+                cancelText: "Cancel",
+                onOk: () => handleContinue(org?.id),
+              }),
+        label: org?.display_name,
       };
     });
   }, [allOrganization, handleContinue]);
