@@ -14,6 +14,10 @@ import {
   UnstractBlackLogo,
   YellowGradCircle,
 } from "../../assets/index";
+import {
+  isOrgSwitchViaLogin,
+  switchOrgViaLogin,
+} from "../../helpers/orgSwitchLogin.js";
 import { useExceptionHandler } from "../../hooks/useExceptionHandler";
 import { useUserSession } from "../../hooks/useUserSession.js";
 import { useAlertStore } from "../../store/alert-store";
@@ -23,6 +27,7 @@ function SetOrg() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [loadingOrgId, setLoadingOrgId] = useState(null);
+  const [viaLogin, setViaLogin] = useState(false);
   const { setAlertDetails } = useAlertStore();
   const handleException = useExceptionHandler();
   const userSession = useUserSession();
@@ -31,6 +36,7 @@ function SetOrg() {
       try {
         const userSessionData = await userSession();
         const signedInOrgId = userSessionData?.organization_id;
+        setViaLogin(isOrgSwitchViaLogin(userSessionData));
         if (state === null || signedInOrgId) {
           navigate("/");
         }
@@ -46,6 +52,10 @@ function SetOrg() {
   const handleContinue = (id) => {
     setLoading(true);
     setLoadingOrgId(id);
+    if (viaLogin) {
+      switchOrgViaLogin(id);
+      return;
+    }
     const csrfToken = Cookies.get("csrftoken");
     const requestOptions = {
       method: "POST",
