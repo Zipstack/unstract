@@ -19,6 +19,10 @@ on:
       - main
   workflow_dispatch:
 
+# The repo default token is write; grant only what each job needs.
+permissions:
+  contents: read
+
 jobs:
   # Path filtering at job level, not trigger paths-ignore: an untriggered
   # workflow reports no check run, so a required check waits forever; a job
@@ -28,6 +32,10 @@ jobs:
   # and docker/** changes must be e2e-tested.
   changes:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # dorny/paths-filter lists PR files via the API.
+      pull-requests: read
     outputs:
       # Filtering is a PR-time saving only. On workflow_dispatch there is no
       # base to diff, so paths-filter resolves against the default branch and a
@@ -166,8 +174,10 @@ jobs:
 
       - name: Login to Docker Hub
         # Authenticated pulls avoid the anonymous rate limit shared by all
-        # runners. Forks have no access to secrets.
-        if: github.event.pull_request == null || github.event.pull_request.head.repo.fork == false
+        # runners. Forks have no access to secrets, and neither do runs
+        # Dependabot triggers (they get only Dependabot secrets, none set), so
+        # both pull anonymously and can hit Docker Hub's rate limit.
+        if: (github.event.pull_request == null || github.event.pull_request.head.repo.fork == false) && github.actor != 'dependabot[bot]'
         uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4.4.0
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
@@ -206,14 +216,14 @@ jobs:
         run: ./run-platform.sh -e
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
 
       # Bake instead of `compose build` so each ephemeral runner restores layers
       # from the GHA cache the release workflow also writes (matching per-service
       # scopes), instead of building cold every run. `load` exports the images
       # into the daemon so the compose stack can boot them.
       - name: Build service images
-        uses: docker/bake-action@d3418bd7d0e9324001bca92fa8ba175ea7e6dc9b # v7
+        uses: docker/bake-action@d3418bd7d0e9324001bca92fa8ba175ea7e6dc9b # v7.3.0
         with:
           files: ./docker/docker-compose.build.yaml
           load: true
@@ -268,6 +278,10 @@ jobs:
     # from a real tier failure.
     if: always() && github.event.pull_request.draft == false
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # marocchino/sticky-pull-request-comment posts the test report.
+      pull-requests: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
@@ -339,8 +353,10 @@ jobs:
           key: unstract-test-baseline-main-${{ github.run_id }}
 
       - name: Render combined test report to PR
+        # Dependabot runs get a read-only GITHUB_TOKEN, so the comment would be
+        # refused; skip it there like forks. The job summary still carries it.
         uses: marocchino/sticky-pull-request-comment@70d2764d1a7d5d9560b100cbea0077fc8f633987 # v3.0.2
-        if: always() && hashFiles('reports/combined-test-report.md') != '' && github.event.pull_request.head.repo.fork == false
+        if: always() && hashFiles('reports/combined-test-report.md') != '' && github.event.pull_request.head.repo.fork == false && github.actor != 'dependabot[bot]'
         with:
           header: test-results
           recreate: true

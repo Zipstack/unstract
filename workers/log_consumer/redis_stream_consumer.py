@@ -31,6 +31,7 @@ import os
 import signal
 import socket
 import sys
+import time
 from types import FrameType
 from typing import Any
 
@@ -50,8 +51,8 @@ app, config = WorkerBuilder.build_celery_app(WorkerType.LOG_CONSUMER)
 from log_consumer.tasks import logs_consumer  # noqa: E402
 
 _QUEUE_NAME = os.getenv("LOG_STREAM_QUEUE_NAME", "log_stream_queue")
-# BLMOVE blocks up to this long before returning None, which is the loop's only chance to
-# notice a shutdown signal. Keep it well under the pod's terminationGracePeriodSeconds.
+# BLMOVE blocks up to this long before returning None. Keep it well under the pod's
+# terminationGracePeriodSeconds.
 _BLOCK_TIMEOUT_SECONDS = int(os.getenv("LOG_STREAM_BLOCK_TIMEOUT", "5"))
 # redis-py enforces ``socket_timeout`` on the BLMOVE read itself, so it MUST exceed the
 # server-side block or every call aborts mid-block with ``redis.TimeoutError``.
@@ -62,6 +63,19 @@ _BLOCK_TIMEOUT_SECONDS = int(os.getenv("LOG_STREAM_BLOCK_TIMEOUT", "5"))
 # reached the client. Identical trap to the one documented at
 # ``workers/queue_backend/pg_queue/result_backend.py:152``.
 _SOCKET_TIMEOUT_SECONDS = _BLOCK_TIMEOUT_SECONDS + 5
+# Wait after a failed BLMOVE, doubling per consecutive failure up to the cap and reset by
+# the next successful BLMOVE (an envelope or an idle None). Without it, a failure that
+# returns at once — a refused connect, or an OOM/READONLY/MISCONF reply — spun the loop,
+# logging a traceback each time: 0.7-1.7 GiB of Cloud Logging per minute, per pod
+# (staging, Oct 2026). The loop never gives up, so a failure only a restart can fix —
+# the client reads its credentials once, so a rotated password is one — keeps logging
+# an ERROR every 30s until the pod is restarted.
+_RECONNECT_BACKOFF_INITIAL_SECONDS = 1.0
+_RECONNECT_BACKOFF_MAX_SECONDS = 30.0
+# How often a backoff wait re-checks for a shutdown signal. Polling the flag rather than
+# waiting on a threading.Event is deliberate: calling Event.set() from _handle_signal
+# can, in a narrow race, deadlock against Event.wait() on this same thread.
+_SHUTDOWN_POLL_SECONDS = 0.5
 
 _shutdown = False
 
@@ -76,6 +90,21 @@ def _handle_signal(signum: int, _frame: FrameType | None) -> None:
     global _shutdown
     _shutdown = True
     logger.info("Signal %s received; finishing current log then shutting down", signum)
+
+
+def _wait_before_reconnect(seconds: float) -> None:
+    """Sleep up to ``seconds``, returning early once a shutdown signal has arrived.
+
+    A plain ``time.sleep(seconds)`` would not do: since PEP 475 a sleep interrupted by a
+    signal resumes once the handler returns, so SIGTERM mid-backoff would hold the pod
+    for up to the full cap.
+    """
+    deadline = time.monotonic() + seconds
+    while not _shutdown:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return
+        time.sleep(min(remaining, _SHUTDOWN_POLL_SECONDS))
 
 
 def _recover_in_flight(redis_client: Any, processing: str) -> None:
@@ -127,18 +156,41 @@ def run() -> int:
         _QUEUE_NAME,
         processing,
     )
-    _recover_in_flight(redis_client, processing)
 
+    backoff = _RECONNECT_BACKOFF_INITIAL_SECONDS
+    recovered = False
     while not _shutdown:
         try:
+            # Inside the try, so a failing startup LMOVE backs off like a failing BLMOVE.
+            if not recovered:
+                _recover_in_flight(redis_client, processing)
+                recovered = True
             raw = redis_client.blmove(
                 _QUEUE_NAME, processing, _BLOCK_TIMEOUT_SECONDS, "LEFT", "RIGHT"
             )
         except Exception:
-            # Connection blips must not kill the pod — the next iteration reconnects via
-            # the client's own retry. Sleeping is unnecessary: BLMOVE already blocks.
-            logger.error("Log stream read failed; retrying", exc_info=True)
+            # Must not kill the pod, and must not be retried immediately: most such
+            # failures recur at once. create_redis_client gives the client no retry
+            # (redis-py's default Retry(NoBackoff(), 0)), a refused connect returns
+            # without BLMOVE ever blocking, and an error reply (OOM, READONLY, MISCONF,
+            # NOPERM) is just as instant.
+            logger.error(
+                "Log stream %s failed; backing off %.0fs before retrying",
+                "read" if recovered else "recovery",
+                backoff,
+                exc_info=True,
+            )
+            # redis-py keeps the socket after an error reply, so a standalone client left
+            # on a demoted primary would get READONLY forever. Disconnecting the pool's
+            # connections makes the next attempt open a fresh one and re-resolve the
+            # host.
+            redis_client.connection_pool.disconnect()
+            _wait_before_reconnect(backoff)
+            backoff = min(backoff * 2, _RECONNECT_BACKOFF_MAX_SECONDS)
             continue
+
+        # A successful BLMOVE, including an idle block's None, ends the failure streak.
+        backoff = _RECONNECT_BACKOFF_INITIAL_SECONDS
 
         if raw is None:  # timeout, no work — loop so shutdown can be observed
             continue

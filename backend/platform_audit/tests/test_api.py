@@ -1,8 +1,7 @@
 import csv
 import io
 import uuid
-from datetime import datetime, timedelta
-from datetime import timezone as dt_timezone
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -12,8 +11,8 @@ from django.test import override_settings
 from django.utils import timezone
 
 from platform_audit.models import PlatformAuditEvent
-from platform_audit.tests.base import AuditTestBase, make_user
 from platform_audit.serializers import AuditEventQuerySerializer
+from platform_audit.tests.base import AuditTestBase, make_user
 from platform_audit.views import (
     CSV_COLUMNS,
     PlatformAuditActionListView,
@@ -195,9 +194,7 @@ class AuditReadApiTests(AuditTestBase):
             value="5",
         )
         response = self._get(LIST)
-        self.assertEqual(
-            self._ids(response), [str(self.role.id), str(self.rotate.id)]
-        )
+        self.assertEqual(self._ids(response), [str(self.role.id), str(self.rotate.id)])
         self.assertEqual(response.data["retention_days"], 5)
 
     def test_from_before_retention_still_hides_expired(self) -> None:
@@ -220,7 +217,7 @@ class AuditReadApiTests(AuditTestBase):
         # An admin membership, as the role endpoint can grant one, so the
         # refusal has to come from the service-account check.
         OrganizationMember.objects.create(
-            organization=self.org, user=service_account, role="admin"
+            organization=self.org, user=service_account, role=self.admin_role
         )
         key = SimpleNamespace(id=uuid.uuid4(), name="k", permission="full_access")
         views = {"list": LIST, "export": EXPORT, "actions": ACTIONS, "actors": ACTORS}
@@ -235,7 +232,7 @@ class AuditReadApiTests(AuditTestBase):
 
         self.use_org(self.other_org)
         OrganizationMember.objects.create(
-            organization=self.other_org, user=other_admin, role="admin"
+            organization=self.other_org, user=other_admin, role=self.admin_role
         )
         response = self._get(LIST, user=other_admin)
         self.assertEqual(self._ids(response), [str(self.foreign.id)])
@@ -342,12 +339,16 @@ class AuditReadApiTests(AuditTestBase):
 
     def test_actors_include_removed_members_and_skip_expired(self) -> None:
         gone = make_user("gone@example.com")
-        self._event("member.removed", days_ago=3, actor=gone, actor_email="gone@example.com")
+        self._event(
+            "member.removed", days_ago=3, actor=gone, actor_email="gone@example.com"
+        )
         self._event("member.removed", days_ago=370, actor_email="ancient@example.com")
         gone.delete()
         response = self._get(ACTORS)
         emails = [row["email"] for row in response.data]
-        self.assertEqual(emails, ["admin@example.com", "bot@example.com", "gone@example.com"])
+        self.assertEqual(
+            emails, ["admin@example.com", "bot@example.com", "gone@example.com"]
+        )
         self.assertIsNone(response.data[2]["id"])
 
     @override_settings(TIME_ZONE="Asia/Kolkata")
@@ -356,7 +357,7 @@ class AuditReadApiTests(AuditTestBase):
         self.assertTrue(query.is_valid(), query.errors)
         self.assertEqual(
             query.validated_data["start"],
-            datetime(2026, 1, 1, 3, 30, tzinfo=dt_timezone.utc),
+            datetime(2026, 1, 1, 3, 30, tzinfo=UTC),
         )
 
     def test_invalid_from_reports_the_parameter_name(self) -> None:
