@@ -264,6 +264,8 @@ const ManageKeys = ({
       title: "API Key",
       dataIndex: "api_key",
       key: "api_key",
+      // Copy, a revealed UUID key (.manage-keys__key) and Show/Hide.
+      width: 390,
       render: (_, record) => {
         const isVisible = visibleKeyIds.has(record?.id);
         return (
@@ -298,6 +300,7 @@ const ManageKeys = ({
       key: "is_active",
       dataIndex: "is_active",
       align: "center",
+      width: 72,
       render: (_, record) => (
         <Tooltip title={ownerOnlyTitle}>
           <Switch
@@ -315,8 +318,9 @@ const ManageKeys = ({
       title: "Actions",
       key: "pipeline_id",
       align: "center",
+      width: 88,
       render: (_, record) => (
-        <>
+        <div className="manage-keys__actions">
           <Space
             className="actions"
             aria-disabled={!canEdit}
@@ -338,7 +342,7 @@ const ManageKeys = ({
               <Trash2 />
             </Tooltip>
           </Space>
-        </>
+        </div>
       ),
     },
   ];
@@ -370,6 +374,7 @@ const ManageKeys = ({
         <div className="keys-table">
           <Table
             size="small"
+            tableLayout="fixed"
             dataSource={apiKeys}
             columns={columns}
             rowKey="id"

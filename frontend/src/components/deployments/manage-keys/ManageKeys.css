@@ -29,3 +29,18 @@
   min-width: 36ch;
   font-family: monospace;
 }
+
+/* The table is laid out "fixed" so the declared column widths hold and the
+   Description column takes what is left. A description with no spaces then
+   wraps inside its cell instead of pushing Active and Actions behind a
+   horizontal scroll. The text stays a direct child of the cell because the UI
+   regression specs find a key's row by it. */
+.keys-table td:first-child {
+  overflow-wrap: anywhere;
+}
+
+/* Edit and Delete stay side by side. */
+.manage-keys__actions {
+  display: inline-flex;
+  white-space: nowrap;
+}
