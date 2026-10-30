@@ -29,7 +29,16 @@ vi.mock(
   () => ({ default: undefined }),
 );
 
+// Navigating away would end the test page; the URL is covered in
+// helpers/orgSwitchLogin.test.js.
+vi.mock("../../../helpers/orgSwitchLogin.js", () => ({
+  switchOrgViaLogin: vi.fn(),
+}));
+
 const { TopNavBar } = await import("./TopNavBar.jsx");
+const { switchOrgViaLogin } = await import(
+  "../../../helpers/orgSwitchLogin.js"
+);
 
 const ORGS = [
   { id: "org-a", display_name: "Org A" },
@@ -111,5 +120,36 @@ describe("TopNavBar Switch Org", () => {
         url: "/api/v1/organization/org-b/set",
       }),
     );
+  });
+
+  it("keeps the local switch on a session without the login flag", async () => {
+    axios.mockResolvedValue({});
+    const user = userEvent.setup();
+    renderTopNavBar();
+
+    await openSwitchOrg(user);
+    await user.click(await screen.findByText("Org B"));
+    await user.click(await screen.findByRole("button", { name: "Confirm" }));
+
+    expect(axios).toHaveBeenCalledTimes(1);
+    expect(switchOrgViaLogin).not.toHaveBeenCalled();
+  });
+
+  it("logs in again naming the organization when the session asks", async () => {
+    useSessionStore.setState({
+      sessionDetails: {
+        ...useSessionStore.getState().sessionDetails,
+        orgSwitchViaLogin: true,
+      },
+    });
+    const user = userEvent.setup();
+    renderTopNavBar();
+
+    await openSwitchOrg(user);
+    await user.click(await screen.findByText("Org B"));
+    await user.click(await screen.findByRole("button", { name: "Confirm" }));
+
+    expect(switchOrgViaLogin).toHaveBeenCalledWith("org-b");
+    expect(axios).not.toHaveBeenCalled();
   });
 });
