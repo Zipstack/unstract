@@ -1,0 +1,137 @@
+name: V2 Backport
+# Expressions have no substring, so a push run names the full sha.
+run-name: >-
+  ${{ github.event_name == 'pull_request_target'
+      && format('record #{0}', github.event.pull_request.number)
+      || format('picks {0}', inputs.commits || github.sha) }}
+
+# pick (push to main, dispatch): cherry-pick -x each fix onto every stabilizing release branch, one PR per pick;
+#   the bot squash-merges clean picks, conflicts stay open. A push rescans every line since its cut; a dispatch
+#   picks only `commits`. Security/critical fixes reach stabilized lines only with confirm_stabilized. Never builds.
+# record (pull_request_target closed/reopened): merged -> backport-merged, head deleted; closed -> empty decline
+#   commit on the base (close comment = reason), backport-declined, head kept; reopened -> backport-conflict.
+#   The newest trailer wins.
+#   Closed with no commit past the base -> nothing recorded; the bot comments once (delete the head to re-pick,
+#   or decline by hand).
+# pull_request_target because GitHub runs no pull_request workflow on a PR that conflicts with its base. It runs
+#   the base line's copy of this file, checks out main and never runs head code; backport_merge.py refuses heads
+#   other than backport/X.Y/<sha7>. A failed record run is recovered with "Re-run jobs".
+on:
+  push:
+    branches: [main]
+  pull_request_target:
+    types: [closed, reopened]
+    branches: ["release/**"]
+  workflow_dispatch:
+    inputs:
+      commits:
+        description: "Fixes to backport (PR numbers or SHAs)"
+        type: string
+        required: false
+      confirm_stabilized:
+        description: "Include stable branches (security/critical only)"
+        type: boolean
+        default: false
+      branches:
+        description: "Only these branches (optional)"
+        type: string
+        required: false
+
+jobs:
+  pick:
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30 # backport.py PICK_TIMEOUT: a head with no PR younger than this belongs to a running run
+    permissions:
+      contents: read
+    concurrency:
+      # Push runs share one group (a newer push replaces a pending one; the next rescan catches up). Each dispatch
+      # has its own group, since it may carry confirm_stabilized.
+      # Known limit: concurrent runs race on a pick head; the loser retries or skips, and can open a duplicate PR
+      # if the winner already merged and deleted the head.
+      group: backport-${{ github.event_name == 'workflow_dispatch' && github.run_id || 'rescan' }}
+    env:
+      PYTHONDONTWRITEBYTECODE: "1" # the conflict path runs `git add -A`
+    steps:
+      - name: Inputs
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          COMMITS: ${{ inputs.commits }}
+        run: |
+          if [ "$GITHUB_REF" != refs/heads/main ]; then echo '::error::Run this from main ("Use workflow from: main")'; exit 1; fi
+          if [ -z "$COMMITS" ]; then echo "::error::Set commits: the PR numbers or SHAs to backport"; exit 1; fi
+
+      # The repo's GitHub App, as in create-release.yaml: a GITHUB_TOKEN push or PR starts no workflow.
+      - name: Bot token
+        id: bot
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.PUSH_TO_MAIN_APP_CLIENT_ID }}
+          private-key: ${{ secrets.PUSH_TO_MAIN_APP_PRIVATE_KEY }}
+
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0 # relmgr needs full history and tags
+          token: ${{ steps.bot.outputs.token }} # picks are pushed as the bot
+
+      - name: Main tip
+        # A late push run checks out its event sha as origin/main; rescan the real tip instead.
+        run: git fetch origin +refs/heads/main:refs/remotes/origin/main
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.12" # relstate uses dt.UTC (3.11+)
+
+      - name: Branch state
+        run: |
+          # Scripts run from outside the tree: the pick checks out release branches, which predate them.
+          cp .github/release/*.py "$RUNNER_TEMP/"
+          python3 "$RUNNER_TEMP/relstate.py" > "$RUNNER_TEMP/state.json"
+
+      - name: Pick
+        env:
+          GH_TOKEN: ${{ steps.bot.outputs.token }}
+          RELEASE_BOT_APP_SLUG: ${{ steps.bot.outputs.app-slug }} # a leftover pick PR is squashed only if this App opened it
+          COMMITS: ${{ inputs.commits }}
+          CONFIRM: ${{ inputs.confirm_stabilized }}
+          BRANCHES: ${{ inputs.branches }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = push ]; then args=(--rescan); else args=(--commits="$COMMITS"); fi
+          if [ "$CONFIRM" = true ]; then args+=(--confirm-stabilized); fi
+          python3 "$RUNNER_TEMP/backport.py" --state "$RUNNER_TEMP/state.json" "${args[@]}" --branches="$BRANCHES"
+
+  record:
+    if: >-
+      github.event_name == 'pull_request_target' && startsWith(github.event.pull_request.head.ref, 'backport/')
+      && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    concurrency:
+      group: backport-pr-${{ github.event.pull_request.number }} # its own group: in a pick group it could replace a pending pick run
+    steps:
+      # The repo's GitHub App, as in create-release.yaml: a GITHUB_TOKEN push or PR starts no workflow.
+      - name: Bot token
+        id: bot
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ vars.PUSH_TO_MAIN_APP_CLIENT_ID }}
+          private-key: ${{ secrets.PUSH_TO_MAIN_APP_PRIVATE_KEY }}
+
+      - uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 0 # the decline reads the pick from the head and the base's history
+          token: ${{ steps.bot.outputs.token }}
+
+      - name: Record the close
+        # Each release line runs its own copy of this job with main's script, so main's backport_merge.py must
+        # accept the env and arguments of every live line's copy.
+        env:
+          GH_TOKEN: ${{ steps.bot.outputs.token }} # labels, comments, the decline commit and the head delete
+          RELEASE_BOT_APP_SLUG: ${{ steps.bot.outputs.app-slug }} # the pick PR's author must be this App
+          PR: ${{ github.event.pull_request.number }}
+          # who closed it: their close comment is the decline reason
+          SENDER: ${{ github.event.sender.login }}
+        run: python3 .github/release/backport_merge.py --pr "$PR" --sender "$SENDER"

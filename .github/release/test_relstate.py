@@ -1,0 +1,1546 @@
+"""Synthetic-repo tests for relstate and relmgr. Run: python test_relstate.py; release-tooling-tests.yaml runs every test_*.py here on a PR that changes this directory."""
+
+import contextlib
+import datetime as dt
+import io
+import json
+import os
+import tempfile
+import unittest
+import unittest.mock
+import urllib.error
+import urllib.parse
+
+os.environ["GITHUB_REPOSITORY"] = (
+    "Zipstack/unstract-cloud"  # pin relstate to the cloud config
+)
+import relmgr as rm
+import relstate as rs
+
+# ignore the user's git config
+os.environ.update(GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_NOSYSTEM="1")
+os.environ.pop("GITHUB_OUTPUT", None)
+NOW = dt.datetime(2026, 9, 29, tzinfo=dt.UTC)
+CUT = {"branch": "release/1.5", "line": "1.5"}
+
+
+def ago(days):
+    return (NOW - dt.timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+class Scenario(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        self.repo, self.reg, self.n = self._tmp.name, {}, 0
+        rm.git(self.repo, "init", "-q", "-b", "main")
+        self.commit("base")
+
+    def g(self, *args):
+        return rm.git(
+            self.repo, "-c", "user.name=Dev", "-c", "user.email=dev@example.com", *args
+        )
+
+    def commit(self, msg, branch="main"):
+        if branch != "main":
+            self.g("checkout", "-q", branch)
+        self.g("commit", "-q", "--allow-empty", "-m", msg)
+        if branch != "main":
+            self.g("checkout", "-q", "main")
+        return self.g("rev-parse", branch)
+
+    def cut(self, line):
+        self.g("branch", f"release/{line}", "main")
+        return self.commit(f"work on {line}", f"release/{line}")
+
+    def push(self, artifact, tag, days=1, git_ref=None):
+        if git_ref:
+            self.g("tag", tag, git_ref)
+        self.n += 1
+        self.reg.setdefault(artifact, {})[tag] = {
+            "digest": f"sha256:{self.n:064x}",
+            "pushed_at": ago(days),
+        }
+
+    def state(self):
+        return rs.derive(self.repo, NOW, lambda a: self.reg.get(a, {}))
+
+    def branch(self, st, name):
+        return next(b for b in st["branches"] if b["branch"] == name)
+
+    def ga(self, artifact, tag):
+        return {"tag": tag, **self.reg[artifact][tag]}
+
+    # Each scenario builds on the previous one.
+    def cut_with_rc(self):
+        self.cut("1.5")
+        self.push("cloud/backend", "v1.5.0-rc.1", git_ref="release/1.5")
+
+    def cloud_ga(self):
+        self.cut_with_rc()
+        self.push("cloud/backend", "v1.5.0", git_ref="release/1.5")
+
+    def onprem_rc(self):
+        self.cloud_ga()
+        self.push("on-prem/backend", "v1.5.0-rc.3", git_ref="release/1.5")
+
+    def onprem_ga(self, chart_days=10):
+        self.onprem_rc()
+        self.push("chart/unstract-platform", "v1.5.1", days=chart_days)
+
+    def newer_cloud_ga(self, chart_days=10):
+        self.onprem_ga(chart_days)
+        self.cut("1.6")
+        self.push("cloud/backend", "v1.6.0-rc.1", git_ref="release/1.6")
+        self.push("cloud/backend", "v1.6.0", git_ref="release/1.6")
+
+    def cloud_after_2(self, state):
+        ga = self.ga("cloud/backend", "v1.5.0")
+        return {"state": state, "rcs": ["v1.5.0-rc.1"], "ga": ga, "promoted": ga}
+
+    def onprem(self, state, chart=True):
+        return {
+            "state": state,
+            "rcs": ["v1.5.0-rc.3"],
+            "ga": self.ga("chart/unstract-platform", "v1.5.1") if chart else None,
+            "promoted": None,
+        }
+
+    def test_cut_with_cloud_rc(self):
+        self.cut_with_rc()
+        st = self.state()
+        self.assertEqual(
+            self.branch(st, "release/1.5"),
+            {
+                **CUT,
+                "state": "stabilizing",
+                "enabled": ["cloud"],
+                "next_rc": None,
+                "tip_rc": "v1.5.0-rc.1",
+                "ahead_of_ga": None,
+                "targets": {
+                    "cloud": {
+                        "state": "stabilizing",
+                        "rcs": ["v1.5.0-rc.1"],
+                        "ga": None,
+                        "promoted": None,
+                    }
+                },
+            },
+        )
+        self.assertEqual(st["backport_targets"]["fix"], ["release/1.5"])
+        self.assertEqual(st["supported"], {"cloud": ["release/1.5"], "on-prem": []})
+
+    def test_cloud_ga(self):
+        self.cloud_ga()
+        st = self.state()
+        self.assertEqual(
+            self.branch(st, "release/1.5"),
+            {
+                **CUT,
+                "state": "stabilized",
+                "enabled": ["cloud"],
+                "next_rc": None,
+                "tip_rc": "v1.5.0-rc.1",
+                "ahead_of_ga": 0,
+                "targets": {"cloud": self.cloud_after_2("stabilized")},
+            },
+        )
+        self.assertEqual(
+            st["backport_targets"],
+            {
+                "fix": [],
+                "security_critical": [
+                    {"branch": "release/1.5", "needs_rm_confirmation": True}
+                ],
+            },
+        )
+
+    def test_onprem_rc_reopens_branch(self):
+        self.onprem_rc()
+        st = self.state()
+        self.assertEqual(
+            self.branch(st, "release/1.5"),
+            {
+                **CUT,
+                "state": "stabilizing",
+                "enabled": ["cloud", "on-prem"],
+                "next_rc": None,
+                "tip_rc": "v1.5.0-rc.1",
+                "ahead_of_ga": 0,
+                "targets": {
+                    "cloud": self.cloud_after_2("stabilized"),
+                    "on-prem": self.onprem("stabilizing", chart=False),
+                },
+            },
+        )
+        self.assertEqual(st["backport_targets"]["fix"], ["release/1.5"])
+
+    def test_both_stabilized(self):
+        self.onprem_ga()
+        st = self.state()
+        self.assertEqual(
+            self.branch(st, "release/1.5"),
+            {
+                **CUT,
+                "state": "stabilized",
+                "enabled": ["cloud", "on-prem"],
+                "next_rc": None,
+                "tip_rc": "v1.5.0-rc.1",
+                "ahead_of_ga": 0,
+                "targets": {
+                    "cloud": self.cloud_after_2("stabilized"),
+                    "on-prem": self.onprem("stabilized"),
+                },
+            },
+        )
+        self.assertEqual(st["supported"]["on-prem"], ["release/1.5"])
+
+    def test_onprem_window_over(self):
+        self.onprem_ga(chart_days=200)
+        st = self.state()
+        self.assertEqual(
+            self.branch(st, "release/1.5"),
+            {
+                **CUT,
+                "state": "stabilized",
+                "enabled": ["cloud", "on-prem"],
+                "next_rc": None,
+                "tip_rc": "v1.5.0-rc.1",
+                "ahead_of_ga": 0,
+                "targets": {
+                    "cloud": self.cloud_after_2("stabilized"),
+                    "on-prem": self.onprem("past-eos"),
+                },
+            },
+        )
+        self.assertEqual(st["supported"], {"cloud": ["release/1.5"], "on-prem": []})
+        self.assertEqual(st["retire"], [])
+
+    def test_onprem_window_from_first_ga(self):
+        # A patch chart push does not extend the window: it runs from the line's first stable chart push.
+        self.onprem_ga(chart_days=200)
+        self.push("chart/unstract-platform", "v1.5.2", days=1)
+        tt = self.branch(self.state(), "release/1.5")["targets"]["on-prem"]
+        self.assertEqual(tt["state"], "past-eos")
+        self.assertEqual(tt["ga"], self.ga("chart/unstract-platform", "v1.5.1"))
+
+    def test_newer_cloud_ga(self):
+        self.newer_cloud_ga()
+        st = self.state()
+        self.assertEqual(
+            self.branch(st, "release/1.5"),
+            {
+                **CUT,
+                "state": "stabilized",
+                "enabled": ["cloud", "on-prem"],
+                "next_rc": None,
+                "tip_rc": "v1.5.0-rc.1",
+                "ahead_of_ga": 0,
+                "targets": {
+                    "cloud": self.cloud_after_2("past-eos"),
+                    "on-prem": self.onprem("stabilized"),
+                },
+            },
+        )
+        self.assertEqual(
+            st["supported"], {"cloud": ["release/1.6"], "on-prem": ["release/1.5"]}
+        )
+
+    def test_retire(self):
+        self.newer_cloud_ga(chart_days=200)
+        st = self.state()
+        self.assertEqual(
+            self.branch(st, "release/1.5"),
+            {
+                **CUT,
+                "state": "past-eos",
+                "enabled": ["cloud", "on-prem"],
+                "next_rc": None,
+                "tip_rc": "v1.5.0-rc.1",
+                "ahead_of_ga": 0,
+                "targets": {
+                    "cloud": self.cloud_after_2("past-eos"),
+                    "on-prem": self.onprem("past-eos"),
+                },
+            },
+        )
+        self.assertEqual(st["retire"], ["release/1.5"])
+        self.assertEqual(st["supported"], {"cloud": ["release/1.6"], "on-prem": []})
+
+    def test_onprem_newest_six(self):
+        for y in range(1, 9):  # 1.1 .. 1.8, each with an on-prem chart inside the window
+            self.cut(f"1.{y}")
+            self.push("on-prem/backend", f"v1.{y}.0-rc.1", git_ref=f"release/1.{y}")
+            self.push("chart/unstract-platform", f"v1.{y}.0", days=10)
+        self.cut("1.9")  # no on-prem GA: does not count toward the six
+        self.push("on-prem/backend", "v1.9.0-rc.1", git_ref="release/1.9")
+        st = self.state()
+        self.assertEqual(
+            st["supported"]["on-prem"], [f"release/1.{y}" for y in range(9, 2, -1)]
+        )
+        self.assertEqual(st["retire"], ["release/1.2", "release/1.1"])
+
+    def test_cut_no_artifacts(self):
+        self.onprem_ga()
+        self.cut("1.7")
+        st = self.state()
+        self.assertEqual(
+            self.branch(st, "release/1.7"),
+            {
+                "branch": "release/1.7",
+                "line": "1.7",
+                "state": "stabilizing",
+                "enabled": [],
+                "next_rc": "v1.7.0-rc.1",
+                "tip_rc": None,
+                "ahead_of_ga": None,
+                "targets": {},
+            },
+        )
+        self.assertTrue(all("release/1.7" not in v for v in st["supported"].values()))
+        self.assertIn("release/1.7", st["backport_targets"]["fix"])
+
+    def test_tag_not_on_branch(self):
+        self.cut_with_rc()
+        self.push("on-prem/backend", "v1.5.0-rc.9", git_ref=self.commit("main-only"))
+        st = self.state()
+        self.assertEqual(self.branch(st, "release/1.5")["enabled"], ["cloud"])
+        self.assertEqual(
+            st["anomalies"],
+            [
+                {
+                    "target": "on-prem",
+                    "artifact": "on-prem/backend",
+                    "tag": "v1.5.0-rc.9",
+                    "branch": "release/1.5",
+                    "reason": "commit not on branch",
+                }
+            ],
+        )
+
+    def test_registry_failure(self):
+        self.cut_with_rc()
+
+        def boom(artifact):
+            raise RuntimeError("HTTP 403")
+
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = rs.main(
+                ["--repo", self.repo, "--now", "2026-09-29T00:00:00Z"], registry=boom
+            )
+        self.assertNotEqual(code, 0)
+        self.assertEqual(out.getvalue(), "")
+        self.assertIn("HTTP 403", err.getvalue())
+
+    def test_next_minor_ignores_legacy(self):
+        self.cut("1.5")
+        self.cut("1.6")
+        self.g("branch", "release/v0.148.1001", "main")
+        st = self.state()
+        self.assertEqual(st["next_minor"], "1.7")
+        self.assertEqual(
+            [b["branch"] for b in st["branches"]], ["release/1.6", "release/1.5"]
+        )
+
+    def test_retired_lines_are_history_not_anomalies(self):
+        self.onprem_ga()  # only release/1.5 is live
+        retired = self.commit("1.6 work")
+        self.push(
+            "cloud/backend", "v1.6.0-rc.1", git_ref=retired
+        )  # promoted, published, then retired: no branch
+        self.push("cloud/backend", "v1.6.0", git_ref=retired)
+        self.push("on-prem/backend", "v1.6.0")
+        self.push("chart/unstract-platform", "v1.6.0", days=400)
+        self.push(
+            "cloud/backend", "v1.9.0-rc.1", git_ref=self.commit("never promoted")
+        )  # still an anomaly
+        st = self.state()
+        self.assertEqual(
+            st["anomalies"],
+            [
+                {
+                    "target": "cloud",
+                    "artifact": "cloud/backend",
+                    "tag": "v1.9.0-rc.1",
+                    "branch": "release/1.9",
+                    "reason": "no branch",
+                }
+            ],
+        )
+        self.assertEqual([b["branch"] for b in st["branches"]], ["release/1.5"])
+
+    def test_next_rc_moves_after_tip_is_built(self):
+        self.cloud_ga()
+        self.commit("pick", "release/1.5")
+        self.assertEqual(
+            {
+                k: self.branch(self.state(), "release/1.5")[k]
+                for k in ("next_rc", "tip_rc")
+            },
+            {"next_rc": "v1.5.1-rc.1", "tip_rc": None},
+        )
+
+    def test_summary(self):
+        self.newer_cloud_ga()
+        out = rs.summary(self.state())
+        self.assertIn(
+            "| release/1.6 | stabilized | stabilized (GA v1.6.0) | - | v1.6.0-rc.1 | - | 0 |",
+            out,
+        )
+        self.assertIn(
+            "| release/1.5 | stabilized | past-eos | stabilized (GA v1.5.1) | v1.5.0-rc.1 | - | 0 |",
+            out,
+        )
+        self.assertIn("next_minor: 1.7", out)
+
+    def test_ahead_of_ga(self):
+        self.cloud_ga()
+        self.g("tag", "v1.5.1", "release/1.5")  # latest stable tag counts, not the first
+        self.commit("pick 1", "release/1.5")
+        self.commit("pick 2", "release/1.5")
+        self.cut("1.6")  # no stable tag yet
+        st = self.state()
+        self.assertEqual(
+            [self.branch(st, b)["ahead_of_ga"] for b in ("release/1.5", "release/1.6")],
+            [2, None],
+        )
+        self.assertIn("| v1.5.2-rc.1 | 2 |", rs.summary(st))
+
+    def test_rbo_line_in_squash_message(self):
+        self.cut("1.5")
+        squash = (
+            "UN-1 [MISC] pin redis (#9)\n\n* chore: pin redis\n\nwhy it is pinned\n\n"
+            "* Release-branch-only: UN-1\n\n---------\n\nCo-authored-by: x <x@example.com>"
+        )
+        cases = {
+            squash: "release-branch-only",  # COMMIT_MESSAGES squash: the bot's subject-only commit as `* ...`
+            "fix: pin\n\nbody\n\nRelease-branch-only: UN-1": "release-branch-only",  # a trailer
+            "fix: pin\n\nsee the Release-branch-only: UN-1 note": "invalid",  # mid-line is not the line
+            "fix: pin\n\n** Release-branch-only: UN-1": "invalid",
+        }
+        for msg, kind in cases.items():
+            sha = self.commit(msg, "release/1.5")
+            self.assertEqual(rm.classify_commit(self.repo, sha), kind, msg)
+        self.assertEqual(rm.RBO_RE.findall(squash), ["UN-1"])
+
+    def test_promote_blockers(self):
+        """Promote order per target: only an older line with the target enabled and not GA for it blocks."""
+        msg = "release/{} is not GA for {} yet: promote and publish it first, retire it, or force with a reason"
+        self.onprem_rc()  # 1.5: cloud GA, on-prem RC only
+        self.cut("1.6")
+        self.push("cloud/backend", "v1.6.0-rc.1", git_ref="release/1.6")
+        self.cut("1.7")  # nothing built yet
+        st = self.state()
+        self.assertEqual(
+            rs.promote_blockers(st, "release/1.5", "cloud"), []
+        )  # no older line
+        # (a) 1.5 is GA for cloud only: 1.6 cloud passes, 1.6 on-prem waits for 1.5
+        self.assertEqual(rs.promote_blockers(st, "release/1.6", "cloud"), [])
+        self.assertEqual(
+            rs.promote_blockers(st, "release/1.6", "on-prem"),
+            [msg.format("1.5", "on-prem")],
+        )
+        # (b) on-prem is not enabled on 1.6, so 1.6 never blocks on-prem
+        # (c) 1.7, nothing built, waits per target only for older lines with that target enabled and not GA
+        self.assertEqual(
+            rs.promote_blockers(st, "release/1.7", "on-prem"),
+            [msg.format("1.5", "on-prem")],
+        )
+        self.assertEqual(
+            rs.promote_blockers(st, "release/1.7", "cloud"), [msg.format("1.6", "cloud")]
+        )
+        # and 1.7 itself, with nothing enabled, blocks nothing newer beyond those two
+        self.assertEqual(
+            rs.promote_blockers(st, "release/1.8", "cloud"), [msg.format("1.6", "cloud")]
+        )
+        # (d) 1.5 publishes on-prem (chart push): 1.6 on-prem is no longer blocked
+        self.push("chart/unstract-platform", "v1.5.1")
+        self.assertEqual(rs.promote_blockers(self.state(), "release/1.6", "on-prem"), [])
+        # (e) a retired older line (branch gone) never blocks
+        self.g("branch", "-D", "release/1.6")
+        self.assertEqual(rs.promote_blockers(self.state(), "release/1.7", "cloud"), [])
+
+    def test_enable_blockers(self):
+        """A target is enabled only on a line newer than every line already GA for it."""
+        msg = "release/{} is older than release/{}, already GA for {}: enable {} on a newer line instead"
+        self.cut("1.4")
+        self.push("cloud/backend", "v1.4.0-rc.1", git_ref="release/1.4")
+        self.newer_cloud_ga()  # 1.5: cloud GA, on-prem GA (chart v1.5.1); 1.6: cloud GA, no on-prem
+        st = self.state()
+        # (a) an older line enabling on-prem behind a line GA for on-prem is refused
+        self.assertEqual(
+            rs.enable_blockers(st, "release/1.4", "on-prem"),
+            [msg.format("1.4", "1.5", "on-prem", "on-prem")],
+        )
+        # (b) the newest line may enable it
+        self.assertEqual(rs.enable_blockers(st, "release/1.6", "on-prem"), [])
+        # (c) a target already enabled on the older line is not affected: a patch RC still builds
+        self.assertEqual(rs.enable_blockers(st, "release/1.4", "cloud"), [])
+        self.assertEqual(rs.enable_blockers(st, "release/1.5", "on-prem"), [])
+
+    def test_no_order_block_on_a_ga_line(self):
+        """Invariant: in a state reached only by moves the enable rule and the promote order allow, a patch on a
+        line already GA for a target is never order-blocked. Without the enable rule it can be.
+        """
+        rc, ga = (
+            {"cloud": ("cloud/backend", ".0"), "on-prem": ("on-prem/backend", ".1")},
+            {"cloud": "cloud/backend", "on-prem": "chart/unstract-platform"},
+        )
+        refused = []
+
+        def enable(line, t):
+            if rs.enable_blockers(self.state(), f"release/{line}", t):
+                return refused.append(("enable", line, t))
+            self.push(
+                rc[t][0], f"v{line}{rc[t][1]}-rc.{self.n}", git_ref=f"release/{line}"
+            )  # a later call is a patch RC
+
+        def go_ga(line, t):
+            st = self.state()
+            if t not in self.branch(st, f"release/{line}")[
+                "targets"
+            ] or rs.promote_blockers(st, f"release/{line}", t):
+                return refused.append(("ga", line, t))
+            self.push(
+                ga[t],
+                f"v{line}{rc[t][1]}",
+                git_ref=f"release/{line}" if t == "cloud" else None,
+            )
+
+        def check():
+            st = self.state()
+            for b in st["branches"]:
+                for t, v in b["targets"].items():
+                    if v["ga"]:
+                        self.assertEqual(
+                            rs.promote_blockers(st, b["branch"], t), [], (b["branch"], t)
+                        )
+
+        self.cut("1.4")
+        self.cut("1.5")
+        moves = [
+            (enable, "1.5", "cloud"),
+            (go_ga, "1.5", "cloud"),
+            (enable, "1.5", "on-prem"),
+            (self.cut, "1.6"),
+            (enable, "1.6", "cloud"),
+            (enable, "1.6", "on-prem"),
+            (go_ga, "1.6", "on-prem"),
+            (go_ga, "1.6", "cloud"),
+            (go_ga, "1.5", "on-prem"),
+            (enable, "1.4", "on-prem"),
+            (enable, "1.4", "cloud"),
+            (go_ga, "1.6", "on-prem"),
+            (self.cut, "1.7"),
+            (enable, "1.7", "on-prem"),
+            (enable, "1.5", "on-prem"),
+        ]
+        for f, *args in moves:
+            f(*args)
+            check()
+        self.assertEqual(
+            refused,
+            [
+                ("ga", "1.6", "on-prem"),
+                ("enable", "1.4", "on-prem"),
+                ("enable", "1.4", "cloud"),
+            ],
+        )
+        # enabling on-prem on 1.4 behind GA lines anyway order-blocks every newer GA line's patch
+        self.push("on-prem/backend", "v1.4.1-rc.1", git_ref="release/1.4")
+        self.assertTrue(rs.promote_blockers(self.state(), "release/1.6", "on-prem"))
+
+    def chart(self, ver, branch, msg, email="dev@example.com"):
+        self.g("checkout", "-q", branch)
+        os.makedirs(os.path.join(self.repo, os.path.dirname(rm.CHART)), exist_ok=True)
+        with open(os.path.join(self.repo, rm.CHART), "w") as f:
+            f.write(f"name: x\nversion: {ver}\n")
+        self.g("add", rm.CHART)
+        rm.git(
+            self.repo,
+            "-c",
+            "user.name=bot",
+            "-c",
+            f"user.email={email}",
+            "commit",
+            "-q",
+            "-m",
+            msg,
+        )
+        self.g("checkout", "-q", "main")
+
+    def test_already_bumped(self):
+        self.cut("1.5")
+        self.chart("1.5.0-rc.1", "release/1.5", "release: chart 1.5.0-rc.1", rm.BOT_EMAIL)
+        self.assertTrue(rm.already_bumped(self.repo, "release/1.5", "v1.5.0-rc.1"))
+        self.assertFalse(
+            rm.already_bumped(self.repo, "release/1.5", "v1.5.0-rc.2")
+        )  # chart not at the version
+        self.commit(
+            "fix after the bump", "release/1.5"
+        )  # chart still at the version, tip is a normal commit
+        self.assertFalse(rm.already_bumped(self.repo, "release/1.5", "v1.5.0-rc.1"))
+        self.chart(
+            "1.5.0-rc.2", "release/1.5", "release: chart 1.5.0-rc.2"
+        )  # right subject, not the bot
+        self.assertFalse(rm.already_bumped(self.repo, "release/1.5", "v1.5.0-rc.2"))
+
+    def test_promoted_from_build_artifact(self):
+        self.onprem_rc()
+        self.push(
+            "on-prem/backend", "v1.5.1", git_ref="release/1.5"
+        )  # Promote on-prem, chart not published
+        onprem = self.branch(self.state(), "release/1.5")["targets"]["on-prem"]
+        self.assertEqual(
+            onprem,
+            {
+                "state": "stabilizing",
+                "rcs": ["v1.5.0-rc.3"],
+                "ga": None,
+                "promoted": self.ga("on-prem/backend", "v1.5.1"),
+            },
+        )
+        self.push(
+            "chart/unstract-platform", "v1.5.1"
+        )  # Publish: GA and state move, promoted does not
+        onprem = self.branch(self.state(), "release/1.5")["targets"]["on-prem"]
+        self.assertEqual(
+            (onprem["state"], onprem["ga"], onprem["promoted"]),
+            (
+                "stabilized",
+                self.ga("chart/unstract-platform", "v1.5.1"),
+                self.ga("on-prem/backend", "v1.5.1"),
+            ),
+        )
+        self.push(
+            "on-prem/backend", "v1.5.2", git_ref="release/1.5"
+        )  # a patch: promoted is the newer stable
+        onprem = self.branch(self.state(), "release/1.5")["targets"]["on-prem"]
+        self.assertEqual(onprem["promoted"], self.ga("on-prem/backend", "v1.5.2"))
+
+    def test_tip_rc_slack(self):
+        self.cut_with_rc()
+        self.assertNotIn(
+            "tip_rc_slack", self.branch(self.state(), "release/1.5")
+        )  # lightweight tag: no key
+        url = "https://example.slack.com/archives/C0123ABC/p1759900000000100"
+        self.g(
+            "tag",
+            "-f",
+            "-a",
+            "v1.5.0-rc.1",
+            "-m",
+            "rc: built for x",
+            "-m",
+            f"Slack: {url}",
+            "release/1.5",
+        )
+        st = self.state()
+        self.assertEqual(self.branch(st, "release/1.5")["tip_rc_slack"], url)
+        self.assertIn(f"| v1.5.0-rc.1 ([Slack]({url})) |", rs.summary(st))
+
+    def test_next_minor_cutover_fallback(self):
+        self.g("tag", "v0.181.0")
+        self.g("tag", "v0.181.1001")
+        self.g("tag", "v0.182.0-rc.1")  # RC tags do not count
+        self.g("branch", "side", "main")
+        self.commit("off-main", "side")
+        self.g("tag", "v0.190.0", "side")  # stable, but not reachable from main
+        self.g(
+            "branch", "release/v0.148.1001", "main"
+        )  # legacy head: still the cutover case
+        st = self.state()
+        self.assertEqual((st["branches"], st["next_minor"]), ([], "0.182"))
+        self.cut("0.182")
+        self.assertEqual(self.state()["next_minor"], "0.183")
+
+    def built_by_mistake(self):
+        """release/1.9: cut, one bot commit, built once as v1.9.0-rc.1 on cloud and on-prem."""
+        self.g("checkout", "-q", "-b", "release/1.9")
+        rm.git(
+            self.repo,
+            "-c",
+            "user.name=bot",
+            "-c",
+            f"user.email={rm.BOT_EMAIL}",
+            "commit",
+            "-q",
+            "--allow-empty",
+            "-m",
+            "pin",
+        )
+        self.g("checkout", "-q", "main")
+        self.push("cloud/backend", "v1.9.0-rc.1", git_ref="release/1.9")
+        self.push("on-prem/backend", "v1.9.0-rc.1")
+        self.push(
+            "cloud/backend", "v1.5.0"
+        )  # other versions keep the cloud package non-empty
+
+    def test_abandon_plan_built_by_mistake(self):
+        self.built_by_mistake()
+        self.push("cloud/backend", "v1.9.0-rc.2")
+        self.reg["cloud/backend"]["edge"] = self.reg["cloud/backend"][
+            "v1.9.0-rc.2"
+        ]  # mixed tags: kept
+        plan = rs.abandon_plan(self.repo, "release/1.9", lambda a: self.reg.get(a, {}))
+        rc1 = self.reg["cloud/backend"]["v1.9.0-rc.1"]["digest"]
+        self.assertEqual(
+            plan,
+            {
+                "ga": [],
+                "used": [],
+                "rc_tags": ["v1.9.0-rc.1"],
+                "versions": {
+                    "cloud/backend": [
+                        {"id": None, "digest": rc1, "tags": ["v1.9.0-rc.1"]}
+                    ]
+                },
+                "kept": ["on-prem/backend:v1.9.0-rc.1"],
+            },
+        )  # last version of on-prem/backend
+        self.g("branch", "release/1.8", "main")  # never built: nothing to delete
+        self.assertEqual(
+            rs.abandon_plan(self.repo, "release/1.8", lambda a: {})["versions"], {}
+        )
+
+    def test_abandon_plan_keeps_the_newest_rc(self):
+        self.built_by_mistake()
+        for n in range(2, 11):
+            self.push("on-prem/backend", f"v1.9.0-rc.{n}")
+        plan = rs.abandon_plan(self.repo, "release/1.9", lambda a: self.reg.get(a, {}))
+        self.assertIn("on-prem/backend:v1.9.0-rc.10", plan["kept"])
+        dropped = [t for v in plan["versions"]["on-prem/backend"] for t in v["tags"]]
+        self.assertEqual(dropped, [f"v1.9.0-rc.{n}" for n in range(1, 10)])
+
+    def test_abandon_plan_refusals(self):
+        self.built_by_mistake()
+        plan = lambda: rs.abandon_plan(
+            self.repo, "release/1.9", lambda a: self.reg.get(a, {})
+        )
+        self.push("chart/unstract-platform", "v1.9.0")
+        self.assertEqual(plan()["ga"], ["chart/unstract-platform:v1.9.0"])
+        self.g("tag", "v1.9.0", "release/1.9")
+        self.assertEqual(plan()["ga"], ["v1.9.0", "chart/unstract-platform:v1.9.0"])
+        human = self.commit("human RBO-less work", "release/1.9")
+        self.assertEqual(plan()["used"], [human[:12]])
+
+    def test_chart_push_without_v(self):
+        # Publish pushes the chart as its Chart.yaml version, X.Y.Z: it anchors on-prem GA as vX.Y.Z.
+        self.onprem_rc()
+        self.push("chart/unstract-platform", "1.5.1")
+        tt = self.branch(self.state(), "release/1.5")["targets"]["on-prem"]
+        self.assertEqual(
+            (tt["state"], tt["ga"]),
+            (
+                "stabilized",
+                {"tag": "v1.5.1", **self.reg["chart/unstract-platform"]["1.5.1"]},
+            ),
+        )
+        self.push("cloud/backend", "1.5.1")  # only a chart tag is read this way
+        self.assertEqual(
+            self.branch(self.state(), "release/1.5")["targets"]["cloud"]["promoted"][
+                "tag"
+            ],
+            "v1.5.0",
+        )
+        self.built_by_mistake()
+        self.push("chart/unstract-platform", "1.9.0")
+        self.assertEqual(
+            rs.abandon_plan(self.repo, "release/1.9", lambda a: self.reg.get(a, {}))[
+                "ga"
+            ],
+            ["chart/unstract-platform:v1.9.0"],
+        )
+
+    def test_stabilizes_when_every_enabled_target_is_ga(self):
+        # Cloud Promote marks the OSS line stabilized/X.Y on the promote that leaves every enabled target GA.
+        def row():
+            return self.branch(self.state(), "release/1.5")
+
+        self.cut_with_rc()  # a cloud-only line: its cloud GA
+        self.assertTrue(rs.stabilizes(row(), "cloud"))
+        self.push("on-prem/backend", "v1.5.0-rc.1")  # on-prem enabled, nothing GA
+        self.assertEqual(row()["enabled"], ["cloud", "on-prem"])
+        self.assertFalse(rs.stabilizes(row(), "cloud"))
+        self.assertFalse(rs.stabilizes(row(), "on-prem"))
+        # One run promoting both: on-prem counts the cloud promote before it.
+        self.assertTrue(rs.stabilizes(row(), "on-prem", ["cloud"]))
+        self.push("cloud/backend", "v1.5.0", git_ref="release/1.5")  # cloud GA alone
+        self.assertFalse(rs.stabilizes(row(), "cloud"))
+        self.assertTrue(rs.stabilizes(row(), "on-prem"))  # on-prem goes last
+        self.push("chart/unstract-platform", "1.5.0")
+        # A later patch: oss.promote keeps the tag.
+        self.assertTrue(rs.stabilizes(row(), "cloud"))
+
+    def test_reopens_when_a_built_target_has_no_ga(self):
+        # Take RC deletes the OSS line's stabilized tag when it builds a target with no GA on the line.
+        def row():
+            return self.branch(self.state(), "release/1.5")
+
+        self.cloud_ga()  # cloud GA, cloud only
+        self.assertFalse(rs.reopens(row(), ["cloud"]))  # a cloud patch RC
+        self.assertTrue(rs.reopens(row(), ["on-prem"]))  # on-prem enabled late
+        self.assertTrue(rs.reopens(row(), ["cloud", "on-prem"]))
+        self.push("on-prem/backend", "v1.5.1-rc.1", git_ref="release/1.5")
+        self.push("chart/unstract-platform", "1.5.1")  # on-prem GA too
+        self.assertFalse(rs.reopens(row(), ["cloud", "on-prem"]))
+
+    def test_oss_repo_config(self):
+        # The OSS repo runs this same file: one target, oss, read from the line's own ee- git tags (no registry),
+        # supported while its branch exists once its stabilized/X.Y tag is there. Plain v* tags are community releases from main and never count.
+        self.addCleanup(rs.use, rs.SLUG)
+        rs.use("unstract")
+        self.state = lambda: rs.derive(
+            self.repo, NOW, lambda a: self.fail(f"registry read of {a}")
+        )
+        self.g("tag", "v1.9.0")  # a community release on main
+        for line in ("1.5", "1.6"):
+            self.cut(line)
+            self.g("tag", f"ee-v{line}.0-rc.1", f"release/{line}")
+            self.g("tag", f"ee-v{line}.0", f"release/{line}")
+            self.g("tag", f"v{line}.7", f"release/{line}")  # never the line's GA
+        self.cut("1.7")
+        self.g("tag", "ee-v1.7.0-rc.1", "release/1.7")
+        # Stabilizing past its own ee-vX.Y.0 until the paired cloud line is GA on every enabled target and tags it.
+        self.g("tag", "stabilized/1.5", "release/1.5")
+        self.assertEqual(
+            [(b["branch"], b["state"]) for b in self.state()["branches"]][1:],
+            [("release/1.6", "stabilizing"), ("release/1.5", "stabilized")],
+        )
+        self.g("tag", "stabilized/1.6", "release/1.6")
+        st = self.state()
+        self.assertEqual(
+            [(b["branch"], b["state"]) for b in st["branches"]],
+            [
+                ("release/1.7", "stabilizing"),
+                ("release/1.6", "stabilized"),
+                ("release/1.5", "stabilized"),
+            ],
+        )
+        self.assertEqual(
+            (st["retire"], st["backport_targets"]["fix"], st["anomalies"]),
+            ([], ["release/1.7"], []),
+        )
+        self.assertEqual(
+            st["next_minor"], "1.8"
+        )  # the community v1.9.0 on main is not this repo's minor
+        self.assertEqual(
+            self.branch(st, "release/1.6")["targets"]["oss"]["ga"]["tag"], "ee-v1.6.0"
+        )
+        self.assertIn(
+            "| branch | state | oss | tip_rc | next_rc | ahead_of_ga |", rs.summary(st)
+        )
+        self.assertIn(
+            "| release/1.6 | stabilized | stabilized (GA ee-v1.6.0) | ee-v1.6.0-rc.1 | - | 0 |",
+            rs.summary(st),
+        )
+        self.commit("fix on 1.6", "release/1.6")
+        self.assertEqual(
+            self.branch(self.state(), "release/1.6")["next_rc"], "ee-v1.6.1-rc.1"
+        )
+        # No promote order for OSS: 1.8 promotes while 1.7 is not GA; cloud's order would block it.
+        self.cut("1.8")
+        self.g("tag", "ee-v1.8.0-rc.1", "release/1.8")
+        st = self.state()
+        self.assertEqual(rs.promote_blockers(st, "release/1.8", "oss"), [])
+        rs.KEPT = set()
+        self.assertEqual(
+            rs.promote_blockers(st, "release/1.8", "oss"),
+            [
+                "release/1.7 is not GA for oss yet: promote and publish it first, retire it, or force with a reason"
+            ],
+        )
+
+    def test_next_minor_past_stable_tag_on_main(self):
+        # A minor already shipped from main (tags before the first line) is never cut again.
+        self.g("tag", "v1.5.14")
+        self.commit("more main work")
+        self.g("tag", "v1.6.0")
+        self.g("branch", "release/1.5", "v1.5.14")
+        self.assertEqual(self.state()["next_minor"], "1.7")
+
+    def test_already_bumped_no_chart(self):
+        self.cut("1.5")
+
+        def bump(msg):
+            rm.git(
+                self.repo,
+                "-c",
+                "user.name=bot",
+                "-c",
+                f"user.email={rm.BOT_EMAIL}",
+                "commit",
+                "-q",
+                "--allow-empty",
+                "-m",
+                msg,
+            )
+
+        self.g("checkout", "-q", "release/1.5")
+        bump("release: 1.5.0-rc.1")
+        self.assertTrue(rm.already_bumped(self.repo, "release/1.5", "v1.5.0-rc.1"))
+        self.assertFalse(rm.already_bumped(self.repo, "release/1.5", "v1.5.0-rc.2"))
+        bump("release: chart 1.5.0-rc.2")  # the chart subject needs a chart
+        self.assertFalse(rm.already_bumped(self.repo, "release/1.5", "v1.5.0-rc.2"))
+
+    def test_retire_line(self):
+        refusal = lambda force=False: rs.retire_line_refusal(
+            self.state(), "release/1.5", force
+        )
+        self.onprem_rc()  # cloud GA newest (production), on-prem RCs only
+        self.assertEqual(
+            refusal(True),
+            "cloud is production (newest cloud GA); it retires once a newer line is promoted",
+        )
+        self.cut("1.6")
+        self.push("cloud/backend", "v1.6.0-rc.1", git_ref="release/1.6")
+        self.push("cloud/backend", "v1.6.0", git_ref="release/1.6")
+        self.assertIsNone(refusal())  # cloud past-eos, on-prem never promoted: may go
+        self.push("chart/unstract-platform", "v1.5.1")  # on-prem chart in its window
+        self.assertEqual(
+            refusal(),
+            "on-prem still supported (stabilized); force to retire it inside the window",
+        )
+        self.assertIsNone(refusal(True))
+        self.assertEqual(
+            rs.retire_line_refusal(self.state(), "release/9.9"), "no such branch"
+        )
+        # The newest line retired before any GA (its RCs deleted): the next cut reuses its minor.
+        self.cut("1.7")
+        tip = self.g("rev-parse", "release/1.7")
+        self.g("tag", f"retired/1.7-{tip[:7]}", tip)
+        self.g("branch", "-D", "release/1.7")
+        self.assertEqual(self.state()["next_minor"], "1.7")
+        # Retired after a GA (forced on-prem, say): the minor shipped and is skipped.
+        self.g("tag", "v1.7.0", tip)
+        self.assertEqual(self.state()["next_minor"], "1.8")
+
+    def pick_of(self, fix):  # a non-empty pick of fix on the checked-out branch
+        with open(os.path.join(self.repo, "p.txt"), "a") as f:
+            f.write("x\n")
+        self.g("add", "p.txt")
+        self.g("commit", "-q", "-m", f"fix on main\n\n(cherry picked from commit {fix})")
+
+    def test_rc_version_skips_registry_rcs(self):
+        # An artifact pushed by a run whose tag push failed: its RC is never allocated again once the tip moves.
+        self.cut("1.5")
+        taken = {"v1.5.0-rc.1", "v1.5.0-rc.2", "v1.4.0-rc.9", "v1.5.1-rc.7", "edge"}
+        self.assertEqual(rm.rc_version(self.repo, "release/1.5"), "v1.5.0-rc.1")
+        self.assertEqual(
+            rm.rc_version(self.repo, "release/1.5", taken=taken), "v1.5.0-rc.3"
+        )
+        # A tip that is already the bot's bump for a pushed RC resumes that run, and so does a fresh bump.
+        for n in (2, 3):
+            self.chart(
+                f"1.5.0-rc.{n}",
+                "release/1.5",
+                f"release: chart 1.5.0-rc.{n}",
+                rm.BOT_EMAIL,
+            )
+            self.assertEqual(
+                rm.rc_version(self.repo, "release/1.5", taken=taken), f"v1.5.0-rc.{n}"
+            )
+        self.chart(
+            "1.5.0-rc.2", "release/1.5", "release: chart 1.5.0-rc.2"
+        )  # not the bot: no resume
+        self.assertEqual(
+            rm.rc_version(self.repo, "release/1.5", taken=taken), "v1.5.0-rc.3"
+        )
+        # relstate allocates past every target's registry RCs.
+        self.push("cloud/backend", "v1.5.0-rc.3")
+        self.push("on-prem/backend", "v1.5.0-rc.4")
+        self.assertEqual(
+            self.branch(self.state(), "release/1.5")["next_rc"], "v1.5.0-rc.5"
+        )
+
+    def test_reused_minor_skips_its_kept_rc(self):
+        # 1.7 abandoned: git RC tag deleted, registry RC kept (package's last version); the re-cut's
+        # first RC skips it.
+        self.cut("1.6")
+        tip = self.cut("1.7")
+        self.push("on-prem/backend", "v1.7.0-rc.1")
+        self.g("tag", f"retired/1.7-{tip[:7]}", tip)
+        self.g("branch", "-D", "release/1.7")
+        self.assertEqual(self.state()["next_minor"], "1.7")
+        self.cut("1.7")
+        self.assertEqual(
+            self.branch(self.state(), "release/1.7")["next_rc"], "v1.7.0-rc.2"
+        )
+
+    def test_shallow_clone_refused(self):
+        clone = os.path.join(self._tmp.name, "shallow")
+        self.commit("second")
+        rm.git(
+            self._tmp.name, "clone", "-q", "--depth", "1", f"file://{self.repo}", clone
+        )
+        with self.assertRaisesRegex(RuntimeError, "is a shallow clone"):
+            rm.git(clone, "log", "-1")
+        self.assertNotIn(clone, rm._FULL)
+
+    def test_conflict_markers_git_error(self):
+        with open(os.path.join(self.repo, "f.txt"), "w") as f:
+            f.write("a\n<<<<<<< ours\nb\n=======\nc\n>>>>>>> theirs\n")
+        self.g("add", "f.txt")
+        self.g("commit", "-q", "-m", "markers")
+        self.assertEqual(rm.conflict_markers(self.repo), ["f.txt"])
+        with self.assertRaisesRegex(RuntimeError, r"git grep \(exit 128\)"):
+            rm.conflict_markers(self.repo, "no-such-rev")
+
+    def test_reverted_pick_only_on_its_own_branch(self):
+        fix = self.commit("fix on main")
+        self.cut("1.5")
+        self.cut("1.6")
+        self.g("checkout", "-q", "release/1.6")
+        self.pick_of(fix)
+        pick = self.g("rev-parse", "HEAD")
+        self.g("checkout", "-q", "main")
+        revert = f"Revert pick\n\nThis reverts commit {pick}."
+        self.assertEqual(
+            rm.reverted_pick(self.repo, self.commit(revert, "release/1.6")), pick
+        )
+        other = self.commit(
+            revert, "release/1.5"
+        )  # the pick is on another line, not this one
+        self.assertIsNone(rm.reverted_pick(self.repo, other))
+        self.assertEqual(rm.classify_commit(self.repo, other), "invalid")
+        self.assertIsNone(
+            rm.reverted_pick(
+                self.repo,
+                self.commit(f"Revert\n\nThis reverts commit {fix}.", "release/1.5"),
+            )
+        )
+
+    def test_forged_pick_trailer_is_invalid(self):
+        # A trailer naming a commit that is not on main is not a pick of a main original.
+        self.cut("1.5")
+        work = self.g("rev-parse", "release/1.5")  # on the line only
+        before = work
+        forged = self.commit(f"fix\n\n(cherry picked from commit {work})", "release/1.5")
+        self.assertEqual(rm.classify_commit(self.repo, forged, main="main"), "invalid")
+        self.g("checkout", "-q", "release/1.5")
+        self.assertEqual(
+            rm.ci_commits(self.repo, "release/1.5", "push", before=before, main="main")[
+                0
+            ],
+            [(forged, "invalid")],
+        )
+
+    def test_ci_commits(self):
+        fix = self.commit("fix on main")
+        self.cut("1.5")  # one invalid commit, `work on 1.5`
+        before = self.g("rev-parse", "release/1.5")
+        self.g("checkout", "-q", "-b", "head", "release/1.5")
+        self.pick_of(fix)
+        pick = self.g("rev-parse", "HEAD")
+        self.g("commit", "-q", "--allow-empty", "-m", "resolution")
+        human = self.g("rev-parse", "HEAD")
+        work = self.g("rev-parse", "release/1.5")
+        pr = "PR into release/1.5"
+        ci = lambda event, **kw: rm.ci_commits(
+            self.repo, "release/1.5", event, main="main", **kw
+        )
+        cases = [
+            (
+                ("pull_request",),
+                {"head_ref": "fix/x"},
+                [(pick, "cherry-pick"), (human, "invalid")],
+                pr,
+            ),
+            (
+                ("pull_request",),
+                {"head_ref": "fix/x", "labelled": True},
+                [(pick, "cherry-pick"), (human, "release-branch-only (label)")],
+                pr,
+            ),
+            (
+                ("pull_request",),
+                {"head_ref": f"backport/1.5/{fix[:7]}"},
+                [(pick, "cherry-pick")],
+                pr,
+            ),
+            (
+                ("pull_request",),
+                {"head_ref": "backport/anything"},
+                [(pick, "cherry-pick"), (human, "invalid")],
+                pr,
+            ),
+            (
+                ("push",),
+                {"before": before, "labelled": True},
+                [(pick, "cherry-pick"), (human, "invalid")],
+                "push to release/1.5",
+            ),
+            (("push",), {"before": "0" * 40}, [(work, "invalid")], "release/1.5"),
+            (
+                ("push",),
+                {"before": "f" * 40},
+                [(work, "invalid")],
+                "release/1.5",
+            ),  # a force push: old tip gone
+            (("push",), {}, [(work, "invalid")], "release/1.5"),
+        ]
+        for args, kw, rows, where in cases:
+            self.assertEqual(ci(*args, **kw), (rows, where), (args, kw))
+        self.g("checkout", "-q", "main")
+        other = self.commit("other fix on main")
+        self.g("checkout", "-q", "head")
+        self.assertEqual(
+            ci("pull_request", head_ref=f"backport/1.5/{other[:7]}")[0],
+            [(pick, "invalid")],
+        )  # not its fix
+        self.g("checkout", "-q", "-B", "two", "release/1.5")
+        self.commit(
+            f"fix on main\n\n(cherry picked from commit {fix})\n(cherry picked from commit {other})"
+        )
+        self.assertEqual(
+            ci("pull_request", head_ref=f"backport/1.5/{fix[:7]}")[0][0][1], "invalid"
+        )  # names a second fix
+        self.g("checkout", "-q", "head")
+        with open(os.path.join(self.repo, "f.txt"), "w") as f:
+            f.write(">>>>>>> theirs\n")
+        self.g("add", "f.txt")
+        self.g("commit", "-q", "-m", "left a marker")
+        with self.assertRaisesRegex(ValueError, "conflict markers in f.txt"):
+            ci("pull_request", head_ref=f"backport/1.5/{fix[:7]}")
+        self.assertEqual(
+            len(ci("pull_request", head_ref="fix/x")[0]), 3
+        )  # only a backport PR's tree is checked
+        self.g("checkout", "-q", "main")
+
+    def test_is_backport(self):
+        for ref, want in (
+            ("backport/1.5/abcdef0", True),
+            ("backport/0.192/1234567", True),
+            ("backport/1.5/abcdef01", False),
+            ("backport/1.5/ABCDEF0", False),
+            ("backport/x", False),
+            ("evil/backport/1.5/abcdef0", False),
+            ("backport/1.5/abcdef0/x", False),
+            ("", False),
+        ):
+            self.assertEqual(rm.is_backport(ref), want, ref)
+
+    def test_unknown_repo_config(self):
+        with self.assertRaisesRegex(
+            RuntimeError, "relstate has no config for repo 'nope'"
+        ):
+            rs.use("nope")
+        self.assertEqual(rs.PREFIX, "")  # the loaded config is untouched
+
+
+class PrFixClass(unittest.TestCase):
+    """Lint PR / Backport class rule: title type plus fix/ labels."""
+
+    def test_pr_fix_class(self):
+        c = rm.pr_fix_class
+        self.assertEqual(c("UN-1 [FIX] x"), "fix")
+        self.assertIsNone(c("UN-1 [MISC] x"))
+        self.assertEqual(c("UN-1 [MISC] x", ["fix/needs-backport"]), "fix")
+        self.assertEqual(
+            c("UN-1 [FIX] x", ["fix/needs-backport"]), "fix"
+        )  # no-op on a fix title
+        self.assertEqual(
+            c("UN-1 [MISC] x", ["fix/security", "fix/needs-backport"]), "security"
+        )
+        self.assertEqual(c("UN-1 [FEAT] x", ["fix/critical", "bug"]), "critical")
+        for labels in (
+            ["fix/typo"],
+            ["fix-class/security"],
+            ["Fix/security"],
+            ["fixclass"],
+            ["fix/security", "fix/critical"],
+        ):
+            with self.assertRaises(ValueError, msg=labels) as e:
+                c("UN-1 [FIX] x", labels)
+            if labels != ["fix/security", "fix/critical"]:
+                self.assertIn(
+                    "fix/security, fix/critical, fix/needs-backport", str(e.exception)
+                )
+
+    def test_revert_takes_inner_class(self):
+        c = rm.pr_fix_class
+        self.assertEqual(c('Revert "UN-1 [FIX] x"'), "fix")
+        self.assertIsNone(c('Revert "UN-1 [MISC] x"'))
+        self.assertEqual(c('Revert "Revert "UN-1 [FIX] x""'), "fix")
+        for title in ('Revert "fix x"', "Revert UN-1 [FIX] x", 'revert "UN-1 [FIX] x"'):
+            with self.assertRaises(ValueError, msg=title):
+                c(title)
+        with self.assertRaises(ValueError):
+            c("no prefix")
+        self.assertEqual(c("no prefix", ["fix/needs-backport"]), "fix")
+
+    def test_ticketless_title_same_class(self):
+        c = rm.pr_fix_class
+        self.assertEqual(c("[FIX] x"), "fix")
+        self.assertEqual(c("[HOT-FIX] x"), "fix")
+        self.assertIsNone(c("[MISC] x"))
+        self.assertEqual(c("[MISC] x", ["fix/needs-backport"]), "fix")
+        self.assertEqual(c("[FEAT] x", ["fix/security"]), "security")
+        self.assertEqual(c('Revert "[FIX] x"'), "fix")
+        self.assertEqual(c(" UN-1 [FIX] x"), "fix")  # GitHub keeps a typo'd leading space
+        # The revert button copies the title, leading space included.
+        self.assertEqual(c('Revert " UN-1 [FIX] x"'), "fix")
+        for title in ("[fix] x", "[FIX]x", "UN-1[FIX] x", "un-1 [FIX] x"):
+            with self.assertRaises(ValueError, msg=title):
+                c(title)
+
+    def test_release_only_label_refused_off_release(self):
+        f = rm.release_only_refusal
+        self.assertIn(
+            "for PRs into a release/X.Y branch", f("main", ["release-branch-only"])
+        )
+        self.assertIsNone(f("release/0.192", ["release-branch-only"]))
+        self.assertIsNone(f("main", ["fix/critical"]))
+
+    def test_rbo_key_ticket_else_pr(self):
+        self.assertEqual(rm.rbo_key("UN-1 [FIX] x", "45"), "UN-1")
+        self.assertEqual(rm.rbo_key("[FIX] x", "45"), "#45")
+        self.assertEqual(rm.rbo_key(" UN-1 [FIX] x", "45"), "UN-1")
+        self.assertEqual(rm.rbo_key("no prefix", "45"), "#45")
+        self.assertEqual(rm.RBO_RE.findall("Release-branch-only: #45"), ["#45"])
+
+
+class ArtifactRegistry(unittest.TestCase):
+    """registry_tags over the Artifact Registry REST API.
+
+    Known limit: the response shape follows the versions.list (view=FULL) API reference, not a recorded call.
+    """
+
+    REPO = "projects/p/locations/us-central1/repositories/unstract"
+
+    def setUp(self):
+        env = {
+            "RELSTATE_AR_TOKEN": "t",
+            "RELSTATE_AR_CLOUD": self.REPO,
+            "RELSTATE_AR_ON_PREM": "projects/p/locations/us-central1/repositories/unstract-on-prem",
+        }
+        patcher = unittest.mock.patch.dict(os.environ, env)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+        for k in ("RELSTATE_AR_CLOUD_RC", "RELSTATE_AR_ON_PREM_RC"):
+            os.environ.pop(
+                k, None
+            )  # a test sets _RC itself; the shell's must not leak in (restored on stop)
+        self.urls, self.pages = [], {}
+        urlopen = unittest.mock.patch.object(rs.urllib.request, "urlopen", self.urlopen)
+        urlopen.start()
+        self.addCleanup(urlopen.stop)
+
+    def urlopen(self, req, timeout):
+        self.urls.append(req.full_url)
+        self.assertEqual(req.get_header("Authorization"), "Bearer t")
+        path, _, query = req.full_url.partition("?")
+        key = (path, urllib.parse.parse_qs(query).get("pageToken", [""])[0])
+        page = self.pages.get(key, 404)
+        if isinstance(page, int):
+            raise urllib.error.HTTPError(
+                req.full_url, page, "err", {}, io.BytesIO(b"denied")
+            )
+        return io.BytesIO(json.dumps(page).encode())
+
+    def version(self, package, digest, created, *tags, repo=REPO):
+        name = f"{repo}/packages/{package}/versions/sha256:{digest}"
+        return {
+            "name": name,
+            "createTime": created,
+            "updateTime": "2030-01-01T00:00:00Z",  # differs from createTime: pushed_at must not read it
+            "relatedTags": [
+                {"name": f"{repo}/packages/{package}/tags/{t}", "version": name}
+                for t in tags
+            ],
+        }
+
+    def url(self, package, kind="unstract"):
+        return f"{rs.AR_API}/projects/p/locations/us-central1/repositories/{kind}/packages/{package}/versions"
+
+    def test_tags_across_pages(self):
+        self.pages[(self.url("backend"), "")] = {
+            "versions": [
+                self.version(
+                    "backend",
+                    "aa",
+                    "2026-10-01T10:00:00.123456789Z",
+                    "v0.192.0-rc.1",
+                    "v0.192.0",
+                )
+            ],
+            "nextPageToken": "n2",
+        }
+        self.pages[(self.url("backend"), "n2")] = {
+            "versions": [
+                self.version("backend", "bb", "2026-09-01T10:00:00Z", "v0.191.0"),
+                self.version("backend", "cc", "2026-08-01T10:00:00.5Z"),
+            ]
+        }
+        got = rs.registry_tags("cloud/backend")
+        v1 = f"{self.REPO}/packages/backend/versions/sha256:aa"
+        self.assertEqual(
+            got["v0.192.0-rc.1"],
+            {"id": v1, "digest": "sha256:aa", "pushed_at": "2026-10-01T10:00:00Z"},
+        )
+        self.assertEqual(got["v0.192.0"]["digest"], "sha256:aa")
+        self.assertEqual(got["v0.191.0"]["pushed_at"], "2026-09-01T10:00:00Z")
+        self.assertEqual(
+            set(got), {"v0.192.0-rc.1", "v0.192.0", "v0.191.0"}
+        )  # an untagged version adds nothing
+        self.assertIn("view=FULL", self.urls[0])
+
+    def test_404_is_empty_only_when_repository_reads(self):
+        onprem = "projects/p/locations/us-central1/repositories/unstract-on-prem"
+        self.pages[(f"{rs.AR_API}/{onprem}", "")] = {"name": onprem}
+        self.assertEqual(rs.registry_tags("on-prem/backend"), {})
+        self.assertEqual(
+            self.urls[-1], f"{rs.AR_API}/{onprem}"
+        )  # its own repository, not cloud's
+        self.pages[(f"{rs.AR_API}/{self.REPO}", "")] = {"name": self.REPO}
+        self.pages[(f"{rs.AR_API}/{onprem}", "")] = 404
+        with self.assertRaisesRegex(
+            RuntimeError, f"404 and repository {onprem} not found"
+        ):
+            rs.registry_tags("on-prem/backend")
+        self.pages[(f"{rs.AR_API}/{onprem}", "")] = 403
+        with self.assertRaisesRegex(RuntimeError, "HTTP 403: denied"):
+            rs.registry_tags("on-prem/backend")
+
+    def test_network_json_and_later_page_errors_raise(self):
+        self.pages[(self.url("backend"), "")] = {"versions": [], "nextPageToken": "n2"}
+        with self.assertRaisesRegex(RuntimeError, "HTTP 404 on page n2"):  # page n2: 404
+            rs.registry_tags("cloud/backend")
+        for err in (  # what urlopen and the body read raise
+            urllib.error.URLError("dns"),
+            TimeoutError("timed out"),
+            rs.http.client.IncompleteRead(b""),
+            ConnectionResetError(),
+        ):
+            with (
+                unittest.mock.patch.object(rs.urllib.request, "urlopen", side_effect=err),
+                self.assertRaisesRegex(
+                    RuntimeError, f"registry read cloud/backend: {type(err).__name__}"
+                ),
+            ):
+                rs.registry_tags("cloud/backend")
+        with (
+            unittest.mock.patch.object(
+                rs.urllib.request, "urlopen", return_value=io.BytesIO(b"<html>")
+            ),
+            self.assertRaisesRegex(
+                RuntimeError, "registry read cloud/backend: JSONDecodeError"
+            ),
+        ):
+            rs.registry_tags("cloud/backend")
+
+    def test_other_http_errors_raise(self):
+        self.pages[(self.url("backend"), "")] = 403
+        with self.assertRaisesRegex(RuntimeError, "HTTP 403: denied"):
+            rs.registry_tags("cloud/backend")
+        cut = urllib.error.HTTPError("u", 503, "err", {}, None)
+        cut.read = unittest.mock.Mock(side_effect=rs.http.client.IncompleteRead(b""))
+        with (
+            unittest.mock.patch.object(rs.urllib.request, "urlopen", side_effect=cut),
+            self.assertRaisesRegex(
+                RuntimeError, "registry read cloud/backend: HTTP 503: IncompleteRead"
+            ),
+        ):  # the error body itself cut off
+            rs.registry_tags("cloud/backend")
+
+    def test_unset_location_or_token_raises(self):
+        os.environ.pop("RELSTATE_AR_CHART", None)
+        with self.assertRaisesRegex(RuntimeError, "set RELSTATE_AR_CHART"):
+            rs.registry_tags("chart/unstract-platform")
+        del os.environ["RELSTATE_AR_TOKEN"]
+        with self.assertRaisesRegex(RuntimeError, "set RELSTATE_AR_TOKEN"):
+            rs.registry_tags("cloud/backend")
+        self.assertEqual(self.urls, [])
+
+    RC = "projects/s/locations/l/repositories/rc"
+
+    def test_42_rc_repository_reads_with_the_stable_one(self):
+        rc_url = f"{rs.AR_API}/{self.RC}/packages/backend/versions"
+        self.pages[(self.url("backend"), "")] = {
+            "versions": [
+                self.version("backend", "aa", "2026-10-02T10:00:00Z", "v0.192.0")
+            ]
+        }
+        self.pages[(rc_url, "")] = {
+            "versions": [
+                self.version(
+                    "backend", "aa", "2026-10-01T10:00:00Z", "v0.192.0-rc.1", repo=self.RC
+                )
+            ]
+        }
+        self.assertEqual(
+            set(rs.registry_tags("cloud/backend")), {"v0.192.0"}
+        )  # _RC unset: one repository
+        with unittest.mock.patch.dict(os.environ, {"RELSTATE_AR_CLOUD_RC": self.RC}):
+            got = rs.registry_tags("cloud/backend")
+            self.assertEqual(
+                got["v0.192.0-rc.1"]["id"],
+                f"{self.RC}/packages/backend/versions/sha256:aa",
+            )
+            self.assertEqual(
+                got["v0.192.0"]["id"], f"{self.REPO}/packages/backend/versions/sha256:aa"
+            )
+            self.assertEqual(rs.ar_repositories("cloud"), [self.REPO, self.RC])
+        with unittest.mock.patch.dict(os.environ, {"RELSTATE_AR_CLOUD_RC": self.REPO}):
+            self.assertEqual(
+                rs.ar_repositories("cloud"), [self.REPO]
+            )  # the same repository is read once
+
+    def test_43_a_tag_at_two_digests_raises(self):
+        self.pages[(self.url("backend"), "")] = {
+            "versions": [
+                self.version("backend", "aa", "2026-10-01T10:00:00Z", "v0.192.0-rc.1")
+            ]
+        }
+        self.pages[(f"{rs.AR_API}/{self.RC}/packages/backend/versions", "")] = {
+            "versions": [
+                self.version(
+                    "backend", "bb", "2026-10-01T10:00:00Z", "v0.192.0-rc.1", repo=self.RC
+                )
+            ]
+        }
+        with (
+            unittest.mock.patch.dict(os.environ, {"RELSTATE_AR_CLOUD_RC": self.RC}),
+            self.assertRaisesRegex(
+                RuntimeError,
+                "tag v0.192.0-rc.1 is .*sha256:aa \\(pushed .*\\) and .*sha256:bb .*promotes the RC repository",
+            ),
+        ):
+            rs.registry_tags("cloud/backend")
+
+    def test_44_rc_repository_404_is_empty_only_when_it_reads(self):
+        self.pages[(self.url("backend"), "")] = {
+            "versions": [
+                self.version("backend", "aa", "2026-10-01T10:00:00Z", "v0.191.0")
+            ]
+        }
+        with unittest.mock.patch.dict(os.environ, {"RELSTATE_AR_CLOUD_RC": self.RC}):
+            with self.assertRaisesRegex(
+                RuntimeError, f"404 and repository {self.RC} not found"
+            ):
+                rs.registry_tags("cloud/backend")  # a wrong _RC never reads as "no RCs"
+            self.pages[(f"{rs.AR_API}/{self.RC}", "")] = {"name": self.RC}
+            self.assertEqual(set(rs.registry_tags("cloud/backend")), {"v0.191.0"})
+
+    def test_47_a_package_only_in_the_rc_repository(self):
+        # a service first built on a release line after the split: stable answers 404 for the package but reads
+        self.pages[(f"{rs.AR_API}/{self.REPO}", "")] = {"name": self.REPO}
+        self.pages[(f"{rs.AR_API}/{self.RC}/packages/backend/versions", "")] = {
+            "versions": [
+                self.version(
+                    "backend", "aa", "2026-10-01T10:00:00Z", "v0.192.0-rc.1", repo=self.RC
+                )
+            ]
+        }
+        with unittest.mock.patch.dict(os.environ, {"RELSTATE_AR_CLOUD_RC": self.RC}):
+            self.assertEqual(set(rs.registry_tags("cloud/backend")), {"v0.192.0-rc.1"})
+
+    def test_45_abandon_keeps_the_last_version_per_repository(self):
+        stable = f"{self.REPO}/packages/backend/versions/sha256:"
+        rc = f"{self.RC}/packages/backend/versions/sha256:"
+        reg = {
+            "cloud/backend": {
+                "v1.9.0-rc.1": {
+                    "id": stable + "01",
+                    "digest": "sha256:01",
+                    "pushed_at": "x",
+                },  # before the split
+                "v1.5.0": {"id": stable + "02", "digest": "sha256:02", "pushed_at": "x"},
+                # rc.1's digest again (a reproducible rebuild): still its own version in the RC repository
+                "v1.9.0-rc.2": {"id": rc + "01", "digest": "sha256:01", "pushed_at": "x"},
+                "v1.9.0-rc.3": {"id": rc + "04", "digest": "sha256:04", "pushed_at": "x"},
+            }
+        }
+        with tempfile.TemporaryDirectory() as d:
+            rm.git(d, "init", "-q", "-b", "main")
+            rm.git(
+                d,
+                "-c",
+                "user.name=t",
+                "-c",
+                "user.email=t@t",
+                "commit",
+                "-q",
+                "--allow-empty",
+                "-m",
+                "base",
+            )
+            rm.git(d, "branch", "release/1.9")
+            plan = rs.abandon_plan(d, "release/1.9", lambda a: reg.get(a, {}))
+        self.assertEqual(
+            [v["id"] for v in plan["versions"]["cloud/backend"]],
+            [stable + "01", rc + "01"],
+        )  # the stable repository keeps v1.5.0; the RC repository keeps its last RC
+        self.assertEqual(plan["kept"], ["cloud/backend:v1.9.0-rc.3"])
+
+    def test_46_image_link_names_the_rc_repository(self):
+        with unittest.mock.patch.dict(
+            os.environ, {"RELSTATE_AR_CLOUD_RC": self.RC, "RELSTATE_AR_CLOUD": self.REPO}
+        ):
+            self.assertIn(
+                "/artifacts/docker/s/l/rc)",
+                rm.image_link("cloud", "v1-rc.1"),
+            )
+
+
+class Guards(unittest.TestCase):
+    OUTSIDE = (
+        "/nonexistent/repo"  # resolves outside the working directory and the temp dirs
+    )
+
+    def test_option_free(self):
+        self.assertEqual(rm.option_free("release/1.2"), "release/1.2")
+        with self.assertRaises(rm.Refused):
+            rm.option_free("--upload-pack=x")
+
+    def test_local_path(self):
+        with tempfile.TemporaryDirectory() as d:
+            self.assertEqual(rm.local_path(d), d)
+            os.symlink("/usr", os.path.join(d, "out"))
+            escape = os.path.join(d, "out", "x")  # a link out of the roots
+            with self.assertRaises(rm.Refused):
+                rm.local_path(escape)
+        for path in (self.OUTSIDE, "-C"):
+            with self.subTest(path=path), self.assertRaises(rm.Refused):
+                rm.local_path(path)
+
+    def test_local_path_runner_roots(self):
+        """GITHUB_WORKSPACE, RUNNER_TEMP and the step summary file count, each outside the other roots."""
+        with tempfile.TemporaryDirectory() as d:
+            summary = os.path.join(d, "summary", "step.md")
+            for key, path in (
+                ("GITHUB_WORKSPACE", d),
+                ("RUNNER_TEMP", d),
+                ("GITHUB_STEP_SUMMARY", summary),
+            ):
+                env = dict.fromkeys(
+                    ("GITHUB_WORKSPACE", "RUNNER_TEMP", "GITHUB_STEP_SUMMARY"), ""
+                )
+                env[key] = path
+                with (
+                    self.subTest(key=key),
+                    unittest.mock.patch.dict(os.environ, env),
+                    unittest.mock.patch.object(
+                        rm.os, "getcwd", return_value="/nonexistent/cwd"
+                    ),
+                    unittest.mock.patch.object(
+                        rm.tempfile, "gettempdir", return_value="/nonexistent/tmp"
+                    ),
+                ):
+                    self.assertEqual(rm.local_path(path), path)
+                    with self.assertRaises(rm.Refused):
+                        rm.local_path(self.OUTSIDE)
+
+    def test_git_refuses_a_repo_outside(self):
+        with self.assertRaises(rm.Refused):
+            rm.git(self.OUTSIDE, "status")
+
+    def test_main_refuses_an_option_as_rc(self):
+        with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+            rs.main(["--repo", self.OUTSIDE, "--rc=-x"], registry=lambda a: {})
+
+
+if __name__ == "__main__":
+    unittest.main()
