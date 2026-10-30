@@ -4,6 +4,7 @@ from unstract.sdk1.adapters.base1 import register_adapters
 from unstract.sdk1.adapters.enums import AdapterTypes
 from unstract.sdk1.adapters.llm1.anthropic import AnthropicLLMAdapter
 from unstract.sdk1.adapters.llm1.anyscale import AnyscaleLLMAdapter
+from unstract.sdk1.adapters.llm1.atlascloud import AtlasCloudLLMAdapter
 from unstract.sdk1.adapters.llm1.azure_openai import AzureOpenAILLMAdapter
 from unstract.sdk1.adapters.llm1.bedrock import AWSBedrockLLMAdapter
 from unstract.sdk1.adapters.llm1.minimax import MiniMaxLLMAdapter
@@ -22,6 +23,7 @@ __all__ = [
     "adapters",
     "AnthropicLLMAdapter",
     "AnyscaleLLMAdapter",
+    "AtlasCloudLLMAdapter",
     "AWSBedrockLLMAdapter",
     "AzureOpenAILLMAdapter",
     "MiniMaxLLMAdapter",
