@@ -26,7 +26,6 @@ from unstract.sdk1.exceptions import (
     SdkError,
     VectorDBError,
     X2TextError,
-    is_vector_store_not_found,
 )
 from unstract.sdk1.file_storage import FileStorage, FileStorageProvider
 from unstract.sdk1.platform import PlatformHelper
@@ -316,11 +315,12 @@ class Index:
                     self.tool.stream_log(f"Found {len(n.nodes)} nodes for {doc_id}")
                 else:
                     self.tool.stream_log(f"No nodes found for {doc_id}")
-            except Exception as e:
-                if not is_vector_store_not_found(e):
+            except VectorDBError as e:
+                if e.status_code != 404:
                     raise
                 self.tool.stream_log(
-                    f"No index yet for {vector_db_instance_id}: {e}, proceeding to index",
+                    f"Index for {vector_db_instance_id} might not exist yet:"
+                    f" {e}, proceeding to index",
                     level=LogLevel.INFO,
                 )
 

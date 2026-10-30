@@ -8,38 +8,6 @@ import openai
 logger = logging.getLogger(__name__)
 
 
-def _status_code_of(error: BaseException) -> int | None:
-    """Return the HTTP status carried by a provider exception, if any."""
-    status = getattr(error, "status_code", None)
-    if status is None:
-        response = getattr(error, "response", None)
-        status = getattr(response, "status_code", None)
-    if status is None:
-        return None
-    try:
-        return int(status)
-    except (TypeError, ValueError):
-        return None
-
-
-def is_vector_store_not_found(error: BaseException) -> bool:
-    """True when a vector-DB query failed only because the index is not there yet.
-
-    llama-index creates a Qdrant collection on the first write, so the very first
-    existence check legitimately answers 404. Every other failure means the check
-    could not be answered, and treating that as "not indexed yet" indexes a
-    second copy of the document next to the first one.
-    """
-    seen: set[int] = set()
-    current: BaseException | None = error
-    while current is not None and id(current) not in seen:
-        seen.add(id(current))
-        if _status_code_of(current) == 404:
-            return True
-        current = current.__cause__ or current.__context__
-    return False
-
-
 class SdkError(Exception):
     DEFAULT_MESSAGE = "Something went wrong"
     actual_err: Exception | None = None

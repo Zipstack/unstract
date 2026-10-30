@@ -24,7 +24,7 @@ from executor.executors.dto import (
 from unstract.sdk1.constants import LogLevel
 from unstract.sdk1.exceptions import (
     SdkError,
-    is_vector_store_not_found,
+    VectorDBError,
     parse_litellm_err,
 )
 from unstract.sdk1.file_storage.impl import FileStorage
@@ -126,12 +126,13 @@ class Index:
                 self.tool.stream_log(f"Found {len(n.nodes)} nodes for {doc_id}")
             else:
                 self.tool.stream_log(f"No nodes found for {doc_id}")
-        except Exception as e:
-            if not is_vector_store_not_found(e):
+        except VectorDBError as e:
+            if e.status_code != 404:
                 raise
             logger.info(
-                f"No index yet for {self.instance_identifiers.vector_db_instance_id}:"
-                f" {e}, proceeding to index"
+                f"Index for"
+                f" {self.instance_identifiers.vector_db_instance_id} might not"
+                f" exist yet: {e}, proceeding to index"
             )
 
         if doc_id_found and not self.processing_options.reindex:
