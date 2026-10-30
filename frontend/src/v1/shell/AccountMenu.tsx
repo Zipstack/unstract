@@ -64,7 +64,7 @@ export function AccountMenu({ user, profileHref }: AccountMenuProps) {
         <DropdownMenu.Content
           align="end"
           sideOffset={6}
-          className="ui:z-50 ui:flex ui:w-70 ui:flex-col ui:gap-0.5 ui:rounded-lg ui:border ui:border-border ui:bg-sidebar ui:p-1.5 ui:shadow-lg"
+          className="ui:z-50 ui:flex ui:w-70 ui:flex-col ui:gap-0.5 ui:rounded-lg ui:border ui:border-border ui:bg-popover ui:p-1.5 ui:shadow-lg"
         >
           <div className="ui:flex ui:items-center ui:gap-2.5 ui:px-2.25 ui:pt-1.5 ui:pb-2">
             <span className="ui:flex ui:size-9 ui:shrink-0 ui:items-center ui:justify-center ui:rounded-full ui:bg-primary-muted ui:text-body-small ui:font-semibold ui:text-primary">

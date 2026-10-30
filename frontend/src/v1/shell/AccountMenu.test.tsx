@@ -40,6 +40,8 @@ describe("AccountMenu", () => {
 
   test("lists identity, profile, help and sign out, as frame NEW09 shows", async () => {
     await open();
+    // The Unstract theme's sidebar is navy under dark text.
+    expect(screen.getByRole("menu")).toHaveClass("ui:bg-popover");
     expect(screen.getByText("Tanushree Daga")).toBeInTheDocument();
     expect(screen.getByText("tanushree@zipstack.com")).toBeInTheDocument();
     expect(
