@@ -260,7 +260,7 @@ def _determine_execution_status_unified(
     api_client: InternalAPIClient,
     execution_id: str,
     organization_id: str,
-    execution_context: dict[str, Any],
+    execution_context: dict[str, Any] | None,
 ) -> tuple[dict[str, Any], str, int]:
     """Unified status determination logic with timeout detection for all callback types.
 
@@ -274,7 +274,8 @@ def _determine_execution_status_unified(
         execution_id: Workflow execution ID
         organization_id: Organization context
         execution_context: Execution context the callback already fetched,
-            reused here instead of fetching the execution again
+            reused here instead of fetching the execution again; None if
+            that fetch failed
 
     Returns:
         Tuple of (aggregated_results, final_status, expected_files)
@@ -304,6 +305,14 @@ def _determine_execution_status_unified(
         logger.warning(f"Execution time is 0! File results for execution {execution_id}")
 
     # Step 3: Get expected file count from workflow execution details for timeout detection
+    if not execution_context:
+        logger.warning(
+            f"No execution context for execution {execution_id}; "
+            "expected file count unavailable"
+        )
+    # Reads a top-level key, which the serializer does not return (it is nested
+    # under "execution"), so this is always 0. Pre-existing; fixing it changes
+    # final statuses, so it is tracked separately.
     expected_files = (execution_context or {}).get("total_files", 0)
     logger.info(
         f"Expected files from execution details: {expected_files} for execution {execution_id}"
@@ -1291,6 +1300,7 @@ def _cleanup_execution_resources(context: CallbackContext) -> dict[str, Any]:
 def _track_subscription_usage_if_available(
     context: CallbackContext,
     execution_status: str,
+    successful_files: int = 0,
 ) -> dict[str, Any] | None:
     """Track subscription usage for successful file executions if plugin available.
 
@@ -1300,6 +1310,8 @@ def _track_subscription_usage_if_available(
     Args:
         context: Callback execution context with organization and execution IDs
         execution_status: Final execution status (should be COMPLETED for tracking)
+        successful_files: Successful file count from the aggregated batch results,
+            used only to flag a fetch that came back without file-execution rows
 
     Returns:
         dict with status, committed_count, message if tracking attempted
@@ -1335,6 +1347,15 @@ def _track_subscription_usage_if_available(
             and file_exec.get("id")
             and not file_exec.get("execution_error")
         ]
+
+        if successful_files and not context.file_executions:
+            # The rows come only from a fetch with file_execution=True; without
+            # them this usage would go unbilled with no other sign.
+            logger.warning(
+                f"{successful_files} successful files but no file executions in the "
+                f"callback context for execution {context.execution_id}; "
+                "subscription usage not committed"
+            )
 
         if not successful_file_exec_ids:
             logger.debug(
@@ -1497,6 +1518,7 @@ def _process_batch_callback_core(
                 subscription_tracking_result = _track_subscription_usage_if_available(
                     context=context,
                     execution_status=execution_status,
+                    successful_files=aggregated_results.get("successful_files", 0),
                 )
 
                 # Add missing UI logs for cost and final workflow status (matching backend behavior)
@@ -1799,6 +1821,7 @@ def process_batch_callback_api(
                 subscription_tracking_result = _track_subscription_usage_if_available(
                     context=context,
                     execution_status=execution_status,
+                    successful_files=aggregated_results.get("successful_files", 0),
                 )
 
                 # Handle notifications using unified function

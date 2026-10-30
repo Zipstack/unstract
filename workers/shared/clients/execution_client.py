@@ -113,8 +113,8 @@ class ExecutionAPIClient(BaseAPIClient):
             organization_id: Optional organization ID override
             include_cost: Whether to include aggregated usage cost (expensive operation)
             file_execution: Whether to include every file-execution row of the
-                execution (expensive for large executions; only the callback's
-                billing step needs them)
+                execution (expensive for large executions). Pass True only if
+                the caller reads ``file_executions``.
 
         Returns:
             ExecutionResponse containing workflow execution data

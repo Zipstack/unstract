@@ -1725,7 +1725,7 @@ class WorkerWorkflowExecutionService:
     def _get_destination_config(
         self, workflow_id: str, execution_id: str
     ) -> dict[str, Any] | None:
-        """Get destination configuration for the workflow via API."""
+        """Get destination configuration from this file's execution context."""
         try:
             # Get workflow execution context which includes destination config
             execution_context = self._get_cached_execution_context(execution_id)
@@ -1751,7 +1751,7 @@ class WorkerWorkflowExecutionService:
     def _get_source_config(
         self, workflow_id: str, execution_id: str
     ) -> dict[str, Any] | None:
-        """Get source configuration for the workflow via API."""
+        """Get source configuration from this file's execution context."""
         try:
             # Get workflow execution context which includes source config
             execution_context = self._get_cached_execution_context(execution_id)

@@ -1,14 +1,13 @@
 """GET workflow-execution: fetched once per step, file-execution rows only on demand.
 
-The internal endpoint defaults ``file_execution`` to true and then loads every
-file-execution row of the execution. Workers called it about 8 times per document,
-and the client never sent ``file_execution=false``, so every call paid for those
-rows (quadratic in the file count for an ETL run). These tests pin:
+These tests pin:
 
 * the client always sends ``file_execution`` explicitly and defaults it to false;
-* only the callback's context fetch asks for the rows (billing reads them);
-* the callback's status step reuses that fetch instead of two more GETs;
-* a file fetches once, and its source config lookup reuses that fetch.
+* only the callback's context fetches ask for the rows, and billing sees rows
+  only because they do;
+* the callback's status step reuses that fetch instead of fetching again;
+* each file fetches its context fresh, and its source and destination lookups
+  reuse that fetch.
 """
 
 from __future__ import annotations
@@ -18,6 +17,7 @@ from unittest.mock import MagicMock, patch
 
 import callback.tasks as cb
 import pytest
+from shared.api.internal_client import InternalAPIClient
 from shared.clients.execution_client import ExecutionAPIClient
 from shared.processing.files.time_utils import WallClockTimeCalculator
 from shared.workflow.execution.service import WorkerWorkflowExecutionService
@@ -76,35 +76,82 @@ class TestClientQueryParams:
         client.get_workflow_execution("e1", organization_id="org-9")
         assert client.get.call_args.kwargs["organization_id"] == "org-9"
 
+    def test_facade_passes_flags_through(self):
+        facade = InternalAPIClient.__new__(InternalAPIClient)
+        facade.execution_client = MagicMock()
+        facade.execution_client.get_workflow_execution.return_value = {}
+        with patch(
+            "shared.api.internal_client.WorkflowExecutionResponse.from_api_response"
+        ):
+            facade.get_workflow_execution("e1", file_execution=True)
+            facade.get_workflow_execution("e2")
+        calls = facade.execution_client.get_workflow_execution.call_args_list
+        assert calls[0].kwargs["file_execution"] is True
+        assert calls[1].kwargs["file_execution"] is False
+
+
+_ROWS = [{"id": "f1", "status": "COMPLETED"}]
+
+
+def _flag_aware_api(**execution):
+    """Fake that returns file-execution rows only when asked, like the backend."""
+
+    def get_workflow_execution(execution_id, *args, file_execution=False, **kwargs):
+        data = _execution_context(**execution)
+        data["file_executions"] = list(_ROWS) if file_execution else []
+        return MagicMock(success=True, data=data)
+
+    api = MagicMock()
+    api.get_workflow_execution.side_effect = get_workflow_execution
+    return api
+
 
 class TestCallbackFetchesOnce:
-    def _api(self, data):
-        api = MagicMock()
-        api.get_workflow_execution.return_value = MagicMock(success=True, data=data)
-        return api
 
-    def test_extract_requests_file_executions_and_keeps_context(self):
-        data = _execution_context(pipeline_id="p")
-        data["file_executions"] = [{"id": "f1", "status": "COMPLETED"}]
-        api = self._api(data)
+    def _task(self):
         task = MagicMock()
         task.request.id = "t1"
+        return task
+
+    def test_extract_requests_file_executions_and_keeps_context(self):
+        api = _flag_aware_api(pipeline_id="p")
         with (
             patch.object(cb, "create_api_client", return_value=api),
             patch.object(cb, "_fetch_pipeline_name_from_api", return_value="pipe"),
         ):
             context = cb._extract_callback_parameters(
-                task, [], {"execution_id": "e1", "organization_id": "org-1"}
+                self._task(), [], {"execution_id": "e1", "organization_id": "org-1"}
             )
 
         api.get_workflow_execution.assert_called_once_with("e1", file_execution=True)
-        assert context.execution_context is data
-        # Billing still sees the rows it commits usage for.
-        assert context.file_executions == data["file_executions"]
+        assert context.execution_context["execution"]["pipeline_id"] == "p"
+        # Billing sees rows only because the fetch asked for them.
+        assert context.file_executions == _ROWS
+
+    def test_fallback_fetch_without_org_requests_file_executions(self):
+        temp_api = _flag_aware_api(pipeline_id="p")
+        org_api = MagicMock()
+        with (
+            patch.object(cb, "InternalAPIClient", return_value=temp_api),
+            patch("shared.infrastructure.config.WorkerConfig"),
+            patch.object(cb, "create_api_client", return_value=org_api),
+            patch.object(cb, "_fetch_pipeline_name_from_api", return_value="pipe"),
+        ):
+            context = cb._extract_callback_parameters(
+                self._task(), [], {"execution_id": "e1"}
+            )
+
+        temp_api.get_workflow_execution.assert_called_once_with(
+            "e1", file_execution=True
+        )
+        org_api.get_workflow_execution.assert_not_called()
+        assert context.organization_id == "org-1"
+        assert context.file_executions == _ROWS
 
     def test_status_determination_reuses_execution_context(self):
         created = (datetime.now(UTC) - timedelta(seconds=30)).isoformat()
-        data = _execution_context(created_at=created)
+        # total_files sits under "execution", as the serializer returns it.
+        data = _execution_context(created_at=created, total_files=3)
         api = MagicMock()
         api.get_workflow_execution.side_effect = AssertionError("no extra GET")
 
@@ -117,16 +164,15 @@ class TestCallbackFetchesOnce:
         )
 
         api.get_workflow_execution.assert_not_called()
-        # Unchanged semantics: total_files is read from the top level, as before.
+        # Known pre-existing bug, left as main has it: the top-level key is read,
+        # so the nested count is missed and timeout detection never fires.
+        # Fixing it changes final statuses and is tracked separately.
         assert expected_files == 0
         assert status == ExecutionStatus.COMPLETED.value
 
     def test_api_callback_passes_its_context_to_status_step(self):
-        data = _execution_context()
-        data["file_executions"] = [{"id": "f1", "status": "COMPLETED"}]
-        api = self._api(data)
-        task = MagicMock()
-        task.request.id = "t1"
+        api = _flag_aware_api()
+        task = self._task()
         seen = {}
 
         def determine(**kwargs):
@@ -148,7 +194,39 @@ class TestCallbackFetchesOnce:
             )
 
         api.get_workflow_execution.assert_called_once_with("e1", file_execution=True)
-        assert seen["execution_context"] is data
+        assert seen["execution_context"]["file_executions"] == _ROWS
+
+
+class TestBillingWithoutRows:
+    def _context(self, file_executions):
+        context = cb.CallbackContext()
+        context.execution_id = "e1"
+        context.organization_id = "org-1"
+        context.file_executions = file_executions
+        return context
+
+    def _track(self, context, successful_files):
+        plugin = MagicMock()
+        with (
+            patch("client_plugin_registry.get_client_plugin", return_value=plugin),
+            patch.object(cb.logger, "warning") as warning,
+        ):
+            result = cb._track_subscription_usage_if_available(
+                context=context,
+                execution_status=ExecutionStatus.COMPLETED.value,
+                successful_files=successful_files,
+            )
+        return result, warning
+
+    def test_warns_when_successful_files_have_no_rows(self):
+        result, warning = self._track(self._context([]), successful_files=2)
+        assert result["status"] == "skipped"
+        warning.assert_called_once()
+        assert "no file executions" in warning.call_args.args[0]
+
+    def test_no_warning_when_nothing_succeeded(self):
+        _, warning = self._track(self._context([]), successful_files=0)
+        warning.assert_not_called()
 
 
 class TestWallClockReuse:
@@ -205,6 +283,12 @@ class TestPerFileReuse:
         assert tools == [{"id": "t"}]
         assert source == context["source_config"]
         assert destination == context["destination_config"]
+
+    def test_same_instance_refetches_per_file(self):
+        service, api = self._service()
+        service._get_workflow_execution_context("e1", "wf", "org-1")
+        service._get_workflow_execution_context("e1", "wf", "org-1")
+        assert api.get_workflow_execution.call_count == 2
 
     def test_each_file_fetches_fresh(self):
         # One service per file (processor.py); a second file must not see the

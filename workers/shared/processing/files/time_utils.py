@@ -53,8 +53,8 @@ class WallClockTimeCalculator:
     ) -> float:
         """Get wall-clock time from execution created_at timestamp.
 
-        ``execution_context`` is an already-fetched execution context; when given,
-        no API call is made (created_at never changes).
+        ``execution_context`` is an already-fetched execution context; when it is
+        non-empty, no API call is made (created_at never changes).
         """
         if not execution_context:
             execution_response = api_client.get_workflow_execution(
