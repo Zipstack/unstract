@@ -91,10 +91,10 @@ describe("OrganizationSwitcher", () => {
     await open();
     const rows = await screen.findAllByRole("listitem");
     const scroller = rows[0].parentElement as HTMLElement;
-    expect(scroller).toHaveClass("overflow-y-auto", "min-h-0");
+    expect(scroller).toHaveClass("ui:overflow-y-auto", "ui:min-h-0");
     expect(
       scroller.closest("[data-radix-popper-content-wrapper] > *"),
-    ).toHaveClass("max-h-[var(--radix-popover-content-available-height)]");
+    ).toHaveClass("ui:max-h-(--radix-popover-content-available-height)");
   });
 
   test("a member reads Member (O04)", async () => {
@@ -155,6 +155,8 @@ describe("OrganizationSwitcher", () => {
       }),
     );
     const dialog = screen.getByRole("alertdialog");
+    // The Unstract theme's sidebar is navy under dark text.
+    expect(dialog).toHaveClass("ui:bg-popover");
     expect(
       within(dialog).getByText("Switch to Tanushree’s organisation?"),
     ).toBeInTheDocument();
@@ -340,6 +342,6 @@ describe("OrganizationSwitcher", () => {
     const button = await screen.findByRole("button", {
       name: "Switch to Tanushree’s organisation",
     });
-    expect(button.querySelector("svg.lucide-arrow-left-right")).not.toBeNull();
+    expect(button.querySelector("svg.lucide-arrow-right-left")).not.toBeNull();
   });
 });

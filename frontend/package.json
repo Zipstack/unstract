@@ -78,8 +78,9 @@
     "lint:all": "biome check --write src/",
     "lint:changed": "(git diff --name-only --diff-filter=ACMR; git ls-files --others --exclude-standard) | grep -E '\\.[jt]sx?$' | sed 's|^frontend/||' | sort -u | xargs -r biome check --write",
     "typecheck": "tsc --noEmit",
+    "tokens:v1": "node scripts/build-v1-tokens.mjs",
     "typecheck:v1": "node scripts/check-v1.mjs --files && tsc -p src/v1/tsconfig.json",
-    "lint:v1": "biome lint src/v1/ && node scripts/check-v1.mjs --code",
+    "lint:v1": "biome lint src/v1/ && node scripts/check-v1.mjs --code && node scripts/check-v1-styles.mjs",
     "test:v1": "vitest run --dir src/v1 --passWithNoTests && node --test test-fixtures/v1-boundary/boundary.fixtures.mjs scripts/v1-plugins.fixtures.mjs"
   },
   "browserslist": {
@@ -96,6 +97,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.3.13",
+    "@tailwindcss/node": "4.3.3",
     "@tailwindcss/postcss": "^4",
     "@tailwindcss/typography": "^0.5.20",
     "@tailwindcss/vite": "^4",
