@@ -231,7 +231,8 @@ function isImportMeta(node, prop) {
  * wildcard, spec being the fixed part before the first one;
  * { kind: "opaque" } for anything else (a variable, a concatenation).
  */
-function argOf(arg, isGlob) {
+function argOf(node, isGlob) {
+  const arg = unwrap(node);
   let spec;
   let kind = "literal";
   if (arg?.type === "StringLiteral") {
@@ -247,6 +248,24 @@ function argOf(arg, isGlob) {
   return wildcard === -1
     ? { kind, spec }
     : { kind: "prefix", spec: spec.slice(0, wildcard) };
+}
+
+// Type-only wrappers: `x as const`, `x satisfies T`, `<T>x`, `x!`.
+// Parentheses leave no node of their own.
+const WRAPPERS = new Set([
+  "TSAsExpression",
+  "TSSatisfiesExpression",
+  "TSTypeAssertion",
+  "TSNonNullExpression",
+]);
+
+/* The expression inside any type-only wrappers. */
+function unwrap(node) {
+  let inner = node;
+  while (WRAPPERS.has(inner?.type)) {
+    inner = inner.expression;
+  }
+  return inner;
 }
 
 /* Every import in the AST, as { kind, spec, index }, in source order. */

@@ -379,6 +379,10 @@ test("folder contract: every import form is read", () => {
       'import { "a-b" as c } from "@v1/services/a";\nexport { c };',
     typeofImport: 'export type A = typeof import("@v1/services/a");',
     importEquals: 'import a = require("@v1/services/a");\nexport { a };',
+    // TypeScript wrappers around the specifier (Greptile, PR #2380).
+    asConst: 'export const a = () => import("@v1/services/a" as const);',
+    satisfies:
+      'export const a = () => import(("@v1/services/a" satisfies string));',
   };
   // None of these may be reported: comments, JSX, look-alike class names.
   const quiet = {
@@ -438,6 +442,22 @@ test("a symlinked file under v1 fails typecheck:v1", () => {
   }
 });
 
+/* Puts each import in its own src/v1/lib/ file and asserts each file is
+ * reported exactly once, with `message`. */
+function expectEachReported(stem, imports, message) {
+  const files = {};
+  imports.forEach((code, i) => {
+    files[`src/v1/lib/${stem}-${i}.ts`] =
+      `export const a = (name: string) => ${code};\n`;
+  });
+  const reported = checkCode(files);
+  imports.forEach((code, i) => {
+    const lines = linesFor(reported, `src/v1/lib/${stem}-${i}.ts`);
+    assert.equal(lines.length, 1, `${code}:\n${reported.join("\n")}`);
+    assert.ok(lines[0].includes(message), `${code}: ${lines[0]}`);
+  });
+}
+
 test("v1 imports nothing outside src/v1, in any spelling", () => {
   const imports = [
     "import(`@/helpers/x`)",
@@ -450,17 +470,7 @@ test("v1 imports nothing outside src/v1, in any spelling", () => {
     "import(`../../helpers/${name}`)",
     'new URL("../../assets/logo.svg", import.meta.url)',
   ];
-  const files = {};
-  imports.forEach((code, i) => {
-    files[`src/v1/lib/outside-${i}.ts`] =
-      `export const a = (name: string) => ${code};\n`;
-  });
-  const reported = checkCode(files);
-  imports.forEach((code, i) => {
-    const lines = linesFor(reported, `src/v1/lib/outside-${i}.ts`);
-    assert.equal(lines.length, 1, `${code}:\n${reported.join("\n")}`);
-    assert.ok(lines[0].includes("is outside src/v1"), `${code}: ${lines[0]}`);
-  });
+  expectEachReported("outside", imports, "is outside src/v1");
 });
 
 test("v1: a '../' that stays inside v1 is reported as such", () => {
@@ -471,17 +481,7 @@ test("v1: a '../' that stays inside v1 is reported as such", () => {
     // biome-ignore lint/suspicious/noTemplateCurlyInString: source text containing a template literal.
     "import(`../lib/${name}`)",
   ];
-  const files = {};
-  imports.forEach((code, i) => {
-    files[`src/v1/lib/climbs-${i}.ts`] =
-      `export const a = (name: string) => ${code};\n`;
-  });
-  const reported = checkCode(files);
-  imports.forEach((code, i) => {
-    const lines = linesFor(reported, `src/v1/lib/climbs-${i}.ts`);
-    assert.equal(lines.length, 1, `${code}:\n${reported.join("\n")}`);
-    assert.ok(lines[0].includes("climbs with '../'"), `${code}: ${lines[0]}`);
-  });
+  expectEachReported("climbs", imports, "climbs with '../'");
 });
 
 test("v1: an import the guard cannot read fails closed", () => {
@@ -564,6 +564,10 @@ test("v0 reaches v1 only through @v1, in any form", () => {
     "srcPath.jsx": 'export const a = () => import("src/v1/lib/x");',
     "relativeEntry.jsx": 'import "../v1";',
     "typed.tsx": 'import x from "../v1/lib/x";\nexport const y = x;',
+    "templateAsConst.tsx":
+      "export const a = () => import(`@v1/plugins/manifest` as const);",
+    "angleAssertion.ts":
+      'export const a = () => import(<string>"@v1/plugins/manifest");',
     "aliasV0Unslashed.jsx":
       // biome-ignore lint/suspicious/noTemplateCurlyInString: source text containing a template literal.
       "export const a = (n) => import(`@/v1${n}`);",
