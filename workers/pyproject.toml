@@ -177,6 +177,7 @@ addopts = [
     "--cov=log_consumer",
     "--cov=ide_callback",
     "--cov=queue_backend",
+    "--cov=sandbox",
     "--cov-report=term-missing",
     "--cov-report=html",
     "--cov-report=xml"
