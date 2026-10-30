@@ -12,7 +12,6 @@ import {
 } from "@v1/services/organizations";
 import axios from "axios";
 import {
-  ArrowLeftRight,
   ArrowRightLeft,
   ChevronRight,
   ChevronsUpDown,
@@ -27,7 +26,7 @@ import { useCallback, useRef, useState } from "react";
 const AVATAR_COLOUR = "ui:bg-primary-muted ui:text-primary";
 const SIGN_IN_PATH = "/landing";
 const BUTTON =
-  "ui:inline-flex ui:h-8 ui:items-center ui:gap-1.5 ui:rounded-lg ui:border ui:border-border ui:bg-card ui:px-3 ui:text-body-small ui:font-medium ui:text-foreground ui:hover:bg-muted ui:disabled:opacity-50";
+  "ui:inline-flex ui:h-8 ui:items-center ui:gap-1.5 ui:rounded-lg ui:border ui:border-border ui:bg-card ui:text-body ui:font-medium ui:text-foreground ui:hover:bg-muted ui:disabled:opacity-50";
 
 export interface CurrentOrganization {
   id: string;
@@ -127,8 +126,8 @@ function ConfirmSwitch({
     <AlertDialog.Root open onOpenChange={(open) => !open && !busy && onClose()}>
       <AlertDialog.Portal container={getPortalContainer()}>
         <AlertDialog.Overlay className="ui:fixed ui:inset-0 ui:z-50 ui:bg-scrim" />
-        <AlertDialog.Content className="ui:fixed ui:top-1/2 ui:left-1/2 ui:z-50 ui:w-130 ui:max-w-[calc(100vw-var(--space-8))] ui:-translate-x-1/2 ui:-translate-y-1/2 ui:rounded-lg ui:border ui:border-border ui:bg-sidebar ui:shadow-lg">
-          <div className="ui:flex ui:gap-3 ui:p-6">
+        <AlertDialog.Content className="ui:fixed ui:top-1/2 ui:left-1/2 ui:z-50 ui:w-130 ui:max-w-[calc(100vw-var(--space-8))] ui:-translate-x-1/2 ui:-translate-y-1/2 ui:rounded-lg ui:border ui:border-border ui:bg-popover ui:shadow-lg">
+          <div className="ui:flex ui:gap-3 ui:px-6 ui:pt-6 ui:pb-1">
             <span className="ui:flex ui:size-9 ui:shrink-0 ui:items-center ui:justify-center ui:rounded-lg ui:bg-primary-muted">
               <ArrowRightLeft
                 aria-hidden
@@ -165,7 +164,10 @@ function ConfirmSwitch({
             </p>
           )}
           <div className="ui:flex ui:justify-end ui:gap-2 ui:border-t ui:border-border ui:px-6 ui:py-5">
-            <AlertDialog.Cancel disabled={busy} className={`${BUTTON} ui:h-9`}>
+            <AlertDialog.Cancel
+              disabled={busy}
+              className={`${BUTTON} ui:h-9 ui:px-3.5`}
+            >
               Cancel
             </AlertDialog.Cancel>
             <button
@@ -266,7 +268,11 @@ export function OrganizationSwitcher({
                 <span className="ui:text-body-small ui:text-muted-foreground">
                   Could not load your organisations.
                 </span>
-                <button type="button" className={BUTTON} onClick={load}>
+                <button
+                  type="button"
+                  className={`${BUTTON} ui:px-2.5`}
+                  onClick={load}
+                >
                   Retry
                 </button>
               </div>
@@ -301,10 +307,10 @@ export function OrganizationSwitcher({
                           <button
                             type="button"
                             aria-label={`Switch to ${org.display_name}`}
-                            className={BUTTON}
+                            className={`${BUTTON} ui:px-2.5`}
                             onClick={() => setTarget(org)}
                           >
-                            <ArrowLeftRight aria-hidden className="ui:size-4" />
+                            <ArrowRightLeft aria-hidden className="ui:size-4" />
                             Switch
                           </button>
                         )}
@@ -313,7 +319,7 @@ export function OrganizationSwitcher({
                   })}
                 </ul>
                 {count === 1 && (
-                  <p className="ui:px-3 ui:py-2 ui:text-body-small ui:text-muted-foreground">
+                  <p className="ui:px-3 ui:pt-1.5 ui:text-caption ui:text-muted-foreground">
                     Nothing to switch to.
                   </p>
                 )}

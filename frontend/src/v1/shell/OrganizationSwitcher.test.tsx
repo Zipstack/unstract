@@ -155,6 +155,8 @@ describe("OrganizationSwitcher", () => {
       }),
     );
     const dialog = screen.getByRole("alertdialog");
+    // The Unstract theme's sidebar is navy under dark text.
+    expect(dialog).toHaveClass("ui:bg-popover");
     expect(
       within(dialog).getByText("Switch to Tanushree’s organisation?"),
     ).toBeInTheDocument();
@@ -340,6 +342,6 @@ describe("OrganizationSwitcher", () => {
     const button = await screen.findByRole("button", {
       name: "Switch to Tanushree’s organisation",
     });
-    expect(button.querySelector("svg.lucide-arrow-left-right")).not.toBeNull();
+    expect(button.querySelector("svg.lucide-arrow-right-left")).not.toBeNull();
   });
 });
