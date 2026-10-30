@@ -773,5 +773,135 @@ class TestApiDeploymentManualReviewContract:
         )
 
 
+class TestAutoEnableHighlightOrchestration:
+    """HITL confidence rules set ``auto_enable_highlight``.
+
+    The orchestrators check their own flow's rules once (API deployments the
+    API rules, only for a ``hitl_queue_name`` request without a
+    ``hitl_packet_id``; the rest the DB rules) and put the flag in
+    ``manual_review_config``, which the file workers read.
+    """
+
+    @staticmethod
+    def _util(confidence_rule_type):
+        """A workflow util with a confidence rule of one type, or none."""
+        util = MagicMock(name="workflow_util")
+        util.has_confidence_rules.side_effect = (
+            lambda workflow_id, rule_type: rule_type == confidence_rule_type
+        )
+        return util
+
+    @pytest.mark.parametrize(
+        "confidence_rule_type, hitl_kwargs, has_rules",
+        [
+            ("API", {"hitl_queue_name": "q"}, True),
+            ("DB", {"hitl_queue_name": "q"}, False),
+            (None, {"hitl_queue_name": "q"}, False),
+            # The destination evaluates no API rules for these requests.
+            ("API", {}, False),
+            ("API", {"hitl_queue_name": "q", "hitl_packet_id": "p"}, False),
+        ],
+    )
+    def test_api_deployment_sets_flag_on_every_batch(
+        self, monkeypatch, confidence_rule_type, hitl_kwargs, has_rules
+    ):
+        from shared.utils.manual_review_factory import AUTO_ENABLE_HIGHLIGHT
+
+        mocks = _setup_workflow_api_mocks(monkeypatch, num_batches=2)
+        util = self._util(confidence_rule_type)
+        monkeypatch.setattr(
+            mocks.api_tasks, "get_manual_review_workflow_util", lambda *a: util
+        )
+        configs = []
+        monkeypatch.setattr(
+            mocks.api_tasks,
+            "_create_file_data",
+            lambda **kwargs: MagicMock(manual_review_config={}),
+        )
+        monkeypatch.setattr(
+            mocks.api_tasks,
+            "_create_batch_data",
+            lambda **kwargs: configs.append(
+                dict(kwargs["file_data"].manual_review_config)
+            ),
+        )
+
+        mocks.api_tasks._run_workflow_api(
+            api_client=mocks.api_client,
+            schema_name="org_test",
+            workflow_id="wf-1",
+            execution_id="exec-1",
+            hash_values_of_files={"f1": MagicMock(name="file_1")},
+            scheduled=False,
+            execution_mode=None,
+            pipeline_id="pipe-1",
+            use_file_history=False,
+            task_id="task-1",
+            **hitl_kwargs,
+        )
+
+        if hitl_kwargs.get("hitl_queue_name") and not hitl_kwargs.get("hitl_packet_id"):
+            util.has_confidence_rules.assert_called_once_with("wf-1", "API")
+        else:
+            util.has_confidence_rules.assert_not_called()
+        assert len(configs) == 2
+        assert all(c.get(AUTO_ENABLE_HIGHLIGHT, False) is has_rules for c in configs)
+
+    @pytest.mark.parametrize(
+        "confidence_rule_type, has_rules", [("DB", True), ("API", False), (None, False)]
+    )
+    def test_general_sets_flag_on_global_file_data(
+        self, monkeypatch, confidence_rule_type, has_rules
+    ):
+        from general import tasks as general_tasks
+        from shared.utils.manual_review_factory import AUTO_ENABLE_HIGHLIGHT
+
+        api_client = MagicMock(name="api_client")
+        util = self._util(confidence_rule_type)
+        util.create_workflow_file_data_with_manual_review.return_value = MagicMock(
+            manual_review_config={}
+        )
+        service = MagicMock(name="manual_review_service")
+        service.get_workflow_util.return_value = util
+        monkeypatch.setattr(
+            general_tasks, "get_manual_review_service", lambda **kwargs: service
+        )
+        monkeypatch.setattr(
+            general_tasks,
+            "_get_file_batches_general",
+            lambda **kwargs: [MagicMock(name="batch_1")],
+        )
+        configs = []
+
+        def create_batch_data(**kwargs):
+            configs.append(dict(kwargs["file_data"].manual_review_config))
+            return MagicMock(files=[])
+
+        monkeypatch.setattr(
+            general_tasks, "_create_batch_data_general", create_batch_data
+        )
+        monkeypatch.setattr(general_tasks, "_log_batch_statistics_to_ui", MagicMock())
+        monkeypatch.setattr(
+            general_tasks.WorkflowOrchestrationUtils,
+            "create_chord_execution",
+            MagicMock(return_value=MagicMock(id="chord-id")),
+        )
+
+        general_tasks._orchestrate_file_processing_general(
+            api_client=api_client,
+            workflow_id="wf-1",
+            execution_id="exec-1",
+            source_files={"f1": MagicMock(name="file_1")},
+            pipeline_id="pipe-1",
+            scheduled=False,
+            execution_mode=None,
+            use_file_history=False,
+            organization_id="org_test",
+        )
+
+        util.has_confidence_rules.assert_called_once_with("wf-1", "DB")
+        assert configs[0].get(AUTO_ENABLE_HIGHLIGHT, False) is has_rules
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

@@ -894,7 +894,10 @@ class TestStructureToolParamsPassthrough:
         "_is_structure_tool_workflow",
         return_value=True,
     )
-    def test_structure_tool_params_passthrough(self, mock_is_struct, mock_exec_struct):
+    @pytest.mark.parametrize("auto_enable", [True, False])
+    def test_structure_tool_params_passthrough(
+        self, mock_is_struct, mock_exec_struct, auto_enable
+    ):
         from shared.workflow.execution.service import (
             WorkerWorkflowExecutionService,
         )
@@ -904,10 +907,68 @@ class TestStructureToolParamsPassthrough:
         mock_exec_service = MagicMock()
         mock_exec_service.tool_instances = [MagicMock()]
 
-        service._build_and_execute_workflow(mock_exec_service, "test.pdf")
+        service._build_and_execute_workflow(
+            mock_exec_service, "test.pdf", auto_enable_highlight=auto_enable
+        )
 
         # Verify _execute_structure_tool_workflow was called
-        mock_exec_struct.assert_called_once_with(mock_exec_service, "test.pdf")
+        mock_exec_struct.assert_called_once_with(
+            mock_exec_service, "test.pdf", auto_enable
+        )
+
+    @pytest.mark.parametrize(
+        "review_config, expected",
+        [({"auto_enable_highlight": True}, True), ({}, False)],
+    )
+    @patch(
+        "shared.workflow.execution.service.WorkerWorkflowExecutionService."
+        "_build_and_execute_workflow"
+    )
+    @patch(
+        "shared.workflow.execution.service.WorkerWorkflowExecutionService."
+        "_prepare_workflow_input_file",
+        return_value=None,
+    )
+    @patch(
+        "shared.workflow.execution.service.WorkerWorkflowExecutionService."
+        "_compile_workflow",
+        return_value=True,
+    )
+    def test_auto_enable_highlight_read_from_review_config(
+        self, mock_compile, mock_prepare, mock_build, review_config, expected
+    ):
+        from shared.workflow.execution.service import (
+            WorkerWorkflowExecutionService,
+        )
+
+        context = MagicMock()
+        context.file_data.manual_review_config = review_config
+
+        assert WorkerWorkflowExecutionService()._execute_workflow_with_service(
+            execution_service=MagicMock(),
+            file_processing_context=context,
+            file_name="invoice.pdf",
+            workflow_file_execution_id="",
+            execution_id="exec-1",
+            workflow_id="wf-1",
+        )
+        assert mock_build.call_args.kwargs["auto_enable_highlight"] is expected
+
+    @pytest.mark.parametrize(
+        "util, expected",
+        [
+            (MagicMock(has_confidence_rules=MagicMock(return_value=True)), True),
+            (MagicMock(has_confidence_rules=MagicMock(return_value=False)), False),
+            # Older plugin without the method
+            (object(), False),
+        ],
+    )
+    def test_has_confidence_rules_helper(self, util, expected):
+        from shared.utils.manual_review_factory import has_confidence_rules
+
+        assert has_confidence_rules(util, "wf-1", "DB") is expected
+        if isinstance(util, MagicMock):
+            util.has_confidence_rules.assert_called_once_with("wf-1", "DB")
 
     @patch(
         "shared.workflow.execution.service.WorkerWorkflowExecutionService."
@@ -962,6 +1023,154 @@ class TestStructureToolParamsPassthrough:
         params = mock_execute_struct.call_args[0][0]
         assert params["source_file_name"] == "invoice.pdf"
         assert params["source_file_name"] != "SOURCE"
+
+    @pytest.mark.parametrize("auto_enable", [True, False])
+    @patch(
+        "shared.workflow.execution.service.WorkerWorkflowExecutionService."
+        "_get_platform_service_api_key",
+        return_value="sk-test",
+    )
+    @patch("file_processing.structure_tool_task.execute_structure_tool")
+    def test_auto_enable_highlight_passed_in_params(
+        self, mock_execute_struct, mock_get_key, auto_enable
+    ):
+        """The service passes the flag on and leaves the metadata alone."""
+        from shared.workflow.execution.service import (
+            WorkerWorkflowExecutionService,
+        )
+
+        saved_metadata = {"enable_highlight": False}
+        mock_exec_service = MagicMock()
+        mock_exec_service.tool_instances = [MagicMock(metadata=saved_metadata)]
+        mock_exec_service.file_handler.get_workflow_metadata.return_value = {}
+        mock_execute_struct.return_value = {"success": True}
+
+        WorkerWorkflowExecutionService()._execute_structure_tool_workflow(
+            mock_exec_service, "invoice.pdf", auto_enable_highlight=auto_enable
+        )
+
+        params = mock_execute_struct.call_args[0][0]
+        assert params["auto_enable_highlight"] is auto_enable
+        assert params["tool_instance_metadata"] == {"enable_highlight": False}
+
+
+class TestAutoEnableHighlight:
+    """``auto_enable_highlight`` turns highlight on for the run."""
+
+    @pytest.mark.parametrize(
+        "user_highlight, auto_enable, expected",
+        [
+            (False, True, True),  # HITL confidence rule present
+            (True, False, True),  # user setting respected
+            (False, False, False),
+        ],
+    )
+    @patch(_PATCH_SHIM)
+    @patch(_PATCH_FILE_STORAGE)
+    @patch(_PATCH_PLATFORM_HELPER)
+    @patch(_PATCH_DISPATCHER)
+    def test_regular_overrides_a_copy(
+        self,
+        mock_get_executor_dispatcher,
+        mock_create_ph,
+        mock_get_fs,
+        mock_shim_cls,
+        base_params,
+        tool_metadata_regular,
+        mock_fs,
+        mock_platform_helper,
+        user_highlight,
+        auto_enable,
+        expected,
+    ):
+        """Word confidence and the saved metadata stay as the user set them."""
+        from file_processing.structure_tool_task import (
+            _execute_structure_tool_impl as execute_structure_tool,
+        )
+        from shared.utils.manual_review_factory import (
+            HIGHLIGHT_AUTO_ENABLED_MESSAGE,
+        )
+
+        mock_get_fs.return_value = mock_fs
+        mock_create_ph.return_value = mock_platform_helper
+        mock_platform_helper.get_prompt_studio_tool.return_value = {
+            "tool_metadata": tool_metadata_regular,
+        }
+        dispatcher_instance = create_autospec(PgExecutionDispatcher, instance=True)
+        mock_get_executor_dispatcher.return_value = dispatcher_instance
+        dispatcher_instance.dispatch.return_value = _make_pipeline_result()
+
+        saved_metadata = base_params["tool_instance_metadata"]
+        saved_metadata["enable_highlight"] = user_highlight
+        saved_metadata["enable_word_confidence"] = False
+        base_params["auto_enable_highlight"] = auto_enable
+
+        execute_structure_tool(base_params)
+
+        ep = dispatcher_instance.dispatch.call_args[0][0].executor_params
+        assert ep["extract_params"]["enable_highlight"] is expected
+        assert ep["answer_params"]["tool_settings"]["enable_word_confidence"] is False
+        assert saved_metadata["enable_highlight"] is user_highlight
+        messages = [
+            c.args[0] for c in mock_shim_cls.return_value.stream_log.call_args_list
+        ]
+        assert (HIGHLIGHT_AUTO_ENABLED_MESSAGE in messages) is auto_enable
+
+    @patch("unstract.sdk1.x2txt.X2Text")
+    @patch(_PATCH_SHIM)
+    @patch(_PATCH_FILE_STORAGE)
+    @patch(_PATCH_PLATFORM_HELPER)
+    @patch(_PATCH_DISPATCHER)
+    def test_agentic_keeps_user_setting(
+        self,
+        mock_get_executor_dispatcher,
+        mock_create_ph,
+        mock_get_fs,
+        mock_shim_cls,
+        mock_x2text_cls,
+        base_params,
+        mock_fs,
+        mock_platform_helper,
+    ):
+        """Agentic runs get no highlight data, so the flag is ignored."""
+        from file_processing.structure_tool_task import (
+            _execute_structure_tool_impl as execute_structure_tool,
+        )
+        from shared.utils.manual_review_factory import (
+            HIGHLIGHT_AUTO_ENABLED_MESSAGE,
+        )
+
+        mock_get_fs.return_value = mock_fs
+        mock_create_ph.return_value = mock_platform_helper
+        mock_platform_helper.get_prompt_studio_tool.return_value = None
+        mock_platform_helper.get_agentic_studio_tool.return_value = {
+            "tool_metadata": {
+                "name": "Agentic Project",
+                "project_id": "ap-001",
+                "json_schema": {"field": "string"},
+            },
+        }
+        dispatcher_instance = create_autospec(PgExecutionDispatcher, instance=True)
+        mock_get_executor_dispatcher.return_value = dispatcher_instance
+        dispatcher_instance.dispatch.return_value = ExecutionResult(
+            success=True, data={"output": {"field": "value"}}
+        )
+        mock_x2text_instance = MagicMock()
+        mock_x2text_instance.process.return_value = MagicMock(
+            extracted_text="extracted text"
+        )
+        mock_x2text_cls.return_value = mock_x2text_instance
+
+        base_params["tool_instance_metadata"]["enable_highlight"] = False
+        base_params["auto_enable_highlight"] = True
+
+        execute_structure_tool(base_params)
+
+        assert mock_x2text_instance.process.call_args.kwargs["enable_highlight"] is False
+        messages = [
+            c.args[0] for c in mock_shim_cls.return_value.stream_log.call_args_list
+        ]
+        assert HIGHLIGHT_AUTO_ENABLED_MESSAGE not in messages
 
 
 class TestHelperFunctions:

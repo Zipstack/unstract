@@ -28,6 +28,10 @@ from queue_backend.pg_queue.executor_rpc import (
 )
 from shared.enums.task_enums import TaskName
 from shared.infrastructure.context import StateStore
+from shared.utils.manual_review_factory import (
+    AUTO_ENABLE_HIGHLIGHT,
+    HIGHLIGHT_AUTO_ENABLED_MESSAGE,
+)
 
 from unstract.sdk1.constants import ToolEnv, UsageKwargs
 from unstract.sdk1.execution.context import ExecutionContext
@@ -364,6 +368,20 @@ def _execute_structure_tool_impl(params: dict) -> dict:
             fs=fs,
             execution_data_dir=execution_data_dir,
         )
+
+    # HITL confidence rules need highlight data. Override a copy so the
+    # user's saved setting is unchanged. Agentic projects are skipped above:
+    # workflow runs give them no highlight data, so confidence can't work.
+    # Known limit: with an extractor other than LLMWhisperer V2, no highlight
+    # plugin, or summarize-as-source, highlight still gives no confidence and
+    # rules still score 100; this line is logged anyway.
+    # Highlight also changes extraction: the prompt gets the line-number
+    # postamble and LLMWhisperer V2 adds line numbers, so answers may differ
+    # from a run with highlight off. This is accepted: confidence needs the
+    # line numbers the postamble asks for.
+    if params.get(AUTO_ENABLE_HIGHLIGHT):
+        tool_instance_metadata = {**tool_instance_metadata, _SK.ENABLE_HIGHLIGHT: True}
+        shim.stream_log(HIGHLIGHT_AUTO_ENABLED_MESSAGE)
 
     # ---- Step 3: Profile overrides ----
     _handle_profile_overrides(exec_metadata, platform_helper, tool_metadata)
