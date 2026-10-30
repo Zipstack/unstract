@@ -1,12 +1,22 @@
 import http
 import logging
 import os
+import re
 import uuid
+from importlib import import_module
 from typing import Any
 
 import socketio
 from django.conf import settings
+from django.contrib.auth import (
+    BACKEND_SESSION_KEY,
+    HASH_SESSION_KEY,
+    SESSION_KEY,
+    load_backend,
+)
 from django.core.wsgi import WSGIHandler
+from django.db import close_old_connections
+from django.utils.crypto import constant_time_compare
 
 from unstract.core.cache.redis_client import create_redis_client
 from unstract.core.data_models import LogDataDTO
@@ -15,6 +25,8 @@ from utils.constants import ExecutionLogConstants
 from utils.cors_origin import RegexOrigin
 
 logger = logging.getLogger(__name__)
+
+_SESSION_KEY_RE = re.compile(r"[a-z0-9]{32}")
 
 
 _cors_allowed_origins: list[Any] = list(settings.CORS_ALLOWED_ORIGINS)
@@ -75,6 +87,14 @@ def connect(sid: str, environ: Any, auth: Any) -> None:
     if session_id:
         sio.enter_room(sid, session_id)
         logger.info(f"Entered room {session_id} for socket {sid}")
+        user_id = _get_user_id(sid, session_id)
+        if user_id:
+            # Per-user events, such as the inbox unread count.
+            sio.enter_room(sid, f"user:{user_id}")
+        else:
+            logger.info(
+                f"No signed-in user for the session of socket {sid}; no user room"
+            )
     else:
         sio.disconnect(sid)
 
@@ -105,8 +125,55 @@ def _get_user_session_id_from_cookies(sid: str, environ: Any) -> str | None:
     if not session_id:
         logger.warning(f"No session ID found in cookies for SID {sid}")
         return None
+    # Django session keys are 32 lowercase letters and digits. Anything else,
+    # such as "user:5", could name another room, so it is refused before any
+    # session lookup.
+    if not _SESSION_KEY_RE.fullmatch(session_id.value):
+        logger.warning(f"Malformed session ID in cookies for SID {sid}")
+        return None
 
     return session_id.value
+
+
+def _get_user_id(sid: str, session_id: str) -> str | None:
+    """The signed-in user of a session, or None.
+
+    Applies the checks django.contrib.auth.get_user applies to an HTTP request
+    with the same cookie: the session's backend is still configured and still
+    returns the user (a deactivated user is refused), and the session hash still
+    matches (a password change signs the session out). Unlike get_user, it never
+    flushes or rotates the session, which the browser's cookie still names.
+    """
+    # Socket handlers run outside Django's request cycle, which is what normally
+    # closes stale connections.
+    close_old_connections()
+    try:
+        store = import_module(settings.SESSION_ENGINE).SessionStore(
+            session_key=session_id
+        )
+        user_id = store.get(SESSION_KEY)
+        backend_path = store.get(BACKEND_SESSION_KEY)
+        if user_id is None or backend_path not in settings.AUTHENTICATION_BACKENDS:
+            return None
+        user = load_backend(backend_path).get_user(user_id)
+        if user is None:
+            return None
+        if hasattr(user, "get_session_auth_hash"):
+            session_hash = store.get(HASH_SESSION_KEY)
+            hashes = [
+                user.get_session_auth_hash(),
+                *user.get_session_auth_fallback_hash(),
+            ]
+            if not session_hash or not any(
+                constant_time_compare(session_hash, h) for h in hashes
+            ):
+                return None
+        return user_id
+    except Exception:
+        logger.exception(f"Could not read the session of socket {sid}")
+        return None
+    finally:
+        close_old_connections()
 
 
 # Functions moved to unstract.core.log_utils for sharing with workers

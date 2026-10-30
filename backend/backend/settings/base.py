@@ -479,7 +479,8 @@ SECRET_KEY = get_required_setting("DJANGO_SECRET_KEY")
 ENCRYPTION_KEY = get_required_setting("ENCRYPTION_KEY")
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+# Off unless DJANGO_DEBUG asks for it: the published image runs settings.dev.
+DEBUG = CommonUtils.str_to_bool(os.environ.get("DJANGO_DEBUG", "False"))
 
 ALLOWED_HOSTS = ["*"]
 CSRF_TRUSTED_ORIGINS = [WEB_APP_ORIGIN_URL, WEB_APP_ORIGIN_URL_WITH_WILD_CARD]
@@ -572,6 +573,8 @@ SHARED_APPS = (
     "commands",
     # health checks
     "health",
+    # Platform-wide Prometheus /metrics
+    "platform_metrics",
     "migrating.v2",
     "connector_auth_v2",
     "tenant_account_v2",
@@ -589,6 +592,7 @@ SHARED_APPS = (
     "mcp_server",
     "usage_v2",
     "notification_v2",
+    "inbox",
     "prompt_studio.prompt_profile_manager_v2",
     "prompt_studio.prompt_studio_v2",
     "prompt_studio.prompt_studio_core_v2",
@@ -1143,6 +1147,88 @@ WHITELISTED_PATHS.extend(
 
 # Whitelisting health check API
 WHITELISTED_PATHS.append("/health")
+
+# Platform-wide Prometheus /metrics (platform_metrics). Mounted at the root
+# like /health, outside every public ingress prefix, so it is served on the
+# backend service for in-cluster scraping only. Exempt from session auth; set
+# PLATFORM_METRICS_TOKEN to additionally require `Authorization: Bearer <token>`.
+WHITELISTED_PATHS.append("/metrics")
+PLATFORM_METRICS_TOKEN = os.environ.get("PLATFORM_METRICS_TOKEN", "")
+# How long one pod's refresh of a metric group is shared via Redis.
+PLATFORM_METRICS_CACHE_TTL_SECONDS = int(
+    os.environ.get("PLATFORM_METRICS_CACHE_TTL_SECONDS", 15)
+)
+# Postgres statement timeout for each group's refresh.
+PLATFORM_METRICS_QUERY_TIMEOUT_MS = int(
+    os.environ.get("PLATFORM_METRICS_QUERY_TIMEOUT_MS", 5000)
+)
+# unstract_workflow_executions_recent counts executions that went terminal
+# within this window...
+PLATFORM_METRICS_RECENT_WINDOW_SECONDS = int(
+    os.environ.get("PLATFORM_METRICS_RECENT_WINDOW_SECONDS", 3600)
+)
+# ...among executions created within this lookback, which keeps the query on
+# the created_at index instead of scanning the whole history.
+PLATFORM_METRICS_RECENT_LOOKBACK_SECONDS = int(
+    os.environ.get("PLATFORM_METRICS_RECENT_LOOKBACK_SECONDS", 86400)
+)
+# Same variable and default as the PG reaper, so unstract_batches_stuck counts
+# exactly what the reaper treats as stranded.
+PLATFORM_METRICS_BATCH_STUCK_TIMEOUT_SECONDS = int(
+    os.environ.get("WORKER_PG_BATCH_STUCK_TIMEOUT_SECONDS", 9000)
+)
+# Connect and read timeout for the metrics endpoint's own Redis pool, so a
+# stalled Redis fails a scrape over to the per-process fallback instead of
+# hanging it (KEDA's metrics-api client gives up after 3s).
+PLATFORM_METRICS_REDIS_TIMEOUT_SECONDS = float(
+    os.environ.get("PLATFORM_METRICS_REDIS_TIMEOUT_SECONDS", 1)
+)
+# Queue counts older than this are left out of the scrape instead of being
+# served as current, so a dashboard shows a gap and a KEDA trigger errors into
+# its fallback rather than scaling on a frozen value. Kept above the worst
+# healthy age (the cache TTL plus the 30s refresh-lock floor).
+PLATFORM_METRICS_QUEUE_MAX_STALENESS_SECONDS = int(
+    os.environ.get("PLATFORM_METRICS_QUEUE_MAX_STALENESS_SECONDS", 60)
+)
+# Queues always reported (as 0 when empty), on top of any queue that currently
+# holds messages. Defaults to the queues the PG consumers in
+# docker/docker-compose.yaml consume; override with a comma-separated list
+# where a deployment runs others.
+PLATFORM_METRICS_QUEUES = [
+    queue.strip()
+    for queue in os.environ.get(
+        "PLATFORM_METRICS_QUEUES",
+        ",".join(
+            [
+                "agent_kv_callback",
+                "api_file_processing",
+                "api_file_processing_callback",
+                "celery",
+                "celery_api_deployments",
+                "celery_callback",
+                "celery_executor_agentic",
+                "celery_executor_agentic_table",
+                "celery_executor_legacy",
+                "celery_executor_lookup_test",
+                "celery_executor_simple_prompt_studio",
+                "celery_executor_smart_table",
+                "celery_executor_table",
+                "dashboard_metric_events",
+                "file_processing",
+                "file_processing_callback",
+                "file_processing_priority",
+                "ide_callback",
+                "notifications",
+                "notifications_email",
+                "notifications_priority",
+                "notifications_sms",
+                "notifications_webhook",
+                "scheduler",
+            ]
+        ),
+    ).split(",")
+    if queue.strip()
+]
 
 # These path will work without organization in request.
 # `whoami` resolves the organisation from the API key itself, so it carries no
