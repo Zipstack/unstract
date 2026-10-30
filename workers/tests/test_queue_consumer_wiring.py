@@ -15,10 +15,10 @@ The assertions run in BOTH directions, which is the part to read carefully:
   nothing can drain -- the same silent failure, arrived at from the other side.
 
 **These names are literals, and that is a known limitation.** Re-enabling the
-``kv`` extractor is one ``EXTRACTOR_ROUTES`` entry, after which
-``celery_executor_agentic_kv`` must be SERVED -- and the inverse assertion
-above would have to be deleted to go green, which is the one moment a guard
-should not be getting deleted. The derived version of both directions lives in
+``kv`` extractor makes ``celery_executor_agentic_kv`` a queue that must be
+SERVED -- and the inverse assertion above would then have to be deleted to go
+green, which is the one moment a guard should not be getting deleted. The
+derived version of both directions lives in
 ``backend/agent_kv/tests/test_queue_wiring_is_derived.py``, where
 ``EXTRACTOR_ROUTES`` is actually importable (the backend package is not
 importable from this test venv -- that asymmetry is why the duplication
