@@ -452,7 +452,7 @@ class APIDeploymentViewSet(
         except PromptStudioRegistry.DoesNotExist:
             return Response([], status=status.HTTP_200_OK)
         except Exception as e:
-            logger.error(f"Error fetching API deployments for tool {tool_id}: {e}")
+            logger.exception(f"Error fetching API deployments for tool {tool_id}: {e}")
             return Response(
                 {"error": "Failed to fetch API deployments"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,

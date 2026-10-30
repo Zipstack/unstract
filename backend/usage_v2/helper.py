@@ -170,7 +170,9 @@ class UsageHelper:
                 result.setdefault(key, []).append(item)
             return result
         except Exception as e:
-            logger.error("Error querying per-model usage for run_id %s: %s", run_id, e)
+            logger.exception(
+                "Error querying per-model usage for run_id %s: %s", run_id, e
+            )
             return {}
 
     @staticmethod

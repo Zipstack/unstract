@@ -219,7 +219,7 @@ class InternalAPIAuthMiddleware(MiddlewareMixin):
                 }
 
         except Exception as e:
-            logger.error(f"Unexpected error setting organization context: {str(e)}")
+            logger.exception(f"Unexpected error setting organization context: {str(e)}")
             return {
                 "warning": f"Failed to set organization context: {str(e)}",
                 "context_set": False,

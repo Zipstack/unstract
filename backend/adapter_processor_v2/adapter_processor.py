@@ -148,7 +148,7 @@ class AdapterProcessor:
         try:
             model = adapter.metadata.get("model")
         except Exception as e:
-            logger.error(
+            logger.exception(
                 "Could not read metadata for adapter %s: %s", adapter.adapter_id, e
             )
             model = None

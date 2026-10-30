@@ -28,7 +28,7 @@ class FeatureFlagHelper:
             )
             return response
         except Exception as e:
-            logger.error(
+            logger.exception(
                 f"Error while listing flags for namespace {namespace_key}: {str(e)}"
             )
             return {}

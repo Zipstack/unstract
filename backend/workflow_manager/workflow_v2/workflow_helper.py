@@ -283,7 +283,9 @@ class WorkflowHelper:
                     execution_id=str(workflow_execution.id),
                 )
             except Exception as e:
-                logger.error(f"Error in subscription usage plugin failure handler: {e}")
+                logger.exception(
+                    f"Error in subscription usage plugin failure handler: {e}"
+                )
 
         logger.error(
             f"Execution {workflow_execution.id} failed: {str(error)}", exc_info=True
@@ -1178,7 +1180,7 @@ class WorkflowHelper:
             response["status"] = 200
             return response
         except Exception as exc:
-            logger.error(f"Error occurred while clearing file marker : {exc}")
+            logger.exception(f"Error occurred while clearing file marker : {exc}")
             response["message"] = WorkflowMessages.FILE_MARKER_CLEAR_FAILED
             response["status"] = 400
             return response

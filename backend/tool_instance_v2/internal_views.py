@@ -71,7 +71,7 @@ class ToolExecutionInternalViewSet(viewsets.ModelViewSet):
             )
 
         except Exception as e:
-            logger.error(f"Tool execution failed for tool {pk}: {e}")
+            logger.exception(f"Tool execution failed for tool {pk}: {e}")
             return Response(
                 {
                     "status": "error",
@@ -101,7 +101,7 @@ def tool_execution_status_internal(request, execution_id):
         )
 
     except Exception as e:
-        logger.error(f"Failed to get tool execution status for {execution_id}: {e}")
+        logger.exception(f"Failed to get tool execution status for {execution_id}: {e}")
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
@@ -168,7 +168,7 @@ def tool_by_id_internal(request, tool_id):
                     properties_dict = {"default": "true"}  # Fallback
                     logger.warning(f"Using fallback properties for tool {tool_id}")
         except Exception as props_error:
-            logger.error(
+            logger.exception(
                 f"Failed to serialize properties for tool {tool_id}: {props_error}"
             )
             properties_dict = {"error": "serialization_failed"}
@@ -267,7 +267,7 @@ def tool_instances_by_workflow_internal(request, workflow_id):
             serializer_data = serializer.data
             logger.info(f"Serialization completed, got {len(serializer_data)} items")
         except Exception as serializer_error:
-            logger.error(f"Serialization error: {serializer_error}")
+            logger.exception(f"Serialization error: {serializer_error}")
             # Try to return basic data without enhanced tool information
             basic_data = []
             for instance in tool_instances:
@@ -384,7 +384,7 @@ def validate_tool_instances_internal(request):
                         "error": str(e),
                     }
                 )
-                logger.error(f"Tool validation failed for {tool.tool_id}: {e}")
+                logger.exception(f"Tool validation failed for {tool.tool_id}: {e}")
 
         # Return validation results
         response_data = {

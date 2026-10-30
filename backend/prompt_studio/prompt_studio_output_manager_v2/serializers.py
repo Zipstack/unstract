@@ -43,7 +43,7 @@ class PromptStudioOutputSerializer(AuditSerializer):
             data["coverage"] = coverage
 
         except Exception as e:
-            logger.error(
+            logger.exception(
                 "Error occurred while fetching "
                 f"coverage for tool_id {instance.tool_id} "
                 f"and profile_manager_id {instance.profile_manager_id}: {e}"
@@ -54,7 +54,7 @@ class PromptStudioOutputSerializer(AuditSerializer):
         try:
             data = enrich_prompt_output(instance, data)
         except Exception as e:
-            logger.error(
+            logger.exception(
                 "Error occurred while enriching prompt output for "
                 f"prompt_id {instance.prompt_id} (run_id={instance.run_id}): {e}"
                 " | Process continued"

@@ -112,7 +112,7 @@ class ToolRegistry:
             self.helper.save_tools(data=tools)
             logger.info(f"Tool '{tool_id}' removed from tools file successfully.")
         except Exception as e:
-            logger.error(f"An error occurred: {str(e)}")
+            logger.exception(f"An error occurred: {str(e)}")
 
     def list_tools_urls(self) -> list[str]:
         """List all the tools available in the registry."""

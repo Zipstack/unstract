@@ -119,7 +119,7 @@ def delete_from_vector_db(index_ids_history, vector_db_instance_id):
             vector_db.delete(ref_doc_id=index_id)
         except Exception as e:
             # Log error and continue with the next index id
-            logger.error(f"Error deleting index: {index_id} - {e}")
+            logger.exception(f"Error deleting index: {index_id} - {e}")
 
 
 # Function will be executed every time an instance of IndexManager is deleted.

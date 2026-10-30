@@ -90,7 +90,7 @@ class WorkerResultCacheUtils:
             return results
 
         except Exception as e:
-            logger.error(
+            logger.exception(
                 f"Failed to retrieve API results for execution {execution_id}: {e}"
             )
             return []
@@ -103,7 +103,7 @@ class WorkerResultCacheUtils:
             redis_client.delete(cache_key)
 
         except Exception as e:
-            logger.error(
+            logger.exception(
                 f"Failed to delete API results for execution {execution_id}: {e}"
             )
 

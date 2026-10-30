@@ -80,7 +80,7 @@ def emit_websocket(request):
             {"status": "error", "message": "Invalid JSON payload"}, status=400
         )
     except Exception as e:
-        logger.error(f"Error emitting WebSocket event: {e}")
+        logger.exception(f"Error emitting WebSocket event: {e}")
         return JsonResponse(
             {"status": "error", "message": f"Failed to emit WebSocket event: {str(e)}"},
             status=500,

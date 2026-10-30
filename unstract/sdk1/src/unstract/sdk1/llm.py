@@ -1329,7 +1329,7 @@ class LLM:
                 # Needed as the text is modified in place.
                 response_text = response_compat.text
             except Exception as e:
-                logger.error(
+                logger.exception(
                     f"[sdk1][LLM][complete] Failed to post process response: {e}"
                 )
                 post_processed_output = {}
