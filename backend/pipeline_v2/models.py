@@ -1,10 +1,13 @@
 import uuid
+from datetime import datetime
 
 from account_v2.models import User
+from croniter import croniter
 from django.conf import settings
 from django.contrib.contenttypes.fields import GenericRelation
 from django.db import models
 from django.db.models import Q
+from django.utils import timezone
 from permissions.models import HasMembersMixin
 from tenant_account_v2.organization_member_service import OrganizationMemberService
 from tenant_account_v2.sharing_helpers import (
@@ -181,3 +184,16 @@ class Pipeline(HasMembersMixin, DefaultOrganizationMixin, BaseModel):
 
     def is_active(self) -> bool:
         return bool(self.active)
+
+    def next_run_time(self) -> datetime | None:
+        """Next run from ``cron_string``; ``None`` when inactive or unscheduled."""
+        if not self.cron_string or not self.active:
+            return None
+        try:
+            next_run: datetime = croniter(self.cron_string, timezone.now()).get_next(
+                datetime
+            )
+        except Exception:
+            # Silent on purpose: the list calls this for every row.
+            return None
+        return next_run

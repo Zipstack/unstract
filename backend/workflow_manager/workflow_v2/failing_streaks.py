@@ -51,6 +51,18 @@ def _finished_runs() -> QuerySet[WorkflowExecution]:
     ).order_by("-created_at")
 
 
+def failing_only(rows: QuerySet[Any]) -> QuerySet[Any]:
+    """``rows`` whose last five finished runs all ended in ERROR.
+
+    Annotates ``_last_failure``, the latest of those runs.
+    """
+    finished = _finished_runs()
+    return rows.annotate(
+        _recent_statuses=ArraySubquery(finished.values("status")[:FAILING_STREAK_RUNS]),
+        _last_failure=Subquery(finished.values("created_at")[:1]),
+    ).filter(_recent_statuses=[_FAILED] * FAILING_STREAK_RUNS)
+
+
 def failing_streaks(
     rows: QuerySet[Any],
     start_date: datetime | None = None,
@@ -69,10 +81,7 @@ def failing_streaks(
     are computed only for rows that are failing.
     """
     finished = _finished_runs()
-    rows = rows.annotate(
-        _recent_statuses=ArraySubquery(finished.values("status")[:FAILING_STREAK_RUNS]),
-        _last_failure=Subquery(finished.values("created_at")[:1]),
-    ).filter(_recent_statuses=[_FAILED] * FAILING_STREAK_RUNS)
+    rows = failing_only(rows)
     if start_date is not None:
         rows = rows.filter(_last_failure__gte=start_date)
     if end_date is not None:
