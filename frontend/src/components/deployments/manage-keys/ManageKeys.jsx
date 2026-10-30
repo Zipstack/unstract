@@ -264,12 +264,16 @@ const ManageKeys = ({
       title: "API Key",
       dataIndex: "api_key",
       key: "api_key",
-      // Copy, a revealed UUID key (.manage-keys__key) and Show/Hide.
-      width: 390,
+      // Room for Copy, a revealed UUID key and Show/Hide at the default font
+      // size; a larger font truncates the key rather than overflow the cell.
+      width: "62%",
       render: (_, record) => {
         const isVisible = visibleKeyIds.has(record?.id);
         return (
-          <Space direction="horizontal" className="action-items">
+          <Space
+            direction="horizontal"
+            className="action-items manage-keys__key-cell"
+          >
             <Tooltip title="Copy key">
               <Button
                 type="text"
@@ -300,7 +304,7 @@ const ManageKeys = ({
       key: "is_active",
       dataIndex: "is_active",
       align: "center",
-      width: 72,
+      width: "4.5rem",
       render: (_, record) => (
         <Tooltip title={ownerOnlyTitle}>
           <Switch
@@ -318,7 +322,7 @@ const ManageKeys = ({
       title: "Actions",
       key: "pipeline_id",
       align: "center",
-      width: 88,
+      width: "5.5rem",
       render: (_, record) => (
         <div className="manage-keys__actions">
           <Space

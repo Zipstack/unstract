@@ -22,11 +22,26 @@
   cursor: not-allowed;
 }
 
-/* Wide enough for a full UUID key, so revealing it does not move the eye
-   button sideways. */
+/* The key fills the cell between Copy and Show/Hide, so revealing it does not
+   move the eye button sideways, and a key wider than its column is cut with an
+   ellipsis instead of pushing Show/Hide over the next column. Only the display
+   is cut: the full key stays in the text, which is what Copy and the UI
+   regression specs read. */
+.manage-keys__key-cell {
+  display: flex;
+  width: 100%;
+}
+
+.manage-keys__key-cell > .ant-space-item:has(> .manage-keys__key) {
+  flex: 1;
+  min-width: 0;
+}
+
 .manage-keys__key {
-  display: inline-block;
-  min-width: 36ch;
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-family: monospace;
 }
 
