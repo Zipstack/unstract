@@ -23,7 +23,13 @@ STATIC_DIR = (
 
 RETIRED_DEFAULT_MODELS = {
     "openai.json": {"gpt-3.5-turbo", "gpt-4", "gpt-4-turbo", "o1", "o3-mini", "o4-mini"},
-    "gemini.json": {"gemini-1.5-pro", "gemini-1.5-flash", "gemini-2.0-flash", "gemini-2.5-pro", "gemini-2.5-flash"},
+    "gemini.json": {
+        "gemini-1.5-pro",
+        "gemini-1.5-flash",
+        "gemini-2.0-flash",
+        "gemini-2.5-pro",
+        "gemini-2.5-flash",
+    },
     "anthropic.json": {"claude-instant-1.2", "claude-2.1", "claude-3-opus-20240229"},
 }
 
