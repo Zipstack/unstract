@@ -100,6 +100,10 @@ POST_47_POSITIVES: list[str] = [
     "claude-opus-4-8",
     "anthropic.claude-opus-4-8-20260101-v1:0",
     "azure_ai/claude-opus-4-8",
+    # Haiku 5.5
+    "claude-haiku-5-5",
+    "anthropic.claude-haiku-5-5-20260101-v1:0",
+    "vertex_ai/claude-haiku-5-5@20260101",
     # Fable 5 / Mythos 5
     "claude-fable-5",
     "vertex_ai/claude-fable-5@20260101",
