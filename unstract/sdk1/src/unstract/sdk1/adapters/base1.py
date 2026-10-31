@@ -59,6 +59,7 @@ _SAMPLING_DEPRECATED_MODEL_STEMS: tuple[str, ...] = (
     "claude-opus-4-7",
     "claude-opus-4-8",
     "claude-sonnet-5",
+    "claude-haiku-5",
     "claude-fable-5",
     "claude-mythos-5",
     "gpt-6",

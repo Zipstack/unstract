@@ -12,7 +12,7 @@
     "model": {
       "type": "string",
       "title": "Model",
-      "default": "claude-instant-1.2",
+      "default": "claude-haiku-5-5",
       "description": "Model name. Refer to Anthropic's documentation for the list of available models."
     },
     "api_key": {
