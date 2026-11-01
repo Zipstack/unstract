@@ -43,8 +43,8 @@ async function pickOrgB(session) {
       <SetOrg />
     </MemoryRouter>,
   );
-  await waitFor(() => expect(sessionData).toHaveBeenCalled());
   const connect = screen.getAllByRole("button", { name: /Connect/ })[1];
+  await waitFor(() => expect(connect).toBeEnabled());
   await user.click(connect);
 }
 
@@ -65,6 +65,32 @@ describe("SetOrg", () => {
       }),
     );
     expect(switchOrgViaLogin).not.toHaveBeenCalled();
+  });
+
+  it("keeps Connect disabled until the session has loaded", async () => {
+    let resolveSession;
+    sessionData.mockReturnValue(
+      new Promise((resolve) => {
+        resolveSession = resolve;
+      }),
+    );
+    render(
+      <MemoryRouter initialEntries={[{ pathname: "/setOrg", state: ORGS }]}>
+        <SetOrg />
+      </MemoryRouter>,
+    );
+    const buttons = screen.getAllByRole("button", { name: /Connect/ });
+    for (const button of buttons) {
+      expect(button).toBeDisabled();
+    }
+
+    resolveSession({ organization_id: null, org_switch_via_login: true });
+
+    await waitFor(() => {
+      for (const button of buttons) {
+        expect(button).toBeEnabled();
+      }
+    });
   });
 
   it("logs in again naming the picked organization when the session asks", async () => {

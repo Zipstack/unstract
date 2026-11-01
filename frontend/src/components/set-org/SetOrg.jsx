@@ -27,7 +27,8 @@ function SetOrg() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [loadingOrgId, setLoadingOrgId] = useState(null);
-  const [viaLogin, setViaLogin] = useState(false);
+  // null until the session loads: a pick before then could take the wrong path.
+  const [viaLogin, setViaLogin] = useState(null);
   const { setAlertDetails } = useAlertStore();
   const handleException = useExceptionHandler();
   const userSession = useUserSession();
@@ -90,7 +91,10 @@ function SetOrg() {
                 organization={org}
                 onConnect={(id) => handleContinue(id)}
                 loading={loading && loadingOrgId === org?.id}
-                disabled={loadingOrgId !== null && loadingOrgId !== org?.id}
+                disabled={
+                  viaLogin === null ||
+                  (loadingOrgId !== null && loadingOrgId !== org?.id)
+                }
               />
             ))}
           </div>
