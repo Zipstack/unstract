@@ -29,6 +29,7 @@ function getSessionData(sessionData) {
     provider: sessionData?.provider,
     isStaff: sessionData?.is_staff,
     disableSsoIdpAuthorization: sessionData?.disable_sso_idp_authorization,
+    orgSwitchViaLogin: sessionData?.orgSwitchViaLogin === true,
   };
 }
 
