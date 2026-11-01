@@ -1,7 +1,6 @@
 """Unit tests for unstract.sdk1.utils.common."""
 
 import pytest
-
 from unstract.sdk1.utils.common import Utils
 
 
