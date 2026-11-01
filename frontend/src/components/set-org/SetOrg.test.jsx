@@ -93,6 +93,27 @@ describe("SetOrg", () => {
     });
   });
 
+  it("leaves the picker without a pick when the session cannot be read", async () => {
+    sessionData.mockRejectedValue(new Error("session unavailable"));
+    render(
+      <MemoryRouter initialEntries={[{ pathname: "/setOrg", state: ORGS }]}>
+        <SetOrg />
+      </MemoryRouter>,
+    );
+    for (const button of screen.getAllByRole("button", { name: /Connect/ })) {
+      expect(button).toBeDisabled();
+    }
+
+    // Navigating to "/" drops the organizations, so no Connect is left to click.
+    await waitFor(() =>
+      expect(screen.queryAllByRole("button", { name: /Connect/ })).toHaveLength(
+        0,
+      ),
+    );
+    expect(axios).not.toHaveBeenCalled();
+    expect(switchOrgViaLogin).not.toHaveBeenCalled();
+  });
+
   it("logs in again naming the picked organization when the session asks", async () => {
     await pickOrgB({ organization_id: null, org_switch_via_login: true });
 
