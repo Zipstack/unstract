@@ -2,6 +2,7 @@ import { cn } from "@v1/lib/cn";
 import type { HighlightTone } from "@v1/lib/pdf/highlights";
 import {
   type KeyboardEvent,
+  memo,
   type Ref,
   useImperativeHandle,
   useMemo,
@@ -33,6 +34,62 @@ const TONES: Record<HighlightTone, string> = {
   active: "ui:bg-primary/30 ui:ring-1 ui:ring-primary",
   "low-confidence": "ui:bg-destructive/15",
 };
+
+/**
+ * One line. Memoised so that moving the active highlight re-renders only the
+ * lines it leaves and reaches, not every line of a long result.
+ */
+const TextLine = memo(function TextLine({
+  index,
+  content,
+  highlight,
+  active,
+  onHighlightClick,
+}: {
+  index: number;
+  content: string;
+  highlight: TextLineHighlight | undefined;
+  active: boolean;
+  onHighlightClick?: (highlight: TextLineHighlight) => void;
+}) {
+  const tone: HighlightTone | null = highlight
+    ? active
+      ? "active"
+      : (highlight.tone ?? "default")
+    : null;
+  const body =
+    highlight && onHighlightClick ? (
+      <button
+        type="button"
+        onClick={() => onHighlightClick(highlight)}
+        aria-current={tone === "active" ? "true" : undefined}
+        className="ui:block ui:w-full ui:cursor-pointer ui:text-left ui:whitespace-pre-wrap ui:focus-visible:focus-ring"
+      >
+        {content || " "}
+      </button>
+    ) : (
+      <span className="ui:whitespace-pre-wrap">{content || " "}</span>
+    );
+  return (
+    <li
+      data-line={index}
+      data-tone={tone ?? undefined}
+      data-highlight-id={highlight?.id}
+      className={cn(
+        "ui:grid ui:grid-cols-[auto_1fr] ui:gap-3 ui:px-3",
+        tone && TONES[tone],
+      )}
+    >
+      <span
+        aria-hidden="true"
+        className="ui:select-none ui:text-right ui:text-muted-foreground"
+      >
+        {index + 1}
+      </span>
+      {body}
+    </li>
+  );
+});
 
 /**
  * Text shown line by line with line numbers, as extracted (Raw Text, HITL
@@ -105,45 +162,19 @@ export function TextView({
       <ol className="ui:m-0 ui:list-none ui:p-0 ui:text-mono ui:font-mono ui:text-card-foreground">
         {lines.map((content, index) => {
           const highlight = byLine.get(index);
-          const tone: HighlightTone | null = highlight
-            ? highlight.id === activeHighlightId
-              ? "active"
-              : (highlight.tone ?? "default")
-            : null;
-          const body =
-            highlight && onHighlightClick ? (
-              <button
-                type="button"
-                onClick={() => onHighlightClick(highlight)}
-                aria-current={tone === "active" ? "true" : undefined}
-                className="ui:block ui:w-full ui:cursor-pointer ui:text-left ui:whitespace-pre-wrap ui:focus-visible:focus-ring"
-              >
-                {content || " "}
-              </button>
-            ) : (
-              <span className="ui:whitespace-pre-wrap">{content || " "}</span>
-            );
           return (
-            <li
+            <TextLine
               // Lines never reorder; the index is the line number.
               // biome-ignore lint/suspicious/noArrayIndexKey: the index is the line's identity
               key={index}
-              data-line={index}
-              data-tone={tone ?? undefined}
-              data-highlight-id={highlight?.id}
-              className={cn(
-                "ui:grid ui:grid-cols-[auto_1fr] ui:gap-3 ui:px-3",
-                tone && TONES[tone],
-              )}
-            >
-              <span
-                aria-hidden="true"
-                className="ui:select-none ui:text-right ui:text-muted-foreground"
-              >
-                {index + 1}
-              </span>
-              {body}
-            </li>
+              index={index}
+              content={content}
+              highlight={highlight}
+              active={
+                highlight !== undefined && highlight.id === activeHighlightId
+              }
+              onHighlightClick={onHighlightClick}
+            />
           );
         })}
       </ol>

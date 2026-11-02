@@ -6,6 +6,7 @@ import {
   type Ref,
   type SyntheticEvent,
   useImperativeHandle,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -54,6 +55,11 @@ export function ImageView({
   const [attempt, setAttempt] = useState(0);
   const rootRef = useRef<HTMLElement | null>(null);
   const frameRef = useRef<HTMLDivElement | null>(null);
+  // An image is one page: highlights for any other page are not drawn.
+  const pageHighlights = useMemo(
+    () => highlights.filter((highlight) => highlight.page === 0),
+    [highlights],
+  );
   const css = load.status === "ready" ? pageCssSize(load.size, zoom) : null;
 
   useImperativeHandle(
@@ -65,7 +71,9 @@ export function ImageView({
         }
       },
       scrollToHighlight(id) {
-        const highlight = highlights.find((candidate) => candidate.id === id);
+        const highlight = pageHighlights.find(
+          (candidate) => candidate.id === id,
+        );
         const root = rootRef.current;
         const frame = frameRef.current;
         if (!highlight || !root || !frame) {
@@ -82,7 +90,7 @@ export function ImageView({
         return true;
       },
     }),
-    [highlights],
+    [pageHighlights],
   );
 
   const onLoad = (event: SyntheticEvent<HTMLImageElement>) => {
@@ -150,7 +158,7 @@ export function ImageView({
             className="ui:block ui:size-full"
           />
           <HighlightLayer
-            highlights={highlights}
+            highlights={pageHighlights}
             activeId={activeHighlightId}
             onHighlightClick={onHighlightClick}
           />

@@ -255,3 +255,110 @@ it("fits every page in fit page, so a wider page later on sets the zoom", async 
   // The landscape page is 1056 px wide at 100%: 816 / 1056 ≈ 77%.
   expect(zoomLabel()).toBe("77%");
 });
+
+function loadImage(width: number, height: number) {
+  const image = screen.getByRole<HTMLImageElement>("img", { hidden: true });
+  Object.defineProperties(image, {
+    naturalWidth: { value: width },
+    naturalHeight: { value: height },
+  });
+  fireEvent.load(image);
+}
+
+it("leaves paging keys to the browser for text and images", () => {
+  const { rerender } = render(
+    <DocumentViewer source={{ kind: "text", text: "a\nb" }} />,
+  );
+  const text = screen.getByRole("region", { name: "Document text" });
+  // fireEvent returns false when the handler called preventDefault.
+  expect(fireEvent.keyDown(text, { key: "PageDown" })).toBe(true);
+  expect(fireEvent.keyDown(text, { key: "End" })).toBe(true);
+  expect(fireEvent.keyDown(text, { key: "+" })).toBe(true);
+
+  rerender(<DocumentViewer source={{ kind: "image", url: "/scan.png" }} />);
+  loadImage(1632, 2112);
+  const image = screen.getByRole("region", { name: "Document image" });
+  expect(fireEvent.keyDown(image, { key: "PageDown" })).toBe(true);
+  expect(fireEvent.keyDown(image, { key: "+" })).toBe(false);
+});
+
+it("runs a highlight scroll asked for before an image loads once it has", () => {
+  const ref = createRef<DocumentViewerHandle>();
+  render(
+    <DocumentViewer
+      ref={ref}
+      source={{ kind: "image", url: "/scan.png" }}
+      highlights={[
+        {
+          id: "h",
+          page: 0,
+          x: 0.5,
+          y: 0.9,
+          w: 0.1,
+          h: 0.05,
+          variant: "box",
+          tone: "default",
+        },
+      ]}
+    />,
+  );
+  const region = screen.getByRole("region", { name: "Document image" });
+  act(() => ref.current?.scrollToHighlight("h"));
+  expect(region.scrollTop).toBe(0);
+  const frame = region.querySelector<HTMLElement>("img")?.parentElement;
+  if (!frame) {
+    throw new Error("no frame");
+  }
+  Object.defineProperty(frame, "offsetHeight", { value: 1000 });
+  Object.defineProperty(region, "clientHeight", { value: 400 });
+  loadImage(1632, 2112);
+  // Centre of the box at 0.925 of 1000 px, minus half the 400 px viewport.
+  expect(region.scrollTop).toBeCloseTo(725);
+});
+
+it("draws only page 0's highlights over an image", () => {
+  const { container } = render(
+    <DocumentViewer
+      source={{ kind: "image", url: "/scan.png" }}
+      highlights={[
+        {
+          id: "a",
+          page: 0,
+          x: 0.1,
+          y: 0.1,
+          w: 0.1,
+          h: 0.1,
+          variant: "box",
+          tone: "default",
+        },
+        {
+          id: "b",
+          page: 1,
+          x: 0.1,
+          y: 0.1,
+          w: 0.1,
+          h: 0.1,
+          variant: "box",
+          tone: "default",
+        },
+      ]}
+    />,
+  );
+  loadImage(1632, 2112);
+  expect(container.querySelector('[data-highlight-id="a"]')).not.toBeNull();
+  expect(container.querySelector('[data-highlight-id="b"]')).toBeNull();
+});
+
+it("waits for an image to load again after another source was shown", async () => {
+  const image = { kind: "image", url: "/scan.png" } as const;
+  const { rerender } = render(<DocumentViewer source={image} />);
+  loadImage(1632, 2112);
+  act(() => resize?.(864, 600));
+  expect(screen.queryByRole("button", { name: "Zoom in" })).not.toBeNull();
+
+  rerender(<DocumentViewer source={{ kind: "text", text: "a" }} />);
+  rerender(<DocumentViewer source={image} />);
+  expect(screen.queryByRole("button", { name: "Zoom in" })).toBeNull();
+  loadImage(1632, 2112);
+  expect(screen.queryByRole("button", { name: "Zoom in" })).not.toBeNull();
+});

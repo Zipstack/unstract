@@ -143,6 +143,14 @@ export function DocumentViewer({
 
   const kind =
     source === null ? null : isPdfSource(source) ? "pdf" : source.kind;
+  // Forget an image's size once another source is shown, so coming back to
+  // it waits for its reload instead of treating it as ready straight away.
+  const imageUrl = source?.kind === "image" ? source.url : null;
+  const [shownImageUrl, setShownImageUrl] = useState(imageUrl);
+  if (shownImageUrl !== imageUrl) {
+    setShownImageUrl(imageUrl);
+    setImage(null);
+  }
   const imageSize =
     source?.kind === "image" && image?.url === source.url ? image.size : null;
   const pdfReady = kind === "pdf" && state.status === "ready";
@@ -154,6 +162,8 @@ export function DocumentViewer({
   const pageCount = pageSizes?.length ?? 0;
   // When the content can take scroll requests.
   const ready = pdfReady || kind === "text" || imageSize !== null;
+  const readyRef = useRef(ready);
+  readyRef.current = ready;
 
   const zoom = useMemo(() => {
     if (zoomState.mode === "custom" || !pageSizes || !bodySize) {
@@ -180,7 +190,9 @@ export function DocumentViewer({
 
   const run = useCallback((request: ScrollRequest) => {
     const list = listRef.current;
-    if (!list) {
+    // An image's view exists before the image has loaded, so wait for the
+    // content to be ready, not just mounted.
+    if (!list || !readyRef.current) {
       pendingRef.current = request;
       return;
     }
@@ -227,7 +239,14 @@ export function DocumentViewer({
 
   const onKeyDown = (event: KeyboardEvent<HTMLElement>) => {
     const action = viewerKeyAction(event);
-    if (action === null) {
+    // Text and images are one scrolling page: their paging keys keep the
+    // browser's own scrolling, and text has no zoom.
+    const paging = action !== null && !action.startsWith("zoom");
+    if (
+      action === null ||
+      (paging && kind !== "pdf") ||
+      (!paging && kind === "text")
+    ) {
       return;
     }
     event.preventDefault();
@@ -245,14 +264,10 @@ export function DocumentViewer({
         goToPage(pageCount - 1);
         break;
       case "zoom-in":
-        if (kind !== "text") {
-          zoomBy(zoomIn);
-        }
+        zoomBy(zoomIn);
         break;
       case "zoom-out":
-        if (kind !== "text") {
-          zoomBy(zoomOut);
-        }
+        zoomBy(zoomOut);
         break;
     }
   };
