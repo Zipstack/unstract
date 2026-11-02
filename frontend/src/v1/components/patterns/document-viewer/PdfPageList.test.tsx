@@ -36,6 +36,7 @@ interface FakeTask {
   promise: Promise<void>;
   cancel: ReturnType<typeof vi.fn>;
   finish: () => void;
+  fail: (error: unknown) => void;
 }
 
 function fakeDocument(pageCount: number) {
@@ -51,6 +52,7 @@ function fakeDocument(pageCount: number) {
     const task: FakeTask = {
       promise,
       finish,
+      fail,
       cancel: vi.fn(() =>
         fail(
           Object.assign(new Error("cancelled"), {
@@ -206,6 +208,35 @@ it("frees the canvas and the page when a page leaves the window", async () => {
   expect(canvas?.width).toBe(0);
   expect(canvas?.height).toBe(0);
   expect(pages.get(1)?.cleanup).toHaveBeenCalled();
+});
+
+function renderState(container: HTMLElement, index: number) {
+  return container
+    .querySelector(`[data-page-index="${index}"]`)
+    ?.getAttribute("data-render-state");
+}
+
+it("marks a page whose render fails as an error, not as still rendering", async () => {
+  const { document, tasks } = fakeDocument(3);
+  const { container } = render(
+    <PdfPageList document={document} pageSizes={sizes(3)} zoom={1} />,
+  );
+  show([0]);
+  await flush();
+  expect(renderState(container, 0)).toBe("rendering");
+  await act(async () => tasks[0]?.fail(new Error("bad page")));
+  expect(renderState(container, 0)).toBe("error");
+});
+
+it("marks a page as an error when the canvas has no 2D context", async () => {
+  vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(null);
+  const { document } = fakeDocument(3);
+  const { container } = render(
+    <PdfPageList document={document} pageSizes={sizes(3)} zoom={1} />,
+  );
+  show([0]);
+  await flush();
+  expect(renderState(container, 0)).toBe("error");
 });
 
 it("draws nothing for a page that leaves before its frame comes", async () => {
