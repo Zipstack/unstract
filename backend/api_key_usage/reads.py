@@ -109,11 +109,17 @@ def daily_history(
 
 
 def callers(
-    key_type: str, key_id: Any, organization: Any, now: datetime | None = None
+    key_type: str,
+    key_id: Any,
+    organization: Any,
+    now: datetime | None = None,
+    named: Any = None,
 ) -> list[dict[str, Any]]:
     """The API deployments the key called in the window, most calls first.
 
-    A deployment deleted since keeps its counts, with no name.
+    A deployment deleted since keeps its counts, with no name. So does one
+    outside ``named``, a queryset of the deployments the reader may see by name
+    (default: all of them).
     """
     rows = (
         ApiKeyCallerDaily.objects.filter(
@@ -128,7 +134,7 @@ def callers(
     rows = list(rows)
     deployments = {
         d.id: d
-        for d in APIDeployment.objects.filter(
+        for d in (APIDeployment.objects if named is None else named).filter(
             organization=organization,
             id__in=[row["api_deployment_id"] for row in rows],
         )

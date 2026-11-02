@@ -4,6 +4,7 @@ from api_key_usage.rotation import (
     ROTATED_FIELDS,
     RotateSerializer,
     grace_summary,
+    lock_for_rotation,
     rotate_secret,
 )
 from api_key_usage.serializers import KeyHistorySerializer, history_response
@@ -144,9 +145,11 @@ class PlatformApiKeyViewSet(viewsets.ModelViewSet):
         options = RotateSerializer(data=request.data)
         options.is_valid(raise_exception=True)
 
-        rotate_secret(instance, options.validated_data["grace"])
-        instance.modified_by = request.user
-        instance.save(update_fields=[*ROTATED_FIELDS, "modified_by"])
+        with transaction.atomic():
+            instance = lock_for_rotation(instance)
+            rotate_secret(instance, options.validated_data["grace"])
+            instance.modified_by = request.user
+            instance.save(update_fields=[*ROTATED_FIELDS, "modified_by"])
         _record_key_event(
             request,
             Action.KEY_ROTATED,

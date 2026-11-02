@@ -206,6 +206,16 @@ class FlushTriggerTests(UsageTestBase):
 
         self.assertEqual(self.start_flush.call_count, 2)
 
+    def test_a_flush_that_cannot_start_does_not_fail_the_request(self) -> None:
+        self.start_flush.side_effect = RuntimeError("can't start new thread")
+
+        with self.assertLogs("api_key_usage.recorder", "ERROR"):
+            self.record()
+
+        self.assertEqual(
+            self.redis.hlen(PENDING_HASHES[0]), 1, "the use waits for the next flush"
+        )
+
     def test_the_background_flush_writes_the_usage(self) -> None:
         with mock.patch.object(recorder.connection, "close") as close:
             self.record()

@@ -4,6 +4,7 @@ from api_key_usage.rotation import (
     ROTATED_FIELDS,
     RotateSerializer,
     grace_summary,
+    lock_for_rotation,
     rotate_secret,
 )
 from api_key_usage.serializers import (
@@ -12,6 +13,7 @@ from api_key_usage.serializers import (
     history_response,
 )
 from api_v2.models import APIDeployment
+from django.db import transaction
 from django.db.models import Prefetch
 from drf_spectacular.utils import extend_schema
 from platform_api.permissions import is_org_admin_session
@@ -185,7 +187,12 @@ class GlobalApiDeploymentKeyViewSet(viewsets.ModelViewSet):
         self._limit_member_to_key(instance)
         reads.refresh()
         rows = reads.callers(
-            TargetType.GLOBAL_API_DEPLOYMENT_KEY, instance.id, instance.organization
+            TargetType.GLOBAL_API_DEPLOYMENT_KEY,
+            instance.id,
+            instance.organization,
+            # Like the member's list: a deployment they no longer own keeps its
+            # counts but not its live name.
+            named=None if self._is_admin() else deployments_keyable_by(request.user),
         )
         return Response(KeyCallerSerializer(rows, many=True).data)
 
@@ -215,9 +222,11 @@ class GlobalApiDeploymentKeyViewSet(viewsets.ModelViewSet):
         self._limit_member_to_key(instance)
         options = RotateSerializer(data=request.data)
         options.is_valid(raise_exception=True)
-        rotate_secret(instance, options.validated_data["grace"])
-        instance.modified_by = request.user
-        instance.save(update_fields=[*ROTATED_FIELDS, "modified_by", "modified_at"])
+        with transaction.atomic():
+            instance = lock_for_rotation(instance)
+            rotate_secret(instance, options.validated_data["grace"])
+            instance.modified_by = request.user
+            instance.save(update_fields=[*ROTATED_FIELDS, "modified_by", "modified_at"])
         _record_key_event(
             request,
             Action.KEY_ROTATED,

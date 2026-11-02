@@ -45,6 +45,18 @@ def rotate_secret(key: Any, grace: str, now: datetime | None = None) -> None:
         key.previous_key_expires_at = (now or timezone.now()) + period
 
 
+def lock_for_rotation(key: Any) -> Any:
+    """``key`` re-read with a row lock held until the transaction ends.
+
+    Call inside ``transaction.atomic()`` and rotate the returned instance. Two
+    rotations of one key then run one after the other, and the second keeps the
+    first's new secret as its old one. Rotating an instance loaded before the
+    first finished would instead keep a secret the first had cut off, and make
+    it work again for the grace period.
+    """
+    return type(key).objects.select_for_update().get(pk=key.pk)
+
+
 def grace_summary(key: Any) -> str:
     """Audit summary for a rotation that left the old secret working."""
     if key.previous_key_expires_at is None:

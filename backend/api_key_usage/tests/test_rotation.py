@@ -130,6 +130,22 @@ class PlatformKeyRotateTests(AuditTestBase):
         self.assertIn(self.key.previous_key_expires_at.isoformat(), event.summary)
         self.assertNotIn(str(self.key.previous_key), event.summary)
 
+    def test_a_rotation_loaded_before_another_cannot_revive_its_secret(self) -> None:
+        stale = PlatformApiKey.objects.get(pk=self.key.pk)
+        cut_off = stale.key
+        self.call(self.rotate, "post", pk=self.key.pk)  # no grace: cut off
+        self.key.refresh_from_db()
+        current = self.key.key
+
+        with mock.patch.object(PlatformApiKeyViewSet, "get_object", return_value=stale):
+            response = self.call(self.rotate, "post", data={"grace": "7d"}, pk=stale.pk)
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.key.refresh_from_db()
+        self.assertEqual(self.key.previous_key, current)
+        with self.assertLogs("account_v2.custom_auth_middleware", "WARNING"):
+            self.assertFalse(self.authenticates(cut_off))
+
     def test_a_deactivated_key_rejects_its_old_secret_too(self) -> None:
         old = self.key.key
         self.call(self.rotate, "post", data={"grace": "24h"}, pk=self.key.pk)
@@ -188,6 +204,26 @@ class GlobalKeyRotateTests(AuditTestBase):
             self.assertLogs("api_v2.key_helper", "WARNING"),
         ):
             self.validate(old)
+
+    def test_a_rotation_loaded_before_another_cannot_revive_its_secret(self) -> None:
+        stale = GlobalApiDeploymentKey.objects.get(pk=self.key.pk)
+        cut_off = stale.key
+        self.call(self.rotate, "post", pk=self.key.pk)  # no grace: cut off
+        self.key.refresh_from_db()
+        current = self.key.key
+
+        with mock.patch.object(
+            GlobalApiDeploymentKeyViewSet, "get_object", return_value=stale
+        ):
+            response = self.call(self.rotate, "post", data={"grace": "7d"}, pk=stale.pk)
+
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(self.validate(current), self.key)
+        with (
+            self.assertRaises(UnauthorizedKey),
+            self.assertLogs("api_v2.key_helper", "WARNING"),
+        ):
+            self.validate(cut_off)
 
     def test_an_unknown_grace_is_refused(self) -> None:
         response = self.call(self.rotate, "post", data={"grace": "2h"}, pk=self.key.pk)

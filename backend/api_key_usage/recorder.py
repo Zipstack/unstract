@@ -108,7 +108,11 @@ def record_key_use(
         return
 
     if flush_due:
-        start_background_flush()
+        try:
+            start_background_flush()
+        except Exception:
+            # The counts stay pending, so the next flush still writes them.
+            logger.exception("Could not start an API key usage flush")
 
 
 def start_background_flush() -> None:
