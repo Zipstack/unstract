@@ -1,0 +1,2 @@
+# A code owner must approve changes to the workflows that run the required checks.
+/.github/ @Zipstack/unstract-reviewers-l2
