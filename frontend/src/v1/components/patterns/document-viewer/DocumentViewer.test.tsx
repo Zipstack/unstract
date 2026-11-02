@@ -188,3 +188,22 @@ it("runs a scroll asked for while loading once the pages are laid out", async ()
     }
   }
 });
+
+it("fits every page in fit page, so a wider page later on sets the zoom", async () => {
+  render(<DocumentViewer source={source} />);
+  await act(async () =>
+    opening.resolve({
+      document,
+      // A portrait page first, then a landscape one.
+      pageSizes: [
+        { width: 612, height: 792 },
+        { width: 792, height: 612 },
+      ],
+    }),
+  );
+  // Tall enough that only width limits: 816 px across, after the gutter.
+  act(() => resize?.(864, 2000));
+  await userEvent.click(screen.getByRole("button", { name: "Fit page" }));
+  // The landscape page is 1056 px wide at 100%: 816 / 1056 ≈ 77%.
+  expect(zoomLabel()).toBe("77%");
+});
