@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { Button } from "@/components/ui/shims/antd-button";
 import { Result } from "@/components/ui/shims/antd-structure";
 
 function GenericError() {
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const [messages, setMessages] = useState({});
   const [id, setId] = useState(null);
   useEffect(() => {
@@ -72,6 +74,11 @@ function GenericError() {
         id && messages[id]
           ? messages[id].subtitle
           : "Please try to login again for accessing your data."
+      }
+      extra={
+        <Button type="primary" onClick={() => navigate("/")}>
+          Back to home
+        </Button>
       }
     />
   );

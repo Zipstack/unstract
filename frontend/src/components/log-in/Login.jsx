@@ -1,7 +1,13 @@
+import { useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/shims/antd-button";
 import { Col, Row } from "@/components/ui/shims/antd-layout";
 
 import { getBaseUrl } from "../../helpers/GetStaticData";
+import {
+  getPostLoginPath,
+  LOGIN_FROM_STATE_KEY,
+  REDIRECT_URL_PARAM,
+} from "../../helpers/loginRedirect";
 import "./Login.css";
 import { UnstractBlackLogo } from "../../assets";
 import { ProductContentLayout } from "./ProductContentLayout";
@@ -15,16 +21,27 @@ try {
 }
 
 function Login() {
+  const location = useLocation();
   const baseUrl = getBaseUrl();
   const selectedProduct = localStorage.getItem("selectedProduct");
   const isValidProduct =
     selectedProduct && ["unstract", "llm-whisperer"].includes(selectedProduct);
 
   const handleLogin = () => {
-    const loginUrl = isValidProduct
-      ? `${baseUrl}/api/v1/login?selectedProduct=${selectedProduct}`
+    const query = new URLSearchParams();
+    if (isValidProduct) {
+      query.set("selectedProduct", selectedProduct);
+    }
+    const postLoginPath = getPostLoginPath(
+      location.state?.[LOGIN_FROM_STATE_KEY],
+    );
+    if (postLoginPath) {
+      query.set(REDIRECT_URL_PARAM, postLoginPath);
+    }
+    const queryString = query.toString();
+    window.location.href = queryString
+      ? `${baseUrl}/api/v1/login?${queryString}`
       : `${baseUrl}/api/v1/login`;
-    window.location.href = loginUrl;
   };
 
   const handleSignup = () => {
