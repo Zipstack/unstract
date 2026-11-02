@@ -220,3 +220,22 @@ it("draws nothing for a page that leaves before its frame comes", async () => {
   expect(drawn.has(1)).toBe(false);
   expect(renderPage.mock.calls.length).toBeLessThanOrEqual(3);
 });
+
+it("cleans up a page that arrives after it has left the window", async () => {
+  const { document } = fakeDocument(10);
+  const late = { getViewport: vi.fn(), render: vi.fn(), cleanup: vi.fn() };
+  let deliver!: () => void;
+  (document.getPage as ReturnType<typeof vi.fn>).mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        deliver = () => resolve(late);
+      }),
+  );
+  render(<PdfPageList document={document} pageSizes={sizes(10)} zoom={1} />);
+  show([0]);
+  await flush();
+  show([9]);
+  await act(async () => deliver());
+  expect(late.cleanup).toHaveBeenCalled();
+  expect(late.render).not.toHaveBeenCalled();
+});
