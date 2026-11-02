@@ -13,12 +13,13 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from notification_v2.enums import PlatformType
 from unstract.core.notification_clubbed_renderer import (
     MAX_BATCH_SIZE,
     build_envelope,
     render_slack_text,
 )
+
+from notification_v2.enums import PlatformType
 
 logger = logging.getLogger(__name__)
 

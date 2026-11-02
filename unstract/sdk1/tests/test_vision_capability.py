@@ -7,6 +7,7 @@ couple of smoke tests hit the real registry for stable, long-lived models.
 
 import pytest
 from _pytest.monkeypatch import MonkeyPatch
+
 from unstract.sdk1.utils import vision_capability as vc
 from unstract.sdk1.utils.vision_capability import (
     VisionSupport,

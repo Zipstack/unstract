@@ -4,7 +4,6 @@ from typing import Any
 
 import redis
 from peewee import PostgresqlDatabase
-
 from unstract.core.cache.redis_client import create_redis_client
 
 db = PostgresqlDatabase(None)

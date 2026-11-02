@@ -21,8 +21,8 @@ from typing import Any
 from django.contrib.postgres.expressions import ArraySubquery
 from django.db.models import Count, OuterRef, QuerySet, Subquery, Value
 from django.db.models.functions import Coalesce
-
 from unstract.core.data_models import ExecutionStatus
+
 from workflow_manager.workflow_v2.models.execution import WorkflowExecution
 
 FAILING_STREAK_RUNS = 5

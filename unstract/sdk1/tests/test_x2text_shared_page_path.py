@@ -10,6 +10,7 @@ constants only — no I/O, no network, no adapter/consumer classes.
 import re
 
 import pytest
+
 from unstract.sdk1.adapters.x2text.constants import (
     ImageOutputConstants,
     build_page_store_dir,
