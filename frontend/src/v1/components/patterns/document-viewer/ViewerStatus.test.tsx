@@ -57,3 +57,15 @@ it("marks a wrong password on the field", () => {
     "That password is incorrect.",
   );
 });
+
+it("puts the focus back in the field after a wrong password, not before", () => {
+  const show = (state: ViewerStatusState) => (
+    <ViewerStatus state={state} onRetry={vi.fn()} onSubmitPassword={vi.fn()} />
+  );
+  const { rerender } = render(show({ status: "password", incorrect: false }));
+  expect(document.activeElement).not.toBe(screen.getByLabelText("Password"));
+  // Submitting shows the loading state, then the prompt comes back.
+  rerender(show({ status: "loading" }));
+  rerender(show({ status: "password", incorrect: true }));
+  expect(document.activeElement).toBe(screen.getByLabelText("Password"));
+});

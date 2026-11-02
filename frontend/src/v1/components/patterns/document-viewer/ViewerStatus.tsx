@@ -1,5 +1,5 @@
 import type { PdfDocumentState } from "@v1/hooks/usePdfDocument";
-import { type FormEvent, useId, useState } from "react";
+import { type FormEvent, useEffect, useId, useRef, useState } from "react";
 
 /** Every state except `ready`, which the page list renders instead. */
 export type ViewerStatusState = Exclude<PdfDocumentState, { status: "ready" }>;
@@ -73,6 +73,16 @@ function PasswordPrompt({
   const [password, setPassword] = useState("");
   const inputId = useId();
   const errorId = useId();
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  // Submitting swaps this form for the loading state, so the field's focus is
+  // lost. When the prompt comes back after a wrong password, give it back, so
+  // a keyboard user can retype straight away. Not on first showing: the
+  // viewer does not take focus from the page around it unasked.
+  useEffect(() => {
+    if (incorrect) {
+      inputRef.current?.focus();
+    }
+  }, [incorrect]);
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (password !== "") {
@@ -84,6 +94,7 @@ function PasswordPrompt({
       <p className={title}>This document is password-protected</p>
       <label htmlFor={inputId}>Password</label>
       <input
+        ref={inputRef}
         id={inputId}
         type="password"
         autoComplete="off"
