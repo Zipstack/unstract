@@ -104,8 +104,23 @@ function show(indexes: number[]) {
   act(() => FakeIntersectionObserver.current?.show(indexes));
 }
 
+let viewerResized: (() => void) | null = null;
+
+class FakeResizeObserver {
+  constructor(callback: () => void) {
+    viewerResized = callback;
+  }
+  observe() {
+    // Reports only when a test calls viewerResized().
+  }
+  disconnect() {
+    viewerResized = null;
+  }
+}
+
 beforeEach(() => {
   vi.stubGlobal("IntersectionObserver", FakeIntersectionObserver);
+  vi.stubGlobal("ResizeObserver", FakeResizeObserver);
   vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) =>
     window.setTimeout(() => cb(0), 0),
   );
@@ -305,15 +320,24 @@ it("draws each highlight on its own page", () => {
 
 /**
  * Gives the list a layout, which happy-dom does not compute: pages 800 × 600
- * at zoom 1, 16 px apart after 16 px of padding, in a 500 × 400 viewport.
+ * at zoom 1, 16 px apart after 16 px of padding, in a viewport 500 wide and
+ * 400 tall unless `viewHeight` says otherwise.
  */
-function layOut(container: HTMLElement, zoom: () => number) {
+function layOut(
+  container: HTMLElement,
+  zoom: () => number,
+  viewHeight: () => number = () => 400,
+) {
   const root = container.querySelector<HTMLElement>("section");
   if (!root) {
     throw new Error("no scroll region");
   }
-  Object.defineProperty(root, "clientHeight", { value: 400 });
-  Object.defineProperty(root, "clientWidth", { value: 500 });
+  const count = container.querySelectorAll("[data-page-index]").length;
+  Object.defineProperties(root, {
+    clientHeight: { get: viewHeight },
+    clientWidth: { value: 500 },
+    scrollHeight: { get: () => 16 + count * (800 * zoom() + 16) },
+  });
   for (const page of container.querySelectorAll<HTMLElement>(
     "[data-page-index]",
   )) {
@@ -447,6 +471,54 @@ it("keeps the current page right for a page much taller than the viewer", () => 
   scrollTo(root, 9332);
   expect(onCurrentPageChange).toHaveBeenLastCalledWith(2);
   scrollTo(root, 9600);
+  expect(onCurrentPageChange).toHaveBeenLastCalledWith(3);
+});
+
+it("reports the last page once the end is reached, even when others show as much", () => {
+  const { document } = fakeDocument(10);
+  const onCurrentPageChange = vi.fn();
+  const { container } = render(
+    <PdfPageList
+      document={document}
+      pageSizes={sizes(10)}
+      zoom={1}
+      onCurrentPageChange={onCurrentPageChange}
+    />,
+  );
+  // Two whole pages fit at the bottom; without the end rule page 8 would win
+  // the tie and Next would never reach page 9.
+  const root = layOut(
+    container,
+    () => 1,
+    () => 2000,
+  );
+  scrollTo(root, root.scrollHeight - 2000);
+  expect(onCurrentPageChange).toHaveBeenLastCalledWith(9);
+});
+
+it("updates the current page when the viewer changes height without scrolling", () => {
+  const { document } = fakeDocument(10);
+  const onCurrentPageChange = vi.fn();
+  const { container } = render(
+    <PdfPageList
+      document={document}
+      pageSizes={sizes(10)}
+      zoom={1}
+      onCurrentPageChange={onCurrentPageChange}
+    />,
+  );
+  let height = 400;
+  const root = layOut(
+    container,
+    () => 1,
+    () => height,
+  );
+  // Page 2 spans 1648-2448 and page 3 2464-3264: 300 px of 2, 84 px of 3.
+  scrollTo(root, 2148);
+  expect(onCurrentPageChange).toHaveBeenLastCalledWith(2);
+  // Taller: 300 px of 2, all 800 of 3.
+  height = 1200;
+  act(() => viewerResized?.());
   expect(onCurrentPageChange).toHaveBeenLastCalledWith(3);
 });
 

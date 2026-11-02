@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { OpenedPdf, PdfSource } from "@v1/lib/pdf/types";
 import type { PDFDocumentProxy } from "pdfjs-dist";
-import { createRef } from "react";
+import { createRef, useLayoutEffect, useRef } from "react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { DocumentViewer, type DocumentViewerHandle } from "./DocumentViewer";
 
@@ -27,18 +27,24 @@ vi.mock("@v1/lib/pdf/pdfjs", async (importOriginal) => {
   };
 });
 
-let resize: ((width: number, height: number) => void) | null = null;
+const resizeCallbacks = new Set<(entries: ResizeObserverEntry[]) => void>();
+// Every observer hears the size: the viewer's body and the page list's own.
+const resize = (width: number, height: number) => {
+  for (const callback of resizeCallbacks) {
+    callback([{ contentRect: { width, height } } as ResizeObserverEntry]);
+  }
+};
 
 class FakeResizeObserver {
-  constructor(callback: (entries: ResizeObserverEntry[]) => void) {
-    resize = (width, height) =>
-      callback([{ contentRect: { width, height } } as ResizeObserverEntry]);
-  }
+  constructor(
+    private readonly callback: (entries: ResizeObserverEntry[]) => void,
+  ) {}
   observe() {
     // Sizes arrive only when a test calls resize().
+    resizeCallbacks.add(this.callback);
   }
   disconnect() {
-    // Nothing to release.
+    resizeCallbacks.delete(this.callback);
   }
 }
 
@@ -69,7 +75,7 @@ const pageSizes = Array.from({ length: 3 }, () => ({
 async function open() {
   await act(async () => opening.resolve({ document, pageSizes }));
   // The body is 864 px wide: 816 + the 48 px fit gutter.
-  act(() => resize?.(864, 600));
+  act(() => resize(864, 600));
 }
 
 function zoomLabel() {
@@ -120,7 +126,7 @@ it("fits the width by default, and zooms in steps from there", async () => {
 it("refits when the viewer is resized", async () => {
   render(<DocumentViewer source={source} />);
   await open();
-  act(() => resize?.(456, 600));
+  act(() => resize(456, 600));
   expect(zoomLabel()).toBe("50%");
 });
 
@@ -250,7 +256,7 @@ it("fits every page in fit page, so a wider page later on sets the zoom", async 
     }),
   );
   // Tall enough that only width limits: 816 px across, after the gutter.
-  act(() => resize?.(864, 2000));
+  act(() => resize(864, 2000));
   await userEvent.click(screen.getByRole("button", { name: "Fit page" }));
   // The landscape page is 1056 px wide at 100%: 816 / 1056 ≈ 77%.
   expect(zoomLabel()).toBe("77%");
@@ -543,5 +549,48 @@ it("drops a scroll waiting on an empty text when another text is shown", () => {
     if (original) {
       Object.defineProperty(HTMLElement.prototype, "offsetTop", original);
     }
+  }
+});
+
+it("keeps a scroll a parent asks for in its layout effect on mount", async () => {
+  const restore = layOutEveryPage();
+  function Parent() {
+    const ref = useRef<DocumentViewerHandle>(null);
+    useLayoutEffect(() => {
+      ref.current?.scrollToPage(2);
+    }, []);
+    return <DocumentViewer ref={ref} source={source} />;
+  }
+  try {
+    render(<Parent />);
+    await open();
+    expect(pagesRegion().scrollTop).toBe(2 * 1016);
+  } finally {
+    restore();
+  }
+});
+
+it("scrolls to an active highlight chosen before its document is shown", async () => {
+  const restore = layOutEveryPage();
+  try {
+    const { rerender } = render(
+      <DocumentViewer
+        source={source}
+        highlights={[]}
+        activeHighlightId="total"
+      />,
+    );
+    await open();
+    rerender(
+      <DocumentViewer
+        source={{ kind: "url", url: "/other.pdf" }}
+        highlights={[onPage1]}
+        activeHighlightId="total"
+      />,
+    );
+    await open();
+    expect(pagesRegion().scrollTop).toBe(onPage1Top);
+  } finally {
+    restore();
   }
 });

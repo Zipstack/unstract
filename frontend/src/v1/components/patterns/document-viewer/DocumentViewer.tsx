@@ -68,6 +68,15 @@ type ScrollRequest =
   | { kind: "page"; index: number }
   | { kind: "highlight"; id: string };
 
+/** A request that could not run yet, and what it was made for. */
+interface PendingRequest {
+  request: ScrollRequest;
+  /** The source shown when it was made; another source drops it. */
+  sourceKey: string;
+  /** Made for `activeHighlightId`, so clearing that id drops it. */
+  fromActive: boolean;
+}
+
 interface ZoomState {
   mode: ZoomMode;
   /** The level in custom mode; ignored while fitting. */
@@ -144,7 +153,7 @@ export function DocumentViewer({
   const [pageIndex, setPageIndex] = useState(0);
   const [bodyRef, bodySize] = useElementSize<HTMLDivElement>();
   const listRef = useRef<PdfPageListHandle | null>(null);
-  const pendingRef = useRef<ScrollRequest | null>(null);
+  const pendingRef = useRef<PendingRequest | null>(null);
 
   const kind =
     source === null ? null : isPdfSource(source) ? "pdf" : source.kind;
@@ -175,12 +184,22 @@ export function DocumentViewer({
   const pageCount = pageSizes?.length ?? 0;
   // When the content can take scroll requests.
   const ready = pdfReady || kind === "text" || imageSize !== null;
-  // Kept in step at commit, so a render React throws away cannot leave it
-  // saying the content is not ready while it is.
+  // Which content a scroll request is for. A text is its own key.
+  const sourceKey =
+    source === null || isPdfSource(source)
+      ? pdfSourceKey(source)
+      : source.kind === "image"
+        ? `image:${source.url}`
+        : source.text;
+  // Both kept in step at commit, before any parent's layout effect can make
+  // a request, so a request is always judged against the source it was made
+  // for, and a render React throws away cannot leave them stale.
   const readyRef = useRef(ready);
+  const sourceKeyRef = useRef(sourceKey);
   useLayoutEffect(() => {
     readyRef.current = ready;
-  }, [ready]);
+    sourceKeyRef.current = sourceKey;
+  }, [ready, sourceKey]);
 
   const zoom = useMemo(() => {
     if (zoomState.mode === "custom" || !pageSizes || !bodySize) {
@@ -208,19 +227,26 @@ export function DocumentViewer({
   // A request runs now if it can, or waits in pendingRef: for the pages while
   // loading, and for its highlight while that is not in the list yet. A newer
   // request replaces a waiting one.
-  const run = useCallback((request: ScrollRequest) => {
+  const run = useCallback((request: ScrollRequest, fromActive = false) => {
     const list = listRef.current;
     // An image's view exists before the image has loaded, so wait for the
     // content to be ready, not just mounted.
+    const wait = () => {
+      pendingRef.current = {
+        request,
+        sourceKey: sourceKeyRef.current,
+        fromActive,
+      };
+    };
     if (!list || !readyRef.current) {
-      pendingRef.current = request;
-      return;
-    }
-    if (request.kind === "page") {
+      wait();
+    } else if (request.kind === "page") {
       pendingRef.current = null;
       list.scrollToPage(request.index);
+    } else if (list.scrollToHighlight(request.id)) {
+      pendingRef.current = null;
     } else {
-      pendingRef.current = list.scrollToHighlight(request.id) ? null : request;
+      wait();
     }
   }, []);
 
@@ -233,35 +259,33 @@ export function DocumentViewer({
     [run],
   );
 
-  // A waiting request belongs to the document it was made for: another
-  // source drops it rather than scrolling a document nobody asked about.
-  const sourceKey =
-    source === null || isPdfSource(source)
-      ? pdfSourceKey(source)
-      : source.kind === "image"
-        ? source.url
-        : source.text;
-  // biome-ignore lint/correctness/useExhaustiveDependencies: runs on each new source
-  useEffect(() => {
-    pendingRef.current = null;
-  }, [kind, sourceKey]);
-
   // A waiting request runs once the pages are laid out, and is tried again
-  // when the highlights change, in case its highlight has arrived.
+  // when the highlights change, in case its highlight has arrived. One made
+  // for another source is dropped rather than scrolling a document nobody
+  // asked about.
   // biome-ignore lint/correctness/useExhaustiveDependencies: retried on each new highlights list
   useEffect(() => {
-    if (ready && pendingRef.current) {
-      run(pendingRef.current);
+    const pending = pendingRef.current;
+    if (!ready || !pending) {
+      return;
     }
-  }, [ready, highlights, textHighlights, run]);
-
-  useEffect(() => {
-    if (activeHighlightId) {
-      run({ kind: "highlight", id: activeHighlightId });
-    } else if (pendingRef.current?.kind === "highlight") {
+    if (pending.sourceKey === sourceKey) {
+      run(pending.request, pending.fromActive);
+    } else {
       pendingRef.current = null;
     }
-  }, [activeHighlightId, run]);
+  }, [ready, sourceKey, highlights, textHighlights, run]);
+
+  // The active highlight is scrolled to when it changes, and again for each
+  // new source, so one chosen before its document arrived is still found.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: re-armed on each new source
+  useEffect(() => {
+    if (activeHighlightId) {
+      run({ kind: "highlight", id: activeHighlightId }, true);
+    } else if (pendingRef.current?.fromActive) {
+      pendingRef.current = null;
+    }
+  }, [activeHighlightId, sourceKey, run]);
 
   const goToPage = useCallback(
     (index: number) => run({ kind: "page", index }),
