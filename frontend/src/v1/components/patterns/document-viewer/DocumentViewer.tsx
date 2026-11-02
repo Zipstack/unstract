@@ -3,6 +3,7 @@ import { usePdfDocument } from "@v1/hooks/usePdfDocument";
 import { cn } from "@v1/lib/cn";
 import type { Highlight } from "@v1/lib/pdf/highlights";
 import { viewerKeyAction } from "@v1/lib/pdf/keyboard";
+import { pdfSourceKey } from "@v1/lib/pdf/pdfjs";
 import {
   type DocumentSource,
   isPdfSource,
@@ -23,6 +24,7 @@ import {
   useCallback,
   useEffect,
   useImperativeHandle,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -36,7 +38,10 @@ import { ViewerToolbar } from "./ViewerToolbar";
 export interface DocumentViewerHandle {
   /** Scrolls a 0-based page to the top. Waits for the document if it is loading. */
   scrollToPage: (index: number) => void;
-  /** Centres a highlight. Waits for the document if it is loading. */
+  /**
+   * Centres a highlight. Waits for the document if it is loading, and for the
+   * highlight if it is not in `highlights` yet.
+   */
   scrollToHighlight: (id: string) => void;
 }
 
@@ -153,6 +158,14 @@ export function DocumentViewer({
   }
   const imageSize =
     source?.kind === "image" && image?.url === source.url ? image.size : null;
+  // A new text gets a fresh view, back at the top, like a new PDF or image.
+  const text = source?.kind === "text" ? source.text : null;
+  const [shownText, setShownText] = useState(text);
+  const [textKey, setTextKey] = useState(0);
+  if (shownText !== text) {
+    setShownText(text);
+    setTextKey((key) => key + 1);
+  }
   const pdfReady = kind === "pdf" && state.status === "ready";
   const pageSizes = pdfReady
     ? state.pageSizes
@@ -162,8 +175,12 @@ export function DocumentViewer({
   const pageCount = pageSizes?.length ?? 0;
   // When the content can take scroll requests.
   const ready = pdfReady || kind === "text" || imageSize !== null;
+  // Kept in step at commit, so a render React throws away cannot leave it
+  // saying the content is not ready while it is.
   const readyRef = useRef(ready);
-  readyRef.current = ready;
+  useLayoutEffect(() => {
+    readyRef.current = ready;
+  }, [ready]);
 
   const zoom = useMemo(() => {
     if (zoomState.mode === "custom" || !pageSizes || !bodySize) {
@@ -188,6 +205,9 @@ export function DocumentViewer({
     return Number.isFinite(level) ? level : zoomState.level;
   }, [zoomState, pageSizes, bodySize]);
 
+  // A request runs now if it can, or waits in pendingRef: for the pages while
+  // loading, and for its highlight while that is not in the list yet. A newer
+  // request replaces a waiting one.
   const run = useCallback((request: ScrollRequest) => {
     const list = listRef.current;
     // An image's view exists before the image has loaded, so wait for the
@@ -197,9 +217,10 @@ export function DocumentViewer({
       return;
     }
     if (request.kind === "page") {
+      pendingRef.current = null;
       list.scrollToPage(request.index);
     } else {
-      list.scrollToHighlight(request.id);
+      pendingRef.current = list.scrollToHighlight(request.id) ? null : request;
     }
   }, []);
 
@@ -212,18 +233,33 @@ export function DocumentViewer({
     [run],
   );
 
-  // Requests made while loading run once the pages are laid out.
+  // A waiting request belongs to the document it was made for: another
+  // source drops it rather than scrolling a document nobody asked about.
+  const sourceKey =
+    source === null || isPdfSource(source)
+      ? pdfSourceKey(source)
+      : source.kind === "image"
+        ? source.url
+        : source.text;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: runs on each new source
+  useEffect(() => {
+    pendingRef.current = null;
+  }, [kind, sourceKey]);
+
+  // A waiting request runs once the pages are laid out, and is tried again
+  // when the highlights change, in case its highlight has arrived.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: retried on each new highlights list
   useEffect(() => {
     if (ready && pendingRef.current) {
-      const request = pendingRef.current;
-      pendingRef.current = null;
-      run(request);
+      run(pendingRef.current);
     }
-  }, [ready, run]);
+  }, [ready, highlights, textHighlights, run]);
 
   useEffect(() => {
     if (activeHighlightId) {
       run({ kind: "highlight", id: activeHighlightId });
+    } else if (pendingRef.current?.kind === "highlight") {
+      pendingRef.current = null;
     }
   }, [activeHighlightId, run]);
 
@@ -284,6 +320,7 @@ export function DocumentViewer({
   } else if (source.kind === "text") {
     content = (
       <TextView
+        key={textKey}
         ref={listRef}
         text={source.text}
         highlights={textHighlights}

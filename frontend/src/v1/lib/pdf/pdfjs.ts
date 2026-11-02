@@ -139,6 +139,21 @@ export function classifyLoadError(error: unknown): PdfLoadFailure {
   if (name === "InvalidPDFException") {
     return { kind: "unsupported" };
   }
+  // pdf.js puts the full URL in these messages, and a signed URL carries its
+  // token there: build the message from the status instead of showing it.
+  if (name === "MissingPDFException") {
+    return { kind: "failed", message: "The document wasn't found." };
+  }
+  if (name === "UnexpectedResponseException") {
+    const status = (error as { status?: unknown }).status;
+    return {
+      kind: "failed",
+      message:
+        typeof status === "number" && status > 0
+          ? `The server returned an error (${status}).`
+          : "The server returned an error.",
+    };
+  }
   const message = error instanceof Error ? error.message : String(error);
   return { kind: "failed", message };
 }

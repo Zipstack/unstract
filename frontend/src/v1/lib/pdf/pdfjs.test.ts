@@ -168,8 +168,33 @@ describe("classifyLoadError", () => {
     });
   });
 
+  it("keeps the URL, and any token in it, out of a server error", () => {
+    const url = "https://bucket.example/doc.pdf?X-Amz-Signature=secret";
+    const missing = classifyLoadError(
+      Object.assign(new Error(`Missing PDF "${url}".`), {
+        name: "MissingPDFException",
+      }),
+    );
+    const forbidden = classifyLoadError(
+      Object.assign(
+        new Error(
+          `Unexpected server response (403) while retrieving PDF "${url}".`,
+        ),
+        { name: "UnexpectedResponseException", status: 403 },
+      ),
+    );
+    expect(missing).toEqual({
+      kind: "failed",
+      message: "The document wasn't found.",
+    });
+    expect(forbidden).toEqual({
+      kind: "failed",
+      message: "The server returned an error (403).",
+    });
+  });
+
   it("reports anything else as a failure with its message", () => {
-    expect(classifyLoadError(named("MissingPDFException"))).toEqual({
+    expect(classifyLoadError(named("UnknownErrorException"))).toEqual({
       kind: "failed",
       message: "boom",
     });
@@ -220,5 +245,27 @@ describe("openPdfDocument", () => {
     opening.destroy();
     await expect(opening.promise).rejects.toThrow();
     expect(pdfjsMock.getDocument).not.toHaveBeenCalled();
+  });
+});
+
+describe("loadPdfjs", () => {
+  it("tries again after a failed load instead of keeping the failure", async () => {
+    vi.resetModules();
+    let fail = true;
+    vi.doMock("pdfjs-dist/legacy/build/pdf.js", () => {
+      if (fail) {
+        throw new Error("chunk failed");
+      }
+      return pdfjsMock;
+    });
+    const { loadPdfjs } = await import("./pdfjs");
+    await expect(loadPdfjs()).rejects.toThrow();
+    fail = false;
+    pdfjsMock.GlobalWorkerOptions.workerSrc = "";
+    await expect(loadPdfjs()).resolves.toBeTruthy();
+    expect(pdfjsMock.GlobalWorkerOptions.workerSrc).toBe(
+      "/assets/pdf.worker.min.js",
+    );
+    vi.doUnmock("pdfjs-dist/legacy/build/pdf.js");
   });
 });

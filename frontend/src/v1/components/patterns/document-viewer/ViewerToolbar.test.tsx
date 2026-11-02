@@ -43,6 +43,12 @@ it("pages back and forward, and stops at either end", async () => {
   expect(first.onPageChange).toHaveBeenCalledWith(1);
 });
 
+it("pages back from the middle of the document", async () => {
+  const props = setup({ pageIndex: 3 });
+  await userEvent.click(screen.getByRole("button", { name: "Previous page" }));
+  expect(props.onPageChange).toHaveBeenCalledWith(2);
+});
+
 it("disables Next on the last page", () => {
   setup({ pageIndex: 11 });
   expect(

@@ -362,3 +362,186 @@ it("waits for an image to load again after another source was shown", async () =
   loadImage(1632, 2112);
   expect(screen.queryByRole("button", { name: "Zoom in" })).not.toBeNull();
 });
+
+it("pages forward and back with PageDown and PageUp, one page per press", async () => {
+  render(<DocumentViewer source={source} />);
+  await open();
+  const pages = layOutPages();
+  fireEvent.keyDown(pages, { key: "PageDown" });
+  fireEvent.keyDown(pages, { key: "PageDown" });
+  expect(pages.scrollTop).toBe(2 * 1016);
+  expect(screen.getByLabelText<HTMLInputElement>("Page").value).toBe("3");
+  fireEvent.keyDown(pages, { key: "PageUp" });
+  expect(pages.scrollTop).toBe(1016);
+  expect(screen.getByLabelText<HTMLInputElement>("Page").value).toBe("2");
+});
+
+/**
+ * Lays out every page element from the moment it mounts: 1000 px tall, 16 px
+ * apart. Returns a function that puts the prototype back.
+ */
+function layOutEveryPage() {
+  const originals = (["offsetTop", "offsetHeight"] as const).map(
+    (name) =>
+      [
+        name,
+        Object.getOwnPropertyDescriptor(HTMLElement.prototype, name),
+      ] as const,
+  );
+  Object.defineProperties(HTMLElement.prototype, {
+    offsetTop: {
+      configurable: true,
+      get(this: HTMLElement) {
+        const index = this.getAttribute("data-page-index");
+        return index === null ? 0 : 16 + Number(index) * 1016;
+      },
+    },
+    offsetHeight: {
+      configurable: true,
+      get(this: HTMLElement) {
+        return this.hasAttribute("data-page-index") ? 1000 : 0;
+      },
+    },
+  });
+  return () => {
+    for (const [name, descriptor] of originals) {
+      if (descriptor) {
+        Object.defineProperty(HTMLElement.prototype, name, descriptor);
+      }
+    }
+  };
+}
+
+const onPage1 = {
+  id: "total",
+  page: 1,
+  x: 0.1,
+  y: 0.5,
+  w: 0.2,
+  h: 0,
+  variant: "box" as const,
+  tone: "default" as const,
+};
+// Page 1 starts at 1016 and the highlight's centre is 500 px into it; the
+// viewer reports no height, so centring adds nothing.
+const onPage1Top = 1016 + 500;
+
+function pagesRegion() {
+  return screen.getByRole("region", { name: "Document pages" });
+}
+
+it("drops a scroll asked for one document when another is shown", async () => {
+  const restore = layOutEveryPage();
+  try {
+    const ref = createRef<DocumentViewerHandle>();
+    const { rerender } = render(<DocumentViewer ref={ref} source={source} />);
+    act(() => ref.current?.scrollToPage(2));
+    rerender(
+      <DocumentViewer ref={ref} source={{ kind: "url", url: "/other.pdf" }} />,
+    );
+    await open();
+    expect(pagesRegion().scrollTop).toBe(0);
+  } finally {
+    restore();
+  }
+});
+
+it("scrolls to the active highlight when it changes, and to one set while loading", async () => {
+  const restore = layOutEveryPage();
+  try {
+    const { rerender } = render(
+      <DocumentViewer
+        source={source}
+        highlights={[onPage1]}
+        activeHighlightId="total"
+      />,
+    );
+    await open();
+    expect(pagesRegion().scrollTop).toBe(onPage1Top);
+
+    pagesRegion().scrollTop = 0;
+    rerender(
+      <DocumentViewer
+        source={source}
+        highlights={[onPage1, { ...onPage1, id: "date", page: 2 }]}
+        activeHighlightId="date"
+      />,
+    );
+    expect(pagesRegion().scrollTop).toBe(2 * 1016 + 500);
+  } finally {
+    restore();
+  }
+});
+
+it("scrolls to an active highlight that arrives after its id", async () => {
+  const restore = layOutEveryPage();
+  try {
+    const { rerender } = render(
+      <DocumentViewer
+        source={source}
+        highlights={[]}
+        activeHighlightId="total"
+      />,
+    );
+    await open();
+    expect(pagesRegion().scrollTop).toBe(0);
+    rerender(
+      <DocumentViewer
+        source={source}
+        highlights={[onPage1]}
+        activeHighlightId="total"
+      />,
+    );
+    expect(pagesRegion().scrollTop).toBe(onPage1Top);
+  } finally {
+    restore();
+  }
+});
+
+it("opens another text at the top, in a fresh view", () => {
+  const { rerender } = render(
+    <DocumentViewer source={{ kind: "text", text: "first\ntext" }} />,
+  );
+  const before = screen.getByRole("region", { name: "Document text" });
+  before.scrollTop = 300;
+  rerender(<DocumentViewer source={{ kind: "text", text: "second\ntext" }} />);
+  const after = screen.getByRole("region", { name: "Document text" });
+  expect(after).not.toBe(before);
+  expect(after.scrollTop).toBe(0);
+});
+
+it("drops a scroll waiting on an empty text when another text is shown", () => {
+  const original = Object.getOwnPropertyDescriptor(
+    HTMLElement.prototype,
+    "offsetTop",
+  );
+  Object.defineProperty(HTMLElement.prototype, "offsetTop", {
+    configurable: true,
+    get(this: HTMLElement) {
+      const line = this.getAttribute("data-line");
+      return line === null ? 0 : Number(line) * 20;
+    },
+  });
+  try {
+    const ref = createRef<DocumentViewerHandle>();
+    const { rerender } = render(
+      <DocumentViewer ref={ref} source={{ kind: "text", text: "" }} />,
+    );
+    // An empty text shows a status, not lines, so this has nowhere to go.
+    act(() => ref.current?.scrollToHighlight("total"));
+    rerender(
+      <DocumentViewer
+        ref={ref}
+        source={{ kind: "text", text: "a\nb\nc\nd\ne\nf" }}
+        textHighlights={[{ id: "total", line: 5 }]}
+      />,
+    );
+    expect(
+      screen.getByRole("region", { name: "Document text" }).scrollTop,
+    ).toBe(0);
+  } finally {
+    if (original) {
+      Object.defineProperty(HTMLElement.prototype, "offsetTop", original);
+    }
+  }
+});
