@@ -201,6 +201,21 @@ function checkCode(files) {
  * fixtures' lib/ folders; .gitignore re-includes them. `--no-index` checks the
  * rules even for files already tracked.
  */
+/* The files among `files` (relative to frontend/) that git ignores. */
+function gitIgnored(files) {
+  const gitArgs = ["check-ignore", "--no-index", "--stdin"];
+  const options = { cwd: FRONTEND, encoding: "utf8", input: files.join("\n") };
+  // git from PATH on purpose: this is a developer/CI test, and git has no
+  // fixed location across macOS and Linux.
+  const result = spawnSync("git", gitArgs, options); // NOSONAR
+  // Exit 0: some file is ignored; 1: none is; anything else is an error.
+  assert.ok(result.status === 0 || result.status === 1, result.stderr);
+  return result.stdout.split("\n").filter(Boolean);
+}
+
+// Where the cloud build copies its v1 plugins; git-ignored on purpose.
+const CLOUD_V1_PLUGIN = /^src\/v1\/plugins\/[^/]+\//;
+
 test("no v1 or fixture file is git-ignored", () => {
   const files = ["src/v1", "test-fixtures"].flatMap((top) =>
     fs
@@ -209,17 +224,23 @@ test("no v1 or fixture file is git-ignored", () => {
         withFileTypes: true,
       })
       .filter((d) => d.isFile() && d.name !== ".DS_Store")
-      .map((d) => path.relative(FRONTEND, path.join(d.parentPath, d.name))),
+      .map((d) => path.relative(FRONTEND, path.join(d.parentPath, d.name)))
+      // A local copy of the cloud plugins, if any, is ignored by design.
+      .filter((rel) => !CLOUD_V1_PLUGIN.test(rel)),
   );
   // A lib/ folder anywhere under v1, not only the top-level one.
   files.push("src/v1/pages/projects/lib/x.ts", "src/v1/lib/sub/lib/x.ts");
-  const gitArgs = ["check-ignore", "--no-index", "--stdin"];
-  const options = { cwd: FRONTEND, encoding: "utf8", input: files.join("\n") };
-  // git from PATH on purpose: this is a developer/CI test, and git has no
-  // fixed location across macOS and Linux.
-  const result = spawnSync("git", gitArgs, options); // NOSONAR
-  // Exit 1 means "nothing matched"; 0 means some file is ignored.
-  assert.equal(result.status, 1, `git-ignored:\n${result.stdout}`);
+  assert.deepEqual(gitIgnored(files), []);
+});
+
+test("cloud v1 plugins are git-ignored; the public manifest is not", () => {
+  const cloud = [
+    "src/v1/plugins/billing/index.ts",
+    "src/v1/plugins/billing/lib/x.ts",
+    "src/v1/plugins/stray.ts",
+  ];
+  const ignored = gitIgnored([...cloud, "src/v1/plugins/manifest.ts"]);
+  assert.deepEqual(sorted(ignored), sorted(cloud));
 });
 
 test("every case folder is listed", () => {
