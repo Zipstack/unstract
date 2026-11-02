@@ -29,8 +29,9 @@ is convention.
   `@v1/assets/logo.svg?react`). v1 never uses v0's `src/assets/` (enforced);
   where an asset file sits under v1 is convention, not checked.
 - **Lucide is the only icon library**, with canonical names (`LoaderCircle`,
-  not the `Loader2` alias). Shared glyphs come by role from `lib/icons.ts`;
-  provider logos, product marks and flags from `components/ui/BrandMark`.
+  not the `Loader2` alias; lint:v1 bans the common aliases). Shared glyphs
+  come by role from `lib/icons.ts`; provider logos, product marks and flags
+  from `components/ui/BrandMark`.
 
 ## Styling
 

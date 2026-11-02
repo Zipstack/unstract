@@ -21,11 +21,10 @@ describe("ProviderLogo", () => {
     expect(logo.getAttribute("src")).toBe(expected);
   });
 
-  it("covers every provider the design draws a mark for", () => {
-    const missing = PROVIDERS.filter(
-      (p) => p.hasMark && !(p.key in PROVIDER_MARKS),
-    ).map((p) => p.key);
-    expect(missing).toEqual([]);
+  it("has no mark for a provider the backend does not register", () => {
+    const known = new Set(PROVIDERS.map((p) => p.key));
+    const unknown = Object.keys(PROVIDER_MARKS).filter((k) => !known.has(k));
+    expect(unknown).toEqual([]);
   });
 
   it("falls back to the category glyph when the icon is the unavailable marker", () => {

@@ -16,4 +16,19 @@ export type ProviderFixture = Readonly<{
   hasMark: boolean;
 }>;
 
+const KINDS: ReadonlySet<string> = new Set(["adapter", "connector"]);
+const CATEGORIES: ReadonlySet<string> = new Set<ProviderCategory>([
+  "llm",
+  "embedding",
+  "vector-db",
+  "text-extractor",
+  "connector",
+]);
+
+for (const row of rows) {
+  if (!KINDS.has(row.kind) || !CATEGORIES.has(row.category)) {
+    throw new Error(`providers.fixture.json: bad kind/category in ${row.key}`);
+  }
+}
+
 export const PROVIDERS = rows as readonly ProviderFixture[];

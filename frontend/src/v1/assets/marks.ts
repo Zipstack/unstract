@@ -4,7 +4,8 @@
  * components on "12 · LLMs" (node 1407:2), product marks from the Product
  * Switcher file (node 51:1401). Flags are cloud's region-selector SVGs.
  *
- * Rendered as <img>, not inline, so 37 SVGs cost no JavaScript.
+ * Rendered as <img>, not inline React components. Vite still inlines each
+ * SVG under its 4 KB assetsInlineLimit as a data: URL in the importing chunk.
  */
 
 import euFlag from "./flags/eu.svg";
