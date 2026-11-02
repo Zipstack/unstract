@@ -15,14 +15,17 @@
  * fixtures in test-fixtures/v1-boundary/ copy it into each throwaway tree for
  * that reason.
  *
- * Imports are read from the syntax tree (@babel/parser), so comments,
- * strings, regexes and JSX text never hide or fake one: static import/export
- * statements, `import x = require()`, `typeof import()` types, and the calls
- * Vite resolves: import(), require(), import.meta.glob() and
- * new URL(..., import.meta.url). A template or glob argument is checked by its
- * fixed prefix. In v1, an argument that is neither (a variable, a
+ * Imports are read from syntax trees (@babel/parser for code, PostCSS for
+ * styles), so comments, strings, regexes and JSX text never hide or fake one:
+ * static import/export statements, `import x = require()`, `typeof import()`
+ * types, and the calls Vite resolves: import(), require(), import.meta.glob()
+ * (with its `base` option) and new URL(..., import.meta.url). A template or
+ * glob argument is checked by its fixed prefix, and a `..` after that prefix
+ * is reported. In v1, an argument that is neither (a variable, a
  * concatenation, a prefix with no `/`) is reported as unanalysable rather
- * than passed, and so is a file that does not parse.
+ * than passed, and so is a file that does not parse. v0 is judged by what
+ * Vite can resolve: a concatenation by the string it starts with, as Vite
+ * globs it; a bare variable is left alone, since Vite cannot bundle it.
  *
  * The v0 <-> v1 boundary is also a Biome rule (biome.json `overrides`), so CI
  * and editors report the plain forms. Biome overrides replace rule options
@@ -35,6 +38,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { parse } from "@babel/parser";
+import postcss from "postcss";
 
 const SRC = path.join(import.meta.dirname, "..", "src");
 const ROOT = path.join(SRC, "v1");
@@ -169,7 +173,9 @@ function mayImport(from, to, isTestFile) {
  */
 function parseCode(src, name) {
   const isTs = /\.(ts|tsx|mts|cts)$/.test(name);
-  const plugins = isTs ? ["typescript"] : [];
+  // `dts` allows what only a declaration file may hold (`const x: T;`).
+  const dts = /\.d\.[mc]?ts$/.test(name);
+  const plugins = isTs ? [["typescript", { dts }]] : [];
   if (!isTs || name.endsWith(".tsx")) {
     plugins.push("jsx");
   }
@@ -191,63 +197,108 @@ const NOT_CHILDREN = new Set([
   "innerComments",
 ]);
 
+/* The child nodes of node. */
+function* children(node) {
+  for (const [key, value] of Object.entries(node)) {
+    if (NOT_CHILDREN.has(key) || value === null || typeof value !== "object") {
+      continue;
+    }
+    for (const child of Array.isArray(value) ? value : [value]) {
+      if (typeof child?.type === "string") {
+        yield child;
+      }
+    }
+  }
+}
+
 /* Every node under root. */
 function* nodes(root) {
   const stack = [root];
   while (stack.length > 0) {
     const node = stack.pop();
     yield node;
-    for (const [key, value] of Object.entries(node)) {
-      if (
-        NOT_CHILDREN.has(key) ||
-        value === null ||
-        typeof value !== "object"
-      ) {
-        continue;
-      }
-      for (const child of Array.isArray(value) ? value : [value]) {
-        if (typeof child?.type === "string") {
-          stack.push(child);
-        }
-      }
-    }
+    stack.push(...children(node));
   }
 }
 
-/* Whether node is `import.meta.<prop>`. */
+/* Whether node is `import.meta.<prop>`, type-only wrappers aside
+ * (`import.meta.url as string`, `(import.meta.glob as any)`). */
 function isImportMeta(node, prop) {
+  const member = unwrap(node);
+  const object = unwrap(member?.object);
   return (
-    node?.type === "MemberExpression" &&
-    !node.computed &&
-    node.object.type === "MetaProperty" &&
-    node.object.meta.name === "import" &&
-    node.property.name === prop
+    member?.type === "MemberExpression" &&
+    !member.computed &&
+    object?.type === "MetaProperty" &&
+    object.meta.name === "import" &&
+    member.property.name === prop
   );
 }
 
+// Stands for a `${}` hole while a template is read as one string.
+const HOLE = "\0";
+
 /*
- * An import argument: { kind: "literal", spec } for a plain string;
- * { kind: "prefix", spec } for a template with `${}` or a glob with a
- * wildcard, spec being the fixed part before the first one;
- * { kind: "opaque" } for anything else (a variable, a concatenation).
+ * The import arguments node stands for (a conditional stands for both
+ * branches), each as { kind, spec }: "literal" for a plain string; "prefix"
+ * for a template with `${}` or a glob with a wildcard, spec being the fixed
+ * part before the first one; "opaque" for anything else. Vite globs a
+ * concatenation (`"./a/" + n`, `"./a/".concat(n)`) on the string it starts
+ * with, so an opaque argument keeps that as `start`. `climbsLater` marks a
+ * `..` segment after the prefix, which can leave the folder the prefix names.
  */
-function argOf(node, isGlob) {
+function argsOf(node, isGlob) {
   const arg = unwrap(node);
-  let spec;
-  let kind = "literal";
-  if (arg?.type === "StringLiteral") {
-    spec = arg.value;
-  } else if (arg?.type === "TemplateLiteral") {
-    // `cooked` is null only in tagged templates, which are not import calls.
-    spec = arg.quasis[0].value.cooked;
-    kind = arg.expressions.length > 0 ? "prefix" : "literal";
-  } else {
-    return { kind: "opaque" };
+  if (arg?.type === "ConditionalExpression") {
+    return [
+      ...argsOf(arg.consequent, isGlob),
+      ...argsOf(arg.alternate, isGlob),
+    ];
   }
-  const wildcard = isGlob ? spec.search(/[*?{[]/) : -1;
-  return wildcard === -1
-    ? { kind, spec }
-    : { kind: "prefix", spec: spec.slice(0, wildcard) };
+  const text = fixedText(arg);
+  if (text === undefined) {
+    return [{ kind: "opaque", start: concatStart(arg) }];
+  }
+  const at = text.search(isGlob ? /[*?{[\0]/ : /\0/);
+  if (at === -1) {
+    return [{ kind: "literal", spec: text }];
+  }
+  const climbsLater = text
+    .slice(at)
+    .split("/")
+    .some((seg) => seg.replace(/[*?\0]/g, "") === "..");
+  return [{ kind: "prefix", spec: text.slice(0, at), climbsLater }];
+}
+
+/* A string or template as text, holes as HOLE; undefined for anything else.
+ * `cooked` is null only in tagged templates, which are not import calls. */
+function fixedText(arg) {
+  if (arg?.type === "StringLiteral") {
+    return arg.value;
+  }
+  if (arg?.type === "TemplateLiteral") {
+    return arg.quasis.map((q) => q.value.cooked).join(HOLE);
+  }
+  return undefined;
+}
+
+/* The fixed text a `+` chain or `.concat()` call starts with, if any. */
+function concatStart(node) {
+  const arg = unwrap(node);
+  let first;
+  if (arg?.type === "BinaryExpression" && arg.operator === "+") {
+    first = arg.left;
+  } else if (
+    arg?.type === "CallExpression" &&
+    arg.callee.type === "MemberExpression" &&
+    keyName(arg.callee.property, arg.callee.computed) === "concat"
+  ) {
+    first = arg.callee.object;
+  } else {
+    return undefined;
+  }
+  const text = fixedText(unwrap(first));
+  return text === undefined ? concatStart(first) : text.split(HOLE)[0];
 }
 
 // Type-only wrappers: `x as const`, `x satisfies T`, `<T>x`, `x!`.
@@ -268,11 +319,15 @@ function unwrap(node) {
   return inner;
 }
 
-/* Every import in the AST, as { kind, spec, index }, in source order. */
+/* Every import in the AST, as { kind, spec, line }, in source order. */
 function importSpecs(ast) {
   const specs = [];
-  const add = (arg, at, isGlob = false) =>
-    specs.push({ ...argOf(arg, isGlob), index: at.start });
+  const push = (args, at) => {
+    for (const arg of args) {
+      specs.push({ ...arg, line: at.loc.start.line, index: at.start });
+    }
+  };
+  const add = (arg, at) => push(argsOf(arg, false), at);
   for (const node of nodes(ast.program)) {
     switch (node.type) {
       case "ImportDeclaration":
@@ -294,13 +349,12 @@ function importSpecs(ast) {
         add(node.source, node);
         break;
       case "CallExpression":
-        callSpecs(node, add);
+        callSpecs(node, add, push);
         break;
       case "NewExpression":
         // Only `new URL(x, import.meta.url)` is a module reference.
         if (
-          node.callee.type === "Identifier" &&
-          node.callee.name === "URL" &&
+          isUrlCallee(node.callee) &&
           isImportMeta(node.arguments[1], "url")
         ) {
           add(node.arguments[0], node);
@@ -313,28 +367,87 @@ function importSpecs(ast) {
   return specs.toSorted((a, b) => a.index - b.index);
 }
 
+function isUrlCallee(callee) {
+  const inner = unwrap(callee);
+  return inner?.type === "Identifier" && inner.name === "URL";
+}
+
 /* import(), require() and import.meta.glob(); a method that happens to be
  * named `import` or `require` (`api.import(f)`) is not one of them. */
-function callSpecs(node, add) {
-  const { callee } = node;
-  const [first] = node.arguments;
+function callSpecs(node, add, push) {
+  const callee = unwrap(node.callee);
+  const [first, options] = node.arguments;
   if (
     callee.type === "Import" ||
     (callee.type === "Identifier" && callee.name === "require")
   ) {
     add(first, node);
   } else if (isImportMeta(callee, "glob")) {
-    const patterns =
-      first?.type === "ArrayExpression" ? first.elements : [first];
+    const list = unwrap(first);
+    const patterns = list?.type === "ArrayExpression" ? list.elements : [first];
+    const base = globBase(options);
     for (const pattern of patterns) {
+      const literal = unwrap(pattern);
       // `!` patterns exclude files rather than import them.
       if (
-        !(pattern?.type === "StringLiteral" && pattern.value.startsWith("!"))
+        !(literal?.type === "StringLiteral" && literal.value.startsWith("!"))
       ) {
-        add(pattern, pattern ?? node, true);
+        const args = argsOf(pattern, true).map((arg) => rebase(arg, base));
+        push(args, pattern ?? node);
       }
     }
   }
+}
+
+/*
+ * The `base` option of an import.meta.glob() call, which Vite resolves
+ * relative patterns against: undefined when there is none, the string, or
+ * null when it cannot be read (then every pattern is opaque).
+ */
+function globBase(options) {
+  const opts = unwrap(options);
+  if (opts === undefined) {
+    return undefined;
+  }
+  if (opts.type !== "ObjectExpression") {
+    return null;
+  }
+  let base;
+  for (const prop of opts.properties) {
+    // A spread, a method or a computed key might be `base`.
+    const key =
+      prop.type === "ObjectProperty"
+        ? keyName(prop.key, prop.computed)
+        : undefined;
+    if (key === undefined) {
+      return null;
+    }
+    if (key === "base") {
+      base = unwrap(prop.value);
+    }
+  }
+  if (base === undefined) {
+    return undefined;
+  }
+  return base.type === "StringLiteral" ? base.value : null;
+}
+
+/* A glob argument with `base` applied; it applies to relative patterns only. */
+function rebase(arg, base) {
+  if (base === null) {
+    return { kind: "opaque" };
+  }
+  if (base === undefined || base === "" || arg.kind === "opaque") {
+    return arg;
+  }
+  if (!RELATIVE.test(arg.spec)) {
+    return arg;
+  }
+  let spec = path.posix.join(base, arg.spec);
+  if (arg.spec.endsWith("/") && !spec.endsWith("/")) {
+    spec += "/";
+  }
+  return { ...arg, spec: /^[./@]/.test(spec) ? spec : `./${spec}` };
 }
 
 /* The name a property key spells, or undefined when it is computed. */
@@ -359,6 +472,9 @@ function isPropTypes(node) {
   }
 }
 
+// An antd class name, not the tail of one like `variant-x`.
+const ANT_CLASS = /(?<![\w$-])ant-/g;
+
 // The nodes that hold text, where a class name can appear.
 const TEXT_NODES = new Set(["StringLiteral", "TemplateElement", "JSXText"]);
 
@@ -374,7 +490,7 @@ function* bannedUses(ast, src) {
     if (TEXT_NODES.has(node.type)) {
       // Also catches built names (`ant-${x}`, "ant-" + x).
       const text = src.slice(node.start, node.end);
-      for (const m of text.matchAll(/(?<![\w$-])ant-/g)) {
+      for (const m of text.matchAll(ANT_CLASS)) {
         yield {
           index: node.start + m.index,
           msg: "No antd 'ant-' class names under v1.",
@@ -384,14 +500,59 @@ function* bannedUses(ast, src) {
   }
 }
 
-/* CSS has block comments only; a `//` there is part of a URL. */
-function blankCssComments(src) {
-  return src.replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, " "));
+// CSS `@import` and Tailwind's `@reference` / `@plugin` / `@config`.
+const CSS_IMPORT_RULES = new Set(["import", "reference", "plugin", "config"]);
+const CSS_FIRST_ARG = /^\s*(?:url\(\s*)?["']?([^"')\s;]+)/i;
+const CSS_URL = /url\(\s*["']?([^"')\s]+)/gi;
+
+/* The text of a PostCSS node that can hold a URL or a class name. */
+function cssText(node) {
+  if (node.type === "rule") {
+    return node.selector;
+  }
+  if (node.type === "atrule") {
+    return node.params;
+  }
+  return node.type === "decl" ? node.value : "";
 }
 
-// CSS `@import`, Tailwind's `@reference` / `@plugin` / `@config`, and `url()`.
-const CSS_IMPORT_RE =
-  /(?:@(?:import|reference|plugin|config)\s+(?:url\(\s*)?|url\(\s*)["']?([^"')\s;]+)/g;
+/*
+ * A stylesheet read with PostCSS, so comments and strings are told apart:
+ * { imports: [{ spec, line }], antLines }, or { error, line } when it does
+ * not parse. At-rule names are case-insensitive, and a string may follow one
+ * with no space (`@import"x"`).
+ */
+function cssScan(src) {
+  let root;
+  try {
+    root = postcss.parse(src);
+  } catch (err) {
+    return { error: err.reason ?? err.message, line: err.line ?? 0 };
+  }
+  const imports = [];
+  const antLines = [];
+  root.walk((node) => {
+    const line = node.source?.start?.line ?? 0;
+    const text = cssText(node);
+    if (
+      node.type === "atrule" &&
+      CSS_IMPORT_RULES.has(node.name.toLowerCase())
+    ) {
+      const m = CSS_FIRST_ARG.exec(node.params);
+      if (m) {
+        imports.push({ spec: m[1], line });
+      }
+    } else {
+      for (const m of text.matchAll(CSS_URL)) {
+        imports.push({ spec: m[1], line });
+      }
+    }
+    if (text.match(ANT_CLASS)) {
+      antLines.push(line);
+    }
+  });
+  return { imports, antLines };
+}
 
 /* A `@v1/` or relative specifier as a path relative to src/v1, or
  * "outside" when it leaves src/v1. */
@@ -458,6 +619,9 @@ function v1ImportProblem(folder, rel, arg, isTestFile) {
     return "unanalysable import; use a string literal, or a template whose fixed prefix names the folder.";
   }
   const { spec } = arg;
+  if (arg.climbsLater) {
+    return `'${spec}...' has '..' after a wildcard or \`\${}\`, so it can leave the folder it names; import with './' within a folder and '@v1/...' across folders.`;
+  }
   const to =
     arg.kind === "prefix" ? prefixFolder(spec, rel) : targetFolder(spec, rel);
   if (to === undefined) {
@@ -520,6 +684,23 @@ const report = (rel, line, msg) => {
   problems.push(`src/v1/${where}: ${msg}`);
 };
 
+function checkV1Css(rel) {
+  const scan = cssScan(fs.readFileSync(path.join(ROOT, rel), "utf8"));
+  if (scan.error) {
+    report(rel, scan.line, `could not parse (${scan.error}).`);
+    return;
+  }
+  for (const { spec, line } of scan.imports) {
+    const problem = cssImportProblem(spec, rel);
+    if (problem) {
+      report(rel, line, problem);
+    }
+  }
+  for (const line of scan.antLines) {
+    report(rel, line, "No antd 'ant-' class names under v1.");
+  }
+}
+
 if (!fs.existsSync(ROOT)) {
   console.error(`check-v1: ${ROOT} does not exist`);
   process.exit(2);
@@ -554,16 +735,7 @@ for (const rel of walk(ROOT)) {
   }
 
   if (runCode && STYLE_EXT.test(name) && folder === "styles") {
-    const css = blankCssComments(fs.readFileSync(path.join(ROOT, rel), "utf8"));
-    for (const m of css.matchAll(CSS_IMPORT_RE)) {
-      const problem = cssImportProblem(m[1], rel);
-      if (problem) {
-        report(rel, lineAt(css, m.index), problem);
-      }
-    }
-    for (const m of css.matchAll(/(?<![\w$-])ant-/g)) {
-      report(rel, lineAt(css, m.index), "No antd 'ant-' class names under v1.");
-    }
+    checkV1Css(rel);
   }
 
   if (!runCode || !CODE_EXT.test(name) || folder === null) {
@@ -580,7 +752,7 @@ for (const rel of walk(ROOT)) {
   for (const arg of importSpecs(parsed.ast)) {
     const problem = v1ImportProblem(folder, rel, arg, isTestFile);
     if (problem) {
-      report(rel, lineAt(src, arg.index), problem);
+      report(rel, arg.line, problem);
     }
   }
   for (const { index, msg } of bannedUses(parsed.ast, src)) {
@@ -615,17 +787,21 @@ function v0Target(spec, fileRel) {
   return undefined;
 }
 
-/* Whether a v0 import reaches into v1 other than through the `@v1` entry.
- * A template or glob can still add to its fixed prefix, so it reaches v1
- * when the prefix is inside v1 or could grow into it (`@/v1${n}`, `../**`). */
+/*
+ * Whether a v0 import reaches into v1 other than through the `@v1` entry.
+ * A template, glob or concatenation can still add to its fixed start, so it
+ * reaches v1 when that is inside v1 or could grow into it (`@/v1${n}`,
+ * `../**`), or when a `..` follows it.
+ */
 function intoV1(arg, fileRel) {
-  if (arg.kind === "opaque") {
+  const spec = arg.kind === "opaque" ? arg.start : arg.spec;
+  if (spec === undefined) {
     return false;
   }
-  if (arg.kind === "literal" && ENTRY_SPEC.test(arg.spec)) {
+  if (arg.kind === "literal" && ENTRY_SPEC.test(spec)) {
     return false;
   }
-  const target = v0Target(arg.spec, fileRel);
+  const target = v0Target(spec, fileRel);
   if (target === undefined) {
     return false;
   }
@@ -633,23 +809,21 @@ function intoV1(arg, fileRel) {
   if (norm === "src/v1" || norm.startsWith("src/v1/")) {
     return true;
   }
-  return arg.kind === "prefix" && "src/v1/".startsWith(norm);
+  return (
+    arg.kind !== "literal" &&
+    ("src/v1/".startsWith(norm) || arg.climbsLater === true)
+  );
 }
 
 function v0Specs(rel, raw) {
-  if (!STYLE_EXT.test(rel)) {
-    const parsed = parseCode(raw, rel);
-    return parsed.error
-      ? { error: parsed }
-      : { text: raw, specs: importSpecs(parsed.ast) };
+  if (STYLE_EXT.test(rel)) {
+    const scan = cssScan(raw);
+    return scan.error
+      ? { error: scan }
+      : { specs: scan.imports.map((i) => ({ kind: "literal", ...i })) };
   }
-  const text = blankCssComments(raw);
-  const specs = [...text.matchAll(CSS_IMPORT_RE)].map((m) => ({
-    kind: "literal",
-    spec: m[1],
-    index: m.index,
-  }));
-  return { text, specs };
+  const parsed = parseCode(raw, rel);
+  return parsed.error ? { error: parsed } : { specs: importSpecs(parsed.ast) };
 }
 
 /* The real path of a symlink, or null when it is broken. */
@@ -661,42 +835,51 @@ function realPath(file) {
   }
 }
 
+/* Whether to scan a v0 symlink; one into v1 is reported instead. A file
+ * link is scanned like the file; a folder link is not followed. */
+function scanV0Link(rel, full, v1Real) {
+  const real = realPath(full);
+  if (real === v1Real || real?.startsWith(`${v1Real}${path.sep}`)) {
+    problems.push(
+      `src/${rel}: links into src/v1; v0 may reach v1 only through the '@v1' entry.`,
+    );
+    return false;
+  }
+  return real !== null && fs.statSync(real).isFile();
+}
+
+function checkV0File(rel, full) {
+  const { specs, error } = v0Specs(rel, fs.readFileSync(full, "utf8"));
+  if (error) {
+    problems.push(
+      `src/${rel}:${error.line}: could not parse (${error.error}).`,
+    );
+    return;
+  }
+  for (const arg of specs) {
+    if (intoV1(arg, rel)) {
+      const spec =
+        arg.kind === "literal" ? arg.spec : `${arg.spec ?? arg.start}...`;
+      problems.push(
+        `src/${rel}:${arg.line}: '${spec}' reaches into src/v1; v0 may import only the v1 public entry, as '@v1'.`,
+      );
+    }
+  }
+}
+
 function checkV0() {
   const v1Real = fs.realpathSync(ROOT);
   for (const rel of walk(SRC)) {
     const full = path.join(SRC, rel);
+    const scanned = STYLE_EXT.test(rel) || V0_CODE_EXT.test(rel);
     if (rel.startsWith("v1/")) {
       continue;
     }
-    if (fs.lstatSync(full).isSymbolicLink()) {
-      const real = realPath(full);
-      if (real === v1Real || real?.startsWith(`${v1Real}${path.sep}`)) {
-        problems.push(
-          `src/${rel}: links into src/v1; v0 may reach v1 only through the '@v1' entry.`,
-        );
-        continue;
-      }
-      // A file link is scanned like the file; a folder link is not followed.
-      if (real === null || !fs.statSync(real).isFile()) {
-        continue;
-      }
-    }
-    if (!STYLE_EXT.test(rel) && !V0_CODE_EXT.test(rel)) {
+    if (fs.lstatSync(full).isSymbolicLink() && !scanV0Link(rel, full, v1Real)) {
       continue;
     }
-    const { text, specs, error } = v0Specs(rel, fs.readFileSync(full, "utf8"));
-    if (error) {
-      problems.push(
-        `src/${rel}:${error.line}: could not parse (${error.error}).`,
-      );
-      continue;
-    }
-    for (const arg of specs) {
-      if (intoV1(arg, rel)) {
-        problems.push(
-          `src/${rel}:${lineAt(text, arg.index)}: '${arg.spec}' reaches into src/v1; v0 may import only the v1 public entry, as '@v1'.`,
-        );
-      }
+    if (scanned) {
+      checkV0File(rel, full);
     }
   }
 }

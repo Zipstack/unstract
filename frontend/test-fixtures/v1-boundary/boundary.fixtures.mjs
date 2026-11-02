@@ -383,6 +383,21 @@ test("folder contract: every import form is read", () => {
     asConst: 'export const a = () => import("@v1/services/a" as const);',
     satisfies:
       'export const a = () => import(("@v1/services/a" satisfies string));',
+    // Wrappers around the parts that mark an import (vishnuszipstack, #2380).
+    newUrlMetaAs:
+      'export const a = new URL("@v1/services/a.ts", import.meta.url as string);',
+    globCalleeAs:
+      'export const a = (import.meta.glob as never as (p: string) => unknown)("@v1/services/*.ts");',
+    requireCalleeAs:
+      'export const a = (require as (s: string) => unknown)("@v1/services/a");',
+    newUrlCalleeAs:
+      'export const a = new (URL as typeof URL)("@v1/services/a.ts", import.meta.url);',
+    // A conditional stands for both branches; lib/ is allowed, services/ not.
+    conditional:
+      'export const a = (c: boolean) => import(c ? "@v1/services/a" : "@v1/lib/x");',
+    // Vite resolves relative glob patterns against `base`.
+    globBase:
+      'export const a = import.meta.glob("./*.ts", { base: "@v1/services" });',
   };
   // None of these may be reported: comments, JSX, look-alike class names.
   const quiet = {
@@ -405,6 +420,12 @@ test("folder contract: every import form is read", () => {
       "export const f = (api: { import(f: string): void; require(f: string): void }, s: string) => {\n  api.import(s);\n  api.require(s);\n};\nexport class X {\n  import(f: string) {\n    return f;\n  }\n}",
     "packageImport.ts":
       'import { useState } from "react";\nexport const u = useState;',
+    // Syntax only a declaration file may hold.
+    "declarations.d.ts":
+      "export const version: string;\nexport function f(a: number): void;",
+    // `base` applies to relative patterns only.
+    "globBaseAlias.ts":
+      'export const a = import.meta.glob("@v1/lib/*.ts", { base: "../../services" });',
   };
   const files = {};
   for (const [form, code] of Object.entries(forms)) {
@@ -469,6 +490,9 @@ test("v1 imports nothing outside src/v1, in any spelling", () => {
     // biome-ignore lint/suspicious/noTemplateCurlyInString: source text containing a template literal.
     "import(`../../helpers/${name}`)",
     'new URL("../../assets/logo.svg", import.meta.url)',
+    'new URL("../../assets/logo.svg", import.meta.url as string)',
+    'import.meta.glob("./*.js", { base: "../../components" })',
+    'import.meta.glob("./*.js", { base: "/src/helpers" })',
   ];
   expectEachReported("outside", imports, "is outside src/v1");
 });
@@ -482,6 +506,17 @@ test("v1: a '../' that stays inside v1 is reported as such", () => {
     "import(`../lib/${name}`)",
   ];
   expectEachReported("climbs", imports, "climbs with '../'");
+});
+
+test("v1: a '..' after a wildcard or template hole is reported", () => {
+  const imports = [
+    'import.meta.glob("./*/../../../helpers/*.js")',
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: source text containing a template literal.
+    "import(`./${name}/../../../helpers/x.js`)",
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: source text containing a template literal.
+    "import(`@v1/lib/${name}..`)",
+  ];
+  expectEachReported("later", imports, "has '..' after a wildcard");
 });
 
 test("v1: an import the guard cannot read fails closed", () => {
@@ -516,6 +551,11 @@ test("v1: an import the guard cannot read fails closed", () => {
     "src/v1/components/ui/globAnyFolder.ts":
       'export const a = import.meta.glob("@v1/*/a.ts");\n',
     "src/v1/lib/broken.ts": "export const = 1;\n",
+    // A `base` that is not a string literal could point anywhere.
+    "src/v1/lib/globBaseVariable.ts":
+      'export const a = (b: string) => import.meta.glob("./*.ts", { base: b });\n',
+    "src/v1/lib/globOptionsSpread.ts":
+      'const o = { base: "../../x" };\nexport const a = import.meta.glob("./*.ts", { ...o });\n',
   };
   const reported = checkCode(files);
   const unanalysable = [
@@ -526,6 +566,8 @@ test("v1: an import the guard cannot read fails closed", () => {
     "dotPrefix",
     "aliasPrefix",
     "urlVariable",
+    "globBaseVariable",
+    "globOptionsSpread",
   ];
   for (const file of unanalysable) {
     const lines = linesFor(reported, `src/v1/lib/${file}.ts`);
@@ -568,6 +610,21 @@ test("v0 reaches v1 only through @v1, in any form", () => {
       "export const a = () => import(`@v1/plugins/manifest` as const);",
     "angleAssertion.ts":
       'export const a = () => import(<string>"@v1/plugins/manifest");',
+    "nonNull.ts": 'export const a = () => import("@v1/lib/x"!);',
+    "nestedWrappers.ts":
+      'export const a = () => import(("@v1/lib/x" as const)!);',
+    "globArrayAsConst.ts":
+      'export const a = import.meta.glob(["@v1/lib/*.ts"] as const);',
+    "globBase.jsx":
+      'export const a = import.meta.glob("./*.ts", { base: "/src/v1/lib" });',
+    "globClimbsLater.jsx":
+      'export const a = import.meta.glob("./*/../../v1/lib/*.ts");',
+    // Vite globs a concatenation on the string it starts with.
+    "concatenation.jsx":
+      'export const a = (n) => import("../v1/lib/" + n + ".ts");',
+    "concatCall.jsx": 'export const a = (n) => import("../v1/lib/".concat(n));',
+    "conditional.jsx":
+      'export const a = (c) => import(c ? "../v1/lib/x" : "./b");',
     "aliasV0Unslashed.jsx":
       // biome-ignore lint/suspicious/noTemplateCurlyInString: source text containing a template literal.
       "export const a = (n) => import(`@/v1${n}`);",
@@ -581,6 +638,8 @@ test("v0 reaches v1 only through @v1, in any form", () => {
       'export const P = ({ d, t, x }) => <p>{d}/{t} {String(`progress/${x}`)}</p>;\nexport const later = () => import("@/v1/lib/x");',
     "styles.css": '@import "../v1/styles/tokens.css";',
     "tailwindReference.css": '@reference "../v1/styles/tokens.css";',
+    "stylesNoSpace.css": '@import"../v1/styles/tokens.css";',
+    "stylesUpperCase.css": '@IMPORT "../v1/styles/tokens.css";',
     "stylesRootAbsolute.css": ".a { background: url(/src/v1/styles/a.png); }",
   };
   const allowed = {
@@ -592,6 +651,10 @@ test("v0 reaches v1 only through @v1, in any form", () => {
       // biome-ignore lint/suspicious/noTemplateCurlyInString: source text containing a template literal.
       "export const a = (n) => import(`../helpers/${n}`);",
     "memberImport.jsx": "export const a = (api, f) => api.import(f);",
+    "concatV0.jsx": 'export const a = (n) => import("../helpers/" + n);',
+    "variableV0.jsx": "export const a = (n) => import(n);",
+    "globBaseV0.jsx":
+      'export const a = import.meta.glob("./*.ts", { base: "../helpers" });',
     "lookalike.jsx":
       'import a from "@/api/v1";\nimport { v1 } from "uuid/v1";\nexport const b = [a, v1];',
   };
@@ -623,6 +686,15 @@ test("v1 styles: imports and Tailwind directives follow the contract", () => {
       "styles/ may not import from pages/a/",
     ],
     "climbs.css": ['@import "../styles/tokens.css";', "climbs with '../'"],
+    // At-rules are case-insensitive and need no space before a string.
+    "noSpace.css": ['@import"../../index.css";', "is outside src/v1"],
+    "upperCase.css": ['@IMPORT "../../index.css";', "is outside src/v1"],
+    // A `/*` inside a string is not a comment.
+    "afterSlashStarInString.css": [
+      '.a { content: "/*"; }\n.b { background: url("../../x.png"); }\n/* end */',
+      "is outside src/v1",
+    ],
+    "broken.css": [".a {", "could not parse"],
   };
   const allowed = {
     "ok.css": [
@@ -669,4 +741,14 @@ test("v0 symlinks: a link into v1 is reported, a file link is scanned", () => {
   } finally {
     removeTree(dir);
   }
+});
+
+test("v0 at the top of src/: a glob `base` is resolved from there", () => {
+  const reported = checkCode({
+    "src/RootGlob.jsx":
+      'export const a = import.meta.glob("./*.ts", { base: "v1/lib" });\n',
+  });
+  const lines = linesFor(reported, "src/RootGlob.jsx");
+  assert.equal(lines.length, 1, reported.join("\n"));
+  assert.ok(lines[0].includes("reaches into src/v1"), lines[0]);
 });

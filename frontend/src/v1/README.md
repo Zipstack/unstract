@@ -16,9 +16,12 @@ is convention.
 - **v0 imports only the public entry**, `@v1` (`src/v1/index.ts`).
 - **Imports must be readable.** Use a string literal, or a template whose fixed
   prefix names the folder (`` `@v1/pages/${name}/index.tsx` ``, allowed only in
-  folders that may import everything). An import of a variable, a
+  folders that may import everything). In v1, an import of a variable, a
   concatenation or a template whose prefix has no `/` is rejected, and so is a
-  file that does not parse.
+  `..` after a wildcard or `${}`, and a file that does not parse. v0 is judged
+  by what Vite can resolve: a template, glob or concatenation by the fixed
+  text it starts with; a bare variable is left alone, since Vite cannot bundle
+  it.
 - **No PropTypes, no component `.css`, no antd** (package, shim or `ant-`
   class). Global v1 styles live in `styles/` and are imported as
   `@v1/styles/...`, including from inside `styles/`.
