@@ -47,8 +47,9 @@ const CASES = parseTable(`
   v1-imports-v0-alias            | lint:v1         | v1 imports nothing outside src/v1
   v1-imports-v0-relative         | lint:v1         | v1 imports nothing outside src/v1
   v1-imports-root-absolute       | lint:v1         | v1 imports nothing outside src/v1
-  # Import boundary, v0 -> v1: Biome for aliases, check-v1 for the rest.
+  # Import boundary, v0 -> v1: Biome for plain spellings, check-v1 for all.
   v0-imports-v1-internal         | biome lint src/ | v0 may import only the v1 public entry
+  v0-imports-v1-relative         | biome lint src/ | v0 may import only the v1 public entry
   v0-imports-v1-relative         | lint:v1         | v0 may import only the v1 public entry
   v0-imports-v1-template         | lint:v1         | v0 may import only the v1 public entry
   v0-imports-v1-entry            | biome lint src/ | -
@@ -62,6 +63,7 @@ const CASES = parseTable(`
   v1-prop-types-assignment       | lint:v1         | No PropTypes under v1
   v1-antd-import                 | lint:v1         | antd is not used under src/v1
   v1-antd-subpath                | lint:v1         | antd is not used under src/v1
+  v1-antd-icons                  | lint:v1         | antd is not used under src/v1
   # Lucide is the only icon library; its deprecated aliases are banned too.
   v1-icon-library                | lint:v1         | Lucide is the only icon library under src/v1
   v1-icon-library-subpath        | lint:v1         | Lucide is the only icon library under src/v1
@@ -84,6 +86,8 @@ const CASES = parseTable(`
   v1-strict-null                 | typecheck:v1    | TS18048
   v1-unused-local                | typecheck:v1    | TS6133
   v1-unused-parameter            | typecheck:v1    | TS6133
+  # No @/ path in src/v1/tsconfig.json, so tsc rejects the v0 alias too.
+  v1-tsc-v0-alias                | typecheck:v1    | TS2307
   # Folder taxonomy and contract (the full contract is the matrix below).
   v1-outside-taxonomy            | typecheck:v1    | Outside the v1 folder taxonomy
   v1-root-file                   | typecheck:v1    | Outside the v1 folder taxonomy
@@ -224,10 +228,7 @@ test("no v1 or fixture file is git-ignored", () => {
         withFileTypes: true,
       })
       .filter((d) => d.isFile() && d.name !== ".DS_Store")
-      .map((d) => path.relative(FRONTEND, path.join(d.parentPath, d.name)))
-      // Cloud plugins copied into src/v1/plugins/<id>/ are git-ignored on
-      // purpose; they belong to the cloud repository.
-      .filter((rel) => !/^src\/v1\/plugins\/[^/]+\//.test(rel)),
+      .map((d) => path.relative(FRONTEND, path.join(d.parentPath, d.name))),
   );
   // A lib/ folder anywhere under v1, not only the top-level one.
   files.push("src/v1/pages/projects/lib/x.ts", "src/v1/lib/sub/lib/x.ts");
@@ -372,11 +373,55 @@ test("folder contract: every import form is read", () => {
     afterDoubleSlashInString:
       'const u = "a//b"; export { a } from "@v1/services/a";',
     glob: 'export const a = import.meta.glob("@v1/services/*.ts");',
+    // An apostrophe in JSX text is not a string opener.
+    afterJsxContraction:
+      'export const A = () => <span>It\'s <button onClick={() => import("@v1/services/a")}>ready</button></span>;',
+    afterJsxBraceApostrophe:
+      'export const B = (n: string) => <p>{n}\'s <b onClick={() => import("@v1/services/a")}>x</b></p>;',
     globArrayLater:
       'export const a = import.meta.glob(["@v1/components/ui/*.tsx", "@v1/services/*.ts"]);',
     afterTemplateExpression:
       // biome-ignore lint/suspicious/noTemplateCurlyInString: source text containing a template literal.
       'const t = `${"}"}/*`;\nimport { a } from "@v1/services/a";\n/** doc */',
+    // JSX text and attributes that a hand-written tokenizer misread (PR #2380).
+    afterJsxDivisionText:
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: source text containing a template literal.
+      'export const P = (p: { d: number; t: number; x: string }) => <p>{p.d}/{p.t} {String(`progress/${p.x}`)}</p>;\nexport const later = () => import("@v1/services/a");',
+    afterJsxSlashStarText:
+      'export const Q = () => <p>files/*.ts <code>src/*</code></p>;\nexport const later = () => import("@v1/services/a");',
+    afterJsxBacktickText:
+      'export const R = () => <p>Press ` to open</p>;\nexport const later = () => import("@v1/services/a");',
+    afterJsxSelfClosingTag:
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: source text containing a template literal.
+      'export const A = (p: { x: string; id: string }) => (\n  <div>``<img src={p.x} />`` <a href={`/b/${p.id}`}>b</a></div>\n);\nexport const later = () => import("@v1/services/a");',
+    afterMultilineAttribute:
+      'export const B = () => (\n  <button title="Matches /api/*\n" onClick={() => import("@v1/services/a")}>b</button>\n);',
+    divisionAfterFrom:
+      'export const r = async (range: { from: number }) => range.from / (await import("@v1/services/a")).rate;',
+    escapedSpecifier: 'import { a } from "@v1\\/services/a";\nexport { a };',
+    stringNamedBinding:
+      'import { "a-b" as c } from "@v1/services/a";\nexport { c };',
+    typeofImport: 'export type A = typeof import("@v1/services/a");',
+    importEquals: 'import a = require("@v1/services/a");\nexport { a };',
+    // TypeScript wrappers around the specifier (Greptile, PR #2380).
+    asConst: 'export const a = () => import("@v1/services/a" as const);',
+    satisfies:
+      'export const a = () => import(("@v1/services/a" satisfies string));',
+    // Wrappers around the parts that mark an import (vishnuszipstack, #2380).
+    newUrlMetaAs:
+      'export const a = new URL("@v1/services/a.ts", import.meta.url as string);',
+    globCalleeAs:
+      'export const a = (import.meta.glob as never as (p: string) => unknown)("@v1/services/*.ts");',
+    requireCalleeAs:
+      'export const a = (require as (s: string) => unknown)("@v1/services/a");',
+    newUrlCalleeAs:
+      'export const a = new (URL as typeof URL)("@v1/services/a.ts", import.meta.url);',
+    // A conditional stands for both branches; lib/ is allowed, services/ not.
+    conditional:
+      'export const a = (c: boolean) => import(c ? "@v1/services/a" : "@v1/lib/x");',
+    // Vite resolves relative glob patterns against `base`.
+    globBase:
+      'export const a = import.meta.glob("./*.ts", { base: "@v1/services" });',
   };
   // None of these may be reported: comments, JSX, look-alike class names.
   const quiet = {
@@ -386,19 +431,36 @@ test("folder contract: every import form is read", () => {
     // Example source text in strings, templates and regexes is not an import.
     "importsInStrings.ts":
       'export const a = "import(name)";\nexport const b = \'import x from "@/helpers/x"\';\nexport const c = `require(n) or import.meta.glob(x)`;\nexport const d = /import\\(x\\)/;',
+    "jsxQuotes.tsx":
+      "export const C = () => <p title=\"It's fine\">Don't 'quote' me</p>;",
     "jsx.tsx":
       'export const T = () => <div className="x">a / b</div>;\nexport const n = 2 / 1;',
+    "jsxText.tsx":
+      "export const J = (p: { d: number; t: number }) => <p>{p.d}/{p.t} files/*.ts <code>src/*</code> Press ` to open</p>;",
+    "importProse.tsx":
+      "export const P = () => <p>You can import (or export) projects.</p>;",
+    // Methods named import/require are not module loads.
+    "memberCalls.ts":
+      "export const f = (api: { import(f: string): void; require(f: string): void }, s: string) => {\n  api.import(s);\n  api.require(s);\n};\nexport class X {\n  import(f: string) {\n    return f;\n  }\n}",
+    "packageImport.ts":
+      'import { useState } from "react";\nexport const u = useState;',
+    // Syntax only a declaration file may hold.
+    "declarations.d.ts":
+      "export const version: string;\nexport function f(a: number): void;",
+    // `base` applies to relative patterns only.
+    "globBaseAlias.ts":
+      'export const a = import.meta.glob("@v1/lib/*.ts", { base: "../../services" });',
   };
   const files = {};
   for (const [form, code] of Object.entries(forms)) {
-    files[`src/v1/components/ui/${form}.ts`] = `${code}\n`;
+    files[`src/v1/components/ui/${form}.tsx`] = `${code}\n`;
   }
   for (const [name, code] of Object.entries(quiet)) {
     files[`src/v1/components/ui/${name}`] = `${code}\n`;
   }
   const reported = checkCode(files);
   for (const form of Object.keys(forms)) {
-    const lines = linesFor(reported, `src/v1/components/ui/${form}.ts`);
+    const lines = linesFor(reported, `src/v1/components/ui/${form}.tsx`);
     assert.equal(lines.length, 1, `${form}:\n${reported.join("\n")}`);
     assert.ok(
       lines[0].includes("components/ui/ may not import from services/"),
@@ -425,29 +487,60 @@ test("a symlinked file under v1 fails typecheck:v1", () => {
   }
 });
 
+/* Puts each import in its own src/v1/lib/ file and asserts each file is
+ * reported exactly once, with `message`. */
+function expectEachReported(stem, imports, message) {
+  const files = {};
+  imports.forEach((code, i) => {
+    files[`src/v1/lib/${stem}-${i}.ts`] =
+      `export const a = (name: string) => ${code};\n`;
+  });
+  const reported = checkCode(files);
+  imports.forEach((code, i) => {
+    const lines = linesFor(reported, `src/v1/lib/${stem}-${i}.ts`);
+    assert.equal(lines.length, 1, `${code}:\n${reported.join("\n")}`);
+    assert.ok(lines[0].includes(message), `${code}: ${lines[0]}`);
+  });
+}
+
 test("v1 imports nothing outside src/v1, in any spelling", () => {
   const imports = [
     "import(`@/helpers/x`)",
-    "import(`../helpers/x`)",
-    "import(`..`)",
+    "import(`../../helpers/x`)",
+    "import(`../..`)",
     "import(`./../../helpers/x`)",
     "import(`/src/assets/logo.svg`)",
     "import(`src/helpers/x`)",
     // biome-ignore lint/suspicious/noTemplateCurlyInString: source text containing a template literal.
     "import(`../../helpers/${name}`)",
     'new URL("../../assets/logo.svg", import.meta.url)',
+    'new URL("../../assets/logo.svg", import.meta.url as string)',
+    'import.meta.glob("./*.js", { base: "../../components" })',
+    'import.meta.glob("./*.js", { base: "/src/helpers" })',
   ];
-  const files = {};
-  imports.forEach((code, i) => {
-    files[`src/v1/lib/outside-${i}.ts`] =
-      `export const a = (name: string) => ${code};\n`;
-  });
-  const reported = checkCode(files);
-  imports.forEach((code, i) => {
-    const lines = linesFor(reported, `src/v1/lib/outside-${i}.ts`);
-    assert.equal(lines.length, 1, `${code}:\n${reported.join("\n")}`);
-    assert.ok(lines[0].includes("is outside src/v1"), `${code}: ${lines[0]}`);
-  });
+  expectEachReported("outside", imports, "is outside src/v1");
+});
+
+test("v1: a '../' that stays inside v1 is reported as such", () => {
+  const imports = [
+    'import("../lib/x")',
+    "import(`..`)",
+    'import("../helpers/x")',
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: source text containing a template literal.
+    "import(`../lib/${name}`)",
+  ];
+  expectEachReported("climbs", imports, "climbs with '../'");
+});
+
+test("v1: a '..' after a wildcard or template hole is reported", () => {
+  const imports = [
+    'import.meta.glob("./*/../../../helpers/*.js")',
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: source text containing a template literal.
+    "import(`./${name}/../../../helpers/x.js`)",
+    // biome-ignore lint/suspicious/noTemplateCurlyInString: source text containing a template literal.
+    "import(`@v1/lib/${name}..`)",
+  ];
+  expectEachReported("later", imports, "has '..' after a wildcard");
 });
 
 test("v1: an import the guard cannot read fails closed", () => {
@@ -466,16 +559,53 @@ test("v1: an import the guard cannot read fails closed", () => {
     // A non-module `new URL` is not an import.
     "src/v1/lib/link.ts":
       'export const u = (p: string) => new URL(p, "https://example.com");\n',
+    "src/v1/lib/concatenation.ts":
+      'export const a = (x: string) => import("./" + x);\n',
+    "src/v1/lib/concatenatedLiterals.ts":
+      'export const a = () => import("./" + "../../services/a");\n',
+    // A prefix with no "/" fixes no folder: `.${n}` may become `../x`.
+    "src/v1/lib/dotPrefix.ts":
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: source text containing a template literal.
+      "export const a = (n: string) => import(`.${n}`);\n",
+    "src/v1/lib/aliasPrefix.ts":
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: source text containing a template literal.
+      "export const a = (p: string) => import(`@v1${p}`);\n",
+    "src/v1/lib/urlVariable.ts":
+      "export const a = (p: string) => new URL(p, import.meta.url);\n",
+    "src/v1/components/ui/globAnyFolder.ts":
+      'export const a = import.meta.glob("@v1/*/a.ts");\n',
+    "src/v1/lib/broken.ts": "export const = 1;\n",
+    // A `base` that is not a string literal could point anywhere.
+    "src/v1/lib/globBaseVariable.ts":
+      'export const a = (b: string) => import.meta.glob("./*.ts", { base: b });\n',
+    "src/v1/lib/globOptionsSpread.ts":
+      'const o = { base: "../../x" };\nexport const a = import.meta.glob("./*.ts", { ...o });\n',
   };
   const reported = checkCode(files);
-  for (const file of ["variable", "fullyComputed"]) {
+  const unanalysable = [
+    "variable",
+    "fullyComputed",
+    "concatenation",
+    "concatenatedLiterals",
+    "dotPrefix",
+    "aliasPrefix",
+    "urlVariable",
+    "globBaseVariable",
+    "globOptionsSpread",
+  ];
+  for (const file of unanalysable) {
     const lines = linesFor(reported, `src/v1/lib/${file}.ts`);
-    assert.equal(lines.length, 1, reported.join("\n"));
+    assert.equal(lines.length, 1, `${file}:\n${reported.join("\n")}`);
     assert.ok(lines[0].includes("unanalysable import"), lines[0]);
   }
-  const page = linesFor(reported, "src/v1/components/ui/computedPage.ts");
-  assert.equal(page.length, 1, reported.join("\n"));
-  assert.ok(page[0].includes("may not import a computed v1 path"), page[0]);
+  for (const file of ["computedPage", "globAnyFolder"]) {
+    const lines = linesFor(reported, `src/v1/components/ui/${file}.ts`);
+    assert.equal(lines.length, 1, `${file}:\n${reported.join("\n")}`);
+    assert.ok(lines[0].includes("may not import a computed v1 path"), lines[0]);
+  }
+  const broken = linesFor(reported, "src/v1/lib/broken.ts");
+  assert.equal(broken.length, 1, reported.join("\n"));
+  assert.ok(broken[0].includes("could not parse"), broken[0]);
   assert.deepEqual(linesFor(reported, "src/v1/app/routes.ts"), []);
   assert.deepEqual(linesFor(reported, "src/v1/lib/link.ts"), []);
 });
@@ -500,7 +630,40 @@ test("v0 reaches v1 only through @v1, in any form", () => {
     "srcPath.jsx": 'export const a = () => import("src/v1/lib/x");',
     "relativeEntry.jsx": 'import "../v1";',
     "typed.tsx": 'import x from "../v1/lib/x";\nexport const y = x;',
+    "templateAsConst.tsx":
+      "export const a = () => import(`@v1/plugins/manifest` as const);",
+    "angleAssertion.ts":
+      'export const a = () => import(<string>"@v1/plugins/manifest");',
+    "nonNull.ts": 'export const a = () => import("@v1/lib/x"!);',
+    "nestedWrappers.ts":
+      'export const a = () => import(("@v1/lib/x" as const)!);',
+    "globArrayAsConst.ts":
+      'export const a = import.meta.glob(["@v1/lib/*.ts"] as const);',
+    "globBase.jsx":
+      'export const a = import.meta.glob("./*.ts", { base: "/src/v1/lib" });',
+    "globClimbsLater.jsx":
+      'export const a = import.meta.glob("./*/../../v1/lib/*.ts");',
+    // Vite globs a concatenation on the string it starts with.
+    "concatenation.jsx":
+      'export const a = (n) => import("../v1/lib/" + n + ".ts");',
+    "concatCall.jsx": 'export const a = (n) => import("../v1/lib/".concat(n));',
+    "conditional.jsx":
+      'export const a = (c) => import(c ? "../v1/lib/x" : "./b");',
+    "aliasV0Unslashed.jsx":
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: source text containing a template literal.
+      "export const a = (n) => import(`@/v1${n}`);",
+    "aliasUnslashed.jsx":
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: source text containing a template literal.
+      "export const a = (p) => import(`@v1${p}`);",
+    "globWildcard.jsx": 'export const a = import.meta.glob("../**/*.ts");',
+    "escaped.jsx": 'export const a = () => import("..\\/v1/lib/x");',
+    "afterJsxText.jsx":
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: source text containing a template literal.
+      'export const P = ({ d, t, x }) => <p>{d}/{t} {String(`progress/${x}`)}</p>;\nexport const later = () => import("@/v1/lib/x");',
     "styles.css": '@import "../v1/styles/tokens.css";',
+    "tailwindReference.css": '@reference "../v1/styles/tokens.css";',
+    "stylesNoSpace.css": '@import"../v1/styles/tokens.css";',
+    "stylesUpperCase.css": '@IMPORT "../v1/styles/tokens.css";',
     "stylesRootAbsolute.css": ".a { background: url(/src/v1/styles/a.png); }",
   };
   const allowed = {
@@ -508,6 +671,14 @@ test("v0 reaches v1 only through @v1, in any form", () => {
     "entryTemplate.jsx": "export const a = () => import(`@v1`);",
     "entryIndex.jsx": 'import "@v1/index";',
     "v0Only.jsx": 'import x from "../helpers/x";\nexport const y = x;',
+    "v0Template.jsx":
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: source text containing a template literal.
+      "export const a = (n) => import(`../helpers/${n}`);",
+    "memberImport.jsx": "export const a = (api, f) => api.import(f);",
+    "concatV0.jsx": 'export const a = (n) => import("../helpers/" + n);',
+    "variableV0.jsx": "export const a = (n) => import(n);",
+    "globBaseV0.jsx":
+      'export const a = import.meta.glob("./*.ts", { base: "../helpers" });',
     "lookalike.jsx":
       'import a from "@/api/v1";\nimport { v1 } from "uuid/v1";\nexport const b = [a, v1];',
   };
@@ -524,4 +695,84 @@ test("v0 reaches v1 only through @v1, in any form", () => {
   for (const name of Object.keys(allowed)) {
     assert.deepEqual(linesFor(reported, `src/pages/${name}`), [], name);
   }
+});
+
+test("v1 styles: imports and Tailwind directives follow the contract", () => {
+  const denied = {
+    "reference.css": ['@reference "../../index.css";', "is outside src/v1"],
+    "plugin.css": ['@plugin "../../../plugins/x.js";', "is outside src/v1"],
+    "config.css": [
+      '@config "../../../tailwind.config.js";',
+      "is outside src/v1",
+    ],
+    "intoPage.css": [
+      '@import "@v1/pages/a/x.css";',
+      "styles/ may not import from pages/a/",
+    ],
+    "climbs.css": ['@import "../styles/tokens.css";', "climbs with '../'"],
+    // At-rules are case-insensitive and need no space before a string.
+    "noSpace.css": ['@import"../../index.css";', "is outside src/v1"],
+    "upperCase.css": ['@IMPORT "../../index.css";', "is outside src/v1"],
+    // A `/*` inside a string is not a comment.
+    "afterSlashStarInString.css": [
+      '.a { content: "/*"; }\n.b { background: url("../../x.png"); }\n/* end */',
+      "is outside src/v1",
+    ],
+    "broken.css": [".a {", "could not parse"],
+  };
+  const allowed = {
+    "ok.css": [
+      '@import "tailwindcss";',
+      '@import "@v1/styles/tokens.css";',
+      '@reference "./tokens.css";',
+      '@plugin "tailwindcss-animate";',
+      '.a { background: url("@v1/assets/a.png"); }',
+      ".b { background: url(data:image/png;base64,AA); }",
+    ].join("\n"),
+  };
+  const files = {};
+  for (const [name, [code]] of Object.entries(denied)) {
+    files[`src/v1/styles/${name}`] = `${code}\n`;
+  }
+  for (const [name, code] of Object.entries(allowed)) {
+    files[`src/v1/styles/${name}`] = `${code}\n`;
+  }
+  const reported = checkCode(files);
+  for (const [name, [, message]] of Object.entries(denied)) {
+    const lines = linesFor(reported, `src/v1/styles/${name}`);
+    assert.equal(lines.length, 1, `${name}:\n${reported.join("\n")}`);
+    assert.ok(lines[0].includes(message), `${name}: ${lines[0]}`);
+  }
+  assert.deepEqual(linesFor(reported, "src/v1/styles/ok.css"), []);
+});
+
+test("v0 symlinks: a link into v1 is reported, a file link is scanned", () => {
+  const dir = makeTree(null);
+  try {
+    writeFile(dir, "elsewhere/bad.jsx", 'import "@v1/lib/x";\n');
+    fs.mkdirSync(path.join(dir, "src", "pages"), { recursive: true });
+    fs.symlinkSync(
+      path.join(dir, "src", "v1", "plugins", "manifest.ts"),
+      path.join(dir, "src", "pages", "manifest.ts"),
+    );
+    fs.symlinkSync(
+      path.join(dir, "elsewhere", "bad.jsx"),
+      path.join(dir, "src", "pages", "bad.jsx"),
+    );
+    const { output, log } = runAll(dir, ["node scripts/check-v1.mjs --code"]);
+    assert.ok(output.includes("src/pages/manifest.ts: links into src/v1"), log);
+    assert.ok(output.includes("src/pages/bad.jsx:1: '@v1/lib/x' reaches"), log);
+  } finally {
+    removeTree(dir);
+  }
+});
+
+test("v0 at the top of src/: a glob `base` is resolved from there", () => {
+  const reported = checkCode({
+    "src/RootGlob.jsx":
+      'export const a = import.meta.glob("./*.ts", { base: "v1/lib" });\n',
+  });
+  const lines = linesFor(reported, "src/RootGlob.jsx");
+  assert.equal(lines.length, 1, reported.join("\n"));
+  assert.ok(lines[0].includes("reaches into src/v1"), lines[0]);
 });
