@@ -17,8 +17,6 @@ logger = WorkerLogger.get_logger(__name__)
 
 MANUAL_REVIEW_PLUGIN_NAME = "manual_review"
 
-# manual_review_config key: the workflow has HITL confidence rules, so the
-# structure tool runs with highlight on to produce confidence scores.
 AUTO_ENABLE_HIGHLIGHT = "auto_enable_highlight"
 HIGHLIGHT_AUTO_ENABLED_MESSAGE = (
     "Highlight enabled automatically because HITL confidence rules are configured"
@@ -391,11 +389,7 @@ def get_manual_review_workflow_util(api_client: Any, organization_id: str) -> An
 
 
 def has_confidence_rules(workflow_util: Any, workflow_id: str, rule_type: str) -> bool:
-    """Whether the workflow's HITL rules of ``rule_type`` ("DB" or "API")
-    contain a confidence condition.
-
-    False in OSS, and with a plugin that lacks the method.
-    """
+    """Whether the workflow's ``rule_type`` rules use a confidence condition."""
     check = getattr(workflow_util, "has_confidence_rules", None)
     return bool(check and check(workflow_id, rule_type))
 

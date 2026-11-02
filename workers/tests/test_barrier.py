@@ -774,13 +774,7 @@ class TestApiDeploymentManualReviewContract:
 
 
 class TestAutoEnableHighlightOrchestration:
-    """HITL confidence rules set ``auto_enable_highlight``.
-
-    The orchestrators check their own flow's rules once (API deployments the
-    API rules, only for a ``hitl_queue_name`` request without a
-    ``hitl_packet_id``; the rest the DB rules) and put the flag in
-    ``manual_review_config``, which the file workers read.
-    """
+    """HITL confidence rules set ``auto_enable_highlight``."""
 
     @staticmethod
     def _util(confidence_rule_type):
