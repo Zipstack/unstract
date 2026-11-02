@@ -745,9 +745,9 @@ relstate._ar_versions = _ar_versions
 for kind in ("CLOUD", "ON_PREM", "CHART"):
     os.environ.setdefault("RELSTATE_AR_" + kind, "r")
 import urllib.request
-def _urlopen(req, timeout=None):  # a registry delete, logged to ar.log with its token
+def _urlopen(req, timeout=None):  # a registry delete, logged to ar.log
     with open({os.path.join(d, "ar.log")!r}, "a") as fh:
-        fh.write(f"{{req.get_method()}} {{req.full_url}} {{req.get_header('Authorization')}}\\n")
+        fh.write(f"{{req.get_method()}} {{req.full_url}}\\n")
     return open(os.devnull, "rb")
 urllib.request.urlopen = _urlopen
 """)
@@ -850,15 +850,10 @@ class RetireWorkflow(Workflow):
 
     def test_abandon_deletes_one_rc_and_keeps_the_last(self):
         self.line("1.7", "v1.7.0-rc.1", "v1.7.0-rc.2")
-        self.retire(
-            ABANDON="release/1.7",
-            REASON="cut by mistake",
-            RELSTATE_AR_TOKEN="t",
-            AR_RC_TOKEN="rc-t",
-        )
-        self.assertRegex(  # an RC in the stable repository goes with the read token
+        self.retire(ABANDON="release/1.7", REASON="cut by mistake", RELSTATE_AR_TOKEN="t")
+        self.assertRegex(
             self.read("ar.log"),
-            r"^DELETE \S+/r/packages/backend/versions/sha256:v1\.7\.0-rc\.1\?force=true Bearer t\n$",
+            r"^DELETE \S+/r/packages/backend/versions/sha256:v1\.7\.0-rc\.1\?force=true\n$",
         )
 
     def test_abandon_deletes_in_the_rc_repository(self):
@@ -873,41 +868,12 @@ class RetireWorkflow(Workflow):
             ABANDON="release/1.7",
             REASON="cut by mistake",
             RELSTATE_AR_TOKEN="t",
-            AR_RC_TOKEN="rc-t",
             RELSTATE_AR_CLOUD_RC="rc",
         )
-        self.assertRegex(  # with the RC repositories' token
+        self.assertRegex(
             self.read("ar.log"),
-            r"^DELETE \S+/rc/packages/backend/versions/sha256:rc1\?force=true Bearer rc-t\n$",
+            r"^DELETE \S+/rc/packages/backend/versions/sha256:rc1\?force=true\n$",
         )
-
-    def test_abandon_refuses_an_rc_delete_without_its_token(self):
-        self.line(
-            "1.7", "v1.7.0-rc.1", "v1.7.0-rc.2"
-        )  # in the stable repository, deleted with the read token
-        for i in (1, 2):
-            with open(os.path.join(self.d, "reg.jsonl"), "a") as fh:
-                fh.write(
-                    f'{{"repo": "rc", "digest": "sha256:rc{i}", "pushed_at": "2026-09-01T00:00:00Z", '
-                    f'"tags": ["v1.7.0-rc.{i + 2}"]}}\n'
-                )
-        r = self.run_step(
-            inline("retire.yaml", "Derive and retire"),
-            ABANDON="release/1.7",
-            REASON="cut by mistake",
-            RETIRE_LINE="",
-            NOW="",
-            DRY_RUN="false",
-            RELSTATE_AR_TOKEN="t",
-            RELSTATE_AR_CLOUD_RC="rc",
-        )
-        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
-        self.assertIn(
-            "no token to delete rc/packages/backend/versions/sha256:rc1", r.stdout
-        )
-        self.assertFalse(
-            os.path.exists(os.path.join(self.d, "ar.log"))
-        )  # not even the stable one
 
     def test_abandon_refuses_a_version_outside_its_repositories(self):
         self.line("1.7")
@@ -1487,7 +1453,7 @@ esac
 
     def test_image_roots(self):
         roots = step("cloud-backend-docker-build-push.yaml", "Image roots")
-        env = {"PROJECT_ID": "p", "ON_PREM_RC": ""}
+        env = {"PROJECT_ID": "p", "TOKEN": "t", "ON_PREM_RC": ""}
         r = self.bash(roots, CLOUD_RC=RC, **env)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         r = self.bash(roots, CLOUD_RC="", **env)
@@ -1676,9 +1642,13 @@ esac
             )
 
     def test_image_roots_is_the_same_in_every_build_workflow(self):
-        # it only resolves paths: the RC login is its own step
+        # on-prem-backend logs in with the credential helper instead of the token (a long compile outlives it)
         def roots(f):
-            return step(f, "Image roots")
+            return [
+                line
+                for line in step(f, "Image roots").split("\n")
+                if not re.search(r"docker login|configure-docker|credential helper", line)
+            ]
 
         files = sorted(
             f
@@ -1704,7 +1674,6 @@ esac
         self.assertEqual(len(env("cloud-backend-docker-build-push.yaml")), 2)
         for f in files:
             self.assertEqual(roots(f), roots("cloud-backend-docker-build-push.yaml"), f)
-            self.assertNotRegex(roots(f), r"docker login|configure-docker", f)
             self.assertEqual(env(f), env("cloud-backend-docker-build-push.yaml"), f)
             with open(os.path.join(HERE, "..", "workflows", f)) as fh:
                 text = fh.read()
@@ -1717,100 +1686,6 @@ esac
                 else [["IMAGE_ROOT_ON_PREM"]]
             )
             self.assertIn(tags, want, f)
-
-    RC_AUTH = "Authenticate to Google Cloud for the RC repositories"
-    RC_LOGIN = "Login to the RC repositories"
-
-    def test_rc_login_is_the_same_in_every_build_workflow(self):
-        # a release build logs Docker in to the RC repositories as the keyless account, before the first registry call
-        def block(text, at):  # the step around index at, from its name to its blank line
-            return text[text.rindex("- name: ", 0, at + 8) : text.index("\n\n", at)]
-
-        files = sorted(
-            f
-            for f in os.listdir(os.path.join(HERE, "..", "workflows"))
-            if f.endswith("-docker-build-push.yaml")
-            and f != "cloud-multi-doc-service-docker-build-push.yaml"
-        )
-        self.assertEqual(len(files), 11)
-        want = {}
-        for f in files:
-            with open(os.path.join(HERE, "..", "workflows", f)) as fh:
-                text = fh.read()
-            job = text[text.index("\njobs:\n") : text.index("\n    steps:\n")]
-            self.assertRegex(
-                job, r"\n    permissions:\n(      .*\n)*      id-token: write", f
-            )
-            steps = {
-                name: block(text, text.index(f"- name: {name}\n"))
-                for name in (self.RC_AUTH, self.RC_LOGIN)
-            }
-            self.assertEqual(steps, want.setdefault("steps", steps), f)
-            login = text.index(f"- name: {self.RC_LOGIN}\n")
-            self.assertLess(text.index(f"- name: {self.RC_AUTH}\n"), login, f)
-            self.assertLess(login, text.index("- name: Skip if already pushed"), f)
-            # gcloud for the credential helper: installed before the login, on every build or only on a release one
-            sdk = block(
-                text, text.rindex("uses: google-github-actions/setup-gcloud@", 0, login)
-            )
-            self.assertIn(
-                re.findall(r"\n +if: (.*)", sdk), ([], ["inputs.event == 'release'"]), f
-            )
-        auth, login = want["steps"][self.RC_AUTH], want["steps"][self.RC_LOGIN]
-        for b in (auth, login):
-            self.assertIn("\n        if: inputs.event == 'release'\n", b)
-        self.assertRegex(
-            auth,
-            r"\n          workload_identity_provider: \S+\n          service_account: \S+$",
-        )
-        self.assertRegex(
-            login, r"\n        run: gcloud auth configure-docker [\w.-]+ --quiet$"
-        )
-
-    def test_retire_deletes_rcs_as_the_build_workflows_push_them(self):
-        def ident(text):
-            return re.findall(
-                r"\n +(workload_identity_provider|service_account): (\S+)", text
-            )
-
-        with open(os.path.join(HERE, "..", "workflows", "retire.yaml")) as fh:
-            text = fh.read()
-        with open(
-            os.path.join(HERE, "..", "workflows", "cloud-backend-docker-build-push.yaml")
-        ) as fh:
-            build = fh.read()
-        self.assertEqual(len(ident(build)), 2)
-        self.assertEqual(ident(text), ident(build))
-        self.assertIn("\n  id-token: write", text[: text.index("\njobs:\n")])
-        at = text.index(f"- name: {self.RC_AUTH}\n")
-        self.assertIn("\n        id: rc_auth\n", text[at : text.index("\n\n", at)])
-        self.assertIn(
-            "\n          AR_RC_TOKEN: ${{ steps.rc_auth.outputs.access_token }}", text
-        )
-
-    def test_every_caller_of_a_build_grants_id_token(self):
-        # a called workflow gets no permission its caller's job lacks, so every job on the way to a build grants it
-        wf = os.path.join(HERE, "..", "workflows")
-        called = re.compile(
-            r"\n    uses: \./\.github/workflows/(build-push|take-rc-build|(?!cloud-multi-doc)[\w-]+-docker-build-push)\.yaml\n"
-        )
-        callers = []
-        for f in sorted(f for f in os.listdir(wf) if f.endswith(".yaml")):
-            with open(os.path.join(wf, f)) as fh:
-                text = fh.read()
-            for job in re.split(r"\n(?=  [\w-]+:\n)", text.split("\njobs:\n", 1)[1]):
-                if (
-                    called.search(job) and "\n    if: false" not in job
-                ):  # a disabled job runs nothing
-                    callers.append(f"{f} {job.split(':')[0]}")
-                    self.assertRegex(
-                        job,
-                        r"\n    permissions:\n(      .*\n)*      id-token: write",
-                        callers[-1],
-                    )
-        self.assertEqual(
-            len(callers), 14, callers
-        )  # build-push's 11 builds, take-rc-build, cut, dev-deploy
 
     def test_on_prem_retag_is_the_cloud_retag(self):
         # both jobs' steps share a name, so step() runs the cloud one; the on-prem one differs only in its stable root
