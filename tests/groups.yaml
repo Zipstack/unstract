@@ -89,7 +89,7 @@ groups:
   unit-workers:
     tier: unit
     workdir: workers
-    paths: [tests, shared/tests, shared/infrastructure/config/tests,
+    paths: [tests, shared/tests, sandbox/tests, shared/infrastructure/config/tests,
             ide_callback/tests]
     # Negative filter: worker unit tests aren't tagged `unit` (~1100 of them),
     # so select by exclusion. `conftest.py` marks real-Postgres tests
