@@ -12,15 +12,6 @@ export type ThemeProviderProps = Readonly<{
 
 const DARK_SCHEME_QUERY = "(prefers-color-scheme: dark)";
 
-/** Reading localStorage can throw in sandboxed documents; treat that as no storage. */
-function readLocalStorage(): Storage | null {
-  try {
-    return window.localStorage;
-  } catch {
-    return null;
-  }
-}
-
 /** The v1 root: hydrates the theme store, follows the OS scheme, and stamps the mode. */
 export function ThemeProvider({
   children,
@@ -31,7 +22,7 @@ export function ThemeProvider({
   // Layout effect: a saved dark or unstract preference must not paint a light frame first.
   useLayoutEffect(() => {
     const { hydrate, setSystemPrefersDark } = useThemeStore.getState();
-    hydrate(readLocalStorage());
+    hydrate(); // from the storage the store writes to, so reads and writes agree
     if (typeof window.matchMedia !== "function") {
       return undefined;
     }

@@ -1,4 +1,4 @@
-import { THEME_MODES, type ThemeMode } from "./theme";
+import { THEME_COLOR_SCHEMES, THEME_MODES, type ThemeMode } from "./theme";
 
 export type TokenFamily =
   | "colour"
@@ -32,13 +32,18 @@ export function sameInEveryMode(
   return { light: value, dark: value, unstract: value };
 }
 
-/** One `.v1[data-theme=…]` block per mode, each declaring every token in source order. */
+/**
+ * One `.v1[data-theme=…]` block per mode: the mode's `color-scheme` (so native
+ * controls, scrollbars and autofill follow data-theme, not the OS), then every
+ * token in source order.
+ */
 export function renderTokensCss(tokens: readonly Token[]): string {
   const blocks = THEME_MODES.map((mode) => {
     const declarations = tokens.map(
       (token) => `  ${token.cssVar}: ${token.values[mode]};\n`,
     );
-    return `.v1[data-theme="${mode}"] {\n${declarations.join("")}}\n`;
+    const scheme = `  color-scheme: ${THEME_COLOR_SCHEMES[mode]};\n`;
+    return `.v1[data-theme="${mode}"] {\n${scheme}${declarations.join("")}}\n`;
   });
   return `${CSS_HEADER}\n${blocks.join("")}`;
 }
