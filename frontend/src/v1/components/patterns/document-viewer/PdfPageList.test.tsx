@@ -496,6 +496,50 @@ it("reports the last page once the end is reached, even when others show as much
   expect(onCurrentPageChange).toHaveBeenLastCalledWith(9);
 });
 
+it("pages back from the last page when the last pages fit together", () => {
+  const { document } = fakeDocument(10);
+  const ref = createRef<PdfPageListHandle>();
+  const onCurrentPageChange = vi.fn();
+  const { container } = render(
+    <PdfPageList
+      ref={ref}
+      document={document}
+      pageSizes={sizes(10)}
+      zoom={1}
+      onCurrentPageChange={onCurrentPageChange}
+    />,
+  );
+  const root = layOut(
+    container,
+    () => 1,
+    () => 2000,
+  );
+  // Clamp scrolling at the end, as a browser does.
+  let scrollTop = 0;
+  Object.defineProperty(root, "scrollTop", {
+    get: () => scrollTop,
+    set: (value: number) => {
+      scrollTop = Math.min(
+        Math.max(0, value),
+        root.scrollHeight - root.clientHeight,
+      );
+    },
+  });
+  act(() => ref.current?.scrollToPage(9));
+  expect(onCurrentPageChange).toHaveBeenLastCalledWith(9);
+  // Page 8's top is past the end of the scroll, so the jump lands at the end.
+  act(() => ref.current?.scrollToPage(8));
+  act(() => {
+    root.dispatchEvent(new Event("scroll"));
+  });
+  expect(onCurrentPageChange).toHaveBeenLastCalledWith(8);
+  act(() => ref.current?.scrollToPage(7));
+  expect(onCurrentPageChange).toHaveBeenLastCalledWith(7);
+  // A scroll by the reader goes back to measuring.
+  scrollTo(root, root.scrollHeight - root.clientHeight);
+  expect(onCurrentPageChange).toHaveBeenLastCalledWith(9);
+});
+
 it("updates the current page when the viewer changes height without scrolling", () => {
   const { document } = fakeDocument(10);
   const onCurrentPageChange = vi.fn();

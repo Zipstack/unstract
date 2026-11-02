@@ -155,6 +155,11 @@ export function PdfPageList({
   const byPage = useMemo(() => highlightsByPage(highlights), [highlights]);
   const rootRef = useRef<HTMLElement | null>(null);
   const anchorRef = useRef<Anchor>({ index: 0, fraction: 0 });
+  // The last page jumped to and where the jump landed. While the view stays
+  // there, that page is current, even when the browser clamped the jump at
+  // the end and another page shows more: otherwise Previous could never
+  // leave the last page when the last few pages fit together.
+  const jumpRef = useRef<{ index: number; scrollTop: number } | null>(null);
   const [current, setCurrent] = useState(0);
 
   const setRoot = useCallback(
@@ -193,7 +198,13 @@ export function PdfPageList({
         fraction: (y - page.offsetTop) / page.offsetHeight,
       };
     }
-    setCurrent(mostVisiblePage(root, pages));
+    const jump = jumpRef.current;
+    if (jump && Math.abs(root.scrollTop - jump.scrollTop) < 1) {
+      setCurrent(jump.index);
+    } else {
+      jumpRef.current = null;
+      setCurrent(mostVisiblePage(root, pages));
+    }
   }, []);
 
   // A taller or shorter viewer changes which page shows most without any
@@ -234,6 +245,7 @@ export function PdfPageList({
         const page = root && pageElement(root, clamped);
         if (root && page) {
           root.scrollTop = pageTop(root, page);
+          jumpRef.current = { index: clamped, scrollTop: root.scrollTop };
           sync();
         }
       },
