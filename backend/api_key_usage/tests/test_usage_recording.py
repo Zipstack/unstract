@@ -30,8 +30,10 @@ from api_key_usage.recorder import record_key_use
 from api_key_usage.recorder import start_background_flush as REAL_START_BACKGROUND_FLUSH
 
 KEY_TYPE = "platform_api_key"
-DAY_1 = datetime(2026, 10, 1, 9, 30, tzinfo=UTC)
-DAY_2 = datetime(2026, 10, 2, 23, 59, tzinfo=UTC)
+# Recent days, so a flush's retention prune keeps them whenever the tests run.
+_TODAY = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
+DAY_1 = _TODAY - timedelta(days=2, hours=-9, minutes=-30)
+DAY_2 = _TODAY - timedelta(days=1, hours=-23, minutes=-59)
 DEPLOYMENT = uuid.uuid4()
 
 
