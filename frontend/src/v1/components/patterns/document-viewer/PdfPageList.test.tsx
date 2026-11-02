@@ -353,15 +353,21 @@ function layOut(
   Object.defineProperties(root, {
     clientHeight: { get: viewHeight },
     clientWidth: { value: 500 },
-    scrollHeight: { get: () => 16 + count * (800 * zoom() + 16) },
+    scrollHeight: {
+      get: () => 16 + count * (800 * zoom() + 16),
+      configurable: true,
+    },
   });
   for (const page of container.querySelectorAll<HTMLElement>(
     "[data-page-index]",
   )) {
     const index = Number(page.getAttribute("data-page-index"));
     Object.defineProperties(page, {
-      offsetTop: { get: () => 16 + index * (800 * zoom() + 16) },
-      offsetHeight: { get: () => 800 * zoom() },
+      offsetTop: {
+        get: () => 16 + index * (800 * zoom() + 16),
+        configurable: true,
+      },
+      offsetHeight: { get: () => 800 * zoom(), configurable: true },
       offsetWidth: { get: () => 600 * zoom() },
       offsetLeft: { get: () => 16 },
     });
@@ -417,8 +423,9 @@ it("centres a highlight, across as well as down for a box", () => {
     found = ref.current?.scrollToHighlight("w") ?? false;
   });
   expect(found).toBe(true);
-  // Page 2 starts at 1632; the box's centre is 0.275 × 800 = 220 into it.
-  expect(root.scrollTop).toBe(1632 + 220 - 200);
+  // Page 2's top is at 1648, padding included; the box's centre is
+  // 0.275 × 800 = 220 into it, and the view is 400 tall.
+  expect(root.scrollTop).toBe(1648 + 220 - 200);
   // 0.55 × 600 = 330 across, from the page's left edge at 16.
   expect(root.scrollLeft).toBe(16 + 330 - 250);
   expect(ref.current?.scrollToHighlight("missing")).toBe(false);
@@ -469,6 +476,44 @@ it("reports the page showing most of itself", () => {
   // 300 px of 4, 84 px of 5.
   scrollTo(root, 3764);
   expect(onCurrentPageChange).toHaveBeenLastCalledWith(4);
+});
+
+it("counts a short page shown whole over part of a taller one", () => {
+  const { document } = fakeDocument(3);
+  const onCurrentPageChange = vi.fn();
+  const heights = [1000, 200, 1000];
+  const { container } = render(
+    <PdfPageList
+      document={document}
+      pageSizes={heights.map((height) => ({ width: 600, height }))}
+      zoom={1}
+      onCurrentPageChange={onCurrentPageChange}
+    />,
+  );
+  const root = layOut(
+    container,
+    () => 1,
+    () => 600,
+  );
+  // Pages 0-1000, 1016-1216 and 1232-2232, laid out by hand.
+  const tops = [16, 1032, 1248];
+  for (const page of container.querySelectorAll<HTMLElement>(
+    "[data-page-index]",
+  )) {
+    const index = Number(page.getAttribute("data-page-index"));
+    Object.defineProperties(page, {
+      offsetTop: { get: () => tops[index] },
+      offsetHeight: { get: () => heights[index] },
+    });
+  }
+  Object.defineProperty(root, "scrollHeight", { get: () => 2264 });
+  // 700-1300: 300 px of page 0 (half the view), all 200 px of page 1, and
+  // 52 px of page 2. Page 1 shows the most of itself.
+  scrollTo(root, 700);
+  expect(onCurrentPageChange).toHaveBeenLastCalledWith(1);
+  // 400-1000: page 0 fills the view, so it counts as shown whole.
+  scrollTo(root, 400);
+  expect(onCurrentPageChange).toHaveBeenLastCalledWith(0);
 });
 
 it("keeps the current page right for a page much taller than the viewer", () => {

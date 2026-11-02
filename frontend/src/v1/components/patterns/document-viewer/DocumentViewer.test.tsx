@@ -130,6 +130,16 @@ it("refits when the viewer is resized", async () => {
   expect(zoomLabel()).toBe("50%");
 });
 
+it.each([
+  [0, "25%"],
+  [Number.NaN, "100%"],
+  [10, "400%"],
+])("keeps a starting zoom of %s within range", async (initialZoom, label) => {
+  render(<DocumentViewer source={source} initialZoom={initialZoom} />);
+  await open();
+  expect(zoomLabel()).toBe(label);
+});
+
 it("zooms with + and − while the pages have focus, and leaves other keys alone", async () => {
   render(<DocumentViewer source={source} initialZoom={1} />);
   await open();
@@ -273,9 +283,9 @@ const onPage1 = {
   variant: "box" as const,
   tone: "default" as const,
 };
-// Page 1 starts at 1016 and the highlight's centre is 500 px into it; the
-// viewer reports no height, so centring adds nothing.
-const onPage1Top = 1016 + 500;
+// Page 1's top is at 1032, padding included, and the highlight's centre is
+// 500 px into it; the viewer reports no height, so centring adds nothing.
+const onPage1Top = 1032 + 500;
 
 function pagesRegion() {
   return screen.getByRole("region", { name: "Document pages" });
@@ -318,7 +328,7 @@ it("scrolls to the active highlight when it changes, and to one set while loadin
         activeHighlightId="date"
       />,
     );
-    expect(pagesRegion().scrollTop).toBe(2 * 1016 + 500);
+    expect(pagesRegion().scrollTop).toBe(16 + 2 * 1016 + 500);
   } finally {
     restore();
   }
