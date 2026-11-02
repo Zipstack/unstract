@@ -20,7 +20,6 @@ const SIZE_CLASS: Readonly<Record<LogoSize, string>> = {
 };
 
 // A one-ink mark (OpenAI, Anthropic, …) is near-black; flip it on the dark theme.
-// The unstract theme has a light surface, so it keeps the mark as drawn.
 const MONO_CLASS = "ui:dark:invert";
 
 type MarkImageProps = Readonly<{
@@ -87,7 +86,11 @@ export function ProviderLogo({
   decorative = false,
   className,
 }: ProviderLogoProps): JSX.Element {
-  const mark: BrandMark | undefined = PROVIDER_MARKS[providerKey(provider)];
+  const key = providerKey(provider);
+  // Own keys only: `constructor` or `toString` must not resolve to Object.prototype.
+  const mark: BrandMark | undefined = Object.hasOwn(PROVIDER_MARKS, key)
+    ? PROVIDER_MARKS[key]
+    : undefined;
   const sources: BrandMark[] = [];
   if (mark) {
     sources.push(mark);

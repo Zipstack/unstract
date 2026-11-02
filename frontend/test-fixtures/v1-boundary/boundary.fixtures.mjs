@@ -64,7 +64,7 @@ const CASES = parseTable(`
   v1-antd-import                 | lint:v1         | antd is not used under src/v1
   v1-antd-subpath                | lint:v1         | antd is not used under src/v1
   v1-antd-icons                  | lint:v1         | antd is not used under src/v1
-  # Lucide is the only icon library; its deprecated aliases are banned too.
+  # Lucide is the only icon library; its common deprecated aliases are banned too.
   v1-icon-library                | lint:v1         | Lucide is the only icon library under src/v1
   v1-icon-library-subpath        | lint:v1         | Lucide is the only icon library under src/v1
   v1-lucide-alias                | lint:v1         | Deprecated lucide-react alias

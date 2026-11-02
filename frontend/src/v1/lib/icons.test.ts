@@ -57,6 +57,16 @@ it("maps every role to a Lucide icon component", () => {
   }
 });
 
+it("gives each provider category its rail destination's glyph", () => {
+  expect(CATEGORY_ICONS).toEqual({
+    llm: RAIL_ICONS.llms,
+    embedding: RAIL_ICONS.embedding,
+    "vector-db": RAIL_ICONS["vector-dbs"],
+    "text-extractor": RAIL_ICONS["text-extractor"],
+    connector: RAIL_ICONS.connectors,
+  });
+});
+
 it("gives the status set distinct glyphs", () => {
   const names = Object.values(STATUS_ICONS).map((icon) => icon.displayName);
   expect(new Set(names).size).toBe(names.length);

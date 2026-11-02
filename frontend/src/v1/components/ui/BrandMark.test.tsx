@@ -64,6 +64,7 @@ describe("ProviderLogo", () => {
     fireEvent.error(mark);
     const png = screen.getByRole("img", { name: "OpenAI" });
     expect(png.getAttribute("src")).toBe("/icons/adapter-icons/OpenAI.png");
+    expect(png.className).not.toContain("invert");
 
     fireEvent.error(png);
     expect(screen.getByRole("img", { name: "OpenAI" }).dataset.fallback).toBe(
@@ -86,6 +87,21 @@ describe("ProviderLogo", () => {
     );
     expect(screen.queryByRole("img")).toBeNull();
     expect(container.querySelector("img")?.getAttribute("alt")).toBe("");
+  });
+
+  it("hides a decorative fallback from assistive technology", () => {
+    const { container } = render(
+      <ProviderLogo provider="acme" name="Acme" decorative />,
+    );
+    expect(screen.queryByRole("img")).toBeNull();
+    expect(container.querySelector("[data-fallback]")?.textContent).toBe("A");
+  });
+
+  it("ignores provider keys inherited from Object.prototype", () => {
+    render(<ProviderLogo provider="constructor" name="Constructor" />);
+    expect(
+      screen.getByRole("img", { name: "Constructor" }).dataset.fallback,
+    ).toBe("true");
   });
 });
 

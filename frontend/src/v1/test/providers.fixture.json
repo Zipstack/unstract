@@ -218,14 +218,6 @@
   {
     "kind": "adapter",
     "category": "vector-db",
-    "key": "supabase",
-    "name": "Supabase",
-    "icon": "/icons/adapter-icons/supabase.png",
-    "hasMark": false
-  },
-  {
-    "kind": "adapter",
-    "category": "vector-db",
     "key": "weaviate",
     "name": "Weaviate",
     "icon": "/icons/adapter-icons/Weaviate.png",
@@ -322,14 +314,6 @@
   {
     "kind": "connector",
     "category": "connector",
-    "key": "oracledb",
-    "name": "OracleDB",
-    "icon": "/icons/connector-icons/Oracle.png",
-    "hasMark": false
-  },
-  {
-    "kind": "connector",
-    "category": "connector",
     "key": "postgresql",
     "name": "PostgreSQL",
     "icon": "/icons/connector-icons/Postgresql.png",
@@ -362,14 +346,6 @@
   {
     "kind": "connector",
     "category": "connector",
-    "key": "box",
-    "name": "Box connector",
-    "icon": "/icons/connector-icons/Box.png",
-    "hasMark": false
-  },
-  {
-    "kind": "connector",
-    "category": "connector",
     "key": "dropbox",
     "name": "Dropbox",
     "icon": "/icons/connector-icons/Dropbox.png",
@@ -394,33 +370,9 @@
   {
     "kind": "connector",
     "category": "connector",
-    "key": "http",
-    "name": "HTTP(S) File Server",
-    "icon": "/icons/connector-icons/HTTP.svg",
-    "hasMark": false
-  },
-  {
-    "kind": "connector",
-    "category": "connector",
-    "key": "localstorage",
-    "name": "LocalStorage File Server",
-    "icon": "/icons/connector-icons/S3.png",
-    "hasMark": false
-  },
-  {
-    "kind": "connector",
-    "category": "connector",
     "key": "minio",
     "name": "S3/Minio",
     "icon": "/icons/connector-icons/S3.png",
-    "hasMark": true
-  },
-  {
-    "kind": "connector",
-    "category": "connector",
-    "key": "pcs",
-    "name": "Unstract Cloud Storage",
-    "icon": "/icons/connector-icons/Unstract%20Storage.png",
     "hasMark": true
   },
   {

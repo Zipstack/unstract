@@ -95,7 +95,6 @@ export const PROVIDER_MARKS: Readonly<Record<string, BrandMark>> = {
   gdrive: mark(googleDrive),
   google_cloud_storage: mark(googleCloud),
   minio: mark(amazonS3),
-  pcs: mark(unstract),
   sftp: mark(sftp),
   sharepoint: mark(sharepoint),
 };
