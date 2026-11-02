@@ -1,6 +1,6 @@
 import type { Token } from "@v1/lib/tokens";
 
-// Local rather than lib's sameInEveryMode: a type-only import is erased when Node strips types for the generator; a value import through @v1 would not resolve.
+// Local rather than lib's sameInEveryMode: the generator runs this file under bun, where the type-only import above is erased and a value import through the @v1 alias would not resolve.
 const same = (v: string) => ({ light: v, dark: v, unstract: v }) as const;
 
 /** Every token on the dev-spec board, in board order. Edit here, then run `bun run tokens:v1`. */
