@@ -111,6 +111,7 @@
     "baseline-browser-mapping": "^2.9.19",
     "happy-dom": "^20.10.2",
     "postcss": "^8.5.23",
+    "postcss-value-parser": "^4.2.0",
     "tailwindcss": "^4",
     "typescript": "^7.0.2",
     "vite": "^7.3.5",

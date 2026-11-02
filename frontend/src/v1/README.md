@@ -9,7 +9,9 @@ is convention.
 ## Rules
 
 - **TypeScript only.** `.ts` / `.tsx`, `strict`, unused locals and parameters
-  are errors, no explicit `any`.
+  are errors, no explicit `any`. Besides code, v1 holds only styles (in
+  `styles/`), Vite asset types, JSON and Markdown; any other file type is
+  rejected, since Vite can load any file (`?worker`).
 - **Nothing outside `src/v1`.** No v0 component, store, hook, helper, CSS or
   shim, and no symlinks. Import with `./` within a folder and `@v1/...` across
   folders; `../`, `/src/...` and `src/...` are never used.
@@ -22,8 +24,9 @@ is convention.
   by what Vite can resolve: a template, glob or concatenation by the fixed
   text it starts with; a bare variable is left alone, since Vite cannot bundle
   it.
-- **No PropTypes, no component `.css`, no antd** (package, shim or `ant-`
-  class). Global v1 styles live in `styles/` and are imported as
+- **No PropTypes, no component style files, no antd** (package, shim or
+  `ant-` class). Style files are any CSS language Vite knows (`.css`, `.scss`,
+  `.pcss`, …); CSS asset references include `image-set()` strings. Global v1 styles live in `styles/` and are imported as
   `@v1/styles/...`, including from inside `styles/`.
 - **Static assets live in `assets/`**, imported as `@v1/assets/...` (e.g.
   `@v1/assets/logo.svg?react`). v1 never uses v0's `src/assets/` (enforced);
@@ -55,7 +58,7 @@ Every folder may import from itself. Test files (`*.test.ts(x)`,
 
 | Script | Checks |
 | --- | --- |
-| `bun run typecheck:v1` | TypeScript-only files, CSS only in `styles/`, no symlinks, folder taxonomy; then `tsc` with `src/v1/tsconfig.json` |
+| `bun run typecheck:v1` | TypeScript-only files, styles only in `styles/`, allowed file types only, no symlinks, folder taxonomy; then `tsc` with `src/v1/tsconfig.json` |
 | `bun run lint:v1` | Biome on `src/v1/`, then imports in code and in `styles/` CSS (nothing outside v1, folder contract, and v0 reaching v1 only through `@v1`), PropTypes and `ant-` checks |
 | `bun run test:v1` | v1 unit tests, then the guardrail fixtures in `test-fixtures/v1-boundary/` |
 

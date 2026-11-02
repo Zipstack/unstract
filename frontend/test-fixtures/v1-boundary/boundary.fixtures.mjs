@@ -71,6 +71,11 @@ const CASES = parseTable(`
   v1-unanalysable-import         | lint:v1         | unanalysable import
   v1-component-css-import        | lint:v1         | No component .css under src/v1
   v1-component-css-file          | typecheck:v1    | No component style files
+  # Every CSS language Vite knows, not only .css.
+  v1-component-pcss-file         | typecheck:v1    | No component style files
+  v1-component-pcss-import       | lint:v1         | No component .css under src/v1
+  # A file type outside the allowlist (Vite can load it with ?worker).
+  v1-unknown-file-type           | typecheck:v1    | Unknown file type under v1
   v1-ant-class-prefix            | lint:v1         | No antd 'ant-' class names
   v1-ant-built-class             | lint:v1         | No antd 'ant-' class names
   v1-explicit-any                | lint:v1         | noExplicitAny
@@ -640,6 +645,11 @@ test("v0 reaches v1 only through @v1, in any form", () => {
     "tailwindReference.css": '@reference "../v1/styles/tokens.css";',
     "stylesNoSpace.css": '@import"../v1/styles/tokens.css";',
     "stylesUpperCase.css": '@IMPORT "../v1/styles/tokens.css";',
+    "stylesImageSet.css":
+      '.a { background-image: image-set("../v1/assets/a.svg" 1x); }',
+    "stylesEscapedUrl.css": ".a { background: url(\\.\\./v1/assets/a.svg); }",
+    // Vite can load any file (`?worker`), so an unknown type is read as code.
+    "worker.mod": 'import "../v1/lib/x";',
     "stylesRootAbsolute.css": ".a { background: url(/src/v1/styles/a.png); }",
   };
   const allowed = {
@@ -695,6 +705,22 @@ test("v1 styles: imports and Tailwind directives follow the contract", () => {
       "is outside src/v1",
     ],
     "broken.css": [".a {", "could not parse"],
+    // Vite reads strings in image-set() and drops backslash escapes.
+    "imageSet.css": [
+      '.a { background-image: image-set("../../assets/a.png" 1x, "../../assets/b.png" 2x); }',
+      "is outside src/v1",
+      2,
+    ],
+    "webkitImageSetUrl.css": [
+      '.a { background-image: -webkit-image-set(url("../../assets/a.png") 1x); }',
+      "is outside src/v1",
+    ],
+    "escapedUrl.css": [
+      '.a { background: url("\\.\\./\\.\\./assets/a.png"); }',
+      "is outside src/v1",
+    ],
+    "importNoTarget.css": ["@import;", "unanalysable import"],
+    "importUrl.css": ['@import url("../../index.css");', "is outside src/v1"],
   };
   const allowed = {
     "ok.css": [
@@ -704,6 +730,7 @@ test("v1 styles: imports and Tailwind directives follow the contract", () => {
       '@plugin "tailwindcss-animate";',
       '.a { background: url("@v1/assets/a.png"); }',
       ".b { background: url(data:image/png;base64,AA); }",
+      '.c { background-image: image-set("@v1/assets/a.png" 1x); }',
     ].join("\n"),
   };
   const files = {};
@@ -714,10 +741,12 @@ test("v1 styles: imports and Tailwind directives follow the contract", () => {
     files[`src/v1/styles/${name}`] = `${code}\n`;
   }
   const reported = checkCode(files);
-  for (const [name, [, message]] of Object.entries(denied)) {
+  for (const [name, [, message, count = 1]] of Object.entries(denied)) {
     const lines = linesFor(reported, `src/v1/styles/${name}`);
-    assert.equal(lines.length, 1, `${name}:\n${reported.join("\n")}`);
-    assert.ok(lines[0].includes(message), `${name}: ${lines[0]}`);
+    assert.equal(lines.length, count, `${name}:\n${reported.join("\n")}`);
+    for (const line of lines) {
+      assert.ok(line.includes(message), `${name}: ${line}`);
+    }
   }
   assert.deepEqual(linesFor(reported, "src/v1/styles/ok.css"), []);
 });
@@ -751,4 +780,20 @@ test("v0 at the top of src/: a glob `base` is resolved from there", () => {
   const lines = linesFor(reported, "src/RootGlob.jsx");
   assert.equal(lines.length, 1, reported.join("\n"));
   assert.ok(lines[0].includes("reaches into src/v1"), lines[0]);
+});
+
+test("v1 --code reads unknown file types and style files outside styles/", () => {
+  // Cloud CI runs only --code, so it must not rely on --files rejecting these.
+  const reported = checkCode({
+    "src/v1/lib/bridge.mod": 'import "../../store/alert.js";\n',
+    "src/v1/components/ui/Badge.pcss":
+      '@import "../../../index.css";\n.ant-btn { color: red; }\n',
+  });
+  const bridge = linesFor(reported, "src/v1/lib/bridge.mod");
+  assert.equal(bridge.length, 1, reported.join("\n"));
+  assert.ok(bridge[0].includes("is outside src/v1"), bridge[0]);
+  const badge = linesFor(reported, "src/v1/components/ui/Badge.pcss");
+  assert.equal(badge.length, 2, reported.join("\n"));
+  assert.ok(badge[0].includes("is outside src/v1"), badge[0]);
+  assert.ok(badge[1].includes("No antd 'ant-' class names"), badge[1]);
 });

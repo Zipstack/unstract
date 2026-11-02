@@ -3,13 +3,16 @@
  * Guard for the v1 frontend (src/v1/): the rules Biome cannot express.
  *
  *   --files  TypeScript only (a .js under v1 is skipped by tsc, not failed,
- *            because allowJs is off), style files only in styles/, no
- *            symlinks, and every file inside the v1 folder taxonomy. Run by
- *            `typecheck:v1`.
+ *            because allowJs is off), style files only in styles/, no file
+ *            type outside an allowlist, no symlinks, and every file inside
+ *            the v1 folder taxonomy. Run by `typecheck:v1`.
  *   --code   Imports: nothing outside src/v1 and the folder import contract
  *            (which v1 folder may import which). No PropTypes, no antd `ant-`
  *            class names. Also scans v0 (the rest of src/) for imports that
- *            reach into v1 other than through `@v1`. Run by `lint:v1`.
+ *            reach into v1 other than through `@v1`. Every file is read
+ *            except assets, data and docs; one of unknown type is read as
+ *            code, since Vite can load any file (`?worker`). Run by
+ *            `lint:v1`.
  *
  * With neither flag, both run. It checks the src/ beside this script; the
  * fixtures in test-fixtures/v1-boundary/ copy it into each throwaway tree for
@@ -39,6 +42,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { parse } from "@babel/parser";
 import postcss from "postcss";
+import valueParser from "postcss-value-parser";
 
 const SRC = path.join(import.meta.dirname, "..", "src");
 const ROOT = path.join(SRC, "v1");
@@ -112,8 +116,26 @@ const ROOT_FILES = new Set(["index.ts", "tsconfig.json", "README.md"]);
 
 const CODE_EXT = /\.(ts|tsx|mts|cts)$/;
 const JS_EXT = /\.(js|jsx|mjs|cjs)$/;
-const STYLE_EXT = /\.(css|scss|sass|less)$/;
+// Vite's CSS languages (CSS_LANGS_RE); PostCSS reads them without a plugin
+// only when they are plain CSS, and anything else fails to parse.
+const STYLE_EXT = /\.(css|less|sass|scss|styl|stylus|pcss|postcss|sss)$/i;
+// Vite's asset types (KNOWN_ASSET_TYPES), and data and docs: Vite resolves
+// nothing inside them.
+const INERT_EXT =
+  /\.(apng|bmp|png|jpe?g|jfif|pjpeg|pjp|gif|svg|ico|webp|avif|cur|jxl|mp4|webm|ogg|mp3|wav|flac|aac|opus|mov|m4a|vtt|woff2?|eot|ttf|otf|webmanifest|pdf|txt|json|md)$/i;
 const TEST_FILE = /\.(test|spec)\.(ts|tsx|mts|cts)$/;
+
+/* How a file is read: "code", "style", "inert" (nothing in it is resolved
+ * as an import) or "unknown", which is read as code. */
+function fileKind(name) {
+  if (CODE_EXT.test(name) || JS_EXT.test(name)) {
+    return "code";
+  }
+  if (STYLE_EXT.test(name)) {
+    return "style";
+  }
+  return INERT_EXT.test(name) || name === ".gitkeep" ? "inert" : "unknown";
+}
 // Specifiers that leave src/v1 by name: root-absolute, the v0 alias, src/.
 const OUTSIDE = /^(\/|@\/|src\/)/;
 // `./...` and `../...`, resolved against the importing file.
@@ -502,8 +524,45 @@ function* bannedUses(ast, src) {
 
 // CSS `@import` and Tailwind's `@reference` / `@plugin` / `@config`.
 const CSS_IMPORT_RULES = new Set(["import", "reference", "plugin", "config"]);
-const CSS_FIRST_ARG = /^\s*(?:url\(\s*)?["']?([^"')\s;]+)/i;
-const CSS_URL = /url\(\s*["']?([^"')\s]+)/gi;
+
+// Vite drops a backslash before any non-word character (`\.\./x`).
+const cssUnescape = (spec) => spec.replace(/\\(\W)/g, "$1");
+
+/* The target of an import at-rule: its first string, word or url(). */
+function cssImportTarget(params) {
+  const first = valueParser(params).nodes.find((n) => n.type !== "space");
+  if (first?.type === "function" && first.value.toLowerCase() === "url") {
+    return first.nodes.find((n) => n.type !== "space")?.value;
+  }
+  return first?.type === "string" || first?.type === "word"
+    ? first.value
+    : undefined;
+}
+
+/* The asset references in a CSS value, as Vite reads them: each url(), and
+ * each string inside image-set() or -webkit-image-set(). */
+function cssValueTargets(value) {
+  const targets = [];
+  valueParser(value).walk((node) => {
+    if (node.type !== "function") {
+      return;
+    }
+    const name = node.value.toLowerCase();
+    if (name === "url") {
+      const arg = node.nodes.find((n) => n.type !== "space");
+      if (arg) {
+        targets.push(arg.value);
+      }
+    } else if (name.endsWith("image-set")) {
+      for (const arg of node.nodes) {
+        if (arg.type === "string") {
+          targets.push(arg.value);
+        }
+      }
+    }
+  });
+  return targets;
+}
 
 /* The text of a PostCSS node that can hold a URL or a class name. */
 function cssText(node) {
@@ -516,11 +575,21 @@ function cssText(node) {
   return node.type === "decl" ? node.value : "";
 }
 
+/* The import targets in one PostCSS node; undefined for an import at-rule
+ * whose target cannot be read. */
+function cssNodeTargets(node) {
+  if (node.type === "atrule" && CSS_IMPORT_RULES.has(node.name.toLowerCase())) {
+    return [cssImportTarget(node.params)];
+  }
+  return node.type === "rule" ? [] : cssValueTargets(cssText(node));
+}
+
 /*
  * A stylesheet read with PostCSS, so comments and strings are told apart:
  * { imports: [{ spec, line }], antLines }, or { error, line } when it does
  * not parse. At-rule names are case-insensitive, and a string may follow one
- * with no space (`@import"x"`).
+ * with no space (`@import"x"`). `spec` is undefined for an import at-rule
+ * whose target cannot be read.
  */
 function cssScan(src) {
   let root;
@@ -533,21 +602,10 @@ function cssScan(src) {
   const antLines = [];
   root.walk((node) => {
     const line = node.source?.start?.line ?? 0;
-    const text = cssText(node);
-    if (
-      node.type === "atrule" &&
-      CSS_IMPORT_RULES.has(node.name.toLowerCase())
-    ) {
-      const m = CSS_FIRST_ARG.exec(node.params);
-      if (m) {
-        imports.push({ spec: m[1], line });
-      }
-    } else {
-      for (const m of text.matchAll(CSS_URL)) {
-        imports.push({ spec: m[1], line });
-      }
+    for (const target of cssNodeTargets(node)) {
+      imports.push({ spec: target && cssUnescape(target), line });
     }
-    if (text.match(ANT_CLASS)) {
+    if (cssText(node).match(ANT_CLASS)) {
       antLines.push(line);
     }
   });
@@ -646,15 +704,18 @@ function v1ImportProblem(folder, rel, arg, isTestFile) {
   return null;
 }
 
-/* The problem with one import in a styles/ file, or null. */
-function cssImportProblem(spec, rel) {
+/* The problem with one import in a v1 style file, or null. */
+function cssImportProblem(spec, rel, folder) {
+  if (spec === undefined) {
+    return "unanalysable import; use a string or url() target.";
+  }
   if (ANTD.test(spec)) {
     return "antd is not used under src/v1.";
   }
   if (targetFolder(spec, rel) === "outside") {
     return `'${spec}' is outside src/v1; v1 styles import nothing outside it.`;
   }
-  return v1ImportProblem("styles", rel, { kind: "literal", spec }, false);
+  return v1ImportProblem(folder, rel, { kind: "literal", spec }, false);
 }
 
 function lineAt(text, index) {
@@ -684,14 +745,14 @@ const report = (rel, line, msg) => {
   problems.push(`src/v1/${where}: ${msg}`);
 };
 
-function checkV1Css(rel) {
+function checkV1Css(rel, folder) {
   const scan = cssScan(fs.readFileSync(path.join(ROOT, rel), "utf8"));
   if (scan.error) {
     report(rel, scan.line, `could not parse (${scan.error}).`);
     return;
   }
   for (const { spec, line } of scan.imports) {
-    const problem = cssImportProblem(spec, rel);
+    const problem = cssImportProblem(spec, rel, folder);
     if (problem) {
       report(rel, line, problem);
     }
@@ -718,12 +779,20 @@ for (const rel of walk(ROOT)) {
     continue;
   }
 
+  const kind = fileKind(name);
   if (runFiles) {
     if (JS_EXT.test(name)) {
       report(rel, 0, "v1 is TypeScript only; use .ts or .tsx.");
     }
-    if (STYLE_EXT.test(name) && folder !== "styles") {
+    if (kind === "style" && folder !== "styles") {
       report(rel, 0, "No component style files; only styles/ holds CSS.");
+    }
+    if (kind === "unknown") {
+      report(
+        rel,
+        0,
+        "Unknown file type under v1; it holds TypeScript, styles (in styles/), Vite assets, JSON and Markdown.",
+      );
     }
     if (
       isRootFile
@@ -734,11 +803,13 @@ for (const rel of walk(ROOT)) {
     }
   }
 
-  if (runCode && STYLE_EXT.test(name) && folder === "styles") {
-    checkV1Css(rel);
+  // Style files and unknown types are read wherever they are, so --code
+  // alone still checks what --files would reject.
+  if (!runCode || folder === null || kind === "inert") {
+    continue;
   }
-
-  if (!runCode || !CODE_EXT.test(name) || folder === null) {
+  if (kind === "style") {
+    checkV1Css(rel, folder);
     continue;
   }
   const src = fs.readFileSync(path.join(ROOT, rel), "utf8");
@@ -764,8 +835,6 @@ for (const rel of walk(ROOT)) {
  * The v0 -> v1 half: v0 (everything in src/ outside v1, including the cloud
  * src/plugins/ overlay) reaches v1 only through the `@v1` entry.
  */
-const V0_CODE_EXT = /\.(js|jsx|mjs|cjs|ts|tsx|mts|cts)$/;
-
 /* A v0 specifier as a path from the project root, or undefined for a
  * package. fileRel is relative to src/. */
 function v0Target(spec, fileRel) {
@@ -871,7 +940,7 @@ function checkV0() {
   const v1Real = fs.realpathSync(ROOT);
   for (const rel of walk(SRC)) {
     const full = path.join(SRC, rel);
-    const scanned = STYLE_EXT.test(rel) || V0_CODE_EXT.test(rel);
+    const scanned = fileKind(path.posix.basename(rel)) !== "inert";
     if (rel.startsWith("v1/")) {
       continue;
     }
