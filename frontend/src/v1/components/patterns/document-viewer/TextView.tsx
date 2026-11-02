@@ -76,7 +76,7 @@ const TextLine = memo(function TextLine({
       data-tone={tone ?? undefined}
       data-highlight-id={highlight?.id}
       className={cn(
-        "ui:grid ui:grid-cols-[auto_1fr] ui:gap-3 ui:px-3",
+        "ui:grid ui:grid-cols-[var(--gutter)_1fr] ui:gap-3 ui:px-3",
         tone && TONES[tone],
       )}
     >
@@ -159,7 +159,12 @@ export function TextView({
       onKeyDown={onKeyDown}
       className="ui:relative ui:h-full ui:overflow-auto ui:bg-card ui:py-2 ui:focus-visible:focus-ring"
     >
-      <ol className="ui:m-0 ui:list-none ui:p-0 ui:text-mono ui:font-mono ui:text-card-foreground">
+      <ol
+        className="ui:m-0 ui:list-none ui:p-0 ui:text-mono ui:font-mono ui:text-card-foreground"
+        // One gutter for every row, as wide as the longest line number, so the
+        // text keeps its columns when the numbers gain a digit.
+        style={{ "--gutter": `${String(lines.length).length}ch` }}
+      >
         {lines.map((content, index) => {
           const highlight = byLine.get(index);
           return (

@@ -84,3 +84,13 @@ it("shows the empty state for blank text", () => {
   render(<TextView text={"  \n "} />);
   expect(screen.getByText("No document")).toBeTruthy();
 });
+
+it("gives every row one gutter, as wide as the longest line number", () => {
+  const text = Array.from({ length: 120 }, (_, n) => `line ${n}`).join("\n");
+  const { container } = render(<TextView text={text} />);
+  const list = container.querySelector<HTMLElement>("ol");
+  expect(list?.style.getPropertyValue("--gutter")).toBe("3ch");
+  const rows = container.querySelectorAll("li");
+  expect(rows[8]?.className).toBe(rows[119]?.className);
+  expect(rows[8]?.className).toContain("grid-cols-[var(--gutter)_1fr]");
+});
