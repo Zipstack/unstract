@@ -194,7 +194,7 @@ def make_session_response(
     # Not guarded: a failed read must not pass for "never chosen", which
     # would send a returning user through the first-login choice.
     preference = get_product_preference(request.user)
-    return UserSessionResponseSerializer(
+    data = UserSessionResponseSerializer(
         UserSessionInfo(
             id=request.user.id,
             user_id=request.user.user_id,
@@ -209,6 +209,11 @@ def make_session_response(
             has_chosen=preference.has_chosen,
         )
     ).data
+    # Present only when an auth plugin set it, so every other session's
+    # response stays as it was.
+    if UserSessionUtils.is_org_switch_via_login(request):
+        data[UserSessionUtils.ORG_SWITCH_VIA_LOGIN] = True
+    return data
 
 
 @api_view(["GET", "PUT"])

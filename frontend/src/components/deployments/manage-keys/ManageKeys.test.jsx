@@ -1,0 +1,213 @@
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+/**
+ * Deployment and pipeline keys are credentials. Whatever the table renders is
+ * also in the page text a browsing agent or a screen share picks up, so the
+ * full key must not be in the DOM until someone asks to see it — and copying
+ * it must not require that.
+ */
+vi.mock("../../../hooks/useAxiosPrivate", () => ({
+  useAxiosPrivate: () => vi.fn(() => Promise.resolve({ data: {} })),
+}));
+vi.mock("../../../hooks/useExceptionHandler.jsx", () => ({
+  useExceptionHandler: () => (_err, fallback) => ({ content: fallback }),
+}));
+const { setAlertDetails } = vi.hoisted(() => ({ setAlertDetails: vi.fn() }));
+vi.mock("../../../store/alert-store", () => ({
+  useAlertStore: () => ({ setAlertDetails }),
+}));
+vi.mock("../../../store/session-store", () => ({
+  useSessionStore: () => ({
+    sessionDetails: { orgId: "org_test", csrfToken: "t" },
+  }),
+}));
+
+const { ManageKeys } = await import("./ManageKeys.jsx");
+
+const FULL_KEY = "4f9c2a17-8e3b-4d6a-9b0c-1d2e3f4a7c91";
+const KEYS = [
+  { id: "key-1", description: "CI", api_key: FULL_KEY, is_active: true },
+];
+
+const renderKeys = (props = {}) =>
+  render(
+    <ManageKeys
+      isDialogOpen
+      setDialogOpen={vi.fn()}
+      apiKeys={KEYS}
+      setApiKeys={vi.fn()}
+      selectedApiRow={{ id: "dep-1", is_owner: true }}
+      apiService={{}}
+      type="api"
+      {...props}
+    />,
+  );
+
+describe("ManageKeys key column", () => {
+  let writeText;
+
+  beforeEach(() => {
+    writeText = vi.fn(() => Promise.resolve());
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText },
+      configurable: true,
+    });
+  });
+
+  afterEach(() => {
+    delete navigator.clipboard;
+    setAlertDetails.mockClear();
+  });
+
+  it("shows only the last four characters by default", async () => {
+    renderKeys();
+
+    expect(await screen.findByText("••••••••7c91")).toBeInTheDocument();
+    expect(document.body.innerHTML).not.toContain(FULL_KEY);
+  });
+
+  it("copies the full key without revealing it", async () => {
+    renderKeys();
+
+    fireEvent.click(await screen.findByLabelText("Copy API key"));
+
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(FULL_KEY));
+    expect(document.body.innerHTML).not.toContain(FULL_KEY);
+    await waitFor(() =>
+      expect(setAlertDetails).toHaveBeenCalledWith({
+        type: "success",
+        content: "API key copied to clipboard",
+      }),
+    );
+  });
+
+  // On-prem over plain HTTP is not a secure context, so the browser has no
+  // navigator.clipboard. The copy must say it failed rather than throw.
+  it("reports a failed copy when the clipboard is unavailable", async () => {
+    Object.defineProperty(navigator, "clipboard", {
+      value: undefined,
+      configurable: true,
+    });
+    renderKeys();
+
+    fireEvent.click(await screen.findByLabelText("Copy API key"));
+
+    expect(setAlertDetails).toHaveBeenCalledWith({
+      type: "error",
+      content: "Clipboard not available in this browser",
+    });
+  });
+
+  it("shows none of a key too short to mask by its last four", async () => {
+    renderKeys({
+      apiKeys: [
+        {
+          id: "key-s",
+          description: "Short",
+          api_key: "ab12cd34",
+          is_active: true,
+        },
+      ],
+    });
+
+    expect(await screen.findByText("••••••••")).toBeInTheDocument();
+    expect(document.body.innerHTML).not.toContain("cd34");
+  });
+
+  it("shows the last four from twelve characters, not before", async () => {
+    renderKeys({
+      apiKeys: [
+        {
+          id: "k11",
+          description: "Eleven",
+          api_key: "abcdefg1111",
+          is_active: true,
+        },
+        {
+          id: "k12",
+          description: "Twelve",
+          api_key: "abcdefgh2222",
+          is_active: true,
+        },
+      ],
+    });
+
+    expect(await screen.findByText("••••••••2222")).toBeInTheDocument();
+    expect(screen.getByText("••••••••")).toBeInTheDocument();
+    expect(document.body.innerHTML).not.toContain("1111");
+  });
+
+  it("keeps the masked and revealed key in the same fixed-width cell", async () => {
+    renderKeys();
+
+    expect(await screen.findByText("••••••••7c91")).toHaveClass(
+      "manage-keys__key",
+    );
+    fireEvent.click(screen.getByLabelText("Show API key"));
+    expect(screen.getByText(FULL_KEY)).toHaveClass("manage-keys__key");
+  });
+
+  it("reveals the key on request and hides it again", async () => {
+    renderKeys();
+
+    fireEvent.click(await screen.findByLabelText("Show API key"));
+    expect(screen.getByText(FULL_KEY)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByLabelText("Hide API key"));
+    expect(document.body.innerHTML).not.toContain(FULL_KEY);
+  });
+
+  it("reveals only the row that was asked for", async () => {
+    const OTHER_KEY = "095d76b2-2589-488b-98e6-e2d9981dade4";
+    renderKeys({
+      apiKeys: [
+        ...KEYS,
+        {
+          id: "key-2",
+          description: "Batch",
+          api_key: OTHER_KEY,
+          is_active: true,
+        },
+      ],
+    });
+
+    const firstRow = (await screen.findByText("CI")).closest("tr");
+    fireEvent.click(within(firstRow).getByLabelText("Show API key"));
+
+    expect(screen.getByText(FULL_KEY)).toBeInTheDocument();
+    expect(screen.getByText("••••••••ade4")).toBeInTheDocument();
+    expect(document.body.innerHTML).not.toContain(OTHER_KEY);
+  });
+
+  it("masks a revealed key again when the modal is reopened", async () => {
+    const { rerender } = renderKeys();
+    const rerenderOpen = (isDialogOpen) =>
+      rerender(
+        <ManageKeys
+          isDialogOpen={isDialogOpen}
+          setDialogOpen={vi.fn()}
+          apiKeys={KEYS}
+          setApiKeys={vi.fn()}
+          selectedApiRow={{ id: "dep-1", is_owner: true }}
+          apiService={{}}
+          type="api"
+        />,
+      );
+
+    fireEvent.click(await screen.findByLabelText("Show API key"));
+    expect(screen.getByText(FULL_KEY)).toBeInTheDocument();
+
+    rerenderOpen(false);
+    rerenderOpen(true);
+
+    expect(await screen.findByText("••••••••7c91")).toBeInTheDocument();
+    expect(document.body.innerHTML).not.toContain(FULL_KEY);
+  });
+});
