@@ -75,10 +75,13 @@ export const PdfPage = memo(function PdfPage({
     const frame = requestAnimationFrame(() => {
       void (async () => {
         try {
-          page = await document.getPage(index + 1);
+          const loaded = await document.getPage(index + 1);
           if (cancelled) {
+            // The effect's cleanup has already run without this page.
+            loaded.cleanup();
             return;
           }
+          page = loaded;
           const viewport = page.getViewport({
             scale: zoom * CSS_PIXELS_PER_POINT,
           });
@@ -125,11 +128,12 @@ export const PdfPage = memo(function PdfPage({
   }, [document, index, zoom, rendered]);
 
   return (
-    <div
+    <figure
       ref={observe}
       data-page-index={index}
       data-render-state={state}
-      role="img"
+      // A figure, not role="img": an img's children are presentational, which
+      // would hide the highlight buttons from assistive technology.
       aria-label={`Page ${index + 1} of ${pageCount}`}
       className="ui:relative ui:h-(--page-height) ui:w-(--page-width) ui:shrink-0 ui:bg-card ui:shadow-sm"
       // A page's size is runtime geometry, not a token: it goes through custom
@@ -151,6 +155,6 @@ export const PdfPage = memo(function PdfPage({
         onHighlightClick={onHighlightClick}
       />
       {children}
-    </div>
+    </figure>
   );
 });

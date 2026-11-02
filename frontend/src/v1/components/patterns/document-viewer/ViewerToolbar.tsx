@@ -70,16 +70,17 @@ function PageInput({
   pageCount,
   onPageChange,
 }: Pick<ViewerToolbarProps, "pageIndex" | "pageCount" | "onPageChange">) {
-  const [draft, setDraft] = useState(String(pageIndex + 1));
+  // What the reader is typing, or null when they are not editing: then the
+  // box follows the current page, and a page change never discards a draft.
+  const [draft, setDraft] = useState<string | null>(null);
   const id = useId();
   const commit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const page = Number.parseInt(draft, 10);
+    const page = Number.parseInt(draft ?? "", 10);
     if (Number.isInteger(page) && page >= 1 && page <= pageCount) {
       onPageChange(page - 1);
-    } else {
-      setDraft(String(pageIndex + 1));
     }
+    setDraft(null);
   };
   return (
     <form
@@ -93,9 +94,9 @@ function PageInput({
         id={id}
         inputMode="numeric"
         autoComplete="off"
-        value={draft}
+        value={draft ?? String(pageIndex + 1)}
         onChange={(event) => setDraft(event.target.value)}
-        onBlur={() => setDraft(String(pageIndex + 1))}
+        onBlur={() => setDraft(null)}
         className="ui:w-10 ui:rounded-md ui:border ui:border-input ui:bg-background ui:px-1 ui:py-1 ui:text-center ui:text-foreground ui:focus-visible:focus-ring"
       />
       <span className="ui:text-muted-foreground">/ {pageCount}</span>
@@ -140,9 +141,7 @@ export function ViewerToolbar({
               disabled={pageIndex <= 0}
               onClick={() => onPageChange(pageIndex - 1)}
             />
-            {/* Remounts when the page changes, so the box shows the new page. */}
             <PageInput
-              key={pageIndex}
               pageIndex={pageIndex}
               pageCount={pageCount}
               onPageChange={onPageChange}

@@ -18,8 +18,12 @@ function setup(overrides: Partial<ViewerToolbarProps> = {}) {
     onFitPage: vi.fn(),
     ...overrides,
   };
-  render(<ViewerToolbar {...props} />);
-  return props;
+  const { rerender } = render(<ViewerToolbar {...props} />);
+  return {
+    ...props,
+    rerender: (next: Partial<ViewerToolbarProps>) =>
+      rerender(<ViewerToolbar {...props} {...next} />),
+  };
 }
 
 it("shows the page as n / N and the zoom as a percentage", () => {
@@ -97,4 +101,24 @@ it("is reachable with Tab, control by control", async () => {
         : null);
     expect(label).toBe(name);
   }
+});
+
+it("keeps a half-typed page and the focus when the current page changes", async () => {
+  const props = setup();
+  const box = screen.getByLabelText<HTMLInputElement>("Page");
+  await userEvent.clear(box);
+  await userEvent.type(box, "1");
+  props.rerender({ pageIndex: 3 });
+  const after = screen.getByLabelText<HTMLInputElement>("Page");
+  expect(after).toBe(box);
+  expect(document.activeElement).toBe(box);
+  expect(box.value).toBe("1");
+  await userEvent.type(box, "2{Enter}");
+  expect(props.onPageChange).toHaveBeenCalledWith(11);
+});
+
+it("follows the current page while not being edited", () => {
+  const props = setup();
+  props.rerender({ pageIndex: 6 });
+  expect(screen.getByLabelText<HTMLInputElement>("Page").value).toBe("7");
 });

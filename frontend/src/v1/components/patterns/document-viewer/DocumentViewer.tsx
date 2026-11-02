@@ -159,20 +159,24 @@ export function DocumentViewer({
     if (zoomState.mode === "custom" || !pageSizes || !bodySize) {
       return zoomState.level;
     }
-    const page =
-      zoomState.mode === "fit-width"
-        ? widest(pageSizes)
-        : (pageSizes[pageIndex] ?? pageSizes[0]);
-    if (!page) {
-      return zoomState.level;
+    if (zoomState.mode === "fit-width") {
+      const page = widest(pageSizes);
+      return page
+        ? fitZoom(page, bodySize.width, null, FIT_GUTTER)
+        : zoomState.level;
     }
-    return fitZoom(
-      page,
-      bodySize.width,
-      zoomState.mode === "fit-page" ? bodySize.height : null,
-      FIT_GUTTER,
-    );
-  }, [zoomState, pageSizes, bodySize, pageIndex]);
+    // Fit page fits every page, not the current one: in a document that mixes
+    // sizes, a zoom that followed the current page would rescale the whole
+    // document each time scrolling crossed into a page of another size.
+    let level = Number.POSITIVE_INFINITY;
+    for (const page of pageSizes) {
+      level = Math.min(
+        level,
+        fitZoom(page, bodySize.width, bodySize.height, FIT_GUTTER),
+      );
+    }
+    return Number.isFinite(level) ? level : zoomState.level;
+  }, [zoomState, pageSizes, bodySize]);
 
   const run = useCallback((request: ScrollRequest) => {
     const list = listRef.current;
