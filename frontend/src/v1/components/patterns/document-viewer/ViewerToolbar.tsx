@@ -129,7 +129,6 @@ export function ViewerToolbar({
           disabled={pageIndex <= 0}
           onClick={() => onPageChange(pageIndex - 1)}
         />
-        {/* Remounts when the page changes, so the box shows the new page. */}
         <PageInput
           pageIndex={pageIndex}
           pageCount={pageCount}
