@@ -86,20 +86,29 @@ const CASES = parseTable(`
   v1-inline-style                | lint:v1         | No inline style under v1
   v1-inline-style-variable       | lint:v1         | No inline style under v1
   v1-inline-style-mixed          | lint:v1         | No inline style under v1
+  v1-inline-style-spaced         | lint:v1         | No inline style under v1
   v1-inline-style-custom-props-ok | typecheck:v1 + lint:v1 | -
   v1-raw-colour-palette          | lint:v1         | No raw colour under v1
   v1-raw-colour-arbitrary        | lint:v1         | No raw colour under v1
   v1-raw-colour-prop             | lint:v1         | No raw colour under v1
   v1-raw-colour-named            | lint:v1         | No raw colour under v1
+  v1-raw-colour-named-prop       | lint:v1         | No raw colour under v1
   v1-raw-pixel-arbitrary         | lint:v1         | No raw pixel value under v1
+  v1-raw-pixel-arbitrary-multi   | lint:v1         | No raw pixel value under v1
   v1-important-utility           | lint:v1         | No !important under v1
   v1-important-variant-utility   | lint:v1         | No !important under v1
   v1-important-css               | lint:v1         | No !important under v1
   v1-css-import-from-page        | lint:v1         | CSS is imported only from app/ and styles/
   v1-styles-raw-colour           | lint:v1         | No raw colour under v1
+  v1-styles-raw-colour-named     | lint:v1         | No raw colour under v1
+  v1-styles-raw-viewport-unit    | lint:v1         | No raw pixel value under v1
   v1-styles-unscoped-selector    | lint:v1         | Every v1 selector is scoped to .v1
+  v1-styles-sibling-selector     | lint:v1         | selects outside it
+  v1-styles-nested-sibling-selector | lint:v1      | selects outside it
   v1-styles-color-scheme-media   | lint:v1         | prefers-color-scheme
   v1-unprefixed-utility          | lint:v1         | No unprefixed Tailwind utility under v1
+  v1-unprefixed-single-class     | lint:v1         | No unprefixed Tailwind utility under v1
+  v1-prefix-after-variant        | lint:v1         | The ui: prefix comes first
   v1-styles-policy-ok            | lint:v1         | -
   v1-plain-strings-ok            | lint:v1         | -
 `).map(([name, run, fails]) => ({

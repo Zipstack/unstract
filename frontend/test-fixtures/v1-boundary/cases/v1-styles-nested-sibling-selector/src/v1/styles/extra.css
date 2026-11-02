@@ -1,0 +1,10 @@
+.v1 .menu {
+  & + .demo {
+    color: var(--foreground);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    & ~ .demo {
+      color: var(--foreground);
+    }
+  }
+}

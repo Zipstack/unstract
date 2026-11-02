@@ -25,9 +25,14 @@ file holds only the rules that tooling enforces.
   browser under `unstract.v1.theme`, applied as `data-theme` by `ThemeProvider`.
   Portals: `getPortalContainer()`; focus: `ui:focus-visible:focus-ring`; Geist
   Mono only for model output, JSON and token counts.
-- `lint:v1` S1–S8: no inline style, raw colour or pixel, `!important`, CSS
-  import outside `app/` or `styles/`, selector outside `.v1`,
-  `prefers-color-scheme` or unprefixed utility (code: class and colour strings).
+- `lint:v1` S1–S8: no inline style, raw colour (hex, functions, palette or
+  named, in code and CSS) or pixel (any length inside `[…]` or in CSS, `vh`
+  and `vw` included), `!important`, CSS import outside `app/` or `styles/`,
+  selector outside `.v1` (a sibling combinator right after the root,
+  `.v1 + x` or nested `& ~ x`, counts), `prefers-color-scheme`, or a
+  utility without `ui:` first (`hover:ui:flex` compiles to nothing). Code:
+  `className` values and `cn()` arguments always, other strings when they
+  look like a class list.
   Runtime geometry: `style` may set only custom properties (`"--page-aspect"`,
   typed by `lib/css-custom-properties.d.ts`) that classes read
   (`ui:aspect-(--page-aspect)`); a plain key or a variable fails. Pixel
@@ -36,6 +41,11 @@ file holds only the rules that tooling enforces.
   - `scrollbar-color`, `::-webkit-scrollbar*`: the thumb stays light in dark.
   - `[data-radix-popper-content-wrapper] { z-index: 1500 !important }`.
   - `[data-sonner-toaster] { pointer-events: auto }`.
+  - `svg.lucide` under a `span`, `p`, `label`, `li`, `a`, `td` or `th` that
+    is not `.flex`/`.inline-flex`/`.grid` (v0 names, so `ui:inline-flex`
+    does not exempt) is forced to `1em` and `inline-block`, overriding the
+    icon's `size` prop. Put icons in a `ui:flex`/`ui:inline-flex` parent
+    that is not one of those tags, or size the parent's font.
 
 ## Folders and what each may import
 
@@ -64,7 +74,7 @@ Every folder may import from itself. Test files (`*.test.ts(x)`,
 | --- | --- |
 | `bun run typecheck:v1` | TypeScript-only files, CSS only in `styles/`, no symlinks, folder taxonomy; then `tsc` with `src/v1/tsconfig.json` |
 | `bun run lint:v1` | Biome on `src/v1/`, then imports (nothing outside v1, folder contract, and v0 reaching v1 only through `@v1`), PropTypes and `ant-` checks, then the styling policy (S1 to S8 above) |
-| `bun run tokens:v1` | Regenerates `styles/tokens.css` from `styles/tokens.ts` |
+| `bun run tokens:v1` | Regenerates `styles/tokens.css` from `styles/tokens.ts` (runs under bun, which imports the TypeScript source directly) |
 | `bun run test:v1` | v1 unit tests, then the guardrail fixtures in `test-fixtures/v1-boundary/` |
 
 The v0 ↔ v1 boundary and the banned imports are Biome rules in `biome.json`,
