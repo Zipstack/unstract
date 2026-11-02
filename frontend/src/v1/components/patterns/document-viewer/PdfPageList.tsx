@@ -13,6 +13,7 @@ import {
   useLayoutEffect,
   useMemo,
   useRef,
+  useState,
 } from "react";
 import { PdfPage } from "./PdfPage";
 
@@ -59,6 +60,53 @@ function pageTop(root: HTMLElement, page: HTMLElement): number {
   return page.offsetTop - (first?.offsetTop ?? 0);
 }
 
+/** The last page whose top is at or above `y`, found by halving the range. */
+function pageAt(root: HTMLElement, pageCount: number, y: number): number {
+  let low = 0;
+  let high = pageCount - 1;
+  while (low < high) {
+    const middle = Math.ceil((low + high) / 2);
+    const page = pageElement(root, middle);
+    if (page && pageTop(root, page) <= y) {
+      low = middle;
+    } else {
+      high = middle - 1;
+    }
+  }
+  return low;
+}
+
+/**
+ * The page with the most of itself in view; the lower index wins a tie. Read
+ * from the layout, so it is exact for pages of any height and right straight
+ * after a jump, unlike intersection ratios, which only arrive at thresholds and
+ * a frame later.
+ */
+function mostVisiblePage(root: HTMLElement, pageCount: number): number {
+  const top = root.scrollTop;
+  const bottom = top + root.clientHeight;
+  let best = pageAt(root, pageCount, top);
+  let bestShown = Number.NEGATIVE_INFINITY;
+  for (let index = best; index < pageCount; index++) {
+    const page = pageElement(root, index);
+    if (!page) {
+      break;
+    }
+    const pageStart = pageTop(root, page);
+    if (pageStart >= bottom) {
+      break;
+    }
+    const shown =
+      Math.min(pageStart + page.offsetHeight, bottom) -
+      Math.max(pageStart, top);
+    if (shown > bestShown) {
+      best = index;
+      bestShown = shown;
+    }
+  }
+  return best;
+}
+
 /**
  * Every page of a document in one scrolling column. All pages are laid out at
  * their real size from the start, so the scrollbar is right and scrolling to
@@ -78,14 +126,12 @@ export function PdfPageList({
   className,
   ref,
 }: PdfPageListProps) {
-  const { scrollRef, observePage, rendered, current } = usePageWindow(
-    pageSizes.length,
-  );
+  const pageCount = pageSizes.length;
+  const { scrollRef, observePage, rendered } = usePageWindow(pageCount);
   const byPage = useMemo(() => highlightsByPage(highlights), [highlights]);
   const rootRef = useRef<HTMLElement | null>(null);
   const anchorRef = useRef<Anchor>({ index: 0, fraction: 0 });
-  const currentRef = useRef(current);
-  currentRef.current = current;
+  const [current, setCurrent] = useState(0);
 
   const setRoot = useCallback(
     (element: HTMLElement | null) => {
@@ -99,20 +145,27 @@ export function PdfPageList({
     onCurrentPageChange?.(current);
   }, [current, onCurrentPageChange]);
 
-  const recordAnchor = useCallback(() => {
+  // Reads where the reader is from the layout: the page at the top, for the
+  // zoom anchor, and the page showing most, for the toolbar. Runs on every
+  // scroll and straight after a jump, so neither waits for a scroll event.
+  const sync = useCallback(() => {
     const root = rootRef.current;
-    const page = root && pageElement(root, currentRef.current);
-    if (!root || !page || page.offsetHeight === 0) {
+    if (!root || pageCount === 0) {
       return;
     }
-    anchorRef.current = {
-      index: currentRef.current,
-      fraction: (root.scrollTop - pageTop(root, page)) / page.offsetHeight,
-    };
-  }, []);
+    const index = pageAt(root, pageCount, root.scrollTop);
+    const page = pageElement(root, index);
+    if (page && page.offsetHeight > 0) {
+      anchorRef.current = {
+        index,
+        fraction: (root.scrollTop - pageTop(root, page)) / page.offsetHeight,
+      };
+    }
+    setCurrent(mostVisiblePage(root, pageCount));
+  }, [pageCount]);
 
   // A zoom change resizes every page; keep the same spot of the same page at
-  // the top. Runs after the pages' own layout effects have resized them.
+  // the top. The pages took their new size from their style at commit.
   const previousZoom = useRef(zoom);
   useLayoutEffect(() => {
     if (previousZoom.current === zoom) {
@@ -124,19 +177,20 @@ export function PdfPageList({
     const page = root && pageElement(root, index);
     if (root && page) {
       root.scrollTop = pageTop(root, page) + fraction * page.offsetHeight;
+      sync();
     }
-  }, [zoom]);
+  }, [zoom, sync]);
 
   useImperativeHandle(
     ref,
     () => ({
       scrollToPage(index) {
         const root = rootRef.current;
-        const clamped = Math.min(Math.max(0, index), pageSizes.length - 1);
+        const clamped = Math.min(Math.max(0, index), pageCount - 1);
         const page = root && pageElement(root, clamped);
         if (root && page) {
           root.scrollTop = pageTop(root, page);
-          anchorRef.current = { index: clamped, fraction: 0 };
+          sync();
         }
       },
       scrollToHighlight(id) {
@@ -152,10 +206,11 @@ export function PdfPageList({
           const centreX = (highlight.x + highlight.w / 2) * page.offsetWidth;
           root.scrollLeft = page.offsetLeft + centreX - root.clientWidth / 2;
         }
+        sync();
         return true;
       },
     }),
-    [highlights, pageSizes.length],
+    [highlights, pageCount, sync],
   );
 
   // A scrollable region must be focusable for keyboard users (WCAG 2.1.1),
@@ -167,7 +222,7 @@ export function PdfPageList({
       // biome-ignore lint/a11y/noNoninteractiveTabindex: a scrollable region must be focusable
       tabIndex={0}
       aria-label="Document pages"
-      onScroll={recordAnchor}
+      onScroll={sync}
       onKeyDown={onKeyDown}
       className={cn(
         "ui:relative ui:h-full ui:overflow-auto ui:bg-muted ui:focus-visible:focus-ring",

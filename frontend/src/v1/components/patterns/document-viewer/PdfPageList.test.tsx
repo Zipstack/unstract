@@ -403,10 +403,17 @@ it("keeps the same spot of the same page in view across a zoom change", () => {
   expect(root.scrollTop).toBe(800);
 });
 
+function scrollTo(root: HTMLElement, top: number) {
+  root.scrollTop = top;
+  act(() => {
+    root.dispatchEvent(new Event("scroll"));
+  });
+}
+
 it("reports the page showing most of itself", () => {
   const { document } = fakeDocument(10);
   const onCurrentPageChange = vi.fn();
-  render(
+  const { container } = render(
     <PdfPageList
       document={document}
       pageSizes={sizes(10)}
@@ -414,18 +421,97 @@ it("reports the page showing most of itself", () => {
       onCurrentPageChange={onCurrentPageChange}
     />,
   );
-  act(() => {
-    const observer = FakeIntersectionObserver.current;
-    const target = (index: number) =>
-      [...(observer?.targets ?? [])].find(
-        (t) => t.getAttribute("data-page-index") === String(index),
-      );
-    observer?.emit([
-      { target: target(4), isIntersecting: true, intersectionRatio: 0.25 },
-      { target: target(5), isIntersecting: true, intersectionRatio: 0.75 },
-    ]);
-  });
+  const root = layOut(container, () => 1);
+  // Page 4 spans 3264-4064 and page 5 4080-4880: 100 px of 4, 284 px of 5.
+  scrollTo(root, 3964);
   expect(onCurrentPageChange).toHaveBeenLastCalledWith(5);
+  // 300 px of 4, 84 px of 5.
+  scrollTo(root, 3764);
+  expect(onCurrentPageChange).toHaveBeenLastCalledWith(4);
+});
+
+it("keeps the current page right for a page much taller than the viewer", () => {
+  const { document } = fakeDocument(10);
+  const onCurrentPageChange = vi.fn();
+  const { container } = render(
+    <PdfPageList
+      document={document}
+      pageSizes={sizes(10)}
+      zoom={4}
+      onCurrentPageChange={onCurrentPageChange}
+    />,
+  );
+  // At 400% a page is 3200 px in a 400 px viewer, so no intersection ratio
+  // ever reaches a quarter. Page 2 spans 6432-9632.
+  const root = layOut(container, () => 4);
+  scrollTo(root, 9332);
+  expect(onCurrentPageChange).toHaveBeenLastCalledWith(2);
+  scrollTo(root, 9600);
+  expect(onCurrentPageChange).toHaveBeenLastCalledWith(3);
+});
+
+it("reports the page jumped to without waiting for a scroll event", () => {
+  const { document } = fakeDocument(10);
+  const ref = createRef<PdfPageListHandle>();
+  const onCurrentPageChange = vi.fn();
+  const { container } = render(
+    <PdfPageList
+      ref={ref}
+      document={document}
+      pageSizes={sizes(10)}
+      zoom={1}
+      onCurrentPageChange={onCurrentPageChange}
+    />,
+  );
+  layOut(container, () => 1);
+  act(() => ref.current?.scrollToPage(6));
+  expect(onCurrentPageChange).toHaveBeenLastCalledWith(6);
+});
+
+it("keeps the same spot of a later page across a zoom change", () => {
+  const { document } = fakeDocument(10);
+  let zoom = 1;
+  const { container, rerender } = render(
+    <PdfPageList document={document} pageSizes={sizes(10)} zoom={zoom} />,
+  );
+  const root = layOut(container, () => zoom);
+  // A quarter of the way down page 3, which starts at 3 × 816.
+  scrollTo(root, 3 * 816 + 200);
+  zoom = 2;
+  rerender(
+    <PdfPageList document={document} pageSizes={sizes(10)} zoom={zoom} />,
+  );
+  expect(root.scrollTop).toBe(3 * 1616 + 400);
+});
+
+it("zooms around the page jumped to, even after the jump's scroll event", () => {
+  const { document } = fakeDocument(200);
+  const ref = createRef<PdfPageListHandle>();
+  let zoom = 1;
+  const { container, rerender } = render(
+    <PdfPageList
+      ref={ref}
+      document={document}
+      pageSizes={sizes(200)}
+      zoom={zoom}
+    />,
+  );
+  const root = layOut(container, () => zoom);
+  act(() => ref.current?.scrollToPage(100));
+  // The browser fires the jump's scroll event before intersections update.
+  act(() => {
+    root.dispatchEvent(new Event("scroll"));
+  });
+  zoom = 1.5;
+  rerender(
+    <PdfPageList
+      ref={ref}
+      document={document}
+      pageSizes={sizes(200)}
+      zoom={zoom}
+    />,
+  );
+  expect(root.scrollTop).toBe(100 * (1200 + 16));
 });
 
 it("cleans up a page that arrives after it has left the window", async () => {
