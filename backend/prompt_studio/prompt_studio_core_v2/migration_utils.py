@@ -76,8 +76,7 @@ class SummarizeMigrationUtils:
                         )
                     else:
                         logger.info(
-                            "No summarize profile found for tool %s, skipping "
-                            "migration",
+                            "No summarize profile found for tool %s, skipping migration",
                             tool_instance.tool_id,
                         )
                     return False

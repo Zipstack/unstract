@@ -5,7 +5,6 @@ import boto3
 from botocore.config import Config
 from botocore.exceptions import ClientError
 from django.conf import settings
-
 from unstract.sdk1.patches.storage_compat import S3_CHECKSUM_CONFIG
 
 logger = logging.getLogger(__name__)
