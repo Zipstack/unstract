@@ -4,6 +4,9 @@ on:
   release:
     types: [created]
 
+# Posts to a Slack incoming webhook (a secret); never uses the GITHUB_TOKEN.
+permissions: {}
+
 jobs:
   notify-slack:
     runs-on: ubuntu-latest
