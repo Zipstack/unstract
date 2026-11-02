@@ -68,6 +68,23 @@ def use(slug):
 
 use(SLUG)
 
+# The images Retag gives a promoted version, in the build kind of each target (retag-docker-images.yaml's matrix).
+IMAGES = (
+    "backend",
+    "frontend",
+    "platform-service",
+    "runner",
+    "x2text-service",
+    "tool-sidecar",
+    "worker-unified",
+)
+
+
+def missing_images(target, tag):
+    """The images of a target that lack tag: Promote needs the RC on each, Publish the stable version."""
+    kind = TARGETS[target][0].split("/")[0]
+    return [a for a in (f"{kind}/{i}" for i in IMAGES) if tag not in registry_tags(a)]
+
 
 AR_API = "https://artifactregistry.googleapis.com/v1"
 # OSS tag stabilized/X.Y: every enabled target of the paired cloud line reached GA. OSS git cannot see the cloud

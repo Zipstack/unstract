@@ -3,6 +3,7 @@ inline scripts. Run: python test_oss.py
 """
 
 import contextlib
+import hashlib
 import io
 import json
 import os
@@ -18,6 +19,7 @@ os.environ["GITHUB_REPOSITORY"] = (
 )
 import oss
 import relmgr as rm
+import relstate as rs
 
 os.environ.update(GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_NOSYSTEM="1")
 os.environ.pop("GITHUB_STEP_SUMMARY", None)
@@ -709,7 +711,7 @@ def step(workflow, name, exprs=()):
 )
 class Workflow(unittest.TestCase):
     """Cloud and OSS origins with clones. sitecustomize serves Artifact Registry from reg.jsonl (cloud/backend)
-    and reg-<kind>_<package>.jsonl, and a repository's package list from pkgs-<repo>.json; a stub gh serves <owner>_<repo>.json (conflict PRs; a `prfail` file fails it)
+    and reg-<kind>_<package>.jsonl, any other image of a kind as its backend, and a repository's package list from pkgs-<repo>.json; a stub gh serves <owner>_<repo>.json (conflict PRs; a `prfail` file fails it)
     and pulls.json, logging each call and its token to gh.log.
     """
 
@@ -733,8 +735,9 @@ class Workflow(unittest.TestCase):
             fh.write(f"""import json, os, sys
 sys.path.insert(0, {HERE!r})
 import relstate
-def _ar_versions(repo, package, artifact):  # reg.jsonl for cloud/backend, reg-<kind>_<package>.jsonl for the others; a row's "repo" (default r) is its repository, "names" its version ids' repository
-    f = os.path.join({d!r}, "reg.jsonl" if artifact == "cloud/backend" else "reg-" + artifact.replace("/", "_") + ".jsonl")
+def _ar_versions(repo, package, artifact):  # reg.jsonl for cloud/backend, reg-<kind>_<package>.jsonl for the others, else its kind's backend; a row's "repo" (default r) is its repository, "names" its version ids' repository
+    f = lambda a: os.path.join({d!r}, "reg.jsonl" if a == "cloud/backend" else "reg-" + a.replace("/", "_") + ".jsonl")
+    f = f(artifact) if os.path.exists(f(artifact)) else f(artifact.split("/")[0] + "/backend")
     if not os.path.exists(f):
         return []
     with open(f) as fh:
@@ -1085,6 +1088,7 @@ class SyncArgocdParameters(unittest.TestCase):
         "value": "false",
     }  # a chart value this workflow does not own
     REG = "l-docker.pkg.dev/p/rc"
+    DEV = "d-docker.pkg.dev/p/dev"
 
     def merge(self, current, tag="", cloud_rc="", revision="main"):
         return subprocess.run(
@@ -1098,6 +1102,7 @@ class SyncArgocdParameters(unittest.TestCase):
                 "CURRENT": json.dumps(current),
                 "IMAGE_TAG": tag,
                 "CLOUD_RC": cloud_rc,
+                "DEV_REGISTRY": self.DEV,
                 "TARGET_REVISION": revision,
                 "APP_NAME": "dev-unstract-dev",
             },
@@ -1134,16 +1139,16 @@ class SyncArgocdParameters(unittest.TestCase):
             for n, v in self.merged([self.OTHER], "v2.0.0-rc.1", self.REG).items()
         ]
         self.assertEqual(
-            self.merged(rc, "v2", self.REG),
-            {"postgresql.enabled": "false", "global.unstract.image.tag": "v2"},
+            self.merged(rc, "v2.0.0", self.REG),
+            {"postgresql.enabled": "false", "global.unstract.image.tag": "v2.0.0"},
         )
 
     def test_no_tag_keeps_the_current_one(self):
         self.assertEqual(
             self.merged(
-                [self.OTHER, {"name": "global.unstract.image.tag", "value": "v1"}]
+                [self.OTHER, {"name": "global.unstract.image.tag", "value": "v1.0.0"}]
             ),
-            {"postgresql.enabled": "false", "global.unstract.image.tag": "v1"},
+            {"postgresql.enabled": "false", "global.unstract.image.tag": "v1.0.0"},
         )
 
     def test_a_kept_rc_tag_pulls_from_cloud_rc(self):
@@ -1190,21 +1195,82 @@ class SyncArgocdParameters(unittest.TestCase):
         )
         self.assertNotIn("runner.configMap.TOOL_SIDECAR_IMAGE_TAG", got)
         self.assertEqual(
-            self.merged([self.OTHER], "snapshot.7"),
-            {"postgresql.enabled": "false", "global.unstract.image.tag": "snapshot.7"},
+            self.merged([self.OTHER], "v2.0.0"),
+            {"postgresql.enabled": "false", "global.unstract.image.tag": "v2.0.0"},
         )
 
     def test_cloud_rc_is_not_taken_without_an_rc_tag(self):
-        for tag in ("snapshot.7", "v2.0.0", "rc.3"):
+        for tag in ("v2.0.0", "rc.3"):
             for cloud_rc in (self.REG, ""):
                 self.assertEqual(
                     self.merged([self.OTHER], tag, cloud_rc),
                     {"postgresql.enabled": "false", "global.unstract.image.tag": tag},
                 )
 
+    def test_a_dev_tag_pulls_from_the_dev_registry(self):
+        # given, or kept by a re-sync with no tag: a dev tag's images are only in the dev repository
+        kept = {"name": "global.unstract.image.tag", "value": "snapshot.7"}
+        for current, tag in (([self.OTHER], "snapshot.7"), ([self.OTHER, kept], "")):
+            for cloud_rc in (self.REG, ""):
+                got = self.merged(current, tag, cloud_rc)
+                self.assertEqual(got["global.unstract.image.tag"], "snapshot.7")
+                for s in (
+                    "frontend",
+                    "backend",
+                    "runner",
+                    "platform",
+                    "x2text",
+                    "worker",
+                ):
+                    self.assertEqual(got[f"{s}.image.registry"], self.DEV, s)
+                self.assertEqual(
+                    got["runner.configMap.TOOL_SIDECAR_IMAGE_NAME"],
+                    f"{self.DEV}/tool-sidecar",
+                )
+                self.assertEqual(
+                    got["runner.configMap.TOOL_SIDECAR_IMAGE_TAG"], "snapshot.7"
+                )
+        for tag in ("my-branch-fix", "v1.2.0-rc.1-snapshot", "rc.3a", "v2.0"):
+            self.assertEqual(
+                self.merged([self.OTHER], tag)["backend.image.registry"], self.DEV, tag
+            )
+
+    def test_a_release_tag_after_a_dev_tag_drops_the_dev_registry(self):
+        dev = [
+            {"name": n, "value": v}
+            for n, v in self.merged([self.OTHER], "snapshot.7").items()
+        ]
+        self.assertEqual(
+            self.merged(dev, "v2.0.0"),
+            {"postgresql.enabled": "false", "global.unstract.image.tag": "v2.0.0"},
+        )
+        self.assertEqual(
+            self.merged(dev, "v2.0.0-rc.1", self.REG)["backend.image.registry"], self.REG
+        )
+
+    def test_a_revision_alone_never_takes_the_dev_registry(self):
+        # no tag parameter: the chart's own tag at that revision applies, a release tag in its values.yaml
+        for revision in ("main", "feature/x", "snapshot.7"):
+            self.assertEqual(
+                self.merged([self.OTHER], revision=revision),
+                {"postgresql.enabled": "false"},
+            )
+
 
 RC = "projects/p/locations/l/repositories/rc"
 RC_HOST = "l-docker.pkg.dev/p/rc"
+# The dev repositories, as the build workflows name them; read from there (only the cloud repo has them) to keep the
+# names out of this shared file, and pinned by hash in test_dev_repositories_are_pinned
+_dev = os.path.join(HERE, "..", "workflows", "cloud-backend-docker-build-push.yaml")
+_dev = os.path.exists(_dev) and re.findall(
+    r"^ +(?:cloud|on_prem)=\$\(root projects/([^/]+)/locations/([^/]+)/repositories/([^/)]+)\)$",
+    open(_dev).read(),
+    re.M,
+)
+DEV_HOST = _dev and f"{_dev[0][1]}-docker.pkg.dev"
+DEV_REPOS, DEV_REPOS_ON_PREM = (
+    [f"{loc}-docker.pkg.dev/{p}/{r}" for p, loc, r in _dev] if _dev else [None, None]
+)
 
 
 @unittest.skipUnless(
@@ -1257,10 +1323,14 @@ case "$1 $2 $3" in
   "buildx imagetools inspect")
     [ ! -e {d}/inspect_err ] || {{ cat {d}/inspect_err; exit 1; }}
     [ -e "$(img "${{4%@*}}")" ] || {{ echo "ERROR: $4: not found"; exit 1; }}
-    if [ "$6" = '{{{{json .Image}}}}' ]; then cat "$(img "${{4%@*}}").json"; else cat "$(img "$4")"; fi;;
+    if [ "$6" = '{{{{json .Image}}}}' ]; then
+      [ ! -e {d}/config_err ] || {{ cat {d}/config_err; exit 1; }}
+      cat "$(img "${{4%@*}}").json"
+    else cat "$(img "$4")"; fi;;
   "buildx imagetools create") echo "$6 $5" >> {d}/copies; cp "$(img "${{6%@*}}")" "$(img "$5")"
     cp "$(img "${{6%@*}}").json" "$(img "$5").json"
     [ ! -e {d}/drift ] || echo sha256:other > "$(img "$5")";;
+  "login -u oauth2accesstoken") echo "$5 $(cat)" >> {d}/logins;;
   *) cat > /dev/null;;
 esac
 """)
@@ -1331,6 +1401,7 @@ esac
                 "TARGET_REVISION": "main",
                 "IMAGE_TAG": "",
                 "CLOUD_RC": "",
+                "DEV_REGISTRY": DEV_REPOS,
                 "TRIGGERED_BY": "dev",
                 "ARGOCD_SERVER": "argocd",
                 "ARGOCD_TOKEN": "t",
@@ -1364,9 +1435,9 @@ esac
         self.assertEqual((r.returncode, params), (1, None))
 
     def test_sync_of_an_app_with_no_parameters(self):
-        r, params = self.sync({"spec": {"source": {}}}, IMAGE_TAG="snapshot.7")
+        r, params = self.sync({"spec": {"source": {}}}, IMAGE_TAG="v1.2.0")
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        self.assertEqual(params, {"global.unstract.image.tag": "snapshot.7"})
+        self.assertEqual(params, {"global.unstract.image.tag": "v1.2.0"})
 
     def test_sync_keeps_an_unrelated_parameter_and_takes_cloud_rc(self):
         r, params = self.sync(self.APP, IMAGE_TAG="v1.2.0-rc.1", CLOUD_RC=RC)
@@ -1375,11 +1446,33 @@ esac
         self.assertEqual(params["backend.image.registry"], RC_HOST)
         with open(os.path.join(self.d, "env")) as fh:
             self.assertIn(f"IMAGE_REGISTRY_APPLIED={RC_HOST}", fh.read())
-        r, params = self.sync(self.APP, IMAGE_TAG="snapshot.7", CLOUD_RC=RC)
+        r, params = self.sync(self.APP, IMAGE_TAG="v1.2.0", CLOUD_RC=RC)
         self.assertEqual(
             params,
-            {"postgresql.enabled": "false", "global.unstract.image.tag": "snapshot.7"},
+            {"postgresql.enabled": "false", "global.unstract.image.tag": "v1.2.0"},
         )
+
+    def test_sync_of_a_dev_tag_takes_the_dev_registry(self):
+        r, params = self.sync(self.APP, IMAGE_TAG="snapshot.7", CLOUD_RC=RC)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(params["backend.image.registry"], DEV_REPOS)
+        with open(os.path.join(self.d, "env")) as fh:
+            self.assertIn(f"IMAGE_REGISTRY_APPLIED={DEV_REPOS}", fh.read())
+
+    def test_sync_argocd_dev_registry_is_where_the_builds_push(self):
+        with open(os.path.join(HERE, "..", "workflows", "sync-argocd.yaml")) as fh:
+            self.assertEqual(
+                re.findall(r"\n +DEV_REGISTRY: (.*)\n", fh.read()), [DEV_REPOS]
+            )
+        r = self.bash(
+            step("cloud-backend-docker-build-push.yaml", "Image roots"),
+            DEV="true",
+            PROJECT_ID="p",
+            TOKEN="t",
+        )
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        with open(os.path.join(self.d, "env")) as fh:
+            self.assertIn(f"IMAGE_ROOT_CLOUD={DEV_REPOS}\n", fh.read())
 
     def app(self, revision="", **params):
         return {
@@ -1502,7 +1595,7 @@ esac
             r, copy = self.retag(stable, rc_repo=rc_repo)
             self.assertEqual((r.returncode, copy), (1, ""), rc_repo)
             self.assertIn("is a release-line RC", r.stdout, rc_repo)
-        for source in ("rc.4", "snapshot.7"):
+        for source in ("rc.4",):
             r, copy = self.retag(
                 {f"{self.STABLE}/backend:{source}": "sha256:s"}, source=source
             )
@@ -1511,6 +1604,29 @@ esac
                 copy, f"{self.STABLE}/backend:{source} {self.STABLE}/backend:v1.2.0"
             )
             os.remove(os.path.join(self.d, "copies"))
+
+    def test_retag_takes_release_tags_only(self):
+        def validate(source, target):
+            return self.bash(
+                step(
+                    "retag-docker-images.yaml",
+                    "Validate inputs",
+                    {
+                        "inputs.source_tag || github.event.inputs.source_tag": source,
+                        "inputs.target_tag || github.event.inputs.target_tag": target,
+                    },
+                )
+            ).returncode
+
+        for source in ("rc.4", "v1.2.0-rc.1"):
+            self.assertEqual(validate(source, "v1.2.0"), 0, source)
+        # a snapshot is a dev build, in the dev repositories, never in the stable ones retag copies within
+        for source, target in (
+            ("snapshot.7", "v1.2.0"),
+            ("rc.4", "snapshot.8"),
+            ("v1.2.0", "v1.2.1"),
+        ):
+            self.assertEqual(validate(source, target), 1, (source, target))
 
     def test_retag_refuses_a_copy_at_another_digest(self):
         r, _ = self.retag({f"{RC_HOST}/backend:v1.2.0-rc.1": "sha256:rc"}, drift=True)
@@ -1535,10 +1651,226 @@ esac
             )
         r = self.bash(roots, CLOUD_RC="bogus", **env)
         self.assertEqual(r.returncode, 1)
+        # a dev build: the dev repositories, whatever the RC variables hold
+        for cloud_rc in (RC, ""):
+            os.remove(os.path.join(self.d, "env"))
+            r = self.bash(roots, CLOUD_RC=cloud_rc, DEV="true", **env)
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            with open(os.path.join(self.d, "env")) as fh:
+                self.assertEqual(
+                    fh.read(),
+                    f"IMAGE_ROOT_CLOUD={DEV_REPOS}\nIMAGE_ROOT_ON_PREM={DEV_REPOS_ON_PREM}\n",
+                )
+
+    def test_dev_repositories_are_pinned(self):
+        # the names this file reads from the workflow, pinned without naming them
+        self.assertEqual(
+            [
+                hashlib.sha256(r.encode()).hexdigest()[:16]
+                for r in (DEV_REPOS, DEV_REPOS_ON_PREM)
+            ],
+            ["09c6e2192638ca1b", "0d09d8937e810c71"],
+        )
+
+    def test_dev_live_update_image_root(self):
+        # frontend-dev goes where the platform images of its tag go, logged in as dev-auth on a dev tag
+        root = step("dev-live-update-image.yaml", "Image root")
+        logins = os.path.join(self.d, "logins")
+        for dev, want, login in (
+            ("true", DEV_REPOS, f"https://{DEV_HOST} t\n"),
+            ("false", self.STABLE, None),
+        ):
+            for f in (os.path.join(self.d, "env"), logins):
+                if os.path.exists(f):
+                    os.remove(f)
+            r = self.bash(root, DEV=dev, PROJECT_ID="p", TOKEN="t")
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            with open(os.path.join(self.d, "env")) as fh:
+                self.assertEqual(fh.read(), f"IMAGE_ROOT_CLOUD={want}\n", dev)
+            if login:
+                with open(logins) as fh:
+                    self.assertEqual(fh.read(), login, dev)
+            else:
+                self.assertFalse(os.path.exists(logins), dev)
+
+    def test_image_kind(self):
+        kind = step("cloud-backend-docker-build-push.yaml", "Image kind")
+        for tag, dev in (
+            ("rc.12", "false"),
+            ("v1.2.0", "false"),
+            ("v1.2.0-rc.3", "false"),
+            ("snapshot.7", "true"),
+            ("snapshot.412-fix2", "true"),
+            ("my-feature", "true"),
+            ("v1.2", "true"),
+            ("rc.12x", "true"),
+            ("v1.2.0-rc.1-snapshot", "true"),
+            ("xv1.2.0", "true"),
+        ):
+            out = os.path.join(self.d, "out")
+            if os.path.exists(out):
+                os.remove(out)
+            r = self.bash(kind, TAG=tag)
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            with open(out) as fh:
+                self.assertEqual(fh.read(), f"dev={dev}\n", tag)
+
+    def test_dev_push_is_the_same_in_every_build(self):
+        # the same kind, keyless login and job permission before every push: the 11 build workflows and frontend-dev
+        wf = os.path.join(HERE, "..", "workflows")
+        files = sorted(
+            f
+            for f in os.listdir(wf)
+            if f.endswith("-docker-build-push.yaml")
+            and f != "cloud-multi-doc-service-docker-build-push.yaml"
+        ) + ["dev-live-update-image.yaml"]
+        self.assertEqual(len(files), 12)
+
+        def block(text):
+            a = text.index("      - name: Image kind\n")
+            return text[a : text.index("\n\n", text.index("- id: dev-auth", a))]
+
+        with open(os.path.join(wf, "cloud-backend-docker-build-push.yaml")) as fh:
+            want = block(fh.read())
+        self.assertIn("if: steps.kind.outputs.dev == 'true'", want)
+        self.assertRegex(
+            want,
+            r"\n +workload_identity_provider: projects/\d+/locations/global/workloadIdentityPools/[\w-]+-dev-pool/providers/github\n",
+        )
+        for f in files:
+            with open(os.path.join(wf, f)) as fh:
+                text = fh.read()
+            self.assertEqual(block(text), want, f)
+            self.assertEqual(
+                text.count(
+                    "\n    permissions:\n      contents: read\n      id-token: write"
+                ),
+                1,
+                f,
+            )
+            self.assertEqual(text.count("    runs-on:"), 1, f)  # one job, the one granted
+            # the push follows the kind: the root step reads it, and the tags come from a root
+            self.assertIn("DEV: ${{ steps.kind.outputs.dev }}", text, f)
+            self.assertNotIn("tags=us-central1", text, f)
+            # and logs in as dev-auth on a dev build: a Nuitka build through the credential helper, which serves the
+            # identity dev-auth exported; every other build with dev-auth's token
+            a = text.index("      - name: Image root")
+            root_env = text[a : text.index("run: |", a)]
+            if "Nuitka" in text:
+                self.assertNotIn("TOKEN:", root_env, f)
+                self.assertIn("gcloud auth configure-docker", text[a:], f)
+            elif f == "dev-live-update-image.yaml":
+                self.assertIn(
+                    "TOKEN: ${{ steps.dev-auth.outputs.access_token }}\n", root_env, f
+                )
+            else:
+                self.assertIn(
+                    "TOKEN: ${{ steps.dev-auth.outputs.access_token || steps.auth.outputs.access_token }}\n",
+                    root_env,
+                    f,
+                )
+
+    def test_a_nuitka_build_logs_in_through_the_credential_helper(self):
+        # its compile can outlast an access token, so no registry login may hold a static one
+        wf = os.path.join(HERE, "..", "workflows")
+        nuitka = []
+        for f in sorted(
+            f for f in os.listdir(wf) if f.endswith("-docker-build-push.yaml")
+        ):
+            with open(os.path.join(wf, f)) as fh:
+                text = fh.read()
+            if "Nuitka" not in text:
+                continue
+            nuitka.append(f)
+            self.assertNotIn("oauth2accesstoken", text, f)
+            self.assertNotIn("docker login", text, f)
+            self.assertIn(
+                "\n          gcloud auth configure-docker us-central1-docker.pkg.dev --quiet\n",
+                text,
+                f,
+            )
+            self.assertLess(
+                text.index("uses: google-github-actions/setup-gcloud@"),
+                text.index("gcloud auth configure-docker"),
+                f,
+            )
+            self.assertIn(
+                'gcloud auth configure-docker "${BASH_REMATCH[2]}-docker.pkg.dev" --quiet >&2 || exit 1',
+                step(f, "Image roots"),
+                f,
+            )
+        self.assertEqual(
+            nuitka,
+            [
+                "on-prem-backend-docker-build-push.yaml",
+                "on-prem-worker-unified-docker-build-push.yaml",
+            ],
+        )
+
+    def test_every_caller_of_a_build_grants_id_token(self):
+        # A nested job asking for id-token: write fails to start unless each caller up the chain grants it. A job that
+        # calls a workflow which asks for it anywhere must grant it, and the grant then makes its own workflow ask, so
+        # the chain is followed to the top (Cut -> Take RC build -> build-push -> a build). Every workflow is searched.
+        wf = os.path.join(HERE, "..", "workflows")
+        uses = re.compile(
+            r"^    uses:\s*[\"']?\./\.github/workflows/([\w.-]+\.ya?ml)[\"']?\s*(?:#.*)?$",
+            re.M,
+        )
+        asks = re.compile(r"^\s+id-token:\s*write\b", re.M)
+        texts = {}
+        for f in sorted(os.listdir(wf)):
+            if f.endswith((".yaml", ".yml")):
+                with open(os.path.join(wf, f)) as fh:
+                    texts[f] = fh.read()
+
+        def jobs(f):
+            m = re.search(r"^jobs:\s*(?:#.*)?$", texts[f], re.M)
+            if not m:
+                # a file naming a local workflow must have a jobs section to search, or a caller goes unseen
+                self.assertNotRegex(texts[f], r"\./\.github/workflows/", f)
+                return []
+            return re.split(r"\n(?=  [\w-]+:\s*(?:#.*)?\n)", texts[f][m.end() :])
+
+        found = {}
+        for f in texts:
+            for j in jobs(f):
+                m = uses.search(j)
+                if m and asks.search(texts[m.group(1)]):
+                    found.setdefault(f, []).append(j)
+        self.assertEqual(
+            {f: len(j) for f, j in found.items()},
+            {
+                "_rc-build.yaml": 1,
+                "build-push.yaml": 11,
+                "cut.yaml": 1,
+                "dev-deploy.yaml": 2,
+                "take-rc-build.yaml": 1,
+            },
+        )
+        for f, js in found.items():
+            for j in js:
+                if f == "_rc-build.yaml":
+                    # disabled, kept for rollback: it must stay off, and say what re-enabling it needs
+                    self.assertIn("\n    if: false", j)
+                    self.assertIn("id-token: write", j)
+                    continue
+                self.assertRegex(
+                    j,
+                    r"\n    permissions:\n(?:      [\w-]+: \w+.*\n)*      id-token: write",
+                    (f, j[:40]),
+                )
 
     LABELLED = '{"config": {"Labels": {"org.opencontainers.image.revision": "r1"}}, "rootfs": {}}'
 
-    def skip(self, images, tag="v1.2.0-rc.1", err="", drift=False, config=LABELLED):
+    def skip(
+        self,
+        images,
+        tag="v1.2.0-rc.1",
+        err="",
+        drift=False,
+        config=LABELLED,
+        config_err="",
+    ):
         """Run the runner's Skip at commit r1 over images (ref -> digest, or ref -> (digest, config))."""
         for image, digest in images.items():
             digest, cfg = digest if isinstance(digest, tuple) else (digest, config)
@@ -1555,6 +1887,9 @@ esac
         if err:
             with open(os.path.join(self.d, "inspect_err"), "w") as fh:
                 fh.write(err)
+        if config_err:
+            with open(os.path.join(self.d, "config_err"), "w") as fh:
+                fh.write(config_err)
         if drift:
             open(os.path.join(self.d, "drift"), "w").close()
         r = self.bash(
@@ -1604,6 +1939,15 @@ esac
         self.assertIn(
             "cannot inspect c/runner:v1.2.0-rc.1: ERROR: unauthorized", r.stdout
         )
+
+    def test_skip_fails_when_an_image_config_cannot_be_read(self):
+        r, out, copies = self.skip(
+            {"c/runner:v1.2.0-rc.1": "sha256:a"}, config_err="ERROR: unauthorized"
+        )
+        self.assertEqual(r.returncode, 1)
+        self.assertEqual((out, copies), ("revision=r1\n", ""))
+        self.assertIn("cannot inspect c/runner:v1.2.0-rc.1@sha256:a", r.stdout)
+        self.assertNotIn("was built from", r.stdout)
 
     def test_skip_leaves_other_tags_alone(self):
         for tag in ("rc.12", "v1.2.0", "v1.2.0-rc.1-snapshot", "dev-abc"):
@@ -1681,6 +2025,8 @@ esac
             block = text[at : text.index("run: |", at)]
             self.assertIn("id: pushed\n", block, f)
             self.assertIn("if: inputs.event == 'release'\n", block, f)
+            # bash, not the default shell, so a failed inspect in a pipe fails the step
+            self.assertRegex(block, r"\n        shell: bash(?: #.*)?\n", f)
             images = re.search(r"IMAGES: (.*)", block).group(1)
             tags = re.findall(r"tags=(\$\{\{ env\.IMAGE_ROOT_\w+ \}\}/[\w-]+):", text)
             self.assertEqual(images, " ".join(tags), f)
@@ -1708,7 +2054,7 @@ esac
             )
 
     def test_image_roots_is_the_same_in_every_build_workflow(self):
-        # on-prem-backend logs in with the credential helper instead of the token (a long compile outlives it)
+        # a Nuitka build logs in with the credential helper instead of the token (a long compile outlives it)
         def roots(f):
             return [
                 line
@@ -1752,6 +2098,105 @@ esac
                 else [["IMAGE_ROOT_ON_PREM"]]
             )
             self.assertIn(tags, want, f)
+
+    def test_every_step_that_derives_state_has_the_registry_token(self):
+        # relstate reads the registries, and refuses without a token
+        wf = os.path.join(HERE, "..", "workflows")
+        steps = []
+        for f in sorted(f for f in os.listdir(wf) if f.endswith(".yaml")):
+            with open(os.path.join(wf, f)) as fh:
+                text = fh.read()
+            for job in re.split(r"\n(?=  [\w-]+:\n)", text.split("\njobs:\n", 1)[1]):
+                head = job.split("\n    steps:\n")[0]
+                for s in re.split(r"\n(?=      - )", job):
+                    if re.search(
+                        r"rs\.derive\(|relstate\.py|convgate\.py|import convgate|registry_tags",
+                        s,
+                    ):
+                        steps.append(f"{f} {s.split(chr(10))[0].strip()}")
+                        self.assertIn("RELSTATE_AR_TOKEN:", s + head, steps[-1])
+        self.assertGreaterEqual(len(steps), 10, steps)
+
+    def test_take_rc_build_holds_its_line_over_the_builds(self):
+        # a job-level group frees the line once tagging ends, and a second run could tag while the builds still run
+        with open(os.path.join(HERE, "..", "workflows", "take-rc-build.yaml")) as fh:
+            head, jobs = fh.read().split("\njobs:\n", 1)
+        self.assertIn(
+            "\nconcurrency:\n  group: take-rc-build-${{ inputs.branch }}\n", head
+        )
+        self.assertNotIn("concurrency:", jobs)
+
+    def test_promote_and_publish_check_every_image_retag_copies(self):
+        with open(
+            os.path.join(HERE, "..", "workflows", "retag-docker-images.yaml")
+        ) as fh:
+            matrices = re.findall(r"\n        service:\n +\[([^\]]*)\]", fh.read())
+        self.assertEqual(len(matrices), 2)
+        for m in matrices:
+            self.assertEqual(tuple(re.findall(r"[\w-]+", m)), rs.IMAGES)
+
+    def test_a_retired_workflow_fails_at_its_first_job(self):
+        wf = os.path.join(HERE, "..", "workflows")
+        for f in (
+            "create-rc-build.yaml",
+            "create-hotfix-rc-build.yaml",
+            "promote-rc-build-to-stable.yaml",
+        ):
+            with open(os.path.join(wf, f)) as fh:
+                jobs = re.split(r"\n(?=  [\w-]+:\n)", fh.read().split("\njobs:\n", 1)[1])
+            first = jobs[0]
+            self.assertTrue(first.startswith("  retired:\n"), f)
+            self.assertNotIn("\n    if:", first, f)
+            self.assertNotIn("needs:", first, f)
+            r = subprocess.run(
+                ["bash", "-e", "-c", step(f, "Retired")], capture_output=True, text=True
+            )
+            self.assertEqual(r.returncode, 1, f)
+            self.assertRegex(r.stdout, r"^::error::retired: use .*\.yaml", f)
+            for job in jobs[1:]:  # the old jobs never run
+                if not job.lstrip().startswith("#"):
+                    self.assertIn("\n    if: false", job, f"{f} {job.split(':')[0]}")
+
+    def test_missing_images_reads_the_target_kind(self):
+        built = {"on-prem/backend", "on-prem/frontend", "cloud/runner"}
+        with (
+            mock.patch.object(rs, "TARGETS", rs.REPOS["unstract-cloud"][0]),
+            mock.patch.object(
+                rs, "registry_tags", lambda a: {"v1.2.0": {}} if a in built else {}
+            ),
+        ):
+            self.assertEqual(
+                rs.missing_images("on-prem", "v1.2.0"),
+                [f"on-prem/{i}" for i in rs.IMAGES if i not in ("backend", "frontend")],
+            )
+
+    def test_a_failed_product_leaves_the_other_its_retag_and_publish(self):
+        with open(os.path.join(HERE, "..", "workflows", "promote.yaml")) as fh:
+            text = fh.read()
+        jobs = {
+            j.split(":")[0].strip(): j
+            for j in re.split(r"\n(?=  [\w-]+:\n)", text.split("\njobs:\n", 1)[1])
+        }
+        # a product's key is set by its last step, so a product that fails at any step has none
+        promote = jobs["promote"]
+        self.assertIn("      cloud: ${{ steps.done.outputs.cloud }}\n", promote)
+        self.assertIn("      on-prem: ${{ steps.done.outputs.on-prem }}\n", promote)
+        last = re.split(r"\n(?=      - )", promote)[-1]
+        self.assertIn("\n        id: done\n", last)
+        self.assertNotIn("\n        if:", last)
+        self.assertIn('echo "$TARGET=$STABLE" >> "$GITHUB_OUTPUT"', last)
+        self.assertNotIn("{t}={stable}", promote)
+        # and the jobs after it run when a product failed
+        for job, need in (
+            ("promoted", "products"),
+            ("retag", "promoted"),
+            ("publish", "retag"),
+        ):
+            self.assertIn(
+                f"\n    if: ${{{{ !cancelled() && needs.{need}.result == 'success' }}}}\n",
+                jobs[job],
+                job,
+            )
 
     def test_on_prem_retag_is_the_cloud_retag(self):
         # both jobs' steps share a name, so step() runs the cloud one; the on-prem one differs only in its stable root
@@ -1860,6 +2305,31 @@ class PendingPicksWorkflow(Workflow):
         r = self.promote()
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertIn("stabilized=true\n", self.read("output"))
+
+    def test_promote_needs_the_rc_on_every_image(self):
+        self.line("1.7", "v1.7.0-rc.1")
+        self.write("reg-cloud_frontend.jsonl", "")  # frontend has no RC build
+        self.blocked(
+            self.promote(),
+            "::error::cloud has no complete RC build of v1.7.0-rc.1: cloud/frontend lack it",
+        )
+
+    def test_promote_fails_a_product_with_no_rc_build(self):
+        self.line("1.7", "v1.7.0-rc.1")
+        dev_git(self.cloud, "commit", "-q", "--allow-empty", "-m", "fix")
+        dev_git(self.cloud, "tag", "v1.7.0-rc.2")
+        dev_git(
+            self.cloud,
+            "push",
+            "-q",
+            "origin",
+            "main:refs/heads/release/1.7",
+            "v1.7.0-rc.2",
+        )
+        self.blocked(
+            self.promote("v1.7.0-rc.2"),
+            "::error::cloud has no complete RC build of v1.7.0-rc.2: cloud/backend, cloud/frontend",
+        )
 
     def test_promote_fails_closed(self):
         self.line("1.7", "v1.7.0-rc.1")
@@ -2000,8 +2470,65 @@ class TakeRcVersion(Workflow):
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertEqual(
             self.read("output"),
-            "tag=v1.7.0-rc.2\nbump=true\ntargets=cloud\nreopen=true\n",
+            "tag=v1.7.0-rc.2\nbump=true\ntargets=cloud\nreopen=true\nnewest=release/1.7\n",
         )
+
+    def test_plan_names_the_newest_line(self):
+        self.line("1.7", "v1.7.0")
+        self.line("1.8")
+        dev_git(self.cloud, "checkout", "-q", "-b", "release/1.7", "origin/release/1.7")
+        r = self.run_step(
+            inline("take-rc-build.yaml", "Plan version and targets"),
+            BRANCH="release/1.7",
+            TARGETS="cloud",
+        )
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("\nnewest=release/1.8\n", self.read("output"))
+
+    def test_staging_is_left_alone_for_an_older_line(self):
+        def summary(build, newest):
+            out = os.path.join(self.d, "summary")
+            with contextlib.suppress(FileNotFoundError):
+                os.remove(out)
+            r = subprocess.run(
+                ["bash", "-e", "-c", step("take-rc-build.yaml", "Summary")],
+                cwd=os.path.join(HERE, "..", ".."),
+                env={
+                    **os.environ,
+                    "TAG": "v1.7.1-rc.1",
+                    "BUILD": build,
+                    "RESULT": "success",
+                    "BRANCH": "release/1.7",
+                    "NEWEST": newest,
+                    "GITHUB_STEP_SUMMARY": out,
+                },
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(r.returncode, 0, r.stderr)
+            return self.read("summary")
+
+        with open(os.path.join(HERE, "..", "workflows", "build-push.yaml")) as fh:
+            (staging,) = set(
+                re.findall(r"\n +app_name: (\S+)\n", fh.read())
+            )  # the app the build deploys
+        note = f"gh workflow run sync-argocd.yaml -f app_name={staging} -f target_revision=v1.7.1-rc.1"
+        self.assertIn(
+            "Staging not updated: it runs the newest line, `release/1.8`",
+            summary("cloud", "release/1.8"),
+        )
+        self.assertIn(note, summary("cloud on-prem", "release/1.8"))
+        self.assertNotIn(note, summary("cloud", "release/1.7"))
+        self.assertNotIn(note, summary("on-prem", "release/1.8"))
+        with open(os.path.join(HERE, "..", "workflows", "take-rc-build.yaml")) as fh:
+            text = fh.read()
+        for wire in (
+            "\n      newest: ${{ steps.plan.outputs.newest }}\n",  # the job output both of these read
+            "\n      skip_argocd_deployment: ${{ inputs.skip_argocd_deployment || "
+            "needs.take-rc.outputs.newest != inputs.branch }}\n",
+            "\n      NEWEST: ${{ needs.take-rc.outputs.newest }}\n",
+        ):
+            self.assertIn(wire, text)
 
     def test_patch_rc_on_a_ga_line_does_not_reopen(self):
         # Every enabled target (cloud) is GA: a cloud patch RC keeps the OSS line's stabilized tag.
@@ -2015,7 +2542,7 @@ class TakeRcVersion(Workflow):
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertEqual(
             self.read("output"),
-            "tag=v1.7.1-rc.1\nbump=true\ntargets=cloud\nreopen=false\n",
+            "tag=v1.7.1-rc.1\nbump=true\ntargets=cloud\nreopen=false\nnewest=release/1.7\n",
         )
 
     def test_rerun_on_a_tagged_tip_reopens_for_a_target_already_built(self):
@@ -2047,7 +2574,7 @@ class TakeRcVersion(Workflow):
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertEqual(
             self.read("output"),
-            "tag=v1.7.1-rc.1\nbump=false\ntargets=cloud\nreopen=true\n",
+            "tag=v1.7.1-rc.1\nbump=false\ntargets=cloud\nreopen=true\nnewest=release/1.7\n",
         )
 
 
@@ -2101,6 +2628,21 @@ class PublishWorkflow(Workflow):
         log, out = self.plan()
         self.assertEqual((out["prev_oss"], out["oss"]), ("ee-v1.6.0", "ee-v1.7.0-rc.1"))
         self.assertNotIn("::warning::no OSS pin", log)
+
+    def test_publish_needs_the_version_on_every_image(self):
+        self.release("ee-v1.6.0", "v1.6.0")
+        self.release("ee-v1.7.0-rc.1", "v1.7.0-rc.1", "v1.7.0")
+        self.write("reg-cloud_runner.jsonl", "")  # its retag failed
+        r = self.run_step(
+            inline("publish.yaml", "Plan"),
+            VERSION="v1.7.0",
+            TARGET="cloud",
+            OWNER_REPO="Zipstack/unstract-cloud",
+        )
+        self.assertEqual(r.returncode, 1)
+        self.assertIn(
+            "::error::cloud/runner lack v1.7.0: cloud has not promoted v1.7.0", r.stdout
+        )
 
     def test_a_side_with_no_pin_skips_oss(self):
         self.release(None, "v1.6.0")
