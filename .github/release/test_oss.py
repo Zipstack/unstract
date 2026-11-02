@@ -965,6 +965,62 @@ class RetireWorkflow(Workflow):
         self.assertIn("other/packages/backend/versions/sha256:rc1 is outside r", r.stdout)
         self.assertFalse(os.path.exists(os.path.join(self.d, "ar.log")))
 
+    def kept_line(self, x_y, msg, **env):
+        """The run refuses with msg and leaves the line's branch, git tags and registry versions alone."""
+        origin = self.repos["cloud"][0]
+        tags = rm.git(origin, "tag", "-l")
+        r = self.run_step(
+            inline("retire.yaml", "Derive and retire"),
+            **{
+                "ABANDON": "",
+                "RETIRE_LINE": "",
+                "NOW": "",
+                "DRY_RUN": "false",
+                "RELSTATE_AR_TOKEN": "t",
+                **env,
+            },
+        )
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn(msg, r.stdout)
+        self.assertIn(f"release/{x_y}", rm.git(origin, "branch", "-l", "release/*"))
+        self.assertEqual(rm.git(origin, "tag", "-l"), tags)
+        self.assertFalse(os.path.exists(os.path.join(self.d, "ar.log")))
+
+    def test_abandon_refuses_a_line_with_ga(self):
+        self.line("1.7", "v1.7.0-rc.1", "v1.7.0-rc.2", "v1.7.0")
+        self.kept_line(
+            "1.7",
+            "::error::abandon release/1.7: line has GA v1.7.0, cloud/backend:v1.7.0",
+            ABANDON="release/1.7",
+            REASON="cut by mistake",
+        )
+
+    def test_abandon_refuses_a_line_with_a_dev_commit(self):
+        self.line("1.7", "v1.7.0-rc.1", "v1.7.0-rc.2")
+        dev_git(self.cloud, "commit", "-q", "--allow-empty", "-m", "work on 1.7")
+        dev_git(self.cloud, "push", "-q", "origin", "HEAD:release/1.7")
+        self.kept_line(
+            "1.7",
+            "::error::abandon release/1.7: non-bot commits above the cut",
+            ABANDON="release/1.7",
+            REASON="cut by mistake",
+        )
+
+    def test_retire_line_with_ga_keeps_its_rcs(self):
+        # 1.8 is cloud production, so 1.7 may retire early; it shipped, so its RCs stay as history.
+        self.line("1.7", "v1.7.0-rc.1", "v1.7.0-rc.2", "v1.7.0")
+        self.line("1.8", "v1.8.0-rc.1", "v1.8.0")
+        self.retire(RETIRE_LINE="release/1.7", REASON="early", RELSTATE_AR_TOKEN="t")
+        self.assertIn("has GA, tags and artifacts kept", self.read("summary"))
+        self.assertEqual(
+            rm.git(self.repos["cloud"][0], "tag", "-l", "v1.7.*").split(),
+            ["v1.7.0", "v1.7.0-rc.1", "v1.7.0-rc.2"],
+        )
+        self.assertFalse(os.path.exists(os.path.join(self.d, "ar.log")))
+        self.assertNotIn(
+            "release/1.7", rm.git(self.repos["cloud"][0], "branch", "-l", "release/*")
+        )
+
     def test_retire_line_no_ga(self):
         self.line("1.7")
         self.retire(RETIRE_LINE="release/1.7", REASON="not shipping")
@@ -2340,6 +2396,112 @@ class PendingPicksWorkflow(Workflow):
             "ship it; open conflict PRs: unchecked: listing failed",
         )
 
+    def reg(self, tag, digest):  # a registry tag on cloud/backend only, no git tag
+        with open(os.path.join(self.d, "reg.jsonl"), "a") as fh:
+            fh.write(
+                json.dumps(
+                    {"digest": digest, "pushed_at": "2026-09-01T00:00:00Z", "tags": [tag]}
+                )
+                + "\n"
+            )
+
+    def test_promote_refuses_a_stable_tag_already_promoted(self):
+        self.line("1.7", "v1.7.0-rc.1")
+        self.reg("v1.7.0", "sha256:v1.7.0-rc.1")
+        self.blocked(
+            self.promote(),
+            "::error::cloud/backend:v1.7.0 already exists (same digest: already promoted)",
+        )
+        self.assertIn(
+            "gh workflow run publish.yaml -f version=v1.7.0 -f cloud=true",
+            self.read("summary"),
+        )
+
+    def test_promote_refuses_a_stable_tag_at_another_digest(self):
+        self.line("1.7", "v1.7.0-rc.1")
+        self.reg("v1.7.0", "sha256:other")
+        self.blocked(
+            self.promote(),
+            "::error::cloud/backend:v1.7.0 already exists with digest sha256:other, not "
+            "sha256:v1.7.0-rc.1",
+        )
+
+    def test_promote_refuses_a_target_not_enabled(self):
+        self.line("1.7", "v1.7.0-rc.1")  # cloud RCs only
+        r = self.run_step(
+            inline("promote.yaml", "Plan"),
+            RC="v1.7.0-rc.1",
+            TARGET="on-prem",
+            PRODUCTS='["on-prem"]',
+        )
+        self.blocked(
+            r, "::error::on-prem is not enabled on release/1.7 (enabled: ['cloud'])"
+        )
+
+    def test_promote_missing_pick_blocks_unless_forced(self):
+        # A fix picked onto GA 1.6 after 1.7 was cut, not onto 1.7.
+        self.line("1.6", "v1.6.0-rc.1", "v1.6.0")
+        self.line("1.7", "v1.7.0-rc.1")
+        with open(os.path.join(self.cloud, "y.txt"), "w") as fh:
+            fh.write("y")
+        dev_git(self.cloud, "add", "y.txt")
+        dev_git(self.cloud, "commit", "-q", "-m", "[FIX] y (#5)")
+        dev_git(self.cloud, "push", "-q", "origin", "main")
+        fix = dev_git(self.cloud, "rev-parse", "HEAD")
+        dev_git(self.cloud, "checkout", "-q", "-b", "pick", "origin/release/1.6")
+        dev_git(self.cloud, "cherry-pick", "-x", fix)
+        dev_git(self.cloud, "push", "-q", "origin", "pick:release/1.6")
+        dev_git(self.cloud, "checkout", "-q", "main")
+        self.write(
+            "pulls.json", json.dumps([{"number": 5, "title": "[FIX] y", "labels": []}])
+        )
+        r = self.promote()
+        self.blocked(r, "::error::convergence gate: MISSING picks (summary above)")
+        self.assertIn(f"MISSING original {fix[:12]}", r.stdout)
+        self.assertIn(
+            "### ⛔ Promote blocked · v1.7.0-rc.1 · cloud", self.read("summary")
+        )
+        self.assertEqual(
+            self.forced(self.promote(FORCE="true", REASON="ship  it\nnow")), "ship it now"
+        )
+
+    def test_promote_order_blocks_unless_forced(self):
+        self.line("1.6", "v1.6.0-rc.1")  # older, not GA
+        self.line("1.7", "v1.7.0-rc.1")
+        self.blocked(self.promote(), "::error::release/1.6 is not GA for cloud yet")
+        self.assertEqual(
+            self.forced(self.promote(FORCE="true", REASON="hotfix")), "hotfix"
+        )
+
+    def test_promote_of_both_products_stabilizes_on_the_second(self):
+        # Cloud, promoted first in this run, has tagged v1.7.0; its registry retag is not read back yet.
+        self.line("1.7", "v1.7.0-rc.1")
+        self.write(
+            "reg-on-prem_backend.jsonl",
+            json.dumps(
+                {
+                    "digest": "sha256:op",
+                    "pushed_at": "2026-09-01T00:00:00Z",
+                    "tags": ["v1.7.0-rc.1"],
+                }
+            )
+            + "\n",
+        )
+        dev_git(self.cloud, "tag", "v1.7.0", "v1.7.0-rc.1")
+        dev_git(self.cloud, "push", "-q", "origin", "v1.7.0")
+        plan = lambda products: self.run_step(
+            inline("promote.yaml", "Plan"),
+            RC="v1.7.0-rc.1",
+            TARGET="on-prem",
+            PRODUCTS=products,
+        )
+        r = plan('["cloud", "on-prem"]')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("stabilized=true\n", self.read("output"))
+        r = plan('["on-prem"]')  # cloud not in this run and not GA: the line stays open
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("stabilized=false\n", self.read("output"))
+
     def test_promote_held_fixes(self):
         self.line("1.7", "v1.7.0-rc.1", "v1.7.0")  # cloud GA: the line is stabilized
         dev_git(
@@ -2454,6 +2616,33 @@ class PendingPicksWorkflow(Workflow):
 
 
 class TakeRcVersion(Workflow):
+    def checks(self, **env):
+        return self.run_step(
+            inline("take-rc-build.yaml", "Plan checks"), BRANCH="release/1.7", **env
+        )
+
+    def test_late_target_on_a_stabilized_line_is_refused_unless_forced(self):
+        self.line("1.7", "v1.7.0-rc.1", "v1.7.0")  # cloud GA: stabilized
+        r = self.checks(TARGETS="cloud,on-prem")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn(
+            "::error::release/1.7 is stabilized: adding on-prem here skips every main fix merged while the line was "
+            "stabilized (none were picked). Cut the next line (release/1.8)",
+            r.stdout,
+        )
+        r = self.checks(TARGETS="cloud,on-prem", FORCE="true", REASON="customer ask")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn(
+            "::warning::Forced late target on-prem on release/1.7 (stabilized): customer ask",
+            r.stdout,
+        )
+
+    def test_new_target_while_stabilizing_is_not_late(self):
+        self.line("1.7", "v1.7.0-rc.1")
+        r = self.checks(TARGETS="cloud,on-prem")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertNotIn("Forced late target", r.stdout)
+
     def test_allocates_past_a_registry_rc(self):
         # An earlier run pushed the cloud artifact of v1.7.0-rc.1, then its tag push failed and the tip moved.
         self.line("1.7")
@@ -2578,6 +2767,116 @@ class TakeRcVersion(Workflow):
         )
 
 
+class TakeRcBump(Workflow):
+    """Take RC's bump step on release/1.7: chart rewrite, the bump / resume / empty-commit choice, the allocation
+    re-check, and the branch and tag push.
+    """
+
+    CHART, VALUES = (
+        "charts/unstract-platform/Chart.yaml",
+        "charts/unstract-platform/values.yaml",
+    )
+
+    def setUp(self):
+        super().setUp()
+        os.makedirs(os.path.join(self.cloud, "charts", "unstract-platform"))
+        self.chart("0.1.0")
+        dev_git(self.cloud, "add", "charts")
+        dev_git(self.cloud, "commit", "-q", "-m", "chart")
+        dev_git(self.cloud, "push", "-q", "origin", "main")
+        self.line("1.7")
+        dev_git(self.cloud, "checkout", "-q", "-b", "release/1.7", "origin/release/1.7")
+
+    def chart(self, ver):
+        with open(os.path.join(self.cloud, self.CHART), "w") as fh:
+            fh.write(f'name: unstract-platform\nversion: {ver}\nappVersion: "v{ver}"\n')
+        with open(os.path.join(self.cloud, self.VALUES), "w") as fh:
+            fh.write(f"tag: &UNSTRACT_APPS_VERSION v{ver}\n")
+
+    def bump(self, tag="v1.7.0-rc.1"):
+        return subprocess.run(
+            ["bash", "-e", "-c", step("take-rc-build.yaml", "Bump chart, push, tag")],
+            cwd=self.cloud,
+            env={
+                **os.environ,
+                "PATH": self.path,
+                "PYTHONPATH": self.site,
+                "TAG": tag,
+                "BRANCH": "release/1.7",
+                "GITHUB_WORKSPACE": self.cloud,
+                "SLACK_URL": "",
+            },
+            capture_output=True,
+            text=True,
+        )
+
+    def origin(self, *args):
+        return rm.git(self.repos["cloud"][0], *args)
+
+    def tagged(self, r, subject):
+        """The run pushed the tip with subject to release/1.7 and tagged it v1.7.0-rc.1."""
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        tip = self.origin("rev-parse", "release/1.7")
+        self.assertEqual(self.origin("rev-parse", "v1.7.0-rc.1^{commit}"), tip)
+        self.assertEqual(
+            self.origin("log", "-1", "--format=%ae %s", tip),
+            f"releases@unstract.com {subject}",
+        )
+        return tip
+
+    def test_fresh_tip_bumps_the_chart(self):
+        self.tagged(self.bump(), "release: chart 1.7.0-rc.1")
+        chart = self.origin("show", f"release/1.7:{self.CHART}")
+        self.assertRegex(
+            chart, r'(?m)^version: 1\.7\.0-rc\.1\nappVersion: "v1\.7\.0-rc\.1"$'
+        )
+        self.assertEqual(
+            self.origin("show", f"release/1.7:{self.VALUES}"),
+            "tag: &UNSTRACT_APPS_VERSION v1.7.0-rc.1",
+        )
+
+    def test_already_bumped_tip_is_tagged_as_it_is(self):
+        # An earlier run pushed the bump and stopped before the tag push.
+        self.chart("1.7.0-rc.1")
+        dev_git(
+            self.cloud,
+            "-c",
+            "user.email=releases@unstract.com",
+            "commit",
+            "-q",
+            "-am",
+            "release: chart 1.7.0-rc.1",
+        )
+        dev_git(self.cloud, "push", "-q", "origin", "HEAD:release/1.7")
+        before = self.origin("rev-parse", "release/1.7")
+        r = self.bump()
+        self.assertEqual(self.tagged(r, "release: chart 1.7.0-rc.1"), before)
+        self.assertIn("is already the bump commit for v1.7.0-rc.1", r.stdout)
+
+    def test_chart_already_at_the_version_gets_an_empty_bump(self):
+        self.chart("1.7.0-rc.1")
+        dev_git(self.cloud, "commit", "-q", "-am", "chart by hand")
+        dev_git(self.cloud, "push", "-q", "origin", "HEAD:release/1.7")
+        before = self.origin("rev-parse", "release/1.7")
+        r = self.bump()
+        tip = self.tagged(r, "release: chart 1.7.0-rc.1")
+        self.assertEqual(self.origin("rev-parse", f"{tip}^"), before)
+        self.assertEqual(self.origin("diff", "--name-only", before, tip), "")
+        self.assertIn("made an empty bump commit", r.stdout)
+
+    def test_rc_taken_after_plan_refuses_the_push(self):
+        # Another run tagged v1.7.0-rc.1 between Plan and this step.
+        dev_git(self.cloud, "tag", "v1.7.0-rc.1")
+        before = self.origin("rev-parse", "release/1.7")
+        r = self.bump()
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn(
+            "::error::version moved after bump: v1.7.0-rc.1 -> v1.7.0-rc.2", r.stdout
+        )
+        self.assertEqual(self.origin("rev-parse", "release/1.7"), before)
+        self.assertEqual(self.origin("tag", "-l", "v1.7.*"), "")  # nothing pushed
+
+
 class PublishWorkflow(Workflow):
     """Publish's Plan reads the OSS pins of the RC and the previous stable; its Changelog step runs the fetcher
     against this repo and the OSS repo with one token (the release bot's, which reads both).
@@ -2621,6 +2920,27 @@ class PublishWorkflow(Workflow):
         return r.stdout, dict(
             line.split("=", 1) for line in self.read("output").splitlines()
         )
+
+    def test_exclude_is_what_the_previous_stable_shipped(self):
+        # Fix #5 merged on main and was picked into v1.6.0; v1.7.0 has it from main, so its notes drop #5.
+        base = dev_git(self.cloud, "rev-parse", "HEAD")
+        with open(os.path.join(self.cloud, "y.txt"), "w") as fh:
+            fh.write("y")
+        dev_git(self.cloud, "add", "y.txt")
+        dev_git(self.cloud, "commit", "-q", "-m", "[FIX] y (#5)")
+        fix = dev_git(self.cloud, "rev-parse", "HEAD")
+        dev_git(self.cloud, "checkout", "-q", "-b", "release/1.6", base)
+        dev_git(self.cloud, "cherry-pick", "-x", fix)
+        dev_git(self.cloud, "tag", "v1.6.0")
+        dev_git(self.cloud, "push", "-q", "origin", "release/1.6", "v1.6.0")
+        dev_git(self.cloud, "checkout", "-q", "main")
+        with open(os.path.join(self.d, "reg.jsonl"), "a") as fh:
+            fh.write(
+                '{"digest": "sha256:v1.6.0", "pushed_at": "2026-09-01T00:00:00Z", "tags": ["v1.6.0"]}\n'
+            )
+        self.release(None, "v1.7.0-rc.1", "v1.7.0")
+        out, o = self.plan()
+        self.assertEqual((o["prev"], o["exclude"]), ("v1.6.0", "5"), out)
 
     def test_oss_range_is_the_two_pins(self):
         self.release("ee-v1.6.0", "v1.6.0")
