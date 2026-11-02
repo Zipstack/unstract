@@ -51,8 +51,11 @@ export const PdfPage = memo(function PdfPage({
 }: PdfPageProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [state, setState] = useState<RenderState>("idle");
+  // Bumped by Retry, to run the render again.
+  const [attempt, setAttempt] = useState(0);
   const css = pageCssSize(size, zoom);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: attempt runs the render again on Retry
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!rendered || canvas === null) {
@@ -116,7 +119,7 @@ export const PdfPage = memo(function PdfPage({
       canvas.height = 0;
       setState("idle");
     };
-  }, [document, index, zoom, rendered]);
+  }, [document, index, zoom, rendered, attempt]);
 
   return (
     <figure
@@ -141,6 +144,18 @@ export const PdfPage = memo(function PdfPage({
         />
       )}
       {children}
+      {state === "error" && (
+        <figcaption className="ui:absolute ui:inset-0 ui:flex ui:flex-col ui:items-center ui:justify-center ui:gap-2 ui:bg-card ui:text-body ui:text-muted-foreground">
+          <span>This page didn't load.</span>
+          <button
+            type="button"
+            className="ui:rounded-md ui:border ui:border-border ui:px-3 ui:py-1 ui:text-body ui:text-foreground ui:hover:bg-muted ui:focus-visible:focus-ring"
+            onClick={() => setAttempt((count) => count + 1)}
+          >
+            Retry page {index + 1}
+          </button>
+        </figcaption>
+      )}
     </figure>
   );
 });
