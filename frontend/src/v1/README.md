@@ -28,9 +28,10 @@ file holds only the rules that tooling enforces.
 - `lint:v1` S1–S8: no inline style, raw colour or pixel, `!important`, CSS
   import outside `app/` or `styles/`, selector outside `.v1`,
   `prefers-color-scheme` or unprefixed utility (code: class and colour strings).
-  Runtime geometry: `style` may set only custom properties (`"--page-aspect"`)
-  that classes read (`ui:aspect-(--page-aspect)`); a plain key or a variable
-  fails. Pixel escape, CSS only: `/* v1-styles-allow: forced-colors outline */`.
+  Runtime geometry: `style` may set only custom properties (`"--page-aspect"`,
+  typed by `lib/css-custom-properties.d.ts`) that classes read
+  (`ui:aspect-(--page-aspect)`); a plain key or a variable fails. Pixel
+  escape, CSS only: `/* v1-styles-allow: forced-colors outline */`.
 - Known v0 rules that reach v1 (unlayered, so v1 loses without `!important`):
   - `scrollbar-color`, `::-webkit-scrollbar*`: the thumb stays light in dark.
   - `[data-radix-popper-content-wrapper] { z-index: 1500 !important }`.
