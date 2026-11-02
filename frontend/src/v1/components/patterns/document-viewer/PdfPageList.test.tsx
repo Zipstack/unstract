@@ -228,6 +228,23 @@ it("marks a page whose render fails as an error, not as still rendering", async 
   expect(renderState(container, 0)).toBe("error");
 });
 
+it("says a page failed and renders it again on Retry", async () => {
+  const { document, tasks } = fakeDocument(3);
+  const { container, getByRole } = render(
+    <PdfPageList document={document} pageSizes={sizes(3)} zoom={1} />,
+  );
+  show([0]);
+  await flush();
+  await act(async () => tasks[0]?.fail(new Error("bad page")));
+  expect(container.textContent).toContain("This page didn't load.");
+  act(() => getByRole("button", { name: "Retry page 1" }).click());
+  await flush();
+  expect(renderState(container, 0)).toBe("rendering");
+  await act(async () => tasks.at(-1)?.finish());
+  expect(renderState(container, 0)).toBe("rendered");
+  expect(container.textContent).not.toContain("This page didn't load.");
+});
+
 it("marks a page as an error when the canvas has no 2D context", async () => {
   vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(null);
   const { document } = fakeDocument(3);
