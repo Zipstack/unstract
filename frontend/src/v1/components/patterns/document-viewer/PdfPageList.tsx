@@ -60,45 +60,69 @@ function pageTop(root: HTMLElement, page: HTMLElement): number {
   return page.offsetTop - (first?.offsetTop ?? 0);
 }
 
-/** The last page whose top is at or above `y`, found by halving the range. */
-function pageAt(root: HTMLElement, pageCount: number, y: number): number {
+/** The page elements in index order, read with one query per measurement. */
+function pageElements(root: HTMLElement): HTMLElement[] {
+  return Array.from(root.querySelectorAll<HTMLElement>("[data-page-index]"));
+}
+
+/**
+ * The first index whose `edge` is past `y`, or the page count when none is,
+ * found by halving the range.
+ */
+function firstPast(
+  pages: readonly HTMLElement[],
+  y: number,
+  edge: (page: HTMLElement) => number,
+): number {
   let low = 0;
-  let high = pageCount - 1;
+  let high = pages.length;
   while (low < high) {
-    const middle = Math.ceil((low + high) / 2);
-    const page = pageElement(root, middle);
-    if (page && pageTop(root, page) <= y) {
-      low = middle;
+    const middle = Math.floor((low + high) / 2);
+    const page = pages[middle];
+    if (page && edge(page) > y) {
+      high = middle;
     } else {
-      high = middle - 1;
+      low = middle + 1;
     }
   }
   return low;
 }
 
 /**
- * The page with the most of itself in view; the lower index wins a tie. Read
- * from the layout, so it is exact for pages of any height and right straight
- * after a jump, unlike intersection ratios, which only arrive at thresholds and
- * a frame later.
+ * The page with the most of itself in view; the lower index wins a tie, and
+ * the last page wins once the end is reached, where a short last page could
+ * otherwise never show the most. Read from the layout, so it is exact for
+ * pages of any height and right straight after a jump, unlike intersection
+ * ratios, which only arrive at thresholds and a frame later.
  */
-function mostVisiblePage(root: HTMLElement, pageCount: number): number {
+function mostVisiblePage(
+  root: HTMLElement,
+  pages: readonly HTMLElement[],
+): number {
+  const last = pages.length - 1;
+  const scrollable = root.scrollHeight > root.clientHeight;
+  if (
+    scrollable &&
+    root.scrollTop >= root.scrollHeight - root.clientHeight - 1
+  ) {
+    return last;
+  }
+  // In the content's own coordinates, where the padding sits above page 0.
   const top = root.scrollTop;
   const bottom = top + root.clientHeight;
-  let best = pageAt(root, pageCount, top);
+  let best = Math.min(
+    last,
+    firstPast(pages, top, (page) => page.offsetTop + page.offsetHeight),
+  );
   let bestShown = Number.NEGATIVE_INFINITY;
-  for (let index = best; index < pageCount; index++) {
-    const page = pageElement(root, index);
-    if (!page) {
-      break;
-    }
-    const pageStart = pageTop(root, page);
-    if (pageStart >= bottom) {
+  for (let index = best; index <= last; index++) {
+    const page = pages[index];
+    if (!page || page.offsetTop >= bottom) {
       break;
     }
     const shown =
-      Math.min(pageStart + page.offsetHeight, bottom) -
-      Math.max(pageStart, top);
+      Math.min(page.offsetTop + page.offsetHeight, bottom) -
+      Math.max(page.offsetTop, top);
     if (shown > bestShown) {
       best = index;
       bestShown = shown;
@@ -150,19 +174,39 @@ export function PdfPageList({
   // scroll and straight after a jump, so neither waits for a scroll event.
   const sync = useCallback(() => {
     const root = rootRef.current;
-    if (!root || pageCount === 0) {
+    const pages = root ? pageElements(root) : [];
+    if (!root || pages.length === 0) {
       return;
     }
-    const index = pageAt(root, pageCount, root.scrollTop);
-    const page = pageElement(root, index);
+    // The anchor uses the same coordinates as the jumps and the restore:
+    // page 0's top at 0.
+    const origin = pages[0]?.offsetTop ?? 0;
+    const y = root.scrollTop + origin;
+    const index = Math.max(
+      0,
+      firstPast(pages, y, (page) => page.offsetTop) - 1,
+    );
+    const page = pages[index];
     if (page && page.offsetHeight > 0) {
       anchorRef.current = {
         index,
-        fraction: (root.scrollTop - pageTop(root, page)) / page.offsetHeight,
+        fraction: (y - page.offsetTop) / page.offsetHeight,
       };
     }
-    setCurrent(mostVisiblePage(root, pageCount));
-  }, [pageCount]);
+    setCurrent(mostVisiblePage(root, pages));
+  }, []);
+
+  // A taller or shorter viewer changes which page shows most without any
+  // scroll event.
+  useEffect(() => {
+    const root = rootRef.current;
+    if (!root || typeof ResizeObserver === "undefined") {
+      return;
+    }
+    const observer = new ResizeObserver(() => sync());
+    observer.observe(root);
+    return () => observer.disconnect();
+  }, [sync]);
 
   // A zoom change resizes every page; keep the same spot of the same page at
   // the top. The pages took their new size from their style at commit.
