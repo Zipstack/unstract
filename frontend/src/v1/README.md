@@ -45,10 +45,11 @@ is convention.
   named, in code and CSS) or pixel (any length inside `[…]` or in CSS, `vh`
   and `vw` included), `!important`, CSS import outside `app/` or `styles/`,
   selector outside `.v1` (a sibling combinator right after the root,
-  `.v1 + x` or nested `& ~ x`, counts), `prefers-color-scheme`, or a
-  utility without `ui:` first (`hover:ui:flex` compiles to nothing). Code:
-  `className` values and `cn()` arguments always, other strings when they
-  look like a class list.
+  `.v1 + x` or `& ~ x` nested directly in the root, counts),
+  `prefers-color-scheme`, or a utility without `ui:` first (`hover:ui:flex`
+  compiles to nothing). Code: `className` values and `cn()`/`cva()` class
+  positions always (a cva variant name or choice is not a class), other
+  strings when they look like a class list.
   Runtime geometry: `style` may set only custom properties (`"--page-aspect"`,
   typed by `lib/css-custom-properties.d.ts`) that classes read
   (`ui:aspect-(--page-aspect)`); a plain key or a variable fails. Pixel

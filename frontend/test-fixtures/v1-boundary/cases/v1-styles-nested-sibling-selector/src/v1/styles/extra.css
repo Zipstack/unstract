@@ -1,10 +1,12 @@
-.v1 .menu {
+.v1 {
   & + .demo {
     color: var(--foreground);
   }
-  @media (prefers-reduced-motion: reduce) {
-    & ~ .demo {
-      color: var(--foreground);
+  &[data-theme="dark"] {
+    @media (prefers-reduced-motion: reduce) {
+      & ~ .demo {
+        color: var(--foreground);
+      }
     }
   }
 }

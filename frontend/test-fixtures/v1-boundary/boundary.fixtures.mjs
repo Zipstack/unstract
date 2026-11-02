@@ -111,6 +111,7 @@ const CASES = parseTable(`
   v1-raw-colour-named-prop       | lint:v1         | No raw colour under v1
   v1-raw-pixel-arbitrary         | lint:v1         | No raw pixel value under v1
   v1-raw-pixel-arbitrary-multi   | lint:v1         | No raw pixel value under v1
+  v1-raw-pixel-arbitrary-separator | lint:v1       | No raw pixel value under v1
   v1-important-utility           | lint:v1         | No !important under v1
   v1-important-variant-utility   | lint:v1         | No !important under v1
   v1-important-css               | lint:v1         | No !important under v1
@@ -125,6 +126,7 @@ const CASES = parseTable(`
   v1-unprefixed-utility          | lint:v1         | No unprefixed Tailwind utility under v1
   v1-unprefixed-single-class     | lint:v1         | No unprefixed Tailwind utility under v1
   v1-prefix-after-variant        | lint:v1         | The ui: prefix comes first
+  v1-cva-unprefixed-variant      | lint:v1         | No unprefixed Tailwind utility under v1
   v1-styles-policy-ok            | lint:v1         | -
   v1-plain-strings-ok            | lint:v1         | -
 `).map(([name, run, fails]) => ({

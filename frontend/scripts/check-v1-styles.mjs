@@ -17,8 +17,8 @@
  *   S4  No !important: a `!` class modifier, or `!important` in CSS.
  *   S5  CSS is imported only from app/ and styles/.
  *   S6  Every CSS selector starts with `.v1` and stays inside it: a sibling
- *       combinator right after the root (`.v1 + div`, nested `& ~ div`)
- *       selects outside v1. Not checked inside @theme, @utility,
+ *       combinator right after the root (`.v1 + div`, or `& ~ div` nested
+ *       directly in the root) selects outside v1. Not checked inside @theme, @utility,
  *       @custom-variant, @font-face and @keyframes.
  *   S7  CSS never reads prefers-color-scheme; data-theme sets the mode.
  *   S8  Every Tailwind utility carries the `ui:` prefix, and carries it
@@ -29,7 +29,9 @@
  *
  * In TypeScript, S2 to S4 and S8 read only class strings: the value of a
  * `className` attribute or an argument of cn()/cva()/clsx()/cx() (however
- * short, so `className="flex"` counts), and any other string or template
+ * short, so `className="flex"` counts; in cva() the base string, the variant
+ * values and a compound `class`, never a variant name or choice such as
+ * `defaultVariants: { variant: "outline" }`), and any other string or template
  * literal that looks like a class list (see isClassString), so a non-null
  * `!`, a hex-looking identifier or a value such as "outline" or "pt-BR" never
  * matches. One S2 check reads every literal: a string that is entirely a
@@ -140,7 +142,8 @@ const ALLOWED_NAMED_COLOURS = new Set(["transparent", "currentcolor"]);
 const ARBITRARY_WORD_RE = /(?:-|(?<![\w-]))\[(?:[\w-]+:)?([a-zA-Z]+)\]/g;
 // A length in a Tailwind arbitrary value, anywhere inside the brackets:
 // `w-[13px]`, `p-[1.5rem]`, `grid-cols-[200px_1fr]`, `w-[calc(100%-13px)]`.
-const ARBITRARY_UNIT_RE = /\[[^\]\s]*\d(?:px|rem|em|vh|vw|pt)(?![\w-])/g;
+// The unit may be followed by `_`, Tailwind's separator inside brackets.
+const ARBITRARY_UNIT_RE = /\[[^\]\s]*\d(?:px|rem|em|vh|vw|pt)(?![A-Za-z-])/g;
 // A CSS length in a unit: `3px`, `.5rem`, `-1em`, `100vh`.
 const CSS_UNIT_RE =
   /(?<![\w.])(?:\d+\.?\d*|\.\d+)(?:px|rem|em|pt|vh|vw)(?![\w-])/g;
@@ -452,7 +455,8 @@ function splitSelectors(prelude) {
  */
 function selectorPreludes(css) {
   const found = [];
-  // Per open block: "opaque", "group" (transparent at-rule) or "rule".
+  // Per open block: "opaque", "group" (transparent at-rule) or a style rule
+  // as { root }, true when the rule's prelude is one compound on the root.
   const stack = [];
   let start = 0;
   let quote = null;
@@ -479,8 +483,11 @@ function selectorPreludes(css) {
       } else if (at) {
         stack.push("group");
       } else {
-        found.push({ prelude, index, nested: stack.includes("rule") });
-        stack.push("rule");
+        const rules = stack.filter((entry) => typeof entry === "object");
+        const nested = rules.length > 0;
+        const parentIsRoot = rules.every((entry) => entry.root);
+        found.push({ prelude, index, nested, parentIsRoot });
+        stack.push({ root: parentIsRoot && isRootCompound(prelude, nested) });
       }
       start = i + 1;
     }
@@ -622,6 +629,7 @@ function skipString(text, i) {
 function classSiteLiterals(text) {
   const starts = new Set();
   for (const m of text.matchAll(CLASS_SITE_RE)) {
+    const isCva = m[0].startsWith("cva(");
     // A call: scan its parentheses. An attribute: skip spaces, then a quote
     // starts one literal and a brace starts an expression to scan.
     let i = m.index + m[0].length - 1;
@@ -638,16 +646,36 @@ function classSiteLiterals(text) {
         continue;
       }
     }
+    // keys[d] is the property name the value at bracket depth d sits under,
+    // read for cva() only, where variant names and choices are not classes.
+    const keys = [];
     let depth = 0;
+    let lastWord = "";
     while (i < text.length) {
       const c = text[i];
       if (c === '"' || c === "'" || c === "`") {
-        starts.add(i + 1);
-        i = skipString(text, i);
+        const end = skipString(text, i);
+        lastWord = text.slice(i + 1, end - 1);
+        if (!isCva || cvaClassPosition(text, end, keys, depth)) {
+          starts.add(i + 1);
+        }
+        i = end;
         continue;
       }
-      if (c === "{" || c === "(" || c === "[") {
+      if (/[A-Za-z_$]/.test(c)) {
+        let j = i + 1;
+        while (j < text.length && /[\w$]/.test(text[j])) {
+          j += 1;
+        }
+        lastWord = text.slice(i, j);
+        i = j;
+        continue;
+      }
+      if (c === ":" && depth > 0) {
+        keys[depth] = lastWord;
+      } else if (c === "{" || c === "(" || c === "[") {
         depth += 1;
+        keys[depth] = undefined;
       } else if (c === "}" || c === ")" || c === "]") {
         depth -= 1;
         if (depth === 0) {
@@ -658,6 +686,30 @@ function classSiteLiterals(text) {
     }
   }
   return starts;
+}
+
+/*
+ * In cva(), a literal that ends at `end` supplies classes unless it is a
+ * property name (`"sm": …`), sits under defaultVariants (a choice), or sits
+ * in compoundVariants under a key other than class/className (a choice to
+ * match). The base string and the values under variants are classes.
+ */
+function cvaClassPosition(text, end, keys, depth) {
+  let j = end;
+  while (j < text.length && /\s/.test(text[j])) {
+    j += 1;
+  }
+  if (text[j] === ":") {
+    return false;
+  }
+  const chain = keys.slice(1, depth + 1);
+  if (chain.includes("defaultVariants")) {
+    return false;
+  }
+  if (chain.includes("compoundVariants")) {
+    return keys[depth] === "class" || keys[depth] === "className";
+  }
+  return true;
 }
 
 function checkCode(rel) {
@@ -769,11 +821,13 @@ function checkCss(rel) {
   }
   at(CSS_IMPORTANT_RE, MSG.important);
   at(COLOUR_SCHEME_RE, MSG.colourScheme);
-  for (const { prelude, index, nested } of selectorPreludes(css)) {
+  for (const { prelude, index, nested, parentIsRoot } of selectorPreludes(
+    css,
+  )) {
     for (const selector of splitSelectors(prelude)) {
       if (!nested && !/^\.v1(?![\w-])/.test(selector)) {
         report(rel, lineAt(css, index), `'${selector}': ${MSG.unscoped}`);
-      } else if (leavesRoot(selector, nested)) {
+      } else if (leavesRoot(selector, nested, parentIsRoot)) {
         report(rel, lineAt(css, index), `'${selector}': ${MSG.sibling}`);
       }
     }
@@ -782,19 +836,39 @@ function checkCss(rel) {
 
 /*
  * True when the selector's subject can sit outside the v1 root: its first
- * compound is the root (`.v1…` at top level, `&…` in a nested rule) and the
- * combinator right after it is `+` or `~`. Any later combinator keeps the
- * subject inside (`.v1 > a + b`), and a nested selector without `&` is an
- * implicit descendant.
+ * compound is the root (`.v1…` at top level; `&…` in a nested rule whose
+ * enclosing rules are all the root itself) and the combinator right after
+ * it is `+` or `~`. Any later combinator keeps the subject inside
+ * (`.v1 > a + b`), a nested selector without `&` is an implicit descendant,
+ * and `& + x` under `.v1 .menu` resolves to `.v1 .menu + x`, inside v1.
  */
-function leavesRoot(selector, nested) {
-  if (nested && !selector.startsWith("&")) {
+function leavesRoot(selector, nested, parentIsRoot) {
+  if (nested && (!selector.startsWith("&") || !parentIsRoot)) {
     return false;
   }
+  const next = selector.slice(rootCompoundEnd(selector)).trimStart()[0];
+  return next === "+" || next === "~";
+}
+
+/*
+ * True when some comma-separated part of the prelude is one compound on the
+ * root: `.v1` or `.v1[data-theme="dark"]` at top level, `&:hover` or `&.x`
+ * in a nested rule. A child rule of such a prelude that starts `& +` leaves
+ * v1; a child of `.v1 .menu`, or of a nested `.menu`, does not.
+ */
+function isRootCompound(prelude, nested) {
+  return splitSelectors(prelude).some(
+    (selector) =>
+      (nested ? selector.startsWith("&") : /^\.v1(?![\w-])/.test(selector)) &&
+      rootCompoundEnd(selector) === selector.length,
+  );
+}
+
+/* Index of the first combinator outside brackets and quotes, else length. */
+function rootCompoundEnd(selector) {
   let depth = 0;
   let quote = null;
-  let i = 0;
-  for (; i < selector.length; i += 1) {
+  for (let i = 0; i < selector.length; i += 1) {
     const c = selector[i];
     if (quote) {
       quote = c === quote ? null : quote;
@@ -805,11 +879,10 @@ function leavesRoot(selector, nested) {
     } else if (c === ")" || c === "]") {
       depth -= 1;
     } else if (depth === 0 && /[\s>+~]/.test(c)) {
-      break;
+      return i;
     }
   }
-  const next = selector.slice(i).trimStart()[0];
-  return next === "+" || next === "~";
+  return selector.length;
 }
 
 if (!fs.existsSync(ROOT)) {

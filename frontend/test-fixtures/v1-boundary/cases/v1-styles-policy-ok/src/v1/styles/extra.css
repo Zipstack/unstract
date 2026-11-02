@@ -22,3 +22,15 @@
     }
   }
 }
+.v1 .menu {
+  & + .demo {
+    color: var(--foreground);
+  }
+}
+.v1 {
+  .menu {
+    & ~ .demo {
+      color: var(--foreground);
+    }
+  }
+}
