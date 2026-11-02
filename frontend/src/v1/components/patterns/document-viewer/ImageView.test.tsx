@@ -1,7 +1,9 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { createRef } from "react";
 import { expect, it, vi } from "vitest";
 import { ImageView } from "./ImageView";
+import type { PdfPageListHandle } from "./PdfPageList";
 
 function loadImage(width: number, height: number) {
   const image = screen.getByRole<HTMLImageElement>("img", { hidden: true });
@@ -61,4 +63,49 @@ it("offers Retry when the image fails, and loads it again", async () => {
   await userEvent.click(screen.getByRole("button", { name: "Retry" }));
   expect(screen.getByRole("status")).toBeTruthy();
   expect(screen.getByRole("img", { hidden: true })).toBeTruthy();
+});
+
+it("centres a box across and down, and a line only down", () => {
+  const ref = createRef<PdfPageListHandle>();
+  const base = { page: 0, y: 0.25, h: 0.5, tone: "default" as const };
+  const { container } = render(
+    <ImageView
+      ref={ref}
+      url="/scan.png"
+      zoom={1}
+      highlights={[
+        { ...base, id: "box", x: 0.5, w: 0.5, variant: "box" },
+        { ...base, id: "line", x: 0, w: 1, variant: "line" },
+      ]}
+    />,
+  );
+  loadImage(1200, 1600);
+  const frame = container.querySelector<HTMLElement>("img")?.parentElement;
+  const root = container.querySelector<HTMLElement>("section");
+  if (!frame || !root) {
+    throw new Error("no image frame");
+  }
+  Object.defineProperties(frame, {
+    offsetTop: { value: 16 },
+    offsetLeft: { value: 16 },
+    offsetHeight: { value: 1600 },
+    offsetWidth: { value: 1200 },
+  });
+  Object.defineProperties(root, {
+    clientHeight: { value: 400 },
+    clientWidth: { value: 500 },
+  });
+  act(() => {
+    ref.current?.scrollToHighlight("box");
+  });
+  // 0.5 × 1600 = 800 down and 0.75 × 1200 = 900 across, from 16.
+  expect(root.scrollTop).toBe(16 + 800 - 200);
+  expect(root.scrollLeft).toBe(16 + 900 - 250);
+
+  root.scrollLeft = 30;
+  act(() => {
+    ref.current?.scrollToHighlight("line");
+  });
+  expect(root.scrollTop).toBe(16 + 800 - 200);
+  expect(root.scrollLeft).toBe(30);
 });

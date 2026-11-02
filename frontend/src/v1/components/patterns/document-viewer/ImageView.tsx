@@ -83,10 +83,14 @@ export function ImageView({
           frame.offsetTop +
           (highlight.y + highlight.h / 2) * frame.offsetHeight -
           root.clientHeight / 2;
-        root.scrollLeft =
-          frame.offsetLeft +
-          (highlight.x + highlight.w / 2) * frame.offsetWidth -
-          root.clientWidth / 2;
+        // A line spans the image, so only a box moves the view across; a
+        // line keeps the reader's horizontal place, as on a PDF page.
+        if (highlight.variant === "box") {
+          root.scrollLeft =
+            frame.offsetLeft +
+            (highlight.x + highlight.w / 2) * frame.offsetWidth -
+            root.clientWidth / 2;
+        }
         return true;
       },
     }),
