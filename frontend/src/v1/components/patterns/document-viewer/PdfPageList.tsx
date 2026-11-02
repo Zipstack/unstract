@@ -89,7 +89,8 @@ function firstPast(
 }
 
 /**
- * The page with the most of itself in view; the lower index wins a tie, and
+ * The page showing the largest share of itself in view (a page taller than
+ * the view counts the view as whole); the lower index wins a tie, and
  * the last page wins once the end is reached, where a short last page could
  * otherwise never show the most. Read from the layout, so it is exact for
  * pages of any height and right straight after a jump, unlike intersection
@@ -121,8 +122,12 @@ function mostVisiblePage(
       break;
     }
     const shown =
-      Math.min(page.offsetTop + page.offsetHeight, bottom) -
-      Math.max(page.offsetTop, top);
+      (Math.min(page.offsetTop + page.offsetHeight, bottom) -
+        Math.max(page.offsetTop, top)) /
+      // A share of what the page could show: of itself, or of the view when
+      // it is taller than the view. Raw pixels would let part of a tall page
+      // beat a short page shown whole.
+      Math.max(1, Math.min(page.offsetHeight, root.clientHeight));
     if (shown > bestShown) {
       best = index;
       bestShown = shown;
@@ -257,7 +262,9 @@ export function PdfPageList({
           return false;
         }
         const centreY = (highlight.y + highlight.h / 2) * page.offsetHeight;
-        root.scrollTop = pageTop(root, page) + centreY - root.clientHeight / 2;
+        // The page's own top, padding included: centred exactly, unlike a
+        // page jump, which keeps the gap above the page.
+        root.scrollTop = page.offsetTop + centreY - root.clientHeight / 2;
         if (highlight.variant === "box") {
           const centreX = (highlight.x + highlight.w / 2) * page.offsetWidth;
           root.scrollLeft = page.offsetLeft + centreX - root.clientWidth / 2;

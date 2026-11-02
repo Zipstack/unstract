@@ -10,6 +10,7 @@ import {
   type PageSize,
 } from "@v1/lib/pdf/types";
 import {
+  clampZoom,
   fitZoom,
   MAX_ZOOM,
   MIN_ZOOM,
@@ -116,7 +117,7 @@ function initialZoomState(
   initial: DocumentViewerProps["initialZoom"],
 ): ZoomState {
   if (typeof initial === "number") {
-    return { mode: "custom", level: initial };
+    return { mode: "custom", level: clampZoom(initial) };
   }
   return { mode: initial ?? "fit-width", level: 1 };
 }
