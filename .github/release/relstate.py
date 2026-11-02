@@ -138,9 +138,39 @@ def _ar_versions(repo, package, artifact):
             return out
 
 
-def registry_tags(artifact):
+def _ar_packages(repo):
+    """Every package name in repo. Raises on any read failure, a missing repository included."""
+    out, page = [], ""
+    while True:
+        q = {"pageSize": 1000, **({"pageToken": page} if page else {})}
+        body = _ar_get(f"{AR_API}/{repo}/packages?{urllib.parse.urlencode(q)}", repo)
+        if body is None:
+            raise RuntimeError(f"registry read {repo}: HTTP 404")
+        out += [
+            urllib.parse.unquote(p["name"].rsplit("/packages/", 1)[1])
+            for p in body.get("packages", [])
+        ]
+        if not (page := body.get("nextPageToken")):
+            return out
+
+
+def rc_service_tags():
+    """{<kind>/<package>: tags} for every package in each RC repository (RELSTATE_AR_<KIND>_RC) of TARGETS' kinds,
+    read there only, except TARGETS' own artifacts. Take RC pushes every service there, so abandon deletes them all:
+    an RC tag left on one service collides with the next cut of the same minor.
+    """
+    own, out = _artifacts(), {}
+    for kind in sorted({a.split("/", 1)[0] for a in own}):
+        for rc in ar_repositories(kind)[1:]:
+            for package in _ar_packages(rc):
+                if (a := f"{kind}/{package}") not in own:
+                    out[a] = registry_tags(a, [rc])
+    return out
+
+
+def registry_tags(artifact, repos=None):
     """{tag: {id, digest, pushed_at}} for one Artifact Registry artifact (<kind>/<package>), over every repository
-    of its kind (ar_repositories). Raises on any read failure. pushed_at is the version's createTime, to the second.
+    of its kind (ar_repositories), or over repos. Raises on any read failure. pushed_at is the version's createTime, to the second.
 
     A 404 is only read as "artifact not pushed yet" when the artifact's own repository reads; otherwise it may be
     a wrong RELSTATE_AR_<KIND>, and an empty registry would read as "nothing enabled". A tag held by two
@@ -150,7 +180,7 @@ def registry_tags(artifact):
     """
     kind, package = artifact.split("/", 1)
     out = {}
-    for repo in ar_repositories(kind):
+    for repo in repos or ar_repositories(kind):
         versions = _ar_versions(repo, package, artifact)
         if versions is None:
             if _ar_get(f"{AR_API}/{repo}", artifact) is None:
@@ -196,6 +226,17 @@ def taken_tags(reg=None, registry=registry_tags):
     """
     reg = reg or {}
     return {t for a in _artifacts() for t in (reg[a] if a in reg else registry(a))}
+
+
+def used_tags(repo, line, registry=registry_tags):
+    """Version tags of minor line already in git or on a TARGETS registry artifact, sorted. Cut refuses such a line:
+    its tags would read as the new line's builds or GA.
+    """
+    ver = re.compile(rf"{re.escape(PREFIX)}v{re.escape(line)}\.\d+(?:-rc\.\d+)?")
+    tags = set(line_tags(repo, line)) | {
+        t for a in _artifacts() for t in _read(a, registry) if ver.fullmatch(t)
+    }
+    return sorted(tags, key=_vkey)
 
 
 def _artifacts(git=False):
@@ -427,8 +468,10 @@ def _enable(repo, t, builds, reg, refs, rows, shipped, anomalies):
             tt["rcs"].append(tag)
 
 
-def _fill_ga(repo, t, builds, anchor, reg, rows):
-    """Sort target t's RCs and set its ga / promoted (and KEPT stabilized) on every branch it is enabled on."""
+def _fill_ga(repo, t, builds, anchor, reg, refs, rows):
+    """Sort target t's RCs and set its ga / promoted (and KEPT stabilized) on every branch it is enabled on. A stable
+    tag counts only when its git commit is an ancestor of the branch.
+    """
     for row in rows.values():
         tt = row["targets"].get(t)
         if not tt:
@@ -439,7 +482,14 @@ def _fill_ga(repo, t, builds, anchor, reg, rows):
         stable = re.compile(rf"{re.escape(PREFIX)}v{re.escape(row['line'])}\.\d+")
         for key, artifact, pick in (("ga", anchor, 0), ("promoted", builds, -1)):
             if tags := sorted(
-                (g for g in reg[artifact] if stable.fullmatch(g)), key=_vkey
+                (
+                    g
+                    for g in reg[artifact]
+                    if stable.fullmatch(g)
+                    and (c := _tag_commit(repo, g))
+                    and rm.is_ancestor(repo, c, refs[row["branch"]])
+                ),
+                key=_vkey,
             ):
                 tt[key] = {"tag": tags[pick], **reg[artifact][tags[pick]]}
         if t in KEPT:
@@ -515,7 +565,7 @@ def derive(repo, now, registry=registry_tags, rc=None):
     # enabled: a build tag of T whose git commit is on the branch (derived, never recorded).
     for t, (builds, anchor) in TARGETS.items():
         _enable(repo, t, builds, reg, refs, rows, shipped, anomalies)
-        _fill_ga(repo, t, builds, anchor, reg, rows)
+        _fill_ga(repo, t, builds, anchor, reg, refs, rows)
 
     _set_states(rows, now)
 
@@ -596,8 +646,10 @@ def _abandon_versions(reg, rc_re):
     return versions, kept
 
 
-def abandon_plan(repo, branch, registry=registry_tags):
+def abandon_plan(repo, branch, registry=registry_tags, services=rc_service_tags):
     """What Retire `abandon` deletes for an existing release/X.Y line that never shipped (cut by mistake, or built only as RCs).
+    Versions: TARGETS' artifacts in every repository of their kind, and every other service's in the RC repositories
+    (services()).
 
     {"ga": [...], "used": [...], "rc_tags": [...], "versions": {artifact: [{id, digest, tags}]}, "kept": [...]}.
     A non-empty ga (git stable tag or GA-anchor registry tag) or used (commits that are not bot, pick or
@@ -622,7 +674,7 @@ def abandon_plan(repo, branch, registry=registry_tags):
         if rm.classify_commit(repo, c, main=main)
         not in ("build-generated", "cherry-pick", "declined")
     ]
-    versions, kept = _abandon_versions(reg, rc_re)
+    versions, kept = _abandon_versions({**reg, **services()}, rc_re)
     rc_tags = sorted(
         (
             t

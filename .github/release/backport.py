@@ -5,8 +5,8 @@ Usage: backport.py --state state.json (--commits SHA|PR[,...] | --rescan) [--con
 
 --rescan (every push to main): pick every main commit since each target's cut that no trailer there names (plain
 fixes on fix targets; security/critical only on stabilized ones, held without --confirm-stabilized). A stale pick
-head or a closed empty pick PR fails every run until a person deletes the head or reopens its PR (finish_open). An open conflict PR
-is left alone.
+head fails every run until a person deletes the head or reopens its PR; a head whose closed PR has no recorded decline
+fails until the record job is re-run for that PR (finish_open). An open conflict PR is left alone.
 --commits (dispatch): only these commits.
 
 Run from a full clone whose `origin` pushes with the bot token, with GH_TOKEN set to the bot token and
@@ -720,7 +720,28 @@ def fix_labels(slug, src):
     return [x for x in names if x.startswith("fix/")]
 
 
-def _no_open_pr(branch, head):
+def _closed_pr(slug, branch, head):
+    """Number of the newest closed, unmerged PR from head into branch, else None."""
+    prs = json.loads(
+        gh(
+            "pr",
+            "list",
+            "-R",
+            slug,
+            "--head",
+            head,
+            "--base",
+            branch,
+            "--state",
+            "closed",
+            "--json",
+            "number,state",
+        )
+    )
+    return next((p["number"] for p in prs if p["state"] == "CLOSED"), None)
+
+
+def _no_open_pr(slug, branch, head):
     """finish_open's outcome for a pick head with no open PR."""
     fetch_branch(head)
     age = time.time() - int(rm.git(REPO, "log", "-1", "--format=%ct", f"origin/{head}"))
@@ -731,6 +752,14 @@ def _no_open_pr(branch, head):
         )
     # A head with no commit past the base: reopening its PR only parks it as a conflict PR with nothing to merge.
     empty = rm.git(REPO, "rev-list", "--count", f"origin/{branch}..origin/{head}") == "0"
+    # A closed PR whose head still holds a pick: its decline was not recorded. Deleting the head would re-pick the
+    # declined fix.
+    if not empty and (n := _closed_pr(slug, branch, head)):
+        return (
+            "failed",
+            f"head {head} exists and its PR #{n} is closed, but no decline is recorded on {branch}: "
+            f"re-run the Backport record job for #{n}, then rerun",
+        )
     return (
         "failed",
         f"head {head} exists with no open PR: delete it"
@@ -742,9 +771,9 @@ def _no_open_pr(branch, head):
 def finish_open(slug, branch, head):
     """The pick head already exists. Squash an open bot PR whose single commit carries the head's pick trailer (a
     clean pick whose merge failed earlier); any other PR fails or waits for a person. A head with no open PR waits
-    PICK_TIMEOUT, then fails until a person deletes the head or reopens its PR.
-    Known limits: only the trailer is checked, not the content; a head whose decline record failed also reads as
-    "no open PR" (re-run the record job, do not delete it); age is the head tip's commit time.
+    PICK_TIMEOUT, then fails until a person deletes the head or reopens its PR; when its PR was closed (a decline
+    the record job did not land), until the record job is re-run.
+    Known limits: only the trailer is checked, not the content; age is the head tip's commit time.
     """
     pending = "skipped", f"conflict PR pending on `{head}`"
     prs = json.loads(
@@ -764,7 +793,7 @@ def finish_open(slug, branch, head):
         )
     )
     if not prs:  # a live run opens its PR after pushing the head
-        return _no_open_pr(branch, head)
+        return _no_open_pr(slug, branch, head)
     if len(prs) != 1:
         return pending
     pr, remote = prs[0], f"origin/{branch}"
@@ -1050,7 +1079,8 @@ def _dispatch_commit(slug, targets, sha, confirm, listed, awaiting):
         cls, pr, title = fix_class(slug, sha)
     except ValueError as e:  # Lint PR should have stopped this PR
         print(f"::error::{sha[:7]}: fix class: {e}")
-        return [(sha, "?", "error", "-", f"skipped: {e}", "-")]
+        # A named commit nothing could pick fails the dispatch; rescan skips it.
+        return [(sha, "?", "error", "-", f"failed: {e}", "-")]
     if cls is None:
         route = (
             f"; label {pr} fix/needs-backport (or the fix label it needs) and rerun"

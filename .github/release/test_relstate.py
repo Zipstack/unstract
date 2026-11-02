@@ -54,8 +54,10 @@ class Scenario(unittest.TestCase):
         return self.commit(f"work on {line}", f"release/{line}")
 
     def push(self, artifact, tag, days=1, git_ref=None):
-        if git_ref:
-            self.g("tag", tag, git_ref)
+        if (
+            git_ref
+        ):  # a chart pushed as X.Y.Z has the git tag vX.Y.Z (Publish requires it)
+            self.g("tag", tag if tag.startswith("v") else f"v{tag}", git_ref)
         self.n += 1
         self.reg.setdefault(artifact, {})[tag] = {
             "digest": f"sha256:{self.n:064x}",
@@ -86,7 +88,9 @@ class Scenario(unittest.TestCase):
 
     def onprem_ga(self, chart_days=10):
         self.onprem_rc()
-        self.push("chart/unstract-platform", "v1.5.1", days=chart_days)
+        self.push(
+            "chart/unstract-platform", "v1.5.1", days=chart_days, git_ref="release/1.5"
+        )
 
     def newer_cloud_ga(self, chart_days=10):
         self.onprem_ga(chart_days)
@@ -220,7 +224,7 @@ class Scenario(unittest.TestCase):
     def test_onprem_window_from_first_ga(self):
         # A patch chart push does not extend the window: it runs from the line's first stable chart push.
         self.onprem_ga(chart_days=200)
-        self.push("chart/unstract-platform", "v1.5.2", days=1)
+        self.push("chart/unstract-platform", "v1.5.2", days=1, git_ref="release/1.5")
         tt = self.branch(self.state(), "release/1.5")["targets"]["on-prem"]
         self.assertEqual(tt["state"], "past-eos")
         self.assertEqual(tt["ga"], self.ga("chart/unstract-platform", "v1.5.1"))
@@ -272,7 +276,9 @@ class Scenario(unittest.TestCase):
         for y in range(1, 9):  # 1.1 .. 1.8, each with an on-prem chart inside the window
             self.cut(f"1.{y}")
             self.push("on-prem/backend", f"v1.{y}.0-rc.1", git_ref=f"release/1.{y}")
-            self.push("chart/unstract-platform", f"v1.{y}.0", days=10)
+            self.push(
+                "chart/unstract-platform", f"v1.{y}.0", days=10, git_ref=f"release/1.{y}"
+            )
         self.cut("1.9")  # no on-prem GA: does not count toward the six
         self.push("on-prem/backend", "v1.9.0-rc.1", git_ref="release/1.9")
         st = self.state()
@@ -456,7 +462,7 @@ class Scenario(unittest.TestCase):
             rs.promote_blockers(st, "release/1.8", "cloud"), [msg.format("1.6", "cloud")]
         )
         # (d) 1.5 publishes on-prem (chart push): 1.6 on-prem is no longer blocked
-        self.push("chart/unstract-platform", "v1.5.1")
+        self.push("chart/unstract-platform", "v1.5.1", git_ref="release/1.5")
         self.assertEqual(rs.promote_blockers(self.state(), "release/1.6", "on-prem"), [])
         # (e) a retired older line (branch gone) never blocks
         self.g("branch", "-D", "release/1.6")
@@ -503,11 +509,7 @@ class Scenario(unittest.TestCase):
                 "targets"
             ] or rs.promote_blockers(st, f"release/{line}", t):
                 return refused.append(("ga", line, t))
-            self.push(
-                ga[t],
-                f"v{line}{rc[t][1]}",
-                git_ref=f"release/{line}" if t == "cloud" else None,
-            )
+            self.push(ga[t], f"v{line}{rc[t][1]}", git_ref=f"release/{line}")
 
         def check():
             st = self.state()
@@ -684,7 +686,9 @@ class Scenario(unittest.TestCase):
         self.reg["cloud/backend"]["edge"] = self.reg["cloud/backend"][
             "v1.9.0-rc.2"
         ]  # mixed tags: kept
-        plan = rs.abandon_plan(self.repo, "release/1.9", lambda a: self.reg.get(a, {}))
+        plan = rs.abandon_plan(
+            self.repo, "release/1.9", lambda a: self.reg.get(a, {}), dict
+        )
         rc1 = self.reg["cloud/backend"]["v1.9.0-rc.1"]["digest"]
         self.assertEqual(
             plan,
@@ -702,14 +706,16 @@ class Scenario(unittest.TestCase):
         )  # last version of on-prem/backend
         self.g("branch", "release/1.8", "main")  # never built: nothing to delete
         self.assertEqual(
-            rs.abandon_plan(self.repo, "release/1.8", lambda a: {})["versions"], {}
+            rs.abandon_plan(self.repo, "release/1.8", lambda a: {}, dict)["versions"], {}
         )
 
     def test_abandon_plan_keeps_the_newest_rc(self):
         self.built_by_mistake()
         for n in range(2, 11):
             self.push("on-prem/backend", f"v1.9.0-rc.{n}")
-        plan = rs.abandon_plan(self.repo, "release/1.9", lambda a: self.reg.get(a, {}))
+        plan = rs.abandon_plan(
+            self.repo, "release/1.9", lambda a: self.reg.get(a, {}), dict
+        )
         self.assertIn("on-prem/backend:v1.9.0-rc.10", plan["kept"])
         dropped = [t for v in plan["versions"]["on-prem/backend"] for t in v["tags"]]
         self.assertEqual(dropped, [f"v1.9.0-rc.{n}" for n in range(1, 10)])
@@ -717,7 +723,7 @@ class Scenario(unittest.TestCase):
     def test_abandon_plan_refusals(self):
         self.built_by_mistake()
         plan = lambda: rs.abandon_plan(
-            self.repo, "release/1.9", lambda a: self.reg.get(a, {})
+            self.repo, "release/1.9", lambda a: self.reg.get(a, {}), dict
         )
         self.push("chart/unstract-platform", "v1.9.0")
         self.assertEqual(plan()["ga"], ["chart/unstract-platform:v1.9.0"])
@@ -726,10 +732,41 @@ class Scenario(unittest.TestCase):
         human = self.commit("human RBO-less work", "release/1.9")
         self.assertEqual(plan()["used"], [human[:12]])
 
+    def test_ga_tag_off_the_branch_is_not_the_lines(self):
+        # A stable tag with no git tag, or whose commit the branch does not contain (main after the cut), is not
+        # the line's GA.
+        self.cut_with_rc()
+        self.push("cloud/backend", "v1.5.0")
+        self.assertIsNone(
+            self.branch(self.state(), "release/1.5")["targets"]["cloud"]["ga"]
+        )
+        self.commit("later")
+        self.push("cloud/backend", "v1.5.0", git_ref="main")
+        self.assertIsNone(
+            self.branch(self.state(), "release/1.5")["targets"]["cloud"]["ga"]
+        )
+        self.push("cloud/backend", "v1.5.1", git_ref="release/1.5")  # its own GA counts
+        self.assertEqual(
+            self.branch(self.state(), "release/1.5")["targets"]["cloud"]["ga"]["tag"],
+            "v1.5.1",
+        )
+
+    def test_used_tags(self):
+        self.commit("old")
+        self.g("tag", "v1.5.0-rc.1", "main")  # git only
+        self.push("chart/unstract-platform", "1.6.0")  # registry only, read as v1.6.0
+        self.push("on-prem/backend", "v1.6.1-rc.2")
+        self.push("cloud/backend", "v1.60.0")  # another minor
+        self.push("cloud/backend", "v1.7.0-dev")  # not a version tag
+        reg = lambda a: self.reg.get(a, {})
+        self.assertEqual(rs.used_tags(self.repo, "1.5", reg), ["v1.5.0-rc.1"])
+        self.assertEqual(rs.used_tags(self.repo, "1.6", reg), ["v1.6.0", "v1.6.1-rc.2"])
+        self.assertEqual(rs.used_tags(self.repo, "1.7", reg), [])
+
     def test_chart_push_without_v(self):
         # Publish pushes the chart as its Chart.yaml version, X.Y.Z: it anchors on-prem GA as vX.Y.Z.
         self.onprem_rc()
-        self.push("chart/unstract-platform", "1.5.1")
+        self.push("chart/unstract-platform", "1.5.1", git_ref="release/1.5")
         tt = self.branch(self.state(), "release/1.5")["targets"]["on-prem"]
         self.assertEqual(
             (tt["state"], tt["ga"]),
@@ -748,9 +785,9 @@ class Scenario(unittest.TestCase):
         self.built_by_mistake()
         self.push("chart/unstract-platform", "1.9.0")
         self.assertEqual(
-            rs.abandon_plan(self.repo, "release/1.9", lambda a: self.reg.get(a, {}))[
-                "ga"
-            ],
+            rs.abandon_plan(
+                self.repo, "release/1.9", lambda a: self.reg.get(a, {}), dict
+            )["ga"],
             ["chart/unstract-platform:v1.9.0"],
         )
 
@@ -770,7 +807,7 @@ class Scenario(unittest.TestCase):
         self.push("cloud/backend", "v1.5.0", git_ref="release/1.5")  # cloud GA alone
         self.assertFalse(rs.stabilizes(row(), "cloud"))
         self.assertTrue(rs.stabilizes(row(), "on-prem"))  # on-prem goes last
-        self.push("chart/unstract-platform", "1.5.0")
+        self.push("chart/unstract-platform", "1.5.0")  # its git tag v1.5.0 is cloud's
         # A later patch: oss.promote keeps the tag.
         self.assertTrue(rs.stabilizes(row(), "cloud"))
 
@@ -784,7 +821,9 @@ class Scenario(unittest.TestCase):
         self.assertTrue(rs.reopens(row(), ["on-prem"]))  # on-prem enabled late
         self.assertTrue(rs.reopens(row(), ["cloud", "on-prem"]))
         self.push("on-prem/backend", "v1.5.1-rc.1", git_ref="release/1.5")
-        self.push("chart/unstract-platform", "1.5.1")  # on-prem GA too
+        self.push(
+            "chart/unstract-platform", "1.5.1", git_ref="release/1.5"
+        )  # on-prem GA too
         self.assertFalse(rs.reopens(row(), ["cloud", "on-prem"]))
 
     def test_oss_repo_config(self):
@@ -898,7 +937,9 @@ class Scenario(unittest.TestCase):
         self.push("cloud/backend", "v1.6.0-rc.1", git_ref="release/1.6")
         self.push("cloud/backend", "v1.6.0", git_ref="release/1.6")
         self.assertIsNone(refusal())  # cloud past-eos, on-prem never promoted: may go
-        self.push("chart/unstract-platform", "v1.5.1")  # on-prem chart in its window
+        self.push(
+            "chart/unstract-platform", "v1.5.1", git_ref="release/1.5"
+        )  # on-prem chart in its window
         self.assertEqual(
             refusal(),
             "on-prem still supported (stabilized); force to retire it inside the window",
@@ -1240,6 +1281,21 @@ class ArtifactRegistry(unittest.TestCase):
             )
         return io.BytesIO(json.dumps(page).encode())
 
+    def test_packages_paged_and_unquoted(self):
+        url = f"{rs.AR_API}/{self.REPO}/packages"
+        self.pages[(url, "")] = {
+            "packages": [{"name": f"{self.REPO}/packages/backend"}],
+            "nextPageToken": "n",
+        }
+        self.pages[(url, "n")] = {
+            "packages": [{"name": f"{self.REPO}/packages/tools%2Fsidecar"}]
+        }
+        self.assertEqual(rs._ar_packages(self.REPO), ["backend", "tools/sidecar"])
+        with self.assertRaisesRegex(
+            RuntimeError, "HTTP 404"
+        ):  # a missing repository is no empty one
+            rs._ar_packages(self.REPO + "-gone")
+
     def version(self, package, digest, created, *tags, repo=REPO):
         name = f"{repo}/packages/{package}/versions/sha256:{digest}"
         return {
@@ -1468,7 +1524,7 @@ class ArtifactRegistry(unittest.TestCase):
                 "base",
             )
             rm.git(d, "branch", "release/1.9")
-            plan = rs.abandon_plan(d, "release/1.9", lambda a: reg.get(a, {}))
+            plan = rs.abandon_plan(d, "release/1.9", lambda a: reg.get(a, {}), dict)
         self.assertEqual(
             [v["id"] for v in plan["versions"]["cloud/backend"]],
             [stable + "01", rc + "01"],

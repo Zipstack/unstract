@@ -51,7 +51,7 @@ jobs:
       # if the winner already merged and deleted the head.
       group: backport-${{ github.event_name == 'workflow_dispatch' && github.run_id || 'rescan' }}
     env:
-      PYTHONDONTWRITEBYTECODE: "1" # the conflict path runs `git add -A`
+      PYTHONDONTWRITEBYTECODE: "1" # keeps the pick clone clean; the conflict path stages with `git add -u`
     steps:
       - name: Inputs
         if: github.event_name == 'workflow_dispatch'

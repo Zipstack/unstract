@@ -119,6 +119,11 @@ def base_picks(base, originals):
     return [tuple(c.strip("\n").split("\0", 1)) for c in out.split("\x01") if c.strip()]
 
 
+def fetch_base(base):
+    """Refresh origin/<base> from the remote."""
+    rm.git(".", "fetch", "-q", "origin", f"+refs/heads/{base}:refs/remotes/origin/{base}")
+
+
 def base_tip(base):
     """(commit, tree) of origin/<base>: the parent and the tree of an empty decline commit."""
     return rm.git(".", "rev-parse", f"origin/{base}"), rm.git(
@@ -126,6 +131,9 @@ def base_tip(base):
     )
 
 
+DECLINE_TRIES = (
+    3  # a 422 on the base ref update: the base moved since base_tip, so re-read it
+)
 SQUASH_WAITS = (5, 20)  # seconds before the 2nd and 3rd merge attempt
 
 
@@ -238,36 +246,42 @@ def decline(slug, pr, reason):
         raise RuntimeError(
             f"#{n}: no single pick trailer for {pr['headRefName']}, decline not recorded"
         )
-    # A re-run, or a close after a reopen: nothing to write.
-    if done := landed(originals, base_picks(base, originals)):
-        return done, False
-    # Empty commit = the base's own tree. REST, so author and committer are the bot token's user, as on merge.
-    tip, tree = base_tip(base)
-    new = json.loads(
-        gh(
-            "api",
-            "-X",
-            "POST",
-            f"repos/{slug}/git/commits",
-            "-f",
-            f"message={msg}\n\nDeclined: {reason}",
-            "-f",
-            f"tree={tree}",
-            "-f",
-            f"parents[]={tip}",
-        )
-    )["sha"]
-    gh(
-        "api",
-        "-X",
-        "PATCH",
-        f"repos/{slug}/git/refs/heads/{base}",
-        "-f",
-        f"sha={new}",
-        "-F",
-        "force=false",
-    )
-    return new, True
+    for attempt in range(DECLINE_TRIES):
+        # A re-run, a close after a reopen, or a concurrent record run: nothing to write.
+        if done := landed(originals, base_picks(base, originals)):
+            return done, False
+        # Empty commit = the base's own tree. REST, so author and committer are the bot token's user, as on merge.
+        tip, tree = base_tip(base)
+        new = json.loads(
+            gh(
+                "api",
+                "-X",
+                "POST",
+                f"repos/{slug}/git/commits",
+                "-f",
+                f"message={msg}\n\nDeclined: {reason}",
+                "-f",
+                f"tree={tree}",
+                "-f",
+                f"parents[]={tip}",
+            )
+        )["sha"]
+        try:
+            gh(
+                "api",
+                "-X",
+                "PATCH",
+                f"repos/{slug}/git/refs/heads/{base}",
+                "-f",
+                f"sha={new}",
+                "-F",
+                "force=false",
+            )
+            return new, True
+        except RuntimeError as e:
+            if "422" not in str(e) or attempt == DECLINE_TRIES - 1:
+                raise
+        fetch_base(base)
 
 
 def bot_refusal(pr):

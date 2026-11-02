@@ -709,7 +709,7 @@ def step(workflow, name, exprs=()):
 )
 class Workflow(unittest.TestCase):
     """Cloud and OSS origins with clones. sitecustomize serves Artifact Registry from reg.jsonl (cloud/backend)
-    and reg-<kind>_<package>.jsonl; a stub gh serves <owner>_<repo>.json (conflict PRs; a `prfail` file fails it)
+    and reg-<kind>_<package>.jsonl, and a repository's package list from pkgs-<repo>.json; a stub gh serves <owner>_<repo>.json (conflict PRs; a `prfail` file fails it)
     and pulls.json, logging each call and its token to gh.log.
     """
 
@@ -739,9 +739,13 @@ def _ar_versions(repo, package, artifact):  # reg.jsonl for cloud/backend, reg-<
         return []
     with open(f) as fh:
         rows = [v for v in map(json.loads, fh) if v.get("repo", "r") == repo]
-    return [{{"name": f"{{v.get('names', repo)}}/packages/backend/versions/{{v['digest']}}", "createTime": v["pushed_at"],
-              "relatedTags": [{{"name": f"{{repo}}/packages/backend/tags/{{t}}"}} for t in v["tags"]]}} for v in rows]
+    return [{{"name": f"{{v.get('names', repo)}}/packages/{{package}}/versions/{{v['digest']}}", "createTime": v["pushed_at"],
+              "relatedTags": [{{"name": f"{{repo}}/packages/{{package}}/tags/{{t}}"}} for t in v["tags"]]}} for v in rows]
 relstate._ar_versions = _ar_versions
+def _ar_packages(repo):  # pkgs-<repo>.json: the packages a repository lists
+    f = os.path.join({d!r}, "pkgs-" + repo + ".json")
+    return json.load(open(f)) if os.path.exists(f) else []
+relstate._ar_packages = _ar_packages
 for kind in ("CLOUD", "ON_PREM", "CHART"):
     os.environ.setdefault("RELSTATE_AR_" + kind, "r")
 import urllib.request
@@ -874,6 +878,68 @@ class RetireWorkflow(Workflow):
             self.read("ar.log"),
             r"^DELETE \S+/rc/packages/backend/versions/sha256:rc1\?force=true\n$",
         )
+
+    def test_abandon_deletes_every_service_in_the_rc_repository(self):
+        self.line(
+            "1.7", "v1.7.0-rc.1", "v1.7.0-rc.2"
+        )  # backend RCs in the stable repository
+        self.write("pkgs-rc.json", json.dumps(["backend", "frontend"]))
+        rows = {
+            "reg.jsonl": [("rc", "be3", "v1.7.0-rc.3"), ("rc", "be-old", "v1.6.0-rc.1")],
+            "reg-cloud_frontend.jsonl": [
+                ("rc", "fe3", "v1.7.0-rc.3"),
+                ("rc", "fe-old", "v1.6.0-rc.1"),
+                # The stable repository: abandon reads no other service there.
+                ("r", "fe-stable1", "v1.7.0-rc.1"),
+                ("r", "fe-stable2", "v1.7.0-rc.2"),
+            ],
+        }
+        for name, vs in rows.items():
+            with open(os.path.join(self.d, name), "a") as fh:
+                for repo, digest, tag in vs:
+                    fh.write(
+                        json.dumps(
+                            {
+                                "repo": repo,
+                                "digest": f"sha256:{digest}",
+                                "pushed_at": "2026-09-01T00:00:00Z",
+                                "tags": [tag],
+                            }
+                        )
+                        + "\n"
+                    )
+        self.retire(
+            ABANDON="release/1.7",
+            REASON="cut by mistake",
+            RELSTATE_AR_TOKEN="t",
+            RELSTATE_AR_CLOUD_RC="rc",
+        )
+        self.assertEqual(
+            sorted(re.findall(r"DELETE \S+?/v1/(\S+)\?force=true", self.read("ar.log"))),
+            [
+                "r/packages/backend/versions/sha256:v1.7.0-rc.1",
+                "rc/packages/backend/versions/sha256:be3",
+                "rc/packages/frontend/versions/sha256:fe3",
+            ],
+        )
+
+    def test_abandon_without_rc_repositories_reads_no_other_service(self):
+        self.line("1.7")
+        self.write("pkgs-r.json", json.dumps(["backend", "frontend"]))
+        with open(os.path.join(self.d, "reg-cloud_frontend.jsonl"), "a") as fh:
+            for i in (1, 2):
+                fh.write(
+                    json.dumps(
+                        {
+                            "digest": f"sha256:fe{i}",
+                            "pushed_at": "2026-09-01T00:00:00Z",
+                            "tags": [f"v1.7.0-rc.{i}"],
+                        }
+                    )
+                    + "\n"
+                )
+        self.retire(ABANDON="release/1.7", REASON="cut by mistake", RELSTATE_AR_TOKEN="t")
+        self.assertFalse(os.path.exists(os.path.join(self.d, "ar.log")))
 
     def test_abandon_refuses_a_version_outside_its_repositories(self):
         self.line("1.7")

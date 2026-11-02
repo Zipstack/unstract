@@ -101,6 +101,7 @@ class Gh:
         }
         self.comments, self.calls = list(comments), []
         self.head_ref = "a" * 40  # the head branch still at this PR's head
+        self.patch_errors = []  # raised, in order, by the base ref updates
 
     def __call__(self, *args, token=None):
         self.calls.append(args)
@@ -118,6 +119,8 @@ class Gh:
             return self.head_ref
         if args[:4] == ("api", "-X", "POST", "repos/o/r/git/commits"):
             return json.dumps({"sha": "e" * 40})
+        if args[:3] == ("api", "-X", "PATCH") and self.patch_errors:
+            raise self.patch_errors.pop(0)
         return ""
 
     def writes(self):
@@ -142,7 +145,8 @@ LABELS = "repos/o/r/issues/7/labels"
 class Close(unittest.TestCase):
     def setUp(self):
         saved = {
-            k: getattr(bm, k) for k in ("gh", "first_pick", "base_picks", "base_tip")
+            k: getattr(bm, k)
+            for k in ("gh", "first_pick", "base_picks", "base_tip", "fetch_base")
         }
         self.addCleanup(lambda: [setattr(bm, k, v) for k, v in saved.items()])
         self.on_base = []  # (sha, message) already on the base, newest first
@@ -153,9 +157,12 @@ class Close(unittest.TestCase):
         )
         bm.base_picks = lambda base, originals: self.on_base
         bm.base_tip = lambda base: ("b" * 40, "t" * 40)
+        self.fetched = []
+        bm.fetch_base = self.fetched.append
 
-    def close(self, *a, **k):
+    def close(self, *a, patch_errors=(), **k):
         bm.gh = Gh(*a, **k)
+        bm.gh.patch_errors = list(patch_errors)
         return bm.record("o/r", 7, ME)["result"]
 
     def test_merged(self):
@@ -203,6 +210,61 @@ class Close(unittest.TestCase):
             ],
         )  # no head delete: a reopen needs it
         self.assertEqual(bm.gh.said(), [RECORDED.format("eeeeeee")])
+
+    def test_moved_base_retries_on_its_new_tip(self):
+        moved = RuntimeError(
+            "gh api -X (exit 1): gh: Update is not a fast forward (HTTP 422)"
+        )
+        out = self.close("CLOSED", labels=["backport-conflict"], patch_errors=[moved])
+        self.assertEqual(out, "declined eeeeeee")
+        self.assertEqual(self.fetched, ["release/0.187"])
+        self.assertEqual(
+            bm.gh.writes()[:4],
+            [
+                ("-X", "POST", "repos/o/r/git/commits"),
+                ("-X", "PATCH", "repos/o/r/git/refs/heads/release/0.187"),
+                ("-X", "POST", "repos/o/r/git/commits"),
+                ("-X", "PATCH", "repos/o/r/git/refs/heads/release/0.187"),
+            ],
+        )
+
+    def test_decline_landing_meanwhile_is_not_written_twice(self):
+        moved = RuntimeError("gh: Update is not a fast forward (HTTP 422)")
+        bm.fetch_base = lambda base: self.on_base.append(
+            (
+                "d" * 40,
+                f"fix: x\n\n(cherry picked from commit {O})\n\nDeclined: other run",
+            )
+        )
+        out = self.close("CLOSED", labels=["backport-conflict"], patch_errors=[moved])
+        self.assertEqual(out, "skipped: already on release/0.187 as ddddddd")
+        self.assertEqual(
+            [w for w in bm.gh.writes() if w[0] == "-X"][:3],
+            [
+                ("-X", "POST", "repos/o/r/git/commits"),
+                ("-X", "PATCH", "repos/o/r/git/refs/heads/release/0.187"),
+                ("-X", "DELETE", f"{LABELS}/backport-conflict"),
+            ],
+        )
+
+    def test_other_ref_errors_are_not_retried(self):
+        with self.assertRaises(RuntimeError):
+            self.close(
+                "CLOSED",
+                labels=["backport-conflict"],
+                patch_errors=[RuntimeError("gh: Server Error (HTTP 502)")],
+            )
+        self.assertEqual(self.fetched, [])
+
+    def test_base_moving_every_time_gives_up(self):
+        moved = RuntimeError("gh: Update is not a fast forward (HTTP 422)")
+        with self.assertRaises(RuntimeError):
+            self.close(
+                "CLOSED",
+                labels=["backport-conflict"],
+                patch_errors=[moved] * bm.DECLINE_TRIES,
+            )
+        self.assertEqual(len(self.fetched), bm.DECLINE_TRIES - 1)
 
     def test_close_without_comment_default_reason(self):
         self.assertEqual(

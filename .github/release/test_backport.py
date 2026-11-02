@@ -802,6 +802,46 @@ class FinishOpen(unittest.TestCase):
             ),
         )
 
+    def test_head_of_a_closed_pr_asks_for_the_record_job(self):
+        # Its decline did not land: deleting the head would pick the declined fix again.
+        listings = iter(
+            [[], [{"number": 4, "state": "MERGED"}, {"number": 3, "state": "CLOSED"}]]
+        )
+        with (
+            mock.patch.object(bp, "PICK_TIMEOUT", 0),
+            mock.patch.object(
+                bp, "gh", side_effect=lambda *a: json.dumps(next(listings))
+            ),
+        ):
+            out = bp.finish_open("o/r", "release/1.0", "backport/1.0/aaaaaaa")
+        self.assertEqual(
+            out,
+            (
+                "failed",
+                "head backport/1.0/aaaaaaa exists and its PR #3 is closed, but no decline is recorded on "
+                "release/1.0: re-run the Backport record job for #3, then rerun",
+            ),
+        )
+        # An empty head has no pick to decline: the record job would not help.
+        self.g(
+            "push", "-q", "-f", "origin", f"{self.oid}^:refs/heads/backport/1.0/aaaaaaa"
+        )
+        listings = iter([[], [{"number": 3, "state": "CLOSED"}]])
+        with (
+            mock.patch.object(bp, "PICK_TIMEOUT", 0),
+            mock.patch.object(
+                bp, "gh", side_effect=lambda *a: json.dumps(next(listings))
+            ),
+        ):
+            out = bp.finish_open("o/r", "release/1.0", "backport/1.0/aaaaaaa")
+        self.assertEqual(
+            out,
+            (
+                "failed",
+                "head backport/1.0/aaaaaaa exists with no open PR: delete it, then rerun",
+            ),
+        )
+
     def test_not_the_bots_pick_is_not_squashed(self):
         # The squash bypasses the release ruleset: a person's PR on a pick head, or a commit that is not the pick
         # of the head's sha7, must not land through it.
@@ -995,6 +1035,16 @@ class PushTitle(unittest.TestCase):
                 bp.push_title("o/r", "c" * 40).endswith(f" (-, {bp.UNCLASSIFIABLE})")
             )
         self.assertIn("::warning::ccccccc: fix class: no [TYPE]", out.getvalue())
+
+
+class DispatchCommit(unittest.TestCase):
+    def test_unclassifiable_named_commit_fails(self):
+        with (
+            mock.patch.object(bp, "fix_class", side_effect=ValueError("no [TYPE]")),
+            mock.patch("sys.stdout", io.StringIO()),
+        ):
+            rows = bp._dispatch_commit("o/r", {}, "c" * 40, False, [], [])
+        self.assertEqual(rows, [("c" * 40, "?", "error", "-", "failed: no [TYPE]", "-")])
 
 
 class Soft(unittest.TestCase):
