@@ -1,9 +1,14 @@
-"""The recording service: outcome, reason, upsert, organization and start time."""
+"""The recording service: outcome, reason, logging, overwrite order, deletion,
+organization and start time."""
 
+from datetime import timedelta
 from typing import Any
+from unittest.mock import patch
 
+from adapter_processor_v2.models import AdapterInstance
+from django.db import connection
 from django.utils import timezone
-from rest_framework.exceptions import APIException, ValidationError
+from rest_framework.exceptions import APIException, NotFound, ValidationError
 
 from connection_check.constants import (
     MAX_FAILURE_REASON_LENGTH,
@@ -45,6 +50,24 @@ class RunAndRecordTests(ConnectionCheckTestBase):
         self.assertEqual(stored.status, ConnectionStatus.FAILED)
         self.assertEqual(stored.failure_reason, "Bad API key.")
 
+    def test_server_error_is_logged_with_its_traceback(self) -> None:
+        with self.assertLogs("connection_check.services", level="WARNING") as logs:
+            run_and_record(
+                AdapterTestResult, self.adapter, _raise(APIException("Key not found."))
+            )
+
+        self.assertIn("Key not found.", logs.output[0])
+        self.assertTrue(logs.records[0].exc_info)
+
+    def test_input_error_is_logged_without_a_traceback(self) -> None:
+        with self.assertLogs("connection_check.services", level="WARNING") as logs:
+            run_and_record(
+                AdapterTestResult, self.adapter, _raise(ValidationError("Bad API key."))
+            )
+
+        self.assertIn("Bad API key.", logs.output[0])
+        self.assertFalse(logs.records[0].exc_info)
+
     def test_nested_error_detail_is_flattened(self) -> None:
         exc = ValidationError({"adapter_metadata": ["Image output is not allowed."]})
 
@@ -79,12 +102,36 @@ class RunAndRecordTests(ConnectionCheckTestBase):
 
     def test_later_result_overwrites_earlier(self) -> None:
         run_and_record(AdapterTestResult, self.adapter, _raise(APIException("down")))
-        run_and_record(AdapterTestResult, self.adapter, lambda: True)
+        later = run_and_record(AdapterTestResult, self.adapter, lambda: True)
 
         stored = AdapterTestResult.objects.filter(profile=self.adapter)
         self.assertEqual(stored.count(), 1)
         self.assertEqual(stored[0].status, ConnectionStatus.CONNECTED)
+        self.assertEqual(stored[0].tested_at, later.tested_at)
         self.assertIsNone(stored[0].failure_reason)
+
+    def test_older_test_does_not_replace_a_newer_result(self) -> None:
+        def older() -> bool:
+            # A newer test starts and is stored while this one runs.
+            run_and_record(AdapterTestResult, self.adapter, lambda: True)
+            return False
+
+        run_and_record(AdapterTestResult, self.adapter, older)
+
+        stored = AdapterTestResult.objects.get(profile=self.adapter)
+        self.assertEqual(stored.status, ConnectionStatus.CONNECTED)
+
+    def test_profile_deleted_during_the_test_is_not_found(self) -> None:
+        # Foreign keys are checked at commit, which a TestCase never reaches.
+        with connection.cursor() as cursor:
+            cursor.execute("SET CONSTRAINTS ALL IMMEDIATE")
+
+        def run() -> bool:
+            AdapterInstance.objects.filter(pk=self.adapter.pk).delete()
+            return True
+
+        with self.assertRaises(NotFound):
+            run_and_record(AdapterTestResult, self.adapter, run)
 
     def test_organization_comes_from_the_profile(self) -> None:
         connector = self.make_connector("bucket")
@@ -97,14 +144,16 @@ class RunAndRecordTests(ConnectionCheckTestBase):
         self.assertEqual(stored.organization_id, self.org.id)
 
     def test_tested_at_is_the_start_time(self) -> None:
-        seen: dict[str, Any] = {}
-        before = timezone.now()
+        start = timezone.now()
 
-        def run() -> bool:
-            seen["during"] = timezone.now()
-            return True
+        with patch("connection_check.services.timezone.now", return_value=start) as now:
 
-        result = run_and_record(AdapterTestResult, self.adapter, run)
+            def run() -> bool:
+                now.return_value = start + timedelta(minutes=1)
+                return True
 
-        self.assertLessEqual(before, result.tested_at)
-        self.assertLessEqual(result.tested_at, seen["during"])
+            result = run_and_record(AdapterTestResult, self.adapter, run)
+
+        stored = AdapterTestResult.objects.get(profile=self.adapter)
+        self.assertEqual(result.tested_at, start)
+        self.assertEqual(stored.tested_at, start)

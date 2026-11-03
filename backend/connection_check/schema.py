@@ -49,7 +49,8 @@ def connection_test_schema(profile: str) -> Callable[[Any], Any]:
             ),
             404: OpenApiResponse(
                 ErrorResponse404Serializer,
-                description=f"No such {profile} visible to the caller.",
+                description=f"No such {profile} visible to the caller, or it "
+                "was deleted during the test.",
             ),
         },
         description=f"Test the saved {profile} and store the result. "

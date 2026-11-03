@@ -5,6 +5,7 @@ adapter list and detail. Provider calls are mocked at the SDK boundary.
 from typing import Any
 from unittest.mock import patch
 
+from adapter_processor_v2.deprecated_adapters import get_deprecation_message
 from adapter_processor_v2.models import AdapterInstance
 from adapter_processor_v2.views import AdapterInstanceViewSet, AdapterViewSet
 from rest_framework import status
@@ -13,6 +14,8 @@ from connection_check.constants import NOT_CONNECTED_REASON, ConnectionStatus
 from connection_check.models import AdapterTestResult
 from connection_check.tests.base import ConnectionCheckTestBase, mock_llm
 from unstract.sdk1.exceptions import SdkError
+
+LLMWHISPERER_V1_ID = "llmwhisperer|0a1647f0-f65f-410d-843b-3d979c78350e"
 
 
 @patch.object(AdapterInstance, "get_context_window_size", return_value=4096)
@@ -92,6 +95,19 @@ class AdapterTestAndRecordTests(ConnectionCheckTestBase):
 
         self.assertEqual(response.data["status"], ConnectionStatus.FAILED)
         self.assertEqual(response.data["failure_reason"], NOT_CONNECTED_REASON)
+
+    def test_deprecated_adapter_stores_the_switch_message(self, _ctx: Any) -> None:
+        AdapterInstance.objects.filter(pk=self.adapter.pk).update(
+            adapter_id=LLMWHISPERER_V1_ID, adapter_type="X2TEXT"
+        )
+
+        response = self._test()
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.assertEqual(response.data["status"], ConnectionStatus.FAILED)
+        self.assertEqual(
+            response.data["failure_reason"], get_deprecation_message(LLMWHISPERER_V1_ID)
+        )
 
     def test_edit_after_test_is_flagged(self, _ctx: Any) -> None:
         with mock_llm(True):

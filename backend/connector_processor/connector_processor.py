@@ -6,12 +6,15 @@ from typing import TYPE_CHECKING, Any
 from connector_auth_v2.constants import OAUTH_TOKEN_KEYS, ConnectorAuthKey
 from connector_auth_v2.pipeline.common import ConnectorAuthHelper
 from connector_v2.constants import ConnectorInstanceKey as CIKey
+from requests.exceptions import RequestException
+from social_core.exceptions import SocialAuthBaseException
 
 from backend.exceptions import UnstractFSException
 from connector_processor.constants import ConnectorKeys
 from connector_processor.exceptions import (
     InvalidConnectorID,
     InvalidConnectorMode,
+    OAuthRefreshFailed,
     OAuthTimeOut,
     TestConnectorInputError,
 )
@@ -173,20 +176,34 @@ class ConnectorProcessor:
         connector_auth = connector.connector_auth
         if connector_auth is None:
             return credentials
-        try:
-            connector_auth.get_and_refresh_tokens()
-        except Exception:
-            # A failed refresh still tests with the tokens already stored.
-            logger.warning(
-                "Could not refresh OAuth tokens for connector %s",
-                connector.id,
-                exc_info=True,
-            )
+        ConnectorProcessor._refresh_saved_tokens(connector)
         tokens = connector_auth.extra_data or {}
         token_updates = {
             key: tokens[key] for key in OAUTH_TOKEN_KEYS if tokens.get(key) is not None
         }
         return {**credentials, **token_updates}
+
+    @staticmethod
+    def _refresh_saved_tokens(connector: "ConnectorInstance") -> None:
+        """Refresh the connector's OAuth tokens if they have expired."""
+        try:
+            connector.connector_auth.get_and_refresh_tokens()
+        except AttributeError as exc:
+            # connector_auth_v2/models.py:97 raises after saving the new token.
+            if exc.name != "connectorinstance_set":
+                raise
+            logger.warning(
+                "Refreshed OAuth tokens for connector %s, but not for other "
+                "connectors sharing its login",
+                connector.id,
+            )
+        except (RequestException, SocialAuthBaseException) as exc:
+            logger.warning(
+                "Could not refresh OAuth tokens for connector %s",
+                connector.id,
+                exc_info=True,
+            )
+            raise OAuthRefreshFailed() from exc
 
     def get_connector_data_with_key(connector_id: str, key_value: str) -> Any:
         """Generic Function to get connector data with provided key."""

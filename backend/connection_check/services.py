@@ -2,8 +2,9 @@ import logging
 from collections.abc import Callable
 from typing import Any
 
+from django.db import IntegrityError
 from django.utils import timezone
-from rest_framework.exceptions import APIException
+from rest_framework.exceptions import APIException, NotFound
 
 from connection_check.constants import (
     MAX_FAILURE_REASON_LENGTH,
@@ -37,13 +38,7 @@ def run_and_record(
         tested_at=tested_at,
         failure_reason=reason,
     )
-    # Upsert, so two tests at once overwrite instead of colliding.
-    result_model.objects.bulk_create(
-        [result],
-        update_conflicts=True,
-        unique_fields=["profile"],
-        update_fields=_UPDATED_FIELDS,
-    )
+    _store(result_model, result)
     logger.info(
         "Recorded connection test for %s %s: %s",
         type(profile).__name__,
@@ -53,6 +48,20 @@ def run_and_record(
     return result
 
 
+def _store(
+    result_model: type[ConnectionTestResult], result: ConnectionTestResult
+) -> None:
+    """Insert the result, or replace a stored one from a test that started earlier."""
+    try:
+        result_model.objects.bulk_create([result], ignore_conflicts=True)
+    except IntegrityError as exc:
+        # The profile was deleted while its test ran.
+        raise NotFound() from exc
+    result_model.objects.filter(
+        profile=result.profile, tested_at__lt=result.tested_at
+    ).update(**{field: getattr(result, field) for field in _UPDATED_FIELDS})
+
+
 def _run(
     run_test: Callable[[], bool], profile: Profile
 ) -> tuple[ConnectionStatus, str | None]:
@@ -60,7 +69,15 @@ def _run(
     try:
         connected = run_test()
     except APIException as exc:
-        return ConnectionStatus.FAILED, _trim(_detail_text(exc.detail))
+        reason = _detail_text(exc.detail)
+        logger.warning(
+            "Connection test failed for %s %s: %s",
+            type(profile).__name__,
+            profile.pk,
+            reason,
+            exc_info=exc.status_code >= 500,
+        )
+        return ConnectionStatus.FAILED, _trim(reason)
     except Exception:
         logger.exception(
             "Connection test errored for %s %s", type(profile).__name__, profile.pk

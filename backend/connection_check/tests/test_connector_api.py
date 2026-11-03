@@ -6,12 +6,19 @@ from typing import Any
 from unittest.mock import patch
 
 from connector_auth_v2.models import ConnectorAuth
+from connector_processor.exceptions import OAuthRefreshFailed
 from connector_processor.views import ConnectorViewSet
 from connector_v2.models import ConnectorInstance
 from connector_v2.views import ConnectorInstanceViewSet
+from requests.exceptions import HTTPError
 from rest_framework import status
+from social_core.exceptions import AuthFailed
 
-from connection_check.constants import NOT_CONNECTED_REASON, ConnectionStatus
+from connection_check.constants import (
+    NOT_CONNECTED_REASON,
+    UNEXPECTED_FAILURE_REASON,
+    ConnectionStatus,
+)
 from connection_check.models import ConnectorTestResult
 from connection_check.tests.base import ConnectionCheckTestBase, mock_connector_kit
 from unstract.connectors.exceptions import ConnectorError
@@ -168,11 +175,16 @@ class ConnectorOAuthRefreshTests(ConnectionCheckTestBase):
             connector_metadata={**tokens, "site_url": "https://example.com"}
         )
 
-    def _test_with_refresh(self, error: Exception | None = None) -> Any:
+    def _test(self) -> Any:
+        response = self.call(
+            ConnectorInstanceViewSet, "post", "test_and_record", pk=self.connector.pk
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        return response
+
+    def test_tokens_are_refreshed_before_the_test(self) -> None:
         def refresh(auth: ConnectorAuth, request: Any = None) -> Any:
             auth.extra_data = {**auth.extra_data, "access_token": "new"}
-            if error:
-                raise error
             return auth.extra_data, True
 
         with (
@@ -181,24 +193,55 @@ class ConnectorOAuthRefreshTests(ConnectionCheckTestBase):
             ),
             mock_connector_kit(True) as kit,
         ):
-            response = self.call(
-                ConnectorInstanceViewSet,
-                "post",
-                "test_and_record",
-                pk=self.connector.pk,
-            )
-        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
-        return kit.call_args.args[1]
+            self._test()
 
-    def test_tokens_are_refreshed_before_the_test(self) -> None:
-        credentials = self._test_with_refresh()
-
+        credentials = kit.call_args.args[1]
         self.assertEqual(credentials["access_token"], "new")
         self.assertEqual(credentials["site_url"], "https://example.com")
 
-    def test_refresh_error_still_runs_the_test(self) -> None:
-        with self.assertLogs("connector_processor", level="WARNING"):
-            credentials = self._test_with_refresh(AttributeError("boom"))
+    def test_successful_refresh_is_not_logged_as_a_failure(self) -> None:
+        # The real get_and_refresh_tokens raises after this new token is saved.
+        def new_token(auth: ConnectorAuth, strategy: Any) -> str:
+            auth.extra_data = {**auth.extra_data, "access_token": "new"}
+            return "new"
 
-        self.assertEqual(credentials["access_token"], "new")
-        self.assertEqual(credentials["site_url"], "https://example.com")
+        with (
+            patch.object(
+                ConnectorAuth, "get_access_token", autospec=True, side_effect=new_token
+            ),
+            mock_connector_kit(True) as kit,
+            self.assertLogs("connector_processor", level="WARNING") as logs,
+        ):
+            self._test()
+
+        self.assertEqual(kit.call_args.args[1]["access_token"], "new")
+        self.assertNotIn("Could not refresh", "\n".join(logs.output))
+
+    def test_failed_refresh_is_stored_without_testing(self) -> None:
+        for error in (HTTPError("invalid_grant"), AuthFailed(None, "unreachable")):
+            with (
+                self.subTest(error=type(error).__name__),
+                patch.object(ConnectorAuth, "get_and_refresh_tokens", side_effect=error),
+                mock_connector_kit(True) as kit,
+                self.assertLogs("connector_processor", level="WARNING"),
+            ):
+                response = self._test()
+
+                kit.assert_not_called()
+                self.assertEqual(response.data["status"], ConnectionStatus.FAILED)
+                self.assertEqual(
+                    response.data["failure_reason"], OAuthRefreshFailed.default_detail
+                )
+
+    def test_other_refresh_error_is_the_generic_reason(self) -> None:
+        with (
+            patch.object(
+                ConnectorAuth, "get_and_refresh_tokens", side_effect=AttributeError("boom")
+            ),
+            mock_connector_kit(True) as kit,
+            self.assertLogs("connection_check.services", level="ERROR"),
+        ):
+            response = self._test()
+
+        kit.assert_not_called()
+        self.assertEqual(response.data["failure_reason"], UNEXPECTED_FAILURE_REASON)

@@ -280,12 +280,12 @@ class ConnectorInstanceViewSet(
     def test_and_record(self, request: Request, pk: str | None = None) -> Response:
         """Test the saved connector and store the result."""
         connector = self.get_object()
-        credentials = ConnectorProcessor.get_saved_credentials(connector)
         result = run_and_record(
             ConnectorTestResult,
             connector,
             lambda: ConnectorProcessor.test_connectors(
-                connector_id=connector.connector_id, credentials=credentials
+                connector_id=connector.connector_id,
+                credentials=ConnectorProcessor.get_saved_credentials(connector),
             ),
         )
         return Response(ConnectionCheckResultSerializer(result).data)
