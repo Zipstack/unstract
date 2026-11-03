@@ -636,9 +636,7 @@ class DestinationConnector(BaseConnector):
             else:
                 raise InvalidToolOutputType()
         except FileNotFoundError:
-            # The error carries the execution-storage path, which stays in the
-            # server log (with the traceback); the caller gets a message
-            # without it.
+            # The storage path goes to the log, never to the caller.
             logger.exception(f"Error while getting result from the tool ({output_file})")
             raise APIException(
                 detail="Error while getting result from the tool: output not found"
@@ -1148,7 +1146,6 @@ class DestinationConnector(BaseConnector):
                 file_bytes = file_bytes.encode("utf-8")
             return base64.b64encode(file_bytes).decode("utf-8")
         except Exception:
-            # The error names the execution-storage path: log it with the
-            # traceback, but keep it out of the message returned to the caller.
+            # The storage path goes to the log, never to the caller.
             logger.exception(f"Failed to read file content for {file_name}")
             raise APIException(f"Failed to read file content for queue: {file_name}")
