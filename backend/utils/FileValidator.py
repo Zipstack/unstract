@@ -101,11 +101,7 @@ class FileValidator:
     def __call__(self, value: list[InMemoryUploadedFile]) -> None:
         """Check the extension, content type and file size for each file."""
         for file in value:
-            # Check the extension
             self._check_file_extension(file)
-
-            # Check the content type
-            self._check_file_mime_type(file)
-
-            # Check the file size
+            # Size first: classifying the type copies the whole file to disk.
             self._check_file_size(file)
+            self._check_file_mime_type(file)

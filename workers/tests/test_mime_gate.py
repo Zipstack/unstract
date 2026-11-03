@@ -189,3 +189,16 @@ def test_a_connector_copy_rejects_before_writing_anything() -> None:
 
     assert error is not None
     assert written == b""
+
+
+def test_a_stream_too_large_to_spill_keeps_its_prefix_verdict() -> None:
+    """Past LLMWhisperer's size limit the file is refused there, so not spilled."""
+    data = _erp_export_bytes()
+    with classify_stream(io.BytesIO(data), 64, max_spill_bytes=128) as (
+        mime_type,
+        chunks,
+    ):
+        copied = b"".join(chunks)
+
+    assert mime_type in INCONCLUSIVE_MIME_TYPES
+    assert copied == data

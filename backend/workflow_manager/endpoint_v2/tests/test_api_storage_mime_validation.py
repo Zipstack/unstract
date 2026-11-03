@@ -16,6 +16,7 @@ import zipfile
 from unittest import mock
 from unittest.mock import MagicMock
 
+import fsspec
 import pytest
 import workflow_manager.endpoint_v2.source as src_mod
 from django.core.files.uploadedfile import SimpleUploadedFile, TemporaryUploadedFile
@@ -974,7 +975,7 @@ def _erp_export_bytes() -> bytes:
 
 
 def test_an_erp_export_libmagic_cannot_name_is_accepted(collaborators) -> None:
-    """LLMWhisperer accepts this file, so rejecting it here is the bug."""
+    """An OOXML package libmagic reports as octet-stream is staged as xlsx."""
     data = _erp_export_bytes()
 
     result = _stage([_upload("ORDER.xlsx", data, "application/octet-stream")])
@@ -983,3 +984,61 @@ def test_an_erp_export_libmagic_cannot_name_is_accepted(collaborators) -> None:
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
     collaborators["ResultCacheUtils"].update_api_results.assert_not_called()
+
+
+def test_a_full_temp_dir_fails_the_request_not_each_file(collaborators) -> None:
+    """Local disk that cannot take the copy is a platform fault, not a bad file."""
+    from utils.upload_mime_type import UploadSpillError
+
+    uploads = [_upload("doc.pdf", PDF_BYTES, "application/pdf")]
+    with mock.patch(
+        "utils.upload_mime_type.tempfile.NamedTemporaryFile",
+        side_effect=OSError(28, "No space left on device"),
+    ):
+        with pytest.raises(UploadSpillError):
+            _stage(uploads)
+
+
+def _copy_from_connector(collaborators, data: bytes):
+    """Run the backend's connector copy on `data`; return (error, bytes written)."""
+    fs = fsspec.filesystem("memory", skip_instance_cache=True)
+    fs.store.clear()
+    fs.pipe("/in/ORDER.xlsx", data)
+    connector = SourceConnector.__new__(SourceConnector)
+    connector.endpoint = MagicMock()
+    error = None
+    with (
+        mock.patch.object(SourceConnector, "READ_CHUNK_SIZE", 64),
+        mock.patch.object(SourceConnector, "source_file", "exec/SOURCE", create=True),
+        mock.patch.object(SourceConnector, "infile", "exec/INFILE", create=True),
+        mock.patch.object(SourceConnector, "get_fsspec", return_value=fs),
+        mock.patch.object(SourceConnector, "publish_input_file_content"),
+    ):
+        try:
+            connector.add_input_from_connector_to_volume(
+                MagicMock(file_path="/in/ORDER.xlsx", file_name="ORDER.xlsx")
+            )
+        except src_mod.UnsupportedMimeTypeError as exc:
+            error = exc
+    written = b"".join(
+        call.kwargs["data"]
+        for call in collaborators["storage"].write.call_args_list
+        if call.kwargs["path"] == "exec/INFILE"
+    )
+    return error, written
+
+
+def test_a_connector_copy_accepts_an_erp_export(collaborators) -> None:
+    data = _erp_export_bytes()
+
+    error, written = _copy_from_connector(collaborators, data)
+
+    assert error is None
+    assert written == data
+
+
+def test_a_connector_copy_rejects_before_writing_anything(collaborators) -> None:
+    error, written = _copy_from_connector(collaborators, WAV_BYTES * 8)
+
+    assert error is not None
+    assert written == b""

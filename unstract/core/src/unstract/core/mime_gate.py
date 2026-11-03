@@ -3,10 +3,9 @@
 Lives here because the backend and the workers must answer the same question
 identically. A file LLMWhisperer would accept must not be rejected here, so
 `classify_file_path` copies its gate (`Util.is_valid_file_type_from_path` in
-unstract-llm-whisperer) step by step; change both together.
+unstract-llm-whisperer) step by step.
 """
 
-import shutil
 import tempfile
 import xml.etree.ElementTree as ElementTree
 import zipfile
@@ -34,6 +33,10 @@ SECOND_OPINION_MIME_TYPES = frozenset({"application/octet-stream", "application/
 PDF_MARKER = b"%PDF-"
 PDF_MARKER_SCAN_BYTES = 1024
 PDF_MIME_TYPE = "application/pdf"
+
+# LLMWhisperer's default MAX_FILE_SIZE. A larger file is refused there anyway,
+# so it is not worth spilling to local disk just to classify it.
+MAX_SPILL_BYTES = 300 * 1024 * 1024
 
 # A package's declaration members are small; anything larger is not one.
 PACKAGE_MEMBER_LIMIT = 65536
@@ -240,14 +243,15 @@ def classify_file_path(path: str) -> str:
 
 @contextmanager
 def classify_stream(
-    stream: BinaryIO, chunk_size: int
+    stream: BinaryIO, chunk_size: int, max_spill_bytes: int = MAX_SPILL_BYTES
 ) -> Iterator[tuple[str | None, Iterator[bytes]]]:
     """Classify a stream, then hand back its bytes to be copied.
 
     The first chunk decides when libmagic can name it. Otherwise the stream is
     spilled to a local file and classified whole, because libmagic resolves
     zip and OLE2 containers from the end of the file and names a zip container
-    only from a path. An empty stream yields no type.
+    only from a path. A stream longer than `max_spill_bytes` keeps the first
+    chunk's inconclusive verdict. An empty stream yields no type.
     """
     head = stream.read(chunk_size)
     if not head:
@@ -255,14 +259,21 @@ def classify_stream(
         return
 
     mime_type = magic.from_buffer(head, mime=True)
+    rest = iter(partial(stream.read, chunk_size), b"")
     if mime_type not in INCONCLUSIVE_MIME_TYPES:
-        yield mime_type, chain([head], iter(partial(stream.read, chunk_size), b""))
+        yield mime_type, chain([head], rest)
         return
 
     with tempfile.NamedTemporaryFile(suffix=".sniff") as spill:
         spill.write(head)
-        shutil.copyfileobj(stream, spill, chunk_size)
-        spill.flush()
-        mime_type = classify_file_path(spill.name)
+        spilled = len(head)
+        for chunk in rest:
+            spill.write(chunk)
+            spilled += len(chunk)
+            if spilled > max_spill_bytes:
+                break
+        else:
+            spill.flush()
+            mime_type = classify_file_path(spill.name)
         spill.seek(0)
-        yield mime_type, iter(partial(spill.read, chunk_size), b"")
+        yield mime_type, chain(iter(partial(spill.read, chunk_size), b""), rest)
