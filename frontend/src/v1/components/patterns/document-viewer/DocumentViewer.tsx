@@ -207,6 +207,15 @@ export function DocumentViewer({
     [run],
   );
 
+  // A request waiting for one source is dropped as soon as the source changes,
+  // even while nothing is shown: switching away and back before either opens
+  // must not bring it back.
+  useEffect(() => {
+    if (pendingRef.current && pendingRef.current.sourceKey !== sourceKey) {
+      pendingRef.current = null;
+    }
+  }, [sourceKey]);
+
   // A waiting request runs once the pages are laid out, and is tried again
   // when the highlights change, in case its highlight has arrived. One made
   // for another source is dropped rather than scrolling a document nobody
