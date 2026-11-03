@@ -8,6 +8,7 @@ import { getPortalContainer } from "@v1/lib/portal";
 import {
   listOrganizations,
   type Organization,
+  organizationLoginUrl,
   switchOrganization,
 } from "@v1/services/organizations";
 import axios from "axios";
@@ -33,6 +34,8 @@ export interface CurrentOrganization {
   /** The URL name: paths are /<name>/... */
   name: string;
   displayName: string;
+  /** The session's `org_switch_via_login`: switch by signing in again. */
+  switchViaLogin?: boolean;
 }
 
 type ListState =
@@ -98,10 +101,12 @@ function OrgLine({ org }: { org: Organization }) {
 function ConfirmSwitch({
   from,
   to,
+  viaLogin,
   onClose,
 }: {
   from: Organization;
   to: Organization;
+  viaLogin: boolean;
   onClose: () => void;
 }) {
   const [busy, setBusy] = useState(false);
@@ -110,6 +115,10 @@ function ConfirmSwitch({
   async function confirm() {
     setBusy(true);
     setFailed(false);
+    if (viaLogin) {
+      window.location.assign(organizationLoginUrl(to.id));
+      return;
+    }
     try {
       await switchOrganization(to.id);
       // A full load clears every client store, so nothing of the old organisation survives.
@@ -337,6 +346,7 @@ export function OrganizationSwitcher({
             display_name: current.displayName,
           }}
           to={target}
+          viaLogin={current.switchViaLogin === true}
           onClose={() => setTarget(undefined)}
         />
       )}

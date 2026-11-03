@@ -1,7 +1,11 @@
 import { http } from "@v1/lib/http";
 import type { AxiosRequestConfig, InternalAxiosRequestConfig } from "axios";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { listOrganizations, switchOrganization } from "./organizations";
+import {
+  listOrganizations,
+  organizationLoginUrl,
+  switchOrganization,
+} from "./organizations";
 import { signOut, signOutAndLeave } from "./session";
 
 const reset = vi.fn();
@@ -66,6 +70,12 @@ describe("organizations", () => {
       url: "/api/v1/organization/org%2F1/set",
     });
     expect(sent[0].headers?.["X-CSRFToken"]).toBe("tok123");
+  });
+
+  test("the login URL names the organisation and asks for no prompt", () => {
+    expect(organizationLoginUrl("org/1")).toBe(
+      "/api/v1/login?organization=org%2F1&prompt=none",
+    );
   });
 
   test("a failed request rejects instead of resolving empty", async () => {

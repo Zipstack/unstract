@@ -20,3 +20,14 @@ export async function listOrganizations(): Promise<Organization[]> {
 export async function switchOrganization(id: string): Promise<void> {
   await http.post(`/api/v1/organization/${encodeURIComponent(id)}/set`);
 }
+
+/**
+ * Where to send the browser to switch when the identity provider picked the
+ * organisation at login (the session's `org_switch_via_login`): a new login
+ * naming it, so the provider records the choice for every product. `prompt=none`
+ * shows no screen, since the provider already has a session.
+ */
+export function organizationLoginUrl(id: string): string {
+  const query = new URLSearchParams({ organization: id, prompt: "none" });
+  return `/api/v1/login?${query.toString()}`;
+}
