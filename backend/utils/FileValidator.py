@@ -2,13 +2,12 @@ from collections.abc import Iterable
 from os.path import splitext
 from typing import NotRequired, TypedDict, Unpack
 
-import magic
 from django.core.exceptions import ValidationError
 from django.core.files.uploadedfile import InMemoryUploadedFile
 from django.template.defaultfilters import filesizeformat
 from django.utils.translation import gettext_lazy as _
 
-from unstract.sdk1.file_storage.constants import FileOperationParams
+from utils.upload_mime_type import detect_upload_mime_type
 
 
 class FileValidationParam(TypedDict):
@@ -70,11 +69,7 @@ class FileValidator:
             raise ValidationError(message)
 
     def _check_file_mime_type(self, file: InMemoryUploadedFile) -> None:
-        # TODO: Need to optimise, istead of reading entire file.
-        mimetype = magic.from_buffer(
-            file.read(FileOperationParams.READ_ENTIRE_LENGTH), mime=True
-        )
-        file.seek(0)  # Reset the file pointer to the start
+        mimetype = detect_upload_mime_type(file)
 
         if self.allowed_mimetypes and mimetype not in self.allowed_mimetypes:
             message = self.mime_message % {

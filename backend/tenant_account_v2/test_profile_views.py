@@ -195,7 +195,7 @@ class ProfileEndpointTests(LocalStorageMixin, TestCase):
 
     def test_upload_refuses_over_2_mb_before_sniffing_its_type(self) -> None:
         big = png_bytes() + b"\x00" * (2 * 1024 * 1024 + 1 - len(png_bytes()))
-        with patch("utils.FileValidator.magic.from_buffer") as sniff:
+        with patch("utils.FileValidator.detect_upload_mime_type") as sniff:
             response = self.client.post(PHOTO, upload(big))
         self.assertEqual(self.error_attrs(response), ["photo"])
         sniff.assert_not_called()
