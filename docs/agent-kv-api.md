@@ -97,12 +97,14 @@ not a v1 gap unique to this feature.
 
 ## 2. The extraction schema (`keys` field)
 
-> **This section describes the `kv` extractor's schema language, which is not
-> routable on this deployment** (see [§3](#3-submit--post-agent-kv-multipart)).
-> It is documented here because the compiler ships and the language is frozen,
-> so an integration can be written against it ahead of the extractor's release.
-> The `table` extractor's `keys` is just `{"target_table": "<name>"}` and needs
-> none of this.
+> **This section describes the `kv` extractor's schema language.** It is what
+> you send as `keys` when `extractors[].name` is `"kv"` (see
+> [§3](#3-submit--post-agent-kv-multipart)). The `table` extractor's `keys` is
+> just `{"target_table": "<name>"}` and needs none of this.
+>
+> This note used to open "which is not routable on this deployment", with the
+> language documented ahead of the extractor's release. The extractor is
+> released; the language is unchanged, as it was frozen then.
 
 The `keys` submit field — spec-called "keys.json" — is a JSON object describing what to
 extract. It compiles through `unstract.agent_kv_schema.compile_schema`
@@ -231,9 +233,9 @@ The request is **extractor-scoped**: a per-extractor schema and its knobs live i
 
 | Field | Required | Notes |
 |---|---|---|
-| `name` | yes | Which extractor. **`table` is the only supported value on this deployment**; anything else, `kv` included, ⇒ 400 (see the note below). More than one entry ⇒ 400 — the format is in place for multi-extractor jobs, the execution is not built yet. |
-| `keys` | yes | This extractor's own request. For `table`, `{"target_table": "<the table to extract>"}` — the engine's one required extraction parameter. |
-| `adapters` | yes (for `table`) | The platform adapter instances this extraction runs on: `{"llm": "<uuid>", "lite_llm": "<uuid>", "x2text": "<uuid>"}`. All three required. See **§3a** below. |
+| `name` | yes | **Which engine runs: `table` or `kv`.** This is the whole selector — one endpoint, one parameter, two extractors. `table` is agentic table extraction; `kv` is agentic key-value extraction. Anything else ⇒ 400 naming the value. More than one entry ⇒ 400 — the format is in place for multi-extractor jobs, the execution is not built yet. |
+| `keys` | yes | This extractor's own request, in that extractor's own grammar. For `table`, `{"target_table": "<the table to extract>"}` — the engine's one required extraction parameter. For `kv`, the key schema in **§4** — a nested object, not a fixed field set. |
+| `adapters` | yes | The platform adapter instances this extraction runs on: `{"llm": "<uuid>", "lite_llm": "<uuid>", "x2text": "<uuid>"}`. All three required, for **both** extractors — `kv` was env-credentialed until the adapter migration and is not any more. See **§3a** below. |
 | `options` | no | This extractor's own knobs (below). An unrecognised option ⇒ 400, so a knob aimed at the wrong extractor fails loudly instead of being silently dropped. |
 
 ### 3a. `adapters` — you supply the models and the OCR credentials
@@ -283,12 +285,23 @@ choice and LLM spend sit on your account**, per job.
 > organization-level credential, so this is a deliberate decision rather than an
 > oversight — but treat key issuance accordingly.
 
-> **Why `kv` returns 400 here.** This deployment ships the table extractor only.
-> The `kv` extractor's engine runs on its own release track and nothing on this
-> deployment consumes its queue, so the API refuses a `kv` submit outright
-> rather than accepting it with a `202` for a job that would never run. The
-> wire format is unchanged: when `kv` ships, it becomes a second accepted value
-> of `name` and nothing else about this document changes.
+> **`kv` is accepted — same endpoint, same request, one parameter apart.**
+> Switching engines means sending `"name": "kv"` with `keys` in the §4 schema
+> grammar and KV's own `options`; everything else is identical, including the
+> file part, `adapters`, the page range, staging, the page cap and the
+> concurrency limit. There is no separate KV endpoint.
+>
+> This paragraph previously explained why `kv` returned 400: the engine ran on
+> its own release track and nothing consumed `celery_executor_agentic_kv`, so
+> the API refused the submit rather than accepting it with a `202` for a job
+> that would never run. Both halves have changed — the engine ships and every
+> executor fleet drains that queue (derived on every test run from
+> `EXTRACTOR_ROUTES` by `backend/agent_kv/tests/test_queue_wiring_is_derived.py`,
+> rather than asserted from a list someone has to remember to update).
+>
+> What stays true: adding an extractor to that table without a fleet draining
+> its queue is accepted with a `202` and sits in `DISPATCHED` forever, with no
+> error at the producer. That is the failure the derivation exists to catch.
 
 **`kv` options:**
 
@@ -387,7 +400,7 @@ that middleware to resolve an organization from. Cloud-only: an OSS-only
 deployment returns `501` before ever reaching it.
 `400`: serializer/schema validation failure — nothing billed.
 
-### Example — `table` (the only extractor this deployment accepts)
+### Example — `table` (agentic table extraction)
 
 ```bash
 curl -X POST https://api.unstract.example/api/v1/agent-kv/ \
@@ -413,11 +426,14 @@ curl -X POST https://api.unstract.example/api/v1/agent-kv/ \
 The three adapter ids are yours, from your own organization — see §3a. Omit any of
 them and the submit is a 400.
 
-### Example — `kv`
+### Example — `kv` (agentic key-value extraction)
 
-Shown for the wire format only; **`kv` returns 400 on this deployment** (see the
-note above). Note it takes no `adapters` block: the `kv` extractor is
-env-configured on the operator side.
+The same endpoint and the same request as the `table` example above. Three
+things differ and nothing else: `name`, the `keys` grammar (§4's schema rather
+than `{"target_table": ...}`), and the options. `adapters` is required here
+exactly as it is there — an earlier version of this example omitted it and said
+the `kv` extractor was env-configured on the operator side, which was true
+before the adapter migration and is not now.
 
 ```bash
 curl -X POST https://api.unstract.example/api/v1/agent-kv/ \
@@ -438,10 +454,19 @@ curl -X POST https://api.unstract.example/api/v1/agent-kv/ \
           },
           "_constraints": ["count(\"line_items\") >= 1"]
         },
-        "options": {"challenge": false}
+        "options": {"challenge": false},
+        "adapters": {
+          "llm":      "7f3c1a90-0000-4000-8000-000000000001",
+          "lite_llm": "7f3c1a90-0000-4000-8000-000000000002",
+          "x2text":   "7f3c1a90-0000-4000-8000-000000000003"
+        }
       }]' \
   -F "webhook_url=https://example.com/hooks/agent-kv"
 ```
+
+To run the same document through the other engine, change `name` to `table` and
+replace `keys` with `{"target_table": "<name>"}`. Everything else — the file
+part, `adapters`, `page_start`/`page_end`, `webhook_url` — is unchanged.
 
 ## 4. Status — `GET /api/v1/agent-kv/{job_id}`
 
@@ -1274,23 +1299,29 @@ beyond `docker compose up`:
 2. **Executor worker fleet queue — nothing to add for this release.** The dispatcher
    derives the queue name from the EXECUTOR name as `celery_executor_{executor_name}`
    (`unstract/sdk1/src/unstract/sdk1/execution/dispatcher.py`), and this deployment
-   routes `table` only, to the **`agentic_table`** executor
-   (`EXTRACTOR_ROUTES`, `backend/agent_kv/constants.py`). So the queue this API
-   actually uses is **`celery_executor_agentic_table`**, which every fleet already
-   drains: it is in `workers/run-worker.sh`'s executor default list, and in
+   routes **both** extractors: `table` to **`agentic_table`** and `kv` to
+   **`agentic_kv`** (`EXTRACTOR_ROUTES`, `backend/agent_kv/constants.py`). So this
+   API uses two queues — **`celery_executor_agentic_table`** and
+   **`celery_executor_agentic_kv`** — and every fleet must drain both:
+   `workers/run-worker.sh`'s executor default list, `docker/docker-compose.yaml`,
+   `tests/compose/docker-compose.test.yaml`, and
    `workerPgExecutor.env.WORKER_PG_QUEUE_CONSUMER_QUEUE` in the cloud chart.
 
-   > **Do not add `celery_executor_agentic_kv`.** Earlier revisions of this checklist
-   > told operators to, and it is wrong in this release: `kv` is not routable
-   > (§1), nothing produces to that queue, and nothing consumes it. The chart asserts
-   > its absence deliberately — `AKV-Q5b` in
-   > `charts/unstract-platform/unittests/agent_kv_wiring_test.yaml` fails the build if
-   > the name appears anywhere in the chart, because a queue with a consumer and no
-   > producer wastes a fleet lane, and one with a producer and no consumer accepts
-   > work and drains nothing with no error anywhere. It becomes the right queue only
-   > when `kv` is re-enabled in `EXTRACTOR_ROUTES`, and
+   > **Both queues are required now. Do not remove either.** An earlier revision of
+   > this checklist said the opposite — "do not add `celery_executor_agentic_kv`" —
+   > because `kv` was unroutable, nothing produced to that queue and nothing consumed
+   > it. It also described `AKV-Q5b` as failing the build if the name appeared
+   > anywhere in the chart. Neither is true: that test was inverted when the consumer
+   > shipped and now asserts the executor ConfigMap **does** subscribe to
+   > `celery_executor_agentic_kv`.
+   >
+   > The ordering that made this safe is worth keeping in mind for the next
+   > extractor: the consumer shipped first and sat idle, and the route was added
+   > afterwards. The reverse — a route with no consumer — accepts work with a `202`
+   > and drains nothing, with no error anywhere.
    > `backend/agent_kv/tests/test_queue_wiring_is_derived.py` derives the expectation
-   > from that constant so the two cannot disagree.
+   > for every fleet from `EXTRACTOR_ROUTES`, so a route added without wiring fails
+   > there rather than in production.
 
    Note the knob name too: since Celery was removed (UN-4078) the deployed fleet is
    the PostgreSQL queue consumer, so the setting that matters is
@@ -1390,9 +1421,9 @@ beyond `docker compose up`:
    > staged documents and results stay in the bucket indefinitely, which is a
    > retention failure, not just a disk-usage one.
    >
-   > Note this deployment routes `table` only, and that extractor needs the cloud
-   > `agentic_table` plugin — so a pure-OSS install cannot dispatch an Agent-KV job
-   > at all, and has no stranded rows to reap until it ships an engine plugin.
+   > Note both extractors need a cloud engine plugin — `agentic_table` for `table`,
+   > `agentic_kv` for `kv` — so a pure-OSS install cannot dispatch an Agent-KV job
+   > at all, and has no stranded rows to reap until it ships one.
 
    **Chart keys (cloud repo)**: `backend.agentKvCronJobs` in
    `charts/unstract-platform/values.yaml` — `enabled: false` there (on-prem never runs

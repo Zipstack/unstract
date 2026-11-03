@@ -1,11 +1,17 @@
-#: The `kv` extractor's name. Kept as a constant, but NOT routable on this
-#: deployment -- see `EXTRACTOR_ROUTES` below, which carries `table` only.
+#: The `kv` extractor's name -- the key-value/agentic-KV engine, routable
+#: alongside `table` (see `EXTRACTOR_ROUTES` below).
 #:
-#: An earlier version of this comment said "v1 accepts exactly one extractor
-#: (`kv`), so the job row does not carry which one it ran". Both halves are now
-#: wrong, on line 1 of the file that defines the routing table: `kv` is the one
-#: extractor this deployment does NOT accept, and `AgentKVJob.extractor` has
-#: carried the name since migration 0002.
+#: One API, one parameter: a caller picks the engine with `extractors[].name`,
+#: `"kv"` or `"table"`. There is no separate KV endpoint and no second
+#: selector; both run the same submit path, the same staging, the same
+#: concurrency and page caps, and differ only in which executor the job
+#: dispatches to and which `keys` grammar validates it.
+#:
+#: Two earlier versions of this comment are worth not reinstating. The first
+#: said "v1 accepts exactly one extractor (`kv`), so the job row does not
+#: carry which one it ran" -- `AgentKVJob.extractor` has carried the name since
+#: migration 0002. The second said `kv` was "the one extractor this deployment
+#: does NOT accept", which was true only while the engine was unshipped.
 V1_EXTRACTOR_NAME = "kv"
 
 STAGE_NAMES = [
@@ -34,22 +40,32 @@ OPERATION_TABLE_EXTRACT_API = "table_extract_api"
 
 #: Which executor and operation each extractor dispatches to. `dispatch_job`
 #: reads this rather than hardcoding one pair, so adding an extractor is one
-#: entry here plus its options serializer and stage list.
+#: entry here plus its options serializer, stage list and -- where the executor
+#: requires adapters -- its adapters serializer. `SUPPORTED_EXTRACTORS` is
+#: derived from these keys (`execution_serializers.py`), so this table alone
+#: decides what `extractors[].name` accepts.
 #:
-#: **`kv` is deliberately absent.** This deployment ships the `agentic_table`
-#: plugin and not `agentic_kv`, so nothing drains `celery_executor_agentic_kv`.
-#: `SUPPORTED_EXTRACTORS` is derived from this table's keys
-#: (`execution_serializers.py`), so the omission turns a `kv` submit into a 400
-#: at the serializer. Restoring the entry below is all it takes to re-enable
-#: the extractor once the plugin ships -- and restoring it WITHOUT the plugin
-#: is the failure this guards: the submit would be accepted with a 202,
-#: dispatched to a queue with no consumer, and sit in DISPATCHED forever with
-#: no error at the producer and nothing in any log to find.
+#: **Before adding an entry, confirm something drains the queue it names.** The
+#: queue is derived from the executor name, so an entry pointing at a plugin
+#: this deployment does not ship is accepted with a 202, dispatched to a queue
+#: with no consumer, and sits in DISPATCHED forever -- no error at the
+#: producer, nothing in any log to find. That is why `kv` was absent here: the
+#: engine shipped on its own branch. It is present now, and the three facts
+#: that make it safe were checked against a running deployment rather than
+#: assumed:
 #:
-#: `V1_EXTRACTOR_NAME`, `STAGE_NAMES` and the KV options serializer stay in the
-#: tree, dormant and still under test, so re-enabling is one line rather than a
-#: content merge against the branch that carries the engine.
+#:   1. the worker image carries the plugin (`agentic_kv.executor` imports);
+#:   2. it registers this exact pair -- `EXECUTOR_NAME` == "agentic_kv" and
+#:      `OPERATION_KV_EXTRACT` == "kv_extract", which `AgenticKVExecutor`
+#:      dispatches on (`executor.py`, `context.operation != OPERATION_KV_EXTRACT`);
+#:   3. the executor fleet subscribes to `celery_executor_agentic_kv`
+#:      (`WORKER_PG_QUEUE_CONSUMER_QUEUE`, pinned chart-side by
+#:      `agent_kv_wiring_test.yaml::AKV-Q5b`).
+#:
+#: Re-check 1 and 3 before enabling `kv` in an environment that has not run it;
+#: 2 is pinned by `test_the_kv_route_targets_the_shipped_executor`.
 EXTRACTOR_ROUTES = {
+    V1_EXTRACTOR_NAME: (EXECUTOR_NAME, OPERATION_KV_EXTRACT),
     TABLE_EXTRACTOR_NAME: (TABLE_EXECUTOR_NAME, OPERATION_TABLE_EXTRACT_API),
 }
 

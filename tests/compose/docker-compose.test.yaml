@@ -58,7 +58,7 @@ services:
       # CELERY_QUEUES_EXECUTOR is read only by workers/executor/worker.py -- the
       # now-disabled Celery executor -- so setting it here drained nothing and
       # the agent-kv lane hung in DISPATCHED with no error at the producer.
-      - WORKER_PG_QUEUE_CONSUMER_QUEUE=${WORKER_PG_QUEUE_CONSUMER_QUEUE:-celery_executor_legacy,celery_executor_agentic,celery_executor_table,celery_executor_smart_table,celery_executor_simple_prompt_studio,celery_executor_agentic_table,celery_executor_lookup_test}
+      - WORKER_PG_QUEUE_CONSUMER_QUEUE=${WORKER_PG_QUEUE_CONSUMER_QUEUE:-celery_executor_legacy,celery_executor_agentic,celery_executor_table,celery_executor_smart_table,celery_executor_simple_prompt_studio,celery_executor_agentic_table,celery_executor_lookup_test,celery_executor_agentic_kv}
       # Agent-KV engine config, read by the cloud `agentic_kv` and `agentic_table`
       # executor plugins
       # (not by backend settings) -- docs/agent-kv-api.md §12 item 5 / §13.

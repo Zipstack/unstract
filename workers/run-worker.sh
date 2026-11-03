@@ -77,7 +77,7 @@ declare -rA PG_CONSUMER_ROLES=(
     # Runs execute_extraction (the executor RPC) over PG — request-reply: writes
     # the result to pg_task_result for the blocking caller. Queues mirror the
     # Celery executor's CELERY_QUEUES_EXECUTOR.
-    ["$PG_ROLE_EXECUTOR"]="executor;celery_executor_legacy,celery_executor_agentic,celery_executor_table,celery_executor_smart_table,celery_executor_simple_prompt_studio,celery_executor_agentic_table,celery_executor_lookup_test"
+    ["$PG_ROLE_EXECUTOR"]="executor;celery_executor_legacy,celery_executor_agentic,celery_executor_table,celery_executor_smart_table,celery_executor_simple_prompt_studio,celery_executor_agentic_table,celery_executor_lookup_test,celery_executor_agentic_kv"
     # Runs the dashboard_metrics.* periodics fired by the PG scheduler tick,
     # replacing the Celery 'workerMetrics' (-Q dashboard_metric_events). Its own
     # role rather than a queue bolted onto pg-scheduler: the consumer's health

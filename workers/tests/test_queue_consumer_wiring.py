@@ -53,15 +53,24 @@ DEV_COMPOSE = REPO_ROOT / "docker" / "docker-compose.yaml"
 TEST_COMPOSE = REPO_ROOT / "tests" / "compose" / "docker-compose.test.yaml"
 RUN_WORKER = REPO_ROOT / "workers" / "run-worker.sh"
 
-# The queue the `kv` extractor WOULD dispatch onto, and which this deployment
-# deliberately does not serve: the `agentic_kv` plugin ships on a separate PR.
-# `kv` is absent from EXTRACTOR_ROUTES so a submit is refused at the serializer
-# with a 400 -- these assertions are the second half of that, pinning that no
-# fleet advertises a consumer for it. A queue that is listed but unserved
-# accepts work and drains nothing, with no error at the producer: the job sits
-# in DISPATCHED forever. That failure has already cost this team ~30 hours of
-# firings with zero executions, which is why it is guarded from both ends.
-UNSERVED_KV_QUEUE = "celery_executor_agentic_kv"
+# The queue the `kv` extractor dispatches onto. Every fleet MUST serve it.
+#
+# These assertions were the exact inverse until `kv` became routable: the
+# `agentic_kv` plugin shipped on a separate PR, `kv` was absent from
+# EXTRACTOR_ROUTES so a submit was refused with a 400, and the second half of
+# that guarantee was that no fleet advertised a consumer for a queue nothing
+# produced to. `kv` is in EXTRACTOR_ROUTES now, so the risk has flipped ends
+# and so have these: a fleet that does NOT serve this queue accepts Agent-KV
+# work and drains nothing, with no error at the producer, and the job sits in
+# DISPATCHED forever. That failure has already cost this team ~30 hours of
+# firings with zero executions, which is why it stays guarded from both ends.
+#
+# The authoritative version of this check is derived rather than literal:
+# `backend/agent_kv/tests/test_queue_wiring_is_derived.py` computes the
+# expected queue set from EXTRACTOR_ROUTES for each of these same three
+# fleets. This file is the cheap second opinion -- two independent statements
+# of one fact, which is the point of keeping both.
+KV_QUEUE = "celery_executor_agentic_kv"
 
 # The terminal-callback queue. Its consumer is what moves a job out of
 # RUNNING: finalize persists the result, deletes the staged input, releases
@@ -111,19 +120,18 @@ def _queues(raw: str) -> set[str]:
     ("compose_path", "label"),
     [(DEV_COMPOSE, "dev compose"), (TEST_COMPOSE, "e2e test compose")],
 )
-def test_no_fleet_advertises_the_unserved_kv_queue(compose_path, label):
-    """The executor fleet must not list a queue with no plugin behind it."""
+def test_every_fleet_serves_the_kv_queue(compose_path, label):
+    """The executor fleet must drain the queue `kv` dispatches onto."""
     env = _service_env(compose_path, "worker-pg-executor")
     raw = env.get(PG_QUEUE_VAR)
     assert raw is not None, (
         f"{label}: worker-pg-executor sets no {PG_QUEUE_VAR}; the running "
         f"pg-queue-consumer would fall back to a default of unknown content"
     )
-    assert UNSERVED_KV_QUEUE not in _queues(raw), (
-        f"{label}: {UNSERVED_KV_QUEUE} is advertised but this deployment "
-        f"carries no agentic_kv plugin to drain it. Work routed there is "
-        f"accepted and never runs, silently. Remove it from {PG_QUEUE_VAR}, "
-        f"or ship the plugin."
+    assert KV_QUEUE in _queues(raw), (
+        f"{label}: {KV_QUEUE} is not served, but `kv` is routable in "
+        f"EXTRACTOR_ROUTES and dispatches onto it. Agent-KV work is accepted "
+        f"with a 202 and never runs, silently. Add it to {PG_QUEUE_VAR}."
     )
 
 
@@ -186,18 +194,18 @@ def test_the_dead_celery_var_never_advertises_an_unserved_queue(compose_path, la
     )
 
 
-def test_run_worker_pg_executor_role_omits_the_unserved_kv_queue():
+def test_run_worker_pg_executor_role_serves_the_kv_queue():
     """The host-run fleet's hardcoded role default must match the compose stacks.
 
-    ``run-worker.sh`` carries its own PG_CONSUMER_ROLES map; a queue listed
-    here but not in compose is just as unconsumed for anyone running the fleet
-    directly.
+    ``run-worker.sh`` carries its own PG_CONSUMER_ROLES map; a queue missing
+    here but present in compose is just as unconsumed for anyone running the
+    fleet directly.
     """
     text = RUN_WORKER.read_text()
     match = re.search(r'\["\$PG_ROLE_EXECUTOR"\]="executor;([^"]+)"', text)
     assert match, "could not find the PG_ROLE_EXECUTOR entry in run-worker.sh"
-    assert UNSERVED_KV_QUEUE not in _queues(match.group(1)), (
-        f"run-worker.sh's pg-executor role advertises {UNSERVED_KV_QUEUE}; a "
+    assert KV_QUEUE in _queues(match.group(1)), (
+        f"run-worker.sh's pg-executor role does not serve {KV_QUEUE}; a "
         f"host-run fleet would accept Agent-KV work and never drain it."
     )
 

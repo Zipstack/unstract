@@ -157,7 +157,33 @@ _OPTIONS_SERIALIZERS = {
 }
 
 
-class TableAdaptersSerializer(serializers.Serializer):
+class _ThreeRoleAdaptersSerializer(serializers.Serializer):
+    """Shared base: the three platform adapter roles both extractors run on.
+
+    `extractor_name` is only used to name the extractor in the unknown-field
+    error, so a knob aimed at the wrong extractor says which one it was aimed
+    at. Subclasses set it; the field set and the validate() below are
+    identical, because the two engines need the same three roles for the same
+    reasons (see `TableAdaptersSerializer` for those reasons in full).
+    """
+
+    extractor_name = ""
+
+    llm = serializers.UUIDField()
+    lite_llm = serializers.UUIDField()
+    x2text = serializers.UUIDField()
+
+    def validate(self, data):
+        unknown = set(self.initial_data) - set(self.fields)
+        if unknown:
+            raise serializers.ValidationError(
+                f"unknown adapters for extractor '{self.extractor_name}': "
+                f"{sorted(unknown)}"
+            )
+        return data
+
+
+class TableAdaptersSerializer(_ThreeRoleAdaptersSerializer):
     """The platform adapters the `table` extractor runs on.
 
     **Why the caller names adapters rather than the operator configuring env
@@ -182,26 +208,52 @@ class TableAdaptersSerializer(serializers.Serializer):
     highest-volume stage.
     """
 
-    llm = serializers.UUIDField()
-    lite_llm = serializers.UUIDField()
-    x2text = serializers.UUIDField()
+    extractor_name = TABLE_EXTRACTOR_NAME
 
-    def validate(self, data):
-        unknown = set(self.initial_data) - set(self.fields)
-        if unknown:
-            raise serializers.ValidationError(
-                f"unknown adapters for extractor '{TABLE_EXTRACTOR_NAME}': "
-                f"{sorted(unknown)}"
-            )
-        return data
+
+class KVAdaptersSerializer(_ThreeRoleAdaptersSerializer):
+    """The platform adapters the `kv` extractor runs on.
+
+    Identical to the table extractor's three roles, and for the same reason:
+    the KV engine needs an advanced LLM, a cheaper one for per-page work, and
+    an OCR source. The rationale in `TableAdaptersSerializer` applies verbatim.
+
+    **The KV path was env-credentialed until the adapter migration**, on one
+    operator LLM key and one operator LLMWhisperer key shared by every org.
+    It now resolves the caller's own adapters exactly as the table path does,
+    which is what lets both extractors live behind one API with one selector
+    rather than two credential models. The executor enforces the same three
+    roles on its side (`agentic_kv.constants.ParamKeys.REQUIRED_ADAPTERS`) and
+    fails the job naming whichever is missing; this serializer is what turns
+    that into a 400 at submit instead, before a concurrency slot is taken and
+    before staging is billed.
+    """
+
+    extractor_name = V1_EXTRACTOR_NAME
 
 
 #: Each extractor's own `adapters` validator, and which `AdapterTypes` each
-#: role must be. An extractor absent from this table takes no adapters -- `kv`
-#: is env-configured (`extraction_seams.ExtractionConfig`) and deliberately
-#: stays that way for now, so the two credential models coexist: one extractor
-#: per model, never both for one extractor.
+#: role must be. An extractor absent from this table takes no adapters at all
+#: and a supplied `adapters` block is a 400 (`_validated_adapter_shape`).
+#:
+#: Both shipped extractors are present, which is the point: there is no longer
+#: one env-credentialed extractor and one adapter-credentialed one. `kv` joined
+#: this table with the adapter migration -- while it was absent, a `kv` submit
+#: that named adapters was refused with "takes no adapters" and the engine ran
+#: on operator credentials instead.
+#:
+#: The roles here must stay a superset of what each executor requires, or a
+#: submit passes and the job fails mid-run: `agentic_kv` enforces
+#: `ParamKeys.REQUIRED_ADAPTERS` and `agentic_table` its `API_REQUIRED_ADAPTERS`.
 _ADAPTERS_SERIALIZERS = {
+    V1_EXTRACTOR_NAME: (
+        KVAdaptersSerializer,
+        {
+            "llm": AdapterTypes.LLM,
+            "lite_llm": AdapterTypes.LLM,
+            "x2text": AdapterTypes.X2TEXT,
+        },
+    ),
     TABLE_EXTRACTOR_NAME: (
         TableAdaptersSerializer,
         {

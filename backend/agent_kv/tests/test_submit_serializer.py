@@ -118,15 +118,47 @@ def _defaults(m):
 # ---------------------------------------------------------------------------
 # The routing this deployment actually ships
 # ---------------------------------------------------------------------------
-def test_a_kv_submit_is_refused_at_the_serializer():
-    """The guard on the single most important line in this carve-out.
+def test_a_kv_submit_is_accepted_through_the_same_endpoint():
+    """One API, one selector: `extractors[].name` picks the engine.
 
-    `agentic_kv` is not deployed here, so nothing consumes
-    `celery_executor_agentic_kv`. If `kv` were routable, this submit would
-    return 202, dispatch into a queue with no consumer, and sit in DISPATCHED
-    forever -- no error at the producer, nothing in any log to find. A 400 at
-    the serializer is the whole difference between a clear refusal and a job
-    that silently never runs.
+    This is the whole of the feature. The payload differs from a `table` submit
+    in three places -- the name, a schema-shaped `keys` instead of
+    `{"target_table": ...}`, and KV's own options -- and in nothing else: same
+    endpoint, same file part, same staging, same page cap, same adapters block.
+
+    It replaces `test_a_kv_submit_is_refused_at_the_serializer`, which asserted
+    the 400 that stood while the engine shipped on its own branch and nothing
+    drained `celery_executor_agentic_kv`. That refusal was never the intended
+    end state; it was load-bearing for exactly as long as the queue was
+    undrained, and `test_queue_wiring_is_derived.py` now derives that
+    precondition from `EXTRACTOR_ROUTES` on every run.
+    """
+    s = SubmitSerializer(
+        data=_data(
+            extractors=json.dumps(
+                [
+                    {
+                        "name": "kv",
+                        "keys": {"total": {"description": "Grand total"}},
+                        "adapters": TABLE_ADAPTERS,
+                        "options": {"qa": False},
+                    }
+                ]
+            )
+        )
+    )
+    assert s.is_valid(), _errs(s)
+    entry = s.validated_data["extractors"][0]
+    assert entry["name"] == "kv"
+    assert entry["options"]["qa"] is False
+
+
+def test_a_kv_submit_without_adapters_is_refused_at_submit():
+    """The KV executor requires all three roles
+    (`agentic_kv.constants.ParamKeys.REQUIRED_ADAPTERS`) and fails the job
+    naming whichever is missing. That failure costs a concurrency slot and the
+    staging it already billed, so the same requirement is enforced here, before
+    any of that -- the same bargain the table extractor already made.
     """
     s = SubmitSerializer(
         data=_data(
@@ -136,14 +168,14 @@ def test_a_kv_submit_is_refused_at_the_serializer():
         )
     )
     assert not s.is_valid()
-    assert "unknown extractor" in _errs(s)
-    assert "'kv'" in _errs(s)
+    errs = _errs(s)
+    assert "llm" in errs and "x2text" in errs
 
 
-def test_table_is_the_only_supported_extractor():
+def test_both_extractors_are_supported():
     from agent_kv.execution_serializers import SUPPORTED_EXTRACTORS
 
-    assert SUPPORTED_EXTRACTORS == ("table",)
+    assert set(SUPPORTED_EXTRACTORS) == {"kv", "table"}
 
 
 # ---------------------------------------------------------------------------
@@ -418,11 +450,15 @@ def test_unknown_key_on_the_extractor_entry_is_rejected():
 # ---------------------------------------------------------------------------
 # KVOptionsSerializer, tested directly.
 #
-# The class is dormant on this deployment -- `kv` is not routable, so nothing
-# reaches it through a submit -- but it stays in the tree so the branch that
-# carries the KV engine re-enables the extractor with one line rather than a
-# content merge. Dormant and untested is how a one-line re-enable turns into a
-# regression, so its rules are asserted here against the serializer itself.
+# Reached through a real submit now that `kv` is routable (see
+# `test_a_kv_submit_is_accepted_through_the_same_endpoint`); these exercise the
+# serializer directly because its rules are easier to state one at a time than
+# through a multipart payload.
+#
+# This section was written while the class was DORMANT -- `kv` was unroutable,
+# so nothing reached it through a submit -- on the reasoning that dormant and
+# untested is how a one-line re-enable turns into a regression. That one line
+# has now been added, and these tests are why it was one line.
 # ---------------------------------------------------------------------------
 def _kv_options(**over):
     s = KVOptionsSerializer(data=over)
@@ -573,10 +609,15 @@ def test_table_keys_are_validated_through_the_keys_serializer():
 # the attribute must not quietly delete the 400, which is the only reason the
 # call is there.
 #
-# The branch is DORMANT on this deployment: `kv` is the only extractor without
-# a keys serializer and `validate_name` refuses it before `_validated_keys`
-# runs, so it is reached by calling it directly. That is the point -- it is the
-# contract for the next extractor added without one, and nothing else covers it.
+# `kv` is the one extractor with no entry in `_KEYS_SERIALIZERS`, deliberately:
+# its `keys` IS a compiled schema rather than a fixed field set, so it falls
+# through to the compiler. That fallthrough is live -- a `kv` submit reaches it
+# -- and it is also the contract for any future extractor added without a keys
+# serializer.
+#
+# It used to be unreachable through a submit (`validate_name` refused `kv`
+# before `_validated_keys` ran) and was tested by calling it directly. The
+# direct calls are kept: they state one rule at a time.
 # ---------------------------------------------------------------------------
 
 
