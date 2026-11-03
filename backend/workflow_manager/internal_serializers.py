@@ -155,6 +155,7 @@ class FileExecutionStatusUpdateSerializer(serializers.Serializer):
     error_message = serializers.CharField(required=False, allow_blank=True)
     result = serializers.CharField(required=False, allow_blank=True)
     execution_time = serializers.FloatField(required=False, min_value=0)
+    stage_timings = serializers.JSONField(required=False, allow_null=True)
 
     def to_dataclass(self) -> FileExecutionStatusUpdateRequest:
         """Convert validated data to shared dataclass."""

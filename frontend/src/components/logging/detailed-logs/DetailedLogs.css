@@ -199,3 +199,26 @@
   border-color: var(--primary);
   color: var(--primary);
 }
+
+/* Stage timing breakdown inside an expanded file row. The table cell is dense,
+ * so the panel gets its own padding rather than inheriting the row's. */
+.file-stage-timings {
+  padding: 8px 4px 10px;
+}
+
+/* The aggregate split card holds a chart, so it overrides the 250px fixed
+ * width the single-line cards beside it use. */
+.logs-details-card.stage-timings-card {
+  width: auto;
+  min-width: 300px;
+  max-width: 420px;
+}
+
+.logs-details-card.stage-timings-card .ant-card-body {
+  align-items: flex-start;
+}
+
+.stage-timings-card-body {
+  flex: 1;
+  min-width: 0;
+}

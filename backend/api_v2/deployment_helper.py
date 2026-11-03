@@ -397,7 +397,9 @@ class DeploymentHelper(BaseAPIKeyValidator):
             # Ensure workflow identification keys are always in item metadata
             organization = api.organization if api else None
             org_id = str(organization.organization_id) if organization else ""
-            cls._enrich_result_with_workflow_metadata(result, organization_id=org_id)
+            cls._enrich_result_with_workflow_metadata(
+                result, organization_id=org_id, include_metrics=include_metrics
+            )
             # Check if highlight data should be removed using configuration registry
             enable_highlight = False  # Safe default if the key is unavailable (e.g., OSS)
             if ConfigurationRegistry.is_config_key_available(
@@ -497,6 +499,7 @@ class DeploymentHelper(BaseAPIKeyValidator):
         workflow_execution: Any,
         organization_id: str,
         tag_names: list[str],
+        include_metrics: bool = False,
     ) -> None:
         """Populate workflow identification keys into item['metadata']."""
         if not isinstance(item.get("metadata"), dict):
@@ -508,7 +511,24 @@ class DeploymentHelper(BaseAPIKeyValidator):
             metadata.setdefault("source_name", fe.file_name)
             metadata.setdefault("source_hash", fe.file_hash or "")
             metadata.setdefault("file_execution_id", str(fe.id))
-            metadata.setdefault("total_elapsed_time", fe.execution_time)
+            # This field is published to API-deployment callers, and it means
+            # what it is named: elapsed from queued to done, including the
+            # queue wait. UN-3451 narrowed `execution_time` to processing only,
+            # so prefer the stage payload's `total` — which is queue_wait +
+            # execution_time — and keep `execution_time` only as the fallback
+            # for rows written before stage timings existed. Without this the
+            # number would silently shrink for every queued file and break
+            # callers' baselines across a release.
+            total_elapsed = fe.execution_time
+            if isinstance(fe.stage_timings, dict):
+                reported = fe.stage_timings.get("total")
+                if isinstance(reported, (int, float)) and not isinstance(reported, bool):
+                    total_elapsed = reported
+            metadata.setdefault("total_elapsed_time", total_elapsed)
+            # Stage breakdown is timing data, so it rides on include_metrics
+            # rather than widening the default response shape.
+            if include_metrics and fe.stage_timings:
+                metadata.setdefault("stage_timings", fe.stage_timings)
         if we:
             metadata.setdefault("workflow_id", str(we.workflow_id))
             metadata.setdefault("execution_id", str(we.id))
@@ -523,6 +543,7 @@ class DeploymentHelper(BaseAPIKeyValidator):
     def _enrich_result_with_workflow_metadata(
         result: ExecutionResponse,
         organization_id: str,
+        include_metrics: bool = False,
     ) -> None:
         """Ensure workflow identification keys are always present in item metadata.
 
@@ -576,6 +597,7 @@ class DeploymentHelper(BaseAPIKeyValidator):
                 workflow_execution=workflow_execution,
                 organization_id=organization_id,
                 tag_names=tag_names,
+                include_metrics=include_metrics,
             )
 
     @staticmethod
@@ -606,7 +628,7 @@ class DeploymentHelper(BaseAPIKeyValidator):
         organization = api_deployment.organization if api_deployment else None
         org_id = str(organization.organization_id) if organization else ""
         DeploymentHelper._enrich_result_with_workflow_metadata(
-            response, organization_id=org_id
+            response, organization_id=org_id, include_metrics=include_metrics
         )
         enable_highlight = False
         if ConfigurationRegistry.is_config_key_available(

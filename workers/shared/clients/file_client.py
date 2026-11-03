@@ -336,6 +336,7 @@ class FileAPIClient(BaseAPIClient):
         execution_time: float | None = None,
         error_message: str | None = None,
         organization_id: str | None = None,
+        stage_timings: dict | None = None,
     ) -> APIResponse:
         """Update workflow file execution status with execution time.
 
@@ -348,6 +349,7 @@ class FileAPIClient(BaseAPIClient):
             execution_time: Execution time in seconds (optional)
             error_message: Error message if status is ERROR (optional)
             organization_id: Optional organization ID override
+            stage_timings: Per-stage duration payload for this file (optional)
 
         Returns:
             APIResponse with update result
@@ -361,6 +363,8 @@ class FileAPIClient(BaseAPIClient):
             data["execution_time"] = execution_time
         if error_message is not None:
             data["error_message"] = error_message
+        if stage_timings:
+            data["stage_timings"] = stage_timings
 
         logger.info(
             f"Updating file execution {file_execution_id} status to {status_str}"
