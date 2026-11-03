@@ -5,8 +5,8 @@ const pdfjsMock = vi.hoisted(() => ({
   getDocument: vi.fn(),
   GlobalWorkerOptions: { workerSrc: "" },
 }));
-vi.mock("pdfjs-dist/legacy/build/pdf.js", () => pdfjsMock);
-vi.mock("pdfjs-dist/legacy/build/pdf.worker.min.js?url", () => ({
+vi.mock("pdfjs-dist", () => pdfjsMock);
+vi.mock("pdfjs-dist/build/pdf.worker.min.js?url", () => ({
   default: "/assets/pdf.worker.min.js",
 }));
 
@@ -345,7 +345,7 @@ describe("loadPdfjs", () => {
   it("tries again after a failed load instead of keeping the failure", async () => {
     vi.resetModules();
     let fail = true;
-    vi.doMock("pdfjs-dist/legacy/build/pdf.js", () => {
+    vi.doMock("pdfjs-dist", () => {
       if (fail) {
         throw new Error("chunk failed");
       }
@@ -359,6 +359,6 @@ describe("loadPdfjs", () => {
     expect(pdfjsMock.GlobalWorkerOptions.workerSrc).toBe(
       "/assets/pdf.worker.min.js",
     );
-    vi.doUnmock("pdfjs-dist/legacy/build/pdf.js");
+    vi.doUnmock("pdfjs-dist");
   });
 });
