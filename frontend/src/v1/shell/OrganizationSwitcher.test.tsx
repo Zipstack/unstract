@@ -2,11 +2,15 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { Organization } from "@v1/services/organizations";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
-import { OrganizationSwitcher } from "./OrganizationSwitcher";
+import {
+  type CurrentOrganization,
+  OrganizationSwitcher,
+} from "./OrganizationSwitcher";
 
 const list = vi.fn<() => Promise<Organization[]>>();
 const switchTo = vi.fn<(id: string) => Promise<void>>();
-vi.mock("@v1/services/organizations", () => ({
+vi.mock("@v1/services/organizations", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@v1/services/organizations")>()),
   listOrganizations: () => list(),
   switchOrganization: (id: string) => switchTo(id),
 }));
@@ -42,8 +46,8 @@ const personal: Organization = {
 };
 const current = { id: "org_zs", name: "zipstack", displayName: "Zipstack" };
 
-async function open() {
-  render(<OrganizationSwitcher current={current} />);
+async function open(organization: CurrentOrganization = current) {
+  render(<OrganizationSwitcher current={organization} />);
   await userEvent.click(
     screen.getByRole("button", { name: /Organisation: Zipstack/ }),
   );
@@ -166,6 +170,23 @@ describe("OrganizationSwitcher", () => {
       expect(assign).toHaveBeenCalledWith("/tanushree/tools"),
     );
     expect(switchTo).toHaveBeenCalledWith("org_td");
+  });
+
+  test("when the identity provider picks the organisation, switching signs in again naming it", async () => {
+    list.mockResolvedValue([zipstack, personal]);
+    await open({ ...current, switchViaLogin: true });
+    await userEvent.click(
+      await screen.findByRole("button", {
+        name: "Switch to Tanushree’s organisation",
+      }),
+    );
+    await userEvent.click(
+      screen.getByRole("button", { name: "Switch organisation" }),
+    );
+    expect(assign).toHaveBeenCalledWith(
+      "/api/v1/login?organization=org_td&prompt=none",
+    );
+    expect(switchTo).not.toHaveBeenCalled();
   });
 
   test("cancel switches nothing", async () => {
