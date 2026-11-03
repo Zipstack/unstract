@@ -1,3 +1,4 @@
+import { useDevicePixelRatio } from "@v1/hooks/useDevicePixelRatio";
 import { usePageWindow } from "@v1/hooks/usePageWindow";
 import { cn } from "@v1/lib/cn";
 import { type Highlight, highlightsByPage } from "@v1/lib/pdf/highlights";
@@ -34,11 +35,15 @@ export interface PdfPageListProps {
   /** Highlights on any page, from the normalisers in `@v1/lib/pdf/highlights`. */
   highlights?: readonly Highlight[];
   activeHighlightId?: string | null;
+  /** Keep it stable (useCallback): a new function re-renders every page. */
   onHighlightClick?: (highlight: Highlight) => void;
   /** Called with the 0-based page showing most of itself. */
   onCurrentPageChange?: (index: number) => void;
   onKeyDown?: (event: KeyboardEvent<HTMLElement>) => void;
-  /** Drawn over a page, above its highlights; receives the 0-based page index. */
+  /**
+   * Drawn over a page, above its highlights; receives the 0-based page index.
+   * Keep it stable (useCallback): a new function re-renders every page.
+   */
   renderPageOverlay?: (index: number) => ReactNode;
   className?: string;
   ref?: Ref<PdfPageListHandle>;
@@ -166,6 +171,9 @@ export function PdfPageList({
   // leave the last page when the last few pages fit together.
   const jumpRef = useRef<{ index: number; scrollTop: number } | null>(null);
   const [current, setCurrent] = useState(0);
+  // The page elements, read once: the list is keyed per document and its
+  // pages never remount, so scrolling never has to query the DOM again.
+  const pagesRef = useRef<HTMLElement[]>([]);
 
   const setRoot = useCallback(
     (element: HTMLElement | null) => {
@@ -184,8 +192,14 @@ export function PdfPageList({
   // scroll and straight after a jump, so neither waits for a scroll event.
   const sync = useCallback(() => {
     const root = rootRef.current;
-    const pages = root ? pageElements(root) : [];
-    if (!root || pages.length === 0) {
+    if (!root) {
+      return;
+    }
+    if (pagesRef.current.length !== pageCount) {
+      pagesRef.current = pageElements(root);
+    }
+    const pages = pagesRef.current;
+    if (pages.length === 0) {
       return;
     }
     // The anchor uses the same coordinates as the jumps and the restore:
@@ -210,7 +224,7 @@ export function PdfPageList({
       jumpRef.current = null;
       setCurrent(mostVisiblePage(root, pages));
     }
-  }, []);
+  }, [pageCount]);
 
   // A taller or shorter viewer changes which page shows most without any
   // scroll event.
@@ -276,6 +290,18 @@ export function PdfPageList({
     [highlights, pageCount, sync],
   );
 
+  // Only the page holding the active highlight hears its id, so moving the
+  // active highlight re-renders the page it left and the page it reached.
+  const activePage = useMemo(
+    () =>
+      activeHighlightId == null
+        ? null
+        : (highlights.find((highlight) => highlight.id === activeHighlightId)
+            ?.page ?? null),
+    [highlights, activeHighlightId],
+  );
+  const pixelRatio = useDevicePixelRatio();
+
   // A scrollable region must be focusable for keyboard users (WCAG 2.1.1),
   // and its focus is where the viewer's paging and zoom keys are read.
   return (
@@ -306,13 +332,13 @@ export function PdfPageList({
             size={size}
             zoom={zoom}
             rendered={rendered.has(index)}
+            pixelRatio={pixelRatio}
             observe={observePage}
             highlights={byPage.get(index) ?? NO_HIGHLIGHTS}
-            activeHighlightId={activeHighlightId}
+            activeHighlightId={index === activePage ? activeHighlightId : null}
             onHighlightClick={onHighlightClick}
-          >
-            {renderPageOverlay?.(index)}
-          </PdfPage>
+            renderOverlay={renderPageOverlay}
+          />
         ))}
       </div>
     </section>

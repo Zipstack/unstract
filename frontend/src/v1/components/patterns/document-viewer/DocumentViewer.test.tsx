@@ -27,6 +27,25 @@ vi.mock("@v1/lib/pdf/pdfjs", async (importOriginal) => {
   };
 });
 
+// Every page/count pair the toolbar is rendered with, to catch a stale one.
+const toolbarRenders = vi.hoisted(() => [] as [number, number][]);
+vi.mock("./ViewerToolbar", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./ViewerToolbar")>();
+  return {
+    ...actual,
+    ViewerToolbar: (props: Parameters<typeof actual.ViewerToolbar>[0]) => {
+      toolbarRenders.push([props.pageIndex, props.pageCount]);
+      return actual.ViewerToolbar(props);
+    },
+  };
+});
+
+// The platform's scrollbar, as the viewer would measure it.
+const scrollbar = vi.hoisted(() => ({ width: 16 }));
+vi.mock("@v1/lib/scrollbar", () => ({
+  scrollbarWidth: () => scrollbar.width,
+}));
+
 const resizeCallbacks = new Set<(entries: ResizeObserverEntry[]) => void>();
 // Every observer hears the size: the viewer's body and the page list's own.
 const resize = (width: number, height: number) => {
@@ -74,7 +93,7 @@ const pageSizes = Array.from({ length: 3 }, () => ({
 
 async function open() {
   await act(async () => opening.resolve({ document, pageSizes }));
-  // The body is 864 px wide: 816 + the 48 px fit gutter.
+  // The body is 864 px wide: 816 + 32 px of padding + a 16 px scrollbar.
   act(() => resize(864, 600));
 }
 
@@ -83,6 +102,7 @@ function zoomLabel() {
 }
 
 beforeEach(() => {
+  scrollbar.width = 16;
   vi.stubGlobal("ResizeObserver", FakeResizeObserver);
   vi.stubGlobal("IntersectionObserver", FakeIntersectionObserver);
 });
@@ -97,10 +117,14 @@ it("shows the loading state, then the toolbar once the document opens", async ()
   expect(screen.getByText("/ 3")).toBeTruthy();
 });
 
-it("shows a failure with Retry", async () => {
+it("shows a failure with Retry, in plain words rather than pdf.js's", async () => {
+  const log = vi.spyOn(console, "error").mockImplementation(() => undefined);
   render(<DocumentViewer source={source} />);
   await act(async () => opening.reject(new Error("Network error")));
-  expect(screen.getByRole("alert").textContent).toContain("Network error");
+  log.mockRestore();
+  const alert = screen.getByRole("alert").textContent;
+  expect(alert).toContain("The document couldn't be opened.");
+  expect(alert).not.toContain("Network error");
   expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
 });
 
@@ -603,4 +627,45 @@ it("scrolls to an active highlight chosen before its document is shown", async (
   } finally {
     restore();
   }
+});
+
+it("fits the width to the measured scrollbar, so a 17 px one adds no horizontal scroll", async () => {
+  scrollbar.width = 17;
+  render(<DocumentViewer source={source} />);
+  await open();
+  const page = screen.getAllByRole("figure")[0];
+  const width = Number.parseFloat(
+    page?.style.getPropertyValue("--page-width") ?? "",
+  );
+  // 864 - 32 - 17 = 815 px for the page, not 816.
+  expect(width).toBeCloseTo(815);
+});
+
+it("waits for the viewer's size before laying out pages in a fit mode", async () => {
+  render(<DocumentViewer source={source} />);
+  await act(async () => opening.resolve({ document, pageSizes }));
+  expect(screen.getByRole("toolbar")).toBeTruthy();
+  expect(screen.queryAllByRole("figure")).toHaveLength(0);
+  act(() => resize(864, 600));
+  expect(screen.getAllByRole("figure")).toHaveLength(3);
+});
+
+it("starts a new document on its first page", async () => {
+  const { rerender } = render(<DocumentViewer source={source} />);
+  await open();
+  fireEvent.keyDown(screen.getByRole("region", { name: "Document pages" }), {
+    key: "End",
+  });
+  expect(screen.getByLabelText("Page")).toHaveProperty("value", "3");
+
+  toolbarRenders.length = 0;
+  rerender(<DocumentViewer source={{ kind: "url", url: "/other.pdf" }} />);
+  const other = { ...document, numPages: 1 } as PDFDocumentProxy;
+  await act(async () =>
+    opening.resolve({ document: other, pageSizes: pageSizes.slice(0, 1) }),
+  );
+  expect(screen.getByLabelText("Page")).toHaveProperty("value", "1");
+  expect(screen.getByText("/ 1")).toBeTruthy();
+  // Not even one render showed page 3 of 1.
+  expect(toolbarRenders.filter(([index, count]) => index >= count)).toEqual([]);
 });

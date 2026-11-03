@@ -1,5 +1,5 @@
 import { act, renderHook } from "@testing-library/react";
-import type { PdfOpening } from "@v1/lib/pdf/pdfjs";
+import type { PdfOpening, PdfOpenOptions } from "@v1/lib/pdf/pdfjs";
 import type { OpenedPdf, PdfSource } from "@v1/lib/pdf/types";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import { beforeEach, expect, it, vi } from "vitest";
@@ -7,7 +7,9 @@ import { usePdfDocument } from "./usePdfDocument";
 
 interface FakeOpening extends PdfOpening {
   source: PdfSource;
-  password?: string;
+  /** Asks for a password the way pdf.js does, mid-load. */
+  askPassword: (incorrect: boolean) => void;
+  submitted: string[];
   resolve: (value: OpenedPdf) => void;
   reject: (error: unknown) => void;
   destroy: ReturnType<typeof vi.fn>;
@@ -21,7 +23,7 @@ vi.mock("@v1/lib/pdf/pdfjs", async (importOriginal) => {
     ...actual,
     openPdfDocument: (
       source: PdfSource,
-      options: { password?: string } = {},
+      options: PdfOpenOptions = {},
     ): PdfOpening => {
       let resolve!: (value: OpenedPdf) => void;
       let reject!: (error: unknown) => void;
@@ -29,9 +31,15 @@ vi.mock("@v1/lib/pdf/pdfjs", async (importOriginal) => {
         resolve = res;
         reject = rej;
       });
+      const submitted: string[] = [];
       const opening: FakeOpening = {
         source,
-        password: options.password,
+        submitted,
+        askPassword: (incorrect) =>
+          options.onPassword?.({
+            incorrect,
+            submit: (password) => submitted.push(password),
+          }),
         promise,
         resolve,
         reject,
@@ -49,8 +57,6 @@ const pageSizes = [
   { width: 792, height: 612 },
 ];
 const url = (path: string): PdfSource => ({ kind: "url", url: path });
-const passwordError = (code: number) =>
-  Object.assign(new Error("password"), { name: "PasswordException", code });
 
 function latest(): FakeOpening {
   const opening = openings.at(-1);
@@ -96,10 +102,14 @@ it("treats a document with no pages as empty", async () => {
 
 it("fails with the message, and Retry opens the same source again", async () => {
   const { result } = renderHook(() => usePdfDocument(url("/a.pdf")));
-  await act(async () => latest().reject(new Error("Network error")));
+  await act(async () =>
+    latest().reject(
+      Object.assign(new Error("Missing PDF"), { name: "MissingPDFException" }),
+    ),
+  );
   expect(result.current.state).toEqual({
     status: "failed",
-    message: "Network error",
+    message: "The document wasn't found.",
   });
 
   act(() => result.current.retry());
@@ -119,22 +129,34 @@ it("reports a non-PDF as unsupported", async () => {
   expect(result.current.state).toEqual({ status: "unsupported" });
 });
 
-it("asks for a password, reopens with it, and flags a wrong one", async () => {
+it("asks for a password and carries on with the same load, without reopening", async () => {
   const { result } = renderHook(() => usePdfDocument(url("/locked.pdf")));
-  await act(async () => latest().reject(passwordError(1)));
+  act(() => latest().askPassword(false));
   expect(result.current.state).toEqual({
     status: "password",
     incorrect: false,
   });
 
   act(() => result.current.submitPassword("wrong"));
-  expect(latest().password).toBe("wrong");
-  await act(async () => latest().reject(passwordError(2)));
+  expect(latest().submitted).toEqual(["wrong"]);
+  expect(result.current.state).toEqual({ status: "loading" });
+  act(() => latest().askPassword(true));
   expect(result.current.state).toEqual({ status: "password", incorrect: true });
 
   act(() => result.current.submitPassword("right"));
   await act(async () => latest().resolve({ document, pageSizes }));
   expect(result.current.state.status).toBe("ready");
+  expect(openings).toHaveLength(1);
+  expect(latest().submitted).toEqual(["wrong", "right"]);
+});
+
+it("answers a password prompt once, and ignores a password nobody asked for", () => {
+  const { result } = renderHook(() => usePdfDocument(url("/locked.pdf")));
+  act(() => result.current.submitPassword("early"));
+  act(() => latest().askPassword(false));
+  act(() => result.current.submitPassword("first"));
+  act(() => result.current.submitPassword("second"));
+  expect(latest().submitted).toEqual(["first"]);
 });
 
 it("destroys the old load when the source changes, and ignores its result", async () => {
@@ -152,15 +174,18 @@ it("destroys the old load when the source changes, and ignores its result", asyn
   expect(latest().source).toEqual(url("/b.pdf"));
 });
 
-it("forgets the password when the source changes", async () => {
+it("drops a password prompt when the source changes", () => {
   const { result, rerender } = renderHook(
     ({ path }) => usePdfDocument(url(path)),
     { initialProps: { path: "/a.pdf" } },
   );
-  await act(async () => latest().reject(passwordError(1)));
-  act(() => result.current.submitPassword("secret"));
+  const first = latest();
+  act(() => first.askPassword(false));
   rerender({ path: "/b.pdf" });
-  expect(latest().password).toBeUndefined();
+  act(() => result.current.submitPassword("secret"));
+  expect(first.submitted).toEqual([]);
+  expect(latest().submitted).toEqual([]);
+  expect(result.current.state).toEqual({ status: "loading" });
 });
 
 it("destroys the load on unmount", () => {

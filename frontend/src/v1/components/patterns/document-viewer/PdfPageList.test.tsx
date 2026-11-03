@@ -127,9 +127,10 @@ beforeEach(() => {
   vi.stubGlobal("cancelAnimationFrame", (id: number) =>
     window.clearTimeout(id),
   );
-  vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(
-    {} as CanvasRenderingContext2D,
-  );
+  vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({
+    drawImage: vi.fn(),
+  } as unknown as CanvasRenderingContext2D);
+  vi.spyOn(console, "error").mockImplementation(() => undefined);
   window.devicePixelRatio = 1;
 });
 afterEach(() => {
@@ -180,12 +181,13 @@ it("keeps the live canvas count bounded while scrolling 200 pages end to end", a
 
 it("renders at the screen's pixel ratio, capped at 2", async () => {
   window.devicePixelRatio = 3;
-  const { document, render: renderPage } = fakeDocument(1);
+  const { document, render: renderPage, tasks } = fakeDocument(1);
   const { container } = render(
     <PdfPageList document={document} pageSizes={sizes(1)} zoom={1} />,
   );
   show([0]);
   await flush();
+  await act(async () => tasks[0]?.finish());
   const canvas = container.querySelector("canvas");
   expect(renderPage).toHaveBeenCalledTimes(1);
   const [params] = renderPage.mock.calls[0] as unknown as [
@@ -208,6 +210,71 @@ it("cancels the render in flight when the zoom changes", async () => {
   await flush();
   expect(tasks[0]?.cancel).toHaveBeenCalledTimes(1);
   expect(tasks).toHaveLength(2);
+});
+
+it("keeps the last picture up while a zoom change draws the new one", async () => {
+  const { document, tasks } = fakeDocument(1);
+  const { container, rerender } = render(
+    <PdfPageList document={document} pageSizes={sizes(1)} zoom={1} />,
+  );
+  show([0]);
+  await flush();
+  await act(async () => tasks[0]?.finish());
+  const canvas = container.querySelector("canvas");
+  const drawn = canvas?.width;
+  expect(drawn).toBeGreaterThan(0);
+
+  rerender(<PdfPageList document={document} pageSizes={sizes(1)} zoom={2} />);
+  await flush();
+  // The new render is in flight: the old picture is still there.
+  expect(container.querySelector("canvas")).toBe(canvas);
+  expect(canvas?.width).toBe(drawn);
+  await act(async () => tasks[1]?.finish());
+  expect(canvas?.width).toBe((drawn ?? 0) * 2);
+  expect(renderState(container, 0)).toBe("rendered");
+});
+
+it("says a page is rendering from the moment it asks for the page", async () => {
+  const { document } = fakeDocument(1);
+  (document.getPage as ReturnType<typeof vi.fn>).mockImplementationOnce(
+    () => new Promise(() => undefined),
+  );
+  const { container } = render(
+    <PdfPageList document={document} pageSizes={sizes(1)} zoom={1} />,
+  );
+  expect(renderState(container, 0)).toBe("idle");
+  show([0]);
+  await flush();
+  expect(renderState(container, 0)).toBe("rendering");
+});
+
+it("logs a page that fails to render, with its page number", async () => {
+  const { document, tasks } = fakeDocument(3);
+  render(<PdfPageList document={document} pageSizes={sizes(3)} zoom={1} />);
+  show([0]);
+  await flush();
+  const failure = new Error("bad page");
+  await act(async () => tasks[0]?.fail(failure));
+  expect(console.error).toHaveBeenCalledWith("Page 1 didn't render", failure);
+});
+
+it("renders each page only once when the window moves", async () => {
+  const { document } = fakeDocument(10);
+  const overlay = vi.fn((_index: number) => null);
+  render(
+    <PdfPageList
+      document={document}
+      pageSizes={sizes(10)}
+      zoom={1}
+      renderPageOverlay={overlay}
+    />,
+  );
+  overlay.mockClear();
+  show([5]);
+  // Pages 3 to 7 enter the window; the other five pages are not re-rendered.
+  expect(new Set(overlay.mock.calls.map(([index]) => index))).toEqual(
+    new Set([3, 4, 5, 6, 7]),
+  );
 });
 
 it("frees the canvas and the page when a page leaves the window", async () => {
@@ -709,4 +776,113 @@ it("cleans up a page that arrives after it has left the window", async () => {
   await act(async () => deliver());
   expect(late.cleanup).toHaveBeenCalled();
   expect(late.render).not.toHaveBeenCalled();
+});
+
+const pageHighlights = [
+  {
+    id: "a",
+    page: 2,
+    x: 0,
+    y: 0.1,
+    w: 1,
+    h: 0.02,
+    variant: "line" as const,
+    tone: "default" as const,
+  },
+  {
+    id: "b",
+    page: 0,
+    x: 0,
+    y: 0.5,
+    w: 1,
+    h: 0.02,
+    variant: "line" as const,
+    tone: "default" as const,
+  },
+];
+
+it("re-renders only the pages that lose and gain the active highlight", () => {
+  const { document } = fakeDocument(3);
+  const overlay = vi.fn((_index: number) => null);
+  // Stable inputs, as a real caller holds them: only the active id changes.
+  const pageSizes = sizes(3);
+  const { rerender } = render(
+    <PdfPageList
+      document={document}
+      pageSizes={pageSizes}
+      zoom={1}
+      highlights={pageHighlights}
+      activeHighlightId="b"
+      renderPageOverlay={overlay}
+    />,
+  );
+  overlay.mockClear();
+  rerender(
+    <PdfPageList
+      document={document}
+      pageSizes={pageSizes}
+      zoom={1}
+      highlights={pageHighlights}
+      activeHighlightId="a"
+      renderPageOverlay={overlay}
+    />,
+  );
+  expect(overlay.mock.calls.map(([index]) => index).sort()).toEqual([0, 2]);
+});
+
+it("blends highlights into a page once it has painted, and keeps it through a zoom", async () => {
+  const { document, tasks } = fakeDocument(1);
+  const highlights = [
+    { ...pageHighlights[1], page: 0 },
+  ] as typeof pageHighlights;
+  const { container, rerender } = render(
+    <PdfPageList
+      document={document}
+      pageSizes={sizes(1)}
+      zoom={1}
+      highlights={highlights}
+    />,
+  );
+  const blended = () =>
+    container
+      .querySelector('[data-highlight-id="b"]')
+      ?.className.includes("mix-blend-multiply");
+  expect(blended()).toBe(false);
+  show([0]);
+  await flush();
+  expect(blended()).toBe(false);
+  await act(async () => tasks[0]?.finish());
+  expect(blended()).toBe(true);
+  rerender(
+    <PdfPageList
+      document={document}
+      pageSizes={sizes(1)}
+      zoom={2}
+      highlights={highlights}
+    />,
+  );
+  await flush();
+  expect(blended()).toBe(true);
+  show([]);
+  await flush();
+  expect(blended()).toBe(false);
+});
+
+it("reads the page elements once, not on every scroll", async () => {
+  const { document } = fakeDocument(20);
+  const { container } = render(
+    <PdfPageList document={document} pageSizes={sizes(20)} zoom={1} />,
+  );
+  const region = container.querySelector("section");
+  if (!region) {
+    throw new Error("no region");
+  }
+  const query = vi.spyOn(region, "querySelectorAll");
+  for (let step = 0; step < 10; step++) {
+    act(() => {
+      region.scrollTop = step * 100;
+      region.dispatchEvent(new Event("scroll"));
+    });
+  }
+  expect(query.mock.calls.length).toBeLessThanOrEqual(1);
 });

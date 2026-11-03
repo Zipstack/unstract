@@ -3,7 +3,7 @@ import { usePdfDocument } from "@v1/hooks/usePdfDocument";
 import { cn } from "@v1/lib/cn";
 import type { Highlight } from "@v1/lib/pdf/highlights";
 import { viewerKeyAction } from "@v1/lib/pdf/keyboard";
-import { pdfSourceKey } from "@v1/lib/pdf/pdfjs";
+import { objectKey, pdfSourceKey } from "@v1/lib/pdf/pdfjs";
 import {
   type DocumentSource,
   isPdfSource,
@@ -18,6 +18,7 @@ import {
   zoomIn,
   zoomOut,
 } from "@v1/lib/pdf/zoom";
+import { scrollbarWidth } from "@v1/lib/scrollbar";
 import {
   type KeyboardEvent,
   type ReactNode,
@@ -84,23 +85,16 @@ interface ZoomState {
   level: number;
 }
 
-/**
- * Room around a fitted page, in CSS px: the list's padding on both sides plus
- * a vertical scrollbar, so fitting never causes a horizontal scrollbar.
- */
-const FIT_GUTTER = 48;
+/** The page list's padding, both sides together, in CSS px. */
+const LIST_PADDING = 32;
 
-// Gives each opened document its own key, so a new one gets a fresh page list:
-// back at the top, with no window or anchor left over from the last.
-const documentKeys = new WeakMap<object, number>();
-let nextDocumentKey = 0;
-function documentKey(document: object): number {
-  let key = documentKeys.get(document);
-  if (key === undefined) {
-    key = nextDocumentKey++;
-    documentKeys.set(document, key);
-  }
-  return key;
+/**
+ * Room around a fitted page, in CSS px: the list's padding plus this
+ * platform's scrollbar, measured rather than guessed, so fitting never causes
+ * a horizontal scrollbar.
+ */
+function fitGutter(): number {
+  return LIST_PADDING + scrollbarWidth();
 }
 
 function widest(pageSizes: readonly PageSize[]): PageSize | undefined {
@@ -152,6 +146,14 @@ export function DocumentViewer({
     initialZoomState(initialZoom),
   );
   const [pageIndex, setPageIndex] = useState(0);
+  // A new document starts on its first page: reset while rendering, so the
+  // toolbar never shows the last document's page against this one's count.
+  const shownDocument = state.status === "ready" ? state.document : null;
+  const [pageIndexFor, setPageIndexFor] = useState(shownDocument);
+  if (pageIndexFor !== shownDocument) {
+    setPageIndexFor(shownDocument);
+    setPageIndex(0);
+  }
   const [bodyRef, bodySize] = useElementSize<HTMLDivElement>();
   const listRef = useRef<PdfPageListHandle | null>(null);
   const pendingRef = useRef<PendingRequest | null>(null);
@@ -183,8 +185,12 @@ export function DocumentViewer({
       ? [imageSize]
       : undefined;
   const pageCount = pageSizes?.length ?? 0;
+  // In a fit mode the zoom comes from the viewer's size, so a PDF's pages wait
+  // for that measurement instead of laying out at 100% first and again after.
+  const measured = zoomState.mode === "custom" || bodySize !== null;
+  const pdfShown = pdfReady && measured;
   // When the content can take scroll requests.
-  const ready = pdfReady || kind === "text" || imageSize !== null;
+  const ready = pdfShown || kind === "text" || imageSize !== null;
   // Which content a scroll request is for. A text is its own key.
   const sourceKey =
     source === null || isPdfSource(source)
@@ -209,7 +215,7 @@ export function DocumentViewer({
     if (zoomState.mode === "fit-width") {
       const page = widest(pageSizes);
       return page
-        ? fitZoom(page, bodySize.width, null, FIT_GUTTER)
+        ? fitZoom(page, bodySize.width, null, fitGutter())
         : zoomState.level;
     }
     // Fit page fits every page, not the current one: in a document that mixes
@@ -219,7 +225,7 @@ export function DocumentViewer({
     for (const page of pageSizes) {
       level = Math.min(
         level,
-        fitZoom(page, bodySize.width, bodySize.height, FIT_GUTTER),
+        fitZoom(page, bodySize.width, bodySize.height, fitGutter()),
       );
     }
     return Number.isFinite(level) ? level : zoomState.level;
@@ -371,9 +377,11 @@ export function DocumentViewer({
       />
     );
   } else if (state.status === "ready") {
-    content = (
+    content = pdfShown && (
       <PdfPageList
-        key={documentKey(state.document)}
+        // A new document gets a fresh list: back at the top, with no window or
+        // anchor left over from the last.
+        key={objectKey(state.document)}
         ref={listRef}
         document={state.document}
         pageSizes={state.pageSizes}
