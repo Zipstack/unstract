@@ -8,7 +8,6 @@ from django.db import connection
 from django.test import TestCase
 from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
-from django_redis import get_redis_connection
 from global_api_deployment_key.models import GlobalApiDeploymentKey
 from global_api_deployment_key.views import GlobalApiDeploymentKeyViewSet
 from platform_api.models import PlatformApiKey
@@ -16,7 +15,6 @@ from platform_api.views import PlatformApiKeyViewSet
 from platform_audit.tests.base import AuditTestBase
 
 from api_key_usage import reads, recorder, registry
-from api_key_usage.constants import FLUSH_DUE_KEY, FLUSH_LOCK_KEY, PENDING_HASHES
 from api_key_usage.models import ApiKeyLastUsed, ApiKeyUsageDaily
 from api_key_usage.reads import usage_status
 from api_key_usage.recorder import record_key_use

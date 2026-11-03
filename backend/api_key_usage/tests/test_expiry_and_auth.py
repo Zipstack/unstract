@@ -13,7 +13,6 @@ from api_v2.key_helper import KeyHelper
 from api_v2.models import APIDeployment
 from django.test import override_settings
 from django.utils import timezone
-from django_redis import get_redis_connection
 from global_api_deployment_key.models import GlobalApiDeploymentKey
 from global_api_deployment_key.views import GlobalApiDeploymentKeyViewSet
 from platform_api.models import PlatformApiKey
@@ -23,7 +22,6 @@ from platform_audit.tests.base import AuditTestBase
 from rest_framework.test import APITestCase
 
 from api_key_usage import recorder
-from api_key_usage.constants import FLUSH_DUE_KEY, FLUSH_LOCK_KEY, PENDING_HASHES
 from api_key_usage.flush import flush_pending_usage
 from api_key_usage.models import ApiKeyLastUsed, ApiKeyUsageDaily
 from api_key_usage.tests.redis_state import clear_usage_redis
