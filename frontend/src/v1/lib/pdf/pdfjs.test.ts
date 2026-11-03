@@ -5,8 +5,8 @@ const pdfjsMock = vi.hoisted(() => ({
   getDocument: vi.fn(),
   GlobalWorkerOptions: { workerSrc: "" },
 }));
-vi.mock("pdfjs-dist/legacy/build/pdf.js", () => pdfjsMock);
-vi.mock("pdfjs-dist/legacy/build/pdf.worker.min.js?url", () => ({
+vi.mock("pdfjs-dist", () => pdfjsMock);
+vi.mock("pdfjs-dist/build/pdf.worker.min.js?url", () => ({
   default: "/assets/pdf.worker.min.js",
 }));
 
@@ -316,6 +316,9 @@ describe("openPdfDocument", () => {
   it("handles a destroy that fails because the worker is already gone", async () => {
     const task = deferredTask();
     const failed = Promise.reject(new Error("Worker was destroyed"));
+    // Handled here too, so the rejection is not reported while the test waits
+    // for the load to start; the spy below still sees whether destroy handles it.
+    failed.catch(() => undefined);
     const handled = vi.spyOn(failed, "catch");
     task.destroy.mockReturnValue(failed);
     pdfjsMock.getDocument.mockReturnValue(task);
@@ -324,7 +327,6 @@ describe("openPdfDocument", () => {
     await vi.waitFor(() => expect(pdfjsMock.getDocument).toHaveBeenCalled());
     opening.destroy();
     expect(handled).toHaveBeenCalled();
-    await failed.catch(() => undefined);
   });
 
   it("never starts a load that was destroyed while pdf.js was loading", async () => {
@@ -339,7 +341,7 @@ describe("loadPdfjs", () => {
   it("tries again after a failed load instead of keeping the failure", async () => {
     vi.resetModules();
     let fail = true;
-    vi.doMock("pdfjs-dist/legacy/build/pdf.js", () => {
+    vi.doMock("pdfjs-dist", () => {
       if (fail) {
         throw new Error("chunk failed");
       }
@@ -353,6 +355,6 @@ describe("loadPdfjs", () => {
     expect(pdfjsMock.GlobalWorkerOptions.workerSrc).toBe(
       "/assets/pdf.worker.min.js",
     );
-    vi.doUnmock("pdfjs-dist/legacy/build/pdf.js");
+    vi.doUnmock("pdfjs-dist");
   });
 });

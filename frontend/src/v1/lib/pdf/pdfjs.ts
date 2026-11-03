@@ -2,10 +2,11 @@
  * The one place v1 touches pdf.js. Everything else imports from here, so the
  * version, the build and the security defaults are decided once.
  *
- * It uses the legacy build of the pdfjs-dist already in package.json (3.11.174,
- * shared with v0): the default build targets only the newest browsers. The
- * worker is bundled with `?url`, never fetched from a CDN. Both load on first
- * use, so pdf.js stays out of the bundle of any page that never opens a PDF.
+ * It uses the same pdf.js as v0: the default build and worker of the
+ * pdfjs-dist already in package.json (3.11.174), so the app ships one engine
+ * and one worker. The worker is bundled with `?url`, never fetched from a CDN.
+ * Both load on first use, so pdf.js stays out of the bundle of any page that
+ * never opens a PDF.
  */
 import type {
   PDFDocumentLoadingTask,
@@ -15,7 +16,7 @@ import type {
 import type { DocumentInitParameters } from "pdfjs-dist/types/src/display/api";
 import type { OpenedPdf, PageSize, PdfLoadFailure, PdfSource } from "./types";
 
-type Pdfjs = typeof import("pdfjs-dist/legacy/build/pdf.js");
+type Pdfjs = typeof import("pdfjs-dist");
 
 /** How many page sizes are requested from the worker at once. */
 const PAGE_SIZE_CONCURRENCY = 16;
@@ -25,8 +26,8 @@ let pdfjsPromise: Promise<Pdfjs> | null = null;
 /** Loads pdf.js and points it at the bundled worker, once per page load. */
 export function loadPdfjs(): Promise<Pdfjs> {
   pdfjsPromise ??= Promise.all([
-    import("pdfjs-dist/legacy/build/pdf.js"),
-    import("pdfjs-dist/legacy/build/pdf.worker.min.js?url"),
+    import("pdfjs-dist"),
+    import("pdfjs-dist/build/pdf.worker.min.js?url"),
   ]).then(
     ([pdfjs, worker]) => {
       pdfjs.GlobalWorkerOptions.workerSrc = worker.default;
