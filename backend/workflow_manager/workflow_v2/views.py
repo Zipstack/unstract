@@ -449,7 +449,7 @@ def file_history_by_cache_key_internal(request, cache_key=None):
             )
 
     except Exception as e:
-        logger.error(f"Failed to get file history for cache key {cache_key}: {e}")
+        logger.exception(f"Failed to get file history for cache key {cache_key}: {e}")
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
@@ -837,7 +837,7 @@ def file_history_batch_lookup_internal(request):
         return Response({"file_histories": response_data}, status=status.HTTP_200_OK)
 
     except Exception as e:
-        logger.error(
+        logger.exception(
             f"Failed to batch lookup file history for workflow {workflow_id}: {e}"
         )
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
@@ -1001,7 +1001,7 @@ def create_file_history_internal(request):
                     )
 
             except Exception as retrieval_error:
-                logger.error(
+                logger.exception(
                     f"Failed to retrieve existing file history record: {str(retrieval_error)}"
                 )
                 return Response(
@@ -1046,7 +1046,7 @@ def create_file_history_internal(request):
         return Response(response.to_dict(), status=status.HTTP_201_CREATED)
 
     except Exception as e:
-        logger.error(f"Failed to create file history: {e}")
+        logger.exception(f"Failed to create file history: {e}")
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
@@ -1234,14 +1234,14 @@ def reserve_file_processing_internal(request):
                     )
 
         except Exception as e:
-            logger.error(f"Failed to reserve file for processing: {str(e)}")
+            logger.exception(f"Failed to reserve file for processing: {str(e)}")
             return Response(
                 {"error": "Failed to reserve file for processing", "detail": str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
     except Exception as e:
-        logger.error(f"Failed to process reservation request: {str(e)}")
+        logger.exception(f"Failed to process reservation request: {str(e)}")
         return Response(
             {"error": "Internal server error", "detail": str(e)},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -1353,7 +1353,7 @@ def get_file_history_internal(request):
             )
 
     except Exception as e:
-        logger.error(f"Failed to get file history: {str(e)}")
+        logger.exception(f"Failed to get file history: {str(e)}")
         return Response(
             {"error": "Failed to get file history", "detail": str(e)},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -1395,5 +1395,5 @@ def file_history_status_internal(request, file_history_id):
         )
 
     except Exception as e:
-        logger.error(f"Failed to get file history status for {file_history_id}: {e}")
+        logger.exception(f"Failed to get file history status for {file_history_id}: {e}")
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
