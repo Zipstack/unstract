@@ -63,20 +63,16 @@ describe("toDocumentParams", () => {
     ).toBe(false);
   });
 
-  it("passes the URL, credentials, headers and password through", () => {
+  it("passes the URL, credentials and headers through", () => {
     expect(
-      toDocumentParams(
-        {
-          kind: "url",
-          url: "/a.pdf",
-          withCredentials: true,
-          httpHeaders: { Authorization: "Bearer x" },
-        },
-        "secret",
-      ),
+      toDocumentParams({
+        kind: "url",
+        url: "/a.pdf",
+        withCredentials: true,
+        httpHeaders: { Authorization: "Bearer x" },
+      }),
     ).toEqual({
       isEvalSupported: false,
-      password: "secret",
       url: "/a.pdf",
       withCredentials: true,
       httpHeaders: { Authorization: "Bearer x" },
@@ -145,6 +141,48 @@ describe("readPageSizes", () => {
     await expect(result).resolves.toEqual(sizes);
     expect(getPage.mock.calls.map(([n]) => n)).toEqual([1, 2, 3, 4, 5]);
   });
+
+  it("keeps the document open when a page cannot be read", async () => {
+    const error = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+    const sizes = [
+      { width: 1, height: 1 },
+      { width: 600, height: 800 },
+      { width: 700, height: 900 },
+    ];
+    const document = {
+      numPages: 3,
+      getPage: async (n: number) => {
+        if (n !== 3) {
+          throw new Error("damaged page");
+        }
+        return { getViewport: () => sizes[n - 1] };
+      },
+    } as unknown as PDFDocumentProxy;
+    // Pages 1 and 2 borrow page 3's size; nothing comes before them.
+    await expect(readPageSizes(document)).resolves.toEqual([
+      sizes[2],
+      sizes[2],
+      sizes[2],
+    ]);
+    expect(error).toHaveBeenCalledTimes(2);
+    error.mockRestore();
+  });
+
+  it("fails when no page can be read", async () => {
+    const error = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+    const document = {
+      numPages: 2,
+      getPage: async () => {
+        throw new Error("damaged file");
+      },
+    } as unknown as PDFDocumentProxy;
+    await expect(readPageSizes(document)).rejects.toThrow("damaged file");
+    error.mockRestore();
+  });
 });
 
 describe("classifyLoadError", () => {
@@ -193,15 +231,19 @@ describe("classifyLoadError", () => {
     });
   });
 
-  it("reports anything else as a failure with its message", () => {
-    expect(classifyLoadError(named("UnknownErrorException"))).toEqual({
+  it("shows a plain message for anything else, and logs pdf.js's own", () => {
+    const error = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
+    const raw = named("UnknownErrorException");
+    const failed = {
       kind: "failed",
-      message: "boom",
-    });
-    expect(classifyLoadError("offline")).toEqual({
-      kind: "failed",
-      message: "offline",
-    });
+      message: "The document couldn't be opened.",
+    };
+    expect(classifyLoadError(raw)).toEqual(failed);
+    expect(classifyLoadError("offline")).toEqual(failed);
+    expect(error).toHaveBeenCalledWith(expect.any(String), raw);
+    error.mockRestore();
   });
 });
 
@@ -238,6 +280,57 @@ describe("openPdfDocument", () => {
     opening.destroy();
     opening.destroy();
     expect(task.destroy).toHaveBeenCalledTimes(1);
+  });
+
+  it("asks for a password on the same load, and says when one was wrong", async () => {
+    const task = Object.assign(deferredTask(), {
+      onPassword: null as
+        | null
+        | ((update: (password: string) => void, reason: number) => void),
+    });
+    pdfjsMock.getDocument.mockReturnValue(task);
+    const prompts: { incorrect: boolean; submit: (p: string) => void }[] = [];
+    const opening = openPdfDocument(
+      { kind: "url", url: "/locked.pdf" },
+      { onPassword: (prompt) => prompts.push(prompt) },
+    );
+    opening.promise.catch(() => undefined);
+    await vi.waitFor(() => expect(task.onPassword).not.toBeNull());
+    const update = vi.fn();
+    task.onPassword?.(update, 1);
+    prompts[0]?.submit("wrong");
+    task.onPassword?.(update, 2);
+    expect(prompts.map((prompt) => prompt.incorrect)).toEqual([false, true]);
+    expect(update).toHaveBeenCalledWith("wrong");
+    // One download for all of it.
+    expect(pdfjsMock.getDocument).toHaveBeenCalledTimes(1);
+    expect(pdfjsMock.getDocument.mock.calls[0]?.[0]).not.toHaveProperty(
+      "password",
+    );
+
+    opening.destroy();
+    prompts[1]?.submit("late");
+    expect(update).toHaveBeenCalledTimes(1);
+  });
+
+  it("handles a destroy that fails because the worker is already gone", async () => {
+    const task = deferredTask();
+    const handled = vi.fn();
+    task.destroy.mockImplementation(() => {
+      const failed = Promise.reject(new Error("Worker was destroyed"));
+      const original = failed.catch.bind(failed);
+      failed.catch = (onRejected) => {
+        handled();
+        return original(onRejected);
+      };
+      return failed;
+    });
+    pdfjsMock.getDocument.mockReturnValue(task);
+    const opening = openPdfDocument({ kind: "url", url: "/a.pdf" });
+    opening.promise.catch(() => undefined);
+    await vi.waitFor(() => expect(pdfjsMock.getDocument).toHaveBeenCalled());
+    opening.destroy();
+    expect(handled).toHaveBeenCalled();
   });
 
   it("never starts a load that was destroyed while pdf.js was loading", async () => {

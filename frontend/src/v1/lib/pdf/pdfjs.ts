@@ -48,11 +48,8 @@ export function loadPdfjs(): Promise<Pdfjs> {
  * are copied, because pdf.js transfers the buffer it gets to its worker, which
  * would leave the caller's copy empty for the next attempt.
  */
-export function toDocumentParams(
-  source: PdfSource,
-  password?: string,
-): DocumentInitParameters {
-  const shared = { isEvalSupported: false, password };
+export function toDocumentParams(source: PdfSource): DocumentInitParameters {
+  const shared = { isEvalSupported: false };
   if (source.kind === "url") {
     return {
       ...shared,
@@ -104,33 +101,64 @@ function pageSize(page: PDFPageProxy): PageSize {
   return { width, height };
 }
 
+/** US Letter, for a page whose size cannot be read when no other page's can. */
+const FALLBACK_PAGE_SIZE: PageSize = { width: 612, height: 792 };
+
 /**
  * Every page's size, in page order. Requests run in parallel (bounded), not one
  * after another: one at a time took about a second for 200 pages.
+ *
+ * A page whose size cannot be read takes the size of the nearest readable page
+ * before it (or after it, for the first pages), so one damaged page does not
+ * stop the rest of the document from opening; that page then fails on its own
+ * when it renders. Only when no page can be read does the whole read fail.
  */
 export async function readPageSizes(
   document: PDFDocumentProxy,
   concurrency: number = PAGE_SIZE_CONCURRENCY,
 ): Promise<PageSize[]> {
-  const sizes = new Array<PageSize>(document.numPages);
+  const read = new Array<PageSize | null>(document.numPages).fill(null);
+  let firstError: unknown = null;
   let next = 0;
   async function drain(): Promise<void> {
     while (next < document.numPages) {
       const index = next++;
-      sizes[index] = pageSize(await document.getPage(index + 1));
+      try {
+        read[index] = pageSize(await document.getPage(index + 1));
+      } catch (error) {
+        firstError ??= error;
+        console.error(`pdf.js could not read page ${index + 1}`, error);
+      }
     }
   }
   const lanes = Math.max(1, Math.min(concurrency, document.numPages));
   await Promise.all(Array.from({ length: lanes }, drain));
-  return sizes;
+  if (document.numPages > 0 && read.every((size) => size === null)) {
+    throw firstError;
+  }
+  let previous: PageSize =
+    read.find((size): size is PageSize => size !== null) ?? FALLBACK_PAGE_SIZE;
+  return read.map((size) => {
+    previous = size ?? previous;
+    return previous;
+  });
+}
+
+/** The `name` pdf.js gives an error (`PasswordException`, …), or "". */
+export function pdfErrorName(error: unknown): string {
+  return typeof error === "object" && error !== null && "name" in error
+    ? String(error.name)
+    : "";
+}
+
+/** Whether a render task ended because it was cancelled, not because it failed. */
+export function isRenderCancelled(error: unknown): boolean {
+  return pdfErrorName(error) === "RenderingCancelledException";
 }
 
 /** Maps a pdf.js load error to what the viewer shows. */
 export function classifyLoadError(error: unknown): PdfLoadFailure {
-  const name =
-    typeof error === "object" && error !== null && "name" in error
-      ? String(error.name)
-      : "";
+  const name = pdfErrorName(error);
   if (name === "PasswordException") {
     // pdf.js PasswordResponses: 1 needs a password, 2 the one given was wrong.
     const code = (error as { code?: unknown }).code;
@@ -154,8 +182,10 @@ export function classifyLoadError(error: unknown): PdfLoadFailure {
           : "The server returned an error.",
     };
   }
-  const message = error instanceof Error ? error.message : String(error);
-  return { kind: "failed", message };
+  // Anything else carries pdf.js's own wording ("Invalid PDF structure", at
+  // times a stack): keep it for the console and show a plain sentence.
+  console.error("pdf.js could not open the document", error);
+  return { kind: "failed", message: "The document couldn't be opened." };
 }
 
 export interface PdfOpening {
@@ -164,10 +194,29 @@ export interface PdfOpening {
   destroy(): void;
 }
 
+/** A document asking for its password, mid-load. */
+export interface PasswordPrompt {
+  /** The last password given was wrong. */
+  readonly incorrect: boolean;
+  /** Continues the same load with this password: nothing is downloaded again. */
+  submit(password: string): void;
+}
+
+export interface PdfOpenOptions {
+  /**
+   * Called each time the document asks for a password. Without it, a
+   * password-protected document fails with pdf.js's `PasswordException`.
+   */
+  onPassword?: (prompt: PasswordPrompt) => void;
+}
+
+// pdf.js PasswordResponses.INCORRECT_PASSWORD.
+const INCORRECT_PASSWORD = 2;
+
 /** Opens a document and reads its page sizes. Call `destroy` when done with it. */
 export function openPdfDocument(
   source: PdfSource,
-  options: { password?: string } = {},
+  options: PdfOpenOptions = {},
 ): PdfOpening {
   let task: PDFDocumentLoadingTask | null = null;
   let destroyed = false;
@@ -176,7 +225,28 @@ export function openPdfDocument(
     if (destroyed) {
       throw new Error("The document was closed before it opened.");
     }
-    task = pdfjs.getDocument(toDocumentParams(source, options.password));
+    task = pdfjs.getDocument(toDocumentParams(source));
+    const { onPassword } = options;
+    if (onPassword) {
+      // pdf.js waits on this callback instead of failing, with the download
+      // and the worker kept, so a password costs no second download.
+      task.onPassword = (
+        update: (password: string) => void,
+        reason: number,
+      ) => {
+        if (destroyed) {
+          return;
+        }
+        onPassword({
+          incorrect: reason === INCORRECT_PASSWORD,
+          submit(password) {
+            if (!destroyed) {
+              update(password);
+            }
+          },
+        });
+      };
+    }
     const document = await task.promise;
     const pageSizes = await readPageSizes(document);
     return { document, pageSizes };
@@ -188,8 +258,9 @@ export function openPdfDocument(
         return;
       }
       destroyed = true;
-      // Destroying the loading task also destroys its document.
-      void task?.destroy();
+      // Destroying the loading task also destroys its document. It rejects
+      // when the worker is already gone, which leaves nothing to free.
+      task?.destroy().catch(() => undefined);
     },
   };
 }
