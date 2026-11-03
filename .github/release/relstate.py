@@ -231,7 +231,6 @@ def taken_tags(reg=None, registry=registry_tags):
     return {t for a in _artifacts() for t in (reg[a] if a in reg else registry(a))}
 
 
-# Take RC pushes the on-prem RC chart next to the on-prem RC images, as X.Y.Z-rc.N.
 RC_CHART = "on-prem/unstract-platform"
 
 
@@ -654,7 +653,7 @@ def abandon_plan(repo, branch, registry=registry_tags, services=rc_service_tags)
     deleted only when every tag on it is an RC of this line.
     """
     x, y = rm._line(branch)
-    # A Helm chart's version has no "v": Take RC pushes the on-prem RC chart as X.Y.Z-rc.N.
+    # The on-prem RC chart's versions have no "v".
     rc_re = re.compile(rf"(?:{re.escape(PREFIX)}v)?{x}\.{y}\.\d+-rc\.\d+")
     reg = {a: _read(a, registry) for a in _artifacts()}
     main = _main(repo)
