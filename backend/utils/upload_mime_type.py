@@ -1,11 +1,11 @@
+import shutil
 import tempfile
-
-from django.core.files.uploadedfile import UploadedFile
+from typing import IO
 
 from unstract.core.mime_gate import classify_file_path
 
 
-def detect_upload_mime_type(file: UploadedFile) -> str:
+def detect_upload_mime_type(file: IO[bytes]) -> str:
     """Classify an upload from its own bytes, as LLMWhisperer would.
 
     The multipart Content-Type is supplied by the caller and never verified, so
@@ -17,8 +17,7 @@ def detect_upload_mime_type(file: UploadedFile) -> str:
 
     with tempfile.NamedTemporaryFile(suffix=".upload") as spill:
         file.seek(0)
-        for chunk in file.chunks():
-            spill.write(chunk)
+        shutil.copyfileobj(file, spill)
         spill.flush()
         file.seek(0)
         return classify_file_path(spill.name)
