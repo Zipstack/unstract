@@ -36,8 +36,9 @@
  * `!`, a hex-looking identifier or a value such as "outline" or "pt-BR" never
  * matches. One S2 check reads every literal: a string that is entirely a
  * colour (`fill="#ff0000"`, "rgb(1 2 3)", "red") fails wherever it appears,
- * while "Run #1234" does not. Test files and styles/tokens.ts (the raw values, by
- * design) are skipped for them. S1 matches only a JSX `style=` attribute.
+ * while "Run #1234" does not. Test files are skipped for them; the raw values
+ * live in styles/tokens.json, which is not code. S1 matches only a JSX
+ * `style=` attribute.
  * In CSS, comments are blanked first; the generated styles/tokens.css is
  * skipped for S2 and S3 only. One escape hatch, for S3 only: a CSS line that
  * ends with the comment `/* v1-styles-allow: forced-colors outline *\/` may
@@ -62,9 +63,7 @@ import path from "node:path";
 const ROOT = path.join(import.meta.dirname, "..", "src", "v1");
 
 const CODE_EXT = /\.(ts|tsx|mts|cts)$/;
-const CSS_EXT = /\.css$/;
 const TEST_FILE = /\.(test|spec)\.(ts|tsx|mts|cts)$/;
-const RAW_VALUES_TS = "styles/tokens.ts";
 const GENERATED_CSS = "styles/tokens.css";
 // Folders whose files may import a .css file.
 const CSS_IMPORTERS = new Set(["app", "styles"]);
@@ -72,7 +71,7 @@ const CSS_IMPORTERS = new Set(["app", "styles"]);
 const MSG = {
   inlineStyle:
     "No inline style under v1; style with tokens and Tailwind. A style attribute may set only CSS custom properties (--name) that ui: classes read.",
-  colour: "No raw colour under v1; use a token from styles/tokens.ts.",
+  colour: "No raw colour under v1; use a token from styles/tokens.json.",
   pixel: "No raw pixel value under v1; use a token or the spacing scale.",
   important: "No !important under v1.",
   cssImport: "CSS is imported only from app/ and styles/ under v1.",
@@ -146,7 +145,7 @@ const ARBITRARY_WORD_RE = /(?:-|(?<![\w-]))\[(?:[\w-]+:)?([a-zA-Z]+)\]/g;
 const ARBITRARY_UNIT_RE = /\[[^\]\s]*\d(?:px|rem|em|vh|vw|pt)(?![A-Za-z-])/g;
 // A CSS length in a unit: `3px`, `.5rem`, `-1em`, `100vh`.
 const CSS_UNIT_RE =
-  /(?<![\w.])(?:\d+\.?\d*|\.\d+)(?:px|rem|em|pt|vh|vw)(?![\w-])/g;
+  /(?<![\w.])(?:\d+(?:\.\d*)?|\.\d+)(?:px|rem|em|pt|vh|vw)(?![\w-])/g;
 // A CSS declaration's value (after the first `:` of `prop: value`).
 const CSS_DECLARATION_RE = /(?<![\w-])[\w-]+\s*:\s*([^;{}]+)/g;
 // The S3 escape hatch for a CSS line (see the header).
@@ -176,12 +175,8 @@ const PREFIX_STEMS = [
   "min-h max-w max-h size items justify font leading tracking z inset top",
   "left right bottom overflow opacity duration cursor select space",
 ];
-const stems = (lines) =>
-  lines
-    .join(" ")
-    .split(" ")
-    .map((s) => s.replace("-", "\\-"))
-    .join("|");
+// `-` needs no escape outside a character class.
+const stems = (lines) => lines.join(" ").split(" ").join("|");
 // A leading `-` is a negative value (`-mt-2`); a trailing `!` is important.
 const UTILITY_RE = new RegExp(
   `^-?(?:(?:${stems(WHOLE_STEMS)})(?:-|!?$)|(?:${stems(PREFIX_STEMS)})-)`,
@@ -732,9 +727,6 @@ function checkCode(rel) {
       report(rel, lineAt(text, m.index), MSG.inlineStyle);
     }
   }
-  if (rel === RAW_VALUES_TS) {
-    return;
-  }
   const pieces = literals(text);
   // A template literal is judged as a whole, across its `${}` expressions.
   const textById = new Map();
@@ -893,7 +885,7 @@ if (!fs.existsSync(ROOT)) {
 for (const rel of walk(ROOT)) {
   if (CODE_EXT.test(rel)) {
     checkCode(rel);
-  } else if (CSS_EXT.test(rel)) {
+  } else if (rel.endsWith(".css")) {
     checkCss(rel);
   }
 }

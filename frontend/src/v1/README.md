@@ -36,7 +36,7 @@ is convention.
 
 - `ui:` on every utility: an unprefixed class renders with v0's theme whenever
   v0 already uses that class name, and silently does nothing otherwise. Merge
-  with `cn` (`@v1/lib/cn`); `bun run tokens:v1` makes tokens.css from tokens.ts.
+  with `cn` (`@v1/lib/cn`); `bun run tokens:v1` makes tokens.css from tokens.json.
 - Modes `light`, `dark`, `unstract` (or `system`): the user chooses, stored per
   browser under `unstract.v1.theme`, applied as `data-theme` by `ThemeProvider`.
   Portals: `getPortalContainer()`; focus: `ui:focus-visible:focus-ring`; Geist
@@ -92,7 +92,7 @@ Every folder may import from itself. Test files (`*.test.ts(x)`,
 | --- | --- |
 | `bun run typecheck:v1` | TypeScript-only files, styles only in `styles/`, allowed file types only, no symlinks, folder taxonomy; then `tsc` with `src/v1/tsconfig.json` |
 | `bun run lint:v1` | Biome on `src/v1/`, then imports in code and in `styles/` CSS (nothing outside v1, folder contract, and v0 reaching v1 only through `@v1`), PropTypes and `ant-` checks, then the styling policy (S1 to S8 above) |
-| `bun run tokens:v1` | Regenerates `styles/tokens.css` from `styles/tokens.ts` (runs under bun, which imports the TypeScript source directly) |
+| `bun run tokens:v1` | Regenerates `styles/tokens.css` from `styles/tokens.json` (via `styles/tokens.ts`; runs under bun, which imports the TypeScript source directly) |
 | `bun run test:v1` | v1 unit tests, then the guardrail fixtures in `test-fixtures/v1-boundary/` |
 
 Biome (`biome.json`) also reports the banned imports and the plain spellings of
