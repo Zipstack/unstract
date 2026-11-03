@@ -268,6 +268,15 @@ export function DocumentViewer({
     [run],
   );
 
+  // A request waiting for one source is dropped as soon as the source changes,
+  // even while nothing is shown: switching away and back before either opens
+  // must not bring it back.
+  useEffect(() => {
+    if (pendingRef.current && pendingRef.current.sourceKey !== sourceKey) {
+      pendingRef.current = null;
+    }
+  }, [sourceKey]);
+
   // A waiting request runs once the pages are laid out, and is tried again
   // when the highlights or the text change, in case its target has arrived
   // (a text kept by its id changes in place, without a new source). One made

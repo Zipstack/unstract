@@ -486,6 +486,23 @@ it("drops a scroll asked for one document when another is shown", async () => {
   }
 });
 
+it("drops a waiting scroll when the source changes, even back to its own document", async () => {
+  const restore = layOutEveryPage();
+  try {
+    const ref = createRef<DocumentViewerHandle>();
+    const other: PdfSource = { kind: "url", url: "/other.pdf" };
+    const { rerender } = render(<DocumentViewer ref={ref} source={source} />);
+    act(() => ref.current?.scrollToPage(2));
+    // Away and back before either document has opened.
+    rerender(<DocumentViewer ref={ref} source={other} />);
+    rerender(<DocumentViewer ref={ref} source={source} />);
+    await open();
+    expect(pagesRegion().scrollTop).toBe(0);
+  } finally {
+    restore();
+  }
+});
+
 it("scrolls to the active highlight when it changes, and to one set while loading", async () => {
   const restore = layOutEveryPage();
   try {
