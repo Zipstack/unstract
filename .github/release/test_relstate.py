@@ -748,6 +748,33 @@ class Scenario(unittest.TestCase):
             ],
         )  # another line's chart keeps the package from emptying
 
+    def test_abandon_keeps_the_newest_rc_chart(self):
+        self.built_by_mistake()
+        chart = {
+            f"1.9.0-rc.{n}": {"id": None, "digest": f"sha256:c{n}", "pushed_at": "x"}
+            for n in range(1, 11)
+        }
+        plan = rs.abandon_plan(
+            self.repo,
+            "release/1.9",
+            lambda a: self.reg.get(a, {}),
+            lambda: {"on-prem/unstract-platform": chart},
+        )
+        self.assertIn(
+            "on-prem/unstract-platform:1.9.0-rc.10", plan["kept"]
+        )  # rc.10 sorts after rc.9
+        dropped = [
+            t for v in plan["versions"]["on-prem/unstract-platform"] for t in v["tags"]
+        ]
+        self.assertEqual(dropped, [f"1.9.0-rc.{n}" for n in range(1, 10)])
+
+    def test_rc_chart_tags_are_never_allocated_again(self):
+        asked = []
+        chart = {"1.9.0-rc.1": {}, "1.9.0": {}, "latest": {}}
+        tags = rs.rc_chart_tags(lambda a: asked.append(a) or chart)
+        self.assertEqual(asked, [rs.RC_CHART])
+        self.assertEqual(tags, {"v1.9.0-rc.1"})
+
     def test_abandon_plan_refusals(self):
         self.built_by_mistake()
         plan = lambda: rs.abandon_plan(

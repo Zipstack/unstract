@@ -2598,8 +2598,26 @@ class TakeRcVersion(Workflow):
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertEqual(
             self.read("output"),
-            "tag=v1.7.0-rc.2\nbump=true\ntargets=cloud\nreopen=true\nnewest=release/1.7\n",
+            "tag=v1.7.0-rc.2\nbump=true\ntargets=cloud\nreopen=true\nnewest=release/1.7\nchart=false\n",
         )
+
+    def test_allocates_past_a_kept_rc_chart(self):
+        # An abandon kept the on-prem RC chart 1.7.0-rc.1 and deleted its images: a re-cut must not reuse rc.1.
+        self.line("1.7")
+        dev_git(self.cloud, "checkout", "-q", "-b", "release/1.7", "origin/release/1.7")
+        self.write("reg-on-prem_backend.jsonl", "")
+        self.write(
+            "reg-on-prem_unstract-platform.jsonl",
+            '{"id": 1, "digest": "sha256:c", "pushed_at": "2026-09-01T00:00:00Z", "tags": ["1.7.0-rc.1"]}\n',
+        )
+        r = self.run_step(
+            inline("take-rc-build.yaml", "Plan version and targets"),
+            BRANCH="release/1.7",
+            TARGETS="on-prem",
+        )
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("tag=v1.7.0-rc.2\n", self.read("output"))
+        self.assertIn("\nchart=true\n", self.read("output"))
 
     def test_plan_names_the_newest_line(self):
         self.line("1.7", "v1.7.0")
@@ -2702,7 +2720,7 @@ class TakeRcVersion(Workflow):
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertEqual(
             self.read("output"),
-            "tag=v1.7.1-rc.1\nbump=true\ntargets=cloud\nreopen=false\nnewest=release/1.7\n",
+            "tag=v1.7.1-rc.1\nbump=true\ntargets=cloud\nreopen=false\nnewest=release/1.7\nchart=false\n",
         )
 
     def test_rerun_on_a_tagged_tip_reopens_for_a_target_already_built(self):
@@ -2734,7 +2752,7 @@ class TakeRcVersion(Workflow):
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertEqual(
             self.read("output"),
-            "tag=v1.7.1-rc.1\nbump=false\ntargets=cloud\nreopen=true\nnewest=release/1.7\n",
+            "tag=v1.7.1-rc.1\nbump=false\ntargets=cloud\nreopen=true\nnewest=release/1.7\nchart=true\n",  # on-prem built earlier: still push its chart
         )
 
 
