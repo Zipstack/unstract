@@ -164,7 +164,18 @@
                     "message": "v1 is typed with TypeScript; PropTypes are not used under src/v1."
                   },
                   {
-                    "group": ["**/*.css", "!@v1/styles/**"],
+                    "group": [
+                      "**/*.css",
+                      "**/*.less",
+                      "**/*.sass",
+                      "**/*.scss",
+                      "**/*.styl",
+                      "**/*.stylus",
+                      "**/*.pcss",
+                      "**/*.postcss",
+                      "**/*.sss",
+                      "!@v1/styles/**"
+                    ],
                     "message": "No component .css under src/v1; style with tokens and Tailwind. Global v1 styles live in @v1/styles/."
                   }
                 ]
@@ -195,6 +206,10 @@
                       "src/v1/**",
                       "/src/v1",
                       "/src/v1/**",
+                      "./v1",
+                      "./v1/**",
+                      "../**/v1",
+                      "../**/v1/**",
                       "!@v1"
                     ],
                     "message": "v0 may import only the v1 public entry, as '@v1'."
