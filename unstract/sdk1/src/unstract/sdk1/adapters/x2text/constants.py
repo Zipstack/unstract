@@ -10,6 +10,10 @@ class X2TextConstants:
     EXTRACTED_TEXT = "extracted_text"
     WHISPER_HASH = "whisper-hash"
     WHISPER_HASH_V2 = "whisper_hash"
+    # ``process()`` kwarg carrying an ``ImageModePolicy`` for image output
+    # mode, so the extraction-time checks run against the LLM that will
+    # consume the pages. Absent -> the fixed legacy limits apply.
+    IMAGE_LIMITS = "image_limits"
 
 
 class ImageOutputConstants:
@@ -49,6 +53,12 @@ class ImageOutputConstants:
     # First capture group is the numeric page index (as a string, possibly
     # zero-padded) — cast to int before sorting.
     PAGE_NUMBER_REGEX = r"page_(\d+)\.png"
+
+    # Hard maximum page count of LLMWhisperer's /pdf-to-images endpoint
+    # (PDFToImagesConverter.MAX_PAGES, tied to the page_001..page_999 file
+    # naming). A larger cap here still fails there, with a less specific
+    # error, so every image-mode page budget is clamped to this value.
+    LLMWHISPERER_MAX_PAGES = 999
 
     # Leading bytes of every PDF file — the content-based check for inputs
     # whose storage name carries no extension (workflow executions store the
