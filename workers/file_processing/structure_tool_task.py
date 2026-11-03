@@ -519,6 +519,7 @@ def _execute_structure_tool_impl(params: dict) -> dict:
     agentic_source_path = str(execution_run_data_folder / "SOURCE")
     agentic_results: dict[str, Any] = {}
     agentic_raw_data: dict[str, Any] = {}
+    agentic_highlight_data: dict[str, Any] = {}
     agentic_metrics: dict[str, Any] = {}
     for at_output in agentic_table_outputs:
         at_settings = at_output.get("agentic_table_settings") or {}
@@ -542,6 +543,7 @@ def _execute_structure_tool_impl(params: dict) -> dict:
             "execution_id": execution_id,
             "PLATFORM_SERVICE_API_KEY": platform_service_api_key,
             "group_key": at_settings.get("group_key", ""),
+            "enable_highlight": is_highlight_enabled,
             "enable_header_mapping": at_settings.get("enable_header_mapping", False),
             "enable_raw_extraction": at_settings.get("enable_raw_extraction", False),
             # Set on the output at export by prompt_studio_registry_helper.py
@@ -576,10 +578,15 @@ def _execute_structure_tool_impl(params: dict) -> dict:
         raw_data = at_output_data.get("_raw_data")
         if raw_data is not None:
             agentic_raw_data[at_output[_SK.NAME]] = raw_data
+        hl_data = at_output_data.get("_highlight_data")
+        if hl_data is not None:
+            agentic_highlight_data[at_output[_SK.NAME]] = hl_data
         logger.info(
-            "Executor result for %s: _raw_data present=%s, keys=%s",
+            "Executor result for %s: _raw_data present=%s, "
+            "_highlight_data present=%s, keys=%s",
             at_output.get("name", "unknown"),
             raw_data is not None,
+            hl_data is not None,
             list(at_output_data.keys()) if at_output_data else [],
         )
         # The executor runs its own X2Text, so its metrics carry an extraction
@@ -636,6 +643,10 @@ def _execute_structure_tool_impl(params: dict) -> dict:
             structured_output.setdefault("output", {}).update(agentic_results)
         if agentic_raw_data:
             structured_output.setdefault("output", {})["_raw_data"] = agentic_raw_data
+        if agentic_highlight_data:
+            structured_output.setdefault("metadata", {})["highlight_data"] = (
+                agentic_highlight_data
+            )
         _merge_agentic_metrics(structured_output, agentic_metrics)
     else:
         # All-agentic case: skip the legacy pipeline entirely. The metrics
@@ -644,9 +655,12 @@ def _execute_structure_tool_impl(params: dict) -> dict:
         agentic_output: dict[str, Any] = dict(agentic_results)
         if agentic_raw_data:
             agentic_output["_raw_data"] = agentic_raw_data
+        agentic_metadata: dict[str, Any] = {"agentic_only": True}
+        if agentic_highlight_data:
+            agentic_metadata["highlight_data"] = agentic_highlight_data
         structured_output = {
             "output": agentic_output,
-            "metadata": {"agentic_only": True},
+            "metadata": agentic_metadata,
         }
         _merge_agentic_metrics(structured_output, agentic_metrics)
         pipeline_elapsed = 0.0
