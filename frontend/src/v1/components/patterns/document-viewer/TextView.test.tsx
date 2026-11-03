@@ -80,9 +80,10 @@ it("centres a highlighted line on request", () => {
   expect(ref.current?.scrollToHighlight("nope")).toBe(false);
 });
 
-it("shows the empty state for blank text", () => {
+it("says no text was found for blank text, not that there is no document", () => {
   render(<TextView text={"  \n "} />);
-  expect(screen.getByText("No document")).toBeTruthy();
+  expect(screen.getByText("No text found")).toBeTruthy();
+  expect(screen.queryByText("No document")).toBeNull();
 });
 
 it("gives every row one gutter, as wide as the longest line number", () => {
@@ -93,4 +94,12 @@ it("gives every row one gutter, as wide as the longest line number", () => {
   const rows = container.querySelectorAll("li");
   expect(rows[8]?.className).toBe(rows[119]?.className);
   expect(rows[8]?.className).toContain("grid-cols-[var(--gutter)_1fr]");
+});
+
+it("lets the browser skip lines that are off screen, keeping them in the DOM", () => {
+  const text = Array.from({ length: 50 }, (_, n) => `line ${n}`).join("\n");
+  const { container } = render(<TextView text={text} />);
+  const lines = container.querySelectorAll("li");
+  expect(lines).toHaveLength(50);
+  expect(lines[49]?.className).toContain("[content-visibility:auto]");
 });

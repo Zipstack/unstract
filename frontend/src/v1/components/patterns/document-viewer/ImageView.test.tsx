@@ -109,3 +109,80 @@ it("centres a box across and down, and a line only down", () => {
   expect(root.scrollTop).toBe(16 + 800 - 200);
   expect(root.scrollLeft).toBe(30);
 });
+
+it("will not scroll to a highlight before the image has its size", () => {
+  const ref = createRef<PdfPageListHandle>();
+  render(
+    <ImageView
+      ref={ref}
+      url="/scan.png"
+      zoom={1}
+      highlights={[
+        {
+          id: "h",
+          page: 0,
+          x: 0,
+          y: 0.5,
+          w: 1,
+          h: 0.1,
+          variant: "line",
+          tone: "default",
+        },
+      ]}
+    />,
+  );
+  expect(ref.current?.scrollToHighlight("h")).toBe(false);
+  loadImage(1200, 1600);
+  expect(ref.current?.scrollToHighlight("h")).toBe(true);
+});
+
+it("starts over when the URL changes without a remount", () => {
+  const { container, rerender } = render(
+    <ImageView url="/first.png" zoom={1} />,
+  );
+  loadImage(1200, 1600);
+  rerender(<ImageView url="/second.png" zoom={1} />);
+  expect(screen.getByRole("status")).toBeTruthy();
+  const frame = container.querySelector<HTMLElement>("img")?.parentElement;
+  expect(frame?.style.getPropertyValue("--page-width")).toBe("");
+});
+
+it("keeps the spot at the centre of the view when zooming", () => {
+  const { container, rerender } = render(
+    <ImageView url="/scan.png" zoom={1} />,
+  );
+  loadImage(1200, 1600);
+  const frame = container.querySelector<HTMLElement>("img")?.parentElement;
+  const root = container.querySelector<HTMLElement>("section");
+  if (!frame || !root) {
+    throw new Error("no image frame");
+  }
+  // The frame's size follows its style, as the browser's layout would.
+  const px = (name: string) =>
+    Number.parseFloat(frame.style.getPropertyValue(name));
+  Object.defineProperties(frame, {
+    offsetTop: { value: 16 },
+    offsetLeft: { value: 16 },
+    offsetWidth: { get: () => px("--page-width") },
+    offsetHeight: { get: () => px("--page-height") },
+  });
+  Object.defineProperties(root, {
+    clientWidth: { value: 600 },
+    clientHeight: { value: 400 },
+  });
+  // The image's centre at the centre of the view.
+  root.scrollLeft = 16 + 600 - 300;
+  root.scrollTop = 16 + 800 - 200;
+  fireEvent.scroll(root);
+
+  rerender(<ImageView url="/scan.png" zoom={2} />);
+  expect(root.scrollLeft).toBeCloseTo(16 + 1200 - 300);
+  expect(root.scrollTop).toBeCloseTo(16 + 1600 - 200);
+});
+
+it("names the viewer and the image differently, so neither is read twice", () => {
+  render(<ImageView url="/scan.png" zoom={1} alt="Invoice scan" />);
+  loadImage(1200, 1600);
+  expect(screen.getByRole("region", { name: "Image viewer" })).toBeTruthy();
+  expect(screen.getByRole("img", { name: "Invoice scan" })).toBeTruthy();
+});

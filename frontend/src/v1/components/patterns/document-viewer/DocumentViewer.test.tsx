@@ -317,7 +317,7 @@ it("leaves paging keys to the browser for text and images", () => {
 
   rerender(<DocumentViewer source={{ kind: "image", url: "/scan.png" }} />);
   loadImage(1632, 2112);
-  const image = screen.getByRole("region", { name: "Document image" });
+  const image = screen.getByRole("region", { name: "Image viewer" });
   expect(fireEvent.keyDown(image, { key: "PageDown" })).toBe(true);
   expect(fireEvent.keyDown(image, { key: "+" })).toBe(false);
 });
@@ -342,7 +342,7 @@ it("runs a highlight scroll asked for before an image loads once it has", () => 
       ]}
     />,
   );
-  const region = screen.getByRole("region", { name: "Document image" });
+  const region = screen.getByRole("region", { name: "Image viewer" });
   act(() => ref.current?.scrollToHighlight("h"));
   expect(region.scrollTop).toBe(0);
   const frame = region.querySelector<HTMLElement>("img")?.parentElement;
@@ -668,4 +668,84 @@ it("starts a new document on its first page", async () => {
   expect(screen.getByText("/ 1")).toBeTruthy();
   // Not even one render showed page 3 of 1.
   expect(toolbarRenders.filter(([index, count]) => index >= count)).toEqual([]);
+});
+
+it("keeps a live-edited text in place while its id stays the same", () => {
+  const { rerender } = render(
+    <DocumentViewer
+      source={{ kind: "text", id: "doc-1", text: "first\ntext" }}
+    />,
+  );
+  const before = screen.getByRole("region", { name: "Document text" });
+  before.scrollTop = 300;
+  rerender(
+    <DocumentViewer
+      source={{ kind: "text", id: "doc-1", text: "first\ntexts" }}
+    />,
+  );
+  const after = screen.getByRole("region", { name: "Document text" });
+  expect(after).toBe(before);
+  expect(after.scrollTop).toBe(300);
+  expect(after.textContent).toContain("texts");
+
+  rerender(
+    <DocumentViewer
+      source={{ kind: "text", id: "doc-2", text: "first\ntexts" }}
+    />,
+  );
+  expect(screen.getByRole("region", { name: "Document text" })).not.toBe(
+    before,
+  );
+});
+
+it("ignores zoom keys until an image has loaded, so it still opens fitted", () => {
+  render(<DocumentViewer source={{ kind: "image", url: "/scan.png" }} />);
+  const region = screen.getByRole("region", { name: "Image viewer" });
+  // Not handled: fireEvent returns true when nothing called preventDefault.
+  expect(fireEvent.keyDown(region, { key: "+" })).toBe(true);
+  act(() => resize(864, 600));
+  loadImage(1632, 2112);
+  expect(
+    screen
+      .getByRole("button", { name: "Fit width" })
+      .getAttribute("aria-pressed"),
+  ).toBe("true");
+});
+
+it("drops a scroll to a highlight on another page of an image instead of keeping it", () => {
+  const ref = createRef<DocumentViewerHandle>();
+  const box = {
+    id: "h",
+    x: 0.5,
+    y: 0.9,
+    w: 0.1,
+    h: 0.05,
+    variant: "box" as const,
+    tone: "default" as const,
+  };
+  const { rerender } = render(
+    <DocumentViewer
+      ref={ref}
+      source={{ kind: "image", url: "/scan.png" }}
+      highlights={[{ ...box, page: 1 }]}
+    />,
+  );
+  const region = screen.getByRole("region", { name: "Image viewer" });
+  const frame = region.querySelector<HTMLElement>("img")?.parentElement;
+  if (!frame) {
+    throw new Error("no frame");
+  }
+  Object.defineProperty(frame, "offsetHeight", { value: 1000 });
+  Object.defineProperty(region, "clientHeight", { value: 400 });
+  loadImage(1632, 2112);
+  act(() => ref.current?.scrollToHighlight("h"));
+  // Had the request waited, it would fire here, long after it was asked for.
+  rerender(
+    <DocumentViewer
+      ref={ref}
+      source={{ kind: "image", url: "/scan.png" }}
+      highlights={[{ ...box, page: 0 }]}
+    />,
+  );
+  expect(region.scrollTop).toBe(0);
 });

@@ -1,5 +1,5 @@
 import { cn } from "@v1/lib/cn";
-import type { HighlightTone } from "@v1/lib/pdf/highlights";
+import { type HighlightTone, NO_HIGHLIGHTS } from "@v1/lib/pdf/highlights";
 import {
   type KeyboardEvent,
   memo,
@@ -26,8 +26,6 @@ export interface TextViewProps {
   onKeyDown?: (event: KeyboardEvent<HTMLElement>) => void;
   ref?: Ref<PdfPageListHandle>;
 }
-
-const NO_HIGHLIGHTS: readonly TextLineHighlight[] = [];
 
 const TONES: Record<HighlightTone, string> = {
   default: "ui:bg-primary/15",
@@ -76,7 +74,10 @@ const TextLine = memo(function TextLine({
       data-tone={tone ?? undefined}
       data-highlight-id={highlight?.id}
       className={cn(
-        "ui:grid ui:grid-cols-[var(--gutter)_1fr] ui:gap-3 ui:px-3",
+        // Every line stays in the DOM, so find in page, copy and scrolling to a
+        // line keep working, but the browser skips layout and paint for lines
+        // off screen; it remembers a line's height once it has drawn it.
+        "ui:grid ui:grid-cols-[var(--gutter)_1fr] ui:gap-3 ui:px-3 ui:[content-visibility:auto] ui:[contain-intrinsic-size:auto_1lh]",
         tone && TONES[tone],
       )}
     >
@@ -142,7 +143,7 @@ export function TextView({
   if (text.trim() === "") {
     return (
       <ViewerStatus
-        state={{ status: "empty" }}
+        state={{ status: "no-text" }}
         onRetry={() => undefined}
         onSubmitPassword={() => undefined}
       />

@@ -39,6 +39,12 @@ export interface ImageSource {
 export interface TextSource {
   kind: "text";
   text: string;
+  /**
+   * Which text this is, across edits. Keep it the same while the text is
+   * edited live (a HITL correction) and the view keeps its place; a new id is
+   * a new text, back at the top. Without one, any change of text is a new text.
+   */
+  id?: string;
 }
 
 /** Anything the document viewer shows. */

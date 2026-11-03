@@ -1,20 +1,21 @@
-import type { Highlight } from "@v1/lib/pdf/highlights";
+import { type Highlight, NO_HIGHLIGHTS } from "@v1/lib/pdf/highlights";
 import type { PageSize } from "@v1/lib/pdf/types";
 import { CSS_PIXELS_PER_POINT, pageCssSize } from "@v1/lib/pdf/windowing";
 import {
   type KeyboardEvent,
   type Ref,
   type SyntheticEvent,
+  useCallback,
   useImperativeHandle,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
 } from "react";
 import { HighlightLayer } from "./HighlightLayer";
 import type { PdfPageListHandle } from "./PdfPageList";
+import { PAGE_FRAME_CLASS } from "./pageFrame";
 import { ViewerStatus } from "./ViewerStatus";
-
-const NO_HIGHLIGHTS: readonly Highlight[] = [];
 
 export interface ImageViewProps {
   url: string;
@@ -53,8 +54,19 @@ export function ImageView({
 }: ImageViewProps) {
   const [load, setLoad] = useState<LoadState>({ status: "loading" });
   const [attempt, setAttempt] = useState(0);
+  // A new URL is a new image: forget the last one's size and state while
+  // rendering, so it is never laid out at the old size.
+  const [shownUrl, setShownUrl] = useState(url);
+  if (shownUrl !== url) {
+    setShownUrl(url);
+    setLoad({ status: "loading" });
+  }
   const rootRef = useRef<HTMLElement | null>(null);
   const frameRef = useRef<HTMLDivElement | null>(null);
+  // The point of the image at the viewport's centre, as fractions of the
+  // image, so a zoom keeps the reader on the same spot.
+  const anchorRef = useRef({ x: 0.5, y: 0 });
+  const ready = load.status === "ready";
   // An image is one page: highlights for any other page are not drawn.
   const pageHighlights = useMemo(
     () => highlights.filter((highlight) => highlight.page === 0),
@@ -62,12 +74,34 @@ export function ImageView({
   );
   const css = load.status === "ready" ? pageCssSize(load.size, zoom) : null;
 
+  const readAnchor = useCallback(() => {
+    const root = rootRef.current;
+    const frame = frameRef.current;
+    if (
+      !root ||
+      !frame ||
+      frame.offsetWidth === 0 ||
+      frame.offsetHeight === 0
+    ) {
+      return;
+    }
+    anchorRef.current = {
+      x:
+        (root.scrollLeft + root.clientWidth / 2 - frame.offsetLeft) /
+        frame.offsetWidth,
+      y:
+        (root.scrollTop + root.clientHeight / 2 - frame.offsetTop) /
+        frame.offsetHeight,
+    };
+  }, []);
+
   useImperativeHandle(
     ref,
     () => ({
       scrollToPage() {
         if (rootRef.current) {
           rootRef.current.scrollTop = 0;
+          readAnchor();
         }
       },
       scrollToHighlight(id) {
@@ -76,7 +110,9 @@ export function ImageView({
         );
         const root = rootRef.current;
         const frame = frameRef.current;
-        if (!highlight || !root || !frame) {
+        // Until the image has its size the frame is a placeholder: say not
+        // yet, so the viewer tries again once it has loaded.
+        if (!highlight || !root || !frame || !ready) {
           return false;
         }
         root.scrollTop =
@@ -91,11 +127,32 @@ export function ImageView({
             (highlight.x + highlight.w / 2) * frame.offsetWidth -
             root.clientWidth / 2;
         }
+        readAnchor();
         return true;
       },
     }),
-    [pageHighlights],
+    [pageHighlights, ready, readAnchor],
   );
+
+  // A zoom resizes the frame; put the same spot back at the centre. The frame
+  // took its new size from its style at commit.
+  const previousZoom = useRef(zoom);
+  useLayoutEffect(() => {
+    if (previousZoom.current === zoom) {
+      return;
+    }
+    previousZoom.current = zoom;
+    const root = rootRef.current;
+    const frame = frameRef.current;
+    if (!root || !frame || !ready) {
+      return;
+    }
+    const { x, y } = anchorRef.current;
+    root.scrollLeft =
+      frame.offsetLeft + x * frame.offsetWidth - root.clientWidth / 2;
+    root.scrollTop =
+      frame.offsetTop + y * frame.offsetHeight - root.clientHeight / 2;
+  }, [zoom, ready]);
 
   const onLoad = (event: SyntheticEvent<HTMLImageElement>) => {
     const { naturalWidth, naturalHeight } = event.currentTarget;
@@ -127,8 +184,11 @@ export function ImageView({
       ref={rootRef}
       // biome-ignore lint/a11y/noNoninteractiveTabindex: a scrollable region must be focusable
       tabIndex={0}
-      aria-label="Document image"
+      // The region names the viewer; the image's alt names the image, so a
+      // screen reader does not hear the same words twice.
+      aria-label="Image viewer"
       onKeyDown={onKeyDown}
+      onScroll={readAnchor}
       className="ui:relative ui:h-full ui:overflow-auto ui:bg-muted ui:focus-visible:focus-ring"
     >
       {load.status === "loading" && (
@@ -141,12 +201,8 @@ export function ImageView({
       <div className="ui:mx-auto ui:flex ui:w-max ui:min-w-full ui:flex-col ui:items-center ui:p-4">
         <div
           ref={frameRef}
-          className={
-            load.status === "ready"
-              ? "ui:relative ui:h-(--page-height) ui:w-(--page-width) ui:shrink-0 ui:bg-card ui:shadow-sm"
-              : "ui:invisible ui:absolute"
-          }
-          // The image's size is runtime geometry: custom properties the classes read.
+          // Hidden and out of the flow until the image has a size.
+          className={css ? PAGE_FRAME_CLASS : "ui:invisible ui:absolute"}
           style={{
             "--page-width": css ? `${css.width}px` : undefined,
             "--page-height": css ? `${css.height}px` : undefined,

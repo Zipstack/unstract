@@ -146,38 +146,33 @@ export function DocumentViewer({
     initialZoomState(initialZoom),
   );
   const [pageIndex, setPageIndex] = useState(0);
-  // A new document starts on its first page: reset while rendering, so the
-  // toolbar never shows the last document's page against this one's count.
-  const shownDocument = state.status === "ready" ? state.document : null;
-  const [pageIndexFor, setPageIndexFor] = useState(shownDocument);
-  if (pageIndexFor !== shownDocument) {
-    setPageIndexFor(shownDocument);
-    setPageIndex(0);
-  }
   const [bodyRef, bodySize] = useElementSize<HTMLDivElement>();
   const listRef = useRef<PdfPageListHandle | null>(null);
   const pendingRef = useRef<PendingRequest | null>(null);
 
   const kind =
     source === null ? null : isPdfSource(source) ? "pdf" : source.kind;
-  // Forget an image's size once another source is shown, so coming back to
-  // it waits for its reload instead of treating it as ready straight away.
-  const imageUrl = source?.kind === "image" ? source.url : null;
-  const [shownImageUrl, setShownImageUrl] = useState(imageUrl);
-  if (shownImageUrl !== imageUrl) {
-    setShownImageUrl(imageUrl);
+  // The one identity of what is shown: the PDF's source key, the image's URL,
+  // or the text's id (the text itself when it has none). Everything kept per
+  // source hangs off it: the views are keyed on it, so a new source starts at
+  // the top, and the state below is reset when it changes, while rendering,
+  // so nothing from the last source is ever shown against this one.
+  const sourceKey =
+    source === null || isPdfSource(source)
+      ? pdfSourceKey(source)
+      : source.kind === "image"
+        ? `image:${source.url}`
+        : `text:${source.id ?? source.text}`;
+  const [shownSourceKey, setShownSourceKey] = useState(sourceKey);
+  if (shownSourceKey !== sourceKey) {
+    setShownSourceKey(sourceKey);
+    // Coming back to an image waits for its reload, not its old size.
     setImage(null);
+    // A new document starts on its first page.
+    setPageIndex(0);
   }
   const imageSize =
     source?.kind === "image" && image?.url === source.url ? image.size : null;
-  // A new text gets a fresh view, back at the top, like a new PDF or image.
-  const text = source?.kind === "text" ? source.text : null;
-  const [shownText, setShownText] = useState(text);
-  const [textKey, setTextKey] = useState(0);
-  if (shownText !== text) {
-    setShownText(text);
-    setTextKey((key) => key + 1);
-  }
   const pdfReady = kind === "pdf" && state.status === "ready";
   const pageSizes = pdfReady
     ? state.pageSizes
@@ -191,22 +186,26 @@ export function DocumentViewer({
   const pdfShown = pdfReady && measured;
   // When the content can take scroll requests.
   const ready = pdfShown || kind === "text" || imageSize !== null;
-  // Which content a scroll request is for. A text is its own key.
-  const sourceKey =
-    source === null || isPdfSource(source)
-      ? pdfSourceKey(source)
-      : source.kind === "image"
-        ? `image:${source.url}`
-        : source.text;
+  // Zoom needs a size to zoom from: a key pressed before then would leave the
+  // fit mode and the content would never be fitted.
+  const zoomable = pdfReady || imageSize !== null;
   // Both kept in step at commit, before any parent's layout effect can make
   // a request, so a request is always judged against the source it was made
   // for, and a render React throws away cannot leave them stale.
   const readyRef = useRef(ready);
   const sourceKeyRef = useRef(sourceKey);
+  // An image is one page, so a highlight on any other page can never be
+  // scrolled to: the request is dropped instead of waiting for ever.
+  const offPageRef = useRef<(id: string) => boolean>(() => false);
   useLayoutEffect(() => {
     readyRef.current = ready;
     sourceKeyRef.current = sourceKey;
-  }, [ready, sourceKey]);
+    offPageRef.current = (id) =>
+      kind === "image" &&
+      (highlights ?? []).some(
+        (highlight) => highlight.id === id && highlight.page !== 0,
+      );
+  }, [ready, sourceKey, kind, highlights]);
 
   const zoom = useMemo(() => {
     if (zoomState.mode === "custom" || !pageSizes || !bodySize) {
@@ -245,7 +244,9 @@ export function DocumentViewer({
         fromActive,
       };
     };
-    if (!list || !readyRef.current) {
+    if (request.kind === "highlight" && offPageRef.current(request.id)) {
+      pendingRef.current = null;
+    } else if (!list || !readyRef.current) {
       wait();
     } else if (request.kind === "page") {
       pendingRef.current = null;
@@ -312,7 +313,7 @@ export function DocumentViewer({
     if (
       action === null ||
       (paging && kind !== "pdf") ||
-      (!paging && kind === "text")
+      (!paging && !zoomable)
     ) {
       return;
     }
@@ -351,7 +352,7 @@ export function DocumentViewer({
   } else if (source.kind === "text") {
     content = (
       <TextView
-        key={textKey}
+        key={sourceKey}
         ref={listRef}
         text={source.text}
         highlights={textHighlights}
@@ -364,7 +365,7 @@ export function DocumentViewer({
     const { url } = source;
     content = (
       <ImageView
-        key={url}
+        key={sourceKey}
         ref={listRef}
         url={url}
         alt={source.alt}
@@ -404,7 +405,7 @@ export function DocumentViewer({
   }
 
   const showPaging = pdfReady;
-  const showZoom = pdfReady || imageSize !== null;
+  const showZoom = zoomable;
 
   return (
     <div

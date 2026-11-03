@@ -62,6 +62,9 @@ export interface NormaliseOptions {
 
 export const LOW_CONFIDENCE_BELOW = 0.9;
 
+/** One shared empty list, so a default never breaks a memo. Fits any list type. */
+export const NO_HIGHLIGHTS: readonly never[] = [];
+
 function clamp01(value: number): number {
   return Math.min(1, Math.max(0, value));
 }

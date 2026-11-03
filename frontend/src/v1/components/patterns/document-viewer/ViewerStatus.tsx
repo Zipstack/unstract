@@ -1,8 +1,13 @@
 import type { PdfDocumentState } from "@v1/hooks/usePdfDocument";
 import { type FormEvent, useEffect, useId, useRef, useState } from "react";
 
-/** Every state except `ready`, which the page list renders instead. */
-export type ViewerStatusState = Exclude<PdfDocumentState, { status: "ready" }>;
+/**
+ * Every document state except `ready`, which the content renders instead, and
+ * `no-text`: a text source that was read and holds nothing.
+ */
+export type ViewerStatusState =
+  | Exclude<PdfDocumentState, { status: "ready" }>
+  | { status: "no-text" };
 
 export interface ViewerStatusProps {
   state: ViewerStatusState;
@@ -34,6 +39,13 @@ export function ViewerStatus({
         <div className={panel}>
           <p className={title}>No document</p>
           <p>There is nothing to show yet.</p>
+        </div>
+      );
+    case "no-text":
+      return (
+        <div className={panel}>
+          <p className={title}>No text found</p>
+          <p>The document was read, but no text came out of it.</p>
         </div>
       );
     case "unsupported":

@@ -1,7 +1,11 @@
 import { useDevicePixelRatio } from "@v1/hooks/useDevicePixelRatio";
 import { usePageWindow } from "@v1/hooks/usePageWindow";
 import { cn } from "@v1/lib/cn";
-import { type Highlight, highlightsByPage } from "@v1/lib/pdf/highlights";
+import {
+  type Highlight,
+  highlightsByPage,
+  NO_HIGHLIGHTS,
+} from "@v1/lib/pdf/highlights";
 import type { PageSize } from "@v1/lib/pdf/types";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import {
@@ -17,8 +21,6 @@ import {
   useState,
 } from "react";
 import { PdfPage } from "./PdfPage";
-
-const NO_HIGHLIGHTS: readonly Highlight[] = [];
 
 export interface PdfPageListHandle {
   /** Scrolls a 0-based page to the top of the viewer. */
