@@ -1870,7 +1870,6 @@ esac
         self.assertEqual(
             {f: len(j) for f, j in found.items()},
             {
-                "_rc-build.yaml": 1,
                 "build-push.yaml": 11,
                 "cut.yaml": 1,
                 "dev-deploy.yaml": 2,
@@ -1879,11 +1878,6 @@ esac
         )
         for f, js in found.items():
             for j in js:
-                if f == "_rc-build.yaml":
-                    # disabled, kept for rollback: it must stay off, and say what re-enabling it needs
-                    self.assertIn("\n    if: false", j)
-                    self.assertIn("id-token: write", j)
-                    continue
                 self.assertRegex(
                     j,
                     r"\n    permissions:\n(?:      [\w-]+: \w+.*\n)*      id-token: write",
@@ -2161,28 +2155,6 @@ esac
         self.assertEqual(len(matrices), 2)
         for m in matrices:
             self.assertEqual(tuple(re.findall(r"[\w-]+", m)), rs.IMAGES)
-
-    def test_a_retired_workflow_fails_at_its_first_job(self):
-        wf = os.path.join(HERE, "..", "workflows")
-        for f in (
-            "create-rc-build.yaml",
-            "create-hotfix-rc-build.yaml",
-            "promote-rc-build-to-stable.yaml",
-        ):
-            with open(os.path.join(wf, f)) as fh:
-                jobs = re.split(r"\n(?=  [\w-]+:\n)", fh.read().split("\njobs:\n", 1)[1])
-            first = jobs[0]
-            self.assertTrue(first.startswith("  retired:\n"), f)
-            self.assertNotIn("\n    if:", first, f)
-            self.assertNotIn("needs:", first, f)
-            r = subprocess.run(
-                ["bash", "-e", "-c", step(f, "Retired")], capture_output=True, text=True
-            )
-            self.assertEqual(r.returncode, 1, f)
-            self.assertRegex(r.stdout, r"^::error::retired: use .*\.yaml", f)
-            for job in jobs[1:]:  # the old jobs never run
-                if not job.lstrip().startswith("#"):
-                    self.assertIn("\n    if: false", job, f"{f} {job.split(':')[0]}")
 
     def test_missing_images_reads_the_target_kind(self):
         built = {"on-prem/backend", "on-prem/frontend", "cloud/runner"}

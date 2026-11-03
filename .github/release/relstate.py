@@ -232,8 +232,10 @@ def taken_tags(reg=None, registry=registry_tags):
 
 
 def used_tags(repo, line, registry=registry_tags):
-    """Cut refuses a line with these: its tags would read as the new line's builds or GA."""
-    ver = re.compile(rf"{re.escape(PREFIX)}v{re.escape(line)}\.\d+(?:-rc\.\d+)?")
+    """Cut refuses a line with these: its tags would read as the new line's builds or GA.
+    Registry RCs do not count: an abandon keeps a package's last one, and a re-cut skips it.
+    """
+    ver = re.compile(rf"{re.escape(PREFIX)}v{re.escape(line)}\.\d+")
     tags = set(line_tags(repo, line)) | {
         t for a in _artifacts() for t in _read(a, registry) if ver.fullmatch(t)
     }
@@ -579,7 +581,7 @@ def retire_line_refusal(state, branch, force=False):
     if "cloud" in held:
         return "cloud is production (newest cloud GA); it retires once a newer line is promoted"
     if held and not force:
-        return f"{', '.join(held)} still supported (stabilized); force to retire it inside the window"
+        return f"{', '.join(held)} still supported (stabilized); a release manager may retire it inside the window with force"
     return None
 
 
@@ -693,7 +695,7 @@ def promote_blockers(state, branch, target):
         return []
     line = _key(branch.split("/", 1)[1])
     return [
-        f"{b['branch']} is not GA for {target} yet: promote and publish it first, retire it, or force with a reason"
+        f"{b['branch']} is not GA for {target} yet: promote and publish it first or retire it; a release manager may override this with force and a reason"
         for b in state["branches"]
         if _key(b["line"]) < line
         and target in b["targets"]

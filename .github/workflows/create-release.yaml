@@ -1,5 +1,6 @@
 name: Create Release
 
+# Public OSS release, separate from the release-branch (ee-) tags.
 on:
   workflow_dispatch:
     inputs:
