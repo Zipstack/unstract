@@ -62,14 +62,17 @@ services:
       # Agent-KV engine config, read by the cloud `agentic_kv` and `agentic_table`
       # executor plugins
       # (not by backend settings) -- docs/agent-kv-api.md §12 item 5 / §13.
-      # `AGENT_KV_LLM_PROVIDER` is a v1 hard allowlist of `anthropic`|`openai`.
-      # Model names have no safe default -- Task 13b must supply real ones.
-      - AGENT_KV_LLM_PROVIDER=${AGENT_KV_LLM_PROVIDER:-anthropic}
-      - AGENT_KV_LITE_MODEL=${AGENT_KV_LITE_MODEL:-}
-      - AGENT_KV_ADVANCED_MODEL=${AGENT_KV_ADVANCED_MODEL:-}
-      - AGENT_KV_LLM_API_KEY=${AGENT_KV_LLM_API_KEY:-}
-      - AGENT_KV_LLMWHISPERER_API_KEY=${AGENT_KV_LLMWHISPERER_API_KEY:-}
-      - AGENT_KV_LLMWHISPERER_BASE_URL=${AGENT_KV_LLMWHISPERER_BASE_URL:-https://llmwhisperer-api.us-central.unstract.com/api/v2}
+      #
+      # The six credential vars that used to be exported here are GONE, not
+      # merely unset: AGENT_KV_LLM_PROVIDER, _LITE_MODEL, _ADVANCED_MODEL,
+      # _LLM_API_KEY, _LLMWHISPERER_API_KEY, _LLMWHISPERER_BASE_URL. Both
+      # extractors resolve the caller's own `llm` / `lite_llm` / `x2text`
+      # platform adapters from the request, so nothing in the worker reads them.
+      # Exporting them here would be worse than useless: the e2e lane would read
+      # as credentialed while the thing under test ignored them, which is the
+      # exact confusion `tests/e2e/agent_kv/test_agent_kv_e2e.py` documents in
+      # its `require_adapters` fixture (it replaced a `require_llm` gate on
+      # AGENT_KV_LLM_API_KEY that had started skipping every valuable scenario).
       # Same root the backend stages into (see `backend` above) -- the executor
       # reads `input_ref` from it and keys its OCR cache under
       # `{prefix}/{org_id}/cache/`. Both sides MUST agree.

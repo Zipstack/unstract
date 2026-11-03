@@ -272,8 +272,10 @@ choice and LLM spend sit on your account**, per job.
 >
 > Consequences worth knowing: the API is no longer usable by a caller who has never
 > signed in, since adapters must exist first; and the six `AGENT_KV_LLM_*` /
-> `AGENT_KV_LLMWHISPERER_*` environment variables are **not read on the table path**
-> (they remain in place for the `kv` extractor, which is still env-configured).
+> `AGENT_KV_LLMWHISPERER_*` environment variables are **not read on either path**
+> and are no longer provisioned by the chart. The `kv` extractor was still
+> env-configured when this note was first written; it is not any more, and the
+> rollout consequences of that are in §12 item 5.
 >
 > One thing this does not honour: adapters carry per-user visibility within an
 > organization, and an Agent-KV key resolves to an organization rather than a user.
@@ -1399,72 +1401,77 @@ beyond `docker compose up`:
    `{name: sweep, command: agent_kv_sweep, schedule: "*/15 * * * *"}` and
    `{name: ttl-cleanup, command: agent_kv_ttl_cleanup, schedule: "17 * * * *"}` — offset
    from sweep's :00/:15/:30/:45 ticks so the two CronJobs never contend on the same
-   rows. Neither job needs the `agentKv` shared-config group (LLM/LLMWhisperer
-   creds — only the executor touches those): sweep only needs `database`/`redis`,
+   rows. Neither job needs the `agentKv` shared-config group (operator knobs only
+   the executor reads — the group holds no credential at all; see item 5): sweep
+   only needs `database`/`redis`,
    ttl-cleanup additionally needs `storage` for `AGENT_KV_FILE_STORAGE_CREDENTIALS`
    (see item 6 below) — both already on the `backend` deployment's config list.
 5. **Env vars**: every `AGENT_KV_*` setting plus `AGENT_KV_FILE_STORAGE_CREDENTIALS` —
    see [§6](#12-environment-reference) and `docker/sample.env`.
 
-   > **For the `table` extractor, the executor-side credential group below must be
-   > left UNSET — not merely "is not required".** That path resolves the caller's
-   > own platform adapters (see §3a), so none of the six `AGENT_KV_LLM_*` /
-   > `AGENT_KV_LLMWHISPERER_*` values is read on it. The group only has to be
-   > configured where the `kv` extractor is deployed, which is a separate release
-   > track. A table-only deployment leaves
-   > `global.sharedConfigs.agentKv.enabled: false` and the API works.
+   > **NO EXECUTOR-SIDE CREDENTIAL EXISTS ANY MORE, on either extractor.** Both
+   > the `table` and the `kv` path resolve the caller's own platform adapters
+   > from the request (see §3a): `llm`, `lite_llm` and `x2text`, each validated
+   > against the Bearer key's organization. The six values this section used to
+   > require — `AGENT_KV_LLM_PROVIDER`, `AGENT_KV_LITE_MODEL`,
+   > `AGENT_KV_ADVANCED_MODEL`, `AGENT_KV_LLM_API_KEY`,
+   > `AGENT_KV_LLMWHISPERER_API_KEY`, `AGENT_KV_LLMWHISPERER_BASE_URL` — have no
+   > reader, are not declared in the chart, have no External Secrets mapping and
+   > need no GCP Secret Manager entry. `AgentKVConfig.from_env()` requires
+   > nothing at all. Do not set them; they are not "optional", they are gone.
+   >
+   > This replaces an arrangement in which every org's extractions ran on one
+   > operator LLM key and one operator LLMWhisperer key, billed against an
+   > `agent_kv:{provider}/{model}` sentinel rather than the caller's adapter.
    >
    > **Deploy order: cloud worker first, then the backend.** The two repos deploy
    > independently and nothing on the wire marks the capability. A new backend
    > against an *old* worker sends validated `adapters` in `executor_params` to a
-   > worker that has no `ParamKeys.ADAPTERS`; it ignores the key and calls
-   > `ExtractionConfig.from_env()`. If those six values are set it runs on
-   > **operator** credentials, bills the `agent_kv:{provider}/{model}` sentinel, and
-   > returns a 202 with a correct-looking result — while the adapters the caller
-   > named were never used. Nothing in either repo's logs reveals it. With the group
-   > unset the same old worker fails loudly with "Missing required Agent-KV env
-   > vars", which is what a half-finished rollout should look like. The reverse
-   > order is safe by construction: the new worker hard-fails "Missing required
-   > adapters" rather than falling back to env.
+   > worker that has no `ParamKeys.ADAPTERS`; it ignores the key and falls back
+   > to env credentials. With the group no longer carrying any, that old worker
+   > fails loudly with "Missing required Agent-KV env vars" — which is what a
+   > half-finished rollout should look like, and is now the only thing it can do,
+   > rather than something an operator had to arrange by leaving values unset. The
+   > reverse order is safe by construction: the new worker hard-fails "Missing
+   > required adapters" rather than falling back to env.
    >
-   > Two operator knobs are still read on the table path, independently of that
-   > group: `AGENT_KV_STORAGE_DIR_PREFIX` (which must match the backend's — the
-   > executor derives the job's expected directory from it to enforce the tenant
-   > boundary on the staged input) and `AGENT_KV_PARALLEL_PAGES`.
+   > Operator knobs are still read, independently of any credential:
+   > `AGENT_KV_STORAGE_DIR_PREFIX` (which must match the backend's — the executor
+   > derives the job's expected directory from it to enforce the tenant boundary
+   > on the staged input) and `AGENT_KV_PARALLEL_PAGES` on both paths, plus
+   > `AGENT_KV_MAX_TOKENS`, `AGENT_KV_MAX_JOB_TOKENS`,
+   > `AGENT_KV_SANDBOX_CODEGEN_QUEUE` and `AGENT_KV_ENGINE_VERSION` on the `kv`
+   > path.
 
    The executor-side vars
    (read by the cloud `agentic_kv` plugin, not by the backend settings in §13) are a
    separate chart group: `global.sharedConfigs.agentKv`
-   (`charts/unstract-platform/values.yaml`, cloud repo) —
-   `AGENT_KV_LLM_PROVIDER`, `AGENT_KV_LITE_MODEL`, `AGENT_KV_ADVANCED_MODEL`,
-   `AGENT_KV_LLM_API_KEY`, `AGENT_KV_LLMWHISPERER_API_KEY`,
-   `AGENT_KV_LLMWHISPERER_BASE_URL`, `AGENT_KV_MAX_TOKENS`, `AGENT_KV_PARALLEL_PAGES`,
-   `AGENT_KV_ENGINE_VERSION`. Of those, two are ESO (External Secrets Operator)
-   secrets rather than plain values — `AGENT_KV_LLM_API_KEY` and
-   `AGENT_KV_LLMWHISPERER_API_KEY`, mapped in `global.externalSecrets.groups.agentKv`
-   to the GCP Secret Manager suffixes `agent-kv-llm-api-key` /
-   `agent-kv-llmwhisperer-api-key`. `AGENT_KV_LLM_PROVIDER` is a v1 hard allowlist of
-   two values — `anthropic` and `openai` (`SUPPORTED_PROVIDERS` in the executor's LLM
-   adapter) — anything else raises `ConfigError` at dispatch, before any LLM call.
+   (`charts/unstract-platform/values.yaml`, cloud repo). Every key in it is a
+   non-secret operator knob, every one is optional with a code default, and
+   `AGENT_KV_PARALLEL_PAGES` lives in the `storage` group instead (one value for
+   both paths' readers). The group has no `global.externalSecrets.groups.agentKv`
+   entry, so it ships inline in every mode — cloud and on-prem alike.
 
-   **Rollout order is strict, and getting it wrong takes down the whole executor
-   fleet.** Both executor fleets mount this group with `envFrom: secretRef:
-   <release>-agent-kv`, so no executor pod of any kind — not just Agent-KV ones —
-   can start until that Secret exists: enabling the group ahead of its contents
-   leaves `workerExecutorV2` and `workerPgExecutor` in `CreateContainerConfigError`.
-   Per environment, in this order: (1) create the two GCP Secret Manager secrets
-   `<externalSecrets.prefix>-agent-kv-llm-api-key` and
-   `<externalSecrets.prefix>-agent-kv-llmwhisperer-api-key`; (2) set the three
-   non-secret keys — `AGENT_KV_LLM_PROVIDER`, `AGENT_KV_LITE_MODEL`,
-   `AGENT_KV_ADVANCED_MODEL` — in that environment's own values file (under ESO they
-   are emitted as inline literals in the ExternalSecret's `target.template`, and a nil
-   value is silently **dropped**, so leaving them unset ships a Secret without them and
-   every Agent-KV job then fails at dispatch with `ConfigError: Missing required
-   Agent-KV env vars`); (3) only then roll the fleets out. `cloud.values.yaml` enables
-   the group fleet-wide, so step 2 is a per-environment prerequisite, not an optional
-   extra. In inline (non-ESO) mode the same three keys are enforced at render time by a
-   `fail` guard in `charts/unstract-platform/templates/shared/agent-kv-secret.yaml`, so
-   a mistake there is a loud deploy-time failure instead of a per-job runtime one.
+   **Rollout is one step: set `global.sharedConfigs.agentKv.enabled: true` in that
+   environment's values file.** Nothing else, in no particular order. Dev
+   namespaces get it from `dev.base.values.yaml`; `cloud.values.yaml` holds it
+   `false`, so staging and production are the same one-line flip when wanted.
+
+   It used to be three strict steps, and the warning that went with them is worth
+   keeping in view because the blast radius has not changed: every executor fleet
+   mounts this group with `envFrom: secretRef: <release>-agent-kv` and **no
+   `optional: true`**, so no executor pod of any kind — not just Agent-KV ones —
+   can start until that Secret exists. Enabling the group ahead of its contents
+   left `workerPgExecutor` in `CreateContainerConfigError`: the whole fleet, every
+   workflow execution. That is why the credentials were deleted rather than
+   defaulted, and why `agentKv` was dropped from the External Secrets groups — an
+   ExternalSecret pointing at a GCP secret that was never created never syncs, the
+   Secret never appears, and that non-optional `secretRef` does the rest. With the
+   group empty of credentials, enabling it renders an empty Secret, which
+   satisfies the mount. Chart-side this is pinned by
+   `unittests/agent_kv_wiring_test.yaml::AKV-K4`, which renders the group enabled
+   with nothing set and asserts both that it does not fail and that none of the
+   six retired names is present.
 6. **Object storage**: `AGENT_KV_FILE_STORAGE_CREDENTIALS` must point at a real bucket
    in production (defaults to the same shared MinIO instance as workflow execution).
    Paths are prefix- and org-rooted
