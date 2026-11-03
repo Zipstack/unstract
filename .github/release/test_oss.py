@@ -2613,6 +2613,38 @@ class TakeRcVersion(Workflow):
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertIn("\nnewest=release/1.8\n", self.read("output"))
 
+    def test_a_failed_rc_chart_fails_the_summary(self):
+        def summary(chart):
+            out = os.path.join(self.d, "summary")
+            with contextlib.suppress(FileNotFoundError):
+                os.remove(out)
+            r = subprocess.run(
+                ["bash", "-e", "-c", step("take-rc-build.yaml", "Summary")],
+                cwd=os.path.join(HERE, "..", ".."),
+                env={
+                    **os.environ,
+                    "TAG": "v1.7.1-rc.1",
+                    "BUILD": "on-prem",
+                    "RESULT": "success",
+                    "CHART": chart,
+                    "BRANCH": "release/1.7",
+                    "NEWEST": "release/1.7",
+                    "GITHUB_STEP_SUMMARY": out,
+                },
+                capture_output=True,
+                text=True,
+            )
+            return r.returncode, self.read("summary")
+
+        code, text = summary("success")
+        self.assertEqual(code, 0)
+        self.assertIn("On-prem RC chart `unstract-platform:1.7.1-rc.1`: success", text)
+        self.assertIn("QA tests", text)
+        code, text = summary("failure")
+        self.assertEqual(code, 1)
+        self.assertNotIn("QA tests", text)
+        self.assertEqual(summary("skipped")[0], 0)
+
     def test_staging_is_left_alone_for_an_older_line(self):
         def summary(build, newest):
             out = os.path.join(self.d, "summary")

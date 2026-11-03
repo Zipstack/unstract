@@ -727,6 +727,27 @@ class Scenario(unittest.TestCase):
         dropped = [t for v in plan["versions"]["on-prem/backend"] for t in v["tags"]]
         self.assertEqual(dropped, [f"v1.9.0-rc.{n}" for n in range(1, 10)])
 
+    def test_abandon_plan_deletes_rc_charts(self):
+        self.built_by_mistake()
+        chart = {
+            f"1.9.0-rc.{n}": {"id": None, "digest": f"sha256:c{n}", "pushed_at": "x"}
+            for n in (1, 2)
+        }
+        chart["1.8.0-rc.1"] = {"id": None, "digest": "sha256:c0", "pushed_at": "x"}
+        plan = rs.abandon_plan(
+            self.repo,
+            "release/1.9",
+            lambda a: self.reg.get(a, {}),
+            lambda: {"on-prem/unstract-platform": chart},
+        )
+        self.assertEqual(
+            plan["versions"]["on-prem/unstract-platform"],
+            [
+                {"id": None, "digest": "sha256:c1", "tags": ["1.9.0-rc.1"]},
+                {"id": None, "digest": "sha256:c2", "tags": ["1.9.0-rc.2"]},
+            ],
+        )  # another line's chart keeps the package from emptying
+
     def test_abandon_plan_refusals(self):
         self.built_by_mistake()
         plan = lambda: rs.abandon_plan(

@@ -636,7 +636,8 @@ def abandon_plan(repo, branch, registry=registry_tags, services=rc_service_tags)
     deleted only when every tag on it is an RC of this line.
     """
     x, y = rm._line(branch)
-    rc_re = re.compile(rf"{re.escape(PREFIX)}v{x}\.{y}\.\d+-rc\.\d+")
+    # A Helm chart's version has no "v": Take RC pushes the on-prem RC chart as X.Y.Z-rc.N.
+    rc_re = re.compile(rf"(?:{re.escape(PREFIX)}v)?{x}\.{y}\.\d+-rc\.\d+")
     reg = {a: _read(a, registry) for a in _artifacts()}
     main = _main(repo)
     ga = [f"{PREFIX}v{x}.{y}.{z}" for z in sorted(rm._tags(repo, x, y, PREFIX)[0])]
