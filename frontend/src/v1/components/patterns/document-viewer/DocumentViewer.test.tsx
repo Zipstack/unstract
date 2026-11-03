@@ -774,3 +774,44 @@ it("drops a scroll to a highlight on another page of an image instead of keeping
   );
   expect(region.scrollTop).toBe(0);
 });
+
+it("runs a scroll waiting on an empty text once that same text fills in", () => {
+  const original = Object.getOwnPropertyDescriptor(
+    HTMLElement.prototype,
+    "offsetTop",
+  );
+  Object.defineProperty(HTMLElement.prototype, "offsetTop", {
+    configurable: true,
+    get(this: HTMLElement) {
+      const line = this.getAttribute("data-line");
+      return line === null ? 0 : Number(line) * 20;
+    },
+  });
+  try {
+    const ref = createRef<DocumentViewerHandle>();
+    const textHighlights = [{ id: "total", line: 5 }];
+    const { rerender } = render(
+      <DocumentViewer
+        ref={ref}
+        source={{ kind: "text", id: "doc", text: "" }}
+        textHighlights={textHighlights}
+      />,
+    );
+    act(() => ref.current?.scrollToHighlight("total"));
+    // The same text, by id, fills in; the highlights are unchanged.
+    rerender(
+      <DocumentViewer
+        ref={ref}
+        source={{ kind: "text", id: "doc", text: "a\nb\nc\nd\ne\nf" }}
+        textHighlights={textHighlights}
+      />,
+    );
+    expect(
+      screen.getByRole("region", { name: "Document text" }).scrollTop,
+    ).toBe(100);
+  } finally {
+    if (original) {
+      Object.defineProperty(HTMLElement.prototype, "offsetTop", original);
+    }
+  }
+});

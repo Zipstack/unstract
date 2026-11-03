@@ -186,3 +186,31 @@ it("names the viewer and the image differently, so neither is read twice", () =>
   expect(screen.getByRole("region", { name: "Image viewer" })).toBeTruthy();
   expect(screen.getByRole("img", { name: "Invoice scan" })).toBeTruthy();
 });
+
+it("anchors the first zoom on where the view is, not on the image's centre", () => {
+  const { container, rerender } = render(
+    <ImageView url="/wide.png" zoom={1} />,
+  );
+  const frame = container.querySelector<HTMLElement>("img")?.parentElement;
+  const root = container.querySelector<HTMLElement>("section");
+  if (!frame || !root) {
+    throw new Error("no image frame");
+  }
+  const px = (name: string) =>
+    Number.parseFloat(frame.style.getPropertyValue(name)) || 0;
+  Object.defineProperties(frame, {
+    offsetTop: { value: 16 },
+    offsetLeft: { value: 16 },
+    offsetWidth: { get: () => px("--page-width") },
+    offsetHeight: { get: () => px("--page-height") },
+  });
+  Object.defineProperties(root, {
+    clientWidth: { value: 600 },
+    clientHeight: { value: 400 },
+  });
+  // Opened at the top left, wider than the view; never scrolled.
+  loadImage(1200, 1600);
+  rerender(<ImageView url="/wide.png" zoom={2} />);
+  // The spot at the view's centre (284 px into a 1200 px image) stays there.
+  expect(root.scrollLeft).toBeCloseTo(16 + (284 / 1200) * 2400 - 300);
+});

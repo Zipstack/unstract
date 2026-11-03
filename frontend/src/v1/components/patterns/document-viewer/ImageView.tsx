@@ -136,15 +136,22 @@ export function ImageView({
 
   // A zoom resizes the frame; put the same spot back at the centre. The frame
   // took its new size from its style at commit.
+  // Once the image is first laid out, the anchor is wherever the view is,
+  // not a guess.
   const previousZoom = useRef(zoom);
+  const wasReady = useRef(ready);
   useLayoutEffect(() => {
-    if (previousZoom.current === zoom) {
+    const justLoaded = ready && !wasReady.current;
+    wasReady.current = ready;
+    const zoomed = previousZoom.current !== zoom;
+    previousZoom.current = zoom;
+    if (justLoaded) {
+      readAnchor();
       return;
     }
-    previousZoom.current = zoom;
     const root = rootRef.current;
     const frame = frameRef.current;
-    if (!root || !frame || !ready) {
+    if (!zoomed || !root || !frame || !ready) {
       return;
     }
     const { x, y } = anchorRef.current;
@@ -152,7 +159,7 @@ export function ImageView({
       frame.offsetLeft + x * frame.offsetWidth - root.clientWidth / 2;
     root.scrollTop =
       frame.offsetTop + y * frame.offsetHeight - root.clientHeight / 2;
-  }, [zoom, ready]);
+  }, [zoom, ready, readAnchor]);
 
   const onLoad = (event: SyntheticEvent<HTMLImageElement>) => {
     const { naturalWidth, naturalHeight } = event.currentTarget;

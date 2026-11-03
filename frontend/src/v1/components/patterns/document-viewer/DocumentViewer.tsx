@@ -173,6 +173,7 @@ export function DocumentViewer({
   }
   const imageSize =
     source?.kind === "image" && image?.url === source.url ? image.size : null;
+  const text = source?.kind === "text" ? source.text : null;
   const pdfReady = kind === "pdf" && state.status === "ready";
   const pageSizes = pdfReady
     ? state.pageSizes
@@ -268,7 +269,8 @@ export function DocumentViewer({
   );
 
   // A waiting request runs once the pages are laid out, and is tried again
-  // when the highlights change, in case its highlight has arrived. One made
+  // when the highlights or the text change, in case its target has arrived
+  // (a text kept by its id changes in place, without a new source). One made
   // for another source is dropped rather than scrolling a document nobody
   // asked about, and so is one made for an active highlight that is no longer
   // active: this effect runs before the one below that would cancel it.
@@ -287,7 +289,15 @@ export function DocumentViewer({
     } else {
       pendingRef.current = null;
     }
-  }, [ready, sourceKey, highlights, textHighlights, activeHighlightId, run]);
+  }, [
+    ready,
+    sourceKey,
+    highlights,
+    textHighlights,
+    text,
+    activeHighlightId,
+    run,
+  ]);
 
   // The active highlight is scrolled to when it changes, and again for each
   // new source, so one chosen before its document arrived is still found.
