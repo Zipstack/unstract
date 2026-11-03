@@ -537,13 +537,42 @@ function* notifyEntryPoints(ast, specs) {
       }
     }
   }
-  for (const node of nodes(ast.program)) {
+  // `const R = await import("radix-ui")` binds a namespace too, and
+  // `const { Toast } = await import("radix-ui")` takes Toast directly.
+  const isRadixImport = (init) => {
+    const call = init?.type === "AwaitExpression" ? init.argument : init;
+    // @babel/parser emits `import()` as a call on `Import` by default.
+    const source =
+      call?.type === "ImportExpression"
+        ? call.source
+        : call?.type === "CallExpression" && call.callee.type === "Import"
+          ? call.arguments[0]
+          : undefined;
+    return source?.value === "radix-ui";
+  };
+  const all = [...nodes(ast.program)];
+  for (const node of all) {
+    if (node.type !== "VariableDeclarator" || !isRadixImport(node.init)) {
+      continue;
+    }
+    if (node.id.type === "Identifier") {
+      radixNamespaces.add(node.id.name);
+    } else if (node.id.type === "ObjectPattern") {
+      for (const prop of node.id.properties) {
+        const key = prop.key?.name ?? prop.key?.value;
+        if (key === "Toast") {
+          yield { index: prop.start, msg: NOTIFY_MSG };
+        }
+      }
+    }
+  }
+  for (const node of all) {
+    const property = node.computed ? node.property?.value : node.property?.name;
     if (
       node.type === "MemberExpression" &&
       node.object.type === "Identifier" &&
       radixNamespaces.has(node.object.name) &&
-      !node.computed &&
-      node.property.name === "Toast"
+      property === "Toast"
     ) {
       yield { index: node.start, msg: NOTIFY_MSG };
     }

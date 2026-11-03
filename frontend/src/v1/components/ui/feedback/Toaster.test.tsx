@@ -167,10 +167,18 @@ it("keeps at most MAX_TOASTS, dropping the oldest, and replaces by id", () => {
   expect(screen.queryByText("Toast 1")).toBeNull();
   act(() => {
     notify({ kind: "info", title: "Uploading 1 of 2", id: "upload" });
+  });
+  const open = container.querySelector("[data-kind=info]:last-child");
+  expect(open?.textContent).toContain("Uploading 1 of 2");
+  act(() => {
     notify({ kind: "success", title: "Uploaded 2 of 2", id: "upload" });
   });
   expect(screen.queryByText("Uploading 1 of 2")).toBeNull();
-  expect(screen.getByText("Uploaded 2 of 2")).not.toBeNull();
+  const replaced = screen
+    .getByText("Uploaded 2 of 2")
+    .closest("[data-slot=toast]");
+  expect(replaced?.getAttribute("data-kind")).toBe("success");
+  expect(toasts()).toHaveLength(MAX_TOASTS);
 });
 
 it("stops receiving notifications once unmounted", () => {

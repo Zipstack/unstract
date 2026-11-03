@@ -22,11 +22,16 @@ export function ProgressBar({
   ...named
 }: ProgressBarProps): JSX.Element {
   const indeterminate = value === null;
-  const clamped = indeterminate ? 0 : Math.min(Math.max(value, 0), max);
+  // Radix rejects a max that is not a positive number; an empty batch (0 of 0)
+  // shows as an empty bar rather than NaN.
+  const validMax = Number.isFinite(max) && max > 0;
+  const total = validMax ? max : 100;
+  const clamped =
+    indeterminate || !validMax ? 0 : Math.min(Math.max(value, 0), total);
   return (
     <Progress.Root
       value={indeterminate ? null : clamped}
-      max={max}
+      max={total}
       data-slot="progress-bar"
       className={cn(
         "ui:relative ui:h-1.5 ui:w-full ui:overflow-hidden ui:rounded-full ui:bg-muted",
@@ -35,10 +40,10 @@ export function ProgressBar({
       {...named}
     >
       <Progress.Indicator
-        style={{ "--progress": indeterminate ? 0.4 : clamped / max }}
+        style={{ "--progress": indeterminate ? 0.4 : clamped / total }}
         className={cn(
           "ui:h-full ui:w-[calc(var(--progress)*100%)] ui:rounded-full ui:bg-primary ui:transition-[width] ui:motion-reduce:transition-none",
-          indeterminate && "ui:animate-pulse",
+          indeterminate && "ui:motion-safe:animate-pulse",
         )}
       />
     </Progress.Root>

@@ -46,6 +46,19 @@ it("reports determinate progress, clamped to the range", () => {
   expect(bar?.getAttribute("aria-valuemax")).toBe("4");
 });
 
+it("shows an empty bar, not NaN, when the total is zero or invalid", () => {
+  const { rerender, container } = render(
+    <ProgressBar aria-label="Batch" value={0} max={0} />,
+  );
+  const bar = screen.getByRole("progressbar", { name: "Batch" });
+  const indicator = container.querySelector("[data-slot=progress-bar] > div");
+  expect(bar.getAttribute("aria-valuenow")).toBe("0");
+  expect(indicator?.getAttribute("style")).toContain("--progress: 0");
+  rerender(<ProgressBar aria-label="Batch" value={5} max={-3} />);
+  expect(bar.getAttribute("aria-valuenow")).toBe("0");
+  expect(bar.getAttribute("aria-valuemax")).toBe("100");
+});
+
 it("leaves aria-valuenow out while progress is indeterminate", () => {
   render(<ProgressBar aria-label="Extracting" />);
   const bar = screen.getByRole("progressbar", { name: "Extracting" });
