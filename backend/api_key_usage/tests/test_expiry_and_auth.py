@@ -16,6 +16,7 @@ from django.utils import timezone
 from global_api_deployment_key.models import GlobalApiDeploymentKey
 from global_api_deployment_key.views import GlobalApiDeploymentKeyViewSet
 from platform_api.models import PlatformApiKey
+from platform_api.serializers import PlatformApiKeyUpdateSerializer
 from platform_api.tests.test_platform_key_middleware import _MIDDLEWARE, ECHO_URL
 from platform_api.views import PlatformApiKeyViewSet
 from platform_audit.tests.base import AuditTestBase
@@ -258,6 +259,22 @@ class PlatformKeyExpiryEditTests(AuditTestBase):
         self.call(self.update, "patch", data={"description": "new"}, pk=self.key.pk)
 
         self.assertEqual([e.action for e in self.events()], ["key.changed"])
+
+    def test_an_edit_saves_only_its_own_fields(self) -> None:
+        stale = PlatformApiKey.objects.get(pk=self.key.pk)
+        expires = timezone.now() + timedelta(days=1)
+        # Another edit sets the expiry after ``stale`` was loaded.
+        PlatformApiKey.objects.filter(pk=self.key.pk).update(expires_at=expires)
+
+        serializer = PlatformApiKeyUpdateSerializer(
+            stale, data={"description": "new"}, partial=True
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+
+        self.key.refresh_from_db()
+        self.assertEqual(self.key.description, "new")
+        self.assertEqual(self.key.expires_at, expires)
 
     def test_an_expiry_in_the_past_is_refused(self) -> None:
         past = timezone.now() - timedelta(minutes=1)

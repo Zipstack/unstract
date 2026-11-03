@@ -28,7 +28,8 @@ from django.conf import settings
 from django.db import connection
 from django.utils import timezone
 from django_redis import get_redis_connection
-from redis import ConnectionPool, Redis
+from platform_metrics.cache import with_timeouts
+from redis import Redis
 
 from api_key_usage.constants import (
     FIELD_SEPARATOR,
@@ -77,23 +78,16 @@ def _redis() -> Redis:
     """The default Redis, with short timeouts so a hung Redis cannot hang auth.
 
     Built once from the default connection's settings, with its own pool, since
-    the timeouts must not apply to the cache's other users.
+    the timeouts must not apply to the cache's other users. Under Sentinel the
+    master lookup is bounded too.
     """
     global _client
     if _client is None:
         with _client_lock:
             if _client is None:
-                pool = get_redis_connection("default").connection_pool
-                timeout = settings.API_KEY_USAGE_REDIS_TIMEOUT_SECONDS
-                _client = Redis(
-                    connection_pool=ConnectionPool(
-                        connection_class=pool.connection_class,
-                        **{
-                            **pool.connection_kwargs,
-                            "socket_timeout": timeout,
-                            "socket_connect_timeout": timeout,
-                        },
-                    )
+                _client = with_timeouts(
+                    get_redis_connection("default"),
+                    settings.API_KEY_USAGE_REDIS_TIMEOUT_SECONDS,
                 )
     return _client
 

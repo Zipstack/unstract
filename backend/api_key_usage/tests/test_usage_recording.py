@@ -8,6 +8,7 @@ from account_v2.models import Organization
 from django.db import OperationalError
 from django.test import TestCase, override_settings
 from django_redis import get_redis_connection
+from redis.sentinel import Sentinel, SentinelConnectionPool
 
 from api_key_usage import flush as flush_module
 from api_key_usage import recorder
@@ -265,6 +266,25 @@ class FailureTests(UsageTestBase):
 
         self.assertEqual(kwargs["socket_timeout"], 0.25)
         self.assertEqual(kwargs["socket_connect_timeout"], 0.25)
+
+    def test_the_sentinel_master_lookup_waits_a_short_time_only(self) -> None:
+        sentinel = Sentinel([("sentinel.internal", 26379)])
+        with (
+            mock.patch.object(recorder, "_client", None),
+            mock.patch.object(
+                recorder,
+                "get_redis_connection",
+                return_value=sentinel.master_for("mymaster"),
+            ),
+            override_settings(API_KEY_USAGE_REDIS_TIMEOUT_SECONDS=0.25),
+        ):
+            pool = recorder._redis().connection_pool
+
+        self.assertIsInstance(pool, SentinelConnectionPool)
+        for client in pool.sentinel_manager.sentinels:
+            kwargs = client.connection_pool.connection_kwargs
+            self.assertEqual(kwargs["socket_timeout"], 0.25)
+            self.assertEqual(kwargs["socket_connect_timeout"], 0.25)
 
     def test_a_redis_outage_is_logged_once_a_minute(self) -> None:
         with (

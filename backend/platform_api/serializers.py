@@ -75,6 +75,17 @@ class PlatformApiKeyUpdateSerializer(AuditSerializer):
     def validate_description(self, value):
         return validate_safe_text(value)
 
+    def update(self, instance, validated_data):
+        request = self.context.get("request")
+        if request:
+            validated_data["modified_by"] = request.user
+        for field, value in validated_data.items():
+            setattr(instance, field, value)
+        # Only the fields this edit sets: a whole-row save would write back an
+        # expiry, or a key rotated, while the edit was in flight.
+        instance.save(update_fields=list(validated_data))
+        return instance
+
 
 class PlatformApiKeyDetailSerializer(KeyUsageFieldsMixin, serializers.ModelSerializer):
     """Used for create/rotate responses where the full key is shown once."""
