@@ -321,12 +321,7 @@ class OwnerNotificationWiringTests(CoOwnerOrgTestMixin, TestCase):
         nothing was actually taken from them, so no "access removed" email.
         """
         self.workflow.memberships.create(user=self.admin, role=ResourceRole.OWNER)
-        with patch(
-            "account_v2.authentication_controller.AuthenticationController"
-            ".is_admin_by_role",
-            side_effect=lambda role: role == "admin",
-        ):
-            response = self._remove(self.owner, self.admin.pk)
+        response = self._remove(self.owner, self.admin.pk)
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
         self.service.send_access_removed_notification.assert_not_called()
 

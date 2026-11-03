@@ -1,0 +1,7 @@
+# The repo's ruff settings, plus the release tooling's own style: short local lambdas, `l` for a label, and tests
+# that set GITHUB_REPOSITORY before importing relstate.
+extend = "../../pyproject.toml"
+
+[lint.extend-per-file-ignores]
+"*.py" = ["E731", "E741"]
+"test_*.py" = ["E402"]

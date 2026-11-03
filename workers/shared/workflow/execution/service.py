@@ -70,6 +70,9 @@ class WorkerWorkflowExecutionService:
         self.api_client = api_client
         self.logger = logger
         self._last_execution_error = None
+        # (execution_id, context) of the file being processed, reused by the
+        # source/destination config lookups.
+        self._execution_context: tuple[str, dict] | None = None
 
     def execute_workflow_for_file(
         self,
@@ -556,19 +559,38 @@ class WorkerWorkflowExecutionService:
     def _get_workflow_execution_context(
         self, execution_id: str, workflow_id: str, organization_id: str
     ) -> tuple[dict, list]:
-        """Get workflow execution context and tool instances."""
-        execution_response = self.api_client.get_workflow_execution(execution_id)
-        if not execution_response.success:
-            raise Exception(
-                f"Failed to get workflow execution: {execution_response.error}"
-            )
+        """Get workflow execution context and tool instances.
+
+        The context is fetched fresh for each file (connector settings can change
+        during a long batch) and kept for this file's config lookups.
+        """
+        execution_context = self._fetch_execution_context(execution_id)
+        self._execution_context = (str(execution_id), execution_context)
 
         tool_instances_response = self.api_client.get_tool_instances_by_workflow(
             workflow_id=workflow_id,
             organization_id=organization_id,
         )
 
-        return execution_response.data, tool_instances_response.tool_instances
+        return execution_context, tool_instances_response.tool_instances
+
+    def _fetch_execution_context(self, execution_id: str) -> dict:
+        """Fetch the execution context, without its file-execution rows."""
+        execution_response = self.api_client.get_workflow_execution(execution_id)
+        if not execution_response.success:
+            raise Exception(
+                f"Failed to get workflow execution: {execution_response.error}"
+            )
+        return execution_response.data
+
+    def _get_cached_execution_context(self, execution_id: str) -> dict:
+        """Execution context already loaded for this file, else fetch it."""
+        cached = self._execution_context
+        if cached is not None and cached[0] == str(execution_id):
+            return cached[1]
+        execution_context = self._fetch_execution_context(execution_id)
+        self._execution_context = (str(execution_id), execution_context)
+        return execution_context
 
     def _get_workflow(
         self, workflow_id: str, organization_id: str
@@ -1703,15 +1725,10 @@ class WorkerWorkflowExecutionService:
     def _get_destination_config(
         self, workflow_id: str, execution_id: str
     ) -> dict[str, Any] | None:
-        """Get destination configuration for the workflow via API."""
+        """Get destination configuration from this file's execution context."""
         try:
             # Get workflow execution context which includes destination config
-            execution_response = self.api_client.get_workflow_execution(execution_id)
-            if not execution_response.success:
-                raise Exception(
-                    f"Failed to get execution context: {execution_response.error}"
-                )
-            execution_context = execution_response.data
+            execution_context = self._get_cached_execution_context(execution_id)
             destination_config = execution_context.get("destination_config", {})
 
             if not destination_config:
@@ -1734,15 +1751,10 @@ class WorkerWorkflowExecutionService:
     def _get_source_config(
         self, workflow_id: str, execution_id: str
     ) -> dict[str, Any] | None:
-        """Get source configuration for the workflow via API."""
+        """Get source configuration from this file's execution context."""
         try:
             # Get workflow execution context which includes source config
-            execution_response = self.api_client.get_workflow_execution(execution_id)
-            if not execution_response.success:
-                raise Exception(
-                    f"Failed to get execution context: {execution_response.error}"
-                )
-            execution_context = execution_response.data
+            execution_context = self._get_cached_execution_context(execution_id)
             source_config = execution_context.get("source_config", {})
 
             if not source_config:
