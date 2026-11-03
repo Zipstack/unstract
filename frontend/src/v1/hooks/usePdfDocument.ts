@@ -1,11 +1,12 @@
 import {
   classifyLoadError,
   openPdfDocument,
+  type PasswordPrompt,
   pdfSourceKey,
 } from "@v1/lib/pdf/pdfjs";
 import type { PageSize, PdfSource } from "@v1/lib/pdf/types";
 import type { PDFDocumentProxy } from "pdfjs-dist";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 export type PdfDocumentState =
   | { status: "empty" }
@@ -23,15 +24,17 @@ export interface PdfDocumentHandle {
   state: PdfDocumentState;
   /** Opens the same source again, after a failure. */
   retry: () => void;
-  /** Opens the same source with a password, after a password state. */
+  /**
+   * Gives the password the document asked for. The load carries on where it
+   * stopped; nothing is downloaded again.
+   */
   submitPassword: (password: string) => void;
 }
 
 /** One open attempt. A new object means a new attempt, even for the same source. */
-interface Request {
+interface OpenRequest {
   key: string;
   source: PdfSource | null;
-  password?: string;
 }
 
 /**
@@ -43,10 +46,15 @@ interface Request {
  */
 export function usePdfDocument(source: PdfSource | null): PdfDocumentHandle {
   const key = pdfSourceKey(source);
-  const [request, setRequest] = useState<Request>({ key, source });
+  const [request, setRequest] = useState<OpenRequest>({ key, source });
   const [result, setResult] = useState<{
-    request: Request;
+    request: OpenRequest;
     state: PdfDocumentState;
+  } | null>(null);
+  // The prompt the shown password state answers, with the attempt it belongs to.
+  const promptRef = useRef<{
+    request: OpenRequest;
+    prompt: PasswordPrompt;
   } | null>(null);
 
   let current = request;
@@ -60,10 +68,19 @@ export function usePdfDocument(source: PdfSource | null): PdfDocumentHandle {
     if (request.source === null) {
       return;
     }
-    const opening = openPdfDocument(request.source, {
-      password: request.password,
-    });
     let live = true;
+    const opening = openPdfDocument(request.source, {
+      onPassword(prompt) {
+        if (!live) {
+          return;
+        }
+        promptRef.current = { request, prompt };
+        setResult({
+          request,
+          state: { status: "password", incorrect: prompt.incorrect },
+        });
+      },
+    });
     opening.promise.then(
       ({ document, pageSizes }) => {
         if (!live) {
@@ -91,6 +108,9 @@ export function usePdfDocument(source: PdfSource | null): PdfDocumentHandle {
     );
     return () => {
       live = false;
+      if (promptRef.current?.request === request) {
+        promptRef.current = null;
+      }
       opening.destroy();
     };
   }, [request]);
@@ -99,7 +119,14 @@ export function usePdfDocument(source: PdfSource | null): PdfDocumentHandle {
     setRequest((previous) => ({ ...previous }));
   }, []);
   const submitPassword = useCallback((password: string) => {
-    setRequest((previous) => ({ ...previous, password }));
+    const pending = promptRef.current;
+    if (pending === null) {
+      return;
+    }
+    // A prompt answers once; pdf.js asks again if the password is wrong.
+    promptRef.current = null;
+    setResult({ request: pending.request, state: { status: "loading" } });
+    pending.prompt.submit(password);
   }, []);
 
   let state: PdfDocumentState;
