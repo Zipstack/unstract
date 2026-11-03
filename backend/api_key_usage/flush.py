@@ -6,7 +6,11 @@ It then applies each batch waiting in Redis, its own and any a failed or killed
 flush left behind: the counts and the batch's token are written in one
 transaction, and only after that commits is the batch deleted from Redis. A
 batch whose token is already written is only deleted, so no count is added
-twice and none is lost. A flush also deletes rows older than ``RETENTION_DAYS``.
+twice and none is lost. A batch that keeps failing is set aside after
+``MAX_BATCH_ATTEMPTS``, so one bad batch cannot hold up the others.
+
+The background flush also deletes rows older than ``RETENTION_DAYS``. A flush
+before a read skips that, so reads stay quick.
 
 Runs from ``recorder.record_key_use`` (in the background, at most once per
 interval) and before a read that wants current numbers. It needs no scheduler,
@@ -23,14 +27,19 @@ from account_v2.models import Organization
 from django.db import connection, transaction
 from django.utils import timezone
 from django_redis import get_redis_connection
+from psycopg2.extras import execute_values
 
 from api_key_usage.constants import (
     APPLIED_BATCH_KEEP_DAYS,
+    BATCH_FAILURES_KEY,
     BATCH_PREFIX,
     BATCHES_KEY,
+    DEAD_BATCH_KEEP_DAYS,
+    DEAD_BATCHES_KEY,
     FIELD_SEPARATOR,
     FLUSH_LOCK_KEY,
     FLUSH_LOCK_SECONDS,
+    MAX_BATCH_ATTEMPTS,
     PENDING_CALLER_LAST,
     PENDING_CALLERS,
     PENDING_CALLS,
@@ -86,6 +95,8 @@ class FlushResult:
     callers: int = 0
     pruned: int = 0
     dropped: int = 0
+    failed: int = 0
+    set_aside: int = 0
 
 
 @dataclass
@@ -96,11 +107,12 @@ class _Pending:
     caller_last: dict[str, float] = field(default_factory=dict)
 
 
-def flush_pending_usage() -> FlushResult:
+def flush_pending_usage(prune: bool = True) -> FlushResult:
     """Write pending usage to the database. Returns at once if a flush is running.
 
-    Raises if a batch cannot be written; that batch and any after it stay in
-    Redis for the next flush.
+    A batch that cannot be written is logged and stays in Redis for the next
+    flush; the other batches are still written. ``prune`` also deletes rows
+    outside the retention window.
     """
     redis = get_redis_connection("default")
     lock = uuid.uuid4().hex
@@ -110,9 +122,14 @@ def flush_pending_usage() -> FlushResult:
         result = FlushResult()
         _take_pending(redis, uuid.uuid4().hex)
         for token in sorted(_text(t) for t in redis.smembers(BATCHES_KEY)):
-            _apply_batch(redis, token, result)
-        result.pruned = _prune(timezone.now())
-        if result.calls or result.pruned or result.dropped:
+            try:
+                _apply_batch(redis, token, result)
+            except Exception:
+                logger.exception("Could not write API key usage batch %s", token)
+                _count_failure(redis, token, result)
+        if prune:
+            result.pruned = _prune(timezone.now())
+        if any((result.calls, result.pruned, result.dropped, result.failed)):
             logger.info("API key usage flush: %s", result)
         return result
     finally:
@@ -152,6 +169,26 @@ def _apply_batch(redis, token: str, result: FlushResult) -> None:
             result.batches += 1
     redis.delete(*_batch_names(token))
     redis.srem(BATCHES_KEY, token)
+    redis.hdel(BATCH_FAILURES_KEY, token)
+
+
+def _count_failure(redis, token: str, result: FlushResult) -> None:
+    """Count a failed attempt at batch ``token``; set it aside after too many."""
+    result.failed += 1
+    if redis.hincrby(BATCH_FAILURES_KEY, token, 1) < MAX_BATCH_ATTEMPTS:
+        return
+    for name in _batch_names(token):
+        redis.expire(name, timedelta(days=DEAD_BATCH_KEEP_DAYS))
+    redis.sadd(DEAD_BATCHES_KEY, token)
+    redis.srem(BATCHES_KEY, token)
+    redis.hdel(BATCH_FAILURES_KEY, token)
+    result.set_aside += 1
+    logger.error(
+        "API key usage batch %s failed %s times and was set aside in %s",
+        token,
+        MAX_BATCH_ATTEMPTS,
+        DEAD_BATCHES_KEY,
+    )
 
 
 def _write(pending: _Pending, result: FlushResult) -> None:
@@ -189,11 +226,12 @@ def _write(pending: _Pending, result: FlushResult) -> None:
     with transaction.atomic(), connection.cursor() as cursor:
         rows = [(*key, n) for key, n in calls.items() if key[0] in live]
         result.dropped += len(calls) - len(rows)
-        cursor.executemany(
+        execute_values(
+            cursor,
             f"""
             INSERT INTO {ApiKeyUsageDaily._meta.db_table}
                 (organization_id, key_type, key_id, day, calls)
-            VALUES (%s, %s, %s, %s, %s)
+            VALUES %s
             ON CONFLICT (key_type, key_id, day)
             DO UPDATE SET calls = {ApiKeyUsageDaily._meta.db_table}.calls
                 + EXCLUDED.calls
@@ -204,11 +242,12 @@ def _write(pending: _Pending, result: FlushResult) -> None:
 
         rows = [(*key, at) for key, at in last_used.items() if key[0] in live]
         result.dropped += len(last_used) - len(rows)
-        cursor.executemany(
+        execute_values(
+            cursor,
             f"""
             INSERT INTO {ApiKeyLastUsed._meta.db_table}
                 (organization_id, key_type, key_id, last_used_at)
-            VALUES (%s, %s, %s, %s)
+            VALUES %s
             ON CONFLICT (key_type, key_id)
             DO UPDATE SET last_used_at = GREATEST(
                 {ApiKeyLastUsed._meta.db_table}.last_used_at,
@@ -225,12 +264,13 @@ def _write(pending: _Pending, result: FlushResult) -> None:
             if key[0] in live and at is not None
         ]
         result.dropped += len(callers) - len(rows)
-        cursor.executemany(
+        execute_values(
+            cursor,
             f"""
             INSERT INTO {ApiKeyCallerDaily._meta.db_table}
                 (organization_id, key_type, key_id, api_deployment_id, day,
                  calls, last_call_at)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            VALUES %s
             ON CONFLICT (key_type, key_id, api_deployment_id, day)
             DO UPDATE SET
                 calls = {ApiKeyCallerDaily._meta.db_table}.calls + EXCLUDED.calls,
@@ -260,18 +300,42 @@ def oldest_kept_day(now: datetime) -> date:
     return now.astimezone(UTC).date() - timedelta(days=RETENTION_DAYS - 1)
 
 
+def _uuid(value: str) -> str:
+    return str(uuid.UUID(value))
+
+
+def _org_id(value: str) -> str:
+    return str(int(value))
+
+
+def _day(value: str) -> str:
+    return date.fromisoformat(value).isoformat()
+
+
+# Each field's parts, by how many there are: key_type, key_id, organization_id,
+# then the API deployment id (callers only), then the day (counts only).
+_PARTS = {
+    3: (str, _uuid, _org_id),
+    4: (str, _uuid, _org_id, _day),
+    5: (str, _uuid, _org_id, _uuid, _day),
+}
+
+
 def _split(fld: str, parts: int, result: FlushResult) -> list[str] | None:
     """The field's parts, or None (logged and counted as dropped) if malformed.
 
-    Dropped rather than raised: a raise would keep its batch and fail every
-    later flush on it.
+    Each part is checked against the column it goes to, and a bad field is
+    dropped rather than raised: a raise would fail the whole batch.
     """
     values = fld.split(FIELD_SEPARATOR)
-    if len(values) != parts:
+    try:
+        if len(values) != parts:
+            raise ValueError
+        return [check(value) for check, value in zip(_PARTS[parts], values, strict=True)]
+    except ValueError:
         logger.warning("Dropping malformed pending API key usage field %r", fld)
         result.dropped += 1
         return None
-    return values
 
 
 def _at(epoch: float) -> datetime:

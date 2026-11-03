@@ -13,8 +13,10 @@ from api_key_usage import recorder
 from api_key_usage.constants import (
     BATCH_PREFIX,
     BATCHES_KEY,
+    DEAD_BATCHES_KEY,
     FLUSH_DUE_KEY,
     FLUSH_LOCK_KEY,
+    MAX_BATCH_ATTEMPTS,
     PENDING_CALLS,
     PENDING_HASHES,
     RETENTION_DAYS,
@@ -27,6 +29,7 @@ from api_key_usage.models import (
     ApiKeyUsageDaily,
 )
 from api_key_usage.recorder import record_key_use
+from api_key_usage.tests.redis_state import clear_usage_redis
 from api_key_usage.recorder import start_background_flush as REAL_START_BACKGROUND_FLUSH
 
 KEY_TYPE = "platform_api_key"
@@ -52,10 +55,7 @@ class UsageTestBase(TestCase):
         self.key_id = uuid.uuid4()
 
     def _clear_redis(self) -> None:
-        batches = list(self.redis.scan_iter(f"{BATCH_PREFIX}:*"))
-        self.redis.delete(
-            *PENDING_HASHES, *batches, BATCHES_KEY, FLUSH_DUE_KEY, FLUSH_LOCK_KEY
-        )
+        clear_usage_redis()
 
     def record(self, at: datetime = DAY_1, **kwargs) -> None:
         kwargs.setdefault("key_type", KEY_TYPE)
@@ -254,11 +254,32 @@ class FlushTriggerTests(UsageTestBase):
 
 
 class FailureTests(UsageTestBase):
+    def test_recording_waits_on_redis_for_a_short_time_only(self) -> None:
+        with (
+            mock.patch.object(recorder, "_client", None),
+            override_settings(API_KEY_USAGE_REDIS_TIMEOUT_SECONDS=0.25),
+        ):
+            kwargs = recorder._redis().connection_pool.connection_kwargs
+
+        self.assertEqual(kwargs["socket_timeout"], 0.25)
+        self.assertEqual(kwargs["socket_connect_timeout"], 0.25)
+
+    def test_a_redis_outage_is_logged_once_a_minute(self) -> None:
+        with (
+            mock.patch.object(recorder, "_redis", side_effect=ConnectionError("down")),
+            mock.patch.object(recorder, "_last_failure_logged", 0.0),
+            mock.patch.object(recorder, "_failures_since_logged", 0),
+            self.assertLogs(recorder.logger, "ERROR") as logs,
+        ):
+            for _ in range(3):
+                self.record()
+
+        self.assertEqual(len(logs.output), 1)
+
     def test_a_redis_failure_never_reaches_the_caller(self) -> None:
         with (
-            mock.patch.object(
-                recorder, "get_redis_connection", side_effect=ConnectionError("down")
-            ),
+            mock.patch.object(recorder, "_redis", side_effect=ConnectionError("down")),
+            mock.patch.object(recorder, "_last_failure_logged", 0.0),
             self.assertLogs(recorder.logger, "ERROR"),
         ):
             self.record()
@@ -273,9 +294,10 @@ class FailureTests(UsageTestBase):
             mock.patch.object(
                 flush_module, "_write", side_effect=RuntimeError("db down")
             ),
-            self.assertRaises(RuntimeError),
+            self.assertLogs(flush_module.logger, "ERROR"),
         ):
-            flush_pending_usage()
+            result = flush_pending_usage()
+        self.assertEqual(result.failed, 1)
         self.assertFalse(ApiKeyUsageDaily.objects.exists())
 
         flush_pending_usage()
@@ -322,7 +344,7 @@ class FailureTests(UsageTestBase):
 
     def test_a_failed_flush_releases_its_lock(self) -> None:
         with (
-            mock.patch.object(flush_module, "_write", side_effect=RuntimeError),
+            mock.patch.object(flush_module, "_take_pending", side_effect=RuntimeError),
             self.assertRaises(RuntimeError),
         ):
             self.record()
@@ -352,6 +374,61 @@ class FailureTests(UsageTestBase):
         result = flush_pending_usage()
 
         self.assertEqual(result.dropped, 2)  # its count and its last-used
+        self.assertEqual(self.daily(), {DAY_1.date(): 1})
+
+    def test_a_failing_batch_does_not_hold_up_the_others(self) -> None:
+        self.record()
+        _take_pending(self.redis, "a-bad")
+        self.record(key_id=uuid.uuid4())
+        real_write = flush_module._write
+
+        def write(pending, result):
+            if len(pending.calls) == 1 and str(self.key_id) in next(iter(pending.calls)):
+                raise RuntimeError("bad batch")
+            real_write(pending, result)
+
+        with (
+            mock.patch.object(flush_module, "_write", side_effect=write),
+            self.assertLogs(flush_module.logger, "ERROR"),
+        ):
+            result = flush_pending_usage()
+
+        self.assertEqual((result.failed, result.batches, result.calls), (1, 1, 1))
+        self.assertEqual(self.redis.smembers(BATCHES_KEY), {b"a-bad"})
+
+    def test_a_batch_that_keeps_failing_is_set_aside(self) -> None:
+        self.record()
+        _take_pending(self.redis, "bad")
+
+        with (
+            mock.patch.object(flush_module, "_write", side_effect=RuntimeError),
+            self.assertLogs(flush_module.logger, "ERROR") as logs,
+        ):
+            results = [flush_pending_usage() for _ in range(MAX_BATCH_ATTEMPTS)]
+
+        self.assertEqual([r.set_aside for r in results][-1], 1)
+        self.assertEqual(sum(r.set_aside for r in results), 1)
+        self.assertIn("set aside", logs.output[-1])
+        self.assertFalse(self.redis.exists(BATCHES_KEY))
+        self.assertEqual(self.redis.smembers(DEAD_BATCHES_KEY), {b"bad"})
+        name = f"{BATCH_PREFIX}:bad:{PENDING_CALLS}"
+        self.assertGreater(self.redis.ttl(name), 0)  # kept, but not for ever
+        self.assertEqual(flush_pending_usage().failed, 0)
+
+    def test_a_field_with_a_bad_part_is_dropped(self) -> None:
+        bad = [
+            f"{KEY_TYPE}|not-a-uuid|{self.org.pk}|{DAY_1.date()}",
+            f"{KEY_TYPE}|{uuid.uuid4()}|not-an-org|{DAY_1.date()}",
+            f"{KEY_TYPE}|{uuid.uuid4()}|{self.org.pk}|not-a-day",
+        ]
+        for fld in bad:
+            self.redis.hincrby(PENDING_CALLS, fld, 1)
+        self.record()
+
+        with self.assertLogs(flush_module.logger, "WARNING"):
+            result = flush_pending_usage()
+
+        self.assertEqual((result.dropped, result.failed), (3, 0))
         self.assertEqual(self.daily(), {DAY_1.date(): 1})
 
     def test_a_malformed_field_is_dropped_not_retried(self) -> None:

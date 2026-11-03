@@ -14,12 +14,31 @@ from django.utils import timezone
 from global_api_deployment_key.models import GlobalApiDeploymentKey
 from global_api_deployment_key.views import GlobalApiDeploymentKeyViewSet
 from platform_api.models import PlatformApiKey
-from platform_api.tests.test_platform_key_middleware import _MIDDLEWARE, ECHO_URL
+from django.urls import path
+from platform_api.models import ApiKeyPermission
+from platform_api.tests.test_platform_key_middleware import (
+    _MIDDLEWARE,
+    ECHO_URL,
+    ORG_A,
+)
+from platform_api.tests.test_platform_key_middleware import (
+    urlpatterns as _echo_urls,
+)
 from platform_api.views import PlatformApiKeyViewSet
 from platform_audit.tests.base import AuditTestBase
 
 from api_key_usage import recorder
 from api_key_usage.rotation import rotate_secret
+
+
+# The echo view plus the real rotate endpoint, both behind the middleware.
+urlpatterns = [
+    *_echo_urls,
+    path(
+        "api/v1/unstract/platform-api/keys/<uuid:pk>/rotate/",
+        PlatformApiKeyViewSet.as_view({"post": "rotate"}),
+    ),
+]
 
 
 class RotateSecretTests(AuditTestBase):
@@ -58,7 +77,7 @@ class RotateSecretTests(AuditTestBase):
 
 
 @override_settings(
-    ROOT_URLCONF="platform_api.tests.test_platform_key_middleware",
+    ROOT_URLCONF="api_key_usage.tests.test_rotation",
     MIDDLEWARE=_MIDDLEWARE,
 )
 class PlatformKeyRotateTests(AuditTestBase):
@@ -145,6 +164,46 @@ class PlatformKeyRotateTests(AuditTestBase):
         self.assertEqual(self.key.previous_key, current)
         with self.assertLogs("account_v2.custom_auth_middleware", "WARNING"):
             self.assertFalse(self.authenticates(cut_off))
+
+    def allow_key_rotation(self) -> None:
+        """A full_access key, in an org that lets non-admins manage keys."""
+        PlatformApiKey.objects.filter(pk=self.key.pk).update(
+            permission=ApiKeyPermission.FULL_ACCESS
+        )
+        self.org.restrict_api_key_management = False
+        self.org.save()
+
+    def rotate_with(self, secret, grace="none"):
+        return self.client.post(
+            f"/api/v1/unstract/{ORG_A}/platform-api/keys/{self.key.pk}/rotate/",
+            {"grace": grace},
+            format="json",
+            HTTP_AUTHORIZATION=f"Bearer {secret}",
+        )
+
+    def test_the_old_secret_cannot_rotate_its_key(self) -> None:
+        self.allow_key_rotation()
+        old = self.key.key
+        self.call(self.rotate, "post", data={"grace": "24h"}, pk=self.key.pk)
+        self.key.refresh_from_db()
+        new = self.key.key
+
+        response = self.rotate_with(old)
+
+        self.assertEqual(response.status_code, 403, response.content)
+        self.assertIn(b"was rotated", response.content)
+        self.key.refresh_from_db()
+        self.assertEqual(self.key.key, new)
+        self.assertTrue(self.authenticates(new))
+
+    def test_the_new_secret_can_rotate_its_key(self) -> None:
+        self.allow_key_rotation()
+        self.call(self.rotate, "post", data={"grace": "24h"}, pk=self.key.pk)
+        self.key.refresh_from_db()
+
+        response = self.rotate_with(self.key.key)
+
+        self.assertEqual(response.status_code, 200, response.content)
 
     def test_a_deactivated_key_rejects_its_old_secret_too(self) -> None:
         old = self.key.key

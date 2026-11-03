@@ -1,7 +1,7 @@
 """Usage as the key pages show it: status, last use, daily history, callers.
 
-Reads call ``refresh`` first, so counts pending in Redis since the last flush
-are included. Days are UTC days, and the window is the last ``RETENTION_DAYS``
+The key views call ``refresh`` before reading, so counts pending in Redis
+since the last flush are included. Days are UTC days, and the window is the last ``RETENTION_DAYS``
 of them, today included.
 """
 
@@ -45,7 +45,7 @@ class KeyUsage:
 def refresh() -> None:
     """Flush pending usage so a read is current. A failure only makes it stale."""
     try:
-        flush_pending_usage()
+        flush_pending_usage(prune=False)
     except Exception:
         logger.exception("API key usage flush before a read failed")
 

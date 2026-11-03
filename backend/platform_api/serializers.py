@@ -88,6 +88,7 @@ class PlatformApiKeyDetailSerializer(KeyUsageFieldsMixin, serializers.ModelSeria
             "name",
             "key",
             "is_active",
+            "expires_at",
             "previous_key_expires_at",
             *USAGE_FIELDS,
         ]

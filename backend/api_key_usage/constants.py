@@ -29,6 +29,14 @@ PENDING_HASHES = (
 BATCHES_KEY = f"{_PREFIX}:batches"
 BATCH_PREFIX = f"{_PREFIX}:batch"
 
+# A batch that fails to apply this many times is set aside, so it can no longer
+# hold up the batches after it. Its data stays in Redis, under its own name, for
+# DEAD_BATCH_KEEP_DAYS, listed in DEAD_BATCHES_KEY, for someone to look at.
+MAX_BATCH_ATTEMPTS = 5
+BATCH_FAILURES_KEY = f"{_PREFIX}:batch_failures"
+DEAD_BATCHES_KEY = f"{_PREFIX}:dead_batches"
+DEAD_BATCH_KEEP_DAYS = 30
+
 # Applied batch tokens are kept this long, so a batch a crashed flush applied
 # but did not clear from Redis is recognised and not added twice.
 APPLIED_BATCH_KEEP_DAYS = 7

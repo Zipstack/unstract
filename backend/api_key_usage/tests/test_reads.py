@@ -21,6 +21,7 @@ from api_key_usage.models import ApiKeyLastUsed, ApiKeyUsageDaily
 from api_key_usage.reads import usage_status
 from api_key_usage.recorder import record_key_use
 from api_key_usage.registry import register_key_type
+from api_key_usage.tests.redis_state import clear_usage_redis
 from api_key_usage.views import KeyUsageSummaryView
 
 PLATFORM = "platform_api_key"
@@ -49,9 +50,7 @@ class UsageStatusTests(TestCase):
 
     def test_a_key_expiring_within_7_days_is_expiring_even_if_unused(self) -> None:
         self.assertEqual(self.status(expires_at=NOW + timedelta(days=7)), "expiring")
-        self.assertEqual(
-            self.status(expires_at=NOW + timedelta(days=8)), "never_used"
-        )
+        self.assertEqual(self.status(expires_at=NOW + timedelta(days=8)), "never_used")
 
     def test_expired_wins_over_everything(self) -> None:
         self.assertEqual(
@@ -63,10 +62,8 @@ class UsageStatusTests(TestCase):
 class ReadTestBase(AuditTestBase):
     def setUp(self) -> None:
         super().setUp()
-        redis = get_redis_connection("default")
-        clear = lambda: redis.delete(*PENDING_HASHES, FLUSH_DUE_KEY, FLUSH_LOCK_KEY)  # noqa: E731
-        clear()
-        self.addCleanup(clear)
+        clear_usage_redis()
+        self.addCleanup(clear_usage_redis)
         patcher = mock.patch.object(recorder, "start_background_flush")
         patcher.start()
         self.addCleanup(patcher.stop)
@@ -132,7 +129,9 @@ class PlatformKeyUsageTests(ReadTestBase):
         self.record(self.key, PLATFORM, at=today - timedelta(days=2))
         view = PlatformApiKeyViewSet.as_view({"get": "history"})
 
-        data = self.call(view, "get", pk=self.key.pk).data
+        # One clock for recording and reading, so the test holds across midnight.
+        with mock.patch.object(timezone, "now", return_value=today):
+            data = self.call(view, "get", pk=self.key.pk).data
 
         days = data["days"]
         self.assertEqual(len(days), 30)
@@ -221,7 +220,9 @@ class SummaryTests(ReadTestBase):
 
     def platform_key(self, **kwargs) -> PlatformApiKey:
         return PlatformApiKey.objects.create(
-            name=f"p-{uuid.uuid4().hex[:6]}", description="d", organization=self.org,
+            name=f"p-{uuid.uuid4().hex[:6]}",
+            description="d",
+            organization=self.org,
             **kwargs,
         )
 
@@ -232,7 +233,9 @@ class SummaryTests(ReadTestBase):
         self.record(expiring, PLATFORM)
         idle = self.platform_key()
         ApiKeyLastUsed.objects.create(
-            organization=self.org, key_type=PLATFORM, key_id=idle.id,
+            organization=self.org,
+            key_type=PLATFORM,
+            key_id=idle.id,
             last_used_at=timezone.now() - timedelta(days=120),
         )
         used = GlobalApiDeploymentKey.objects.create(
@@ -285,8 +288,11 @@ class SummaryTests(ReadTestBase):
     def test_old_daily_rows_do_not_count_toward_calls_30d(self) -> None:
         key = self.platform_key()
         ApiKeyUsageDaily.objects.create(
-            organization=self.org, key_type=PLATFORM, key_id=key.id,
-            day=timezone.now().date() - timedelta(days=30), calls=9,
+            organization=self.org,
+            key_type=PLATFORM,
+            key_id=key.id,
+            day=timezone.now().date() - timedelta(days=30),
+            calls=9,
         )
 
         usage = reads.usage_by_key(PLATFORM, [key])[key.id]

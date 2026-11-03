@@ -26,10 +26,10 @@ from api_key_usage import recorder
 from api_key_usage.constants import FLUSH_DUE_KEY, FLUSH_LOCK_KEY, PENDING_HASHES
 from api_key_usage.flush import flush_pending_usage
 from api_key_usage.models import ApiKeyLastUsed, ApiKeyUsageDaily
+from api_key_usage.tests.redis_state import clear_usage_redis
 
 
-def _clear_redis() -> None:
-    get_redis_connection("default").delete(*PENDING_HASHES, FLUSH_DUE_KEY, FLUSH_LOCK_KEY)
+_clear_redis = clear_usage_redis
 
 
 @override_settings(
@@ -109,9 +109,8 @@ class PlatformKeyAuthTests(APITestCase):
         key = self.make_key()
 
         with (
-            mock.patch.object(
-                recorder, "get_redis_connection", side_effect=ConnectionError
-            ),
+            mock.patch.object(recorder, "_redis", side_effect=ConnectionError),
+            mock.patch.object(recorder, "_last_failure_logged", 0.0),
             self.assertLogs(recorder.logger, "ERROR"),
         ):
             response = self.call(key)
@@ -307,7 +306,9 @@ class PlatformKeyExpiryEditTests(AuditTestBase):
 
         response = self.call(view, "get")
 
-        self.assertEqual(response.data[0]["expires_at"], expires.isoformat().replace("+00:00", "Z"))
+        self.assertEqual(
+            response.data[0]["expires_at"], expires.isoformat().replace("+00:00", "Z")
+        )
 
 
 class GlobalKeyExpiryEditTests(AuditTestBase):

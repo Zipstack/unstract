@@ -46,7 +46,9 @@ Mounted under the organisation path `/api/v1/unstract/{org_id}/`.
   platform API keys get 403.
 
 Every read first moves pending usage from Redis to the database, so the numbers
-include calls made seconds ago.
+include calls made seconds ago. The exception is a read made while a background
+flush is running: it skips its own flush and can miss calls from the last few
+seconds, which the next read shows.
 
 ## Usage fields on the key lists
 
@@ -57,7 +59,7 @@ The list, detail, create and rotate responses of both key types carry:
 | `last_used_at` | datetime or null | Last successful authentication. Null if never used since tracking began. |
 | `calls_30d` | int | Calls in the last 30 UTC days, today included. |
 | `usage_status` | enum | See below. |
-| `expires_at` | datetime or null | When the key stops working. Null never expires. List only; set it on create or PATCH. |
+| `expires_at` | datetime or null | When the key stops working. Null never expires. Set it on create or PATCH. |
 | `previous_key_expires_at` | datetime or null | Until when the secret before the last rotation still works. |
 
 `usage_status` is the first of these that applies:
@@ -113,8 +115,9 @@ first.
 ```
 
 A deployment deleted since keeps its counts, with `display_name` and `api_name`
-null. Platform keys have no callers endpoint: they authenticate platform APIs,
-not deployments.
+null. So does, for a member, a deployment they no longer own: they see its
+counts but not its name, as on their key list. Platform keys have no callers
+endpoint: they authenticate platform APIs, not deployments.
 
 ## Summary
 
@@ -178,9 +181,19 @@ replaces it, and rotating with `none` cuts every old secret off. Deactivating th
 key rejects both secrets. The `key.rotated` audit event's summary says until when
 the old secret works; it never contains a secret.
 
+The old secret only calls the API during its grace period. It cannot rotate its
+key: a `full_access` platform key presenting its old secret gets 403 from rotate,
+since rotating would hand it the new secret. Global keys cannot call the rotate
+endpoint at all.
+
+Two rotations of one key run one after the other (the key row is locked), so a
+rotation never keeps a secret another one just cut off.
+
 Platform key rotate also checks the `manage_api_keys` capability
-(`RequiresCapability`, PB-T04). Global key rotate already did through
-`CanManageApiKeys`.
+(`RequiresCapability`, PB-T04). For an admin session it adds nothing; for a
+`full_access` key, whose service account is a member, it applies the
+organisation's "who can manage API keys" setting. Global key rotate already did
+through `CanManageApiKeys`.
 
 ## How usage is recorded
 
@@ -188,6 +201,9 @@ Platform key rotate also checks the `manage_api_keys` capability
   global key (`DeploymentHelper.validate_api`) calls `record_key_use`. It adds
   to Redis hashes in one round trip, never writes the database, and never fails
   the request.
+- Recording waits on Redis for at most `API_KEY_USAGE_REDIS_TIMEOUT_SECONDS`
+  (default 0.5). A slower or unreachable Redis loses that count; failures are
+  logged at most once a minute.
 - A flush moves the counts to `api_key_usage_daily`, `api_key_caller_daily` and
   `api_key_last_used`. The first use in each `API_KEY_USAGE_FLUSH_INTERVAL_SECONDS`
   (default 300) starts one in a background thread, and every read starts one.
@@ -197,8 +213,13 @@ Platform key rotate also checks the `manage_api_keys` capability
   aside in one atomic step. The counts and the batch's token commit in one
   transaction before the batch leaves Redis, so a flush killed midway loses
   nothing and a retried batch is never counted twice.
-- Daily rows older than 30 days are deleted on flush. `last_used_at` is kept for
-  as long as the key exists, so `idle` can be computed.
+- Each batch is written on its own, so one that fails does not hold up the
+  others. A batch that fails 5 times is set aside: it leaves the queue, and its
+  data stays in Redis for 30 days under `api_key_usage:dead_batches` for
+  inspection. Fields with a malformed part are dropped and logged.
+- Daily rows older than 30 days are deleted by the background flush, not by the
+  flush before a read. `last_used_at` is kept for as long as the key exists, so
+  `idle` can be computed.
 
 ## Adding a key type
 

@@ -20,6 +20,7 @@ newer use.
 
 import logging
 import threading
+import time
 from datetime import UTC, datetime
 from typing import Any
 
@@ -27,6 +28,7 @@ from django.conf import settings
 from django.db import connection
 from django.utils import timezone
 from django_redis import get_redis_connection
+from redis import ConnectionPool, Redis
 
 from api_key_usage.constants import (
     FIELD_SEPARATOR,
@@ -62,6 +64,55 @@ return 0
 """
 
 
+_client: Redis | None = None
+_client_lock = threading.Lock()
+_last_failure_logged = 0.0
+# A Redis outage fails every request's recording. Log the first failure in each
+# window with its traceback, and only count the rest.
+_FAILURE_LOG_INTERVAL_SECONDS = 60
+_failures_since_logged = 0
+
+
+def _redis() -> Redis:
+    """The default Redis, with short timeouts so a hung Redis cannot hang auth.
+
+    Built once from the default connection's settings, with its own pool, since
+    the timeouts must not apply to the cache's other users.
+    """
+    global _client
+    if _client is None:
+        with _client_lock:
+            if _client is None:
+                pool = get_redis_connection("default").connection_pool
+                timeout = settings.API_KEY_USAGE_REDIS_TIMEOUT_SECONDS
+                _client = Redis(
+                    connection_pool=ConnectionPool(
+                        connection_class=pool.connection_class,
+                        **{
+                            **pool.connection_kwargs,
+                            "socket_timeout": timeout,
+                            "socket_connect_timeout": timeout,
+                        },
+                    )
+                )
+    return _client
+
+
+def _log_failure() -> None:
+    global _last_failure_logged, _failures_since_logged
+    now = time.monotonic()
+    if now - _last_failure_logged < _FAILURE_LOG_INTERVAL_SECONDS:
+        _failures_since_logged += 1
+        return
+    # Nothing about the key goes in the log; the traceback shows which auth
+    # path lost the count.
+    logger.exception(
+        "Could not record an API key use (%s more since the last report)",
+        _failures_since_logged,
+    )
+    _last_failure_logged, _failures_since_logged = now, 0
+
+
 def join_field(*parts: Any) -> str:
     return FIELD_SEPARATOR.join(str(part) for part in parts)
 
@@ -79,7 +130,9 @@ def record_key_use(
     Call it after the key is accepted. ``organization_id`` is the key's
     ``Organization`` primary key. Pass ``api_deployment_id`` when the key
     authenticated an API deployment, so the key's callers can be listed.
-    A Redis failure loses this one count and is logged; the request goes on.
+    A Redis failure, or a Redis slower than
+    ``API_KEY_USAGE_REDIS_TIMEOUT_SECONDS``, loses this one count and is logged
+    (at most once a minute); the request goes on.
     """
     try:
         at = at or timezone.now()
@@ -87,7 +140,7 @@ def record_key_use(
         key = join_field(key_type, key_id, organization_id)
         caller = join_field(key, api_deployment_id, day) if api_deployment_id else ""
 
-        flush_due = get_redis_connection("default").eval(
+        flush_due = _redis().eval(
             _RECORD,
             5,
             PENDING_CALLS,
@@ -102,9 +155,7 @@ def record_key_use(
             settings.API_KEY_USAGE_FLUSH_INTERVAL_SECONDS,
         )
     except Exception:
-        # Nothing about the key goes in the log; the traceback shows which
-        # auth path lost the count.
-        logger.exception("Could not record an API key use")
+        _log_failure()
         return
 
     if flush_due:

@@ -30,6 +30,8 @@ class ApiKeyUsageDaily(models.Model):
             models.Index(
                 fields=["organization", "day"], name="api_key_usage_org_day_idx"
             ),
+            # For the retention prune, which deletes by day across orgs.
+            models.Index(fields=["day"], name="api_key_usage_day_idx"),
         ]
 
 
@@ -62,6 +64,8 @@ class ApiKeyCallerDaily(models.Model):
             models.Index(
                 fields=["organization", "day"], name="api_key_caller_org_day_idx"
             ),
+            # For the retention prune, which deletes by day across orgs.
+            models.Index(fields=["day"], name="api_key_caller_day_idx"),
         ]
 
 

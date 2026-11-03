@@ -209,6 +209,10 @@ class CustomAuthMiddleware:
         )
         request.user = key.api_user
         request.platform_api_key = key
+        # True when the caller used the old secret of a key rotated with a
+        # grace period. That secret may keep calling the API, but not manage
+        # the key: rotating would hand it the new secret.
+        request.platform_api_key_is_previous = key.key != key_uuid
         # Skip CSRF for Bearer-authenticated requests
         request.csrf_processing_done = True
         StateStore.set(Common.LOG_EVENTS_ID, str(key.id))
