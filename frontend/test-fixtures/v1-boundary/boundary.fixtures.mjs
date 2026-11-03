@@ -233,13 +233,17 @@ test("no v1 or fixture file is git-ignored", () => {
   assert.deepEqual(gitIgnored(files), []);
 });
 
-test("cloud v1 plugins are git-ignored; the public manifest is not", () => {
+test("cloud v1 plugins are git-ignored; the public loader and placeholder are not", () => {
   const cloud = [
     "src/v1/plugins/billing/index.ts",
     "src/v1/plugins/billing/lib/x.ts",
     "src/v1/plugins/stray.ts",
   ];
-  const ignored = gitIgnored([...cloud, "src/v1/plugins/manifest.ts"]);
+  const ignored = gitIgnored([
+    ...cloud,
+    "src/v1/plugins/index.ts",
+    "src/v1/plugins/.gitkeep",
+  ]);
   assert.deepEqual(sorted(ignored), sorted(cloud));
 });
 
@@ -778,15 +782,15 @@ test("v0 symlinks: a link into v1 is reported, a file link is scanned", () => {
     writeFile(dir, "elsewhere/bad.jsx", 'import "@v1/lib/x";\n');
     fs.mkdirSync(path.join(dir, "src", "pages"), { recursive: true });
     fs.symlinkSync(
-      path.join(dir, "src", "v1", "plugins", "manifest.ts"),
-      path.join(dir, "src", "pages", "manifest.ts"),
+      path.join(dir, "src", "v1", "plugins", "index.ts"),
+      path.join(dir, "src", "pages", "index.ts"),
     );
     fs.symlinkSync(
       path.join(dir, "elsewhere", "bad.jsx"),
       path.join(dir, "src", "pages", "bad.jsx"),
     );
     const { output, log } = runAll(dir, ["node scripts/check-v1.mjs --code"]);
-    assert.ok(output.includes("src/pages/manifest.ts: links into src/v1"), log);
+    assert.ok(output.includes("src/pages/index.ts: links into src/v1"), log);
     assert.ok(output.includes("src/pages/bad.jsx:1: '@v1/lib/x' reaches"), log);
   } finally {
     removeTree(dir);

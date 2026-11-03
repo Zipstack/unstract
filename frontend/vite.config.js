@@ -35,6 +35,10 @@ function optionalPluginImports() {
     resolveId(source, importer) {
       if (!importer) return null;
 
+      // v1 has no optional imports: an absent v1 plugin has no manifest, so a
+      // missing module under src/v1 is a bug and must fail the build.
+      if (importer.includes("/src/v1/")) return null;
+
       // Only handle relative imports
       if (!source.startsWith(".")) return null;
 
@@ -134,6 +138,29 @@ function jsxInJs() {
   };
 }
 
+/*
+ * v1 plugin check (scripts/v1-plugins.mjs): fails the build on a slot filled
+ * twice, a route defined twice or a plugin with no distribution, and
+ * publishes the distribution matrix as plugin-matrix.json.
+ */
+function v1PluginMatrix() {
+  let matrix;
+  return {
+    name: "v1-plugin-matrix",
+    async buildStart() {
+      const { check } = await import("./scripts/v1-plugins.mjs");
+      matrix = await check();
+    },
+    generateBundle() {
+      this.emitFile({
+        type: "asset",
+        fileName: "plugin-matrix.json",
+        source: `${JSON.stringify(matrix, null, 2)}\n`,
+      });
+    },
+  };
+}
+
 // https://vite.dev/config/
 export default defineConfig(({ mode }) => {
   // Load env file based on `mode` in the current working directory.
@@ -155,6 +182,7 @@ export default defineConfig(({ mode }) => {
       }),
       // SVG as React component support (for `import Logo from './logo.svg?react'`)
       svgr(),
+      v1PluginMatrix(),
     ],
 
     /*
