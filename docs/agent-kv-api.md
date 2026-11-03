@@ -707,10 +707,19 @@ failure belongs to the job, not to one extractor.
 
 ### `qa_passed` / `challenge_passed`, and the advisory markers that qualify them
 
-`qa_passed` and `challenge_passed` are positive assertions, and on their own they
-**cannot distinguish "checked and clean" from "nothing was checked"**. Advisory
-markers carry that distinction — the table below is the list; do not count them
-from this sentence. They are the whole mitigation, so a consumer that acts on either flag must
+`qa_passed` and `challenge_passed` are positive assertions, and **a positive
+assertion is emitted only by the stage that computed it**. When the stage did not
+run — it was never in the graph (`qa: false` / `challenge: false` on the job), the
+token ceiling skipped it, or it raised — the field is **absent entirely**, and the
+matching `*_unchecked` marker is present. Read a missing `qa_passed` as "not
+checked", never as either verdict.
+
+They used to be emitted unconditionally, carrying a default: `qa_passed` fell back
+to reconciliation's much weaker "every required key was found", and
+`challenge_passed` to its dataclass default `true`. A job with both stages off
+therefore published `qa_passed: true, challenge_passed: true` with neither marker
+set. Advisory markers carry the distinction — the table below is the list; do not
+count them from this sentence. They are the whole mitigation, so a consumer that acts on either flag must
 read them. They sit in the **same per-extractor block** as `qa_passed` itself
 (`extractors.<name>.*`), not at the top level.
 
@@ -724,13 +733,13 @@ rather than always present.
 
 | Marker | Type | Present when | What it means for the field it qualifies |
 | --- | --- | --- | --- |
-| `qa_unchecked` | `true` | the token ceiling skipped the `kv_qa` stage | `qa_passed` was left at the much weaker pre-seeded value "every required key was found". No format check, no grounding check and no re-extraction ran. |
+| `qa_unchecked` | `true` | the `kv_qa` stage did not run — absent from the graph, skipped by the ceiling, or it raised | `qa_passed` was left at the much weaker pre-seeded value "every required key was found". No format check, no grounding check and no re-extraction ran. |
 | `challenge_unchecked` | `true` | at least one key's **final** value was never challenged | `challenge_passed: true` means "nothing was found wrong about the values that WERE judged", which is not the same as a clean challenge of the record you are reading. |
 | `budget_exhausted` | `true` | the per-job token ceiling bit anywhere | Some work the job was asked to do did not happen. |
 | `budget_skipped_stages` | `string[]` | the ceiling skipped at least one whole stage | Names the stages that never started, e.g. `["kv_qa", "code_generator"]`. **Never present as `[]`** — see the first edge case below. |
 | `qa_partial` | `true` | QA ran and the ceiling bit mid-loop | QA started but abandoned part of its work, so `qa_passed` reflects an incomplete pass. Distinct from `qa_unchecked`, which means the stage never started; the two are mutually exclusive. |
 | `extraction_degraded` | `true` | the engine isolated at least one failure | The record may be short through no fault of the document. Paired with `extraction_dropped`; `success: true` with missing keys is otherwise indistinguishable from "the document does not contain them". |
-| `extraction_dropped` | `string[]` | alongside `extraction_degraded` | Sorted reason codes for what was isolated. **Closed vocabulary of exactly fourteen values.** Key extraction: `empty_response`, `unparseable_response`, `results_not_a_list`, `results_wrong_shape`, `whole_doc:error`, `page:error`. Array extraction: `array:error` (the fan-out isolated a whole array), plus `array_empty_response`, `array_unparseable_response`, `array_rows_not_a_list`, `array_rows_wrong_shape`, `array_rows_no_declared_column`, `array_tool_args_not_a_dict`. The two `*_wrong_shape` codes mean the response's top-level shape was right and its per-row shape was not — a positional table instead of an array of objects, or a row missing its `key` field — so **some or all** rows were discarded; `array_rows_no_declared_column` means a row matched none of the declared columns, and `array_columns_unmatched` means a declared column appears as a key in **no** row while the model supplied keys nobody asked for — the per-column signal for a renamed or re-cased column, which the row-level one cannot see when only some columns were renamed. Both are judged on key PRESENCE in the model's raw row, never on whether a cell had a value: a declared column that is correctly named and simply empty is a legitimately blank cell and is reported as nothing at all. Classes only, never document content, and counts go to the log rather than onto the wire. An earlier revision suffixed the exception class name (`page:OSError`), which exported a third-party implementation detail as contract; a guard test asserts EQUALITY between this set and what the code emits, across every emitting module, so a new code arrives as a deliberate change to this table. |
+| `extraction_dropped` | `string[]` | alongside `extraction_degraded` | Sorted reason codes for what was isolated. **Closed vocabulary of exactly seventeen values.** Key extraction: `empty_response`, `unparseable_response`, `results_not_a_list`, `results_wrong_shape`, `key_path_unmatched`, `key_value_without_found`, `key_tool_args_not_a_dict`, `whole_doc:error`, `page:error`. Array extraction: `array:error` (the fan-out isolated a whole array), plus `array_empty_response`, `array_unparseable_response`, `array_rows_not_a_list`, `array_rows_wrong_shape`, `array_rows_no_declared_column`, `array_tool_args_not_a_dict`. The two `*_wrong_shape` codes mean the response's top-level shape was right and its per-row shape was not — a positional table instead of an array of objects, or a row missing its `key` field — so **some or all** rows were discarded; `array_rows_no_declared_column` means a row matched none of the declared columns, and `array_columns_unmatched` means a declared column appears as a key in **no** row while the model supplied keys nobody asked for — the per-column signal for a renamed or re-cased column, which the row-level one cannot see when only some columns were renamed. Both are judged on key PRESENCE in the model's raw row, never on whether a cell had a value: a declared column that is correctly named and simply empty is a legitimately blank cell and is reported as nothing at all. `key_path_unmatched` is the key-path twin of `array_columns_unmatched`: a result named a path outside the spec, which a model produces by re-casing, prefixing or abbreviating a key name, and which was previously discarded silently by reconciliation. `key_value_without_found` means a result carried a value while `found` was false or absent; the value is replaced with the empty string at the point of coercion, because leaving it let the value skip format validation and grounding and still finalize as `passed`. Classes only, never document content, and counts go to the log rather than onto the wire. An earlier revision suffixed the exception class name (`page:OSError`), which exported a third-party implementation detail as contract; a guard test asserts EQUALITY between this set and what the code emits, across every emitting module, so a new code arrives as a deliberate change to this table. |
 | `codegen_validation_skipped` | `true` | the flake8 lint could not run | `codegen_validation_passed: false` means "not linted", not "lint failed". See the calculation result shape above. |
 
 Three edge cases that a reader checking only the happy path gets wrong:
