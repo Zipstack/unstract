@@ -216,7 +216,9 @@ through `CanManageApiKeys`.
 - Each batch is written on its own, so one that fails does not hold up the
   others. A batch that fails 5 times is set aside: it leaves the queue, and its
   data stays in Redis for 30 days under `api_key_usage:dead_batches` for
-  inspection. Fields with a malformed part are dropped and logged.
+  inspection. Fields with a malformed part are dropped and logged. An outage
+  (database or Redis unreachable) stops the flush without counting against
+  any batch, so no usage is set aside just because the database was down.
 - Daily rows older than 30 days are deleted by the background flush, not by the
   flush before a read. `last_used_at` is kept for as long as the key exists, so
   `idle` can be computed.

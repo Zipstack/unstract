@@ -5,6 +5,7 @@ from datetime import UTC, date, datetime, timedelta, timezone
 from unittest import mock
 
 from account_v2.models import Organization
+from django.db import OperationalError
 from django.test import TestCase, override_settings
 from django_redis import get_redis_connection
 
@@ -13,6 +14,7 @@ from api_key_usage import recorder
 from api_key_usage.constants import (
     BATCH_PREFIX,
     BATCHES_KEY,
+    BATCH_FAILURES_KEY,
     DEAD_BATCHES_KEY,
     FLUSH_DUE_KEY,
     FLUSH_LOCK_KEY,
@@ -414,6 +416,30 @@ class FailureTests(UsageTestBase):
         name = f"{BATCH_PREFIX}:bad:{PENDING_CALLS}"
         self.assertGreater(self.redis.ttl(name), 0)  # kept, but not for ever
         self.assertEqual(flush_pending_usage().failed, 0)
+
+    def test_an_outage_never_sets_a_batch_aside(self) -> None:
+        self.record()
+        _take_pending(self.redis, "a")
+        self.record()
+        _take_pending(self.redis, "b")
+        write = mock.Mock(side_effect=OperationalError("connection refused"))
+
+        with (
+            mock.patch.object(flush_module, "_write", write),
+            mock.patch.object(flush_module, "_prune") as prune,
+            self.assertLogs(flush_module.logger, "WARNING"),
+        ):
+            results = [flush_pending_usage() for _ in range(MAX_BATCH_ATTEMPTS + 2)]
+
+        self.assertEqual(sum(r.set_aside for r in results), 0)
+        self.assertEqual(write.call_count, MAX_BATCH_ATTEMPTS + 2)  # stops at once
+        prune.assert_not_called()
+        self.assertFalse(self.redis.exists(BATCH_FAILURES_KEY))
+        self.assertFalse(self.redis.exists(DEAD_BATCHES_KEY))
+        self.assertEqual(self.redis.smembers(BATCHES_KEY), {b"a", b"b"})
+
+        result = flush_pending_usage()  # the outage is over
+        self.assertEqual((result.failed, result.batches), (0, 2))
 
     def test_a_field_with_a_bad_part_is_dropped(self) -> None:
         bad = [

@@ -7,7 +7,9 @@ flush left behind: the counts and the batch's token are written in one
 transaction, and only after that commits is the batch deleted from Redis. A
 batch whose token is already written is only deleted, so no count is added
 twice and none is lost. A batch that keeps failing is set aside after
-``MAX_BATCH_ATTEMPTS``, so one bad batch cannot hold up the others.
+``MAX_BATCH_ATTEMPTS``, so one bad batch cannot hold up the others. An outage
+(the database or Redis unreachable) ends the flush without counting against any
+batch, so every batch waits in Redis until the outage is over.
 
 The background flush also deletes rows older than ``RETENTION_DAYS``. A flush
 before a read skips that, so reads stay quick.
@@ -24,10 +26,12 @@ from dataclasses import dataclass, field
 from datetime import UTC, date, datetime, timedelta
 
 from account_v2.models import Organization
-from django.db import connection, transaction
+from django.db import InterfaceError, OperationalError, connection, transaction
 from django.utils import timezone
 from django_redis import get_redis_connection
 from psycopg2.extras import execute_values
+from redis.exceptions import ConnectionError as RedisConnectionError
+from redis.exceptions import TimeoutError as RedisTimeoutError
 
 from api_key_usage.constants import (
     APPLIED_BATCH_KEEP_DAYS,
@@ -111,8 +115,9 @@ def flush_pending_usage(prune: bool = True) -> FlushResult:
     """Write pending usage to the database. Returns at once if a flush is running.
 
     A batch that cannot be written is logged and stays in Redis for the next
-    flush; the other batches are still written. ``prune`` also deletes rows
-    outside the retention window.
+    flush; the other batches are still written. An outage stops the flush
+    without counting a failure, since retrying the others would fail too.
+    ``prune`` also deletes rows outside the retention window.
     """
     redis = get_redis_connection("default")
     lock = uuid.uuid4().hex
@@ -124,6 +129,14 @@ def flush_pending_usage(prune: bool = True) -> FlushResult:
         for token in sorted(_text(t) for t in redis.smembers(BATCHES_KEY)):
             try:
                 _apply_batch(redis, token, result)
+            except _OUTAGE_ERRORS:
+                logger.warning(
+                    "API key usage flush stopped: database or Redis unavailable; "
+                    "pending batches are kept for the next flush",
+                    exc_info=True,
+                )
+                result.failed += 1
+                return result
             except Exception:
                 logger.exception("Could not write API key usage batch %s", token)
                 _count_failure(redis, token, result)
@@ -134,6 +147,15 @@ def flush_pending_usage(prune: bool = True) -> FlushResult:
         return result
     finally:
         redis.eval(_RELEASE_LOCK, 1, FLUSH_LOCK_KEY, lock)
+
+
+# Failures of the connection rather than of the batch's data.
+_OUTAGE_ERRORS = (
+    OperationalError,
+    InterfaceError,
+    RedisConnectionError,
+    RedisTimeoutError,
+)
 
 
 def _batch_names(token: str) -> list[str]:
@@ -184,10 +206,9 @@ def _count_failure(redis, token: str, result: FlushResult) -> None:
     redis.hdel(BATCH_FAILURES_KEY, token)
     result.set_aside += 1
     logger.error(
-        "API key usage batch %s failed %s times and was set aside in %s",
+        "API key usage batch %s failed %s times and was set aside",
         token,
         MAX_BATCH_ATTEMPTS,
-        DEAD_BATCHES_KEY,
     )
 
 
