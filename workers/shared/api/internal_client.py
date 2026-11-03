@@ -472,7 +472,7 @@ class InternalAPIClient(CachedAPIClientMixin):
         execution_id: str | uuid.UUID,
         organization_id: str | None = None,
         include_cost: bool = False,
-        file_execution: bool = True,
+        file_execution: bool = False,
     ) -> WorkflowExecutionResponse:
         """Get workflow execution with context.
 
@@ -480,6 +480,7 @@ class InternalAPIClient(CachedAPIClientMixin):
             execution_id: Workflow execution ID
             organization_id: Optional organization ID override
             include_cost: Whether to include aggregated usage cost (expensive operation)
+            file_execution: Whether to include the execution's file-execution rows
 
         Returns:
             WorkflowExecutionResponse containing workflow execution data
