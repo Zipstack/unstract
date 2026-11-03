@@ -999,6 +999,25 @@ def test_a_full_temp_dir_fails_the_request_not_each_file(collaborators) -> None:
             _stage(uploads)
 
 
+def test_a_failed_flush_still_fails_the_request_when_closing_fails_too(
+    collaborators,
+) -> None:
+    """Closing the copy flushes again; that error must not pass as a bad file."""
+    from utils.upload_mime_type import UploadSpillError
+
+    spill = MagicMock()
+    spill.flush.side_effect = OSError(28, "No space left on device")
+    spill.close.side_effect = OSError(28, "No space left on device")
+    uploads = [_upload("doc.pdf", PDF_BYTES, "application/pdf")]
+    with mock.patch(
+        "utils.upload_mime_type.tempfile.NamedTemporaryFile", return_value=spill
+    ):
+        with pytest.raises(UploadSpillError):
+            _stage(uploads)
+
+    spill.close.assert_called_once()
+
+
 def _copy_from_connector(collaborators, data: bytes):
     """Run the backend's connector copy on `data`; return (error, bytes written)."""
     fs = fsspec.filesystem("memory", skip_instance_cache=True)

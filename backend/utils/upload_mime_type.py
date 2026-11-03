@@ -1,4 +1,6 @@
 import tempfile
+from collections.abc import Iterator
+from contextlib import contextmanager
 from typing import IO
 
 from unstract.core.mime_gate import classify_file_path
@@ -14,6 +16,14 @@ class UploadSpillError(RuntimeError):
     """
 
 
+@contextmanager
+def _disk_fault() -> Iterator[None]:
+    try:
+        yield
+    except OSError as exc:
+        raise UploadSpillError(str(exc)) from exc
+
+
 def detect_upload_mime_type(file: IO[bytes]) -> str:
     """Classify an upload from its own bytes, as LLMWhisperer would.
 
@@ -25,21 +35,18 @@ def detect_upload_mime_type(file: IO[bytes]) -> str:
         return classify_file_path(temporary_file_path())
 
     file.seek(0)
-    try:
+    with _disk_fault():
         spill = tempfile.NamedTemporaryFile(suffix=".upload")
-    except OSError as exc:
-        raise UploadSpillError(str(exc)) from exc
-    with spill:
-        try:
-            while chunk := file.read(SPILL_CHUNK_SIZE):
-                try:
-                    spill.write(chunk)
-                except OSError as exc:
-                    raise UploadSpillError(str(exc)) from exc
-            try:
-                spill.flush()
-            except OSError as exc:
-                raise UploadSpillError(str(exc)) from exc
-        finally:
-            file.seek(0)
+    # Reads from the upload stay outside _disk_fault: they fail this file only.
+    try:
+        while chunk := file.read(SPILL_CHUNK_SIZE):
+            with _disk_fault():
+                spill.write(chunk)
+        with _disk_fault():
+            spill.flush()
         return classify_file_path(spill.name)
+    finally:
+        file.seek(0)
+        # Closing flushes again, so it can fail the same way the flush did.
+        with _disk_fault():
+            spill.close()
