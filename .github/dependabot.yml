@@ -1,0 +1,20 @@
+# Keeps the SHA-pinned actions in .github/workflows current: one grouped PR a
+# week that bumps each pin and its version comment.
+#
+# Dependabot-triggered runs get only Dependabot secrets (none are set) and a
+# read-only GITHUB_TOKEN. ci-test.yaml therefore skips its Docker Hub login
+# (pulls go anonymous) and its sticky PR comment for dependabot[bot].
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+    commit-message:
+      # Trailing space stops Dependabot inserting a colon after the "]",
+      # so titles read "[DEPS] Bump ...".
+      prefix: "[DEPS] "

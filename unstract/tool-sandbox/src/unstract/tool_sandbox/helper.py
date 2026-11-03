@@ -515,7 +515,7 @@ class ToolSandboxHelper:
                 f"reason={reason}"
             )
         except Exception as cleanup_error:
-            logger.error(
+            logger.exception(
                 f"Container cleanup failed for container={container_name}, "
                 f"execution_id={self.execution_id}, file_execution_id={file_execution_id}, "
                 f"reason={reason}, error={cleanup_error}"

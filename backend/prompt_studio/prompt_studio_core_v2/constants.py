@@ -169,6 +169,9 @@ class IndexingConstants:
     EMBEDDING_INSTANCE_ID = "embedding_instance_id"
     VECTOR_DB_INSTANCE_ID = "vector_db_instance_id"
     X2TEXT_INSTANCE_ID = "x2text_instance_id"
+    # LLM adapter instance ids that will read an image-mode extraction; the
+    # executor checks their image-request limits before the billed conversion.
+    LLM_INSTANCE_IDS = "llm_instance_ids"
     FILE_PATH = "file_path"
     CHUNK_SIZE = "chunk_size"
     CHUNK_OVERLAP = "chunk_overlap"

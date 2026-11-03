@@ -66,6 +66,7 @@
         "zustand": "^4.3.8",
       },
       "devDependencies": {
+        "@babel/parser": "^7.28.6",
         "@biomejs/biome": "^2.3.13",
         "@tailwindcss/postcss": "^4",
         "@tailwindcss/typography": "^0.5.20",
@@ -80,6 +81,8 @@
         "autoprefixer": "^10.5.4",
         "baseline-browser-mapping": "^2.9.19",
         "happy-dom": "^20.10.2",
+        "postcss": "^8.5.23",
+        "postcss-value-parser": "^4.2.0",
         "tailwindcss": "^4",
         "typescript": "^7.0.2",
         "vite": "^7.3.5",

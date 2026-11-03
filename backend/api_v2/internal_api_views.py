@@ -67,7 +67,7 @@ class APIDeploymentDataView(APIView):
                 status=status.HTTP_404_NOT_FOUND,
             )
         except Exception as e:
-            logger.error(f"Error fetching APIDeployment data for {api_id}: {str(e)}")
+            logger.exception(f"Error fetching APIDeployment data for {api_id}: {str(e)}")
             return Response(
                 {"error": f"Failed to fetch APIDeployment data: {str(e)}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,

@@ -89,7 +89,13 @@ def process() -> Any:
     if uploaded_file.filename == "":
         return {"message": "No selected file"}, 400
 
-    file_size_in_kb = int(request.headers["Content-Length"]) / 1024
+    # Missing (chunked upload) or non-integer Content-Length returns 400, not a 500.
+    content_length = request.headers.get("Content-Length")
+    try:
+        file_size_in_kb = int(content_length) / 1024
+    except (TypeError, ValueError):
+        logging.warning("Rejecting /process: invalid Content-Length %r", content_length)
+        return {"message": "Missing or invalid Content-Length header"}, 400
 
     bearer_token = AuthenticationMiddleware.get_token_from_auth_header(request)
     _, org_id = AuthenticationMiddleware.get_organization_from_bearer_token(bearer_token)
