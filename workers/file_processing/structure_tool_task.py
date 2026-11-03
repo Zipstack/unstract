@@ -31,9 +31,10 @@ from shared.infrastructure.context import StateStore
 from shared.utils.manual_review_factory import (
     AUTO_ENABLE_HIGHLIGHT,
     HIGHLIGHT_AUTO_ENABLED_MESSAGE,
+    HIGHLIGHT_IMAGE_MODE_MESSAGE,
 )
 
-from unstract.sdk1.constants import ToolEnv, UsageKwargs
+from unstract.sdk1.constants import LogLevel, ToolEnv, UsageKwargs
 from unstract.sdk1.execution.context import ExecutionContext
 from unstract.sdk1.execution.result import ExecutionResult
 
@@ -382,13 +383,31 @@ def _execute_structure_tool_impl(params: dict) -> dict:
             execution_data_dir=execution_data_dir,
         )
 
-    # Confidence needs highlight. Override a copy to keep the saved setting.
-    if params.get(AUTO_ENABLE_HIGHLIGHT):
-        tool_instance_metadata = {**tool_instance_metadata, _SK.ENABLE_HIGHLIGHT: True}
-        shim.stream_log(HIGHLIGHT_AUTO_ENABLED_MESSAGE)
-
     # ---- Step 3: Profile overrides ----
     _handle_profile_overrides(exec_metadata, platform_helper, tool_metadata)
+
+    # Confidence needs highlight. Override a copy to keep the saved setting.
+    if params.get(AUTO_ENABLE_HIGHLIGHT):
+        from executor.executors.vlm_image_answer import detect_image_mode_config
+
+        # LLMWhisperer rejects highlight in image output mode.
+        image_mode = detect_image_mode_config(
+            output={
+                _SK.X2TEXT_ADAPTER: tool_metadata[_SK.TOOL_SETTINGS].get(
+                    _SK.X2TEXT_ADAPTER
+                )
+            },
+            shim=shim,
+            usage_kwargs={"execution_id": execution_id},
+        )
+        if image_mode is None:
+            tool_instance_metadata = {
+                **tool_instance_metadata,
+                _SK.ENABLE_HIGHLIGHT: True,
+            }
+            shim.stream_log(HIGHLIGHT_AUTO_ENABLED_MESSAGE)
+        else:
+            shim.stream_log(HIGHLIGHT_IMAGE_MODE_MESSAGE, level=LogLevel.WARN)
 
     # ---- Extract settings from tool_metadata ----
     settings = tool_instance_metadata

@@ -21,6 +21,10 @@ AUTO_ENABLE_HIGHLIGHT = "auto_enable_highlight"
 HIGHLIGHT_AUTO_ENABLED_MESSAGE = (
     "Highlight enabled automatically because HITL confidence rules are configured"
 )
+HIGHLIGHT_IMAGE_MODE_MESSAGE = (
+    "HITL confidence rules need highlight, which image output mode does not "
+    "support. Confidence scores are unavailable for this run"
+)
 
 
 class ManualReviewServiceProtocol(Protocol):

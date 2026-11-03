@@ -29,6 +29,7 @@ _PATCH_DISPATCHER = "file_processing.structure_tool_task.get_executor_dispatcher
 _PATCH_PLATFORM_HELPER = "file_processing.structure_tool_task._create_platform_helper"
 _PATCH_FILE_STORAGE = "file_processing.structure_tool_task._get_file_storage"
 _PATCH_SHIM = "executor.executor_tool_shim.ExecutorToolShim"
+_PATCH_IMAGE_MODE = "executor.executors.vlm_image_answer._resolve_image_mode_config"
 _PATCH_SERVICE_IS_STRUCTURE = (
     "shared.workflow.execution.service."
     "WorkerWorkflowExecutionService._is_structure_tool_workflow"
@@ -1065,6 +1066,7 @@ class TestAutoEnableHighlight:
             (False, False, False),
         ],
     )
+    @patch(_PATCH_IMAGE_MODE, return_value=None)
     @patch(_PATCH_SHIM)
     @patch(_PATCH_FILE_STORAGE)
     @patch(_PATCH_PLATFORM_HELPER)
@@ -1075,6 +1077,7 @@ class TestAutoEnableHighlight:
         mock_create_ph,
         mock_get_fs,
         mock_shim_cls,
+        _mock_image_mode,
         base_params,
         tool_metadata_regular,
         mock_fs,
@@ -1115,6 +1118,54 @@ class TestAutoEnableHighlight:
             c.args[0] for c in mock_shim_cls.return_value.stream_log.call_args_list
         ]
         assert (HIGHLIGHT_AUTO_ENABLED_MESSAGE in messages) is auto_enable
+
+    @patch(_PATCH_IMAGE_MODE, return_value={"adapter_id": "llmwhisperer|v2"})
+    @patch(_PATCH_SHIM)
+    @patch(_PATCH_FILE_STORAGE)
+    @patch(_PATCH_PLATFORM_HELPER)
+    @patch(_PATCH_DISPATCHER)
+    def test_image_output_mode_keeps_highlight_off(
+        self,
+        mock_get_executor_dispatcher,
+        mock_create_ph,
+        mock_get_fs,
+        mock_shim_cls,
+        _mock_image_mode,
+        base_params,
+        tool_metadata_regular,
+        mock_fs,
+        mock_platform_helper,
+    ):
+        """LLMWhisperer rejects highlight in image output mode."""
+        from file_processing.structure_tool_task import (
+            _execute_structure_tool_impl as execute_structure_tool,
+        )
+        from shared.utils.manual_review_factory import (
+            HIGHLIGHT_AUTO_ENABLED_MESSAGE,
+            HIGHLIGHT_IMAGE_MODE_MESSAGE,
+        )
+
+        mock_get_fs.return_value = mock_fs
+        mock_create_ph.return_value = mock_platform_helper
+        mock_platform_helper.get_prompt_studio_tool.return_value = {
+            "tool_metadata": tool_metadata_regular,
+        }
+        dispatcher_instance = create_autospec(PgExecutionDispatcher, instance=True)
+        mock_get_executor_dispatcher.return_value = dispatcher_instance
+        dispatcher_instance.dispatch.return_value = _make_pipeline_result()
+
+        base_params["tool_instance_metadata"]["enable_highlight"] = False
+        base_params["auto_enable_highlight"] = True
+
+        execute_structure_tool(base_params)
+
+        ep = dispatcher_instance.dispatch.call_args[0][0].executor_params
+        assert ep["extract_params"]["enable_highlight"] is False
+        messages = [
+            c.args[0] for c in mock_shim_cls.return_value.stream_log.call_args_list
+        ]
+        assert HIGHLIGHT_IMAGE_MODE_MESSAGE in messages
+        assert HIGHLIGHT_AUTO_ENABLED_MESSAGE not in messages
 
     @patch("unstract.sdk1.x2txt.X2Text")
     @patch(_PATCH_SHIM)
