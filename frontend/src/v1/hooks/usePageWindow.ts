@@ -27,8 +27,14 @@ function sameMembers(a: ReadonlySet<number>, b: ReadonlySet<number>): boolean {
   return true;
 }
 
-function pageIndexOf(element: Element): number {
-  return Number(element.getAttribute(PAGE_INDEX_ATTRIBUTE));
+/** The page's index, or null for an element without one, which is skipped. */
+function pageIndexOf(element: Element): number | null {
+  const value = element.getAttribute(PAGE_INDEX_ATTRIBUTE);
+  if (value === null || value === "") {
+    return null;
+  }
+  const index = Number(value);
+  return Number.isInteger(index) ? index : null;
 }
 
 /**
@@ -55,6 +61,9 @@ export function usePageWindow(
       (entries) => {
         for (const entry of entries) {
           const index = pageIndexOf(entry.target);
+          if (index === null) {
+            continue;
+          }
           if (entry.isIntersecting) {
             inView.add(index);
           } else {

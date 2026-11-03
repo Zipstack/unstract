@@ -315,16 +315,22 @@ describe("openPdfDocument", () => {
 
   it("handles a destroy that fails because the worker is already gone", async () => {
     const task = deferredTask();
-    const failed = Promise.reject(new Error("Worker was destroyed"));
-    const handled = vi.spyOn(failed, "catch");
-    task.destroy.mockReturnValue(failed);
+    const handled = vi.fn();
+    task.destroy.mockImplementation(() => {
+      const failed = Promise.reject(new Error("Worker was destroyed"));
+      const original = failed.catch.bind(failed);
+      failed.catch = (onRejected) => {
+        handled();
+        return original(onRejected);
+      };
+      return failed;
+    });
     pdfjsMock.getDocument.mockReturnValue(task);
     const opening = openPdfDocument({ kind: "url", url: "/a.pdf" });
     opening.promise.catch(() => undefined);
     await vi.waitFor(() => expect(pdfjsMock.getDocument).toHaveBeenCalled());
     opening.destroy();
     expect(handled).toHaveBeenCalled();
-    await failed.catch(() => undefined);
   });
 
   it("never starts a load that was destroyed while pdf.js was loading", async () => {

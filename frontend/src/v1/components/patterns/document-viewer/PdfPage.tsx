@@ -1,3 +1,4 @@
+import { isRenderCancelled } from "@v1/lib/pdf/pdfjs";
 import type { PageSize } from "@v1/lib/pdf/types";
 import {
   CSS_PIXELS_PER_POINT,
@@ -18,26 +19,24 @@ export interface PdfPageProps {
   zoom: number;
   /** Whether this page is inside the render window and should hold a canvas. */
   rendered: boolean;
+  /** The screen's device pixel ratio; a change redraws the page. */
+  pixelRatio: number;
   observe: (element: HTMLElement | null) => (() => void) | undefined;
-  /** Drawn over the page, in a box the same size as the page. */
-  children?: ReactNode;
+  /**
+   * Drawn over the page, in a box the same size as the page; receives the
+   * page's index. Called inside the page, so keep it stable (useCallback):
+   * a new function re-renders every page.
+   */
+  renderOverlay?: (index: number) => ReactNode;
 }
 
 type RenderState = "idle" | "rendering" | "rendered" | "error";
 
-function isCancellation(error: unknown): boolean {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    "name" in error &&
-    error.name === "RenderingCancelledException"
-  );
-}
-
 /**
  * One page: a placeholder sized from the page's own dimensions, and a canvas
- * only while the page is inside the render window. Leaving the window, or a
- * zoom change, cancels any render in flight and frees the canvas.
+ * only while the page is inside the render window. A zoom change cancels any
+ * render in flight and draws the new size off screen, keeping the old picture
+ * up until the new one is ready; leaving the window frees the canvas.
  */
 export const PdfPage = memo(function PdfPage({
   document,
@@ -46,14 +45,29 @@ export const PdfPage = memo(function PdfPage({
   size,
   zoom,
   rendered,
+  pixelRatio,
   observe,
-  children,
+  renderOverlay,
 }: PdfPageProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [state, setState] = useState<RenderState>("idle");
   // Bumped by Retry, to run the render again.
   const [attempt, setAttempt] = useState(0);
   const css = pageCssSize(size, zoom);
+
+  // Free the canvas when the page leaves the window or unmounts: zero its
+  // backing store now rather than waiting for garbage collection; Safari in
+  // particular keeps it until then and caps the total.
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!rendered || canvas === null) {
+      return;
+    }
+    return () => {
+      canvas.width = 0;
+      canvas.height = 0;
+    };
+  }, [rendered]);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: attempt runs the render again on Retry
   useEffect(() => {
@@ -64,9 +78,13 @@ export const PdfPage = memo(function PdfPage({
     let cancelled = false;
     let page: PDFPageProxy | null = null;
     let task: RenderTask | null = null;
+    // Drawn off screen, then copied in one step, so the page keeps showing
+    // its last picture (stretched, during a zoom) instead of going blank.
+    const scratch = canvas.ownerDocument.createElement("canvas");
     // Wait a frame: during a fast scroll the page has usually left the window
     // again by then, and nothing is drawn for it at all.
     const frame = requestAnimationFrame(() => {
+      setState("rendering");
       void (async () => {
         try {
           const loaded = await document.getPage(index + 1);
@@ -82,29 +100,39 @@ export const PdfPage = memo(function PdfPage({
           const ratio = canvasPixelRatio(
             viewport.width,
             viewport.height,
-            window.devicePixelRatio,
+            pixelRatio,
           );
-          canvas.width = Math.floor(viewport.width * ratio);
-          canvas.height = Math.floor(viewport.height * ratio);
-          const context = canvas.getContext("2d");
+          scratch.width = Math.floor(viewport.width * ratio);
+          scratch.height = Math.floor(viewport.height * ratio);
+          const context = scratch.getContext("2d");
           if (context === null) {
-            setState("error");
-            return;
+            throw new Error("No 2D canvas context");
           }
-          setState("rendering");
           task = page.render({
             canvasContext: context,
             viewport,
             transform: ratio === 1 ? undefined : [ratio, 0, 0, ratio, 0, 0],
           });
           await task.promise;
-          if (!cancelled) {
-            setState("rendered");
+          if (cancelled) {
+            return;
           }
+          canvas.width = scratch.width;
+          canvas.height = scratch.height;
+          const shown = canvas.getContext("2d");
+          if (shown === null) {
+            throw new Error("No 2D canvas context");
+          }
+          shown.drawImage(scratch, 0, 0);
+          setState("rendered");
         } catch (error) {
-          if (!cancelled && !isCancellation(error)) {
+          if (!cancelled && !isRenderCancelled(error)) {
+            console.error(`Page ${index + 1} didn't render`, error);
             setState("error");
           }
+        } finally {
+          scratch.width = 0;
+          scratch.height = 0;
         }
       })();
     });
@@ -113,13 +141,11 @@ export const PdfPage = memo(function PdfPage({
       cancelAnimationFrame(frame);
       task?.cancel();
       page?.cleanup();
-      // Zero the backing store now rather than waiting for garbage collection;
-      // Safari in particular keeps it until then and caps the total.
-      canvas.width = 0;
-      canvas.height = 0;
+      scratch.width = 0;
+      scratch.height = 0;
       setState("idle");
     };
-  }, [document, index, zoom, rendered, attempt]);
+  }, [document, index, zoom, rendered, pixelRatio, attempt]);
 
   return (
     <figure
@@ -143,7 +169,7 @@ export const PdfPage = memo(function PdfPage({
           className="ui:absolute ui:inset-0 ui:block ui:size-full"
         />
       )}
-      {children}
+      {renderOverlay?.(index)}
       {state === "error" && (
         <figcaption className="ui:absolute ui:inset-0 ui:flex ui:flex-col ui:items-center ui:justify-center ui:gap-2 ui:bg-card ui:text-body ui:text-muted-foreground">
           <span>This page didn't load.</span>

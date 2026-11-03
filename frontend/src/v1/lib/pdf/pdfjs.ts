@@ -144,12 +144,21 @@ export async function readPageSizes(
   });
 }
 
+/** The `name` pdf.js gives an error (`PasswordException`, …), or "". */
+export function pdfErrorName(error: unknown): string {
+  return typeof error === "object" && error !== null && "name" in error
+    ? String(error.name)
+    : "";
+}
+
+/** Whether a render task ended because it was cancelled, not because it failed. */
+export function isRenderCancelled(error: unknown): boolean {
+  return pdfErrorName(error) === "RenderingCancelledException";
+}
+
 /** Maps a pdf.js load error to what the viewer shows. */
 export function classifyLoadError(error: unknown): PdfLoadFailure {
-  const name =
-    typeof error === "object" && error !== null && "name" in error
-      ? String(error.name)
-      : "";
+  const name = pdfErrorName(error);
   if (name === "PasswordException") {
     // pdf.js PasswordResponses: 1 needs a password, 2 the one given was wrong.
     const code = (error as { code?: unknown }).code;

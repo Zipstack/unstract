@@ -1,3 +1,4 @@
+import { useDevicePixelRatio } from "@v1/hooks/useDevicePixelRatio";
 import { usePageWindow } from "@v1/hooks/usePageWindow";
 import { cn } from "@v1/lib/cn";
 import type { PageSize } from "@v1/lib/pdf/types";
@@ -10,7 +11,10 @@ export interface PdfPageListProps {
   pageSizes: readonly PageSize[];
   /** 1 is 100%. */
   zoom: number;
-  /** Drawn over a page, for highlights; receives the 0-based page index. */
+  /**
+   * Drawn over a page, for highlights; receives the 0-based page index. Keep
+   * it stable (useCallback): a new function re-renders every page.
+   */
   renderPageOverlay?: (index: number) => ReactNode;
   className?: string;
 }
@@ -28,6 +32,7 @@ export function PdfPageList({
   className,
 }: PdfPageListProps) {
   const { scrollRef, observePage, rendered } = usePageWindow(pageSizes.length);
+  const pixelRatio = useDevicePixelRatio();
   return (
     <div
       ref={scrollRef}
@@ -47,10 +52,10 @@ export function PdfPageList({
             size={size}
             zoom={zoom}
             rendered={rendered.has(index)}
+            pixelRatio={pixelRatio}
             observe={observePage}
-          >
-            {renderPageOverlay?.(index)}
-          </PdfPage>
+            renderOverlay={renderPageOverlay}
+          />
         ))}
       </div>
     </div>
