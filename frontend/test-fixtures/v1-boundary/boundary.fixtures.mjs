@@ -78,6 +78,12 @@ const CASES = parseTable(`
   v1-unknown-file-type           | typecheck:v1    | Unknown file type under v1
   v1-ant-class-prefix            | lint:v1         | No antd 'ant-' class names
   v1-ant-built-class             | lint:v1         | No antd 'ant-' class names
+  # One notification entry point: toast libraries only in components/ui/feedback/.
+  v1-notify-sonner               | lint:v1         | One notification entry point in v1
+  v1-notify-radix-toast          | lint:v1         | One notification entry point in v1
+  v1-notify-radix-namespace      | lint:v1         | One notification entry point in v1
+  v1-notify-dynamic              | lint:v1         | One notification entry point in v1
+  v1-notify-feedback-ok          | lint:v1         | -
   v1-explicit-any                | lint:v1         | noExplicitAny
   # The v1 override must add to the shared rules, not replace them.
   v1-base-rules-still-apply      | lint:v1         | noDoubleEquals

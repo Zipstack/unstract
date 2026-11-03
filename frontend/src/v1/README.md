@@ -64,6 +64,22 @@ is convention.
     icon's `size` prop. Put icons in a `ui:flex`/`ui:inline-flex` parent
     that is not one of those tags, or size the parent's font.
 
+## Feedback
+
+- One notification entry point: `notify()` or `toast.success/error/warning/info`
+  from `@v1/lib/notify`, which `services/` can reach too. The `Toaster` in
+  `components/ui/feedback/` implements it; mount it once inside the v1 root.
+  With no `Toaster` mounted, `notify()` logs with the request id instead, so
+  nothing fails silently. `lint:v1` rejects sonner, react-hot-toast,
+  react-toastify, notistack and Radix Toast outside `components/ui/feedback/`.
+- Errors are announced assertively, everything else politely. Toasts stack
+  bottom-right (at most three), pause while hovered or focused, and F8 moves
+  focus to them; pass `persistent` to keep one until it is dismissed.
+- Loading is a skeleton (`Skeleton` + `SkeletonText`, `SkeletonBlock`,
+  `SkeletonAvatar`, `SkeletonTableRows`), never a spinner inside a card.
+  `Spinner` sits only in buttons and running text. Errors on a screen are an
+  `InlineAlert` above the content, with `onRetry`.
+
 ## Folders and what each may import
 
 Every folder may import from itself. Test files (`*.test.ts(x)`,
