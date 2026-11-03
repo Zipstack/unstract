@@ -1,28 +1,18 @@
-"""Backport: a fix lands on main first, then is cherry-picked with -x onto every release branch that
-accepts it, all at once.
+"""Backport: cherry-pick (-x) main fixes onto every release branch that accepts them.
 
 Usage: backport.py --state state.json (--commits SHA|PR[,...] | --rescan) [--confirm-stabilized] [--branches release/X.Y[,...]]
 
---rescan (every push to main): pick every main commit since each target's cut that no trailer there names (plain
-fixes on fix targets; security/critical only on stabilized ones, held without --confirm-stabilized). A stale pick
-head fails every run until a person deletes the head or reopens its PR; a head whose closed PR has no recorded decline
-fails until the record job is re-run for that PR (finish_open). An open conflict PR is left alone.
---commits (dispatch): only these commits.
+--rescan (every push to main): pick every main commit since each target's cut that no trailer there names
+(security/critical only on stabilized targets, held without --confirm-stabilized). --commits (dispatch): only these.
 
 Run from a full clone whose `origin` pushes with the bot token, with GH_TOKEN set to the bot token and
 RELEASE_BOT_APP_SLUG set to the release App's slug.
-Every pick is a PR from backport/X.Y/<sha7> to release/X.Y titled with the original main PR's title (every pick
-is its own PR), so PR-title changelogs list it. The class comes from that PR's title and fix/ labels.
-Clean pick: the bot squash-merges the PR in the same run with the pick's own message (backport_merge.squash) and
-deletes the head. It does not wait for the PR check: the bot bypasses the release ruleset, and the push run of
-Release branch CI is the backstop. If GitHub still holds the merge for a required check, the PR stays open and
-the run reports it.
-A rejected head push is retried (PUSH_WAITS); a final rejection is one sentence naming the cause and the fix, in the run's ::error::, on the source PR and in the gate's MISSING row.
-Conflict: committed with markers and left open with label backport-conflict. A person resolves it, gets one
-approving review and merges it, or closes it; Backport's record job (backport_merge.py) then records the merge,
-or the close as a decline (the close comment is the reason). Reopening and merging undoes a decline.
-Never builds. Targets come from relstate's backport_targets only, never from input: a branch is a
-target when its state accepts the fix. --branches only narrows those targets; it never adds one.
+Each pick is its own PR from backport/X.Y/<sha7> titled with the main PR's title, so PR-title changelogs list it.
+A clean pick is squash-merged in the same run without waiting for checks: the bot bypasses the release ruleset,
+and the push run of Release branch CI is the backstop.
+A conflict is committed with markers and left open labelled backport-conflict for a person to resolve or close;
+the record job (backport_merge.py) records the merge, or the close as a decline.
+Targets come only from relstate's backport_targets: --branches narrows them, never adds one.
 """
 
 import argparse
@@ -41,7 +31,7 @@ import relmgr as rm
 import relstate as rs
 
 REPO = "."
-MAIN = "origin/main"  # the main ref every pick is resolved against
+MAIN = "origin/main"
 BOT_ENV = {"GIT_COMMITTER_NAME": "releases-bot", "GIT_COMMITTER_EMAIL": rm.BOT_EMAIL}
 
 
@@ -61,7 +51,6 @@ def run(*args, check=True, input=None, env=None):
 
 
 def fetch_branch(name, check=True):
-    """Fetch origin's branch name into origin/<name>."""
     return run(
         "git",
         "fetch",
@@ -81,14 +70,11 @@ def soft(what, *args):
 
 
 def gh(*args, token=None):
-    """Gh as GH_TOKEN, or as token (another repo's) when given."""
     return run("gh", *args, env={"GH_TOKEN": token} if token else None).stdout.strip()
 
 
 def conflict_prs(slug, base=None, token=None):
-    """Open backport-conflict PRs of repo slug, [{number, url, baseRefName, createdAt}], only those on base when given.
-    A failed listing raises: it never reads as no PRs.
-    """
+    """A failed listing raises: it never reads as no PRs."""
     prs = json.loads(
         gh(
             "pr",
@@ -110,9 +96,6 @@ def conflict_prs(slug, base=None, token=None):
 
 
 def open_conflicts(lines, annotate="warning"):
-    """lines: [(slug, branch, token)]. One ::annotate per open backport-conflict PR on each line, then
-    (refs like `slug#n`, one summary line or None). A failed listing raises.
-    """
     refs, links = [], []
     for slug, branch, token in lines:
         for p in conflict_prs(slug, branch, token):
@@ -126,7 +109,6 @@ def open_conflicts(lines, annotate="warning"):
 
 
 def resolve(slug, item):
-    """A main SHA or PR number (`#` optional) -> full SHA on origin/main; None if it is not on main."""
     item = item.removeprefix("#")  # the summary names PRs as #n
     if item.startswith("-"):
         return None  # never passed to git as an option
@@ -145,9 +127,7 @@ def main_order(repo, shas):
 
 
 def fix_class(slug, sha, token=None):
-    """(class, PR ref, PR title) from the PR that merged sha, via relmgr.pr_fix_class (same rule as Lint PR).
-    token: another repo's, as in gh().
-    """
+    """(class, PR ref, PR title) of the PR that merged sha; same rule as Lint PR."""
     try:
         out = gh("api", f"repos/{slug}/commits/{sha}/pulls", token=token)
     except RuntimeError:  # retry a transient read error once
@@ -164,12 +144,10 @@ def fix_class(slug, sha, token=None):
 
 
 def _labels(pr):
-    """The label names of a gh PR."""
     return [label["name"] for label in pr["labels"]]
 
 
 def pr_body(sha, src, branch, head, files=()):
-    """Body of the pick PR; files = conflicted paths (empty for a clean pick)."""
     origin = f"Backport of {src} (`{sha}`) to `{branch}`"
     if not files:
         return f"{origin}. Clean pick; the bot squash-merges it in the same Backport run."
@@ -183,19 +161,17 @@ def pr_body(sha, src, branch, head, files=()):
 
 
 def only_listed(targets, listed):
-    """(targets kept, listed branches that are not targets); an empty listed keeps every target."""
+    """An empty listed keeps every target."""
     if not listed:
         return targets, []
     return [b for b in targets if b in listed], [b for b in listed if b not in targets]
 
 
 def held_line(sha, cls, pr, branch, annotate="warning", slug=None):
-    """slug: the other repo the fix is from, named before its PR."""
     return f"::{annotate}::{sha[:7]} ({cls}, PR {slug or ''}{pr}) held for {branch}: stabilized, needs confirm_stabilized"
 
 
 def held_warnings(awaiting):
-    """One warning per stabilized branch (first-seen order) for awaiting [(sha, branch, class, PR ref)]."""
     counts = collections.Counter(b for _, b, *_ in awaiting)
     return [
         f"::warning::{b}: {n} held security/critical fix{'es' if n > 1 else ''}, Backport with confirm_stabilized"
@@ -203,18 +179,15 @@ def held_warnings(awaiting):
     ]
 
 
-STALE_DAYS = 5  # pending this long gets ⚠
+STALE_DAYS = 5
 
 
 def link_pr(ref):
-    """A `#n` PR ref as a link; anything else ("no PR", "-") as is."""
     return rm.pr_link(int(ref[1:])) if re.fullmatch(r"#\d+", ref) else ref
 
 
 def latest_tag(repo, branch):
-    """(newest tag on the line, RC or stable, commits on the branch after it), or (None, None) before any.
-    A stable tag ranks above the RC it was promoted from (same commit, same patch).
-    """
+    """A stable tag ranks above the RC it was promoted from (same commit, same patch)."""
     tags = rs.line_tags(repo, branch.split("/", 1)[1], "--merged", f"origin/{branch}")
     if not tags:
         return None, None
@@ -238,7 +211,6 @@ def next_step(conflicts, held_n, tag, unbuilt):
 
 
 def status_row(branch, state, tag, unbuilt, missing, conflicts, held_n):
-    """One `| line | state | latest tag | missing | pending | next step |` row; conflicts: open conflict PR numbers."""
     if tag is None:
         built = "none"
     else:
@@ -256,7 +228,7 @@ def status_row(branch, state, tag, unbuilt, missing, conflicts, held_n):
 
 
 def this_run(rows):
-    """Only what this run did: merged picks, new conflict PRs, failures (skipped and invalid rows are left out)."""
+    """Only what this run did: skipped and invalid rows are left out."""
     out = []
     for sha, pr, _, b, res, _ in rows:
         src = link_pr(pr) if pr.startswith("#") else rm.commit_link(sha)
@@ -279,9 +251,6 @@ def stale(days):
 
 
 def pending_block(conflicts, held_rows):
-    """Folded detail. conflicts: [(n, base, days open)]; held_rows: [(sha, branch, class, PR ref, days since the
-    main merge)] for stabilized lines, grouped per commit, then one command that picks them all.
-    """
     groups = {}
     for sha, b, cls, pr, days in held_rows:
         groups.setdefault(sha, [cls, pr, days, []])[3].append(b)
@@ -324,12 +293,10 @@ def pending_block(conflicts, held_rows):
 
 
 def _commit_arg(sha, pr):
-    """A commit for Backport's commits input: its `#n` PR, else its sha."""
     return pr if re.fullmatch(r"#\d+", pr) else sha[:12]
 
 
 def push_summary(head, table, done, pending):
-    """Push mode summary lines; a quiet push (nothing done, nothing pending) is the head line alone."""
     if not done and not pending:
         return [f"{head} · nothing picked, nothing pending"]
     out = [
@@ -352,9 +319,7 @@ UNCLASSIFIABLE = "UNCLASSIFIABLE"  # no PR found, or a title Lint PR should have
 
 
 def held_filter(commits, classes, trailers, accept=HELD):
-    """Pure core of held(): the main commits whose class is in accept (or UNCLASSIFIABLE) and that no pick or
-    decline trailer on the branch names (trailers may be abbreviated). classes: {sha: (class, PR ref, ...)}.
-    """
+    """Pure core of held(); trailers may be abbreviated."""
     return [
         (s, *classes[s])
         for s in commits
@@ -364,9 +329,6 @@ def held_filter(commits, classes, trailers, accept=HELD):
 
 
 def classes_from_listing(prs):
-    """Pure: {merge sha: (class, PR ref, title)} from `gh pr list --json number,title,labels,mergeCommit` rows; a title
-    Lint PR should have refused maps to UNCLASSIFIABLE with the error, as in held().
-    """
     out = {}
     for pr in prs:
         if not pr.get("mergeCommit"):
@@ -380,9 +342,8 @@ def classes_from_listing(prs):
 
 
 def pr_classes(slug, since):
-    """{merge sha: (class, PR ref, title)} for every PR merged into main since `since` (YYYY-MM-DD): one search
-    listing per run, labels read now, so a label edited after the merge counts. A failed listing returns {}:
-    held() then looks each commit up on its own.
+    """Labels are read now, so a label edited after the merge counts.
+    A failed listing returns {}: held() then looks each commit up on its own.
     """
     # Known limit: search stops at 1000 results; the rest are looked up per commit.
     try:
@@ -409,11 +370,8 @@ def pr_classes(slug, since):
 
 
 def held(slug, repo, branch, accept=HELD, cache=None, token=None):
-    """[(sha, class, PR ref, title)] of main commits since branch's cut whose class is in accept (or
-    UNCLASSIFIABLE), neither picked nor declined: the held (or, with OWED, owed) picks the RM must see.
-    cache: {sha: (class, PR ref, title)} shared across calls (the rescan primes it from pr_classes), so a main commit
-    is looked up on its own at most once per run: only when the listing missed it (no PR, search index lag).
-    token: slug's, when slug is not this repo (the OSS line).
+    """Main commits since branch's cut whose class is in accept (or UNCLASSIFIABLE), neither picked nor declined.
+    cache is shared across calls, so a commit is looked up on its own at most once per run.
     """
     remote = f"origin/{branch}"
     base = rm.git(repo, "merge-base", MAIN, remote)
@@ -467,9 +425,7 @@ def held(slug, repo, branch, accept=HELD, cache=None, token=None):
 
 
 def owed_summary(rows, branch):
-    """Markdown: the owed-picks table for a branch gaining a late target, plus the line to paste into Backport's
-    commits input (UNCLASSIFIABLE rows are listed but left out of it: Backport cannot class them either).
-    """
+    """UNCLASSIFIABLE rows are listed but left out of the commits line: Backport cannot class them either."""
     out = [
         f"**Owed picks** for `{branch}`: main fixes since the cut, neither picked nor declined",
         "",
@@ -490,9 +446,7 @@ def owed_summary(rows, branch):
 
 
 def warn_held(slug, repo, branch, annotate="warning", token=None):
-    """Take RC build / Promote on a stabilized branch: one annotation per held fix (Promote blocks on them unless
-    forced). Returns the summary line (the fixes, linked, and the RM's confirm command), or None when nothing is held.
-    """
+    """For Take RC / Promote on a stabilized branch: Promote blocks on held fixes unless forced."""
     rows = held(slug, repo, branch, token=token)
     other = slug if token else None  # a token means another repo: name it
     for s, cls, pr, _ in rows:
@@ -501,7 +455,6 @@ def warn_held(slug, repo, branch, annotate="warning", token=None):
 
 
 def held_note(rows, branch, slug=None):
-    """One summary line for held() rows of stabilized `branch`, or None. slug: the other repo the rows are from."""
     if not rows:
         return None
     commits = ",".join(_commit_arg(s, pr) for s, _, pr, _ in rows)
@@ -523,9 +476,7 @@ def held_note(rows, branch, slug=None):
 
 
 def rescan_targets(targets, listed):
-    """({branch: accept} to rescan, listed branches that are no target): fix targets owe plain fixes too (OWED),
-    the other security/critical targets (stabilized) only HELD. listed narrows, never adds.
-    """
+    """Fix targets owe plain fixes too (OWED); stabilized ones only security/critical (HELD)."""
     scan = dict.fromkeys(targets["fix"], OWED)
     for t in targets["security_critical"]:
         scan.setdefault(t["branch"], HELD)
@@ -534,11 +485,6 @@ def rescan_targets(targets, listed):
 
 
 def rescan_plan(targets, held_by_branch, confirm):
-    """Pure: (plan, awaiting, unclassifiable) from each rescanned branch's held() rows (main order, picked and
-    declined commits already dropped). plan: [(branch, sha, class, PR ref, title)], each branch in main order;
-    awaiting: [(sha, branch, class, PR ref)] on a stabilized branch without confirm; unclassifiable:
-    [(sha, branch, PR ref, title)], never picked.
-    """
     stabilized = {
         t["branch"] for t in targets["security_critical"] if t["needs_rm_confirmation"]
     }
@@ -555,13 +501,12 @@ def rescan_plan(targets, held_by_branch, confirm):
 
 
 def pick_row(slug, sha, b, cls, pr, title):
-    """Pick sha onto b and return its summary row; a failure never stalls the other branches."""
+    """A failure never stalls the other branches."""
     try:
         rel = rm.relevance(
             REPO, sha, f"origin/{b}"
         )  # advisory only: never skips the pick
     except Exception as e:
-        # A table cell.
         rel = f"unknown ({type(e).__name__}: {(str(e).splitlines() or [''])[0]})"
         rel = rel.replace("|", r"\|")
         print(f"::warning::{sha[:7]} relevance on {b}: {rel}")
@@ -583,7 +528,6 @@ def pick_row(slug, sha, b, cls, pr, title):
 
 
 def _rescan_classes(slug, scan):
-    """pr_classes() since the oldest cut of scan's branches; {} with no branch to scan."""
     cuts = [rm.git(REPO, "merge-base", MAIN, f"origin/{b}") for b in scan]
     oldest = min(
         (rm.git(REPO, "log", "-1", "--format=%cI", c) for c in cuts), default=None
@@ -598,7 +542,6 @@ def _rescan_classes(slug, scan):
 
 
 def _rescan_missing(scan, rows, held_by_branch):
-    """{branch: missing} after the picks, each branch's tally printed."""
     missing = {}
     for b in scan:
         results = [r[4] for r in rows if r[3] == b]
@@ -614,7 +557,6 @@ def _rescan_missing(scan, rows, held_by_branch):
 
 
 def rescan(slug, targets, confirm, listed):
-    """Push mode: (rows, awaiting, {branch: missing}) over every target since its cut (see the module doc)."""
     scan, others = rescan_targets(targets, listed)
     rows = []
     for b in others:
@@ -643,7 +585,6 @@ PICK_TIMEOUT = 30 * 60  # = the pick job's timeout-minutes in backport.yaml
 
 
 def run_url():
-    """This Actions run's URL, or None outside Actions."""
     e = os.environ
     return (
         f"{e['GITHUB_SERVER_URL']}/{e['GITHUB_REPOSITORY']}/actions/runs/{e['GITHUB_RUN_ID']}"
@@ -653,9 +594,8 @@ def run_url():
 
 
 def push_head(slug, sha, branch, head, src, sleep=time.sleep):
-    """Push HEAD to head, retrying a rejection. None on success; after the last attempt ("failed", detail),
-    nothing pushed, the sentence on the run's ::error:: and as a comment on the source PR (Actions only). A pick
-    another run landed meanwhile is ("skipped", detail), with no comment.
+    """A final rejection comments on the source PR (Actions only); a pick another run landed meanwhile is
+    skipped, not failed.
     """
     first = None
     for wait in (*PUSH_WAITS, None):
@@ -711,7 +651,7 @@ CONFLICTS_RE = re.compile(r"^Conflicts:\n\t", re.M)
 
 
 def fix_labels(slug, src):
-    """The fix/* labels of the original PR src (`#n`), for its pick PR: Lint PR classes a pick PR by them too."""
+    """Lint PR classes a pick PR by its fix/* labels too."""
     if not re.fullmatch(r"#\d+", src):
         return []
     names = gh("api", f"repos/{slug}/pulls/{src[1:]}", "--jq", ".labels[].name").split(
@@ -721,7 +661,6 @@ def fix_labels(slug, src):
 
 
 def _closed_pr(slug, branch, head):
-    """Number of the newest closed, unmerged PR from head into branch, else None."""
     prs = json.loads(
         gh(
             "pr",
@@ -742,7 +681,6 @@ def _closed_pr(slug, branch, head):
 
 
 def _no_open_pr(slug, branch, head):
-    """finish_open's outcome for a pick head with no open PR."""
     fetch_branch(head)
     age = time.time() - int(rm.git(REPO, "log", "-1", "--format=%ct", f"origin/{head}"))
     if age < PICK_TIMEOUT:
@@ -752,8 +690,7 @@ def _no_open_pr(slug, branch, head):
         )
     # A head with no commit past the base: reopening its PR only parks it as a conflict PR with nothing to merge.
     empty = rm.git(REPO, "rev-list", "--count", f"origin/{branch}..origin/{head}") == "0"
-    # A closed PR whose head still holds a pick: its decline was not recorded. Deleting the head would re-pick the
-    # declined fix.
+    # A closed PR whose head still holds a pick: its decline was not recorded, and deleting the head re-picks it.
     if not empty and (n := _closed_pr(slug, branch, head)):
         return (
             "failed",
@@ -769,10 +706,7 @@ def _no_open_pr(slug, branch, head):
 
 
 def finish_open(slug, branch, head):
-    """The pick head already exists. Squash an open bot PR whose single commit carries the head's pick trailer (a
-    clean pick whose merge failed earlier); any other PR fails or waits for a person. A head with no open PR waits
-    PICK_TIMEOUT, then fails until a person deletes the head or reopens its PR; when its PR was closed (a decline
-    the record job did not land), until the record job is re-run.
+    """Squash only an open bot PR whose single commit carries the head's pick trailer; any other PR fails or waits.
     Known limits: only the trailer is checked, not the content; age is the head tip's commit time.
     """
     pending = "skipped", f"conflict PR pending on `{head}`"
@@ -797,9 +731,7 @@ def finish_open(slug, branch, head):
     if len(prs) != 1:
         return pending
     pr, remote = prs[0], f"origin/{branch}"
-    # The bot squashes with a token that bypasses the release ruleset: only its own PR, with one commit carrying
-    # its pick trailer (the trailer, not the content: see the docstring). A person's PR fails even when labelled:
-    # the record job would refuse it once merged.
+    # The squash bypasses the release ruleset: only the bot's own PR may go through it.
     if why := bm.bot_refusal(pr):
         return "failed", f"{why}: not merged"
     if any(x["name"].startswith("backport-") for x in pr["labels"]):
@@ -837,7 +769,7 @@ def finish_open(slug, branch, head):
 
 
 def _land(slug, branch, head, n, retried=False):
-    """After the squash of PR n: delete head, refetch branch (later picks stack on it), return the merged outcome."""
+    """Refetch branch after the squash: later picks stack on it."""
     soft(
         f"delete of {head}",
         "gh",
@@ -852,7 +784,6 @@ def _land(slug, branch, head, n, retried=False):
 
 
 def _open_pr(slug, branch, head, body, *opts):
-    """The URL of a new pick PR from head into branch; opts: its title and label flags."""
     return gh(
         "pr",
         "create",
@@ -869,7 +800,6 @@ def _open_pr(slug, branch, head, body, *opts):
 
 
 def _land_clean(slug, sha, branch, title, src, head, labels):
-    """The outcome of a clean cherry-pick at HEAD: push it, open its PR and squash it."""
     pick_sha = rm.git(REPO, "rev-parse", "HEAD")
     if failed := push_head(slug, sha, branch, head, src):
         return failed
@@ -886,7 +816,6 @@ def _land_clean(slug, sha, branch, title, src, head, labels):
 
 
 def pick(slug, sha, branch, title, src):
-    """Returns (outcome, detail); outcome in merged | pr | skipped | failed. title: PR title; src: original PR ref."""
     remote = f"origin/{branch}"
     # Fresh tip: an overlapping run may have merged this pick after this run fetched.
     fetch_branch(branch)
@@ -925,7 +854,6 @@ def pick(slug, sha, branch, title, src):
             (r.stderr.strip() or r.stdout.strip()).splitlines()
             or [f"cherry-pick exit {r.returncode}"]
         )[0]
-    # The message cherry-pick -x prepared (subject, body, trailer), minus git's commented hints.
     with open(os.path.join(REPO, ".git", "MERGE_MSG")) as f:
         msg = "".join(line for line in f if not line.startswith("#")).strip()
     msg += "\n\nConflicts:\n" + "".join(f"\t{p}\n" for p in files)
@@ -949,7 +877,6 @@ def pick(slug, sha, branch, title, src):
 
 
 def push_title(slug, sha):
-    """The push summary's head line: the pushed commit and its class."""
     # Known limit: a gh error past fix_class's retry ends the run before the summary.
     try:
         cls, pr, _ = fix_class(slug, sha)
@@ -1040,7 +967,6 @@ def main():
 
 
 def dispatch(slug, targets, commits, confirm, listed):
-    """Dispatch mode: (rows, awaiting) for the given commits only."""
     # Commas or spaces: the owed-picks line pastes as is.
     items = [c for c in re.split(r"[,\s]+", commits) if c]
     shas = [resolve(slug, c) for c in items]
@@ -1056,7 +982,6 @@ def dispatch(slug, targets, commits, confirm, listed):
 
 
 def _dispatch_targets(targets, sha, cls, pr, confirm, listed):
-    """(branches to pick onto, awaiting rows held for the RM) for one commit of class cls."""
     if cls == "fix":
         return targets["fix"], []
     branches = [
@@ -1074,7 +999,7 @@ def _dispatch_targets(targets, sha, cls, pr, confirm, listed):
 
 
 def _dispatch_commit(slug, targets, sha, confirm, listed, awaiting):
-    """The dispatch rows for one commit; its held picks are appended to awaiting."""
+    """Appends its held picks to awaiting."""
     try:
         cls, pr, title = fix_class(slug, sha)
     except ValueError as e:  # Lint PR should have stopped this PR

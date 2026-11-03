@@ -1,14 +1,8 @@
 name: V2 Lint PR
 
-# Every PR into main or a release branch carries a recognised `[TYPE]` title prefix, ticket optional
-# (`ABC-123 [FIX] ...` or `[FIX] ...`), unless a fix/ label gives its class: at most one of fix/security,
-# fix/critical, plus an optional fix/needs-backport.
-# Release branches too: the release changelog is built from their PR titles. A branch cut before this file
-# existed runs no check. Not a required check until a ruleset makes it one.
+# Every PR into main or a release branch needs a recognised `[TYPE]` title prefix, unless a fix/ label gives its class.
+# Release branches too: the release changelog is built from their PR titles.
 # The backport class is only printed here; Backport recomputes it at pick time.
-# Label `release-branch-only` is refused on main; on a release branch, release-branch-only.yaml adds the
-# `Release-branch-only: <TICKET>` commit.
-# A PR from a fork is checked too: the run reads only the event payload and main's relmgr, with a read-only token.
 on:
   pull_request:
     branches: [main, 'release/**']
@@ -22,8 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      # Rule read from main, so a PR cannot weaken relmgr. Known limit: a PR can still edit this workflow
-      # (needs a required workflow or CODEOWNERS on .github/).
+      # Rule read from main, so a PR cannot weaken relmgr; it can still edit this workflow.
       - uses: actions/checkout@v6
         with:
           ref: main
@@ -37,7 +30,7 @@ jobs:
           LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
           BASE: ${{ github.base_ref }}
         run: |
-          if [ ! -f .github/release/relmgr.py ]; then  # bootstrap: skip while main has no relmgr
+          if [ ! -f .github/release/relmgr.py ]; then
             echo "::notice title=Lint PR::skipped: main has no .github/release/relmgr.py yet"
             exit 0
           fi

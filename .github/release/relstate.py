@@ -2,9 +2,7 @@
 
 Usage: relstate.py [--repo DIR] [--now 2026-09-29T00:00:00Z] [--rc vX.Y.Z-rc.N]
 
-Prints one JSON document: every release/X.Y branch with its per-target state (enabled, GA, support window),
-plus the derived sets later workflows need. Nothing is stored. Version allocation, commit
-classification and convergence stay in relmgr.py.
+Prints one JSON document. Nothing is stored: state is re-derived on every run.
 """
 
 import argparse
@@ -22,15 +20,13 @@ import urllib.request
 
 import relmgr as rm
 
-# On-prem support: 184 days (longest 6 months) from the line's first stable chart push, and only the newest 6 GA
-# lines.
+# On-prem support window, from the line's first stable chart push.
 WINDOW = dt.timedelta(days=184)
 WINDOW_LINES = 6
-# Per repo, so both repos run this file; use() loads an entry as (TARGETS, LATEST_ONLY: only the latest GA line is
-# supported, KEPT: supported while the branch exists, PINS: repo whose tags pyproject.toml pins, PREFIX: tag prefix).
-# TARGETS: target -> (build artifact, GA anchor artifact), each <kind>/<package>; RELSTATE_AR_<KIND> names its
-# repository and RELSTATE_AR_<KIND>_RC, when set, a second one holding its RC builds. GIT: the line's own git tags
-# stand in for an artifact (OSS lines). OSS lines are tagged ee-vX.Y.Z(-rc.N).
+# Per repo, so both repos run this file. Entry: (TARGETS, LATEST_ONLY: only the latest GA line is supported,
+# KEPT: supported while the branch exists, PINS: repo whose tags pyproject.toml pins, PREFIX: tag prefix).
+# TARGETS: target -> (build artifact, GA anchor artifact), each <kind>/<package>; GIT: the line's own git tags stand
+# in for an artifact (OSS lines).
 GIT = "git"
 REPOS = {
     # backend: every build pushes it, and all services share one tag.
@@ -56,7 +52,6 @@ def ver_re(prefix):
 
 
 def use(slug):
-    """Load the REPOS config of slug (a repo name) into the module globals."""
     global TARGETS, LATEST_ONLY, KEPT, PINS, PREFIX, VER_RE
     if slug not in REPOS:
         raise RuntimeError(
@@ -93,9 +88,7 @@ STABILIZED = "stabilized/"
 
 
 def ar_repository(kind):
-    """The Artifact Registry repository resource (projects/<p>/locations/<l>/repositories/<r>) of an artifact kind,
-    from RELSTATE_AR_<KIND>: the calling workflow sets it, so no registry location lives in this file.
-    """
+    """The calling workflow sets RELSTATE_AR_<KIND>, so no registry location lives in this file."""
     var = "RELSTATE_AR_" + kind.upper().replace("-", "_")
     if not (repo := os.environ.get(var)):
         raise RuntimeError(
@@ -131,9 +124,8 @@ def _ar_get(url, what):
 
 
 def ar_repositories(kind):
-    """The repositories registry_tags reads for an artifact kind: RELSTATE_AR_<KIND> (stable builds), then
-    RELSTATE_AR_<KIND>_RC (RC builds) when it is set to another repository. With _RC unset, one repository holds
-    both. Both are read because Retag promotes an RC into the stable repository, which then holds the GA tag.
+    """Stable repository, then the _RC one when set and different. Both are read because Retag promotes an RC into
+    the stable repository, which then holds the GA tag.
     """
     stable = ar_repository(kind)
     rc = os.environ.get("RELSTATE_AR_" + kind.upper().replace("-", "_") + "_RC")
@@ -172,9 +164,8 @@ def _ar_packages(repo):
 
 
 def rc_service_tags():
-    """{<kind>/<package>: tags} for every package in each RC repository (RELSTATE_AR_<KIND>_RC) of TARGETS' kinds,
-    read there only, except TARGETS' own artifacts. Take RC pushes every service there, so abandon deletes them all:
-    an RC tag left on one service collides with the next cut of the same minor.
+    """{<kind>/<package>: tags} of every non-TARGETS package in the RC repositories. Take RC pushes every service
+    there, and an RC tag left on one collides with the next cut of the same minor, so abandon deletes them all.
     """
     own, out = _artifacts(), {}
     for kind in sorted({a.split("/", 1)[0] for a in own}):
@@ -186,14 +177,11 @@ def rc_service_tags():
 
 
 def registry_tags(artifact, repos=None):
-    """{tag: {id, digest, pushed_at}} for one Artifact Registry artifact (<kind>/<package>), over every repository
-    of its kind (ar_repositories), or over repos. Raises on any read failure. pushed_at is the version's createTime, to the second.
+    """{tag: {id, digest, pushed_at}} for one artifact (<kind>/<package>), over every repository of its kind or repos.
 
-    A 404 is only read as "artifact not pushed yet" when the artifact's own repository reads; otherwise it may be
-    a wrong RELSTATE_AR_<KIND>, and an empty registry would read as "nothing enabled". A tag held by two
-    repositories at different digests raises: the state would depend on which one was read. That stops every
-    reader, for every line and Retire included, until a person deletes one copy: which one was tested is not
-    something to guess. A tag held by both at one digest reads as its first repository's copy only.
+    A 404 means "not pushed yet" only when the repository itself reads; otherwise it may be a wrong
+    RELSTATE_AR_<KIND>, and an empty registry would read as "nothing enabled". A tag at two digests raises: which
+    copy was tested is for a person to decide, not a guess.
     """
     kind, package = artifact.split("/", 1)
     out = {}
@@ -238,17 +226,13 @@ def _read(artifact, registry):
 
 
 def taken_tags(reg=None, registry=registry_tags):
-    """Every tag on every registry artifact of TARGETS: an RC there is never allocated again (rc_version taken).
-    reg: {artifact: tags} already read; artifacts missing from it are read.
-    """
+    """An RC tagged on any TARGETS artifact is never allocated again."""
     reg = reg or {}
     return {t for a in _artifacts() for t in (reg[a] if a in reg else registry(a))}
 
 
 def used_tags(repo, line, registry=registry_tags):
-    """Version tags of minor line already in git or on a TARGETS registry artifact, sorted. Cut refuses such a line:
-    its tags would read as the new line's builds or GA.
-    """
+    """Cut refuses a line with these: its tags would read as the new line's builds or GA."""
     ver = re.compile(rf"{re.escape(PREFIX)}v{re.escape(line)}\.\d+(?:-rc\.\d+)?")
     tags = set(line_tags(repo, line)) | {
         t for a in _artifacts() for t in _read(a, registry) if ver.fullmatch(t)
@@ -257,7 +241,6 @@ def used_tags(repo, line, registry=registry_tags):
 
 
 def _artifacts(git=False):
-    """Sorted registry artifacts of TARGETS; GIT too when git."""
     return sorted(
         {a for pair in TARGETS.values() for a in pair} - (set() if git else {GIT})
     )
@@ -308,7 +291,6 @@ def _tag_commit(repo, tag):
 
 
 def line_tags(repo, line, *args, prefix=None):
-    """Version tags of line X.Y from `git tag <args> -l`; prefix: the tag prefix, this repo's by default."""
     prefix = PREFIX if prefix is None else prefix
     ver = ver_re(prefix)
     return [
@@ -319,14 +301,12 @@ def line_tags(repo, line, *args, prefix=None):
 
 
 def older_newer(a, b):
-    """(older, newer) of two release/X.Y branches."""
     return tuple(sorted((a, b), key=lambda n: _key(n.split("/", 1)[1])))
 
 
 def moved_archive(repo, line, sha):
-    """An archive tag retired/<line>-* that an earlier run put on an ancestor of sha: the line moved after it was
-    archived, so a second tag would split its record. None otherwise. A tag off sha's history (an earlier line of a
-    reused minor) is not one.
+    """An earlier archive tag on an ancestor of sha: the line moved after archiving, so a second tag would split its
+    record. A tag off sha's history (an earlier line of a reused minor) is not one.
     """
     for t in rm.git(repo, "tag", "-l", f"retired/{line}-*").split():
         if t != f"retired/{line}-{sha[:7]}" and rm.is_ancestor(
@@ -337,7 +317,7 @@ def moved_archive(repo, line, sha):
 
 
 def git_tags(repo):
-    """{tag: {digest: commit, pushed_at}} of the repo's version tags: the GIT stand-in for a registry artifact."""
+    """The GIT stand-in for a registry artifact."""
     out = {}
     for row in rm.git(
         repo,
@@ -419,8 +399,6 @@ def _next_minor(repo, ordered):
 
 
 def _row(repo, name, ref, taken):
-    """The derive() row of one release/X.Y branch, before its targets are filled in."""
-    # The tip's RC tag if built, else the next one.
     tip = rm.rc_version(repo, ref, PREFIX, taken)
     built = tip in rm.git(repo, "tag", "--points-at", ref).split()
     line = name.split("/", 1)[1]
@@ -434,13 +412,12 @@ def _row(repo, name, ref, taken):
         "ahead_of_ga": ahead_of_ga(repo, ref, line),
         "targets": {},
     }
-    if built and (url := rc_slack(repo, tip)):  # only when the RC has a link
+    if built and (url := rc_slack(repo, tip)):
         row["tip_rc_slack"] = url
     return row
 
 
 def _anomaly_reason(repo, name, refs, sha):
-    """Why a build tag enables nothing on its line, or None when its commit is on the branch."""
     if name not in refs:
         return "no branch"
     if not sha:
@@ -451,14 +428,12 @@ def _anomaly_reason(repo, name, refs, sha):
 
 
 def _shipped(repo, name, m, shipped):
-    """Whether the branchless line name (version match m) has a git stable tag, cached in shipped."""
     if name not in shipped:  # one git tag read per line, not per registry tag
         shipped[name] = bool(rm._tags(repo, m[1], m[2], PREFIX)[0])
     return shipped[name]
 
 
 def _enable(repo, t, builds, reg, refs, rows, shipped, anomalies):
-    """Mark target t enabled on each branch holding one of its build tags; anomalies get the rest."""
     for tag in sorted(reg[builds]):
         m = VER_RE.fullmatch(tag)
         if not m:
@@ -486,16 +461,12 @@ def _enable(repo, t, builds, reg, refs, rows, shipped, anomalies):
 
 
 def _fill_ga(repo, t, builds, anchor, reg, refs, rows):
-    """Sort target t's RCs and set its ga / promoted (and KEPT stabilized) on every branch it is enabled on. A stable
-    tag counts only when its git commit is an ancestor of the branch.
-    """
     for row in rows.values():
         tt = row["targets"].get(t)
         if not tt:
             continue
         tt["rcs"].sort(key=_vkey)
         # ga: the anchor's first stable (state, window). promoted: the build artifact's latest stable (ships next).
-        # Charts are read as vX.Y.Z (_read).
         stable = re.compile(rf"{re.escape(PREFIX)}v{re.escape(row['line'])}\.\d+")
         for key, artifact, pick in (("ga", anchor, 0), ("promoted", builds, -1)):
             if tags := sorted(
@@ -514,7 +485,6 @@ def _fill_ga(repo, t, builds, anchor, reg, refs, rows):
 
 
 def _line_state(states):
-    """A line's state from its targets' states."""
     if not states or "stabilizing" in states:
         return "stabilizing"
     if "stabilized" in states:
@@ -523,7 +493,6 @@ def _line_state(states):
 
 
 def _set_states(rows, now):
-    """Set every target's and line's state and enabled list on rows."""
     for name, row in rows.items():
         for t, tt in row["targets"].items():
             tt["state"] = target_state(t, name, rows, now)
@@ -533,7 +502,6 @@ def _set_states(rows, now):
 
 
 def _sets(ordered):
-    """The supported, backport_targets and retire sets of derive() over the ordered rows."""
     return {
         "supported": {
             t: [
@@ -616,19 +584,15 @@ def retire_line_refusal(state, branch, force=False):
 
 
 def _branch_row(state, branch):
-    """The row of branch in state, or None."""
     return next((b for b in state["branches"] if b["branch"] == branch), None)
 
 
 def _repo_of(version):
-    """The repository of an abandon_plan version (its id up to /packages/); "" for a version with no id."""
     return (version["id"] or "").split("/packages/", 1)[0]
 
 
 def _by_version(tags):
-    """{id or digest: {id, digest, tags}} of an artifact's {tag: info}. One digest in two repositories is two
-    versions.
-    """
+    """{id or digest: {id, digest, tags}}: one digest in two repositories is two versions."""
     by_version = {}
     # Version order, so the last version is the newest RC (rc.10 after rc.9); other tags first.
     for t, info in sorted(
@@ -643,8 +607,7 @@ def _by_version(tags):
 
 
 def _abandon_versions(reg, rc_re):
-    """abandon_plan's versions to delete per artifact and the last versions kept. Per repository, when every
-    tagged version would go, the last is kept, so no package is emptied.
+    """Per repository, when every tagged version would go, the last is kept, so no package is emptied.
     Known limits: untagged versions are not listed, so "last" counts tagged ones only; one tag at one digest in
     both repositories reads as the stable copy only, so the RC repository's copy is not deleted.
     """
@@ -664,15 +627,11 @@ def _abandon_versions(reg, rc_re):
 
 
 def abandon_plan(repo, branch, registry=registry_tags, services=rc_service_tags):
-    """What Retire `abandon` deletes for an existing release/X.Y line that never shipped (cut by mistake, or built only as RCs).
-    Versions: TARGETS' artifacts in every repository of their kind, and every other service's in the RC repositories
-    (services()).
+    """What Retire `abandon` deletes for a release/X.Y line that never shipped (cut by mistake, or built only as RCs).
 
     {"ga": [...], "used": [...], "rc_tags": [...], "versions": {artifact: [{id, digest, tags}]}, "kept": [...]}.
-    A non-empty ga (git stable tag or GA-anchor registry tag) or used (commits that are not bot, pick or
-    decline) refuses the abandon. A registry version is deleted only when every tag on it is an RC of
-    this line. When that would delete every tagged version in a repository, the last one is kept and listed,
-    so an abandon never empties a repository's package.
+    A non-empty ga or used (commits that are not bot, pick or decline) refuses the abandon. A registry version is
+    deleted only when every tag on it is an RC of this line.
     """
     x, y = rm._line(branch)
     rc_re = re.compile(rf"{re.escape(PREFIX)}v{x}\.{y}\.\d+-rc\.\d+")
@@ -726,10 +685,8 @@ def reopens(row, targets):
 
 
 def promote_blockers(state, branch, target):
-    """Older lines not GA for `target` yet, one refusal line each: Promote of `branch` for `target` waits for them.
+    """Older lines not GA for `target` yet: Promote of `branch` waits for them.
 
-    An older line blocks only where `target` is enabled on it and it has no GA for `target`; GA is the cloud
-    promote retag or the on-prem chart push. A retired line is gone from the state, so it never blocks.
     Not applied to KEPT targets: each OSS line goes GA with its cloud line.
     """
     if target in KEPT:
@@ -745,11 +702,8 @@ def promote_blockers(state, branch, target):
 
 
 def enable_blockers(state, branch, target):
-    """Newer lines already GA for `target`, one refusal line each: `target` may not be enabled on `branch`.
-
-    A target is enabled only on a line newer than every line already GA for it, so an older line can never
-    wait to go GA behind a newer GA line whose patches the promote order would then hold. A target already
-    enabled on `branch` is not affected (a patch RC on an old line still builds).
+    """Newer lines already GA for `target`. Enabling only past every GA line keeps an older line from waiting to go
+    GA behind a newer GA line whose patches the promote order would then hold.
     """
     row = _branch_row(state, branch)
     if row and target in row["targets"]:

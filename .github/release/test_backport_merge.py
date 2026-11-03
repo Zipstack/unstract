@@ -1,5 +1,3 @@
-"""Tests for backport_merge with gh and git stubbed. Run: python test_backport_merge.py"""
-
 import json
 import os
 import subprocess
@@ -300,7 +298,6 @@ class Close(unittest.TestCase):
         self.assertEqual(bm.gh.writes(), [])
 
     def test_close_again_after_reopen(self):
-        """Reopened (label backport-conflict), closed again: no second decline commit; label and comment fixed."""
         self.on_base = [
             ("d" * 40, f"fix: x\n\n(cherry picked from commit {O})\n\nDeclined: first")
         ]
@@ -330,8 +327,6 @@ class Close(unittest.TestCase):
         self.assertTrue(bm.gh.said()[0].startswith("Bot could not record the decline"))
 
     def test_head_without_a_pick_declines_nothing(self):
-        # A head moved onto the base still owes its fix: no decline, label or delete (removing the head is manual);
-        # one comment says so and how to decline by hand. The run passes.
         bm.first_pick = lambda pr: (None, [])
         self.assertEqual(
             self.close("CLOSED", labels=["backport-conflict"]), "skipped: no pick"
@@ -379,7 +374,6 @@ class Close(unittest.TestCase):
         self.assertEqual(bm.gh.calls[-1][-1], "labels[]=backport-conflict")
 
     def test_not_a_backport_pr_refused(self):
-        """A dispatch with a wrong number: no label, comment or commit."""
         for change in (
             {"headRefName": "feat/x"},
             {"baseRefName": "main"},

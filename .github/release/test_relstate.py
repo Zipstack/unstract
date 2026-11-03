@@ -1,4 +1,4 @@
-"""Synthetic-repo tests for relstate and relmgr. Run: python test_relstate.py; release-tooling-tests.yaml runs every test_*.py here on a PR that changes this directory."""
+"""Synthetic-repo tests for relstate and relmgr. Run: python test_relstate.py"""
 
 import contextlib
 import datetime as dt
@@ -17,7 +17,6 @@ os.environ["GITHUB_REPOSITORY"] = (
 import relmgr as rm
 import relstate as rs
 
-# ignore the user's git config
 os.environ.update(GIT_CONFIG_GLOBAL=os.devnull, GIT_CONFIG_NOSYSTEM="1")
 os.environ.pop("GITHUB_OUTPUT", None)
 NOW = dt.datetime(2026, 9, 29, tzinfo=dt.UTC)
@@ -222,7 +221,6 @@ class Scenario(unittest.TestCase):
         self.assertEqual(st["retire"], [])
 
     def test_onprem_window_from_first_ga(self):
-        # A patch chart push does not extend the window: it runs from the line's first stable chart push.
         self.onprem_ga(chart_days=200)
         self.push("chart/unstract-platform", "v1.5.2", days=1, git_ref="release/1.5")
         tt = self.branch(self.state(), "release/1.5")["targets"]["on-prem"]
@@ -273,7 +271,7 @@ class Scenario(unittest.TestCase):
         self.assertEqual(st["supported"], {"cloud": ["release/1.6"], "on-prem": []})
 
     def test_onprem_newest_six(self):
-        for y in range(1, 9):  # 1.1 .. 1.8, each with an on-prem chart inside the window
+        for y in range(1, 9):
             self.cut(f"1.{y}")
             self.push("on-prem/backend", f"v1.{y}.0-rc.1", git_ref=f"release/1.{y}")
             self.push(
@@ -351,7 +349,7 @@ class Scenario(unittest.TestCase):
         )
 
     def test_retired_lines_are_history_not_anomalies(self):
-        self.onprem_ga()  # only release/1.5 is live
+        self.onprem_ga()
         retired = self.commit("1.6 work")
         self.push(
             "cloud/backend", "v1.6.0-rc.1", git_ref=retired
@@ -406,7 +404,7 @@ class Scenario(unittest.TestCase):
         self.g("tag", "v1.5.1", "release/1.5")  # latest stable tag counts, not the first
         self.commit("pick 1", "release/1.5")
         self.commit("pick 2", "release/1.5")
-        self.cut("1.6")  # no stable tag yet
+        self.cut("1.6")
         st = self.state()
         self.assertEqual(
             [self.branch(st, b)["ahead_of_ga"] for b in ("release/1.5", "release/1.6")],
@@ -422,7 +420,7 @@ class Scenario(unittest.TestCase):
         )
         cases = {
             squash: "release-branch-only",  # COMMIT_MESSAGES squash: the bot's subject-only commit as `* ...`
-            "fix: pin\n\nbody\n\nRelease-branch-only: UN-1": "release-branch-only",  # a trailer
+            "fix: pin\n\nbody\n\nRelease-branch-only: UN-1": "release-branch-only",
             "fix: pin\n\nsee the Release-branch-only: UN-1 note": "invalid",  # mid-line is not the line
             "fix: pin\n\n** Release-branch-only: UN-1": "invalid",
         }
@@ -434,22 +432,20 @@ class Scenario(unittest.TestCase):
     def test_promote_blockers(self):
         """Promote order per target: only an older line with the target enabled and not GA for it blocks."""
         msg = "release/{} is not GA for {} yet: promote and publish it first, retire it, or force with a reason"
-        self.onprem_rc()  # 1.5: cloud GA, on-prem RC only
+        self.onprem_rc()
         self.cut("1.6")
         self.push("cloud/backend", "v1.6.0-rc.1", git_ref="release/1.6")
-        self.cut("1.7")  # nothing built yet
+        self.cut("1.7")
         st = self.state()
         self.assertEqual(
             rs.promote_blockers(st, "release/1.5", "cloud"), []
         )  # no older line
-        # (a) 1.5 is GA for cloud only: 1.6 cloud passes, 1.6 on-prem waits for 1.5
         self.assertEqual(rs.promote_blockers(st, "release/1.6", "cloud"), [])
         self.assertEqual(
             rs.promote_blockers(st, "release/1.6", "on-prem"),
             [msg.format("1.5", "on-prem")],
         )
         # (b) on-prem is not enabled on 1.6, so 1.6 never blocks on-prem
-        # (c) 1.7, nothing built, waits per target only for older lines with that target enabled and not GA
         self.assertEqual(
             rs.promote_blockers(st, "release/1.7", "on-prem"),
             [msg.format("1.5", "on-prem")],
@@ -457,14 +453,11 @@ class Scenario(unittest.TestCase):
         self.assertEqual(
             rs.promote_blockers(st, "release/1.7", "cloud"), [msg.format("1.6", "cloud")]
         )
-        # and 1.7 itself, with nothing enabled, blocks nothing newer beyond those two
         self.assertEqual(
             rs.promote_blockers(st, "release/1.8", "cloud"), [msg.format("1.6", "cloud")]
         )
-        # (d) 1.5 publishes on-prem (chart push): 1.6 on-prem is no longer blocked
         self.push("chart/unstract-platform", "v1.5.1", git_ref="release/1.5")
         self.assertEqual(rs.promote_blockers(self.state(), "release/1.6", "on-prem"), [])
-        # (e) a retired older line (branch gone) never blocks
         self.g("branch", "-D", "release/1.6")
         self.assertEqual(rs.promote_blockers(self.state(), "release/1.7", "cloud"), [])
 
@@ -473,14 +466,12 @@ class Scenario(unittest.TestCase):
         msg = "release/{} is older than release/{}, already GA for {}: enable {} on a newer line instead"
         self.cut("1.4")
         self.push("cloud/backend", "v1.4.0-rc.1", git_ref="release/1.4")
-        self.newer_cloud_ga()  # 1.5: cloud GA, on-prem GA (chart v1.5.1); 1.6: cloud GA, no on-prem
+        self.newer_cloud_ga()
         st = self.state()
-        # (a) an older line enabling on-prem behind a line GA for on-prem is refused
         self.assertEqual(
             rs.enable_blockers(st, "release/1.4", "on-prem"),
             [msg.format("1.4", "1.5", "on-prem", "on-prem")],
         )
-        # (b) the newest line may enable it
         self.assertEqual(rs.enable_blockers(st, "release/1.6", "on-prem"), [])
         # (c) a target already enabled on the older line is not affected: a patch RC still builds
         self.assertEqual(rs.enable_blockers(st, "release/1.4", "cloud"), [])
@@ -733,8 +724,6 @@ class Scenario(unittest.TestCase):
         self.assertEqual(plan()["used"], [human[:12]])
 
     def test_ga_tag_off_the_branch_is_not_the_lines(self):
-        # A stable tag with no git tag, or whose commit the branch does not contain (main after the cut), is not
-        # the line's GA.
         self.cut_with_rc()
         self.push("cloud/backend", "v1.5.0")
         self.assertIsNone(
@@ -753,10 +742,10 @@ class Scenario(unittest.TestCase):
 
     def test_used_tags(self):
         self.commit("old")
-        self.g("tag", "v1.5.0-rc.1", "main")  # git only
+        self.g("tag", "v1.5.0-rc.1", "main")
         self.push("chart/unstract-platform", "1.6.0")  # registry only, read as v1.6.0
         self.push("on-prem/backend", "v1.6.1-rc.2")
-        self.push("cloud/backend", "v1.60.0")  # another minor
+        self.push("cloud/backend", "v1.60.0")
         self.push("cloud/backend", "v1.7.0-dev")  # not a version tag
         reg = lambda a: self.reg.get(a, {})
         self.assertEqual(rs.used_tags(self.repo, "1.5", reg), ["v1.5.0-rc.1"])
@@ -792,19 +781,18 @@ class Scenario(unittest.TestCase):
         )
 
     def test_stabilizes_when_every_enabled_target_is_ga(self):
-        # Cloud Promote marks the OSS line stabilized/X.Y on the promote that leaves every enabled target GA.
         def row():
             return self.branch(self.state(), "release/1.5")
 
-        self.cut_with_rc()  # a cloud-only line: its cloud GA
+        self.cut_with_rc()
         self.assertTrue(rs.stabilizes(row(), "cloud"))
-        self.push("on-prem/backend", "v1.5.0-rc.1")  # on-prem enabled, nothing GA
+        self.push("on-prem/backend", "v1.5.0-rc.1")
         self.assertEqual(row()["enabled"], ["cloud", "on-prem"])
         self.assertFalse(rs.stabilizes(row(), "cloud"))
         self.assertFalse(rs.stabilizes(row(), "on-prem"))
         # One run promoting both: on-prem counts the cloud promote before it.
         self.assertTrue(rs.stabilizes(row(), "on-prem", ["cloud"]))
-        self.push("cloud/backend", "v1.5.0", git_ref="release/1.5")  # cloud GA alone
+        self.push("cloud/backend", "v1.5.0", git_ref="release/1.5")
         self.assertFalse(rs.stabilizes(row(), "cloud"))
         self.assertTrue(rs.stabilizes(row(), "on-prem"))  # on-prem goes last
         self.push("chart/unstract-platform", "1.5.0")  # its git tag v1.5.0 is cloud's
@@ -812,11 +800,10 @@ class Scenario(unittest.TestCase):
         self.assertTrue(rs.stabilizes(row(), "cloud"))
 
     def test_reopens_when_a_built_target_has_no_ga(self):
-        # Take RC deletes the OSS line's stabilized tag when it builds a target with no GA on the line.
         def row():
             return self.branch(self.state(), "release/1.5")
 
-        self.cloud_ga()  # cloud GA, cloud only
+        self.cloud_ga()
         self.assertFalse(rs.reopens(row(), ["cloud"]))  # a cloud patch RC
         self.assertTrue(rs.reopens(row(), ["on-prem"]))  # on-prem enabled late
         self.assertTrue(rs.reopens(row(), ["cloud", "on-prem"]))
@@ -827,8 +814,7 @@ class Scenario(unittest.TestCase):
         self.assertFalse(rs.reopens(row(), ["cloud", "on-prem"]))
 
     def test_oss_repo_config(self):
-        # The OSS repo runs this same file: one target, oss, read from the line's own ee- git tags (no registry),
-        # supported while its branch exists once its stabilized/X.Y tag is there. Plain v* tags are community releases from main and never count.
+        # The OSS repo runs this same file: one target, oss, read from ee- git tags; plain v* community tags never count.
         self.addCleanup(rs.use, rs.SLUG)
         rs.use("unstract")
         self.state = lambda: rs.derive(
@@ -893,7 +879,6 @@ class Scenario(unittest.TestCase):
         )
 
     def test_next_minor_past_stable_tag_on_main(self):
-        # A minor already shipped from main (tags before the first line) is never cut again.
         self.g("tag", "v1.5.14")
         self.commit("more main work")
         self.g("tag", "v1.6.0")
@@ -928,7 +913,7 @@ class Scenario(unittest.TestCase):
         refusal = lambda force=False: rs.retire_line_refusal(
             self.state(), "release/1.5", force
         )
-        self.onprem_rc()  # cloud GA newest (production), on-prem RCs only
+        self.onprem_rc()
         self.assertEqual(
             refusal(True),
             "cloud is production (newest cloud GA); it retires once a newer line is promoted",
@@ -989,7 +974,6 @@ class Scenario(unittest.TestCase):
         self.assertEqual(
             rm.rc_version(self.repo, "release/1.5", taken=taken), "v1.5.0-rc.3"
         )
-        # relstate allocates past every target's registry RCs.
         self.push("cloud/backend", "v1.5.0-rc.3")
         self.push("on-prem/backend", "v1.5.0-rc.4")
         self.assertEqual(
@@ -1244,10 +1228,7 @@ class PrFixClass(unittest.TestCase):
 
 
 class ArtifactRegistry(unittest.TestCase):
-    """registry_tags over the Artifact Registry REST API.
-
-    Known limit: the response shape follows the versions.list (view=FULL) API reference, not a recorded call.
-    """
+    """Known limit: the response shape follows the versions.list (view=FULL) API reference, not a recorded call."""
 
     REPO = "projects/p/locations/us-central1/repositories/unstract"
 
@@ -1362,7 +1343,7 @@ class ArtifactRegistry(unittest.TestCase):
 
     def test_network_json_and_later_page_errors_raise(self):
         self.pages[(self.url("backend"), "")] = {"versions": [], "nextPageToken": "n2"}
-        with self.assertRaisesRegex(RuntimeError, "HTTP 404 on page n2"):  # page n2: 404
+        with self.assertRaisesRegex(RuntimeError, "HTTP 404 on page n2"):
             rs.registry_tags("cloud/backend")
         for err in (  # what urlopen and the body read raise
             urllib.error.URLError("dns"),

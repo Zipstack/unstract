@@ -1,21 +1,10 @@
 """The bot's side of a backport PR: Backport's squash of a clean pick, and the reaction when a person closes or
 reopens one.
 
-Usage: backport_merge.py --pr N --sender LOGIN   (Backport's record job, on `pull_request_target` closed or reopened
-for a backport/* head into release/*; LOGIN is the event's sender; a failed run is recovered with "Re-run jobs").
+Usage: backport_merge.py --pr N --sender LOGIN   (on `pull_request_target` closed or reopened for a backport/* head
+into release/*; a failed run is recovered with "Re-run jobs").
 Anything but a same-repo backport/X.Y/<sha7> head into release/X.Y, opened by the bot, is refused.
-
-People land a conflict PR with the normal buttons (resolve, one approving review, Squash and merge) or close it. The PR's
-state is read again here, so a re-run or a repeated event acts on what the PR is now. Labels on backport PRs are
-the bot's: each case but a head with no pick sets exactly one `backport-*` label and removes the others.
-- merged: label `backport-merged`; delete the head if it is still there.
-- closed unmerged: a decline. Reason: the closer's last comment within 2 min of the close (first line, Declined:
-  dropped), else "Closed by @<closer> without a reason (PR #<n>)". Push an empty commit on the base with the pick's message,
-  trailer and Declined line; label backport-declined; comment once. Head kept. Already on the base: no commit. Head
-  without exactly one matching trailer: comment, fail. Head with no commit past the base: comment once, nothing
-  declined.
-- open (reopened): label `backport-conflict`, nothing else. Merging it then lands the pick after the decline, and
-  the newest trailer on the line wins (relmgr.trailer_states): the fix counts as shipped again.
+The PR's state is read again here, so a re-run or a repeated event acts on what the PR is now.
 Run from a full clone of main, GH_TOKEN = the release App's installation token, RELEASE_BOT_APP_SLUG = its slug.
 """
 
@@ -35,7 +24,6 @@ NO_PICK = "Nothing to record: this PR's head has no commit past"
 
 
 def is_backport(head, base):
-    """Is head a pick head for base (backport/X.Y/<sha7> into release/X.Y)?"""
     return (
         rm.is_backport(head)
         and base == f"release/{rm.BACKPORT_HEAD_RE.fullmatch(head)[1]}"
@@ -53,9 +41,6 @@ def gh(*args, token=None):
 
 
 def decline_reason(comments, sender, closed_at):
-    """First line of the closer's newest comment in the REASON_WINDOW up to closed_at, a leading `Declined:` dropped;
-    None if there is none or it is empty.
-    """
     end = rm.ts(closed_at)
     for c in sorted(comments, key=lambda c: c["created_at"], reverse=True):
         if c["user"] == sender and end - REASON_WINDOW <= rm.ts(c["created_at"]) <= end:
@@ -68,9 +53,7 @@ def decline_reason(comments, sender, closed_at):
 
 
 def head_messages(pr):
-    """Messages of the PR head's commits above the base, oldest first. Fetched through refs/pull/N/head, which
-    outlives the deleted head branch.
-    """
+    """Fetched through refs/pull/N/head, which outlives the deleted head branch."""
     n, base, sha = pr["number"], pr["baseRefName"], pr["headRefOid"]
     rm.git(
         ".",
@@ -87,9 +70,8 @@ def head_messages(pr):
 
 
 def first_pick(pr):
-    """(message, [original]) for the decline: the main commit the head's first commit picks, its message plus the
-    pick trailer. ("", []) when that commit has no single pick trailer naming the head's sha7 on main; (None, []) when
-    the head has no commit past the base (moved onto it), so there is nothing to decline.
+    """("", []) when the head's first commit has no single pick trailer naming its sha7 on main; (None, []) when the
+    head has no commit past the base, so there is nothing to decline.
     """
     msgs = head_messages(pr)
     if not msgs:
@@ -105,7 +87,6 @@ def first_pick(pr):
 
 
 def landed(originals, commits):
-    """Sha of the first (sha, message) whose pick trailer names one of originals, else None."""
     for sha, msg in commits:
         if set(rm.PICK_RE.findall(msg)) & set(originals):
             return sha
@@ -113,19 +94,16 @@ def landed(originals, commits):
 
 
 def base_picks(base, originals):
-    """(sha, message) of commits on origin/<base> whose message names one of originals in a pick trailer."""
     greps = [f"--grep=(cherry picked from commit {o}" for o in originals]
     out = rm.git(".", "log", "--format=%H%x00%B%x01", "-F", *greps, f"origin/{base}")
     return [tuple(c.strip("\n").split("\0", 1)) for c in out.split("\x01") if c.strip()]
 
 
 def fetch_base(base):
-    """Refresh origin/<base> from the remote."""
     rm.git(".", "fetch", "-q", "origin", f"+refs/heads/{base}:refs/remotes/origin/{base}")
 
 
 def base_tip(base):
-    """(commit, tree) of origin/<base>: the parent and the tree of an empty decline commit."""
     return rm.git(".", "rev-parse", f"origin/{base}"), rm.git(
         ".", "rev-parse", f"origin/{base}^{{tree}}"
     )
@@ -138,10 +116,8 @@ SQUASH_WAITS = (5, 20)  # seconds before the 2nd and 3rd merge attempt
 
 
 def squash(slug, pr, msg, sleep=time.sleep):
-    """REST squash merge of the PR head with msg as the commit message; False while a required check is pending.
-
-    GitHub can answer a merge of a just-opened PR with 405 "Base branch was modified" although nothing moved the
-    base; that answer is retried (3 attempts, 5 s then 20 s apart), then raised.
+    """False while a required check is pending. GitHub can answer a just-opened PR's merge with 405 "Base branch was
+    modified" although nothing moved the base, so that is retried.
     """
     title, _, body = msg.partition("\n")
     for wait in (*SQUASH_WAITS, None):
@@ -203,7 +179,6 @@ def delete_head(slug, head):
 
 
 def head_ref(slug, head):
-    """The sha the head branch points at, or None when it is gone."""
     try:
         return gh("api", f"repos/{slug}/git/ref/heads/{head}", "--jq", ".object.sha")
     except RuntimeError as e:
@@ -224,9 +199,6 @@ def comments(slug, n):
 
 
 def decline(slug, pr, reason):
-    """(sha, written): the pick or decline for this PR's originals on the base, newest first, else a new decline;
-    (None, False) when the head has no commit past the base.
-    """
     n, base = pr["number"], pr["baseRefName"]
     msg, originals = first_pick(pr)
     if msg is None:
@@ -285,9 +257,7 @@ def decline(slug, pr, reason):
 
 
 def bot_refusal(pr):
-    """Why `pr` (gh's number and author) is not a PR the bot opened, or None.
-
-    Head names and trailers are forgeable; only a PR authored by app/<RELEASE_BOT_APP_SLUG> is the bot's (the App
+    """Head names and trailers are forgeable; only a PR authored by app/<RELEASE_BOT_APP_SLUG> is the bot's (the App
     token cannot read gh api user).
     """
     if not (app := os.environ.get("RELEASE_BOT_APP_SLUG")):
@@ -301,7 +271,6 @@ def bot_refusal(pr):
 
 
 def _no_pick(slug, n, pr, cs):
-    """What record did for a closed PR whose head has no pick to decline; cs: its comments."""
     base, head = pr["baseRefName"], pr["headRefName"]
     kept = head_ref(slug, head) == pr["headRefOid"]
     if not any(
@@ -334,7 +303,6 @@ def _no_pick(slug, n, pr, cs):
 
 
 def record(slug, n, sender):
-    """What close did: {result, base, sha, reason}; sha is the squash, decline or existing pick, reason the decline's."""
     pr = json.loads(
         gh(
             "pr",
@@ -397,7 +365,6 @@ def record(slug, n, sender):
 
 
 def summary(n, sender, rec):
-    """The step summary block: what happened to the PR, by whom, and how to undo it."""
     base, sha, pr = rec["base"], rec["sha"], rm.pr_link(n)
     head = f"**Backport PR** {pr} on `{base}`: "
     if rec["result"].startswith("declined"):

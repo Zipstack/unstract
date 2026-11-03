@@ -1,6 +1,4 @@
-"""Tests for oss line work (cut, rc, promote, retire) on clones of a bare origin, and the workflows'
-inline scripts. Run: python test_oss.py
-"""
+"""Run: python test_oss.py"""
 
 import contextlib
 import hashlib
@@ -67,7 +65,7 @@ class Lines(unittest.TestCase):
         self.prs, self.listed = (
             [],
             [],
-        )  # open backport-conflict PRs of the OSS repo, and each listing's (slug, base, token)
+        )
         p = mock.patch.object(
             oss.bp,
             "conflict_prs",
@@ -79,7 +77,7 @@ class Lines(unittest.TestCase):
         p.start()
         self.addCleanup(p.stop)
 
-    def clone(self):  # a fresh workflow run's OSS clone
+    def clone(self):
         rm.git(
             os.path.dirname(self.oss),
             "clone",
@@ -98,7 +96,7 @@ class Lines(unittest.TestCase):
         with contextlib.redirect_stderr(io.StringIO()):
             return f(*args, **kw)
 
-    def work(self, branch, msg):  # a developer's commit on the OSS line, pushed
+    def work(self, branch, msg):
         dev_git(self.dev, "fetch", "-q", "origin")
         dev_git(self.dev, "checkout", "-q", "-B", branch, f"origin/{branch}")
         dev_git(self.dev, "commit", "-q", "--allow-empty", "-m", msg)
@@ -128,7 +126,6 @@ class Lines(unittest.TestCase):
         self.clone()
         self.assertEqual(self.quiet(oss.cut, self.oss, "1.7"), "ee-v1.7.0-rc.1")
         self.assertEqual(self.remote("rev-parse", "release/1.7"), tip)
-        # Any other existing line is refused: work on it, or a line cut by hand.
         self.work("release/1.7", "oss work")
         with self.assertRaisesRegex(RuntimeError, "OSS release/1.7 already exists"):
             oss.cut(self.oss, "1.7")
@@ -222,8 +219,7 @@ class Lines(unittest.TestCase):
             oss.promote(self.cloud, self.oss, "v1.7.1-rc.2", force=True, reason="x")
 
     def test_stabilized_promote_tags_the_line_once(self):
-        # The OSS line stays stabilizing until its cloud line is GA on every enabled target: only --stabilized
-        # writes the tag, once; a later promote keeps it on the GA commit.
+        # only --stabilized writes the tag, once; a later promote keeps it on the GA commit
         self.quiet(oss.cut, self.oss, "1.7")
         self.pin("ee-v1.7.0-rc.1", "v1.7.0-rc.1")
         # Cloud GA, on-prem still enabled.
@@ -243,7 +239,6 @@ class Lines(unittest.TestCase):
         self.assertEqual(self.remote("rev-parse", "stabilized/1.7^{commit}"), ga)
 
     def test_reopen_deletes_the_stabilized_tag(self):
-        # Cloud Take RC built a target with no GA: the OSS line is stabilizing again. No tag is a no-op.
         self.quiet(oss.cut, self.oss, "1.7")
         self.assertEqual(oss.reopen(self.oss, "release/1.7"), [])
         self.pin("ee-v1.7.0-rc.1", "v1.7.0-rc.1")
@@ -257,7 +252,7 @@ class Lines(unittest.TestCase):
         )
         self.assertEqual(self.remote("tag", "-l", "stabilized/*"), "")
         self.assertEqual(self.remote("tag", "-l", "ee-v1.7.0"), "ee-v1.7.0")
-        self.assertEqual(oss.reopen(self.oss, "release/1.7"), [])  # a rerun
+        self.assertEqual(oss.reopen(self.oss, "release/1.7"), [])
 
     def test_cli_stabilized_flag(self):
         self.quiet(oss.cut, self.oss, "1.7")
@@ -358,7 +353,7 @@ class Lines(unittest.TestCase):
         self.clone()
         with self.assertRaisesRegex(RuntimeError, f"OSS tag retired/1.7-{tip[:7]} is on"):
             oss.retire(self.oss, "release/1.7", "x", dry_run=False)
-        self.assertEqual(self.remote("rev-parse", "release/1.7"), tip)  # nothing deleted
+        self.assertEqual(self.remote("rev-parse", "release/1.7"), tip)
 
     def test_retire(self):
         self.quiet(oss.cut, self.oss, "1.7")
@@ -391,7 +386,7 @@ class Lines(unittest.TestCase):
             "retired release/1.7: cut by mistake",
             self.remote("tag", "-l", "retired/*", "--format=%(contents)"),
         )
-        self.clone()  # a re-run finds the line gone; the minor is free again
+        self.clone()
         self.assertEqual(
             oss.retire(self.oss, "release/1.7", "cut by mistake", dry_run=False),
             [f"- OSS `release/1.7`: no branch (archived as `retired/1.7-{tip[:7]}`)"],
@@ -406,7 +401,6 @@ class Lines(unittest.TestCase):
     def test_retire_keeps_a_branch_pushed_after_its_tip_was_read(self):
         self.quiet(oss.cut, self.oss, "1.7")
         self.clone()
-        # a commit lands after this run fetched
         dev_git(self.dev, "fetch", "-q", "origin")
         dev_git(self.dev, "checkout", "-q", "-B", "release/1.7", "origin/release/1.7")
         dev_git(self.dev, "commit", "-q", "--allow-empty", "-m", "late fix")
@@ -430,7 +424,7 @@ class Lines(unittest.TestCase):
 
         def flaky(
             *a,
-        ):  # the first push fails (network, a remote hook), the re-run's goes through
+        ):
             calls.append(a)
             if len(calls) == 1:
                 raise RuntimeError("push failed")
@@ -484,7 +478,7 @@ class Lines(unittest.TestCase):
         self.pin("ee-v1.7.0-rc.1", "v1.7.0-rc.1")
         push, calls = oss._push, []
 
-        def flaky(*a):  # the first push fails, the re-run's goes through
+        def flaky(*a):
             calls.append(a)
             if len(calls) == 1:
                 raise RuntimeError("push failed")
@@ -542,8 +536,7 @@ class Lines(unittest.TestCase):
 
 class Gate(unittest.TestCase):
     def test_runs_on_the_oss_clone_as_the_oss_repo(self):
-        # OSS 1.6 shipped with OSS fix F picked; OSS 1.7 lacks it. The gate reads only ee- tags and asks the OSS repo
-        # (not the cloud one) for Backport conflict PRs.
+        # The gate reads only ee- tags and asks the OSS repo, not the cloud one, for conflict PRs.
         with tempfile.TemporaryDirectory() as d:
             g = lambda *a: dev_git(d, *a)
             g("init", "-q", "-b", "main")
@@ -671,7 +664,6 @@ class TopicBranchHead(unittest.TestCase):
 
 
 def inline(workflow, step):
-    """The inline python of a workflow step."""
     with open(os.path.join(HERE, "..", "workflows", workflow)) as fh:
         wf = fh.read()
     body = wf[
@@ -683,7 +675,7 @@ def inline(workflow, step):
 
 
 def step(workflow, name, exprs=()):
-    """The bash run block of a workflow step, each ${{ }} expression replaced from exprs ("" when absent)."""
+    """Each ${{ }} expression is replaced from exprs, "" when absent."""
     with open(os.path.join(HERE, "..", "workflows", workflow)) as fh:
         lines = fh.read().split("\n")
     i = next(
@@ -710,9 +702,8 @@ def step(workflow, name, exprs=()):
     "the cloud repo's workflows",
 )
 class Workflow(unittest.TestCase):
-    """Cloud and OSS origins with clones. sitecustomize serves Artifact Registry from reg.jsonl (cloud/backend)
-    and reg-<kind>_<package>.jsonl, any other image of a kind as its backend, and a repository's package list from pkgs-<repo>.json; a stub gh serves <owner>_<repo>.json (conflict PRs; a `prfail` file fails it)
-    and pulls.json, logging each call and its token to gh.log.
+    """Cloud and OSS origins with clones. The registry stub reads reg*.jsonl and pkgs-<repo>.json; the gh stub
+    serves <owner>_<repo>.json and pulls.json, logs to gh.log, and fails when prfail/pullsfail exists.
     """
 
     def setUp(self):
@@ -792,7 +783,7 @@ true
 
     def run_step(self, script, **env):
         dev_git(self.cloud, "fetch", "-q", "--tags", "origin")
-        for name in ("output", "notes.md"):  # a fresh run's files
+        for name in ("output", "notes.md"):
             with contextlib.suppress(FileNotFoundError):
                 os.remove(os.path.join(self.d, name))
         env = {
@@ -966,7 +957,6 @@ class RetireWorkflow(Workflow):
         self.assertFalse(os.path.exists(os.path.join(self.d, "ar.log")))
 
     def kept_line(self, x_y, msg, **env):
-        """The run refuses with msg and leaves the line's branch, git tags and registry versions alone."""
         origin = self.repos["cloud"][0]
         tags = rm.git(origin, "tag", "-l")
         r = self.run_step(
@@ -1069,8 +1059,8 @@ class RetireWorkflow(Workflow):
         self.assertIn(f"release/{x_y}", rm.git(origin, "branch", "-l", "release/*"))
 
     def lands_mid_run(self, x_y):
-        """A push to release/x_y lands on origin after this run read its tip: origin's hook moves the branch on the
-        run's first other push (an RC tag delete or the archive tag), before the branch delete.
+        """A push to release/x_y lands after this run read its tip: origin's hook moves the branch on the run's
+        first tag push, before its branch delete.
         """
         origin = self.repos["cloud"][0]
         dev_git(self.cloud, "commit", "-q", "--allow-empty", "-m", "late fix")
@@ -1208,7 +1198,6 @@ class SyncArgocdParameters(unittest.TestCase):
         )
 
     def test_a_kept_rc_tag_pulls_from_cloud_rc(self):
-        # a re-sync with no tag keeps the app's RC tag, and rewrites its registries to the RC repository
         tag = {"name": "global.unstract.image.tag", "value": "v2.0.0-rc.1"}
         stable = "us-central1-docker.pkg.dev/p/unstract"
         got = self.merged(
@@ -1264,7 +1253,7 @@ class SyncArgocdParameters(unittest.TestCase):
                 )
 
     def test_a_dev_tag_pulls_from_the_dev_registry(self):
-        # given, or kept by a re-sync with no tag: a dev tag's images are only in the dev repository
+        # a dev tag's images are only in the dev repository
         kept = {"name": "global.unstract.image.tag", "value": "snapshot.7"}
         for current, tag in (([self.OTHER], "snapshot.7"), ([self.OTHER, kept], "")):
             for cloud_rc in (self.REG, ""):
@@ -1334,12 +1323,8 @@ DEV_REPOS, DEV_REPOS_ON_PREM = (
     "the cloud repo's workflows",
 )
 class GuardSteps(unittest.TestCase):
-    """Workflow steps run as bash from the workflow files: the input guards of build-push and dev-deploy, sync-argocd's
-    update step, retag's copy and the build workflows' image roots. Stubs: curl (the GET answers get.json with the
-    HTTP code in code, the PATCH body lands in patch.json); crane (img/<image> holds an image's digest, a missing one
-    prints crane_err and fails, each copy is logged to copies, drift makes a copy land at another digest); docker
-    (login; buildx imagetools inspect and create over the same img/ and copies, inspect_err failing every inspect,
-    img/<image>.json the image config that --format '{{json .Image}}' prints).
+    """Workflow steps run as bash against stub curl, crane and docker; the stubs read and log files in self.d,
+    and img/<image> holds an image's digest.
     """
 
     APP = {
@@ -1551,7 +1536,6 @@ esac
         regs["runner.configMap.TOOL_SIDECAR_IMAGE_NAME"] = f"{stable}/tool-sidecar"
         rc_regs = {k: RC_HOST for k in regs if k.endswith("registry")}
         rc_regs["runner.configMap.TOOL_SIDECAR_IMAGE_NAME"] = f"{RC_HOST}/tool-sidecar"
-        # a dev namespace on an RC tag, re-synced with no tag on any branch: its registries become the RC repository
         app = self.app("main", **{"global.unstract.image.tag": "v1.1.0-rc.2", **regs})
         for revision in ("main", "feature/x"):
             r, params = self.sync(app, TARGET_REVISION=revision, CLOUD_RC=RC)
@@ -1564,7 +1548,6 @@ esac
                     **rc_regs,
                 },
             )
-        # an app after a take-rc-build sync: registries and no tag parameter, the chart at the RC git tag
         for current in (
             self.app("v1.2.0-rc.1", **rc_regs),
             self.app("v1.1.0-rc.2", **regs),
@@ -1586,7 +1569,6 @@ esac
             r, params = self.sync(app, **env)
             self.assertEqual((r.returncode, params), (1, None), env)
             self.assertIn("RELSTATE_AR_CLOUD_RC, which is unset", r.stderr, env)
-        # a non-RC sync drops RC registries an app still has, with the variable unset
         r, params = self.sync(
             self.app("v1.2.0-rc.1", **{"backend.image.registry": RC_HOST}),
             TARGET_REVISION="v1.3.0",
@@ -1707,7 +1689,6 @@ esac
             )
         r = self.bash(roots, CLOUD_RC="bogus", **env)
         self.assertEqual(r.returncode, 1)
-        # a dev build: the dev repositories, whatever the RC variables hold
         for cloud_rc in (RC, ""):
             os.remove(os.path.join(self.d, "env"))
             r = self.bash(roots, CLOUD_RC=cloud_rc, DEV="true", **env)
@@ -1729,7 +1710,6 @@ esac
         )
 
     def test_dev_live_update_image_root(self):
-        # frontend-dev goes where the platform images of its tag go, logged in as dev-auth on a dev tag
         root = step("dev-live-update-image.yaml", "Image root")
         logins = os.path.join(self.d, "logins")
         for dev, want, login in (
@@ -1772,7 +1752,6 @@ esac
                 self.assertEqual(fh.read(), f"dev={dev}\n", tag)
 
     def test_dev_push_is_the_same_in_every_build(self):
-        # the same kind, keyless login and job permission before every push: the 11 build workflows and frontend-dev
         wf = os.path.join(HERE, "..", "workflows")
         files = sorted(
             f
@@ -1805,11 +1784,8 @@ esac
                 f,
             )
             self.assertEqual(text.count("    runs-on:"), 1, f)  # one job, the one granted
-            # the push follows the kind: the root step reads it, and the tags come from a root
             self.assertIn("DEV: ${{ steps.kind.outputs.dev }}", text, f)
             self.assertNotIn("tags=us-central1", text, f)
-            # and logs in as dev-auth on a dev build: a Nuitka build through the credential helper, which serves the
-            # identity dev-auth exported; every other build with dev-auth's token
             a = text.index("      - name: Image root")
             root_env = text[a : text.index("run: |", a)]
             if "Nuitka" in text:
@@ -1864,9 +1840,7 @@ esac
         )
 
     def test_every_caller_of_a_build_grants_id_token(self):
-        # A nested job asking for id-token: write fails to start unless each caller up the chain grants it. A job that
-        # calls a workflow which asks for it anywhere must grant it, and the grant then makes its own workflow ask, so
-        # the chain is followed to the top (Cut -> Take RC build -> build-push -> a build). Every workflow is searched.
+        # A nested job asking for id-token: write fails to start unless each caller up the chain grants it.
         wf = os.path.join(HERE, "..", "workflows")
         uses = re.compile(
             r"^    uses:\s*[\"']?\./\.github/workflows/([\w.-]+\.ya?ml)[\"']?\s*(?:#.*)?$",
@@ -1927,7 +1901,6 @@ esac
         config=LABELLED,
         config_err="",
     ):
-        """Run the runner's Skip at commit r1 over images (ref -> digest, or ref -> (digest, config))."""
         for image, digest in images.items():
             digest, cfg = digest if isinstance(digest, tuple) else (digest, config)
             path = os.path.join(self.d, "img", image.replace("/", "_").replace(":", "_"))
@@ -2064,7 +2037,6 @@ esac
         self.assertIn("was built from r0 r1, not r1", r.stdout)
 
     def test_skip_if_already_pushed_is_the_same_in_every_build_workflow(self):
-        # the same script before every bake, gated on a release build, its images the ones the bake tags
         files = sorted(
             f
             for f in os.listdir(os.path.join(HERE, "..", "workflows"))
@@ -2128,7 +2100,7 @@ esac
 
         def env(
             f,
-        ):  # the step's RC repository env lines, which gate them on a release build
+        ):
             with open(os.path.join(HERE, "..", "workflows", f)) as fh:
                 text = fh.read()
             block = text[
@@ -2146,8 +2118,7 @@ esac
             with open(os.path.join(HERE, "..", "workflows", f)) as fh:
                 text = fh.read()
             tags = re.findall(r"tags=\$\{\{ env\.(IMAGE_ROOT_\w+) \}\}", text)
-            self.assertEqual(len(tags), text.count("tags="), f)  # no tag outside a root
-            # a cloud build pushes its cloud image, and some also their on-prem one; an on-prem build only that
+            self.assertEqual(len(tags), text.count("tags="), f)
             want = (
                 [["IMAGE_ROOT_CLOUD"], ["IMAGE_ROOT_CLOUD", "IMAGE_ROOT_ON_PREM"]]
                 if f.startswith("cloud-")
@@ -2242,7 +2213,6 @@ esac
         self.assertNotIn("\n        if:", last)
         self.assertIn('echo "$TARGET=$STABLE" >> "$GITHUB_OUTPUT"', last)
         self.assertNotIn("{t}={stable}", promote)
-        # and the jobs after it run when a product failed
         for job, need in (
             ("promoted", "products"),
             ("retag", "promoted"),
@@ -2282,10 +2252,7 @@ esac
 
 
 class PendingPicksWorkflow(Workflow):
-    """Promote's Plan blocks on open conflict PRs (cloud line or pinned OSS line) and held security/critical fixes
-    unless forced. A failed listing blocks; forcing passes a failed conflict listing (recorded), never a failed
-    held listing. Take RC only warns.
-    """
+    """Forcing Promote passes a failed conflict listing, never a failed held-fix listing."""
 
     def setUp(self):
         super().setUp()
@@ -2768,9 +2735,7 @@ class TakeRcVersion(Workflow):
 
 
 class TakeRcBump(Workflow):
-    """Take RC's bump step on release/1.7: chart rewrite, the bump / resume / empty-commit choice, the allocation
-    re-check, and the branch and tag push.
-    """
+    """Take RC's bump step on release/1.7."""
 
     CHART, VALUES = (
         "charts/unstract-platform/Chart.yaml",
@@ -2814,7 +2779,6 @@ class TakeRcBump(Workflow):
         return rm.git(self.repos["cloud"][0], *args)
 
     def tagged(self, r, subject):
-        """The run pushed the tip with subject to release/1.7 and tagged it v1.7.0-rc.1."""
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         tip = self.origin("rev-parse", "release/1.7")
         self.assertEqual(self.origin("rev-parse", "v1.7.0-rc.1^{commit}"), tip)
@@ -2874,13 +2838,11 @@ class TakeRcBump(Workflow):
             "::error::version moved after bump: v1.7.0-rc.1 -> v1.7.0-rc.2", r.stdout
         )
         self.assertEqual(self.origin("rev-parse", "release/1.7"), before)
-        self.assertEqual(self.origin("tag", "-l", "v1.7.*"), "")  # nothing pushed
+        self.assertEqual(self.origin("tag", "-l", "v1.7.*"), "")
 
 
 class PublishWorkflow(Workflow):
-    """Publish's Plan reads the OSS pins of the RC and the previous stable; its Changelog step runs the fetcher
-    against this repo and the OSS repo with one token (the release bot's, which reads both).
-    """
+    """Publish's Changelog reads this repo and the OSS repo with one token, the release bot's."""
 
     def release(
         self, pin, *tags
@@ -2974,7 +2936,6 @@ class PublishWorkflow(Workflow):
         )  # same pin: skipped
 
     def test_changelog_reads_both_repos_with_one_token(self):
-        # The real fetcher with a stand-in requests that logs each call and a main that calls it.
         action = os.path.join(self.cloud, ".github", "actions", "update-changelogs")
         os.makedirs(action)
         os.symlink(

@@ -1,26 +1,12 @@
 """Convergence gate: scan every other supported branch of a target, both directions, so an older branch
 never ships a fix a newer one lacks.
 
-Usage: convgate.py --branch release/X.Y --target T [--promote-ref vX.Y.Z-rc.N] [--state state.json] [--repo DIR]
-                   [--oss-repo DIR] [--annotate warning|error] [--out FILE]
-
-Wraps relmgr.convergence_report and adds:
-- scope: relstate `supported[T]` minus the branch. Retired and not-enabled branches are out by construction.
-- direction: an older branch's picks are checked against the newer branch, whichever side is being promoted.
-- reference: a newer branch with a promoted stable tag for T is scanned at that tag (what ships next), not at its tip,
-  even before it is GA (on-prem: promoted, chart not published yet). The branch being promoted is scanned at
-  --promote-ref where it is the newer side. As the older side it is scanned at its tip, so a fix picked after the
-  RC still blocks.
-- declines shown: an older line's pick the newer line declined prints as DECLINED, with the reason and the decline
-  commit (relmgr.decline_records). It counts as converged. A decline on the older line owes the newer line nothing.
-- release-branch-only window: RBO-ABSENT is kept only for commits after the newer line's latest promoted tag (else
-  its cut) that touch paths outside .github/.
-- OSS pins (a repo whose lines pin an OSS tag, relstate PINS): the same scan in a clone of the OSS repo, the older
-  line's pinned OSS tag into the newer line's, so an upgrade never loses an OSS fix. Each line is read at the same
-  reference as above. A MISSING row names where to act: the OSS line (OSS Backport) or a new RC of the newer line.
-Exit 2 iff any MISSING or an older line is not GA yet (promote order), 0 otherwise, 1 on error (never a silent
-pass). Take RC build warns on 2; Promote blocks.
-checks() turns a gate result into the checks table both summaries lead with, and the full rows folded below it.
+- A newer line with a promoted stable tag for T is scanned at that tag (what ships next), not its tip. The branch
+  being promoted is scanned at --promote-ref as the newer side, at its tip as the older side, so a fix picked after
+  the RC still blocks.
+- A decline on the newer line counts as converged; one on the older line owes the newer line nothing.
+- RBO-ABSENT counts only after the newer line's latest promoted tag (else its cut), outside .github/.
+Exit 2 iff any MISSING or an older line is not GA yet, 1 on error (never a silent pass), else 0.
 """
 
 import argparse
@@ -42,7 +28,6 @@ CLOSE_HOWTO = "resolve, get one approval and merge, or close the PR to decline (
 
 
 def conflict_pr(head):
-    """(number, url) of the open Backport conflict PR on `head`, or None."""
     r = subprocess.run(
         [
             "gh",
@@ -67,7 +52,6 @@ def conflict_pr(head):
 
 
 def push_failure(number, branch):
-    """Run URL in the newest `Backport to <branch> failed:` comment Backport left on PR #number, or None."""
     r = subprocess.run(
         [
             "gh",
@@ -87,7 +71,6 @@ def push_failure(number, branch):
 
 
 def blocked(branch, target, annotate):
-    """The lead of every MISSING message: an error where it blocks (Promote), a warning where it will (Take RC)."""
     return (
         f"Cannot promote {branch} for {target}"
         if annotate == "error"
@@ -98,11 +81,7 @@ def blocked(branch, target, annotate):
 def missing_message(
     repo, branch, target, older, newer, orig, pr, annotate, unshipped=None, failure=None
 ):
-    """What blocks the promote of `branch` and where to act: the fix `orig` is on `older` but not on `newer`.
-    unshipped: the tag `newer` is scanned at (its latest stable, or the RC being promoted when `newer` is
-    `branch`) when the fix is on `newer`'s tip but not in that tag.
-    failure(pr number, newer): the run URL of Backport's push-failure comment on the source PR, or None.
-    """
+    """unshipped: the tag `newer` is scanned at, when the fix is on `newer`'s tip but not in that tag."""
     o7 = orig[:7]
     # orig may not be on main.
     n = rm.subject_pr(repo, orig, check=False)
@@ -111,7 +90,7 @@ def missing_message(
     # An RC of this line, cut before the fix.
     if unshipped and newer == branch and rs.VER_RE.fullmatch(unshipped)[4]:
         return f"{head}: {fix} is on {newer} but not in RC {unshipped}: take a new RC build first."
-    if unshipped:  # nothing to pick or decline: the fix only waits for newer's next patch
+    if unshipped:
         return f"{head}: {fix} is on {newer} but not in its latest stable {unshipped}: promote a {newer} patch first."
     if branch == older:
         msg = (
@@ -129,7 +108,6 @@ def missing_message(
 
 
 def _oss_pins_of(repo, oss_repo, names, ref):
-    """{line: its pinned OSS tag}, each tag checked present in oss_repo."""
     pins = {n: oss.pin(repo, ref(n)) for n in names}
     for p in set(pins.values()):
         if not rs._tag_commit(oss_repo, p):
@@ -138,7 +116,6 @@ def _oss_pins_of(repo, oss_repo, names, ref):
 
 
 def _oss_found(oss_repo, main, oss_refs, p_old, p_new, line_new):
-    """The CONVERGED and MISSING rows of the OSS picks between two pins."""
     if p_old == p_new:
         return []
     return [
@@ -150,13 +127,11 @@ def _oss_found(oss_repo, main, oss_refs, p_old, p_new, line_new):
             main=main,
             newer_branch=oss_refs.get(line_new),
         )
-        # Accepted: a pin counts only CONVERGED and MISSING rows.
         if r[1] in ("CONVERGED", "MISSING")
     ]
 
 
 def _oss_act(oss_repo, main, oss_refs, o, newer, line_new):
-    """(fix, act) for the OSS original o missing from newer's pin."""
     n = rm.subject_pr(oss_repo, o)
     fix = f"OSS fix {o[:7]}" + (f" (OSS PR #{n})" if n is not None else "")
     on_line = line_new in oss_refs and rm.is_converged(
@@ -171,7 +146,7 @@ def _oss_act(oss_repo, main, oss_refs, o, newer, line_new):
 
 
 def oss_pins(repo, oss_repo, branch, target, scope, ref, rows, annotate):
-    """(missing, report lines, per-line results): each older line's pinned OSS tag scanned into the newer line's."""
+    """Each older line's pinned OSS tag scanned into the newer line's, so an upgrade never loses an OSS fix."""
     main, oss_refs = "refs/remotes/origin/main", rs._branches(oss_repo)
     pins = _oss_pins_of(repo, oss_repo, [branch, *scope], ref)
     head = blocked(branch, target, annotate)
@@ -206,7 +181,6 @@ def oss_pins(repo, oss_repo, branch, target, scope, ref, rows, annotate):
 
 
 def _line_result(s, older, picks, summary, state, oss=False):
-    """The per-line result checks() reads, for line s scanned against branch."""
     return {
         "line": s,
         "side": "older" if s == older else "newer",
@@ -220,14 +194,12 @@ def _line_result(s, older, picks, summary, state, oss=False):
 
 
 def _tag_ref(repo, tag):
-    """refs/tags/<tag>, after checking the tag exists."""
     if not rs._tag_commit(repo, tag):
         raise RuntimeError(f"no git tag {tag}")
     return f"refs/tags/{tag}"
 
 
 def _ref(repo, refs, rows, branch, target, promote_ref, name):
-    """The ref gate() scans line `name` at."""
     if name == branch and promote_ref:
         return _tag_ref(repo, promote_ref)
     p = rows[name]["targets"].get(target, {}).get("promoted")
@@ -235,7 +207,6 @@ def _ref(repo, refs, rows, branch, target, promote_ref, name):
 
 
 def _since(repo, main, newer_tip, promoted):
-    """Unix time the release-branch-only window opens: the promoted stable tag, else the cut."""
     if promoted:
         return int(
             rm.git(
@@ -257,7 +228,6 @@ def _since(repo, main, newer_tip, promoted):
 
 
 def _in_window(repo, c, since):
-    """Whether release-branch-only commit c is dated after since and touches a path outside .github/."""
     return int(rm.git(repo, "log", "-1", "--format=%ct", c)) > since and any(
         not f.startswith(".github/")
         for f in rm.git(repo, "show", "--format=", "--name-only", c).split()
@@ -265,7 +235,6 @@ def _in_window(repo, c, since):
 
 
 def _scan(repo, main, refs, ref, older, newer, since):
-    """(rows, picks): each (commit, status, originals, decline) of older scanned into newer."""
     rows_out, n_picks = [], 0
     recs = rm.decline_records(repo, refs[newer], main)  # declines on newer's tip
     rec = lambda o, recs=recs: next(
@@ -275,7 +244,7 @@ def _scan(repo, main, refs, ref, older, newer, since):
         repo, refs[older], ref(newer), main=main, newer_branch=refs[newer]
     ):
         if status == "RBO-ABSENT" and not _in_window(repo, c, since):
-            continue  # outside the window, or nothing outside .github/ (an empty commit included)
+            continue
         origs = rm.picked_from(repo, c)
         n_picks += bool(origs)
         decline = (
@@ -290,19 +259,16 @@ def _scan(repo, main, refs, ref, older, newer, since):
 
 
 def _counts(rows_out):
-    """{status: number of rows_out with it}."""
     return {st: sum(r[1] == st for r in rows_out) for st in STATUSES}
 
 
 def _shipped(promoted, newer, branch, promote_ref):
-    """The summary's name for newer's reference: what newer is scanned at."""
     return (
         "the RC" if not promoted or newer == branch and promote_ref else promoted["tag"]
     )
 
 
 def _summary(n, n_picks, shipped, newer):
-    """A line's counts, from the per-status counts n."""
     summary = f"{n_picks} picks, {n['CONVERGED']} in {shipped}" + "".join(
         f", {n[k]} {word}"
         for k, word in (
@@ -318,19 +284,16 @@ def _summary(n, n_picks, shipped, newer):
 
 
 def _rbo_what(repo, c):
-    """The ticket(s), title and link of release-branch-only commit c."""
     body = rm.git(repo, "log", "-1", "--format=%s%n%n%b", c)
     tickets, title = (
         list(dict.fromkeys(rm.RBO_RE.findall(body))),
         body.splitlines()[0],
     )
-    # Skip the ticket when the title starts with it.
     lead = "" if title.split(" ", 1)[0] in tickets else ", ".join(tickets) + " "
     return f"{lead}{title} ({rm.commit_link(c)})"
 
 
 def _unshipped(repo, main, refs, ref, newer, o, pr):
-    """The tag newer is scanned at when the fix o, with no conflict PR, is on newer's tip but not in it, else None."""
     shipped = ref(newer)
     return (
         shipped.removeprefix("refs/tags/")
@@ -342,7 +305,6 @@ def _unshipped(repo, main, refs, ref, newer, o, pr):
 
 
 def _todo(pr, newer, branch, msg):
-    """The do-this item for one MISSING original."""
     if not pr:
         return msg.split(": ", 1)[1]
     then = ", then Take RC again" if newer == branch else f" on `{newer}`"
@@ -352,14 +314,12 @@ def _todo(pr, newer, branch, msg):
 def _row_out(
     repo, main, refs, ref, lookup, message, annotate, branch, older, newer, row, out, line
 ):
-    """Append one scanned row's detail to out and its do-this or to-check item to line."""
     c, status, origs, decline = row
     if status == "DECLINED":
         d, why = decline
         out.append(
             f"- `{c[:12]}` DECLINED on {newer} original {', '.join(o[:12] for o in origs)}: {why} ({d[:7]})"
         )
-    # RBO-ABSENT has no original: name the ticket and commit.
     elif status == "RBO-ABSENT":
         what = _rbo_what(repo, c)
         out.append(f"- `{c[:12]}` RBO-ABSENT {what}")
@@ -369,7 +329,6 @@ def _row_out(
             f"- `{c[:12]}` {status} original {', '.join(o[:12] for o in origs) or '-'}"
         )
         if status == "MISSING":
-            # the developer's next step, on the run page and in the summary
             for o in origs:
                 pr = lookup(f"backport/{newer.split('/', 1)[1]}/{o[:7]}")
                 unshipped = _unshipped(repo, main, refs, ref, newer, o, pr)
@@ -390,7 +349,7 @@ def gate(
     failure=push_failure,
     oss_repo=None,
 ):
-    """(exit code, report lines, per-line results for checks()). oss_repo: a clone of rs.PINS, for the OSS pins."""
+    """oss_repo: a clone of rs.PINS, for the OSS pins."""
     refs = rs._branches(repo)
     main = rs._main(repo)
     rows = {b["branch"]: b for b in state["branches"]}
@@ -457,9 +416,7 @@ def gate(
 
 
 def next_steps(lines, order):
-    """The do-this items in checks-table order, each once and without a closing full stop (the Next line joins them):
-    every line's todo, then each promote-order blocker.
-    """
+    """No closing full stop: callers join the items."""
     return list(
         dict.fromkeys(
             [t.removesuffix(".") for x in lines for t in x["todo"]]
@@ -469,13 +426,11 @@ def next_steps(lines, order):
 
 
 def _cell(parts, none="-"):
-    """A table cell: the parts on separate lines, pipes escaped."""
     return "<br>".join(parts).replace("|", "\\|") or none
 
 
 def _fixes(name, ls):
-    """A fixes row of the checks table for the lines ls."""
-    # Accepted: an UNCLASSIFIABLE-only line has no todo, so its row reads ✅ (the detail still counts it).
+    # An UNCLASSIFIABLE-only line has no todo, so its row reads ✅; the detail still counts it.
     named = [x for x in ls if x["state"] == "stabilizing" or x["todo"] or x["rbo"]]
     rest = [x for x in ls if x not in named]
     counts = [f"`{x['line']}` {x['summary']}" for x in named]
@@ -494,7 +449,6 @@ def _fixes(name, ls):
 
 
 def _order_row(order):
-    """The promote order row of the checks table."""
     return (
         "⛔" if order else "✅",
         "promote order",
@@ -504,7 +458,6 @@ def _order_row(order):
 
 
 def _rbo_row(lines):
-    """The release-branch-only row of the checks table."""
     rbo = [r for x in lines for r in x["rbo"]]
     return (
         "⚠" if rbo else "✅",
@@ -515,11 +468,7 @@ def _rbo_row(lines):
 
 
 def checks(lines, order, out, split=False):
-    """(checks table, folded gate detail) from gate()'s lines and out and relstate.promote_blockers' order.
-    split: one fixes row per direction (Promote) instead of one for every other line (the Take RC preview).
-    Blocking and to-check rows name what to do; healthy rows show counts only. A line is named only when it is
-    stabilizing for the target or has something to do or check; the rest are one trailing count.
-    """
+    """split: one fixes row per direction instead of one for every other line."""
     own, pinned = (
         [x for x in lines if not x.get("oss")],
         [x for x in lines if x.get("oss")],

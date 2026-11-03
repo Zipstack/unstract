@@ -1,5 +1,3 @@
-"""Synthetic-repo tests for convgate. Run: python test_convgate.py"""
-
 import contextlib
 import datetime as dt
 import io
@@ -158,7 +156,6 @@ class Gate(unittest.TestCase):
             self.assertEqual(code, 0, out)
 
     def test_pick_after_decline_ships(self):
-        """A decline undone by merging the reopened PR: the newest trailer wins, the fix counts as picked."""
         self.decline(self.c, "release/1.6")
         self.pick(self.c, "release/1.6")
         self.assertEqual(
@@ -171,9 +168,7 @@ class Gate(unittest.TestCase):
             self.assertIn("1 picks, 1 in the RC, 1 unclassifiable", out)
 
     def test_pick_after_short_sha_decline_ships(self):
-        """A hand-written decline may name the original by a short sha; the bot's later pick names it in full. Both
-        are one original, so the pick still wins.
-        """
+        """A hand-written decline may name the original by a short sha; the bot's pick names it in full."""
         self.decline(self.c[:7], "release/1.6")
         self.pick(self.c, "release/1.6")
         self.assertEqual(
@@ -185,9 +180,7 @@ class Gate(unittest.TestCase):
         self.assertIn("1 picks, 1 in the RC, 1 unclassifiable", out)
 
     def test_pick_after_decline_past_ga_still_owed(self):
-        """Newer is GA at a tag without the fix; its decline was undone by a later pick: older's promote waits for
-        newer's next patch instead of reading the stale decline as converged.
-        """
+        """An undone decline on a GA line must not read as converged: the fix still waits for its next patch."""
         self.reg["cloud/backend"]["v1.6.0"] = self.reg["cloud/backend"]["v1.6.0-rc.1"]
         self.g("tag", "v1.6.0", "v1.6.0-rc.1")
         self.decline(self.c, "release/1.6")
@@ -197,7 +190,6 @@ class Gate(unittest.TestCase):
         self.assertIn("into `refs/tags/v1.6.0`", out)
 
     def test_declined_row(self):
-        """A decline converges (exit 0) and its row names the reason and the decline commit."""
         self.g("checkout", "-q", "release/1.6")
         self.g(
             "commit",
@@ -220,7 +212,6 @@ class Gate(unittest.TestCase):
             )
 
     def test_declined_on_older(self):
-        """A decline on the older line owes the newer line nothing: no row, nothing counted."""
         self.g("checkout", "-q", "release/1.5")
         self.g(
             "commit",
@@ -238,9 +229,6 @@ class Gate(unittest.TestCase):
             self.assertIn("0 in the RC, 1 unclassifiable\n", out)
 
     def test_decline_records(self):
-        """Empty decline: its last `Declined:` line (subject without one); revert of a pick: the revert's subject;
-        a later pick clears the record.
-        """
         self.decline(self.c, "release/1.6")
         d = self.tip("release/1.6")
         self.assertEqual(
@@ -276,7 +264,6 @@ class Gate(unittest.TestCase):
         self.assertIn(r, [c for c, kind in rows if kind == "invalid"])
 
     def test_backport_pr_judged_as_its_squash(self):
-        """A plain resolution commit after the pick passes on a backport/* PR; any other PR still classifies all."""
         self.g("checkout", "-q", "-b", "backport/1.6/abcdef0", "release/1.6")
         self.g("cherry-pick", "-x", self.c)
         first = self.tip("backport/1.6/abcdef0")
@@ -337,7 +324,6 @@ class Gate(unittest.TestCase):
         )
         self.assertIn(f"::warning::{msg}", self.printed)
         self.assertNotIn("::error::", self.printed)
-        # Backport's push-failure comment on PR #9 names the cause and the rerun instead; another line's does not
         _, out = self.run_gate(
             "release/1.5", failures={(9, "release/1.6"): "https://x/runs/5"}
         )
@@ -356,7 +342,7 @@ class Gate(unittest.TestCase):
             "v1.6.0-rc.1"
         ]  # 1.6 GA at v1.6.0
         self.g("tag", "v1.6.0", "v1.6.0-rc.1")
-        self.pick(self.c, "release/1.6")  # on the tip after GA, so not in v1.6.0
+        self.pick(self.c, "release/1.6")
         code, _ = self.run_gate("release/1.5")
         self.assertEqual(code, 2)
         self.assertIn(
@@ -366,7 +352,7 @@ class Gate(unittest.TestCase):
         )
 
     def test_on_promoted_tip_not_in_its_rc(self):
-        self.pick(self.c, "release/1.6")  # on 1.6's tip after v1.6.0-rc.1 was cut
+        self.pick(self.c, "release/1.6")
         code, _ = self.run_gate(
             "release/1.6", annotate="error", promote_ref="v1.6.0-rc.1"
         )
@@ -416,7 +402,7 @@ class Gate(unittest.TestCase):
         ] = {
             "digest": "sha256:61",
             "pushed_at": "2026-09-28T00:00:00Z",
-        }  # patch promoted, not published
+        }
         code, out = self.run_gate("release/1.5", "on-prem")
         self.assertEqual(code, 0, out)
         self.assertIn(
@@ -471,7 +457,7 @@ class Gate(unittest.TestCase):
         )
         _, out = self.run_gate(
             "release/1.5", prs={f"backport/1.6/{self.c[:7]}": (12, "u")}
-        )  # the PR is on newer
+        )
         self.assertIn(
             f"merge or close conflict PR {rm.pr_link(12)} on `release/1.6` |",
             self.checks(out)[2],
@@ -480,7 +466,6 @@ class Gate(unittest.TestCase):
     def rbo(
         self, title, date="2030-01-01T00:00:00Z", path="pin.txt", branch="release/1.5"
     ):
-        """A Release-branch-only squash on `branch` committed at `date`, changing `path`."""
         self.g("checkout", "-q", branch)
         os.makedirs(os.path.join(self.repo, os.path.dirname(path)), exist_ok=True)
         with open(os.path.join(self.repo, path), "a") as f:
@@ -488,7 +473,7 @@ class Gate(unittest.TestCase):
         self.g("add", path)
         with mock.patch.dict(
             os.environ, GIT_COMMITTER_DATE=date
-        ):  # a squash lists the bot's commit and keeps
+        ):  # a squash body repeats the bot commit's trailer
             self.g(
                 "commit",
                 "-q",
@@ -509,7 +494,6 @@ class Gate(unittest.TestCase):
             f"| ⚠ release-branch-only to check | on `release/1.5`: {what}, not on "
             "`release/1.6` | check whether the newer line needs its own equivalent |",
         )
-        # a title that already starts with the ticket names it once
         rbo = self.rbo("UN-1 [MISC] pin the base image")
         _, out = self.run_gate("release/1.5")
         self.assertIn(
@@ -531,7 +515,6 @@ class Gate(unittest.TestCase):
         self.assertIn(new[:12], out)
         self.assertNotIn(old[:12], out)
         self.assertNotIn(workflow[:12], out)
-        # 1.6 GA for cloud: its GA tag's date is the window
         self.reg["cloud/backend"]["v1.6.0"] = self.reg["cloud/backend"]["v1.6.0-rc.1"]
         with mock.patch.dict(os.environ, GIT_COMMITTER_DATE="2031-01-01T00:00:00Z"):
             self.g("tag", "-a", "v1.6.0", "-m", "promote", "v1.6.0-rc.1")
@@ -552,7 +535,7 @@ class Gate(unittest.TestCase):
             self.checks(out)[3],
             "| ✅ fixes match older lines | 1 older line converged (1 picks) | - |",
         )
-        self.assertIn("**release/1.5** (older", out)  # the detail keeps every line
+        self.assertIn("**release/1.5** (older", out)
         self.rbo("pin the base image")
         _, out = self.run_gate("release/1.6")
         self.assertIn(
@@ -600,11 +583,10 @@ class Gate(unittest.TestCase):
         )
 
     def test_next_steps(self):
-        """The do-this items in table order, each once; the table cells are built from the same list."""
         _, out = self.run_gate(
             "release/1.6", prs={f"backport/1.6/{self.c[:7]}": (12, "u")}
         )
-        self.lines.append(dict(self.lines[0]))  # a second line with the same todo
+        self.lines.append(dict(self.lines[0]))
         self.lines.append(
             dict(self.lines[0], todo=["take a new RC build first."])
         )  # a message's full stop goes
@@ -673,7 +655,7 @@ class Gate(unittest.TestCase):
             "v1.6.0-rc.1"
         ]  # promote, same digest
         self.g("tag", "v1.6.0", "v1.6.0-rc.1")
-        self.pick(self.c, "release/1.6")  # after GA: the tip has it, v1.6.0 does not
+        self.pick(self.c, "release/1.6")
         code, out = self.run_gate("release/1.5")
         self.assertEqual(code, 2, out)
         self.assertIn("into `refs/tags/v1.6.0`", out)
@@ -683,7 +665,7 @@ class Gate(unittest.TestCase):
 
     def test_plain_fix_owed_to_stabilized(self):
         self.reg["cloud/backend"]["v1.6.0"] = self.reg["cloud/backend"]["v1.6.0-rc.1"]
-        self.g("tag", "v1.6.0", "v1.6.0-rc.1")  # 1.6 GA = stabilized for cloud
+        self.g("tag", "v1.6.0", "v1.6.0-rc.1")
         code, out = self.run_gate("release/1.5")
         self.assertEqual(code, 2, out)
         self.assertIn(
@@ -691,7 +673,7 @@ class Gate(unittest.TestCase):
         )
 
     def test_shipped_prs(self):
-        """shipped_prs: a pick counts, a decline and a main-only commit do not; C has no (#n), so lookup decides."""
+        """C has no (#n), so lookup decides."""
         d, e = (
             self.change("D: picked (#7)", "main"),
             self.change("E: declined (#8)", "main"),
@@ -715,9 +697,6 @@ class Gate(unittest.TestCase):
         self.assertEqual(rm.shipped_prs(self.repo, []), set())
 
     def test_shipped_prs_newest_trailer(self):
-        """shipped_prs: newest trailer wins. A pick backed out by a later decline or revert is not shipped; a pick
-        after a decline is.
-        """
         d, r, p = (
             self.change(f"{x}: fix (#{n})", "main")
             for x, n in (("D", 21), ("R", 22), ("P", 23))
@@ -742,10 +721,7 @@ class Gate(unittest.TestCase):
         )
 
     def test_shipped_prs_line_picks(self):
-        """shipped_prs(line=): the new line's picks of shipped originals drop too, by lookup (clean pick, original's
-        subject) or by their own (#n) (conflict squash); a pick of an original declined on the previous line, a
-        release-branch-only commit and line=None do not change.
-        """
+        """A clean pick's PR is found by lookup, a conflict squash's by its own (#n)."""
         d, e = self.change("D: fix (#21)", "main"), self.change("E: fix (#22)", "main")
         f = self.change("F: fix (#23)", "main")
         self.pick(d, "release/1.5")
@@ -782,7 +758,7 @@ class Gate(unittest.TestCase):
                 self.repo, ["v1.5.1"], lookup={self.c: 5}.get, line="v1.6.0-rc.2"
             ),
             {5, 21, 23, 41},
-        )  # no lookup hit for the clean pick: its (#21) only, nothing raised
+        )
 
     def test_main_refuses_paths_outside_and_an_option_as_branch(self):
         args = ["--repo", self.repo, "--target", "cloud"]
@@ -925,13 +901,13 @@ class OssPins(unittest.TestCase):
         self.assertEqual(
             table[3],
             "| ✅ fixes match older lines | `release/1.5` 0 picks, 0 in the RC | - |",
-        )  # cloud rows: cloud only
+        )
         # The fix reaches the OSS line: the pin, not OSS, is behind now.
         self.g(self.oss, "checkout", "-q", "release/1.6")
         self.g(self.oss, "cherry-pick", "-x", self.f)
         self.g(self.oss, "checkout", "-q", "main")
         self.sync()
-        code, out, _ = self.run_gate("release/1.5")  # same scan from the older side
+        code, out, _ = self.run_gate("release/1.5")
         self.assertEqual(code, 2)
         self.assertIn(": take a new RC of release/1.6 to pin OSS release/1.6's tip.", out)
 
@@ -982,7 +958,7 @@ class OssPins(unittest.TestCase):
             "::error::convgate: RuntimeError: --oss-repo (or OSS_REPO) is required",
             buf.getvalue(),
         )
-        self.assertIn("Traceback", err.getvalue())  # where it failed, not only what
+        self.assertIn("Traceback", err.getvalue())
         self.g(self.oss, "tag", "-d", "ee-v1.6.0")
         with self.assertRaisesRegex(RuntimeError, "no OSS tag ee-v1.6.0"):
             self.run_gate("release/1.6")

@@ -11,11 +11,11 @@ from unittest import mock
 os.environ["GITHUB_REPOSITORY"] = (
     "Zipstack/unstract-cloud"  # pin relstate to the cloud config
 )
-os.environ["RELEASE_BOT_APP_SLUG"] = "zipstack-push-to-main"  # the release App
+os.environ["RELEASE_BOT_APP_SLUG"] = "zipstack-push-to-main"
 BOT = {
     "login": "app/zipstack-push-to-main",
     "is_bot": True,
-}  # gh pr view's author of the App's PRs
+}
 import backport as bp
 import relmgr as rm
 
@@ -38,7 +38,6 @@ class Held(unittest.TestCase):
         self.assertEqual(
             bp.held_filter([a, b, c, d, e], classes, {a[:7], e}), [(b, "critical", "#2")]
         )
-        # accept=OWED adds plain fixes; UNCLASSIFIABLE (no PR, bad title) is never dropped, held or owed.
         classes[d] = (bp.UNCLASSIFIABLE, "no PR")
         self.assertEqual(
             bp.held_filter([a, b, c, d, e], classes, {a[:7], e}),
@@ -114,8 +113,6 @@ class Rescan(unittest.TestCase):
             ),
         }
         plan, awaiting, unclassifiable = bp.rescan_plan(targets, held, confirm=False)
-        # (1) d is missing on 0.190 only: planned there; b, already picked on 0.190, is not.
-        # (2) declined e is planned nowhere. (3) main order (c before d). (4) security c on stabilized 0.187 waits.
         self.assertEqual(
             plan,
             [
@@ -562,8 +559,6 @@ class PushSummary(unittest.TestCase):
 
 
 class ConflictPRs(unittest.TestCase):
-    """Open backport-conflict PRs of one repo, per line, read by a stub gh as the given token; a failed listing raises."""
-
     def setUp(self):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
@@ -631,8 +626,6 @@ class ConflictPRs(unittest.TestCase):
 
 
 class FinishOpen(unittest.TestCase):
-    """A pick head left by an earlier run: an unlabelled one-commit PR is merged now, anything else waits."""
-
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         d = self.tmp.name
@@ -843,8 +836,7 @@ class FinishOpen(unittest.TestCase):
         )
 
     def test_not_the_bots_pick_is_not_squashed(self):
-        # The squash bypasses the release ruleset: a person's PR on a pick head, or a commit that is not the pick
-        # of the head's sha7, must not land through it.
+        # The squash bypasses the release ruleset: nothing but the bot's own pick may land through it.
         for author in (
             {"login": "dev", "is_bot": False},
             {"login": "app/other", "is_bot": True},
@@ -858,7 +850,6 @@ class FinishOpen(unittest.TestCase):
                 self.assertIn(
                     "not by the bot (@app/zipstack-push-to-main): not merged", out[1]
                 )
-        # A person's PR with two commits fails too, rather than waiting silently as a conflict PR.
         self.g(
             "-c",
             "user.name=t",
@@ -899,8 +890,6 @@ class FinishOpen(unittest.TestCase):
 
 
 class Pick(unittest.TestCase):
-    """pick() against a local origin: an empty pick names its fix and the decline; fix/* labels reach the pick PR."""
-
     def setUp(self):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
@@ -1098,10 +1087,6 @@ class Relevance(unittest.TestCase):
 
 
 class PickGit(unittest.TestCase):
-    """pick() against real git: a conflict commit carries no untracked file, and a pick another run merged after
-    this run fetched is skipped.
-    """
-
     PATH = "f"
 
     def setUp(self):

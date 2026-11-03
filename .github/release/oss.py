@@ -9,8 +9,6 @@ Usage (OSS_REPO: a clone of the OSS repo with full history, tags and origin/rele
                                                         promote the OSS RC the cloud RC pins; prints the stable tag.
                                                         --stabilized (the promote that leaves every enabled cloud
                                                         target GA) also tags the OSS line stabilized/X.Y once
-reopen(): called by cloud Take RC build after an RC that reopens the cloud line builds.
-retire(): called by cloud Retire for each cloud line it retires.
 
 cut, rc and promote print one OSS tag on stdout. Every write is re-runnable: a tag already on the same commit is
 skipped, a tag on another commit fails. A branch and its new tag go in one atomic push.
@@ -26,16 +24,15 @@ import backport as bp
 import relmgr as rm
 import relstate as rs
 
-OSS = rs.PINS or "Zipstack/unstract"  # the OSS repo the cloud lines pin
+OSS = rs.PINS or "Zipstack/unstract"
 PREFIX = rs.REPOS[OSS.split("/")[1].lower()][4]
 VER = rs.ver_re(PREFIX)
 PIN_RE = re.compile(r'^unstract-platform-version = "([^"]*)"$', re.M)
-RELEASE = "release/"  # release branch name prefix
+RELEASE = "release/"
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 
 def pin(repo, ref):
-    """The OSS tag that ref's pyproject.toml pins."""
     m = PIN_RE.search(rm.git(repo, "show", f"{ref}:pyproject.toml"))
     if not m:
         raise RuntimeError(f"no unstract-platform-version pin in {ref}:pyproject.toml")
@@ -56,14 +53,12 @@ def tip(oss, branch):
 
 
 def tags_on(oss, sha, branch):
-    """Version tags of branch's minor on commit sha."""
     return rs.line_tags(
         oss, branch.removeprefix(RELEASE), "--points-at", sha, prefix=PREFIX
     )
 
 
 def choose(tags):
-    """The tag to pin from one commit's tags: its stable tag, else its newest RC, else None."""
     stable = [t for t in tags if "-rc." not in t]
     return max(stable or tags, key=rs._vkey) if tags else None
 
@@ -75,9 +70,6 @@ def _bot(oss, *args):
 
 
 def _tag(oss, name, sha, *msgs):
-    """Create tag name on sha locally (annotated when msgs); False when it is already there, an error when it is on
-    another commit.
-    """
     have = rs._tag_commit(oss, name)
     if have and have != sha:
         raise RuntimeError(f"OSS tag {name} is on {have[:12]}, not on {sha[:12]}")
@@ -97,9 +89,7 @@ def _push(oss, *refspecs):
 
 
 def _tag_push(oss, name, sha, msgs, *refspecs):
-    """Tag sha as name (_tag) and push refspecs. A failed push drops the tag when this call made it, so a re-run in
-    this clone does not take a tag origin never got as already done.
-    """
+    """A failed push drops the tag this call made, so a re-run does not take a tag origin never got as done."""
     new = _tag(oss, name, sha, *msgs)
     try:
         _push(oss, *refspecs)
@@ -110,9 +100,7 @@ def _tag_push(oss, name, sha, msgs, *refspecs):
 
 
 def _bump(oss, branch, base, tag, slack_url, old):
-    """Push one empty bot commit `release: <tag>` on base as branch's new tip, with its tag. Leased on old (the tip
-    read; "" for a cut), so a concurrent change fails the push.
-    """
+    """Leased on old (the tip read; "" for a cut), so a concurrent change fails the push."""
     sha = _bot(
         oss,
         "commit-tree",
@@ -179,9 +167,8 @@ def gate(oss, branch, ref, annotate):
 
 # Known limit: line is not checked to be X.Y.
 def cut(oss, line, slack_url=""):
-    """Cut OSS release/<line> from OSS main's tip plus its first RC. Refused when the OSS line exists, unless it is
-    this cut's own result from an earlier run (its tip the bot bump carrying ee-v<line>.0-rc.1), or when the minor
-    has OSS tags left (a retired line that shipped).
+    """A cut never reuses an OSS line, nor a minor with tags left (a retired line that shipped); a re-run of the same
+    cut returns its tag.
     """
     branch, tag = f"release/{line}", f"{PREFIX}v{line}.0-rc.1"
     if have := tip(oss, branch):
@@ -214,9 +201,7 @@ def cut(oss, line, slack_url=""):
 
 
 def rc(oss, branch, slack_url=""):
-    """The OSS tag for the next RC of cloud branch: its OSS line's tip tag, after a new OSS RC on an untagged tip.
-    Previews the OSS-line gate (never blocks).
-    """
+    """Previews the OSS-line gate; never blocks."""
     sha = tip(oss, branch)
     if not sha:
         raise RuntimeError(f"OSS {branch} does not exist: cloud Cut makes it")
@@ -233,9 +218,8 @@ def rc(oss, branch, slack_url=""):
 
 
 def reopen(oss, branch):
-    """Delete OSS release/X.Y's stabilized/X.Y tag: its cloud line built a target with no GA yet, so the OSS line is
-    stabilizing again and its next main push catches up the plain fixes it skipped. Promote writes the tag again at
-    the line's last GA. A missing tag is a no-op. Summary lines.
+    """Its cloud line built a target with no GA yet, so the OSS line is stabilizing again and its next main push
+    catches up the plain fixes it skipped.
     """
     mark = rs.STABILIZED + branch.removeprefix(RELEASE)
     if not rs._tag_commit(oss, mark):
@@ -249,11 +233,8 @@ def reopen(oss, branch):
 
 # Known limit: force accepts an empty reason.
 def promote(repo, oss, cloud_rc, force=False, reason="", stabilized=False):
-    """The stable OSS tag of the OSS RC cloud_rc pins (_promote). stabilized: this promote leaves every enabled
-    target of the cloud line GA, so the OSS line's stabilized/X.Y tag goes on that stable tag's commit when the line
-    has none (a later promote keeps it).
-    Known limit: the tag marks the promote, not the retag or chart push after it; if those fail, the OSS line is
-    stabilized before its cloud line is GA.
+    """Known limit: stabilized/X.Y marks the promote, not the retag or chart push after it; if those fail, the OSS
+    line is stabilized before its cloud line is GA.
     """
     stable = _promote(repo, oss, cloud_rc, force, reason)
     mark = rs.STABILIZED + line_of(stable).split("/", 1)[1]
@@ -272,7 +253,6 @@ def promote(repo, oss, cloud_rc, force=False, reason="", stabilized=False):
 
 
 def _conflicts(branch, force):
-    """(open backport conflict PR refs on OSS branch, unchecked notes); a failed listing raises unless force."""
     unchecked = []
     try:
         prs = [
@@ -291,10 +271,7 @@ def _conflicts(branch, force):
 
 
 def _promote(repo, oss, cloud_rc, force, reason):
-    """The stable OSS tag of the OSS RC cloud_rc pins, tagging it when it has none yet. Open backport conflict PRs on
-    the OSS line (or a failed listing of them) and its gate block first unless force; the other cloud product finds
-    the tag and skips both.
-    """
+    """The other cloud product finds the tag already there and skips the conflict and gate checks."""
     pinned = pin(repo, cloud_rc)
     branch = line_of(pinned)
     if "-rc." not in pinned:
@@ -340,10 +317,7 @@ def _promote(repo, oss, cloud_rc, force, reason):
 
 
 def retire(oss, branch, reason, dry_run=True):
-    """Retire OSS release/X.Y with its cloud line, in one atomic push: archive tag retired/X.Y-<tip sha7>, delete
-    (no OSS GA) its RC tags and the branch. With a GA its tags stay, stabilized/X.Y with them, and the minor is never
-    reused; without one it is. Summary lines.
-    """
+    """With an OSS GA the line's tags stay and the minor is never reused; without one its RC tags go and it is."""
     line = branch.removeprefix(RELEASE)
     sha = tip(oss, branch)
     if not sha:

@@ -1,15 +1,9 @@
 name: V2 Release branch CI
 
 # Every commit after the cut must be a pick of a main commit (or its decline), release-branch-only, or
-# build-generated. Anything else fails.
-# PR into release/**: required check `check` over the PR's commits; a backport/X.Y/<sha7> PR is judged by its
-# first commit (the squash keeps its trailer), and conflict markers fail it. A PR run holds no secret.
-# Push: backstop for bot pushes.
-# Label `release-branch-only`: the PR passes with commits of any kind; release-branch-only.yaml adds the
-# `Release-branch-only: <TICKET>` commit to its head.
-# Known limit: a branch cut before these triggers existed gets no PR check; a PR can edit this file for its own
-# pull_request run.
-# Label changes on a closed PR run nothing. No push builds an RC: a security or critical pick waits for Take RC build.
+# build-generated. Anything else fails. Label `release-branch-only` passes a PR with commits of any kind.
+# A backport/X.Y/<sha7> PR is judged by its first commit: the squash keeps its trailer.
+# Known limit: a PR can edit this file for its own pull_request run, which holds no secret.
 on:
   push:
     branches: ["release/**"]
@@ -31,11 +25,10 @@ jobs:
       - uses: actions/checkout@v6
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
-          fetch-depth: 0 # relmgr needs full history and tags
-          persist-credentials: false # the head is only read
+          fetch-depth: 0
+          persist-credentials: false
 
-      # Classifier read from main, so a PR cannot weaken relmgr. Known limit: a PR can still edit this workflow
-      # (needs a required workflow or CODEOWNERS on .github/).
+      # Classifier read from main, so a PR cannot weaken relmgr.
       - uses: actions/checkout@v6
         with:
           ref: main

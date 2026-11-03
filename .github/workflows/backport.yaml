@@ -5,17 +5,9 @@ run-name: >-
       && format('record #{0}', github.event.pull_request.number)
       || format('picks {0}', inputs.commits || github.sha) }}
 
-# pick (push to main, dispatch): cherry-pick -x each fix onto every stabilizing release branch, one PR per pick;
-#   the bot squash-merges clean picks, conflicts stay open. A push rescans every line since its cut; a dispatch
-#   picks only `commits`. Security/critical fixes reach stabilized lines only with confirm_stabilized. Never builds.
-# record (pull_request_target closed/reopened): merged -> backport-merged, head deleted; closed -> empty decline
-#   commit on the base (close comment = reason), backport-declined, head kept; reopened -> backport-conflict.
-#   The newest trailer wins.
-#   Closed with no commit past the base -> nothing recorded; the bot comments once (delete the head to re-pick,
-#   or decline by hand).
-# pull_request_target because GitHub runs no pull_request workflow on a PR that conflicts with its base. It runs
-#   the base line's copy of this file, checks out main and never runs head code; backport_merge.py refuses heads
-#   other than backport/X.Y/<sha7>. A failed record run is recovered with "Re-run jobs".
+# Security/critical fixes reach stabilized lines only with confirm_stabilized. Closing a pick PR declines it; the
+# close comment is the reason. pull_request_target because GitHub runs no pull_request workflow on a PR that
+# conflicts with its base; it runs the base line's copy of this file, checks out main and never runs head code.
 on:
   push:
     branches: [main]
@@ -41,14 +33,12 @@ jobs:
   pick:
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
-    timeout-minutes: 30 # backport.py PICK_TIMEOUT: a head with no PR younger than this belongs to a running run
+    timeout-minutes: 30 # = backport.py PICK_TIMEOUT
     permissions:
       contents: read
     concurrency:
-      # Push runs share one group (a newer push replaces a pending one; the next rescan catches up). Each dispatch
-      # has its own group, since it may carry confirm_stabilized.
-      # Known limit: concurrent runs race on a pick head; the loser retries or skips, and can open a duplicate PR
-      # if the winner already merged and deleted the head.
+      # Each dispatch has its own group, since it may carry confirm_stabilized.
+      # Known limit: concurrent runs race on a pick head and can open a duplicate PR.
       group: backport-${{ github.event_name == 'workflow_dispatch' && github.run_id || 'rescan' }}
     env:
       PYTHONDONTWRITEBYTECODE: "1" # keeps the pick clone clean; the conflict path stages with `git add -u`
@@ -61,7 +51,7 @@ jobs:
           if [ "$GITHUB_REF" != refs/heads/main ]; then echo '::error::Run this from main ("Use workflow from: main")'; exit 1; fi
           if [ -z "$COMMITS" ]; then echo "::error::Set commits: the PR numbers or SHAs to backport"; exit 1; fi
 
-      # The repo's GitHub App, as in create-release.yaml: a GITHUB_TOKEN push or PR starts no workflow.
+      # A GITHUB_TOKEN push or PR starts no workflow.
       - name: Bot token
         id: bot
         uses: actions/create-github-app-token@v3
@@ -71,8 +61,8 @@ jobs:
 
       - uses: actions/checkout@v6
         with:
-          fetch-depth: 0 # relmgr needs full history and tags
-          token: ${{ steps.bot.outputs.token }} # picks are pushed as the bot
+          fetch-depth: 0
+          token: ${{ steps.bot.outputs.token }}
 
       - name: Main tip
         # A late push run checks out its event sha as origin/main; rescan the real tip instead.
@@ -111,7 +101,7 @@ jobs:
     concurrency:
       group: backport-pr-${{ github.event.pull_request.number }} # its own group: in a pick group it could replace a pending pick run
     steps:
-      # The repo's GitHub App, as in create-release.yaml: a GITHUB_TOKEN push or PR starts no workflow.
+      # A GITHUB_TOKEN push or PR starts no workflow.
       - name: Bot token
         id: bot
         uses: actions/create-github-app-token@v3
@@ -126,12 +116,10 @@ jobs:
           token: ${{ steps.bot.outputs.token }}
 
       - name: Record the close
-        # Each release line runs its own copy of this job with main's script, so main's backport_merge.py must
-        # accept the env and arguments of every live line's copy.
+        # Every live line's copy of this job runs main's backport_merge.py, which must accept each copy's env and args.
         env:
-          GH_TOKEN: ${{ steps.bot.outputs.token }} # labels, comments, the decline commit and the head delete
+          GH_TOKEN: ${{ steps.bot.outputs.token }}
           RELEASE_BOT_APP_SLUG: ${{ steps.bot.outputs.app-slug }} # the pick PR's author must be this App
           PR: ${{ github.event.pull_request.number }}
-          # who closed it: their close comment is the decline reason
           SENDER: ${{ github.event.sender.login }}
         run: python3 .github/release/backport_merge.py --pr "$PR" --sender "$SENDER"

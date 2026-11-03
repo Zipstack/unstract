@@ -1,6 +1,5 @@
 name: V2 Release state
 
-# Read-only: prints every release/X.Y branch with its state. It writes nothing.
 on:
   workflow_dispatch:
 
@@ -14,7 +13,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          fetch-depth: 0 # relmgr needs full history and tags
+          fetch-depth: 0
 
       - name: Derive branch and target state
         id: state
