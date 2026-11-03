@@ -1,3 +1,4 @@
+import { useDevicePixelRatio } from "@v1/hooks/useDevicePixelRatio";
 import { usePageWindow } from "@v1/hooks/usePageWindow";
 import { cn } from "@v1/lib/cn";
 import { type Highlight, highlightsByPage } from "@v1/lib/pdf/highlights";
@@ -34,11 +35,15 @@ export interface PdfPageListProps {
   /** Highlights on any page, from the normalisers in `@v1/lib/pdf/highlights`. */
   highlights?: readonly Highlight[];
   activeHighlightId?: string | null;
+  /** Keep it stable (useCallback): a new function re-renders every page. */
   onHighlightClick?: (highlight: Highlight) => void;
   /** Called with the 0-based page showing most of itself. */
   onCurrentPageChange?: (index: number) => void;
   onKeyDown?: (event: KeyboardEvent<HTMLElement>) => void;
-  /** Drawn over a page, above its highlights; receives the 0-based page index. */
+  /**
+   * Drawn over a page, above its highlights; receives the 0-based page index.
+   * Keep it stable (useCallback): a new function re-renders every page.
+   */
   renderPageOverlay?: (index: number) => ReactNode;
   className?: string;
   ref?: Ref<PdfPageListHandle>;
@@ -276,6 +281,18 @@ export function PdfPageList({
     [highlights, pageCount, sync],
   );
 
+  // Only the page holding the active highlight hears its id, so moving the
+  // active highlight re-renders the page it left and the page it reached.
+  const activePage = useMemo(
+    () =>
+      activeHighlightId == null
+        ? null
+        : (highlights.find((highlight) => highlight.id === activeHighlightId)
+            ?.page ?? null),
+    [highlights, activeHighlightId],
+  );
+  const pixelRatio = useDevicePixelRatio();
+
   // A scrollable region must be focusable for keyboard users (WCAG 2.1.1),
   // and its focus is where the viewer's paging and zoom keys are read.
   return (
@@ -306,13 +323,13 @@ export function PdfPageList({
             size={size}
             zoom={zoom}
             rendered={rendered.has(index)}
+            pixelRatio={pixelRatio}
             observe={observePage}
             highlights={byPage.get(index) ?? NO_HIGHLIGHTS}
-            activeHighlightId={activeHighlightId}
+            activeHighlightId={index === activePage ? activeHighlightId : null}
             onHighlightClick={onHighlightClick}
-          >
-            {renderPageOverlay?.(index)}
-          </PdfPage>
+            renderOverlay={renderPageOverlay}
+          />
         ))}
       </div>
     </section>

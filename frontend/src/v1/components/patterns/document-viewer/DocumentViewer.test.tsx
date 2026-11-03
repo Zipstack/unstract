@@ -97,10 +97,14 @@ it("shows the loading state, then the toolbar once the document opens", async ()
   expect(screen.getByText("/ 3")).toBeTruthy();
 });
 
-it("shows a failure with Retry", async () => {
+it("shows a failure with Retry, in plain words rather than pdf.js's", async () => {
+  const log = vi.spyOn(console, "error").mockImplementation(() => undefined);
   render(<DocumentViewer source={source} />);
   await act(async () => opening.reject(new Error("Network error")));
-  expect(screen.getByRole("alert").textContent).toContain("Network error");
+  log.mockRestore();
+  const alert = screen.getByRole("alert").textContent;
+  expect(alert).toContain("The document couldn't be opened.");
+  expect(alert).not.toContain("Network error");
   expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy();
 });
 
