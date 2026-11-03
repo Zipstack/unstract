@@ -867,3 +867,22 @@ it("blends highlights into a page once it has painted, and keeps it through a zo
   await flush();
   expect(blended()).toBe(false);
 });
+
+it("reads the page elements once, not on every scroll", async () => {
+  const { document } = fakeDocument(20);
+  const { container } = render(
+    <PdfPageList document={document} pageSizes={sizes(20)} zoom={1} />,
+  );
+  const region = container.querySelector("section");
+  if (!region) {
+    throw new Error("no region");
+  }
+  const query = vi.spyOn(region, "querySelectorAll");
+  for (let step = 0; step < 10; step++) {
+    act(() => {
+      region.scrollTop = step * 100;
+      region.dispatchEvent(new Event("scroll"));
+    });
+  }
+  expect(query.mock.calls.length).toBeLessThanOrEqual(1);
+});

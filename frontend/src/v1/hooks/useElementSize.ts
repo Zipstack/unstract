@@ -7,7 +7,9 @@ export interface ElementSize {
 
 /**
  * An element's content-box size, kept current with a ResizeObserver. Returns a
- * ref for the element and its size, null until it has been measured.
+ * ref for the element and its size, null until it has been measured. Where
+ * ResizeObserver is missing (old embedded webviews) it measures once, so a
+ * caller waiting for a size is never left waiting.
  */
 export function useElementSize<T extends HTMLElement>(): [
   (element: T | null) => void,
@@ -18,6 +20,10 @@ export function useElementSize<T extends HTMLElement>(): [
 
   useEffect(() => {
     if (element === null) {
+      return;
+    }
+    if (typeof ResizeObserver === "undefined") {
+      setSize({ width: element.clientWidth, height: element.clientHeight });
       return;
     }
     const observer = new ResizeObserver(([entry]) => {

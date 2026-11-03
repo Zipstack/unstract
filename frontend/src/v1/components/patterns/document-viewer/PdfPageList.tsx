@@ -171,6 +171,9 @@ export function PdfPageList({
   // leave the last page when the last few pages fit together.
   const jumpRef = useRef<{ index: number; scrollTop: number } | null>(null);
   const [current, setCurrent] = useState(0);
+  // The page elements, read once: the list is keyed per document and its
+  // pages never remount, so scrolling never has to query the DOM again.
+  const pagesRef = useRef<HTMLElement[]>([]);
 
   const setRoot = useCallback(
     (element: HTMLElement | null) => {
@@ -189,8 +192,14 @@ export function PdfPageList({
   // scroll and straight after a jump, so neither waits for a scroll event.
   const sync = useCallback(() => {
     const root = rootRef.current;
-    const pages = root ? pageElements(root) : [];
-    if (!root || pages.length === 0) {
+    if (!root) {
+      return;
+    }
+    if (pagesRef.current.length !== pageCount) {
+      pagesRef.current = pageElements(root);
+    }
+    const pages = pagesRef.current;
+    if (pages.length === 0) {
       return;
     }
     // The anchor uses the same coordinates as the jumps and the restore:
@@ -215,7 +224,7 @@ export function PdfPageList({
       jumpRef.current = null;
       setCurrent(mostVisiblePage(root, pages));
     }
-  }, []);
+  }, [pageCount]);
 
   // A taller or shorter viewer changes which page shows most without any
   // scroll event.

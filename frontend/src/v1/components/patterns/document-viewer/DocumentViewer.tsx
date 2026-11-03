@@ -3,7 +3,7 @@ import { usePdfDocument } from "@v1/hooks/usePdfDocument";
 import { cn } from "@v1/lib/cn";
 import type { Highlight } from "@v1/lib/pdf/highlights";
 import { viewerKeyAction } from "@v1/lib/pdf/keyboard";
-import { pdfSourceKey } from "@v1/lib/pdf/pdfjs";
+import { objectKey, pdfSourceKey } from "@v1/lib/pdf/pdfjs";
 import type { PageSize, PdfSource } from "@v1/lib/pdf/types";
 import {
   clampZoom,
@@ -14,6 +14,7 @@ import {
   zoomIn,
   zoomOut,
 } from "@v1/lib/pdf/zoom";
+import { scrollbarWidth } from "@v1/lib/scrollbar";
 import {
   type KeyboardEvent,
   type Ref,
@@ -70,23 +71,16 @@ interface ZoomState {
   level: number;
 }
 
-/**
- * Room around a fitted page, in CSS px: the list's padding on both sides plus
- * a vertical scrollbar, so fitting never causes a horizontal scrollbar.
- */
-const FIT_GUTTER = 48;
+/** The page list's padding, both sides together, in CSS px. */
+const LIST_PADDING = 32;
 
-// Gives each opened document its own key, so a new one gets a fresh page list:
-// back at the top, with no window or anchor left over from the last.
-const documentKeys = new WeakMap<object, number>();
-let nextDocumentKey = 0;
-function documentKey(document: object): number {
-  let key = documentKeys.get(document);
-  if (key === undefined) {
-    key = nextDocumentKey++;
-    documentKeys.set(document, key);
-  }
-  return key;
+/**
+ * Room around a fitted page, in CSS px: the list's padding plus this
+ * platform's scrollbar, measured rather than guessed, so fitting never causes
+ * a horizontal scrollbar.
+ */
+function fitGutter(): number {
+  return LIST_PADDING + scrollbarWidth();
 }
 
 function widest(pageSizes: readonly PageSize[]): PageSize | undefined {
@@ -127,21 +121,33 @@ export function DocumentViewer({
     initialZoomState(initialZoom),
   );
   const [pageIndex, setPageIndex] = useState(0);
+  // A new document starts on its first page: reset while rendering, so the
+  // toolbar never shows the last document's page against this one's count.
+  const shownDocument = state.status === "ready" ? state.document : null;
+  const [pageIndexFor, setPageIndexFor] = useState(shownDocument);
+  if (pageIndexFor !== shownDocument) {
+    setPageIndexFor(shownDocument);
+    setPageIndex(0);
+  }
   const [bodyRef, bodySize] = useElementSize<HTMLDivElement>();
   const listRef = useRef<PdfPageListHandle | null>(null);
   const pendingRef = useRef<PendingRequest | null>(null);
 
   const ready = state.status === "ready";
+  // In a fit mode the zoom comes from the viewer's size, so the pages wait for
+  // that measurement instead of laying out at 100% first and again after.
+  const measured = zoomState.mode === "custom" || bodySize !== null;
+  const showPages = ready && measured;
   const sourceKey = pdfSourceKey(source);
   // Both kept in step at commit, before any parent's layout effect can make
   // a request, so a request is always judged against the source it was made
   // for.
-  const readyRef = useRef(ready);
+  const readyRef = useRef(showPages);
   const sourceKeyRef = useRef(sourceKey);
   useLayoutEffect(() => {
-    readyRef.current = ready;
+    readyRef.current = showPages;
     sourceKeyRef.current = sourceKey;
-  }, [ready, sourceKey]);
+  }, [showPages, sourceKey]);
   const pageSizes = ready ? state.pageSizes : undefined;
   const pageCount = pageSizes?.length ?? 0;
 
@@ -152,7 +158,7 @@ export function DocumentViewer({
     if (zoomState.mode === "fit-width") {
       const page = widest(pageSizes);
       return page
-        ? fitZoom(page, bodySize.width, null, FIT_GUTTER)
+        ? fitZoom(page, bodySize.width, null, fitGutter())
         : zoomState.level;
     }
     // Fit page fits every page, not the current one: in a document that mixes
@@ -162,7 +168,7 @@ export function DocumentViewer({
     for (const page of pageSizes) {
       level = Math.min(
         level,
-        fitZoom(page, bodySize.width, bodySize.height, FIT_GUTTER),
+        fitZoom(page, bodySize.width, bodySize.height, fitGutter()),
       );
     }
     return Number.isFinite(level) ? level : zoomState.level;
@@ -208,7 +214,7 @@ export function DocumentViewer({
   // biome-ignore lint/correctness/useExhaustiveDependencies: retried on each new highlights list
   useEffect(() => {
     const pending = pendingRef.current;
-    if (!ready || !pending) {
+    if (!showPages || !pending) {
       return;
     }
     if (pending.sourceKey === sourceKey) {
@@ -216,7 +222,7 @@ export function DocumentViewer({
     } else {
       pendingRef.current = null;
     }
-  }, [ready, sourceKey, highlights, run]);
+  }, [showPages, sourceKey, highlights, run]);
 
   // The active highlight is scrolled to when it changes, and again for each
   // new source, so one chosen before its document arrived is still found.
@@ -291,18 +297,22 @@ export function DocumentViewer({
       )}
       <div ref={bodyRef} className="ui:min-h-0 ui:flex-1">
         {ready ? (
-          <PdfPageList
-            key={documentKey(state.document)}
-            ref={listRef}
-            document={state.document}
-            pageSizes={state.pageSizes}
-            zoom={zoom}
-            highlights={highlights}
-            activeHighlightId={activeHighlightId}
-            onHighlightClick={onHighlightClick}
-            onCurrentPageChange={setPageIndex}
-            onKeyDown={onKeyDown}
-          />
+          showPages && (
+            <PdfPageList
+              // A new document gets a fresh list: back at the top, with no
+              // window or anchor left over from the last.
+              key={objectKey(state.document)}
+              ref={listRef}
+              document={state.document}
+              pageSizes={state.pageSizes}
+              zoom={zoom}
+              highlights={highlights}
+              activeHighlightId={activeHighlightId}
+              onHighlightClick={onHighlightClick}
+              onCurrentPageChange={setPageIndex}
+              onKeyDown={onKeyDown}
+            />
+          )
         ) : (
           <ViewerStatus
             state={state}
