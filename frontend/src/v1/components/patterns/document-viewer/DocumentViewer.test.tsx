@@ -383,6 +383,31 @@ it("scrolls to an active highlight that arrives after its id", async () => {
   }
 });
 
+it("does not scroll to an active highlight cleared as it arrives", async () => {
+  const restore = layOutEveryPage();
+  try {
+    const { rerender } = render(
+      <DocumentViewer
+        source={source}
+        highlights={[]}
+        activeHighlightId="total"
+      />,
+    );
+    await open();
+    // One render brings the highlight in and clears the selection.
+    rerender(
+      <DocumentViewer
+        source={source}
+        highlights={[onPage1]}
+        activeHighlightId={null}
+      />,
+    );
+    expect(pagesRegion().scrollTop).toBe(0);
+  } finally {
+    restore();
+  }
+});
+
 it("keeps a scroll a parent asks for in its layout effect on mount", async () => {
   const restore = layOutEveryPage();
   function Parent() {

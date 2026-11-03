@@ -210,19 +210,24 @@ export function DocumentViewer({
   // A waiting request runs once the pages are laid out, and is tried again
   // when the highlights change, in case its highlight has arrived. One made
   // for another source is dropped rather than scrolling a document nobody
-  // asked about.
+  // asked about, and so is one made for an active highlight that is no longer
+  // active: this effect runs before the one below that would cancel it.
   // biome-ignore lint/correctness/useExhaustiveDependencies: retried on each new highlights list
   useEffect(() => {
     const pending = pendingRef.current;
     if (!showPages || !pending) {
       return;
     }
-    if (pending.sourceKey === sourceKey) {
+    const stillActive =
+      !pending.fromActive ||
+      (pending.request.kind === "highlight" &&
+        pending.request.id === activeHighlightId);
+    if (pending.sourceKey === sourceKey && stillActive) {
       run(pending.request, pending.fromActive);
     } else {
       pendingRef.current = null;
     }
-  }, [showPages, sourceKey, highlights, run]);
+  }, [showPages, sourceKey, highlights, activeHighlightId, run]);
 
   // The active highlight is scrolled to when it changes, and again for each
   // new source, so one chosen before its document arrived is still found.
