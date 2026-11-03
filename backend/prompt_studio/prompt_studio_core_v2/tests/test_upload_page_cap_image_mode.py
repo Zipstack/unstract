@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import inspect
 import io
+import logging
 from unittest.mock import MagicMock
 
 import pypdfium2 as pdfium
@@ -123,3 +124,150 @@ class TestCheckIsWiredIntoUpload:
         validate_at = source.index("validate_upload_page_count_for_image_mode")
         store_at = source.index("PromptStudioFileHelper.upload_for_ide")
         assert gate_at < validate_at < store_at
+
+
+_BEDROCK_ID = "bedrock|8d18571f-5e96-4505-bd28-ad0379c64064"
+_OPENAI_ID = "openai|502ecf49-e47c-445c-9907-6d4b90c5cd17"
+
+
+def _llm_profile(adapter_id: str, metadata: dict, name: str = "Default") -> MagicMock:
+    profile = _profile({"output_mode": "image"})
+    profile.profile_name = name
+    profile.llm.adapter_id = adapter_id
+    profile.llm.metadata = metadata
+    return profile
+
+
+_BEDROCK_META = {
+    "model": "anthropic.claude-sonnet-4-5-20250929-v1:0",
+    "aws_region_name": "us-east-1",
+}
+_OPENAI_META = {
+    "model": "gpt-5.6",
+    "api_key": "k",
+    "api_base": "https://api.openai.com/v1",
+}
+
+
+class TestModelAwareUploadCheck:
+    """With the default profile's LLM known, the cap is that model's (UN-4427)."""
+
+    @pytest.fixture(autouse=True)
+    def _no_env_cap(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("VLM_IMAGE_ANSWER_PAGE_CAP", raising=False)
+
+    def test_strict_provider_rejects_below_the_old_fixed_cap(self) -> None:
+        profile = _llm_profile(_BEDROCK_ID, _BEDROCK_META, name="Claude on Bedrock")
+        with pytest.raises(ImageModePageLimitExceeded) as excinfo:
+            check(_pdf(21), _PDF, profile)
+        msg = str(excinfo.value.detail)
+        assert "This document has 21 pages" in msg
+        assert "Amazon Bedrock" in msg and "20 page images" in msg
+        assert "default profile" in msg and "Claude on Bedrock" in msg
+
+    def test_strict_provider_accepts_at_its_limit(self) -> None:
+        check(_pdf(20), _PDF, _llm_profile(_BEDROCK_ID, _BEDROCK_META))
+
+    def test_generous_provider_is_held_at_the_rollout_cap(self) -> None:
+        # Until the cloud plugin answers with model-aware limits, 90 stays.
+        with pytest.raises(ImageModePageLimitExceeded):
+            check(_pdf(91), _PDF, _llm_profile(_OPENAI_ID, _OPENAI_META))
+
+    def test_unresolvable_llm_falls_back_to_the_fixed_cap(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("VLM_IMAGE_ANSWER_PAGE_CAP", "5")
+        profile = _llm_profile("nope|123", {"model": "x"})
+        with pytest.raises(ImageModePageLimitExceeded) as excinfo:
+            check(_pdf(6), _PDF, profile)
+        assert "the limit is 5" in str(excinfo.value.detail)
+
+    def test_validation_error_logs_never_quote_the_metadata(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        # Missing ``api_base``: pydantic's error quotes the whole stored
+        # metadata dict, api_key included.
+        canary = "leak-canary"
+        monkeypatch.setenv("VLM_IMAGE_ANSWER_PAGE_CAP", "5")
+        caplog.set_level(logging.DEBUG)
+        profile = _llm_profile(
+            "azureopenai|592d84b9-fe03-4102-a17e-6b391f32850b", {"api_key": canary}
+        )
+        with pytest.raises(ImageModePageLimitExceeded) as excinfo:
+            check(_pdf(6), _PDF, profile)
+        assert canary not in str(excinfo.value.detail)
+        assert "SdkError" in caplog.text
+        assert canary not in caplog.text
+        assert all(rec.exc_info is None for rec in caplog.records)
+
+    def test_profile_without_llm_uses_the_fixed_cap(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("VLM_IMAGE_ANSWER_PAGE_CAP", "5")
+        profile = _profile({"output_mode": "image"})
+        profile.llm = None
+        with pytest.raises(ImageModePageLimitExceeded):
+            check(_pdf(6), _PDF, profile)
+
+    def test_upload_passes_the_default_profile(self) -> None:
+        source = inspect.getsource(_views_mod.PromptStudioCoreView.upload_for_ide)
+        call = source[source.index("validate_upload_page_count_for_image_mode") :]
+        assert "default_profile" in call[: call.index(")")]
+
+
+class TestEnforceSwitch:
+    """``VLM_IMAGE_LIMITS_ENFORCE=false`` restores the fixed cap at upload."""
+
+    def test_switch_off_uses_the_fixed_cap(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("VLM_IMAGE_ANSWER_PAGE_CAP", raising=False)
+        monkeypatch.setenv("VLM_IMAGE_LIMITS_ENFORCE", "false")
+        # Bedrock would reject 21 pages; the fixed cap (90) accepts them.
+        check(_pdf(21), _PDF, _llm_profile(_BEDROCK_ID, _BEDROCK_META))
+        with pytest.raises(ImageModePageLimitExceeded) as excinfo:
+            check(_pdf(91), _PDF, _llm_profile(_BEDROCK_ID, _BEDROCK_META))
+        assert "the limit is 90" in str(excinfo.value.detail)
+
+
+def _cached_summary(pages: int) -> str:
+    """The extract text a cached image-mode extraction carries."""
+    return _psh_mod.LLMWhispererHelper.build_image_output_summary([None] * pages)
+
+
+class TestCacheHitCheck:
+    """A cached image-mode extraction is re-checked like an upload (P3)."""
+
+    cached_check = staticmethod(PromptStudioHelper._check_cached_image_extraction)
+
+    @pytest.fixture(autouse=True)
+    def _no_env_cap(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("VLM_IMAGE_ANSWER_PAGE_CAP", raising=False)
+
+    def test_model_aware_rejects_over_the_llm_budget(self) -> None:
+        with pytest.raises(_psh_mod.ExtractionAPIError) as excinfo:
+            self.cached_check(
+                _llm_profile(_BEDROCK_ID, _BEDROCK_META), _cached_summary(21), "a.pdf"
+            )
+        assert "20 page images" in str(excinfo.value.detail)
+
+    def test_switch_off_applies_the_fixed_cap(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("VLM_IMAGE_LIMITS_ENFORCE", "false")
+        profile = _llm_profile(_BEDROCK_ID, _BEDROCK_META)
+        # Over Bedrock's 20, inside the fixed cap (90): accepted.
+        self.cached_check(profile, _cached_summary(21), "a.pdf")
+        with pytest.raises(_psh_mod.ExtractionAPIError) as excinfo:
+            self.cached_check(profile, _cached_summary(91), "a.pdf")
+        detail = str(excinfo.value.detail)
+        assert "IMAGE_PAGE_CAP_EXCEEDED" in detail
+        assert "the limit is 90" in detail
+
+    def test_switch_off_honours_the_page_cap_env(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("VLM_IMAGE_LIMITS_ENFORCE", "false")
+        monkeypatch.setenv("VLM_IMAGE_ANSWER_PAGE_CAP", "5")
+        with pytest.raises(_psh_mod.ExtractionAPIError):
+            self.cached_check(
+                _llm_profile(_BEDROCK_ID, _BEDROCK_META), _cached_summary(6), "a.pdf"
+            )

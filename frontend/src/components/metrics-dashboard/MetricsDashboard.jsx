@@ -114,21 +114,20 @@ function MetricsDashboard() {
 
   // Fixed 30-day range for activity charts (independent of date picker)
   const chartStart = useMemo(
-    () => stableNow.subtract(30, "day").toISOString(),
+    () => stableNow.subtract(30, "day").format(),
     [stableNow],
   );
-  const chartEnd = useMemo(() => stableNow.toISOString(), [stableNow]);
+  const chartEnd = useMemo(() => stableNow.format(), [stableNow]);
 
-  // API hooks - pass date range to overview (for summary cards)
+  // API hooks - pass date range to overview (for summary cards).
+  // format() keeps the local UTC offset; toISOString() would shift the range a
+  // day back for users ahead of UTC, because the backend takes .date() on it.
   const {
     data: overviewData,
     loading: overviewLoading,
     error: overviewError,
     refetch: refetchOverview,
-  } = useMetricsOverview(
-    dateRange[0]?.toISOString(),
-    dateRange[1]?.toISOString(),
-  );
+  } = useMetricsOverview(dateRange[0]?.format(), dateRange[1]?.format());
 
   // Fixed 30-day data for charts
   const {

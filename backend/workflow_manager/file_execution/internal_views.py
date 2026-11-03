@@ -132,7 +132,7 @@ class FileExecutionInternalViewSet(viewsets.ModelViewSet):
         except APIException:
             raise
         except Exception as e:
-            logger.error(f"Failed to update file execution status {id}: {str(e)}")
+            logger.exception(f"Failed to update file execution status {id}: {str(e)}")
             return Response(
                 {"error": "Failed to update file execution status", "detail": str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -215,7 +215,7 @@ class FileExecutionInternalViewSet(viewsets.ModelViewSet):
             return Response(response_data, status=status.HTTP_201_CREATED)
 
         except Exception as e:
-            logger.error(f"Failed to get/create file execution: {str(e)}")
+            logger.exception(f"Failed to get/create file execution: {str(e)}")
             return Response(
                 {"error": "Failed to get/create file execution", "detail": str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -261,7 +261,7 @@ class FileExecutionInternalViewSet(viewsets.ModelViewSet):
         except APIException:
             raise
         except Exception as e:
-            logger.error(f"Failed to update file execution hash {id}: {str(e)}")
+            logger.exception(f"Failed to update file execution hash {id}: {str(e)}")
             return Response(
                 {"error": "Failed to update file execution hash", "detail": str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -396,7 +396,7 @@ class FileExecutionBatchCreateAPIView(APIView):
             )
 
         except Exception as e:
-            logger.error(f"Failed to process batch file execution creation: {str(e)}")
+            logger.exception(f"Failed to process batch file execution creation: {str(e)}")
             return Response(
                 {
                     "error": "Failed to process batch file execution creation",
@@ -490,7 +490,7 @@ class FileExecutionBatchStatusUpdateAPIView(APIView):
             )
 
         except Exception as e:
-            logger.error(
+            logger.exception(
                 f"Failed to process batch file execution status update: {str(e)}"
             )
             return Response(
@@ -587,7 +587,9 @@ class FileExecutionBatchHashUpdateAPIView(APIView):
             )
 
         except Exception as e:
-            logger.error(f"Failed to process batch file execution hash update: {str(e)}")
+            logger.exception(
+                f"Failed to process batch file execution hash update: {str(e)}"
+            )
             return Response(
                 {
                     "error": "Failed to process batch file execution hash update",
@@ -694,7 +696,7 @@ class FileExecutionMetricsAPIView(APIView):
             return Response(metrics)
 
         except Exception as e:
-            logger.error(f"Failed to get file execution metrics: {str(e)}")
+            logger.exception(f"Failed to get file execution metrics: {str(e)}")
             return Response(
                 {"error": "Failed to get file execution metrics", "detail": str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
