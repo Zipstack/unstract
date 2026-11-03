@@ -23,6 +23,7 @@ import {
   onboardCompleted,
   THEME,
 } from "../../../helpers/GetStaticData.js";
+import { switchOrgViaLogin } from "../../../helpers/orgSwitchLogin.js";
 import useLogout from "../../../hooks/useLogout.js";
 import "../../../layouts/page-layout/PageLayout.css";
 import { useSessionStore } from "../../../store/session-store.js";
@@ -231,6 +232,11 @@ function TopNavBar({ isSimpleLayout, topNavBarOptions }) {
 
   // Switch organization
   const handleContinue = useCallback(async (selectedOrg) => {
+    // Read at click time: this callback is created once.
+    if (useSessionStore.getState().sessionDetails?.orgSwitchViaLogin) {
+      switchOrgViaLogin(selectedOrg);
+      return;
+    }
     const requestOptions = {
       method: "POST",
       url: `/api/v1/organization/${selectedOrg}/set`,
