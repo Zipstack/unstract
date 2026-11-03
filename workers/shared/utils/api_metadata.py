@@ -120,7 +120,7 @@ class ApiMetadataBuilder:
             return asdict(metadata)
 
         except Exception as e:
-            logger.error(f"Failed to build file history metadata: {e}")
+            logger.exception(f"Failed to build file history metadata: {e}")
             # Fallback to minimal structure
             return {
                 "workflow_id": workflow_id,
@@ -209,7 +209,7 @@ class ApiMetadataBuilder:
             return result
 
         except Exception as e:
-            logger.error(f"Failed to build base metadata: {e}")
+            logger.exception(f"Failed to build base metadata: {e}")
             # Fallback to minimal structure
             result = {
                 "workflow_id": workflow_id,

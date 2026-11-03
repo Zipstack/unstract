@@ -91,7 +91,7 @@ class WorkerExecutionContext:
             )
 
         except Exception as update_error:
-            logger.error(
+            logger.exception(
                 f"Failed to update execution status to ERROR: {update_error}. "
                 f"Original error: {error_message}"
             )
