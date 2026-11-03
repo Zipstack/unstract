@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   highlightsByPage,
   normaliseAgentic,
@@ -44,14 +44,12 @@ describe("Prompt Studio: LLMWhisperer line_metadata", () => {
     ]);
   });
 
-  it("marks lines below 0.9 confidence as low, and a line without one as default", () => {
+  it("keeps a line's confidence for its label but never tones the line, as v0 did not", () => {
     const [, low, none] = normaliseLines(payload);
-    expect(low?.tone).toBe("low-confidence");
+    expect(low?.confidence).toBeLessThan(0.9);
+    expect(low?.tone).toBe("default");
     expect(none?.tone).toBe("default");
     expect(none?.confidence).toBeUndefined();
-    expect(normaliseLines(payload, { lowConfidenceBelow: 0.5 })[1]?.tone).toBe(
-      "default",
-    );
   });
 });
 
@@ -88,8 +86,35 @@ describe("HITL: word boxes from confidence_metadata", () => {
     });
   });
 
-  it("skips words when the page width cannot be known", () => {
-    expect(normaliseWords(line, words)).toEqual([]);
+  it("skips words when the page width cannot be known, and says so", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    expect(normaliseWords([3, 412, 34, 3300], words, { pageSizes })).toEqual(
+      [],
+    );
+    expect(warn).toHaveBeenCalledOnce();
+    expect(warn.mock.calls[0]?.[0]).toContain("2 word box(es) on page index 3");
+    warn.mockClear();
+    expect(
+      normaliseLine([3, 412, 34, 3300, words[0]], "w", { pageSizes }),
+    ).toBeNull();
+    expect(warn).toHaveBeenCalledOnce();
+    warn.mockRestore();
+  });
+
+  it("gives words on different lines different ids", () => {
+    const first = normaliseWords(line, words, { pageSizes });
+    const second = normaliseWords([0, 480, 34, 3300], words, { pageSizes });
+    const ids = [...first, ...second].map((h) => h.id);
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it("tones words below 0.9 confidence as low", () => {
+    const [invoice, no] = normaliseWords(line, words, {
+      pageSizes,
+      lowConfidenceBelow: 0.7,
+    });
+    expect(invoice?.tone).toBe("low-confidence");
+    expect(no?.tone).toBe("default");
   });
 });
 
@@ -160,6 +185,13 @@ describe("Agentic Prompt Studio: [page, left%, top%, width%, height%, hasMetadat
       h: expect.closeTo(0.04),
     });
     expect(word?.variant).toBe("box");
+  });
+
+  it("does not read hasMetadata as confidence: v0 used it for colour only", () => {
+    expect(normaliseAgentic(payload).map((h) => h.tone)).toEqual([
+      "default",
+      "default",
+    ]);
   });
 
   it("drops empty boxes", () => {

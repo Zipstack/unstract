@@ -44,6 +44,16 @@ export function PdfPageList({
 }: PdfPageListProps) {
   const { scrollRef, observePage, rendered } = usePageWindow(pageSizes.length);
   const byPage = useMemo(() => highlightsByPage(highlights), [highlights]);
+  // Only the page holding the active highlight hears its id, so moving the
+  // active highlight re-renders the page it left and the page it reached.
+  const activePage = useMemo(
+    () =>
+      activeHighlightId == null
+        ? null
+        : (highlights.find((highlight) => highlight.id === activeHighlightId)
+            ?.page ?? null),
+    [highlights, activeHighlightId],
+  );
   const pixelRatio = useDevicePixelRatio();
   return (
     <div
@@ -67,7 +77,7 @@ export function PdfPageList({
             pixelRatio={pixelRatio}
             observe={observePage}
             highlights={byPage.get(index) ?? NO_HIGHLIGHTS}
-            activeHighlightId={activeHighlightId}
+            activeHighlightId={index === activePage ? activeHighlightId : null}
             onHighlightClick={onHighlightClick}
             renderOverlay={renderPageOverlay}
           />

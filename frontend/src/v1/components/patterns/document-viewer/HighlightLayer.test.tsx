@@ -84,3 +84,27 @@ it("renders nothing for a page without highlights", () => {
   const { container } = render(<HighlightLayer highlights={[]} />);
   expect(container.firstChild).toBeNull();
 });
+
+it("blends into the page only once the page has painted", () => {
+  const { container, rerender } = render(
+    <HighlightLayer highlights={[line]} painted={false} />,
+  );
+  // On the placeholder (dark in dark themes) multiply would hide the box.
+  expect(box(container, "line-0").className).not.toContain(
+    "mix-blend-multiply",
+  );
+  rerender(<HighlightLayer highlights={[line]} painted />);
+  expect(box(container, "line-0").className).toContain("mix-blend-multiply");
+});
+
+it("gives the clickable highlight the same geometry and data as the plain one", () => {
+  const plain = render(<HighlightLayer highlights={[word]} />);
+  const button = render(
+    <HighlightLayer highlights={[word]} onHighlightClick={vi.fn()} />,
+  );
+  const a = box(plain.container, "word-0");
+  const b = box(button.container, "word-0");
+  expect(b.tagName).toBe("BUTTON");
+  expect(b.getAttribute("style")).toBe(a.getAttribute("style"));
+  expect(b.dataset).toEqual(a.dataset);
+});

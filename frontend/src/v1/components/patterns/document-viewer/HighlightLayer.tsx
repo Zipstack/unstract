@@ -8,6 +8,12 @@ export interface HighlightLayerProps {
   activeId?: string | null;
   /** When given, highlights are buttons that report clicks. */
   onHighlightClick?: (highlight: Highlight) => void;
+  /**
+   * Whether the page's canvas has painted. Until then the boxes sit on the
+   * page placeholder, which is dark in dark themes, so they skip the multiply
+   * blend (it would hide them) and show as plain translucent fills.
+   */
+  painted?: boolean;
 }
 
 const TONES: Record<HighlightTone, string> = {
@@ -31,41 +37,40 @@ function label(highlight: Highlight, pageNumber: number): string {
 function HighlightBox({
   highlight,
   active,
+  painted,
   onClick,
 }: {
   highlight: Highlight;
   active: boolean;
+  painted: boolean;
   onClick?: (highlight: Highlight) => void;
 }) {
   // Page fractions as percentages of the page box, so the box needs no update
   // when the zoom changes. Runtime geometry: custom properties the classes read.
-  const x = percent(highlight.x);
-  const y = percent(highlight.y);
-  const w = percent(highlight.w);
-  const h = percent(highlight.h);
   const tone: HighlightTone = active ? "active" : highlight.tone;
-  const className = cn(
-    "ui:absolute ui:top-(--hl-y) ui:left-(--hl-x) ui:h-(--hl-h) ui:w-(--hl-w) ui:rounded-sm ui:mix-blend-multiply",
-    TONES[tone],
-  );
-  const data = {
+  const shared = {
+    style: {
+      "--hl-x": percent(highlight.x),
+      "--hl-y": percent(highlight.y),
+      "--hl-w": percent(highlight.w),
+      "--hl-h": percent(highlight.h),
+    },
     "data-highlight-id": highlight.id,
     "data-variant": highlight.variant,
     "data-tone": tone,
   };
+  const className = cn(
+    "ui:absolute ui:top-(--hl-y) ui:left-(--hl-x) ui:h-(--hl-h) ui:w-(--hl-w) ui:rounded-sm",
+    painted && "ui:mix-blend-multiply",
+    TONES[tone],
+  );
   if (onClick === undefined) {
-    return (
-      <div
-        className={className}
-        style={{ "--hl-x": x, "--hl-y": y, "--hl-w": w, "--hl-h": h }}
-        {...data}
-      />
-    );
+    return <div className={className} {...shared} />;
   }
   return (
     <button
       type="button"
-      style={{ "--hl-x": x, "--hl-y": y, "--hl-w": w, "--hl-h": h }}
+      {...shared}
       aria-label={label(highlight, highlight.page + 1)}
       aria-current={active ? "true" : undefined}
       onClick={() => onClick(highlight)}
@@ -73,7 +78,6 @@ function HighlightBox({
         className,
         "ui:pointer-events-auto ui:cursor-pointer ui:focus-visible:focus-ring",
       )}
-      {...data}
     />
   );
 }
@@ -83,6 +87,7 @@ export function HighlightLayer({
   highlights,
   activeId,
   onHighlightClick,
+  painted = true,
 }: HighlightLayerProps) {
   if (highlights.length === 0) {
     return null;
@@ -94,6 +99,7 @@ export function HighlightLayer({
           key={highlight.id}
           highlight={highlight}
           active={highlight.id === activeId}
+          painted={painted}
           onClick={onHighlightClick}
         />
       ))}

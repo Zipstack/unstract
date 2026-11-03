@@ -26,7 +26,7 @@ export interface PdfPageProps {
   observe: (element: HTMLElement | null) => (() => void) | undefined;
   /** This page's highlights. Keep the array stable: the page is memoised. */
   highlights: readonly Highlight[];
-  /** The active highlight's id. */
+  /** The active highlight's id; the list gives it only to the page holding it. */
   activeHighlightId?: string | null;
   /** Keep it stable (useCallback): a new function re-renders every page. */
   onHighlightClick?: (highlight: Highlight) => void;
@@ -64,6 +64,9 @@ export const PdfPage = memo(function PdfPage({
   const [state, setState] = useState<RenderState>("idle");
   // Bumped by Retry, to run the render again.
   const [attempt, setAttempt] = useState(0);
+  // Whether the canvas holds a picture. It outlives a redraw (zoom keeps the
+  // old picture until the new one lands) and ends when the canvas is freed.
+  const [painted, setPainted] = useState(false);
   const css = pageCssSize(size, zoom);
 
   // Free the canvas when the page leaves the window or unmounts: zero its
@@ -77,6 +80,7 @@ export const PdfPage = memo(function PdfPage({
     return () => {
       canvas.width = 0;
       canvas.height = 0;
+      setPainted(false);
     };
   }, [rendered]);
 
@@ -135,6 +139,7 @@ export const PdfPage = memo(function PdfPage({
             throw new Error("No 2D canvas context");
           }
           shown.drawImage(scratch, 0, 0);
+          setPainted(true);
           setState("rendered");
         } catch (error) {
           if (!cancelled && !isRenderCancelled(error)) {
@@ -184,6 +189,7 @@ export const PdfPage = memo(function PdfPage({
         highlights={highlights}
         activeId={activeHighlightId}
         onHighlightClick={onHighlightClick}
+        painted={painted}
       />
       {renderOverlay?.(index)}
       {state === "error" && (

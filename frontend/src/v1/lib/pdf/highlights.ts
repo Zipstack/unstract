@@ -8,7 +8,8 @@
  * - Line entry, LLMWhisperer `line_metadata[*].raw` (Prompt Studio, HITL):
  *   `[page, base_y, height, page_height, line_confidence?]`. `base_y` is the
  *   line's baseline, so the box runs from `base_y - height` down to `base_y`,
- *   across the full width. `line_confidence` is a number when sent.
+ *   across the full width. `line_confidence` is a number when sent; it is kept
+ *   for the label but does not tone the line, as v0 never toned lines.
  * - Line entry with a word box in place of the confidence:
  *   `[page, y, height, page_height, {offset, width, page_width?}]`. The agentic
  *   table worker sends this today, with `page_width`; v0 HITL used to build it
@@ -55,7 +56,7 @@ export interface NormaliseOptions {
   pageSizes?: readonly PageSize[];
   /** Prefix for generated ids; the entry's position is appended. */
   idPrefix?: string;
-  /** Confidence below this is shown as low. LLMWhisperer reports words below 0.9. */
+  /** A word box with confidence below this is shown as low. LLMWhisperer reports words below 0.9. */
   lowConfidenceBelow?: number;
 }
 
@@ -160,6 +161,18 @@ function pageWidthUnits(
   return line.pageHeight * (size.width / size.height);
 }
 
+/** Says why word boxes were dropped, so a page-index mismatch is visible. */
+function warnNoPageWidth(
+  page: number,
+  count: number,
+  options: NormaliseOptions,
+) {
+  const known = options.pageSizes?.length ?? 0;
+  console.warn(
+    `Dropped ${count} word box(es) on page index ${page}: no page_width, and the document has ${known} page size(s).`,
+  );
+}
+
 function wordHighlight(
   line: LineGeometry,
   word: WordBox,
@@ -203,6 +216,10 @@ export function normaliseLine(
     return null;
   }
   if (isWordBox(line.extra)) {
+    if (pageWidthUnits(line, line.extra, options) === null) {
+      warnNoPageWidth(line.page, 1, options);
+      return null;
+    }
     return wordHighlight(line, line.extra, id, options);
   }
   const box = boxOnPage(
@@ -220,7 +237,7 @@ export function normaliseLine(
     page: line.page,
     ...box,
     variant: "line",
-    tone: toneFor(confidence, options),
+    tone: "default",
     confidence,
   };
 }
@@ -251,10 +268,18 @@ export function normaliseWords(
   if (line === null) {
     return [];
   }
-  const prefix = options.idPrefix ?? "word-";
+  // Called once per line, so the line's place is in the id: `word-0` on every
+  // line would collide as React keys and as the active id.
+  const prefix =
+    options.idPrefix ?? `word-${line.page}-${line.baseY}-${line.height}-`;
   const highlights: Highlight[] = [];
+  let unplaced = 0;
   words.forEach((word, index) => {
     if (!isWordBox(word)) {
+      return;
+    }
+    if (pageWidthUnits(line, word, options) === null) {
+      unplaced += 1;
       return;
     }
     const highlight = wordHighlight(line, word, `${prefix}${index}`, options);
@@ -262,6 +287,9 @@ export function normaliseWords(
       highlights.push(highlight);
     }
   });
+  if (unplaced > 0) {
+    warnNoPageWidth(line.page, unplaced, options);
+  }
   return highlights;
 }
 
@@ -276,8 +304,9 @@ export function normaliseAgentic(
     if (!Array.isArray(entry) || entry.length < 5) {
       return;
     }
-    // The 6th element, hasMetadata, says only that a word box was sent; the
-    // geometry already shows whether it spans the line.
+    // The 6th element, hasMetadata, says only that a word box was sent (v0
+    // drew those red and line boxes pink). It is not a confidence signal, and
+    // the geometry already shows whether the box spans the line.
     const [page, left, top, width, height] = entry as unknown[];
     if (
       !isFiniteNumber(page) ||
