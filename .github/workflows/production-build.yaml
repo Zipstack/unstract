@@ -18,6 +18,11 @@ on:
 
 run-name: "[${{ github.event.release.tag_name || github.event.inputs.tag }}] Docker Image Build and Push (Production)"
 
+# The repo default token is write. Docker Hub and Slack are reached via
+# secrets, so the token only reads: checkout and `gh release list`.
+permissions:
+  contents: read
+
 jobs:
   # Validates tag format and version monotonicity within the same major.minor line.
   # This guards the workflow_dispatch tag input and any release event.
@@ -112,10 +117,13 @@ jobs:
         uses: actions/checkout@v6
         with:
           ref: ${{ github.event.release.tag_name }}
+          persist-credentials: false
 
       - name: Checkout code for branch
         if: github.event_name != 'release'
         uses: actions/checkout@v6
+        with:
+          persist-credentials: false
 
       # Set up QEMU for ARM64 emulation
       - name: Set up QEMU
