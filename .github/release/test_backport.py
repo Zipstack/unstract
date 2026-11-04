@@ -1222,6 +1222,7 @@ class ConflictPRs(unittest.TestCase):
 
 class FinishOpen(unittest.TestCase):
     def setUp(self):
+        self.softs, self.soft_rc = [], 0
         self.tmp = tempfile.TemporaryDirectory()
         d = self.tmp.name
         g = (
@@ -1283,9 +1284,13 @@ class FinishOpen(unittest.TestCase):
                 bp, "gh", return_value=json.dumps(listing if prs is None else prs)
             ),
             mock.patch.object(bp.bm, "squash", squash),
-            mock.patch.object(bp, "soft", return_value=None),
+            mock.patch.object(bp, "soft", side_effect=self.soft),
         ):
             return bp.finish_open("o/r", "release/1.0", "backport/1.0/aaaaaaa")
+
+    def soft(self, what, *args):
+        self.softs.append(args)
+        return mock.Mock(returncode=self.soft_rc)
 
     def push(
         self, msg, path=None
@@ -1366,14 +1371,36 @@ class FinishOpen(unittest.TestCase):
                 "head backport/1.0/aaaaaaa is 0 min old with no open PR: another run is picking it",
             ),
         )
+        # No PR open or closed: a create that failed outright. The head goes, so the next run re-picks.
         with mock.patch.object(bp, "PICK_TIMEOUT", 0):
             out = self.finish(prs=[])
         self.assertEqual(
             out,
             (
                 "failed",
-                "head backport/1.0/aaaaaaa exists with no open PR: delete it "
-                "or reopen its PR, then rerun",
+                "head backport/1.0/aaaaaaa had no PR: deleted it, so the next Backport run picks the fix again",
+            ),
+        )
+        self.assertEqual(
+            self.softs,
+            [
+                (
+                    "gh",
+                    "api",
+                    "-X",
+                    "DELETE",
+                    "repos/o/r/git/refs/heads/backport/1.0/aaaaaaa",
+                )
+            ],
+        )
+        self.soft_rc = 1
+        with mock.patch.object(bp, "PICK_TIMEOUT", 0):
+            out = self.finish(prs=[])
+        self.assertEqual(
+            out,
+            (
+                "failed",
+                "head backport/1.0/aaaaaaa has no PR and its delete failed: delete it, then rerun",
             ),
         )
         # A head moved onto the release tip: reopening its PR would park it with nothing to merge.

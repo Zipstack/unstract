@@ -931,11 +931,22 @@ def _no_open_pr(slug, branch, head):
             f"head {head} exists and its PR #{n} is closed, but no decline is recorded on {branch}: "
             f"re-run the Backport record job for #{n}, then rerun",
         )
+    if empty:
+        return "failed", f"head {head} exists with no open PR: delete it, then rerun"
+    # No PR open or closed: a create whose failure outlasted the lookup. Deleting lets the next run pick it again.
+    deleted = not soft(
+        f"delete of {head}",
+        "gh",
+        "api",
+        "-X",
+        "DELETE",
+        f"repos/{slug}/git/refs/heads/{head}",
+    ).returncode
     return (
         "failed",
-        f"head {head} exists with no open PR: delete it"
-        + ("" if empty else " or reopen its PR")
-        + ", then rerun",
+        f"head {head} had no PR: deleted it, so the next Backport run picks the fix again"
+        if deleted
+        else f"head {head} has no PR and its delete failed: delete it, then rerun",
     )
 
 
