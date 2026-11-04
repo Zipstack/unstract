@@ -11,13 +11,14 @@ import { test } from "node:test";
 
 const FRONTEND = path.resolve(import.meta.dirname, "..", "..");
 const CONFIG = path.join("test-fixtures", "v1-harness", "vitest.config.mts");
+// The lockfile's vitest, run by this same node: nothing resolved from PATH.
+const VITEST = path.join(FRONTEND, "node_modules", "vitest", "vitest.mjs");
 
 function runCase(file) {
   const result = spawnSync(
-    "npx",
+    process.execPath,
     [
-      "--no-install",
-      "vitest",
+      VITEST,
       "run",
       "--config",
       CONFIG,

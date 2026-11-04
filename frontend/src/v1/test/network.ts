@@ -26,15 +26,32 @@ const unhandledRequests: string[] = [];
  * WebSocket it only logs, and the mocked socket opens. A handler that
  * returns a network error, or closes the socket, ends it in-process.
  */
+const unmockedSocketHandler: WebSocketHandler = ws
+  .link(/.*/)
+  .addEventListener("connection", ({ client }) => {
+    // MSW runs EVERY matching WebSocket handler (HTTP stops at the first), so
+    // step aside when a test's own ws.link() handles this URL.
+    const mocked = server
+      .listHandlers()
+      .some(
+        (handler) =>
+          handler !== unmockedSocketHandler &&
+          handler.kind === "websocket" &&
+          handler.test(client.url),
+      );
+    if (mocked) {
+      return;
+    }
+    unhandledRequests.push(`WEBSOCKET ${client.url.href}`);
+    client.close(1011, "Unmocked WebSocket");
+  });
+
 const unmockedHandlers: (RequestHandler | WebSocketHandler)[] = [
   http.all("*", ({ request }) => {
     unhandledRequests.push(`${request.method} ${request.url}`);
     return HttpResponse.error();
   }),
-  ws.link(/.*/).addEventListener("connection", ({ client }) => {
-    unhandledRequests.push(`WEBSOCKET ${client.url.href}`);
-    client.close(1011, "Unmocked WebSocket");
-  }),
+  unmockedSocketHandler,
 ];
 
 export const server = setupServer(...unmockedHandlers);

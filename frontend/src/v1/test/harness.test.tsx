@@ -16,6 +16,7 @@ import {
   renderHookV1,
   renderV1,
   server,
+  ws,
 } from "@v1/test";
 import axe from "axe-core";
 import { useEffect, useState } from "react";
@@ -201,6 +202,25 @@ describe("network mocking", () => {
     ]);
   });
 
+  it("leaves a mocked WebSocket open and unrecorded", async () => {
+    const socket = ws.link("ws://localhost:3000/api/v1/socket");
+    mockApi(
+      socket.addEventListener("connection", ({ client }) => {
+        client.addEventListener("message", (event) => {
+          client.send(`echo ${String(event.data)}`);
+        });
+      }),
+    );
+    const reply = await new Promise<string>((resolve, reject) => {
+      const client = new WebSocket("ws://localhost:3000/api/v1/socket");
+      client.onopen = () => client.send("hi");
+      client.onmessage = (event) => resolve(String(event.data));
+      client.onclose = (event) => reject(new Error(`closed ${event.code}`));
+    });
+    expect(reply).toBe("echo hi");
+    expect(takeUnhandledRequests()).toEqual([]);
+  });
+
   it("keeps the catch-all when handlers are reset with arguments", async () => {
     server.resetHandlers(http.get("/api/v1/known", () => HttpResponse.json(1)));
     expect(await (await fetch("/api/v1/known")).json()).toBe(1);
@@ -316,6 +336,23 @@ describe("DOM stand-ins", () => {
     expect(new IntersectionObserver(() => undefined).thresholds).toEqual([0]);
     observer.disconnect();
     expect(control.observed()).toEqual([]);
+  });
+
+  it("keeps driving an observer reused after disconnect()", () => {
+    const size = installResizeObserver();
+    const view = installIntersectionObserver();
+    const target = document.createElement("div");
+    const seen: string[] = [];
+    const resize = new ResizeObserver(() => seen.push("resize"));
+    const intersect = new IntersectionObserver(() => seen.push("intersect"));
+    for (const observer of [resize, intersect]) {
+      observer.observe(target);
+      observer.disconnect();
+      observer.observe(target);
+    }
+    size.resize(target, { width: 1, height: 1 });
+    view.intersect(target, true);
+    expect(seen).toEqual(["resize", "intersect"]);
   });
 
   it("drives the dark-scheme media query", () => {

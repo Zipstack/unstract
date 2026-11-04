@@ -26,6 +26,8 @@ export function installResizeObserver(): ResizeObserverControl {
       observers.add(this);
     }
     observe(target: Element): void {
+      // Re-registers an instance reused after disconnect(), as browsers allow.
+      observers.add(this);
       this.targets.add(target);
     }
     unobserve(target: Element): void {
@@ -92,6 +94,8 @@ export function installIntersectionObserver(): IntersectionObserverControl {
       observers.add(this);
     }
     observe(target: Element): void {
+      // Re-registers an instance reused after disconnect(), as browsers allow.
+      observers.add(this);
       this.targets.add(target);
     }
     unobserve(target: Element): void {
