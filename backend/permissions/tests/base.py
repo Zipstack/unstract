@@ -9,23 +9,16 @@ import secrets
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
-from unittest.mock import patch
 
 from account_v2.models import Organization, User
-from permissions.permission import IsOwner
 from rest_framework.test import APIRequestFactory
 from rest_framework.views import APIView
 from tenant_account_v2.models import OrganizationMember
+from utils.tests.auth_seam import admin_role, member_role
 from utils.user_context import UserContext
 from workflow_manager.workflow_v2.models.workflow import Workflow
 
-# Admin resolution is auth-plugin backed, so patch it to a deterministic
-# predicate — the ``role="admin"`` membership row alone does not make
-# ``_is_organization_admin`` true.
-_ADMIN_PREDICATE = (
-    "tenant_account_v2.organization_member_service."
-    "OrganizationMemberService.is_user_organization_admin"
-)
+from permissions.permission import IsOwner
 
 
 def make_user(email: str, **kwargs: Any) -> User:
@@ -120,7 +113,7 @@ RESOURCE_SPECS: list[ResourceSpec] = [
 
 
 class CoOwnerOrgTestMixin:
-    """setUp helper: one org, members, and a deterministic admin predicate."""
+    """setUp helper: one org and its members, admin by the active auth service's role."""
 
     def _seed_org(self) -> None:
         self.org = Organization.objects.create(
@@ -135,18 +128,11 @@ class CoOwnerOrgTestMixin:
         self.stranger = make_user("stranger@example.com")  # NOT an org member
         for user in (self.owner, self.coowner, self.viewer, self.outsider):
             OrganizationMember.objects.create(
-                organization=self.org, user=user, role="user"
+                organization=self.org, user=user, role=member_role()
             )
         OrganizationMember.objects.create(
-            organization=self.org, user=self.admin, role="admin"
+            organization=self.org, user=self.admin, role=admin_role()
         )
-        patcher = patch(
-            _ADMIN_PREDICATE,
-            side_effect=lambda u: getattr(u, "email", None) == self.admin.email,
-        )
-        patcher.start()
-        # addCleanup is provided by TestCase (this is a mixin combined with it).
-        self.addCleanup(patcher.stop)  # type: ignore[attr-defined]
 
     def _is_owner_perm(self, user: User, obj: object) -> bool:
         """Run ``IsOwner.has_object_permission`` for ``user`` against ``obj``."""

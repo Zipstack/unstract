@@ -1,0 +1,31 @@
+name: V2 Release state
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  state:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Derive branch and target state
+        id: state
+        run: |
+          python3 .github/release/relstate.py > state.json
+          cat state.json
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: relstate
+          path: state.json
+
+      - name: Summary table
+        working-directory: .github/release
+        run: python3 -c 'import json, relstate; print(relstate.summary(json.load(open("../../state.json"))))' >> "$GITHUB_STEP_SUMMARY"
