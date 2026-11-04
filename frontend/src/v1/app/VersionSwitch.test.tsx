@@ -3,8 +3,8 @@ import userEvent from "@testing-library/user-event";
 import { buildLiveRegistry, type LiveRegistry } from "@v1/app/registry/live";
 import { oldVersionStorageKey } from "@v1/lib/oldVersion";
 import { useOldVersionStore } from "@v1/stores/oldVersion";
-import { beforeEach, describe, expect, it } from "vitest";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
+import { beforeEach, describe, expect, it } from "vitest";
 import { VersionSwitch } from "./VersionSwitch";
 
 const demo = buildLiveRegistry({
