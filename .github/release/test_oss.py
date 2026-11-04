@@ -827,7 +827,7 @@ class RetireWorkflow(Workflow):
 
     def test_abandon(self):
         self.line("1.7")
-        self.retire(ABANDON="release/1.7", REASON="cut by mistake")
+        self.retire(ABANDON="1.7", REASON="cut by mistake")
         self.assert_gone("1.7")
 
     def test_abandon_deletes_one_rc_and_keeps_the_last(self):
@@ -997,8 +997,17 @@ class RetireWorkflow(Workflow):
 
     def test_retire_line_no_ga(self):
         self.line("1.7")
-        self.retire(RETIRE_LINE="release/1.7", REASON="not shipping")
+        self.retire(RETIRE_LINE="1.7", REASON="not shipping")
         self.assert_gone("1.7")
+
+    def test_refuses_a_value_not_a_line(self):
+        self.line("1.7")
+        for key in ("ABANDON", "RETIRE_LINE"):
+            self.kept_line(
+                "1.7",
+                f"::error::{key.lower()} 1.7.0: not a release line X.Y (e.g. 0.186): '1.7.0'",
+                **{key: "1.7.0", "REASON": "x"},
+            )
 
     def test_derived_list(self):
         self.line("1.6", "v1.6.0-rc.1", "v1.6.0")
@@ -2127,7 +2136,9 @@ esac
         with open(os.path.join(HERE, "..", "workflows", "take-rc-build.yaml")) as fh:
             head, jobs = fh.read().split("\njobs:\n", 1)
         self.assertIn(
-            "\nconcurrency:\n  group: take-rc-build-${{ inputs.branch }}\n", head
+            "\nconcurrency:\n  group: take-rc-build-${{ (startsWith(inputs.branch, 'release/') "
+            "&& inputs.branch || format('release/{0}', inputs.branch)) }}\n",
+            head,
         )
         self.assertNotIn("concurrency:", jobs)
 
@@ -2595,7 +2606,7 @@ class LateTargetWorkflow(Workflow):
         notes, out = self.take_rc()
         self.assertIn("| #5 | [FIX] y | fix |", notes)  # owed, shown
         self.assertIn(
-            "dispatch Backport with `confirm_stabilized=true` and `branches=release/1.7`.",
+            "dispatch Backport with `confirm_stabilized=true` and `branches=1.7`.",
             notes,
         )
         self.assertEqual(
@@ -2790,8 +2801,10 @@ class TakeRcVersion(Workflow):
         for wire in (
             "\n      newest: ${{ steps.plan.outputs.newest }}\n",  # the job output both of these read
             "\n      skip_argocd_deployment: ${{ inputs.skip_argocd_deployment || "
-            "needs.take-rc.outputs.newest != inputs.branch }}\n",
+            "needs.take-rc.outputs.newest != needs.take-rc.outputs.branch }}\n",
             "\n      NEWEST: ${{ needs.take-rc.outputs.newest }}\n",
+            "\n      branch: ${{ needs.line.outputs.branch }}\n",  # release/X.Y, as newest is
+            "\n      BRANCH: ${{ needs.take-rc.outputs.branch }}\n",
         ):
             self.assertIn(wire, text)
 
@@ -2855,6 +2868,123 @@ class TakeRcPrerelease(unittest.TestCase):
         self.assertIn(
             "TARGETS: ${{ needs.take-rc.outputs.want }}\n", job[: job.index("run: |")]
         )
+
+
+@unittest.skipUnless(
+    os.path.exists(os.path.join(HERE, "..", "workflows", "take-rc-build.yaml")),
+    "the cloud repo's workflows",
+)
+class InputSteps(unittest.TestCase):
+    """Each dispatch input step normalises through relmgr: a line to release/X.Y, a version tag to its leading v."""
+
+    def run_step(self, workflow, name, **env):
+        with tempfile.TemporaryDirectory() as d:
+            out = os.path.join(d, "out")
+            r = subprocess.run(
+                ["bash", "-e", "-c", step(workflow, name)],
+                cwd=os.path.join(HERE, "..", ".."),
+                env={**os.environ, **env, "GITHUB_OUTPUT": out},
+                capture_output=True,
+                text=True,
+            )
+            with open(out, "a+") as fh:
+                fh.seek(0)
+                return r.returncode, fh.read(), r.stderr
+
+    def test_take_rc_line(self):
+        for line in ("1.7", "release/1.7", " 1.7 "):
+            self.assertEqual(
+                self.run_step("take-rc-build.yaml", "Check line", LINE=line),
+                (0, "branch=release/1.7\n", ""),
+            )
+        code, out, err = self.run_step(
+            "take-rc-build.yaml", "Check line", LINE="release/1.7.0"
+        )
+        self.assertEqual((code, out), (1, ""))
+        self.assertIn("::error::not a release line X.Y", err)
+
+    def test_promote_rc(self):
+        for rc in ("v1.7.0-rc.2", "1.7.0-rc.2"):
+            self.assertEqual(
+                self.run_step("promote.yaml", "RC tag", RC=rc),
+                (0, "rc=v1.7.0-rc.2\n", ""),
+            )
+
+    def test_raw_input_feeds_only_its_check(self):
+        # Every job reads the normalised output; the raw input is left to the names a run shows.
+        for wf, raw, uses in (
+            ("take-rc-build.yaml", "inputs.branch", ("run-name:", "group:", "LINE:")),
+            ("promote.yaml", "inputs.rc", ("run-name:", "RC:")),
+            ("publish.yaml", "inputs.version", ("run-name:", "VERSION:")),
+        ):
+            with open(os.path.join(HERE, "..", "workflows", wf)) as fh:
+                seen = sorted(
+                    line.split()[0]
+                    for line in fh
+                    if raw in line and not line.lstrip().startswith("#")
+                )
+            self.assertEqual(seen, sorted(uses), wf)
+
+    def test_publish_version(self):
+        for v in ("v1.7.0", "1.7.0"):
+            self.assertEqual(
+                self.run_step("publish.yaml", "Version", VERSION=v),
+                (0, "version=v1.7.0\n", ""),
+            )
+
+
+@unittest.skipUnless(
+    os.path.exists(os.path.join(HERE, "..", "workflows", "cut.yaml")),
+    "the cloud repo's workflows",
+)
+class CutPickLine(unittest.TestCase):
+    """Cut's line input: X.Y or release/X.Y; empty takes relstate's next minor."""
+
+    def pick(self, line):
+        with tempfile.TemporaryDirectory() as d:
+            work, bin_ = os.path.join(d, "work"), os.path.join(d, "bin")
+            rm.git(d, "init", "-q", "--bare", os.path.join(d, "origin.git"))
+            rm.git(d, "init", "-q", work)
+            rm.git(work, "remote", "add", "origin", os.path.join(d, "origin.git"))
+            os.makedirs(os.path.join(work, ".github"))
+            os.symlink(HERE, os.path.join(work, ".github", "release"))
+            os.makedirs(bin_)
+            with open(
+                os.path.join(bin_, "python3"), "w"
+            ) as fh:  # relstate reads registries: stub it
+                fh.write(
+                    "#!/bin/sh\n"
+                    'case "$1$2" in\n'
+                    """.github/release/relstate.py) echo '{"branches": [], "next_minor": "1.8"}' ;;\n"""
+                    "*used_tags*) echo ;;\n"
+                    f'*) exec {sys.executable} "$@" ;;\n'
+                    "esac\n"
+                )
+            os.chmod(os.path.join(bin_, "python3"), 0o755)
+            out = os.path.join(d, "out")
+            r = subprocess.run(
+                ["bash", "-e", "-c", step("cut.yaml", "Pick line")],
+                cwd=work,
+                env={
+                    **os.environ,
+                    "PATH": f"{bin_}:{os.environ['PATH']}",
+                    "LINE": line,
+                    "GITHUB_OUTPUT": out,
+                },
+                capture_output=True,
+                text=True,
+            )
+            with open(out, "a+") as fh:
+                fh.seek(0)
+                return r.returncode, fh.read(), r.stderr
+
+    def test_line(self):
+        self.assertEqual(self.pick("")[:2], (0, "line=1.8\n"))
+        for line in ("1.9", "release/1.9"):
+            self.assertEqual(self.pick(line)[:2], (0, "line=1.9\n"))
+        code, out, err = self.pick("1.9.0")
+        self.assertEqual((code, out), (1, ""))
+        self.assertIn("::error::not a release line X.Y", err)
 
 
 class TakeRcBump(Workflow):

@@ -26,6 +26,21 @@ REVERTS_RE = re.compile(r"^This reverts commit ([0-9a-f]{7,40})", re.M)
 DECLINED_RE = re.compile(r"^Declined: (.+)$", re.M)
 # Match with fullmatch.
 BACKPORT_HEAD_RE = re.compile(r"backport/(\d+\.\d+)/([0-9a-f]{7})")
+LINE_RE = re.compile(r"\d+\.\d+")
+
+
+def line(value):
+    """A release-line input as X.Y: "0.186" and "release/0.186" both give "0.186"."""
+    v = value.strip().removeprefix("release/")
+    if not LINE_RE.fullmatch(v):
+        raise ValueError(f"not a release line X.Y (e.g. 0.186): {value!r}")
+    return v
+
+
+def vtag(value):
+    """A version-tag input with its leading v: "0.186.0-rc.2" and "v0.186.0-rc.2" both give "v0.186.0-rc.2"."""
+    v = value.strip()
+    return v if v.startswith("v") else f"v{v}"
 
 
 def _web(repo=None):
@@ -628,3 +643,12 @@ def _introducers(repo, fix_sha):
             )
             introducers |= set(re.findall(r"^([0-9a-f]{40}) \d+ \d+", blame, re.M))
     return introducers
+
+
+if __name__ == "__main__":  # for workflow inputs: relmgr.py line|vtag VALUE
+    import sys
+
+    try:
+        print({"line": line, "vtag": vtag}[sys.argv[1]](sys.argv[2]))
+    except ValueError as e:
+        sys.exit(f"::error::{e}")

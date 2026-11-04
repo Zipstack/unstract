@@ -1,6 +1,6 @@
 """Backport: cherry-pick (-x) main fixes onto every release branch that accepts them.
 
-Usage: backport.py --state state.json (--commits SHA|PR[,...] | --rescan) [--confirm-stabilized] [--branches release/X.Y[,...]]
+Usage: backport.py --state state.json (--commits SHA|PR[,...] | --rescan) [--confirm-stabilized] [--branches X.Y[,...]]
 
 --rescan (every push to main): pick every main commit since each target's cut that no trailer there names
 (security/critical only on stabilized targets, held without --confirm-stabilized). --commits (dispatch): only these;
@@ -280,7 +280,7 @@ def pending_block(conflicts, held_rows):
         ]
         commits = ",".join(_commit_arg(sha, pr) for sha, (_, pr, _, _) in groups.items())
         branches = ",".join(
-            dict.fromkeys(b for _, _, _, bs in groups.values() for b in bs)
+            dict.fromkeys(rm.line(b) for _, _, _, bs in groups.values() for b in bs)
         )
         out += [
             "",
@@ -441,7 +441,7 @@ def owed_summary(rows, branch):
         out
         + [
             "",
-            f"To pick any: dispatch Backport with `confirm_stabilized=true` and `branches={branch}`.",
+            f"To pick any: dispatch Backport with `confirm_stabilized=true` and `branches={rm.line(branch)}`.",
         ]
     )
 
@@ -472,7 +472,7 @@ def held_note(rows, branch, slug=None):
         f"⚠ Held for the RM on {f'{slug} ' if slug else ''}`{branch}` (stabilized; Promote blocks unless forced): "
         + ", ".join(f"{link(pr)} {cls}" for _, cls, pr, _ in rows)
         + f". Pick with `gh workflow run backport.yaml{f' -R {slug}' if slug else ''} -f commits={commits} "
-        f"-f branches={branch} -f confirm_stabilized=true`"
+        f"-f branches={rm.line(branch)} -f confirm_stabilized=true`"
     )
 
 
@@ -921,6 +921,11 @@ def push_title(slug, sha):
     return f"Backport · push {rm.commit_link(sha)} ({link_pr(pr)}, {cls or 'not a fix'})"
 
 
+def listed_branches(value):
+    """The --branches input as release branches: "0.186, release/0.188" gives both as release/X.Y."""
+    return [f"release/{rm.line(b)}" for b in value.split(",") if b.strip()]
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("--state", required=True)
@@ -936,14 +941,17 @@ def main():
     p.add_argument(
         "--branches",
         default="",
-        help="comma list: only these release branches (default every target)",
+        help="comma list: only these release lines, X.Y or release/X.Y (default every target)",
     )
     a = p.parse_args()
     slug = os.environ["GITHUB_REPOSITORY"]
     with open(rm.local_path(a.state)) as f:
         state = json.load(f)
     targets = state["backport_targets"]
-    listed = [b.strip() for b in a.branches.split(",") if b.strip()]
+    try:
+        listed = listed_branches(a.branches)
+    except ValueError as e:
+        sys.exit(f"::error::branches: {e}")
     if a.rescan:
         rows, awaiting, missing = rescan(slug, targets, a.confirm_stabilized, listed)
     else:

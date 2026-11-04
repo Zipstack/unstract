@@ -25,7 +25,7 @@ on:
         type: boolean
         default: false
       branches:
-        description: "Only these lines, e.g. release/0.186,release/0.188. Include every newer released line, or Promote blocks."
+        description: "Only these lines X.Y, e.g. 0.186,0.188. Include every newer released line, or Promote blocks."
         type: string
         required: false
 

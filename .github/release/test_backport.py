@@ -4,6 +4,7 @@ import io
 import json
 import os
 import subprocess
+import sys
 import tempfile
 import unittest
 from unittest import mock
@@ -75,7 +76,7 @@ class Held(unittest.TestCase):
                 ),
                 f"⚠ Held for the RM on `release/0.182` (stabilized; Promote blocks unless forced): #2 critical, no PR "
                 f"{bp.UNCLASSIFIABLE}. Pick with `gh workflow run backport.yaml -f commits=#2,{d[:12]} "
-                "-f branches=release/0.182 -f confirm_stabilized=true`",
+                "-f branches=0.182 -f confirm_stabilized=true`",
             )
 
 
@@ -128,6 +129,43 @@ class Rescan(unittest.TestCase):
         plan, awaiting, _ = bp.rescan_plan(targets, held, confirm=True)
         self.assertEqual(
             (plan[-1], awaiting), (("release/0.187", c, "security", "#3", "C"), [])
+        )
+
+    def test_listed_branches(self):
+        self.assertEqual(
+            bp.listed_branches(" 0.186, release/0.188 ,"),
+            ["release/0.186", "release/0.188"],
+        )
+        self.assertEqual(bp.listed_branches(""), [])
+        with self.assertRaisesRegex(ValueError, "'0.186.1'"):
+            bp.listed_branches("0.185,0.186.1")
+
+    def test_cli_refuses_a_bad_line(self):
+        with tempfile.TemporaryDirectory() as d:
+            state = os.path.join(d, "state.json")
+            with open(state, "w") as fh:
+                json.dump({"backport_targets": {"fix": [], "security_critical": []}}, fh)
+            r = subprocess.run(
+                [
+                    sys.executable,
+                    bp.__file__,
+                    "--state",
+                    state,
+                    "--rescan",
+                    "--branches",
+                    "0.185,0.186.1",
+                ],
+                env={
+                    **os.environ,
+                    "RUNNER_TEMP": d,
+                    "GITHUB_REPOSITORY": "Zipstack/unstract-cloud",
+                },
+                capture_output=True,
+                text=True,
+            )
+        self.assertEqual(
+            (r.returncode, r.stderr),
+            (1, "::error::branches: not a release line X.Y (e.g. 0.186): '0.186.1'\n"),
         )
 
     def test_branches_narrow(self):
@@ -364,7 +402,7 @@ class OwedSummary(unittest.TestCase):
         self.assertIn(f"| `bbbbbbb` | no PR | z | {bp.UNCLASSIFIABLE} |", out)
         self.assertTrue(
             out.endswith(
-                "To pick any: dispatch Backport with `confirm_stabilized=true` and `branches=release/0.187`."
+                "To pick any: dispatch Backport with `confirm_stabilized=true` and `branches=0.187`."
             )
         )
         self.assertTrue(bp.owed_summary([], "release/0.187").endswith("none"))
@@ -730,7 +768,7 @@ class PushSummary(unittest.TestCase):
             "- #247 security → `release/0.190`, `release/0.189` · merged 2 days ago", out
         )
         self.assertIn(
-            "gh workflow run backport.yaml -f commits=#247 -f branches=release/0.190,release/0.189 "
+            "gh workflow run backport.yaml -f commits=#247 -f branches=0.190,0.189 "
             "-f confirm_stabilized=true",
             out,
         )

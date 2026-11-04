@@ -5,6 +5,8 @@ import datetime as dt
 import io
 import json
 import os
+import subprocess
+import sys
 import tempfile
 import unittest
 import unittest.mock
@@ -1386,6 +1388,42 @@ class PrFixClass(unittest.TestCase):
         self.assertEqual(rm.rbo_key(" UN-1 [FIX] x", "45"), "UN-1")
         self.assertEqual(rm.rbo_key("no prefix", "45"), "#45")
         self.assertEqual(rm.RBO_RE.findall("Release-branch-only: #45"), ["#45"])
+
+
+class Inputs(unittest.TestCase):
+    def test_line(self):
+        for v in ("0.186", "release/0.186", " 0.186 ", "release/0.186\n"):
+            self.assertEqual(rm.line(v), "0.186")
+        for bad in (
+            "",
+            "release/",
+            "0.186.1",
+            "v0.186",
+            "release/release/0.186",
+            "0.x",
+            "refs/heads/release/0.186",
+        ):
+            with self.assertRaisesRegex(ValueError, "not a release line X.Y"):
+                rm.line(bad)
+
+    def test_vtag(self):
+        for v in ("0.186.0-rc.2", "v0.186.0-rc.2", " v0.186.0-rc.2 "):
+            self.assertEqual(rm.vtag(v), "v0.186.0-rc.2")
+        self.assertEqual(rm.vtag("0.186.1"), "v0.186.1")
+
+    def test_cli(self):
+        run = lambda *a: subprocess.run(
+            [sys.executable, os.path.join(os.path.dirname(__file__), "relmgr.py"), *a],
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(run("line", "release/0.186").stdout, "0.186\n")
+        self.assertEqual(run("vtag", "0.186.0").stdout, "v0.186.0\n")
+        r = run("line", "0.186.0")
+        self.assertEqual(r.returncode, 1)
+        self.assertEqual(
+            r.stderr, "::error::not a release line X.Y (e.g. 0.186): '0.186.0'\n"
+        )
 
 
 class ArtifactRegistry(unittest.TestCase):
