@@ -506,6 +506,30 @@ class Summary(unittest.TestCase):
                 "Next: nothing here; its head no longer holds this PR's commit.",
             )
 
+    def test_links_under_actions(self):
+        web = "https://github.com/Zipstack/unstract-cloud"
+        env = {
+            "GITHUB_SERVER_URL": "https://github.com",
+            "GITHUB_REPOSITORY": "Zipstack/unstract-cloud",
+        }
+        rec = {
+            "result": "merged",
+            "base": "release/0.189",
+            "sha": "6" * 40,
+            "reason": None,
+        }
+        with mock.patch.dict(os.environ, env):
+            out = bm.summary(246, ME, rec)
+        base = f"[`release/0.189`]({web}/tree/release/0.189)"
+        squash = f"[`6666666`]({web}/commit/{'6' * 40})"
+        self.assertEqual(
+            out,
+            [
+                f"**Backport PR** [#246]({web}/pull/246) on {base}: **merged** as {squash} (@{ME})",
+                f"Undo: revert {squash} on {base}.",
+            ],
+        )
+
 
 class SquashRetry(unittest.TestCase):
     PR = {"number": 4, "headRefOid": "a" * 40}
@@ -550,6 +574,114 @@ class SquashRetry(unittest.TestCase):
         calls = [RuntimeError("Head branch was modified (HTTP 409)"), None]
         with self.assertRaisesRegex(RuntimeError, "HTTP 409"):
             self.run_squash(calls)
+
+
+# Verbatim from failed Backport runs during a GitHub incident; the 4xx ones in gh's "gh: <status> (HTTP <code>)" form.
+S502 = "gh: Server Error (HTTP 502)"
+BAD_GATEWAY = "pull request create failed: HTTP 502: 502 Bad Gateway (https://api.github.com/graphql)"
+CUT_SHORT = "unexpected end of JSON input"
+NOT_FOUND = "gh: Not Found (HTTP 404)"
+MOVED_ERR = "gh: Base branch was modified. Review and try the merge again. (HTTP 405)"
+
+
+class FakeGh:
+    """subprocess.run for gh: answer(argv) gives (exit, stdout, stderr)."""
+
+    def __init__(self, answer):
+        self.answer, self.calls = answer, []
+
+    def __call__(self, argv, **kw):
+        self.calls.append(tuple(argv))
+        return subprocess.CompletedProcess(argv, *self.answer(tuple(argv)))
+
+    def count(self, *prefix):
+        return sum(c[1 : 1 + len(prefix)] == prefix for c in self.calls)
+
+
+def queue(*answers):
+    q = list(answers)
+    return lambda argv: q.pop(0)
+
+
+class Transient(unittest.TestCase):
+    def setUp(self):
+        self.waits = []
+        for p in (
+            mock.patch.object(bm.time, "sleep", self.waits.append),
+            mock.patch("builtins.print"),
+        ):
+            p.start()
+            self.addCleanup(p.stop)
+
+    def gh(self, answer, *args, **kw):
+        fake = FakeGh(answer)
+        with mock.patch.object(bm.subprocess, "run", fake):
+            try:
+                return bm.gh(*args, **kw), fake
+            except RuntimeError as e:
+                return e, fake
+
+    def test_classification(self):
+        for err in (S502, BAD_GATEWAY, CUT_SHORT, "net/http: TLS handshake timeout"):
+            self.assertTrue(bm.transient(err), err)
+        for err in (
+            NOT_FOUND,
+            MOVED_ERR,
+            "Required status check is expected",
+            "gh: Request Timeout (HTTP 408)",
+        ):
+            self.assertFalse(bm.transient(err), err)
+
+    def test_transient_failure_is_retried(self):
+        out, fake = self.gh(queue((1, "", S502), (0, "ok\n", "")), "api", "x")
+        self.assertEqual((out, len(fake.calls), self.waits), ("ok", 2, [5]))
+
+    def test_gives_up_after_three_tries(self):
+        out, fake = self.gh(lambda a: (1, "", S502), "api", "x")
+        self.assertIn("HTTP 502", str(out))
+        self.assertEqual((len(fake.calls), self.waits), (3, [5, 15]))
+
+    def test_client_error_is_never_retried(self):
+        out, fake = self.gh(lambda a: (1, "", NOT_FOUND), "api", "x")
+        self.assertIsInstance(out, RuntimeError)
+        self.assertEqual(len(fake.calls), 1)
+
+    def test_write_that_may_have_landed_is_not_retried_blindly(self):
+        out, fake = self.gh(lambda a: (1, "", S502), "api", "x", retry=False)
+        self.assertEqual((len(fake.calls), self.waits), (1, []))
+
+    def squash(self, answer):
+        fake, waits = FakeGh(answer), []
+        with mock.patch.object(bm.subprocess, "run", fake):
+            try:
+                out = bm.squash("o/r", SquashRetry.PR, "t\n\nb", sleep=waits.append)
+            except RuntimeError as e:
+                out = e
+        return (
+            out,
+            fake.count("api", "-X", "PUT"),
+            fake.count("api", "repos/o/r/pulls/4"),
+            waits,
+        )
+
+    def test_squash_cut_short_but_merged_is_merged(self):
+        answer = lambda a: (1, "", CUT_SHORT) if "PUT" in a else (0, "true\n", "")
+        self.assertEqual(self.squash(answer), (True, 1, 1, []))
+
+    def test_squash_502_not_merged_is_retried(self):
+        puts = queue((1, "", S502), (0, "{}", ""))
+        answer = lambda a: puts(a) if "PUT" in a else (0, "false\n", "")
+        self.assertEqual(self.squash(answer), (True, 2, 1, [5]))
+
+    def test_squash_502_every_time_fails_after_checking_each(self):
+        answer = lambda a: (1, "", S502) if "PUT" in a else (0, "false\n", "")
+        out, puts, checks, waits = self.squash(answer)
+        self.assertIn("HTTP 502", str(out))
+        self.assertEqual((puts, checks, waits), (3, 3, [5, 20]))
+
+    def test_squash_base_modified_still_retried_without_a_merged_check(self):
+        puts = queue((1, "", MOVED_ERR), (0, "{}", ""))
+        self.assertEqual(self.squash(puts), (True, 2, 0, [5]))
 
 
 if __name__ == "__main__":
