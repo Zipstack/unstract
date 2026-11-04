@@ -3519,7 +3519,7 @@ sys.exit(int(os.environ["GATE_RC"]))
         )
         self.assertEqual(
             self.read("notes.md"),
-            "Forced past the convergence gate (MISSING picks, see the preview): known gap\n\n",
+            "Forced past the convergence gate (MISSING picks, see the Promote preview in the run summary): known gap\n\n",
         )
         self.assertIn("stub cloud annotate=warning", self.read("preview.md"))
         self.assertEqual(self.read("output"), "result=block\n")
@@ -3633,3 +3633,139 @@ sys.exit(int(os.environ["GATE_RC"]))
 
 if __name__ == "__main__":
     unittest.main()
+
+
+@unittest.skipUnless(
+    os.path.exists(os.path.join(HERE, "..", "workflows", "take-rc-build.yaml")),
+    "the cloud repo's workflows",
+)
+class TakeRcNotes(unittest.TestCase):
+    """Take RC's notes reach the prerelease, which another runner writes."""
+
+    GH = """#!/usr/bin/env python3
+import os, shutil, sys
+a = sys.argv[1:]
+d = os.environ["RUNNER_TEMP"]
+with open(os.path.join(d, "calls"), "a") as f:
+    f.write(" ".join(a[:2]) + "\\n")
+if a[:2] == ["release", "view"]:
+    if "VIEW_BODY" not in os.environ:
+        sys.exit("release not found")
+    print(os.environ["VIEW_BODY"])
+elif a[:2] in (["release", "edit"], ["release", "create"]):
+    shutil.copy(a[a.index("--notes-file") + 1], os.path.join(d, "sent"))
+"""
+
+    NOTES = "Forced past X: known gap\n\nConflict PRs: #7"
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.d = tmp.name
+        bin_ = os.path.join(self.d, "bin")
+        os.makedirs(bin_)
+        with open(os.path.join(bin_, "gh"), "w") as f:
+            f.write(self.GH)
+        os.chmod(os.path.join(bin_, "gh"), 0o755)
+        self.path = bin_ + os.pathsep + os.environ["PATH"]
+
+    def read(self, name):
+        try:
+            with open(os.path.join(self.d, name)) as f:
+                return f.read()
+        except FileNotFoundError:
+            return ""
+
+    def output(self, notes=None):
+        if notes is not None:
+            with open(os.path.join(self.d, "notes.md"), "w") as f:
+                f.write(notes)
+        out = os.path.join(self.d, "output")
+        r = subprocess.run(
+            ["bash", "-e", "-c", step("take-rc-build.yaml", "Notes output")],
+            env={**os.environ, "RUNNER_TEMP": self.d, "GITHUB_OUTPUT": out},
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(r.returncode, 0, r.stderr)
+        head, rest = self.read("output").split("\n", 1)
+        delim = head.removeprefix("notes<<")
+        self.assertRegex(delim, r"^[0-9a-f]{32}$")
+        self.assertTrue(rest.endswith(delim + "\n"), rest)
+        return rest[: -len(delim) - 1]
+
+    def prerelease(self, rc_notes, view_body=None, targets="cloud"):
+        env = {
+            **os.environ,
+            "PATH": self.path,
+            "TAG": "v1.7.1-rc.1",
+            "SHA": "a" * 40,
+            "OSS": "v0.9.0",
+            "BRANCH": "release/1.7",
+            "TARGETS": targets,
+            "RC_NOTES": rc_notes,
+            "RUNNER_TEMP": self.d,
+            "GITHUB_REPOSITORY": "Zipstack/unstract-cloud",
+            "GITHUB_SERVER_URL": "https://github.com",
+            "GITHUB_RUN_ID": "42",
+            "GITHUB_STEP_SUMMARY": os.path.join(self.d, "summary"),
+        }
+        env.pop("VIEW_BODY", None)
+        if view_body is not None:
+            env["VIEW_BODY"] = view_body
+        r = subprocess.run(
+            ["bash", "-e", "-c", step("take-rc-build.yaml", "Create the RC prerelease")],
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        return self.read("sent")
+
+    SECTION = (
+        "\n## Take RC notes\n\nFrom [Take RC run 42]"
+        "(https://github.com/Zipstack/unstract-cloud/actions/runs/42).\n\n"
+    )
+
+    def test_the_output_carries_every_line(self):
+        self.assertEqual(self.output("a: b\n\nc\n\n"), "a: b\n\nc\n")
+
+    def test_no_notes_give_an_empty_output(self):
+        self.assertEqual(self.output(), "")
+
+    def test_the_outputs_are_wired_to_the_prerelease(self):
+        with open(os.path.join(HERE, "..", "workflows", "take-rc-build.yaml")) as fh:
+            wf = fh.read()
+        self.assertIn("      notes: ${{ steps.notes.outputs.notes }}\n", wf)
+        job = wf[wf.index("- name: Create the RC prerelease") :]
+        self.assertIn(
+            "RC_NOTES: ${{ needs.take-rc.outputs.notes }}\n", job[: job.index("run: |")]
+        )
+
+    def test_create_appends_the_notes(self):
+        sent = self.prerelease(self.NOTES)
+        self.assertTrue(sent.endswith(self.SECTION + self.NOTES + "\n"), sent)
+        self.assertIn("release create", self.read("calls"))
+
+    def test_create_without_notes_adds_no_heading(self):
+        sent = self.prerelease("")
+        self.assertNotIn("Take RC notes", sent)
+        self.assertTrue(sent.endswith("> None: still v0.9.0.\n"), sent)
+
+    def test_a_rerun_adds_new_notes_once(self):
+        body = "| targets | cloud |\n\n## Enterprise changes"
+        sent = self.prerelease(self.NOTES, view_body=body, targets="on-prem")
+        self.assertEqual(
+            sent,
+            "| targets | cloud on-prem |\n\n## Enterprise changes"
+            + self.SECTION
+            + self.NOTES
+            + "\n",
+        )
+        os.remove(os.path.join(self.d, "calls"))
+        self.prerelease(self.NOTES, view_body=sent.rstrip("\n"), targets="on-prem")
+        self.assertEqual(self.read("calls"), "release view\n")
+
+    def test_a_rerun_with_nothing_new_does_not_edit(self):
+        self.prerelease("", view_body="| targets | cloud |\n\nbody", targets="cloud")
+        self.assertEqual(self.read("calls"), "release view\n")
