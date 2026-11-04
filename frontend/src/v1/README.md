@@ -9,7 +9,9 @@ is convention.
 ## Rules
 
 - **TypeScript only.** `.ts` / `.tsx`, `strict`, unused locals and parameters
-  are errors, no explicit `any`.
+  are errors, no explicit `any`. Besides code, v1 holds only styles (in
+  `styles/`), Vite asset types, JSON and Markdown; any other file type is
+  rejected, since Vite can load any file (`?worker`).
 - **Nothing outside `src/v1`.** No v0 component, store, hook, helper, CSS or
   shim, and no symlinks. Import with `./` within a folder and `@v1/...` across
   folders; `../`, `/src/...` and `src/...` are never used.
@@ -22,8 +24,9 @@ is convention.
   by what Vite can resolve: a template, glob or concatenation by the fixed
   text it starts with; a bare variable is left alone, since Vite cannot bundle
   it.
-- **No PropTypes, no component `.css`, no antd** (package, shim or `ant-`
-  class). Global v1 styles live in `styles/` and are imported as
+- **No PropTypes, no component style files, no antd** (package, shim or
+  `ant-` class). Style files are any CSS language Vite knows (`.css`, `.scss`,
+  `.pcss`, …); CSS asset references include `image-set()` strings. Global v1 styles live in `styles/` and are imported as
   `@v1/styles/...`, including from inside `styles/`.
 - **Static assets live in `assets/`**, imported as `@v1/assets/...` (e.g.
   `@v1/assets/logo.svg?react`). v1 never uses v0's `src/assets/` (enforced);
@@ -37,14 +40,20 @@ is convention.
 
 - `ui:` on every utility: an unprefixed class renders with v0's theme whenever
   v0 already uses that class name, and silently does nothing otherwise. Merge
-  with `cn` (`@v1/lib/cn`); `bun run tokens:v1` makes tokens.css from tokens.ts.
+  with `cn` (`@v1/lib/cn`); `bun run tokens:v1` makes tokens.css from tokens.json.
 - Modes `light`, `dark`, `unstract` (or `system`): the user chooses, stored per
   browser under `unstract.v1.theme`, applied as `data-theme` by `ThemeProvider`.
   Portals: `getPortalContainer()`; focus: `ui:focus-visible:focus-ring`; Geist
   Mono only for model output, JSON and token counts.
-- `lint:v1` S1–S8: no inline style, raw colour or pixel, `!important`, CSS
-  import outside `app/` or `styles/`, selector outside `.v1`,
-  `prefers-color-scheme` or unprefixed utility (code: class and colour strings).
+- `lint:v1` S1–S8: no inline style, raw colour (hex, functions, palette or
+  named, in code and CSS) or pixel (any length inside `[…]` or in CSS, `vh`
+  and `vw` included), `!important`, CSS import outside `app/` or `styles/`,
+  selector outside `.v1` (a sibling combinator right after the root,
+  `.v1 + x` or `& ~ x` nested directly in the root, counts),
+  `prefers-color-scheme`, or a utility without `ui:` first (`hover:ui:flex`
+  compiles to nothing). Code: `className` values and `cn()`/`cva()` class
+  positions always (a cva variant name or choice is not a class), other
+  strings when they look like a class list.
   Runtime geometry: `style` may set only custom properties (`"--page-aspect"`,
   typed by `lib/css-custom-properties.d.ts`) that classes read
   (`ui:aspect-(--page-aspect)`); a plain key or a variable fails. Pixel
@@ -53,6 +62,11 @@ is convention.
   - `scrollbar-color`, `::-webkit-scrollbar*`: the thumb stays light in dark.
   - `[data-radix-popper-content-wrapper] { z-index: 1500 !important }`.
   - `[data-sonner-toaster] { pointer-events: auto }`.
+  - `svg.lucide` under a `span`, `p`, `label`, `li`, `a`, `td` or `th` that
+    is not `.flex`/`.inline-flex`/`.grid` (v0 names, so `ui:inline-flex`
+    does not exempt) is forced to `1em` and `inline-block`, overriding the
+    icon's `size` prop. Put icons in a `ui:flex`/`ui:inline-flex` parent
+    that is not one of those tags, or size the parent's font.
 
 ## Folders and what each may import
 
@@ -80,9 +94,9 @@ Every folder may import from itself. Test files (`*.test.ts(x)`,
 
 | Script | Checks |
 | --- | --- |
-| `bun run typecheck:v1` | TypeScript-only files, CSS only in `styles/`, no symlinks, folder taxonomy; then `tsc` with `src/v1/tsconfig.json` |
+| `bun run typecheck:v1` | TypeScript-only files, styles only in `styles/`, allowed file types only, no symlinks, folder taxonomy; then `tsc` with `src/v1/tsconfig.json` |
 | `bun run lint:v1` | Biome on `src/v1/`, then imports in code and in `styles/` CSS (nothing outside v1, folder contract, and v0 reaching v1 only through `@v1`), PropTypes and `ant-` checks, then the styling policy (S1 to S8 above) |
-| `bun run tokens:v1` | Regenerates `styles/tokens.css` from `styles/tokens.ts` |
+| `bun run tokens:v1` | Regenerates `styles/tokens.css` from `styles/tokens.json` (via `styles/tokens.ts`; runs under bun, which imports the TypeScript source directly) |
 | `bun run test:v1` | v1 unit tests, then the guardrail fixtures in `test-fixtures/v1-boundary/` |
 
 Biome (`biome.json`) also reports the banned imports and the plain spellings of

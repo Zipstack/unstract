@@ -39,8 +39,10 @@ from unstract.sdk1.adapters.x2text.page_image_loader import (
     PageImageSetIncompleteError,
     PageImageSetTooLargeError,
     PageImagesNotFoundError,
+    PageImageTooLargeError,
 )
 from unstract.sdk1.platform import PlatformHelper
+from unstract.sdk1.utils.image_limits import codes as _limit_codes
 
 logger = logging.getLogger(__name__)
 
@@ -50,12 +52,16 @@ PLUGIN_NAME = "vlm-image-answer"
 # survive the string-only propagation to PS / deployment API responses).
 IMAGE_OUTPUT_REQUIRES_CLOUD = "IMAGE_OUTPUT_REQUIRES_CLOUD"
 IMAGE_OUTPUT_MISSING = "IMAGE_OUTPUT_MISSING"
-IMAGE_PAGE_CAP_EXCEEDED = "IMAGE_PAGE_CAP_EXCEEDED"
-IMAGE_PAGES_TOO_LARGE = "IMAGE_PAGES_TOO_LARGE"
+# Limit codes are owned by sdk1 (``unstract.sdk1.utils.image_limits.codes``)
+# and re-exported here so existing importers keep working.
+IMAGE_PAGE_CAP_EXCEEDED = _limit_codes.IMAGE_PAGE_CAP_EXCEEDED
+IMAGE_PAGES_TOO_LARGE = _limit_codes.IMAGE_PAGES_TOO_LARGE
+# One page over a per-image byte/pixel limit (see sdk1 image_limits.codes).
+IMAGE_PAGE_TOO_LARGE = _limit_codes.IMAGE_PAGE_TOO_LARGE
 # Distinct from IMAGE_PAGES_TOO_LARGE (our own budget, caught before the
 # call): this one is the PROVIDER rejecting a request the local checks
-# allowed, because the model's per-request limit is lower than the cap.
-IMAGE_REQUEST_TOO_LARGE = "IMAGE_REQUEST_TOO_LARGE"
+# allowed, because the model's per-request limit is lower than ours.
+IMAGE_REQUEST_TOO_LARGE = _limit_codes.IMAGE_REQUEST_TOO_LARGE
 IMAGE_OUTPUT_UNSUPPORTED_OPERATION = "IMAGE_OUTPUT_UNSUPPORTED_OPERATION"
 VISION_LLM_REQUIRED = "VISION_LLM_REQUIRED"
 
@@ -211,6 +217,8 @@ def run_vlm_image_answer(
         raise VlmImageAnswerError(str(e), error_code=IMAGE_PAGE_CAP_EXCEEDED) from e
     except PageImageSetTooLargeError as e:
         raise VlmImageAnswerError(str(e), error_code=IMAGE_PAGES_TOO_LARGE) from e
+    except PageImageTooLargeError as e:
+        raise VlmImageAnswerError(str(e), error_code=IMAGE_PAGE_TOO_LARGE) from e
     except PageImageLoadError as e:
         raise VlmImageAnswerError(str(e), error_code=IMAGE_OUTPUT_MISSING) from e
     except VlmImageAnswerError:

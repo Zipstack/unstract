@@ -364,7 +364,7 @@ class InternalAPIClient(CachedAPIClientMixin):
             )
 
         except Exception as e:
-            logger.error(f"Error getting workflow executions by status: {e}")
+            logger.exception(f"Error getting workflow executions by status: {e}")
             return APIResponse(
                 success=False,
                 error=str(e),
@@ -428,7 +428,7 @@ class InternalAPIClient(CachedAPIClientMixin):
             )
 
         except Exception as e:
-            logger.error(f"Error checking files active processing: {e}")
+            logger.exception(f"Error checking files active processing: {e}")
             # Fallback: assume no files are active to avoid blocking
             return APIResponse(
                 success=True,
@@ -461,7 +461,7 @@ class InternalAPIClient(CachedAPIClientMixin):
             return response
 
         except Exception as e:
-            logger.error(f"Error getting workflow file executions: {e}")
+            logger.exception(f"Error getting workflow file executions: {e}")
             return APIResponse(
                 success=False,
                 error=str(e),
@@ -472,7 +472,7 @@ class InternalAPIClient(CachedAPIClientMixin):
         execution_id: str | uuid.UUID,
         organization_id: str | None = None,
         include_cost: bool = False,
-        file_execution: bool = True,
+        file_execution: bool = False,
     ) -> WorkflowExecutionResponse:
         """Get workflow execution with context.
 
@@ -480,6 +480,7 @@ class InternalAPIClient(CachedAPIClientMixin):
             execution_id: Workflow execution ID
             organization_id: Optional organization ID override
             include_cost: Whether to include aggregated usage cost (expensive operation)
+            file_execution: Whether to include the execution's file-execution rows
 
         Returns:
             WorkflowExecutionResponse containing workflow execution data
@@ -694,7 +695,7 @@ class InternalAPIClient(CachedAPIClientMixin):
             )
             return response
         except Exception as e:
-            logger.error(f"Tool validation API call failed: {e}")
+            logger.exception(f"Tool validation API call failed: {e}")
             # Return error response in expected format
             return {
                 "success": False,
@@ -745,7 +746,7 @@ class InternalAPIClient(CachedAPIClientMixin):
                     "error": response.get("error", "Failed to start async execution"),
                 }
         except Exception as e:
-            logger.error(f"Error starting async workflow execution: {e}")
+            logger.exception(f"Error starting async workflow execution: {e}")
             return {
                 "success": False,
                 "error": f"API error: {str(e)}",
@@ -789,7 +790,7 @@ class InternalAPIClient(CachedAPIClientMixin):
                     pipeline_id=async_request.pipeline_id,
                 )
         except Exception as e:
-            logger.error(f"Error starting async workflow execution: {e}")
+            logger.exception(f"Error starting async workflow execution: {e}")
             return SchedulerExecutionResult.error(
                 error=f"API error: {str(e)}",
                 execution_id=async_request.execution_id,
@@ -1185,7 +1186,7 @@ class InternalAPIClient(CachedAPIClientMixin):
             return FileHistoryResponse.from_api_response(response)
 
         except Exception as e:
-            logger.error(
+            logger.exception(
                 f"Failed to get file history for workflow {workflow_id}, "
                 f"provider_file_uuid {provider_file_uuid}: {str(e)}"
             )
@@ -1353,7 +1354,7 @@ class InternalAPIClient(CachedAPIClientMixin):
             return response
 
         except Exception as e:
-            logger.error(
+            logger.exception(
                 f"Failed to check file history batch for workflow {workflow_id}: {str(e)}"
             )
             # Return empty result to continue without file history filtering
@@ -1600,7 +1601,7 @@ class InternalAPIClient(CachedAPIClientMixin):
             return response
 
         except Exception as e:
-            logger.error(f"Error getting configuration {config_key}: {e}")
+            logger.exception(f"Error getting configuration {config_key}: {e}")
             from .data.models import APIResponse
 
             return APIResponse(

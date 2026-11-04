@@ -75,6 +75,11 @@ const CASES = parseTable(`
   v1-unanalysable-import         | lint:v1         | unanalysable import
   v1-component-css-import        | lint:v1         | No component .css under src/v1
   v1-component-css-file          | typecheck:v1    | No component style files
+  # Every CSS language Vite knows, not only .css.
+  v1-component-pcss-file         | typecheck:v1    | No component style files
+  v1-component-pcss-import       | lint:v1         | No component .css under src/v1
+  # A file type outside the allowlist (Vite can load it with ?worker).
+  v1-unknown-file-type           | typecheck:v1    | Unknown file type under v1
   v1-ant-class-prefix            | lint:v1         | No antd 'ant-' class names
   v1-ant-built-class             | lint:v1         | No antd 'ant-' class names
   v1-explicit-any                | lint:v1         | noExplicitAny
@@ -101,20 +106,31 @@ const CASES = parseTable(`
   v1-inline-style                | lint:v1         | No inline style under v1
   v1-inline-style-variable       | lint:v1         | No inline style under v1
   v1-inline-style-mixed          | lint:v1         | No inline style under v1
+  v1-inline-style-spaced         | lint:v1         | No inline style under v1
   v1-inline-style-custom-props-ok | typecheck:v1 + lint:v1 | -
   v1-raw-colour-palette          | lint:v1         | No raw colour under v1
   v1-raw-colour-arbitrary        | lint:v1         | No raw colour under v1
   v1-raw-colour-prop             | lint:v1         | No raw colour under v1
   v1-raw-colour-named            | lint:v1         | No raw colour under v1
+  v1-raw-colour-named-prop       | lint:v1         | No raw colour under v1
   v1-raw-pixel-arbitrary         | lint:v1         | No raw pixel value under v1
+  v1-raw-pixel-arbitrary-multi   | lint:v1         | No raw pixel value under v1
+  v1-raw-pixel-arbitrary-separator | lint:v1       | No raw pixel value under v1
   v1-important-utility           | lint:v1         | No !important under v1
   v1-important-variant-utility   | lint:v1         | No !important under v1
   v1-important-css               | lint:v1         | No !important under v1
   v1-css-import-from-page        | lint:v1         | CSS is imported only from app/ and styles/
   v1-styles-raw-colour           | lint:v1         | No raw colour under v1
+  v1-styles-raw-colour-named     | lint:v1         | No raw colour under v1
+  v1-styles-raw-viewport-unit    | lint:v1         | No raw pixel value under v1
   v1-styles-unscoped-selector    | lint:v1         | Every v1 selector is scoped to .v1
+  v1-styles-sibling-selector     | lint:v1         | selects outside it
+  v1-styles-nested-sibling-selector | lint:v1      | selects outside it
   v1-styles-color-scheme-media   | lint:v1         | prefers-color-scheme
   v1-unprefixed-utility          | lint:v1         | No unprefixed Tailwind utility under v1
+  v1-unprefixed-single-class     | lint:v1         | No unprefixed Tailwind utility under v1
+  v1-prefix-after-variant        | lint:v1         | The ui: prefix comes first
+  v1-cva-unprefixed-variant      | lint:v1         | No unprefixed Tailwind utility under v1
   v1-styles-policy-ok            | lint:v1         | -
   v1-plain-strings-ok            | lint:v1         | -
 `).map(([name, run, fails]) => ({
@@ -220,6 +236,21 @@ function checkCode(files) {
  * fixtures' lib/ folders; .gitignore re-includes them. `--no-index` checks the
  * rules even for files already tracked.
  */
+/* The files among `files` (relative to frontend/) that git ignores. */
+function gitIgnored(files) {
+  const gitArgs = ["check-ignore", "--no-index", "--stdin"];
+  const options = { cwd: FRONTEND, encoding: "utf8", input: files.join("\n") };
+  // git from PATH on purpose: this is a developer/CI test, and git has no
+  // fixed location across macOS and Linux.
+  const result = spawnSync("git", gitArgs, options); // NOSONAR
+  // Exit 0: some file is ignored; 1: none is; anything else is an error.
+  assert.ok(result.status === 0 || result.status === 1, result.stderr);
+  return result.stdout.split("\n").filter(Boolean);
+}
+
+// Where the cloud build copies its v1 plugins; git-ignored on purpose.
+const CLOUD_V1_PLUGIN = /^src\/v1\/plugins\/[^/]+\//;
+
 test("no v1 or fixture file is git-ignored", () => {
   const files = ["src/v1", "test-fixtures"].flatMap((top) =>
     fs
@@ -228,17 +259,23 @@ test("no v1 or fixture file is git-ignored", () => {
         withFileTypes: true,
       })
       .filter((d) => d.isFile() && d.name !== ".DS_Store")
-      .map((d) => path.relative(FRONTEND, path.join(d.parentPath, d.name))),
+      .map((d) => path.relative(FRONTEND, path.join(d.parentPath, d.name)))
+      // A local copy of the cloud plugins, if any, is ignored by design.
+      .filter((rel) => !CLOUD_V1_PLUGIN.test(rel)),
   );
   // A lib/ folder anywhere under v1, not only the top-level one.
   files.push("src/v1/pages/projects/lib/x.ts", "src/v1/lib/sub/lib/x.ts");
-  const gitArgs = ["check-ignore", "--no-index", "--stdin"];
-  const options = { cwd: FRONTEND, encoding: "utf8", input: files.join("\n") };
-  // git from PATH on purpose: this is a developer/CI test, and git has no
-  // fixed location across macOS and Linux.
-  const result = spawnSync("git", gitArgs, options); // NOSONAR
-  // Exit 1 means "nothing matched"; 0 means some file is ignored.
-  assert.equal(result.status, 1, `git-ignored:\n${result.stdout}`);
+  assert.deepEqual(gitIgnored(files), []);
+});
+
+test("cloud v1 plugins are git-ignored; the public manifest is not", () => {
+  const cloud = [
+    "src/v1/plugins/billing/index.ts",
+    "src/v1/plugins/billing/lib/x.ts",
+    "src/v1/plugins/stray.ts",
+  ];
+  const ignored = gitIgnored([...cloud, "src/v1/plugins/manifest.ts"]);
+  assert.deepEqual(sorted(ignored), sorted(cloud));
 });
 
 test("every case folder is listed", () => {
@@ -664,6 +701,11 @@ test("v0 reaches v1 only through @v1, in any form", () => {
     "tailwindReference.css": '@reference "../v1/styles/tokens.css";',
     "stylesNoSpace.css": '@import"../v1/styles/tokens.css";',
     "stylesUpperCase.css": '@IMPORT "../v1/styles/tokens.css";',
+    "stylesImageSet.css":
+      '.a { background-image: image-set("../v1/assets/a.svg" 1x); }',
+    "stylesEscapedUrl.css": ".a { background: url(\\.\\./v1/assets/a.svg); }",
+    // Vite can load any file (`?worker`), so an unknown type is read as code.
+    "worker.mod": 'import "../v1/lib/x";',
     "stylesRootAbsolute.css": ".a { background: url(/src/v1/styles/a.png); }",
   };
   const allowed = {
@@ -719,6 +761,22 @@ test("v1 styles: imports and Tailwind directives follow the contract", () => {
       "is outside src/v1",
     ],
     "broken.css": [".a {", "could not parse"],
+    // Vite reads strings in image-set() and drops backslash escapes.
+    "imageSet.css": [
+      '.a { background-image: image-set("../../assets/a.png" 1x, "../../assets/b.png" 2x); }',
+      "is outside src/v1",
+      2,
+    ],
+    "webkitImageSetUrl.css": [
+      '.a { background-image: -webkit-image-set(url("../../assets/a.png") 1x); }',
+      "is outside src/v1",
+    ],
+    "escapedUrl.css": [
+      '.a { background: url("\\.\\./\\.\\./assets/a.png"); }',
+      "is outside src/v1",
+    ],
+    "importNoTarget.css": ["@import;", "unanalysable import"],
+    "importUrl.css": ['@import url("../../index.css");', "is outside src/v1"],
   };
   const allowed = {
     "ok.css": [
@@ -728,6 +786,7 @@ test("v1 styles: imports and Tailwind directives follow the contract", () => {
       '@plugin "tailwindcss-animate";',
       '.a { background: url("@v1/assets/a.png"); }',
       ".b { background: url(data:image/png;base64,AA); }",
+      '.c { background-image: image-set("@v1/assets/a.png" 1x); }',
     ].join("\n"),
   };
   const files = {};
@@ -738,10 +797,12 @@ test("v1 styles: imports and Tailwind directives follow the contract", () => {
     files[`src/v1/styles/${name}`] = `${code}\n`;
   }
   const reported = checkCode(files);
-  for (const [name, [, message]] of Object.entries(denied)) {
+  for (const [name, [, message, count = 1]] of Object.entries(denied)) {
     const lines = linesFor(reported, `src/v1/styles/${name}`);
-    assert.equal(lines.length, 1, `${name}:\n${reported.join("\n")}`);
-    assert.ok(lines[0].includes(message), `${name}: ${lines[0]}`);
+    assert.equal(lines.length, count, `${name}:\n${reported.join("\n")}`);
+    for (const line of lines) {
+      assert.ok(line.includes(message), `${name}: ${line}`);
+    }
   }
   assert.deepEqual(linesFor(reported, "src/v1/styles/ok.css"), []);
 });
@@ -775,4 +836,20 @@ test("v0 at the top of src/: a glob `base` is resolved from there", () => {
   const lines = linesFor(reported, "src/RootGlob.jsx");
   assert.equal(lines.length, 1, reported.join("\n"));
   assert.ok(lines[0].includes("reaches into src/v1"), lines[0]);
+});
+
+test("v1 --code reads unknown file types and style files outside styles/", () => {
+  // Cloud CI runs only --code, so it must not rely on --files rejecting these.
+  const reported = checkCode({
+    "src/v1/lib/bridge.mod": 'import "../../store/alert.js";\n',
+    "src/v1/components/ui/Badge.pcss":
+      '@import "../../../index.css";\n.ant-btn { color: red; }\n',
+  });
+  const bridge = linesFor(reported, "src/v1/lib/bridge.mod");
+  assert.equal(bridge.length, 1, reported.join("\n"));
+  assert.ok(bridge[0].includes("is outside src/v1"), bridge[0]);
+  const badge = linesFor(reported, "src/v1/components/ui/Badge.pcss");
+  assert.equal(badge.length, 2, reported.join("\n"));
+  assert.ok(badge[0].includes("is outside src/v1"), badge[0]);
+  assert.ok(badge[1].includes("No antd 'ant-' class names"), badge[1]);
 });

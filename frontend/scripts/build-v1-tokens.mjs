@@ -1,21 +1,10 @@
 import fs from "node:fs";
-import { registerHooks } from "node:module";
 import path from "node:path";
 
-// Node's ESM resolver needs file extensions; v1 source imports siblings without
-// them (`./theme`), as Vite and tsc expect. Retry such relative imports as `.ts`.
-registerHooks({
-  resolve(specifier, context, nextResolve) {
-    try {
-      return nextResolve(specifier, context);
-    } catch (error) {
-      if (specifier.startsWith(".") && !path.extname(specifier)) {
-        return nextResolve(`${specifier}.ts`, context);
-      }
-      throw error;
-    }
-  },
-});
+// Runs under bun (`bun run tokens:v1`): it imports the TypeScript sources
+// directly and resolves extensionless relative imports (`./theme`) as Vite and
+// tsc do. Node would need a resolver hook and Node 22.15+ for it; the engines
+// field allows 20.19, so the generator does not use node.
 
 const { renderTokensCss } = await import("../src/v1/lib/tokens.ts");
 const { TOKENS } = await import("../src/v1/styles/tokens.ts");
