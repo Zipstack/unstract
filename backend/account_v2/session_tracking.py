@@ -29,6 +29,7 @@ from django.utils.module_loading import import_string
 from logs_helper.log_service import LogService
 
 from account_v2.authentication_plugin_registry import AuthenticationPluginRegistry
+from account_v2.constants import ROW_BACKED_SESSION_ENGINES
 from account_v2.models import SessionRecord, User
 from account_v2.serializer import SignedInSessionSerializer
 
@@ -146,11 +147,7 @@ def _session_details(request: HttpRequest) -> dict[str, Any]:
 
 
 def _sessions_have_rows() -> bool:
-    # Only the database-backed engines keep a `django_session` row per session.
-    return settings.SESSION_ENGINE in (
-        "django.contrib.sessions.backends.db",
-        "django.contrib.sessions.backends.cached_db",
-    )
+    return settings.SESSION_ENGINE in ROW_BACKED_SESSION_ENGINES
 
 
 def _session_row_exists(session_key: str) -> bool:

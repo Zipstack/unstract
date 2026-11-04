@@ -7,6 +7,7 @@ from importlib import import_module
 from typing import Any
 
 import socketio
+from account_v2.constants import ROW_BACKED_SESSION_ENGINES
 from django.conf import settings
 from django.contrib.auth import (
     BACKEND_SESSION_KEY,
@@ -203,6 +204,11 @@ def _get_user_id(sid: str, session_id: str) -> str | None:
     returns the user (a deactivated user is refused), and the session hash still
     matches (a password change signs the session out). Unlike get_user, it never
     flushes or rotates the session, which the browser's cookie still names.
+
+    For the database-backed engines the session's row must also exist. The
+    cache-backed engine reads its cached copy, which can outlive a session that
+    was signed out, and that copy alone must not admit the socket to the user's
+    room. The HTTP side applies the same rule in `SessionTracker.touch()`.
     """
     # Socket handlers run outside Django's request cycle, which is what normally
     # closes stale connections.
@@ -215,6 +221,11 @@ def _get_user_id(sid: str, session_id: str) -> str | None:
         backend_path = store.get(BACKEND_SESSION_KEY)
         if user_id is None or backend_path not in settings.AUTHENTICATION_BACKENDS:
             return None
+        if settings.SESSION_ENGINE in ROW_BACKED_SESSION_ENGINES:
+            from django.contrib.sessions.models import Session
+
+            if not Session.objects.filter(session_key=session_id).exists():
+                return None
         user = load_backend(backend_path).get_user(user_id)
         if user is None:
             return None

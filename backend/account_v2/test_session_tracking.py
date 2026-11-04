@@ -26,6 +26,7 @@ from django.utils.crypto import salted_hmac
 from platform_api.models import ApiKeyPermission, PlatformApiKey
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.test import APIClient, APITestCase
+from utils import log_events
 
 from account_v2.models import Organization, SessionRecord, User
 from account_v2.session_tracking import (
@@ -1072,3 +1073,35 @@ class BrowserSessionGuardTest(SimpleTestCase):
         _require_browser_session(
             SimpleNamespace(session=SimpleNamespace(session_key="abc"))
         )
+
+
+@override_settings(ROOT_URLCONF=__name__, MIDDLEWARE=_MIDDLEWARE)
+class SocketAfterRevokeTest(APITestCase):
+    """A socket reconnecting with a revoked session must not regain the user room.
+
+    The cached copy of a session can outlive its row (a failed cache delete, or a
+    request re-caching it during a revoke), and the socket path reads that copy.
+    """
+
+    def setUp(self) -> None:
+        Organization.objects.create(name=ORG, display_name="Org A", organization_id=ORG)
+        self.user = User.objects.create_user(
+            username="dana@example.com",
+            email="dana@example.com",
+            password=secrets.token_urlsafe(),
+        )
+        # It would close the test's own transaction, as the test client avoids.
+        patcher = patch.object(log_events, "close_old_connections")
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_a_session_whose_row_is_gone_gets_no_user_room(self) -> None:
+        client = APIClient()
+        client.force_login(self.user)
+        key = client.cookies[settings.SESSION_COOKIE_NAME].value
+        self.assertEqual(log_events._get_user_id("sid-1", key), str(self.user.pk))
+
+        # The row goes; the cached copy stays.
+        Session.objects.filter(session_key=key).delete()
+
+        self.assertIsNone(log_events._get_user_id("sid-1", key))
