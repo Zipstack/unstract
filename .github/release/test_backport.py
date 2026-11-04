@@ -4,6 +4,7 @@ import contextlib
 import io
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -351,32 +352,6 @@ class Body(unittest.TestCase):
         )
 
 
-class HeldSince(unittest.TestCase):
-    def test_since_drops_older_main_commits(self):
-        with tempfile.TemporaryDirectory() as repo:
-            shas = []
-            rm.git(repo, "init", "-q", "-b", "main")
-            for i, date in enumerate(
-                ("2026-01-01T00:00:00Z", "2026-01-02T00:00:00Z", "2026-01-04T00:00:00Z")
-            ):
-                with mock.patch.dict(os.environ, {"GIT_COMMITTER_DATE": date}):
-                    dev_git(repo, "commit", "-q", "--allow-empty", "-m", f"c{i}")
-                shas.append(rm.git(repo, "rev-parse", "HEAD"))
-            cut, old, new = shas
-            rm.git(repo, "update-ref", "refs/remotes/origin/main", "HEAD")
-            rm.git(repo, "update-ref", "refs/remotes/origin/release/0.1", cut)
-            classes = {old: ("fix", "#1", "a"), new: ("fix", "#2", "b")}
-            with mock.patch("sys.stdout", io.StringIO()):
-                held = lambda since: [
-                    s
-                    for s, *_ in bp.held(
-                        "o/r", repo, "release/0.1", bp.OWED, classes, since=since
-                    )
-                ]
-                self.assertEqual(held(None), [old, new])
-                self.assertEqual(held("2026-01-03T00:00:00Z"), [new])
-
-
 class MainOrder(unittest.TestCase):
     def test_newest_first_comes_back_oldest_first(self):
         with tempfile.TemporaryDirectory() as repo:
@@ -628,8 +603,8 @@ class PatchLines(unittest.TestCase):
         }
         calls = []
 
-        def held(slug, repo, branch, accept, cache, since):
-            calls.append((branch, accept, since))
+        def held(slug, repo, branch, accept, cache):
+            calls.append((branch, accept))
             return rows[branch]
 
         listed = []
@@ -646,15 +621,15 @@ class PatchLines(unittest.TestCase):
         self.assertEqual(
             calls,
             [
-                ("release/0.190", bp.OWED, "2026-08-01T00:00:00Z"),
-                ("release/0.188", bp.OWED, "2026-06-01T00:00:00Z"),
+                ("release/0.190", bp.OWED),
+                ("release/0.188", bp.OWED),
             ],
         )
         self.assertEqual(
             out[2:],
             [
-                f"- `release/0.190` since `v0.190.0`: `#7 {b[:12]}` (1 unclassifiable left out)",
-                "- `release/0.188` since `v0.188.0`: none",
+                f"- `release/0.190`: `#7 {b[:12]}` (1 unclassifiable left out)",
+                "- `release/0.188`: none",
             ],
         )
         with mock.patch.object(bp, "held", held):
@@ -673,11 +648,6 @@ class PatchLines(unittest.TestCase):
                     "state": "stabilized",
                     "targets": {"cloud": {"ga": ga}},
                 },
-                {
-                    "branch": "release/0.189",
-                    "state": "stabilized",
-                    "targets": {"cloud": {"ga": None}},
-                },
             ]
         }
 
@@ -694,7 +664,6 @@ class PatchLines(unittest.TestCase):
             out[2:],
             [
                 "- `release/0.190`: patch list unavailable (see the run log)",
-                "- `release/0.189`: no GA yet",
             ],
         )
 
@@ -1458,6 +1427,35 @@ class Guards(unittest.TestCase):
         argv = ["backport.py", "--state", "/nonexistent/state.json", "--rescan"]
         with mock.patch("sys.argv", argv), self.assertRaises(ValueError):
             bp.main()
+
+
+class PickStep(unittest.TestCase):
+    """backport.yaml's Pick step and backport.py's argparse are kept in step by hand: a drift fails every run."""
+
+    def setUp(self):
+        here = os.path.dirname(os.path.abspath(__file__))
+        with open(os.path.join(here, "..", "workflows", "backport.yaml")) as f:
+            self.yaml = f.read()
+        self.run_ = self.yaml.split("- name: Pick", 1)[1].split("\n\n", 1)[0]
+        self.help = subprocess.run(
+            [sys.executable, os.path.join(here, "backport.py"), "--help"],
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout
+
+    def test_every_flag_it_passes_is_a_backport_flag(self):
+        flags = set(re.findall(r"(?<![\w-])--[a-z][a-z-]*", self.run_))
+        self.assertIn("--lines", flags)
+        self.assertEqual(flags - set(re.findall(r"--[a-z][a-z-]*", self.help)), set())
+
+    def test_every_input_it_reads_is_declared(self):
+        inputs = self.yaml.split("jobs:", 1)[0]
+        used = set(re.findall(r"inputs\.(\w+)", self.run_))
+        self.assertIn("lines", used)
+        self.assertEqual(
+            {u for u in used if not re.search(rf"^\s+{u}:", inputs, re.M)}, set()
+        )
 
 
 if __name__ == "__main__":

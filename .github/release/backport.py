@@ -370,9 +370,9 @@ def pr_classes(slug, since):
     return classes_from_listing(json.loads(out))
 
 
-def held(slug, repo, branch, accept=HELD, cache=None, token=None, since=None):
+def held(slug, repo, branch, accept=HELD, cache=None, token=None):
     """Main commits since branch's cut whose class is in accept (or UNCLASSIFIABLE), neither picked nor declined.
-    since (ISO date) drops older main commits. cache is shared across calls, so a commit is looked up at most once.
+    cache is shared across calls, so a commit is looked up on its own at most once per run.
     """
     remote = f"origin/{branch}"
     base = rm.git(repo, "merge-base", MAIN, remote)
@@ -385,7 +385,6 @@ def held(slug, repo, branch, accept=HELD, cache=None, token=None, since=None):
         "--first-parent",
         "--no-merges",
         "--format=%H %ae",
-        *([f"--since={since}"] if since else []),
         f"{base}..origin/main",
     )
     commits = [
@@ -408,7 +407,7 @@ def held(slug, repo, branch, accept=HELD, cache=None, token=None, since=None):
         except ValueError as e:  # a title Lint PR should have stopped
             classes[s] = (UNCLASSIFIABLE, str(e), subject())
     print(
-        f"held: {len(commits)} main commit(s) since {since or 'the cut'} for {branch}, {looked} fix_class lookup(s)"
+        f"held: {len(commits)} main commit(s) since the cut of {branch}, {looked} fix_class lookup(s)"
     )
     # A decline carries the same trailer as a pick, so one grep covers both.
     trailers = {
@@ -478,41 +477,30 @@ def held_note(rows, branch, slug=None):
 
 
 def patch_lines(state, slug=None):
-    """Release state: per stabilized line, main fixes merged since its first GA that it lacks, as Backport commits."""
+    """Release state: per stabilized line, main fixes since its cut that it lacks, as Backport commits."""
     slug = slug or os.environ["GITHUB_REPOSITORY"]
     out = [
-        "**Patch a released line**: main fixes since the line's first GA, not on it. Paste into Backport `commits` "
-        "with `confirm_stabilized` and `lines` (every newer released line too).",
+        "**Patch a released line**: main fixes since the line's cut, neither picked nor declined. Paste into Backport "
+        "`commits` with `confirm_stabilized` and `lines` (every newer released line too).",
         "",
     ]
-    # ga: each target's first stable on the line; the oldest of them is the line's first GA. From then on Backport
-    # stops picking plain fixes onto the line, so anything owed is newer.
-    lines = {
-        r["branch"]: min(
-            (tt["ga"] for tt in r["targets"].values() if tt.get("ga")),
-            key=lambda g: rs._ts(g["pushed_at"]),
-            default=None,
-        )
+    branches = [r["branch"] for r in state["branches"] if r["state"] == "stabilized"]
+    if not branches:
+        return "\n".join(out + ["no stabilized line"])
+    # From the cut, not the GA: a fix merged before the GA is still owed when its label came later or its push run
+    # failed. One listing from the oldest GA covers the newer lines; the oldest line's RC period is looked up per commit.
+    gas = [
+        tt["ga"]["pushed_at"]
         for r in state["branches"]
         if r["state"] == "stabilized"
-    }
-    if not lines:
-        return "\n".join(out + ["no stabilized line"])
-    known = [g for g in lines.values() if g]
-    cache = (
-        pr_classes(slug, min(known, key=lambda g: rs._ts(g["pushed_at"]))["pushed_at"])
-        if known
-        else {}
-    )
-    for branch, ga in lines.items():
-        if not ga:  # every target late with no GA: nothing was released to patch
-            out.append(f"- `{branch}`: no GA yet")
-            continue
+        for tt in r["targets"].values()
+        if tt.get("ga")
+    ]
+    cache = pr_classes(slug, min(gas, key=rs._ts)) if gas else {}
+    for branch in branches:
         # A gh or git failure on one line must not fail the State run.
         try:
-            rows = held(
-                slug, REPO, branch, accept=OWED, cache=cache, since=ga["pushed_at"]
-            )
+            rows = held(slug, REPO, branch, accept=OWED, cache=cache)
         except RuntimeError as e:
             print(f"::warning::{branch}: patch list unavailable: {e}")
             out.append(f"- `{branch}`: patch list unavailable (see the run log)")
@@ -522,7 +510,7 @@ def patch_lines(state, slug=None):
         )
         left = sum(cls == UNCLASSIFIABLE for _, cls, *_ in rows)
         out.append(
-            f"- `{branch}` since `{ga['tag']}`: {f'`{commits}`' if commits else 'none'}"
+            f"- `{branch}`: {f'`{commits}`' if commits else 'none'}"
             + (f" ({left} unclassifiable left out)" if left else "")
         )
     return "\n".join(out)
