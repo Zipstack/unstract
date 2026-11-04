@@ -74,6 +74,9 @@ class SessionSocketsTest(SimpleTestCase):
         key = f"session_sockets:{SESSION}"
         self.assertEqual(self.redis.smembers(key), {b"sid-1", b"sid-2"})
         self.assertEqual(self.redis.ttls[key], settings.SESSION_COOKIE_AGE)
+        self.assertEqual(
+            self.redis.ttls["socket_session:sid-1"], settings.SESSION_COOKIE_AGE
+        )
 
     def test_a_disconnected_socket_is_untracked(self) -> None:
         self._connect("sid-1")

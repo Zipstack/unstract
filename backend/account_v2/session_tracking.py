@@ -157,6 +157,16 @@ def _session_row_exists(session_key: str) -> bool:
     return Session.objects.filter(session_key=session_key).exists()
 
 
+def _replace_with_empty_session(request: HttpRequest) -> None:
+    """Start the response from an empty session, so it clears the cookie.
+
+    For a session whose row is already gone but whose store failed part-way:
+    left in place, the store would try to save itself back over the deleted row.
+    """
+    http_request = getattr(request, "_request", request)
+    http_request.session = _session_store_class()()
+
+
 def _disconnect_session_sockets(session_key: str) -> None:
     """Disconnect an ended session's sockets.
 
@@ -259,8 +269,17 @@ class SessionTracker:
                 return True
             if _sessions_have_rows() and not _session_row_exists(session_key):
                 logger.info("Refused an ended session of user %s", user.pk)
-                # Drops the surviving cached copy; the response clears the cookie.
-                request.session.flush()
+                # Refused whether or not the surviving cached copy can be dropped.
+                try:
+                    # The response clears the cookie.
+                    request.session.flush()
+                except Exception:
+                    logger.warning(
+                        "Could not drop the cached copy of an ended session of user %s",
+                        user.pk,
+                        exc_info=True,
+                    )
+                    _replace_with_empty_session(request)
                 return False
             with transaction.atomic():
                 updated = SessionRecord.objects.filter(
@@ -385,10 +404,7 @@ class SessionTracker:
                 exc_info=True,
             )
             if is_current:
-                # The half-flushed store would try to save itself back over the
-                # deleted row; an empty store makes the response clear the cookie.
-                http_request = getattr(request, "_request", request)
-                http_request.session = _session_store_class()()
+                _replace_with_empty_session(request)
         cls.forget(session_key)
 
     @staticmethod
@@ -471,7 +487,11 @@ class SessionTracker:
             )
         if current_key:
             try:
-                cls._end(request, current_key)
+                # Its own savepoint, like the others: under ATOMIC_REQUESTS a
+                # database error outside one would roll back the bump and every
+                # deletion above while the response still reports success.
+                with transaction.atomic():
+                    cls._end(request, current_key)
                 ended.append(current_key)
                 cls._after_end(request, current_key)
             except Exception:
@@ -481,8 +501,7 @@ class SessionTracker:
                     user.pk,
                     exc_info=True,
                 )
-                http_request = getattr(request, "_request", request)
-                http_request.session = _session_store_class()()
+                _replace_with_empty_session(request)
         logger.info(
             "Signed out every session of user %s (%d ended cleanly)",
             user.pk,

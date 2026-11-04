@@ -15,7 +15,7 @@ from unittest.mock import patch
 from django.conf import settings
 from django.contrib.sessions.models import Session
 from django.core.cache import cache, caches
-from django.db import connection
+from django.db import connection, transaction
 from django.db.models.signals import post_save
 from django.test import SimpleTestCase, override_settings
 from django.test.utils import CaptureQueriesContext
@@ -493,20 +493,25 @@ class SessionEndpointsTest(APITestCase):
 
     def test_revoke_all_carries_on_past_a_session_it_fails_to_end(self) -> None:
         laptop = self._sign_in(self.user)
-        failing = self._key(self._sign_in(self.user))
-        other = self._key(self._sign_in(self.user))
+        others = {self._key(self._sign_in(self.user)) for _ in range(2)}
+        laptop_key = self._key(laptop)
         real_end = SessionTracker._end.__func__
+        failed = []
 
-        def end_failing_for_one(cls, request, session_key):
-            if session_key == failing:
+        def end_failing_for_the_first(cls, request, session_key):
+            # Whichever other session comes first, so the order does not matter.
+            if session_key != laptop_key and not failed:
+                failed.append(session_key)
                 _fail_a_query()
             real_end(cls, request, session_key)
 
-        with patch.object(SessionTracker, "_end", classmethod(end_failing_for_one)):
+        with patch.object(SessionTracker, "_end", classmethod(end_failing_for_the_first)):
             response = laptop.post(REVOKE_ALL_URL)
 
         self.assertEqual(response.status_code, 204)
         self.assertEqual(response.cookies[settings.SESSION_COOKIE_NAME].value, "")
+        (failing,) = failed
+        (other,) = others - {failing}
         self.assertFalse(Session.objects.filter(session_key=other).exists())
         # Refused by the generation either way, so not left listed.
         self.assertFalse(SessionRecord.objects.filter(session_key=failing).exists())
@@ -666,6 +671,43 @@ class SessionEndpointsTest(APITestCase):
         ):
             self.assertEqual(laptop.get(SESSIONS_URL).status_code, 200)
         self.assertTrue(User.objects.filter(pk=self.user.pk).exists())
+
+    def test_revoke_all_survives_a_database_error_ending_the_current_session(
+        self,
+    ) -> None:
+        # Under ATOMIC_REQUESTS a swallowed database error outside a savepoint
+        # would roll back the bump and every deletion behind a 204.
+        laptop = self._sign_in(self.user)
+        desktop = self._sign_in(self.user)
+        laptop_key = self._key(laptop)
+        db_store = import_module("django.contrib.sessions.backends.db").SessionStore
+        real_delete = db_store.delete
+
+        def delete_failing_for_the_current(store, session_key=None):
+            if (session_key or store.session_key) == laptop_key:
+                with transaction.atomic(savepoint=False):
+                    _fail_a_query()
+            real_delete(store, session_key)
+
+        with (
+            patch.dict(connection.settings_dict, {"ATOMIC_REQUESTS": True}),
+            patch.object(db_store, "delete", delete_failing_for_the_current),
+        ):
+            response = laptop.post(REVOKE_ALL_URL)
+
+        self.assertEqual(response.status_code, 204)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.session_generation, 1)
+        self.assertEqual(desktop.get(SESSIONS_URL).status_code, 401)
+
+    def test_an_ended_session_is_refused_even_if_its_cached_copy_cannot_go(
+        self,
+    ) -> None:
+        laptop = self._sign_in(self.user)
+        Session.objects.filter(session_key=self._key(laptop)).delete()
+
+        with self._cache_delete_fails():
+            self.assertEqual(laptop.get(SESSIONS_URL).status_code, 401)
 
     def _cache_delete_fails(self):
         return patch.object(
