@@ -7,6 +7,7 @@ chain rather than calling the views directly.
 """
 
 import secrets
+import uuid
 from datetime import timedelta
 from importlib import import_module
 from types import SimpleNamespace
@@ -28,8 +29,6 @@ from rest_framework.test import APIClient, APITestCase
 
 from account_v2.models import Organization, SessionRecord, User
 from account_v2.session_tracking import (
-    _IDLE_SWEEP_CACHE_KEY,
-    _TOUCH_CACHE_PREFIX,
     SessionTracker,
     _location_resolver,
     parse_user_agent,
@@ -83,9 +82,21 @@ def _isolate_side_effects(test) -> None:
     room = patch("account_v2.session_tracking._close_socket_room")
     test.closed_rooms = room.start()
     test.addCleanup(room.stop)
-    test.addCleanup(cache.delete, _IDLE_SWEEP_CACHE_KEY)
+    # Per-test cache keys: test workers run in parallel against one cache, so a
+    # shared key would let one test's gate or cleanup decide another's outcome.
+    unique = uuid.uuid4().hex
+    test.sweep_key = f"session_record_idle_sweep:test:{unique}"
+    test.touch_prefix = f"session_record_touch:test:{unique}:"
+    for name, value in (
+        ("_IDLE_SWEEP_CACHE_KEY", test.sweep_key),
+        ("_TOUCH_CACHE_PREFIX", test.touch_prefix),
+    ):
+        key_patch = patch(f"account_v2.session_tracking.{name}", value)
+        key_patch.start()
+        test.addCleanup(key_patch.stop)
+    test.addCleanup(cache.delete, test.sweep_key)
     if hasattr(cache, "delete_pattern"):
-        test.addCleanup(cache.delete_pattern, f"{_TOUCH_CACHE_PREFIX}*")
+        test.addCleanup(cache.delete_pattern, f"{test.touch_prefix}*")
 
 
 @override_settings(ROOT_URLCONF=__name__, MIDDLEWARE=_MIDDLEWARE)
@@ -220,8 +231,7 @@ class SessionEndpointsTest(APITestCase):
             - timedelta(seconds=settings.SESSION_COOKIE_AGE + 1)
         )
 
-        cache.delete(_IDLE_SWEEP_CACHE_KEY)
-        self.addCleanup(cache.delete, _IDLE_SWEEP_CACHE_KEY)
+        cache.delete(self.sweep_key)
 
         self._sign_in(self.user)
 
@@ -230,8 +240,7 @@ class SessionEndpointsTest(APITestCase):
         )
 
     def test_sign_in_sweeps_at_most_once_an_hour(self) -> None:
-        cache.set(_IDLE_SWEEP_CACHE_KEY, True, timeout=3600)
-        self.addCleanup(cache.delete, _IDLE_SWEEP_CACHE_KEY)
+        cache.set(self.sweep_key, True, timeout=3600)
 
         with patch("account_v2.session_tracking.SessionTracker._sweep_idle") as sweep:
             self._sign_in(self.user)
@@ -241,8 +250,7 @@ class SessionEndpointsTest(APITestCase):
     def test_failing_sweep_does_not_lose_the_sign_in_record(self) -> None:
         # A real database error, which breaks an enclosing transaction (the test
         # case's, as ATOMIC_REQUESTS would wrap sign-in) unless it is isolated.
-        cache.delete(_IDLE_SWEEP_CACHE_KEY)
-        self.addCleanup(cache.delete, _IDLE_SWEEP_CACHE_KEY)
+        cache.delete(self.sweep_key)
 
         with patch(
             "account_v2.session_tracking.SessionTracker._sweep_idle",
@@ -261,8 +269,7 @@ class SessionEndpointsTest(APITestCase):
             last_active_at=timezone.now()
             - timedelta(seconds=settings.SESSION_COOKIE_AGE + 1)
         )
-        cache.delete(_IDLE_SWEEP_CACHE_KEY)
-        self.addCleanup(cache.delete, _IDLE_SWEEP_CACHE_KEY)
+        cache.delete(self.sweep_key)
 
         laptop.get(SESSIONS_URL)
 
@@ -272,9 +279,8 @@ class SessionEndpointsTest(APITestCase):
 
     def test_activity_sweeps_at_most_once_an_hour(self) -> None:
         laptop = self._sign_in(self.user)
-        cache.set(_IDLE_SWEEP_CACHE_KEY, True, timeout=3600)
-        self.addCleanup(cache.delete, _IDLE_SWEEP_CACHE_KEY)
-        cache.delete(f"{_TOUCH_CACHE_PREFIX}{self._key(laptop)}")
+        cache.set(self.sweep_key, True, timeout=3600)
+        cache.delete(f"{self.touch_prefix}{self._key(laptop)}")
 
         with patch("account_v2.session_tracking.SessionTracker._sweep_idle") as sweep:
             laptop.get(SESSIONS_URL)
@@ -577,7 +583,7 @@ class SessionEndpointsTest(APITestCase):
             SessionRecord.objects.get(session_key=key).last_active_at, an_hour_ago
         )
 
-        cache.delete(f"{_TOUCH_CACHE_PREFIX}{key}")  # The window elapses.
+        cache.delete(f"{self.touch_prefix}{key}")  # The window elapses.
         laptop.get(SESSIONS_URL)
         self.assertGreater(
             SessionRecord.objects.get(session_key=key).last_active_at, an_hour_ago
@@ -652,7 +658,7 @@ class SessionEndpointsTest(APITestCase):
 
     def test_a_failing_activity_refresh_does_not_fail_the_request(self) -> None:
         laptop = self._sign_in(self.user)
-        cache.delete(f"{_TOUCH_CACHE_PREFIX}{self._key(laptop)}")
+        cache.delete(f"{self.touch_prefix}{self._key(laptop)}")
 
         with patch(
             "account_v2.session_tracking.django_cache.add",
