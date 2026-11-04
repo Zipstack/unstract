@@ -285,6 +285,14 @@ class Scenario(unittest.TestCase):
         )
         self.assertEqual(st["retire"], ["release/1.2", "release/1.1"])
 
+    def test_state_skips_an_rc_number_the_rc_chart_holds(self):
+        self.onprem_ga()
+        self.cut("1.7")
+        self.push(rs.RC_CHART, "1.7.0-rc.1")  # kept by an abandon; images and tag gone
+        self.assertEqual(
+            self.branch(self.state(), "release/1.7")["next_rc"], "v1.7.0-rc.2"
+        )
+
     def test_cut_no_artifacts(self):
         self.onprem_ga()
         self.cut("1.7")

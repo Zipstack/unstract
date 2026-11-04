@@ -558,7 +558,7 @@ def derive(repo, now, registry=registry_tags, rc=None):
     )
     refs = _branches(repo)
     anomalies = []
-    taken = taken_tags(reg)
+    taken = taken_tags(reg) | rc_chart_tags(registry)
     rows = {name: _row(repo, name, ref, taken) for name, ref in refs.items()}
     # A branchless line with a stable tag was retired after GA: its registry tags are history, not anomalies.
     shipped = {}
