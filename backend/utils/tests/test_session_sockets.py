@@ -5,6 +5,9 @@ and the disconnect goes through the Socket.IO manager, which forwards it to the
 worker holding the socket.
 """
 
+# The fake's `set` method would otherwise shadow the builtin in its annotations.
+from __future__ import annotations
+
 from unittest.mock import call, patch
 
 from django.conf import settings
@@ -18,7 +21,15 @@ SESSION = "a" * 32
 class _FakeRedis:
     def __init__(self) -> None:
         self.sets: dict[str, set[bytes]] = {}
+        self.values: dict[str, bytes] = {}
         self.ttls: dict[str, int] = {}
+
+    def set(self, key: str, value: str, ex: int) -> None:
+        self.values[key] = value.encode()
+        self.ttls[key] = ex
+
+    def get(self, key: str) -> bytes | None:
+        return self.values.get(key)
 
     def sadd(self, key: str, member: str) -> None:
         self.sets.setdefault(key, set()).add(member.encode())
@@ -34,24 +45,17 @@ class _FakeRedis:
 
     def delete(self, key: str) -> None:
         self.sets.pop(key, None)
+        self.values.pop(key, None)
 
 
 class SessionSocketsTest(SimpleTestCase):
     def setUp(self) -> None:
         self.redis = _FakeRedis()
-        self.socket_sessions: dict[str, dict] = {}
         for target, kwargs in (
             ("_get_redis_conn", {"return_value": self.redis}),
             ("_get_user_id", {"return_value": None}),
         ):
             patcher = patch.object(log_events, target, **kwargs)
-            patcher.start()
-            self.addCleanup(patcher.stop)
-        for name, side_effect in (
-            ("save_session", self.socket_sessions.__setitem__),
-            ("get_session", self.socket_sessions.__getitem__),
-        ):
-            patcher = patch.object(log_events.sio, name, side_effect=side_effect)
             patcher.start()
             self.addCleanup(patcher.stop)
         for name in ("enter_room", "disconnect"):
@@ -78,6 +82,7 @@ class SessionSocketsTest(SimpleTestCase):
         log_events.disconnect("sid-1")
 
         self.assertEqual(self.redis.smembers(f"session_sockets:{SESSION}"), {b"sid-2"})
+        self.assertIsNone(self.redis.get("socket_session:sid-1"))
 
     def test_ending_a_session_disconnects_each_of_its_sockets(self) -> None:
         self._connect("sid-1")
@@ -88,10 +93,12 @@ class SessionSocketsTest(SimpleTestCase):
         self.disconnect.assert_has_calls([call("sid-1"), call("sid-2")], any_order=True)
         self.assertEqual(self.redis.smembers(f"session_sockets:{SESSION}"), set())
 
-    def test_tracking_failure_does_not_block_the_connection(self) -> None:
+    def test_a_socket_that_cannot_be_tracked_is_refused(self) -> None:
+        # Ending its session could not reach it, so it must join no room.
         with patch.object(
             log_events, "_get_redis_conn", side_effect=ConnectionError("redis down")
         ):
             self._connect("sid-1")
 
-        self.enter_room.assert_called_with("sid-1", SESSION)
+        self.enter_room.assert_not_called()
+        self.disconnect.assert_called_once_with("sid-1")

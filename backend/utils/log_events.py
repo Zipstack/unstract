@@ -30,6 +30,7 @@ _SESSION_KEY_RE = re.compile(r"[a-z0-9]{32}")
 # Socket ids per signed-in session, so that ending a session can disconnect its
 # sockets on every worker: a worker can list only its own sockets.
 _SESSION_SOCKETS_PREFIX = "session_sockets:"
+_SOCKET_SESSION_PREFIX = "socket_session:"
 
 
 _cors_allowed_origins: list[Any] = list(settings.CORS_ALLOWED_ORIGINS)
@@ -88,7 +89,11 @@ def connect(sid: str, environ: Any, auth: Any) -> None:
     logger.info(f"[{os.getpid()}] Client with SID:{sid} connected")
     session_id = _get_user_session_id_from_cookies(sid, environ)
     if session_id:
-        _track_session_socket(sid, session_id)
+        # Fail closed: a socket that ending its session could not reach would
+        # keep receiving that session's and its user's events.
+        if not _track_session_socket(sid, session_id):
+            sio.disconnect(sid)
+            return
         sio.enter_room(sid, session_id)
         logger.info(f"Entered room {session_id} for socket {sid}")
         user_id = _get_user_id(sid, session_id)
@@ -113,22 +118,34 @@ def _session_sockets_key(session_id: str) -> str:
     return f"{_SESSION_SOCKETS_PREFIX}{session_id}"
 
 
-def _track_session_socket(sid: str, session_id: str) -> None:
+def _track_session_socket(sid: str, session_id: str) -> bool:
+    """Whether the socket was recorded against its session."""
     try:
-        sio.save_session(sid, {"session_id": session_id})
         conn = _get_redis_conn()
         key = _session_sockets_key(session_id)
         conn.sadd(key, sid)
         conn.expire(key, settings.SESSION_COOKIE_AGE)
+        conn.set(
+            f"{_SOCKET_SESSION_PREFIX}{sid}", session_id, ex=settings.SESSION_COOKIE_AGE
+        )
+        return True
     except Exception:
-        logger.warning(f"Could not track socket {sid} for its session", exc_info=True)
+        logger.warning(
+            f"Could not track socket {sid} for its session; refusing it", exc_info=True
+        )
+        return False
 
 
 def _untrack_session_socket(sid: str) -> None:
     try:
-        session_id = sio.get_session(sid).get("session_id")
+        conn = _get_redis_conn()
+        reverse_key = f"{_SOCKET_SESSION_PREFIX}{sid}"
+        session_id = conn.get(reverse_key)
         if session_id:
-            _get_redis_conn().srem(_session_sockets_key(session_id), sid)
+            if isinstance(session_id, bytes):
+                session_id = session_id.decode()
+            conn.srem(_session_sockets_key(session_id), sid)
+            conn.delete(reverse_key)
     except Exception:
         logger.warning(f"Could not untrack socket {sid}", exc_info=True)
 
