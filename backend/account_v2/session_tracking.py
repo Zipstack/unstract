@@ -155,20 +155,28 @@ def _delete_cached_copy(store: Any) -> None:
         caches[settings.SESSION_CACHE_ALIAS].delete(cache_key)
 
 
-def _close_socket_rooms(*rooms: str) -> None:
-    """Stop live events reaching sockets of ended sessions.
+def _disconnect_session_sockets(session_key: str) -> None:
+    """Disconnect an ended session's sockets.
 
     Sockets are authenticated only when they connect, so without this a socket
-    of a revoked session keeps receiving its rooms' events until it disconnects.
-    Best effort: the sessions are already over.
+    of a revoked session keeps receiving events, in the per-user room too, until
+    it disconnects. Best effort: the session is already over.
     """
+    try:
+        from utils.log_events import disconnect_session_sockets
+
+        disconnect_session_sockets(session_key)
+    except Exception:
+        logger.warning("Failed to disconnect sockets of an ended session", exc_info=True)
+
+
+def _close_socket_room(room: str) -> None:
     try:
         from utils.log_events import sio
 
-        for room in rooms:
-            sio.close_room(room)
+        sio.close_room(room)
     except Exception:
-        logger.warning("Failed to close socket rooms of ended sessions", exc_info=True)
+        logger.warning("Failed to close a socket room", exc_info=True)
 
 
 class SessionTracker:
@@ -346,7 +354,7 @@ class SessionTracker:
         cls.forget(session_key)
         # Last, and best effort: the session is already over, and an unreachable
         # cache or broker must not turn a completed sign-out into an error.
-        _close_socket_rooms(session_key)
+        _disconnect_session_sockets(session_key)
         try:
             LogService.remove_logs_on_logout(session_id=session_key)
         except Exception:
@@ -408,8 +416,9 @@ class SessionTracker:
                 user.pk,
                 exc_info=True,
             )
-        # The per-user room too: every session of the user has just ended.
-        _close_socket_rooms(f"user:{user.pk}")
+        # Every session of the user has just ended, including any with no record
+        # (whose sockets cannot be found by session), so empty the per-user room.
+        _close_socket_room(f"user:{user.pk}")
         if current_key:
             cls._end(request, current_key)
         logger.info(

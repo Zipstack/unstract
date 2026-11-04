@@ -74,9 +74,12 @@ def resolve_long_location(ip_address: str) -> str:
 
 def _isolate_side_effects(test) -> None:
     """Keep socket broadcasts out of the tests, and the shared cache clean."""
-    rooms = patch("account_v2.session_tracking._close_socket_rooms")
-    test.closed_rooms = rooms.start()
-    test.addCleanup(rooms.stop)
+    sockets = patch("account_v2.session_tracking._disconnect_session_sockets")
+    test.disconnected_sessions = sockets.start()
+    test.addCleanup(sockets.stop)
+    room = patch("account_v2.session_tracking._close_socket_room")
+    test.closed_rooms = room.start()
+    test.addCleanup(room.stop)
     test.addCleanup(cache.delete, _IDLE_SWEEP_CACHE_KEY)
     if hasattr(cache, "delete_pattern"):
         test.addCleanup(cache.delete_pattern, f"{_TOUCH_CACHE_PREFIX}*")
@@ -665,20 +668,30 @@ class SessionEndpointsTest(APITestCase):
         self.assertEqual(len(laptop.get(SESSIONS_URL).json()), 2)
         self.assertEqual(laptop.delete(f"{SESSIONS_URL}{desktop_id}/").status_code, 204)
 
-    def test_revoking_closes_the_sessions_socket_rooms(self) -> None:
+    def test_revoking_one_disconnects_only_that_sessions_sockets(self) -> None:
         laptop = self._sign_in(self.user)
         desktop = self._sign_in(self.user)
         desktop_key = self._key(desktop)
         desktop_id = SessionRecord.objects.get(session_key=desktop_key).id
 
         laptop.delete(f"{SESSIONS_URL}{desktop_id}/")
-        self.closed_rooms.assert_called_once_with(desktop_key)
 
-        self.closed_rooms.reset_mock()
-        laptop_key = self._key(laptop)
+        self.disconnected_sessions.assert_called_once_with(desktop_key)
+        # The per-user room is shared with the sessions that remain.
+        self.closed_rooms.assert_not_called()
+
+    def test_revoking_all_disconnects_every_session_and_empties_the_user_room(
+        self,
+    ) -> None:
+        laptop = self._sign_in(self.user)
+        desktop = self._sign_in(self.user)
+        keys = {self._key(laptop), self._key(desktop)}
+
         laptop.post(REVOKE_ALL_URL)
-        rooms = {call.args[0] for call in self.closed_rooms.call_args_list}
-        self.assertEqual(rooms, {laptop_key, f"user:{self.user.pk}"})
+
+        disconnected = {c.args[0] for c in self.disconnected_sessions.call_args_list}
+        self.assertEqual(disconnected, keys)
+        self.closed_rooms.assert_called_once_with(f"user:{self.user.pk}")
 
     def test_revoking_clears_the_sessions_logs(self) -> None:
         laptop = self._sign_in(self.user)

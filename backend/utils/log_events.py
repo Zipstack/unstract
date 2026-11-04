@@ -27,6 +27,9 @@ from utils.cors_origin import RegexOrigin
 logger = logging.getLogger(__name__)
 
 _SESSION_KEY_RE = re.compile(r"[a-z0-9]{32}")
+# Socket ids per signed-in session, so that ending a session can disconnect its
+# sockets on every worker: a worker can list only its own sockets.
+_SESSION_SOCKETS_PREFIX = "session_sockets:"
 
 
 _cors_allowed_origins: list[Any] = list(settings.CORS_ALLOWED_ORIGINS)
@@ -85,6 +88,7 @@ def connect(sid: str, environ: Any, auth: Any) -> None:
     logger.info(f"[{os.getpid()}] Client with SID:{sid} connected")
     session_id = _get_user_session_id_from_cookies(sid, environ)
     if session_id:
+        _track_session_socket(sid, session_id)
         sio.enter_room(sid, session_id)
         logger.info(f"Entered room {session_id} for socket {sid}")
         user_id = _get_user_id(sid, session_id)
@@ -102,6 +106,45 @@ def connect(sid: str, environ: Any, auth: Any) -> None:
 @sio.event
 def disconnect(sid: str) -> None:
     logger.info(f"[{os.getpid()}] Client with SID:{sid} disconnected")
+    _untrack_session_socket(sid)
+
+
+def _session_sockets_key(session_id: str) -> str:
+    return f"{_SESSION_SOCKETS_PREFIX}{session_id}"
+
+
+def _track_session_socket(sid: str, session_id: str) -> None:
+    try:
+        sio.save_session(sid, {"session_id": session_id})
+        conn = _get_redis_conn()
+        key = _session_sockets_key(session_id)
+        conn.sadd(key, sid)
+        conn.expire(key, settings.SESSION_COOKIE_AGE)
+    except Exception:
+        logger.warning(f"Could not track socket {sid} for its session", exc_info=True)
+
+
+def _untrack_session_socket(sid: str) -> None:
+    try:
+        session_id = sio.get_session(sid).get("session_id")
+        if session_id:
+            _get_redis_conn().srem(_session_sockets_key(session_id), sid)
+    except Exception:
+        logger.warning(f"Could not untrack socket {sid}", exc_info=True)
+
+
+def disconnect_session_sockets(session_id: str) -> None:
+    """Disconnect every socket of a session, on whichever worker holds it.
+
+    Sockets are authenticated only when they connect, so this is what stops an
+    ended session's sockets receiving events in any room, the per-user one
+    included.
+    """
+    conn = _get_redis_conn()
+    key = _session_sockets_key(session_id)
+    for sid in conn.smembers(key):
+        sio.disconnect(sid.decode() if isinstance(sid, bytes) else sid)
+    conn.delete(key)
 
 
 def _get_user_session_id_from_cookies(sid: str, environ: Any) -> str | None:
