@@ -41,8 +41,8 @@ jobs:
       # base to diff, so paths-filter resolves against the default branch and a
       # manual run on main diffs main against itself — every filter false, every
       # tier skipped, gate green with nothing run. Force both true off-PR.
-      relevant: ${{ github.event_name != 'pull_request' || steps.filter.outputs.relevant == 'true' }}
-      e2e_relevant: ${{ github.event_name != 'pull_request' || steps.filter.outputs.e2e_relevant == 'true' }}
+      relevant: ${{ github.event_name != 'pull_request' || steps.filter.outputs.relevant == 'true' || steps.filter.outputs.ci_self == 'true' }}
+      e2e_relevant: ${{ github.event_name != 'pull_request' || steps.filter.outputs.e2e_relevant == 'true' || steps.filter.outputs.ci_self == 'true' }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
@@ -62,8 +62,15 @@ jobs:
               - "!docker/**"
               - "!frontend/**"
               - "!docs/**"
+              - "!.github/**"
+              - "!.claude/**"
             e2e_relevant:
               - "!docs/**"
+              - "!.github/**"
+              - "!.claude/**"
+            # .github/** is ignored above, but a change to this workflow must still test itself.
+            ci_self:
+              - ".github/workflows/ci-test.yaml"
 
   # Tiers share no state (separate runners, disjoint groups), so they run as
   # parallel matrix legs; cross-tier reconciliation happens in `report`.
