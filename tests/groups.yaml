@@ -89,8 +89,14 @@ groups:
   unit-workers:
     tier: unit
     workdir: workers
+    # executor/tests: the executor's own unit tests (image-limit resolution,
+    # the vlm_image_answer bridge); no lane collected them before UN-4427.
+    # sandbox/tests: the Agent-KV codegen sandbox's own unit tests, added on
+    # this branch. Both are independent additions to this lane -- main added
+    # executor/tests while this branch added sandbox/tests, so the merge keeps
+    # both rather than choosing.
     paths: [tests, shared/tests, sandbox/tests, shared/infrastructure/config/tests,
-            ide_callback/tests]
+            ide_callback/tests, executor/tests]
     # Negative filter: worker unit tests aren't tagged `unit` (~1100 of them),
     # so select by exclusion. `conftest.py` marks real-Postgres tests
     # `integration` (routed to the `integration-workers` group); `slow` tests are

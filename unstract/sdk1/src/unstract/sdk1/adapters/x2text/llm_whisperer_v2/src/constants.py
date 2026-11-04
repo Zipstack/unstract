@@ -188,6 +188,11 @@ class ImageOutputConfig:
     IMAGE_FORMAT_PARAM = "format"
     DEFAULT_IMAGE_FORMAT = "png"
     FILE_NAME_PARAM = "file_name"
+    # Raw image bytes LLMWhisperer may render before it stops and rejects the
+    # job unbilled (LW-460); its failed status carries ``metadata.error_code``
+    # = ``size_limit_exceeded``.
+    MAX_TOTAL_IMAGE_BYTES_PARAM = "max_total_image_bytes"
+    SIZE_LIMIT_EXCEEDED = "size_limit_exceeded"
 
     # --- Per-page image naming / storage layout ---
     # Sourced from the shared x2text surface so the writer (this adapter)
