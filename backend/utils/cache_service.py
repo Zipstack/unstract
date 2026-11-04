@@ -6,6 +6,8 @@ from typing import Any
 from django.conf import settings
 from django.core.cache import cache
 from django_redis import get_redis_connection
+from redis.exceptions import ConnectionError as RedisConnectionError
+from redis.exceptions import TimeoutError as RedisTimeoutError
 
 from unstract.core.cache.redis_client import create_redis_client
 
@@ -110,13 +112,27 @@ class CacheService:
                     f"Cache clearing incomplete: deleted {deleted_count} keys before timeout"
                 )
 
-        except (ConnectionError, TimeoutError, OSError) as e:
+        except (
+            RedisConnectionError,
+            RedisTimeoutError,
+            OSError,  # includes the builtin ConnectionError and TimeoutError
+        ) as e:
             logger.error(f"Failed to clear cache pattern '{key_pattern}': {str(e)}")
+            # The fallback goes through the default Django cache, so it is used
+            # only when no db was given. With an explicit db it could target a
+            # different DB, delete nothing and still report success, so any
+            # explicit db re-raises instead.
+            if db is not None:
+                raise
             # Fallback to old method for backward compatibility
             try:
                 cache.delete_pattern(key_pattern)
                 logger.warning(f"Used fallback delete_pattern for '{key_pattern}'")
-            except (ConnectionError, TimeoutError, OSError) as fallback_error:
+            except (
+                RedisConnectionError,
+                RedisTimeoutError,
+                OSError,  # includes the builtin ConnectionError and TimeoutError
+            ) as fallback_error:
                 logger.error(
                     f"Fallback cache clearing also failed: {str(fallback_error)}"
                 )
