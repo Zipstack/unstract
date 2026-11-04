@@ -114,7 +114,10 @@ const CASES = parseTable(`
   v1-raw-pixel-arbitrary-separator | lint:v1       | No raw pixel value under v1
   v1-important-utility           | lint:v1         | No !important under v1
   v1-important-variant-utility   | lint:v1         | No !important under v1
-  v1-important-css               | lint:v1         | No !important under v1
+  # Biome now reports CSS !important first (warnings fail v1), so the styling
+  # policy's own CSS branch is run directly as well.
+  v1-important-css               | lint:v1         | noImportantStyles
+  v1-important-css               | node scripts/check-v1-styles.mjs | No !important under v1
   v1-css-import-from-page        | lint:v1         | CSS is imported only from app/ and styles/
   v1-styles-raw-colour           | lint:v1         | No raw colour under v1
   v1-styles-raw-colour-named     | lint:v1         | No raw colour under v1
@@ -129,6 +132,26 @@ const CASES = parseTable(`
   v1-cva-unprefixed-variant      | lint:v1         | No unprefixed Tailwind utility under v1
   v1-styles-policy-ok            | lint:v1         | -
   v1-plain-strings-ok            | lint:v1         | -
+  # Quality (P0-T10): accessibility rules, and every other warning, fail v1.
+  v1-a11y-button-type            | lint:v1         | useButtonType
+  v1-warning-is-error            | lint:v1         | noArrayIndexKey
+  # Purity (P0-T10): the antd shims are v0, so v1 cannot reach them.
+  v1-imports-v0-shim             | lint:v1         | v1 imports nothing outside src/v1
+  # Seam (P0-T10, check-v1-seam.mjs): v1 work changes v0 only at the seam.
+  seam-v1-only                   | node scripts/check-v1-seam.mjs --changed changed.txt | -
+  seam-v1-at-the-seam            | node scripts/check-v1-seam.mjs --changed changed.txt | -
+  seam-v0-fix-only               | node scripts/check-v1-seam.mjs --changed changed.txt | -
+  seam-v1-changes-v0-page        | node scripts/check-v1-seam.mjs --changed changed.txt | src/pages/LogsPage.jsx: changes v0 outside the seam
+  seam-v1-changes-public         | node scripts/check-v1-seam.mjs --changed changed.txt | public/favicon.ico: changes v0 outside the seam
+  seam-v1-tooling-changes-v0     | node scripts/check-v1-seam.mjs --changed changed.txt | antd-button.tsx: changes v0 outside the seam
+  seam-v1-changes-v0-page        | node scripts/check-v1-seam.mjs --changed changed.txt --override | -
+  # Separation (P0-T10, check-v1-separation.mjs): no plugin code in OSS.
+  -                              | node scripts/check-v1-separation.mjs | -
+  v1-plugin-folder               | node scripts/check-v1-separation.mjs | src/v1/plugins/acme/: enterprise plugin code
+  # Bundle (P0-T10, check-v1-bundle.mjs): real builds, then a saved report.
+  bundle-v1-clean                | node scripts/check-v1-bundle.mjs | -
+  bundle-v1-pulls-v0             | node scripts/check-v1-bundle.mjs | pulls in v0 module src/legacy.js
+  bundle-v1-antd-report          | node scripts/check-v1-bundle.mjs --report report.json | pulls in antd module
 `).map(([name, run, fails]) => ({
   name: name === "-" ? null : name,
   run: run.split(" + "),

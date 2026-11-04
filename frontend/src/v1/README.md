@@ -91,9 +91,18 @@ Every folder may import from itself. Test files (`*.test.ts(x)`,
 | Script | Checks |
 | --- | --- |
 | `bun run typecheck:v1` | TypeScript-only files, styles only in `styles/`, allowed file types only, no symlinks, folder taxonomy; then `tsc` with `src/v1/tsconfig.json` |
-| `bun run lint:v1` | Biome on `src/v1/`, then imports in code and in `styles/` CSS (nothing outside v1, folder contract, and v0 reaching v1 only through `@v1`), PropTypes and `ant-` checks, then the styling policy (S1 to S8 above) |
+| `bun run lint:v1` | Biome on `src/v1/` (warnings fail), then imports in code and in `styles/` CSS (nothing outside v1, folder contract, and v0 reaching v1 only through `@v1`), PropTypes and `ant-` checks, then the styling policy (S1 to S8 above) |
 | `bun run tokens:v1` | Regenerates `styles/tokens.css` from `styles/tokens.json` (via `styles/tokens.ts`; runs under bun, which imports the TypeScript source directly) |
 | `bun run test:v1` | v1 unit tests, then the guardrail fixtures in `test-fixtures/v1-boundary/` |
+| `bun run seam:v1` | Seam guard: v1 work changes v0 (`src/` outside v1, `public/`) only at the files in `scripts/v1-seam-allowlist.json`, compared with `origin/main` |
+| `bun run separation:v1` | No enterprise plugin code: no folder under `plugins/` is tracked in the public repository |
+| `bun run bundle:v1` | Production build, then no v1 chunk (or a chunk it loads) holds a v0 module or antd |
+
+In CI these run as separate `v1 · …` checks (`.github/workflows/ci-frontend-v1.yaml`
+and `ci-frontend-v1-seam.yaml`), apart from v0's checks. `lint:v1` and CI
+fail on any Biome warning under `src/v1/`, and the accessibility rules are
+errors there. A PR that is v1 work and needs a v0 change outside the seam
+carries the `v0-change` label, which turns the seam check into a report.
 
 Biome (`biome.json`) also reports the banned imports and the plain spellings of
 the v0 ↔ v1 boundary, so `biome ci` and editors flag them too: `@/`, `../`,

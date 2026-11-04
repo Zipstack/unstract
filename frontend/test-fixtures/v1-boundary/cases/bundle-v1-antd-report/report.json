@@ -1,0 +1,22 @@
+{
+  "chunks": [
+    {
+      "fileName": "assets/index.js",
+      "facade": "src/index.jsx",
+      "modules": ["src/index.jsx"],
+      "imports": ["assets/logs.js"]
+    },
+    {
+      "fileName": "assets/logs.js",
+      "facade": "src/v1/pages/logs/index.tsx",
+      "modules": ["src/v1/pages/logs/index.tsx"],
+      "imports": ["assets/vendor.js"]
+    },
+    {
+      "fileName": "assets/vendor.js",
+      "facade": null,
+      "modules": ["/repo/frontend/node_modules/antd/es/button/index.js"],
+      "imports": []
+    }
+  ]
+}
