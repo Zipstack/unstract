@@ -869,6 +869,34 @@ def test_node_command_vitest_points_reporter_at_group_junit(
     assert cmd[-1] == "src"
 
 
+def test_node_command_vitest_passes_the_group_config(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`vitest_config` reaches vitest as `--config`, ahead of the paths; without
+    it the command is exactly as before (vitest's default config).
+    """
+    import tests.rig.cli as cli_mod
+    from tests.rig.groups import GroupDefinition
+
+    monkeypatch.setattr(
+        cli_mod.shutil, "which", lambda name: "/usr/bin/npx" if name == "npx" else None
+    )
+    junit = tmp_path / "junit.xml"
+    group = GroupDefinition(
+        name="frontend-v1-unit", tier="unit", paths=("src/v1",), runner="vitest",
+        workdir="frontend", vitest_config="vitest.v1.config.mts",
+    )
+    assert cli_mod._node_command(group, junit=junit) == [
+        "npx", "--no-install", "vitest", "run", "--reporter=junit",
+        f"--outputFile={junit}", "--config", "vitest.v1.config.mts", "src/v1",
+    ]
+    plain = GroupDefinition(
+        name="frontend", tier="unit", paths=("src",), runner="vitest",
+        workdir="frontend",
+    )
+    assert "--config" not in cli_mod._node_command(plain, junit=junit)
+
+
 def test_node_command_playwright_takes_junit_from_env_not_flag(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

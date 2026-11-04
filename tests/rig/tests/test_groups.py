@@ -465,3 +465,72 @@ def test_postgres_migrate_requires_workdir(tmp_path: Path) -> None:
     )
     with pytest.raises(ValueError, match="workdir"):
         load_groups(manifest)
+
+
+def _vitest_manifest(tmp_path: Path, extra: str, *, runner: str = "vitest") -> Path:
+    workdir = tmp_path / "frontend"
+    workdir.mkdir(exist_ok=True)
+    (workdir / "src").mkdir(exist_ok=True)
+    return _write_manifest(
+        tmp_path,
+        f"""
+        version: 1
+        groups:
+          web:
+            tier: unit
+            runner: {runner}
+            workdir: {workdir}
+            paths: [src]
+            {extra}
+        """,
+    )
+
+
+def test_vitest_config_is_loaded(tmp_path: Path) -> None:
+    manifest = _vitest_manifest(tmp_path, "vitest_config: vitest.v1.config.mts")
+    (tmp_path / "frontend" / "vitest.v1.config.mts").write_text("export default {}")
+    assert load_groups(manifest).get("web").vitest_config == "vitest.v1.config.mts"
+
+
+def test_vitest_config_defaults_to_none(tmp_path: Path) -> None:
+    assert load_groups(_vitest_manifest(tmp_path, "")).get("web").vitest_config is None
+
+
+def test_vitest_config_rejected_on_other_runners(tmp_path: Path) -> None:
+    manifest = _vitest_manifest(
+        tmp_path, "vitest_config: vitest.config.mjs", runner="playwright"
+    )
+    with pytest.raises(ValueError, match="applies only to runner `vitest`"):
+        load_groups(manifest)
+
+
+@pytest.mark.parametrize("value", ['""', "[a.mts]", "3"])
+def test_vitest_config_must_be_a_path(tmp_path: Path, value: str) -> None:
+    with pytest.raises(ValueError, match="must be a non-empty path"):
+        load_groups(_vitest_manifest(tmp_path, f"vitest_config: {value}"))
+
+
+def test_vitest_config_must_exist(tmp_path: Path) -> None:
+    manifest = _vitest_manifest(tmp_path, "vitest_config: missing.config.mts")
+    with pytest.raises(ValueError, match="`vitest_config` does not exist"):
+        load_groups(manifest)
+
+
+def test_vitest_config_must_stay_inside_workdir(tmp_path: Path) -> None:
+    (tmp_path / "outside.config.mts").write_text("export default {}")
+    manifest = _vitest_manifest(tmp_path, "vitest_config: ../outside.config.mts")
+    with pytest.raises(ValueError, match="must be inside workdir"):
+        load_groups(manifest)
+
+
+def test_frontend_groups_run_separate_vitest_configs() -> None:
+    """v0 and v1 share a workdir, so only the config keeps one suite's result
+    out of the other's (UN-4329). `frontend` must stay on vitest's default
+    config, which excludes src/v1; `frontend-v1-unit` runs the v1 one.
+    """
+    manifest = load_groups()
+    assert manifest.get("frontend").vitest_config is None
+    v1 = manifest.get("frontend-v1-unit")
+    assert v1.runner == "vitest"
+    assert v1.workdir == "frontend"
+    assert v1.vitest_config == "vitest.v1.config.mts"
