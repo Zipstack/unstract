@@ -231,9 +231,25 @@ def taken_tags(reg=None, registry=registry_tags):
     return {t for a in _artifacts() for t in (reg[a] if a in reg else registry(a))}
 
 
+RC_CHART = "on-prem/unstract-platform"
+
+
+def rc_chart_tags(registry=registry_tags):
+    """The on-prem RC chart's versions, as vX.Y.Z-rc.N. Abandon can keep the chart's last version, so an RC number
+    it holds is never allocated again: the chart push would otherwise find that old chart and keep it.
+    """
+    if "on-prem" not in TARGETS:
+        return set()
+    return {
+        "v" + t for t in registry(RC_CHART) if re.fullmatch(r"\d+\.\d+\.\d+-rc\.\d+", t)
+    }
+
+
 def used_tags(repo, line, registry=registry_tags):
-    """Cut refuses a line with these: its tags would read as the new line's builds or GA."""
-    ver = re.compile(rf"{re.escape(PREFIX)}v{re.escape(line)}\.\d+(?:-rc\.\d+)?")
+    """Cut refuses a line with these: its tags would read as the new line's builds or GA.
+    Registry RCs do not count: an abandon keeps a package's last one, and a re-cut skips it.
+    """
+    ver = re.compile(rf"{re.escape(PREFIX)}v{re.escape(line)}\.\d+")
     tags = set(line_tags(repo, line)) | {
         t for a in _artifacts() for t in _read(a, registry) if ver.fullmatch(t)
     }
@@ -542,7 +558,7 @@ def derive(repo, now, registry=registry_tags, rc=None):
     )
     refs = _branches(repo)
     anomalies = []
-    taken = taken_tags(reg)
+    taken = taken_tags(reg) | rc_chart_tags(registry)
     rows = {name: _row(repo, name, ref, taken) for name, ref in refs.items()}
     # A branchless line with a stable tag was retired after GA: its registry tags are history, not anomalies.
     shipped = {}
@@ -579,7 +595,7 @@ def retire_line_refusal(state, branch, force=False):
     if "cloud" in held:
         return "cloud is production (newest cloud GA); it retires once a newer line is promoted"
     if held and not force:
-        return f"{', '.join(held)} still supported (stabilized); force to retire it inside the window"
+        return f"{', '.join(held)} still supported (stabilized); a release manager may retire it inside the window with force"
     return None
 
 
@@ -594,11 +610,14 @@ def _repo_of(version):
 def _by_version(tags):
     """{id or digest: {id, digest, tags}}: one digest in two repositories is two versions."""
     by_version = {}
-    # Version order, so the last version is the newest RC (rc.10 after rc.9); other tags first.
-    for t, info in sorted(
-        tags.items(),
-        key=lambda kv: (_vkey(kv[0]) if VER_RE.fullmatch(kv[0]) else (-1, -1), kv[0]),
-    ):
+
+    # Version order, so the last version is the newest RC (rc.10 after rc.9); other tags first. Chart versions
+    # carry no "v".
+    def key(kv):
+        t = kv[0] if VER_RE.fullmatch(kv[0]) else f"{PREFIX}v{kv[0]}"
+        return (_vkey(t) if VER_RE.fullmatch(t) else (-1, -1), kv[0])
+
+    for t, info in sorted(tags.items(), key=key):
         by_version.setdefault(
             info.get("id") or info["digest"],
             {"id": info.get("id"), "digest": info["digest"], "tags": []},
@@ -634,7 +653,8 @@ def abandon_plan(repo, branch, registry=registry_tags, services=rc_service_tags)
     deleted only when every tag on it is an RC of this line.
     """
     x, y = rm._line(branch)
-    rc_re = re.compile(rf"{re.escape(PREFIX)}v{x}\.{y}\.\d+-rc\.\d+")
+    # The on-prem RC chart's versions have no "v".
+    rc_re = re.compile(rf"(?:{re.escape(PREFIX)}v)?{x}\.{y}\.\d+-rc\.\d+")
     reg = {a: _read(a, registry) for a in _artifacts()}
     main = _main(repo)
     ga = [f"{PREFIX}v{x}.{y}.{z}" for z in sorted(rm._tags(repo, x, y, PREFIX)[0])]
@@ -693,7 +713,7 @@ def promote_blockers(state, branch, target):
         return []
     line = _key(branch.split("/", 1)[1])
     return [
-        f"{b['branch']} is not GA for {target} yet: promote and publish it first, retire it, or force with a reason"
+        f"{b['branch']} is not GA for {target} yet: promote and publish it first or retire it; a release manager may override this with force and a reason"
         for b in state["branches"]
         if _key(b["line"]) < line
         and target in b["targets"]
