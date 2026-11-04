@@ -77,8 +77,9 @@ only when a v1 page first renders.
 - **Register** it, in its go-live task only (D9), by adding its key to
   `REGISTERED_PAGES`. Its v0 URLs then redirect to v1; reverting is that line.
 - `app/registry/validate.test.ts` fails CI on an invalid entry: overlapping
-  patterns across pages, a route without a mapping to the other version, a
-  mapping that would redirect back, a page without a component, or `toggle`
+  patterns across pages, a v1 and a v0 route of one page that match the same
+  URL, a route without a mapping to the other version, a page without a
+  component, or `toggle`
   on any page but Human Review (UN11, D14) and its demo stand-in.
 - Human Review's old-version preference is per user, per browser, in
   localStorage (`unstract.v1.oldVersion.<userId>`). `setOldVersion(on)` sets

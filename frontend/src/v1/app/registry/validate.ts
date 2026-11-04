@@ -1,5 +1,4 @@
 import { paramNames, patternProblem, patternsOverlap } from "./patterns";
-import { fillPattern, matchRegistryRoute } from "./resolve";
 import type { PageKey, RegistryEntry } from "./types";
 
 /** Pages allowed to honour the old-version preference: Human Review (D14) and its demo stand-in. */
@@ -31,26 +30,11 @@ function checkMapping(
       continue;
     }
     // A splat may be empty, so a target ending in `*` needs nothing from the source.
-    const available = [...paramNames(source), "*"];
-    const missing = paramNames(target).filter((p) => !available.includes(p));
+    const available = new Set([...paramNames(source), "*"]);
+    const missing = paramNames(target).filter((p) => !available.has(p));
     if (missing.length) {
       problems.push(
         `${where} needs params ${source} lacks: ${missing.join(", ")}`,
-      );
-    }
-    if (patternProblem(target)) {
-      continue; // reported with the page's routes
-    }
-    // The URL a redirect produces must land on a route of the version it
-    // redirects to; a pattern of the other version outranking it would
-    // redirect straight back, forever.
-    const sample = Object.fromEntries(
-      paramNames(target).map((p) => [p, p === "*" ? "" : `p-${p}`]),
-    );
-    const landed = matchRegistryRoute(fillPattern(target, sample), [entry]);
-    if (!landed || !to.includes(landed.route.path)) {
-      problems.push(
-        `${where} lands on ${landed?.route.path ?? "no route"}, which redirects back`,
       );
     }
   }
@@ -77,6 +61,17 @@ function checkEntry(entry: RegistryEntry, problems: string[]): void {
     problems.push(
       `${page}: only Human Review (UN11) may honour the old-version preference (D14)`,
     );
+  }
+  // A URL matching both a v1 route and a different v0 route of the page is
+  // ambiguous: the more specific pattern wins, so a redirect can land on the
+  // other version and bounce on to the wrong screen, or back, forever.
+  // Identical patterns (the page keeps its v0 URL) are fine.
+  for (const v1 of v1Routes) {
+    for (const v0 of replaces) {
+      if (v1 !== v0 && patternsOverlap(v1, v0)) {
+        problems.push(`${page}: v1 route ${v1} overlaps v0 route ${v0}`);
+      }
+    }
   }
   checkMapping(entry, "toV1", replaces, v1Routes, problems);
   checkMapping(entry, "toV0", v1Routes, replaces, problems);

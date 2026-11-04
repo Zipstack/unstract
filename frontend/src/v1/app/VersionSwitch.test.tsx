@@ -135,6 +135,14 @@ describe("VersionSwitch", () => {
     expect(window.localStorage.getItem(oldVersionStorageKey("7"))).toBeNull();
   });
 
+  it("demo links keep an encoded org name in one segment", async () => {
+    const user = userEvent.setup();
+    renderAt("/a%2Fb/v1-demo-review");
+    await user.click(await screen.findByRole("link", { name: "Details" }));
+    expect(where()).toBe("/a%2Fb/v1-demo-review/details");
+    expect(screen.getByTestId("v1-demo-review")).toBeTruthy();
+  });
+
   it("a stored old-version choice applies on load (re-login)", () => {
     window.localStorage.setItem(oldVersionStorageKey("7"), "true");
     renderAt("/acme/v1-demo-review");

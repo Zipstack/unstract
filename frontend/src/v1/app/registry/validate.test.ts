@@ -103,8 +103,8 @@ describe("registryProblems", () => {
     ]);
   });
 
-  it("rejects a mapping whose URL lands on a route of the other version (a redirect loop)", () => {
-    // v0 `/hr` outranks the v1 splat `/hr/*` for the URL `/org/hr`.
+  it("rejects a v1 and a v0 route of the same page that match the same URL", () => {
+    // v0 `/hr` outranks the v1 splat `/hr/*` for `/org/hr`: an endless redirect.
     expect(
       problemsOf({
         ...base,
@@ -113,10 +113,8 @@ describe("registryProblems", () => {
         toV0: { "/:orgName/hr/*": "/:orgName/hr" },
         toV1: { "/:orgName/hr": "/:orgName/hr/*" },
       }),
-    ).toEqual([
-      "UN05: toV1[/:orgName/hr] -> /:orgName/hr/* lands on /:orgName/hr, which redirects back",
-    ]);
-    // The same shape for old-version mode on Human Review.
+    ).toEqual(["UN05: v1 route /:orgName/hr/* overlaps v0 route /:orgName/hr"]);
+    // The same shape in Human Review's old-version mode.
     expect(
       problemsOf({
         ...base,
@@ -128,8 +126,19 @@ describe("registryProblems", () => {
         toV1: { "/:orgName/review/*": "/:orgName/review" },
       }),
     ).toEqual([
-      "UN11: toV0[/:orgName/review] -> /:orgName/review/* lands on /:orgName/review, which redirects back",
+      "UN11: v1 route /:orgName/review overlaps v0 route /:orgName/review/*",
     ]);
+    // A param equal to a static segment: `/old/settings` would redirect to
+    // `/new/settings`, which the v0 route takes, and on to `/settings`.
+    expect(
+      problemsOf({
+        ...base,
+        v1Routes: ["/new/:id", "/settings"],
+        replaces: ["/old/:id", "/new/settings"],
+        toV0: { "/new/:id": "/old/:id", "/settings": "/new/settings" },
+        toV1: { "/old/:id": "/new/:id", "/new/settings": "/settings" },
+      }),
+    ).toEqual(["UN05: v1 route /new/:id overlaps v0 route /new/settings"]);
   });
 
   it("accepts a route both versions share (same-URL takeover)", () => {
