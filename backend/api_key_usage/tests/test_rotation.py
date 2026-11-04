@@ -166,12 +166,15 @@ class PlatformKeyRotateTests(AuditTestBase):
             self.assertFalse(self.authenticates(cut_off))
 
     def allow_key_rotation(self) -> None:
-        """A full_access key, in an org that lets non-admins manage keys."""
+        """A full_access key on its service account, as production creates one.
+
+        The org keeps the default (restricted) key management: a service
+        account passes the capability check regardless.
+        """
         PlatformApiKey.objects.filter(pk=self.key.pk).update(
             permission=ApiKeyPermission.FULL_ACCESS
         )
-        self.org.restrict_api_key_management = False
-        self.org.save()
+        User.objects.filter(pk=self.key.api_user_id).update(is_service_account=True)
 
     def rotate_with(self, secret, grace="none"):
         return self.client.post(

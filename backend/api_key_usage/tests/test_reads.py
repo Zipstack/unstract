@@ -296,3 +296,11 @@ class SummaryTests(ReadTestBase):
         usage = reads.usage_by_key(PLATFORM, [key])[key.id]
 
         self.assertEqual(usage.calls_30d, 0)
+
+
+class RefreshTests(TestCase):
+    def test_a_read_flushes_without_pruning(self) -> None:
+        with mock.patch.object(reads, "flush_pending_usage") as flush:
+            reads.refresh()
+
+        flush.assert_called_once_with(prune=False)

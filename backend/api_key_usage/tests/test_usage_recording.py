@@ -267,6 +267,17 @@ class FailureTests(UsageTestBase):
         self.assertEqual(kwargs["socket_timeout"], 0.25)
         self.assertEqual(kwargs["socket_connect_timeout"], 0.25)
 
+    def test_the_flush_waits_on_redis_for_a_short_time_only(self) -> None:
+        # A read flushes first; a stalled Redis must fail that flush, not hang it.
+        with (
+            mock.patch.object(recorder, "_client", None),
+            override_settings(API_KEY_USAGE_REDIS_TIMEOUT_SECONDS=0.25),
+        ):
+            flush_pending_usage()
+            kwargs = recorder._client.connection_pool.connection_kwargs
+
+        self.assertEqual(kwargs["socket_timeout"], 0.25)
+
     def test_the_sentinel_master_lookup_waits_a_short_time_only(self) -> None:
         sentinel = Sentinel([("sentinel.internal", 26379)])
         with (
@@ -437,6 +448,34 @@ class FailureTests(UsageTestBase):
         self.assertGreater(self.redis.ttl(name), 0)  # kept, but not for ever
         self.assertEqual(flush_pending_usage().failed, 0)
 
+    def test_a_batch_that_times_out_each_time_is_set_aside(self) -> None:
+        # A statement timeout or deadlock with both connections working is the
+        # batch's fault, not an outage, so it must not hold up the others.
+        self.record()
+        _take_pending(self.redis, "a-bad")
+        real_write = flush_module._write
+
+        def write(pending, result):
+            if any(str(self.key_id) in f for f in pending.calls):
+                raise OperationalError("canceling statement due to statement timeout")
+            real_write(pending, result)
+
+        with (
+            mock.patch.object(flush_module, "_write", side_effect=write),
+            mock.patch.object(flush_module, "_prune", return_value=0) as prune,
+            self.assertLogs(flush_module.logger, "ERROR") as logs,
+        ):
+            results = []
+            for _ in range(MAX_BATCH_ATTEMPTS):
+                self.record(key_id=uuid.uuid4())
+                results.append(flush_pending_usage())
+
+        self.assertEqual([r.batches for r in results], [1] * MAX_BATCH_ATTEMPTS)
+        self.assertEqual(prune.call_count, MAX_BATCH_ATTEMPTS)
+        self.assertEqual(results[-1].set_aside, 1)
+        self.assertIn("set aside", logs.output[-1])
+        self.assertEqual(self.redis.smembers(DEAD_BATCHES_KEY), {b"a-bad"})
+
     def test_an_outage_never_sets_a_batch_aside(self) -> None:
         self.record()
         _take_pending(self.redis, "a")
@@ -446,6 +485,7 @@ class FailureTests(UsageTestBase):
 
         with (
             mock.patch.object(flush_module, "_write", write),
+            mock.patch.object(flush_module, "_backends_up", return_value=False),
             mock.patch.object(flush_module, "_prune") as prune,
             self.assertLogs(flush_module.logger, "WARNING"),
         ):

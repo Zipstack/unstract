@@ -92,6 +92,11 @@ def _redis() -> Redis:
     return _client
 
 
+def redis_client() -> Redis:
+    """The bounded client, for the flush to share."""
+    return _redis()
+
+
 def _log_failure() -> None:
     global _last_failure_logged, _failures_since_logged
     now = time.monotonic()

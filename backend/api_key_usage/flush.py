@@ -28,11 +28,11 @@ from datetime import UTC, date, datetime, timedelta
 from account_v2.models import Organization
 from django.db import InterfaceError, OperationalError, connection, transaction
 from django.utils import timezone
-from django_redis import get_redis_connection
 from psycopg2.extras import execute_values
 from redis.exceptions import ConnectionError as RedisConnectionError
 from redis.exceptions import TimeoutError as RedisTimeoutError
 
+from api_key_usage import recorder
 from api_key_usage.constants import (
     APPLIED_BATCH_KEEP_DAYS,
     BATCH_FAILURES_KEY,
@@ -119,7 +119,9 @@ def flush_pending_usage(prune: bool = True) -> FlushResult:
     without counting a failure, since retrying the others would fail too.
     ``prune`` also deletes rows outside the retention window.
     """
-    redis = get_redis_connection("default")
+    # The recorder's client: short socket timeouts, so a stalled Redis fails
+    # this flush instead of hanging the read that started it.
+    redis = recorder.redis_client()
     lock = uuid.uuid4().hex
     if not redis.set(FLUSH_LOCK_KEY, lock, nx=True, ex=FLUSH_LOCK_SECONDS):
         return FlushResult(skipped=True)
@@ -130,6 +132,12 @@ def flush_pending_usage(prune: bool = True) -> FlushResult:
             try:
                 _apply_batch(redis, token, result)
             except _OUTAGE_ERRORS:
+                if _backends_up(redis):
+                    # The connections work, so the batch itself fails, e.g. a
+                    # statement timeout or deadlock that recurs every time.
+                    logger.exception("Could not write API key usage batch %s", token)
+                    _count_failure(redis, token, result)
+                    continue
                 logger.warning(
                     "API key usage flush stopped: database or Redis unavailable; "
                     "pending batches are kept for the next flush",
@@ -149,13 +157,23 @@ def flush_pending_usage(prune: bool = True) -> FlushResult:
         redis.eval(_RELEASE_LOCK, 1, FLUSH_LOCK_KEY, lock)
 
 
-# Failures of the connection rather than of the batch's data.
+# Errors that may mean an outage rather than a bad batch. Which one it is
+# depends on whether the connections still work (``_backends_up``).
 _OUTAGE_ERRORS = (
     OperationalError,
     InterfaceError,
     RedisConnectionError,
     RedisTimeoutError,
 )
+
+
+def _backends_up(redis) -> bool:
+    """Whether the database and Redis both answer right now."""
+    try:
+        connection.ensure_connection()
+        return connection.is_usable() and bool(redis.ping())
+    except Exception:
+        return False
 
 
 def _batch_names(token: str) -> list[str]:

@@ -190,10 +190,10 @@ Two rotations of one key run one after the other (the key row is locked), so a
 rotation never keeps a secret another one just cut off.
 
 Platform key rotate also checks the `manage_api_keys` capability
-(`RequiresCapability`, PB-T04). For an admin session it adds nothing; for a
-`full_access` key, whose service account is a member, it applies the
-organisation's "who can manage API keys" setting. Global key rotate already did
-through `CanManageApiKeys`.
+(`RequiresCapability`, PB-T04) as defence-in-depth. It refuses nothing on the
+paths that exist today: an admin session passes it, and a `full_access` key
+authenticates as its service account, which the check always lets through.
+Global key rotate already did through `CanManageApiKeys`.
 
 ## How usage is recorded
 
@@ -218,10 +218,13 @@ through `CanManageApiKeys`.
   data stays in Redis for 30 days under `api_key_usage:dead_batches` for
   inspection. Fields with a malformed part are dropped and logged. An outage
   (database or Redis unreachable) stops the flush without counting against
-  any batch, so no usage is set aside just because the database was down.
+  any batch, so no usage is set aside just because the database was down. A
+  database error while both connections still answer (a statement timeout, a
+  deadlock) counts against the batch like any other failure.
 - Daily rows older than 30 days are deleted by the background flush, not by the
-  flush before a read. `last_used_at` is kept for as long as the key exists, so
-  `idle` can be computed.
+  flush before a read. `last_used_at` is never pruned, so `idle` can be
+  computed; it is not deleted with its key either, and is simply never read
+  again.
 
 ## Adding a key type
 
@@ -238,4 +241,6 @@ record_key_use(key_type="review_api_key", key_id=key.id, organization_id=org.pk)
 
 The queryset's rows need `id`, `is_active` and `expires_at`. Use
 `api_key_usage.reads.usage_by_key` and `daily_history` for the key type's own
-list and history endpoints, and `KeyUsageFieldsMixin` for its serializer.
+list and history endpoints, and `KeyUsageFieldsMixin` for its serializer. Call
+`api_key_usage.reads.refresh()` at the start of those views so they include
+pending usage.
