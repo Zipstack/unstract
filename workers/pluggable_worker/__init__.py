@@ -39,7 +39,7 @@ def discover_pluggable_workers() -> list[str]:
                 workers.append(path.name)
                 logger.debug(f"Discovered pluggable worker: {path.name}")
     except Exception as e:
-        logger.error(f"Error discovering pluggable workers: {e}")
+        logger.exception(f"Error discovering pluggable workers: {e}")
 
     return workers
 
@@ -69,7 +69,7 @@ def is_cloud_deployment() -> bool:
 
         return False
     except Exception as e:
-        logger.error(f"Error checking deployment type: {e}")
+        logger.exception(f"Error checking deployment type: {e}")
         return False
 
 

@@ -7,25 +7,43 @@ double and the real local-filesystem FileStorage backend.
 """
 
 import base64
+import logging
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 from unstract.sdk1.adapters.x2text.page_image_loader import (
+    DEFAULT_MAX_TOTAL_BYTES,
     DEFAULT_PAGE_CAP,
+    MAX_TOTAL_MB_ENV,
     PAGE_CAP_ENV,
+    PAGE_LABELS_FILENAME,
     LoadedPageImage,
     PageCapExceededError,
     PageImageSetIncompleteError,
     PageImageSetTooLargeError,
     PageImagesNotFoundError,
     build_vision_message_content,
-    configured_page_cap,
     discover_page_images,
+    get_fixed_max_total_bytes,
+    get_fixed_page_cap,
     load_page_images,
 )
 from unstract.sdk1.file_storage import FileStorage, FileStorageProvider
 
 from tests.llmw_image_fixtures import InMemoryFileStorage, minimal_png
+
+
+@pytest.fixture(autouse=True)
+def _fresh_bad_env_reports(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Each bad env value is logged once per process; start every test fresh.
+    from unstract.sdk1.adapters.x2text import page_image_loader
+
+    monkeypatch.setattr(page_image_loader, "_reported_bad_env", set())
+
+
+if TYPE_CHECKING:
+    from unstract.sdk1.utils.image_limits import ImageModePolicy
 
 _DIR = "/data/extract/doc/pages"
 
@@ -117,10 +135,9 @@ class TestPageCap:
         msg = str(err)
         assert "too many pages for image output mode" in msg
         assert "It has 5 pages, and the limit is 4" in msg
-        # Rules out the adapter's "Pages to extract" setting — pointing at it
-        # sent a tester hunting through a field they had never set (UN-2646
-        # follow-up). The operator-only env var is not shown to users.
-        assert "'Pages to extract' setting does not apply" in msg
+        # Image mode honours the adapter's "Pages to extract" setting, so the
+        # message offers narrowing it. The operator-only env var is not shown.
+        assert "'Pages to extract' to a smaller range" in msg
         assert "VLM_IMAGE_ANSWER_PAGE_CAP" not in msg
 
     def test_cap_check_precedes_reads(self) -> None:
@@ -131,7 +148,8 @@ class TestPageCap:
         fs.read = lambda path, **kw: reads.append(path) or original_read(path, **kw)
         with pytest.raises(PageCapExceededError):
             load_page_images(fs, _DIR, page_cap=1)
-        assert reads == []
+        # Only the small labels file (read for the message) may be touched.
+        assert [p for p in reads if not p.endswith(PAGE_LABELS_FILENAME)] == []
 
     def test_none_disables_cap(self) -> None:
         fs = _store({n: b"x" for n in range(1, DEFAULT_PAGE_CAP + 5)})
@@ -283,7 +301,8 @@ class TestByteBudget:
         original_read = fs.read
 
         def recording_read(path: str, **kw: object) -> bytes | str:
-            lengths.append(kw.get("length"))
+            if not path.endswith(PAGE_LABELS_FILENAME):  # page images only
+                lengths.append(kw.get("length"))
             return original_read(path, **kw)
 
         fs.read = recording_read
@@ -330,24 +349,53 @@ class TestByteBudget:
         assert DEFAULT_MAX_TOTAL_BYTES * 4 / 3 < 20 * 1024 * 1024
 
 
-class TestConfiguredPageCap:
-    """The env override shared by the extraction pre-check and the consumer."""
+class TestFixedPageCap:
+    """The fixed cap: 90 pages / 14 MiB, tightened by the ceilings, never raised."""
 
-    def test_absent_env_uses_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_absent_env_is_the_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv(PAGE_CAP_ENV, raising=False)
-        assert configured_page_cap() == DEFAULT_PAGE_CAP
+        monkeypatch.delenv(MAX_TOTAL_MB_ENV, raising=False)
+        assert get_fixed_page_cap() == DEFAULT_PAGE_CAP
+        assert get_fixed_max_total_bytes() == DEFAULT_MAX_TOTAL_BYTES
 
-    def test_env_overrides_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_lower_ceiling_tightens(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv(PAGE_CAP_ENV, "42")
-        assert configured_page_cap() == 42
+        monkeypatch.setenv(MAX_TOTAL_MB_ENV, "6")
+        assert get_fixed_page_cap() == 42
+        assert get_fixed_max_total_bytes() == 6 * 1024 * 1024
 
-    @pytest.mark.parametrize("raw", ["not-a-number", "0", "-5", ""])
-    def test_unusable_value_falls_back(
+    def test_higher_ceiling_does_not_raise(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # The env vars are ceilings: above the fixed cap they change nothing.
+        monkeypatch.setenv(PAGE_CAP_ENV, "200")
+        monkeypatch.setenv(MAX_TOTAL_MB_ENV, "50")
+        assert get_fixed_page_cap() == DEFAULT_PAGE_CAP
+        assert get_fixed_max_total_bytes() == DEFAULT_MAX_TOTAL_BYTES
+
+    @pytest.mark.parametrize("raw", ["not-a-number", "0", "-5", "", "  "])
+    def test_unusable_value_keeps_the_default(
         self, raw: str, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        # An operator typo must not fail extraction outright.
+        # An operator typo must not fail extraction or remove the cap.
         monkeypatch.setenv(PAGE_CAP_ENV, raw)
-        assert configured_page_cap() == DEFAULT_PAGE_CAP
+        monkeypatch.setenv(MAX_TOTAL_MB_ENV, raw)
+        assert get_fixed_page_cap() == DEFAULT_PAGE_CAP
+        assert get_fixed_max_total_bytes() == DEFAULT_MAX_TOTAL_BYTES
+
+
+class TestDeprecatedAccessorAliases:
+    """The released cloud answer plugin imports configured_page_cap."""
+
+    def test_aliases_return_the_fixed_cap(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from unstract.sdk1.adapters.x2text.page_image_loader import (
+            configured_max_total_bytes,
+            configured_page_cap,
+        )
+
+        for page, mib in (("40", "6"), ("200", "50"), ("", "")):
+            monkeypatch.setenv(PAGE_CAP_ENV, page)
+            monkeypatch.setenv(MAX_TOTAL_MB_ENV, mib)
+            assert configured_page_cap() == get_fixed_page_cap()
+            assert configured_max_total_bytes() == get_fixed_max_total_bytes()
 
 
 class TestLoaderReadsConfiguredLimits:
@@ -356,6 +404,15 @@ class TestLoaderReadsConfiguredLimits:
     def test_default_page_cap_follows_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv(PAGE_CAP_ENV, "2")
         fs = _store({1: b"a", 2: b"b", 3: b"c"})
+        with pytest.raises(PageCapExceededError):
+            load_page_images(fs, _DIR)
+
+    def test_env_above_the_fixed_cap_does_not_raise_it(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv(PAGE_CAP_ENV, "500")
+        monkeypatch.setenv(MAX_TOTAL_MB_ENV, "500")
+        fs = _store({n: b"x" for n in range(1, 92)})
         with pytest.raises(PageCapExceededError):
             load_page_images(fs, _DIR)
 
@@ -378,7 +435,7 @@ class TestByteBudgetMessage:
             load_page_images(fs, _DIR, page_cap=None, max_total_bytes=1024 * 1024)
         msg = str(excinfo.value)
         assert msg.startswith("This document is too large for image output mode.")
-        assert "go over the 1 MB limit at page 2 of 3" in msg
+        assert "go over the 1.0 MiB limit at page 2 of 3" in msg
         assert "Split the document into smaller files" in msg
         # Operator-only knob and the confusing phrasing are gone.
         assert "VLM_IMAGE_ANSWER_MAX_TOTAL_MB" not in msg
@@ -424,7 +481,341 @@ class TestCapMatchesBudget:
         capacity = DEFAULT_MAX_TOTAL_BYTES // self._APPROX_LIGHT_PAGE_BYTES
         assert DEFAULT_PAGE_CAP <= capacity + self._MEASUREMENT_SLACK_PAGES
 
-    def test_cap_is_under_the_strictest_provider_image_count(self) -> None:
-        # Anthropic accepts at most 100 images per request on its
-        # 200K-context models — the lowest image-count limit we target.
-        assert DEFAULT_PAGE_CAP <= 100
+
+class TestModelAwareLimits:
+    """``limits=`` replaces the fixed cap/budget with the model's policy."""
+
+    @staticmethod
+    def _policy(**values: int | None) -> "ImageModePolicy":
+        import dataclasses
+
+        from unstract.sdk1.utils.image_limits import ImageModePolicy, resolve_image_limits
+
+        limits = resolve_image_limits(
+            "bedrock", "bedrock/anthropic.claude-sonnet-4-5-v1:0"
+        )
+        for name, value in values.items():
+            limits = dataclasses.replace(
+                limits, **{name: dataclasses.replace(getattr(limits, name), value=value)}
+            )
+        return ImageModePolicy.from_limits([limits])
+
+    def test_page_cap_from_policy_before_any_read(self) -> None:
+        fs = _store({n: minimal_png() for n in range(1, 22)})
+        reads: list[str] = []
+        original_read = fs.read
+
+        def recording_read(path: str, **kw: object) -> bytes | str:
+            if not path.endswith(PAGE_LABELS_FILENAME):  # page images only
+                reads.append(path)
+            return original_read(path, **kw)
+
+        fs.read = recording_read
+        with pytest.raises(PageCapExceededError) as excinfo:
+            load_page_images(fs, _DIR, limits=self._policy())
+        assert excinfo.value.page_cap == 20
+        assert "Amazon Bedrock" in str(excinfo.value)
+        assert reads == []
+
+    def test_byte_budget_from_policy_is_derived_from_the_wire_limit(self) -> None:
+        from unstract.sdk1.adapters.x2text.page_image_loader import (
+            PageImageSetTooLargeError,
+        )
+
+        policy = self._policy(max_request_bytes=1_000_000)
+        fs = _store({1: b"a" * 500_000, 2: b"b" * 500_000})
+        lengths: list[object] = []
+        original_read = fs.read
+
+        def recording_read(path: str, **kw: object) -> bytes | str:
+            if not path.endswith(PAGE_LABELS_FILENAME):  # page images only
+                lengths.append(kw.get("length"))
+            return original_read(path, **kw)
+
+        fs.read = recording_read
+        with pytest.raises(PageImageSetTooLargeError) as excinfo:
+            load_page_images(fs, _DIR, limits=policy, prompt_text_bytes=100)
+        budget = policy.raw_byte_budget(page_count=2, prompt_text_bytes=100)
+        assert excinfo.value.max_total_bytes == budget
+        # Bounded reads are sized from the derived budget.
+        assert lengths[0] == budget + 1
+        assert "once encoded" in str(excinfo.value)
+
+    def test_per_image_limit_from_policy(self) -> None:
+        from unstract.sdk1.adapters.x2text.page_image_loader import PageImageTooLargeError
+
+        fs = _store({1: b"a" * 10, 2: b"b" * 500})
+        with pytest.raises(PageImageTooLargeError) as excinfo:
+            load_page_images(fs, _DIR, limits=self._policy(max_image_bytes=100))
+        assert excinfo.value.page_number == 2
+
+    def test_per_image_error_names_the_document_page(self) -> None:
+        from unstract.sdk1.adapters.x2text.page_image_loader import PageImageTooLargeError
+
+        fs = _store(
+            {1: b"a" * 10, 2: b"b" * 500}, extra={"pages.json": b'{"pages": [10, 12]}'}
+        )
+        with pytest.raises(PageImageTooLargeError) as excinfo:
+            load_page_images(fs, _DIR, limits=self._policy(max_image_bytes=100))
+        assert str(excinfo.value).startswith("Page 12 of this document is")
+
+    def test_within_policy_loads(self) -> None:
+        fs = _store({1: minimal_png(), 2: minimal_png()})
+        assert len(load_page_images(fs, _DIR, limits=self._policy())) == 2
+
+    def test_policy_and_legacy_kwargs_are_mutually_exclusive(self) -> None:
+        fs = _store({1: minimal_png()})
+        with pytest.raises(ValueError):
+            load_page_images(fs, _DIR, limits=self._policy(), page_cap=5)
+
+    def test_ceiling_only_policy_applies_operator_ceilings(self) -> None:
+        from unstract.sdk1.utils.image_limits import ImageModePolicy
+
+        fs = _store({n: minimal_png() for n in range(1, 4)})
+        policy = ImageModePolicy.ceiling_only(page_ceiling=2)
+        with pytest.raises(PageCapExceededError):
+            load_page_images(fs, _DIR, limits=policy)
+
+
+class TestConfiguredCeilings:
+    """The env vars read as optional ceilings (no value -> no ceiling)."""
+
+    def test_absent_env_is_no_ceiling(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from unstract.sdk1.adapters.x2text.page_image_loader import (
+            MAX_TOTAL_MB_ENV,
+            get_configured_page_ceiling,
+            get_configured_request_bytes_ceiling,
+        )
+
+        monkeypatch.delenv(PAGE_CAP_ENV, raising=False)
+        monkeypatch.delenv(MAX_TOTAL_MB_ENV, raising=False)
+        assert get_configured_page_ceiling() is None
+        assert get_configured_request_bytes_ceiling() is None
+
+    def test_env_values_are_ceilings_in_the_legacy_units(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from unstract.sdk1.adapters.x2text.page_image_loader import (
+            MAX_TOTAL_MB_ENV,
+            get_configured_page_ceiling,
+            get_configured_request_bytes_ceiling,
+        )
+
+        monkeypatch.setenv(PAGE_CAP_ENV, "40")
+        monkeypatch.setenv(MAX_TOTAL_MB_ENV, "3")
+        assert get_configured_page_ceiling() == 40
+        assert get_configured_request_bytes_ceiling() == 3 * 1024 * 1024
+
+    @pytest.mark.parametrize("raw", ["", "   "])
+    def test_empty_value_is_unset(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+        raw: str,
+    ) -> None:
+        # A chart that renders VAR: "" means "not set", not an invalid value.
+        from unstract.sdk1.adapters.x2text.page_image_loader import (
+            MAX_TOTAL_MB_ENV,
+            get_configured_page_ceiling,
+            get_configured_request_bytes_ceiling,
+        )
+
+        monkeypatch.setenv(PAGE_CAP_ENV, raw)
+        monkeypatch.setenv(MAX_TOTAL_MB_ENV, raw)
+        with caplog.at_level("WARNING"):
+            assert get_configured_page_ceiling() is None
+            assert get_configured_request_bytes_ceiling() is None
+            assert get_fixed_page_cap() == DEFAULT_PAGE_CAP
+        assert not [r for r in caplog.records if r.levelno >= logging.WARNING]
+
+    def test_a_bad_value_is_logged_once(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        from unstract.sdk1.adapters.x2text.page_image_loader import (
+            get_configured_page_ceiling,
+        )
+
+        monkeypatch.setenv(PAGE_CAP_ENV, "lots")
+        with caplog.at_level("ERROR"):
+            for _ in range(3):
+                assert get_configured_page_ceiling() == DEFAULT_PAGE_CAP
+        assert len([r for r in caplog.records if r.levelname == "ERROR"]) == 1
+
+    @pytest.mark.parametrize("raw", ["lots", "10MB", "0", "-5"])
+    def test_unusable_value_keeps_the_fixed_default(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+        raw: str,
+    ) -> None:
+        # An operator typo must never remove the ceiling (unbounded reads
+        # into worker memory, a 999-page bound); it keeps 90 pages / 14 MiB.
+        from unstract.sdk1.adapters.x2text.page_image_loader import (
+            DEFAULT_MAX_TOTAL_BYTES,
+            MAX_TOTAL_MB_ENV,
+            get_configured_page_ceiling,
+            get_configured_request_bytes_ceiling,
+        )
+
+        monkeypatch.setenv(PAGE_CAP_ENV, raw)
+        monkeypatch.setenv(MAX_TOTAL_MB_ENV, raw)
+        with caplog.at_level("ERROR"):
+            assert get_configured_page_ceiling() == DEFAULT_PAGE_CAP
+            assert get_configured_request_bytes_ceiling() == DEFAULT_MAX_TOTAL_BYTES
+        errors = [r for r in caplog.records if r.levelname == "ERROR"]
+        assert {PAGE_CAP_ENV, MAX_TOTAL_MB_ENV} <= {
+            name
+            for r in errors
+            for name in (PAGE_CAP_ENV, MAX_TOTAL_MB_ENV)
+            if name in r.getMessage()
+        }
+
+
+class TestDocumentPageLabels:
+    """pages.json gives each image its document page for the label only."""
+
+    def _labels(self, fs: InMemoryFileStorage) -> list[str]:
+        content = build_vision_message_content(load_page_images(fs, _DIR), "Q")
+        return [block["text"] for block in content[1:] if block["type"] == "text"]
+
+    def test_labels_use_document_pages(self) -> None:
+        fs = _store({1: b"a", 2: b"b"}, extra={"pages.json": b'{"pages": [10, 12]}'})
+        loaded = load_page_images(fs, _DIR)
+        assert [p.page_number for p in loaded] == [1, 2]
+        assert [p.document_page for p in loaded] == [10, 12]
+        assert self._labels(fs) == ["Page 10", "Page 12"]
+
+    def test_absent_file_falls_back_to_file_numbers(self) -> None:
+        fs = _store({1: b"a", 2: b"b"})
+        assert self._labels(fs) == ["Page 1", "Page 2"]
+
+    @pytest.mark.parametrize(
+        "raw",
+        [
+            b"not json",
+            b"[10, 12]",
+            b'{"pages": [10]}',
+            b'{"pages": [12, 10]}',
+            b'{"pages": [10, 10]}',
+            b'{"pages": [0, 12]}',
+            b'{"pages": ["10", 12]}',
+            b'{"pages": [true, 12]}',
+        ],
+        ids=[
+            "garbage",
+            "bare-list",
+            "short",
+            "unordered",
+            "dupes",
+            "zero",
+            "str",
+            "bool",
+        ],
+    )
+    def test_invalid_file_falls_back_to_file_numbers(
+        self, raw: bytes, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        fs = _store({1: b"a", 2: b"b"}, extra={"pages.json": raw})
+        assert self._labels(fs) == ["Page 1", "Page 2"]
+        # The extraction wrote it for a selection: the labels are now wrong.
+        assert any(
+            r.levelname == "ERROR" and PAGE_LABELS_FILENAME in r.getMessage()
+            for r in caplog.records
+        )
+
+    def test_unreadable_file_is_logged_at_error(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        fs = _store({1: b"a"}, extra={"pages.json": b'{"pages": [3]}'})
+        original_read = fs.read
+
+        def read(path: str, **kw: object) -> bytes:
+            if path.endswith(PAGE_LABELS_FILENAME):
+                raise OSError("connection reset")
+            return original_read(path, **kw)
+
+        fs.read = read
+        assert self._labels(fs) == ["Page 1"]
+        assert any(
+            r.levelname == "ERROR" and "connection reset" in r.getMessage()
+            for r in caplog.records
+        )
+
+    def test_labels_file_is_not_a_page(self) -> None:
+        fs = _store({1: b"a"}, extra={"pages.json": b'{"pages": [3]}'})
+        assert [n for n, _ in discover_page_images(fs, _DIR)] == [1]
+
+
+class TestDocumentPageInLoaderMessages:
+    def test_byte_budget_message_names_the_document_page(self) -> None:
+        fs = _store(
+            {1: b"a" * 40, 2: b"b" * 40}, extra={"pages.json": b'{"pages": [10, 12]}'}
+        )
+        with pytest.raises(PageImageSetTooLargeError) as excinfo:
+            load_page_images(fs, _DIR, max_total_bytes=50)
+        assert "limit at page 12 (image 2 of 2)" in str(excinfo.value)
+
+    def test_byte_budget_message_falls_back_to_the_position(self) -> None:
+        fs = _store({1: b"a" * 40, 2: b"b" * 40})
+        with pytest.raises(PageImageSetTooLargeError) as excinfo:
+            load_page_images(fs, _DIR, max_total_bytes=50)
+        assert "limit at page 2 of 2" in str(excinfo.value)
+
+    def test_fixed_cap_message_names_a_selection(self) -> None:
+        fs = _store(
+            {1: b"a", 2: b"b", 3: b"c"}, extra={"pages.json": b'{"pages": [4, 8, 9]}'}
+        )
+        with pytest.raises(PageCapExceededError) as excinfo:
+            load_page_images(fs, _DIR, page_cap=2)
+        msg = str(excinfo.value)
+        assert "'Pages to extract' selects 3 pages, and the limit is 2" in msg
+        assert "This document has" not in msg
+
+    def test_fixed_cap_message_without_a_selection_is_unchanged(self) -> None:
+        fs = _store({1: b"a", 2: b"b", 3: b"c"})
+        with pytest.raises(PageCapExceededError) as excinfo:
+            load_page_images(fs, _DIR, page_cap=2)
+        assert "This document has too many pages" in str(excinfo.value)
+        assert "It has 3 pages, and the limit is 2" in str(excinfo.value)
+
+    def test_missing_labels_file_is_never_probed(self) -> None:
+        # The listing shows no pages.json, so it is neither checked nor read
+        # (a read of a missing object costs failed GETs and a cache flush).
+        fs = _store({1: b"a"})
+        original_exists, original_read = fs.exists, fs.read
+        reads: list[str] = []
+
+        def exists(path: str) -> bool:
+            assert not path.endswith(PAGE_LABELS_FILENAME), "labels: not probed"
+            return original_exists(path)
+
+        fs.exists = exists
+        fs.read = lambda path, **kw: reads.append(path) or original_read(path, **kw)
+        assert [p.page_number for p in load_page_images(fs, _DIR)] == [1]
+        assert not [p for p in reads if p.endswith(PAGE_LABELS_FILENAME)]
+
+    def test_listed_labels_file_is_read_once(self) -> None:
+        fs = _store({1: b"a", 2: b"b"}, extra={"pages.json": b'{"pages": [10, 12]}'})
+        original_read = fs.read
+        reads: list[str] = []
+        fs.read = lambda path, **kw: reads.append(path) or original_read(path, **kw)
+        load_page_images(fs, _DIR)
+        assert [p for p in reads if p.endswith(PAGE_LABELS_FILENAME)] == [
+            f"{_DIR}/{PAGE_LABELS_FILENAME}"
+        ]
+
+    def test_labels_removed_after_the_listing_fall_back_quietly(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        fs = _store({1: b"a"}, extra={"pages.json": b'{"pages": [3]}'})
+        original_read = fs.read
+
+        def read(path: str, **kw: object) -> bytes:
+            if path.endswith(PAGE_LABELS_FILENAME):
+                raise FileNotFoundError(path)
+            return original_read(path, **kw)
+
+        fs.read = read
+        loaded = load_page_images(fs, _DIR)
+        assert [p.document_page for p in loaded] == [None]
+        assert not [r for r in caplog.records if r.levelname == "ERROR"]

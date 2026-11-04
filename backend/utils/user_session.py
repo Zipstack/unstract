@@ -7,6 +7,15 @@ from tenant_account_v2.models import OrganizationMember
 
 
 class UserSessionUtils:
+    # Written by an auth plugin whose identity provider picks the organization at
+    # login. The SPA then changes organization by logging in again with the new
+    # one, so the provider records the choice, instead of setting it locally.
+    ORG_SWITCH_VIA_LOGIN = "org_switch_via_login"
+
+    @staticmethod
+    def is_org_switch_via_login(request: HttpRequest) -> bool:
+        return request.session.get(UserSessionUtils.ORG_SWITCH_VIA_LOGIN) is True
+
     @staticmethod
     def get_organization_id(request: HttpRequest) -> str | None:
         session_org_id = request.session.get("organization")
