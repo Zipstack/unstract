@@ -127,7 +127,9 @@ def gate(oss, branch, ref, annotate):
     """Run convgate on the OSS clone: 0 pass, 2 block, 1 error (an argparse usage exit 2 counts as an error)."""
     if summary := os.environ.get("GITHUB_STEP_SUMMARY"):
         with open(summary, "a") as f:
-            f.write(f"#### OSS line `{branch}` at `{ref}`\n\n")
+            f.write(
+                f"#### OSS line {rm.branch_link(branch, OSS)} at {rm.tag_link(ref, OSS)}\n\n"
+            )
     oss, branch, ref = rm.local_path(oss), rm.option_free(branch), rm.option_free(ref)
     env = {
         **os.environ,
@@ -332,10 +334,10 @@ def retire(oss, branch, reason, dry_run=True):
         )
     )
     out = [
-        f"- OSS `{branch}` (tip `{sha[:12]}`; "
+        f"- OSS `{branch}` (tip {rm.commit_link(sha, 12, OSS)}; "
         + ("has GA, tags kept)" if stable else "no GA, RC tags deleted)"),
         *(f"- OSS git tag `{t}`" for t in rcs),
-        f"- OSS tag `{archive}`: {reason}",
+        f"- OSS tag {f'`{archive}`' if dry_run else rm.tag_link(archive, OSS)}: {reason}",
     ]
     if dry_run:
         return out

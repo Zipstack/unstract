@@ -506,6 +506,30 @@ class Summary(unittest.TestCase):
                 "Next: nothing here; its head no longer holds this PR's commit.",
             )
 
+    def test_links_under_actions(self):
+        web = "https://github.com/Zipstack/unstract-cloud"
+        env = {
+            "GITHUB_SERVER_URL": "https://github.com",
+            "GITHUB_REPOSITORY": "Zipstack/unstract-cloud",
+        }
+        rec = {
+            "result": "merged",
+            "base": "release/0.189",
+            "sha": "6" * 40,
+            "reason": None,
+        }
+        with mock.patch.dict(os.environ, env):
+            out = bm.summary(246, ME, rec)
+        base = f"[`release/0.189`]({web}/tree/release/0.189)"
+        squash = f"[`6666666`]({web}/commit/{'6' * 40})"
+        self.assertEqual(
+            out,
+            [
+                f"**Backport PR** [#246]({web}/pull/246) on {base}: **merged** as {squash} (@{ME})",
+                f"Undo: revert {squash} on {base}.",
+            ],
+        )
+
 
 class SquashRetry(unittest.TestCase):
     PR = {"number": 4, "headRefOid": "a" * 40}

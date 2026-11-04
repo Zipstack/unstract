@@ -36,6 +36,23 @@ class Links(unittest.TestCase):
                 f"[`release/0.192`]({oss}/tree/release/0.192)",
             )
             self.assertEqual(
+                rm.pr_link(30, "Zipstack/unstract"),
+                f"[Zipstack/unstract#30]({oss}/pull/30)",
+            )
+            self.assertEqual(
+                rm.ref_link("refs/tags/v0.192.0"),
+                f"[`refs/tags/v0.192.0`]({WEB}/releases/tag/v0.192.0)",
+            )
+            self.assertEqual(
+                rm.ref_link("refs/remotes/origin/release/0.192", "Zipstack/unstract"),
+                f"[`refs/remotes/origin/release/0.192`]({oss}/tree/release/0.192)",
+            )
+            self.assertEqual(
+                rm.ref_link("refs/heads/release/0.192"),
+                f"[`refs/heads/release/0.192`]({WEB}/tree/release/0.192)",
+            )
+            self.assertEqual(rm.ref_link(SHA), f"`{SHA}`")
+            self.assertEqual(
                 rm.image_link("on-prem", "v0.192.0-rc.1"),
                 "[`on-prem:v0.192.0-rc.1`](https://console.cloud.google.com/artifacts/docker/p/l/r)",
             )
@@ -45,6 +62,8 @@ class Links(unittest.TestCase):
             self.assertEqual(rm.pr_link(246), "#246")
             self.assertEqual(rm.commit_link(SHA), "`6635951`")
             self.assertEqual(rm.tag_link("v0.192.0-rc.1"), "`v0.192.0-rc.1`")
+            self.assertEqual(rm.pr_link(30, "Zipstack/unstract"), "Zipstack/unstract#30")
+            self.assertEqual(rm.ref_link("refs/tags/v0.192.0"), "`refs/tags/v0.192.0`")
             self.assertEqual(
                 rm.branch_link("release/0.192", "Zipstack/unstract"), "`release/0.192`"
             )

@@ -763,7 +763,7 @@ def summary(state):
         if not tt:
             return "-"
         if tt["state"] == "stabilized":
-            return f"stabilized (GA {tt['ga']['tag']})"
+            return f"stabilized (GA {rm.tag_link(tt['ga']['tag'])})"
         if tt["state"] == "stabilizing" and tt["rcs"]:
             return f"stabilizing (rc.{VER_RE.fullmatch(tt['rcs'][-1])[4]}{', late' * tt['late']})"
         return tt["state"]
@@ -777,8 +777,8 @@ def summary(state):
         "|---|---|" + "---|" * (len(TARGETS) + 3),
     ]
     out += [
-        f"| {b['branch']} | {b['state']} | {' | '.join(cell(b['targets'].get(t)) for t in TARGETS)} "
-        f"| {b['tip_rc'] or '-'}{slack(b)} | {b['next_rc'] or '-'} | {'-' if b['ahead_of_ga'] is None else b['ahead_of_ga']} |"
+        f"| {rm.branch_link(b['branch'])} | {b['state']} | {' | '.join(cell(b['targets'].get(t)) for t in TARGETS)} "
+        f"| {rm.tag_link(b['tip_rc']) if b['tip_rc'] else '-'}{slack(b)} | {b['next_rc'] or '-'} | {'-' if b['ahead_of_ga'] is None else b['ahead_of_ga']} |"
         for b in state["branches"]
     ]
     return (

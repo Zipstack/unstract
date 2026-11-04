@@ -187,6 +187,33 @@ def link_pr(ref):
     return rm.pr_link(int(ref[1:])) if re.fullmatch(r"#\d+", ref) else ref
 
 
+def link_sha(sha):
+    # Placeholder rows ("-------") have no commit to link.
+    return rm.commit_link(sha) if re.fullmatch(r"[0-9a-f]{7,40}", sha) else f"`{sha[:7]}`"
+
+
+def link_src(sha, pr, repo=None):
+    if re.fullmatch(r"#\d+", pr):
+        return rm.pr_link(int(pr[1:]), repo)
+    return f"{rm.commit_link(sha, 7, repo)} ({pr})"
+
+
+def link_branch(b):
+    return rm.branch_link(b) if b != "-" else b
+
+
+def dispatch_row(sha, pr, cls, b, res, rel):
+    return f"| {link_sha(sha)} | {link_pr(pr)} | {cls} | {link_branch(b)} | {link_result(res)} | {rel} |"
+
+
+def link_result(res):
+    if m := re.fullmatch(r"merged (\w+) \(#(\d+)(, retried)?\)", res):
+        return f"merged {rm.commit_link(m[1])} ({rm.pr_link(int(m[2]))}{m[3] or ''})"
+    if m := re.fullmatch(r"pr \S+/pull/(\d+)", res):
+        return f"pr {rm.pr_link(int(m[1]))}"
+    return res
+
+
 def latest_tag(repo, branch):
     """A stable tag ranks above the RC it was promoted from (same commit, same patch)."""
     tags = rs.line_tags(repo, branch.split("/", 1)[1], "--merged", f"origin/{branch}")
@@ -223,7 +250,7 @@ def status_row(branch, state, tag, unbuilt, missing, conflicts, held_n):
         + ([f"{held_n} RM"] if held_n else [])
     )
     return (
-        f"| `{branch}` | {state} | {built} | {missing} | {pending or '-'} | "
+        f"| {rm.branch_link(branch)} | {state} | {built} | {missing} | {pending or '-'} | "
         f"{next_step(conflicts, held_n, tag, unbuilt)} |"
     )
 
@@ -233,17 +260,18 @@ def this_run(rows):
     out = []
     for sha, pr, _, b, res, _ in rows:
         src = link_pr(pr) if pr.startswith("#") else rm.commit_link(sha)
+        to = rm.branch_link(b)
         # finish_open adds ", retried" when it merges a pick PR an earlier run left open.
         if m := re.fullmatch(r"merged (\w+) \(#(\d+)(?:, retried)?\)", res):
             out.append(
-                f"- {src} → `{b}`: merged as {rm.commit_link(m[1])} ({rm.pr_link(int(m[2]))})"
+                f"- {src} → {to}: merged as {rm.commit_link(m[1])} ({rm.pr_link(int(m[2]))})"
             )
         elif res.startswith("pr "):
             out.append(
-                f"- {src} → `{b}`: conflict, {rm.pr_link(int(res.rsplit('/', 1)[1]))} to resolve"
+                f"- {src} → {to}: conflict, {rm.pr_link(int(res.rsplit('/', 1)[1]))} to resolve"
             )
         elif res.startswith("failed"):
-            out.append(f"- {src} → `{b}`: {res}")
+            out.append(f"- {src} → {to}: {res}")
     return out
 
 
@@ -265,7 +293,8 @@ def pending_block(conflicts, held_rows):
             "",
         ]
         out += [
-            f"- {rm.pr_link(c)} on `{b}` · open {stale(d)}" for c, b, d in conflicts
+            f"- {rm.pr_link(c)} on {rm.branch_link(b)} · open {stale(d)}"
+            for c, b, d in conflicts
         ] + [""]
     if groups:
         out += [
@@ -273,10 +302,10 @@ def pending_block(conflicts, held_rows):
             "",
         ]
         out += [
-            f"- {link_pr(pr)} {cls} → "
-            + ", ".join(f"`{b}`" for b in bs)
+            f"- {link_src(sha, pr)} {cls} → "
+            + ", ".join(map(rm.branch_link, bs))
             + f" · merged {stale(d)} ago"
-            for cls, pr, d, bs in groups.values()
+            for sha, (cls, pr, d, bs) in groups.items()
         ]
         commits = ",".join(_commit_arg(sha, pr) for sha, (_, pr, _, _) in groups.items())
         branches = ",".join(
@@ -428,14 +457,17 @@ def held(slug, repo, branch, accept=HELD, cache=None, token=None):
 def owed_summary(rows, branch):
     """Information only: a stabilized line takes a plain fix only when the RM dispatches Backport naming the line."""
     out = [
-        f"**Owed picks** for `{branch}`: main fixes since the cut, neither picked nor declined",
+        f"**Owed picks** for {rm.branch_link(branch)}: main fixes since the cut, neither picked nor declined",
         "",
     ]
     if not rows:
         return "\n".join(out + ["none"])
     out += ["| commit | PR | title | class |", "|---|---|---|---|"]
     cell = lambda t: t.replace("|", r"\|")  # a pipe in a title would split the row
-    out += [f"| `{s[:7]}` | {pr} | {cell(title)} | {cls} |" for s, cls, pr, title in rows]
+    out += [
+        f"| {link_sha(s)} | {link_pr(pr)} | {cell(title)} | {cls} |"
+        for s, cls, pr, title in rows
+    ]
     return "\n".join(
         out
         + [
@@ -459,18 +491,9 @@ def held_note(rows, branch, slug=None):
     if not rows:
         return None
     commits = ",".join(_commit_arg(s, pr) for s, _, pr, _ in rows)
-    if slug:
-
-        def link(pr):
-            if pr.startswith("#"):
-                return f"[{slug}{pr}](https://github.com/{slug}/pull/{pr[1:]})"
-            return pr
-
-    else:
-        link = link_pr
     return (
-        f"⚠ Held for the RM on {f'{slug} ' if slug else ''}`{branch}` (stabilized; Promote blocks unless forced): "
-        + ", ".join(f"{link(pr)} {cls}" for _, cls, pr, _ in rows)
+        f"⚠ Held for the RM on {f'{slug} ' if slug else ''}{rm.branch_link(branch, slug)} (stabilized; Promote blocks unless forced): "
+        + ", ".join(f"{link_src(s, pr, slug)} {cls}" for s, cls, pr, _ in rows)
         + f". Pick with `gh workflow run backport.yaml{f' -R {slug}' if slug else ''} -f commits={commits} "
         f"-f lines={rm.line(branch)} -f confirm_stabilized=true`"
     )
@@ -498,7 +521,7 @@ def patch_lines(state, slug=None):
     ]
     cache = pr_classes(slug, min(gas, key=rs._ts)) if gas else {}
     for branch in branches:
-        out.append(f"- `{branch}`: {_owed_cell(slug, branch, cache)}")
+        out.append(f"- {rm.branch_link(branch)}: {_owed_cell(slug, branch, cache)}")
     return "\n".join(out)
 
 
@@ -542,7 +565,7 @@ def missed_picks(state, others=(), slug=None):
     for branch in branches:
         try:
             prs = [
-                f"{repo}#{p['number']}"
+                rm.pr_link(p["number"], repo)
                 for repo in dict.fromkeys([slug, *others])
                 for p in conflict_prs(repo, branch)
             ]
@@ -551,7 +574,7 @@ def missed_picks(state, others=(), slug=None):
             print(f"::warning::{branch}: conflict PR listing failed: {e}")
             conflicts = "unavailable (see the run log)"
         out.append(
-            f"- `{branch}`: owed {_owed_cell(slug, branch, cache)}; conflict PRs {conflicts}"
+            f"- {rm.branch_link(branch)}: owed {_owed_cell(slug, branch, cache)}; conflict PRs {conflicts}"
         )
     return "\n".join(out)
 
@@ -1084,10 +1107,7 @@ def main():
             "| commit | PR | class | branch | result | relevance |",
             "|---|---|---|---|---|---|",
         ]
-        out += [
-            f"| `{s[:7]}` | {pr} | {c} | {b} | {res} | {rel} |"
-            for s, pr, c, b, res, rel in rows
-        ]
+        out += [dispatch_row(*r) for r in rows]
         out += [""] + pending
     print("\n".join(out))
     if os.environ.get("GITHUB_STEP_SUMMARY"):

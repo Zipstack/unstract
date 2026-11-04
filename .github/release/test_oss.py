@@ -36,6 +36,29 @@ class Choose(unittest.TestCase):
         self.assertIsNone(oss.choose([]))
 
 
+class GateHeading(unittest.TestCase):
+    def test_gate_heading_links_the_oss_line(self):
+        d = tempfile.TemporaryDirectory()
+        self.addCleanup(d.cleanup)
+        summary = os.path.join(d.name, "summary")
+        env = {"GITHUB_SERVER_URL": "https://github.com", "GITHUB_STEP_SUMMARY": summary}
+        done = subprocess.CompletedProcess([], 0, stderr="")
+        with (
+            mock.patch.dict(os.environ, env),
+            mock.patch.object(oss.subprocess, "run", return_value=done),
+        ):
+            self.assertEqual(
+                oss.gate(d.name, "release/1.7", "ee-v1.7.0-rc.1", "warning"), 0
+            )
+        u = f"https://github.com/{oss.OSS}"
+        with open(summary) as f:
+            self.assertEqual(
+                f.read(),
+                f"#### OSS line [`release/1.7`]({u}/tree/release/1.7) at "
+                f"[`ee-v1.7.0-rc.1`]({u}/releases/tag/ee-v1.7.0-rc.1)\n\n",
+            )
+
+
 class Lines(unittest.TestCase):
     def setUp(self):
         tmp = tempfile.TemporaryDirectory()
@@ -357,8 +380,20 @@ class Lines(unittest.TestCase):
         self.assertEqual(
             self.remote("tag", "-l", "ee-*").split(), ["ee-v1.7.0-rc.1", "ee-v1.7.0-rc.2"]
         )  # dry run
+        web = {"GITHUB_SERVER_URL": "https://github.com"}
+        u = f"https://github.com/{oss.OSS}"
+        with mock.patch.dict(os.environ, web):
+            linked = oss.retire(self.oss, "release/1.7", "cut by mistake")
+            self.assertEqual(
+                linked[0],
+                f"- OSS `release/1.7` (tip [`{tip[:12]}`]({u}/commit/{tip}); no GA, RC tags deleted)",
+            )
+            self.assertEqual(linked[-1], dry[-1])  # not pushed yet: no link
+            real = oss.retire(self.oss, "release/1.7", "cut by mistake", dry_run=False)
+        self.assertEqual(real[:-1], linked[:-1])
         self.assertEqual(
-            oss.retire(self.oss, "release/1.7", "cut by mistake", dry_run=False), dry
+            real[-1],
+            f"- OSS tag [`retired/1.7-{tip[:7]}`]({u}/releases/tag/retired/1.7-{tip[:7]}): cut by mistake",
         )
         self.assertEqual(self.remote("tag", "-l", "ee-*"), "")
         self.assertEqual(self.remote("tag", "-l", "v*"), "v1.7.3")
@@ -999,6 +1034,30 @@ class RetireWorkflow(Workflow):
         self.line("1.7")
         self.retire(RETIRE_LINE="1.7", REASON="not shipping")
         self.assert_gone("1.7")
+
+    def test_retire_line_links_only_what_survives(self):
+        self.line("1.7")
+        tip = rm.git(self.repos["cloud"][0], "rev-parse", "release/1.7")
+        web = "https://github.com/Zipstack/unstract-cloud"
+        tag = f"retired/1.7-{tip[:7]}"
+        env = {
+            "RETIRE_LINE": "1.7",
+            "REASON": "x",
+            "GITHUB_SERVER_URL": "https://github.com",
+        }
+        self.retire(DRY_RUN="true", **env)
+        dry = self.read("summary")
+        self.assertIn(
+            f"- branch [`release/1.7`]({web}/tree/release/1.7) (tip [`{tip[:12]}`]({web}/commit/{tip});",
+            dry,
+        )
+        self.assertIn(f"- tag `{tag}`: x", dry)
+        self.retire(**env)
+        real = self.read("summary")[len(dry) :]
+        self.assertIn(
+            f"- branch `release/1.7` (tip [`{tip[:12]}`]({web}/commit/{tip});", real
+        )
+        self.assertIn(f"- tag [`{tag}`]({web}/releases/tag/{tag}): x", real)
 
     def test_refuses_a_value_not_a_line(self):
         self.line("1.7")
@@ -2393,7 +2452,13 @@ class PendingPicksWorkflow(Workflow):
         self.blocked(r, "::error::convergence gate: MISSING picks (summary above)")
         self.assertIn(f"MISSING original {fix[:12]}", r.stdout)
         self.assertIn(
-            "### ⛔ Promote blocked · v1.7.0-rc.1 · cloud", self.read("summary")
+            "### ⛔ Promote blocked · `v1.7.0-rc.1` · cloud", self.read("summary")
+        )
+        self.promote(GITHUB_SERVER_URL="https://github.com")
+        self.assertIn(
+            "### ⛔ Promote blocked · [`v1.7.0-rc.1`](https://github.com/Zipstack/unstract-cloud/releases/tag/v1.7.0-rc.1)"
+            " · cloud",
+            self.read("summary"),
         )
         self.assertEqual(
             self.forced(self.promote(FORCE="true", REASON="ship  it\nnow")), "ship it now"
@@ -2762,7 +2827,7 @@ class TakeRcVersion(Workflow):
         self.assertEqual(summary("skipped")[0], 0)
 
     def test_staging_is_left_alone_for_an_older_line(self):
-        def summary(build, newest):
+        def summary(build, newest, **env):
             out = os.path.join(self.d, "summary")
             with contextlib.suppress(FileNotFoundError):
                 os.remove(out)
@@ -2777,6 +2842,7 @@ class TakeRcVersion(Workflow):
                     "BRANCH": "release/1.7",
                     "NEWEST": newest,
                     "GITHUB_STEP_SUMMARY": out,
+                    **env,
                 },
                 capture_output=True,
                 text=True,
@@ -2794,6 +2860,15 @@ class TakeRcVersion(Workflow):
             summary("cloud", "release/1.8"),
         )
         self.assertIn(note, summary("cloud on-prem", "release/1.8"))
+        web = "https://github.com/Zipstack/unstract-cloud"
+        self.assertIn(
+            f"newest line, [`release/1.8`]({web}/tree/release/1.8). To deploy "
+            f"[`v1.7.1-rc.1`]({web}/releases/tag/v1.7.1-rc.1) there anyway:",
+            summary("cloud", "release/1.8", GITHUB_SERVER_URL="https://github.com"),
+        )
+        self.assertIn(
+            note, summary("cloud", "release/1.8", GITHUB_SERVER_URL="https://github.com")
+        )
         self.assertNotIn(note, summary("cloud", "release/1.7"))
         self.assertNotIn(note, summary("on-prem", "release/1.8"))
         with open(os.path.join(HERE, "..", "workflows", "take-rc-build.yaml")) as fh:

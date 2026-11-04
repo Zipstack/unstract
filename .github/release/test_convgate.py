@@ -121,7 +121,7 @@ class Gate(unittest.TestCase):
         self.assertIn(", 1 missing,", out)
         code, out = self.run_gate("release/1.6")
         self.assertEqual(code, 2)
-        self.assertIn("**release/1.5** (older", out)
+        self.assertIn("**`release/1.5`** (older", out)
 
     def test_decline_converges(self):
         self.decline(self.c, "release/1.6")
@@ -207,9 +207,23 @@ class Gate(unittest.TestCase):
                 "1 picks, 0 in the RC, 1 declined on release/1.6, 1 unclassifiable", out
             )
             self.assertIn(
-                f"- `{pick[:12]}` DECLINED on release/1.6 original {self.c[:12]}: not needed on 1.6 ({d[:7]})",
+                f"- `{pick[:12]}` DECLINED on `release/1.6` original {self.c[:12]}: not needed on 1.6 (`{d[:7]}`)",
                 out,
             )
+        web = "https://github.com/Zipstack/unstract-cloud"
+        with mock.patch.dict(os.environ, {"GITHUB_SERVER_URL": "https://github.com"}):
+            _, out = self.run_gate("release/1.5")
+        self.assertIn(
+            f"### Convergence gate: [`release/1.5`]({web}/tree/release/1.5) for cloud at "
+            f"[`refs/heads/release/1.5`]({web}/tree/release/1.5)",
+            out,
+        )
+        self.assertIn(f"**[`release/1.6`]({web}/tree/release/1.6)** (newer", out)
+        self.assertIn(
+            f"- [`{pick[:12]}`]({web}/commit/{pick}) DECLINED on [`release/1.6`]({web}/tree/release/1.6) "
+            f"original {self.c[:12]}: not needed on 1.6 ([`{d[:7]}`]({web}/commit/{d}))",
+            out,
+        )
 
     def test_declined_on_older(self):
         self.g("checkout", "-q", "release/1.5")
@@ -380,7 +394,7 @@ class Gate(unittest.TestCase):
         code, out = self.run_gate("release/1.5", "on-prem")
         self.assertEqual(code, 2, out)
         self.assertIn(
-            "**release/1.6** (newer, stabilizing for on-prem; `refs/heads/release/1.5` into `refs/tags/v1.6.0`)",
+            "**`release/1.6`** (newer, stabilizing for on-prem; `refs/heads/release/1.5` into `refs/tags/v1.6.0`)",
             out,
         )
         self.assertIn(
@@ -535,7 +549,7 @@ class Gate(unittest.TestCase):
             self.checks(out)[3],
             "| ✅ fixes match older lines | 1 older line converged (1 picks) | - |",
         )
-        self.assertIn("**release/1.5** (older", out)
+        self.assertIn("**`release/1.5`** (older", out)
         self.rbo("pin the base image")
         _, out = self.run_gate("release/1.6")
         self.assertIn(
@@ -546,7 +560,7 @@ class Gate(unittest.TestCase):
         self.pick(self.c, "release/1.6")
         _, out = self.run_gate("release/1.5")
         self.assertIn(
-            "**release/1.6** (newer, stabilizing for cloud; `refs/heads/release/1.5` into `refs/heads/release/1.6`): "
+            "**`release/1.6`** (newer, stabilizing for cloud; `refs/heads/release/1.5` into `refs/heads/release/1.6`): "
             "1 picks, 1 in the RC, 1 unclassifiable\n",
             out,
         )
@@ -564,7 +578,7 @@ class Gate(unittest.TestCase):
         self.rbo("pin the base image")
         _, out = self.run_gate("release/1.5")
         self.assertIn(
-            "**release/1.6** (newer, stabilized for cloud; `refs/heads/release/1.5` into `refs/tags/v1.6.0`): "
+            "**`release/1.6`** (newer, stabilized for cloud; `refs/heads/release/1.5` into `refs/tags/v1.6.0`): "
             "1 picks, 1 in v1.6.0, 1 unclassifiable · 1 release-branch-only to check\n",
             out,
         )
@@ -910,6 +924,20 @@ class OssPins(unittest.TestCase):
         code, out, _ = self.run_gate("release/1.5")
         self.assertEqual(code, 2)
         self.assertIn(": take a new RC of release/1.6 to pin OSS release/1.6's tip.", out)
+
+    def test_oss_pins_link_to_the_oss_repo(self):
+        with mock.patch.dict(os.environ, {"GITHUB_SERVER_URL": "https://github.com"}):
+            _, out, _ = self.run_gate("release/1.6")
+        cloud, oss = (
+            "https://github.com/Zipstack/unstract-cloud",
+            "https://github.com/Zipstack/unstract",
+        )
+        self.assertIn(
+            f"### OSS pins: [`release/1.6`]({cloud}/tree/release/1.6) pins "
+            f"[`ee-v1.6.0`]({oss}/releases/tag/ee-v1.6.0)",
+            out,
+        )
+        self.assertIn(f"MISSING original [`{self.f[:12]}`]({oss}/commit/{self.f})", out)
 
     def test_repinned_newer_line_converges(self):
         self.g(self.oss, "checkout", "-q", "release/1.6")

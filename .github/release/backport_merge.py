@@ -405,7 +405,7 @@ def record(slug, n, sender):
 
 def summary(n, sender, rec):
     base, sha, pr = rec["base"], rec["sha"], rm.pr_link(n)
-    head = f"**Backport PR** {pr} on `{base}`: "
+    head = f"**Backport PR** {pr} on {rm.branch_link(base)}: "
     if rec["result"].startswith("declined"):
         return [
             head + f"**declined** as {rm.commit_link(sha)}",
@@ -416,7 +416,7 @@ def summary(n, sender, rec):
         squash = rm.commit_link(sha) if sha else "the squash"
         return [
             head + f"**merged** as {squash} (@{sender})",
-            f"Undo: revert {squash} on `{base}`.",
+            f"Undo: revert {squash} on {rm.branch_link(base)}.",
         ]
     if rec["result"] == "reopened":
         return [
@@ -434,7 +434,9 @@ def summary(n, sender, rec):
                 else "Next: nothing here; its head no longer holds this PR's commit."
             ),
         ]
-    return [head + f"**skipped**: already on `{base}` as {rm.commit_link(sha)}"]
+    return [
+        head + f"**skipped**: already on {rm.branch_link(base)} as {rm.commit_link(sha)}"
+    ]
 
 
 def main():

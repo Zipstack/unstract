@@ -77,8 +77,8 @@ class Held(unittest.TestCase):
                     [(b, "critical", "#2", "t"), (d, bp.UNCLASSIFIABLE, "no PR", "t")],
                     "release/0.182",
                 ),
-                f"⚠ Held for the RM on `release/0.182` (stabilized; Promote blocks unless forced): #2 critical, no PR "
-                f"{bp.UNCLASSIFIABLE}. Pick with `gh workflow run backport.yaml -f commits=#2,{d[:12]} "
+                f"⚠ Held for the RM on `release/0.182` (stabilized; Promote blocks unless forced): #2 critical, "
+                f"`{d[:7]}` (no PR) {bp.UNCLASSIFIABLE}. Pick with `gh workflow run backport.yaml -f commits=#2,{d[:12]} "
                 "-f lines=0.182 -f confirm_stabilized=true`",
             )
 
@@ -386,6 +386,100 @@ class OwedSummary(unittest.TestCase):
         self.assertTrue(bp.owed_summary([], "release/0.187").endswith("none"))
 
 
+ACTIONS = {
+    "GITHUB_SERVER_URL": "https://github.com",
+    "GITHUB_REPOSITORY": "Zipstack/unstract-cloud",
+}
+WEB = "https://github.com/Zipstack/unstract-cloud"
+
+
+class SummaryLinks(unittest.TestCase):
+    A = "6d49d9f" + "0" * 33
+
+    def test_dispatch_rows(self):
+        a = self.A
+        with mock.patch.dict(os.environ, ACTIONS):
+            self.assertEqual(
+                bp.dispatch_row(a, "no PR", "none", "-", "skipped: not a fix", "-"),
+                f"| [`6d49d9f`]({WEB}/commit/{a}) | no PR | none | - | skipped: not a fix | - |",
+            )
+            self.assertEqual(
+                bp.dispatch_row(
+                    a,
+                    "#251",
+                    "fix",
+                    "release/0.192",
+                    "merged 1234567 (#260, retried)",
+                    "-",
+                ),
+                f"| [`6d49d9f`]({WEB}/commit/{a}) | [#251]({WEB}/pull/251) | fix "
+                f"| [`release/0.192`]({WEB}/tree/release/0.192) "
+                f"| merged [`1234567`]({WEB}/commit/1234567) ([#260]({WEB}/pull/260), retried) | - |",
+            )
+            self.assertIn(
+                f"| pr [#261]({WEB}/pull/261) |",
+                bp.dispatch_row(
+                    a, "#251", "fix", "release/0.190", f"pr {WEB}/pull/261", "-"
+                ),
+            )
+            self.assertTrue(
+                bp.dispatch_row("-------", "-", "-", "-", "x", "-").startswith(
+                    "| `-------` | - |"
+                )
+            )
+
+    def test_display_copies_link_and_paste_lines_stay_plain(self):
+        a, b = self.A, "b" * 40
+        with mock.patch.dict(os.environ, ACTIONS):
+            owed = bp.owed_summary(
+                [(a, "fix", "#3", "t"), (b, bp.UNCLASSIFIABLE, "no PR", "z")],
+                "release/0.187",
+            )
+            self.assertIn(f"for [`release/0.187`]({WEB}/tree/release/0.187):", owed)
+            self.assertIn(
+                f"| [`6d49d9f`]({WEB}/commit/{a}) | [#3]({WEB}/pull/3) | t | fix |", owed
+            )
+            self.assertIn(f"| [`bbbbbbb`]({WEB}/commit/{b}) | no PR | z |", owed)
+            oss = "https://github.com/Zipstack/unstract"
+            note = bp.held_note(
+                [(a, "critical", "#2", "t"), (b, bp.UNCLASSIFIABLE, "no PR", "t")],
+                "release/0.182",
+                "Zipstack/unstract",
+            )
+            self.assertIn(
+                f"on Zipstack/unstract [`release/0.182`]({oss}/tree/release/0.182) (stabilized; Promote blocks "
+                f"unless forced): [Zipstack/unstract#2]({oss}/pull/2) critical, [`bbbbbbb`]({oss}/commit/{b}) (no PR)",
+                note,
+            )
+            self.assertIn(f"-f commits=#2,{b[:12]} -f lines=0.182", note)
+            pending = bp.pending_block(
+                [(261, "release/0.190", 1)],
+                [(b, "release/0.189", "security", "no PR", 1)],
+            )
+            self.assertIn(
+                f"- [#261]({WEB}/pull/261) on [`release/0.190`]({WEB}/tree/release/0.190) · open 1 day",
+                pending,
+            )
+            self.assertIn(
+                f"- [`bbbbbbb`]({WEB}/commit/{b}) (no PR) security → [`release/0.189`]({WEB}/tree/release/0.189)",
+                " ".join(pending),
+            )
+            self.assertIn(f"-f commits={b[:12]} -f lines=0.189", " ".join(pending))
+            self.assertEqual(
+                bp.this_run([(a, "#251", "fix", "release/0.192", "failed: x", "-")]),
+                [
+                    f"- [#251]({WEB}/pull/251) → [`release/0.192`]({WEB}/tree/release/0.192): failed: x"
+                ],
+            )
+            self.assertTrue(
+                bp.status_row(
+                    "release/0.192", "stabilizing", None, 0, 0, [], 0
+                ).startswith(
+                    f"| [`release/0.192`]({WEB}/tree/release/0.192) | stabilizing | none |"
+                )
+            )
+
+
 class OnlyListed(unittest.TestCase):
     def test_filter_narrows_never_adds(self):
         targets = ["release/0.189", "release/0.188"]
@@ -633,6 +727,15 @@ class PatchLines(unittest.TestCase):
                 "- `release/0.188`: none",
             ],
         )
+        with (
+            mock.patch.dict(os.environ, ACTIONS),
+            mock.patch.object(bp, "held", held),
+            mock.patch.object(bp, "pr_classes", lambda slug, since: {}),
+        ):
+            self.assertEqual(
+                bp.patch_lines(state, "o/r").splitlines()[2],
+                f"- [`release/0.190`]({WEB}/tree/release/0.190): `#7 {b[:12]}` (1 unclassifiable left out)",
+            )
         with mock.patch.object(bp, "held", held):
             self.assertTrue(
                 bp.patch_lines({"branches": state["branches"][:1]}, "o/r").endswith(
@@ -735,6 +838,16 @@ class MissedPicks(unittest.TestCase):
             self.held_calls, [("release/0.191", bp.OWED), ("release/0.190", bp.OWED)]
         )
         self.assertEqual(self.listed, ["2026-09-15"])  # one listing, from the oldest cut
+
+    def test_links_under_actions(self):
+        with mock.patch.dict(os.environ, ACTIONS):
+            line = self.missed()[2]
+        web = "https://github.com"
+        self.assertEqual(
+            line,
+            f"- [`release/0.191`]({WEB}/tree/release/0.191): owed `#7`; conflict PRs "
+            f"[o/r#12]({web}/o/r/pull/12), [Zipstack/unstract#30]({web}/Zipstack/unstract/pull/30)",
+        )
 
     def test_same_repo_listed_once(self):  # the OSS repo's own State run
         self.assertEqual(

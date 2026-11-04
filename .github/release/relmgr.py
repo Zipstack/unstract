@@ -54,8 +54,10 @@ def _web(repo=None):
     return f"{server}/{slug}" if server and slug else None
 
 
-def pr_link(n):
-    return f"[#{n}]({_web()}/pull/{n})" if _web() else f"#{n}"
+def pr_link(n, repo=None):
+    # A repo other than this run's is named in the text, so the reader sees which repo's PR it is.
+    web, text = _web(repo), f"{repo or ''}#{n}"
+    return f"[{text}]({web}/pull/{n})" if web else text
 
 
 def commit_link(sha, n=7, repo=None):
@@ -72,6 +74,16 @@ def tag_link(tag, repo=None):
 def branch_link(branch, repo=None):
     web = _web(repo)
     return f"[`{branch}`]({web}/tree/{branch})" if web else f"`{branch}`"
+
+
+def ref_link(ref, repo=None):
+    """The full ref stays the text: a local head and origin's copy of a branch are different reads."""
+    web = _web(repo)
+    if web and ref.startswith("refs/tags/"):
+        return f"[`{ref}`]({web}/releases/tag/{ref.removeprefix('refs/tags/')})"
+    if web and (m := re.fullmatch(r"refs/(?:heads|remotes/origin)/(.+)", ref)):
+        return f"[`{ref}`]({web}/tree/{m[1]})"
+    return f"`{ref}`"
 
 
 def image_link(target, tag):

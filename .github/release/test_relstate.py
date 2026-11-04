@@ -225,7 +225,7 @@ class Scenario(unittest.TestCase):
         )
         self.assertEqual(st["supported"]["on-prem"], ["release/1.5"])
         self.assertIn(
-            "| stabilized | stabilized (GA v1.5.0) | stabilizing (rc.1, late) |",
+            "| stabilized | stabilized (GA `v1.5.0`) | stabilizing (rc.1, late) |",
             rs.summary(st),
         )
         self.push(
@@ -534,14 +534,27 @@ class Scenario(unittest.TestCase):
         self.newer_cloud_ga()
         out = rs.summary(self.state())
         self.assertIn(
-            "| release/1.6 | stabilized | stabilized (GA v1.6.0) | - | v1.6.0-rc.1 | - | 0 |",
+            "| `release/1.6` | stabilized | stabilized (GA `v1.6.0`) | - | `v1.6.0-rc.1` | - | 0 |",
             out,
         )
         self.assertIn(
-            "| release/1.5 | stabilized | past-eos | stabilized (GA v1.5.1) | v1.5.0-rc.1 | - | 0 |",
+            "| `release/1.5` | stabilized | past-eos | stabilized (GA `v1.5.1`) | `v1.5.0-rc.1` | - | 0 |",
             out,
         )
         self.assertIn("next_minor: 1.7", out)
+        web = "https://github.com/Zipstack/unstract-cloud"
+        env = {
+            "GITHUB_SERVER_URL": "https://github.com",
+            "GITHUB_REPOSITORY": "Zipstack/unstract-cloud",
+        }
+        with unittest.mock.patch.dict(os.environ, env):
+            out = rs.summary(self.state())
+        self.assertIn(
+            f"| [`release/1.6`]({web}/tree/release/1.6) | stabilized "
+            f"| stabilized (GA [`v1.6.0`]({web}/releases/tag/v1.6.0)) | - "
+            f"| [`v1.6.0-rc.1`]({web}/releases/tag/v1.6.0-rc.1) | - | 0 |",
+            out,
+        )
 
     def test_ahead_of_ga(self):
         self.cloud_ga()
@@ -777,7 +790,7 @@ class Scenario(unittest.TestCase):
         )
         st = self.state()
         self.assertEqual(self.branch(st, "release/1.5")["tip_rc_slack"], url)
-        self.assertIn(f"| v1.5.0-rc.1 ([Slack]({url})) |", rs.summary(st))
+        self.assertIn(f"| `v1.5.0-rc.1` ([Slack]({url})) |", rs.summary(st))
 
     def test_next_minor_cutover_fallback(self):
         self.g("tag", "v0.181.0")
@@ -1053,7 +1066,7 @@ class Scenario(unittest.TestCase):
             "| branch | state | oss | tip_rc | next_rc | ahead_of_ga |", rs.summary(st)
         )
         self.assertIn(
-            "| release/1.6 | stabilized | stabilized (GA ee-v1.6.0) | ee-v1.6.0-rc.1 | - | 0 |",
+            "| `release/1.6` | stabilized | stabilized (GA `ee-v1.6.0`) | `ee-v1.6.0-rc.1` | - | 0 |",
             rs.summary(st),
         )
         self.commit("fix on 1.6", "release/1.6")

@@ -150,7 +150,14 @@ def oss_pins(repo, oss_repo, branch, target, scope, ref, rows, annotate):
     main, oss_refs = "refs/remotes/origin/main", rs._branches(oss_repo)
     pins = _oss_pins_of(repo, oss_repo, [branch, *scope], ref)
     head = blocked(branch, target, annotate)
-    missing, lines, out = 0, [], [f"### OSS pins: `{branch}` pins `{pins[branch]}`", ""]
+    missing, lines, out = (
+        0,
+        [],
+        [
+            f"### OSS pins: {rm.branch_link(branch)} pins {rm.tag_link(pins[branch], oss.OSS)}",
+            "",
+        ],
+    )
     for s in scope:
         older, newer = rs.older_newer(s, branch)
         p_old, p_new, line_new = pins[older], pins[newer], oss.line_of(pins[newer])
@@ -164,7 +171,8 @@ def oss_pins(repo, oss_repo, branch, target, scope, ref, rows, annotate):
         line = _line_result(s, older, len(found), summary, state_s, oss=True)
         lines.append(line)
         out.append(
-            f"**{s}** ({line['side']}; `{older}` pins `{p_old}`, `{newer}` pins `{p_new}`): {summary}"
+            f"**{rm.branch_link(s)}** ({line['side']}; {rm.branch_link(older)} pins {rm.tag_link(p_old, oss.OSS)}, "
+            f"{rm.branch_link(newer)} pins {rm.tag_link(p_new, oss.OSS)}): {summary}"
         )
         for c, st in found:
             if st != "MISSING":
@@ -173,7 +181,9 @@ def oss_pins(repo, oss_repo, branch, target, scope, ref, rows, annotate):
                 fix, act = _oss_act(oss_repo, main, oss_refs, o, newer, line_new)
                 msg = f"{head}: {fix} is in {older}'s OSS pin {p_old} but not in {newer}'s pin {p_new}: {act}."
                 print(f"::{annotate}::{msg}")
-                out.append(f"- `{c[:12]}` MISSING original {o[:12]}")
+                out.append(
+                    f"- {rm.commit_link(c, 12, oss.OSS)} MISSING original {rm.commit_link(o, 12, oss.OSS)}"
+                )
                 out.append(f"  - {msg}")
                 line["todo"].append(act)
         out.append("")
@@ -318,15 +328,15 @@ def _row_out(
     if status == "DECLINED":
         d, why = decline
         out.append(
-            f"- `{c[:12]}` DECLINED on {newer} original {', '.join(o[:12] for o in origs)}: {why} ({d[:7]})"
+            f"- {rm.commit_link(c, 12)} DECLINED on {rm.branch_link(newer)} original {', '.join(o[:12] for o in origs)}: {why} ({rm.commit_link(d)})"
         )
     elif status == "RBO-ABSENT":
         what = _rbo_what(repo, c)
-        out.append(f"- `{c[:12]}` RBO-ABSENT {what}")
+        out.append(f"- {rm.commit_link(c, 12)} RBO-ABSENT {what}")
         line["rbo"].append(f"on `{older}`: {what}, not on `{newer}`")
     elif status != "CONVERGED":
         out.append(
-            f"- `{c[:12]}` {status} original {', '.join(o[:12] for o in origs) or '-'}"
+            f"- {rm.commit_link(c, 12)} {status} original {', '.join(o[:12] for o in origs) or '-'}"
         )
         if status == "MISSING":
             for o in origs:
@@ -359,7 +369,10 @@ def gate(
     # a promoted branch ships its latest stable tag for T, not its tip
     ref = functools.partial(_ref, repo, refs, rows, branch, target, promote_ref)
     scope = [s for s in state["supported"][target] if s != branch]
-    out = [f"### Convergence gate: `{branch}` for {target} at `{ref(branch)}`", ""]
+    out = [
+        f"### Convergence gate: {rm.branch_link(branch)} for {target} at {rm.ref_link(ref(branch))}",
+        "",
+    ]
     if not scope:
         out.append("scanned branches: none")
     missing, lines = 0, []
@@ -377,8 +390,8 @@ def gate(
         line = _line_result(s, older, n_picks, summary, state_s)
         lines.append(line)
         out.append(
-            f"**{s}** ({line['side']}, {state_s or 'not enabled'} for {target}; "
-            f"`{refs[older]}` into `{ref(newer)}`): {summary}"
+            f"**{rm.branch_link(s)}** ({line['side']}, {state_s or 'not enabled'} for {target}; "
+            f"{rm.ref_link(refs[older])} into {rm.ref_link(ref(newer))}): {summary}"
         )
         message = functools.partial(
             missing_message,
