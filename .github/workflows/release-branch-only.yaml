@@ -1,4 +1,4 @@
-name: V2 Release branch only
+name: Release branch only
 
 # The job holds the bot token, so it runs on pull_request_target: the base line's copy of this file, which a PR cannot
 # edit. The head is only data here: read without a token, its files never imported, and the push ignores its git config.
