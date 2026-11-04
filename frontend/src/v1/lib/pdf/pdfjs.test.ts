@@ -315,12 +315,16 @@ describe("openPdfDocument", () => {
 
   it("handles a destroy that fails because the worker is already gone", async () => {
     const task = deferredTask();
-    const failed = Promise.reject(new Error("Worker was destroyed"));
-    // Handled here too, so the rejection is not reported while the test waits
-    // for the load to start; the spy below still sees whether destroy handles it.
-    failed.catch(() => undefined);
-    const handled = vi.spyOn(failed, "catch");
-    task.destroy.mockReturnValue(failed);
+    const handled = vi.fn();
+    task.destroy.mockImplementation(() => {
+      const failed = Promise.reject(new Error("Worker was destroyed"));
+      const original = failed.catch.bind(failed);
+      failed.catch = (onRejected) => {
+        handled();
+        return original(onRejected);
+      };
+      return failed;
+    });
     pdfjsMock.getDocument.mockReturnValue(task);
     const opening = openPdfDocument({ kind: "url", url: "/a.pdf" });
     opening.promise.catch(() => undefined);
