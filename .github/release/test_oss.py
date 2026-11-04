@@ -2600,7 +2600,7 @@ class LateTargetWorkflow(Workflow):
         )
         self.assertEqual(
             out,
-            "tag=v1.7.0-rc.3\nbump=false\ntargets=on-prem\nnewest=release/1.7\nchart=true\n",
+            "tag=v1.7.0-rc.3\nbump=false\ntargets=on-prem\nwant=on-prem\nnewest=release/1.7\nchart=true\n",
         )
         self.built("v1.7.0-rc.3")
         st = self.state()
@@ -2685,7 +2685,7 @@ class TakeRcVersion(Workflow):
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertEqual(
             self.read("output"),
-            "tag=v1.7.0-rc.2\nbump=true\ntargets=cloud\nnewest=release/1.7\nchart=false\n",
+            "tag=v1.7.0-rc.2\nbump=true\ntargets=cloud\nwant=cloud\nnewest=release/1.7\nchart=false\n",
         )
 
     def test_allocates_past_a_kept_rc_chart(self):
@@ -2806,7 +2806,7 @@ class TakeRcVersion(Workflow):
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertEqual(
             self.read("output"),
-            "tag=v1.7.1-rc.1\nbump=true\ntargets=cloud\nnewest=release/1.7\nchart=false\n",
+            "tag=v1.7.1-rc.1\nbump=true\ntargets=cloud\nwant=cloud\nnewest=release/1.7\nchart=false\n",
         )
 
     def test_rerun_on_a_tagged_tip_builds_only_the_missing_target(self):
@@ -2837,7 +2837,23 @@ class TakeRcVersion(Workflow):
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertEqual(
             self.read("output"),
-            "tag=v1.7.1-rc.1\nbump=false\ntargets=cloud\nnewest=release/1.7\nchart=true\n",  # on-prem built earlier: still push its chart
+            "tag=v1.7.1-rc.1\nbump=false\ntargets=cloud\nwant=cloud on-prem\nnewest=release/1.7\nchart=true\n",  # on-prem built earlier: still push its chart
+        )
+
+
+@unittest.skipUnless(
+    os.path.exists(os.path.join(HERE, "..", "workflows", "take-rc-build.yaml")),
+    "take-rc-build.yaml is cloud-only",
+)
+class TakeRcPrerelease(unittest.TestCase):
+    def test_lists_every_ticked_target(self):
+        # A rerun builds only what an earlier run missed; the release it creates must still list every ticked target.
+        with open(os.path.join(HERE, "..", "workflows", "take-rc-build.yaml")) as fh:
+            wf = fh.read()
+        self.assertIn("      want: ${{ steps.plan.outputs.want }}\n", wf)
+        job = wf[wf.index("- name: Create the RC prerelease") :]
+        self.assertIn(
+            "TARGETS: ${{ needs.take-rc.outputs.want }}\n", job[: job.index("run: |")]
         )
 
 
