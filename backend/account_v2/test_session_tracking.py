@@ -23,6 +23,7 @@ from rest_framework.test import APIClient, APITestCase
 
 from account_v2.models import Organization, SessionRecord, User
 from account_v2.session_tracking import (
+    _IDLE_SWEEP_CACHE_KEY,
     _TOUCH_CACHE_PREFIX,
     SessionTracker,
     _location_resolver,
@@ -195,6 +196,33 @@ class SessionEndpointsTest(APITestCase):
         self.assertFalse(
             SessionRecord.objects.filter(session_key=self._key(bob_idle)).exists()
         )
+
+    def test_activity_sweeps_idle_records_without_any_sign_in(self) -> None:
+        laptop = self._sign_in(self.user)
+        bob_idle = self._sign_in(self._make_user("bob@example.com"))
+        SessionRecord.objects.filter(session_key=self._key(bob_idle)).update(
+            last_active_at=timezone.now()
+            - timedelta(seconds=settings.SESSION_COOKIE_AGE + 1)
+        )
+        cache.delete(_IDLE_SWEEP_CACHE_KEY)
+        self.addCleanup(cache.delete, _IDLE_SWEEP_CACHE_KEY)
+
+        laptop.get(SESSIONS_URL)
+
+        self.assertFalse(
+            SessionRecord.objects.filter(session_key=self._key(bob_idle)).exists()
+        )
+
+    def test_activity_sweeps_at_most_once_an_hour(self) -> None:
+        laptop = self._sign_in(self.user)
+        cache.set(_IDLE_SWEEP_CACHE_KEY, True, timeout=3600)
+        self.addCleanup(cache.delete, _IDLE_SWEEP_CACHE_KEY)
+        cache.delete(f"{_TOUCH_CACHE_PREFIX}{self._key(laptop)}")
+
+        with patch("account_v2.session_tracking.SessionTracker._sweep_idle") as sweep:
+            laptop.get(SESSIONS_URL)
+
+        sweep.assert_not_called()
 
     def test_record_recreated_by_an_in_flight_request_after_revoke_is_not_listed(
         self,
@@ -413,6 +441,18 @@ class SessionEndpointsTest(APITestCase):
             response = laptop.get(SESSIONS_URL)
 
         self.assertEqual(response.json()[0]["location"], "near 127.0.0.1")
+
+    def test_unimportable_resolver_still_records_the_session(self) -> None:
+        _location_resolver.cache_clear()
+        self.addCleanup(_location_resolver.cache_clear)
+        laptop = self._sign_in(self.user)
+        SessionRecord.objects.filter(session_key=self._key(laptop)).delete()
+
+        with override_settings(SESSION_LOCATION_RESOLVER="no_such_module.resolve"):
+            response = laptop.get(SESSIONS_URL)
+
+        self.assertEqual(len(response.json()), 1)
+        self.assertIsNone(response.json()[0]["location"])
 
     def test_unauthenticated_caller_is_refused(self) -> None:
         self.assertEqual(APIClient().get(SESSIONS_URL).status_code, 401)

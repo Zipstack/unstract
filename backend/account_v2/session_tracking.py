@@ -35,6 +35,10 @@ logger = logging.getLogger(__name__)
 # The spec caps activity writes at one per session per minute.
 ACTIVITY_REFRESH_INTERVAL = timedelta(minutes=1)
 _TOUCH_CACHE_PREFIX = "session_record_touch:"
+# How often any request may run the platform-wide idle sweep. Sign-in alone is
+# not enough: with no sign-ins, dead records would keep their IPs indefinitely.
+IDLE_SWEEP_INTERVAL = timedelta(hours=1)
+_IDLE_SWEEP_CACHE_KEY = "session_record_idle_sweep"
 
 # First match wins, so browsers built on Chromium are listed before Chrome and
 # Chrome before Safari (each carries the tokens of the ones after it).
@@ -88,13 +92,14 @@ def _location_resolver() -> Callable[[str], str | None] | None:
 def _resolve_location(ip_address: str | None) -> str | None:
     if not ip_address:
         return None
-    resolver = _location_resolver()
-    if resolver is None:
-        return None
     try:
+        resolver = _location_resolver()
+        if resolver is None:
+            return None
         return resolver(ip_address)
     except Exception:
-        # A location is decoration; a failing resolver must not block sign-in.
+        # A location is decoration; a resolver that fails to import or to run
+        # must not stop the session from being recorded.
         logger.warning("Session location resolver failed", exc_info=True)
         return None
 
@@ -146,15 +151,19 @@ class SessionTracker:
 
     @classmethod
     def _prune_stale(cls, user: User) -> None:
+        # The signing-in user's own records are checked exactly.
+        cls._sweep_idle()
+        cls.live_records(user)
+
+    @staticmethod
+    def _sweep_idle() -> None:
         # Records keep a client IP, so they must not outlive their session even
         # for a user who never lists their sessions again. A live session is
         # touched on every authenticated request, so a record idle for longer
         # than a session can live is dead: that bound keeps the global sweep on
-        # an index instead of an anti-join against every live session. The
-        # signing-in user's own records are checked exactly.
+        # an index instead of an anti-join against every live session.
         idle_cutoff = timezone.now() - timedelta(seconds=settings.SESSION_COOKIE_AGE)
         SessionRecord.objects.filter(last_active_at__lt=idle_cutoff).delete()
-        cls.live_records(user)
 
     @classmethod
     def touch(cls, request: HttpRequest) -> None:
@@ -181,6 +190,12 @@ class SessionTracker:
                 # Signed in before session recording existed: first seen now.
                 with transaction.atomic():
                     cls._upsert(request, user)
+            if django_cache.add(
+                _IDLE_SWEEP_CACHE_KEY,
+                True,
+                timeout=int(IDLE_SWEEP_INTERVAL.total_seconds()),
+            ):
+                cls._sweep_idle()
         except IntegrityError:
             # A concurrent request recorded the same session first.
             pass
