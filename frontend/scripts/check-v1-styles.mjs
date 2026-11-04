@@ -9,25 +9,36 @@
  *       reads. A string, a variable, a spread or a plain key fails.
  *   S2  No raw colour: hex, rgb()/hsl()/oklch()/oklab()/color(), a
  *       Tailwind palette utility (`-red-500`, `-white`), or a named colour
- *       as an arbitrary value (`text-[red]`, `[color:tomato]`).
- *   S3  No raw pixel value: `[13px]` or `[100vh]` arbitrary values, or
- *       px/rem/em/pt in CSS.
+ *       as an arbitrary value (`text-[red]`, `[color:tomato]`), as a whole
+ *       value (`fill="red"`) or in a CSS declaration (`color: white`).
+ *   S3  No raw pixel value: a px/rem/em/pt/vh/vw length anywhere in an
+ *       arbitrary value (`[13px]`, `[200px_1fr]`, `[calc(100%-13px)]`) or
+ *       in CSS.
  *   S4  No !important: a `!` class modifier, or `!important` in CSS.
  *   S5  CSS is imported only from app/ and styles/.
- *   S6  Every CSS selector starts with `.v1`, except inside @theme, @utility,
+ *   S6  Every CSS selector starts with `.v1` and stays inside it: a sibling
+ *       combinator right after the root (`.v1 + div`, or `& ~ div` nested
+ *       directly in the root) selects outside v1. Not checked inside @theme, @utility,
  *       @custom-variant, @font-face and @keyframes.
  *   S7  CSS never reads prefers-color-scheme; data-theme sets the mode.
- *   S8  Every Tailwind utility carries the `ui:` prefix. An unprefixed class
+ *   S8  Every Tailwind utility carries the `ui:` prefix, and carries it
+ *       first (`ui:hover:bg-primary`): Tailwind 4 generates nothing for a
+ *       prefix after a variant (`hover:ui:bg-primary`). An unprefixed class
  *       in v1 renders with v0's theme whenever v0 already uses that class
  *       name, and silently does nothing otherwise.
  *
- * In TypeScript, S2 to S4 and S8 read only class strings: string and template
- * literals that look like a class list (see isClassString), so a non-null `!`,
- * a hex-looking identifier or a value such as "outline" or "pt-BR" never
+ * In TypeScript, S2 to S4 and S8 read only class strings: the value of a
+ * `className` attribute or an argument of cn()/cva()/clsx()/cx() (however
+ * short, so `className="flex"` counts; in cva() the base string, the variant
+ * values and a compound `class`, never a variant name or choice such as
+ * `defaultVariants: { variant: "outline" }`), and any other string or template
+ * literal that looks like a class list (see isClassString), so a non-null
+ * `!`, a hex-looking identifier or a value such as "outline" or "pt-BR" never
  * matches. One S2 check reads every literal: a string that is entirely a
- * colour (`fill="#ff0000"`, "rgb(1 2 3)") fails wherever it appears, while
- * "Run #1234" does not. Test files and styles/tokens.ts (the raw values, by
- * design) are skipped for them. S1 matches only a JSX `style=` attribute.
+ * colour (`fill="#ff0000"`, "rgb(1 2 3)", "red") fails wherever it appears,
+ * while "Run #1234" does not. Test files are skipped for them; the raw values
+ * live in styles/tokens.json, which is not code. S1 matches only a JSX
+ * `style=` attribute.
  * In CSS, comments are blanked first; the generated styles/tokens.css is
  * skipped for S2 and S3 only. One escape hatch, for S3 only: a CSS line that
  * ends with the comment `/* v1-styles-allow: forced-colors outline *\/` may
@@ -52,9 +63,7 @@ import path from "node:path";
 const ROOT = path.join(import.meta.dirname, "..", "src", "v1");
 
 const CODE_EXT = /\.(ts|tsx|mts|cts)$/;
-const CSS_EXT = /\.css$/;
 const TEST_FILE = /\.(test|spec)\.(ts|tsx|mts|cts)$/;
-const RAW_VALUES_TS = "styles/tokens.ts";
 const GENERATED_CSS = "styles/tokens.css";
 // Folders whose files may import a .css file.
 const CSS_IMPORTERS = new Set(["app", "styles"]);
@@ -62,11 +71,15 @@ const CSS_IMPORTERS = new Set(["app", "styles"]);
 const MSG = {
   inlineStyle:
     "No inline style under v1; style with tokens and Tailwind. A style attribute may set only CSS custom properties (--name) that ui: classes read.",
-  colour: "No raw colour under v1; use a token from styles/tokens.ts.",
+  colour: "No raw colour under v1; use a token from styles/tokens.json.",
   pixel: "No raw pixel value under v1; use a token or the spacing scale.",
   important: "No !important under v1.",
   cssImport: "CSS is imported only from app/ and styles/ under v1.",
   unscoped: "Every v1 selector is scoped to .v1.",
+  sibling:
+    "Every v1 selector is scoped to .v1; a sibling combinator right after the root (.v1 + x, & ~ x) selects outside it.",
+  prefixOrder:
+    "The ui: prefix comes first (ui:hover:bg-primary, not hover:ui:bg-primary); Tailwind 4 generates nothing for a prefix after a variant.",
   colourScheme:
     "v1 never reads prefers-color-scheme in CSS; mode comes from data-theme.",
   unprefixed:
@@ -126,17 +139,28 @@ const ALLOWED_NAMED_COLOURS = new Set(["transparent", "currentcolor"]);
 // An arbitrary value holding one word, after an optional `property:` label:
 // `text-[red]`, `[color:tomato]`, `bg-[color:navy]`.
 const ARBITRARY_WORD_RE = /(?:-|(?<![\w-]))\[(?:[\w-]+:)?([a-zA-Z]+)\]/g;
-// A Tailwind arbitrary value in a unit: `w-[13px]`, `p-[1.5rem]`, `h-[100vh]`.
-const ARBITRARY_UNIT_RE = /\[[^\]\s]*\d(?:px|rem|em|vh|vw|pt)\]/g;
-// A CSS length in a unit: `3px`, `.5rem`, `-1em`.
-const CSS_UNIT_RE = /(?<![\w.])(?:\d+\.?\d*|\.\d+)(?:px|rem|em|pt)(?![\w-])/g;
+// A length in a Tailwind arbitrary value, anywhere inside the brackets:
+// `w-[13px]`, `p-[1.5rem]`, `grid-cols-[200px_1fr]`, `w-[calc(100%-13px)]`.
+// The unit may be followed by `_`, Tailwind's separator inside brackets.
+const ARBITRARY_UNIT_RE = /\[[^\]\s]*\d(?:px|rem|em|vh|vw|pt)(?![A-Za-z-])/g;
+// A CSS length in a unit: `3px`, `.5rem`, `-1em`, `100vh`.
+const CSS_UNIT_RE =
+  /(?<![\w.])(?:\d+(?:\.\d*)?|\.\d+)(?:px|rem|em|pt|vh|vw)(?![\w-])/g;
+// A CSS declaration's value (after the first `:` of `prop: value`).
+const CSS_DECLARATION_RE = /(?<![\w-])[\w-]+\s*:\s*([^;{}]+)/g;
 // The S3 escape hatch for a CSS line (see the header).
 const PIXEL_ALLOW_RE =
   /\/\*\s*v1-styles-allow: forced-colors outline\s*\*\/\s*$/;
 const CSS_IMPORTANT_RE = /!\s*important\b/g;
 const COLOUR_SCHEME_RE = /prefers-color-scheme/g;
-// A JSX attribute: `<div style={…}` or `style="…"`, not `const style = {…}`.
-const INLINE_STYLE_RE = /(?<=[\s{])style=[{"]/g;
+// A JSX attribute: `<div style={…}`, `style = {…}` or `style="…"`, not
+// `const style = {…}` (whose `=` is followed by a brace too, but the regex
+// needs a quote or an opening brace right after it, and `{…}` there holds
+// an object, which S1's custom-property allowance still judges).
+const INLINE_STYLE_RE = /(?<=[\s{])style\s*=\s*[{"]/g;
+// Where a string is a class list by position: the value of className=, or an
+// argument of cn()/cva()/clsx()/cx(). The match ends on the `=` or `(`.
+const CLASS_SITE_RE = /\bclassName\s*=|\b(?:cn|cva|clsx|cx)\(/g;
 // An object key that names a CSS custom property: "--x", '--x' or `--x`.
 const CUSTOM_PROPERTY_KEY_RE = /^(?:"--[^"]+"|'--[^']+'|`--[^`$]+`)$/;
 
@@ -151,12 +175,8 @@ const PREFIX_STEMS = [
   "min-h max-w max-h size items justify font leading tracking z inset top",
   "left right bottom overflow opacity duration cursor select space",
 ];
-const stems = (lines) =>
-  lines
-    .join(" ")
-    .split(" ")
-    .map((s) => s.replace("-", "\\-"))
-    .join("|");
+// `-` needs no escape outside a character class.
+const stems = (lines) => lines.join(" ").split(" ").join("|");
 // A leading `-` is a negative value (`-mt-2`); a trailing `!` is important.
 const UTILITY_RE = new RegExp(
   `^-?(?:(?:${stems(WHOLE_STEMS)})(?:-|!?$)|(?:${stems(PREFIX_STEMS)})-)`,
@@ -342,8 +362,24 @@ function isUnprefixedUtility(token) {
   return UTILITY_RE.test(rest);
 }
 
+/* A token that carries `ui:` after a variant (`hover:ui:bg-primary`), which
+ * Tailwind 4 compiles to nothing; the prefix must come first. */
+function prefixAfterVariant(token) {
+  let rest = token.startsWith("!") ? token.slice(1) : token;
+  let variants = 0;
+  for (let m = rest.match(VARIANT_RE); m; m = rest.match(VARIANT_RE)) {
+    rest = rest.slice(m[0].length);
+    variants += 1;
+    if (rest.startsWith("ui:")) {
+      return variants > 0;
+    }
+  }
+  return false;
+}
+
 const DEFINITE_CLASS_RES = [
-  // `ui:` first or after a variant: `ui:p-2`, `!ui:p-2`, `md:ui:h-8!`.
+  // `ui:` first, or after a variant (wrong, and S8 reports it): `ui:p-2`,
+  // `!ui:p-2`, `md:ui:h-8!`.
   /(?:^!?|:)ui:/,
   /-\[[^\]]*\]/,
   new RegExp(String.raw`-(?:${PALETTE})-\d{2,3}(?![\w-])`),
@@ -406,13 +442,16 @@ function splitSelectors(prelude) {
 
 /*
  * The selector lists that must be scoped: every block prelude that is not an
- * at-rule, not inside an opaque at-rule and not nested in another style rule
- * (a nested rule is already scoped by its parent). Grouping at-rules such as
- * @layer and @media are transparent. Returns { prelude, index }.
+ * at-rule and not inside an opaque at-rule. A prelude nested in another style
+ * rule is already scoped by its parent unless it starts with `&` and a
+ * sibling combinator (leavesRoot), so it is returned with nested: true.
+ * Grouping at-rules such as @layer and @media are transparent.
+ * Returns { prelude, index, nested }.
  */
-function topLevelSelectors(css) {
+function selectorPreludes(css) {
   const found = [];
-  // Per open block: "opaque", "group" (transparent at-rule) or "rule".
+  // Per open block: "opaque", "group" (transparent at-rule) or a style rule
+  // as { root }, true when the rule's prelude is one compound on the root.
   const stack = [];
   let start = 0;
   let quote = null;
@@ -439,10 +478,11 @@ function topLevelSelectors(css) {
       } else if (at) {
         stack.push("group");
       } else {
-        if (!stack.includes("rule")) {
-          found.push({ prelude, index });
-        }
-        stack.push("rule");
+        const rules = stack.filter((entry) => typeof entry === "object");
+        const nested = rules.length > 0;
+        const parentIsRoot = rules.every((entry) => entry.root);
+        found.push({ prelude, index, nested, parentIsRoot });
+        stack.push({ root: parentIsRoot && isRootCompound(prelude, nested) });
       }
       start = i + 1;
     }
@@ -574,6 +614,99 @@ function skipString(text, i) {
   return j + 1;
 }
 
+/*
+ * The start index (first character after the quote) of every string or
+ * template literal that sits in a class position: `className="…"`, anywhere
+ * inside `className={…}`, or anywhere inside cn(…)/cva(…)/clsx(…)/cx(…).
+ * Those are class lists by position, so S2 to S4 and S8 read them even when
+ * they hold a single word that isClassString would skip (`"flex"`).
+ */
+function classSiteLiterals(text) {
+  const starts = new Set();
+  for (const m of text.matchAll(CLASS_SITE_RE)) {
+    const isCva = m[0].startsWith("cva(");
+    // A call: scan its parentheses. An attribute: skip spaces, then a quote
+    // starts one literal and a brace starts an expression to scan.
+    let i = m.index + m[0].length - 1;
+    if (!m[0].endsWith("(")) {
+      i += 1;
+      while (i < text.length && /\s/.test(text[i])) {
+        i += 1;
+      }
+      if (text[i] === '"' || text[i] === "'" || text[i] === "`") {
+        starts.add(i + 1);
+        continue;
+      }
+      if (text[i] !== "{") {
+        continue;
+      }
+    }
+    // keys[d] is the property name the value at bracket depth d sits under,
+    // read for cva() only, where variant names and choices are not classes.
+    const keys = [];
+    let depth = 0;
+    let lastWord = "";
+    while (i < text.length) {
+      const c = text[i];
+      if (c === '"' || c === "'" || c === "`") {
+        const end = skipString(text, i);
+        lastWord = text.slice(i + 1, end - 1);
+        if (!isCva || cvaClassPosition(text, end, keys, depth)) {
+          starts.add(i + 1);
+        }
+        i = end;
+        continue;
+      }
+      if (/[A-Za-z_$]/.test(c)) {
+        let j = i + 1;
+        while (j < text.length && /[\w$]/.test(text[j])) {
+          j += 1;
+        }
+        lastWord = text.slice(i, j);
+        i = j;
+        continue;
+      }
+      if (c === ":" && depth > 0) {
+        keys[depth] = lastWord;
+      } else if (c === "{" || c === "(" || c === "[") {
+        depth += 1;
+        keys[depth] = undefined;
+      } else if (c === "}" || c === ")" || c === "]") {
+        depth -= 1;
+        if (depth === 0) {
+          break;
+        }
+      }
+      i += 1;
+    }
+  }
+  return starts;
+}
+
+/*
+ * In cva(), a literal that ends at `end` supplies classes unless it is a
+ * property name (`"sm": …`), sits under defaultVariants (a choice), or sits
+ * in compoundVariants under a key other than class/className (a choice to
+ * match). The base string and the values under variants are classes.
+ */
+function cvaClassPosition(text, end, keys, depth) {
+  let j = end;
+  while (j < text.length && /\s/.test(text[j])) {
+    j += 1;
+  }
+  if (text[j] === ":") {
+    return false;
+  }
+  const chain = keys.slice(1, depth + 1);
+  if (chain.includes("defaultVariants")) {
+    return false;
+  }
+  if (chain.includes("compoundVariants")) {
+    return keys[depth] === "class" || keys[depth] === "className";
+  }
+  return true;
+}
+
 function checkCode(rel) {
   const text = blankComments(fs.readFileSync(path.join(ROOT, rel), "utf8"));
   const top = rel.split("/")[0];
@@ -594,22 +727,27 @@ function checkCode(rel) {
       report(rel, lineAt(text, m.index), MSG.inlineStyle);
     }
   }
-  if (rel === RAW_VALUES_TS) {
-    return;
-  }
   const pieces = literals(text);
   // A template literal is judged as a whole, across its `${}` expressions.
   const textById = new Map();
   for (const { id, text: t } of pieces) {
     textById.set(id, `${textById.get(id) ?? ""} ${t}`);
   }
+  const classSites = classSiteLiterals(text);
   for (const literal of pieces) {
     const trimmed = literal.text.trim();
-    if (WHOLE_COLOUR_RES.some((re) => re.test(trimmed))) {
+    const word = trimmed.toLowerCase();
+    if (
+      WHOLE_COLOUR_RES.some((re) => re.test(trimmed)) ||
+      (NAMED_COLOURS.has(word) && !ALLOWED_NAMED_COLOURS.has(word))
+    ) {
       report(rel, lineAt(text, literal.index), MSG.colour);
       continue;
     }
-    if (!isClassString(textById.get(literal.id))) {
+    if (
+      !classSites.has(literal.index) &&
+      !isClassString(textById.get(literal.id))
+    ) {
       continue;
     }
     for (const re of RAW_COLOUR_RES) {
@@ -629,6 +767,9 @@ function checkCode(rel) {
     for (const { token, index } of tokens(literal)) {
       if (isImportantClass(token)) {
         report(rel, lineAt(text, index), MSG.important);
+      }
+      if (prefixAfterVariant(token)) {
+        report(rel, lineAt(text, index), `'${token}': ${MSG.prefixOrder}`);
       }
       if (isUnprefixedUtility(token)) {
         report(rel, lineAt(text, index), `'${token}': ${MSG.unprefixed}`);
@@ -658,17 +799,82 @@ function checkCss(rel) {
     for (const re of RAW_COLOUR_RES) {
       at(re, MSG.colour);
     }
+    for (const m of css.matchAll(CSS_DECLARATION_RE)) {
+      // Words of the value, outside var(--…) and other function arguments.
+      for (const word of m[1]
+        .toLowerCase()
+        .matchAll(/(?<![\w-])[a-z]+(?![\w-(])/g)) {
+        if (NAMED_COLOURS.has(word[0]) && !ALLOWED_NAMED_COLOURS.has(word[0])) {
+          report(rel, lineAt(css, m.index), MSG.colour);
+        }
+      }
+    }
     at(CSS_UNIT_RE, MSG.pixel, pixelAllowed);
   }
   at(CSS_IMPORTANT_RE, MSG.important);
   at(COLOUR_SCHEME_RE, MSG.colourScheme);
-  for (const { prelude, index } of topLevelSelectors(css)) {
+  for (const { prelude, index, nested, parentIsRoot } of selectorPreludes(
+    css,
+  )) {
     for (const selector of splitSelectors(prelude)) {
-      if (!/^\.v1(?![\w-])/.test(selector)) {
+      if (!nested && !/^\.v1(?![\w-])/.test(selector)) {
         report(rel, lineAt(css, index), `'${selector}': ${MSG.unscoped}`);
+      } else if (leavesRoot(selector, nested, parentIsRoot)) {
+        report(rel, lineAt(css, index), `'${selector}': ${MSG.sibling}`);
       }
     }
   }
+}
+
+/*
+ * True when the selector's subject can sit outside the v1 root: its first
+ * compound is the root (`.v1…` at top level; `&…` in a nested rule whose
+ * enclosing rules are all the root itself) and the combinator right after
+ * it is `+` or `~`. Any later combinator keeps the subject inside
+ * (`.v1 > a + b`), a nested selector without `&` is an implicit descendant,
+ * and `& + x` under `.v1 .menu` resolves to `.v1 .menu + x`, inside v1.
+ */
+function leavesRoot(selector, nested, parentIsRoot) {
+  if (nested && (!selector.startsWith("&") || !parentIsRoot)) {
+    return false;
+  }
+  const next = selector.slice(rootCompoundEnd(selector)).trimStart()[0];
+  return next === "+" || next === "~";
+}
+
+/*
+ * True when some comma-separated part of the prelude is one compound on the
+ * root: `.v1` or `.v1[data-theme="dark"]` at top level, `&:hover` or `&.x`
+ * in a nested rule. A child rule of such a prelude that starts `& +` leaves
+ * v1; a child of `.v1 .menu`, or of a nested `.menu`, does not.
+ */
+function isRootCompound(prelude, nested) {
+  return splitSelectors(prelude).some(
+    (selector) =>
+      (nested ? selector.startsWith("&") : /^\.v1(?![\w-])/.test(selector)) &&
+      rootCompoundEnd(selector) === selector.length,
+  );
+}
+
+/* Index of the first combinator outside brackets and quotes, else length. */
+function rootCompoundEnd(selector) {
+  let depth = 0;
+  let quote = null;
+  for (let i = 0; i < selector.length; i += 1) {
+    const c = selector[i];
+    if (quote) {
+      quote = c === quote ? null : quote;
+    } else if (c === '"' || c === "'") {
+      quote = c;
+    } else if (c === "(" || c === "[") {
+      depth += 1;
+    } else if (c === ")" || c === "]") {
+      depth -= 1;
+    } else if (depth === 0 && /[\s>+~]/.test(c)) {
+      return i;
+    }
+  }
+  return selector.length;
 }
 
 if (!fs.existsSync(ROOT)) {
@@ -679,7 +885,7 @@ if (!fs.existsSync(ROOT)) {
 for (const rel of walk(ROOT)) {
   if (CODE_EXT.test(rel)) {
     checkCode(rel);
-  } else if (CSS_EXT.test(rel)) {
+  } else if (rel.endsWith(".css")) {
     checkCss(rel);
   }
 }

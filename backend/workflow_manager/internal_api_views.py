@@ -87,7 +87,7 @@ def get_workflow_execution_data(request, execution_id: str):
             status=status.HTTP_404_NOT_FOUND,
         )
     except Exception as e:
-        logger.error(f"Error getting workflow execution data: {e}")
+        logger.exception(f"Error getting workflow execution data: {e}")
         return Response(
             {"error": "Internal server error"},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -334,7 +334,7 @@ def create_workflow_execution(request):
     except Workflow.DoesNotExist:
         return Response({"error": "Workflow not found"}, status=status.HTTP_404_NOT_FOUND)
     except Exception as e:
-        logger.error(f"Error creating workflow execution: {e}")
+        logger.exception(f"Error creating workflow execution: {e}")
         return Response(
             {"error": "Internal server error"},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -374,7 +374,7 @@ def compile_workflow(request):
         )
 
     except Exception as e:
-        logger.error(f"Error compiling workflow: {e}")
+        logger.exception(f"Error compiling workflow: {e}")
         return Response(
             {"error": "Internal server error"},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,

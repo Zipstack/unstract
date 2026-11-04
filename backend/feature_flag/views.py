@@ -29,7 +29,7 @@ class FeatureFlagViewSet(viewsets.ViewSet):
             flag_enabled = FeatureFlagHelper.check_flag_status(flag_key)
             return Response({"flag_status": flag_enabled}, status=status.HTTP_200_OK)
         except Exception as e:
-            logger.error("No response from server: %s", e)
+            logger.exception("No response from server: %s", e)
             return Response(
                 {"message": "No response from server"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -41,7 +41,7 @@ class FeatureFlagViewSet(viewsets.ViewSet):
             feature_flags = FeatureFlagHelper.list_all_flags(namespace_key)
             return Response({"feature_flags": feature_flags}, status=status.HTTP_200_OK)
         except Exception as e:
-            logger.error("No response from server: %s", e)
+            logger.exception("No response from server: %s", e)
             return Response(
                 {"message": "No response from server"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,

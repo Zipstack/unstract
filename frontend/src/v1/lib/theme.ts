@@ -6,6 +6,15 @@ export type ThemePreference = ThemeMode | "system";
 
 export const THEME_MODES: readonly ThemeMode[] = ["light", "dark", "unstract"];
 
+/** The browser's palette for native controls, scrollbars and autofill in each mode. */
+export type ColorScheme = "light" | "dark";
+
+export const THEME_COLOR_SCHEMES: Readonly<Record<ThemeMode, ColorScheme>> = {
+  light: "light",
+  dark: "dark",
+  unstract: "light",
+};
+
 /** v1's own storage key; v0 (next-themes) uses `theme`, which v1 never reads. */
 export const THEME_STORAGE_KEY = "unstract.v1.theme";
 

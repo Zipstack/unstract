@@ -91,6 +91,17 @@ from unstract.sdk1.exceptions import IndexingError, SdkError
 from unstract.sdk1.execution.context import ExecutionContext
 from unstract.sdk1.file_storage.constants import StorageType
 from unstract.sdk1.file_storage.env_helper import EnvHelper
+from unstract.sdk1.llm import LLM
+from unstract.sdk1.utils.image_limits import (
+    codes as image_limit_codes,
+)
+from unstract.sdk1.utils.image_limits import (
+    compute_page_budget,
+    extraction_bound_kwargs,
+    fixed_cap_message,
+    model_aware_limits_enabled,
+    page_cap_message,
+)
 from unstract.sdk1.utils.indexing import IndexingUtils
 from unstract.sdk1.utils.tool import ToolUtils
 
@@ -636,6 +647,13 @@ class PromptStudioHelper:
                 "check_extraction_status raised; falling back to full extraction",
                 exc_info=True,
             )
+        if reused_extracted_text:
+            # The cache key ignores the LLM, so a cached image-mode extraction
+            # made for another LLM must still fit this profile's (outside the
+            # fallback above: a rejection must reach the user).
+            PromptStudioHelper._check_cached_image_extraction(
+                default_profile, reused_extracted_text, filename
+            )
 
         util = PromptIdeBaseTool(log_level=LogLevel.INFO, org_id=org_id)
         doc_id_key = IndexingUtils.generate_index_key(
@@ -654,6 +672,9 @@ class PromptStudioHelper:
 
         extract_params = {
             IKeys.X2TEXT_INSTANCE_ID: str(default_profile.x2text.id),
+            IKeys.LLM_INSTANCE_IDS: PromptStudioHelper._image_limit_llm_ids(
+                default_profile
+            ),
             IKeys.FILE_PATH: file_path,
             IKeys.ENABLE_HIGHLIGHT: tool.enable_highlight,
             IKeys.OUTPUT_FILE_PATH: extract_file_path,
@@ -1480,34 +1501,139 @@ class PromptStudioHelper:
             return False
 
     @staticmethod
-    def validate_upload_page_count_for_image_mode(file_data: Any, file_type: str) -> None:
+    def _image_limit_llm_ids(profile_manager: ProfileManager | None) -> list[str]:
+        """The LLM ids whose image limits apply to this profile's extraction."""
+        llm = getattr(profile_manager, "llm", None)
+        llm_id = getattr(llm, "id", None)
+        return [str(llm_id)] if llm_id else []
+
+    @staticmethod
+    def _upload_page_budget(profile_manager: ProfileManager | None) -> Any:
+        """The profile LLM's page budget, or None to use the fixed cap.
+
+        Resolution is local (the adapter's own validation) and never waits on
+        the network: the limits table is served from memory, and a due
+        refresh runs in the background. Any failure, or
+        ``VLM_IMAGE_LIMITS_ENFORCE=false``, falls back to the fixed cap rather
+        than blocking the upload: extraction re-checks against the LLM before
+        anything is converted.
+        """
+        llm = getattr(profile_manager, "llm", None)
+        if llm is None or not model_aware_limits_enabled():
+            return None
+        try:
+            limits, tokens = LLM.image_input_limits_for(
+                str(llm.adapter_id), llm.metadata or {}
+            )
+        except Exception as e:
+            # The error type only, no traceback: the adapter's validation
+            # error quotes the stored metadata, credentials included.
+            logger.warning(
+                "Could not resolve image limits for the default profile's LLM "
+                "(%s); using the fixed page cap for the upload check",
+                type(e).__name__,
+            )
+            return None
+        bounds = extraction_bound_kwargs()
+        return compute_page_budget(
+            limits,
+            context_tokens=tokens,
+            page_ceiling=bounds["page_ceiling"],
+            legacy_cap=bounds["legacy_cap"],
+        )
+
+    @staticmethod
+    def _check_cached_image_extraction(
+        profile_manager: ProfileManager, extracted_text: str, filename: str
+    ) -> None:
+        """Re-check a cached image-mode extraction against the profile's LLM.
+
+        The extraction cache is keyed on the document, profile and x2text
+        config, not the LLM. After a profile switches LLM (e.g. Gemini to
+        Bedrock Claude, 20 images) a cache hit would skip the page-budget
+        check and the prompt would fail at the provider. Uses the page count
+        recorded in the image-mode summary; no-op outside image mode or when
+        the count or the LLM's limits are unknown (answer time re-checks).
+        With ``VLM_IMAGE_LIMITS_ENFORCE=false`` the fixed page cap applies,
+        as at upload.
+        """
+        if not PromptStudioHelper.uploads_use_image_output_mode(profile_manager):
+            return
+        page_count = LLMWhispererHelper.page_count_from_image_output_summary(
+            extracted_text
+        )
+        if page_count is None:
+            return
+        if not model_aware_limits_enabled():
+            page_cap = configured_page_cap()
+            if page_count <= page_cap:
+                return
+            raise ExtractionAPIError(
+                f"Failed to extract '{filename}'. "
+                f"{image_limit_codes.IMAGE_PAGE_CAP_EXCEEDED}: "
+                + fixed_cap_message(
+                    page_count,
+                    page_cap,
+                    switch_to="switch this profile to a text output mode",
+                )
+            )
+        budget = PromptStudioHelper._upload_page_budget(profile_manager)
+        if budget is None or page_count <= budget.max_pages:
+            return
+        raise ExtractionAPIError(
+            f"Failed to extract '{filename}'. "
+            f"{image_limit_codes.IMAGE_PAGE_CAP_EXCEEDED}: "
+            + page_cap_message(page_count, budget, charged=None)
+            + " The document was extracted earlier for a different LLM; "
+            "switch this profile back, or use one whose LLM accepts more pages."
+        )
+
+    @staticmethod
+    def validate_upload_page_count_for_image_mode(
+        file_data: Any, file_type: str, profile_manager: ProfileManager | None = None
+    ) -> None:
         """Reject, at upload, a PDF with more pages than image mode can answer.
 
         Call only when ``uploads_use_image_output_mode`` is True. Image mode
         sends every page to the LLM in one request, so a document over the
-        page cap can never be answered — and converting it would be billed.
-        Catching it at upload means the user never builds prompts around a
-        document that will fail at indexing.
+        LLM's page budget can never be answered — and converting it would be
+        billed. Catching it at upload means the user never builds prompts
+        around a document that will fail at indexing.
 
-        Uses the SDK's own page counter and cap, so a document accepted here
-        also passes the extraction-time pre-check. The file is read in place,
-        not copied into memory. A PDF whose page count can't be read is let
-        through; extraction re-checks it.
+        ``profile_manager`` is the project's default profile: its LLM's
+        image-request limits set the budget (the same computation the
+        extraction-time pre-check runs). Without a resolvable LLM the fixed
+        cap applies. The file is read in place, not copied into memory. A
+        PDF whose page count can't be read is let through; extraction
+        re-checks it.
         """
         if file_type != "application/pdf":
             return
-        page_cap = configured_page_cap()
         page_count = LLMWhispererHelper.pdf_page_count(file_data)
         file_data.seek(0)
-        if page_count is None or page_count <= page_cap:
+        if page_count is None:
+            return
+        budget = PromptStudioHelper._upload_page_budget(profile_manager)
+        if budget is not None:
+            if page_count <= budget.max_pages:
+                return
+            profile_name = getattr(profile_manager, "profile_name", "") or "default"
+            raise ImageModePageLimitExceeded(
+                detail=(
+                    page_cap_message(page_count, budget, charged=None)
+                    + " This check uses the project's default profile "
+                    f"('{profile_name}'); other profiles may allow a different "
+                    "number of pages."
+                )
+            )
+        page_cap = configured_page_cap()
+        if page_count <= page_cap:
             return
         raise ImageModePageLimitExceeded(
-            detail=(
-                "This document has too many pages for image output mode. It "
-                f"has {page_count} pages, and the limit is {page_cap} because "
-                "every page is sent to the LLM in one request. Split the "
-                "document into smaller files, or switch the project's default "
-                "profile to a text output mode."
+            detail=fixed_cap_message(
+                page_count,
+                page_cap,
+                switch_to="switch the project's default profile to a text output mode",
             )
         )
 
@@ -2703,6 +2829,11 @@ class PromptStudioHelper:
             try:
                 extracted_text = fs_instance.read(path=extract_file_path, mode="r")
                 logger.info("Extracted text found. Reading from file..")
+                # The cache key ignores the LLM, so a cached image-mode
+                # extraction made for another LLM must still fit this one.
+                PromptStudioHelper._check_cached_image_extraction(
+                    profile_manager, extracted_text, filename
+                )
                 return extracted_text
             except FileNotFoundError as e:
                 logger.warning(
@@ -2712,6 +2843,9 @@ class PromptStudioHelper:
                 extracted_text = None
         payload = {
             IKeys.X2TEXT_INSTANCE_ID: x2text,
+            IKeys.LLM_INSTANCE_IDS: PromptStudioHelper._image_limit_llm_ids(
+                profile_manager
+            ),
             IKeys.FILE_PATH: file_path,
             IKeys.ENABLE_HIGHLIGHT: enable_highlight,
             IKeys.USAGE_KWARGS: usage_kwargs.copy(),
