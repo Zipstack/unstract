@@ -109,14 +109,13 @@ def test_block_mode_allows_allowlisted_private_host(monkeypatch, block_private):
     "url",
     [
         "http://unstructured.internal/x",
-        # Exact match only: neither a subdomain nor a suffix of an entry.
+        # Exact match only: neither a subdomain of an entry nor a name that
+        # begins with one.
         "http://evil.unstract-unstructured-io/x",
         "http://unstract-unstructured-io.attacker.example/x",
     ],
 )
-def test_block_mode_refuses_private_host_not_allowlisted(
-    monkeypatch, block_private, url
-):
+def test_block_mode_refuses_private_host_not_allowlisted(monkeypatch, block_private, url):
     monkeypatch.setenv(uu.ALLOWED_HOSTS_ENV, "unstract-unstructured-io")
     with _resolve_to("10.1.2.3"):
         assert "private" in uu.refusal_message(url)
@@ -130,13 +129,20 @@ def test_block_mode_refuses_private_host_not_allowlisted(
         "other-svc , Unstract-Unstructured-Io ,",
     ],
 )
-def test_allowlist_is_trimmed_and_case_insensitive(
-    monkeypatch, block_private, value
-):
+def test_allowlist_is_trimmed_and_case_insensitive(monkeypatch, block_private, value):
     monkeypatch.setenv(uu.ALLOWED_HOSTS_ENV, value)
     with _resolve_to("10.96.0.12"):
         assert uu.refusal_message(IN_CLUSTER) is None
-        assert uu.refusal_message("http://Unstract-Unstructured-IO:8000/x") is None
+
+
+def test_refusal_log_shows_allowlist_so_a_bad_entry_is_visible(
+    monkeypatch, block_private, caplog
+):
+    # A port never matches a hostname; the log is where an operator sees it.
+    monkeypatch.setenv(uu.ALLOWED_HOSTS_ENV, "unstract-unstructured-io:8000")
+    with _resolve_to("10.96.0.12"):
+        assert "private" in uu.refusal_message(IN_CLUSTER)
+    assert f"{uu.ALLOWED_HOSTS_ENV}=unstract-unstructured-io:8000" in caplog.text
 
 
 @pytest.mark.parametrize("value", [None, "", " ", ",, ,"])
@@ -155,9 +161,7 @@ def test_empty_allowlist_keeps_block_behaviour(monkeypatch, block_private, value
         "http://user:pass@unstract-unstructured-io/x",
     ],
 )
-def test_allowlisted_host_still_gets_syntactic_checks(
-    monkeypatch, block_private, url
-):
+def test_allowlisted_host_still_gets_syntactic_checks(monkeypatch, block_private, url):
     monkeypatch.setenv(uu.ALLOWED_HOSTS_ENV, "unstract-unstructured-io")
     assert uu.refusal_message(url) is not None
 

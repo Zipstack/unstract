@@ -13,20 +13,24 @@ deployment serving untrusted tenants must refuse it by setting
 Where private destinations are refused, ``UNSTRUCTURED_URL_ALLOWED_HOSTS`` names
 hosts that are exempt from that destination check: a comma-separated list of
 exact hostnames, matched case-insensitively after trimming, with no wildcards,
-ports or address ranges. Cloud sets it to the in-cluster Unstructured Service.
-It is empty by default, so nothing is exempt, and it is not consulted where
-private destinations are allowed. The scheme, credential and parser-agreement
-checks still apply to an allowlisted host.
+ports or address ranges. A deployment that runs Unstructured in-cluster lists
+that Service's name here. It is empty by default, so nothing is exempt, and it
+is not consulted where private destinations are allowed. The scheme, credential
+and parser-agreement checks still apply to an allowlisted host. Because the
+match is exact, list every form of the name that saved adapters use (short
+name, FQDN), and set it no later than ``UNSTRUCTURED_URL_ALLOW_PRIVATE=false``,
+or those adapters are refused in between.
 
 Redirects follow the same rule. Where private destinations are allowed they
 are followed as ``requests`` always did. Where they are refused, each hop is
 checked with the same guard before it is dialled, up to ``MAX_REDIRECTS``.
-The allowlist applies per hop, so a redirect from an allowlisted host to any
-other private destination is refused.
+The allowlist applies per hop: a redirect is followed only to a host that is
+itself allowlisted or passes the destination check.
 
-With private destinations refused, the name is resolved here and again by
-``requests``, so a name re-resolved to an internal address in between is not
-caught. The control for that is an egress policy on the pods (see ``ssrf.py``).
+With private destinations refused, a name that is not allowlisted is resolved
+here and again by ``requests``, so a name re-resolved to an internal address in
+between is not caught. An allowlisted name is not resolved here at all: it is
+trusted to resolve wherever DNS points it. The control for that is an egress policy on the pods (see ``ssrf.py``).
 """
 
 import logging
@@ -189,11 +193,15 @@ def refusal_reason(url: str) -> str | None:
     if reason is not None:
         # The host only: the URL can carry a key in its query string.
         logger.warning(
-            "Refusing unstructured-url: %s (host=%s, %s=%s)",
+            "Refusing unstructured-url: %s (host=%s, %s=%s, %s=%s)",
             reason,
             safe_host(url),
             ALLOW_PRIVATE_ENV,
             allow_private(),
+            # Operator-set Service names, not secrets. Shown so an entry that
+            # can never match (one with a port or scheme, say) is visible.
+            ALLOWED_HOSTS_ENV,
+            ",".join(sorted(allowed_hosts())),
         )
     return reason
 
