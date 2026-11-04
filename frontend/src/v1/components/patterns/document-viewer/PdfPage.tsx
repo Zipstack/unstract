@@ -1,3 +1,4 @@
+import type { Highlight } from "@v1/lib/pdf/highlights";
 import { isRenderCancelled } from "@v1/lib/pdf/pdfjs";
 import type { PageSize } from "@v1/lib/pdf/types";
 import {
@@ -7,6 +8,7 @@ import {
 } from "@v1/lib/pdf/windowing";
 import type { PDFDocumentProxy, PDFPageProxy, RenderTask } from "pdfjs-dist";
 import { memo, type ReactNode, useEffect, useRef, useState } from "react";
+import { HighlightLayer } from "./HighlightLayer";
 
 export interface PdfPageProps {
   document: PDFDocumentProxy;
@@ -22,10 +24,16 @@ export interface PdfPageProps {
   /** The screen's device pixel ratio; a change redraws the page. */
   pixelRatio: number;
   observe: (element: HTMLElement | null) => (() => void) | undefined;
+  /** This page's highlights. Keep the array stable: the page is memoised. */
+  highlights: readonly Highlight[];
+  /** The active highlight's id; the list gives it only to the page holding it. */
+  activeHighlightId?: string | null;
+  /** Keep it stable (useCallback): a new function re-renders every page. */
+  onHighlightClick?: (highlight: Highlight) => void;
   /**
-   * Drawn over the page, in a box the same size as the page; receives the
-   * page's index. Called inside the page, so keep it stable (useCallback):
-   * a new function re-renders every page.
+   * Drawn over the page, above its highlights, in a box the page's size;
+   * receives the page's index. Called inside the page, so keep it stable
+   * (useCallback): a new function re-renders every page.
    */
   renderOverlay?: (index: number) => ReactNode;
 }
@@ -47,12 +55,18 @@ export const PdfPage = memo(function PdfPage({
   rendered,
   pixelRatio,
   observe,
+  highlights,
+  activeHighlightId,
+  onHighlightClick,
   renderOverlay,
 }: PdfPageProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [state, setState] = useState<RenderState>("idle");
   // Bumped by Retry, to run the render again.
   const [attempt, setAttempt] = useState(0);
+  // Whether the canvas holds a picture. It outlives a redraw (zoom keeps the
+  // old picture until the new one lands) and ends when the canvas is freed.
+  const [painted, setPainted] = useState(false);
   const css = pageCssSize(size, zoom);
 
   // Free the canvas when the page leaves the window or unmounts: zero its
@@ -66,6 +80,7 @@ export const PdfPage = memo(function PdfPage({
     return () => {
       canvas.width = 0;
       canvas.height = 0;
+      setPainted(false);
     };
   }, [rendered]);
 
@@ -124,6 +139,7 @@ export const PdfPage = memo(function PdfPage({
             throw new Error("No 2D canvas context");
           }
           shown.drawImage(scratch, 0, 0);
+          setPainted(true);
           setState("rendered");
         } catch (error) {
           if (!cancelled && !isRenderCancelled(error)) {
@@ -169,6 +185,12 @@ export const PdfPage = memo(function PdfPage({
           className="ui:absolute ui:inset-0 ui:block ui:size-full"
         />
       )}
+      <HighlightLayer
+        highlights={highlights}
+        activeId={activeHighlightId}
+        onHighlightClick={onHighlightClick}
+        painted={painted}
+      />
       {renderOverlay?.(index)}
       {state === "error" && (
         <figcaption className="ui:absolute ui:inset-0 ui:flex ui:flex-col ui:items-center ui:justify-center ui:gap-2 ui:bg-card ui:text-body ui:text-muted-foreground">

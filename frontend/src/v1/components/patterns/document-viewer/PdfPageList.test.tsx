@@ -336,6 +336,48 @@ it("draws nothing for a page that leaves before its frame comes", async () => {
   expect(renderPage.mock.calls.length).toBeLessThanOrEqual(3);
 });
 
+it("draws each highlight on its own page", () => {
+  const { document } = fakeDocument(3);
+  const { container } = render(
+    <PdfPageList
+      document={document}
+      pageSizes={sizes(3)}
+      zoom={1}
+      highlights={[
+        {
+          id: "a",
+          page: 2,
+          x: 0,
+          y: 0.1,
+          w: 1,
+          h: 0.02,
+          variant: "line",
+          tone: "default",
+        },
+        {
+          id: "b",
+          page: 0,
+          x: 0,
+          y: 0.5,
+          w: 1,
+          h: 0.02,
+          variant: "line",
+          tone: "default",
+        },
+      ]}
+    />,
+  );
+  expect(
+    container.querySelector('[data-page-index="2"] [data-highlight-id="a"]'),
+  ).not.toBeNull();
+  expect(
+    container.querySelector('[data-page-index="0"] [data-highlight-id="b"]'),
+  ).not.toBeNull();
+  expect(
+    container.querySelector('[data-page-index="1"] [data-highlight-id]'),
+  ).toBeNull();
+});
+
 it("cleans up a page that arrives after it has left the window", async () => {
   const { document } = fakeDocument(10);
   const late = { getViewport: vi.fn(), render: vi.fn(), cleanup: vi.fn() };
@@ -353,4 +395,94 @@ it("cleans up a page that arrives after it has left the window", async () => {
   await act(async () => deliver());
   expect(late.cleanup).toHaveBeenCalled();
   expect(late.render).not.toHaveBeenCalled();
+});
+
+const pageHighlights = [
+  {
+    id: "a",
+    page: 2,
+    x: 0,
+    y: 0.1,
+    w: 1,
+    h: 0.02,
+    variant: "line" as const,
+    tone: "default" as const,
+  },
+  {
+    id: "b",
+    page: 0,
+    x: 0,
+    y: 0.5,
+    w: 1,
+    h: 0.02,
+    variant: "line" as const,
+    tone: "default" as const,
+  },
+];
+
+it("re-renders only the pages that lose and gain the active highlight", () => {
+  const { document } = fakeDocument(3);
+  const overlay = vi.fn((_index: number) => null);
+  // Stable inputs, as a real caller holds them: only the active id changes.
+  const pageSizes = sizes(3);
+  const { rerender } = render(
+    <PdfPageList
+      document={document}
+      pageSizes={pageSizes}
+      zoom={1}
+      highlights={pageHighlights}
+      activeHighlightId="b"
+      renderPageOverlay={overlay}
+    />,
+  );
+  overlay.mockClear();
+  rerender(
+    <PdfPageList
+      document={document}
+      pageSizes={pageSizes}
+      zoom={1}
+      highlights={pageHighlights}
+      activeHighlightId="a"
+      renderPageOverlay={overlay}
+    />,
+  );
+  expect(overlay.mock.calls.map(([index]) => index).sort()).toEqual([0, 2]);
+});
+
+it("blends highlights into a page once it has painted, and keeps it through a zoom", async () => {
+  const { document, tasks } = fakeDocument(1);
+  const highlights = [
+    { ...pageHighlights[1], page: 0 },
+  ] as typeof pageHighlights;
+  const { container, rerender } = render(
+    <PdfPageList
+      document={document}
+      pageSizes={sizes(1)}
+      zoom={1}
+      highlights={highlights}
+    />,
+  );
+  const blended = () =>
+    container
+      .querySelector('[data-highlight-id="b"]')
+      ?.className.includes("mix-blend-multiply");
+  expect(blended()).toBe(false);
+  show([0]);
+  await flush();
+  expect(blended()).toBe(false);
+  await act(async () => tasks[0]?.finish());
+  expect(blended()).toBe(true);
+  rerender(
+    <PdfPageList
+      document={document}
+      pageSizes={sizes(1)}
+      zoom={2}
+      highlights={highlights}
+    />,
+  );
+  await flush();
+  expect(blended()).toBe(true);
+  show([]);
+  await flush();
+  expect(blended()).toBe(false);
 });

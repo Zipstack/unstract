@@ -1,19 +1,27 @@
 import { useDevicePixelRatio } from "@v1/hooks/useDevicePixelRatio";
 import { usePageWindow } from "@v1/hooks/usePageWindow";
 import { cn } from "@v1/lib/cn";
+import { type Highlight, highlightsByPage } from "@v1/lib/pdf/highlights";
 import type { PageSize } from "@v1/lib/pdf/types";
 import type { PDFDocumentProxy } from "pdfjs-dist";
-import type { ReactNode } from "react";
+import { type ReactNode, useMemo } from "react";
 import { PdfPage } from "./PdfPage";
+
+const NO_HIGHLIGHTS: readonly Highlight[] = [];
 
 export interface PdfPageListProps {
   document: PDFDocumentProxy;
   pageSizes: readonly PageSize[];
   /** 1 is 100%. */
   zoom: number;
+  /** Highlights on any page, from the normalisers in `@v1/lib/pdf/highlights`. */
+  highlights?: readonly Highlight[];
+  activeHighlightId?: string | null;
+  /** Keep it stable (useCallback): a new function re-renders every page. */
+  onHighlightClick?: (highlight: Highlight) => void;
   /**
-   * Drawn over a page, for highlights; receives the 0-based page index. Keep
-   * it stable (useCallback): a new function re-renders every page.
+   * Drawn over a page, above its highlights; receives the 0-based page index.
+   * Keep it stable (useCallback): a new function re-renders every page.
    */
   renderPageOverlay?: (index: number) => ReactNode;
   className?: string;
@@ -28,10 +36,24 @@ export function PdfPageList({
   document,
   pageSizes,
   zoom,
+  highlights = NO_HIGHLIGHTS,
+  activeHighlightId,
+  onHighlightClick,
   renderPageOverlay,
   className,
 }: PdfPageListProps) {
   const { scrollRef, observePage, rendered } = usePageWindow(pageSizes.length);
+  const byPage = useMemo(() => highlightsByPage(highlights), [highlights]);
+  // Only the page holding the active highlight hears its id, so moving the
+  // active highlight re-renders the page it left and the page it reached.
+  const activePage = useMemo(
+    () =>
+      activeHighlightId == null
+        ? null
+        : (highlights.find((highlight) => highlight.id === activeHighlightId)
+            ?.page ?? null),
+    [highlights, activeHighlightId],
+  );
   const pixelRatio = useDevicePixelRatio();
   return (
     <div
@@ -54,6 +76,9 @@ export function PdfPageList({
             rendered={rendered.has(index)}
             pixelRatio={pixelRatio}
             observe={observePage}
+            highlights={byPage.get(index) ?? NO_HIGHLIGHTS}
+            activeHighlightId={index === activePage ? activeHighlightId : null}
+            onHighlightClick={onHighlightClick}
             renderOverlay={renderPageOverlay}
           />
         ))}
