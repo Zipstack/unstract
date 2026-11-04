@@ -109,6 +109,18 @@ class _SK:
 # -----------------------------------------------------------------------
 
 
+def _image_mode_llm_ids(outputs: list[dict[str, Any]]) -> list[str]:
+    """Distinct LLM adapter ids of the prompts run here.
+
+    Only these LLMs receive page images: each image-mode prompt is answered
+    by its own LLM. The tool-level LLM (``tool_settings["llm"]``) is not
+    included: in image mode it only summarizes text (single-pass is
+    rejected, challenge and evaluation are skipped), so its image limits
+    must not restrict the document.
+    """
+    return sorted({str(o.get(_SK.LLM)) for o in outputs if o.get(_SK.LLM)})
+
+
 def _apply_profile_overrides(tool_metadata: dict, profile_data: dict) -> list[str]:
     """Apply profile overrides to tool metadata.
 
@@ -318,6 +330,7 @@ def _execute_structure_tool_impl(params: dict) -> dict:
 
     # ---- Step 1: Setup ----
     from executor.executor_tool_shim import ExecutorToolShim
+    from executor.executors.constants import IndexingConstants as IKeys
 
     # Workflow IDs on the pre-dispatch shim let X2Text/platform helper logs
     # reach the workflow logs UI before the executor dispatch happens.
@@ -465,6 +478,10 @@ def _execute_structure_tool_impl(params: dict) -> dict:
 
     extract_params = {
         "x2text_instance_id": tool_settings[_SK.X2TEXT_ADAPTER],
+        # Every LLM that will read an image-mode document's pages, so the
+        # extraction checks their image-request limits before the billed
+        # conversion.
+        IKeys.LLM_INSTANCE_IDS: _image_mode_llm_ids(outputs),
         "file_path": input_file_path,
         "enable_highlight": is_highlight_enabled,
         "output_file_path": str(execution_run_data_folder / _SK.EXTRACT),
@@ -518,6 +535,7 @@ def _execute_structure_tool_impl(params: dict) -> dict:
     # PDF written alongside INFILE by the source connector.
     agentic_source_path = str(execution_run_data_folder / "SOURCE")
     agentic_results: dict[str, Any] = {}
+    agentic_raw_data: dict[str, Any] = {}
     agentic_metrics: dict[str, Any] = {}
     for at_output in agentic_table_outputs:
         at_settings = at_output.get("agentic_table_settings") or {}
@@ -542,6 +560,8 @@ def _execute_structure_tool_impl(params: dict) -> dict:
             "PLATFORM_SERVICE_API_KEY": platform_service_api_key,
             "group_key": at_settings.get("group_key", ""),
             "enable_header_mapping": at_settings.get("enable_header_mapping", False),
+            "extraction_priority": at_settings.get("extraction_priority"),
+            "enable_raw_extraction": at_settings.get("enable_raw_extraction", False),
             # Set on the output at export by prompt_studio_registry_helper.py
             # when a lookup is assigned; None otherwise.
             "lookup_config": at_output.get("lookup_config"),
@@ -566,6 +586,9 @@ def _execute_structure_tool_impl(params: dict) -> dict:
             return at_result.to_dict()
         at_output_data = at_result.data.get("output", {}) or {}
         agentic_results[at_output[_SK.NAME]] = at_output_data.get("tables", [])
+        raw_data = at_output_data.get("_raw_data")
+        if raw_data is not None:
+            agentic_raw_data[at_output[_SK.NAME]] = raw_data
         # The executor runs its own X2Text, so its metrics carry an extraction
         # duration the legacy pipeline's timer never sees. Same result shape the
         # non-agentic table plugin uses (LegacyExecutor._run_table_extraction).
@@ -618,13 +641,18 @@ def _execute_structure_tool_impl(params: dict) -> dict:
         structured_output = pipeline_result.data
         if agentic_results:
             structured_output.setdefault("output", {}).update(agentic_results)
+        if agentic_raw_data:
+            structured_output.setdefault("output", {})["_raw_data"] = agentic_raw_data
         _merge_agentic_metrics(structured_output, agentic_metrics)
     else:
         # All-agentic case: skip the legacy pipeline entirely. The metrics
         # dict is still populated, so an agentic-only deployment reports the
         # same _file.text_extraction the legacy path does.
+        agentic_output: dict[str, Any] = dict(agentic_results)
+        if agentic_raw_data:
+            agentic_output["_raw_data"] = agentic_raw_data
         structured_output = {
-            "output": agentic_results,
+            "output": agentic_output,
             "metadata": {"agentic_only": True},
         }
         _merge_agentic_metrics(structured_output, agentic_metrics)

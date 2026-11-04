@@ -19,6 +19,9 @@ const CANDIDATES = [
   "ui:dark:bg-card",
   "ui:unstract:bg-card",
   "ui:p-5",
+  "ui:gap-3",
+  "ui:w-64",
+  "ui:size-4",
   "bg-background",
   "flex",
   "ui:bg-red-500",
@@ -96,6 +99,29 @@ it("emits only prefixed utilities bound to runtime variables", () => {
   );
   expect(css).not.toMatch(/(^|[^\\:])\.bg-background\b/);
   expect(css).not.toMatch(/(^|[^\\:])\.flex\b/);
+});
+
+it("spacing utilities read the spacing tokens: named steps directly, bare steps through --space-1", () => {
+  expect(css).toMatch(/\.ui\\:p-5\s*\{[^}]*padding:\s*var\(--space-5\)/);
+  expect(css).toMatch(/\.ui\\:gap-3\s*\{[^}]*gap:\s*var\(--space-3\)/);
+  expect(css).toMatch(
+    /\.ui\\:w-64\s*\{[^}]*width:\s*calc\(var\(--space-1\)\s*\*\s*64\)/,
+  );
+  expect(css).toMatch(
+    /\.ui\\:size-4\s*\{[^}]*width:\s*(?:calc\(var\(--space-1\)\s*\*\s*4\)|var\(--space-4\))/,
+  );
+});
+
+it("each mode block sets the browser's color-scheme, so native controls follow data-theme", () => {
+  expect(css).toMatch(
+    /\.v1\[data-theme="?light"?\]\s*\{\s*color-scheme:\s*light;/,
+  );
+  expect(css).toMatch(
+    /\.v1\[data-theme="?dark"?\]\s*\{\s*color-scheme:\s*dark;/,
+  );
+  expect(css).toMatch(
+    /\.v1\[data-theme="?unstract"?\]\s*\{\s*color-scheme:\s*light;/,
+  );
 });
 
 it("has no stock palette, text scale, shadow scales or radius scale", () => {

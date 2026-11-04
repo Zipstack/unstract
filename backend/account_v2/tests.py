@@ -7,15 +7,14 @@ An organization must never lose its only admin via a role change. The guard
 
 import secrets
 from types import SimpleNamespace
-from unittest.mock import patch
 
 from django.test import TestCase
 from tenant_account_v2.models import OrganizationMember
+from utils.tests.auth_seam import admin_role, member_role
 from utils.user_context import UserContext
 
 from account_v2.authentication_controller import AuthenticationController
 from account_v2.custom_exceptions import Forbidden
-from account_v2.enums import UserRole
 from account_v2.models import Organization, User
 
 
@@ -32,34 +31,25 @@ class LastAdminGuardTests(TestCase):
             name="org-a", display_name="Org A", organization_id="org-a"
         )
         UserContext.set_organization_identifier(self.org.organization_id)
-        # Pin the built-in auth service: role vocabulary is plugin-defined, so
-        # UserRole below is only meaningful while no auth plugin is installed.
-        registry = patch(
-            "account_v2.authentication_controller."
-            "AuthenticationPluginRegistry.is_plugin_available",
-            return_value=False,
-        )
-        registry.start()
-        self.addCleanup(registry.stop)
         self.controller = AuthenticationController()
-        self.admin = _make_member(self.org, "admin@example.com", UserRole.ADMIN.value)
+        self.admin = _make_member(self.org, "admin@example.com", admin_role())
 
     def test_sole_admin_cannot_be_demoted(self) -> None:
         with self.assertRaises(Forbidden):
             self.controller._ensure_not_last_admin_demotion(
-                email=self.admin.user.email, new_role=UserRole.USER.value
+                email=self.admin.user.email, new_role=member_role()
             )
 
     def test_demotion_allowed_when_another_admin_remains(self) -> None:
-        _make_member(self.org, "admin2@example.com", UserRole.ADMIN.value)
+        _make_member(self.org, "admin2@example.com", admin_role())
         self.controller._ensure_not_last_admin_demotion(
-            email=self.admin.user.email, new_role=UserRole.USER.value
+            email=self.admin.user.email, new_role=member_role()
         )
 
     def test_non_admin_role_change_is_unaffected(self) -> None:
-        member = _make_member(self.org, "user@example.com", UserRole.USER.value)
+        member = _make_member(self.org, "user@example.com", member_role())
         self.controller._ensure_not_last_admin_demotion(
-            email=member.user.email, new_role=UserRole.USER.value
+            email=member.user.email, new_role=member_role()
         )
 
     def test_add_user_role_blocks_sole_admin_demotion(self) -> None:
@@ -69,7 +59,7 @@ class LastAdminGuardTests(TestCase):
                 request,
                 self.org.organization_id,
                 self.admin.user.email,
-                UserRole.USER.value,
+                member_role(),
             )
 
     def test_remove_user_role_blocks_sole_admin_demotion(self) -> None:
@@ -79,5 +69,5 @@ class LastAdminGuardTests(TestCase):
                 request,
                 self.org.organization_id,
                 self.admin.user.email,
-                UserRole.ADMIN.value,
+                admin_role(),
             )

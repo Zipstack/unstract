@@ -45,7 +45,9 @@ class ResourceEventTestBase(AuditTestBase):
 
     def create_workflow(self, name: str = "wf") -> Workflow:
         response = self.call(
-            WorkflowViewSet.as_view({"post": "create"}), "post", data={"workflow_name": name}
+            WorkflowViewSet.as_view({"post": "create"}),
+            "post",
+            data={"workflow_name": name},
         )
         self.assertEqual(response.status_code, 201, response.data)
         return Workflow.objects.get(workflow_name=name)
@@ -91,9 +93,7 @@ class ResourceEventTestBase(AuditTestBase):
 
 class CreateAndDeleteTests(ResourceEventTestBase):
     def _delete(self, viewset, resource, pk) -> None:
-        response = self.call(
-            viewset.as_view({"delete": "destroy"}), "delete", pk=str(pk)
-        )
+        response = self.call(viewset.as_view({"delete": "destroy"}), "delete", pk=str(pk))
         self.assertIn(response.status_code, (200, 204), getattr(response, "data", None))
 
     def test_adapter(self) -> None:
@@ -175,9 +175,13 @@ class CreateAndDeleteTests(ResourceEventTestBase):
         )
         self.assertEqual(response.status_code, 201, response.data)
         api = APIDeployment.objects.get(api_name="my-api")
-        self.assert_resource_event(Action.RESOURCE_CREATED, "api_deployment", api.id, "my api")
+        self.assert_resource_event(
+            Action.RESOURCE_CREATED, "api_deployment", api.id, "my api"
+        )
         self._delete(APIDeploymentViewSet, api, api.id)
-        self.assert_resource_event(Action.RESOURCE_DELETED, "api_deployment", api.id, "my api")
+        self.assert_resource_event(
+            Action.RESOURCE_DELETED, "api_deployment", api.id, "my api"
+        )
 
     def test_pipeline(self) -> None:
         workflow = self.create_workflow()
@@ -338,7 +342,9 @@ class SharingTests(ResourceEventTestBase):
         self.group = OrganizationGroup.objects.create(organization=self.org, name="Ops")
 
     def _share(self, viewset, pk, data):
-        response = self.call(viewset.as_view({"post": "share"}), "post", data=data, pk=str(pk))
+        response = self.call(
+            viewset.as_view({"post": "share"}), "post", data=data, pk=str(pk)
+        )
         self.assertEqual(response.status_code, 200, getattr(response, "data", None))
 
     def test_records_each_changed_axis(self) -> None:
@@ -357,7 +363,11 @@ class SharingTests(ResourceEventTestBase):
         self.assertEqual(
             event.changes,
             {
-                "before": {"shared_users": [], "shared_groups": [], "shared_to_org": False},
+                "before": {
+                    "shared_users": [],
+                    "shared_groups": [],
+                    "shared_to_org": False,
+                },
                 "after": {
                     "shared_users": ["member@example.com"],
                     "shared_groups": ["Ops"],
@@ -378,7 +388,10 @@ class SharingTests(ResourceEventTestBase):
         self.assertEqual(
             [e.changes for e in events],
             [
-                {"before": {"shared_users": []}, "after": {"shared_users": ["member@example.com"]}},
+                {
+                    "before": {"shared_users": []},
+                    "after": {"shared_users": ["member@example.com"]},
+                },
                 {"before": {"shared_to_org": False}, "after": {"shared_to_org": True}},
             ],
         )
@@ -387,14 +400,20 @@ class SharingTests(ResourceEventTestBase):
         adapter = self.create_adapter()
         self._share(AdapterInstanceViewSet, adapter.id, {"shared_to_org": True})
         self.assert_resource_event(
-            Action.RESOURCE_SHARING_CHANGED, "adapter_instance", adapter.id, "my-llm", "LLM"
+            Action.RESOURCE_SHARING_CHANGED,
+            "adapter_instance",
+            adapter.id,
+            "my-llm",
+            "LLM",
         )
 
     def test_co_owner_added_and_removed(self) -> None:
         coowner = make_user("co@example.com")
         from tenant_account_v2.models import OrganizationMember
 
-        OrganizationMember.objects.create(organization=self.org, user=coowner, role="user")
+        OrganizationMember.objects.create(
+            organization=self.org, user=coowner, role=self.member_role
+        )
         response = self.call(
             WorkflowViewSet.as_view({"post": "add_co_owner"}),
             "post",
@@ -403,9 +422,15 @@ class SharingTests(ResourceEventTestBase):
         )
         self.assertEqual(response.status_code, 200, response.data)
         added = self.assert_resource_event(
-            Action.RESOURCE_CO_OWNER_ADDED, "workflow", self.workflow.id, "wf", "co@example.com"
+            Action.RESOURCE_CO_OWNER_ADDED,
+            "workflow",
+            self.workflow.id,
+            "wf",
+            "co@example.com",
         )
-        self.assertEqual(added.metadata, {"user_id": coowner.id, "email": "co@example.com"})
+        self.assertEqual(
+            added.metadata, {"user_id": coowner.id, "email": "co@example.com"}
+        )
         response = self.call(
             WorkflowViewSet.as_view({"delete": "remove_co_owner"}),
             "delete",
@@ -414,7 +439,11 @@ class SharingTests(ResourceEventTestBase):
         )
         self.assertEqual(response.status_code, 204)
         self.assert_resource_event(
-            Action.RESOURCE_CO_OWNER_REMOVED, "workflow", self.workflow.id, "wf", "co@example.com"
+            Action.RESOURCE_CO_OWNER_REMOVED,
+            "workflow",
+            self.workflow.id,
+            "wf",
+            "co@example.com",
         )
 
 
@@ -426,7 +455,7 @@ class CoOwnerRaceTests(ResourceEventTestBase):
         self.workflow = self.create_workflow()
         self.coowner = make_user("co@example.com")
         OrganizationMember.objects.create(
-            organization=self.org, user=self.coowner, role="user"
+            organization=self.org, user=self.coowner, role=self.member_role
         )
 
     def _context(self) -> dict:
@@ -515,9 +544,7 @@ class CoOwnerRaceTests(ResourceEventTestBase):
         self.assertTrue(serializer.is_valid(), serializer.errors)
         self.workflow.memberships.create(user=self.coowner, role=ResourceRole.OWNER)
         self.assertFalse(serializer.save())
-        self.assertEqual(
-            self.workflow.memberships.filter(user=self.coowner).count(), 1
-        )
+        self.assertEqual(self.workflow.memberships.filter(user=self.coowner).count(), 1)
 
     def test_a_remove_another_request_already_made_changes_nothing(self) -> None:
         self.workflow.memberships.create(user=self.coowner, role=ResourceRole.OWNER)
@@ -553,9 +580,11 @@ class OrgScopingTests(ResourceEventTestBase):
         from tenant_account_v2.models import OrganizationMember
 
         OrganizationMember.objects.create(
-            organization=self.other_org, user=other_admin, role="admin"
+            organization=self.other_org, user=other_admin, role=self.admin_role
         )
         self.use_org(self.other_org)
-        response = self.call(PlatformAuditEventListView.as_view(), "get", user=other_admin)
+        response = self.call(
+            PlatformAuditEventListView.as_view(), "get", user=other_admin
+        )
         self.assertEqual(response.status_code, 200, response.data)
         self.assertEqual(response.data["results"], [])

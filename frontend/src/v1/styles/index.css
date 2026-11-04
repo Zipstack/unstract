@@ -64,6 +64,17 @@
   --color-header-foreground: var(--header-foreground);
   --color-scrim: var(--scrim);
 
+  /* --spacing is the base every bare step multiplies (ui:w-64 is 64 × 4px);
+   * each named step reads its own token, so ui:p-5 is var(--space-5). */
+  --spacing: var(--space-1);
+  --spacing-1: var(--space-1);
+  --spacing-2: var(--space-2);
+  --spacing-3: var(--space-3);
+  --spacing-4: var(--space-4);
+  --spacing-5: var(--space-5);
+  --spacing-6: var(--space-6);
+  --spacing-8: var(--space-8);
+
   --radius-*: initial;
   --radius-sm: var(--radius-sm);
   --radius-md: var(--radius-md);
