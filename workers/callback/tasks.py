@@ -71,6 +71,9 @@ class CallbackContext:
         # here) — lets the PG duplicate guard skip a redelivered callback without a
         # second round-trip.
         self.execution_status: str | None = None
+        # The full execution context from that same fetch, reused by the status
+        # determination step instead of fetching the execution again.
+        self.execution_context: dict[str, Any] | None = None
 
 
 def _initialize_performance_managers():
@@ -257,6 +260,7 @@ def _determine_execution_status_unified(
     api_client: InternalAPIClient,
     execution_id: str,
     organization_id: str,
+    execution_context: dict[str, Any] | None,
 ) -> tuple[dict[str, Any], str, int]:
     """Unified status determination logic with timeout detection for all callback types.
 
@@ -269,6 +273,9 @@ def _determine_execution_status_unified(
         api_client: Internal API client for workflow execution queries
         execution_id: Workflow execution ID
         organization_id: Organization context
+        execution_context: Execution context the callback already fetched,
+            reused here instead of fetching the execution again; None if
+            that fetch failed
 
     Returns:
         Tuple of (aggregated_results, final_status, expected_files)
@@ -282,6 +289,7 @@ def _determine_execution_status_unified(
         execution_id,
         organization_id,
         aggregated_results.get("file_results", []),
+        execution_context=execution_context,
     )
 
     # Update aggregated results with wall-clock time
@@ -297,23 +305,18 @@ def _determine_execution_status_unified(
         logger.warning(f"Execution time is 0! File results for execution {execution_id}")
 
     # Step 3: Get expected file count from workflow execution details for timeout detection
-    expected_files = 0
-    try:
-        execution_response = api_client.get_workflow_execution(
-            execution_id, file_execution=False
+    if not execution_context:
+        logger.warning(
+            f"No execution context for execution {execution_id}; "
+            "expected file count unavailable"
         )
-        if execution_response.success:
-            execution_data = execution_response.data
-            expected_files = execution_data.get("total_files", 0)
-            logger.info(
-                f"Expected files from execution details: {expected_files} for execution {execution_id}"
-            )
-        else:
-            logger.warning(
-                f"Could not fetch execution details for {execution_id}: {execution_response.error}"
-            )
-    except Exception as e:
-        logger.warning(f"Could not fetch execution details for {execution_id}: {e}")
+    # Reads a top-level key, which the serializer does not return (it is nested
+    # under "execution"), so this is always 0. Pre-existing; fixing it changes
+    # final statuses, so it is tracked separately.
+    expected_files = (execution_context or {}).get("total_files", 0)
+    logger.info(
+        f"Expected files from execution details: {expected_files} for execution {execution_id}"
+    )
 
     # Step 4: Extract file processing metrics for status determination
     total_files_processed = aggregated_results.get("total_files_processed", 0)
@@ -728,8 +731,9 @@ def _extract_callback_parameters(
                 f"Fetching complete context from workflow execution {context.execution_id}"
             )
 
+            # file_execution=True: subscription billing reads context.file_executions.
             execution_response = api_client.get_workflow_execution(
-                context.execution_id, file_execution=False
+                context.execution_id, file_execution=True
             )
 
             if not execution_response.success:
@@ -762,9 +766,10 @@ def _extract_callback_parameters(
             temp_config = WorkerConfig()
             temp_api_client = InternalAPIClient(temp_config)
             try:
+                # file_execution=True: subscription billing reads context.file_executions.
                 execution_response = temp_api_client.get_workflow_execution(
                     context.execution_id,
-                    file_execution=False,
+                    file_execution=True,
                 )
 
                 if not execution_response.success:
@@ -810,6 +815,7 @@ def _extract_callback_parameters(
         ) or workflow_definition.get("workflow_id")
         # Status from the same fetch, for the PG duplicate guard (no extra call).
         context.execution_status = execution_info.get("status")
+        context.execution_context = execution_data
 
         # Use existing API detection from source_config (no additional API calls needed)
         is_api_deployment = source_config.get("is_api", False)
@@ -1294,6 +1300,7 @@ def _cleanup_execution_resources(context: CallbackContext) -> dict[str, Any]:
 def _track_subscription_usage_if_available(
     context: CallbackContext,
     execution_status: str,
+    successful_files: int = 0,
 ) -> dict[str, Any] | None:
     """Track subscription usage for successful file executions if plugin available.
 
@@ -1303,6 +1310,8 @@ def _track_subscription_usage_if_available(
     Args:
         context: Callback execution context with organization and execution IDs
         execution_status: Final execution status (should be COMPLETED for tracking)
+        successful_files: Successful file count from the aggregated batch results,
+            used only to flag a fetch that came back without file-execution rows
 
     Returns:
         dict with status, committed_count, message if tracking attempted
@@ -1338,6 +1347,15 @@ def _track_subscription_usage_if_available(
             and file_exec.get("id")
             and not file_exec.get("execution_error")
         ]
+
+        if successful_files and not context.file_executions:
+            # The rows come only from a fetch with file_execution=True; without
+            # them this usage would go unbilled with no other sign.
+            logger.warning(
+                f"{successful_files} successful files but no file executions in the "
+                f"callback context for execution {context.execution_id}; "
+                "subscription usage not committed"
+            )
 
         if not successful_file_exec_ids:
             logger.debug(
@@ -1479,6 +1497,7 @@ def _process_batch_callback_core(
                         api_client=context.api_client,
                         execution_id=context.execution_id,
                         organization_id=context.organization_id,
+                        execution_context=context.execution_context,
                     )
                 )
                 # Update workflow execution status using unified function
@@ -1499,6 +1518,7 @@ def _process_batch_callback_core(
                 subscription_tracking_result = _track_subscription_usage_if_available(
                     context=context,
                     execution_status=execution_status,
+                    successful_files=aggregated_results.get("successful_files", 0),
                 )
 
                 # Add missing UI logs for cost and final workflow status (matching backend behavior)
@@ -1668,8 +1688,9 @@ def process_batch_callback_api(
     logger.info(f"Created organization-scoped API client: {organization_id}")
 
     try:
+        # file_execution=True: subscription billing reads context.file_executions.
         execution_response = api_client.get_workflow_execution(
-            execution_id, file_execution=False
+            execution_id, file_execution=True
         )
         if not execution_response.success:
             raise RuntimeError(
@@ -1742,6 +1763,7 @@ def process_batch_callback_api(
                         api_client=api_client,
                         execution_id=execution_id,
                         organization_id=organization_id,
+                        execution_context=execution_context,
                     )
                 )
 
@@ -1799,6 +1821,7 @@ def process_batch_callback_api(
                 subscription_tracking_result = _track_subscription_usage_if_available(
                     context=context,
                     execution_status=execution_status,
+                    successful_files=aggregated_results.get("successful_files", 0),
                 )
 
                 # Handle notifications using unified function
