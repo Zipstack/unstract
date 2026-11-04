@@ -27,3 +27,31 @@ export type PdfLoadFailure =
   | { kind: "password"; incorrect: boolean }
   | { kind: "unsupported" }
   | { kind: "failed"; message: string };
+
+/** An image shown as a single page. */
+export interface ImageSource {
+  kind: "image";
+  url: string;
+  alt?: string;
+}
+
+/** Extracted or raw text, shown line by line. */
+export interface TextSource {
+  kind: "text";
+  text: string;
+  /**
+   * Which text this is, across edits. Keep it the same while the text is
+   * edited live (a HITL correction) and the view keeps its place; a new id is
+   * a new text, back at the top. Without one, any change of text is a new text.
+   */
+  id?: string;
+}
+
+/** Anything the document viewer shows. */
+export type DocumentSource = PdfSource | ImageSource | TextSource;
+
+export function isPdfSource(
+  source: DocumentSource | null,
+): source is PdfSource {
+  return source?.kind === "url" || source?.kind === "data";
+}

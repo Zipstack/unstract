@@ -9,6 +9,7 @@ import {
 import type { PDFDocumentProxy, PDFPageProxy, RenderTask } from "pdfjs-dist";
 import { memo, type ReactNode, useEffect, useRef, useState } from "react";
 import { HighlightLayer } from "./HighlightLayer";
+import { PAGE_FRAME_CLASS } from "./pageFrame";
 
 export interface PdfPageProps {
   document: PDFDocumentProxy;
@@ -171,9 +172,7 @@ export const PdfPage = memo(function PdfPage({
       // A figure, not role="img": an img's children are presentational, which
       // would hide the highlight buttons from assistive technology.
       aria-label={`Page ${index + 1} of ${pageCount}`}
-      className="ui:relative ui:h-(--page-height) ui:w-(--page-width) ui:shrink-0 ui:bg-card ui:shadow-sm"
-      // A page's size is runtime geometry, not a token: it goes through custom
-      // properties, which the classes read.
+      className={PAGE_FRAME_CLASS}
       style={{
         "--page-width": `${css.width}px`,
         "--page-height": `${css.height}px`,
