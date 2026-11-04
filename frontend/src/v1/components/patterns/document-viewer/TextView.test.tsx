@@ -1,6 +1,6 @@
 import { act, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { createRef } from "react";
+import { createRef, type RefObject } from "react";
 import { expect, it, vi } from "vitest";
 import type { PdfPageListHandle } from "./PdfPageList";
 import { TextView } from "./TextView";
@@ -80,7 +80,17 @@ it("centres a highlighted line on request", () => {
   expect(ref.current?.scrollToHighlight("nope")).toBe(false);
 });
 
-it("centres a wrapped line again once the browser has drawn it", () => {
+/**
+ * Renders a highlight on a line that is one row high until the browser draws
+ * it, then three; `draw()` draws it and runs the next animation frame.
+ */
+function withWrappedHighlight(
+  check: (view: {
+    ref: RefObject<PdfPageListHandle | null>;
+    root: HTMLElement;
+    draw: () => void;
+  }) => void,
+) {
   vi.useFakeTimers({
     toFake: ["requestAnimationFrame", "cancelAnimationFrame"],
   });
@@ -95,58 +105,46 @@ it("centres a wrapped line again once the browser has drawn it", () => {
     );
     const root = screen.getByRole("region", { name: "Document text" });
     Object.defineProperty(root, "clientHeight", { value: 100 });
-    // Not drawn yet: one line high. Drawn: it wraps to three lines.
     let height = 20;
     Object.defineProperties(line(container, 3), {
       offsetTop: { value: 400 },
       offsetHeight: { get: () => height },
     });
+    check({
+      ref,
+      root,
+      draw: () => {
+        height = 60;
+        act(() => {
+          vi.advanceTimersToNextFrame();
+        });
+      },
+    });
+  } finally {
+    vi.useRealTimers();
+  }
+}
+
+it("centres a wrapped line again once the browser has drawn it", () => {
+  withWrappedHighlight(({ ref, root, draw }) => {
     act(() => {
       ref.current?.scrollToHighlight("total");
     });
     expect(root.scrollTop).toBe(400 + 10 - 50);
-    height = 60;
-    act(() => {
-      vi.advanceTimersToNextFrame();
-    });
+    draw();
     expect(root.scrollTop).toBe(400 + 30 - 50);
-  } finally {
-    vi.useRealTimers();
-  }
+  });
 });
 
 it("lets a later jump to the top win over a highlight still being centred", () => {
-  vi.useFakeTimers({
-    toFake: ["requestAnimationFrame", "cancelAnimationFrame"],
-  });
-  try {
-    const ref = createRef<PdfPageListHandle>();
-    const { container } = render(
-      <TextView
-        ref={ref}
-        text={text}
-        highlights={[{ id: "total", line: 3 }]}
-      />,
-    );
-    const root = screen.getByRole("region", { name: "Document text" });
-    Object.defineProperty(root, "clientHeight", { value: 100 });
-    let height = 20;
-    Object.defineProperties(line(container, 3), {
-      offsetTop: { value: 400 },
-      offsetHeight: { get: () => height },
-    });
+  withWrappedHighlight(({ ref, root, draw }) => {
     act(() => {
       ref.current?.scrollToHighlight("total");
       ref.current?.scrollToPage(0);
     });
-    height = 60;
-    act(() => {
-      vi.advanceTimersToNextFrame();
-    });
+    draw();
     expect(root.scrollTop).toBe(0);
-  } finally {
-    vi.useRealTimers();
-  }
+  });
 });
 
 it("says no text was found for blank text, not that there is no document", () => {
