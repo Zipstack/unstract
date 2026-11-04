@@ -14,6 +14,9 @@ from unittest import mock
 os.environ["GITHUB_REPOSITORY"] = (
     "Zipstack/unstract-cloud"  # pin relstate to the cloud config
 )
+os.environ["GITHUB_SERVER_URL"] = (
+    "https://github.com"  # CI sets it, and summaries link only with it
+)
 os.environ["RELEASE_BOT_APP_SLUG"] = "zipstack-push-to-main"
 BOT = {
     "login": "app/zipstack-push-to-main",
@@ -375,8 +378,13 @@ class OwedSummary(unittest.TestCase):
             [(a, "fix", "#3", "UN-1 [FIX] x | y"), (b, bp.UNCLASSIFIABLE, "no PR", "z")],
             "release/0.187",
         )
-        self.assertIn("| `aaaaaaa` | #3 | UN-1 [FIX] x \\| y | fix |", out)
-        self.assertIn(f"| `bbbbbbb` | no PR | z | {bp.UNCLASSIFIABLE} |", out)
+        self.assertIn(
+            f"| [`aaaaaaa`]({WEB}/commit/{a}) | [#3]({WEB}/pull/3) | UN-1 [FIX] x \\| y | fix |",
+            out,
+        )
+        self.assertIn(
+            f"| [`bbbbbbb`]({WEB}/commit/{b}) | no PR | z | {bp.UNCLASSIFIABLE} |", out
+        )
         self.assertTrue(
             out.endswith(
                 "To pick a fix: dispatch Backport with its commit, `confirm_stabilized=true` and `lines=0.187`"
@@ -390,7 +398,8 @@ ACTIONS = {
     "GITHUB_SERVER_URL": "https://github.com",
     "GITHUB_REPOSITORY": "Zipstack/unstract-cloud",
 }
-WEB = "https://github.com/Zipstack/unstract-cloud"
+GH = "https://github.com"
+WEB = f"{GH}/Zipstack/unstract-cloud"
 
 
 class SummaryLinks(unittest.TestCase):
@@ -643,11 +652,24 @@ class RescanUnclassifiable(unittest.TestCase):
             ),
             mock.patch("sys.stdout", new_callable=io.StringIO) as out,
         ):
-            rows, _, _ = bp.rescan("o/r", {}, False, [])
+            rows, *_ = bp.rescan("o/r", {}, False, [])
         self.assertEqual(
             rows, [(u, "no PR", bp.UNCLASSIFIABLE, b, "failed: unclassifiable", "-")]
         )
         self.assertIn("::error::uuuuuuu (no PR, U) cannot be classed", out.getvalue())
+
+    def test_a_listed_line_that_is_not_a_target_fails(self):
+        with (
+            mock.patch.object(bp, "_rescan_classes", lambda slug, scan: {}),
+            mock.patch("sys.stdout", new_callable=io.StringIO) as out,
+        ):
+            rows, *_ = bp.rescan("o/r", TARGETS, False, ["release/0.150"])
+        self.assertEqual(
+            rows, [("-------", "-", "-", "release/0.150", "failed: not a target", "-")]
+        )
+        self.assertIn(
+            "::error::release/0.150 is not a target: nothing picked there", out.getvalue()
+        )
 
 
 class DispatchHold(unittest.TestCase):
@@ -689,7 +711,7 @@ class DispatchHold(unittest.TestCase):
                             "#4",
                             "fix",
                             "release/0.190",
-                            "skipped: stabilized; a plain fix needs lines",
+                            "failed: stabilized; a plain fix needs lines",
                             "-",
                         ),
                         (fix, "release/0.191"),
@@ -747,20 +769,20 @@ class DispatchPatch(unittest.TestCase):
                     "#4",
                     "fix",
                     "release/0.190",
-                    "skipped: stabilized; needs confirm_stabilized",
+                    "failed: stabilized; needs confirm_stabilized",
                     "-",
                 ),
-                (self.fix, "#4", "fix", "release/0.150", "skipped: not a target", "-"),
+                (self.fix, "#4", "fix", "release/0.150", "failed: not a target", "-"),
             ],
         )
 
     def test_confirm_without_branches_says_why(self):
-        skip = "skipped: stabilized; a plain fix needs lines"
+        why = "failed: stabilized; a plain fix needs lines"
         self.assertEqual(
             self.run_(True, []),
             [
-                (self.fix, "#4", "fix", "release/0.190", skip, "-"),
-                (self.fix, "#4", "fix", "release/0.188", skip, "-"),
+                (self.fix, "#4", "fix", "release/0.190", why, "-"),
+                (self.fix, "#4", "fix", "release/0.188", why, "-"),
                 "release/0.191",
             ],
         )
@@ -774,7 +796,7 @@ class DispatchPatch(unittest.TestCase):
         }
         self.assertEqual(
             self.run_(True, [], only),
-            [(self.fix, "#4", "fix", "release/0.190", skip, "-")],
+            [(self.fix, "#4", "fix", "release/0.190", why, "-")],
         )
 
 
@@ -847,8 +869,8 @@ class PatchLines(unittest.TestCase):
         self.assertEqual(
             out[2:],
             [
-                f"- `release/0.190`: `#7 {b[:12]}` (1 unclassifiable left out)",
-                "- `release/0.188`: none",
+                f"- [`release/0.190`]({WEB}/tree/release/0.190): `#7 {b[:12]}` (1 unclassifiable left out)",
+                f"- [`release/0.188`]({WEB}/tree/release/0.188): none",
             ],
         )
         with (
@@ -891,7 +913,7 @@ class PatchLines(unittest.TestCase):
         self.assertEqual(
             out[2:],
             [
-                "- `release/0.190`: patch list unavailable (see the run log)",
+                f"- [`release/0.190`]({WEB}/tree/release/0.190): patch list unavailable (see the run log)",
             ],
         )
 
@@ -954,8 +976,9 @@ class MissedPicks(unittest.TestCase):
         self.assertEqual(
             self.missed()[2:],
             [
-                "- `release/0.191`: owed `#7`; conflict PRs o/r#12, Zipstack/unstract#30",
-                "- `release/0.190`: owed none; conflict PRs none",
+                f"- [`release/0.191`]({WEB}/tree/release/0.191): owed `#7`; conflict PRs "
+                f"[o/r#12]({GH}/o/r/pull/12), [Zipstack/unstract#30]({GH}/Zipstack/unstract/pull/30)",
+                f"- [`release/0.190`]({WEB}/tree/release/0.190): owed none; conflict PRs none",
             ],
         )
         self.assertEqual(
@@ -976,7 +999,7 @@ class MissedPicks(unittest.TestCase):
     def test_same_repo_listed_once(self):  # the OSS repo's own State run
         self.assertEqual(
             self.missed(others=("o/r",))[2],
-            "- `release/0.191`: owed `#7`; conflict PRs o/r#12",
+            f"- [`release/0.191`]({WEB}/tree/release/0.191): owed `#7`; conflict PRs [o/r#12]({GH}/o/r/pull/12)",
         )
 
     def test_no_stabilizing_line(self):
@@ -993,7 +1016,7 @@ class MissedPicks(unittest.TestCase):
         out = self.missed(held=fail, gh=fail, git=fail)
         self.assertEqual(
             out[2],
-            "- `release/0.191`: owed patch list unavailable (see the run log); "
+            f"- [`release/0.191`]({WEB}/tree/release/0.191): owed patch list unavailable (see the run log); "
             "conflict PRs unavailable (see the run log)",
         )
         self.assertEqual(
@@ -1854,6 +1877,401 @@ class PickStep(unittest.TestCase):
         self.assertEqual(
             {u for u in used if not re.search(rf"^\s+{u}:", inputs, re.M)}, set()
         )
+
+
+TARGETS = {
+    "fix": ["release/0.191"],
+    "security_critical": [
+        {"branch": "release/0.191", "needs_rm_confirmation": False},
+        {"branch": "release/0.190", "needs_rm_confirmation": True},
+    ],
+}
+
+
+class Unsettled(unittest.TestCase):
+    a, b, c, d = "a" * 40, "b" * 40, "c" * 40, "d" * 40
+    OWED = {
+        "release/0.191": [
+            (a, "fix", "#7", "UN-1 [FIX] x"),
+            (b, bp.UNCLASSIFIABLE, "no PR", "y"),
+            (c, "security", "#8", "UN-2 [FIX] z"),
+        ],
+        "release/0.190": [(d, "critical", "#9", "UN-3 [HOT-FIX] w")],
+    }
+
+    def test_left_in_no_known_state(self):
+        self.assertEqual(
+            bp.unsettled(TARGETS, self.OWED, [], set()),
+            [
+                (self.a, "#7", "release/0.191", "fix"),
+                (self.b, "no PR", "release/0.191", bp.UNCLASSIFIABLE),
+                (self.c, "#8", "release/0.191", "security"),
+            ],
+        )  # d is held for the RM on the stabilized line
+
+    def test_a_row_or_a_pick_head_settles_it(self):
+        rows = [(self.a, "#7", "fix", "release/0.191", "picked", "-")]
+        heads = {"backport/0.191/ccccccc"}
+        self.assertEqual(
+            bp.unsettled(TARGETS, self.OWED, rows, heads),
+            [(self.b, "no PR", "release/0.191", bp.UNCLASSIFIABLE)],
+        )
+        other = [(self.a, "#7", "fix", "release/0.190", "picked", "-")]  # another line
+        self.assertIn(
+            (self.a, "#7", "release/0.191", "fix"),
+            bp.unsettled(TARGETS, self.OWED, other, heads),
+        )
+
+    def test_plain_fix_on_a_stabilized_line_is_not_held(self):
+        owed = {"release/0.190": [(self.a, bp.UNCLASSIFIABLE, "no PR", "y")]}
+        self.assertEqual(
+            bp.unsettled(TARGETS, owed, [], set()),
+            [(self.a, "no PR", "release/0.190", bp.UNCLASSIFIABLE)],
+        )
+
+    def test_lines_name_the_way_out(self):
+        with mock.patch("sys.stdout", new_callable=io.StringIO) as out:
+            lines = bp.unsettled_lines(
+                [
+                    (self.a, "#7", "release/0.191", "fix"),
+                    (self.b, "no PR", "release/0.191", bp.UNCLASSIFIABLE),
+                ]
+            )
+        self.assertEqual(
+            out.getvalue().splitlines(),
+            [
+                "::error::aaaaaaa (fix, PR #7) is owed on release/0.191 and was left undone: "
+                f"dispatch Backport with commits={self.a[:12]} lines=0.191, or record a decline",
+                f"::error::bbbbbbb ({bp.UNCLASSIFIABLE}, PR no PR) is owed on release/0.191 and was left undone: "
+                "fix its PR title or labels and rerun Backport, or record a decline",
+            ],
+        )
+        self.assertEqual(len(lines), 2)
+        self.assertIn(f"[`release/0.191`]({WEB}/tree/release/0.191)", lines[0])
+
+    def test_pick_head_name(self):
+        self.assertEqual(
+            bp.backport_head("release/0.191", self.c), "backport/0.191/ccccccc"
+        )
+        out = (
+            f"{self.a}\trefs/heads/backport/0.191/ccccccc\n"
+            f"{self.b}\trefs/heads/backport/0.190/ddddddd\n"
+        )
+        with mock.patch.object(bp.rm, "git", lambda *a: out) as _:
+            self.assertEqual(
+                bp.backport_heads(), {"backport/0.191/ccccccc", "backport/0.190/ddddddd"}
+            )
+        with mock.patch.object(bp.rm, "git", lambda *a: ""):
+            self.assertEqual(bp.backport_heads(), set())
+
+
+class MainLeftUndone(unittest.TestCase):
+    a = "a" * 40
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.state = os.path.join(tmp.name, "state.json")
+        with open(self.state, "w") as f:
+            json.dump({"branches": [], "backport_targets": TARGETS}, f)
+        self.owed = {"release/0.191": [(self.a, "fix", "#7", "UN-1 [FIX] x")]}
+        self.rows = []
+
+    def main(self, owed=None, rows=(), heads=()):
+        def owed_now(slug, targets):
+            if isinstance(owed, Exception):
+                raise owed
+            return self.owed if owed is None else owed
+
+        argv = ["backport.py", "--state", self.state, "--commits", "#5"]
+        env = {k: v for k, v in os.environ.items() if k != "GITHUB_STEP_SUMMARY"}
+        with (
+            mock.patch("sys.argv", argv),
+            mock.patch.dict(os.environ, env, clear=True),
+            mock.patch.object(bp, "dispatch", lambda *a: (list(rows), [])),
+            mock.patch.object(bp, "owed_now", owed_now),
+            mock.patch.object(bp, "backport_heads", lambda: set(heads)),
+            mock.patch.object(bp, "conflict_prs", lambda slug: []),
+            mock.patch("sys.stdout", new_callable=io.StringIO) as out,
+        ):
+            code = bp.main()
+        return code, out.getvalue()
+
+    def test_owed_and_untouched_fails(self):
+        code, out = self.main()
+        self.assertEqual(code, 1)
+        self.assertIn("::error::aaaaaaa (fix, PR #7) is owed on release/0.191", out)
+        self.assertIn("**⛔ Left undone**", out)
+
+    def test_settled_passes(self):
+        picked = [(self.a, "#7", "fix", "release/0.191", "picked", "-")]
+        self.assertEqual(self.main(rows=picked)[0], 0)
+        self.assertEqual(self.main(heads=["backport/0.191/aaaaaaa"])[0], 0)
+        self.assertEqual(self.main(owed={})[0], 0)
+
+    def test_unchecked_fails(self):
+        code, out = self.main(owed=RuntimeError("git fetch (exit 128)"))
+        self.assertEqual(code, 1)
+        self.assertIn("::error::cannot check what this run left undone: git fetch", out)
+        self.assertIn("- unchecked: see the run log", out)
+
+
+class StateCheck(unittest.TestCase):
+    NOW = rm.ts("2026-10-10T12:00:00Z")
+    a, b, c, d = "a" * 40, "b" * 40, "c" * 40, "d" * 40
+    STATE = {
+        "branches": [
+            {"branch": "release/0.192", "state": "pre-ga"},
+            {"branch": "release/0.191", "state": "stabilizing"},
+            {"branch": "release/0.190", "state": "stabilized"},
+        ]
+    }
+
+    def pr(self, n, base, head, created):
+        return {
+            "number": n,
+            "url": f"https://github.com/Zipstack/unstract-cloud/pull/{n}",
+            "baseRefName": base,
+            "headRefName": head,
+            "createdAt": created,
+        }
+
+    def check(self, owed=(), held=(), prs=(), oss_prs=(), merged="2026-10-10T09:00:00Z"):
+        self.scanned = []
+
+        def held_(slug, repo, branch, accept, cache):
+            self.scanned.append((branch, accept))
+            return list(owed if accept is bp.OWED else held)
+
+        listing = {
+            "Zipstack/unstract-cloud": list(prs),
+            "Zipstack/unstract": list(oss_prs),
+        }
+        with (
+            mock.patch.object(bp, "conflict_prs", lambda slug: listing[slug]),
+            mock.patch.object(bp, "_rescan_classes", lambda slug, lines: {}),
+            mock.patch.object(bp, "held", held_),
+            mock.patch.object(bp.rm, "git", lambda *a: merged),
+            mock.patch("sys.stdout", new_callable=io.StringIO) as out,
+        ):
+            code = bp.state_check(
+                self.STATE, ["Zipstack/unstract"], "Zipstack/unstract-cloud", self.NOW
+            )
+        return code, out.getvalue()
+
+    def test_scans_stabilizing_owed_and_stabilized_held(self):
+        self.assertEqual(self.check(), (0, ""))
+        self.assertEqual(
+            self.scanned, [("release/0.191", bp.OWED), ("release/0.190", bp.HELD)]
+        )
+
+    def test_owed_pick_at_the_grace_boundary(self):
+        owed = [(self.a, "fix", "#7", "UN-1 [FIX] x")]
+        self.assertEqual(self.check(owed, merged="2026-10-10T10:00:00Z"), (0, ""))
+        code, out = self.check(owed, merged="2026-10-10T09:59:59Z")
+        self.assertEqual(code, 1)
+        self.assertEqual(
+            out,
+            "::error::aaaaaaa (fix, PR #7) owed on stabilizing release/0.191 and not picked: "
+            f"dispatch Backport with commits={self.a[:12]}, or record a decline\n",
+        )
+
+    def test_owed_on_an_open_conflict_pr_waits_for_the_pr(self):
+        owed = [(self.a, "fix", "#7", "UN-1 [FIX] x")]
+        pr = self.pr(
+            12, "release/0.191", "backport/0.191/aaaaaaa", "2026-10-10T00:00:00Z"
+        )
+        self.assertEqual(
+            self.check(owed, prs=[pr], merged="2026-10-01T00:00:00Z"), (0, "")
+        )
+        oss = self.pr(
+            30, "release/0.191", "backport/0.191/aaaaaaa", "2026-10-10T00:00:00Z"
+        )
+        self.assertEqual(
+            self.check(owed, oss_prs=[oss], merged="2026-10-01T00:00:00Z")[0], 1
+        )  # a head in the other repo is not this commit's pick
+
+    def test_conflict_pr_at_the_grace_boundary_in_either_repo(self):
+        at = self.pr(
+            12, "release/0.191", "backport/0.191/ccccccc", "2026-10-09T12:00:00Z"
+        )
+        self.assertEqual(self.check(prs=[at], oss_prs=[{**at, "number": 30}]), (0, ""))
+        past = {**at, "createdAt": "2026-10-09T11:59:59Z"}
+        for prs, oss_prs, ref in (
+            ([past], [], "Zipstack/unstract-cloud#12"),
+            ([], [{**past, "number": 30}], "Zipstack/unstract#30"),
+        ):
+            code, out = self.check(prs=prs, oss_prs=oss_prs)
+            self.assertEqual(code, 1)
+            self.assertEqual(
+                out,
+                f"::error::{ref} on release/0.191: backport conflict PR open since 2026-10-09T11:59:59Z; "
+                "resolve and merge it, or close it to decline\n",
+            )
+
+    def test_same_repo_listed_once(self):
+        past = self.pr(
+            12, "release/0.191", "backport/0.191/ccccccc", "2026-10-01T00:00:00Z"
+        )
+        with (
+            mock.patch.object(bp, "conflict_prs", lambda slug: [past]) as _,
+            mock.patch.object(bp, "_rescan_classes", lambda slug, lines: {}),
+            mock.patch.object(bp, "held", lambda *a, **k: []),
+            mock.patch("sys.stdout", new_callable=io.StringIO) as out,
+        ):
+            bp.state_check(self.STATE, ["o/r"], "o/r", self.NOW)
+        self.assertEqual(out.getvalue().count("::error::"), 1)
+
+    def test_unclassifiable_fails_on_any_line(self):
+        u = [(self.b, bp.UNCLASSIFIABLE, "no PR", "y")]
+        for owed, held, line in ((u, (), "release/0.191"), ((), u, "release/0.190")):
+            code, out = self.check(owed, held, merged="2026-10-10T11:59:00Z")
+            self.assertEqual(code, 1)
+            self.assertEqual(
+                out,
+                f"::error::bbbbbbb (no PR, y) cannot be classed for {line}: "
+                "fix its PR title or labels, or record a decline\n",
+            )
+
+    def test_held_is_listed_not_failed(self):
+        held = [(self.d, "security", "#9", "UN-3 [FIX] w")]
+        code, out = self.check(held=held, merged="2026-10-01T00:00:00Z")
+        self.assertEqual(code, 0)
+        self.assertEqual(
+            out,
+            "::notice::ddddddd (security, PR #9) held for release/0.190: stabilized, needs confirm_stabilized\n",
+        )
+
+
+@unittest.skipUnless(
+    os.path.exists(
+        os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), "..", "workflows", "retire.yaml"
+        )
+    ),
+    "the cloud repo's workflows",
+)
+class FailureAlert(unittest.TestCase):
+    """Every release workflow tells Slack when it fails; a called run reports through its caller."""
+
+    WORKFLOWS = (
+        "backport",
+        "state",
+        "cut",
+        "take-rc-build",
+        "promote",
+        "publish",
+        "retire",
+    )
+    SLACK = "uses: slackapi/slack-github-action@v3.0.1"
+
+    def jobs(self, text):
+        """{job: body}, in file order; text-based, since CI has no PyYAML."""
+        parts = re.split(r"^  ([\w-]+):\n", text.split("\njobs:\n", 1)[1], flags=re.M)
+        return dict(zip(parts[1::2], parts[2::2], strict=True))
+
+    def test_every_workflow_alerts(self):
+        here = os.path.dirname(os.path.abspath(__file__))
+        for name in self.WORKFLOWS:
+            with open(os.path.join(here, "..", "workflows", f"{name}.yaml")) as f:
+                text = f.read()
+            title = re.search(r"^name: (.+)$", text, re.M)[1]
+            with self.subTest(name):
+                self.assertNotRegex(text, r"(echo|cat|printf)[^\n]*SLACK_WEBHOOK_URL")
+                jobs = self.jobs(text)
+                alerting = [j for j, body in jobs.items() if self.SLACK in body]
+                if alerting != list(jobs)[-1:]:  # no alert job: each job alerts itself
+                    self.assertEqual(alerting, list(jobs))
+                for j in alerting:
+                    body = jobs[j]
+                    step = body.rsplit("      - name:", 1)[1]
+                    self.assertIn(self.SLACK, step)  # the job's last step
+                    self.assertIn("continue-on-error: true", step)
+                    self.assertIn("webhook-type: incoming-webhook", step)
+                    self.assertIn(
+                        "SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}", step
+                    )
+                    self.assertIn(
+                        "format('❌ {0} failed on {1}', github.workflow, github.ref_name)",
+                        step,
+                    )
+                    for fmt in re.findall(r"format\('❌[^']*'", step):
+                        self.assertTrue(
+                            fmt.startswith("format('❌ {0} failed on {1}"), fmt
+                        )
+                    cond = re.search(r"^    if: (.+)$", body, re.M)
+                    if cond and cond[1].startswith(
+                        "failure()"
+                    ):  # an alert job: last, after every other job
+                        self.assertEqual(j, list(jobs)[-1])
+                        needs = re.search(r"^    needs: \[(.+)\]$", body, re.M)[1]
+                        self.assertEqual(needs.split(", "), list(jobs)[:-1])
+                        guard = cond[1].removeprefix("failure()")
+                        self.assertIn(guard, ("", f" && github.workflow == '{title}'"))
+                        self.assertEqual(guard != "", "workflow_call:" in text)
+                    else:
+                        self.assertIn("        if: failure()\n", step)
+
+
+class WorkflowSteps(unittest.TestCase):
+    def read(self, name):
+        here = os.path.dirname(os.path.abspath(__file__))
+        with open(os.path.join(here, "..", "workflows", name)) as f:
+            return f.read()
+
+    def test_state_runs_daily_and_fails_through_the_check(self):
+        text = self.read("state.yaml")
+        on = text.split("\non:\n", 1)[1].split("\n\n", 1)[0]
+        self.assertIn('  schedule:\n    - cron: "30 3 * * *"\n', on)
+        self.assertIn("  workflow_dispatch:", on)
+        check = text.split("- name: Check picks and conflict PRs", 1)[1].split("\n\n", 1)[
+            0
+        ]
+        self.assertIn("sys.exit(backport.state_check(", check)
+        self.assertIn("[oss.OSS]", check)
+        self.assertNotIn("if:", check)
+        self.assertNotIn(
+            "Alert Slack", text.split("state_check", 1)[0]
+        )  # the alert sees its failure
+
+    @unittest.skipUnless(
+        os.path.exists(
+            os.path.join(
+                os.path.dirname(os.path.abspath(__file__)),
+                "..",
+                "workflows",
+                "retire.yaml",
+            )
+        ),
+        "the cloud repo's workflows",
+    )
+    def test_first_error_line(self):
+        text = self.read("backport.yaml")
+        pick = text.split("- name: Pick", 1)[1].split("\n\n", 1)[0]
+        self.assertIn("set -o pipefail", pick)
+        self.assertIn('| tee "$RUNNER_TEMP/pick.log"', pick)
+        step = text.split("- name: First error", 1)[1].split("\n\n", 1)[0]
+        run = re.search(r"^        run: (.+)$", step, re.M)[1]
+        with tempfile.TemporaryDirectory() as d:
+            out = os.path.join(d, "out")
+            env = {**os.environ, "RUNNER_TEMP": d, "GITHUB_OUTPUT": out}
+            for log, want in (
+                (
+                    "rescan: 3 PRs listed\n::warning::x\n::error::aaaaaaa <@U1> "
+                    + "y" * 400
+                    + "\n::error::second\n",
+                    "line=aaaaaaa @U1 "
+                    + "y" * 287
+                    + "\n",  # 301 characters cut, then <> dropped
+                ),
+                ("rescan: 3 PRs listed\n", "line=\n"),
+            ):
+                with open(os.path.join(d, "pick.log"), "w") as f:
+                    f.write(log)
+                open(out, "w").close()
+                subprocess.run(["bash", "-e", "-c", run], env=env, check=True)
+                with open(out) as f:
+                    self.assertEqual(f.read(), want)
 
 
 if __name__ == "__main__":
