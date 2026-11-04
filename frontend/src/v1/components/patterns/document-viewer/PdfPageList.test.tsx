@@ -669,6 +669,56 @@ it("pages back from the last page when the last pages fit together", () => {
   expect(onCurrentPageChange).toHaveBeenLastCalledWith(9);
 });
 
+it("follows a highlight shown after a page jump, even at the same scroll end", () => {
+  const { document } = fakeDocument(10);
+  const ref = createRef<PdfPageListHandle>();
+  const onCurrentPageChange = vi.fn();
+  const highlights = [
+    {
+      id: "end",
+      page: 9,
+      x: 0.1,
+      y: 0.9,
+      w: 0.5,
+      h: 0.05,
+      variant: "line" as const,
+      tone: "default" as const,
+    },
+  ];
+  const { container } = render(
+    <PdfPageList
+      ref={ref}
+      document={document}
+      pageSizes={sizes(10)}
+      zoom={1}
+      highlights={highlights}
+      onCurrentPageChange={onCurrentPageChange}
+    />,
+  );
+  const root = layOut(
+    container,
+    () => 1,
+    () => 2000,
+  );
+  let scrollTop = 0;
+  Object.defineProperty(root, "scrollTop", {
+    get: () => scrollTop,
+    set: (value: number) => {
+      scrollTop = Math.min(
+        Math.max(0, value),
+        root.scrollHeight - root.clientHeight,
+      );
+    },
+  });
+  // Both land at the end of the scroll.
+  act(() => ref.current?.scrollToPage(8));
+  expect(onCurrentPageChange).toHaveBeenLastCalledWith(8);
+  act(() => {
+    ref.current?.scrollToHighlight("end");
+  });
+  expect(onCurrentPageChange).toHaveBeenLastCalledWith(9);
+});
+
 it("updates the current page when the viewer changes height without scrolling", () => {
   const { document } = fakeDocument(10);
   const onCurrentPageChange = vi.fn();
