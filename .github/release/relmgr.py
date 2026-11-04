@@ -28,10 +28,10 @@ DECLINED_RE = re.compile(r"^Declined: (.+)$", re.M)
 BACKPORT_HEAD_RE = re.compile(r"backport/(\d+\.\d+)/([0-9a-f]{7})")
 
 
-def _web():
+def _web(repo=None):
     server, slug = (
         os.environ.get("GITHUB_SERVER_URL"),
-        os.environ.get("GITHUB_REPOSITORY"),
+        repo or os.environ.get("GITHUB_REPOSITORY"),
     )
     return f"{server}/{slug}" if server and slug else None
 
@@ -40,13 +40,20 @@ def pr_link(n):
     return f"[#{n}]({_web()}/pull/{n})" if _web() else f"#{n}"
 
 
-def commit_link(sha, n=7):
-    return f"[`{sha[:n]}`]({_web()}/commit/{sha})" if _web() else f"`{sha[:n]}`"
+def commit_link(sha, n=7, repo=None):
+    web = _web(repo)
+    return f"[`{sha[:int(n)]}`]({web}/commit/{sha})" if web else f"`{sha[:int(n)]}`"
 
 
-def tag_link(tag):
+def tag_link(tag, repo=None):
     # The release page: it shows the tag message (an RC's Slack thread) and later the published notes.
-    return f"[`{tag}`]({_web()}/releases/tag/{tag})" if _web() else f"`{tag}`"
+    web = _web(repo)
+    return f"[`{tag}`]({web}/releases/tag/{tag})" if web else f"`{tag}`"
+
+
+def branch_link(branch, repo=None):
+    web = _web(repo)
+    return f"[`{branch}`]({web}/tree/{branch})" if web else f"`{branch}`"
 
 
 def image_link(target, tag):
