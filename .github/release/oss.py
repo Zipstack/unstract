@@ -289,7 +289,7 @@ def _promote(repo, oss, cloud_rc, force, reason):
     if prs and not force:
         raise RuntimeError(
             f"OSS {branch} has open backport conflict PRs {', '.join(prs)}: resolve and merge or close "
-            "them, or force with a reason"
+            "them; a release manager may override this with force and a reason"
         )
     code = gate(oss, branch, pinned, "error")
     if code == 1 or code == 2 and not force:
@@ -298,7 +298,7 @@ def _promote(repo, oss, cloud_rc, force, reason):
             + (
                 "did not run (see the log)"
                 if code == 1
-                else "blocks: MISSING picks (summary above); force with a reason"
+                else "blocks: MISSING picks (summary above); a release manager may override this with force and a reason"
             )
         )
     forced = (
