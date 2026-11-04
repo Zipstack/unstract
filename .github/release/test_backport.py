@@ -1935,7 +1935,8 @@ class Unsettled(unittest.TestCase):
                 [
                     (self.a, "#7", "release/0.191", "fix"),
                     (self.b, "no PR", "release/0.191", bp.UNCLASSIFIABLE),
-                ]
+                ],
+                {self.a, self.b},
             )
         self.assertEqual(
             out.getvalue().splitlines(),
@@ -1948,6 +1949,28 @@ class Unsettled(unittest.TestCase):
         )
         self.assertEqual(len(lines), 2)
         self.assertIn(f"[`release/0.191`]({WEB}/tree/release/0.191)", lines[0])
+
+    def test_owed_before_this_run_says_so(self):
+        left = [
+            (self.a, "#7", "release/0.191", "fix"),
+            (self.b, "no PR", "release/0.191", bp.UNCLASSIFIABLE),
+        ]
+        with mock.patch("sys.stdout", new_callable=io.StringIO) as out:
+            lines = bp.unsettled_lines(left, {self.a})
+        self.assertEqual(
+            out.getvalue().splitlines()[1],
+            f"::error::bbbbbbb ({bp.UNCLASSIFIABLE}, PR no PR) is owed on release/0.191 and "
+            "was owed before this run, not caused by it: "
+            "fix its PR title or labels and rerun Backport, or record a decline",
+        )
+        self.assertNotIn("before this run", out.getvalue().splitlines()[0])
+        self.assertNotIn("before this run", lines[0])
+        self.assertEqual(
+            lines[1],
+            f"- {bp.link_src(self.b, 'no PR')} ({bp.UNCLASSIFIABLE}) → "
+            f"[`release/0.191`]({WEB}/tree/release/0.191): owed before this run, not caused by it; "
+            "fix its PR title or labels and rerun Backport, or record a decline",
+        )
 
     def test_pick_head_name(self):
         self.assertEqual(
@@ -2002,6 +2025,29 @@ class MainLeftUndone(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("::error::aaaaaaa (fix, PR #7) is owed on release/0.191", out)
         self.assertIn("**⛔ Left undone**", out)
+
+    def test_named_but_left_undone_keeps_the_wording(self):
+        other = [(self.a, "#7", "fix", "release/0.190", "picked", "-")]
+        code, out = self.main(rows=other)
+        self.assertEqual(code, 1)
+        self.assertIn(
+            "::error::aaaaaaa (fix, PR #7) is owed on release/0.191 and was left undone: ",
+            out,
+        )
+        self.assertNotIn("before this run", out)
+
+    def test_untouched_says_owed_before_this_run(self):
+        e = "e" * 40
+        named = [(e, "#5", "fix", "release/0.191", "picked", "-")]
+        code, out = self.main(rows=named)
+        self.assertEqual(code, 1)
+        self.assertIn(
+            "::error::aaaaaaa (fix, PR #7) is owed on release/0.191 and "
+            "was owed before this run, not caused by it: "
+            f"dispatch Backport with commits={self.a[:12]} lines=0.191",
+            out,
+        )
+        self.assertIn(": owed before this run, not caused by it; dispatch Backport", out)
 
     def test_settled_passes(self):
         picked = [(self.a, "#7", "fix", "release/0.191", "picked", "-")]
