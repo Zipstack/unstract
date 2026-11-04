@@ -10,9 +10,19 @@ localhost or a private host, so it is allowed when the setting is unset. A
 deployment serving untrusted tenants must refuse it by setting
 ``UNSTRUCTURED_URL_ALLOW_PRIVATE=false``.
 
+Where private destinations are refused, ``UNSTRUCTURED_URL_ALLOWED_HOSTS`` names
+hosts that are exempt from that destination check: a comma-separated list of
+exact hostnames, matched case-insensitively after trimming, with no wildcards,
+ports or address ranges. Cloud sets it to the in-cluster Unstructured Service.
+It is empty by default, so nothing is exempt, and it is not consulted where
+private destinations are allowed. The scheme, credential and parser-agreement
+checks still apply to an allowlisted host.
+
 Redirects follow the same rule. Where private destinations are allowed they
 are followed as ``requests`` always did. Where they are refused, each hop is
 checked with the same guard before it is dialled, up to ``MAX_REDIRECTS``.
+The allowlist applies per hop, so a redirect from an allowlisted host to any
+other private destination is refused.
 
 With private destinations refused, the name is resolved here and again by
 ``requests``, so a name re-resolved to an internal address in between is not
@@ -24,7 +34,7 @@ import math
 import os
 from collections.abc import Callable
 from typing import Any
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
 
 import requests
 
@@ -39,6 +49,7 @@ from unstract.core.network.ssrf import (
 logger = logging.getLogger(__name__)
 
 ALLOW_PRIVATE_ENV = "UNSTRUCTURED_URL_ALLOW_PRIVATE"
+ALLOWED_HOSTS_ENV = "UNSTRUCTURED_URL_ALLOWED_HOSTS"
 REQUEST_TIMEOUT_ENV = "UNSTRUCTURED_REQUEST_TIMEOUT"
 
 # Connecting is quick or it is not going to work; reading is where a large
@@ -108,6 +119,31 @@ def allow_private() -> bool:
     return not raw or raw in _TRUE_VALUES
 
 
+def allowed_hosts() -> frozenset[str]:
+    """Hostnames exempt from the destination check when private is refused.
+
+    Exact names, lower-cased, from a comma-separated list. Empty entries are
+    dropped, so unset or empty means none.
+    """
+    raw = os.environ.get(ALLOWED_HOSTS_ENV, "")
+    return frozenset(h.strip().lower() for h in raw.split(",") if h.strip())
+
+
+def _is_allowlisted(url: str) -> bool:
+    """Whether the host of ``url`` is exactly one of :func:`allowed_hosts`.
+
+    An allowlisted name is trusted to resolve wherever DNS points it, private
+    or not, so it must be a cluster-internal Service name that no org user can
+    create or repoint. A name a tenant can influence, such as an external
+    domain, would reopen the hole this guard closes.
+    """
+    try:
+        host = urlparse(url).hostname
+    except ValueError:
+        return False
+    return bool(host) and host in allowed_hosts()
+
+
 def request_timeout() -> tuple[float, float]:
     """The ``(connect, read)`` timeout for calls to the Unstructured API."""
     raw = os.environ.get(REQUEST_TIMEOUT_ENV, "").strip()
@@ -137,10 +173,11 @@ def refusal_reason(url: str) -> str | None:
     """The guard's reason ``url`` may not be dialled, or None if it may.
 
     The scheme, credential and parser-agreement checks always apply. The
-    destination check applies only when private destinations are not allowed;
-    when they are, no lookup is made here.
+    destination check applies only when private destinations are not allowed
+    and the host is not in :func:`allowed_hosts`; otherwise no lookup is made
+    here.
     """
-    if allow_private():
+    if allow_private() or _is_allowlisted(url):
         reason = webhook_url_refusal(url, resolve=False)
         # resolve=False reports an internal literal (or localhost) as its last
         # check, after every syntactic one, so waiving it waives nothing else.

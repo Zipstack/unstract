@@ -5,6 +5,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from unittest import mock
 
 import pytest
+import requests
 
 from app import unstructured_url as uu
 
@@ -23,6 +24,7 @@ PRIVATE_URLS = [
 def _clean_env(monkeypatch):
     monkeypatch.delenv(uu.ALLOW_PRIVATE_ENV, raising=False)
     monkeypatch.delenv(uu.REQUEST_TIMEOUT_ENV, raising=False)
+    monkeypatch.delenv(uu.ALLOWED_HOSTS_ENV, raising=False)
 
 
 def _resolve_to(*addrs):
@@ -85,6 +87,131 @@ def test_block_mode_unresolvable(monkeypatch):
             uu.refusal_message("https://nope.invalid/x")
             == "Unstructured URL host could not be resolved"
         )
+
+
+IN_CLUSTER = "http://unstract-unstructured-io:8000/general/v0/general"
+
+
+@pytest.fixture
+def block_private(monkeypatch):
+    monkeypatch.setenv(uu.ALLOW_PRIVATE_ENV, "false")
+
+
+def test_block_mode_allows_allowlisted_private_host(monkeypatch, block_private):
+    monkeypatch.setenv(uu.ALLOWED_HOSTS_ENV, "unstract-unstructured-io")
+    with _resolve_to("10.96.0.12") as resolve:
+        assert uu.refusal_message(IN_CLUSTER) is None
+    # The destination check is skipped, so no lookup is made for it.
+    resolve.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://unstructured.internal/x",
+        # Exact match only: neither a subdomain nor a suffix of an entry.
+        "http://evil.unstract-unstructured-io/x",
+        "http://unstract-unstructured-io.attacker.example/x",
+    ],
+)
+def test_block_mode_refuses_private_host_not_allowlisted(
+    monkeypatch, block_private, url
+):
+    monkeypatch.setenv(uu.ALLOWED_HOSTS_ENV, "unstract-unstructured-io")
+    with _resolve_to("10.1.2.3"):
+        assert "private" in uu.refusal_message(url)
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "UNSTRACT-Unstructured-IO",
+        "  unstract-unstructured-io  ",
+        "other-svc , Unstract-Unstructured-Io ,",
+    ],
+)
+def test_allowlist_is_trimmed_and_case_insensitive(
+    monkeypatch, block_private, value
+):
+    monkeypatch.setenv(uu.ALLOWED_HOSTS_ENV, value)
+    with _resolve_to("10.96.0.12"):
+        assert uu.refusal_message(IN_CLUSTER) is None
+        assert uu.refusal_message("http://Unstract-Unstructured-IO:8000/x") is None
+
+
+@pytest.mark.parametrize("value", [None, "", " ", ",, ,"])
+def test_empty_allowlist_keeps_block_behaviour(monkeypatch, block_private, value):
+    if value is not None:
+        monkeypatch.setenv(uu.ALLOWED_HOSTS_ENV, value)
+    assert uu.allowed_hosts() == frozenset()
+    with _resolve_to("10.96.0.12"):
+        assert "private" in uu.refusal_message(IN_CLUSTER)
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "ftp://unstract-unstructured-io/x",
+        "http://user:pass@unstract-unstructured-io/x",
+    ],
+)
+def test_allowlisted_host_still_gets_syntactic_checks(
+    monkeypatch, block_private, url
+):
+    monkeypatch.setenv(uu.ALLOWED_HOSTS_ENV, "unstract-unstructured-io")
+    assert uu.refusal_message(url) is not None
+
+
+def test_allowlist_irrelevant_when_private_allowed(monkeypatch):
+    monkeypatch.setenv(uu.ALLOWED_HOSTS_ENV, "unstract-unstructured-io")
+    with _resolve_to("10.1.2.3") as resolve:
+        assert uu.refusal_message("http://unstructured.internal/x") is None
+        assert uu.refusal_message(IN_CLUSTER) is None
+    resolve.assert_not_called()
+
+
+def _response(status, location=None):
+    r = requests.models.Response()
+    r.status_code = status
+    r._content = b""
+    r._content_consumed = True
+    if location is not None:
+        r.headers["Location"] = location
+    return r
+
+
+def test_redirect_from_allowlisted_to_other_private_host_is_refused(
+    monkeypatch, block_private
+):
+    monkeypatch.setenv(uu.ALLOWED_HOSTS_ENV, "unstract-unstructured-io")
+    hop = _response(307, "http://unstructured.internal/x")
+    with (
+        _resolve_to("10.1.2.3"),
+        mock.patch.object(requests.Session, "request", return_value=hop) as rq,
+        pytest.raises(uu.RedirectNotAllowed),
+    ):
+        uu.post(IN_CLUSTER, headers={}, data={}, files=lambda: None)
+    # The allowlisted origin is dialled; the private hop never is.
+    assert rq.call_count == 1
+    assert rq.call_args.args[1] == IN_CLUSTER
+
+
+def test_redirect_within_allowlisted_host_is_followed(monkeypatch, block_private):
+    monkeypatch.setenv(uu.ALLOWED_HOSTS_ENV, "unstract-unstructured-io")
+    with (
+        _resolve_to("10.96.0.12"),
+        mock.patch.object(
+            requests.Session,
+            "request",
+            side_effect=[
+                _response(307, "/general/v0/general?retry=1"),
+                _response(200),
+            ],
+        ) as rq,
+    ):
+        r = uu.post(IN_CLUSTER, headers={}, data={}, files=lambda: None)
+    assert r.status_code == 200
+    assert rq.call_args.args[1] == IN_CLUSTER + "?retry=1"
 
 
 def test_default_timeout():

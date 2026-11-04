@@ -18,6 +18,7 @@ TIMEOUT = (10.0, 900.0)
 def client(monkeypatch):
     monkeypatch.delenv("UNSTRUCTURED_URL_ALLOW_PRIVATE", raising=False)
     monkeypatch.delenv("UNSTRUCTURED_REQUEST_TIMEOUT", raising=False)
+    monkeypatch.delenv("UNSTRUCTURED_URL_ALLOWED_HOSTS", raising=False)
     app = Flask(__name__)
     app.register_blueprint(controller.basic, url_prefix="/x2text")
     with (
