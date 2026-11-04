@@ -136,8 +136,12 @@ jobs:
         working-directory: frontend
         run: node scripts/check-v1-styles.mjs
 
-  # The v1 unit tests. P0-T08 (UN-4329) replaces this with the frontend-v1
-  # unit group.
+  # The v1 unit tests: the rig's `frontend-v1-unit` group (tests/groups.yaml),
+  # run with the same config so CI and the rig cannot disagree. The config
+  # fails the run below v1's coverage threshold. Run here rather than through
+  # ci-test.yaml because its tiers skip frontend-only PRs. Cloud v1 plugins
+  # (vitest.v1-plugins.config.mts) are gated by the cloud mirror, not here:
+  # OSS has none.
   unit:
     name: v1 · Unit tests
     needs: changes
@@ -159,7 +163,18 @@ jobs:
       - name: Run v1 unit tests
         working-directory: frontend
         # The lockfile's vitest, never a fetched one.
-        run: ./node_modules/.bin/vitest run --dir src/v1 --passWithNoTests
+        run: ./node_modules/.bin/vitest run --config vitest.v1.config.mts
+
+      # The summary is in the log; the lcov report is for reading what a
+      # failed threshold missed.
+      - name: Upload v1 coverage
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: frontend-v1-coverage
+          path: frontend/coverage/v1/
+          if-no-files-found: ignore
+          retention-days: 7
 
   # One production build, then the bundle guard (no v1 chunk loads v0 or
   # antd) and the separation guard (no enterprise plugin code in this repo).
@@ -194,8 +209,11 @@ jobs:
         working-directory: frontend
         run: node scripts/check-v1-separation.mjs
 
-  # Proves every guard above fails and passes when it should (node --test,
-  # Node 22 APIs). Spawns the real tools, two small Vite builds included.
+  # Proves every guard above fails and passes when it should, and that the
+  # unit harness (src/v1/test) fails a test that sends an unmocked request,
+  # and that the Unit tests check fails below the coverage threshold and runs
+  # the rig group's config (node --test, Node 22 APIs). Spawns the real tools, two small
+  # Vite builds included.
   guard-fixtures:
     name: v1 · Guard fixtures
     needs: changes
@@ -221,4 +239,4 @@ jobs:
 
       - name: Run the guard fixtures
         working-directory: frontend
-        run: node --test test-fixtures/v1-boundary/boundary.fixtures.mjs
+        run: node --test test-fixtures/v1-boundary/boundary.fixtures.mjs test-fixtures/v1-harness/harness.fixtures.mjs test-fixtures/v1-unit-gate/unit-gate.fixtures.mjs
