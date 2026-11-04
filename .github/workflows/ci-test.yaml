@@ -230,6 +230,7 @@ jobs:
           set: |
             *.context=.
             *.args.VERSION=${{ github.sha }}
+            frontend.args.VITE_V1_DEV_ROUTES=true
             frontend.cache-from=type=gha,scope=frontend
             frontend.cache-to=type=gha,mode=max,scope=frontend
             backend.cache-from=type=gha,scope=backend

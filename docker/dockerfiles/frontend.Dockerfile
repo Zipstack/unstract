@@ -38,6 +38,11 @@ CMD ["/bin/sh", "-c", "/app/generate-runtime-config.sh && bun run start"]
 FROM base AS builder
 ARG BUILD_CONTEXT_PATH
 ENV VITE_BACKEND_URL=""
+# "true" only for the E2E image (ci-test.yaml): registers the v1 demo pages
+# that prove the version switch, and honours the v1 preview override.
+# Release builds leave it empty.
+ARG VITE_V1_DEV_ROUTES=""
+ENV VITE_V1_DEV_ROUTES=${VITE_V1_DEV_ROUTES}
 
 # Copy package files and install dependencies
 COPY ${BUILD_CONTEXT_PATH}/package.json ${BUILD_CONTEXT_PATH}/bun.lock ./
