@@ -80,6 +80,41 @@ it("centres a highlighted line on request", () => {
   expect(ref.current?.scrollToHighlight("nope")).toBe(false);
 });
 
+it("centres a wrapped line again once the browser has drawn it", () => {
+  vi.useFakeTimers({
+    toFake: ["requestAnimationFrame", "cancelAnimationFrame"],
+  });
+  try {
+    const ref = createRef<PdfPageListHandle>();
+    const { container } = render(
+      <TextView
+        ref={ref}
+        text={text}
+        highlights={[{ id: "total", line: 3 }]}
+      />,
+    );
+    const root = screen.getByRole("region", { name: "Document text" });
+    Object.defineProperty(root, "clientHeight", { value: 100 });
+    // Not drawn yet: one line high. Drawn: it wraps to three lines.
+    let height = 20;
+    Object.defineProperties(line(container, 3), {
+      offsetTop: { value: 400 },
+      offsetHeight: { get: () => height },
+    });
+    act(() => {
+      ref.current?.scrollToHighlight("total");
+    });
+    expect(root.scrollTop).toBe(400 + 10 - 50);
+    height = 60;
+    act(() => {
+      vi.advanceTimersToNextFrame();
+    });
+    expect(root.scrollTop).toBe(400 + 30 - 50);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
 it("says no text was found for blank text, not that there is no document", () => {
   render(<TextView text={"  \n "} />);
   expect(screen.getByText("No text found")).toBeTruthy();

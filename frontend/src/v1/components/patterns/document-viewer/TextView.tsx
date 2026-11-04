@@ -4,6 +4,7 @@ import {
   type KeyboardEvent,
   memo,
   type Ref,
+  useEffect,
   useImperativeHandle,
   useMemo,
   useRef,
@@ -105,6 +106,9 @@ export function TextView({
   ref,
 }: TextViewProps) {
   const rootRef = useRef<HTMLElement | null>(null);
+  // The frame that re-centres a highlight once its rows have been drawn.
+  const recentreRef = useRef(0);
+  useEffect(() => () => cancelAnimationFrame(recentreRef.current), []);
   const lines = useMemo(() => text.split(/\r\n|\r|\n/), [text]);
   // The last highlight on a line decides how it looks.
   const byLine = useMemo(() => {
@@ -132,8 +136,23 @@ export function TextView({
         if (!root || !line) {
           return false;
         }
-        root.scrollTop =
+        // Lines the browser has not drawn yet count as one line high, so the
+        // first jump can land short of a wrapped line. Centre again once the
+        // rows in view are drawn, until the line stays put.
+        const centre = () =>
           line.offsetTop + line.offsetHeight / 2 - root.clientHeight / 2;
+        cancelAnimationFrame(recentreRef.current);
+        root.scrollTop = centre();
+        let passes = 3;
+        const recentre = () => {
+          const target = centre();
+          if (Math.abs(root.scrollTop - target) < 1 || --passes === 0) {
+            return;
+          }
+          root.scrollTop = target;
+          recentreRef.current = requestAnimationFrame(recentre);
+        };
+        recentreRef.current = requestAnimationFrame(recentre);
         return true;
       },
     }),
