@@ -7,6 +7,7 @@ That middleware is referenced by every distribution's settings, which is why the
 refresh lives there rather than in a middleware of its own.
 """
 
+import contextlib
 import logging
 import re
 import uuid
@@ -20,7 +21,6 @@ from typing import Any
 from django.conf import settings
 from django.contrib.sessions.models import Session
 from django.core.cache import cache as django_cache
-from django.core.cache import caches
 from django.db import transaction
 from django.db.models import F
 from django.http import HttpRequest
@@ -145,14 +145,16 @@ def _session_details(request: HttpRequest) -> dict[str, Any]:
     }
 
 
-def _delete_cached_copy(store: Any) -> None:
-    # The cache-backed engines delete the database row before the cached copy,
-    # and the cached copy is what authenticates. Deleting it first means a cache
-    # failure leaves the session fully intact (and retryable) instead of
-    # authenticating from cache while gone from the list.
-    cache_key = getattr(store, "cache_key", None)
-    if cache_key:
-        caches[settings.SESSION_CACHE_ALIAS].delete(cache_key)
+def _sessions_have_rows() -> bool:
+    # Only the database-backed engines keep a `django_session` row per session.
+    return settings.SESSION_ENGINE in (
+        "django.contrib.sessions.backends.db",
+        "django.contrib.sessions.backends.cached_db",
+    )
+
+
+def _session_row_exists(session_key: str) -> bool:
+    return Session.objects.filter(session_key=session_key).exists()
 
 
 def _disconnect_session_sockets(session_key: str) -> None:
@@ -194,8 +196,8 @@ class SessionTracker:
         # saves it. Saving now gives the record a key; the later save reuses it.
         if request.session.session_key is None:
             request.session.save()
-        # Kept out of the upsert's transaction: a slow or failing platform-wide
-        # sweep must not hold up or lose this user's own record.
+        # Kept out of the upsert's transaction: a failing platform-wide sweep
+        # must not lose this user's own record.
         try:
             cls._sweep_idle_if_due()
         except Exception:
@@ -231,23 +233,35 @@ class SessionTracker:
         SessionRecord.objects.filter(last_active_at__lt=idle_cutoff).delete()
 
     @classmethod
-    def touch(cls, request: HttpRequest) -> None:
+    def touch(cls, request: HttpRequest) -> bool:
         """Refresh last-active for a session-authenticated request.
 
-        Best effort: this runs on every authenticated request, so any failure is
-        logged and swallowed rather than failing the request it rides on.
+        Returns False when the session has already been ended and must be
+        refused. The cache-backed engine authenticates from its cached copy, and
+        that copy can outlive the session's row: a concurrent request can re-cache
+        a session as it is revoked, or deleting the copy can fail after the row
+        went. Checking the row here, once per refresh interval, bounds either to
+        one interval.
+
+        Otherwise best effort: this runs on every authenticated request, so any
+        failure is logged and swallowed rather than failing the request.
         """
         session_key = request.session.session_key
         user = request.user
         if not (session_key and user.is_authenticated):
-            return
+            return True
         try:
             if not django_cache.add(
                 f"{_TOUCH_CACHE_PREFIX}{session_key}",
                 True,
                 timeout=int(ACTIVITY_REFRESH_INTERVAL.total_seconds()),
             ):
-                return
+                return True
+            if _sessions_have_rows() and not _session_row_exists(session_key):
+                logger.info("Refused an ended session of user %s", user.pk)
+                # Drops the surviving cached copy; the response clears the cookie.
+                request.session.flush()
+                return False
             with transaction.atomic():
                 updated = SessionRecord.objects.filter(
                     session_key=session_key, user=user
@@ -264,6 +278,7 @@ class SessionTracker:
                 user.pk,
                 exc_info=True,
             )
+        return True
 
     @staticmethod
     def forget(session_key: str | None) -> None:
@@ -315,6 +330,11 @@ class SessionTracker:
             return []
         sessions = []
         for entry in entries:
+            entry = {
+                **{key: (None if value == "" else value) for key, value in entry.items()},
+                # Only the session making this request is current, and it is ours.
+                "is_current": False,
+            }
             serializer = SignedInSessionSerializer(data=entry)
             if serializer.is_valid():
                 sessions.append(serializer.validated_data)
@@ -343,17 +363,38 @@ class SessionTracker:
 
     @classmethod
     def _end(cls, request: HttpRequest, session_key: str) -> None:
-        if session_key == request.session.session_key:
-            _delete_cached_copy(request.session)
-            # Flushing the live session also makes the response clear the cookie.
-            request.session.flush()
-        else:
-            store = _session_store_class()(session_key=session_key)
-            _delete_cached_copy(store)
-            store.delete()
+        """End a session: its row, its cached copy and its record.
+
+        Deleting the row is what ends it. If only the cached copy then fails to
+        go, the session is still over: `touch()` refuses a session whose row is
+        gone. So that failure is logged rather than raised.
+        """
+        is_current = session_key == request.session.session_key
+        try:
+            if is_current:
+                # Flushing the live session also makes the response clear the cookie.
+                request.session.flush()
+            else:
+                _session_store_class()(session_key=session_key).delete()
+        except Exception:
+            if _session_row_exists(session_key):
+                raise
+            logger.warning(
+                "Ended a session of user %s, but its cached copy remains",
+                request.user.pk,
+                exc_info=True,
+            )
+            if is_current:
+                # The half-flushed store would try to save itself back over the
+                # deleted row; an empty store makes the response clear the cookie.
+                http_request = getattr(request, "_request", request)
+                http_request.session = _session_store_class()()
         cls.forget(session_key)
-        # Last, and best effort: the session is already over, and an unreachable
-        # cache or broker must not turn a completed sign-out into an error.
+
+    @staticmethod
+    def _after_end(request: HttpRequest, session_key: str) -> None:
+        # Best effort, and outside any transaction: the session is already over,
+        # and an unreachable cache or broker must not undo or fail that.
         _disconnect_session_sockets(session_key)
         try:
             LogService.remove_logs_on_logout(session_id=session_key)
@@ -376,6 +417,7 @@ class SessionTracker:
         if record is None:
             return cls._revoke_idp(request, session_id)
         cls._end(request, record.session_key)
+        cls._after_end(request, record.session_key)
         logger.info("Signed out one session of user %s", request.user.pk)
         return True
 
@@ -390,10 +432,15 @@ class SessionTracker:
         User.objects.filter(pk=user.pk).update(
             session_generation=F("session_generation") + 1
         )
+        # Every session of the user is refused from here on, including any with
+        # no record (whose sockets cannot be found by session), so empty the
+        # per-user room now; a session signed in after this point joins afresh.
+        _close_socket_room(f"user:{user.pk}")
         session_keys = set(
             SessionRecord.objects.filter(user=user).values_list("session_key", flat=True)
         )
         session_keys.discard(current_key)
+        ended = []
         for session_key in session_keys:
             # The generation bump has already refused these sessions; ending
             # each one is cleanup, so one failure must not skip the rest or
@@ -401,12 +448,18 @@ class SessionTracker:
             try:
                 with transaction.atomic():
                     cls._end(request, session_key)
+                ended.append(session_key)
             except Exception:
                 logger.warning(
                     "Failed to end a revoked session of user %s",
                     user.pk,
                     exc_info=True,
                 )
+                # Refused by the bump either way, so it must not stay listed.
+                with contextlib.suppress(Exception), transaction.atomic():
+                    cls.forget(session_key)
+        for session_key in ended:
+            cls._after_end(request, session_key)
         try:
             cls._revoke_idp(request, session_id=None)
         except IdentityProviderError:
@@ -416,13 +469,22 @@ class SessionTracker:
                 user.pk,
                 exc_info=True,
             )
-        # Every session of the user has just ended, including any with no record
-        # (whose sockets cannot be found by session), so empty the per-user room.
-        _close_socket_room(f"user:{user.pk}")
         if current_key:
-            cls._end(request, current_key)
+            try:
+                cls._end(request, current_key)
+                ended.append(current_key)
+                cls._after_end(request, current_key)
+            except Exception:
+                # Already refused by the bump; report the sign-out as done.
+                logger.warning(
+                    "Failed to end the current session of user %s",
+                    user.pk,
+                    exc_info=True,
+                )
+                http_request = getattr(request, "_request", request)
+                http_request.session = _session_store_class()()
         logger.info(
-            "Signed out every session of user %s (%d recorded)",
+            "Signed out every session of user %s (%d ended cleanly)",
             user.pk,
-            len(session_keys) + (1 if current_key else 0),
+            len(ended),
         )

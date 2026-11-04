@@ -101,7 +101,8 @@ class CustomAuthMiddleware:
             # -- see the note beside the setting.
             if request.organization_id and not organization_id:
                 return JsonResponse({"message": "Organization access denied"}, status=403)
-            SessionTracker.touch(request)
+            if not SessionTracker.touch(request):
+                return JsonResponse({"message": "Unauthorized"}, status=401)
             StateStore.set(Common.LOG_EVENTS_ID, request.session.session_key)
             StateStore.set(Account.ORGANIZATION_ID, organization_id)
             response = self.get_response(request)

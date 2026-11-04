@@ -2,6 +2,7 @@ import logging
 from typing import Any
 
 from django.contrib.auth.signals import user_logged_in, user_logged_out
+from django.db import transaction
 from django.dispatch import receiver
 from django.http import HttpRequest
 
@@ -35,7 +36,8 @@ def forget_session_on_sign_out(
     if request is None or not hasattr(request, "session"):
         return
     try:
-        SessionTracker.forget(request.session.session_key)
+        with transaction.atomic():
+            SessionTracker.forget(request.session.session_key)
     except Exception:
         logger.warning(
             "Failed to forget signed-out session of user %s",

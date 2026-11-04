@@ -8,6 +8,7 @@ chain rather than calling the views directly.
 
 import secrets
 from datetime import timedelta
+from importlib import import_module
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -15,7 +16,9 @@ from django.conf import settings
 from django.contrib.sessions.models import Session
 from django.core.cache import cache, caches
 from django.db import connection
+from django.db.models.signals import post_save
 from django.test import SimpleTestCase, override_settings
+from django.test.utils import CaptureQueriesContext
 from django.urls import include, path
 from django.utils import timezone
 from django.utils.crypto import salted_hmac
@@ -375,6 +378,9 @@ class SessionEndpointsTest(APITestCase):
     ) -> None:
         laptop = self._sign_in(self.user)
         desktop = self._sign_in(self.user)
+        # Unrecorded, so revoke-all cannot delete it: only the bumped generation
+        # refuses it, which is what a stale full save would undo.
+        SessionRecord.objects.filter(session_key=self._key(desktop)).delete()
         loaded_earlier = User.objects.get(pk=self.user.pk)
 
         laptop.post(REVOKE_ALL_URL)
@@ -411,9 +417,19 @@ class SessionEndpointsTest(APITestCase):
         self.assertNotEqual(self.user.get_session_auth_hash(), stock_hash)
 
     def test_full_save_keeps_djangos_full_save_semantics(self) -> None:
-        with patch("django.db.models.Model.save") as model_save:
+        seen = []
+
+        def receiver(sender, update_fields, **kwargs):
+            seen.append(update_fields)
+
+        post_save.connect(receiver, sender=User)
+        self.addCleanup(post_save.disconnect, receiver, sender=User)
+        with CaptureQueriesContext(connection) as queries:
             self.user.save()
-        model_save.assert_called_once_with(False, False, None, None)
+
+        self.assertEqual(seen, [None])
+        (update,) = (q["sql"] for q in queries if q["sql"].startswith("UPDATE"))
+        self.assertIn('"session_generation" = "user"."session_generation"', update)
 
     def test_full_save_of_a_partially_loaded_user_writes_only_loaded_fields(
         self,
@@ -425,8 +441,11 @@ class SessionEndpointsTest(APITestCase):
         )
 
         partial.first_name = "Alice"
-        partial.save()
+        with CaptureQueriesContext(connection) as queries:
+            partial.save()
 
+        (update,) = (q["sql"] for q in queries if q["sql"].startswith("UPDATE"))
+        self.assertNotIn('"last_name"', update)
         self.user.refresh_from_db()
         self.assertEqual(
             (self.user.first_name, self.user.last_name, self.user.session_generation),
@@ -443,7 +462,7 @@ class SessionEndpointsTest(APITestCase):
         self.assertEqual(self.user.session_generation, 5)
         self.assertEqual(loaded_earlier.session_generation, 0)
 
-    def test_revoke_all_completes_when_the_log_cache_is_down(self) -> None:
+    def test_revoke_all_completes_when_clearing_logs_fails(self) -> None:
         laptop = self._sign_in(self.user)
         desktop = self._sign_in(self.user)
 
@@ -458,7 +477,7 @@ class SessionEndpointsTest(APITestCase):
         self.assertEqual(desktop.get(SESSIONS_URL).status_code, 401)
         self.assertFalse(SessionRecord.objects.filter(user=self.user).exists())
 
-    def test_revoke_one_completes_when_the_log_cache_is_down(self) -> None:
+    def test_revoke_one_completes_when_clearing_logs_fails(self) -> None:
         laptop = self._sign_in(self.user)
         desktop = self._sign_in(self.user)
         desktop_id = SessionRecord.objects.get(session_key=self._key(desktop)).id
@@ -472,24 +491,25 @@ class SessionEndpointsTest(APITestCase):
         self.assertEqual(response.status_code, 204)
         self.assertEqual(desktop.get(SESSIONS_URL).status_code, 401)
 
-    def test_revoke_all_ends_the_current_session_when_ending_another_fails(
-        self,
-    ) -> None:
+    def test_revoke_all_carries_on_past_a_session_it_fails_to_end(self) -> None:
         laptop = self._sign_in(self.user)
-        self._sign_in(self.user)
-        laptop_key = self._key(laptop)
+        failing = self._key(self._sign_in(self.user))
+        other = self._key(self._sign_in(self.user))
         real_end = SessionTracker._end.__func__
 
-        def end_failing_for_others(cls, request, session_key):
-            if session_key != laptop_key:
+        def end_failing_for_one(cls, request, session_key):
+            if session_key == failing:
                 _fail_a_query()
             real_end(cls, request, session_key)
 
-        with patch.object(SessionTracker, "_end", classmethod(end_failing_for_others)):
+        with patch.object(SessionTracker, "_end", classmethod(end_failing_for_one)):
             response = laptop.post(REVOKE_ALL_URL)
 
         self.assertEqual(response.status_code, 204)
         self.assertEqual(response.cookies[settings.SESSION_COOKIE_NAME].value, "")
+        self.assertFalse(Session.objects.filter(session_key=other).exists())
+        # Refused by the generation either way, so not left listed.
+        self.assertFalse(SessionRecord.objects.filter(session_key=failing).exists())
 
     def test_revoke_one_leaves_the_other_working(self) -> None:
         laptop = self._sign_in(self.user)
@@ -608,9 +628,11 @@ class SessionEndpointsTest(APITestCase):
             api_user=service_account,
             permission=ApiKeyPermission.FULL_ACCESS,
         )
-        self._sign_in(service_account)
+        browser = self._sign_in(service_account)
         record = SessionRecord.objects.get(user=service_account)
         bearer = APIClient(HTTP_AUTHORIZATION=f"Bearer {key.key}")
+        # With the session cookie too, so the refusal is for the key itself.
+        bearer.cookies = browser.cookies
 
         for method, url in (
             ("get", SESSIONS_URL),
@@ -637,36 +659,80 @@ class SessionEndpointsTest(APITestCase):
         # Inside the test case's transaction, as ATOMIC_REQUESTS would wrap it: a
         # real database error must not leave that transaction unusable.
         laptop = self._sign_in(self.user)
-        SessionRecord.objects.filter(session_key=self._key(laptop)).delete()
 
         with patch(
-            "account_v2.session_tracking.SessionTracker._upsert",
+            "django.db.models.query.QuerySet.update",
             side_effect=_fail_a_query,
         ):
             self.assertEqual(laptop.get(SESSIONS_URL).status_code, 200)
         self.assertTrue(User.objects.filter(pk=self.user.pk).exists())
 
-    def test_revoke_one_keeps_the_session_when_its_cached_copy_cannot_go(
+    def _cache_delete_fails(self):
+        return patch.object(
+            caches[settings.SESSION_CACHE_ALIAS],
+            "delete",
+            side_effect=ConnectionError("redis down"),
+        )
+
+    def test_a_session_re_cached_after_revoke_is_refused(self) -> None:
+        # A request racing the revoke can put the cached copy back after the row
+        # is gone; that copy alone must not keep the session alive.
+        laptop = self._sign_in(self.user)
+        desktop = self._sign_in(self.user)
+        desktop_key = self._key(desktop)
+        store = import_module(settings.SESSION_ENGINE).SessionStore
+        cache_key = store(session_key=desktop_key).cache_key
+        session_cache = caches[settings.SESSION_CACHE_ALIAS]
+        cached_copy = (
+            session_cache.get(cache_key) or store(session_key=desktop_key).load()
+        )
+        desktop_id = SessionRecord.objects.get(session_key=desktop_key).id
+
+        laptop.delete(f"{SESSIONS_URL}{desktop_id}/")
+        session_cache.set(cache_key, cached_copy, 3600)
+
+        self.assertEqual(desktop.get(SESSIONS_URL).status_code, 401)
+        self.assertIsNone(session_cache.get(cache_key))
+        self.assertEqual(len(laptop.get(SESSIONS_URL).json()), 1)
+
+    def test_revoke_one_ends_the_session_when_its_cached_copy_cannot_go(
         self,
     ) -> None:
         laptop = self._sign_in(self.user)
         desktop = self._sign_in(self.user)
-        desktop_id = SessionRecord.objects.get(session_key=self._key(desktop)).id
-        session_cache = caches[settings.SESSION_CACHE_ALIAS]
+        desktop_key = self._key(desktop)
+        desktop_id = SessionRecord.objects.get(session_key=desktop_key).id
 
-        with (
-            patch.object(
-                session_cache, "delete", side_effect=ConnectionError("redis down")
-            ),
-            self.assertRaises(ConnectionError),
-        ):
-            laptop.delete(f"{SESSIONS_URL}{desktop_id}/")
+        with self._cache_delete_fails():
+            response = laptop.delete(f"{SESSIONS_URL}{desktop_id}/")
 
-        # Nothing was half-ended: the session works and is still listed, so the
-        # revoke can be retried.
-        self.assertEqual(desktop.get(SESSIONS_URL).status_code, 200)
-        self.assertEqual(len(laptop.get(SESSIONS_URL).json()), 2)
-        self.assertEqual(laptop.delete(f"{SESSIONS_URL}{desktop_id}/").status_code, 204)
+        self.assertEqual(response.status_code, 204)
+        self.assertEqual(desktop.get(SESSIONS_URL).status_code, 401)
+        self.assertEqual(len(laptop.get(SESSIONS_URL).json()), 1)
+
+    def test_revoking_the_current_session_when_its_cached_copy_cannot_go(
+        self,
+    ) -> None:
+        laptop = self._sign_in(self.user)
+        laptop_id = SessionRecord.objects.get(session_key=self._key(laptop)).id
+
+        with self._cache_delete_fails():
+            response = laptop.delete(f"{SESSIONS_URL}{laptop_id}/")
+
+        self.assertEqual(response.status_code, 204)
+        self.assertEqual(response.cookies[settings.SESSION_COOKIE_NAME].value, "")
+        self.assertEqual(laptop.get(SESSIONS_URL).status_code, 401)
+
+    def test_revoke_all_completes_when_the_session_cache_cannot_delete(self) -> None:
+        laptop = self._sign_in(self.user)
+        desktop = self._sign_in(self.user)
+
+        with self._cache_delete_fails():
+            response = laptop.post(REVOKE_ALL_URL)
+
+        self.assertEqual(response.status_code, 204)
+        self.assertEqual(response.cookies[settings.SESSION_COOKIE_NAME].value, "")
+        self.assertEqual(desktop.get(SESSIONS_URL).status_code, 401)
 
     def test_revoking_one_disconnects_only_that_sessions_sockets(self) -> None:
         laptop = self._sign_in(self.user)
@@ -859,6 +925,25 @@ class IdentityProviderSessionTest(APITestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual([s["id"] for s in response.json()][1:], ["idp-1"])
+
+    def test_provider_entries_are_never_current_and_blanks_read_as_null(
+        self,
+    ) -> None:
+        laptop = self._sign_in()
+        entry = {
+            **self.plugin.list_idp_sessions(None)[0],
+            "location": "",
+            "is_current": True,
+        }
+
+        with patch.object(self.plugin, "list_idp_sessions", return_value=[entry]):
+            sessions = laptop.get(SESSIONS_URL).json()
+
+        provider = sessions[1]
+        self.assertEqual(provider["id"], "idp-1")
+        self.assertFalse(provider["is_current"])
+        self.assertIsNone(provider["location"])
+        self.assertEqual([s["is_current"] for s in sessions], [True, False])
 
     def test_provider_session_id_is_revoked_through_the_provider(self) -> None:
         laptop = self._sign_in()
