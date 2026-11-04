@@ -9,8 +9,8 @@ import userEvent, { type UserEvent } from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import {
   createTestQueryClient,
-  ensurePortalContainer,
   type ProviderContext,
+  prepareProviders,
   V1TestProviders,
 } from "./providers";
 import {
@@ -68,7 +68,7 @@ function prepare(options: RenderV1Options) {
     session: context.session,
     distribution: context.distribution,
     theme: context.theme,
-    portal: ensurePortalContainer(context.theme),
+    portal: prepareProviders(context),
   };
   const wrapper = ({ children }: { children: ReactNode }) => (
     <V1TestProviders context={context}>{children}</V1TestProviders>

@@ -7,7 +7,7 @@ import {
   takeUnhandledRequests,
   unhandledRequestsMessage,
 } from "./network";
-import { removePortalContainer } from "./providers";
+import { resetProviders } from "./providers";
 
 /*
  * Runs before every v1 test file (vitest.v1.config.mts `setupFiles`).
@@ -45,7 +45,7 @@ afterEach(async () => {
   // Unmount first: cleanup effects may make requests, which belong to this
   // test and must still see its handlers.
   cleanup();
-  removePortalContainer();
+  resetProviders();
   await settle();
   server.resetHandlers();
   // Thrown from afterEach so it fails the test even when the code under test

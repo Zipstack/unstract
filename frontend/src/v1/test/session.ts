@@ -1,8 +1,10 @@
+import type { ThemeMode } from "@v1/lib/theme";
+
+/** A colour mode the v1 root can carry (#2399's ThemeMode). */
+export type { ThemeMode };
+
 /** The build a test renders under; cloud and on-prem builds carry v1 plugins. */
 export type Distribution = "oss" | "cloud" | "onprem";
-
-/** A colour mode the v1 root can carry; mirrors ThemeMode from #2399. */
-export type ThemeMode = "light" | "dark" | "unstract";
 
 export type TestUser = Readonly<{
   id: string;

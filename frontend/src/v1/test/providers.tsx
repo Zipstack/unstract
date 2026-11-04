@@ -1,18 +1,24 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { ThemeProvider } from "@v1/app/theme/ThemeProvider";
+import { getPortalContainer, PORTAL_CONTAINER_ID } from "@v1/lib/portal";
+import { THEME_STORAGE_KEY } from "@v1/lib/theme";
+import { useThemeStore } from "@v1/stores/theme";
 import type { JSX, ReactNode } from "react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import type { Distribution, TestSession, ThemeMode } from "./session";
 
 /*
  * The v1 provider chain for tests: the ONLY file to edit when a real provider
- * lands. Each slot is a stand-in until its task merges:
+ * lands. A slot is the app's own provider once its task has merged, and a
+ * stand-in until then:
  *
- *   query   P0-T05 data layer (UN-4313)    → the app's QueryClient provider
- *   router  P0-T03 router + registry (UN-4271) → the app's router, in memory
- *   theme   P0-T04 tokens + theme (#2399)  → app/theme/ThemeProvider
+ *   query   stand-in  P0-T05 data layer (UN-4313) → the app's QueryClient provider
+ *   router  stand-in  P0-T03 router + registry (UN-4271) → the app's router, in memory
+ *   theme   real      app/theme/ThemeProvider (P0-T04, #2399)
  *
- * Swap a slot by changing its entry in PROVIDER_SLOTS; renderV1 and every
- * test stay as they are. See README.md in this folder.
+ * Swap a slot by changing its entry in PROVIDER_SLOTS (and, if it holds
+ * global state, prepareProviders / resetProviders); renderV1 and every test
+ * stay as they are. See README.md in this folder.
  */
 
 /** Everything a slot may need, resolved from renderV1's options. */
@@ -41,28 +47,27 @@ export function createTestQueryClient(): QueryClient {
   });
 }
 
-/** The single element under <body> that v1 dialogs, menus and toasts render into (#2399). */
-export const PORTAL_CONTAINER_ID = "v1-portal";
-
-/** The class that scopes v1 styles (#2399). */
-export const V1_ROOT_CLASS = "v1";
-
-/** Creates (or re-themes) the #v1-portal container, as #2399's getPortalContainer does. */
-export function ensurePortalContainer(theme: ThemeMode): HTMLElement {
-  let container = document.getElementById(PORTAL_CONTAINER_ID);
-  if (!container) {
-    container = document.createElement("div");
-    container.id = PORTAL_CONTAINER_ID;
-    container.className = V1_ROOT_CLASS;
-    document.body.appendChild(container);
-  }
-  container.dataset.theme = theme;
-  return container;
+/**
+ * Global state the providers read, set before render: the theme preference
+ * ThemeProvider hydrates from, and the #v1-portal container (created by the
+ * app's own getPortalContainer, themed like the root). Returns the portal.
+ */
+export function prepareProviders(context: ProviderContext): HTMLElement {
+  useThemeStore.getState().setPreference(context.theme);
+  const portal = getPortalContainer();
+  portal.dataset.theme = context.theme;
+  return portal;
 }
 
-/** Removes the portal container; setup.ts calls it after each test. */
-export function removePortalContainer(): void {
+/** Undoes prepareProviders; setup.ts calls it after each test. */
+export function resetProviders(): void {
   document.getElementById(PORTAL_CONTAINER_ID)?.remove();
+  try {
+    window.localStorage.removeItem(THEME_STORAGE_KEY);
+  } catch {
+    // No storage, so nothing was persisted.
+  }
+  useThemeStore.setState(useThemeStore.getInitialState(), true);
 }
 
 const QuerySlot: ProviderSlot = ({ context, children }) => (
@@ -83,15 +88,9 @@ const RouterSlot: ProviderSlot = ({ context, children }) => (
   </MemoryRouter>
 );
 
-// Matches #2399's ThemeProvider output: the v1 root, versioned and themed.
-const ThemeSlot: ProviderSlot = ({ context, children }) => (
-  <div
-    className={V1_ROOT_CLASS}
-    data-ui-version="v1"
-    data-theme={context.theme}
-  >
-    {children}
-  </div>
+// The app's v1 root; it hydrates the preference prepareProviders stored.
+const ThemeSlot: ProviderSlot = ({ children }) => (
+  <ThemeProvider>{children}</ThemeProvider>
 );
 
 /** Outermost first. */

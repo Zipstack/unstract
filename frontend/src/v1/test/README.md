@@ -63,20 +63,23 @@ await user.click(screen.getByRole("button", { name: "Add" }));
 
 ### Providers, and swapping in the real ones
 
-`providers.tsx` is the only file that knows the provider chain. Each slot is a
-stand-in until its task lands:
+`providers.tsx` is the only file that knows the provider chain. Each slot is
+the app's own provider once its task has landed, and a stand-in until then:
 
-| Slot | Stand-in today | Replace with, when it lands |
+| Slot | Today | Replace with, when it lands |
 | --- | --- | --- |
-| query | `QueryClientProvider` over `createTestQueryClient()` | the data layer's provider (P0-T05, UN-4313) |
-| router | `MemoryRouter` (+ `Routes` when `path` is set) | the app router in memory mode, with the route registry (P0-T03, UN-4271) |
-| theme | `div.v1[data-ui-version="v1"][data-theme]` + `#v1-portal` | `app/theme/ThemeProvider` (P0-T04, #2399). Set the theme store's preference from `context.theme` first |
+| query | stand-in: `QueryClientProvider` over `createTestQueryClient()` | the data layer's provider (P0-T05, UN-4313) |
+| router | stand-in: `MemoryRouter` (+ `Routes` when `path` is set) | the app router in memory mode, with the route registry (P0-T03, UN-4271) |
+| theme | **real**: `app/theme/ThemeProvider` (P0-T04, #2399) | — |
 
 To swap one, change its component in `PROVIDER_SLOTS`. It receives the
 resolved `ProviderContext` (query client, route, path, session, distribution,
-theme). Tests and `renderV1`'s options stay the same. When a real session
-store or plugin registry exists, seed it from `context.session` and
-`context.distribution` in the same file.
+theme). Global state a provider reads goes in `prepareProviders` (set before
+render) and `resetProviders` (undone after each test). The theme slot shows
+the pattern: the preference is stored, then `ThemeProvider` hydrates it, and
+the store and its storage key are reset afterwards. Tests and `renderV1`'s
+options stay the same. When a real session store or plugin registry exists,
+seed it from `context.session` and `context.distribution` there too.
 
 ## Network
 

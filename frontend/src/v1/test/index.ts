@@ -3,6 +3,7 @@
  * (`*.test.ts(x)`, `*.spec.ts(x)`) and test/ itself may import it.
  */
 
+export { PORTAL_CONTAINER_ID, V1_ROOT_CLASS } from "@v1/lib/portal";
 export {
   type A11yOptions,
   axeViolations,
@@ -28,10 +29,8 @@ export {
 } from "./network";
 export {
   createTestQueryClient,
-  PORTAL_CONTAINER_ID,
   type ProviderContext,
   type ProviderSlot,
-  V1_ROOT_CLASS,
 } from "./providers";
 export {
   type RenderV1Options,
