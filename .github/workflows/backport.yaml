@@ -21,10 +21,10 @@ on:
         type: string
         required: false
       confirm_stabilized:
-        description: "Patch a released line: also pick onto stabilized lines. Plain fixes need branches."
+        description: "Patch a released line: also pick onto stabilized lines. Plain fixes need lines."
         type: boolean
         default: false
-      branches:
+      lines:
         description: "Only these lines X.Y, e.g. 0.186,0.188. Include every newer released line, or Promote blocks."
         type: string
         required: false
@@ -84,11 +84,11 @@ jobs:
           RELEASE_BOT_APP_SLUG: ${{ steps.bot.outputs.app-slug }} # a leftover pick PR is squashed only if this App opened it
           COMMITS: ${{ inputs.commits }}
           CONFIRM: ${{ inputs.confirm_stabilized }}
-          BRANCHES: ${{ inputs.branches }}
+          LINES: ${{ inputs.lines }}
         run: |
           if [ "$GITHUB_EVENT_NAME" = push ]; then args=(--rescan); else args=(--commits="$COMMITS"); fi
           if [ "$CONFIRM" = true ]; then args+=(--confirm-stabilized); fi
-          python3 "$RUNNER_TEMP/backport.py" --state "$RUNNER_TEMP/state.json" "${args[@]}" --branches="$BRANCHES"
+          python3 "$RUNNER_TEMP/backport.py" --state "$RUNNER_TEMP/state.json" "${args[@]}" --lines="$LINES"
 
   record:
     if: >-

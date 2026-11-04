@@ -1,10 +1,10 @@
 """Backport: cherry-pick (-x) main fixes onto every release branch that accepts them.
 
-Usage: backport.py --state state.json (--commits SHA|PR[,...] | --rescan) [--confirm-stabilized] [--branches X.Y[,...]]
+Usage: backport.py --state state.json (--commits SHA|PR[,...] | --rescan) [--confirm-stabilized] [--lines X.Y[,...]]
 
 --rescan (every push to main): pick every main commit since each target's cut that no trailer there names
 (security/critical only on stabilized targets, held without --confirm-stabilized). --commits (dispatch): only these;
-with --confirm-stabilized a plain fix also goes onto the stabilized lines --branches names.
+with --confirm-stabilized a plain fix also goes onto the stabilized lines --lines names.
 
 Run from a full clone whose `origin` pushes with the bot token, with GH_TOKEN set to the bot token and
 RELEASE_BOT_APP_SLUG set to the release App's slug.
@@ -13,7 +13,7 @@ A clean pick is squash-merged in the same run without waiting for checks: the bo
 and the push run of Release branch CI is the backstop.
 A conflict is committed with markers and left open labelled backport-conflict for a person to resolve or close;
 the record job (backport_merge.py) records the merge, or the close as a decline.
-Targets come only from relstate's backport_targets: --branches narrows them, never adds one.
+Targets come only from relstate's backport_targets: --lines narrows them, never adds one.
 """
 
 import argparse
@@ -285,7 +285,7 @@ def pending_block(conflicts, held_rows):
         out += [
             "",
             "```",
-            f"gh workflow run backport.yaml -f commits={commits} -f branches={branches} "
+            f"gh workflow run backport.yaml -f commits={commits} -f lines={branches} "
             "-f confirm_stabilized=true",
             "```",
             "",
@@ -441,7 +441,7 @@ def owed_summary(rows, branch):
         out
         + [
             "",
-            f"To pick any: dispatch Backport with `confirm_stabilized=true` and `branches={rm.line(branch)}`.",
+            f"To pick any: dispatch Backport with `confirm_stabilized=true` and `lines={rm.line(branch)}`.",
         ]
     )
 
@@ -472,7 +472,7 @@ def held_note(rows, branch, slug=None):
         f"⚠ Held for the RM on {f'{slug} ' if slug else ''}`{branch}` (stabilized; Promote blocks unless forced): "
         + ", ".join(f"{link(pr)} {cls}" for _, cls, pr, _ in rows)
         + f". Pick with `gh workflow run backport.yaml{f' -R {slug}' if slug else ''} -f commits={commits} "
-        f"-f branches={rm.line(branch)} -f confirm_stabilized=true`"
+        f"-f lines={rm.line(branch)} -f confirm_stabilized=true`"
     )
 
 
@@ -481,7 +481,7 @@ def patch_lines(state, slug=None):
     slug = slug or os.environ["GITHUB_REPOSITORY"]
     out = [
         "**Patch a released line**: main fixes since the line's latest GA, not on it. Paste into Backport `commits` "
-        "with `confirm_stabilized` and `branches` (every newer released line too).",
+        "with `confirm_stabilized` and `lines` (every newer released line too).",
         "",
     ]
     # promoted: each target's latest stable on the line; the newest of them is the line's latest GA.
@@ -922,7 +922,7 @@ def push_title(slug, sha):
 
 
 def listed_branches(value):
-    """The --branches input as release branches: "0.186, release/0.188" gives both as release/X.Y."""
+    """The --lines input as release branches: "0.186, release/0.188" gives both as release/X.Y."""
     return [f"release/{rm.line(b)}" for b in value.split(",") if b.strip()]
 
 
@@ -939,7 +939,7 @@ def main():
     )
     p.add_argument("--confirm-stabilized", action="store_true")
     p.add_argument(
-        "--branches",
+        "--lines",
         default="",
         help="comma list: only these release lines, X.Y or release/X.Y (default every target)",
     )
@@ -949,9 +949,9 @@ def main():
         state = json.load(f)
     targets = state["backport_targets"]
     try:
-        listed = listed_branches(a.branches)
+        listed = listed_branches(a.lines)
     except ValueError as e:
-        sys.exit(f"::error::branches: {e}")
+        sys.exit(f"::error::lines: {e}")
     if a.rescan:
         rows, awaiting, missing = rescan(slug, targets, a.confirm_stabilized, listed)
     else:
@@ -1026,7 +1026,7 @@ def dispatch(slug, targets, commits, confirm, listed):
 
 def _dispatch_targets(targets, sha, cls, pr, confirm, listed):
     if cls == "fix":
-        # A plain fix reaches a stabilized line only when the RM names it: confirm_stabilized and branches.
+        # A plain fix reaches a stabilized line only when the RM names it: confirm_stabilized and lines.
         named = [
             t["branch"]
             for t in targets["security_critical"]
@@ -1073,14 +1073,14 @@ def _dispatch_commit(slug, targets, sha, confirm, listed, awaiting):
     if cls == "fix" and confirm and not listed:
         for t in targets["security_critical"]:
             if t["needs_rm_confirmation"]:
-                print(f"::notice::{sha[:7]} (fix, PR {pr}): {t['branch']} needs branches")
+                print(f"::notice::{sha[:7]} (fix, PR {pr}): {t['branch']} needs lines")
                 rows.append(
                     (
                         sha,
                         pr,
                         cls,
                         t["branch"],
-                        "skipped: stabilized; a plain fix needs branches",
+                        "skipped: stabilized; a plain fix needs lines",
                         "-",
                     )
                 )

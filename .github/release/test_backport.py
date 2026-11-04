@@ -76,7 +76,7 @@ class Held(unittest.TestCase):
                 ),
                 f"⚠ Held for the RM on `release/0.182` (stabilized; Promote blocks unless forced): #2 critical, no PR "
                 f"{bp.UNCLASSIFIABLE}. Pick with `gh workflow run backport.yaml -f commits=#2,{d[:12]} "
-                "-f branches=0.182 -f confirm_stabilized=true`",
+                "-f lines=0.182 -f confirm_stabilized=true`",
             )
 
 
@@ -152,7 +152,7 @@ class Rescan(unittest.TestCase):
                     "--state",
                     state,
                     "--rescan",
-                    "--branches",
+                    "--lines",
                     "0.185,0.186.1",
                 ],
                 env={
@@ -165,7 +165,7 @@ class Rescan(unittest.TestCase):
             )
         self.assertEqual(
             (r.returncode, r.stderr),
-            (1, "::error::branches: not a release line X.Y (e.g. 0.186): '0.186.1'\n"),
+            (1, "::error::lines: not a release line X.Y (e.g. 0.186): '0.186.1'\n"),
         )
 
     def test_branches_narrow(self):
@@ -402,7 +402,7 @@ class OwedSummary(unittest.TestCase):
         self.assertIn(f"| `bbbbbbb` | no PR | z | {bp.UNCLASSIFIABLE} |", out)
         self.assertTrue(
             out.endswith(
-                "To pick any: dispatch Backport with `confirm_stabilized=true` and `branches=0.187`."
+                "To pick any: dispatch Backport with `confirm_stabilized=true` and `lines=0.187`."
             )
         )
         self.assertTrue(bp.owed_summary([], "release/0.187").endswith("none"))
@@ -493,7 +493,7 @@ class DispatchHold(unittest.TestCase):
                             "#4",
                             "fix",
                             "release/0.190",
-                            "skipped: stabilized; a plain fix needs branches",
+                            "skipped: stabilized; a plain fix needs lines",
                             "-",
                         ),
                         (fix, "release/0.191"),
@@ -504,7 +504,7 @@ class DispatchHold(unittest.TestCase):
 
 
 class DispatchPatch(unittest.TestCase):
-    """confirm_stabilized + branches: a plain fix goes onto the stabilized lines named, and only those."""
+    """confirm_stabilized + lines: a plain fix goes onto the stabilized lines named, and only those."""
 
     def setUp(self):
         self.fix = "f" * 40
@@ -547,7 +547,7 @@ class DispatchPatch(unittest.TestCase):
         self.assertEqual(self.run_(False, ["release/0.190"]), [row])
 
     def test_confirm_without_branches_says_why(self):
-        skip = "skipped: stabilized; a plain fix needs branches"
+        skip = "skipped: stabilized; a plain fix needs lines"
         self.assertEqual(
             self.run_(True, []),
             [
@@ -768,7 +768,7 @@ class PushSummary(unittest.TestCase):
             "- #247 security → `release/0.190`, `release/0.189` · merged 2 days ago", out
         )
         self.assertIn(
-            "gh workflow run backport.yaml -f commits=#247 -f branches=0.190,0.189 "
+            "gh workflow run backport.yaml -f commits=#247 -f lines=0.190,0.189 "
             "-f confirm_stabilized=true",
             out,
         )

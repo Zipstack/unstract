@@ -2136,8 +2136,8 @@ esac
         with open(os.path.join(HERE, "..", "workflows", "take-rc-build.yaml")) as fh:
             head, jobs = fh.read().split("\njobs:\n", 1)
         self.assertIn(
-            "\nconcurrency:\n  group: take-rc-build-${{ (startsWith(inputs.branch, 'release/') "
-            "&& inputs.branch || format('release/{0}', inputs.branch)) }}\n",
+            "\nconcurrency:\n  group: take-rc-build-${{ (startsWith(inputs.line, 'release/') "
+            "&& inputs.line || format('release/{0}', inputs.line)) }}\n",
             head,
         )
         self.assertNotIn("concurrency:", jobs)
@@ -2606,7 +2606,7 @@ class LateTargetWorkflow(Workflow):
         notes, out = self.take_rc()
         self.assertIn("| #5 | [FIX] y | fix |", notes)  # owed, shown
         self.assertIn(
-            "dispatch Backport with `confirm_stabilized=true` and `branches=1.7`.",
+            "dispatch Backport with `confirm_stabilized=true` and `lines=1.7`.",
             notes,
         )
         self.assertEqual(
@@ -2913,7 +2913,7 @@ class InputSteps(unittest.TestCase):
     def test_raw_input_feeds_only_its_check(self):
         # Every job reads the normalised output; the raw input is left to the names a run shows.
         for wf, raw, uses in (
-            ("take-rc-build.yaml", "inputs.branch", ("run-name:", "group:", "LINE:")),
+            ("take-rc-build.yaml", "inputs.line", ("run-name:", "group:", "LINE:")),
             ("promote.yaml", "inputs.rc", ("run-name:", "RC:")),
             ("publish.yaml", "inputs.version", ("run-name:", "VERSION:")),
         ):
