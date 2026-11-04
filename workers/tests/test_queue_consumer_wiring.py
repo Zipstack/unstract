@@ -10,15 +10,15 @@ The assertions run in BOTH directions, which is the part to read carefully:
 
 * ``celery_executor_agentic_table`` and ``agent_kv_callback`` must HAVE a
   consumer -- they are what this deployment dispatches onto.
-* ``celery_executor_agentic_kv`` must NOT be advertised. This deployment ships
-  no ``agentic_kv`` plugin, so a fleet listing that queue would accept work
-  nothing can drain -- the same silent failure, arrived at from the other side.
+* ``celery_executor_agentic_kv`` must ALSO have a consumer. ``kv`` is routed
+  now, so this file asserts the queue is SERVED -- see
+  ``test_every_fleet_serves_the_kv_queue``. An earlier revision of this
+  paragraph asserted the opposite and survived the change that inverted the
+  tests below it, which is exactly the drift it warned about.
 
-**These names are literals, and that is a known limitation.** Re-enabling the
-``kv`` extractor is one ``EXTRACTOR_ROUTES`` entry, after which
-``celery_executor_agentic_kv`` must be SERVED -- and the inverse assertion
-above would have to be deleted to go green, which is the one moment a guard
-should not be getting deleted. The derived version of both directions lives in
+**These names are literals, and that is a known limitation.** The direction
+these assertions take follows ``EXTRACTOR_ROUTES``, so a change there has to be
+mirrored here by hand. The derived version of both directions lives in
 ``backend/agent_kv/tests/test_queue_wiring_is_derived.py``, where
 ``EXTRACTOR_ROUTES`` is actually importable (the backend package is not
 importable from this test venv -- that asymmetry is why the duplication
@@ -416,3 +416,54 @@ def test_every_backend_prefix_is_excluded_from_the_frontend():
         f"{sorted(missing)} route to the backend but are not excluded from the "
         f"frontend router; the SPA will claim them"
     )
+
+
+def test_the_compose_sandbox_memory_budget_closes():
+    """`mem_limit` must cover the tmpfs, the per-job rlimit and the parent.
+
+    The sibling bounds-test asserts only that `mem_limit` is truthy, which
+    cannot see the arithmetic. A Docker tmpfs is RAM-backed and charged to the
+    same cgroup, so these are one budget:
+
+        tmpfs + (SANDBOX_MEMORY_MB x concurrency) + parent headroom <= mem_limit
+
+    If this fails, the cgroup OOM killer -- not the per-job RLIMIT_AS -- is
+    what enforces the limit, and its victim is not guaranteed to be the
+    offending child.
+    """
+    svc = yaml.safe_load(DEV_COMPOSE.read_text())["services"]["worker-sandbox"]
+
+    def _mb(v):
+        v = str(v).strip().lower()
+        return int(v[:-1]) * 1024 if v.endswith("g") else int(v.rstrip("m"))
+
+    limit = _mb(svc["mem_limit"])
+    tmpfs = next(m for m in svc["tmpfs"] if m.startswith("/tmp:"))
+    scratch = _mb(tmpfs.split("size=")[1])
+    env = dict(e.split("=", 1) for e in svc["environment"] if "=" in e)
+    lanes = int(env["WORKER_PG_QUEUE_CONSUMER_CONCURRENCY"].split(":-")[1].rstrip("}"))
+    # The runner's default, which this service does not override.
+    per_job = 512
+    parent_headroom = 128
+    need = scratch + per_job * lanes + parent_headroom
+    assert need <= limit, (
+        f"mem_limit={limit}m does not cover tmpfs {scratch}m + "
+        f"{lanes} x SANDBOX_MEMORY_MB {per_job}m + {parent_headroom}m parent "
+        f"= {need}m"
+    )
+
+
+def test_the_compose_sandbox_does_not_load_the_broad_essentials_env():
+    """The one container that executes code it did not write must not carry
+    credentials it never reads.
+
+    `gate.py` records that generated code reads the parent's unscrubbed
+    environment via /proc/<ppid>/environ with no import, so every key in this
+    service's environment is reachable by the code it runs. No key in
+    `essentials.env` (MINIO_ROOT_*, POSTGRES_*, QDRANT_*, RABBITMQ_DEFAULT_*)
+    is read anywhere under `workers/`, so loading it bought nothing and cost
+    the whole blast radius.
+    """
+    svc = yaml.safe_load(DEV_COMPOSE.read_text())["services"]["worker-sandbox"]
+    files = [str(f) for f in (svc.get("env_file") or [])]
+    assert not any("essentials" in f for f in files), files

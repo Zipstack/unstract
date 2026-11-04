@@ -344,6 +344,30 @@ AGENT_KV_STRUCTURED_OUTPUT_ENABLED = (
     os.environ.get("AGENT_KV_STRUCTURED_OUTPUT_ENABLED", "false").lower() == "true"
 )
 
+#: Whether this deployment ACCEPTS `kv` submits. False by default, and that
+#: default is the whole point.
+#:
+#: `EXTRACTOR_ROUTES` records where an extractor's work is dispatched. It cannot
+#: record whether anything DRAINS that queue, and the backend has no way to see
+#: the worker fleet's subscription list -- the engine probe in `SubmitView`
+#: (`get_plugin("agent_kv")`) is per-deployment, so it is already truthy
+#: wherever the `table` extractor shipped and says nothing about `kv`.
+#:
+#: A routed-but-undrained extractor is the worst shape available: the submit is
+#: accepted with a 202, the file is staged, a concurrency slot is taken, and the
+#: row sits in DISPATCHED until the sweep force-fails it -- with no error at the
+#: producer and nothing in any log naming the cause.
+#:
+#: This flag is set by the SAME chart values file that adds
+#: `celery_executor_agentic_kv` to the executor fleet's queue list, so the two
+#: cannot drift apart. Defaulting false is what makes merge ORDER safe: this
+#: repo merges before the chart (the cloud half imports `unstract-agent-kv-schema`
+#: from here), and until the chart lands a `kv` submit is refused at validation
+#: rather than accepted into a queue nothing serves.
+AGENT_KV_KV_EXTRACTOR_ENABLED = (
+    os.environ.get("AGENT_KV_KV_EXTRACTOR_ENABLED", "false").lower() == "true"
+)
+
 
 DB_NAME = os.environ.get("DB_NAME", "unstract_db")
 DB_USER = os.environ.get("DB_USER", "unstract_dev")

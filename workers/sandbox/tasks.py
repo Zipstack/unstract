@@ -14,11 +14,45 @@ from sandbox.runner import RunResult, run_code
 logger = logging.getLogger(__name__)
 
 
-def _int_env(name: str, default: int) -> int:
-    try:
-        return int(os.environ.get(name, default))
-    except (TypeError, ValueError):
+def _int_env(name: str, default: int, *, minimum: int = 1) -> int:
+    """Read a positive integer cap from the environment, LOUDLY on refusal.
+
+    Two silent degradations used to live here, both of them on the containment
+    controls `gate.py` names as the real security boundary.
+
+    A parse failure (`SANDBOX_MEMORY_MB=512m`, `SANDBOX_MAX_ROWS=1e5`, an empty
+    value) returned the built-in default with nothing said, so an operator's
+    tightening was discarded invisibly.
+
+    Worse, nothing applied a floor. `resource.RLIM_INFINITY == -1`, so
+    `SANDBOX_MAX_PIDS=-1` and `SANDBOX_MAX_OUTPUT_BYTES=-1` reached
+    `setrlimit(..., (-1, -1))` and made the cap UNLIMITED -- a typo turning a
+    limit off is the one failure mode a limit must not have.
+
+    Validation belongs here, in the parent: `_limits()` runs in `preexec_fn`,
+    post-fork in the child, where there is nowhere for a log to go.
+    """
+    raw = os.environ.get(name)
+    if raw is None:
         return default
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        logger.warning(
+            "sandbox: %s=%r is not an integer; using the default %d", name, raw, default
+        )
+        return default
+    if value < minimum:
+        logger.warning(
+            "sandbox: %s=%d is below the minimum %d; using the default %d "
+            "(a non-positive rlimit reads as RLIM_INFINITY -- i.e. no cap)",
+            name,
+            value,
+            minimum,
+            default,
+        )
+        return default
+    return value
 
 
 def _execute_sandboxed_code_impl(

@@ -35,6 +35,25 @@ EXTRACTION_MODES = ("whole-doc", "per-page")
 SUPPORTED_EXTRACTORS = tuple(EXTRACTOR_ROUTES)
 
 
+def enabled_extractors() -> tuple[str, ...]:
+    """The routed extractors this deployment will ACCEPT at submit.
+
+    `SUPPORTED_EXTRACTORS` is what is ROUTED -- it says where an extractor's
+    work would be dispatched. That is not the same question as whether anything
+    DRAINS the queue it names, and the backend cannot see the worker fleet's
+    subscription list: `SubmitView`'s `get_plugin("agent_kv")` probe is
+    per-deployment, so it is already truthy wherever `table` shipped and tells
+    us nothing about `kv`.
+
+    Read per call rather than at import, so a deployment's setting -- and a
+    test's `override_settings` -- is the thing that decides, not the order the
+    module happened to be imported in.
+    """
+    if getattr(settings, "AGENT_KV_KV_EXTRACTOR_ENABLED", False):
+        return SUPPORTED_EXTRACTORS
+    return tuple(n for n in SUPPORTED_EXTRACTORS if n != V1_EXTRACTOR_NAME)
+
+
 class KVOptionsSerializer(serializers.Serializer):
     """The `kv` extractor's own knobs (spec §7.1).
 
@@ -238,9 +257,12 @@ class KVAdaptersSerializer(_ThreeRoleAdaptersSerializer):
 #:
 #: Both shipped extractors are present, which is the point: there is no longer
 #: one env-credentialed extractor and one adapter-credentialed one. `kv` joined
-#: this table with the adapter migration -- while it was absent, a `kv` submit
-#: that named adapters was refused with "takes no adapters" and the engine ran
-#: on operator credentials instead.
+#: this table with the adapter migration. Note what the refusal actually was
+#: while it was absent: NOT "takes no adapters" -- `kv` was not in
+#: `EXTRACTOR_ROUTES` either, so `SUPPORTED_EXTRACTORS` was `('table',)` and
+#: `validate_name` rejected the entry as an unknown extractor before
+#: `_validated_adapter_shape` ever ran. The engine ran on operator credentials
+#: for callers who had it enabled by other means.
 #:
 #: The roles here must stay a superset of what each executor requires, or a
 #: submit passes and the job fails mid-run: `agentic_kv` enforces
@@ -316,11 +338,19 @@ class ExtractorSerializer(serializers.Serializer):
     options = serializers.DictField(required=False, default=dict)
 
     def validate_name(self, v):
-        if v not in SUPPORTED_EXTRACTORS:
+        enabled = enabled_extractors()
+        if v in enabled:
+            return v
+        # Routed but not enabled here. Say so rather than reporting it as
+        # unknown: "unknown" sends an integrator looking for a typo, and the
+        # deployment -- not the request -- is what has to change.
+        if v in SUPPORTED_EXTRACTORS:
             raise serializers.ValidationError(
-                f"unknown extractor '{v}'; supported: {list(SUPPORTED_EXTRACTORS)}"
+                f"extractor '{v}' is not enabled on this deployment"
             )
-        return v
+        raise serializers.ValidationError(
+            f"unknown extractor '{v}'; supported: {list(enabled)}"
+        )
 
     def _validated_keys(self, name: str, spec):
         """Validate `keys` for the extractor named by the VALIDATED `name`.

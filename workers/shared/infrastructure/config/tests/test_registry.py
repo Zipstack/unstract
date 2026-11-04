@@ -59,3 +59,29 @@ def test_the_sandbox_queue_is_claimed_now_that_the_sandbox_ships():
     assert hasattr(QueueName, "SANDBOX_CODEGEN")
     assert hasattr(WorkerType, "SANDBOX")
     assert WorkerType.SANDBOX in WorkerRegistry._QUEUE_CONFIGS
+
+
+def test_the_sandbox_route_names_a_task_that_actually_exists():
+    """Ties the route literal to the registered task, which nothing did.
+
+    `test_sandbox_route` compares the literal in `registry.py` against a
+    literal in the test, so the two could disagree with the decorator in
+    `sandbox/tasks.py` and both stay green. A typo in either declaration
+    produces the failure this feature's comments cite repeatedly: work enqueued
+    onto a served queue, no task registered under that name, nothing at the
+    producer.
+
+    (The same gap exists for every other worker; closing it here is a
+    precedent, not a claim that this PR introduced it.)
+    """
+    import sandbox.tasks  # noqa: F401 -- importing registers the task
+
+    from shared.infrastructure.config.registry import WorkerRegistry
+
+    routed = {r.pattern for r in WorkerRegistry._TASK_ROUTES[WorkerType.SANDBOX].routes}
+    registered = {sandbox.tasks.execute_sandboxed_code.name}
+    missing = routed - registered
+    assert not missing, (
+        f"registry.py routes {sorted(missing)}, but sandbox.tasks registers "
+        f"{sorted(registered)} -- work on that queue would find no handler"
+    )

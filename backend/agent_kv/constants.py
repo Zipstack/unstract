@@ -45,25 +45,34 @@ OPERATION_TABLE_EXTRACT_API = "table_extract_api"
 #: derived from these keys (`execution_serializers.py`), so this table alone
 #: decides what `extractors[].name` accepts.
 #:
-#: **Before adding an entry, confirm something drains the queue it names.** The
-#: queue is derived from the executor name, so an entry pointing at a plugin
-#: this deployment does not ship is accepted with a 202, dispatched to a queue
-#: with no consumer, and sits in DISPATCHED forever -- no error at the
-#: producer, nothing in any log to find. That is why `kv` was absent here: the
-#: engine shipped on its own branch. It is present now, and the three facts
-#: that make it safe were checked against a running deployment rather than
-#: assumed:
+#: **This table is where work GOES, not proof anything collects it.** The queue
+#: is derived from the executor name, so an entry pointing at a plugin this
+#: deployment does not ship is accepted with a 202, dispatched to a queue with
+#: no consumer, and sits in DISPATCHED forever -- no error at the producer,
+#: nothing in any log to find.
 #:
-#:   1. the worker image carries the plugin (`agentic_kv.executor` imports);
-#:   2. it registers this exact pair -- `EXECUTOR_NAME` == "agentic_kv" and
-#:      `OPERATION_KV_EXTRACT` == "kv_extract", which `AgenticKVExecutor`
-#:      dispatches on (`executor.py`, `context.operation != OPERATION_KV_EXTRACT`);
-#:   3. the executor fleet subscribes to `celery_executor_agentic_kv`
-#:      (`WORKER_PG_QUEUE_CONSUMER_QUEUE`, pinned chart-side by
-#:      `agent_kv_wiring_test.yaml::AKV-Q5b`).
+#: Routing `kv` is therefore NOT what enables it. Acceptance is gated separately,
+#: on `AGENT_KV_KV_EXTRACTOR_ENABLED` (`enabled_extractors()` in
+#: `execution_serializers.py`), which the chart sets in the same values file
+#: that adds `celery_executor_agentic_kv` to the executor fleet's queue list.
+#: The flag defaults false, which is what makes the merge order safe: this repo
+#: merges first -- the cloud half imports `unstract-agent-kv-schema` from it --
+#: and until the chart lands a `kv` submit is refused at validation instead of
+#: being accepted into a queue nothing serves.
 #:
-#: Re-check 1 and 3 before enabling `kv` in an environment that has not run it;
-#: 2 is pinned by `test_the_kv_route_targets_the_shipped_executor`.
+#: An earlier revision of this comment listed three facts "checked against a
+#: running deployment", the third citing `agent_kv_wiring_test.yaml::AKV-Q5b`
+#: as pinning that the fleet subscribes. That citation was a FORWARD reference
+#: and is worth recording as one: on the cloud repo's `main` that test asserts
+#: the subscription is ABSENT ("the executor ConfigMap does not subscribe to
+#: the agentic_kv queue"), and it is inverted only by the paired cloud PR. The
+#: dev environment those facts were checked against was running both halves, so
+#: the check was real but described no deployable image built from `main`. The
+#: flag above replaces the convention that the two PRs would land together with
+#: something a deployment states about itself.
+#:
+#: `EXECUTOR_NAME`/`OPERATION_KV_EXTRACT` matching what `AgenticKVExecutor`
+#: dispatches on is still pinned by `test_the_kv_route_targets_the_shipped_executor`.
 EXTRACTOR_ROUTES = {
     V1_EXTRACTOR_NAME: (EXECUTOR_NAME, OPERATION_KV_EXTRACT),
     TABLE_EXTRACTOR_NAME: (TABLE_EXECUTOR_NAME, OPERATION_TABLE_EXTRACT_API),

@@ -113,16 +113,34 @@ services:
     # the explicit cap more, not less.
     tmpfs:
       - /tmp:size=256m
-    # Mirrors the chart's `workerPgSandbox.resources.limits.memory: 1Gi`. The
-    # tmpfs cap above bounds what the script can write; this bounds what it can
-    # allocate, and without it an untrusted-code container is the only service
-    # here that can take the host down by asking for memory. (No other service
-    # in this file sets a limit -- that is a deliberate exception for the one
-    # service that executes code it did not write.)
+    # Mirrors the chart's `workerPgSandbox.resources.limits.memory: 1Gi`.
+    #
+    # These are NOT two independent bounds. A Docker tmpfs is RAM-backed and
+    # its pages are charged to this same cgroup, so the budget is:
+    #   tmpfs (256m) + SANDBOX_MEMORY_MB (512) x in-flight jobs + the worker
+    #   process itself (Celery / SDK1 / litellm imports)
+    # At one lane that is 768m of the 1g, leaving ~256m for the parent -- tight
+    # but closed. It is only closed because concurrency is pinned to 1 below;
+    # raise either knob without the other and the cgroup OOM killer fires on
+    # the CONTAINER, whose victim is not guaranteed to be the offending child.
+    #
+    # (The chart's emptyDir is DISK-backed, so its 1Gi is process memory only.
+    # The two surfaces agree on the numbers and not on what they cover.)
+    #
+    # No other service in this file sets a limit -- a deliberate exception for
+    # the one service that executes code it did not write.
     mem_limit: 1g
+    # NOTE: `./essentials.env` is deliberately NOT loaded here, unlike every
+    # other worker service. Nothing under `workers/` reads any key in it
+    # (MINIO_ROOT_*, MINIO_*_KEY, POSTGRES_*, QDRANT_*, RABBITMQ_DEFAULT_*), so
+    # it is surplus everywhere -- but this is the one container that executes
+    # code an LLM wrote, and `gate.py` records that generated code reads the
+    # parent's unscrubbed environment through /proc/<ppid>/environ with no
+    # import. Omitting the file takes MinIO root, the Postgres superuser and
+    # the broker admin out of that blast radius for free. The accepted residual
+    # (R12 / UN-4218) is the remaining `../workers/.env` reach.
     env_file:
       - ../workers/.env
-      - ./essentials.env
     depends_on:
       - db
       - redis
@@ -132,6 +150,18 @@ services:
       - WORKER_PG_QUEUE_CONSUMER_WORKER_TYPE=sandbox
       - WORKER_PG_QUEUE_CONSUMER_QUEUE=sandbox_codegen
       - WORKER_PG_QUEUE_CONSUMER_HEALTH_PORT=8092
+      # Pinned here, like every sibling PG consumer in this file, so the shared
+      # `../workers/.env` cannot set it for this service. One lane is also what
+      # the memory budget above is sized for.
+      - WORKER_PG_QUEUE_CONSUMER_CONCURRENCY=${PG_SANDBOX_CONCURRENCY:-1}
+      # Both default well below this role's worst case. SANDBOX_TIMEOUT_MAX is
+      # 60s, plus up to 5s of reap and the gate/file I/O around it. The
+      # liveness heartbeat is stamped before a claim and frozen while the batch
+      # runs, so HEALTH_STALE_SECONDS doubles as an upper bound on one task's
+      # wall clock: left at 60 a job that uses its full timeout trips the probe
+      # and is killed and redelivered. VT at 30 would also re-claim mid-run.
+      - WORKER_PG_QUEUE_CONSUMER_VT_SECONDS=${PG_SANDBOX_VT_SECONDS:-120}
+      - WORKER_PG_QUEUE_CONSUMER_HEALTH_STALE_SECONDS=${PG_SANDBOX_HEALTH_STALE_SECONDS:-180}
       # Same requirement the chart documents for this image under a read-only
       # rootfs: worker-unified sets HOME=/home/worker and WORKDIR=/app and
       # redirects neither TMPDIR nor XDG_CACHE_HOME, so any boot-time write to

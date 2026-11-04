@@ -299,9 +299,23 @@ def _rule_sys_name(node, parents) -> str | None:
 
 
 def _rule_denylisted_name(node, parents) -> str | None:
-    """A bare reference to a denylisted name, whether or not it is called."""
-    if isinstance(node, ast.Name) and (
-        node.id in _DENYLISTED_NAMES or node.id in _DENYLISTED_CALLS
+    """A bare REFERENCE to a denylisted name, whether or not it is called.
+
+    `ast.Load` is the whole point of "reference". Without it this rule also
+    matched Store and the loop variable of a `for`, so ordinary generated code
+    -- `input = json.load(...)`, `vars = {}`, `for input in rows:` -- was
+    refused as a security violation. `input` in particular is a plausible name
+    in code whose contract is "read the input path from sys.argv[1]".
+
+    Rebinding a denylisted name is harmless on its own; a later Load of it is
+    still caught here, by this same rule. The two sibling rules that inspect
+    references (`_rule_dangerous_attribute`, `_rule_sys_name`) already gate on
+    Load, so this brings the third into line rather than loosening the chain.
+    """
+    if (
+        isinstance(node, ast.Name)
+        and isinstance(node.ctx, ast.Load)
+        and (node.id in _DENYLISTED_NAMES or node.id in _DENYLISTED_CALLS)
     ):
         return f"safety gate: disallowed name '{node.id}'"
     return None
@@ -329,7 +343,23 @@ def check_code_safe(code: str) -> tuple[bool, str]:
     try:
         tree = ast.parse(code)
     except SyntaxError as e:
+        # `.msg` only. `str(e)` carries the offending source line and position,
+        # which is the generated code -- not something to echo to the caller.
         return False, f"safety gate: code does not parse ({e.msg})"
+    except (MemoryError, RecursionError, ValueError) as e:
+        # NOT only SyntaxError, and this is the arm that matters. CPython
+        # raises MemoryError("Parser stack overflowed - Python source too
+        # complex to parse") on a long or deeply-nested source: reachable at
+        # roughly 20 KB, which is well UNDER SANDBOX_MAX_CODE_BYTES (65536),
+        # so tasks.py's size cap lets it through. Uncaught it propagated out of
+        # `check_code_safe` -> `run_code` -> the Celery task, breaking the
+        # "always return a structured RunResult" contract that this module and
+        # tasks.py both document. RecursionError is the same family, and
+        # ValueError is how a NUL byte spells it on CPython <= 3.11.
+        #
+        # The reason names the exception TYPE, never its text: only
+        # SyntaxError.msg is known to be user-safe.
+        return False, f"safety gate: code does not parse ({type(e).__name__})"
     # ast.walk is flat (no parent access) — build a child->parent map once so
     # the bare-`sys`-Name rule below can tell `sys.argv` (permitted) apart
     # from every other reference to the name `sys` (rejected), including

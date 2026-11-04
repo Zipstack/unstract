@@ -22,6 +22,8 @@ import re
 
 from django.core.files.uploadedfile import SimpleUploadedFile
 
+from django.test import override_settings
+
 from agent_kv.execution_serializers import SubmitSerializer
 
 FIXTURES = os.path.join(os.path.dirname(__file__), "fixtures")
@@ -63,6 +65,7 @@ def _pdf_upload(name="doc.pdf"):
         return SimpleUploadedFile(name, f.read(), content_type="application/pdf")
 
 
+@override_settings(AGENT_KV_KV_EXTRACTOR_ENABLED=True)
 def test_every_documented_example_validates():
     """Through `SubmitSerializer`, which is the gate a real request passes.
 

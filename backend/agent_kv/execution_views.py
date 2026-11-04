@@ -85,7 +85,8 @@ def _status_document(job) -> dict:
         # chose them and is paying for them: a run naming the wrong `llm` id
         # produces a correct-looking result at a different price, and without
         # this the only record is in `usage_v2`, which the caller cannot read.
-        # `{}` for an env-configured extractor.
+        # `{}` only for a job predating the field. Both shipped extractors
+        # now require all three roles, so a new job always carries them.
         "adapters": job.adapters or {},
         "created_at": job.created_at.isoformat() if job.created_at else None,
         "started_at": job.dispatched_at.isoformat() if job.dispatched_at else None,

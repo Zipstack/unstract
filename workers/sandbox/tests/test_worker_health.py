@@ -34,3 +34,25 @@ def test_sandbox_health_check_degrades_if_gate_misbehaves():
 
         result = check_sandbox_health()
     assert result.status == HealthStatus.DEGRADED
+
+
+def test_sandbox_health_is_degraded_when_the_gate_returns_wrong_answers():
+    """The branch `test_sandbox_health_check_degrades_if_gate_misbehaves` is
+    named for but never reaches.
+
+    That test raises from `check_code_safe`, which lands in the outer
+    `except Exception` and returns "Health check failed: ...". The branch that
+    matters is the gate ANSWERING WRONGLY -- accepting hostile code -- which
+    reports `bad_snippet_rejected` in `details`. A regression making
+    `gate_healthy` always true would otherwise ship a probe reporting HEALTHY
+    for a gate that accepts `os.system('id')`.
+    """
+    from unittest.mock import patch
+
+    # The gate accepts everything, including the hostile probe snippet.
+    with patch("sandbox.gate.check_code_safe", return_value=(True, "")):
+        from sandbox.worker import check_sandbox_health
+
+        result = check_sandbox_health()
+    assert result.status == HealthStatus.DEGRADED, result
+    assert result.details["bad_snippet_rejected"] is False, result.details

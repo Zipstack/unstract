@@ -161,14 +161,25 @@ def test_every_routed_executor_has_a_consumer(fleet):
 def test_no_fleet_advertises_an_unrouted_executor(fleet):
     """The inverse direction, derived.
 
-    `agentic_kv` is the live case: this deployment ships no such plugin, so a
-    fleet listing its queue would accept work nothing can drain. When `kv` is
-    re-enabled by adding its `EXTRACTOR_ROUTES` entry, this expectation inverts
-    on its own and `test_every_routed_executor_has_a_consumer` starts requiring
-    the queue instead -- which is the whole reason this is derived.
+    Fires when an executor name is known but has no `EXTRACTOR_ROUTES` entry,
+    and a fleet advertises its queue anyway -- work accepted that nothing can
+    drain.
+
+    **Vacuous today, and it skips rather than passing silently.** Both known
+    executors are routed, so `_unrouted_executors()` is empty and there is
+    nothing to forbid. A green tick here would read as coverage; the skip says
+    what is actually true. (This docstring previously described `agentic_kv` as
+    the unrouted live case and predicted its own inversion -- it was left
+    behind by the change that routed `kv`.)
     """
     served = _all_executor_fleets()[fleet]()
-    forbidden = {_queue_name(e) for e in _unrouted_executors()}
+    unrouted = _unrouted_executors()
+    if not unrouted:
+        pytest.skip(
+            "no unrouted executors: every known executor has an EXTRACTOR_ROUTES "
+            "entry, so this direction has nothing to check"
+        )
+    forbidden = {_queue_name(e) for e in unrouted}
 
     advertised = forbidden & served
     assert not advertised, (

@@ -1,14 +1,18 @@
-"""Submit-serializer rules for the table extractor.
+"""Submit-serializer rules, exercised mostly through the `table` extractor.
 
-This deployment routes `table` and nothing else (`EXTRACTOR_ROUTES`), so every
-submit built here names `table`. The request-level rules -- file type, size,
-page cap, page range, timeout, the extractor-scoped wire format -- are the same
-for any extractor and are exercised through that one.
+Both extractors are routed (`EXTRACTOR_ROUTES`), but the request-level rules --
+file type, size, page cap, page range, timeout, the extractor-scoped wire
+format -- are the same for either, so most cases here name `table` and drive
+them through that one.
 
-`KVOptionsSerializer` is still in the tree and still tested, but it is tested
-*directly* rather than through a submit: with `kv` out of `EXTRACTOR_ROUTES` a
-`kv` entry is refused at `validate_name` before any options validator runs, so
-driving those rules through `SubmitSerializer` would assert nothing about them.
+The `kv` cases that do exist carry
+`@override_settings(AGENT_KV_KV_EXTRACTOR_ENABLED=True)`: routing `kv` is not
+the same as accepting it, and the production default is off until a deployment
+states that its fleet drains `celery_executor_agentic_kv`.
+
+`KVOptionsSerializer` is additionally tested *directly*, which is how it was
+covered while `kv` was unroutable and remains the cheaper way to exercise the
+option grammar without building a whole submit.
 """
 
 import json
@@ -25,7 +29,11 @@ if not apps.ready:
 
 from django.conf import settings  # noqa: E402
 from django.core.files.uploadedfile import SimpleUploadedFile  # noqa: E402
+from django.test import override_settings
+
 from rest_framework import serializers  # noqa: E402
+
+from agent_kv.constants import TABLE_EXTRACTOR_NAME, V1_EXTRACTOR_NAME  # noqa: E402
 
 from agent_kv.execution_serializers import (  # noqa: E402
     ExtractorSerializer,
@@ -113,11 +121,15 @@ def _defaults(m):
     m.AGENT_KV_MAX_TIMEOUT_SECONDS = 300
     m.AGENT_KV_CALCULATIONS_ENABLED = False
     m.AGENT_KV_STRUCTURED_OUTPUT_ENABLED = False
+    # Production default. `kv` is routed but not accepted until a deployment
+    # says its fleet drains the queue -- see `enabled_extractors()`.
+    m.AGENT_KV_KV_EXTRACTOR_ENABLED = False
 
 
 # ---------------------------------------------------------------------------
 # The routing this deployment actually ships
 # ---------------------------------------------------------------------------
+@override_settings(AGENT_KV_KV_EXTRACTOR_ENABLED=True)
 def test_a_kv_submit_is_accepted_through_the_same_endpoint():
     """One API, one selector: `extractors[].name` picks the engine.
 
@@ -153,6 +165,7 @@ def test_a_kv_submit_is_accepted_through_the_same_endpoint():
     assert entry["options"]["qa"] is False
 
 
+@override_settings(AGENT_KV_KV_EXTRACTOR_ENABLED=True)
 def test_a_kv_submit_without_adapters_is_refused_at_submit():
     """The KV executor requires all three roles
     (`agentic_kv.constants.ParamKeys.REQUIRED_ADAPTERS`) and fails the job
@@ -703,3 +716,39 @@ def test_the_submit_check_matches_what_the_sink_allows():
     assert 'allowed_schemes=("https",)' in source
     # DNS stays off the request thread; `getaddrinfo` honours no timeout.
     assert "resolve=False" in source
+
+
+@pytest.mark.parametrize(
+    ("extractor", "keys"),
+    [
+        (V1_EXTRACTOR_NAME, {"total": {"description": "Grand total"}}),
+        (TABLE_EXTRACTOR_NAME, {"target_table": "Line items"}),
+    ],
+)
+@override_settings(AGENT_KV_KV_EXTRACTOR_ENABLED=True)
+def test_an_unknown_adapter_role_is_refused_and_names_its_extractor(extractor, keys):
+    """Pins the `extractor_name` indirection the adapters refactor introduced.
+
+    The unknown-adapters message used to interpolate a hardcoded
+    `TABLE_EXTRACTOR_NAME`; it now reads a base-class attribute that defaults
+    to `""`. Nothing exercised that path for either subclass, so setting
+    BOTH subclasses' `extractor_name` to `""` left the whole suite green and
+    the API would have reported `unknown adapters for extractor '': [...]`.
+
+    The refusal itself matters as much as the name: an adapter role the caller
+    named and the engine will not use is a resource silently ignored behind a
+    202 -- the same shape the entry-level unknown-key check exists to prevent.
+    """
+    adapters = dict(TABLE_ADAPTERS)
+    adapters["embedding"] = "7f3c1a90-0000-4000-8000-000000000009"
+    s = SubmitSerializer(
+        data=_data(
+            extractors=json.dumps(
+                [{"name": extractor, "keys": keys, "adapters": adapters}]
+            )
+        )
+    )
+    assert not s.is_valid()
+    msg = str(s.errors)
+    assert "embedding" in msg, msg
+    assert f"'{extractor}'" in msg, msg

@@ -1,5 +1,7 @@
 import json
+import os
 import signal
+import subprocess
 import time
 from unittest.mock import MagicMock, patch
 
@@ -64,17 +66,37 @@ def test_infinite_loop_kill_is_prompt_not_backstop():
 
 
 def test_subprocess_env_is_scrubbed():
-    # The child must NOT see the parent's env. Print os.environ length via a
-    # gate-permitted path is impossible (os is denylisted), so assert through
-    # behaviour: a child that tries to read a secret env var writes empty.
+    """Behavioural proof that the child's OWN environment is the minimal one.
+
+    The previous version of this test ran a script that read no environment at
+    all and asserted only `r.success is True`. It passed against a runner
+    mutated to `env={**os.environ, "PATH": _MINIMAL_PATH}` -- the guard it
+    advertised was not the guard it applied.
+
+    This reads the child's `/proc/self/environ` and asserts a marker set in the
+    PARENT is absent from it. Note the scope: the child's own env is scrubbed
+    and that is what this pins. The parent's env remains readable via
+    `/proc/<ppid>/environ` -- that is R12 (UN-4218), deliberately not this
+    test's subject.
+    """
+    marker = "UNSTRACT_SCRUB_MARKER_7F3C"
     code = (
         "import json, sys\n"
-        "# os is denied by the gate; prove scrub another way: builtins only.\n"
+        "with open('/proc/self/environ', 'rb') as f:\n"
+        "    blob = f.read().decode('utf-8', 'replace')\n"
         "with open(sys.argv[2], 'w') as f:\n"
-        "    f.write(json.dumps({'ok': True}) + '\\n')\n"
+        "    f.write(json.dumps({'env': blob}) + '\\n')\n"
     )
-    r = run_code(code, json.dumps({"records": [{}]}), **_DEFAULTS)
-    assert r.success is True
+    os.environ[marker] = "leaked"
+    try:
+        r = run_code(code, json.dumps({"records": [{}]}), **_DEFAULTS)
+    finally:
+        os.environ.pop(marker, None)
+    assert r.success is True, r.error
+    assert marker not in r.rows_jsonl, "parent env leaked into the child"
+    # Prove the read saw a real environment block. Without this, a script that
+    # silently read nothing would pass as a clean scrub.
+    assert "PATH=" in r.rows_jsonl, r.rows_jsonl[:200]
 
 
 def test_subprocess_popen_env_is_exactly_minimal_path():
@@ -238,8 +260,13 @@ def test_runaway_stdout_does_not_buffer_into_the_parent():
     RLIMIT_FSIZE does not apply to pipes and RLIMIT_AS bounds only the child.
 
     Output now goes to a file, where RLIMIT_FSIZE bites, and the parent reads
-    back at most _CAPTURE_LIMIT. Asserts the bound on what the parent holds,
-    which is the thing that was unbounded.
+    back at most _CAPTURE_LIMIT.
+
+    This is the end-to-end smoke run. It is NOT on its own proof of the fix:
+    the length assertions below were equally true of the pre-fix code, which
+    truncated to _CAPTURE_LIMIT only AFTER `communicate()` had buffered the
+    whole stream (measured: ~1 GB resident, this test green). The decisive
+    assertion lives in `test_the_childs_stdout_is_a_file_not_a_pipe`.
     """
     r = run_code(
         "import sys\n"
@@ -261,3 +288,105 @@ def test_stdout_is_still_captured_for_an_ordinary_script():
         **_DEFAULTS,
     )
     assert "hello from the sandbox" in r.stdout
+
+
+def test_the_childs_stdout_is_a_file_not_a_pipe():
+    """The assertion that actually distinguishes the pipe->file change.
+
+    `test_runaway_stdout_does_not_buffer_into_the_parent` bounds what the
+    parent RETURNS; the pre-fix code bounded that too. What changed is what the
+    parent HOLDS, and that is decided by the `stdout`/`stderr` kwargs: a real
+    file descriptor means the kernel writes to disk (where RLIMIT_FSIZE bites),
+    while `subprocess.PIPE` means the parent buffers.
+    """
+    mock_proc = MagicMock()
+    mock_proc.pid = 4321
+    mock_proc.returncode = 0
+    with patch("sandbox.runner.subprocess.Popen", return_value=mock_proc) as mock_popen, \
+         patch("sandbox.runner.os.getpgid", return_value=4321), \
+         patch("sandbox.runner.os.killpg"):
+        run_code(
+            "import sys\nopen(sys.argv[2], 'w').close()\n",
+            json.dumps({"records": [{}]}), **_DEFAULTS,
+        )
+    kw = mock_popen.call_args.kwargs
+    for stream in ("stdout", "stderr"):
+        assert kw[stream] is not subprocess.PIPE, f"{stream} is a pipe: the parent buffers"
+        assert hasattr(kw[stream], "fileno"), f"{stream} is not a file object: {kw[stream]!r}"
+
+
+# ---------------------------------------------------------------------------
+# The "always return a structured RunResult" contract, at the sites that broke it
+# ---------------------------------------------------------------------------
+def test_a_gate_parse_failure_cpython_spells_memoryerror_is_a_result_not_a_raise():
+    """~20 KB of source raises MemoryError("Parser stack overflowed") inside
+    `ast.parse`. It is UNDER SANDBOX_MAX_CODE_BYTES (65536), so tasks.py's size
+    cap does not stop it, and `check_code_safe` caught only SyntaxError -- so it
+    propagated out of run_code and out of the Celery task.
+    """
+    r = run_code("x=" + "-" * 20000 + "1", json.dumps({"records": [{}]}), **_DEFAULTS)
+    assert r.success is False
+    assert "does not parse" in r.error, r.error
+    # The TYPE, never the exception text: only SyntaxError.msg is user-safe.
+    assert "MemoryError" in r.error, r.error
+
+
+def test_enospc_while_staging_the_script_is_a_result_not_a_raise():
+    """`script.write_text` sits outside the inner try by construction. On the
+    256 MB tmpfs this service runs with, ENOSPC is routine -- and once /tmp is
+    full EVERY subsequent job on the worker took this path."""
+    with patch("sandbox.runner.Path.write_text", side_effect=OSError(28, "No space left on device")):
+        r = run_code("x = 1\n", json.dumps({"records": [{}]}), **_DEFAULTS)
+    assert r.success is False
+    assert r.error == "execution failed: OSError", r.error
+
+
+def test_enospc_opening_the_tempdir_is_a_result_not_a_raise():
+    with patch("sandbox.runner.tempfile.TemporaryDirectory",
+               side_effect=OSError(28, "No space left on device")):
+        r = run_code("x = 1\n", json.dumps({"records": [{}]}), **_DEFAULTS)
+    assert r.success is False
+    assert r.error == "execution failed: OSError", r.error
+
+
+def test_the_child_is_detached_by_start_new_session_not_preexec_fn():
+    """`_kill_group` only works because the child is a session leader.
+
+    That used to come from `os.setsid()` inside `preexec_fn`, which runs Python
+    bytecode in the forked child -- unsafe in a worker that has threads. If a
+    future edit drops this kwarg, the kill path silently degrades to signalling
+    the worker's own group, which the `_kill_group` guard then refuses -- so the
+    child is never killed and the job reports an ordinary timeout.
+    """
+    mock_proc = MagicMock()
+    mock_proc.pid = 4321
+    mock_proc.returncode = 0
+    with patch("sandbox.runner.subprocess.Popen", return_value=mock_proc) as mock_popen, \
+         patch("sandbox.runner.os.getpgid", return_value=4321), \
+         patch("sandbox.runner.os.killpg"):
+        run_code(
+            "import sys\nopen(sys.argv[2], 'w').close()\n",
+            json.dumps({"records": [{}]}), **_DEFAULTS,
+        )
+    assert mock_popen.call_args.kwargs.get("start_new_session") is True
+
+
+def test_kill_group_refuses_to_signal_its_own_process_group():
+    """The guard that stops a timeout from SIGKILLing the worker and every
+    sibling job. Reachable in production: if session creation fails the child
+    stays in the parent's group, and `os.getpgid(child)` then returns the
+    worker's own pgid.
+
+    Previously uncovered -- deleting `or pgid == os.getpgrp()` left the suite
+    green.
+    """
+    from sandbox.runner import _kill_group
+
+    with patch("sandbox.runner.os.killpg") as killpg:
+        _kill_group(None, "x")
+        _kill_group(1, "x")
+        _kill_group(os.getpgrp(), "x")
+        assert killpg.call_count == 0, "signalled a group it must refuse"
+        # and it does signal an ordinary foreign group
+        _kill_group(4321, "x")
+        assert killpg.call_count == 1

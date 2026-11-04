@@ -17,7 +17,7 @@ uploaded document against a caller-supplied schema (`keys.json`), optionally run
 engine-generated **calculations** over the extracted rows. It productizes the KV extractor
 from the `unstract-agentic-table` research project as a first-class Unstract API.
 
-- **Public surface:** `POST /agent-kv/` (submit) and sibling status/result/cancel/validate
+- **Public surface:** `POST /agent-kv/` (submit) and sibling status/result/cancel
   endpoints, authenticated by a per-organization `AgentKVKey` (a UUID, `Authorization:
   Bearer <key>`). Full contract in [`docs/agent-kv-api.md`](agent-kv-api.md).
 - **Async:** submit returns a `job_id`; the caller polls status or receives a webhook.
@@ -31,8 +31,8 @@ paid engine is a cloud plugin.
 
 | Repo | Branch | Holds |
 |---|---|---|
-| **OSS** `Zipstack/unstract` | `Feat/agent-kv-api` | The API app, job lifecycle, schema compiler, dispatch glue, callbacks, and the **hardened sandbox worker** (generic infra). |
-| **Cloud** `unstract-cloud` | `UN-4044-agent-kv-cloud-executor` | The `agentic_kv` executor plugin (the ported extraction engine + LLM/OCR clients), the sandbox transport, the capability marker, and all chart/deploy wiring. Jira **UN-4044**. |
+| **OSS** `Zipstack/unstract` | _see the PR_ | The API app, job lifecycle, schema compiler, dispatch glue, callbacks, and the **hardened sandbox worker** (generic infra). |
+| **Cloud** `unstract-cloud` | _see the PR_ | The `agentic_kv` executor plugin (the ported extraction engine + LLM/OCR clients), the sandbox transport, the capability marker, and all chart/deploy wiring. Jira **UN-4044**. |
 
 **Fail-closed by design:** the OSS backend cannot see the executor plugin registry (that
 lives in the workers process). A backend-visible capability marker
@@ -194,8 +194,11 @@ key (cross-tenant reuse structurally impossible); fail-closed billing admission.
 
 ## 6. Runtime & configuration essentials
 
-- **Sandbox image (v1):** runs from the existing `worker-unified` image with command
-  `sandbox` (a dedicated stdlib-only slim image is a deferred upgrade). The security
+- **Sandbox image (v1):** runs from the existing `worker-unified` image as a **PG-queue
+  consumer** -- `pg-queue-consumer` with `WORKER_PG_QUEUE_CONSUMER_WORKER_TYPE=sandbox`,
+  not the Celery `sandbox` command. UN-4046 retired the broker as a task transport, so a
+  broker-only consumer accepts work and drains none, silently. (A dedicated stdlib-only
+  slim image is a deferred upgrade.) The security
   guarantees come from the scrubbed subprocess + pod hardening, not image contents.
 - **`calculations` GA flag:** `AGENT_KV_CALCULATIONS_ENABLED=true`. Off degrades cleanly
   (submit rejects `calculations`; nothing dispatches mid-pipeline).
@@ -223,15 +226,18 @@ key (cross-tenant reuse structurally impossible); fail-closed billing admission.
   `extractors: [{name, keys, options}]` rather than flat top-level knobs, and status and
   result are keyed by extractor. Done before launch precisely because it could not be
   done after — see the deliberate divergence from APS v2's composition model recorded in
-  §7.0. Currently one extractor (`kv`) is accepted; the format is in place for
-  multi-extractor jobs, the fan-out execution is not.
+  §7.0. Both extractors (`kv` and `table`) are routed, and `extractors[].name` is the
+  selector; the format is in place for multi-extractor jobs, the fan-out execution is
+  not. Routed is not the same as accepted -- `kv` is additionally gated on
+  `AGENT_KV_KV_EXTRACTOR_ENABLED`, which the chart sets alongside the queue subscription.
 - **Not yet validated:** a real **Kubernetes** deploy. The chart, the NetworkPolicy-based
   sandbox containment, the minimal Secret, and the sandbox result-backend wiring are
   helm-unittest-rendered but never applied to a cluster. **This is the one outstanding
   validation before production.**
-- **Branch state:** all fix commits (plus this overview) are **committed and pushed** on
-  both branches — OSS `Feat/agent-kv-api`, cloud `UN-4044-agent-kv-cloud-executor`;
-  **no PR raised yet** (both must pass Greptile first).
+- **Branch state:** deliberately not recorded here. Branch names and PR state rot on
+  every rebase and every merge, and a doc that names them is wrong more often than it is
+  right -- this bullet previously said "no PR raised yet" while both PRs were open. The
+  PRs are the authority; find them by the UN-4044 ticket.
 - **Not started:** the fail-closed billing admission gate + Stripe invoicing (see
   **Billing & metering** below); migrating `agentic_table` onto this shared sandbox.
 
@@ -290,7 +296,7 @@ subscription → **402**, nothing dispatched or billed.
 
 ## 9. Recommended next steps for the architect
 
-1. Review both branches, then push and open the PRs (they need to pass Greptile).
+1. Review both PRs (they need to pass Greptile).
 2. Deploy the cloud branch to **staging** — this is the missing validation: confirm the
    sandbox Deployment comes up hardened, the NetworkPolicy actually blocks egress, the
    result-backend wiring works, and a live `calculations` job completes.

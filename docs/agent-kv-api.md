@@ -523,7 +523,9 @@ the caller chose them and is paying for them: naming the wrong `llm` id yields a
 correct-looking result at a different price, and the only other record of what
 was spent is in `usage_v2`, which the caller cannot read. **Ids only, never
 adapter metadata** — that is where provider credentials live. `{}` for an
-env-configured extractor (`kv`) and for any job predating the field.
+any job predating the field. (It was also `{}` for `kv` while that extractor
+was env-credentialed; it no longer is -- all three roles are required for both
+extractors, so a new job of either kind always carries them.)
 
 `status` is lowercased (`pending`, `dispatched`, `running`, `completed`, `failed`,
 `cancelled`); `error` is included (only) when `status == "failed"`. `adapters`,
@@ -605,8 +607,12 @@ engine's standard result object:
   not come back. Present only when `calculations_applied` is `true`.
 - `calculation_rows: [...]` — an array of computed JSONL rows. Present on any
   `COMPLETED` result for a job that supplied `calculations`, including a budget-skipped
-  one, where it is `[]`. (`FAILED` and `CANCELLED` bodies carry no engine blob at all,
-  so the key is absent there — see the status bullets above.)
+  one, where it is `[]`. A `FAILED` body carries no engine blob, so the key is
+  absent there. A `CANCELLED` body carries it **whenever it carries an `extractors`
+  block** — the raced-cancel case in the status bullets above, where the extraction
+  finished before the cancel landed and the stored result is served. Those are exactly
+  the cancelled jobs that were billed for the work, so a consumer that skips
+  `calculation_rows` on `CANCELLED` drops output it paid for.
 
 If the sandbox worker fails to execute, the job completes with `success: false` and a
 user-safe `error` (e.g., `"Calculation execution timed out"`); the `execution` field
@@ -760,16 +766,18 @@ rather than always present.
 
 | Marker | Type | Present when | What it means for the field it qualifies |
 | --- | --- | --- | --- |
-| `qa_unchecked` | `true` | the `kv_qa` stage did not run — absent from the graph, skipped by the ceiling, or it raised | `qa_passed` was left at the much weaker pre-seeded value "every required key was found". No format check, no grounding check and no re-extraction ran. |
+| `qa_unchecked` | `true` | the `kv_qa` stage did not run — absent from the graph, skipped by the ceiling, or it raised | `qa_passed` is **absent** — read its absence as "not checked", per the rule stated above this table. No format check, no grounding check and no re-extraction ran. |
 | `challenge_unchecked` | `true` | at least one key's **final** value was never challenged | `challenge_passed: true` means "nothing was found wrong about the values that WERE judged", which is not the same as a clean challenge of the record you are reading. |
 | `budget_exhausted` | `true` | the per-job token ceiling bit anywhere | Some work the job was asked to do did not happen. |
 | `budget_skipped_stages` | `string[]` | the ceiling skipped at least one whole stage | Names the stages that never started, e.g. `["kv_qa", "code_generator"]`. **Never present as `[]`** — see the first edge case below. |
 | `qa_partial` | `true` | QA ran and the ceiling bit mid-loop | QA started but abandoned part of its work, so `qa_passed` reflects an incomplete pass. Distinct from `qa_unchecked`, which means the stage never started; the two are mutually exclusive. |
 | `extraction_degraded` | `true` | the engine isolated at least one failure | The record may be short through no fault of the document. Paired with `extraction_dropped`; `success: true` with missing keys is otherwise indistinguishable from "the document does not contain them". |
-| `extraction_dropped` | `string[]` | alongside `extraction_degraded` | Sorted reason codes for what was isolated. **Closed vocabulary of exactly seventeen values.** Key extraction: `empty_response`, `unparseable_response`, `results_not_a_list`, `results_wrong_shape`, `key_path_unmatched`, `key_value_without_found`, `key_tool_args_not_a_dict`, `whole_doc:error`, `page:error`. Array extraction: `array:error` (the fan-out isolated a whole array), plus `array_empty_response`, `array_unparseable_response`, `array_rows_not_a_list`, `array_rows_wrong_shape`, `array_rows_no_declared_column`, `array_tool_args_not_a_dict`. The two `*_wrong_shape` codes mean the response's top-level shape was right and its per-row shape was not — a positional table instead of an array of objects, or a row missing its `key` field — so **some or all** rows were discarded; `array_rows_no_declared_column` means a row matched none of the declared columns, and `array_columns_unmatched` means a declared column appears as a key in **no** row while the model supplied keys nobody asked for — the per-column signal for a renamed or re-cased column, which the row-level one cannot see when only some columns were renamed. Both are judged on key PRESENCE in the model's raw row, never on whether a cell had a value: a declared column that is correctly named and simply empty is a legitimately blank cell and is reported as nothing at all. `key_path_unmatched` is the key-path twin of `array_columns_unmatched`: a result named a path outside the spec, which a model produces by re-casing, prefixing or abbreviating a key name, and which was previously discarded silently by reconciliation. `key_value_without_found` means a result carried a value while `found` was false or absent; the value is replaced with the empty string at the point of coercion, because leaving it let the value skip format validation and grounding and still finalize as `passed`. Classes only, never document content, and counts go to the log rather than onto the wire. An earlier revision suffixed the exception class name (`page:OSError`), which exported a third-party implementation detail as contract; a guard test asserts EQUALITY between this set and what the code emits, across every emitting module, so a new code arrives as a deliberate change to this table. |
+| `extraction_dropped` | `string[]` | alongside `extraction_degraded` | Sorted reason codes for what was isolated. **Closed vocabulary of exactly seventeen values.** Key extraction: `empty_response`, `unparseable_response`, `results_not_a_list`, `results_wrong_shape`, `key_path_unmatched`, `key_value_without_found`, `key_tool_args_not_a_dict`, `whole_doc:error`, `page:error`. Array extraction: `array:error` (the fan-out isolated a whole array), plus `array_empty_response`, `array_unparseable_response`, `array_rows_not_a_list`, `array_rows_wrong_shape`, `array_rows_no_declared_column`, `array_columns_unmatched`, `array_tool_args_not_a_dict`. The two `*_wrong_shape` codes mean the response's top-level shape was right and its per-row shape was not — a positional table instead of an array of objects, or a row missing its `key` field — so **some or all** rows were discarded; `array_rows_no_declared_column` means a row matched none of the declared columns, and `array_columns_unmatched` means a declared column appears as a key in **no** row while the model supplied keys nobody asked for — the per-column signal for a renamed or re-cased column, which the row-level one cannot see when only some columns were renamed. Both are judged on key PRESENCE in the model's raw row, never on whether a cell had a value: a declared column that is correctly named and simply empty is a legitimately blank cell and is reported as nothing at all. `key_path_unmatched` is the key-path twin of `array_columns_unmatched`: a result named a path outside the spec, which a model produces by re-casing, prefixing or abbreviating a key name, and which was previously discarded silently by reconciliation. `key_value_without_found` means a result carried a value while `found` was false or absent; the value is replaced with the empty string at the point of coercion, because leaving it let the value skip format validation and grounding and still finalize as `passed`. Classes only, never document content, and counts go to the log rather than onto the wire. An earlier revision suffixed the exception class name (`page:OSError`), which exported a third-party implementation detail as contract; a guard test asserts EQUALITY between this set and what the code emits, across every emitting module, so a new code arrives as a deliberate change to this table. |
 | `codegen_validation_skipped` | `true` | the flake8 lint could not run | `codegen_validation_passed: false` means "not linted", not "lint failed". See the calculation result shape above. |
 
-Three edge cases that a reader checking only the happy path gets wrong:
+Edge cases that a reader checking only the happy path gets wrong (count them from
+the bullets, not from this sentence — the same rule this section states for the
+reason-code table):
 
 - **`budget_exhausted: true` can arrive with NO `budget_skipped_stages` at all.** The
   ceiling is also checked *inside* the QA retry loop, so a job whose QA loop stopped
@@ -1615,20 +1623,32 @@ beyond `docker compose up`:
     `host.docker.internal` (the compose host-gateway mapping). The lane also
     covers sync-wait submits (`timeout` → 200 with the inline result) and an
     `.xlsx` document (`fixtures/invoice.xlsx`, the no-pre-OCR-page-count path).
-11. **Sandbox worker — calculations codegen fleet. NOT APPLICABLE TO THIS
-    RELEASE; do not action this item.** `calculations` belongs to the `kv`
-    extractor, and `EXTRACTOR_ROUTES` accepts only `table`, whose options
-    reject the field — so no job this release can accept reaches the sandbox,
-    whatever `AGENT_KV_CALCULATIONS_ENABLED` is set to. No sandbox fleet ships
-    here, and deploying one buys nothing until `kv` is routable.
+11. **Sandbox worker — calculations codegen fleet. APPLICABLE FROM THIS
+    RELEASE.** `calculations` belongs to the `kv` extractor, and `kv` is now in
+    `EXTRACTOR_ROUTES` with an options serializer that accepts the field — so a
+    job *can* reach the sandbox, and this release ships the fleet
+    (`docker/docker-compose.yaml`, `workers/sandbox/`).
 
-    Kept because it is the deployment order to follow WHEN that happens, and
-    the order is the part that is easy to get wrong. Everything below is
-    future KV-only work.
+    Two gates stand between that and a live calculation job, and both must be
+    open: `AGENT_KV_KV_EXTRACTOR_ENABLED` (whether this deployment accepts `kv`
+    at all) and `AGENT_KV_CALCULATIONS_ENABLED` (whether a `kv` job may ask for
+    codegen). Both default false.
+
+    An earlier revision of this item read "NOT APPLICABLE TO THIS RELEASE; do
+    not action this item", on the premise that `EXTRACTOR_ROUTES` accepted only
+    `table`. That premise is gone. An operator who followed it and then set
+    `AGENT_KV_CALCULATIONS_ENABLED=true` would get exactly the failure the
+    strict-order paragraph below warns about.
 
     The optional `calculations` field
     invokes out-of-process codegen and execution in a dedicated sandbox worker fleet
-    consuming the `sandbox_codegen` Celery queue. **Deployment order is strict:**
+    consuming the `sandbox_codegen` queue **on the PG transport** — not Celery.
+    The shipped service runs `pg-queue-consumer` with
+    `WORKER_PG_QUEUE_CONSUMER_WORKER_TYPE=sandbox` and
+    `WORKER_PG_QUEUE_CONSUMER_QUEUE=sandbox_codegen`; UN-4046 retired the broker
+    as a task transport, so a broker-only consumer provisioned from an earlier
+    reading of this line accepts work and drains none, silently.
+    **Deployment order is strict:**
     deploy the sandbox worker (Deployment healthy, actively consuming tasks from
     `sandbox_codegen`) **before** flipping `AGENT_KV_CALCULATIONS_ENABLED=true`.
     With the flag on but the sandbox down, calculation jobs fail user-safely at the

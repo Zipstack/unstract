@@ -140,6 +140,11 @@ class WorkerType(str, Enum):
             WorkerType.SCHEDULER: 8087,
             WorkerType.EXECUTOR: 8088,
             WorkerType.IDE_CALLBACK: 8089,
+            # 8090/8091 are reserved; the sandbox's fixed slot is 8092. Without
+            # this entry `.get(self, 8080)` returned API_DEPLOYMENT's port, so a
+            # sandbox worker started without a launcher (which exports
+            # SANDBOX_HEALTH_PORT) bound 8080 and collided with it.
+            WorkerType.SANDBOX: 8092,
         }
         return port_mapping.get(self, 8080)
 

@@ -211,8 +211,11 @@ declare -A WORKER_HEALTH_PORTS=(
     ["${EXECUTOR_WORKER_TYPE}"]="8088"
     ["${IDE_CALLBACK_WORKER_TYPE}"]="8089"
     # sandbox: 8092 — 8090/8091 are reserved below for pg_queue_consumer /
-    # pluggable-worker auto-discovery; 8092 is the sandbox worker's fixed slot
-    # (WorkerType.to_health_port() reads SANDBOX_HEALTH_PORT first).
+    # pluggable-worker auto-discovery; 8092 is the sandbox worker's fixed slot.
+    # This map is what EXPORTS SANDBOX_HEALTH_PORT; to_health_port() reads that
+    # variable first and now also carries WorkerType.SANDBOX: 8092 as the
+    # Python-side default, which it previously lacked (so an unset variable
+    # resolved to 8080 -- api-deployment's port).
     ["$SANDBOX_WORKER_TYPE"]="8092"
     # pg_queue_consumer: 8090 — reserved here, just past the 8080-8089 core
     # range and just below where pluggable-worker discovery starts allocating

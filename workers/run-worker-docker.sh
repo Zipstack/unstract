@@ -86,8 +86,12 @@ declare -A WORKER_HEALTH_PORTS=(
     ["ide_callback"]="8089"
     # 8090/8091 are reserved for pg_queue_consumer / pluggable-worker
     # auto-discovery (see run-worker.sh); 8092 is the sandbox worker's fixed
-    # slot (WorkerType.to_health_port() reads SANDBOX_HEALTH_PORT first, so
-    # this map entry only supplies the default when that env var is unset).
+    # slot. This map is what EXPORTS SANDBOX_HEALTH_PORT -- it is not a
+    # fallback consulted when the variable is unset. (An earlier version of
+    # this comment had it the other way round. The Python-side default now
+    # exists too: WorkerType.SANDBOX is in to_health_port()'s port_mapping,
+    # which it was not, so an unset variable used to resolve to 8080 --
+    # api-deployment's port.)
     ["$SANDBOX_WORKER_TYPE"]="8092"
 )
 

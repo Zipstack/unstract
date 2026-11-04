@@ -118,9 +118,10 @@ class AgentKVJob(DefaultOrganizationMixin, BaseModel):
     #: joining `usage_v2` on `run_id`, which the API cannot do and a customer
     #: cannot see at all.
     #:
-    #: Empty for an env-configured extractor (`kv`), which is why it is a dict
-    #: with a `{}` default rather than three nullable columns: the two
-    #: credential models coexist, one per extractor.
+    #: A dict with a `{}` default rather than three nullable columns. The
+    #: original reason -- `kv` was env-credentialed and stored nothing here --
+    #: is gone: both extractors now require all three roles, so `{}` means a
+    #: row predating the field, not an extractor that needs no adapters.
     #:
     #: Ids only. Deliberately never `adapter_metadata` -- that is where the
     #: provider credentials live, and this column is returned to the caller.

@@ -110,6 +110,14 @@ services:
       # launcher reads WORKER_PG_QUEUE_CONSUMER_HEALTH_PORT, not the Celery
       # worker's SANDBOX_HEALTH_PORT. 8092 stays the sandbox's fixed slot.
       - WORKER_PG_QUEUE_CONSUMER_HEALTH_PORT=8092
+      # Mirrors docker/docker-compose.yaml's worker-sandbox. Both defaults sit
+      # at or below this role's worst case (SANDBOX_TIMEOUT_MAX 60s + reap +
+      # I/O): the liveness heartbeat is frozen while a batch runs, so a stale
+      # threshold of 60 makes a job that uses its full timeout trip the probe,
+      # and a 30s VT would re-claim it mid-run.
+      - WORKER_PG_QUEUE_CONSUMER_CONCURRENCY=1
+      - WORKER_PG_QUEUE_CONSUMER_VT_SECONDS=120
+      - WORKER_PG_QUEUE_CONSUMER_HEALTH_STALE_SECONDS=180
       # The SANDBOX_* caps below are read by workers/sandbox/tasks.py itself, so
       # they are transport-independent and keep their names.
       - SANDBOX_MAX_CODE_BYTES=${SANDBOX_MAX_CODE_BYTES:-}

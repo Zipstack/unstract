@@ -78,7 +78,19 @@ def _limits(cpu_seconds: int, memory_mb: int, max_pids: int, fsize: int):
     """
 
     def _apply():
-        os.setsid()
+        # NOTE: no `os.setsid()` here. Session creation moved to Popen's
+        # `start_new_session=True`, which the runtime performs between fork and
+        # exec WITHOUT running Python bytecode. `preexec_fn` does run Python in
+        # the forked child, and CPython documents that as unsafe when the
+        # parent has threads -- this worker has at least two (the health HTTP
+        # server, and the heartbeat on the supervised PG path), either of which
+        # can hold the allocator or import lock at fork. The failure that buys
+        # is a child that deadlocks before exec and is then reported as
+        # `execution timed out after {timeout}s`: a harness fault attributed to
+        # the submitted code.
+        #
+        # `setrlimit` is still here because there is no Popen keyword for it.
+        # That is a narrower exposure than setsid + setrlimit, not zero.
         for limit, value in (
             (resource.RLIMIT_CPU, (cpu_seconds, cpu_seconds)),
             (resource.RLIMIT_AS, (memory_mb * 1024 * 1024, memory_mb * 1024 * 1024)),
@@ -238,6 +250,53 @@ def run_code(
     max_pids: int,
     grace: int = 5,
 ) -> RunResult:
+    """Guarded entry point: ALWAYS returns a structured ``RunResult``.
+
+    The body lives in `_run_code_unguarded`. Four statements there sit outside
+    its internal `try` by construction -- the gate call, the
+    `TemporaryDirectory` open, the three `write_text` calls, and the tempdir's
+    own cleanup -- and each can raise: the gate on a parse failure CPython
+    spells as MemoryError (see `gate.check_code_safe`), the others on ENOSPC,
+    which is routine on the 256 MB tmpfs this service runs with.
+
+    Guarding each site individually is a rule a future edit has to remember.
+    This wrapper is the structural version: anything escaping the body becomes
+    a result rather than an exception, so the contract holds for every caller --
+    including `tasks.py`, which does not wrap this call either.
+
+    The error text is the exception TYPE only. Its message can carry a host
+    path or a fragment of the generated code, and this string reaches the
+    submitting caller.
+    """
+    try:
+        return _run_code_unguarded(
+            code,
+            input_json,
+            timeout=timeout,
+            max_output_bytes=max_output_bytes,
+            max_rows=max_rows,
+            memory_mb=memory_mb,
+            max_pids=max_pids,
+            grace=grace,
+        )
+    except Exception as exc:
+        logger.warning(
+            "sandbox: run_code failed outside the guarded region: %s", exc, exc_info=True
+        )
+        return RunResult(success=False, error=f"execution failed: {type(exc).__name__}")
+
+
+def _run_code_unguarded(
+    code: str,
+    input_json: str,
+    *,
+    timeout: int,
+    max_output_bytes: int,
+    max_rows: int,
+    memory_mb: int,
+    max_pids: int,
+    grace: int = 5,
+) -> RunResult:
     """Re-check the safety gate, then run ``code`` as a child process.
 
     The gate is re-run here unconditionally — the caller having already
@@ -245,6 +304,13 @@ def run_code(
     """
     ok, reason = check_code_safe(code)
     if not ok:
+        # Logged, not silent. This is the most security-relevant event the
+        # feature has, and layer 1 was the only layer emitting no signal for
+        # it: no counter, no log line, nothing to tell a codegen-quality
+        # problem (a legitimate script using a denylisted NAME) from an
+        # attempted bypass. The harness-failure path below already carries a
+        # log for the same reason.
+        logger.warning("sandbox: gate rejected generated code: %s", reason)
         return RunResult(success=False, error=reason)
 
     # RLIMIT_CPU backstop, strictly above the wall-clock timeout (ruling
@@ -252,13 +318,36 @@ def run_code(
     # nondeterministic error string for the same input.
     cpu_seconds = max(timeout + grace, timeout + 1)
 
-    with tempfile.TemporaryDirectory(prefix="sandbox_") as tmp:
+    # ignore_cleanup_errors: on 3.12 __exit__ defaults to raising, so an rmtree
+    # failure (ENOSPC, a child still writing) would discard an already-computed
+    # RunResult and propagate -- the contract break this function exists to avoid.
+    with tempfile.TemporaryDirectory(
+        prefix="sandbox_", ignore_cleanup_errors=True
+    ) as tmp:
         d = Path(tmp)
         script = d / "script.py"
         inp = d / "input.json"
         out = d / "output.jsonl"
         script.write_text(code)
         inp.write_text(input_json)
+        # Pre-created so `_result_from_output` always has a file to read.
+        #
+        # KNOWN AMBIGUITY, recorded rather than fixed here: a child that exits 0
+        # without writing is indistinguishable from a transform that
+        # legitimately matched no rows -- both are
+        # `success=True, rows_jsonl="", rows_written=0`. For LLM-generated code
+        # the first is ordinary (a branch that never fires, a write to the wrong
+        # path, a swallowed exception), and the caller then sees an empty
+        # extraction reported as a clean success with empty stderr.
+        #
+        # Distinguishing them means adding a field to RunResult, which is the
+        # contract the cloud `agentic_kv` engine consumes -- so the decision
+        # belongs with that consumer, not here: it is what must choose whether
+        # "exited 0, wrote nothing" is an error. Tracked for that side rather
+        # than changed unilaterally. Note this diff applies the OPPOSITE
+        # reasoning to billing (`executor/tasks.py`: "a successful run emitting
+        # nothing is unambiguously a broken chain"), which is the asymmetry to
+        # resolve when it is picked up.
         out.write_text("")
 
         # Child stdout/stderr go to FILES in the per-job tempdir, not pipes.
@@ -274,11 +363,13 @@ def run_code(
         # at most `_CAPTURE_LIMIT`, so its memory is bounded by that constant
         # rather than by the child's behaviour.
         #
-        # Note the budget is now shared with the script's own output.jsonl,
-        # since RLIMIT_FSIZE covers every file the child writes. That is the
-        # intended reading of `max_output_bytes` -- a total write budget -- and
-        # a script that spends it on stdout failing to write its result is a
-        # better outcome than an OOM-killed worker.
+        # RLIMIT_FSIZE applies to every file the child writes, so stdout.txt,
+        # stderr.txt and output.jsonl are each capped at `max_output_bytes`.
+        # PER FILE, not in total: the limit bounds each file's maximum offset
+        # and nothing bounds their sum. The only total bound is the tmpfs the
+        # service mounts (256 MiB in compose), which is why that cap exists and
+        # is not redundant with this one -- size it against the per-file limit
+        # times the number of files a job can create, not against this value.
         stdout_path = d / "stdout.txt"
         stderr_path = d / "stderr.txt"
 
@@ -307,6 +398,10 @@ def run_code(
                     stdout=f_out,
                     stderr=f_err,
                     text=True,
+                    # The session-leader half of the old `preexec_fn`, done by
+                    # the runtime rather than by Python bytecode post-fork.
+                    # `_kill_group` depends on the child being a session leader.
+                    start_new_session=True,
                     preexec_fn=_limits(
                         cpu_seconds, memory_mb, max_pids, max_output_bytes
                     ),
@@ -353,6 +448,12 @@ def run_code(
             logger.warning("sandbox: harness failure running generated code: %s", exc)
             if proc is not None:
                 _kill_group(pgid, "sandbox: could not kill the child's process group")
+                # Reap, for the same reason the timeout branch above does:
+                # SIGKILL is asynchronous, so without the wait the child is
+                # left a zombie -- one per occurrence in a long-lived worker --
+                # and `TemporaryDirectory.__exit__` can rmtree the per-job
+                # directory while a not-yet-dead child is still writing into it.
+                _reap(proc)
             return RunResult(
                 success=False, error=f"execution failed: {type(exc).__name__}"
             )

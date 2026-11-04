@@ -203,9 +203,12 @@ def dispatch_job(
                 # the platform service does NOT make: `is_usable` (exhausted
                 # trial) and `is_available` (deprecated).
                 #
-                # Empty for an env-configured extractor (`kv`), which is why
-                # this is a dict rather than three params: the two credential
-                # models coexist, one per extractor.
+                # A dict rather than three params because the shape outlived
+                # the reason for it: `kv` was env-credentialed and sent `{}`
+                # here, so the two credential models had to coexist. Both
+                # extractors now require all three roles, so this is empty only
+                # for a job predating the field. Kept a dict because the roles
+                # are per-extractor data, not three fixed columns.
                 "adapters": adapters or {},
                 "platform_api_key": _platform_api_key(job),
                 # The CAP the engine must enforce (spec §6.1/§6.6), not the

@@ -132,7 +132,7 @@ storage, sweeps, internal views, job views) and `test_table_extractor_routing.py
 
 | Area | Assertions |
 |---|---|
-| **Routing** | `SUPPORTED_EXTRACTORS == ("table",)` · a `kv` submit returns **400, not 202** |
+| **Routing** | ~~`SUPPORTED_EXTRACTORS == ("table",)` · a `kv` submit returns **400, not 202**~~ — **SUPERSEDED.** `kv` is routed now; acceptance is gated on `AGENT_KV_KV_EXTRACTOR_ENABLED` instead, and a `kv` submit returns 400 only where that flag is off. |
 | **Submit validation** | missing `target_table` → 400 · a `kv` option on a table entry → 400 · unknown extractor → 400 · unknown keys **or** unknown options → 400 · more than one extractor entry → 400 · oversized `extractors` payload → 400 |
 | **Auth and tenancy** | no key → 403 · revoked or wrong-org key → 403 · another org's job → **404, not 403** (no existence disclosure) |
 | **Limits** | per-key rate limit → 429 · concurrency cap → 429 · a cancelled job releases its slot |
@@ -142,9 +142,15 @@ storage, sweeps, internal views, job views) and `test_table_extractor_routing.py
 | **Webhook** | delivered once on completion · a delivery failure does not change job state |
 | **Subscription gate** | expired trial and inactive subscription both 402, byte-identical to the API-deployment path · a database error surfaces as 500, never as unmetered access |
 
-The routing row matters most. It is the guard on Task 2's first subtraction, and the
-only thing standing between a future rebase and a `kv` submit that returns 202 and
-then sits in an unconsumed queue forever.
+The routing row mattered most: it was the guard on Task 2's first subtraction, and
+the only thing standing between a future rebase and a `kv` submit that returns 202
+and then sits in an unconsumed queue forever.
+
+**That is exactly what later happened, and the guard did not hold** — `kv` was added
+back to `EXTRACTOR_ROUTES` while no fleet drained `celery_executor_agentic_kv`. The
+replacement is not a test but a default: `AGENT_KV_KV_EXTRACTOR_ENABLED` is false
+unless a deployment sets it, and the chart sets it in the same values file that adds
+the queue subscription. A literal assertion in one repo could not see the other.
 
 The unknown-keys/unknown-options row is not padding either: DRF silently discards
 unrecognised keys, so `"Options"` for `"options"` would be dropped whole, `options`
@@ -271,7 +277,7 @@ no NetworkPolicy, no least-privilege DB role to prove out.
 **Exit criteria for the whole carve-out:**
 - a `table` submit against the deployed stack returns rows for `rent_roll.pdf`
 - `GET /agent-kv/{job}` reports a non-empty `stages: [{"name": "table_extraction", …}]`
-- a `kv` submit returns 400, not 202
+- ~~a `kv` submit returns 400, not 202~~ — superseded; see the Routing row above
 - cancel mid-run stops the run and releases the concurrency slot
 - the xlsx path extracts and is capped
 - page usage and token/cost land on the usual `Audit()` path

@@ -19,6 +19,8 @@ os.environ.setdefault("DJANGO_SETTINGS_MODULE", "backend.settings.test")
 if not apps.ready:
     django.setup()
 
+from django.test import override_settings
+
 from agent_kv.constants import (  # noqa: E402
     EXTRACTOR_ROUTES,
     STAGE_NAMES_BY_EXTRACTOR,
@@ -125,6 +127,7 @@ def test_kv_options_are_rejected_on_a_table_entry():
     assert "qa" in json.dumps(s.errors)
 
 
+@override_settings(AGENT_KV_KV_EXTRACTOR_ENABLED=True)
 def test_a_kv_entry_is_accepted_with_its_own_keys_and_options():
     """The positive case the old `test_a_kv_entry_is_refused_by_name` denied.
 
@@ -361,3 +364,64 @@ def test_validate_view_documents_that_it_is_unrouted():
         "ValidateView is a complete, decorated, live-looking endpoint that "
         "nothing reaches. Say so on the class, not only in execution_urls.py"
     )
+
+
+# ---------------------------------------------------------------------------
+# Routed is not the same as enabled
+# ---------------------------------------------------------------------------
+@override_settings(AGENT_KV_KV_EXTRACTOR_ENABLED=False)
+def test_kv_is_refused_where_the_deployment_has_not_enabled_it():
+    """The guard that makes merge order safe.
+
+    `EXTRACTOR_ROUTES` says where `kv` work GOES. Nothing in this repo can say
+    whether a fleet drains `celery_executor_agentic_kv` -- that queue list
+    ships in the chart, and `SubmitView`'s `get_plugin("agent_kv")` probe is
+    per-deployment, so it is already truthy wherever `table` shipped.
+
+    Without this gate, merging this repo before the chart accepts a `kv` submit
+    with a 202, stages the file, takes a concurrency slot shared with `table`,
+    and leaves the row in DISPATCHED until the sweep force-fails it -- with no
+    error at the producer.
+    """
+    from agent_kv.execution_serializers import ExtractorSerializer
+
+    s = ExtractorSerializer(
+        data={"name": "kv", "keys": {"total": {"description": "Grand total"}}}
+    )
+    assert not s.is_valid()
+    msg = str(s.errors)
+    assert "not enabled on this deployment" in msg, msg
+    # Refused as DISABLED, not as unknown: the deployment has to change, not
+    # the request, and an integrator told "unknown" goes looking for a typo.
+    assert "unknown extractor" not in msg, msg
+
+
+@override_settings(AGENT_KV_KV_EXTRACTOR_ENABLED=False)
+def test_table_is_unaffected_when_kv_is_disabled():
+    """The gate is per-extractor. Disabling `kv` must not touch the extractor
+    that has shipped and does drain its queue."""
+    from agent_kv.execution_serializers import ExtractorSerializer
+
+    s = ExtractorSerializer(
+        data={"name": "table", "keys": {"target_table": "Line items"}}
+    )
+    assert s.is_valid(), str(s.errors)
+
+
+def test_enabled_extractors_tracks_the_flag_in_both_directions():
+    """Pins the derivation itself, not just one branch of it."""
+    from django.test import override_settings as _os
+
+    from agent_kv.execution_serializers import (
+        SUPPORTED_EXTRACTORS,
+        enabled_extractors,
+    )
+
+    with _os(AGENT_KV_KV_EXTRACTOR_ENABLED=True):
+        assert set(enabled_extractors()) == set(SUPPORTED_EXTRACTORS)
+        assert V1_EXTRACTOR_NAME in enabled_extractors()
+    with _os(AGENT_KV_KV_EXTRACTOR_ENABLED=False):
+        assert V1_EXTRACTOR_NAME not in enabled_extractors()
+        # Routed set is unchanged -- only acceptance moves.
+        assert V1_EXTRACTOR_NAME in SUPPORTED_EXTRACTORS
+        assert TABLE_EXTRACTOR_NAME in enabled_extractors()

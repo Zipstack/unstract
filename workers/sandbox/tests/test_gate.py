@@ -239,9 +239,14 @@ class TestEveryRuleIsRegistered:
 
     A rule function that is defined but absent from the tuple is never
     consulted, so the gate silently ACCEPTS what it used to reject. Today that
-    cannot slip through unnoticed: dropping any one of the eight rules was
-    measured to fail between 3 and 10 of the behavioural tests above, because
-    each existing rule has hostile cases of its own. These two tests are here
+    cannot slip through unnoticed: dropping any one of the nine rules was
+    measured to fail between 4 and 9 of the behavioural tests above, because
+    each existing rule has hostile cases of its own. (Method: remove one entry
+    from `_RULES` and run this module; repeat per rule. Measured against 61
+    behavioural cases -- per-rule failures 7, 7, 4, 4, 6, 4, 5, 9, 6 in
+    registry order. The previous wording said "eight rules" and "between 3 and
+    10": the count predated `_rule_sys_reexport` and the range was never
+    re-derived after it.) These two tests are here
     for the rules that do not exist yet -- a new rule added without a
     registry entry, or added with cases that overlap an earlier rule's -- where
     the behavioural tests would pass while the rule did nothing.
@@ -368,3 +373,14 @@ class TestModuleReexportEscapes:
                     if ok:
                         accepted.append(expr)
         assert not accepted, f"the gate still accepts: {sorted(accepted)}"
+
+
+def test_a_from_import_of_an_allowlisted_module_is_permitted():
+    """`_rule_import_from`'s accept path was the one uncovered line in the
+    module: every from-import in the corpus is hostile, so a regression
+    rejecting ALL from-imports would reject legitimate generated code with
+    nothing to catch it. Not a security hole -- a job failure, which is why
+    this is the cheap positive case rather than another hostile one.
+    """
+    ok, reason = check_code_safe("from json import dumps\nx = dumps({})\n")
+    assert ok is True, reason
