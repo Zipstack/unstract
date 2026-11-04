@@ -1,6 +1,9 @@
 name: Release state
 
+# The daily run fails on an overdue pick, an unclassifiable commit or a stale conflict PR.
 on:
+  schedule:
+    - cron: "30 3 * * *"
   workflow_dispatch:
 
 permissions:
@@ -44,3 +47,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         # Conflict PRs here and in the OSS repo (public, so this run's token reads it); once when they are the same.
         run: python3 -c 'import json, os, backport, oss; open(os.environ["GITHUB_STEP_SUMMARY"], "a").write(backport.missed_picks(json.load(open("../../state.json")), [oss.OSS]) + "\n")'
+
+      - name: Check picks and conflict PRs
+        working-directory: .github/release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -c 'import json, sys, backport, oss; sys.exit(backport.state_check(json.load(open("../../state.json")), [oss.OSS]))'

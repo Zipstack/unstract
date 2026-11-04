@@ -53,6 +53,7 @@ def run_gh(args, env=None, retry=True, input=None):
         )
         if not (r.returncode and retry and wait is not None and transient(r.stderr)):
             return r
+        # Safe: the call is retried, and a last failure is returned to the caller.
         print(
             f"::warning::gh {' '.join(args[:2])}: {r.stderr.strip()}; retried in {wait} s"
         )

@@ -211,6 +211,7 @@ def rc(oss, branch, slack_url=""):
         tag = rm.rc_version(oss, f"refs/remotes/origin/{branch}", PREFIX)
         _bump(oss, branch, sha, tag, slack_url, sha)
         print(f"OSS {branch}: new RC {tag}", file=sys.stderr)
+    # Safe at RC: Promote runs the gate again and blocks.
     if "-rc." in tag and gate(oss, branch, tag, "warning") == 1:
         print(
             f"::warning::OSS convergence gate for {branch} did not run (see the log)",
@@ -250,6 +251,7 @@ def _conflicts(branch, force):
     except RuntimeError as e:
         if not force:
             raise
+        # Only under force: the RM's override and reason are recorded on the tag.
         print(
             f"::warning::Could not list open backport conflict PRs on OSS {branch} (forced on): {e}",
             file=sys.stderr,

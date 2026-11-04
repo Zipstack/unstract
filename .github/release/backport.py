@@ -34,6 +34,10 @@ import relstate as rs
 REPO = "."
 MAIN = "origin/main"
 BOT_ENV = {"GIT_COMMITTER_NAME": "releases-bot", "GIT_COMMITTER_EMAIL": rm.BOT_EMAIL}
+# The daily State run fails on an owed fix on a stabilizing line merged longer ago than this, and on a backport
+# conflict PR open longer than CONFLICT_GRACE.
+OWED_GRACE = datetime.timedelta(hours=2)
+CONFLICT_GRACE = datetime.timedelta(hours=24)
 
 
 def run(*args, check=True, input=None, env=None, retry=True):
@@ -87,7 +91,7 @@ def conflict_prs(slug, base=None, token=None):
             "--state",
             "open",
             "--json",
-            "number,url,baseRefName,createdAt",
+            "number,url,baseRefName,headRefName,createdAt",
             "--limit",
             "200",
             token=token,
@@ -97,6 +101,7 @@ def conflict_prs(slug, base=None, token=None):
 
 
 def open_conflicts(lines, annotate="warning"):
+    """A warning is safe for an open conflict PR: the pick is tracked there, and Promote blocks on it."""
     refs, links = [], []
     for slug, branch, token in lines:
         for p in conflict_prs(slug, branch, token):
@@ -197,6 +202,7 @@ def held_line(sha, cls, pr, branch, annotate="warning", slug=None):
 
 
 def held_warnings(awaiting):
+    # Held for the RM is a known state, not a missed pick: Promote blocks on it.
     counts = collections.Counter(b for _, b, *_ in awaiting)
     return [
         f"::warning::{b}: {n} held security/critical fix{'es' if n > 1 else ''}, Backport with confirm_stabilized"
@@ -417,7 +423,7 @@ def pr_classes(slug, since):
             "--json",
             "number,title,labels,mergeCommit",
         )
-    except RuntimeError as e:
+    except RuntimeError as e:  # safe: held() looks each commit up on its own
         print(f"::warning::PR listing failed, classing commit by commit: {e}")
         return {}
     return classes_from_listing(json.loads(out))
@@ -476,6 +482,101 @@ def held(slug, repo, branch, accept=HELD, cache=None, token=None):
         for o in rm.picked_from(repo, c)
     }
     return held_filter(commits, classes, trailers, accept)
+
+
+def backport_head(branch, sha):
+    return f"backport/{branch.split('/', 1)[1]}/{sha[:7]}"
+
+
+def backport_heads():
+    """Pick heads on origin: an open pick or conflict PR, or another run's pick in flight."""
+    out = rm.git(REPO, "ls-remote", "--heads", "origin", "refs/heads/backport/*")
+    return {row.split("\t")[1].removeprefix("refs/heads/") for row in out.splitlines()}
+
+
+def unsettled(targets, held_by_branch, rows, heads):
+    """Owed commits a run leaves in no known state.
+
+    held() already leaves out picked, declined and proven non-fixes; what remains must be held for the RM, on a pick
+    head, or answered by a row of this run (a failed row fails the run on its own).
+    """
+    stabilized = {
+        t["branch"] for t in targets["security_critical"] if t["needs_rm_confirmation"]
+    }
+    answered = {(r[0], r[3]) for r in rows}
+    return [
+        (sha, pr, b, cls)
+        for b, owed in held_by_branch.items()
+        for sha, cls, pr, _ in owed
+        if (sha, b) not in answered
+        and not (b in stabilized and cls in HELD)
+        and backport_head(b, sha) not in heads
+    ]
+
+
+def unsettled_lines(left):
+    out = []
+    for sha, pr, b, cls in left:
+        do = (
+            "fix its PR title or labels and rerun Backport, or record a decline"
+            if cls == UNCLASSIFIABLE
+            else f"dispatch Backport with commits={sha[:12]} lines={rm.line(b)}, or record a decline"
+        )
+        print(
+            f"::error::{sha[:7]} ({cls}, PR {pr}) is owed on {b} and was left undone: {do}"
+        )
+        out.append(f"- {link_src(sha, pr)} ({cls}) → {rm.branch_link(b)}: {do}")
+    return out
+
+
+def owed_now(slug, targets):
+    """held() for every target line after a dispatch, on fresh line tips."""
+    scan, _ = rescan_targets(targets, [])
+    for b in scan:
+        fetch_branch(b)
+    cache = _rescan_classes(slug, scan)
+    return {b: held(slug, REPO, b, accept=a, cache=cache) for b, a in scan.items()}
+
+
+def state_check(state, others=(), slug=None, now=None):
+    """Daily State run: 1 when a pick is overdue, a commit cannot be classed, or a conflict PR is stale."""
+    slug = slug or os.environ["GITHUB_REPOSITORY"]
+    now = now or datetime.datetime.now(datetime.UTC)
+    lines = {
+        r["branch"]: OWED if r["state"] == "stabilizing" else HELD
+        for r in state["branches"]
+        if r["state"] in ("stabilizing", "stabilized")
+    }
+    errors = []
+    prs = [
+        (repo, p) for repo in dict.fromkeys([slug, *others]) for p in conflict_prs(repo)
+    ]
+    for repo, p in prs:
+        if now - rm.ts(p["createdAt"]) > CONFLICT_GRACE:
+            errors.append(
+                f"{repo}#{p['number']} on {p['baseRefName']}: backport conflict PR open since {p['createdAt']}; "
+                "resolve and merge it, or close it to decline"
+            )
+    in_pr = {p["headRefName"] for repo, p in prs if repo == slug}
+    cache = _rescan_classes(slug, lines)
+    for b, accept in lines.items():
+        for sha, cls, pr, title in held(slug, REPO, b, accept=accept, cache=cache):
+            if cls == UNCLASSIFIABLE:
+                errors.append(
+                    f"{sha[:7]} ({pr}, {title}) cannot be classed for {b}: fix its PR title or labels, or record a decline"
+                )
+            elif accept is HELD:  # listed, not failed: it waits for the RM's confirm
+                print(held_line(sha, cls, pr, b, "notice"))
+            elif backport_head(b, sha) in in_pr:
+                continue  # the conflict PR's own age decides
+            elif now - rm.ts(rm.git(REPO, "log", "-1", "--format=%cI", sha)) > OWED_GRACE:
+                errors.append(
+                    f"{sha[:7]} ({cls}, PR {pr}) owed on stabilizing {b} and not picked: "
+                    f"dispatch Backport with commits={sha[:12]}, or record a decline"
+                )
+    for e in errors:
+        print(f"::error::{e}")
+    return 1 if errors else 0
 
 
 def owed_summary(rows, branch):
@@ -553,6 +654,7 @@ def _owed_cell(slug, branch, cache):
     """Owed main fixes on branch as Backport `commits`. A gh or git failure on one line must not fail the State run."""
     try:
         rows = held(slug, REPO, branch, accept=OWED, cache=cache)
+    # Safe as a warning: State's check step repeats the lookup and fails the run.
     except RuntimeError as e:
         print(f"::warning::{branch}: patch list unavailable: {e}")
         return "patch list unavailable (see the run log)"
@@ -594,7 +696,8 @@ def missed_picks(state, others=(), slug=None):
                 for p in conflict_prs(repo, branch)
             ]
             conflicts = ", ".join(prs) or "none"
-        except RuntimeError as e:  # never reads as no PRs
+        # Never reads as no PRs; State's check step lists them again and fails.
+        except RuntimeError as e:
             print(f"::warning::{branch}: conflict PR listing failed: {e}")
             conflicts = "unavailable (see the run log)"
         out.append(
@@ -688,8 +791,8 @@ def rescan(slug, targets, confirm, listed):
     scan, others = rescan_targets(targets, listed)
     rows = []
     for b in others:
-        print(f"::warning::{b} is not a target, skipped")
-        rows.append(("-" * 7, "-", "-", b, "skipped: not a target", "-"))
+        print(f"::error::{b} is not a target: nothing picked there")
+        rows.append(("-" * 7, "-", "-", b, "failed: not a target", "-"))
     classes = _rescan_classes(slug, scan)
     listed_n = len(classes)
     held_by_branch = {
@@ -703,7 +806,7 @@ def rescan(slug, targets, confirm, listed):
         rows.append((sha, pr, UNCLASSIFIABLE, b, "failed: unclassifiable", "-"))
     for b, sha, cls, pr, title in plan:
         rows.append(pick_row(slug, sha, b, cls, pr, title))
-    return rows, awaiting, _rescan_missing(scan, rows, held_by_branch)
+    return rows, awaiting, _rescan_missing(scan, rows, held_by_branch), held_by_branch
 
 
 PUSH_WAITS = (5, 20)  # seconds before the 2nd and 3rd push attempt
@@ -985,7 +1088,7 @@ def pick(slug, sha, branch, title, src):
     fetch_branch(branch)
     if rm.is_converged(REPO, sha, remote, main=MAIN):
         return "skipped", "already on branch"
-    head = f"backport/{branch.split('/', 1)[1]}/{sha[:7]}"
+    head = backport_head(branch, sha)
     # Known limit: an ls-remote error reads as "no head"; the push then fails.
     ls = run("git", "ls-remote", "--exit-code", "--heads", "origin", head, check=False)
     if ls.returncode == 0:
@@ -1085,10 +1188,20 @@ def main():
     except ValueError as e:
         sys.exit(f"::error::lines: {e}")
     if a.rescan:
-        rows, awaiting, missing = rescan(slug, targets, a.confirm_stabilized, listed)
+        rows, awaiting, missing, owed = rescan(
+            slug, targets, a.confirm_stabilized, listed
+        )
     else:
         rows, awaiting = dispatch(slug, targets, a.commits, a.confirm_stabilized, listed)
     failed = sum(res.startswith("failed") for *_, res, _ in rows)
+    # Every owed commit ends the run picked, declined, held, on a pick head, or not a fix; else the run is red.
+    try:
+        if not a.rescan:
+            owed = owed_now(slug, targets)
+        undone = unsettled_lines(unsettled(targets, owed, rows, backport_heads()))
+    except RuntimeError as e:
+        print(f"::error::cannot check what this run left undone: {e}")
+        undone = ["- unchecked: see the run log"]
     if awaiting:
         print("\n".join(held_warnings(awaiting)))  # a held pick is never silent
 
@@ -1131,11 +1244,18 @@ def main():
         ]
         out += [dispatch_row(*r) for r in rows]
         out += [""] + pending
+    if undone:
+        out += [
+            "",
+            "**⛔ Left undone**: owed, and not picked, declined, held or on a pick PR",
+            "",
+            *undone,
+        ]
     print("\n".join(out))
     if os.environ.get("GITHUB_STEP_SUMMARY"):
         with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as f:
             f.write("\n".join(out) + "\n")
-    return 1 if failed else 0
+    return 1 if failed or undone else 0
 
 
 def dispatch(slug, targets, commits, confirm, listed):
@@ -1204,25 +1324,25 @@ def _dispatch_commit(slug, targets, sha, confirm, listed, awaiting, named_pr=Non
     for b in others:
         if cls == "fix" and b in stabilized:  # named, but confirm_stabilized is off
             print(
-                f"::warning::{sha[:7]} (fix, PR {pr}): {b} is stabilized, needs confirm_stabilized"
+                f"::error::{sha[:7]} (fix, PR {pr}): {b} is stabilized, needs confirm_stabilized"
             )
             rows.append(
-                (sha, pr, cls, b, "skipped: stabilized; needs confirm_stabilized", "-")
+                (sha, pr, cls, b, "failed: stabilized; needs confirm_stabilized", "-")
             )
             continue
-        print(f"::warning::{sha[:7]} ({cls}, PR {pr}): {b} is not a target, skipped")
-        rows.append((sha, pr, cls, b, "skipped: not a target", "-"))
+        print(f"::error::{sha[:7]} ({cls}, PR {pr}): {b} is not a target, not picked")
+        rows.append((sha, pr, cls, b, "failed: not a target", "-"))
     if cls == "fix" and confirm and not listed:
         for t in targets["security_critical"]:
             if t["needs_rm_confirmation"]:
-                print(f"::warning::{sha[:7]} (fix, PR {pr}): {t['branch']} needs lines")
+                print(f"::error::{sha[:7]} (fix, PR {pr}): {t['branch']} needs lines")
                 rows.append(
                     (
                         sha,
                         pr,
                         cls,
                         t["branch"],
-                        "skipped: stabilized; a plain fix needs lines",
+                        "failed: stabilized; a plain fix needs lines",
                         "-",
                     )
                 )
