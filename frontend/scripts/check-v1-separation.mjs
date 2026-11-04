@@ -25,12 +25,16 @@ const FRONTEND = path.join(import.meta.dirname, "..");
 const PLUGINS_REL = "src/v1/plugins";
 const PLUGINS = path.join(FRONTEND, PLUGINS_REL);
 
+/* git from PATH on purpose: a developer/CI tool with no fixed location
+ * across macOS and Linux (as in the boundary fixtures). */
+function git(args) {
+  const options = { cwd: FRONTEND, encoding: "utf8" };
+  return spawnSync("git", args, options); // NOSONAR
+}
+
 function trackedPluginPaths() {
   // Paths come back relative to the working directory, i.e. frontend/.
-  const result = spawnSync("git", ["ls-files", "--", PLUGINS_REL], {
-    cwd: FRONTEND,
-    encoding: "utf8",
-  });
+  const result = git(["ls-files", "--", PLUGINS_REL]);
   if (result.error || result.status !== 0) {
     return null;
   }
@@ -56,10 +60,7 @@ function diskPluginPaths() {
 }
 
 const insideGit =
-  spawnSync("git", ["rev-parse", "--is-inside-work-tree"], {
-    cwd: FRONTEND,
-    encoding: "utf8",
-  }).stdout.trim() === "true";
+  git(["rev-parse", "--is-inside-work-tree"]).stdout?.trim() === "true";
 const files = (insideGit && trackedPluginPaths()) || diskPluginPaths();
 
 const plugins = [
@@ -68,7 +69,7 @@ const plugins = [
       .filter((file) => file.includes("/"))
       .map((file) => file.split("/")[0]),
   ),
-].sort();
+].sort((a, b) => a.localeCompare(b));
 
 if (plugins.length === 0) {
   console.log("check-v1-separation: ok");

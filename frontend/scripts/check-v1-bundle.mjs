@@ -70,6 +70,8 @@ function moduleName(id) {
   return rel.startsWith("..") ? file : rel;
 }
 
+const byName = (a, b) => a.localeCompare(b);
+
 function reporter(chunks) {
   return {
     name: "v1-bundle-report",
@@ -87,8 +89,8 @@ function reporter(chunks) {
           modules: Object.keys(output.modules)
             .map(moduleName)
             .filter(Boolean)
-            .sort(),
-          imports: [...output.imports, ...output.dynamicImports].sort(),
+            .sort(byName),
+          imports: [...output.imports, ...output.dynamicImports].sort(byName),
         });
       }
     },
@@ -128,39 +130,46 @@ function isV1Chunk(chunk) {
   return own.length > 0 && own.every((k) => k === "v1");
 }
 
-function check(report) {
-  const byName = new Map(report.chunks.map((chunk) => [chunk.fileName, chunk]));
-  const problems = [];
-  const v1Chunks = report.chunks.filter(isV1Chunk);
-  for (const root of v1Chunks) {
-    const seen = new Set();
-    const queue = [{ chunk: root, via: [] }];
-    while (queue.length > 0) {
-      const { chunk, via } = queue.shift();
-      if (seen.has(chunk.fileName)) {
-        continue;
-      }
-      seen.add(chunk.fileName);
-      for (const name of chunk.modules) {
-        const k = kind(name);
-        if (k === "v0" || k === "antd") {
-          const where = via.length
-            ? ` through ${[...via, chunk.fileName].join(" -> ")}`
-            : "";
-          const what = k === "v0" ? "v0 module" : "antd module";
-          problems.push(
-            `${root.fileName} (v1${root.facade ? `, from ${root.facade}` : ""}) pulls in ${what} ${name}${where}.`,
-          );
-        }
-      }
-      for (const next of chunk.imports) {
-        const target = byName.get(next);
-        if (target) {
-          queue.push({ chunk: target, via: [...via, chunk.fileName] });
-        }
+/* Every chunk a v1 chunk loads, itself included, with the chunks in between. */
+function reachable(root, chunksByName) {
+  const seen = new Map([[root.fileName, []]]);
+  const queue = [root];
+  while (queue.length > 0) {
+    const chunk = queue.shift();
+    const via = [...seen.get(chunk.fileName), chunk.fileName];
+    for (const next of chunk.imports) {
+      const target = chunksByName.get(next);
+      if (target && !seen.has(next)) {
+        seen.set(next, via);
+        queue.push(target);
       }
     }
   }
+  return [...seen].map(([fileName, via]) => ({
+    chunk: chunksByName.get(fileName),
+    via,
+  }));
+}
+
+function describe(root, name, path) {
+  const what = kind(name) === "v0" ? "v0 module" : "antd module";
+  const from = root.facade ? `, from ${root.facade}` : "";
+  const where = path.length > 1 ? ` through ${path.join(" -> ")}` : "";
+  return `${root.fileName} (v1${from}) pulls in ${what} ${name}${where}.`;
+}
+
+function check(report) {
+  const chunksByName = new Map(
+    report.chunks.map((chunk) => [chunk.fileName, chunk]),
+  );
+  const v1Chunks = report.chunks.filter(isV1Chunk);
+  const problems = v1Chunks.flatMap((root) =>
+    reachable(root, chunksByName).flatMap(({ chunk, via }) =>
+      chunk.modules
+        .filter((name) => ["v0", "antd"].includes(kind(name)))
+        .map((name) => describe(root, name, [...via, chunk.fileName])),
+    ),
+  );
   return { v1Chunks: v1Chunks.length, problems };
 }
 

@@ -84,7 +84,7 @@ function globToRegExp(glob) {
     } else if (ch === "?") {
       source += "[^/]";
     } else {
-      source += ch.replace(/[.+^${}()|[\]\\]/g, "\\$&");
+      source += ch.replace(/[.+^${}()|[\]\\]/g, String.raw`\$&`);
     }
   }
   return new RegExp(`^${source}$`);
@@ -109,19 +109,12 @@ function readAllowlist() {
 }
 
 function changedFromGit(base) {
-  const result = spawnSync(
-    "git",
-    [
-      "diff",
-      "--name-only",
-      "--no-renames",
-      "--relative",
-      `${base}...HEAD`,
-      "--",
-      ".",
-    ],
-    { cwd: FRONTEND, encoding: "utf8" },
-  );
+  const args = ["diff", "--name-only", "--no-renames", "--relative"];
+  args.push(`${base}...HEAD`, "--", ".");
+  const options = { cwd: FRONTEND, encoding: "utf8" };
+  // git from PATH on purpose: a developer/CI tool with no fixed location
+  // across macOS and Linux (as in the boundary fixtures).
+  const result = spawnSync("git", args, options); // NOSONAR
   if (result.error || result.status !== 0) {
     console.error(
       `check-v1-seam: git diff against '${base}' failed: ${result.error?.message ?? result.stderr.trim()}`,
