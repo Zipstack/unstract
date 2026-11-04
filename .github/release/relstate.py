@@ -508,13 +508,28 @@ def _line_state(states):
     return "past-eos"
 
 
+def _late(row, t, reg):
+    """Whether t's first RC on the line came after another target's GA there (on-prem enabled after cloud GA)."""
+    rcs = row["targets"][t]["rcs"]
+    # t's own GA follows its RCs, so every GA on the line counts.
+    gas = [_ts(u["ga"]["pushed_at"]) for u in row["targets"].values() if u["ga"]]
+    # Push times, not git tags: a late target may build the tip's RC tag, made before that GA.
+    return bool(rcs and gas) and _ts(reg[TARGETS[t][0]][rcs[0]]["pushed_at"]) > min(gas)
+
+
 def _set_states(rows, now):
     for name, row in rows.items():
         for t, tt in row["targets"].items():
             tt["state"] = target_state(t, name, rows, now)
         row["enabled"] = sorted(row["targets"])
         # No enabled target (cut, nothing built yet) is stabilizing: every line builds cloud by default.
-        row["state"] = _line_state({tt["state"] for tt in row["targets"].values()})
+        # A late target keeps the line alive until its GA.
+        row["state"] = _line_state(
+            {
+                "stabilized" if tt["late"] and not tt["ga"] else tt["state"]
+                for tt in row["targets"].values()
+            }
+        )
 
 
 def _sets(ordered):
@@ -567,6 +582,9 @@ def derive(repo, now, registry=registry_tags, rc=None):
     for t, (builds, anchor) in TARGETS.items():
         _enable(repo, t, builds, reg, refs, rows, shipped, anomalies)
         _fill_ga(repo, t, builds, anchor, reg, refs, rows)
+    for row in rows.values():
+        for t, tt in row["targets"].items():
+            tt["late"] = _late(row, t, reg)
 
     _set_states(rows, now)
 
@@ -697,13 +715,6 @@ def stabilizes(row, target, done=()):
     )
 
 
-def reopens(row, targets):
-    """Whether an RC for targets reopens the line row: one of them has no GA on it yet (on-prem enabled after cloud
-    GA, say), so the line is no longer GA on every enabled target and its OSS line's STABILIZED tag goes.
-    """
-    return not all(row["targets"].get(t, {}).get("ga") for t in targets)
-
-
 def promote_blockers(state, branch, target):
     """Older lines not GA for `target` yet: Promote of `branch` waits for them.
 
@@ -747,7 +758,7 @@ def summary(state):
         if tt["state"] == "stabilized":
             return f"stabilized (GA {tt['ga']['tag']})"
         if tt["state"] == "stabilizing" and tt["rcs"]:
-            return f"stabilizing (rc.{VER_RE.fullmatch(tt['rcs'][-1])[4]})"
+            return f"stabilizing (rc.{VER_RE.fullmatch(tt['rcs'][-1])[4]}{', late' * tt['late']})"
         return tt["state"]
 
     def slack(b):

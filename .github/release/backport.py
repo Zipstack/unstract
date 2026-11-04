@@ -425,7 +425,9 @@ def held(slug, repo, branch, accept=HELD, cache=None, token=None):
 
 
 def owed_summary(rows, branch):
-    """UNCLASSIFIABLE rows are listed but left out of the commits line: Backport cannot class them either."""
+    """Information only: a stabilized line takes no plain fix, so Backport picks only what gets a security/critical
+    label.
+    """
     out = [
         f"**Owed picks** for `{branch}`: main fixes since the cut, neither picked nor declined",
         "",
@@ -435,14 +437,7 @@ def owed_summary(rows, branch):
     out += ["| commit | PR | title | class |", "|---|---|---|---|"]
     cell = lambda t: t.replace("|", r"\|")  # a pipe in a title would split the row
     out += [f"| `{s[:7]}` | {pr} | {cell(title)} | {cls} |" for s, cls, pr, title in rows]
-    return "\n".join(
-        out
-        + [
-            "",
-            "Backport commits: "
-            + " ".join(s for s, cls, *_ in rows if cls != UNCLASSIFIABLE),
-        ]
-    )
+    return "\n".join(out + ["", "Label any you need security or critical."])
 
 
 def warn_held(slug, repo, branch, annotate="warning", token=None):

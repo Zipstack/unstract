@@ -72,18 +72,19 @@ class Scenario(unittest.TestCase):
     def ga(self, artifact, tag):
         return {"tag": tag, **self.reg[artifact][tag]}
 
-    # Each scenario builds on the previous one.
+    # Each scenario builds on the previous one. The RCs and cloud GA share one push time, before any chart: on-prem is
+    # enabled before cloud GA, so no target is late.
     def cut_with_rc(self):
         self.cut("1.5")
-        self.push("cloud/backend", "v1.5.0-rc.1", git_ref="release/1.5")
+        self.push("cloud/backend", "v1.5.0-rc.1", days=400, git_ref="release/1.5")
 
     def cloud_ga(self):
         self.cut_with_rc()
-        self.push("cloud/backend", "v1.5.0", git_ref="release/1.5")
+        self.push("cloud/backend", "v1.5.0", days=400, git_ref="release/1.5")
 
     def onprem_rc(self):
         self.cloud_ga()
-        self.push("on-prem/backend", "v1.5.0-rc.3", git_ref="release/1.5")
+        self.push("on-prem/backend", "v1.5.0-rc.3", days=400, git_ref="release/1.5")
 
     def onprem_ga(self, chart_days=10):
         self.onprem_rc()
@@ -99,7 +100,13 @@ class Scenario(unittest.TestCase):
 
     def cloud_after_2(self, state):
         ga = self.ga("cloud/backend", "v1.5.0")
-        return {"state": state, "rcs": ["v1.5.0-rc.1"], "ga": ga, "promoted": ga}
+        return {
+            "state": state,
+            "rcs": ["v1.5.0-rc.1"],
+            "ga": ga,
+            "promoted": ga,
+            "late": False,
+        }
 
     def onprem(self, state, chart=True):
         return {
@@ -107,6 +114,7 @@ class Scenario(unittest.TestCase):
             "rcs": ["v1.5.0-rc.3"],
             "ga": self.ga("chart/unstract-platform", "v1.5.1") if chart else None,
             "promoted": None,
+            "late": False,
         }
 
     def test_cut_with_cloud_rc(self):
@@ -127,6 +135,7 @@ class Scenario(unittest.TestCase):
                         "rcs": ["v1.5.0-rc.1"],
                         "ga": None,
                         "promoted": None,
+                        "late": False,
                     }
                 },
             },
@@ -159,7 +168,7 @@ class Scenario(unittest.TestCase):
             },
         )
 
-    def test_onprem_rc_reopens_branch(self):
+    def test_onprem_rc_before_cloud_ga_keeps_the_line_stabilizing(self):
         self.onprem_rc()
         st = self.state()
         self.assertEqual(
@@ -178,6 +187,91 @@ class Scenario(unittest.TestCase):
             },
         )
         self.assertEqual(st["backport_targets"]["fix"], ["release/1.5"])
+
+    def late_onprem(self):
+        self.cloud_ga()
+        self.push(
+            "on-prem/backend", "v1.5.0-rc.1"
+        )  # the tip's RC tag, built after the cloud GA
+
+    def test_late_onprem_keeps_the_line_stabilized(self):
+        self.late_onprem()
+        st = self.state()
+        b = self.branch(st, "release/1.5")
+        self.assertEqual(
+            (b["state"], b["targets"]["on-prem"]),
+            (
+                "stabilized",
+                {
+                    "state": "stabilizing",
+                    "rcs": ["v1.5.0-rc.1"],
+                    "ga": None,
+                    "promoted": None,
+                    "late": True,
+                },
+            ),
+        )
+        self.assertFalse(b["targets"]["cloud"]["late"])
+        self.assertEqual(
+            st["backport_targets"],
+            {
+                "fix": [],
+                "security_critical": [
+                    {"branch": "release/1.5", "needs_rm_confirmation": True}
+                ],
+            },
+        )
+        self.assertEqual(st["supported"]["on-prem"], ["release/1.5"])
+        self.assertIn(
+            "| stabilized | stabilized (GA v1.5.0) | stabilizing (rc.1, late) |",
+            rs.summary(st),
+        )
+        self.push(
+            "chart/unstract-platform", "1.5.0"
+        )  # on-prem GA, on the cloud GA's commit
+        b = self.branch(self.state(), "release/1.5")
+        self.assertEqual(
+            (b["state"], b["targets"]["on-prem"]["state"]), ("stabilized", "stabilized")
+        )
+
+    def test_late_onprem_after_a_patch_pick(self):
+        self.cloud_ga()
+        self.commit("pick", "release/1.5")
+        self.push("on-prem/backend", "v1.5.1-rc.1", git_ref="release/1.5")
+        st = self.state()
+        b = self.branch(st, "release/1.5")
+        self.assertEqual(
+            (b["state"], b["targets"]["on-prem"]["late"]), ("stabilized", True)
+        )
+        self.assertEqual(st["backport_targets"]["fix"], [])
+
+    def test_late_onprem_holds_a_line_past_eos_for_cloud(self):
+        self.cloud_ga()
+        self.cut("1.6")
+        self.push("cloud/backend", "v1.6.0-rc.1", git_ref="release/1.6")
+        self.push("cloud/backend", "v1.6.0", git_ref="release/1.6")
+        self.push("on-prem/backend", "v1.5.0-rc.1")
+        st = self.state()
+        b = self.branch(st, "release/1.5")
+        self.assertEqual(
+            (b["state"], b["targets"]["cloud"]["state"]), ("stabilized", "past-eos")
+        )
+        self.assertEqual(st["retire"], [])
+        self.assertNotIn("release/1.5", st["backport_targets"]["fix"])
+        self.assertIsNone(
+            rs.retire_line_refusal(st, "release/1.5")
+        )  # retire_line stays a release manager's call
+
+    def test_failed_registry_read_is_never_not_late(self):
+        self.late_onprem()
+
+        def registry(a):
+            if a == "on-prem/backend":
+                raise RuntimeError("registry read on-prem/backend: HTTP 503")
+            return self.reg.get(a, {})
+
+        with self.assertRaisesRegex(RuntimeError, "HTTP 503"):
+            rs.derive(self.repo, NOW, registry)
 
     def test_both_stabilized(self):
         self.onprem_ga()
@@ -601,6 +695,7 @@ class Scenario(unittest.TestCase):
                 "rcs": ["v1.5.0-rc.3"],
                 "ga": None,
                 "promoted": self.ga("on-prem/backend", "v1.5.1"),
+                "late": False,
             },
         )
         self.push(
@@ -870,20 +965,6 @@ class Scenario(unittest.TestCase):
         self.push("chart/unstract-platform", "1.5.0")  # its git tag v1.5.0 is cloud's
         # A later patch: oss.promote keeps the tag.
         self.assertTrue(rs.stabilizes(row(), "cloud"))
-
-    def test_reopens_when_a_built_target_has_no_ga(self):
-        def row():
-            return self.branch(self.state(), "release/1.5")
-
-        self.cloud_ga()
-        self.assertFalse(rs.reopens(row(), ["cloud"]))  # a cloud patch RC
-        self.assertTrue(rs.reopens(row(), ["on-prem"]))  # on-prem enabled late
-        self.assertTrue(rs.reopens(row(), ["cloud", "on-prem"]))
-        self.push("on-prem/backend", "v1.5.1-rc.1", git_ref="release/1.5")
-        self.push(
-            "chart/unstract-platform", "1.5.1", git_ref="release/1.5"
-        )  # on-prem GA too
-        self.assertFalse(rs.reopens(row(), ["cloud", "on-prem"]))
 
     def test_oss_repo_config(self):
         # The OSS repo runs this same file: one target, oss, read from ee- git tags; plain v* community tags never count.

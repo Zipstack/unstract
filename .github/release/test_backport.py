@@ -328,7 +328,7 @@ class MainOrder(unittest.TestCase):
 
 
 class OwedSummary(unittest.TestCase):
-    def test_table_and_backport_line(self):
+    def test_table_and_label_hint(self):
         a, b = "a" * 40, "b" * 40
         out = bp.owed_summary(
             [(a, "fix", "#3", "UN-1 [FIX] x | y"), (b, bp.UNCLASSIFIABLE, "no PR", "z")],
@@ -336,9 +336,10 @@ class OwedSummary(unittest.TestCase):
         )
         self.assertIn("| `aaaaaaa` | #3 | UN-1 [FIX] x \\| y | fix |", out)
         self.assertIn(f"| `bbbbbbb` | no PR | z | {bp.UNCLASSIFIABLE} |", out)
-        self.assertTrue(
-            out.endswith(f"Backport commits: {a}")
-        )  # UNCLASSIFIABLE stays out of the paste line
+        self.assertTrue(out.endswith("Label any you need security or critical."))
+        self.assertNotIn(
+            "Backport commits", out
+        )  # a plain fix on a stabilized line is never picked
         self.assertTrue(bp.owed_summary([], "release/0.187").endswith("none"))
 
 

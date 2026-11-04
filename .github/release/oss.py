@@ -217,20 +217,6 @@ def rc(oss, branch, slack_url=""):
     return tag
 
 
-def reopen(oss, branch):
-    """Its cloud line built a target with no GA yet, so the OSS line is stabilizing again and its next main push
-    catches up the plain fixes it skipped.
-    """
-    mark = rs.STABILIZED + branch.removeprefix(RELEASE)
-    if not rs._tag_commit(oss, mark):
-        return []
-    _push(oss, f":refs/tags/{mark}")
-    rm.git(oss, "tag", "-d", mark)
-    return [
-        f"- OSS `{branch}`: deleted `{mark}`, stabilizing until Promote's last GA tags it again"
-    ]
-
-
 # Known limit: force accepts an empty reason.
 def promote(repo, oss, cloud_rc, force=False, reason="", stabilized=False):
     """Known limit: stabilized/X.Y marks the promote, not the retag or chart push after it; if those fail, the OSS
