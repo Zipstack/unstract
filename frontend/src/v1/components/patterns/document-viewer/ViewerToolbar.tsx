@@ -76,8 +76,10 @@ function PageInput({
   const id = useId();
   const commit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const page = Number.parseInt(draft ?? "", 10);
-    if (Number.isInteger(page) && page >= 1 && page <= pageCount) {
+    // Whole digits only: parseInt would read "12.7" or "3abc" as a page.
+    const typed = (draft ?? "").trim();
+    const page = /^\d+$/.test(typed) ? Number(typed) : Number.NaN;
+    if (page >= 1 && page <= pageCount) {
       onPageChange(page - 1);
     }
     setDraft(null);

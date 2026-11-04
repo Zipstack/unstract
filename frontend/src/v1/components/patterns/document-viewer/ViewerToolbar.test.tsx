@@ -70,6 +70,17 @@ it("jumps to a typed page on Enter and restores a page out of range", async () =
   expect(box.value).toBe("1");
 });
 
+it("restores a typed page that is not a whole number", async () => {
+  const props = setup();
+  const box = screen.getByLabelText<HTMLInputElement>("Page");
+  for (const typed of ["2.7", "3abc"]) {
+    await userEvent.clear(box);
+    await userEvent.type(box, `${typed}{Enter}`);
+    expect(box.value).toBe("1");
+  }
+  expect(props.onPageChange).not.toHaveBeenCalled();
+});
+
 it("zooms, fits, and shows the active fit as pressed", async () => {
   const props = setup({ zoomMode: "fit-width", canZoomIn: false });
   expect(
