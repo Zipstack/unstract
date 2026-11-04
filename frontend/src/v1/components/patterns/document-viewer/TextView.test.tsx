@@ -115,6 +115,40 @@ it("centres a wrapped line again once the browser has drawn it", () => {
   }
 });
 
+it("lets a later jump to the top win over a highlight still being centred", () => {
+  vi.useFakeTimers({
+    toFake: ["requestAnimationFrame", "cancelAnimationFrame"],
+  });
+  try {
+    const ref = createRef<PdfPageListHandle>();
+    const { container } = render(
+      <TextView
+        ref={ref}
+        text={text}
+        highlights={[{ id: "total", line: 3 }]}
+      />,
+    );
+    const root = screen.getByRole("region", { name: "Document text" });
+    Object.defineProperty(root, "clientHeight", { value: 100 });
+    let height = 20;
+    Object.defineProperties(line(container, 3), {
+      offsetTop: { value: 400 },
+      offsetHeight: { get: () => height },
+    });
+    act(() => {
+      ref.current?.scrollToHighlight("total");
+      ref.current?.scrollToPage(0);
+    });
+    height = 60;
+    act(() => {
+      vi.advanceTimersToNextFrame();
+    });
+    expect(root.scrollTop).toBe(0);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
 it("says no text was found for blank text, not that there is no document", () => {
   render(<TextView text={"  \n "} />);
   expect(screen.getByText("No text found")).toBeTruthy();
