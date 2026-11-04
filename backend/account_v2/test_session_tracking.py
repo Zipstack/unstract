@@ -13,12 +13,13 @@ from unittest.mock import patch
 
 from django.conf import settings
 from django.contrib.sessions.models import Session
-from django.core.cache import cache
+from django.core.cache import cache, caches
 from django.db import connection
 from django.test import SimpleTestCase, override_settings
 from django.urls import include, path
 from django.utils import timezone
 from django.utils.crypto import salted_hmac
+from platform_api.models import ApiKeyPermission, PlatformApiKey
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.test import APIClient, APITestCase
 
@@ -67,11 +68,26 @@ def resolve_test_location(ip_address: str) -> str:
     return f"near {ip_address}"
 
 
+def resolve_long_location(ip_address: str) -> str:
+    return "x" * 1000
+
+
+def _isolate_side_effects(test) -> None:
+    """Keep socket broadcasts out of the tests, and the shared cache clean."""
+    rooms = patch("account_v2.session_tracking._close_socket_rooms")
+    test.closed_rooms = rooms.start()
+    test.addCleanup(rooms.stop)
+    test.addCleanup(cache.delete, _IDLE_SWEEP_CACHE_KEY)
+    if hasattr(cache, "delete_pattern"):
+        test.addCleanup(cache.delete_pattern, f"{_TOUCH_CACHE_PREFIX}*")
+
+
 @override_settings(ROOT_URLCONF=__name__, MIDDLEWARE=_MIDDLEWARE)
 class SessionEndpointsTest(APITestCase):
     def setUp(self) -> None:
         Organization.objects.create(name=ORG, display_name="Org A", organization_id=ORG)
         self.user = self._make_user("alice@example.com")
+        _isolate_side_effects(self)
         registry = patch(
             "account_v2.custom_auth_middleware."
             "AuthenticationPluginRegistry.is_plugin_available",
@@ -575,6 +591,134 @@ class SessionEndpointsTest(APITestCase):
         self.assertEqual(len(response.json()), 1)
         self.assertIsNone(response.json()[0]["location"])
 
+    def test_platform_key_cannot_manage_sessions(self) -> None:
+        service_account = User.objects.create_user(
+            username="svc@example.com",
+            email="svc@example.com",
+            password=secrets.token_urlsafe(),
+            is_service_account=True,
+        )
+        key = PlatformApiKey.objects.create(
+            name="key",
+            description="test key",
+            organization=Organization.objects.get(organization_id=ORG),
+            api_user=service_account,
+            permission=ApiKeyPermission.FULL_ACCESS,
+        )
+        self._sign_in(service_account)
+        record = SessionRecord.objects.get(user=service_account)
+        bearer = APIClient(HTTP_AUTHORIZATION=f"Bearer {key.key}")
+
+        for method, url in (
+            ("get", SESSIONS_URL),
+            ("post", REVOKE_ALL_URL),
+            ("delete", f"{SESSIONS_URL}{record.id}/"),
+        ):
+            with self.subTest(method=method):
+                self.assertEqual(getattr(bearer, method)(url).status_code, 403)
+        service_account.refresh_from_db()
+        self.assertEqual(service_account.session_generation, 0)
+        self.assertTrue(SessionRecord.objects.filter(id=record.id).exists())
+
+    def test_a_failing_activity_refresh_does_not_fail_the_request(self) -> None:
+        laptop = self._sign_in(self.user)
+        cache.delete(f"{_TOUCH_CACHE_PREFIX}{self._key(laptop)}")
+
+        with patch(
+            "account_v2.session_tracking.django_cache.add",
+            side_effect=ConnectionError("redis down"),
+        ):
+            self.assertEqual(laptop.get(SESSIONS_URL).status_code, 200)
+
+    def test_a_database_error_in_the_activity_refresh_is_contained(self) -> None:
+        # Inside the test case's transaction, as ATOMIC_REQUESTS would wrap it: a
+        # real database error must not leave that transaction unusable.
+        laptop = self._sign_in(self.user)
+        SessionRecord.objects.filter(session_key=self._key(laptop)).delete()
+
+        with patch(
+            "account_v2.session_tracking.SessionTracker._upsert",
+            side_effect=_fail_a_query,
+        ):
+            self.assertEqual(laptop.get(SESSIONS_URL).status_code, 200)
+        self.assertTrue(User.objects.filter(pk=self.user.pk).exists())
+
+    def test_revoke_one_keeps_the_session_when_its_cached_copy_cannot_go(
+        self,
+    ) -> None:
+        laptop = self._sign_in(self.user)
+        desktop = self._sign_in(self.user)
+        desktop_id = SessionRecord.objects.get(session_key=self._key(desktop)).id
+        session_cache = caches[settings.SESSION_CACHE_ALIAS]
+
+        with (
+            patch.object(
+                session_cache, "delete", side_effect=ConnectionError("redis down")
+            ),
+            self.assertRaises(ConnectionError),
+        ):
+            laptop.delete(f"{SESSIONS_URL}{desktop_id}/")
+
+        # Nothing was half-ended: the session works and is still listed, so the
+        # revoke can be retried.
+        self.assertEqual(desktop.get(SESSIONS_URL).status_code, 200)
+        self.assertEqual(len(laptop.get(SESSIONS_URL).json()), 2)
+        self.assertEqual(laptop.delete(f"{SESSIONS_URL}{desktop_id}/").status_code, 204)
+
+    def test_revoking_closes_the_sessions_socket_rooms(self) -> None:
+        laptop = self._sign_in(self.user)
+        desktop = self._sign_in(self.user)
+        desktop_key = self._key(desktop)
+        desktop_id = SessionRecord.objects.get(session_key=desktop_key).id
+
+        laptop.delete(f"{SESSIONS_URL}{desktop_id}/")
+        self.closed_rooms.assert_called_once_with(desktop_key)
+
+        self.closed_rooms.reset_mock()
+        laptop_key = self._key(laptop)
+        laptop.post(REVOKE_ALL_URL)
+        rooms = {call.args[0] for call in self.closed_rooms.call_args_list}
+        self.assertEqual(rooms, {laptop_key, f"user:{self.user.pk}"})
+
+    def test_revoking_clears_the_sessions_logs(self) -> None:
+        laptop = self._sign_in(self.user)
+        desktop = self._sign_in(self.user)
+        desktop_key = self._key(desktop)
+        desktop_id = SessionRecord.objects.get(session_key=desktop_key).id
+
+        with patch(
+            "account_v2.session_tracking.LogService.remove_logs_on_logout"
+        ) as remove_logs:
+            laptop.delete(f"{SESSIONS_URL}{desktop_id}/")
+
+        remove_logs.assert_called_once_with(session_id=desktop_key)
+
+    def test_sign_out_survives_a_failure_to_forget_the_session(self) -> None:
+        laptop = self._sign_in(self.user)
+        key = self._key(laptop)
+
+        with patch(
+            "account_v2.session_tracking.SessionTracker.forget",
+            side_effect=RuntimeError("boom"),
+        ):
+            laptop.logout()
+
+        self.assertFalse(Session.objects.filter(session_key=key).exists())
+
+    def test_an_over_long_location_is_truncated(self) -> None:
+        _location_resolver.cache_clear()
+        self.addCleanup(_location_resolver.cache_clear)
+        laptop = self._sign_in(self.user)
+        SessionRecord.objects.filter(session_key=self._key(laptop)).delete()
+
+        with override_settings(
+            SESSION_LOCATION_RESOLVER=f"{__name__}.resolve_long_location"
+        ):
+            laptop.get(SESSIONS_URL)
+
+        record = SessionRecord.objects.get(session_key=self._key(laptop))
+        self.assertEqual(len(record.location), 255)
+
     def test_unauthenticated_caller_is_refused(self) -> None:
         self.assertEqual(APIClient().get(SESSIONS_URL).status_code, 401)
 
@@ -623,6 +767,7 @@ class IdentityProviderSessionTest(APITestCase):
             password=secrets.token_urlsafe(),
         )
         self.plugin = self._CloudStylePlugin()
+        _isolate_side_effects(self)
         for target in (
             "account_v2.custom_auth_middleware.AuthenticationPluginRegistry",
             "account_v2.session_tracking.AuthenticationPluginRegistry",
@@ -675,6 +820,32 @@ class IdentityProviderSessionTest(APITestCase):
             self.assertEqual(laptop.post(REVOKE_ALL_URL).status_code, 204)
 
         self.assertEqual(desktop.get(SESSIONS_URL).status_code, 401)
+
+    def test_provider_failure_on_one_session_is_a_502_not_a_404(self) -> None:
+        laptop = self._sign_in()
+        # The exception logger signals 5xx responses, which the test client would
+        # otherwise re-raise instead of returning the response.
+        laptop.raise_request_exception = False
+
+        with patch.object(
+            self.plugin, "revoke_idp_sessions", side_effect=RuntimeError("down")
+        ):
+            response = laptop.delete(f"{SESSIONS_URL}idp-1/")
+
+        self.assertEqual(response.status_code, 502)
+
+    def test_malformed_provider_entries_are_dropped(self) -> None:
+        laptop = self._sign_in()
+        good = self.plugin.list_idp_sessions(None)[0]
+        malformed = [{"id": "idp-2"}, {**good, "id": "idp-3", "last_active": "later"}]
+
+        with patch.object(
+            self.plugin, "list_idp_sessions", return_value=[good, *malformed]
+        ):
+            response = laptop.get(SESSIONS_URL)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual([s["id"] for s in response.json()][1:], ["idp-1"])
 
     def test_provider_session_id_is_revoked_through_the_provider(self) -> None:
         laptop = self._sign_in()

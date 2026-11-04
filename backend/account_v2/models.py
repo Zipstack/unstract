@@ -209,9 +209,10 @@ class User(AbstractUser):
     ) -> None:
         # Sign out everywhere bumps the generation with a bare UPDATE. A full save
         # of a User loaded before that bump would write the old value back and
-        # revive every session it revoked, so a full save writes the column to
-        # itself instead: a no-op in the database, and otherwise Django's own
-        # full save (update_fields stays None for receivers and deferred fields).
+        # revive the revoked sessions it could not delete (those with no record),
+        # so a full save writes the column to itself instead: a no-op in the
+        # database, and otherwise Django's own full save (update_fields stays
+        # None for receivers and deferred fields).
         protect = (
             update_fields is None
             and not force_insert
@@ -322,7 +323,8 @@ class SessionRecord(models.Model):
     Deliberately a plain user FK with no organization scoping: a user's sessions
     span organizations and must all be listed from any one of them. Liveness is
     still owned by `django_session`; a row whose session has expired or gone is
-    stale and is pruned when the user's sessions are listed.
+    stale. It is pruned when its user lists their sessions or signs in, and by the
+    hourly idle sweep once unused for longer than a session lives.
     """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -336,7 +338,7 @@ class SessionRecord(models.Model):
     ip_address = models.GenericIPAddressField(null=True, blank=True)
     location = models.CharField(max_length=255, blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
-    # Indexed for the idle sweep at sign-in.
+    # Indexed for the idle sweep.
     last_active_at = models.DateTimeField(db_index=True)
 
     class Meta:

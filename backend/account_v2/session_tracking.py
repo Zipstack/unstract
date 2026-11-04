@@ -20,7 +20,8 @@ from typing import Any
 from django.conf import settings
 from django.contrib.sessions.models import Session
 from django.core.cache import cache as django_cache
-from django.db import IntegrityError, transaction
+from django.core.cache import caches
+from django.db import transaction
 from django.db.models import F
 from django.http import HttpRequest
 from django.utils import timezone
@@ -29,6 +30,7 @@ from logs_helper.log_service import LogService
 
 from account_v2.authentication_plugin_registry import AuthenticationPluginRegistry
 from account_v2.models import SessionRecord, User
+from account_v2.serializer import SignedInSessionSerializer
 
 logger = logging.getLogger(__name__)
 
@@ -40,8 +42,9 @@ _TOUCH_CACHE_PREFIX = "session_record_touch:"
 IDLE_SWEEP_INTERVAL = timedelta(hours=1)
 _IDLE_SWEEP_CACHE_KEY = "session_record_idle_sweep"
 
-# First match wins, so browsers built on Chromium are listed before Chrome and
-# Chrome before Safari (each carries the tokens of the ones after it).
+# First match wins. Chromium-based browsers also send "Chrome/" and "Safari/",
+# and Chrome sends "Safari/", so those come first; Safari itself is told apart by
+# its "Version/" token.
 _BROWSERS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("Edge", re.compile(r"\bEdg(?:e|A|iOS)?/")),
     ("Opera", re.compile(r"\b(?:OPR|Opera)/")),
@@ -110,6 +113,10 @@ def _client_ip(request: HttpRequest) -> str | None:
     return request.META.get("REMOTE_ADDR") or None
 
 
+class IdentityProviderError(Exception):
+    """The identity provider failed while ending a session."""
+
+
 def _session_store_class() -> type:
     return import_module(settings.SESSION_ENGINE).SessionStore
 
@@ -122,20 +129,54 @@ def _auth_service() -> Any:
     return AuthenticationService()
 
 
+_LOCATION_MAX_LENGTH = SessionRecord._meta.get_field("location").max_length
+
+
+def _session_details(request: HttpRequest) -> dict[str, Any]:
+    """What a record stores about the browser, resolved before any transaction
+    opens so a slow location resolver never holds one.
+    """
+    ip_address = _client_ip(request)
+    location = _resolve_location(ip_address) or ""
+    return {
+        "user_agent": request.META.get("HTTP_USER_AGENT", ""),
+        "ip_address": ip_address,
+        "location": location[:_LOCATION_MAX_LENGTH],
+    }
+
+
+def _delete_cached_copy(store: Any) -> None:
+    # The cache-backed engines delete the database row before the cached copy,
+    # and the cached copy is what authenticates. Deleting it first means a cache
+    # failure leaves the session fully intact (and retryable) instead of
+    # authenticating from cache while gone from the list.
+    cache_key = getattr(store, "cache_key", None)
+    if cache_key:
+        caches[settings.SESSION_CACHE_ALIAS].delete(cache_key)
+
+
+def _close_socket_rooms(*rooms: str) -> None:
+    """Stop live events reaching sockets of ended sessions.
+
+    Sockets are authenticated only when they connect, so without this a socket
+    of a revoked session keeps receiving its rooms' events until it disconnects.
+    Best effort: the sessions are already over.
+    """
+    try:
+        from utils.log_events import sio
+
+        for room in rooms:
+            sio.close_room(room)
+    except Exception:
+        logger.warning("Failed to close socket rooms of ended sessions", exc_info=True)
+
+
 class SessionTracker:
     @staticmethod
-    def _upsert(request: HttpRequest, user: User) -> None:
-        user_agent = request.META.get("HTTP_USER_AGENT", "")
-        ip_address = _client_ip(request)
+    def _upsert(request: HttpRequest, user: User, details: dict[str, Any]) -> None:
         SessionRecord.objects.update_or_create(
             session_key=request.session.session_key,
-            defaults={
-                "user": user,
-                "user_agent": user_agent,
-                "ip_address": ip_address,
-                "location": _resolve_location(ip_address) or "",
-                "last_active_at": timezone.now(),
-            },
+            defaults={**details, "user": user, "last_active_at": timezone.now()},
         )
 
     @classmethod
@@ -151,10 +192,11 @@ class SessionTracker:
             cls._sweep_idle_if_due()
         except Exception:
             logger.warning("Failed to sweep idle session records", exc_info=True)
+        details = _session_details(request)
         with transaction.atomic():
             # The signing-in user's own records are checked exactly.
             cls.live_records(user)
-            cls._upsert(request, user)
+            cls._upsert(request, user, details)
 
     @classmethod
     def _sweep_idle_if_due(cls) -> None:
@@ -171,11 +213,12 @@ class SessionTracker:
 
     @staticmethod
     def _sweep_idle() -> None:
-        # Records keep a client IP, so they must not outlive their session even
-        # for a user who never lists their sessions again. A live session is
-        # touched on every authenticated request, so a record idle for longer
-        # than a session can live is dead: that bound keeps the global sweep on
-        # an index instead of an anti-join against every live session.
+        # Records keep an IP address, so a dead one is removed within one session
+        # lifetime (plus at most one sweep interval) of its last use, even for a
+        # user who never lists their sessions again. A live session is touched on
+        # every authenticated request, so a record idle for longer than a session
+        # can live is dead: that bound keeps the global sweep on an index instead
+        # of an anti-join against every live session.
         idle_cutoff = timezone.now() - timedelta(seconds=settings.SESSION_COOKIE_AGE)
         SessionRecord.objects.filter(last_active_at__lt=idle_cutoff).delete()
 
@@ -197,19 +240,22 @@ class SessionTracker:
                 timeout=int(ACTIVITY_REFRESH_INTERVAL.total_seconds()),
             ):
                 return
-            updated = SessionRecord.objects.filter(
-                session_key=session_key, user=user
-            ).update(last_active_at=timezone.now())
+            with transaction.atomic():
+                updated = SessionRecord.objects.filter(
+                    session_key=session_key, user=user
+                ).update(last_active_at=timezone.now())
             if not updated:
                 # Signed in before session recording existed: first seen now.
+                details = _session_details(request)
                 with transaction.atomic():
-                    cls._upsert(request, user)
+                    cls._upsert(request, user, details)
             cls._sweep_idle_if_due()
-        except IntegrityError:
-            # A concurrent request recorded the same session first.
-            pass
         except Exception:
-            logger.warning("Failed to refresh session activity", exc_info=True)
+            logger.warning(
+                "Failed to refresh session activity for user %s",
+                user.pk,
+                exc_info=True,
+            )
 
     @staticmethod
     def forget(session_key: str | None) -> None:
@@ -251,37 +297,64 @@ class SessionTracker:
         if hook is None:
             return []
         try:
-            return list(hook(request))
+            entries = list(hook(request))
         except Exception:
-            logger.warning("Identity provider session listing failed", exc_info=True)
+            logger.warning(
+                "Identity provider session listing failed for user %s",
+                request.user.pk,
+                exc_info=True,
+            )
             return []
+        sessions = []
+        for entry in entries:
+            serializer = SignedInSessionSerializer(data=entry)
+            if serializer.is_valid():
+                sessions.append(serializer.validated_data)
+            else:
+                # One bad entry from a plugin must not take the whole list down.
+                logger.warning(
+                    "Dropped a malformed identity provider session: %s",
+                    serializer.errors,
+                )
+        return sessions
 
     @staticmethod
     def _revoke_idp(request: HttpRequest, session_id: str | None) -> bool:
+        """Whether the provider ended anything.
+
+        Raises `IdentityProviderError` when it fails, so a caller can tell a
+        failure from an id the provider does not know.
+        """
         hook = getattr(_auth_service(), "revoke_idp_sessions", None)
         if hook is None:
             return False
         try:
             return bool(hook(request, session_id=session_id))
-        except Exception:
-            # Our own sessions are already ended; the provider's are best effort.
-            logger.warning("Identity provider session revoke failed", exc_info=True)
-            return False
+        except Exception as error:
+            raise IdentityProviderError from error
 
     @classmethod
     def _end(cls, request: HttpRequest, session_key: str) -> None:
         if session_key == request.session.session_key:
+            _delete_cached_copy(request.session)
             # Flushing the live session also makes the response clear the cookie.
             request.session.flush()
         else:
-            _session_store_class()(session_key=session_key).delete()
+            store = _session_store_class()(session_key=session_key)
+            _delete_cached_copy(store)
+            store.delete()
         cls.forget(session_key)
         # Last, and best effort: the session is already over, and an unreachable
-        # cache must not turn a completed sign-out into an error.
+        # cache or broker must not turn a completed sign-out into an error.
+        _close_socket_rooms(session_key)
         try:
             LogService.remove_logs_on_logout(session_id=session_key)
         except Exception:
-            logger.warning("Failed to clear logs of an ended session", exc_info=True)
+            logger.warning(
+                "Failed to clear logs of an ended session of user %s",
+                request.user.pk,
+                exc_info=True,
+            )
 
     @classmethod
     def revoke(cls, request: HttpRequest, session_id: str) -> bool:
@@ -295,6 +368,7 @@ class SessionTracker:
         if record is None:
             return cls._revoke_idp(request, session_id)
         cls._end(request, record.session_key)
+        logger.info("Signed out one session of user %s", request.user.pk)
         return True
 
     @classmethod
@@ -320,7 +394,26 @@ class SessionTracker:
                 with transaction.atomic():
                     cls._end(request, session_key)
             except Exception:
-                logger.warning("Failed to end a revoked session", exc_info=True)
-        cls._revoke_idp(request, session_id=None)
+                logger.warning(
+                    "Failed to end a revoked session of user %s",
+                    user.pk,
+                    exc_info=True,
+                )
+        try:
+            cls._revoke_idp(request, session_id=None)
+        except IdentityProviderError:
+            # Our own sessions are already ended; the provider's are best effort.
+            logger.warning(
+                "Identity provider session revoke failed for user %s",
+                user.pk,
+                exc_info=True,
+            )
+        # The per-user room too: every session of the user has just ended.
+        _close_socket_rooms(f"user:{user.pk}")
         if current_key:
             cls._end(request, current_key)
+        logger.info(
+            "Signed out every session of user %s (%d recorded)",
+            user.pk,
+            len(session_keys) + (1 if current_key else 0),
+        )
