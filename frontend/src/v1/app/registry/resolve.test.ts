@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { DEMO_PAGES, PAGES } from "./entries";
-import { activeEntries, resolvePageUrl, resolveRoute } from "./resolve";
+import {
+  activeEntries,
+  fillPattern,
+  resolvePageUrl,
+  resolveRoute,
+} from "./resolve";
 import type { RegistryEntry } from "./types";
 import { registryProblems } from "./validate";
 
@@ -8,7 +13,10 @@ const plain: RegistryEntry = {
   page: "UN05",
   v1Routes: ["/:orgName/workflows", "/:orgName/flows/:id/*"],
   replaces: ["/:orgName/workflows", "/:orgName/workflows/:id"],
-  toV0: {},
+  toV0: {
+    "/:orgName/workflows": "/:orgName/workflows",
+    "/:orgName/flows/:id/*": "/:orgName/workflows/:id",
+  },
   toV1: {
     "/:orgName/workflows": "/:orgName/workflows",
     "/:orgName/workflows/:id": "/:orgName/flows/:id/*",
@@ -75,6 +83,13 @@ describe("resolveRoute", () => {
     ).toEqual({ kind: "redirect", to: "/acme/flows/7?q=1#x" });
   });
 
+  it("keeps encoded params inside their segment when redirecting", () => {
+    expect(at("/a%2Fb/workflows/x%3Fy%23z")).toEqual({
+      kind: "redirect",
+      to: "/a%2Fb/flows/x%3Fy%23z",
+    });
+  });
+
   it("toggle page, new version: v1 renders and v0 URLs redirect", () => {
     expect(at("/acme/hitl", false)).toEqual({ kind: "v1", entry: review });
     expect(at("/acme/review/approve", false)).toEqual({
@@ -102,14 +117,19 @@ describe("resolveRoute", () => {
     );
   });
 
-  it("the most specific pattern wins when pages share a prefix", () => {
+  it("defensively, the most specific pattern wins if two pages overlap", () => {
     const logs: RegistryEntry = {
       ...plain,
       page: "UN10",
       v1Routes: ["/:orgName/flows/:id/logs"],
       replaces: [],
+      toV0: {},
       toV1: {},
     };
+    // A valid registry has no such overlap; validation rejects it.
+    expect(registryProblems([plain, logs])).toContain(
+      "UN05 /:orgName/flows/:id/* overlaps UN10 /:orgName/flows/:id/logs",
+    );
     const both = { entries: [plain, logs], oldVersion: false };
     expect(resolveRoute({ pathname: "/acme/flows/7/logs" }, both)).toEqual({
       kind: "v1",
@@ -160,16 +180,51 @@ describe("resolvePageUrl", () => {
       ).toBe("/acme/review/approve");
     }
   });
-  it("is null for an undeclared page, an unknown pattern or a route with no v0 mapping", () => {
+  it("ignores the old-version choice on a page without the toggle", () => {
+    expect(
+      resolvePageUrl("UN05", "/:orgName/flows/:id/*", params, entries, {
+        entries,
+        oldVersion: true,
+      }),
+    ).toBe("/acme/flows/9");
+  });
+  it("gives a declared, not-live page's v0 URL", () => {
+    expect(
+      resolvePageUrl("UN05", "/:orgName/flows/:id/*", params, entries, {
+        entries: [],
+        oldVersion: false,
+      }),
+    ).toBe("/acme/workflows/9");
+  });
+  it("decides liveness by page key, not object identity", () => {
+    expect(
+      resolvePageUrl("UN11", "/:orgName/hitl", params, entries, {
+        entries: [{ ...review }],
+        oldVersion: false,
+      }),
+    ).toBe("/acme/hitl");
+  });
+  it("encodes raw param values", () => {
+    expect(
+      resolvePageUrl(
+        "UN11",
+        "/:orgName/hitl/:id/approve",
+        { orgName: "a/b", id: "c?d" },
+        entries,
+        {
+          entries,
+          oldVersion: false,
+        },
+      ),
+    ).toBe("/a%2Fb/hitl/c%3Fd/approve");
+  });
+  it("is null for an undeclared page or an unknown pattern", () => {
     const ctx = { entries: [], oldVersion: false };
     expect(
-      resolvePageUrl("UN99", "/:orgName/hitl", params, entries, ctx),
+      resolvePageUrl("UN09", "/:orgName/hitl", params, entries, ctx),
     ).toBeNull();
     expect(
       resolvePageUrl("UN11", "/:orgName/nope", params, entries, ctx),
-    ).toBeNull();
-    expect(
-      resolvePageUrl("UN05", "/:orgName/workflows", params, entries, ctx),
     ).toBeNull();
   });
 });
@@ -177,7 +232,14 @@ describe("resolvePageUrl", () => {
 /** Mapping both ways, for every entry the app declares. */
 describe.each([...PAGES, ...DEMO_PAGES])("$page mapping", (entry) => {
   const self = { entries: [entry] };
-  const fill = (pattern: string) => pattern.replaceAll(/:(\w+)/g, "p-$1");
+  // Placeholder params; a splat is left empty, as generatePath drops it.
+  const fill = (pattern: string) =>
+    fillPattern(pattern, {
+      ...Object.fromEntries(
+        [...pattern.matchAll(/:(\w+)/g)].map(([, name]) => [name, `p-${name}`]),
+      ),
+      "*": "",
+    });
 
   it("each v0 route redirects to its mapped v1 route, which renders v1", () => {
     for (const [v0, v1] of Object.entries(entry.toV1)) {

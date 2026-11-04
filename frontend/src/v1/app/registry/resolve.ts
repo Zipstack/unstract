@@ -18,7 +18,11 @@ export type ResolveContext = Readonly<{
   oldVersion: boolean | null;
 }>;
 
-type Location = Readonly<{ pathname: string; search?: string; hash?: string }>;
+type RouteLocation = Readonly<{
+  pathname: string;
+  search?: string;
+  hash?: string;
+}>;
 
 /** The live entries: declared, registered (or previewed) and shipped in this distribution. */
 export function activeEntries(
@@ -34,7 +38,7 @@ export function activeEntries(
 type Owned = Readonly<{ path: string; entry: RegistryEntry }>;
 
 /** The registry route a pathname lands on; React Router ranks the most specific pattern first. */
-function match(
+export function matchRegistryRoute(
   pathname: string,
   entries: readonly RegistryEntry[],
 ): { route: Owned; params: Params } | null {
@@ -48,28 +52,49 @@ function match(
   return found ? { route: found.route, params: found.params } : null;
 }
 
+/**
+ * Fills a pattern with raw (decoded) param values, encoding each one, so a
+ * value holding `/`, `?` or `#` stays inside its segment. A splat keeps its
+ * slashes and encodes each of its segments.
+ */
+export function fillPattern(
+  pattern: string,
+  params: Readonly<Record<string, string | undefined>>,
+): string {
+  const encoded: Record<string, string> = {};
+  for (const [name, value] of Object.entries(params)) {
+    if (value !== undefined) {
+      encoded[name] =
+        name === "*"
+          ? value.split("/").map(encodeURIComponent).join("/")
+          : encodeURIComponent(value);
+    }
+  }
+  return generatePath(pattern, encoded);
+}
+
 function redirect(
   target: string,
   params: Params,
-  location: Location,
+  location: RouteLocation,
 ): Resolution {
   return {
     kind: "redirect",
-    to: `${generatePath(target, params)}${location.search ?? ""}${location.hash ?? ""}`,
+    to: `${fillPattern(target, params)}${location.search ?? ""}${location.hash ?? ""}`,
   };
 }
 
 /**
  * The resolution rule. An unregistered URL renders v0. A registered page
- * renders v1, and its v0 URLs redirect to their mapped v1 route; except that
- * a toggle page (Human Review) does the reverse while the user has chosen the
- * old version.
+ * renders v1, and its v0 URLs redirect to their mapped v1 route. A toggle page
+ * (Human Review) does the reverse while the user has chosen the old version,
+ * and keeps its v0 URLs on v0 while the user is unknown.
  */
 export function resolveRoute(
-  location: Location,
+  location: RouteLocation,
   ctx: ResolveContext,
 ): Resolution {
-  const found = match(location.pathname, ctx.entries);
+  const found = matchRegistryRoute(location.pathname, ctx.entries);
   if (!found) {
     return { kind: "v0" };
   }
@@ -85,7 +110,7 @@ export function resolveRoute(
       const target = entry.toV0[path];
       return target ? redirect(target, found.params, location) : { kind: "v0" };
     }
-    // Unknown user on a v1-only URL: v1 is the default.
+    // Unknown user on one of the page's v1 URLs: render v1, the default.
   }
   if (isV1) {
     return { kind: "v1", entry };
@@ -95,9 +120,11 @@ export function resolveRoute(
 }
 
 /**
- * The URL to open a page's v1 route with, in whichever version the user gets:
- * the filled v1 route when the page is live, else its mapped v0 route. Null
- * when the page is not declared or has no v0 mapping for that route.
+ * The URL that opens a page's v1 route in the version the user gets: the v1
+ * URL when the page is live (unless it is a toggle page and the user chose the
+ * old version), else its mapped v0 URL. Params are raw values; they are
+ * encoded here. Null when the page is not declared or the pattern is not one
+ * of its v1 routes.
  */
 export function resolvePageUrl(
   page: PageKey,
@@ -110,11 +137,11 @@ export function resolvePageUrl(
   if (!entry?.v1Routes.includes(v1Pattern)) {
     return null;
   }
-  const live = ctx.entries.includes(entry);
+  const live = ctx.entries.some((e) => e.page === page);
   const useV0 = !live || (entry.toggle && ctx.oldVersion === true);
   if (!useV0) {
-    return generatePath(v1Pattern, params);
+    return fillPattern(v1Pattern, params);
   }
   const target = entry.toV0[v1Pattern];
-  return target ? generatePath(target, params) : null;
+  return target ? fillPattern(target, params) : null;
 }

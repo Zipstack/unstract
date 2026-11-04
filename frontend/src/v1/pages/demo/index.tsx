@@ -1,8 +1,8 @@
 /*
  * Development-only demo pages that prove the version switch (UN-4271). They
- * exist only in a build with VITE_V1_DEV_ROUTES=true. DemoReviewPage stands in
- * for Human Review: its "Switch to old version" control is the shape of the
- * one P6-T07 builds.
+ * ship in every build but are reachable only with VITE_V1_DEV_ROUTES=true.
+ * DemoReviewPage stands in for Human Review: its "Switch to old version"
+ * control is the shape of the one P6-T07 builds.
  */
 
 import { useOldVersionStore } from "@v1/stores/oldVersion";

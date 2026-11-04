@@ -148,7 +148,9 @@ try {
 }
 
 // Stand-ins for the v0 side of the v1 demo pages (UN-4271), which prove the
-// version switch. Rendered only in a build with VITE_V1_DEV_ROUTES=true.
+// version switch; routed only in a build with VITE_V1_DEV_ROUTES=true. The
+// demo page is always live there, so V0DemoPage renders only if the switch
+// fails to redirect: that is what the E2E check would catch, not dead code.
 function V0DemoPage() {
   return <h1 data-testid="v0-demo">v0 demo page</h1>;
 }
@@ -174,8 +176,9 @@ function Router() {
     // Renders v1 for a URL whose page is registered in the v1 route
     // registry, and these v0 routes for everything else (UN-4271).
     <VersionSwitch userId={userId}>
-      {/* App-wide backstop: catches shell-level chunk failures and errors on
-          routes that don't sit inside a LazyOutlet layout. Per-page load
+      {/* v0-wide backstop (the v1 tree has its own, in VersionSwitch):
+          catches shell-level chunk failures and errors on routes that don't
+          sit inside a LazyOutlet layout. Per-page load
           errors are handled by the scoped boundaries inside the layouts.
           resetKeys lets navigation clear the error without a full reload. */}
       <ErrorBoundary

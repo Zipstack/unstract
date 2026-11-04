@@ -11,7 +11,7 @@ import type { PageKey, RegistryEntry } from "./types";
 /** Every declared v1 page, live or not. */
 export const PAGES: readonly RegistryEntry[] = [];
 
-/** The pages users get as v1. Empty: the app renders v0 everywhere. */
+/** The pages users get as v1 (D9): a page's go-live task adds its key here. */
 export const REGISTERED_PAGES: readonly PageKey[] = [];
 
 /**
@@ -24,7 +24,7 @@ export const DEMO_PAGES: readonly RegistryEntry[] = [
     page: "DEMO-PAGE",
     v1Routes: ["/:orgName/v1-demo"],
     replaces: ["/:orgName/v0-demo"],
-    toV0: {},
+    toV0: { "/:orgName/v1-demo": "/:orgName/v0-demo" },
     toV1: { "/:orgName/v0-demo": "/:orgName/v1-demo" },
     toggle: false,
     distributions: ["oss", "cloud", "onprem"],

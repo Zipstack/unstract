@@ -1,7 +1,7 @@
 /*
- * The component for each declared page, loaded on first render. A page's
- * go-live task adds its line here with its registry entry; the registry
- * test fails if a declared page has none.
+ * The component for each declared page, loaded on first render. Add a
+ * page's line here when it is declared in PAGES; validate.test.ts fails if a
+ * declared page has none.
  */
 
 import type { PageKey } from "@v1/app/registry/types";

@@ -11,7 +11,7 @@ import {
   type PageKey,
   type RegistryEntry,
 } from "./types";
-import { registryProblems } from "./validate";
+import { isPageKey, registryProblems } from "./validate";
 
 /**
  * VITE_V1_DEV_ROUTES=true registers the demo pages and honours the preview
@@ -23,27 +23,24 @@ export const V1_DEV_ROUTES: boolean =
 
 /**
  * Dev/test override: a JSON array of declared page keys to render as v1
- * before they are registered (D9), e.g. `["UN05"]`. Honoured only with
- * V1_DEV_ROUTES.
+ * before they are registered (D9), e.g. `["UN05"]`, read when the app loads.
+ * Honoured only with V1_DEV_ROUTES.
  */
 export const PREVIEW_STORAGE_KEY = "unstract.v1.preview";
 
-function isDistribution(value: unknown): value is Distribution {
-  return (DISTRIBUTIONS as readonly unknown[]).includes(value);
-}
-
-/** The build's distribution, from VITE_UNSTRACT_DISTRIBUTION; OSS when unset. */
-export function parseDistribution(raw: string | undefined): Distribution {
+/**
+ * The build's distribution from VITE_UNSTRACT_DISTRIBUTION: OSS when unset,
+ * null when the value is not a distribution. vite.config.js fails the build
+ * on such a value, so null is reached only by a build that skipped it.
+ */
+export function parseDistribution(
+  raw: string | undefined,
+): Distribution | null {
   const value = raw?.trim().toLowerCase() || "oss";
-  if (!isDistribution(value)) {
-    throw new Error(
-      `VITE_UNSTRACT_DISTRIBUTION=${raw} is not one of ${DISTRIBUTIONS.join(", ")}`,
-    );
-  }
-  return value;
+  return DISTRIBUTIONS.find((d) => d === value) ?? null;
 }
 
-/** Page keys in the preview override; anything unreadable or malformed means none. */
+/** Valid page keys in the preview override; anything unreadable or malformed means none. */
 export function readPreviewPages(
   storage: Pick<Storage, "getItem"> | null | undefined,
 ): PageKey[] {
@@ -51,9 +48,7 @@ export function readPreviewPages(
     const parsed: unknown = JSON.parse(
       storage?.getItem(PREVIEW_STORAGE_KEY) ?? "[]",
     );
-    return Array.isArray(parsed)
-      ? parsed.filter((k): k is PageKey => typeof k === "string")
-      : [];
+    return Array.isArray(parsed) ? parsed.filter(isPageKey) : [];
   } catch {
     return [];
   }
@@ -94,15 +89,27 @@ function browserStorage(): Storage | null {
 }
 
 function load(): LiveRegistry {
+  const raw = import.meta.env.VITE_UNSTRACT_DISTRIBUTION;
+  let distribution = parseDistribution(raw);
+  if (distribution === null) {
+    // Never blank the app over it: v0 loads this module eagerly.
+    console.error(
+      `VITE_UNSTRACT_DISTRIBUTION=${raw} is not one of ${DISTRIBUTIONS.join(", ")}; using oss`,
+    );
+    distribution = "oss";
+  }
   const registry = buildLiveRegistry({
     devRoutes: V1_DEV_ROUTES,
-    distribution: parseDistribution(import.meta.env.VITE_UNSTRACT_DISTRIBUTION),
+    distribution,
     storage: browserStorage(),
   });
-  // CI rejects an invalid registry through its unit test; fail loudly in development too.
-  const problems = registryProblems(registry.pages);
-  if (import.meta.env.DEV && problems.length) {
-    throw new Error(`Invalid v1 route registry:\n${problems.join("\n")}`);
+  // CI rejects an invalid registry through validate.test.ts; development
+  // builds fail loudly too. Release builds skip the check (and its code).
+  if (import.meta.env.DEV) {
+    const problems = registryProblems(registry.pages);
+    if (problems.length) {
+      throw new Error(`Invalid v1 route registry:\n${problems.join("\n")}`);
+    }
   }
   return registry;
 }

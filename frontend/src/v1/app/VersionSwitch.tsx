@@ -7,6 +7,7 @@
 import { LIVE_REGISTRY, type LiveRegistry } from "@v1/app/registry/live";
 import { resolveRoute } from "@v1/app/registry/resolve";
 import type { RegistryEntry } from "@v1/app/registry/types";
+import { isChunkLoadError, reloadOnce } from "@v1/lib/chunkReload";
 import { useOldVersionStore } from "@v1/stores/oldVersion";
 import {
   Component,
@@ -31,7 +32,21 @@ export type VersionSwitchProps = Readonly<{
 
 type BoundaryState = { failed: boolean };
 
-/** Keeps a v1 failure (a stale chunk after a deploy) from unmounting the whole app. */
+function sessionStore(): Storage | null {
+  try {
+    return window.sessionStorage;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Keeps a v1 failure from unmounting the whole app. A stale chunk after a
+ * deploy reloads the page once to fetch the new one (React caches a failed
+ * lazy import, so nothing short of a reload retries it); anything else, or a
+ * repeat failure, shows the fallback. Unstyled when the failed chunk is the
+ * one carrying v1's styles.
+ */
 class V1ErrorBoundary extends Component<
   { children: ReactNode },
   BoundaryState
@@ -42,12 +57,21 @@ class V1ErrorBoundary extends Component<
     return { failed: true };
   }
 
+  override componentDidCatch(error: unknown): void {
+    if (isChunkLoadError(error)) {
+      reloadOnce(sessionStore(), () => window.location.reload());
+    }
+  }
+
   override render(): ReactNode {
     if (this.state.failed) {
       return (
-        <p className="ui:p-6" role="alert">
-          This page could not be loaded. Reload to try again.
-        </p>
+        <div className="ui:p-6" role="alert">
+          <p>This page could not be loaded.</p>
+          <button type="button" onClick={() => window.location.reload()}>
+            Reload
+          </button>
+        </div>
       );
     }
     return this.props.children;

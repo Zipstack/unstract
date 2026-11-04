@@ -1,8 +1,16 @@
 import { paramNames, patternProblem, patternsOverlap } from "./patterns";
+import { fillPattern, matchRegistryRoute } from "./resolve";
 import type { PageKey, RegistryEntry } from "./types";
 
 /** Pages allowed to honour the old-version preference: Human Review (D14) and its demo stand-in. */
 export const TOGGLE_PAGES: readonly PageKey[] = ["UN11", "DEMO-REVIEW"];
+
+const PAGE_KEY = /^(UN(0[1-9]|1\d|20)|LW0[1-7]|DEMO-[A-Z0-9]+(-[A-Z0-9]+)*)$/;
+
+/** True for UN01–UN20, LW01–LW07 and `DEMO-…` keys. */
+export function isPageKey(value: unknown): value is PageKey {
+  return typeof value === "string" && PAGE_KEY.test(value);
+}
 
 function checkMapping(
   entry: RegistryEntry,
@@ -12,22 +20,37 @@ function checkMapping(
   problems: string[],
 ): void {
   for (const [source, target] of Object.entries(entry[name])) {
+    const where = `${entry.page}: ${name}[${source}] -> ${target}`;
     if (!from.includes(source)) {
       problems.push(
         `${entry.page}: ${name} key ${source} is not one of its routes`,
       );
     }
     if (!to.includes(target)) {
-      problems.push(
-        `${entry.page}: ${name}[${source}] -> ${target} is not one of its routes`,
-      );
+      problems.push(`${where} is not one of its routes`);
+      continue;
     }
     // A splat may be empty, so a target ending in `*` needs nothing from the source.
     const available = [...paramNames(source), "*"];
     const missing = paramNames(target).filter((p) => !available.includes(p));
     if (missing.length) {
       problems.push(
-        `${entry.page}: ${name}[${source}] -> ${target} needs params ${source} lacks: ${missing.join(", ")}`,
+        `${where} needs params ${source} lacks: ${missing.join(", ")}`,
+      );
+    }
+    if (patternProblem(target)) {
+      continue; // reported with the page's routes
+    }
+    // The URL a redirect produces must land on a route of the version it
+    // redirects to; a pattern of the other version outranking it would
+    // redirect straight back, forever.
+    const sample = Object.fromEntries(
+      paramNames(target).map((p) => [p, p === "*" ? "" : `p-${p}`]),
+    );
+    const landed = matchRegistryRoute(fillPattern(target, sample), [entry]);
+    if (!landed || !to.includes(landed.route.path)) {
+      problems.push(
+        `${where} lands on ${landed?.route.path ?? "no route"}, which redirects back`,
       );
     }
   }
@@ -35,6 +58,9 @@ function checkMapping(
 
 function checkEntry(entry: RegistryEntry, problems: string[]): void {
   const { page, v1Routes, replaces } = entry;
+  if (!isPageKey(page)) {
+    problems.push(`${page}: not a page key (UN01–UN20, LW01–LW07 or DEMO-…)`);
+  }
   for (const pattern of [...v1Routes, ...replaces]) {
     const problem = patternProblem(pattern);
     if (problem) {
@@ -61,13 +87,13 @@ function checkEntry(entry: RegistryEntry, problems: string[]): void {
       );
     }
   }
-  if (entry.toggle) {
-    for (const pattern of v1Routes) {
-      if (!(pattern in entry.toV0)) {
-        problems.push(
-          `${page}: v1 route ${pattern} has no v0 route for old-version mode`,
-        );
-      }
+  // Every v1 route maps back: Human Review's old-version mode needs it, and
+  // so does resolveUrl for a page that is declared but not live yet.
+  for (const pattern of v1Routes) {
+    if (!(pattern in entry.toV0)) {
+      problems.push(
+        `${page}: v1 route ${pattern} has no v0 route to map back to`,
+      );
     }
   }
 }
@@ -86,7 +112,8 @@ export function registryProblems(entries: readonly RegistryEntry[]): string[] {
     seen.add(entry.page);
     checkEntry(entry, problems);
   }
-  // Two pages may share a prefix (the longest match wins), but no URL may match both.
+  // Two pages may share a prefix (/:o/workflows and /:o/workflows/logs), but
+  // no URL may match patterns of both.
   const owned = entries.flatMap((entry) =>
     [...new Set([...entry.v1Routes, ...entry.replaces])].map((pattern) => ({
       page: entry.page,
