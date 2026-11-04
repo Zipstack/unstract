@@ -197,6 +197,21 @@ class TestProcessForwardsPageCount:
 
         assert _pushed_page_count(audit) == billed
 
+    def test_text_file_goes_to_the_adapter_unread(
+        self, audit: MagicMock, x2text: X2Text
+    ) -> None:
+        """A .txt is not pre-read as UTF-8, so non-UTF-8 text reaches the adapter."""
+        fs = MagicMock()
+        fs.mime_type.return_value = MimeType.TEXT
+        fs.read.side_effect = UnicodeDecodeError("utf-8", b"\xff", 0, 1, "bad")
+        adapter_result = TextExtractionResult(extracted_text="text")
+        x2text._x2text_instance = MagicMock()
+        x2text._x2text_instance.process.return_value = adapter_result
+
+        assert x2text.process("in.txt", fs=fs) is adapter_result
+        fs.read.assert_not_called()
+        assert _pushed_page_count(audit) == 1
+
 
 class TestLLMWhispererV2ReportsPageCount:
     """The V2 adapter lifts processed_page_count off the whisper response."""

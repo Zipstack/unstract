@@ -1,3 +1,4 @@
+import uuid
 from typing import Any
 
 from flask import Request, current_app, request
@@ -20,6 +21,24 @@ def authentication_middleware(func: Any) -> Any:
     return wrapper
 
 
+def _mask_token(token: str) -> str:
+    """Return a short prefix of a token that is safe to log."""
+    return f"{token[:4]}..."
+
+
+def _canonical_uuid(token: str) -> str | None:
+    """Return the token as a canonical UUID string, or None if it is not one.
+
+    Platform keys are stored in a UUID column. Querying with a non-UUID value
+    makes Postgres raise an error that quotes the value, and that error would
+    then be logged with the token in full.
+    """
+    try:
+        return str(uuid.UUID(token))
+    except ValueError:
+        return None
+
+
 class AuthenticationMiddleware:
     @classmethod
     def validate_bearer_token(cls, token: str | None) -> bool:
@@ -27,27 +46,33 @@ class AuthenticationMiddleware:
             if token is None:
                 current_app.logger.error("Authentication failed. Empty bearer token")
                 return False
+            key_param = _canonical_uuid(token)
+            if key_param is None:
+                current_app.logger.error("Authentication failed. Malformed bearer token")
+                return False
             platform_key_table = f'"{Env.DB_SCHEMA}".{DBTable.PLATFORM_KEY}'
             query = f"SELECT * FROM {platform_key_table} WHERE key = %s"
-            cursor = be_db.execute_sql(query, (token,))
+            cursor = be_db.execute_sql(query, (key_param,))
             result_row = cursor.fetchone()
             cursor.close()
             if not result_row or len(result_row) == 0:
                 current_app.logger.error(
-                    f"Authentication failed. bearer token not found {token}"
+                    "Authentication failed. bearer token not found %s",
+                    _mask_token(key_param),
                 )
                 return False
             platform_key = str(result_row[1])
             is_active = bool(result_row[2])
             if not is_active:
                 current_app.logger.error(
-                    f"Token is not active. Activate \
-                        before using it. token {token}"
+                    "Token is not active. Activate before using it. token %s",
+                    _mask_token(key_param),
                 )
                 return False
             if platform_key != token:
                 current_app.logger.error(
-                    f"Authentication failed. Invalid bearer token: {token}"
+                    "Authentication failed. Invalid bearer token: %s",
+                    _mask_token(key_param),
                 )
                 return False
 
