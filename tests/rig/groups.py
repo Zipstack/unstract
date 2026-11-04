@@ -80,6 +80,10 @@ class GroupDefinition:
     timeout_seconds: int = 600
     parallel: bool = True
     optional: bool = False
+    # vitest only: the config file, relative to `workdir`, passed as
+    # `--config`. Unset runs vitest's default config, as before. Lets one
+    # workdir hold suites that must never share a run (frontend v0 and v1).
+    vitest_config: str | None = None
 
     def __post_init__(self) -> None:
         # Freeze env: a frozen dataclass with a mutable dict still lets callers
@@ -251,6 +255,18 @@ def _build_group(
             f"group {name!r}: `timeout_seconds` must be an integer "
             f"(got {spec.get('timeout_seconds')!r})"
         ) from exc
+    vitest_config = spec.get("vitest_config")
+    if vitest_config is not None:
+        if runner != "vitest":
+            raise ValueError(
+                f"group {name!r}: `vitest_config` applies only to runner "
+                f"`vitest` (runner is {runner!r})"
+            )
+        if not isinstance(vitest_config, str) or not vitest_config.strip():
+            raise ValueError(
+                f"group {name!r}: `vitest_config` must be a non-empty path "
+                f"(got {vitest_config!r})"
+            )
 
     return GroupDefinition(
         name=name,
@@ -272,6 +288,7 @@ def _build_group(
         timeout_seconds=timeout,
         parallel=bool(spec.get("parallel", defaults.get("parallel", True))),
         optional=bool(spec.get("optional", False)),
+        vitest_config=vitest_config,
     )
 
 
@@ -330,6 +347,25 @@ def _validate_paths(groups: dict[str, GroupDefinition]) -> None:
         for p in g.absolute_paths():
             if not p.exists():
                 raise ValueError(f"group {name!r}: test path does not exist: {p}")
+        if g.vitest_config is not None:
+            _validate_vitest_config(name, g.vitest_config, wd)
+
+
+def _validate_vitest_config(name: str, config: str, workdir: Path) -> None:
+    """The config must be a file inside the group's workdir.
+
+    Checked at load, like the paths: vitest given a missing `--config` exits
+    before writing JUnit, which surfaces as one synthetic red row with no hint
+    that the manifest, not the suite, is wrong.
+    """
+    resolved = (workdir / config).resolve()
+    if not resolved.is_relative_to(workdir.resolve()):
+        raise ValueError(
+            f"group {name!r}: `vitest_config` must be inside workdir {workdir} "
+            f"(got {config!r})"
+        )
+    if not resolved.is_file():
+        raise ValueError(f"group {name!r}: `vitest_config` does not exist: {resolved}")
 
 
 def _validate_platform_groups_depend_on_gate(

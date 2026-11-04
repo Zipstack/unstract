@@ -1247,6 +1247,8 @@ def _node_command(
             "--reporter=junit",
             f"--outputFile={junit}",
         ]
+        if group.vitest_config is not None:
+            cmd += ["--config", group.vitest_config]
         # `paths` are optional for vitest: with none it runs the whole suite,
         # which is what the `frontend` group wants.
         cmd += [str(p) for p in group.paths if p not in (".", "")]
