@@ -55,4 +55,14 @@ class Migration(migrations.Migration):
                 "db_table": "session_record",
             },
         ),
+        # A database default too, so pods still on the old code can create users
+        # while a deploy rolls out.
+        migrations.RunSQL(
+            sql=[
+                """ALTER TABLE "user" ALTER COLUMN "session_generation" SET DEFAULT 0""",
+            ],
+            reverse_sql=[
+                """ALTER TABLE "user" ALTER COLUMN "session_generation" DROP DEFAULT""",
+            ],
+        ),
     ]
