@@ -49,6 +49,7 @@ from unstract.sdk1.adapters.x2text.page_image_loader import (
     configured_page_cap,
     configured_page_ceiling,
     configured_request_bytes_ceiling,
+    is_page_selection,
 )
 from unstract.sdk1.utils.image_limits.source import MAX_REMOTE_RAISE_FACTOR
 
@@ -711,15 +712,20 @@ def check_page_image(
     page_count: int,
     data: bytes,
     page_store_dir: str,
+    document_page: int | None = None,
 ) -> None:
-    """Apply the per-image byte and pixel limits to one page."""
+    """Apply the per-image byte and pixel limits to one page.
+
+    ``page_number`` is the image position (kept on the error);
+    ``document_page``, when known, is the page the message names.
+    """
     if not ENFORCE_PER_IMAGE_LIMITS:
         return
     if policy.max_image_bytes is not None and len(data) > policy.max_image_bytes:
         raise PageImageTooLargeError(
             page_too_large_message(
                 policy,
-                page_number=page_number,
+                page_number=document_page or page_number,
                 kind="bytes",
                 actual=len(data),
                 limit=policy.max_image_bytes,
@@ -749,7 +755,7 @@ def check_page_image(
         raise PageImageTooLargeError(
             page_too_large_message(
                 policy,
-                page_number=page_number,
+                page_number=document_page or page_number,
                 kind="pixels",
                 actual=longest,
                 limit=px_limit,
@@ -773,8 +779,12 @@ def check_page_set(
     prompt_text_bytes: int | None = None,
     charged: bool | None = None,
     emit_advisories: bool = True,
+    document_pages: Sequence[int] | None = None,
 ) -> None:
     """Check a whole page set in memory: count, per-image, then total bytes.
+
+    ``document_pages`` (one per image, from a 'Pages to extract' selection)
+    makes per-image errors name the document page instead of the position.
 
     ``charged`` says whether the conversion has already been billed so the
     message can be honest about it (None: say nothing). ``emit_advisories``
@@ -785,19 +795,25 @@ def check_page_set(
     budget = policy.page_budget
     if page_count > budget.max_pages:
         raise PageCapExceededError(
-            page_cap_message(page_count, budget, charged=charged),
+            page_cap_message(
+                page_count,
+                budget,
+                charged=charged,
+                selected=is_page_selection(document_pages),
+            ),
             page_store_dir=page_store_dir,
             page_count=page_count,
             page_cap=budget.max_pages,
         )
     total = 0
-    for page_number, data in pages:
+    for index, (page_number, data) in enumerate(pages):
         check_page_image(
             policy,
             page_number=page_number,
             page_count=page_count,
             data=data,
             page_store_dir=page_store_dir,
+            document_page=document_pages[index] if document_pages else None,
         )
         total += len(data)
     raw_budget = policy.raw_byte_budget(
@@ -887,8 +903,17 @@ def format_limit_source(
 
 
 _SPLIT_ADVICE = (
-    "Split the document into smaller files, pick a profile whose LLM accepts "
-    "more pages, or switch to a text output mode."
+    "Split the document into smaller files, set the adapter's 'Pages to "
+    "extract' to a smaller range, pick a profile whose LLM accepts more "
+    "pages, or switch to a text output mode."
+)
+# The advice when 'Pages to extract' is invalid and every page was counted:
+# a "smaller range" would not help until the setting is corrected.
+_INVALID_SELECTION_ADVICE = (
+    "The adapter's 'Pages to extract' setting is invalid, so every page was "
+    "counted; correct it (extraction rejects it), split the document into "
+    "smaller files, pick a profile whose LLM accepts more pages, or switch to "
+    "a text output mode."
 )
 
 
@@ -902,11 +927,40 @@ def _charged_clause(charged: bool | None, *, size_known_late: bool = False) -> s
                 "sizes are only known after the pages are rendered."
             )
         return " The page conversion was already charged."
+    if size_known_late:
+        # LLMWhisperer stopped rendering once the limit was passed (LW-460).
+        return " The conversion stopped once the limit was passed; nothing was charged."
     return " No pages were converted or charged."
 
 
-def page_cap_message(page_count: int, budget: PageBudget, *, charged: bool | None) -> str:
-    """User-facing text for a document with more pages than the budget."""
+def _selection_clause(page_count: int, selected_from: int | None) -> str:
+    """'Pages to extract' selects N [of this document's M] pages (no period)."""
+    if selected_from is None:
+        return f"'Pages to extract' selects {page_count} pages"
+    return (
+        f"'Pages to extract' selects {page_count} of this document's "
+        f"{selected_from} pages"
+    )
+
+
+def page_cap_message(
+    page_count: int,
+    budget: PageBudget,
+    *,
+    charged: bool | None,
+    selected_from: int | None = None,
+    selected: bool = False,
+    invalid_selection: bool = False,
+) -> str:
+    """User-facing text for a document with more pages than the budget.
+
+    ``selected_from`` is the document's page count when 'Pages to extract'
+    narrowed it to ``page_count``; the message then names the selection.
+    ``selected`` names it without the document's count (unknown at answer
+    time, when only the selected pages' images exist). ``invalid_selection``:
+    the setting is invalid and every page was counted, so the advice says to
+    correct it instead of choosing a smaller range.
+    """
     limits = budget.limits
     if budget.binding == "images" and limits is not None:
         reason = (
@@ -921,15 +975,13 @@ def page_cap_message(page_count: int, budget: PageBudget, *, charged: bool | Non
             f"{described[0].upper()}{described[1:]}, and image output mode "
             "sends every page together."
         )
-    return (
-        f"This document has {page_count} pages. {reason} {_SPLIT_ADVICE}"
-        f"{_charged_clause(charged)}"
+    opening = (
+        f"{_selection_clause(page_count, selected_from)}."
+        if selected_from is not None or selected
+        else f"This document has {page_count} pages."
     )
-
-
-_PAGES_TO_EXTRACT_NOTE = (
-    " (The 'Pages to extract' setting does not apply in image output mode.)"
-)
+    advice = _INVALID_SELECTION_ADVICE if invalid_selection else _SPLIT_ADVICE
+    return f"{opening} {reason} {advice}{_charged_clause(charged)}"
 
 
 def fixed_cap_message(
@@ -938,7 +990,9 @@ def fixed_cap_message(
     *,
     switch_to: str = "use a text output mode instead",
     charged: bool | None = None,
-    pages_to_extract_note: bool = False,
+    selected_from: int | None = None,
+    selected: bool = False,
+    invalid_selection: bool = False,
 ) -> str:
     """User-facing text for a document over the FIXED page cap.
 
@@ -946,26 +1000,50 @@ def fixed_cap_message(
     (``VLM_IMAGE_LIMITS_ENFORCE=false``) or no LLM is known;
     ``page_cap_message`` covers the model-aware budget. ``switch_to`` ends the
     advice ("switch this profile to a text output mode", ...).
+    ``selected_from``, ``selected`` and ``invalid_selection`` are as in
+    ``page_cap_message``.
     """
+    if selected_from is not None or selected:
+        opening = (
+            "Too many pages are selected for image output mode. "
+            f"{_selection_clause(page_count, selected_from)}, and the limit is "
+        )
+    else:
+        opening = (
+            "This document has too many pages for image output mode. It has "
+            f"{page_count} pages, and the limit is "
+        )
+    advice = (
+        "The adapter's 'Pages to extract' setting is invalid, so every page was "
+        "counted; correct it (extraction rejects it), split the document into "
+        f"smaller files, or {switch_to}."
+        if invalid_selection
+        else "Split the document into smaller files, set the adapter's 'Pages to "
+        f"extract' to a smaller range, or {switch_to}."
+    )
     return (
-        "This document has too many pages for image output mode. It has "
-        f"{page_count} pages, and the limit is {page_cap} because every page is "
-        "sent to the LLM in one request. Split the document into smaller files, "
-        f"or {switch_to}."
-        + _charged_clause(charged)
-        + (_PAGES_TO_EXTRACT_NOTE if pages_to_extract_note else "")
+        opening + f"{page_cap} because every page is "
+        f"sent to the LLM in one request. {advice}" + _charged_clause(charged)
     )
 
 
 def request_too_large_message(
     policy: ImageModePolicy,
     *,
-    page_count: int,
+    page_count: int | None,
     raw_total: int,
     prompt_text_bytes: int | None,
     charged: bool | None,
+    at_least: bool = False,
 ) -> str:
-    """User-facing text for a page set over the request-size limit."""
+    """User-facing text for a page set over the request-size limit.
+
+    ``at_least`` marks ``raw_total`` as a lower bound: LLMWhisperer stopped
+    rendering once the limit was passed. ``page_count`` None (unknown) leaves
+    the count out of the text and the per-page text out of the estimates.
+    """
+    images = f"{page_count} page images" if page_count else "page images"
+    page_count = page_count or 0
     wire = estimate_wire_bytes(
         raw_total, page_count=page_count, prompt_text_bytes=prompt_text_bytes
     )
@@ -979,21 +1057,22 @@ def request_too_large_message(
     limits = policy.request_bytes_source() if limit is not None else None
     # The total and the limit are printed in the limit's own unit: decimal
     # MB for a provider limit, MiB for the (raw-byte) operator/legacy ceiling.
+    total = "total at least" if at_least else "total"
     if limit is not None and limit.value is not None and limits is not None:
-        size = f"total {_mb(raw_total)} ({_mb(wire)} once encoded)"
+        size = f"{total} {_mb(raw_total)} ({_mb(wire)} once encoded)"
         bound = (
             f"over the {_mb(limit.value)} request limit of "
             f"{_model_label(limits)} "
             f"({format_limit_source(limit, limits)})"
         )
     else:
-        size = f"total {_mib(raw_total)}"
+        size = f"{total} {_mib(raw_total)}"
         bound = (
             f"over the {_mib(policy.bytes_ceiling or 0)} limit for one image-mode "
             "request"
         )
     return (
-        f"The {page_count} page images of this document {size}, {bound}, and "
+        f"The {images} of this document {size}, {bound}, and "
         "image output mode sends "
         f"every page in one request. Split the document into smaller files, or "
         f"switch to a text output mode.{_charged_clause(charged, size_known_late=True)}"
@@ -1012,6 +1091,9 @@ def page_too_large_message(
     threshold: int | None,
 ) -> str:
     """User-facing text for a single page over a per-image limit.
+
+    ``page_number`` is the page as the user knows it: the document page when
+    a selection recorded it, else the image position.
 
     ``source`` is the LLM the broken limit belongs to (with several LLMs it
     can differ from the one that set the page budget); ``threshold`` is set
