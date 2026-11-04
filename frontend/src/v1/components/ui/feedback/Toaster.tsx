@@ -100,7 +100,9 @@ export function Toaster({
       document.activeElement?.closest<HTMLElement>("[data-slot=toast]");
     if (focused && !kept.has(Number(focused.dataset.rev))) {
       viewportRef.current?.focus();
-      refocus.current = true;
+      // Only a remount replaces the viewport; a stale flag would steal focus
+      // later, when some other change empties the list.
+      refocus.current = next.length === 0;
     }
     current.current = next;
     setEntries(next);

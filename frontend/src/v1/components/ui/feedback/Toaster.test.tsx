@@ -299,6 +299,29 @@ it("moves focus to the viewport when a focused toast is removed", () => {
   expect(document.activeElement).toBe(container.querySelector("ol"));
 });
 
+it("leaves focus alone when a later timeout empties the list", () => {
+  vi.useFakeTimers();
+  mount(1000);
+  const input = document.createElement("input");
+  document.body.appendChild(input);
+  let id: string | undefined;
+  act(() => {
+    id = toast.info("Focused", { persistent: true });
+    toast.info("Timed");
+  });
+  (container.querySelector("[data-slot=toast]") as HTMLElement).focus();
+  act(() => {
+    dismissNotification(id as string);
+  });
+  input.focus();
+  act(() => {
+    vi.advanceTimersByTime(1500);
+  });
+  expect(screen.queryByText("Timed")).toBeNull();
+  expect(document.activeElement).toBe(input);
+  input.remove();
+});
+
 it("times out the next toast after the last one closes under the pointer", () => {
   vi.useFakeTimers();
   mount(1000);
