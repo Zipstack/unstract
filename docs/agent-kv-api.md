@@ -982,7 +982,7 @@ so a **follow-up notification** carrying `result_available: true` is delivered
 when this happens — see [§8](#8-webhook-delivery).
 
 > **This was reverted three times before it shipped, and the reason is worth
-> knowing before you touch it.** `DELETE /api/v1/agent-kv/{job_id}/` guarantees that a
+> knowing before you touch it.** `DELETE /api/v1/agent-kv/{job_id}` guarantees that a
 > purged job cannot be resurrected, and it used to guarantee that *by relying on*
 > the late finalize deleting its own orphaned write. Keeping the result removes
 > exactly that cleanup, and every attempt to rebuild the guarantee from the job's
