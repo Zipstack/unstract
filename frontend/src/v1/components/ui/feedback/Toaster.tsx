@@ -46,9 +46,7 @@ export function Toaster({
   }, []);
 
   useLayoutEffect(() => {
-    if (!container) {
-      setTarget(getPortalContainer());
-    }
+    setTarget(container ?? getPortalContainer());
     return setNotifier({
       show: (input) => {
         const id = input.id ?? nextId();

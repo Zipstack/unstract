@@ -1,5 +1,5 @@
 import { cn } from "@v1/lib/cn";
-import { Progress } from "radix-ui";
+import { Progress as RadixProgress } from "radix-ui";
 import type { JSX } from "react";
 
 type Named =
@@ -29,7 +29,7 @@ export function ProgressBar({
   const clamped =
     indeterminate || !validMax ? 0 : Math.min(Math.max(value, 0), total);
   return (
-    <Progress.Root
+    <RadixProgress.Root
       value={indeterminate ? null : clamped}
       max={total}
       data-slot="progress-bar"
@@ -39,13 +39,13 @@ export function ProgressBar({
       )}
       {...named}
     >
-      <Progress.Indicator
+      <RadixProgress.Indicator
         style={{ "--progress": indeterminate ? 0.4 : clamped / total }}
         className={cn(
           "ui:h-full ui:w-[calc(var(--progress)*100%)] ui:rounded-full ui:bg-primary ui:transition-[width] ui:motion-reduce:transition-none",
           indeterminate && "ui:motion-safe:animate-pulse",
         )}
       />
-    </Progress.Root>
+    </RadixProgress.Root>
   );
 }
