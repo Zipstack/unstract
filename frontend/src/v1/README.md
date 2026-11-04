@@ -31,8 +31,11 @@ is convention.
 - **Static assets live in `assets/`**, imported as `@v1/assets/...` (e.g.
   `@v1/assets/logo.svg?react`). v1 never uses v0's `src/assets/` (enforced);
   where an asset file sits under v1 is convention, not checked.
-- **Lucide is the only icon library**, with canonical names (`LoaderCircle`,
-  not the `Loader2` alias; lint:v1 bans the common aliases). Shared glyphs
+- **Lucide is the only icon library**, imported by canonical name
+  (`LoaderCircle`, not the `Loader2` alias) from `lucide-react` itself.
+  `scripts/check-v1-icons.mjs` enforces it: any other icon or flag package,
+  every alias the installed lucide-react declares, and namespace, default,
+  subpath, `icons`-map and dynamic imports all fail lint:v1. Shared glyphs
   come by role from `lib/icons.ts`; provider logos, product marks and flags
   from `components/ui/BrandMark`.
 
@@ -95,7 +98,7 @@ Every folder may import from itself. Test files (`*.test.ts(x)`,
 | Script | Checks |
 | --- | --- |
 | `bun run typecheck:v1` | TypeScript-only files, styles only in `styles/`, allowed file types only, no symlinks, folder taxonomy; then `tsc` with `src/v1/tsconfig.json` |
-| `bun run lint:v1` | Biome on `src/v1/`, then imports in code and in `styles/` CSS (nothing outside v1, folder contract, and v0 reaching v1 only through `@v1`), PropTypes and `ant-` checks, then the styling policy (S1 to S8 above) |
+| `bun run lint:v1` | Biome on `src/v1/`, then imports in code and in `styles/` CSS (nothing outside v1, folder contract, and v0 reaching v1 only through `@v1`), PropTypes and `ant-` checks, then the styling policy (S1 to S8 above), then the icon rules |
 | `bun run tokens:v1` | Regenerates `styles/tokens.css` from `styles/tokens.json` (via `styles/tokens.ts`; runs under bun, which imports the TypeScript source directly) |
 | `bun run test:v1` | v1 unit tests, then the guardrail fixtures in `test-fixtures/v1-boundary/` |
 
@@ -106,4 +109,4 @@ the v0 ↔ v1 boundary, so `biome ci` and editors flag them too: `@/`, `../`,
 `v1`, so no v0 folder may take that name. Everything else (the folder
 contract, templates, globs, `new URL`, CSS, symlinks) is checked only by
 `scripts/check-v1.mjs`, the styling policy by `scripts/check-v1-styles.mjs`,
-and types by `src/v1/tsconfig.json`.
+the icon rules by `scripts/check-v1-icons.mjs`, and types by `src/v1/tsconfig.json`.

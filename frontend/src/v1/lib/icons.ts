@@ -5,8 +5,8 @@
  * imported from lucide-react directly.
  *
  * Canonical names only: lucide-react 1.x keeps old names such as `Loader2`
- * and `FileCheck2` as aliases, and lint:v1 bans the common ones that the
- * designs and v0 use. Lucide is the only icon library v1 may import.
+ * and `FileCheck2` as aliases. scripts/check-v1-icons.mjs rejects every alias
+ * the installed lucide-react declares, and any icon library but Lucide.
  */
 import {
   ArrowLeft,
