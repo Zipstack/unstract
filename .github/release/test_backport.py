@@ -14,6 +14,9 @@ from unittest import mock
 os.environ["GITHUB_REPOSITORY"] = (
     "Zipstack/unstract-cloud"  # pin relstate to the cloud config
 )
+os.environ["GITHUB_SERVER_URL"] = (
+    "https://github.com"  # CI sets it, and summaries link only with it
+)
 os.environ["RELEASE_BOT_APP_SLUG"] = "zipstack-push-to-main"
 BOT = {
     "login": "app/zipstack-push-to-main",
@@ -375,8 +378,13 @@ class OwedSummary(unittest.TestCase):
             [(a, "fix", "#3", "UN-1 [FIX] x | y"), (b, bp.UNCLASSIFIABLE, "no PR", "z")],
             "release/0.187",
         )
-        self.assertIn("| `aaaaaaa` | #3 | UN-1 [FIX] x \\| y | fix |", out)
-        self.assertIn(f"| `bbbbbbb` | no PR | z | {bp.UNCLASSIFIABLE} |", out)
+        self.assertIn(
+            f"| [`aaaaaaa`]({WEB}/commit/{a}) | [#3]({WEB}/pull/3) | UN-1 [FIX] x \\| y | fix |",
+            out,
+        )
+        self.assertIn(
+            f"| [`bbbbbbb`]({WEB}/commit/{b}) | no PR | z | {bp.UNCLASSIFIABLE} |", out
+        )
         self.assertTrue(
             out.endswith(
                 "To pick a fix: dispatch Backport with its commit, `confirm_stabilized=true` and `lines=0.187`"
@@ -390,7 +398,8 @@ ACTIONS = {
     "GITHUB_SERVER_URL": "https://github.com",
     "GITHUB_REPOSITORY": "Zipstack/unstract-cloud",
 }
-WEB = "https://github.com/Zipstack/unstract-cloud"
+GH = "https://github.com"
+WEB = f"{GH}/Zipstack/unstract-cloud"
 
 
 class SummaryLinks(unittest.TestCase):
@@ -847,8 +856,8 @@ class PatchLines(unittest.TestCase):
         self.assertEqual(
             out[2:],
             [
-                f"- `release/0.190`: `#7 {b[:12]}` (1 unclassifiable left out)",
-                "- `release/0.188`: none",
+                f"- [`release/0.190`]({WEB}/tree/release/0.190): `#7 {b[:12]}` (1 unclassifiable left out)",
+                f"- [`release/0.188`]({WEB}/tree/release/0.188): none",
             ],
         )
         with (
@@ -891,7 +900,7 @@ class PatchLines(unittest.TestCase):
         self.assertEqual(
             out[2:],
             [
-                "- `release/0.190`: patch list unavailable (see the run log)",
+                f"- [`release/0.190`]({WEB}/tree/release/0.190): patch list unavailable (see the run log)",
             ],
         )
 
@@ -954,8 +963,9 @@ class MissedPicks(unittest.TestCase):
         self.assertEqual(
             self.missed()[2:],
             [
-                "- `release/0.191`: owed `#7`; conflict PRs o/r#12, Zipstack/unstract#30",
-                "- `release/0.190`: owed none; conflict PRs none",
+                f"- [`release/0.191`]({WEB}/tree/release/0.191): owed `#7`; conflict PRs "
+                f"[o/r#12]({GH}/o/r/pull/12), [Zipstack/unstract#30]({GH}/Zipstack/unstract/pull/30)",
+                f"- [`release/0.190`]({WEB}/tree/release/0.190): owed none; conflict PRs none",
             ],
         )
         self.assertEqual(
@@ -976,7 +986,7 @@ class MissedPicks(unittest.TestCase):
     def test_same_repo_listed_once(self):  # the OSS repo's own State run
         self.assertEqual(
             self.missed(others=("o/r",))[2],
-            "- `release/0.191`: owed `#7`; conflict PRs o/r#12",
+            f"- [`release/0.191`]({WEB}/tree/release/0.191): owed `#7`; conflict PRs [o/r#12]({GH}/o/r/pull/12)",
         )
 
     def test_no_stabilizing_line(self):
@@ -993,7 +1003,7 @@ class MissedPicks(unittest.TestCase):
         out = self.missed(held=fail, gh=fail, git=fail)
         self.assertEqual(
             out[2],
-            "- `release/0.191`: owed patch list unavailable (see the run log); "
+            f"- [`release/0.191`]({WEB}/tree/release/0.191): owed patch list unavailable (see the run log); "
             "conflict PRs unavailable (see the run log)",
         )
         self.assertEqual(

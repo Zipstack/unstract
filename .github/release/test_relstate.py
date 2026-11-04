@@ -16,6 +16,9 @@ import urllib.parse
 os.environ["GITHUB_REPOSITORY"] = (
     "Zipstack/unstract-cloud"  # pin relstate to the cloud config
 )
+os.environ["GITHUB_SERVER_URL"] = (
+    "https://github.com"  # CI sets it, and summaries link only with it
+)
 import relmgr as rm
 import relstate as rs
 
@@ -225,7 +228,8 @@ class Scenario(unittest.TestCase):
         )
         self.assertEqual(st["supported"]["on-prem"], ["release/1.5"])
         self.assertIn(
-            "| stabilized | stabilized (GA `v1.5.0`) | stabilizing (rc.1, late) |",
+            "| stabilized | stabilized (GA [`v1.5.0`](https://github.com/Zipstack/unstract-cloud/releases/tag/v1.5.0)) "
+            "| stabilizing (rc.1, late) |",
             rs.summary(st),
         )
         self.push(
@@ -532,7 +536,8 @@ class Scenario(unittest.TestCase):
 
     def test_summary(self):
         self.newer_cloud_ga()
-        out = rs.summary(self.state())
+        with unittest.mock.patch.dict(os.environ, {"GITHUB_SERVER_URL": ""}):
+            out = rs.summary(self.state())
         self.assertIn(
             "| `release/1.6` | stabilized | stabilized (GA `v1.6.0`) | - | `v1.6.0-rc.1` | - | 0 |",
             out,
@@ -790,7 +795,10 @@ class Scenario(unittest.TestCase):
         )
         st = self.state()
         self.assertEqual(self.branch(st, "release/1.5")["tip_rc_slack"], url)
-        self.assertIn(f"| `v1.5.0-rc.1` ([Slack]({url})) |", rs.summary(st))
+        self.assertIn(
+            f"| [`v1.5.0-rc.1`](https://github.com/Zipstack/unstract-cloud/releases/tag/v1.5.0-rc.1) ([Slack]({url})) |",
+            rs.summary(st),
+        )
 
     def test_next_minor_cutover_fallback(self):
         self.g("tag", "v0.181.0")
@@ -1065,9 +1073,16 @@ class Scenario(unittest.TestCase):
         self.assertIn(
             "| branch | state | oss | tip_rc | next_rc | ahead_of_ga |", rs.summary(st)
         )
+        web = "https://github.com/Zipstack/unstract"
+        with unittest.mock.patch.dict(
+            os.environ, {"GITHUB_REPOSITORY": "Zipstack/unstract"}
+        ):
+            out = rs.summary(st)
         self.assertIn(
-            "| `release/1.6` | stabilized | stabilized (GA `ee-v1.6.0`) | `ee-v1.6.0-rc.1` | - | 0 |",
-            rs.summary(st),
+            f"| [`release/1.6`]({web}/tree/release/1.6) | stabilized "
+            f"| stabilized (GA [`ee-v1.6.0`]({web}/releases/tag/ee-v1.6.0)) "
+            f"| [`ee-v1.6.0-rc.1`]({web}/releases/tag/ee-v1.6.0-rc.1) | - | 0 |",
+            out,
         )
         self.commit("fix on 1.6", "release/1.6")
         self.assertEqual(

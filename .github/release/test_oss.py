@@ -15,6 +15,9 @@ from unittest import mock
 os.environ["GITHUB_REPOSITORY"] = (
     "Zipstack/unstract-cloud"  # pin relstate to the cloud config
 )
+os.environ["GITHUB_SERVER_URL"] = (
+    "https://github.com"  # CI sets it, and summaries link only with it
+)
 import oss
 import relmgr as rm
 import relstate as rs
@@ -367,7 +370,8 @@ class Lines(unittest.TestCase):
         self.work("release/1.7", "oss fix")
         self.quiet(oss.rc, self.oss, "release/1.7")
         tip = self.remote("rev-parse", "release/1.7")
-        dry = oss.retire(self.oss, "release/1.7", "cut by mistake")
+        with mock.patch.dict(os.environ, {"GITHUB_SERVER_URL": ""}):
+            dry = oss.retire(self.oss, "release/1.7", "cut by mistake")
         self.assertEqual(
             dry,
             [
@@ -537,11 +541,12 @@ class Lines(unittest.TestCase):
         self.pin("ee-v1.7.0-rc.1", "v1.7.0-rc.1")
         oss.promote(self.cloud, self.oss, "v1.7.0-rc.1")
         tip = self.remote("rev-parse", "release/1.7")
+        u = f"https://github.com/{oss.OSS}"
         self.assertEqual(
             oss.retire(self.oss, "release/1.7", "past end of support", dry_run=False),
             [
-                f"- OSS `release/1.7` (tip `{tip[:12]}`; has GA, tags kept)",
-                f"- OSS tag `retired/1.7-{tip[:7]}`: past end of support",
+                f"- OSS `release/1.7` (tip [`{tip[:12]}`]({u}/commit/{tip}); has GA, tags kept)",
+                f"- OSS tag [`retired/1.7-{tip[:7]}`]({u}/releases/tag/retired/1.7-{tip[:7]}): past end of support",
             ],
         )
         self.assertEqual(
@@ -2448,7 +2453,7 @@ class PendingPicksWorkflow(Workflow):
         self.write(
             "pulls.json", json.dumps([{"number": 5, "title": "[FIX] y", "labels": []}])
         )
-        r = self.promote()
+        r = self.promote(GITHUB_SERVER_URL="")
         self.blocked(r, "::error::convergence gate: MISSING picks (summary above)")
         self.assertIn(f"MISSING original {fix[:12]}", r.stdout)
         self.assertIn(
@@ -2569,12 +2574,9 @@ class PendingPicksWorkflow(Workflow):
             BRANCH="release/1.7",
             TARGETS="cloud",
         )  # Take RC lists the OSS-held fix too, and never blocks on it
-        self.assertIn(
-            f"Held for the RM on {oss.OSS} `release/1.7`",
-            self.read("notes.md"),
-            take.stdout + take.stderr,
-        )
-        self.assertIn(f"Held for the RM on {oss.OSS} `release/1.7`", self.read("summary"))
+        held = f"Held for the RM on {oss.OSS} [`release/1.7`](https://github.com/{oss.OSS}/tree/release/1.7)"
+        self.assertIn(held, self.read("notes.md"), take.stdout + take.stderr)
+        self.assertIn(held, self.read("summary"))
         self.assertIn(f"backport.yaml -R {oss.OSS} -f commits=#9", self.read("summary"))
         self.write(
             "pullsfail", ""
@@ -2669,7 +2671,10 @@ class LateTargetWorkflow(Workflow):
 
     def test_unchanged_tip_reuses_its_rc_and_promotes_onto_the_cloud_ga(self):
         notes, out = self.take_rc()
-        self.assertIn("| #5 | [FIX] y | fix |", notes)  # owed, shown
+        self.assertIn(
+            "| [#5](https://github.com/Zipstack/unstract-cloud/pull/5) | [FIX] y | fix |",
+            notes,
+        )  # owed, shown
         self.assertIn(
             "dispatch Backport with its commit, `confirm_stabilized=true` and `lines=1.7`",
             notes,
@@ -2857,7 +2862,7 @@ class TakeRcVersion(Workflow):
         note = f"gh workflow run sync-argocd.yaml -f app_name={staging} -f target_revision=v1.7.1-rc.1"
         self.assertIn(
             "Staging not updated: it runs the newest line, `release/1.8`",
-            summary("cloud", "release/1.8"),
+            summary("cloud", "release/1.8", GITHUB_SERVER_URL=""),
         )
         self.assertIn(note, summary("cloud on-prem", "release/1.8"))
         web = "https://github.com/Zipstack/unstract-cloud"
