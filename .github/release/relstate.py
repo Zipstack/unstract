@@ -603,17 +603,22 @@ def derive(repo, now, registry=registry_tags, rc=None):
 
 def retire_line_refusal(state, branch, force=False):
     """Why Retire `retire_line` refuses branch, or None. A stabilizing target (RCs, no GA: an on-prem line never
-    promoted, say) may go. A stabilized on-prem target (chart in its window) goes only with force. Stabilized cloud
-    is production and never goes: relstate would make the next older cloud GA production again.
+    promoted, say) may go. A stabilized on-prem target (chart in its window), or a late target with no GA, goes only
+    with force. Stabilized cloud is production and never goes: relstate would make the next older cloud GA production
+    again.
     """
     row = _branch_row(state, branch)
     if not row:
         return "no such branch"
-    held = [t for t, tt in sorted(row["targets"].items()) if tt["state"] == "stabilized"]
+    held = [
+        t
+        for t, tt in sorted(row["targets"].items())
+        if tt["state"] == "stabilized" or (tt["late"] and not tt["ga"])
+    ]
     if "cloud" in held:
         return "cloud is production (newest cloud GA); it retires once a newer line is promoted"
     if held and not force:
-        return f"{', '.join(held)} still supported (stabilized); a release manager may retire it inside the window with force"
+        return f"{', '.join(held)} still supported (stabilized, or late with no GA yet); a release manager may retire it inside the window with force"
     return None
 
 

@@ -258,9 +258,16 @@ class Scenario(unittest.TestCase):
         )
         self.assertEqual(st["retire"], [])
         self.assertNotIn("release/1.5", st["backport_targets"]["fix"])
-        self.assertIsNone(
-            rs.retire_line_refusal(st, "release/1.5")
-        )  # retire_line stays a release manager's call
+        self.assertEqual(
+            rs.retire_line_refusal(st, "release/1.5"),
+            "on-prem still supported (stabilized, or late with no GA yet); a release manager may retire it inside the "
+            "window with force",
+        )
+        self.assertIsNone(rs.retire_line_refusal(st, "release/1.5", force=True))
+        self.push("chart/unstract-platform", "1.5.0", days=200)  # GA, window over
+        st = self.state()
+        self.assertTrue(self.branch(st, "release/1.5")["targets"]["on-prem"]["late"])
+        self.assertIsNone(rs.retire_line_refusal(st, "release/1.5"))
 
     def test_failed_registry_read_is_never_not_late(self):
         self.late_onprem()
@@ -1080,7 +1087,8 @@ class Scenario(unittest.TestCase):
         )  # on-prem chart in its window
         self.assertEqual(
             refusal(),
-            "on-prem still supported (stabilized); a release manager may retire it inside the window with force",
+            "on-prem still supported (stabilized, or late with no GA yet); a release manager may retire it inside the "
+            "window with force",
         )
         self.assertIsNone(refusal(True))
         self.assertEqual(
