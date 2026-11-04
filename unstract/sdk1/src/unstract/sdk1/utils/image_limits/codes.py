@@ -10,7 +10,7 @@ values stable: they are user-visible.
 """
 
 # More pages than the model's budget allows (image count, LLMWhisperer's 999
-# or an operator/legacy ceiling; the context-window estimate never rejects).
+# or an operator ceiling / the fixed cap; the context-window estimate never rejects).
 IMAGE_PAGE_CAP_EXCEEDED = "IMAGE_PAGE_CAP_EXCEEDED"
 # The page images together exceed the model's request-size limit.
 IMAGE_PAGES_TOO_LARGE = "IMAGE_PAGES_TOO_LARGE"

@@ -14,7 +14,7 @@ from __future__ import annotations
 import inspect
 import io
 import logging
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pypdfium2 as pdfium
 import pytest
@@ -75,6 +75,93 @@ class TestRejectsOverCapInImageMode:
         assert not data.closed
 
 
+class TestPagesToExtract:
+    """The check counts the pages the profile's 'Pages to extract' selects."""
+
+    @staticmethod
+    def _ranged(spec: str) -> MagicMock:
+        profile = _profile({"output_mode": "image", "pages_to_extract": spec})
+        profile.llm = None  # fixed cap of five
+        return profile
+
+    def test_range_within_cap_accepts_a_large_pdf(self) -> None:
+        check(_pdf(30), _PDF, self._ranged("1-5"))
+
+    def test_range_over_cap_names_the_selection(self) -> None:
+        with pytest.raises(ImageModePageLimitExceeded) as excinfo:
+            check(_pdf(30), _PDF, self._ranged("1-10"))
+        msg = str(excinfo.value.detail)
+        assert "'Pages to extract' selects 10 of this document's 30 pages" in msg
+        assert "and the limit is 5" in msg
+        assert "This document has" not in msg
+
+    def test_range_selecting_every_page_is_not_named(self) -> None:
+        # Same rule as the SDK: the selection is named only when it narrows.
+        with pytest.raises(ImageModePageLimitExceeded) as excinfo:
+            check(_pdf(30), _PDF, self._ranged("1-"))
+        msg = str(excinfo.value.detail)
+        assert "selects" not in msg
+        assert "It has 30 pages, and the limit is 5" in msg
+
+    def test_count_comes_from_the_sdk_helper(self) -> None:
+        with patch.object(
+            _psh_mod.LLMWhispererHelper, "selected_page_count", return_value=4
+        ) as count:
+            assert PromptStudioHelper._selected_page_count(self._ranged("1-4"), 30) == (
+                4,
+                True,
+            )
+        assert count.call_args.args[1] == 30
+
+    def test_unreadable_setting_is_logged_without_its_value(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        profile = MagicMock(name="ProfileManager")
+        type(profile.x2text).metadata = property(
+            lambda _self: (_ for _ in ()).throw(ValueError("secret-key-material"))
+        )
+        with caplog.at_level(logging.WARNING):
+            count = PromptStudioHelper._selected_page_count(profile, 30)
+        # Not a range error: counted whole, logged at ERROR by type only.
+        assert count == (30, True)
+        assert any(r.levelname == "ERROR" for r in caplog.records)
+        assert "ValueError" in caplog.text
+        assert "Pages to extract" in caplog.text
+        assert "secret-key-material" not in caplog.text
+
+    def test_invalid_setting_is_logged_without_its_value(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        with caplog.at_level(logging.WARNING):
+            count = PromptStudioHelper._selected_page_count(self._ranged("5-3"), 30)
+        assert count == (30, False)
+        assert "PageRangeError" in caplog.text
+        assert "5-3" not in caplog.text
+
+    def test_invalid_range_falls_back_to_the_whole_document(self) -> None:
+        with pytest.raises(ImageModePageLimitExceeded) as excinfo:
+            check(_pdf(30), _PDF, self._ranged("5-3"))
+        assert "selects" not in str(excinfo.value.detail)
+        check(_pdf(5), _PDF, self._ranged("5-3"))
+
+    @pytest.mark.parametrize("with_llm", [False, True], ids=["fixed-cap", "model"])
+    def test_invalid_range_never_suggests_a_smaller_range(self, with_llm: bool) -> None:
+        profile = self._ranged("0-5")
+        if with_llm:
+            profile.llm = MagicMock(name="llm")
+            profile.llm.adapter_id = "bedrock|8d18571f-5e96-4505-bd28-ad0379c64064"
+            profile.llm.metadata = {
+                "model": "anthropic.claude-sonnet-4-5-20250929-v1:0",
+                "aws_region_name": "us-east-1",
+            }
+        with pytest.raises(ImageModePageLimitExceeded) as excinfo:
+            check(_pdf(30), _PDF, profile)
+        msg = str(excinfo.value.detail)
+        assert "smaller range" not in msg
+        assert "'Pages to extract' setting is invalid" in msg
+        assert "selects" not in msg
+
+
 class TestGate:
     def test_image_mode_default_profile_is_gated(self) -> None:
         assert gated(_profile({"output_mode": "image"})) is True
@@ -128,6 +215,8 @@ class TestCheckIsWiredIntoUpload:
 
 _BEDROCK_ID = "bedrock|8d18571f-5e96-4505-bd28-ad0379c64064"
 _OPENAI_ID = "openai|502ecf49-e47c-445c-9907-6d4b90c5cd17"
+_OLLAMA_ID = "ollama|4b8bd31a-ce42-48d4-9d69-f29c12e0f276"
+_OLLAMA_META = {"model": "llava", "api_base": "http://ollama:11434"}
 
 
 def _llm_profile(adapter_id: str, metadata: dict, name: str = "Default") -> MagicMock:
@@ -168,10 +257,29 @@ class TestModelAwareUploadCheck:
     def test_strict_provider_accepts_at_its_limit(self) -> None:
         check(_pdf(20), _PDF, _llm_profile(_BEDROCK_ID, _BEDROCK_META))
 
-    def test_generous_provider_is_held_at_the_rollout_cap(self) -> None:
-        # Until the cloud plugin answers with model-aware limits, 90 stays.
-        with pytest.raises(ImageModePageLimitExceeded):
-            check(_pdf(91), _PDF, _llm_profile(_OPENAI_ID, _OPENAI_META))
+    def test_generous_provider_accepts_above_the_old_fixed_cap(self) -> None:
+        check(_pdf(91), _PDF, _llm_profile(_OPENAI_ID, _OPENAI_META))
+
+    def test_env_ceiling_cannot_raise_the_fixed_cap(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # No LLM: the fixed cap. A ceiling above 90 leaves 90 in force.
+        monkeypatch.setenv("VLM_IMAGE_ANSWER_PAGE_CAP", "200")
+        profile = _profile({"output_mode": "image"})
+        profile.llm = None
+        with pytest.raises(ImageModePageLimitExceeded) as excinfo:
+            check(_pdf(91), _PDF, profile)
+        assert "the limit is 90" in str(excinfo.value.detail)
+
+    def test_pass_through_provider_keeps_the_fixed_cap(self) -> None:
+        # Ollama publishes no limits: the fixed 90 is enforced, as before.
+        profile = _llm_profile(_OLLAMA_ID, _OLLAMA_META)
+        check(_pdf(90), _PDF, profile)
+        with pytest.raises(ImageModePageLimitExceeded) as excinfo:
+            check(_pdf(91), _PDF, profile)
+        msg = str(excinfo.value.detail)
+        assert "at most 90 pages" in msg
+        assert "administrator" not in msg
 
     def test_unresolvable_llm_falls_back_to_the_fixed_cap(
         self, monkeypatch: pytest.MonkeyPatch
@@ -208,6 +316,21 @@ class TestModelAwareUploadCheck:
         profile.llm = None
         with pytest.raises(ImageModePageLimitExceeded):
             check(_pdf(6), _PDF, profile)
+
+    def test_internal_error_is_logged_with_traceback_and_uses_the_fixed_cap(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        # A defect (not an adapter validation error) is logged loudly; the
+        # upload check still falls back to the fixed cap.
+        caplog.set_level(logging.ERROR)
+        profile = _llm_profile(_OPENAI_ID, _OPENAI_META)
+        with patch.object(
+            _psh_mod.LLM, "image_input_limits_for", side_effect=RuntimeError("boom")
+        ):
+            with pytest.raises(ImageModePageLimitExceeded) as excinfo:
+                check(_pdf(91), _PDF, profile)
+        assert "the limit is 90" in str(excinfo.value.detail)
+        assert any(rec.exc_info for rec in caplog.records)
 
     def test_upload_passes_the_default_profile(self) -> None:
         source = inspect.getsource(_views_mod.PromptStudioCoreView.upload_for_ide)
@@ -248,6 +371,35 @@ class TestCacheHitCheck:
                 _llm_profile(_BEDROCK_ID, _BEDROCK_META), _cached_summary(21), "a.pdf"
             )
         assert "20 page images" in str(excinfo.value.detail)
+
+    def test_generous_provider_accepts_above_the_old_fixed_cap(self) -> None:
+        # The fixed cap applies only without an LLM budget: OpenAI's own
+        # limit (LLMWhisperer's 999 pages) holds on a cache hit too.
+        profile = _llm_profile(_OPENAI_ID, _OPENAI_META)
+        self.cached_check(profile, _cached_summary(91), "a.pdf")
+        with pytest.raises(_psh_mod.ExtractionAPIError) as excinfo:
+            self.cached_check(profile, _cached_summary(1000), "a.pdf")
+        assert "999" in str(excinfo.value.detail)
+
+    def test_profile_without_llm_applies_the_fixed_cap(self) -> None:
+        # As at upload: no resolvable LLM means the fixed cap, not no check.
+        profile = _profile({"output_mode": "image"})
+        profile.llm = None
+        self.cached_check(profile, _cached_summary(90), "a.pdf")
+        with pytest.raises(_psh_mod.ExtractionAPIError) as excinfo:
+            self.cached_check(profile, _cached_summary(91), "a.pdf")
+        detail = str(excinfo.value.detail)
+        assert "IMAGE_PAGE_CAP_EXCEEDED" in detail
+        assert "the limit is 90" in detail
+
+    def test_unresolvable_llm_applies_the_fixed_cap(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("VLM_IMAGE_ANSWER_PAGE_CAP", "5")
+        profile = _llm_profile("nope|123", {"model": "x"})
+        with pytest.raises(_psh_mod.ExtractionAPIError) as excinfo:
+            self.cached_check(profile, _cached_summary(6), "a.pdf")
+        assert "the limit is 5" in str(excinfo.value.detail)
 
     def test_switch_off_applies_the_fixed_cap(
         self, monkeypatch: pytest.MonkeyPatch
