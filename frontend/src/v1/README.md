@@ -69,12 +69,17 @@ is convention.
 - One notification entry point: `notify()` or `toast.success/error/warning/info`
   from `@v1/lib/notify`, which `services/` can reach too. The `Toaster` in
   `components/ui/feedback/` implements it; mount it once inside the v1 root.
-  With no `Toaster` mounted, `notify()` logs with the request id instead, so
-  nothing fails silently. `lint:v1` rejects sonner, react-hot-toast,
-  react-toastify, notistack and Radix Toast outside `components/ui/feedback/`.
+  With no `Toaster` mounted, `notify()` only logs to the console (with the
+  request id); nothing is shown or queued. `lint:v1` rejects sonner,
+  react-hot-toast, react-toastify and notistack outside
+  `components/ui/feedback/`, and there allows radix-ui only as a static named
+  import that does not name `Toast` (Biome already rejects antd in v1).
 - Errors are announced assertively, everything else politely. Toasts stack
   bottom-right (at most three), pause while hovered or focused, and F8 moves
-  focus to them; pass `persistent` to keep one until it is dismissed.
+  focus to them; pass `persistent` to keep one until it is dismissed. At the
+  limit, timed toasts go before persistent ones; if all three are persistent
+  the oldest goes. Reusing an `id` replaces a toast with a fresh one (new
+  timer, announced again). A `requestId` is shown on the toast.
 - Loading is a skeleton (`Skeleton` + `SkeletonText`, `SkeletonBlock`,
   `SkeletonAvatar`, `SkeletonTableRows`), never a spinner inside a card.
   `Spinner` sits only in buttons and running text. Errors on a screen are an
@@ -107,7 +112,7 @@ Every folder may import from itself. Test files (`*.test.ts(x)`,
 | Script | Checks |
 | --- | --- |
 | `bun run typecheck:v1` | TypeScript-only files, styles only in `styles/`, allowed file types only, no symlinks, folder taxonomy; then `tsc` with `src/v1/tsconfig.json` |
-| `bun run lint:v1` | Biome on `src/v1/`, then imports in code and in `styles/` CSS (nothing outside v1, folder contract, and v0 reaching v1 only through `@v1`), PropTypes and `ant-` checks, then the styling policy (S1 to S8 above) |
+| `bun run lint:v1` | Biome on `src/v1/`, then imports in code and in `styles/` CSS (nothing outside v1, folder contract, and v0 reaching v1 only through `@v1`), PropTypes and `ant-` checks, the single notification entry point, then the styling policy (S1 to S8 above) |
 | `bun run tokens:v1` | Regenerates `styles/tokens.css` from `styles/tokens.json` (via `styles/tokens.ts`; runs under bun, which imports the TypeScript source directly) |
 | `bun run test:v1` | v1 unit tests, then the guardrail fixtures in `test-fixtures/v1-boundary/` |
 

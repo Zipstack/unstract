@@ -32,6 +32,8 @@ it("offers Retry only when given onRetry, and calls it", async () => {
   );
   await user.click(screen.getByRole("button", { name: "Try again" }));
   expect(onRetry).toHaveBeenCalledOnce();
+  // Not the click event: `onRetry={load}` must not receive it as an argument.
+  expect(onRetry.mock.calls[0]).toEqual([]);
 });
 
 it("reports determinate progress, clamped to the range", () => {
@@ -41,9 +43,19 @@ it("reports determinate progress, clamped to the range", () => {
   expect(bar?.getAttribute("aria-valuemax")).toBe("100");
   rerender(<ProgressBar aria-label="Upload" value={140} />);
   expect(bar?.getAttribute("aria-valuenow")).toBe("100");
+  rerender(<ProgressBar aria-label="Upload" value={-5} />);
+  expect(bar?.getAttribute("aria-valuenow")).toBe("0");
   rerender(<ProgressBar aria-label="Upload" value={3} max={4} />);
   expect(bar?.getAttribute("aria-valuenow")).toBe("3");
   expect(bar?.getAttribute("aria-valuemax")).toBe("4");
+});
+
+it("fills the bar as a fraction of max", () => {
+  const { container } = render(
+    <ProgressBar aria-label="Upload" value={3} max={4} />,
+  );
+  const indicator = container.querySelector("[data-slot=progress-bar] > div");
+  expect(indicator?.getAttribute("style")).toContain("--progress: 0.75");
 });
 
 it("shows an empty bar, not NaN, when the total is zero or invalid", () => {
@@ -57,6 +69,12 @@ it("shows an empty bar, not NaN, when the total is zero or invalid", () => {
   rerender(<ProgressBar aria-label="Batch" value={5} max={-3} />);
   expect(bar.getAttribute("aria-valuenow")).toBe("0");
   expect(bar.getAttribute("aria-valuemax")).toBe("100");
+  // `done / total * 100` with total 0.
+  rerender(<ProgressBar aria-label="Batch" value={Number.NaN} />);
+  expect(bar.getAttribute("aria-valuenow")).toBe("0");
+  expect(bar.getAttribute("data-state")).not.toBe("indeterminate");
+  expect(indicator?.getAttribute("style")).toContain("--progress: 0");
+  expect(indicator?.getAttribute("style")).not.toContain("NaN");
 });
 
 it("leaves aria-valuenow out while progress is indeterminate", () => {
@@ -93,7 +111,7 @@ it("marks every step done when current is past the end", () => {
   expect(states).toEqual(["done", "done"]);
 });
 
-it("exposes one busy, named region for a skeleton and hides the bars", () => {
+it("exposes one status region with the label for a skeleton and hides the bars", () => {
   render(
     <Skeleton label="Loading projects">
       <SkeletonAvatar />
@@ -102,7 +120,8 @@ it("exposes one busy, named region for a skeleton and hides the bars", () => {
     </Skeleton>,
   );
   const region = screen.getByRole("status");
-  expect(region?.getAttribute("aria-busy")).toBe("true");
+  // aria-busy would hold the announcement until the skeleton unmounts.
+  expect(region.hasAttribute("aria-busy")).toBe(false);
   expect(region?.textContent).toContain("Loading projects");
   expect(
     region
@@ -132,7 +151,7 @@ it("draws text lines 12 then 10 tall, widths cycling 100%, 78%, 46%", () => {
   ]);
 });
 
-it("names a spinner only when asked, and has no large size", () => {
+it("names a spinner only when asked", () => {
   const { rerender } = render(<Spinner />);
   expect(screen.queryByRole("status")).toBeNull();
   rerender(<Spinner size="button" label="Saving" />);

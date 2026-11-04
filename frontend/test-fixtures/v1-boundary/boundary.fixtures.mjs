@@ -85,6 +85,12 @@ const CASES = parseTable(`
   v1-notify-dynamic              | lint:v1         | One notification entry point in v1
   v1-notify-radix-dynamic        | lint:v1         | One notification entry point in v1
   v1-notify-radix-bracket        | lint:v1         | One notification entry point in v1
+  v1-notify-radix-jsx            | lint:v1         | One notification entry point in v1
+  v1-notify-radix-require        | lint:v1         | One notification entry point in v1
+  v1-notify-radix-reexport       | lint:v1         | One notification entry point in v1
+  v1-notify-radix-then           | lint:v1         | One notification entry point in v1
+  # Outside the feedback folder, a static named radix-ui import without Toast is fine.
+  v1-notify-radix-named-ok       | lint:v1         | -
   v1-notify-feedback-ok          | lint:v1         | -
   v1-explicit-any                | lint:v1         | noExplicitAny
   # The v1 override must add to the shared rules, not replace them.

@@ -22,12 +22,15 @@ export function ProgressBar({
   ...named
 }: ProgressBarProps): JSX.Element {
   const indeterminate = value === null;
-  // Radix rejects a max that is not a positive number; an empty batch (0 of 0)
-  // shows as an empty bar rather than NaN.
+  // Radix rejects a max that is not a positive number, and a value that is not
+  // finite; an empty batch (0 of 0, or `done / total * 100` with total 0) shows
+  // as an empty bar rather than NaN.
   const validMax = Number.isFinite(max) && max > 0;
   const total = validMax ? max : 100;
   const clamped =
-    indeterminate || !validMax ? 0 : Math.min(Math.max(value, 0), total);
+    indeterminate || !validMax || !Number.isFinite(value)
+      ? 0
+      : Math.min(Math.max(value, 0), total);
   return (
     <RadixProgress.Root
       value={indeterminate ? null : clamped}

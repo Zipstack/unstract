@@ -56,7 +56,7 @@ export function InlineAlert({
       {onRetry ? (
         <button
           type="button"
-          onClick={onRetry}
+          onClick={() => onRetry()}
           className="ui:inline-flex ui:h-7 ui:shrink-0 ui:cursor-pointer ui:items-center ui:rounded-sm ui:border ui:border-input ui:bg-background ui:px-2.5 ui:text-body-small ui:font-medium ui:text-foreground ui:hover:bg-accent ui:focus-visible:focus-ring"
         >
           {retryLabel}

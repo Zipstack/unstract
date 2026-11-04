@@ -18,7 +18,11 @@ export type SkeletonProps = Readonly<{
   children?: ReactNode;
 }>;
 
-/** The container every skeleton sits in: one busy region with one name. */
+/**
+ * The container every skeleton sits in: one status region whose only text is
+ * the label. No `aria-busy`: on a live region it holds announcements until it
+ * turns false, and a skeleton unmounts instead, so the label would never be read.
+ */
 export function Skeleton({
   label = "Loading",
   className,
@@ -28,7 +32,6 @@ export function Skeleton({
     // biome-ignore lint/a11y/useSemanticElements: <output> may hold only phrasing content, and skeletons hold blocks.
     <div
       role="status"
-      aria-busy="true"
       data-slot="skeleton"
       className={cn("ui:flex ui:flex-col ui:gap-2.5", className)}
     >

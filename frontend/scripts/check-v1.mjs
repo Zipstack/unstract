@@ -513,68 +513,40 @@ const TOAST_PACKAGES =
 const NOTIFY_MSG =
   "One notification entry point in v1: call notify() or toast.* from @v1/lib/notify; toast libraries are imported only in components/ui/feedback/.";
 
-/* Toast-library imports outside the feedback folder, as { index, msg }. */
+/*
+ * Toast-library imports outside the feedback folder, as { index, msg }.
+ *
+ * radix-ui bundles every primitive, Toast among them, and a namespace, default,
+ * dynamic, required or re-exported binding can reach Toast in more spellings
+ * than a walk can follow (`R.Toast`, `<R.Toast.Root>`, `R["Toast"]`, aliases,
+ * `.then`). So the rule is structural, not a hunt for spellings: outside the
+ * feedback folder radix-ui may be used only as a static named import that does
+ * not name Toast, and every other reference to it is reported. (antd's
+ * notification and message are already rejected by Biome's noRestrictedImports,
+ * which lint:v1 runs first.)
+ */
+const RADIX = /^radix-ui(\/|$)/;
+const isNamedRadixImport = (node) =>
+  node.type === "ImportDeclaration" &&
+  node.source.value === "radix-ui" &&
+  node.specifiers.length > 0 &&
+  node.specifiers.every(
+    (spec) =>
+      spec.type === "ImportSpecifier" &&
+      (spec.imported.name ?? spec.imported.value) !== "Toast",
+  );
+
 function* notifyEntryPoints(ast, specs) {
+  const allowed = new Set(
+    ast.program.body.filter(isNamedRadixImport).map((node) => node.start),
+  );
   for (const arg of specs) {
-    if (TOAST_PACKAGES.test(arg.spec ?? "")) {
-      yield { index: arg.index, msg: NOTIFY_MSG };
-    }
-  }
-  // radix-ui bundles every primitive; its Toast is the one that matters here.
-  // Imports sit at the top level, so the namespaces are known before the walk.
-  const fromRadix = (node) =>
-    (node.type === "ImportDeclaration" ||
-      node.type === "ExportNamedDeclaration") &&
-    node.source?.value === "radix-ui";
-  const radixNamespaces = new Set();
-  for (const node of ast.program.body.filter(fromRadix)) {
-    for (const spec of node.specifiers ?? []) {
-      const name = spec.imported?.name ?? spec.local?.name;
-      if (spec.type === "ImportNamespaceSpecifier") {
-        radixNamespaces.add(spec.local.name);
-      } else if (name === "Toast") {
-        yield { index: spec.start, msg: NOTIFY_MSG };
-      }
-    }
-  }
-  // `const R = await import("radix-ui")` binds a namespace too, and
-  // `const { Toast } = await import("radix-ui")` takes Toast directly.
-  const isRadixImport = (init) => {
-    const call = init?.type === "AwaitExpression" ? init.argument : init;
-    // @babel/parser emits `import()` as a call on `Import` by default.
-    const source =
-      call?.type === "ImportExpression"
-        ? call.source
-        : call?.type === "CallExpression" && call.callee.type === "Import"
-          ? call.arguments[0]
-          : undefined;
-    return source?.value === "radix-ui";
-  };
-  const all = [...nodes(ast.program)];
-  for (const node of all) {
-    if (node.type !== "VariableDeclarator" || !isRadixImport(node.init)) {
-      continue;
-    }
-    if (node.id.type === "Identifier") {
-      radixNamespaces.add(node.id.name);
-    } else if (node.id.type === "ObjectPattern") {
-      for (const prop of node.id.properties) {
-        const key = prop.key?.name ?? prop.key?.value;
-        if (key === "Toast") {
-          yield { index: prop.start, msg: NOTIFY_MSG };
-        }
-      }
-    }
-  }
-  for (const node of all) {
-    const property = node.computed ? node.property?.value : node.property?.name;
+    const spec = arg.spec ?? "";
     if (
-      node.type === "MemberExpression" &&
-      node.object.type === "Identifier" &&
-      radixNamespaces.has(node.object.name) &&
-      property === "Toast"
+      TOAST_PACKAGES.test(spec) ||
+      (RADIX.test(spec) && !allowed.has(arg.index))
     ) {
-      yield { index: node.start, msg: NOTIFY_MSG };
+      yield { index: arg.index, msg: NOTIFY_MSG };
     }
   }
 }

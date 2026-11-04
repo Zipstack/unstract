@@ -6,7 +6,12 @@ import {
   waitFor,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { dismissNotification, notify, toast } from "@v1/lib/notify";
+import {
+  dismissNotification,
+  NOTIFY_KINDS,
+  notify,
+  toast,
+} from "@v1/lib/notify";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { MAX_TOASTS, Toaster } from "./Toaster";
 
@@ -44,23 +49,37 @@ it("shows a toast with its title, description and kind in the viewport", () => {
   expect(container.querySelector("ol")).not.toBeNull();
 });
 
-it("announces errors assertively and everything else politely", async () => {
+const announcer = (text: string) =>
+  [...document.querySelectorAll("[role=status][aria-live]")].find((el) =>
+    el.textContent?.includes(text),
+  );
+
+it("announces errors assertively and every other kind politely", async () => {
+  mount();
+  for (const kind of NOTIFY_KINDS) {
+    let id: string | undefined;
+    act(() => {
+      id = notify({ kind, title: `Kind ${kind}`, persistent: true });
+    });
+    // Radix fills its announcers a frame after the toast mounts.
+    await waitFor(() => {
+      expect(announcer(`Kind ${kind}`)?.getAttribute("aria-live")).toBe(
+        kind === "error" ? "assertive" : "polite",
+      );
+    });
+    act(() => {
+      toast.dismiss(id as string);
+    });
+  }
+});
+
+it("shows the request id where it can be copied", () => {
   mount();
   act(() => {
-    toast.error("Could not connect");
-    toast.info("Heads up");
+    toast.error("Could not save", { requestId: "req-42" });
   });
-  const live = (text: string) =>
-    [...document.querySelectorAll("[role=status][aria-live]")].find((el) =>
-      el.textContent?.includes(text),
-    );
-  // Radix fills its announcers a frame after the toast mounts.
-  await waitFor(() => {
-    expect(live("Could not connect")?.getAttribute("aria-live")).toBe(
-      "assertive",
-    );
-    expect(live("Heads up")?.getAttribute("aria-live")).toBe("polite");
-  });
+  const id = screen.getByText("Request ID: req-42");
+  expect(id.className).toContain("ui:select-text");
 });
 
 it("closes after the timeout unless persistent", () => {
@@ -108,6 +127,7 @@ it("runs the action and closes the toast", async () => {
   });
   await user.click(screen.getByRole("button", { name: "Edit profile" }));
   expect(onSelect).toHaveBeenCalledOnce();
+  expect(onSelect.mock.calls[0]).toEqual([]);
   expect(screen.queryByText("gpt-5.6 could not connect")).toBeNull();
 });
 
@@ -179,6 +199,137 @@ it("keeps at most MAX_TOASTS, dropping the oldest, and replaces by id", () => {
     .closest("[data-slot=toast]");
   expect(replaced?.getAttribute("data-kind")).toBe("success");
   expect(toasts()).toHaveLength(MAX_TOASTS);
+});
+
+it("drops timed toasts before persistent ones at the limit", () => {
+  mount();
+  act(() => {
+    toast.error("Upload failed", { persistent: true });
+  });
+  act(() => {
+    for (let i = 1; i <= MAX_TOASTS; i++) {
+      toast.success(`Saved ${i}`);
+    }
+  });
+  expect(toasts()).toHaveLength(MAX_TOASTS);
+  expect(screen.getByText("Upload failed")).not.toBeNull();
+  expect(screen.queryByText("Saved 1")).toBeNull();
+  expect(screen.getByText("Saved 3")).not.toBeNull();
+});
+
+it("gives a replacement its own timer and persistence", () => {
+  vi.useFakeTimers();
+  mount(1000);
+  act(() => {
+    notify({ kind: "info", title: "Uploading", id: "upload" });
+  });
+  act(() => {
+    vi.advanceTimersByTime(900);
+  });
+  act(() => {
+    notify({
+      kind: "error",
+      title: "Upload failed",
+      id: "upload",
+      persistent: true,
+    });
+  });
+  act(() => {
+    vi.advanceTimersByTime(5000);
+  });
+  expect(screen.getByText("Upload failed")).not.toBeNull();
+  act(() => {
+    notify({ kind: "success", title: "Uploaded", id: "upload" });
+  });
+  act(() => {
+    vi.advanceTimersByTime(900);
+  });
+  // A fresh 1000ms timer, not the remains of an earlier one.
+  expect(screen.getByText("Uploaded")).not.toBeNull();
+  act(() => {
+    vi.advanceTimersByTime(200);
+  });
+  expect(screen.queryByText("Uploaded")).toBeNull();
+});
+
+it("announces a replacement", async () => {
+  mount();
+  act(() => {
+    notify({ kind: "info", title: "Uploading", id: "upload" });
+  });
+  await waitFor(() => expect(announcer("Uploading")).toBeDefined());
+  act(() => {
+    notify({ kind: "error", title: "Upload failed", id: "upload" });
+  });
+  await waitFor(() => {
+    expect(announcer("Upload failed")?.getAttribute("aria-live")).toBe(
+      "assertive",
+    );
+  });
+});
+
+it("keeps a replacement that the toast's own action sends", async () => {
+  const user = userEvent.setup();
+  mount();
+  act(() => {
+    toast.error("Upload failed", {
+      id: "upload",
+      persistent: true,
+      action: {
+        label: "Retry",
+        onSelect: () => toast.info("Retrying", { id: "upload" }),
+      },
+    });
+  });
+  await user.click(screen.getByRole("button", { name: "Retry" }));
+  expect(screen.queryByText("Upload failed")).toBeNull();
+  expect(screen.getByText("Retrying")).not.toBeNull();
+});
+
+it("moves focus to the viewport when a focused toast is removed", () => {
+  mount();
+  let id: string | undefined;
+  act(() => {
+    id = toast.info("Focused", { persistent: true });
+  });
+  (container.querySelector("[data-slot=toast]") as HTMLElement).focus();
+  act(() => {
+    dismissNotification(id as string);
+  });
+  expect(document.activeElement).toBe(container.querySelector("ol"));
+});
+
+it("times out the next toast after the last one closes under the pointer", () => {
+  vi.useFakeTimers();
+  mount(1000);
+  act(() => {
+    toast.info("First", { persistent: true });
+  });
+  fireEvent.pointerMove(screen.getByRole("region", { name: /Notifications/ }));
+  fireEvent.click(screen.getByRole("button", { name: "Dismiss notification" }));
+  expect(screen.queryByText("First")).toBeNull();
+  act(() => {
+    toast.info("Second");
+  });
+  act(() => {
+    vi.advanceTimersByTime(1500);
+  });
+  expect(screen.queryByText("Second")).toBeNull();
+});
+
+it("follows a new container", () => {
+  const other = document.createElement("div");
+  document.body.appendChild(other);
+  const { rerender } = render(<Toaster container={container} />);
+  rerender(<Toaster container={other} />);
+  act(() => {
+    toast.info("Moved", { persistent: true });
+  });
+  expect(other.querySelector("[data-slot=toast]")?.textContent).toContain(
+    "Moved",
+  );
+  expect(container.querySelector("[data-slot=toast]")).toBeNull();
+  other.remove();
 });
 
 it("stops receiving notifications once unmounted", () => {
