@@ -85,7 +85,10 @@ from unstract.sdk1.adapters.x2text.constants import ImageOutputConstants
 from unstract.sdk1.adapters.x2text.llm_whisperer_v2.src.helper import (
     LLMWhispererHelper,
 )
-from unstract.sdk1.adapters.x2text.page_image_loader import configured_page_cap
+from unstract.sdk1.adapters.x2text.llm_whisperer_v2.src.page_range import (
+    PageRangeError,
+)
+from unstract.sdk1.adapters.x2text.page_image_loader import get_fixed_page_cap
 from unstract.sdk1.constants import LogLevel
 from unstract.sdk1.exceptions import IndexingError, SdkError
 from unstract.sdk1.execution.context import ExecutionContext
@@ -1525,13 +1528,22 @@ class PromptStudioHelper:
             limits, tokens = LLM.image_input_limits_for(
                 str(llm.adapter_id), llm.metadata or {}
             )
-        except Exception as e:
+        except SdkError as e:
             # The error type only, no traceback: the adapter's validation
             # error quotes the stored metadata, credentials included.
             logger.warning(
                 "Could not resolve image limits for the default profile's LLM "
                 "(%s); using the fixed page cap for the upload check",
                 type(e).__name__,
+            )
+            return None
+        except Exception:
+            # Not the adapter's fault: a defect while resolving the limits.
+            # The upload still falls back to the fixed cap; extraction
+            # re-resolves and fails with a clear reason if this persists.
+            logger.exception(
+                "Internal error resolving image limits for the default "
+                "profile's LLM; using the fixed page cap for the upload check"
             )
             return None
         bounds = extraction_bound_kwargs()
@@ -1553,9 +1565,9 @@ class PromptStudioHelper:
         Bedrock Claude, 20 images) a cache hit would skip the page-budget
         check and the prompt would fail at the provider. Uses the page count
         recorded in the image-mode summary; no-op outside image mode or when
-        the count or the LLM's limits are unknown (answer time re-checks).
-        With ``VLM_IMAGE_LIMITS_ENFORCE=false`` the fixed page cap applies,
-        as at upload.
+        the count is unknown (answer time re-checks). Without a resolvable
+        LLM, or with ``VLM_IMAGE_LIMITS_ENFORCE=false``, the fixed page cap
+        applies, as at upload.
         """
         if not PromptStudioHelper.uploads_use_image_output_mode(profile_manager):
             return
@@ -1564,8 +1576,9 @@ class PromptStudioHelper:
         )
         if page_count is None:
             return
-        if not model_aware_limits_enabled():
-            page_cap = configured_page_cap()
+        budget = PromptStudioHelper._upload_page_budget(profile_manager)
+        if budget is None:
+            page_cap = get_fixed_page_cap()
             if page_count <= page_cap:
                 return
             raise ExtractionAPIError(
@@ -1577,8 +1590,7 @@ class PromptStudioHelper:
                     switch_to="switch this profile to a text output mode",
                 )
             )
-        budget = PromptStudioHelper._upload_page_budget(profile_manager)
-        if budget is None or page_count <= budget.max_pages:
+        if page_count <= budget.max_pages:
             return
         raise ExtractionAPIError(
             f"Failed to extract '{filename}'. "
@@ -1609,10 +1621,16 @@ class PromptStudioHelper:
         """
         if file_type != "application/pdf":
             return
-        page_count = LLMWhispererHelper.pdf_page_count(file_data)
+        total_page_count = LLMWhispererHelper.pdf_page_count(file_data)
         file_data.seek(0)
-        if page_count is None:
+        if total_page_count is None:
             return
+        page_count, selection_valid = PromptStudioHelper._selected_page_count(
+            profile_manager, total_page_count
+        )
+        # Named in the message only when the selection narrowed the count,
+        # as the SDK's pre-submit check does.
+        selected_from = total_page_count if page_count != total_page_count else None
         budget = PromptStudioHelper._upload_page_budget(profile_manager)
         if budget is not None:
             if page_count <= budget.max_pages:
@@ -1620,13 +1638,19 @@ class PromptStudioHelper:
             profile_name = getattr(profile_manager, "profile_name", "") or "default"
             raise ImageModePageLimitExceeded(
                 detail=(
-                    page_cap_message(page_count, budget, charged=None)
+                    page_cap_message(
+                        page_count,
+                        budget,
+                        charged=None,
+                        selected_from=selected_from,
+                        invalid_selection=not selection_valid,
+                    )
                     + " This check uses the project's default profile "
                     f"('{profile_name}'); other profiles may allow a different "
                     "number of pages."
                 )
             )
-        page_cap = configured_page_cap()
+        page_cap = get_fixed_page_cap()
         if page_count <= page_cap:
             return
         raise ImageModePageLimitExceeded(
@@ -1634,8 +1658,49 @@ class PromptStudioHelper:
                 page_count,
                 page_cap,
                 switch_to="switch the project's default profile to a text output mode",
+                selected_from=selected_from,
+                invalid_selection=not selection_valid,
             )
         )
+
+    @staticmethod
+    def _selected_page_count(
+        profile_manager: ProfileManager | None, total_page_count: int
+    ) -> tuple[int, bool]:
+        """``(pages the profile's 'Pages to extract' selects, setting valid)``.
+
+        Image mode converts and sends only the selected pages, so the upload
+        check counts those, with the SDK's own counting. Fails open to the
+        whole document when the setting is invalid (``False``: the message
+        must not suggest a smaller range) or unreadable; extraction reports
+        an invalid setting before anything is converted. Failures are logged
+        with their type only: the setting's value is user input, and reading
+        the adapter metadata decrypts it, so an error there can quote
+        credentials (hence no traceback either).
+        """
+        try:
+            x2text = getattr(profile_manager, "x2text", None)
+            metadata = (getattr(x2text, "metadata", None) or {}) if x2text else {}
+            return (
+                LLMWhispererHelper.selected_page_count(metadata, total_page_count),
+                True,
+            )
+        except PageRangeError as e:
+            logger.warning(
+                "The default profile's 'Pages to extract' setting is invalid "
+                "(%s); the upload page check counts all %d pages",
+                type(e).__name__,
+                total_page_count,
+            )
+            return total_page_count, False
+        except Exception as e:
+            logger.error(
+                "Could not apply the default profile's 'Pages to extract' setting "
+                "to the upload page check (%s); counting all %d pages",
+                type(e).__name__,
+                total_page_count,
+            )
+            return total_page_count, True
 
     @staticmethod
     def _validate_image_output_pdf_only(
