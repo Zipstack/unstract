@@ -1,7 +1,8 @@
 import { act, render } from "@testing-library/react";
 import type { PDFDocumentProxy } from "pdfjs-dist";
+import { createRef } from "react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { PdfPageList } from "./PdfPageList";
+import { PdfPageList, type PdfPageListHandle } from "./PdfPageList";
 
 /** An IntersectionObserver whose "in view" set the test controls. */
 class FakeIntersectionObserver {
@@ -21,12 +22,20 @@ class FakeIntersectionObserver {
   disconnect() {
     this.targets.clear();
   }
+  emit(entries: object[]) {
+    this.callback(entries as unknown as IntersectionObserverEntry[]);
+  }
   show(indexes: number[]) {
     const entries = [...this.targets].map((target) => ({
       target,
       isIntersecting: indexes.includes(
         Number(target.getAttribute("data-page-index")),
       ),
+      intersectionRatio: indexes.includes(
+        Number(target.getAttribute("data-page-index")),
+      )
+        ? 1
+        : 0,
     }));
     this.callback(entries as unknown as IntersectionObserverEntry[]);
   }
@@ -95,8 +104,23 @@ function show(indexes: number[]) {
   act(() => FakeIntersectionObserver.current?.show(indexes));
 }
 
+let viewerResized: (() => void) | null = null;
+
+class FakeResizeObserver {
+  constructor(callback: () => void) {
+    viewerResized = callback;
+  }
+  observe() {
+    // Reports only when a test calls viewerResized().
+  }
+  disconnect() {
+    viewerResized = null;
+  }
+}
+
 beforeEach(() => {
   vi.stubGlobal("IntersectionObserver", FakeIntersectionObserver);
+  vi.stubGlobal("ResizeObserver", FakeResizeObserver);
   vi.stubGlobal("requestAnimationFrame", (cb: FrameRequestCallback) =>
     window.setTimeout(() => cb(0), 0),
   );
@@ -378,6 +402,363 @@ it("draws each highlight on its own page", () => {
   ).toBeNull();
 });
 
+/**
+ * Gives the list a layout, which happy-dom does not compute: pages 800 × 600
+ * at zoom 1, 16 px apart after 16 px of padding, in a viewport 500 wide and
+ * 400 tall unless `viewHeight` says otherwise.
+ */
+function layOut(
+  container: HTMLElement,
+  zoom: () => number,
+  viewHeight: () => number = () => 400,
+) {
+  const root = container.querySelector<HTMLElement>("section");
+  if (!root) {
+    throw new Error("no scroll region");
+  }
+  const count = container.querySelectorAll("[data-page-index]").length;
+  Object.defineProperties(root, {
+    clientHeight: { get: viewHeight },
+    clientWidth: { value: 500 },
+    scrollHeight: {
+      get: () => 16 + count * (800 * zoom() + 16),
+      configurable: true,
+    },
+  });
+  for (const page of container.querySelectorAll<HTMLElement>(
+    "[data-page-index]",
+  )) {
+    const index = Number(page.getAttribute("data-page-index"));
+    Object.defineProperties(page, {
+      offsetTop: {
+        get: () => 16 + index * (800 * zoom() + 16),
+        configurable: true,
+      },
+      offsetHeight: { get: () => 800 * zoom(), configurable: true },
+      offsetWidth: { get: () => 600 * zoom() },
+      offsetLeft: { get: () => 16 },
+    });
+  }
+  return root;
+}
+
+it("scrolls a page to the top exactly, with no wait", () => {
+  const { document } = fakeDocument(10);
+  const ref = createRef<PdfPageListHandle>();
+  const { container } = render(
+    <PdfPageList
+      ref={ref}
+      document={document}
+      pageSizes={sizes(10)}
+      zoom={1}
+    />,
+  );
+  const root = layOut(container, () => 1);
+  act(() => ref.current?.scrollToPage(3));
+  expect(root.scrollTop).toBe(3 * 816);
+  act(() => ref.current?.scrollToPage(99));
+  expect(root.scrollTop).toBe(9 * 816);
+});
+
+it("centres a highlight, across as well as down for a box", () => {
+  const { document } = fakeDocument(10);
+  const ref = createRef<PdfPageListHandle>();
+  const highlights = [
+    {
+      id: "w",
+      page: 2,
+      x: 0.5,
+      y: 0.25,
+      w: 0.1,
+      h: 0.05,
+      variant: "box" as const,
+      tone: "default" as const,
+    },
+  ];
+  const { container } = render(
+    <PdfPageList
+      ref={ref}
+      document={document}
+      pageSizes={sizes(10)}
+      zoom={1}
+      highlights={highlights}
+    />,
+  );
+  const root = layOut(container, () => 1);
+  let found = false;
+  act(() => {
+    found = ref.current?.scrollToHighlight("w") ?? false;
+  });
+  expect(found).toBe(true);
+  // Page 2's top is at 1648, padding included; the box's centre is
+  // 0.275 × 800 = 220 into it, and the view is 400 tall.
+  expect(root.scrollTop).toBe(1648 + 220 - 200);
+  // 0.55 × 600 = 330 across, from the page's left edge at 16.
+  expect(root.scrollLeft).toBe(16 + 330 - 250);
+  expect(ref.current?.scrollToHighlight("missing")).toBe(false);
+});
+
+it("keeps the same spot of the same page in view across a zoom change", () => {
+  const { document } = fakeDocument(10);
+  let zoom = 1;
+  const { container, rerender } = render(
+    <PdfPageList document={document} pageSizes={sizes(10)} zoom={zoom} />,
+  );
+  const root = layOut(container, () => zoom);
+  show([0]);
+  // Half way down page 0.
+  root.scrollTop = 400;
+  act(() => {
+    root.dispatchEvent(new Event("scroll"));
+  });
+  zoom = 2;
+  rerender(
+    <PdfPageList document={document} pageSizes={sizes(10)} zoom={zoom} />,
+  );
+  expect(root.scrollTop).toBe(800);
+});
+
+function scrollTo(root: HTMLElement, top: number) {
+  root.scrollTop = top;
+  act(() => {
+    root.dispatchEvent(new Event("scroll"));
+  });
+}
+
+it("reports the page showing most of itself", () => {
+  const { document } = fakeDocument(10);
+  const onCurrentPageChange = vi.fn();
+  const { container } = render(
+    <PdfPageList
+      document={document}
+      pageSizes={sizes(10)}
+      zoom={1}
+      onCurrentPageChange={onCurrentPageChange}
+    />,
+  );
+  const root = layOut(container, () => 1);
+  // Page 4 spans 3264-4064 and page 5 4080-4880: 100 px of 4, 284 px of 5.
+  scrollTo(root, 3964);
+  expect(onCurrentPageChange).toHaveBeenLastCalledWith(5);
+  // 300 px of 4, 84 px of 5.
+  scrollTo(root, 3764);
+  expect(onCurrentPageChange).toHaveBeenLastCalledWith(4);
+});
+
+it("counts a short page shown whole over part of a taller one", () => {
+  const { document } = fakeDocument(3);
+  const onCurrentPageChange = vi.fn();
+  const heights = [1000, 200, 1000];
+  const { container } = render(
+    <PdfPageList
+      document={document}
+      pageSizes={heights.map((height) => ({ width: 600, height }))}
+      zoom={1}
+      onCurrentPageChange={onCurrentPageChange}
+    />,
+  );
+  const root = layOut(
+    container,
+    () => 1,
+    () => 600,
+  );
+  // Pages 0-1000, 1016-1216 and 1232-2232, laid out by hand.
+  const tops = [16, 1032, 1248];
+  for (const page of container.querySelectorAll<HTMLElement>(
+    "[data-page-index]",
+  )) {
+    const index = Number(page.getAttribute("data-page-index"));
+    Object.defineProperties(page, {
+      offsetTop: { get: () => tops[index] },
+      offsetHeight: { get: () => heights[index] },
+    });
+  }
+  Object.defineProperty(root, "scrollHeight", { get: () => 2264 });
+  // 700-1300: 300 px of page 0 (half the view), all 200 px of page 1, and
+  // 52 px of page 2. Page 1 shows the most of itself.
+  scrollTo(root, 700);
+  expect(onCurrentPageChange).toHaveBeenLastCalledWith(1);
+  // 400-1000: page 0 fills the view, so it counts as shown whole.
+  scrollTo(root, 400);
+  expect(onCurrentPageChange).toHaveBeenLastCalledWith(0);
+});
+
+it("keeps the current page right for a page much taller than the viewer", () => {
+  const { document } = fakeDocument(10);
+  const onCurrentPageChange = vi.fn();
+  const { container } = render(
+    <PdfPageList
+      document={document}
+      pageSizes={sizes(10)}
+      zoom={4}
+      onCurrentPageChange={onCurrentPageChange}
+    />,
+  );
+  // At 400% a page is 3200 px in a 400 px viewer, so no intersection ratio
+  // ever reaches a quarter. Page 2 spans 6432-9632.
+  const root = layOut(container, () => 4);
+  scrollTo(root, 9332);
+  expect(onCurrentPageChange).toHaveBeenLastCalledWith(2);
+  scrollTo(root, 9600);
+  expect(onCurrentPageChange).toHaveBeenLastCalledWith(3);
+});
+
+it("reports the last page once the end is reached, even when others show as much", () => {
+  const { document } = fakeDocument(10);
+  const onCurrentPageChange = vi.fn();
+  const { container } = render(
+    <PdfPageList
+      document={document}
+      pageSizes={sizes(10)}
+      zoom={1}
+      onCurrentPageChange={onCurrentPageChange}
+    />,
+  );
+  // Two whole pages fit at the bottom; without the end rule page 8 would win
+  // the tie and Next would never reach page 9.
+  const root = layOut(
+    container,
+    () => 1,
+    () => 2000,
+  );
+  scrollTo(root, root.scrollHeight - 2000);
+  expect(onCurrentPageChange).toHaveBeenLastCalledWith(9);
+});
+
+it("pages back from the last page when the last pages fit together", () => {
+  const { document } = fakeDocument(10);
+  const ref = createRef<PdfPageListHandle>();
+  const onCurrentPageChange = vi.fn();
+  const { container } = render(
+    <PdfPageList
+      ref={ref}
+      document={document}
+      pageSizes={sizes(10)}
+      zoom={1}
+      onCurrentPageChange={onCurrentPageChange}
+    />,
+  );
+  const root = layOut(
+    container,
+    () => 1,
+    () => 2000,
+  );
+  // Clamp scrolling at the end, as a browser does.
+  let scrollTop = 0;
+  Object.defineProperty(root, "scrollTop", {
+    get: () => scrollTop,
+    set: (value: number) => {
+      scrollTop = Math.min(
+        Math.max(0, value),
+        root.scrollHeight - root.clientHeight,
+      );
+    },
+  });
+  act(() => ref.current?.scrollToPage(9));
+  expect(onCurrentPageChange).toHaveBeenLastCalledWith(9);
+  // Page 8's top is past the end of the scroll, so the jump lands at the end.
+  act(() => ref.current?.scrollToPage(8));
+  act(() => {
+    root.dispatchEvent(new Event("scroll"));
+  });
+  expect(onCurrentPageChange).toHaveBeenLastCalledWith(8);
+  act(() => ref.current?.scrollToPage(7));
+  expect(onCurrentPageChange).toHaveBeenLastCalledWith(7);
+  // A scroll by the reader goes back to measuring.
+  scrollTo(root, root.scrollHeight - root.clientHeight);
+  expect(onCurrentPageChange).toHaveBeenLastCalledWith(9);
+});
+
+it("updates the current page when the viewer changes height without scrolling", () => {
+  const { document } = fakeDocument(10);
+  const onCurrentPageChange = vi.fn();
+  const { container } = render(
+    <PdfPageList
+      document={document}
+      pageSizes={sizes(10)}
+      zoom={1}
+      onCurrentPageChange={onCurrentPageChange}
+    />,
+  );
+  let height = 400;
+  const root = layOut(
+    container,
+    () => 1,
+    () => height,
+  );
+  // Page 2 spans 1648-2448 and page 3 2464-3264: 300 px of 2, 84 px of 3.
+  scrollTo(root, 2148);
+  expect(onCurrentPageChange).toHaveBeenLastCalledWith(2);
+  // Taller: 300 px of 2, all 800 of 3.
+  height = 1200;
+  act(() => viewerResized?.());
+  expect(onCurrentPageChange).toHaveBeenLastCalledWith(3);
+});
+
+it("reports the page jumped to without waiting for a scroll event", () => {
+  const { document } = fakeDocument(10);
+  const ref = createRef<PdfPageListHandle>();
+  const onCurrentPageChange = vi.fn();
+  const { container } = render(
+    <PdfPageList
+      ref={ref}
+      document={document}
+      pageSizes={sizes(10)}
+      zoom={1}
+      onCurrentPageChange={onCurrentPageChange}
+    />,
+  );
+  layOut(container, () => 1);
+  act(() => ref.current?.scrollToPage(6));
+  expect(onCurrentPageChange).toHaveBeenLastCalledWith(6);
+});
+
+it("keeps the same spot of a later page across a zoom change", () => {
+  const { document } = fakeDocument(10);
+  let zoom = 1;
+  const { container, rerender } = render(
+    <PdfPageList document={document} pageSizes={sizes(10)} zoom={zoom} />,
+  );
+  const root = layOut(container, () => zoom);
+  // A quarter of the way down page 3, which starts at 3 × 816.
+  scrollTo(root, 3 * 816 + 200);
+  zoom = 2;
+  rerender(
+    <PdfPageList document={document} pageSizes={sizes(10)} zoom={zoom} />,
+  );
+  expect(root.scrollTop).toBe(3 * 1616 + 400);
+});
+
+it("zooms around the page jumped to, even after the jump's scroll event", () => {
+  const { document } = fakeDocument(200);
+  const ref = createRef<PdfPageListHandle>();
+  let zoom = 1;
+  const { container, rerender } = render(
+    <PdfPageList
+      ref={ref}
+      document={document}
+      pageSizes={sizes(200)}
+      zoom={zoom}
+    />,
+  );
+  const root = layOut(container, () => zoom);
+  act(() => ref.current?.scrollToPage(100));
+  // The browser fires the jump's scroll event before intersections update.
+  act(() => {
+    root.dispatchEvent(new Event("scroll"));
+  });
+  zoom = 1.5;
+  rerender(
+    <PdfPageList
+      ref={ref}
+      document={document}
+      pageSizes={sizes(200)}
+      zoom={zoom}
+    />,
+  );
+  expect(root.scrollTop).toBe(100 * (1200 + 16));
+});
+
 it("cleans up a page that arrives after it has left the window", async () => {
   const { document } = fakeDocument(10);
   const late = { getViewport: vi.fn(), render: vi.fn(), cleanup: vi.fn() };
@@ -485,4 +866,23 @@ it("blends highlights into a page once it has painted, and keeps it through a zo
   show([]);
   await flush();
   expect(blended()).toBe(false);
+});
+
+it("reads the page elements once, not on every scroll", async () => {
+  const { document } = fakeDocument(20);
+  const { container } = render(
+    <PdfPageList document={document} pageSizes={sizes(20)} zoom={1} />,
+  );
+  const region = container.querySelector("section");
+  if (!region) {
+    throw new Error("no region");
+  }
+  const query = vi.spyOn(region, "querySelectorAll");
+  for (let step = 0; step < 10; step++) {
+    act(() => {
+      region.scrollTop = step * 100;
+      region.dispatchEvent(new Event("scroll"));
+    });
+  }
+  expect(query.mock.calls.length).toBeLessThanOrEqual(1);
 });
