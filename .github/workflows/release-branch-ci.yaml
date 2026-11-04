@@ -1,4 +1,4 @@
-name: V2 Release branch CI
+name: Release branch CI
 
 # Every commit after the cut must be a pick of a main commit (or its decline), release-branch-only, or
 # build-generated. Anything else fails. Label `release-branch-only` passes a PR with commits of any kind.
