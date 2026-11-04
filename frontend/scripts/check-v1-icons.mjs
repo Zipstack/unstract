@@ -14,6 +14,9 @@
  *   3. Only named imports from `lucide-react` itself. A namespace or default
  *      import, the `icons` map, a subpath (`lucide-react/dynamic`) or a
  *      dynamic import() can reach an alias by a name no linter can see.
+ *   4. Stylesheets load no icon package. Rule 1 also applies to the target
+ *      of every CSS `@import` (and Tailwind `@reference`, `@plugin`,
+ *      `@config`), e.g. `@import "flag-icons/css/flag-icons.min.css"`.
  *
  * Biome (biome.json `overrides`) reports the common libraries in editors;
  * this script is what makes the rule complete. It checks the src/ beside it,
@@ -23,10 +26,14 @@ import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { parse } from "@babel/parser";
+import postcss from "postcss";
+import valueParser from "postcss-value-parser";
 
 const FRONTEND = path.join(import.meta.dirname, "..");
 const ROOT = path.join(FRONTEND, "src", "v1");
 const CODE = /\.(ts|tsx|mts|cts)$/;
+// Every CSS language Vite knows, as in check-v1.mjs.
+const STYLE = /\.(css|less|sass|scss|styl|stylus|pcss|postcss|sss)$/i;
 const LIBRARY = "Lucide is the only icon library under src/v1";
 const ICON_NAME = /icon|lucide/i;
 /* Icon and flag sets whose package name has neither `icon` nor `lucide`. */
@@ -75,7 +82,7 @@ function* walk(dir) {
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) {
       yield* walk(full);
-    } else if (CODE.test(entry.name)) {
+    } else if (CODE.test(entry.name) || STYLE.test(entry.name)) {
       yield full;
     }
   }
@@ -241,13 +248,57 @@ function checkFile(file, aliases, report) {
   }
 }
 
+// CSS `@import` and Tailwind's `@reference` / `@plugin` / `@config`.
+const CSS_IMPORT_RULES = new Set(["import", "reference", "plugin", "config"]);
+
+/* The target of an import at-rule: its first string, word or url(). A
+ * leading `~` (the Sass/Less package prefix) is dropped. */
+function cssImportTarget(params) {
+  const first = valueParser(params).nodes.find((n) => n.type !== "space");
+  const target =
+    first?.type === "function" && first.value.toLowerCase() === "url"
+      ? first.nodes.find((n) => n.type !== "space")?.value
+      : first?.type === "string" || first?.type === "word"
+        ? first.value
+        : undefined;
+  return target?.replace(/^~/, "");
+}
+
+/* Unparseable CSS and unreadable targets are check-v1's to report. */
+function checkCss(file, report) {
+  let root;
+  try {
+    root = postcss.parse(fs.readFileSync(file, "utf8"));
+  } catch {
+    return;
+  }
+  root.walkAtRules((rule) => {
+    if (!CSS_IMPORT_RULES.has(rule.name.toLowerCase())) {
+      return;
+    }
+    const spec = cssImportTarget(rule.params);
+    const pkg = spec && packageOf(spec);
+    if (pkg && isIconPackage(pkg)) {
+      report(
+        file,
+        rule.source?.start?.line ?? 0,
+        `${LIBRARY}; '${spec}' is not allowed.`,
+      );
+    }
+  });
+}
+
 const problems = [];
 if (fs.existsSync(ROOT)) {
   const aliases = lucideAliases();
+  const report = (f, line, msg) =>
+    problems.push(`${path.relative(FRONTEND, f)}:${line}  ${msg}`);
   for (const file of walk(ROOT)) {
-    checkFile(file, aliases, (f, line, msg) =>
-      problems.push(`${path.relative(FRONTEND, f)}:${line}  ${msg}`),
-    );
+    if (STYLE.test(file)) {
+      checkCss(file, report);
+    } else {
+      checkFile(file, aliases, report);
+    }
   }
 }
 for (const p of problems) {

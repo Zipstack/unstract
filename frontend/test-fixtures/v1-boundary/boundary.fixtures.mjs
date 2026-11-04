@@ -73,6 +73,8 @@ const CASES = parseTable(`
   v1-icon-library-mdi            | lint:v1         | '@mdi/js' is not allowed
   v1-icon-library-flags          | lint:v1         | Lucide is the only icon library under src/v1
   v1-feature-flag-sdk            | lint:v1         | -
+  v1-icon-library-css            | lint:v1         | 'flag-icons/css/flag-icons.min.css' is not allowed
+  v1-icon-library-scss-tilde     | lint:v1         | '@fortawesome/fontawesome-free/scss/fontawesome' is not allowed
   v1-lucide-subpath              | lint:v1         | not 'lucide-react/dynamic'
   v1-lucide-alias                | lint:v1         | Deprecated lucide-react alias 'Loader2'
   v1-lucide-alias-uncommon       | lint:v1         | import the canonical name 'CircleQuestionMark'

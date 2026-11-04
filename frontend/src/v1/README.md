@@ -37,7 +37,8 @@ is convention.
   whose name contains `icon` or `lucide`, a listed set whose name does not
   (`react-feather`, `@mdi/*`, `@fortawesome/*`, flag sets), every alias the
   installed lucide-react declares, and namespace, default, subpath,
-  `icons`-map and dynamic imports all fail lint:v1. A set outside the name
+  `icons`-map and dynamic imports all fail lint:v1, and so does a stylesheet
+  `@import` of an icon package. A set outside the name
   rule and the list is not caught; add it to the script's list. Shared glyphs
   come by role from `lib/icons.ts`; provider logos, product marks and flags
   from `components/ui/BrandMark`.
