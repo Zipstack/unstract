@@ -518,6 +518,26 @@ it("keeps the same spot of the same page in view across a zoom change", () => {
   expect(root.scrollTop).toBe(800);
 });
 
+it("keeps the same spot across the page in view across a zoom change", () => {
+  const { document } = fakeDocument(10);
+  let zoom = 1;
+  const { container, rerender } = render(
+    <PdfPageList document={document} pageSizes={sizes(10)} zoom={zoom} />,
+  );
+  const root = layOut(container, () => zoom);
+  // The middle of the 500 px view is 434 px into the 600 px page.
+  root.scrollLeft = 200;
+  act(() => {
+    root.dispatchEvent(new Event("scroll"));
+  });
+  zoom = 2;
+  rerender(
+    <PdfPageList document={document} pageSizes={sizes(10)} zoom={zoom} />,
+  );
+  // Still 434/600 across the now 1200 px page.
+  expect(root.scrollLeft).toBeCloseTo(16 + 868 - 250);
+});
+
 function scrollTo(root: HTMLElement, top: number) {
   root.scrollTop = top;
   act(() => {

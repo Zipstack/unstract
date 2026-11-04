@@ -55,6 +55,8 @@ export interface PdfPageListProps {
 interface Anchor {
   index: number;
   fraction: number;
+  /** Where across that page the middle of the view is, 0 to 1. */
+  across: number;
 }
 
 function pageElement(root: HTMLElement, index: number): HTMLElement | null {
@@ -166,7 +168,11 @@ export function PdfPageList({
   const { scrollRef, observePage, rendered } = usePageWindow(pageCount);
   const byPage = useMemo(() => highlightsByPage(highlights), [highlights]);
   const rootRef = useRef<HTMLElement | null>(null);
-  const anchorRef = useRef<Anchor>({ index: 0, fraction: 0 });
+  const anchorRef = useRef<Anchor>({
+    index: 0,
+    fraction: 0,
+    across: 0.5,
+  });
   // The last page jumped to and where the jump landed. While the view stays
   // there, that page is current, even when the browser clamped the jump at
   // the end and another page shows more: otherwise Previous could never
@@ -213,10 +219,13 @@ export function PdfPageList({
       firstPast(pages, y, (page) => page.offsetTop) - 1,
     );
     const page = pages[index];
-    if (page && page.offsetHeight > 0) {
+    if (page && page.offsetHeight > 0 && page.offsetWidth > 0) {
       anchorRef.current = {
         index,
         fraction: (y - page.offsetTop) / page.offsetHeight,
+        across:
+          (root.scrollLeft + root.clientWidth / 2 - page.offsetLeft) /
+          page.offsetWidth,
       };
     }
     const jump = jumpRef.current;
@@ -241,7 +250,9 @@ export function PdfPageList({
   }, [sync]);
 
   // A zoom change resizes every page; keep the same spot of the same page at
-  // the top. The pages took their new size from their style at commit.
+  // the top, and the same spot across it in the middle (the browser clamps
+  // this to 0 when the pages fit across). The pages took their new size from
+  // their style at commit.
   const previousZoom = useRef(zoom);
   useLayoutEffect(() => {
     if (previousZoom.current === zoom) {
@@ -249,10 +260,12 @@ export function PdfPageList({
     }
     previousZoom.current = zoom;
     const root = rootRef.current;
-    const { index, fraction } = anchorRef.current;
+    const { index, fraction, across } = anchorRef.current;
     const page = root && pageElement(root, index);
     if (root && page) {
       root.scrollTop = pageTop(root, page) + fraction * page.offsetHeight;
+      root.scrollLeft =
+        page.offsetLeft + across * page.offsetWidth - root.clientWidth / 2;
       sync();
     }
   }, [zoom, sync]);
