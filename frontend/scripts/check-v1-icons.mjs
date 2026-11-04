@@ -41,7 +41,9 @@ function lucideAliases() {
   for (const [, list] of text.matchAll(/^export \{([^}]*)\};?$/gm)) {
     for (const entry of list.split(",")) {
       const m = entry.trim().match(/^(?:type\s+)?(\w+) as (\w+)$/);
-      if (!m) continue;
+      if (!m) {
+        continue;
+      }
       const [, name, exported] = m;
       if (![name, `${name}Icon`, `Lucide${name}`].includes(exported)) {
         aliases.set(exported, name);
@@ -57,27 +59,96 @@ function lucideAliases() {
 function* walk(dir) {
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
     const full = path.join(dir, entry.name);
-    if (entry.isDirectory()) yield* walk(full);
-    else if (CODE.test(entry.name)) yield full;
+    if (entry.isDirectory()) {
+      yield* walk(full);
+    } else if (CODE.test(entry.name)) {
+      yield full;
+    }
   }
 }
 
 function* nodes(node) {
-  if (!node || typeof node.type !== "string") return;
+  if (!node || typeof node.type !== "string") {
+    return;
+  }
   yield node;
   for (const [key, value] of Object.entries(node)) {
-    if (key === "loc" || key.endsWith("Comments")) continue;
+    if (key === "loc" || key.endsWith("Comments")) {
+      continue;
+    }
     for (const child of Array.isArray(value) ? value : [value]) {
-      if (child && typeof child === "object") yield* nodes(child);
+      if (child && typeof child === "object") {
+        yield* nodes(child);
+      }
     }
   }
 }
 
 /* The package a bare specifier names, or null for a path or `@v1` alias. */
 function packageOf(spec) {
-  if (/^(\.|\/|@v1(\/|$)|@\/)/.test(spec)) return null;
+  if (/^(\.|\/|@v1(\/|$)|@\/)/.test(spec)) {
+    return null;
+  }
   const parts = spec.split("/");
   return spec.startsWith("@") ? parts.slice(0, 2).join("/") : parts[0];
+}
+
+const WRAPPERS = new Set([
+  "TSAsExpression",
+  "TSSatisfiesExpression",
+  "TSNonNullExpression",
+  "TSTypeAssertion",
+  "ParenthesizedExpression",
+]);
+
+/* A string literal, or a template with no `${}`, through any TS wrapper. */
+function staticText(arg) {
+  let node = arg;
+  while (node && WRAPPERS.has(node.type)) {
+    node = node.expression;
+  }
+  if (node?.type === "StringLiteral") {
+    return node.value;
+  }
+  if (node?.type === "TemplateLiteral" && node.expressions.length === 0) {
+    return node.quasis[0].value.cooked;
+  }
+  return null;
+}
+
+const DECLARATIONS = new Set([
+  "ImportDeclaration",
+  "ExportNamedDeclaration",
+  "ExportAllDeclaration",
+]);
+
+const isDynamicLoad = (node) =>
+  node.type === "ImportExpression" ||
+  (node.type === "CallExpression" &&
+    (node.callee.type === "Import" ||
+      (node.callee.type === "Identifier" && node.callee.name === "require")));
+
+/*
+ * { spec, specifiers } for an import-like node, else null. `specifiers` is
+ * null when the names are not visible (dynamic load, `export *`), and [] for
+ * a type-only `import("x")`. Arguments that are not static text are
+ * check-v1's to reject as unanalysable.
+ */
+function importOf(node) {
+  if (DECLARATIONS.has(node.type) && node.source) {
+    const specifiers =
+      node.type === "ExportAllDeclaration" ? null : node.specifiers;
+    return { spec: node.source.value, specifiers };
+  }
+  if (isDynamicLoad(node)) {
+    const spec = staticText(node.source ?? node.arguments?.[0]);
+    return spec === null ? null : { spec, specifiers: null };
+  }
+  if (node.type === "TSImportType") {
+    const spec = staticText(node.argument?.literal ?? node.argument);
+    return spec === null ? null : { spec, specifiers: [] };
+  }
+  return null;
 }
 
 const importName = (n) => (n.type === "Identifier" ? n.name : n.value);
@@ -85,37 +156,23 @@ const importName = (n) => (n.type === "Identifier" ? n.name : n.value);
 function checkFile(file, aliases, report) {
   const name = path.basename(file);
   const plugins = [["typescript", { dts: /\.d\.[mc]?ts$/.test(name) }]];
-  if (name.endsWith(".tsx")) plugins.push("jsx");
+  if (name.endsWith(".tsx")) {
+    plugins.push("jsx");
+  }
   const ast = parse(fs.readFileSync(file, "utf8"), {
     sourceType: "module",
     plugins,
   });
   for (const node of nodes(ast.program)) {
-    let spec = null;
-    let specifiers = null;
-    const isDecl =
-      node.type === "ImportDeclaration" ||
-      node.type === "ExportNamedDeclaration" ||
-      node.type === "ExportAllDeclaration";
-    if (isDecl && node.source) {
-      spec = node.source.value;
-      specifiers =
-        node.type === "ExportAllDeclaration" ? null : node.specifiers;
-    } else if (
-      node.type === "ImportExpression" ||
-      (node.type === "CallExpression" &&
-        (node.callee.type === "Import" ||
-          (node.callee.type === "Identifier" &&
-            node.callee.name === "require")))
-    ) {
-      const arg = node.source ?? node.arguments?.[0];
-      if (arg?.type === "StringLiteral") spec = arg.value;
-    } else if (node.type === "TSImportType") {
-      spec = node.argument?.value ?? node.argument?.literal?.value ?? null;
-      specifiers = [];
+    const found = importOf(node);
+    if (!found) {
+      continue;
     }
+    const { spec, specifiers } = found;
     const pkg = spec && packageOf(spec);
-    if (!pkg || !ICON_PACKAGE.test(pkg)) continue;
+    if (!pkg || !ICON_PACKAGE.test(pkg)) {
+      continue;
+    }
     const line = node.loc.start.line;
     if (pkg !== "lucide-react") {
       report(file, line, `${LIBRARY}; '${spec}' is not allowed.`);
@@ -179,7 +236,9 @@ if (fs.existsSync(ROOT)) {
     );
   }
 }
-for (const p of problems) console.error(p);
+for (const p of problems) {
+  console.error(p);
+}
 if (problems.length) {
   console.error(`\ncheck-v1-icons: ${problems.length} problem(s).`);
   process.exit(1);

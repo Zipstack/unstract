@@ -74,6 +74,7 @@ const CASES = parseTable(`
   v1-lucide-alias-uncommon       | lint:v1         | import the canonical name 'CircleQuestionMark'
   v1-lucide-alias-suffixed       | lint:v1         | Deprecated lucide-react alias 'LucideLoader2'
   v1-lucide-namespace            | lint:v1         | not as a namespace or default import
+  v1-lucide-dynamic-template     | lint:v1         | a dynamic import or
   v1-lucide-icons-map            | lint:v1         | it is keyed by name, deprecated aliases included
   v1-lucide-canonical            | lint:v1         | -
   v1-styles-import-outside       | lint:v1         | v1 styles import nothing outside it
