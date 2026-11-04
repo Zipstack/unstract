@@ -21,6 +21,7 @@ BOT = {
 }
 import backport as bp
 import relmgr as rm
+from test_backport_merge import BAD_GATEWAY, NOT_FOUND, FakeGh, queue
 
 
 def dev_git(repo, *a):
@@ -1164,7 +1165,7 @@ class Pick(unittest.TestCase):
         with open(path, "w") as f:
             f.write(text)
 
-    def gh(self, *a, token=None):
+    def gh(self, *a, token=None, retry=True):
         self.calls.append(a)
         if a[:2] == ("api", "repos/o/r/pulls/5"):
             return "fix/security\nfix/needs-backport\nother"
@@ -1225,6 +1226,71 @@ class Pick(unittest.TestCase):
         )
         with mock.patch.object(bp, "run", fake):
             self.assertEqual(self.pick(), ("failed", "cherry-pick exit 3"))
+
+
+class OpenPR(unittest.TestCase):
+    URL = "https://github.com/o/r/pull/8"
+
+    def open_pr(self, create, listing):
+        fake, waits = (
+            FakeGh(
+                lambda a: create(a)
+                if a[1:3] == ("pr", "create")
+                else listing(a)
+                if a[1:3] == ("pr", "list")
+                else (0, "", "")
+            ),
+            [],
+        )
+        with (
+            mock.patch.object(bp.bm.subprocess, "run", fake),
+            mock.patch("sys.stdout", io.StringIO()),
+        ):
+            try:
+                out = bp._open_pr(
+                    "o/r", "release/1.0", "backport/1.0/abc1234", "b", sleep=waits.append
+                )
+            except RuntimeError as e:
+                out = e
+        deletes = fake.count(
+            "api", "-X", "DELETE", "repos/o/r/git/refs/heads/backport/1.0/abc1234"
+        )
+        return out, fake.count("pr", "create"), deletes, waits
+
+    def test_502_but_opened_returns_the_pr(self):
+        out = self.open_pr(
+            lambda a: (1, "", BAD_GATEWAY), lambda a: (0, self.URL + "\n", "")
+        )
+        self.assertEqual(out, (self.URL, 1, 0, []))
+
+    def test_502_not_opened_is_retried(self):
+        create = queue((1, "", BAD_GATEWAY), (0, self.URL + "\n", ""))
+        out = self.open_pr(create, lambda a: (0, "", ""))
+        self.assertEqual(out, (self.URL, 2, 0, [5]))
+
+    def test_never_opened_deletes_the_head(self):
+        out, creates, deletes, waits = self.open_pr(
+            lambda a: (1, "", BAD_GATEWAY), lambda a: (0, "", "")
+        )
+        self.assertIn("502 Bad Gateway", str(out))
+        self.assertEqual((creates, deletes, waits), (3, 1, [5, 15]))
+
+    def test_every_gh_call_retries_a_transient_failure(self):
+        fake = FakeGh(queue((1, "", BAD_GATEWAY), (0, "ok\n", "")))
+        with (
+            mock.patch.object(bp.bm.subprocess, "run", fake),
+            mock.patch.object(bp.bm.time, "sleep"),
+            mock.patch("sys.stdout", io.StringIO()),
+        ):
+            self.assertEqual(bp.gh("api", "x"), "ok")
+        self.assertEqual(len(fake.calls), 2)
+
+    def test_client_error_keeps_the_head_and_is_not_retried(self):
+        out, creates, deletes, waits = self.open_pr(
+            lambda a: (1, "", NOT_FOUND), lambda a: (0, self.URL, "")
+        )
+        self.assertIsInstance(out, RuntimeError)
+        self.assertEqual((creates, deletes, waits), (1, 0, []))
 
 
 class PickRow(unittest.TestCase):

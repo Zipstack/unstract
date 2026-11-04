@@ -36,14 +36,12 @@ MAIN = "origin/main"
 BOT_ENV = {"GIT_COMMITTER_NAME": "releases-bot", "GIT_COMMITTER_EMAIL": rm.BOT_EMAIL}
 
 
-def run(*args, check=True, input=None, env=None):
-    r = subprocess.run(
-        args,
-        capture_output=True,
-        text=True,
-        input=input,
-        env={**os.environ, **BOT_ENV, **(env or {})},
-    )
+def run(*args, check=True, input=None, env=None, retry=True):
+    env = {**os.environ, **BOT_ENV, **(env or {})}
+    if args[0] == "gh":
+        r = bm.run_gh(args[1:], env=env, retry=retry, input=input)
+    else:
+        r = subprocess.run(args, capture_output=True, text=True, input=input, env=env)
     if check and r.returncode:
         raise RuntimeError(
             f"{' '.join(args[:3])} (exit {r.returncode}): {r.stderr.strip()}"
@@ -70,8 +68,10 @@ def soft(what, *args):
     return r
 
 
-def gh(*args, token=None):
-    return run("gh", *args, env={"GH_TOKEN": token} if token else None).stdout.strip()
+def gh(*args, token=None, retry=True):
+    return run(
+        "gh", *args, env={"GH_TOKEN": token} if token else None, retry=retry
+    ).stdout.strip()
 
 
 def conflict_prs(slug, base=None, token=None):
@@ -824,20 +824,58 @@ def _land(slug, branch, head, n, retried=False):
     return "merged", f"{short} (#{n}{', retried' if retried else ''})"
 
 
-def _open_pr(slug, branch, head, body, *opts):
-    return gh(
-        "pr",
-        "create",
-        "-R",
-        slug,
-        "--base",
-        branch,
-        "--head",
-        head,
-        *opts,
-        "--body",
-        body,
-    )
+def _open_pr(slug, branch, head, body, *opts, sleep=time.sleep):
+    """A create GitHub failed transiently may have opened the PR: look before retrying. Still none after the retries:
+    delete the pushed head, so the next run picks the commit again instead of finding a head with no PR.
+    """
+    for wait in (*bm.GH_WAITS, None):
+        try:
+            return gh(
+                "pr",
+                "create",
+                "-R",
+                slug,
+                "--base",
+                branch,
+                "--head",
+                head,
+                *opts,
+                "--body",
+                body,
+                retry=False,
+            )
+        except RuntimeError as e:
+            if not bm.transient(str(e)):
+                raise
+            if url := gh(
+                "pr",
+                "list",
+                "-R",
+                slug,
+                "--head",
+                head,
+                "--base",
+                branch,
+                "--state",
+                "open",
+                "--json",
+                "url",
+                "--jq",
+                ".[0].url // empty",
+            ):
+                return url
+            if wait is None:
+                soft(
+                    f"delete of {head}",
+                    "gh",
+                    "api",
+                    "-X",
+                    "DELETE",
+                    f"repos/{slug}/git/refs/heads/{head}",
+                )
+                raise
+            print(f"{str(e).splitlines()[0]}; PR create retried in {wait} s")
+            sleep(wait)
 
 
 def _land_clean(slug, sha, branch, title, src, head, labels):

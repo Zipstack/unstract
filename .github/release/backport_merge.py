@@ -12,6 +12,7 @@ import argparse
 import datetime
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -30,9 +31,37 @@ def is_backport(head, base):
     )
 
 
-def gh(*args, token=None):
+# Seconds before the 2nd and 3rd try of a gh call GitHub failed transiently.
+GH_WAITS = (5, 15)
+# A 5xx or a reply cut short (GitHub incidents) or a network timeout. A 4xx is GitHub's answer: never retried.
+TRANSIENT_RE = re.compile(
+    r"HTTP 5\d\d|unexpected end of JSON input|timeout|deadline exceeded", re.I
+)
+
+
+def transient(err):
+    return bool(TRANSIENT_RE.search(err)) and not re.search(r"HTTP 4\d\d", err)
+
+
+def run_gh(args, env=None, retry=True, input=None):
+    """Every gh call goes through here. retry=False: a write that may have landed although gh failed; its caller
+    checks before retrying.
+    """
+    for wait in (*GH_WAITS, None):
+        r = subprocess.run(
+            ["gh", *args], capture_output=True, text=True, env=env, input=input
+        )
+        if not (r.returncode and retry and wait is not None and transient(r.stderr)):
+            return r
+        print(
+            f"::warning::gh {' '.join(args[:2])}: {r.stderr.strip()}; retried in {wait} s"
+        )
+        time.sleep(wait)
+
+
+def gh(*args, token=None, retry=True):
     env = {**os.environ, "GH_TOKEN": token} if token else None
-    r = subprocess.run(["gh", *args], capture_output=True, text=True, env=env)
+    r = run_gh(args, env, retry)
     if r.returncode:
         raise RuntimeError(
             f"gh {' '.join(args[:2])} (exit {r.returncode}): {r.stderr.strip()}"
@@ -115,9 +144,14 @@ DECLINE_TRIES = (
 SQUASH_WAITS = (5, 20)  # seconds before the 2nd and 3rd merge attempt
 
 
+def merged(slug, n):
+    return gh("api", f"repos/{slug}/pulls/{n}", "--jq", ".merged") == "true"
+
+
 def squash(slug, pr, msg, sleep=time.sleep):
     """False while a required check is pending. GitHub can answer a just-opened PR's merge with 405 "Base branch was
-    modified" although nothing moved the base, so that is retried.
+    modified" although nothing moved the base, so that is retried. A transient failure may still have merged the PR:
+    that is checked before a retry or a failure.
     """
     title, _, body = msg.partition("\n")
     for wait in (*SQUASH_WAITS, None):
@@ -135,6 +169,7 @@ def squash(slug, pr, msg, sleep=time.sleep):
                 f"commit_title={title}",
                 "-f",
                 f"commit_message={body.strip()}",
+                retry=False,
             )
             return True
         except RuntimeError as e:
@@ -143,7 +178,11 @@ def squash(slug, pr, msg, sleep=time.sleep):
             if "status check" in str(e).lower():
                 print(f"#{pr['number']}: {str(e).splitlines()[0]}")
                 return False
-            if wait is None or "base branch was modified" not in str(e).lower():
+            moved = "base branch was modified" in str(e).lower()
+            if transient(str(e)) and merged(slug, pr["number"]):
+                print(f"#{pr['number']}: {str(e).splitlines()[0]}; merged all the same")
+                return True
+            if wait is None or not (moved or transient(str(e))):
                 raise
             print(f"#{pr['number']}: {e}; merge retried in {wait} s")
             sleep(wait)
