@@ -29,9 +29,14 @@ async function settle(): Promise<void> {
   if (vi.isFakeTimers()) {
     vi.useRealTimers();
   }
-  for (let turn = 0; turn < 2; turn += 1) {
-    await new Promise((resolve) => setTimeout(resolve, 0));
-  }
+  // Two macrotask turns, one after the other; the unmount cases in
+  // test-fixtures/v1-harness fail if this stops being enough.
+  await nextTurn();
+  await nextTurn();
+}
+
+function nextTurn(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0));
 }
 
 function failOnUnhandledRequests(): void {

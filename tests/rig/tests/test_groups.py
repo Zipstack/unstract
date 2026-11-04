@@ -506,8 +506,9 @@ def test_vitest_config_rejected_on_other_runners(tmp_path: Path) -> None:
 
 @pytest.mark.parametrize("value", ['""', "[a.mts]", "3"])
 def test_vitest_config_must_be_a_path(tmp_path: Path, value: str) -> None:
+    manifest = _vitest_manifest(tmp_path, f"vitest_config: {value}")
     with pytest.raises(ValueError, match="must be a non-empty path"):
-        load_groups(_vitest_manifest(tmp_path, f"vitest_config: {value}"))
+        load_groups(manifest)
 
 
 def test_vitest_config_must_exist(tmp_path: Path) -> None:
