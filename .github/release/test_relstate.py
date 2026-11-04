@@ -285,6 +285,14 @@ class Scenario(unittest.TestCase):
         )
         self.assertEqual(st["retire"], ["release/1.2", "release/1.1"])
 
+    def test_state_skips_an_rc_number_the_rc_chart_holds(self):
+        self.onprem_ga()
+        self.cut("1.7")
+        self.push(rs.RC_CHART, "1.7.0-rc.1")  # kept by an abandon; images and tag gone
+        self.assertEqual(
+            self.branch(self.state(), "release/1.7")["next_rc"], "v1.7.0-rc.2"
+        )
+
     def test_cut_no_artifacts(self):
         self.onprem_ga()
         self.cut("1.7")
@@ -431,7 +439,7 @@ class Scenario(unittest.TestCase):
 
     def test_promote_blockers(self):
         """Promote order per target: only an older line with the target enabled and not GA for it blocks."""
-        msg = "release/{} is not GA for {} yet: promote and publish it first, retire it, or force with a reason"
+        msg = "release/{} is not GA for {} yet: promote and publish it first or retire it; a release manager may override this with force and a reason"
         self.onprem_rc()
         self.cut("1.6")
         self.push("cloud/backend", "v1.6.0-rc.1", git_ref="release/1.6")
@@ -700,6 +708,22 @@ class Scenario(unittest.TestCase):
             rs.abandon_plan(self.repo, "release/1.8", lambda a: {}, dict)["versions"], {}
         )
 
+    def test_abandoned_minor_passes_the_cut_check(self):
+        self.built_by_mistake()
+        reg = lambda a: self.reg.get(a, {})
+        self.assertEqual(rs.used_tags(self.repo, "1.9", reg), ["v1.9.0-rc.1"])
+        plan = rs.abandon_plan(self.repo, "release/1.9", reg, dict)
+        for a, versions in plan["versions"].items():
+            for v in versions:
+                for t in v["tags"]:
+                    del self.reg[a][t]
+        self.g("tag", "-d", *plan["rc_tags"])
+        self.g("branch", "-D", "release/1.9")
+        self.assertEqual(self.reg["on-prem/backend"], {"v1.9.0-rc.1": unittest.mock.ANY})
+        self.assertEqual(rs.used_tags(self.repo, "1.9", reg), [])
+        self.push("on-prem/backend", "v1.9.0")  # a GA in the registry: the minor shipped
+        self.assertEqual(rs.used_tags(self.repo, "1.9", reg), ["v1.9.0"])
+
     def test_abandon_plan_keeps_the_newest_rc(self):
         self.built_by_mistake()
         for n in range(2, 11):
@@ -710,6 +734,54 @@ class Scenario(unittest.TestCase):
         self.assertIn("on-prem/backend:v1.9.0-rc.10", plan["kept"])
         dropped = [t for v in plan["versions"]["on-prem/backend"] for t in v["tags"]]
         self.assertEqual(dropped, [f"v1.9.0-rc.{n}" for n in range(1, 10)])
+
+    def test_abandon_plan_deletes_rc_charts(self):
+        self.built_by_mistake()
+        chart = {
+            f"1.9.0-rc.{n}": {"id": None, "digest": f"sha256:c{n}", "pushed_at": "x"}
+            for n in (1, 2)
+        }
+        chart["1.8.0-rc.1"] = {"id": None, "digest": "sha256:c0", "pushed_at": "x"}
+        plan = rs.abandon_plan(
+            self.repo,
+            "release/1.9",
+            lambda a: self.reg.get(a, {}),
+            lambda: {"on-prem/unstract-platform": chart},
+        )
+        self.assertEqual(
+            plan["versions"]["on-prem/unstract-platform"],
+            [
+                {"id": None, "digest": "sha256:c1", "tags": ["1.9.0-rc.1"]},
+                {"id": None, "digest": "sha256:c2", "tags": ["1.9.0-rc.2"]},
+            ],
+        )  # another line's chart keeps the package from emptying
+
+    def test_abandon_keeps_the_newest_rc_chart(self):
+        self.built_by_mistake()
+        chart = {
+            f"1.9.0-rc.{n}": {"id": None, "digest": f"sha256:c{n}", "pushed_at": "x"}
+            for n in range(1, 11)
+        }
+        plan = rs.abandon_plan(
+            self.repo,
+            "release/1.9",
+            lambda a: self.reg.get(a, {}),
+            lambda: {"on-prem/unstract-platform": chart},
+        )
+        self.assertIn(
+            "on-prem/unstract-platform:1.9.0-rc.10", plan["kept"]
+        )  # rc.10 sorts after rc.9
+        dropped = [
+            t for v in plan["versions"]["on-prem/unstract-platform"] for t in v["tags"]
+        ]
+        self.assertEqual(dropped, [f"1.9.0-rc.{n}" for n in range(1, 10)])
+
+    def test_rc_chart_tags_are_never_allocated_again(self):
+        asked = []
+        chart = {"1.9.0-rc.1": {}, "1.9.0": {}, "latest": {}}
+        tags = rs.rc_chart_tags(lambda a: asked.append(a) or chart)
+        self.assertEqual(asked, [rs.RC_CHART])
+        self.assertEqual(tags, {"v1.9.0-rc.1"})
 
     def test_abandon_plan_refusals(self):
         self.built_by_mistake()
@@ -749,7 +821,7 @@ class Scenario(unittest.TestCase):
         self.push("cloud/backend", "v1.7.0-dev")  # not a version tag
         reg = lambda a: self.reg.get(a, {})
         self.assertEqual(rs.used_tags(self.repo, "1.5", reg), ["v1.5.0-rc.1"])
-        self.assertEqual(rs.used_tags(self.repo, "1.6", reg), ["v1.6.0", "v1.6.1-rc.2"])
+        self.assertEqual(rs.used_tags(self.repo, "1.6", reg), ["v1.6.0"])
         self.assertEqual(rs.used_tags(self.repo, "1.7", reg), [])
 
     def test_chart_push_without_v(self):
@@ -874,7 +946,7 @@ class Scenario(unittest.TestCase):
         self.assertEqual(
             rs.promote_blockers(st, "release/1.8", "oss"),
             [
-                "release/1.7 is not GA for oss yet: promote and publish it first, retire it, or force with a reason"
+                "release/1.7 is not GA for oss yet: promote and publish it first or retire it; a release manager may override this with force and a reason"
             ],
         )
 
@@ -927,7 +999,7 @@ class Scenario(unittest.TestCase):
         )  # on-prem chart in its window
         self.assertEqual(
             refusal(),
-            "on-prem still supported (stabilized); force to retire it inside the window",
+            "on-prem still supported (stabilized); a release manager may retire it inside the window with force",
         )
         self.assertIsNone(refusal(True))
         self.assertEqual(

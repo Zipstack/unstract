@@ -13,5 +13,5 @@ class ContainerClientHelper:
         client_path = os.getenv(
             "CONTAINER_CLIENT_PATH", "unstract.runner.clients.docker_client"
         )
-        logger.info("Loading the container client from path:", client_path)
+        logger.info("Loading the container client from path: %s", client_path)
         return import_module(client_path).Client
