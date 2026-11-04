@@ -195,12 +195,69 @@ class Lines(unittest.TestCase):
         self.assertEqual(
             self.gates,
             [
-                ("release/1.7", "ee-v1.7.0-rc.1", "warning"),
-                ("release/1.7", "ee-v1.7.0-rc.2", "warning"),
+                ("release/1.7", "ee-v1.7.0-rc.1", "error"),
+                ("release/1.7", "ee-v1.7.0-rc.2", "error"),
             ],
         )
-        self.gate = 2  # the preview never blocks
-        self.assertEqual(self.quiet(oss.rc, self.oss, "release/1.7"), "ee-v1.7.0-rc.2")
+
+    def test_rc_blocks_on_missing_picks_unless_forced(self):
+        self.quiet(oss.cut, self.oss, "1.7")
+        self.gate = 2
+        with self.assertRaisesRegex(
+            RuntimeError,
+            "^OSS convergence gate for release/1.7 at ee-v1.7.0-rc.1 blocks: MISSING picks",
+        ):
+            self.quiet(oss.rc, self.oss, "release/1.7")
+        notes = os.path.join(os.path.dirname(self.dev), "notes.md")
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            tag = oss.rc(
+                self.oss, "release/1.7", force=True, reason="known gap", notes=notes
+            )
+        self.assertEqual(tag, "ee-v1.7.0-rc.1")
+        self.assertEqual(self.gates[-1], ("release/1.7", "ee-v1.7.0-rc.1", "warning"))
+        msg = "Forced past the OSS convergence gate for release/1.7 at ee-v1.7.0-rc.1 (MISSING picks): known gap"
+        self.assertIn(f"::warning::{msg}", err.getvalue())
+        with open(notes) as f:
+            self.assertEqual(f.read(), msg + "\n\n")
+        self.gate = 0
+        os.remove(notes)
+        self.assertEqual(
+            self.quiet(oss.rc, self.oss, "release/1.7", notes=notes), "ee-v1.7.0-rc.1"
+        )
+        self.assertFalse(os.path.exists(notes))  # a clean line adds no note
+        self.gate = 1
+        with self.assertRaisesRegex(RuntimeError, "did not run"):
+            self.quiet(
+                oss.rc, self.oss, "release/1.7", force=True, reason="x", notes=notes
+            )
+
+    def test_rc_cli_passes_force_reason_and_notes(self):
+        self.quiet(oss.cut, self.oss, "1.7")
+        self.gate = 2
+        notes = os.path.join(os.path.dirname(self.dev), "notes.md")
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            self.assertEqual(
+                oss.main(["--oss-repo", self.oss, "rc", "--branch", "release/1.7"]), 1
+            )
+            code = oss.main(
+                [
+                    "--oss-repo",
+                    self.oss,
+                    "rc",
+                    "--branch",
+                    "release/1.7",
+                    "--force",
+                    "--reason",
+                    "known gap",
+                    "--notes",
+                    notes,
+                ]
+            )
+        self.assertEqual((code, out.getvalue()), (0, "ee-v1.7.0-rc.1\n"))
+        with open(notes) as f:
+            self.assertIn("(MISSING picks): known gap", f.read())
 
     def pin(self, tag, rc):
         if not os.path.isdir(self.cloud):
@@ -237,9 +294,10 @@ class Lines(unittest.TestCase):
         self.assertEqual(len(self.gates), n)
         self.pin("ee-v1.7.0", "v1.7.1-rc.1")  # a stable pin needs no promote
         self.assertEqual(oss.promote(self.cloud, self.oss, "v1.7.1-rc.1"), "ee-v1.7.0")
-        self.gate = 1
+        self.gate = 0
         self.work("release/1.7", "oss fix")
         self.quiet(oss.rc, self.oss, "release/1.7")
+        self.gate = 1
         self.pin("ee-v1.7.1-rc.1", "v1.7.1-rc.2")
         with self.assertRaisesRegex(RuntimeError, "did not run"):
             oss.promote(self.cloud, self.oss, "v1.7.1-rc.2", force=True, reason="x")
@@ -297,7 +355,7 @@ class Lines(unittest.TestCase):
         ):
             oss.promote(self.cloud, self.oss, "v1.7.0-rc.1")
         self.assertEqual(
-            self.gates, [("release/1.7", "ee-v1.7.0-rc.2", "warning")]
+            self.gates, [("release/1.7", "ee-v1.7.0-rc.2", "error")]
         )  # refused before its gate
 
     @mock.patch.dict(os.environ, {"OSS_TOKEN": "oss-token"})
@@ -2597,23 +2655,66 @@ class PendingPicksWorkflow(Workflow):
         )
         self.assertIn("rerun Promote once GitHub answers", self.read("summary"))
 
-    def test_take_rc_only_warns(self):
+    def test_take_rc_blocks_on_a_conflict_pr_unless_forced(self):
         self.line("1.7")
         self.prs(oss.OSS, "release/1.7")
         script = inline("take-rc-build.yaml", "Plan checks")
         dev_git(self.cloud, "checkout", "-q", "-b", "release/1.7", "origin/release/1.7")
         r = self.run_step(script, BRANCH="release/1.7", TARGETS="cloud")
+        self.blocked(r, "::error::pending picks: open backport conflict PRs")
+        self.assertIn(
+            f"::error::Open backport conflict PR {oss.OSS}#40 on release/1.7", r.stdout
+        )
+        summary = self.read("summary")
+        self.assertIn(f"⚠ Open backport conflict PRs: [{oss.OSS}#40]", summary)
+        self.assertIn(
+            "**Next:** resolve and merge or close each conflict PR, then run Take RC build again",
+            summary,
+        )
+        self.assertFalse(os.path.exists(os.path.join(self.d, "notes.md")))
+        r = self.run_step(
+            script,
+            BRANCH="release/1.7",
+            TARGETS="cloud",
+            FORCE="true",
+            REASON="known gap",
+        )
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertIn(
             f"::warning::Open backport conflict PR {oss.OSS}#40 on release/1.7", r.stdout
         )
-        self.assertIn(
-            f"⚠ Open backport conflict PRs: [{oss.OSS}#40]", self.read("notes.md")
-        )
+        notes = self.read("notes.md")
+        self.assertIn(f"⚠ Open backport conflict PRs: [{oss.OSS}#40]", notes)
+        self.assertIn("Forced: known gap", notes)
         self.write("prfail", "")
         r = self.run_step(script, BRANCH="release/1.7", TARGETS="cloud")
+        self.blocked(r, "::error::cannot list open backport conflict PRs")
+        self.assertIn(
+            "**Next:** rerun Take RC build once GitHub answers", self.read("summary")
+        )
+        r = self.run_step(
+            script,
+            BRANCH="release/1.7",
+            TARGETS="cloud",
+            FORCE="true",
+            REASON="known gap",
+        )
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        self.assertIn("::warning::⚠ Could not list open backport conflict PRs", r.stdout)
+        self.assertIn(
+            "::warning::⚠ Open backport conflict PRs: unchecked, the listing failed",
+            r.stdout,
+        )
+
+    def test_take_rc_passes_a_line_without_conflict_prs(self):
+        self.line("1.7")
+        dev_git(self.cloud, "checkout", "-q", "-b", "release/1.7", "origin/release/1.7")
+        r = self.run_step(
+            inline("take-rc-build.yaml", "Plan checks"),
+            BRANCH="release/1.7",
+            TARGETS="cloud",
+        )
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertNotIn("conflict", r.stdout)
 
 
 class LateTargetWorkflow(Workflow):
@@ -3317,6 +3418,216 @@ def main():
                 "Zipstack/unstract token workflow-token",
                 "Zipstack/unstract-cloud token workflow-token",
             ],
+        )
+
+
+@unittest.skipUnless(
+    os.path.exists(os.path.join(HERE, "..", "workflows", "take-rc-build.yaml")),
+    "the cloud repo's workflows",
+)
+class TakeRcGate(unittest.TestCase):
+    """The Convergence gate step, against a stub convgate that exits with GATE_RC."""
+
+    STUB = """import os, subprocess, sys
+a = sys.argv[1:]
+tagged = subprocess.run(["git", "rev-parse", "-q", "--verify", "refs/tags/" + os.environ["TAG"]], capture_output=True).returncode == 0
+with open(a[a.index("--out") + 1], "a") as f:
+    f.write(f"stub {a[a.index('--target') + 1]} annotate={a[a.index('--annotate') + 1]} tagged={tagged}\\n")
+sys.exit(int(os.environ["GATE_RC"]))
+"""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.d = tmp.name
+        self.repo = os.path.join(self.d, "repo")
+        rm.git(self.d, "init", "-q", "-b", "main", self.repo)
+        dev_git(self.repo, "commit", "-q", "--allow-empty", "-m", "tip")
+        stub = os.path.join(self.repo, ".relmgr", ".github", "release")
+        os.makedirs(stub)
+        with open(os.path.join(stub, "convgate.py"), "w") as f:
+            f.write(self.STUB)
+
+    def gate(self, code, force="false", tags=""):
+        for name in ("summary", "output", "notes.md", "preview.md"):
+            with contextlib.suppress(FileNotFoundError):
+                os.remove(os.path.join(self.d, name))
+        r = subprocess.run(
+            ["bash", "-e", "-c", step("take-rc-build.yaml", "Convergence gate")],
+            cwd=self.repo,
+            env={
+                **os.environ,
+                "TAG": "v1.7.1-rc.1",
+                "BUILD": "cloud on-prem",
+                "BRANCH": "release/1.7",
+                "FORCE": force,
+                "REASON": "known gap",
+                "GATE_RC": str(code),
+                "RUNNER_TEMP": self.d,
+                "GITHUB_STEP_SUMMARY": os.path.join(self.d, "summary"),
+                "GITHUB_OUTPUT": os.path.join(self.d, "output"),
+            },
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(
+            rm.git(self.repo, "tag", "-l").strip(), tags
+        )  # the gate's own tag never stays
+        return r
+
+    def read(self, name):
+        try:
+            with open(os.path.join(self.d, name)) as f:
+                return f.read()
+        except FileNotFoundError:
+            return ""
+
+    def test_a_clean_line_passes(self):
+        r = self.gate(0)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self.read("output"), "result=ok\n")
+        self.assertEqual(
+            self.read("preview.md"),
+            "#### Promote preview · cloud\n\nstub cloud annotate=error tagged=True\n"
+            "#### Promote preview · on-prem\n\nstub on-prem annotate=error tagged=True\n",
+        )
+        self.assertEqual(self.read("notes.md") + self.read("summary"), "")
+
+    def test_missing_picks_fail(self):
+        r = self.gate(2)
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn(
+            "::error::convergence gate: MISSING picks; a release manager may override this with force and a reason",
+            r.stdout,
+        )
+        summary = self.read("summary")
+        self.assertTrue(summary.startswith("### ⛔ No RC built · release/1.7\n"), summary)
+        self.assertIn("stub cloud annotate=error tagged=True", summary)
+        self.assertTrue(
+            summary.endswith(
+                "**Next:** pick or decline each MISSING pick, then run Take RC build again\n"
+            ),
+            summary,
+        )
+        self.assertEqual(self.read("output") + self.read("notes.md"), "")
+
+    def test_force_passes_with_a_warning_and_a_notes_line(self):
+        r = self.gate(2, force="true")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn(
+            "::warning::convergence gate: MISSING picks, forced on: known gap", r.stdout
+        )
+        self.assertEqual(
+            self.read("notes.md"),
+            "Forced past the convergence gate (MISSING picks, see the preview): known gap\n\n",
+        )
+        self.assertIn("stub cloud annotate=warning", self.read("preview.md"))
+        self.assertEqual(self.read("output"), "result=block\n")
+        self.assertEqual(self.read("summary"), "")
+
+    def test_a_gate_error_fails_even_when_forced(self):
+        for force in ("false", "true"):
+            r = self.gate(1, force=force)
+            self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+            self.assertIn(
+                "::error::convergence gate did not run (see the run log)", r.stdout
+            )
+            self.assertEqual(self.read("notes.md"), "")
+
+    def test_an_existing_tag_is_kept(self):
+        dev_git(self.repo, "tag", "v1.7.1-rc.1")  # a rerun on a tagged tip
+        r = self.gate(0, tags="v1.7.1-rc.1")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+
+    def test_the_gate_runs_before_the_tag_push(self):
+        with open(os.path.join(HERE, "..", "workflows", "take-rc-build.yaml")) as fh:
+            text = fh.read()
+        self.assertLess(
+            text.index("      - name: Convergence gate\n"),
+            text.index("      - name: Bump chart, push, tag\n"),
+        )
+        gate = text.split("      - name: Convergence gate\n", 1)[1].split("\n\n", 1)[0]
+        self.assertNotIn("continue-on-error", gate)
+        self.assertNotIn("if:", gate.split("run: |", 1)[0])
+
+    def test_a_forced_rc_says_promote_blocks_again(self):
+        def next_line(force):
+            with contextlib.suppress(FileNotFoundError):
+                os.remove(os.path.join(self.d, "summary"))
+            r = subprocess.run(
+                ["bash", "-e", "-c", step("take-rc-build.yaml", "Summary")],
+                cwd=os.path.join(HERE, "..", ".."),
+                env={
+                    **os.environ,
+                    "TAG": "v1.7.1-rc.1",
+                    "BUILD": "cloud",
+                    "RESULT": "success",
+                    "CHART": "skipped",
+                    "BRANCH": "release/1.7",
+                    "NEWEST": "release/1.7",
+                    "FORCE": force,
+                    "GITHUB_SERVER_URL": "",
+                    "GITHUB_STEP_SUMMARY": os.path.join(self.d, "summary"),
+                },
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            return next(
+                x for x in self.read("summary").splitlines() if x.startswith("**Next:**")
+            )
+
+        with open(os.path.join(HERE, "..", "workflows", "take-rc-build.yaml")) as fh:
+            job = fh.read().split("\n  summary:\n", 1)[1].split("\n    steps:\n", 1)[0]
+        self.assertIn("\n      FORCE: ${{ inputs.force }}\n", job)
+        self.assertEqual(
+            next_line("false"), "**Next:** QA tests `v1.7.1-rc.1`, then RM runs Promote."
+        )
+        self.assertEqual(
+            next_line("true"),
+            "**Next:** QA tests `v1.7.1-rc.1`, then RM runs Promote. A gate forced here blocks Promote "
+            "again unless forced there too; see the RC notes.",
+        )
+
+    def test_the_oss_pin_passes_force_and_fails_with_a_summary(self):
+        bin_ = os.path.join(self.d, "bin")
+        os.makedirs(bin_)
+        with open(os.path.join(bin_, "python3"), "w") as f:
+            f.write('#!/bin/sh\necho "$*" > "$RUNNER_TEMP/args"\nexit "$RC"\n')
+        os.chmod(os.path.join(bin_, "python3"), 0o755)
+
+        def pin(force, code):
+            for name in ("summary", "args"):
+                with contextlib.suppress(FileNotFoundError):
+                    os.remove(os.path.join(self.d, name))
+            return subprocess.run(
+                ["bash", "-e", "-c", step("take-rc-build.yaml", "OSS pin")],
+                cwd=self.repo,
+                env={
+                    **os.environ,
+                    "PATH": f"{bin_}:{os.environ['PATH']}",
+                    "BRANCH": "release/1.7",
+                    "SLACK_URL": "",
+                    "FORCE": force,
+                    "REASON": "known gap",
+                    "RC": str(code),
+                    "RUNNER_TEMP": self.d,
+                    "GITHUB_STEP_SUMMARY": os.path.join(self.d, "summary"),
+                },
+                capture_output=True,
+                text=True,
+            ).returncode
+
+        self.assertEqual(pin("false", 1), 1)
+        self.assertNotIn("--force", self.read("args"))
+        self.assertIn("### ⛔ No RC built · release/1.7", self.read("summary"))
+        self.assertIn(
+            "**Next:** pick or decline each MISSING pick on the OSS line",
+            self.read("summary"),
+        )
+        self.assertEqual(pin("true", 1), 1)
+        self.assertIn(
+            f"--force --reason known gap --notes {self.d}/notes.md", self.read("args")
         )
 
 

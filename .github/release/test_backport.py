@@ -1222,6 +1222,7 @@ class ConflictPRs(unittest.TestCase):
 
 class FinishOpen(unittest.TestCase):
     def setUp(self):
+        self.softs, self.soft_rc = [], 0
         self.tmp = tempfile.TemporaryDirectory()
         d = self.tmp.name
         g = (
@@ -1283,9 +1284,13 @@ class FinishOpen(unittest.TestCase):
                 bp, "gh", return_value=json.dumps(listing if prs is None else prs)
             ),
             mock.patch.object(bp.bm, "squash", squash),
-            mock.patch.object(bp, "soft", return_value=None),
+            mock.patch.object(bp, "soft", side_effect=self.soft),
         ):
             return bp.finish_open("o/r", "release/1.0", "backport/1.0/aaaaaaa")
+
+    def soft(self, what, *args):
+        self.softs.append(args)
+        return mock.Mock(returncode=self.soft_rc)
 
     def push(
         self, msg, path=None
@@ -1366,14 +1371,36 @@ class FinishOpen(unittest.TestCase):
                 "head backport/1.0/aaaaaaa is 0 min old with no open PR: another run is picking it",
             ),
         )
+        # No PR open or closed: a create that failed outright. The head goes, so the next run re-picks.
         with mock.patch.object(bp, "PICK_TIMEOUT", 0):
             out = self.finish(prs=[])
         self.assertEqual(
             out,
             (
                 "failed",
-                "head backport/1.0/aaaaaaa exists with no open PR: delete it "
-                "or reopen its PR, then rerun",
+                "head backport/1.0/aaaaaaa had no PR: deleted it, so the next Backport run picks the fix again",
+            ),
+        )
+        self.assertEqual(
+            self.softs,
+            [
+                (
+                    "gh",
+                    "api",
+                    "-X",
+                    "DELETE",
+                    "repos/o/r/git/refs/heads/backport/1.0/aaaaaaa",
+                )
+            ],
+        )
+        self.soft_rc = 1
+        with mock.patch.object(bp, "PICK_TIMEOUT", 0):
+            out = self.finish(prs=[])
+        self.assertEqual(
+            out,
+            (
+                "failed",
+                "head backport/1.0/aaaaaaa has no PR and its delete failed: delete it, then rerun",
             ),
         )
         # A head moved onto the release tip: reopening its PR would park it with nothing to merge.
@@ -1935,7 +1962,8 @@ class Unsettled(unittest.TestCase):
                 [
                     (self.a, "#7", "release/0.191", "fix"),
                     (self.b, "no PR", "release/0.191", bp.UNCLASSIFIABLE),
-                ]
+                ],
+                {self.a, self.b},
             )
         self.assertEqual(
             out.getvalue().splitlines(),
@@ -1948,6 +1976,28 @@ class Unsettled(unittest.TestCase):
         )
         self.assertEqual(len(lines), 2)
         self.assertIn(f"[`release/0.191`]({WEB}/tree/release/0.191)", lines[0])
+
+    def test_owed_before_this_run_says_so(self):
+        left = [
+            (self.a, "#7", "release/0.191", "fix"),
+            (self.b, "no PR", "release/0.191", bp.UNCLASSIFIABLE),
+        ]
+        with mock.patch("sys.stdout", new_callable=io.StringIO) as out:
+            lines = bp.unsettled_lines(left, {self.a})
+        self.assertEqual(
+            out.getvalue().splitlines()[1],
+            f"::error::bbbbbbb ({bp.UNCLASSIFIABLE}, PR no PR) is owed on release/0.191 and "
+            "was owed before this run, not caused by it: "
+            "fix its PR title or labels and rerun Backport, or record a decline",
+        )
+        self.assertNotIn("before this run", out.getvalue().splitlines()[0])
+        self.assertNotIn("before this run", lines[0])
+        self.assertEqual(
+            lines[1],
+            f"- {bp.link_src(self.b, 'no PR')} ({bp.UNCLASSIFIABLE}) → "
+            f"[`release/0.191`]({WEB}/tree/release/0.191): owed before this run, not caused by it; "
+            "fix its PR title or labels and rerun Backport, or record a decline",
+        )
 
     def test_pick_head_name(self):
         self.assertEqual(
@@ -2002,6 +2052,29 @@ class MainLeftUndone(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("::error::aaaaaaa (fix, PR #7) is owed on release/0.191", out)
         self.assertIn("**⛔ Left undone**", out)
+
+    def test_named_but_left_undone_keeps_the_wording(self):
+        other = [(self.a, "#7", "fix", "release/0.190", "picked", "-")]
+        code, out = self.main(rows=other)
+        self.assertEqual(code, 1)
+        self.assertIn(
+            "::error::aaaaaaa (fix, PR #7) is owed on release/0.191 and was left undone: ",
+            out,
+        )
+        self.assertNotIn("before this run", out)
+
+    def test_untouched_says_owed_before_this_run(self):
+        e = "e" * 40
+        named = [(e, "#5", "fix", "release/0.191", "picked", "-")]
+        code, out = self.main(rows=named)
+        self.assertEqual(code, 1)
+        self.assertIn(
+            "::error::aaaaaaa (fix, PR #7) is owed on release/0.191 and "
+            "was owed before this run, not caused by it: "
+            f"dispatch Backport with commits={self.a[:12]} lines=0.191",
+            out,
+        )
+        self.assertIn(": owed before this run, not caused by it; dispatch Backport", out)
 
     def test_settled_passes(self):
         picked = [(self.a, "#7", "fix", "release/0.191", "picked", "-")]

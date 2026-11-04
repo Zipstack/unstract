@@ -514,7 +514,8 @@ def unsettled(targets, held_by_branch, rows, heads):
     ]
 
 
-def unsettled_lines(left):
+def unsettled_lines(left, ran):
+    """ran: the commits this run has rows for; any other was already owed when it started."""
     out = []
     for sha, pr, b, cls in left:
         do = (
@@ -522,10 +523,14 @@ def unsettled_lines(left):
             if cls == UNCLASSIFIABLE
             else f"dispatch Backport with commits={sha[:12]} lines={rm.line(b)}, or record a decline"
         )
-        print(
-            f"::error::{sha[:7]} ({cls}, PR {pr}) is owed on {b} and was left undone: {do}"
+        why = (
+            "was left undone"
+            if sha in ran
+            else "was owed before this run, not caused by it"
         )
-        out.append(f"- {link_src(sha, pr)} ({cls}) → {rm.branch_link(b)}: {do}")
+        print(f"::error::{sha[:7]} ({cls}, PR {pr}) is owed on {b} and {why}: {do}")
+        before = "" if sha in ran else "owed before this run, not caused by it; "
+        out.append(f"- {link_src(sha, pr)} ({cls}) → {rm.branch_link(b)}: {before}{do}")
     return out
 
 
@@ -926,11 +931,22 @@ def _no_open_pr(slug, branch, head):
             f"head {head} exists and its PR #{n} is closed, but no decline is recorded on {branch}: "
             f"re-run the Backport record job for #{n}, then rerun",
         )
+    if empty:
+        return "failed", f"head {head} exists with no open PR: delete it, then rerun"
+    # No PR open or closed: a create whose failure outlasted the lookup. Deleting lets the next run pick it again.
+    deleted = not soft(
+        f"delete of {head}",
+        "gh",
+        "api",
+        "-X",
+        "DELETE",
+        f"repos/{slug}/git/refs/heads/{head}",
+    ).returncode
     return (
         "failed",
-        f"head {head} exists with no open PR: delete it"
-        + ("" if empty else " or reopen its PR")
-        + ", then rerun",
+        f"head {head} had no PR: deleted it, so the next Backport run picks the fix again"
+        if deleted
+        else f"head {head} has no PR and its delete failed: delete it, then rerun",
     )
 
 
@@ -1198,7 +1214,9 @@ def main():
     try:
         if not a.rescan:
             owed = owed_now(slug, targets)
-        undone = unsettled_lines(unsettled(targets, owed, rows, backport_heads()))
+        undone = unsettled_lines(
+            unsettled(targets, owed, rows, backport_heads()), {r[0] for r in rows}
+        )
     except RuntimeError as e:
         print(f"::error::cannot check what this run left undone: {e}")
         undone = ["- unchecked: see the run log"]
