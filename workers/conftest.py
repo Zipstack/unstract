@@ -18,3 +18,5 @@ os.environ.setdefault("DB_HOST", "localhost")
 os.environ.setdefault("DB_USER", "test")
 os.environ.setdefault("DB_PASSWORD", "test")
 os.environ.setdefault("DB_NAME", "testdb")
+# Keep image-limits lookups on the bundled table (no fetch from GitHub).
+os.environ.setdefault("VLM_IMAGE_LIMITS_URL", "")

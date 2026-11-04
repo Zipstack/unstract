@@ -1,0 +1,59 @@
+name: V2 Lint PR
+
+# Every PR into main or a release branch needs a recognised `[TYPE]` title prefix, unless a fix/ label gives its class.
+# Release branches too: the release changelog is built from their PR titles.
+# The backport class is only printed here; Backport recomputes it at pick time.
+on:
+  pull_request:
+    branches: [main, 'release/**']
+    types: [opened, edited, reopened, synchronize, labeled, unlabeled]
+
+permissions:
+  contents: read
+
+jobs:
+  lint-pr:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      # Rule read from main, so a PR cannot weaken relmgr; it can still edit this workflow.
+      - uses: actions/checkout@v6
+        with:
+          ref: main
+          sparse-checkout: .github/release
+          persist-credentials: false
+
+      - name: Classify PR
+        id: class
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+          LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+          BASE: ${{ github.base_ref }}
+        run: |
+          if [ ! -f .github/release/relmgr.py ]; then
+            echo "::notice title=Lint PR::skipped: main has no .github/release/relmgr.py yet"
+            exit 0
+          fi
+          python3 -I - <<'PY'  # isolated: no working-directory module shadows the stdlib
+          import json, os, sys
+          sys.path.insert(0, ".github/release")
+          import relmgr
+
+          title, labels = os.environ["TITLE"], json.loads(os.environ["LABELS"])
+          summary = open(os.environ["GITHUB_STEP_SUMMARY"], "a")
+          try:
+              if refusal := relmgr.release_only_refusal(os.environ["BASE"], labels):
+                  raise ValueError(refusal)
+              cls = relmgr.pr_fix_class(title, labels) or "none"
+          except ValueError as e:
+              msg = (f"{e}\nFix: title as `[TYPE] text` or `TICKET [TYPE] text` (e.g. `ABC-123 [FIX] ...`); allowed labels are "
+                     "fix/security or fix/critical (at most one), and fix/needs-backport.")
+              print("::error title=Lint PR::" + msg.replace("\n", "%0A"))  # workflow commands end at a raw newline
+              summary.write(f"### Lint PR: failed\n\n{msg}\n")
+              sys.exit(1)
+          print(f"class={cls}")
+          open(os.environ["GITHUB_OUTPUT"], "a").write(f"class={cls}\n")
+          summary.write(f"### Lint PR\n\nBackport class: `{cls}`\n")
+          if cls != "none":
+              summary.write("\nKeep this PR to the fix; a bundled fix cannot be cherry-picked.\n")
+          PY

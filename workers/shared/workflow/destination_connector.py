@@ -1904,9 +1904,10 @@ class WorkerDestinationConnector:
             if isinstance(file_bytes, str):
                 file_bytes = file_bytes.encode("utf-8")
             return base64.b64encode(file_bytes).decode("utf-8")
-        except Exception as e:
-            logger.error(f"Failed to read file content for {file_name}: {e}")
-            raise OSError(f"Failed to read file content for queue: {e}")
+        except Exception:
+            # The storage path goes to the log, never to the caller.
+            logger.exception(f"Failed to read file content for {file_name}")
+            raise OSError(f"Failed to read file content for queue: {file_name}")
 
     def _read_file_from_source_connector(
         self, input_file_path: str, file_name: str, workflow: dict[str, Any]
