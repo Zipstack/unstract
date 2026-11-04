@@ -48,6 +48,10 @@ class UnauthorizedKey(APIException):
     default_detail = "Unauthorized"
 
 
+class ExpiredKey(UnauthorizedKey):
+    default_detail = "API key expired"
+
+
 class NoActiveAPIKeyError(APIException):
     status_code = 409
     default_detail = "No active API keys configured for this deployment"
