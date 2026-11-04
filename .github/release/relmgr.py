@@ -26,12 +26,15 @@ REVERTS_RE = re.compile(r"^This reverts commit ([0-9a-f]{7,40})", re.M)
 DECLINED_RE = re.compile(r"^Declined: (.+)$", re.M)
 # Match with fullmatch.
 BACKPORT_HEAD_RE = re.compile(r"backport/(\d+\.\d+)/([0-9a-f]{7})")
-LINE_RE = re.compile(r"\d+\.\d+")
+LINE_RE = re.compile(r"[0-9]+\.[0-9]+")
 
 
 def line(value):
-    """A release-line input as X.Y: "0.186" and "release/0.186" both give "0.186"."""
-    v = value.strip().removeprefix("release/")
+    """A release-line input as X.Y: "0.186" and "release/0.186" both give "0.186".
+
+    No stripping: Take RC's concurrency group is keyed on the raw input, so a padded value must not pass.
+    """
+    v = value.removeprefix("release/")
     if not LINE_RE.fullmatch(v):
         raise ValueError(f"not a release line X.Y (e.g. 0.186): {value!r}")
     return v

@@ -266,10 +266,43 @@ class Scenario(unittest.TestCase):
             "window with force",
         )
         self.assertIsNone(rs.retire_line_refusal(st, "release/1.5", force=True))
-        self.push("chart/unstract-platform", "1.5.0", days=200)  # GA, window over
-        st = self.state()
+        self.push("chart/unstract-platform", "1.5.0", days=0)  # GA after its RC
+        st = rs.derive(  # window over
+            self.repo, NOW + dt.timedelta(days=200), lambda a: self.reg.get(a, {})
+        )
         self.assertTrue(self.branch(st, "release/1.5")["targets"]["on-prem"]["late"])
         self.assertIsNone(rs.retire_line_refusal(st, "release/1.5"))
+
+    def test_onprem_rc_after_cloud_ga_is_not_late_when_enabled_before(self):
+        # Late is judged by the target's first RC: a later RC after cloud GA keeps the line taking fixes.
+        self.onprem_rc()
+        self.commit("pick", "release/1.5")
+        self.push("on-prem/backend", "v1.5.1-rc.1", git_ref="release/1.5")
+        st = self.state()
+        b = self.branch(st, "release/1.5")
+        self.assertEqual(
+            (b["state"], b["targets"]["on-prem"]["late"]), ("stabilizing", False)
+        )
+        self.assertEqual(st["backport_targets"]["fix"], ["release/1.5"])
+
+    def test_late_cloud_with_no_ga_retires_with_force(self):
+        # Shipped on-prem first, cloud enabled later: cloud is not production until its own GA.
+        self.cut("1.5")
+        self.push("on-prem/backend", "v1.5.0-rc.1", days=400, git_ref="release/1.5")
+        self.push("chart/unstract-platform", "v1.5.0", days=10, git_ref="release/1.5")
+        self.commit("pick", "release/1.5")
+        self.push("cloud/backend", "v1.5.1-rc.1", git_ref="release/1.5")
+        st = self.state()
+        b = self.branch(st, "release/1.5")
+        self.assertEqual(
+            (b["state"], b["targets"]["cloud"]["late"]), ("stabilized", True)
+        )
+        self.assertEqual(
+            rs.retire_line_refusal(st, "release/1.5"),
+            "cloud, on-prem still supported (stabilized, or late with no GA yet); a release manager may retire it "
+            "inside the window with force",
+        )
+        self.assertIsNone(rs.retire_line_refusal(st, "release/1.5", force=True))
 
     def test_failed_registry_read_is_never_not_late(self):
         self.late_onprem()
@@ -1392,7 +1425,7 @@ class PrFixClass(unittest.TestCase):
 
 class Inputs(unittest.TestCase):
     def test_line(self):
-        for v in ("0.186", "release/0.186", " 0.186 ", "release/0.186\n"):
+        for v in ("0.186", "release/0.186"):
             self.assertEqual(rm.line(v), "0.186")
         for bad in (
             "",
@@ -1402,6 +1435,9 @@ class Inputs(unittest.TestCase):
             "release/release/0.186",
             "0.x",
             "refs/heads/release/0.186",
+            " 0.186 ",
+            "release/0.186\n",
+            "\u0660.\u0661",
         ):
             with self.assertRaisesRegex(ValueError, "not a release line X.Y"):
                 rm.line(bad)

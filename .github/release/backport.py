@@ -408,7 +408,7 @@ def held(slug, repo, branch, accept=HELD, cache=None, token=None, since=None):
         except ValueError as e:  # a title Lint PR should have stopped
             classes[s] = (UNCLASSIFIABLE, str(e), subject())
     print(
-        f"held: {len(commits)} main commit(s) since the cut of {branch}, {looked} fix_class lookup(s)"
+        f"held: {len(commits)} main commit(s) since {since or 'the cut'} for {branch}, {looked} fix_class lookup(s)"
     )
     # A decline carries the same trailer as a pick, so one grep covers both.
     trailers = {
@@ -441,7 +441,8 @@ def owed_summary(rows, branch):
         out
         + [
             "",
-            f"To pick any: dispatch Backport with `confirm_stabilized=true` and `lines={rm.line(branch)}`.",
+            f"To pick a fix: dispatch Backport with its commit, `confirm_stabilized=true` and `lines={rm.line(branch)}`"
+            " plus every newer released line. Backport skips an unclassifiable row.",
         ]
     )
 
@@ -477,28 +478,45 @@ def held_note(rows, branch, slug=None):
 
 
 def patch_lines(state, slug=None):
-    """Release state: per stabilized line, main fixes merged since its latest GA that it lacks, as Backport commits."""
+    """Release state: per stabilized line, main fixes merged since its first GA that it lacks, as Backport commits."""
     slug = slug or os.environ["GITHUB_REPOSITORY"]
     out = [
-        "**Patch a released line**: main fixes since the line's latest GA, not on it. Paste into Backport `commits` "
+        "**Patch a released line**: main fixes since the line's first GA, not on it. Paste into Backport `commits` "
         "with `confirm_stabilized` and `lines` (every newer released line too).",
         "",
     ]
-    # promoted: each target's latest stable on the line; the newest of them is the line's latest GA.
+    # ga: each target's first stable on the line; the oldest of them is the line's first GA. From then on Backport
+    # stops picking plain fixes onto the line, so anything owed is newer.
     lines = {
-        r["branch"]: max(
-            (tt["promoted"] for tt in r["targets"].values() if tt["promoted"]),
-            key=lambda g: rs._vkey(g["tag"]),
+        r["branch"]: min(
+            (tt["ga"] for tt in r["targets"].values() if tt.get("ga")),
+            key=lambda g: rs._ts(g["pushed_at"]),
+            default=None,
         )
         for r in state["branches"]
         if r["state"] == "stabilized"
     }
     if not lines:
         return "\n".join(out + ["no stabilized line"])
-    oldest = min(lines.values(), key=lambda g: rs._ts(g["pushed_at"]))
-    cache = pr_classes(slug, oldest["pushed_at"])
+    known = [g for g in lines.values() if g]
+    cache = (
+        pr_classes(slug, min(known, key=lambda g: rs._ts(g["pushed_at"]))["pushed_at"])
+        if known
+        else {}
+    )
     for branch, ga in lines.items():
-        rows = held(slug, REPO, branch, accept=OWED, cache=cache, since=ga["pushed_at"])
+        if not ga:  # every target late with no GA: nothing was released to patch
+            out.append(f"- `{branch}`: no GA yet")
+            continue
+        # A gh or git failure on one line must not fail the State run.
+        try:
+            rows = held(
+                slug, REPO, branch, accept=OWED, cache=cache, since=ga["pushed_at"]
+            )
+        except RuntimeError as e:
+            print(f"::warning::{branch}: patch list unavailable: {e}")
+            out.append(f"- `{branch}`: patch list unavailable (see the run log)")
+            continue
         commits = " ".join(
             _commit_arg(s, pr) for s, cls, pr, _ in rows if cls != UNCLASSIFIABLE
         )
@@ -922,8 +940,11 @@ def push_title(slug, sha):
 
 
 def listed_branches(value):
-    """The --lines input as release branches: "0.186, release/0.188" gives both as release/X.Y."""
-    return [f"release/{rm.line(b)}" for b in value.split(",") if b.strip()]
+    """The --lines input as release branches: "0.186, release/0.188" gives both as release/X.Y.
+
+    Commas or spaces separate the items; each item itself must be exact.
+    """
+    return [f"release/{rm.line(b)}" for b in re.split(r"[,\s]+", value) if b]
 
 
 def main():
@@ -941,7 +962,7 @@ def main():
     p.add_argument(
         "--lines",
         default="",
-        help="comma list: only these release lines, X.Y or release/X.Y (default every target)",
+        help="only these release lines, X.Y or release/X.Y, by commas or spaces (default every target)",
     )
     a = p.parse_args()
     slug = os.environ["GITHUB_REPOSITORY"]
@@ -1010,7 +1031,7 @@ def main():
 
 
 def dispatch(slug, targets, commits, confirm, listed):
-    # Commas or spaces: the owed-picks line pastes as is.
+    # Commas or spaces: State's patch-lines list pastes as is.
     items = [c for c in re.split(r"[,\s]+", commits) if c]
     shas = [resolve(slug, c) for c in items]
     if not items or None in shas:
@@ -1067,13 +1088,24 @@ def _dispatch_commit(slug, targets, sha, confirm, listed, awaiting):
     rows = []
     branches, others = only_listed(branches, listed)
     others = [b for b in others if (sha, b, cls, pr) not in awaiting]
+    stabilized = {
+        t["branch"] for t in targets["security_critical"] if t["needs_rm_confirmation"]
+    }
     for b in others:
+        if cls == "fix" and b in stabilized:  # named, but confirm_stabilized is off
+            print(
+                f"::warning::{sha[:7]} (fix, PR {pr}): {b} is stabilized, needs confirm_stabilized"
+            )
+            rows.append(
+                (sha, pr, cls, b, "skipped: stabilized; needs confirm_stabilized", "-")
+            )
+            continue
         print(f"::warning::{sha[:7]} ({cls}, PR {pr}): {b} is not a target, skipped")
         rows.append((sha, pr, cls, b, "skipped: not a target", "-"))
     if cls == "fix" and confirm and not listed:
         for t in targets["security_critical"]:
             if t["needs_rm_confirmation"]:
-                print(f"::notice::{sha[:7]} (fix, PR {pr}): {t['branch']} needs lines")
+                print(f"::warning::{sha[:7]} (fix, PR {pr}): {t['branch']} needs lines")
                 rows.append(
                     (
                         sha,

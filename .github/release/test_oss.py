@@ -2606,7 +2606,7 @@ class LateTargetWorkflow(Workflow):
         notes, out = self.take_rc()
         self.assertIn("| #5 | [FIX] y | fix |", notes)  # owed, shown
         self.assertIn(
-            "dispatch Backport with `confirm_stabilized=true` and `lines=1.7`.",
+            "dispatch Backport with its commit, `confirm_stabilized=true` and `lines=1.7`",
             notes,
         )
         self.assertEqual(
@@ -2892,16 +2892,16 @@ class InputSteps(unittest.TestCase):
                 return r.returncode, fh.read(), r.stderr
 
     def test_take_rc_line(self):
-        for line in ("1.7", "release/1.7", " 1.7 "):
+        for line in ("1.7", "release/1.7"):
             self.assertEqual(
                 self.run_step("take-rc-build.yaml", "Check line", LINE=line),
                 (0, "branch=release/1.7\n", ""),
             )
-        code, out, err = self.run_step(
-            "take-rc-build.yaml", "Check line", LINE="release/1.7.0"
-        )
-        self.assertEqual((code, out), (1, ""))
-        self.assertIn("::error::not a release line X.Y", err)
+        # Padded: the concurrency group is keyed on the raw input, so " 1.7 " must not pass as 1.7.
+        for line in ("release/1.7.0", " 1.7 "):
+            code, out, err = self.run_step("take-rc-build.yaml", "Check line", LINE=line)
+            self.assertEqual((code, out), (1, ""))
+            self.assertIn("::error::not a release line X.Y", err)
 
     def test_promote_rc(self):
         for rc in ("v1.7.0-rc.2", "1.7.0-rc.2"):

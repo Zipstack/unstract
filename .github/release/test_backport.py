@@ -1,5 +1,6 @@
 """Tests for backport helpers, and pick() against real git. Run: python test_backport.py"""
 
+import contextlib
 import io
 import json
 import os
@@ -402,7 +403,8 @@ class OwedSummary(unittest.TestCase):
         self.assertIn(f"| `bbbbbbb` | no PR | z | {bp.UNCLASSIFIABLE} |", out)
         self.assertTrue(
             out.endswith(
-                "To pick any: dispatch Backport with `confirm_stabilized=true` and `lines=0.187`."
+                "To pick a fix: dispatch Backport with its commit, `confirm_stabilized=true` and `lines=0.187`"
+                " plus every newer released line. Backport skips an unclassifiable row."
             )
         )
         self.assertTrue(bp.owed_summary([], "release/0.187").endswith("none"))
@@ -542,9 +544,21 @@ class DispatchPatch(unittest.TestCase):
             ["release/0.191", "release/0.190"],
         )
 
-    def test_without_confirm_a_named_stabilized_line_is_not_a_target(self):
-        row = (self.fix, "#4", "fix", "release/0.190", "skipped: not a target", "-")
-        self.assertEqual(self.run_(False, ["release/0.190"]), [row])
+    def test_without_confirm_a_named_stabilized_line_says_why(self):
+        self.assertEqual(
+            self.run_(False, ["release/0.190", "release/0.150"]),
+            [
+                (
+                    self.fix,
+                    "#4",
+                    "fix",
+                    "release/0.190",
+                    "skipped: stabilized; needs confirm_stabilized",
+                    "-",
+                ),
+                (self.fix, "#4", "fix", "release/0.150", "skipped: not a target", "-"),
+            ],
+        )
 
     def test_confirm_without_branches_says_why(self):
         skip = "skipped: stabilized; a plain fix needs lines"
@@ -582,10 +596,12 @@ class PatchLines(unittest.TestCase):
                     "state": "stabilized",
                     "targets": {
                         "cloud": {
-                            "promoted": stable("v0.190.10", "2026-10-02T00:00:00Z")
+                            "ga": stable("v0.190.1", "2026-08-02T00:00:00Z"),
+                            "promoted": stable("v0.190.10", "2026-10-02T00:00:00Z"),
                         },
                         "on-prem": {
-                            "promoted": stable("v0.190.9", "2026-10-01T00:00:00Z")
+                            "ga": stable("v0.190.0", "2026-08-01T00:00:00Z"),
+                            "promoted": stable("v0.190.9", "2026-10-01T00:00:00Z"),
                         },
                     },
                 },
@@ -593,8 +609,11 @@ class PatchLines(unittest.TestCase):
                     "branch": "release/0.188",
                     "state": "stabilized",
                     "targets": {
-                        "cloud": {"promoted": stable("v0.188.2", "2026-09-01T00:00:00Z")},
-                        "on-prem": {"promoted": None},
+                        "cloud": {
+                            "ga": stable("v0.188.0", "2026-06-01T00:00:00Z"),
+                            "promoted": stable("v0.188.2", "2026-09-01T00:00:00Z"),
+                        },
+                        "on-prem": {"ga": None, "promoted": None},
                     },
                 },
             ]
@@ -622,20 +641,20 @@ class PatchLines(unittest.TestCase):
         ):
             out = bp.patch_lines(state, "o/r").splitlines()
         self.assertEqual(
-            listed, ["2026-09-01T00:00:00Z"]
-        )  # one listing, from the oldest GA
+            listed, ["2026-06-01T00:00:00Z"]
+        )  # one listing, from the oldest first GA
         self.assertEqual(
             calls,
             [
-                ("release/0.190", bp.OWED, "2026-10-02T00:00:00Z"),
-                ("release/0.188", bp.OWED, "2026-09-01T00:00:00Z"),
+                ("release/0.190", bp.OWED, "2026-08-01T00:00:00Z"),
+                ("release/0.188", bp.OWED, "2026-06-01T00:00:00Z"),
             ],
         )
         self.assertEqual(
             out[2:],
             [
-                f"- `release/0.190` since `v0.190.10`: `#7 {b[:12]}` (1 unclassifiable left out)",
-                "- `release/0.188` since `v0.188.2`: none",
+                f"- `release/0.190` since `v0.190.0`: `#7 {b[:12]}` (1 unclassifiable left out)",
+                "- `release/0.188` since `v0.188.0`: none",
             ],
         )
         with mock.patch.object(bp, "held", held):
@@ -644,6 +663,40 @@ class PatchLines(unittest.TestCase):
                     "no stabilized line"
                 )
             )
+
+    def test_a_failing_line_is_reported_not_raised(self):
+        ga = {"tag": "v0.190.0", "pushed_at": "2026-08-01T00:00:00Z"}
+        state = {
+            "branches": [
+                {
+                    "branch": "release/0.190",
+                    "state": "stabilized",
+                    "targets": {"cloud": {"ga": ga}},
+                },
+                {
+                    "branch": "release/0.189",
+                    "state": "stabilized",
+                    "targets": {"cloud": {"ga": None}},
+                },
+            ]
+        }
+
+        def held(*a, **k):
+            raise RuntimeError("gh pr list (exit 1): rate limited")
+
+        with (
+            mock.patch.object(bp, "held", held),
+            mock.patch.object(bp, "pr_classes", lambda slug, since: {}),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            out = bp.patch_lines(state, "o/r").splitlines()
+        self.assertEqual(
+            out[2:],
+            [
+                "- `release/0.190`: patch list unavailable (see the run log)",
+                "- `release/0.189`: no GA yet",
+            ],
+        )
 
 
 class PushSummary(unittest.TestCase):

@@ -361,11 +361,12 @@ def target_state(t, name, rows, now):
     On-prem: stabilized for WINDOW after the line's first stable chart push (a patch does not extend it), and only while
     among the newest WINDOW_LINES lines with an on-prem GA. A LATEST_ONLY target (cloud): only the latest GA branch
     for it stays stabilized; older GA branches are past-eos for it. A KEPT target (OSS): stabilizing until every
-    enabled target of its paired cloud line is GA (the STABILIZED tag, which `oss.py promote --stabilized` writes),
-    then stabilized while the branch exists; the cloud lines pinning it decide its retirement, and cloud Retire names it.
+    enabled target of its paired cloud line is GA (the STABILIZED tag, which `oss.py promote --stabilized` writes;
+    nothing removes it, so a target added later does not reopen it), then stabilized while the branch exists; the cloud lines pinning it decide its retirement, and cloud Retire names it.
     """
     ga = rows[name]["targets"][t]["ga"]
-    # Known limit: a target never GA stays stabilizing; retire it with Retire retire_line.
+    # Known limit: a target never GA stays stabilizing; retire it with Retire retire_line (with force when the target
+    # is late, since the line then counts it stabilized).
     if not ga:
         return "stabilizing"
     if t in KEPT:
@@ -523,7 +524,8 @@ def _set_states(rows, now):
             tt["state"] = target_state(t, name, rows, now)
         row["enabled"] = sorted(row["targets"])
         # No enabled target (cut, nothing built yet) is stabilizing: every line builds cloud by default.
-        # A late target keeps the line alive until its GA.
+        # A late target with no GA counts as stabilized: it adds no auto-picks, and the line stays supported (Retire
+        # needs force) until it has a GA.
         row["state"] = _line_state(
             {
                 "stabilized" if tt["late"] and not tt["ga"] else tt["state"]
@@ -615,7 +617,7 @@ def retire_line_refusal(state, branch, force=False):
         for t, tt in sorted(row["targets"].items())
         if tt["state"] == "stabilized" or (tt["late"] and not tt["ga"])
     ]
-    if "cloud" in held:
+    if row["targets"].get("cloud", {}).get("state") == "stabilized":
         return "cloud is production (newest cloud GA); it retires once a newer line is promoted"
     if held and not force:
         return f"{', '.join(held)} still supported (stabilized, or late with no GA yet); a release manager may retire it inside the window with force"
