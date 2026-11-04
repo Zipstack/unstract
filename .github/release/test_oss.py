@@ -2594,7 +2594,10 @@ class LateTargetWorkflow(Workflow):
     def test_unchanged_tip_reuses_its_rc_and_promotes_onto_the_cloud_ga(self):
         notes, out = self.take_rc()
         self.assertIn("| #5 | [FIX] y | fix |", notes)  # owed, shown
-        self.assertIn("Label any you need security or critical.", notes)
+        self.assertIn(
+            "dispatch Backport with `confirm_stabilized=true` and `branches=release/1.7`.",
+            notes,
+        )
         self.assertEqual(
             out,
             "tag=v1.7.0-rc.3\nbump=false\ntargets=on-prem\nnewest=release/1.7\nchart=true\n",

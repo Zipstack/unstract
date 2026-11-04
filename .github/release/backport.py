@@ -427,9 +427,7 @@ def held(slug, repo, branch, accept=HELD, cache=None, token=None, since=None):
 
 
 def owed_summary(rows, branch):
-    """Information only: a stabilized line takes no plain fix, so Backport picks only what gets a security/critical
-    label.
-    """
+    """Information only: a stabilized line takes a plain fix only when the RM dispatches Backport naming the line."""
     out = [
         f"**Owed picks** for `{branch}`: main fixes since the cut, neither picked nor declined",
         "",
@@ -439,7 +437,13 @@ def owed_summary(rows, branch):
     out += ["| commit | PR | title | class |", "|---|---|---|---|"]
     cell = lambda t: t.replace("|", r"\|")  # a pipe in a title would split the row
     out += [f"| `{s[:7]}` | {pr} | {cell(title)} | {cls} |" for s, cls, pr, title in rows]
-    return "\n".join(out + ["", "Label any you need security or critical."])
+    return "\n".join(
+        out
+        + [
+            "",
+            f"To pick any: dispatch Backport with `confirm_stabilized=true` and `branches={branch}`.",
+        ]
+    )
 
 
 def warn_held(slug, repo, branch, annotate="warning", token=None):

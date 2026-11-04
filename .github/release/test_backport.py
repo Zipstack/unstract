@@ -362,10 +362,11 @@ class OwedSummary(unittest.TestCase):
         )
         self.assertIn("| `aaaaaaa` | #3 | UN-1 [FIX] x \\| y | fix |", out)
         self.assertIn(f"| `bbbbbbb` | no PR | z | {bp.UNCLASSIFIABLE} |", out)
-        self.assertTrue(out.endswith("Label any you need security or critical."))
-        self.assertNotIn(
-            "Backport commits", out
-        )  # a plain fix on a stabilized line is never picked
+        self.assertTrue(
+            out.endswith(
+                "To pick any: dispatch Backport with `confirm_stabilized=true` and `branches=release/0.187`."
+            )
+        )
         self.assertTrue(bp.owed_summary([], "release/0.187").endswith("none"))
 
 
