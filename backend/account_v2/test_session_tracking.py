@@ -12,12 +12,12 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from django.conf import settings
-from django.contrib.auth.base_user import AbstractBaseUser
 from django.contrib.sessions.models import Session
 from django.core.cache import cache
 from django.test import SimpleTestCase, override_settings
 from django.urls import include, path
 from django.utils import timezone
+from django.utils.crypto import salted_hmac
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.test import APIClient, APITestCase
 
@@ -191,10 +191,36 @@ class SessionEndpointsTest(APITestCase):
             - timedelta(seconds=settings.SESSION_COOKIE_AGE + 1)
         )
 
+        cache.delete(_IDLE_SWEEP_CACHE_KEY)
+        self.addCleanup(cache.delete, _IDLE_SWEEP_CACHE_KEY)
+
         self._sign_in(self.user)
 
         self.assertFalse(
             SessionRecord.objects.filter(session_key=self._key(bob_idle)).exists()
+        )
+
+    def test_sign_in_sweeps_at_most_once_an_hour(self) -> None:
+        cache.set(_IDLE_SWEEP_CACHE_KEY, True, timeout=3600)
+        self.addCleanup(cache.delete, _IDLE_SWEEP_CACHE_KEY)
+
+        with patch("account_v2.session_tracking.SessionTracker._sweep_idle") as sweep:
+            self._sign_in(self.user)
+
+        sweep.assert_not_called()
+
+    def test_failing_sweep_does_not_lose_the_sign_in_record(self) -> None:
+        cache.delete(_IDLE_SWEEP_CACHE_KEY)
+        self.addCleanup(cache.delete, _IDLE_SWEEP_CACHE_KEY)
+
+        with patch(
+            "account_v2.session_tracking.SessionTracker._sweep_idle",
+            side_effect=RuntimeError("statement timeout"),
+        ):
+            client = self._sign_in(self.user)
+
+        self.assertTrue(
+            SessionRecord.objects.filter(session_key=self._key(client)).exists()
         )
 
     def test_activity_sweeps_idle_records_without_any_sign_in(self) -> None:
@@ -345,11 +371,97 @@ class SessionEndpointsTest(APITestCase):
 
     def test_sessions_from_before_the_generation_existed_stay_valid(self) -> None:
         # Generation 0 must hash exactly as Django does, or deploying this would
-        # sign every user out.
-        self.assertEqual(
-            self.user.get_session_auth_hash(),
-            AbstractBaseUser.get_session_auth_hash(self.user),
+        # sign every user out. Computed independently of the model's override.
+        stock_hash = salted_hmac(
+            "django.contrib.auth.models.AbstractBaseUser.get_session_auth_hash",
+            self.user.password,
+            algorithm="sha256",
+        ).hexdigest()
+
+        self.assertEqual(self.user.get_session_auth_hash(), stock_hash)
+        self.user.session_generation = 1
+        self.assertNotEqual(self.user.get_session_auth_hash(), stock_hash)
+
+    def test_full_save_keeps_djangos_full_save_semantics(self) -> None:
+        with patch("django.db.models.Model.save") as model_save:
+            self.user.save()
+        model_save.assert_called_once_with(False, False, None, None)
+
+    def test_full_save_of_a_partially_loaded_user_writes_only_loaded_fields(
+        self,
+    ) -> None:
+        User.objects.filter(pk=self.user.pk).update(last_name="Original")
+        partial = User.objects.only("id", "first_name").get(pk=self.user.pk)
+        User.objects.filter(pk=self.user.pk).update(
+            last_name="Changed meanwhile", session_generation=3
         )
+
+        partial.first_name = "Alice"
+        partial.save()
+
+        self.user.refresh_from_db()
+        self.assertEqual(
+            (self.user.first_name, self.user.last_name, self.user.session_generation),
+            ("Alice", "Changed meanwhile", 3),
+        )
+
+    def test_positional_full_save_cannot_write_back_a_stale_generation(self) -> None:
+        loaded_earlier = User.objects.get(pk=self.user.pk)
+        User.objects.filter(pk=self.user.pk).update(session_generation=5)
+
+        loaded_earlier.save(False, False)
+
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.session_generation, 5)
+        self.assertEqual(loaded_earlier.session_generation, 0)
+
+    def test_revoke_all_completes_when_the_log_cache_is_down(self) -> None:
+        laptop = self._sign_in(self.user)
+        desktop = self._sign_in(self.user)
+
+        with patch(
+            "account_v2.session_tracking.LogService.remove_logs_on_logout",
+            side_effect=ConnectionError("redis down"),
+        ):
+            response = laptop.post(REVOKE_ALL_URL)
+
+        self.assertEqual(response.status_code, 204)
+        self.assertEqual(response.cookies[settings.SESSION_COOKIE_NAME].value, "")
+        self.assertEqual(desktop.get(SESSIONS_URL).status_code, 401)
+        self.assertFalse(SessionRecord.objects.filter(user=self.user).exists())
+
+    def test_revoke_one_completes_when_the_log_cache_is_down(self) -> None:
+        laptop = self._sign_in(self.user)
+        desktop = self._sign_in(self.user)
+        desktop_id = SessionRecord.objects.get(session_key=self._key(desktop)).id
+
+        with patch(
+            "account_v2.session_tracking.LogService.remove_logs_on_logout",
+            side_effect=ConnectionError("redis down"),
+        ):
+            response = laptop.delete(f"{SESSIONS_URL}{desktop_id}/")
+
+        self.assertEqual(response.status_code, 204)
+        self.assertEqual(desktop.get(SESSIONS_URL).status_code, 401)
+
+    def test_revoke_all_ends_the_current_session_when_ending_another_fails(
+        self,
+    ) -> None:
+        laptop = self._sign_in(self.user)
+        self._sign_in(self.user)
+        laptop_key = self._key(laptop)
+        real_end = SessionTracker._end.__func__
+
+        def end_failing_for_others(cls, request, session_key):
+            if session_key != laptop_key:
+                raise RuntimeError("delete failed")
+            real_end(cls, request, session_key)
+
+        with patch.object(SessionTracker, "_end", classmethod(end_failing_for_others)):
+            response = laptop.post(REVOKE_ALL_URL)
+
+        self.assertEqual(response.status_code, 204)
+        self.assertEqual(response.cookies[settings.SESSION_COOKIE_NAME].value, "")
 
     def test_revoke_one_leaves_the_other_working(self) -> None:
         laptop = self._sign_in(self.user)

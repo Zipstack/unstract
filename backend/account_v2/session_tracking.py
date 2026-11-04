@@ -145,15 +145,25 @@ class SessionTracker:
         # saves it. Saving now gives the record a key; the later save reuses it.
         if request.session.session_key is None:
             request.session.save()
+        # Kept out of the upsert's transaction: a slow or failing platform-wide
+        # sweep must not hold up or lose this user's own record.
+        try:
+            cls._sweep_idle_if_due()
+        except Exception:
+            logger.warning("Failed to sweep idle session records", exc_info=True)
         with transaction.atomic():
-            cls._prune_stale(user)
+            # The signing-in user's own records are checked exactly.
+            cls.live_records(user)
             cls._upsert(request, user)
 
     @classmethod
-    def _prune_stale(cls, user: User) -> None:
-        # The signing-in user's own records are checked exactly.
-        cls._sweep_idle()
-        cls.live_records(user)
+    def _sweep_idle_if_due(cls) -> None:
+        if django_cache.add(
+            _IDLE_SWEEP_CACHE_KEY,
+            True,
+            timeout=int(IDLE_SWEEP_INTERVAL.total_seconds()),
+        ):
+            cls._sweep_idle()
 
     @staticmethod
     def _sweep_idle() -> None:
@@ -190,12 +200,7 @@ class SessionTracker:
                 # Signed in before session recording existed: first seen now.
                 with transaction.atomic():
                     cls._upsert(request, user)
-            if django_cache.add(
-                _IDLE_SWEEP_CACHE_KEY,
-                True,
-                timeout=int(IDLE_SWEEP_INTERVAL.total_seconds()),
-            ):
-                cls._sweep_idle()
+            cls._sweep_idle_if_due()
         except IntegrityError:
             # A concurrent request recorded the same session first.
             pass
@@ -261,13 +266,18 @@ class SessionTracker:
 
     @classmethod
     def _end(cls, request: HttpRequest, session_key: str) -> None:
-        LogService.remove_logs_on_logout(session_id=session_key)
         if session_key == request.session.session_key:
             # Flushing the live session also makes the response clear the cookie.
             request.session.flush()
         else:
             _session_store_class()(session_key=session_key).delete()
         cls.forget(session_key)
+        # Last, and best effort: the session is already over, and an unreachable
+        # cache must not turn a completed sign-out into an error.
+        try:
+            LogService.remove_logs_on_logout(session_id=session_key)
+        except Exception:
+            logger.warning("Failed to clear logs of an ended session", exc_info=True)
 
     @classmethod
     def revoke(cls, request: HttpRequest, session_id: str) -> bool:
@@ -299,7 +309,13 @@ class SessionTracker:
         )
         session_keys.discard(current_key)
         for session_key in session_keys:
-            cls._end(request, session_key)
+            # The generation bump has already refused these sessions; ending
+            # each one is cleanup, so one failure must not skip the rest or
+            # leave the current session (and its cookie) in place.
+            try:
+                cls._end(request, session_key)
+            except Exception:
+                logger.warning("Failed to end a revoked session", exc_info=True)
         cls._revoke_idp(request, session_id=None)
         if current_key:
             cls._end(request, current_key)

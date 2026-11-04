@@ -200,23 +200,34 @@ class User(AbstractUser):
             algorithm="sha256",
         ).hexdigest()
 
-    def save(self, *args: Any, **kwargs: Any) -> None:
+    def save(
+        self,
+        force_insert: bool = False,
+        force_update: bool = False,
+        using: str | None = None,
+        update_fields: Any = None,
+    ) -> None:
         # Sign out everywhere bumps the generation with a bare UPDATE. A full save
         # of a User loaded before that bump would write the old value back and
-        # revive every session it revoked, so a full save leaves it alone.
-        if (
-            not args
-            and kwargs.get("update_fields") is None
-            and not kwargs.get("force_insert")
+        # revive every session it revoked, so a full save writes the column to
+        # itself instead: a no-op in the database, and otherwise Django's own
+        # full save (update_fields stays None for receivers and deferred fields).
+        protect = (
+            update_fields is None
+            and not force_insert
             and not self._state.adding
             and self.pk is not None
-        ):
-            kwargs["update_fields"] = [
-                field.name
-                for field in self._meta.concrete_fields
-                if not field.primary_key and field.name != "session_generation"
-            ]
-        super().save(*args, **kwargs)
+            and "session_generation" not in self.get_deferred_fields()
+        )
+        if not protect:
+            super().save(force_insert, force_update, using, update_fields)
+            return
+        loaded_generation = self.session_generation
+        self.session_generation = models.F("session_generation")
+        try:
+            super().save(force_insert, force_update, using, update_fields)
+        finally:
+            self.session_generation = loaded_generation
 
     class Meta:
         verbose_name = "User"
