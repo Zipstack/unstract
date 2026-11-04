@@ -1,6 +1,6 @@
 import "@testing-library/jest-dom/vitest";
 import { cleanup } from "@testing-library/react";
-import { afterAll, afterEach, beforeAll } from "vitest";
+import { afterAll, afterEach, beforeAll, vi } from "vitest";
 import { registerA11yMatchers } from "./a11y";
 import {
   server,
@@ -18,23 +18,48 @@ import { removePortalContainer } from "./providers";
 registerA11yMatchers();
 
 beforeAll(() => {
-  // The catch-all handler in network.ts answers every unmocked HTTP request,
-  // so this only fires for what it cannot match; fail loudly there too.
+  // The catch-all handlers in network.ts answer every unmocked HTTP request
+  // and WebSocket, so this only fires for what they cannot match.
   server.listen({ onUnhandledRequest: "error" });
 });
 
-afterEach(() => {
-  cleanup();
-  removePortalContainer();
-  server.resetHandlers();
-  // Thrown from afterEach so it fails the test even when the code under test
-  // caught the network error.
+/** Lets requests already started (e.g. by an unmount effect) reach MSW. */
+async function settle(): Promise<void> {
+  // A test that left fake timers on would stall the wait below forever.
+  if (vi.isFakeTimers()) {
+    vi.useRealTimers();
+  }
+  for (let turn = 0; turn < 2; turn += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+}
+
+function failOnUnhandledRequests(): void {
   const unhandled = takeUnhandledRequests();
   if (unhandled.length > 0) {
     throw new Error(unhandledRequestsMessage(unhandled));
   }
+}
+
+afterEach(async () => {
+  // Unmount first: cleanup effects may make requests, which belong to this
+  // test and must still see its handlers.
+  cleanup();
+  removePortalContainer();
+  await settle();
+  server.resetHandlers();
+  // Thrown from afterEach so it fails the test even when the code under test
+  // caught the network error.
+  failOnUnhandledRequests();
 });
 
-afterAll(() => {
-  server.close();
+afterAll(async () => {
+  // Requests made after the last test's afterEach (a timer firing during the
+  // file's own afterAll) fail the file rather than vanish.
+  await settle();
+  try {
+    failOnUnhandledRequests();
+  } finally {
+    server.close();
+  }
 });

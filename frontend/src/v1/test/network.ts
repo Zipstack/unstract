@@ -1,32 +1,51 @@
-import { HttpResponse, http } from "msw";
+import {
+  HttpResponse,
+  http,
+  type RequestHandler,
+  type WebSocketHandler,
+  ws,
+} from "msw";
 import { setupServer } from "msw/node";
 import type { TestSession } from "./session";
 
 /*
- * Network mocking at the HTTP boundary. MSW intercepts fetch and XHR (so
- * axios too). setup.ts starts the server, resets handlers after each test,
- * and fails the test if any request went unmocked.
+ * Network mocking at the HTTP boundary. MSW intercepts fetch, XHR (so axios
+ * too) and WebSocket. setup.ts starts the server, resets handlers after each
+ * test, and fails the test if any request went unmocked.
  */
 
-export { delay, HttpResponse, http } from "msw";
+export { delay, HttpResponse, http, ws } from "msw";
 
 const unhandledRequests: string[] = [];
 
 /*
- * Unmocked requests are answered by a catch-all handler, not by MSW's
+ * Unmocked requests are answered by catch-all handlers, not by MSW's
  * `onUnhandledRequest: "error"`. Under happy-dom that strategy does not stop
- * the request: happy-dom's fetch falls through to Node's http, which MSW
- * intercepts a second time, and then the request really goes out. A handler
- * that returns a network error ends it at the first interception. Handlers
- * added with server.use() are prepended, so this one always matches last,
- * and resetHandlers() keeps it.
+ * an HTTP request: happy-dom's fetch falls through to Node's http, which MSW
+ * intercepts a second time, and then the request really goes out. For a
+ * WebSocket it only logs, and the mocked socket opens. A handler that
+ * returns a network error, or closes the socket, ends it in-process.
  */
-const unmockedRequestHandler = http.all("*", ({ request }) => {
-  unhandledRequests.push(`${request.method} ${request.url}`);
-  return HttpResponse.error();
-});
+const unmockedHandlers: (RequestHandler | WebSocketHandler)[] = [
+  http.all("*", ({ request }) => {
+    unhandledRequests.push(`${request.method} ${request.url}`);
+    return HttpResponse.error();
+  }),
+  ws.link(/.*/).addEventListener("connection", ({ client }) => {
+    unhandledRequests.push(`WEBSOCKET ${client.url.href}`);
+    client.close(1011, "Unmocked WebSocket");
+  }),
+];
 
-export const server = setupServer(unmockedRequestHandler);
+export const server = setupServer(...unmockedHandlers);
+
+/*
+ * server.use() prepends, so the catch-alls always match last. resetHandlers
+ * with arguments would replace them, so it is pinned to re-append them.
+ */
+const resetHandlers = server.resetHandlers.bind(server);
+server.resetHandlers = (...handlers) =>
+  resetHandlers(...handlers, ...unmockedHandlers);
 
 /** Returns and clears the requests no handler matched since the last call. */
 export function takeUnhandledRequests(): string[] {

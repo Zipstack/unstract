@@ -15,11 +15,13 @@ import {
   PORTAL_CONTAINER_ID,
   renderHookV1,
   renderV1,
+  server,
 } from "@v1/test";
+import axe from "axe-core";
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { useLocation, useParams } from "react-router-dom";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { takeUnhandledRequests, unhandledRequestsMessage } from "./network";
 
 describe("renderV1", () => {
@@ -188,6 +190,26 @@ describe("network mocking", () => {
     ]);
   });
 
+  it("closes an unmocked WebSocket and records its URL", async () => {
+    const code = await new Promise<number>((resolve) => {
+      const socket = new WebSocket("ws://localhost:3000/api/v1/socket");
+      socket.onclose = (event) => resolve(event.code);
+    });
+    expect(code).toBe(1011);
+    expect(takeUnhandledRequests()).toEqual([
+      "WEBSOCKET ws://localhost:3000/api/v1/socket",
+    ]);
+  });
+
+  it("keeps the catch-all when handlers are reset with arguments", async () => {
+    server.resetHandlers(http.get("/api/v1/known", () => HttpResponse.json(1)));
+    expect(await (await fetch("/api/v1/known")).json()).toBe(1);
+    await expect(fetch("/api/v1/other")).rejects.toThrow();
+    expect(takeUnhandledRequests()).toEqual([
+      "GET http://localhost:3000/api/v1/other",
+    ]);
+  });
+
   it("pluralises the message for several requests", () => {
     expect(unhandledRequestsMessage(["GET /a", "POST /b"])).toBe(
       "Unmocked requests (add a handler with mockApi() or server.use()):\n  GET /a\n  POST /b",
@@ -229,7 +251,27 @@ describe("accessibility assertions", () => {
     const { container } = renderV1(<button type="button" />);
     await expect(container).not.toHaveNoA11yViolations();
   });
+
+  it("runs overlapping checks one at a time instead of failing", async () => {
+    const { container } = renderV1(<button type="button">Save</button>);
+    const results = await Promise.all([
+      axeViolations(container),
+      axeViolations(container),
+      expectNoA11yViolations(container),
+    ]);
+    expect(results.slice(0, 2)).toEqual([[], []]);
+  });
+
+  it("keeps the queue going after a failed run", async () => {
+    vi.spyOn(axe, "run").mockRejectedValueOnce(new Error("axe broke"));
+    await expect(axeViolations(container())).rejects.toThrow("axe broke");
+    expect(await axeViolations(container())).toEqual([]);
+  });
 });
+
+function container(): Element {
+  return renderV1(<p>text</p>).container;
+}
 
 describe("DOM stand-ins", () => {
   it("drives ResizeObserver callbacks", () => {

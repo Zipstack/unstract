@@ -80,8 +80,9 @@ store or plugin registry exists, seed it from `context.session` and
 
 ## Network
 
-Every HTTP request goes through MSW (fetch and XHR, so axios too). Register
-handlers per test with `mockApi`. They are dropped after the test.
+Every HTTP request (fetch and XHR, so axios too) and every WebSocket goes
+through MSW. Register handlers per test with `mockApi` (`http.*` for HTTP,
+`ws.link(url)` for sockets). They are dropped after the test.
 
 ```ts
 import { apiPath, DEFAULT_SESSION, HttpResponse, http, mockApi } from "@v1/test";
@@ -97,16 +98,19 @@ mockApi(
 `/api/v1/unstract/<org id>/adapter/`.
 
 **An unmocked request fails the test**, even when the code under test catches
-the error. The request gets a network error (it never leaves the process), and
-the test fails after it runs with:
+the error. An HTTP request gets a network error and a WebSocket is closed
+(code 1011), so nothing leaves the process. The test then fails with:
 
 ```text
 Error: Unmocked request (add a handler with mockApi() or server.use()):
   GET http://localhost:3000/api/v1/unstract/org-1/adapter/?adapter_type=LLM
 ```
 
-A catch-all handler does this. Never call `server.resetHandlers(...handlers)`
-with arguments, which would replace it. `mockApi` and `server.use` are safe.
+This covers requests made after the last assertion too. Ones started by an
+unmount effect fail the test that unmounted. Ones made after a file's last test
+(a timer firing during its `afterAll`) fail the file. Catch-all handlers do
+this, and they always match last, even after `server.resetHandlers(...)` with
+arguments. A test that leaves fake timers on gets real timers back after it.
 
 ### Typed fixtures per service module
 
@@ -161,6 +165,8 @@ Each wraps its callbacks in `act()` and is undone after the test.
 
 ## Proof the harness fails when it should
 
-`test-fixtures/v1-harness/` runs real vitest processes on known-bad cases (an
-unmocked fetch, an unmocked XHR) and a known-good one, under `node --test` in
-`bun run test:v1`.
+`test-fixtures/v1-harness/` runs real vitest processes, under `node --test` in
+`bun run test:v1`. The known-bad cases are an unmocked fetch, XHR and
+WebSocket, a request on unmount (and which test it fails), a request after the
+last test, and `resetHandlers` with arguments. The known-good cases are a mocked
+fetch and fake timers left on.

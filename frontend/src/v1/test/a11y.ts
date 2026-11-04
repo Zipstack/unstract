@@ -15,16 +15,24 @@ const DEFAULT_RULES: NonNullable<axe.RunOptions["rules"]> = {
   region: { enabled: false },
 };
 
+// axe-core allows one run at a time ("Axe is already running"), so runs are
+// chained: overlapping assertions wait their turn instead of throwing.
+let queue: Promise<unknown> = Promise.resolve();
+
 /** Runs axe over `target` and returns its violations. */
-export async function axeViolations(
+export function axeViolations(
   target: Element = document.body,
   options: A11yOptions = {},
 ): Promise<axe.Result[]> {
-  const results = await axe.run(target, {
-    ...options,
-    rules: { ...DEFAULT_RULES, ...options.rules },
+  const run = queue.then(async () => {
+    const results = await axe.run(target, {
+      ...options,
+      rules: { ...DEFAULT_RULES, ...options.rules },
+    });
+    return results.violations;
   });
-  return results.violations;
+  queue = run.catch(() => undefined);
+  return run;
 }
 
 /** One line per failing node: rule, impact, selector and axe's summary. */
