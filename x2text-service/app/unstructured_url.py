@@ -29,8 +29,9 @@ itself allowlisted or passes the destination check.
 
 With private destinations refused, a name that is not allowlisted is resolved
 here and again by ``requests``, so a name re-resolved to an internal address in
-between is not caught. An allowlisted name is not resolved here at all: it is
-trusted to resolve wherever DNS points it. The control for that is an egress policy on the pods (see ``ssrf.py``).
+between is not caught. The control for that is an egress policy on the pods
+(see ``ssrf.py``). An allowlisted name is not resolved here at all: it is
+trusted to resolve wherever DNS points it.
 """
 
 import logging

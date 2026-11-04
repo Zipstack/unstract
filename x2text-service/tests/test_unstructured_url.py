@@ -135,14 +135,22 @@ def test_allowlist_is_trimmed_and_case_insensitive(monkeypatch, block_private, v
         assert uu.refusal_message(IN_CLUSTER) is None
 
 
+def test_allowlist_matches_url_host_case_insensitively(monkeypatch, block_private):
+    # Saved adapter URLs can carry upper case in the host.
+    monkeypatch.setenv(uu.ALLOWED_HOSTS_ENV, "unstract-unstructured-io")
+    with _resolve_to("10.96.0.12"):
+        assert uu.refusal_message("http://Unstract-Unstructured-IO:8000/x") is None
+
+
 def test_refusal_log_shows_allowlist_so_a_bad_entry_is_visible(
     monkeypatch, block_private, caplog
 ):
     # A port never matches a hostname; the log is where an operator sees it.
-    monkeypatch.setenv(uu.ALLOWED_HOSTS_ENV, "unstract-unstructured-io:8000")
+    monkeypatch.setenv(uu.ALLOWED_HOSTS_ENV, "zz-svc, unstract-unstructured-io:8000")
     with _resolve_to("10.96.0.12"):
         assert "private" in uu.refusal_message(IN_CLUSTER)
-    assert f"{uu.ALLOWED_HOSTS_ENV}=unstract-unstructured-io:8000" in caplog.text
+    # Sorted, so the line is stable across runs.
+    assert f"{uu.ALLOWED_HOSTS_ENV}=unstract-unstructured-io:8000,zz-svc" in caplog.text
 
 
 @pytest.mark.parametrize("value", [None, "", " ", ",, ,"])
