@@ -109,7 +109,8 @@ def open_conflicts(lines, annotate="warning"):
     return refs, (f"⚠ Open backport conflict PRs: {', '.join(links)}" if links else None)
 
 
-def resolve(slug, item):
+def resolve(slug, item, prs=None):
+    """Merge commit on main for a sha or PR number; a PR's JSON goes into prs, keyed by that sha."""
     item = item.removeprefix("#")  # the summary names PRs as #n
     if item.startswith("-"):
         return None  # never passed to git as an option
@@ -118,8 +119,14 @@ def resolve(slug, item):
         if not pr["merged"]:
             return None
         item = pr["merge_commit_sha"]
+    else:
+        pr = None
     sha = rm.resolve(REPO, item)
-    return sha if sha and rm.is_ancestor(REPO, sha, MAIN) else None
+    if not (sha and rm.is_ancestor(REPO, sha, MAIN)):
+        return None
+    if pr and prs is not None:
+        prs[sha] = pr
+    return sha
 
 
 def main_order(repo, shas):
@@ -134,14 +141,31 @@ def fix_class(slug, sha, token=None):
     except RuntimeError:  # retry a transient read error once
         out = gh("api", f"repos/{slug}/commits/{sha}/pulls", token=token)
     prs = json.loads(out)
-    if not prs:
-        return None, "no PR", None
-    pr = prs[0]
-    return (
-        rm.pr_fix_class(pr["title"], _labels(pr)),
-        f"#{pr['number']}",
-        pr["title"],
+    pr = prs[0] if prs else _subject_pr(slug, sha, token)
+    return pr_class(pr) if pr else (None, "no PR", None)
+
+
+def pr_class(pr):
+    return rm.pr_fix_class(pr["title"], _labels(pr)), f"#{pr['number']}", pr["title"]
+
+
+def _subject_pr(slug, sha, token=None):
+    """The merged PR a squash subject's trailing (#N) names, when GitHub's commit-to-PR index has no entry for sha."""
+    commit = json.loads(gh("api", f"repos/{slug}/commits/{sha}", token=token))
+    m = re.search(r"\(#(\d+)\)$", commit["commit"]["message"].split("\n", 1)[0])
+    if not m:
+        return None
+    try:
+        pr = json.loads(gh("api", f"repos/{slug}/pulls/{m[1]}", token=token))
+    except RuntimeError:  # (#N) names an issue, or no longer exists
+        return None
+    # The subject is only a claim: trust it only for the PR that merged this exact commit.
+    if not (pr["merged"] and pr["merge_commit_sha"] == sha):
+        return None
+    print(
+        f"::notice::{sha[:7]}: no PR indexed for the commit; #{m[1]} from its subject merged it"
     )
+    return pr
 
 
 def _labels(pr):
@@ -673,12 +697,10 @@ def rescan(slug, targets, confirm, listed):
     }
     print(f"rescan: {listed_n} PRs listed, {len(classes) - listed_n} fallback lookup(s)")
     plan, awaiting, unclassifiable = rescan_plan(targets, held_by_branch, confirm)
-    # Re-warned every push until the PR title or fix/ label is fixed (or the commit declined).
+    # Fails every push until the commit is picked or declined: a skip here is never seen.
     for sha, b, pr, title in unclassifiable:
-        print(
-            f"::warning::{sha[:7]} ({pr}, {title}) cannot be classed for {b}: not picked"
-        )
-        rows.append((sha, pr, UNCLASSIFIABLE, b, "skipped: unclassifiable", "-"))
+        print(f"::error::{sha[:7]} ({pr}, {title}) cannot be classed for {b}: not picked")
+        rows.append((sha, pr, UNCLASSIFIABLE, b, "failed: unclassifiable", "-"))
     for b, sha, cls, pr, title in plan:
         rows.append(pick_row(slug, sha, b, cls, pr, title))
     return rows, awaiting, _rescan_missing(scan, rows, held_by_branch)
@@ -1119,7 +1141,8 @@ def main():
 def dispatch(slug, targets, commits, confirm, listed):
     # Commas or spaces: State's patch-lines list pastes as is.
     items = [c for c in re.split(r"[,\s]+", commits) if c]
-    shas = [resolve(slug, c) for c in items]
+    prs = {}
+    shas = [resolve(slug, c, prs) for c in items]
     if not items or None in shas:
         bad = [c for c, s in zip(items, shas, strict=False) if s is None]
         sys.exit(f"::error::refused: not merged commits on main: {bad or 'none given'}")
@@ -1127,7 +1150,9 @@ def dispatch(slug, targets, commits, confirm, listed):
 
     rows, awaiting = [], []
     for sha in shas:
-        rows += _dispatch_commit(slug, targets, sha, confirm, listed, awaiting)
+        rows += _dispatch_commit(
+            slug, targets, sha, confirm, listed, awaiting, prs.get(sha)
+        )
     return rows, awaiting
 
 
@@ -1154,21 +1179,20 @@ def _dispatch_targets(targets, sha, cls, pr, confirm, listed):
     ]
 
 
-def _dispatch_commit(slug, targets, sha, confirm, listed, awaiting):
-    """Appends its held picks to awaiting."""
+def _dispatch_commit(slug, targets, sha, confirm, listed, awaiting, named_pr=None):
+    """Appends its held picks to awaiting. named_pr: the PR the RM named, already fetched."""
     try:
-        cls, pr, title = fix_class(slug, sha)
+        cls, pr, title = pr_class(named_pr) if named_pr else fix_class(slug, sha)
     except ValueError as e:  # Lint PR should have stopped this PR
         print(f"::error::{sha[:7]}: fix class: {e}")
-        # A named commit nothing could pick fails the dispatch; rescan skips it.
+        # A named commit nothing could pick fails the dispatch.
         return [(sha, "?", "error", "-", f"failed: {e}", "-")]
+    if pr == "no PR":
+        print(f"::error::{sha[:7]}: no PR found, so it cannot be classed")
+        return [(sha, pr, "error", "-", "failed: no PR found", "-")]
     if cls is None:
-        route = (
-            f"; label {pr} fix/needs-backport (or the fix label it needs) and rerun"
-            if pr.startswith("#")
-            else ""
-        )
-        return [(sha, pr, "none", "-", f"skipped: not a fix{route}", "-")]
+        route = f"label {pr} fix/needs-backport (or the fix label it needs) and rerun"
+        return [(sha, pr, "none", "-", f"skipped: not a fix; {route}", "-")]
     branches, held_picks = _dispatch_targets(targets, sha, cls, pr, confirm, listed)
     awaiting += held_picks
     rows = []

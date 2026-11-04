@@ -498,7 +498,8 @@ class DispatchNonFix(unittest.TestCase):
         a, b = "a" * 40, "b" * 40
         classes = {a: (None, "#250", "UN-1 [MISC] docs"), b: (None, "no PR", None)}
         with (
-            mock.patch.object(bp, "resolve", lambda slug, c: c),
+            mock.patch("sys.stdout", new_callable=io.StringIO) as out,
+            mock.patch.object(bp, "resolve", lambda slug, c, prs: c),
             mock.patch.object(bp, "main_order", lambda repo, shas: shas),
             mock.patch.object(bp, "fix_class", lambda slug, sha: classes[sha]),
         ):
@@ -520,10 +521,133 @@ class DispatchNonFix(unittest.TestCase):
                     "skipped: not a fix; label #250 fix/needs-backport (or the fix label it needs) and rerun",
                     "-",
                 ),
-                (b, "no PR", "none", "-", "skipped: not a fix", "-"),
+                (b, "no PR", "error", "-", "failed: no PR found", "-"),
             ],
         )
         self.assertEqual(awaiting, [])
+        self.assertIn("::error::bbbbbbb: no PR found", out.getvalue())
+
+
+MERGED = "6d49d9f180015ef06dc28763bc02d04d4be4c5a2"
+SUBJECT = "UN-4160 [MISC] Log in to prod through Unstract ID (#1946)"
+PR_1946 = {
+    "number": 1946,
+    "title": "UN-4160 [MISC] Log in to prod through Unstract ID",
+    "labels": [],
+    "merged": True,
+    "merge_commit_sha": MERGED,
+}
+
+
+def api(pulls="[]", message=SUBJECT, pr=PR_1946):
+    """Gh api fake: commits/{sha}/pulls, commits/{sha}, then pulls/N."""
+    calls = []
+
+    def gh(*a, token=None, retry=True):
+        path = a[1]
+        calls.append(path)
+        if path.endswith("/pulls"):
+            return pulls
+        if "/commits/" in path:
+            return json.dumps({"commit": {"message": message}})
+        if pr is None:
+            raise RuntimeError("gh api repos/o/r/pulls/1946 (exit 1): " + NOT_FOUND)
+        return json.dumps(pr)
+
+    return gh, calls
+
+
+class FixClassSubject(unittest.TestCase):
+    """GitHub's commit-to-PR index can miss a squash merge; the subject's (#N) is checked against the PR."""
+
+    def fix_class(self, **kw):
+        gh, self.calls = api(**kw)
+        with (
+            mock.patch.object(bp, "gh", gh),
+            mock.patch("sys.stdout", new_callable=io.StringIO) as out,
+        ):
+            got = bp.fix_class("o/r", MERGED)
+        self.out = out.getvalue()
+        return got
+
+    def test_subject_pr_that_merged_the_commit(self):
+        self.assertEqual(self.fix_class(), (None, "#1946", PR_1946["title"]))
+        self.assertIn("::notice::6d49d9f: no PR indexed", self.out)
+
+    def test_indexed_pr_wins(self):
+        listed = [{**PR_1946, "number": 7, "title": "UN-7 [FIX] x"}]
+        self.assertEqual(
+            self.fix_class(pulls=json.dumps(listed)), ("fix", "#7", "UN-7 [FIX] x")
+        )
+        self.assertEqual(len(self.calls), 1)
+
+    def test_no_pr_unless_the_subject_names_one_that_merged_it(self):
+        cases = {
+            "no (#N)": {"message": "UN-4160 [MISC] Log in to prod through Unstract ID"},
+            "(#N) not trailing": {"message": "Revert (#1946) login"},
+            "(#N) only in the body": {"message": "Squash\n\n* login (#1946)"},
+            "another commit": {"pr": {**PR_1946, "merge_commit_sha": "0" * 40}},
+            "not merged": {"pr": {**PR_1946, "merged": False}},
+            "not a PR": {"pr": None},
+        }
+        for name, kw in cases.items():
+            with self.subTest(name):
+                self.assertEqual(self.fix_class(**kw), (None, "no PR", None))
+                self.assertNotIn("::notice::", self.out)
+
+
+class DispatchNamedPr(unittest.TestCase):
+    def test_classed_from_the_named_pr(self):
+        def no_lookup(*a):
+            raise AssertionError("fix_class called for a named PR")
+
+        gh, _ = api()
+        with (
+            mock.patch.object(bp, "gh", gh),
+            mock.patch.object(bp.rm, "resolve", lambda repo, item: item),
+            mock.patch.object(bp.rm, "is_ancestor", lambda *a: True),
+            mock.patch.object(bp, "main_order", lambda repo, shas: shas),
+            mock.patch.object(bp, "fix_class", no_lookup),
+        ):
+            rows, _ = bp.dispatch(
+                "o/r",
+                {"fix": ["release/0.191"], "security_critical": []},
+                "#1946",
+                False,
+                [],
+            )
+        self.assertEqual(
+            rows,
+            [
+                (
+                    MERGED,
+                    "#1946",
+                    "none",
+                    "-",
+                    "skipped: not a fix; label #1946 fix/needs-backport (or the fix label it needs) and rerun",
+                    "-",
+                )
+            ],
+        )
+
+
+class RescanUnclassifiable(unittest.TestCase):
+    def test_fails_the_run(self):
+        u, b = "u" * 40, "release/0.191"
+        with (
+            mock.patch.object(bp, "rescan_targets", lambda t, l: ({b: bp.OWED}, [])),
+            mock.patch.object(bp, "_rescan_classes", lambda slug, scan: {}),
+            mock.patch.object(bp, "held", lambda *a, **k: []),
+            mock.patch.object(
+                bp, "rescan_plan", lambda *a: ([], [], [(u, b, "no PR", "U")])
+            ),
+            mock.patch("sys.stdout", new_callable=io.StringIO) as out,
+        ):
+            rows, _, _ = bp.rescan("o/r", {}, False, [])
+        self.assertEqual(
+            rows, [(u, "no PR", bp.UNCLASSIFIABLE, b, "failed: unclassifiable", "-")]
+        )
+        self.assertIn("::error::uuuuuuu (no PR, U) cannot be classed", out.getvalue())
 
 
 class DispatchHold(unittest.TestCase):
@@ -541,7 +665,7 @@ class DispatchHold(unittest.TestCase):
             ],
         }
         with (
-            mock.patch.object(bp, "resolve", lambda slug, c: c),
+            mock.patch.object(bp, "resolve", lambda slug, c, prs: c),
             mock.patch.object(bp, "main_order", lambda repo, shas: shas),
             mock.patch.object(bp, "fix_class", lambda slug, sha: classes[sha]),
             mock.patch.object(bp, "pick_row", lambda slug, sha, b, *a: (sha, b)),
@@ -589,7 +713,7 @@ class DispatchPatch(unittest.TestCase):
             ],
         }
         for p in (
-            mock.patch.object(bp, "resolve", lambda slug, c: c),
+            mock.patch.object(bp, "resolve", lambda slug, c, prs: c),
             mock.patch.object(bp, "main_order", lambda repo, shas: shas),
             mock.patch.object(
                 bp, "fix_class", lambda slug, sha: ("fix", "#4", "UN-4 [HOT-FIX] y")
