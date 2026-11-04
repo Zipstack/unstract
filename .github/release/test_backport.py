@@ -669,6 +669,101 @@ class PatchLines(unittest.TestCase):
         )
 
 
+class MissedPicks(unittest.TestCase):
+    STATE = {
+        "branches": [
+            {"branch": "release/0.191", "state": "stabilizing", "targets": {}},
+            {"branch": "release/0.190", "state": "stabilizing", "targets": {}},
+            {"branch": "release/0.188", "state": "stabilized", "targets": {}},
+            {"branch": "release/0.187", "state": "past-eos", "targets": {}},
+        ]
+    }
+    B = "b" * 40
+
+    def setUp(self):
+        self.held_calls, self.listed = [], []
+        conflict = lambda n, base: {
+            "number": n,
+            "url": f"https://x/{n}",
+            "baseRefName": base,
+            "createdAt": "2026-10-01T00:00:00Z",
+        }
+        # gh pr list --label backport-conflict, per repo: every base, filtered by conflict_prs.
+        self.prs = {
+            "o/r": [conflict(12, "release/0.191"), conflict(13, "release/0.188")],
+            "Zipstack/unstract": [conflict(30, "release/0.191")],
+        }
+        self.rows = {
+            "release/0.191": [(self.B, "fix", "#7", "t")],
+            "release/0.190": [],
+        }
+        self.cut = {"release/0.191": "2026-10-20", "release/0.190": "2026-09-15"}
+
+    def held(self, slug, repo, branch, accept, cache):
+        self.held_calls.append((branch, accept))
+        return self.rows[branch]
+
+    def gh(self, *a, **k):
+        return json.dumps(self.prs[a[a.index("-R") + 1]])
+
+    def git(self, repo, *a):
+        if a[0] == "merge-base":
+            return a[-1]
+        return self.cut[a[-1].removeprefix("origin/")]
+
+    def missed(self, others=("Zipstack/unstract",), **patches):
+        with (
+            mock.patch.object(bp, "held", patches.get("held", self.held)),
+            mock.patch.object(bp, "gh", patches.get("gh", self.gh)),
+            mock.patch.object(bp.rm, "git", patches.get("git", self.git)),
+            mock.patch.object(
+                bp, "pr_classes", lambda slug, since: self.listed.append(since) or {}
+            ),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            return bp.missed_picks(self.STATE, others, "o/r").splitlines()
+
+    def test_line_per_stabilizing_line(self):
+        self.assertEqual(
+            self.missed()[2:],
+            [
+                "- `release/0.191`: owed `#7`; conflict PRs o/r#12, Zipstack/unstract#30",
+                "- `release/0.190`: owed none; conflict PRs none",
+            ],
+        )
+        self.assertEqual(
+            self.held_calls, [("release/0.191", bp.OWED), ("release/0.190", bp.OWED)]
+        )
+        self.assertEqual(self.listed, ["2026-09-15"])  # one listing, from the oldest cut
+
+    def test_same_repo_listed_once(self):  # the OSS repo's own State run
+        self.assertEqual(
+            self.missed(others=("o/r",))[2],
+            "- `release/0.191`: owed `#7`; conflict PRs o/r#12",
+        )
+
+    def test_no_stabilizing_line(self):
+        state = {"branches": self.STATE["branches"][2:]}
+        with mock.patch.object(bp, "held", self.held):
+            out = bp.missed_picks(state, (), "o/r")
+        self.assertTrue(out.endswith("no stabilizing line"))
+        self.assertEqual(self.held_calls, [])
+
+    def test_failures_are_reported_not_raised(self):
+        def fail(*a, **k):
+            raise RuntimeError("gh pr list (exit 1): gh: Server Error (HTTP 502)")
+
+        out = self.missed(held=fail, gh=fail, git=fail)
+        self.assertEqual(
+            out[2],
+            "- `release/0.191`: owed patch list unavailable (see the run log); "
+            "conflict PRs unavailable (see the run log)",
+        )
+        self.assertEqual(
+            self.listed, []
+        )  # no cut date: each commit is looked up on its own
+
+
 class PushSummary(unittest.TestCase):
     def setUp(self):  # plain-text links, whatever the shell exports
         self.env = mock.patch.dict(

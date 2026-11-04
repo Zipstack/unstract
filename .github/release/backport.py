@@ -498,20 +498,60 @@ def patch_lines(state, slug=None):
     ]
     cache = pr_classes(slug, min(gas, key=rs._ts)) if gas else {}
     for branch in branches:
-        # A gh or git failure on one line must not fail the State run.
+        out.append(f"- `{branch}`: {_owed_cell(slug, branch, cache)}")
+    return "\n".join(out)
+
+
+def _owed_cell(slug, branch, cache):
+    """Owed main fixes on branch as Backport `commits`. A gh or git failure on one line must not fail the State run."""
+    try:
+        rows = held(slug, REPO, branch, accept=OWED, cache=cache)
+    except RuntimeError as e:
+        print(f"::warning::{branch}: patch list unavailable: {e}")
+        return "patch list unavailable (see the run log)"
+    commits = " ".join(
+        _commit_arg(s, pr) for s, cls, pr, _ in rows if cls != UNCLASSIFIABLE
+    )
+    left = sum(cls == UNCLASSIFIABLE for _, cls, *_ in rows)
+    return (f"`{commits}`" if commits else "none") + (
+        f" ({left} unclassifiable left out)" if left else ""
+    )
+
+
+def missed_picks(state, others=(), slug=None):
+    """Release state: per stabilizing line, main fixes Backport has not landed there and open conflict PRs on it here
+    and in others, so a miss shows before QA tests the RC rather than at Promote's gate.
+    """
+    slug = slug or os.environ["GITHUB_REPOSITORY"]
+    out = [
+        "**Missed picks on stabilizing lines**: main fixes since the line's cut, neither picked nor declined, and open "
+        "backport conflict PRs. Paste the commits into Backport `commits`.",
+        "",
+    ]
+    branches = [r["branch"] for r in state["branches"] if r["state"] == "stabilizing"]
+    if not branches:
+        return "\n".join(out + ["no stabilizing line"])
+    cut = lambda b: rm.git(
+        REPO, "log", "-1", "--format=%cs", rm.git(REPO, "merge-base", MAIN, f"origin/{b}")
+    )
+    try:
+        cache = pr_classes(slug, min(map(cut, branches)))
+    except RuntimeError as e:  # held() then looks each commit up on its own
+        print(f"::warning::cut date unavailable: {e}")
+        cache = {}
+    for branch in branches:
         try:
-            rows = held(slug, REPO, branch, accept=OWED, cache=cache)
-        except RuntimeError as e:
-            print(f"::warning::{branch}: patch list unavailable: {e}")
-            out.append(f"- `{branch}`: patch list unavailable (see the run log)")
-            continue
-        commits = " ".join(
-            _commit_arg(s, pr) for s, cls, pr, _ in rows if cls != UNCLASSIFIABLE
-        )
-        left = sum(cls == UNCLASSIFIABLE for _, cls, *_ in rows)
+            prs = [
+                f"{repo}#{p['number']}"
+                for repo in dict.fromkeys([slug, *others])
+                for p in conflict_prs(repo, branch)
+            ]
+            conflicts = ", ".join(prs) or "none"
+        except RuntimeError as e:  # never reads as no PRs
+            print(f"::warning::{branch}: conflict PR listing failed: {e}")
+            conflicts = "unavailable (see the run log)"
         out.append(
-            f"- `{branch}`: {f'`{commits}`' if commits else 'none'}"
-            + (f" ({left} unclassifiable left out)" if left else "")
+            f"- `{branch}`: owed {_owed_cell(slug, branch, cache)}; conflict PRs {conflicts}"
         )
     return "\n".join(out)
 
