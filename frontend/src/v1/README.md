@@ -60,7 +60,7 @@ Every folder may import from itself. Test files (`*.test.ts(x)`,
 | --- | --- |
 | `bun run typecheck:v1` | TypeScript-only files, styles only in `styles/`, allowed file types only, no symlinks, folder taxonomy; then `tsc` with `src/v1/tsconfig.json` |
 | `bun run lint:v1` | Biome on `src/v1/`, then imports in code and in `styles/` CSS (nothing outside v1, folder contract, and v0 reaching v1 only through `@v1`), PropTypes and `ant-` checks |
-| `bun run test:v1` | v1 unit tests, then the guardrail fixtures in `test-fixtures/v1-boundary/` |
+| `bun run test:v1` | v1 unit tests (`vitest.v1.config.mts`, then cloud plugins with `vitest.v1-plugins.config.mts`) with v1's own coverage threshold, then the guardrail fixtures in `test-fixtures/v1-boundary/` and `test-fixtures/v1-harness/`. The harness is documented in `test/README.md` |
 
 Biome (`biome.json`) also reports the banned imports and the plain spellings of
 the v0 ↔ v1 boundary, so `biome ci` and editors flag them too: `@/`, `../`,

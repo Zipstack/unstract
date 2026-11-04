@@ -1,6 +1,7 @@
+import path from "node:path";
+import react from "@vitejs/plugin-react";
 import svgr from "vite-plugin-svgr";
 import { defineConfig } from "vitest/config";
-import v0 from "./vitest.config.mjs";
 
 /*
  * Vitest config for the v1 frontend (src/v1), run by the rig's
@@ -10,10 +11,11 @@ import v0 from "./vitest.config.mjs";
  * A separate file rather than Vitest `projects`: coverage is root-level in
  * projects mode, so v1 could not have its own report directory or threshold.
  *
- * Plugins and aliases are taken from the v0 config field by field rather than
- * with mergeConfig, which would concatenate v0's `exclude` (which now holds
- * src/v1) and `setupFiles` into this one. svgr is added because v1 imports
- * SVGs as components (`@v1/assets/logo.svg?react`), as vite.config.js allows.
+ * Deliberately NOT built from vitest.config.mjs. v0's jsxInJs() serves .js
+ * files v1 may not contain, and its optionalPluginImports() stubs any missing
+ * import under a `/plugins/` path, while in v1 a missing module is a bug
+ * (UN-4286). Only `@v1` is aliased, so an `@/` import fails here as it does
+ * in typecheck:v1. svgr serves `@v1/assets/*.svg?react`, as in vite.config.js.
  */
 
 type Scope = "core" | "plugins";
@@ -60,8 +62,10 @@ export function defineV1Config(scope: Scope) {
   const { root, name, reports, covers } = SCOPES[scope];
   const scopeExclude = scope === "core" ? [`${PLUGINS_ROOT}/**`] : [];
   return defineConfig({
-    plugins: [...(v0.plugins ?? []), svgr()],
-    resolve: v0.resolve,
+    plugins: [react(), svgr()],
+    resolve: {
+      alias: { "@v1": path.resolve(import.meta.dirname, V1_ROOT) },
+    },
     test: {
       name,
       environment: "happy-dom",
