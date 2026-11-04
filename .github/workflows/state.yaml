@@ -1,4 +1,4 @@
-name: V2 Release state
+name: Release state
 
 on:
   workflow_dispatch:

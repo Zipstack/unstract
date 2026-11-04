@@ -1,4 +1,4 @@
-name: V2 Backport
+name: Backport
 # Expressions have no substring, so a push run names the full sha.
 run-name: >-
   ${{ github.event_name == 'pull_request_target'
