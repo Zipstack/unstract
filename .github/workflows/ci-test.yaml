@@ -43,6 +43,7 @@ jobs:
       # tier skipped, gate green with nothing run. Force both true off-PR.
       relevant: ${{ github.event_name != 'pull_request' || steps.filter.outputs.relevant == 'true' || steps.filter.outputs.ci_self == 'true' }}
       e2e_relevant: ${{ github.event_name != 'pull_request' || steps.filter.outputs.e2e_relevant == 'true' || steps.filter.outputs.ci_self == 'true' }}
+      release: ${{ github.event_name != 'pull_request' || steps.filter.outputs.release == 'true' }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
@@ -71,6 +72,14 @@ jobs:
             # .github/** is ignored above, but a change to this workflow must still test itself.
             ci_self:
               - ".github/workflows/ci-test.yaml"
+            release:
+              - ".github/release/**"
+              - ".github/workflows/backport.yaml"
+              - ".github/workflows/ci-test.yaml"
+              - ".github/workflows/lint-pr.yaml"
+              - ".github/workflows/release-branch-ci.yaml"
+              - ".github/workflows/release-branch-only.yaml"
+              - ".github/workflows/state.yaml"
 
   # Tiers share no state (separate runners, disjoint groups), so they run as
   # parallel matrix legs; cross-tier reconciliation happens in `report`.
@@ -278,8 +287,30 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
+  # Release workflow scripts. Unlike the tiers it also runs on drafts; report gates on it.
+  release-tests:
+    needs: changes
+    if: needs.changes.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Run the release suites
+        working-directory: .github/release
+        run: |
+          rc=0
+          for t in test_*.py; do
+            echo "::group::$t"
+            python3 "$t" || rc=1
+            echo "::endgroup::"
+          done
+          exit "$rc"
+
   report:
-    needs: [changes, test, e2e]
+    needs: [changes, test, e2e, release-tests]
     # `always()` so a red tier still posts a report. Any tier may skip on
     # irrelevant paths; the fail step below distinguishes a legitimate skip
     # from a real tier failure.
@@ -396,3 +427,5 @@ jobs:
           [ "$changes_result" = "success" ] || exit 1
           [ "$test_result" = "success" ] || [ "$test_result" = "skipped" ] || exit 1
           [ "$e2e_result" = "success" ] || [ "$e2e_result" = "skipped" ] || exit 1
+          release_result="${{ needs.release-tests.result }}"
+          [ "$release_result" = "success" ] || [ "$release_result" = "skipped" ] || exit 1
