@@ -1,0 +1,36 @@
+.v1 .demo,
+.v1 .demo::after,
+.v1 > .demo + .demo {
+  color: var(--foreground);
+  border-color: transparent;
+  fill: currentcolor;
+  margin: 0;
+}
+.v1 .menu {
+  &:hover {
+    color: var(--foreground);
+  }
+  & > a {
+    color: var(--foreground);
+  }
+  a + a {
+    color: var(--foreground);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    & a {
+      color: var(--foreground);
+    }
+  }
+}
+.v1 .menu {
+  & + .demo {
+    color: var(--foreground);
+  }
+}
+.v1 {
+  .menu {
+    & ~ .demo {
+      color: var(--foreground);
+    }
+  }
+}
