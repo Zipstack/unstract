@@ -3,7 +3,8 @@
 Usage: backport.py --state state.json (--commits SHA|PR[,...] | --rescan) [--confirm-stabilized] [--branches release/X.Y[,...]]
 
 --rescan (every push to main): pick every main commit since each target's cut that no trailer there names
-(security/critical only on stabilized targets, held without --confirm-stabilized). --commits (dispatch): only these.
+(security/critical only on stabilized targets, held without --confirm-stabilized). --commits (dispatch): only these;
+with --confirm-stabilized a plain fix also goes onto the stabilized lines --branches names.
 
 Run from a full clone whose `origin` pushes with the bot token, with GH_TOKEN set to the bot token and
 RELEASE_BOT_APP_SLUG set to the release App's slug.
@@ -369,9 +370,9 @@ def pr_classes(slug, since):
     return classes_from_listing(json.loads(out))
 
 
-def held(slug, repo, branch, accept=HELD, cache=None, token=None):
+def held(slug, repo, branch, accept=HELD, cache=None, token=None, since=None):
     """Main commits since branch's cut whose class is in accept (or UNCLASSIFIABLE), neither picked nor declined.
-    cache is shared across calls, so a commit is looked up on its own at most once per run.
+    since (ISO date) drops older main commits. cache is shared across calls, so a commit is looked up at most once.
     """
     remote = f"origin/{branch}"
     base = rm.git(repo, "merge-base", MAIN, remote)
@@ -384,6 +385,7 @@ def held(slug, repo, branch, accept=HELD, cache=None, token=None):
         "--first-parent",
         "--no-merges",
         "--format=%H %ae",
+        *([f"--since={since}"] if since else []),
         f"{base}..origin/main",
     )
     commits = [
@@ -468,6 +470,40 @@ def held_note(rows, branch, slug=None):
         + f". Pick with `gh workflow run backport.yaml{f' -R {slug}' if slug else ''} -f commits={commits} "
         f"-f branches={branch} -f confirm_stabilized=true`"
     )
+
+
+def patch_lines(state, slug=None):
+    """Release state: per stabilized line, main fixes merged since its latest GA that it lacks, as Backport commits."""
+    slug = slug or os.environ["GITHUB_REPOSITORY"]
+    out = [
+        "**Patch a released line**: main fixes since the line's latest GA, not on it. Paste into Backport `commits` "
+        "with `confirm_stabilized` and `branches` (every newer released line too).",
+        "",
+    ]
+    # promoted: each target's latest stable on the line; the newest of them is the line's latest GA.
+    lines = {
+        r["branch"]: max(
+            (tt["promoted"] for tt in r["targets"].values() if tt["promoted"]),
+            key=lambda g: rs._vkey(g["tag"]),
+        )
+        for r in state["branches"]
+        if r["state"] == "stabilized"
+    }
+    if not lines:
+        return "\n".join(out + ["no stabilized line"])
+    oldest = min(lines.values(), key=lambda g: rs._ts(g["pushed_at"]))
+    cache = pr_classes(slug, oldest["pushed_at"])
+    for branch, ga in lines.items():
+        rows = held(slug, REPO, branch, accept=OWED, cache=cache, since=ga["pushed_at"])
+        commits = " ".join(
+            _commit_arg(s, pr) for s, cls, pr, _ in rows if cls != UNCLASSIFIABLE
+        )
+        left = sum(cls == UNCLASSIFIABLE for _, cls, *_ in rows)
+        out.append(
+            f"- `{branch}` since `{ga['tag']}`: {f'`{commits}`' if commits else 'none'}"
+            + (f" ({left} unclassifiable left out)" if left else "")
+        )
+    return "\n".join(out)
 
 
 def rescan_targets(targets, listed):
@@ -978,7 +1014,13 @@ def dispatch(slug, targets, commits, confirm, listed):
 
 def _dispatch_targets(targets, sha, cls, pr, confirm, listed):
     if cls == "fix":
-        return targets["fix"], []
+        # A plain fix reaches a stabilized line only when the RM names it: confirm_stabilized and branches.
+        named = [
+            t["branch"]
+            for t in targets["security_critical"]
+            if t["needs_rm_confirmation"] and confirm and t["branch"] in listed
+        ]
+        return targets["fix"] + named, []
     branches = [
         t["branch"]
         for t in targets["security_critical"]
@@ -1016,7 +1058,21 @@ def _dispatch_commit(slug, targets, sha, confirm, listed, awaiting):
     for b in others:
         print(f"::warning::{sha[:7]} ({cls}, PR {pr}): {b} is not a target, skipped")
         rows.append((sha, pr, cls, b, "skipped: not a target", "-"))
-    if not branches and not others:
+    if cls == "fix" and confirm and not listed:
+        for t in targets["security_critical"]:
+            if t["needs_rm_confirmation"]:
+                print(f"::notice::{sha[:7]} (fix, PR {pr}): {t['branch']} needs branches")
+                rows.append(
+                    (
+                        sha,
+                        pr,
+                        cls,
+                        t["branch"],
+                        "skipped: stabilized; a plain fix needs branches",
+                        "-",
+                    )
+                )
+    if not branches and not others and not rows:
         rows.append((sha, pr, cls, "-", "skipped: no target branch", "-"))
     rows += [pick_row(slug, sha, b, cls, pr, title) for b in branches]
     return rows

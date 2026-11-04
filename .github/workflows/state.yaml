@@ -5,6 +5,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: read # patch lines: the PR that merged each main fix
 
 jobs:
   state:
@@ -29,3 +30,10 @@ jobs:
       - name: Summary table
         working-directory: .github/release
         run: python3 -c 'import json, relstate; print(relstate.summary(json.load(open("../../state.json"))))' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Patch a released line
+        working-directory: .github/release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        # Into the summary from Python: held() prints its own progress to stdout.
+        run: python3 -c 'import json, os, backport; open(os.environ["GITHUB_STEP_SUMMARY"], "a").write(backport.patch_lines(json.load(open("../../state.json"))) + "\n")'

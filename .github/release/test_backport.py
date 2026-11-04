@@ -312,6 +312,32 @@ class Body(unittest.TestCase):
         )
 
 
+class HeldSince(unittest.TestCase):
+    def test_since_drops_older_main_commits(self):
+        with tempfile.TemporaryDirectory() as repo:
+            shas = []
+            rm.git(repo, "init", "-q", "-b", "main")
+            for i, date in enumerate(
+                ("2026-01-01T00:00:00Z", "2026-01-02T00:00:00Z", "2026-01-04T00:00:00Z")
+            ):
+                with mock.patch.dict(os.environ, {"GIT_COMMITTER_DATE": date}):
+                    dev_git(repo, "commit", "-q", "--allow-empty", "-m", f"c{i}")
+                shas.append(rm.git(repo, "rev-parse", "HEAD"))
+            cut, old, new = shas
+            rm.git(repo, "update-ref", "refs/remotes/origin/main", "HEAD")
+            rm.git(repo, "update-ref", "refs/remotes/origin/release/0.1", cut)
+            classes = {old: ("fix", "#1", "a"), new: ("fix", "#2", "b")}
+            with mock.patch("sys.stdout", io.StringIO()):
+                held = lambda since: [
+                    s
+                    for s, *_ in bp.held(
+                        "o/r", repo, "release/0.1", bp.OWED, classes, since=since
+                    )
+                ]
+                self.assertEqual(held(None), [old, new])
+                self.assertEqual(held("2026-01-03T00:00:00Z"), [new])
+
+
 class MainOrder(unittest.TestCase):
     def test_newest_first_comes_back_oldest_first(self):
         with tempfile.TemporaryDirectory() as repo:
@@ -423,10 +449,161 @@ class DispatchHold(unittest.TestCase):
                     [
                         (sec, "release/0.191"),
                         (sec, "release/0.190"),
+                        (
+                            fix,
+                            "#4",
+                            "fix",
+                            "release/0.190",
+                            "skipped: stabilized; a plain fix needs branches",
+                            "-",
+                        ),
                         (fix, "release/0.191"),
                     ],
                     [],
                 ),
+            )
+
+
+class DispatchPatch(unittest.TestCase):
+    """confirm_stabilized + branches: a plain fix goes onto the stabilized lines named, and only those."""
+
+    def setUp(self):
+        self.fix = "f" * 40
+        targets = {
+            "fix": ["release/0.191"],
+            "security_critical": [
+                {"branch": "release/0.191", "needs_rm_confirmation": False},
+                {"branch": "release/0.190", "needs_rm_confirmation": True},
+                {"branch": "release/0.188", "needs_rm_confirmation": True},
+            ],
+        }
+        for p in (
+            mock.patch.object(bp, "resolve", lambda slug, c: c),
+            mock.patch.object(bp, "main_order", lambda repo, shas: shas),
+            mock.patch.object(
+                bp, "fix_class", lambda slug, sha: ("fix", "#4", "UN-4 [HOT-FIX] y")
+            ),
+            mock.patch.object(bp, "pick_row", lambda slug, sha, b, *a: b),
+            mock.patch("sys.stdout", io.StringIO()),
+        ):
+            p.start()
+            self.addCleanup(p.stop)
+        self.run_ = lambda confirm, listed, t=targets: bp.dispatch(
+            "o/r", t, self.fix, confirm, listed
+        )[0]
+
+    def test_named_stabilized_lines(self):
+        self.assertEqual(
+            self.run_(True, ["release/0.190", "release/0.188"]),
+            ["release/0.190", "release/0.188"],
+        )
+        # A stabilizing line named beside a stabilized one is picked once.
+        self.assertEqual(
+            self.run_(True, ["release/0.191", "release/0.190"]),
+            ["release/0.191", "release/0.190"],
+        )
+
+    def test_without_confirm_a_named_stabilized_line_is_not_a_target(self):
+        row = (self.fix, "#4", "fix", "release/0.190", "skipped: not a target", "-")
+        self.assertEqual(self.run_(False, ["release/0.190"]), [row])
+
+    def test_confirm_without_branches_says_why(self):
+        skip = "skipped: stabilized; a plain fix needs branches"
+        self.assertEqual(
+            self.run_(True, []),
+            [
+                (self.fix, "#4", "fix", "release/0.190", skip, "-"),
+                (self.fix, "#4", "fix", "release/0.188", skip, "-"),
+                "release/0.191",
+            ],
+        )
+        self.assertEqual(self.run_(False, []), ["release/0.191"])
+        # No stabilizing line: the why rows stand alone, without a "no target branch" row.
+        only = {
+            "fix": [],
+            "security_critical": [
+                {"branch": "release/0.190", "needs_rm_confirmation": True}
+            ],
+        }
+        self.assertEqual(
+            self.run_(True, [], only),
+            [(self.fix, "#4", "fix", "release/0.190", skip, "-")],
+        )
+
+
+class PatchLines(unittest.TestCase):
+    def test_paste_line_per_stabilized_line(self):
+        a, b, u = "a" * 40, "b" * 40, "u" * 40
+        stable = lambda tag, at: {"tag": tag, "pushed_at": at}
+        state = {
+            "branches": [
+                {"branch": "release/0.191", "state": "stabilizing", "targets": {}},
+                {
+                    "branch": "release/0.190",
+                    "state": "stabilized",
+                    "targets": {
+                        "cloud": {
+                            "promoted": stable("v0.190.10", "2026-10-02T00:00:00Z")
+                        },
+                        "on-prem": {
+                            "promoted": stable("v0.190.9", "2026-10-01T00:00:00Z")
+                        },
+                    },
+                },
+                {
+                    "branch": "release/0.188",
+                    "state": "stabilized",
+                    "targets": {
+                        "cloud": {"promoted": stable("v0.188.2", "2026-09-01T00:00:00Z")},
+                        "on-prem": {"promoted": None},
+                    },
+                },
+            ]
+        }
+        rows = {
+            "release/0.190": [
+                (a, "fix", "#7", "t"),
+                (b, "security", "no PR", "t"),
+                (u, bp.UNCLASSIFIABLE, "no PR", "t"),
+            ],
+            "release/0.188": [],
+        }
+        calls = []
+
+        def held(slug, repo, branch, accept, cache, since):
+            calls.append((branch, accept, since))
+            return rows[branch]
+
+        listed = []
+        with (
+            mock.patch.object(bp, "held", held),
+            mock.patch.object(
+                bp, "pr_classes", lambda slug, since: listed.append(since) or {}
+            ),
+        ):
+            out = bp.patch_lines(state, "o/r").splitlines()
+        self.assertEqual(
+            listed, ["2026-09-01T00:00:00Z"]
+        )  # one listing, from the oldest GA
+        self.assertEqual(
+            calls,
+            [
+                ("release/0.190", bp.OWED, "2026-10-02T00:00:00Z"),
+                ("release/0.188", bp.OWED, "2026-09-01T00:00:00Z"),
+            ],
+        )
+        self.assertEqual(
+            out[2:],
+            [
+                f"- `release/0.190` since `v0.190.10`: `#7 {b[:12]}` (1 unclassifiable left out)",
+                "- `release/0.188` since `v0.188.2`: none",
+            ],
+        )
+        with mock.patch.object(bp, "held", held):
+            self.assertTrue(
+                bp.patch_lines({"branches": state["branches"][:1]}, "o/r").endswith(
+                    "no stabilized line"
+                )
             )
 
 

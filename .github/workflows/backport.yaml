@@ -17,15 +17,15 @@ on:
   workflow_dispatch:
     inputs:
       commits:
-        description: "Fixes to backport (PR numbers or SHAs)"
+        description: "Fixes to pick: PR numbers or SHAs, comma or space separated"
         type: string
         required: false
       confirm_stabilized:
-        description: "Include stable branches (security/critical only)"
+        description: "Patch a released line: also pick onto stabilized lines. Plain fixes need branches."
         type: boolean
         default: false
       branches:
-        description: "Only these branches (optional)"
+        description: "Only these lines, e.g. release/0.186,release/0.188. Include every newer released line, or Promote blocks."
         type: string
         required: false
 
