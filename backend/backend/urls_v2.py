@@ -33,6 +33,7 @@ urlpatterns = [
     path("workflow/", include("workflow_manager.urls")),
     path("platform/", include("platform_settings_v2.urls")),
     path("platform/audit/", include("platform_audit.urls")),
+    path("platform/key-usage/", include("api_key_usage.urls")),
     path("agent-kv/", include("agent_kv.urls")),
     path("api/", include("api_v2.urls")),
     path("usage/", include("usage_v2.urls")),

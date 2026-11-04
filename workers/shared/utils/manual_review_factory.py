@@ -17,6 +17,15 @@ logger = WorkerLogger.get_logger(__name__)
 
 MANUAL_REVIEW_PLUGIN_NAME = "manual_review"
 
+AUTO_ENABLE_HIGHLIGHT = "auto_enable_highlight"
+HIGHLIGHT_AUTO_ENABLED_MESSAGE = (
+    "Highlight enabled automatically because HITL confidence rules are configured"
+)
+HIGHLIGHT_IMAGE_MODE_MESSAGE = (
+    "HITL confidence rules need highlight, which image output mode does not "
+    "support. Confidence scores are unavailable for this run"
+)
+
 
 class ManualReviewServiceProtocol(Protocol):
     """Protocol defining the interface for manual review services."""
@@ -381,6 +390,12 @@ def get_manual_review_workflow_util(api_client: Any, organization_id: str) -> An
     except Exception as e:
         logger.debug(f"Failed to get WorkflowUtil from plugin: {e}")
         return _create_null_workflow_util()
+
+
+def has_confidence_rules(workflow_util: Any, workflow_id: str, rule_type: str) -> bool:
+    """Whether the workflow's ``rule_type`` rules use a confidence condition."""
+    check = getattr(workflow_util, "has_confidence_rules", None)
+    return bool(check and check(workflow_id, rule_type))
 
 
 def has_manual_review_plugin():
