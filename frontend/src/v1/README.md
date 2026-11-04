@@ -32,6 +32,38 @@ is convention.
   `@v1/assets/logo.svg?react`). v1 never uses v0's `src/assets/` (enforced);
   where an asset file sits under v1 is convention, not checked.
 
+## Styling
+
+- `ui:` on every utility: an unprefixed class renders with v0's theme whenever
+  v0 already uses that class name, and silently does nothing otherwise. Merge
+  with `cn` (`@v1/lib/cn`); `bun run tokens:v1` makes tokens.css from tokens.json.
+- Modes `light`, `dark`, `unstract` (or `system`): the user chooses, stored per
+  browser under `unstract.v1.theme`, applied as `data-theme` by `ThemeProvider`.
+  Portals: `getPortalContainer()`; focus: `ui:focus-visible:focus-ring`; Geist
+  Mono only for model output, JSON and token counts.
+- `lint:v1` S1–S8: no inline style, raw colour (hex, functions, palette or
+  named, in code and CSS) or pixel (any length inside `[…]` or in CSS, `vh`
+  and `vw` included), `!important`, CSS import outside `app/` or `styles/`,
+  selector outside `.v1` (a sibling combinator right after the root,
+  `.v1 + x` or `& ~ x` nested directly in the root, counts),
+  `prefers-color-scheme`, or a utility without `ui:` first (`hover:ui:flex`
+  compiles to nothing). Code: `className` values and `cn()`/`cva()` class
+  positions always (a cva variant name or choice is not a class), other
+  strings when they look like a class list.
+  Runtime geometry: `style` may set only custom properties (`"--page-aspect"`,
+  typed by `lib/css-custom-properties.d.ts`) that classes read
+  (`ui:aspect-(--page-aspect)`); a plain key or a variable fails. Pixel
+  escape, CSS only: `/* v1-styles-allow: forced-colors outline */`.
+- Known v0 rules that reach v1 (unlayered, so v1 loses without `!important`):
+  - `scrollbar-color`, `::-webkit-scrollbar*`: the thumb stays light in dark.
+  - `[data-radix-popper-content-wrapper] { z-index: 1500 !important }`.
+  - `[data-sonner-toaster] { pointer-events: auto }`.
+  - `svg.lucide` under a `span`, `p`, `label`, `li`, `a`, `td` or `th` that
+    is not `.flex`/`.inline-flex`/`.grid` (v0 names, so `ui:inline-flex`
+    does not exempt) is forced to `1em` and `inline-block`, overriding the
+    icon's `size` prop. Put icons in a `ui:flex`/`ui:inline-flex` parent
+    that is not one of those tags, or size the parent's font.
+
 ## Folders and what each may import
 
 Every folder may import from itself. Test files (`*.test.ts(x)`,
@@ -59,7 +91,8 @@ Every folder may import from itself. Test files (`*.test.ts(x)`,
 | Script | Checks |
 | --- | --- |
 | `bun run typecheck:v1` | TypeScript-only files, styles only in `styles/`, allowed file types only, no symlinks, folder taxonomy; then `tsc` with `src/v1/tsconfig.json` |
-| `bun run lint:v1` | Biome on `src/v1/`, then imports in code and in `styles/` CSS (nothing outside v1, folder contract, and v0 reaching v1 only through `@v1`), PropTypes and `ant-` checks |
+| `bun run lint:v1` | Biome on `src/v1/`, then imports in code and in `styles/` CSS (nothing outside v1, folder contract, and v0 reaching v1 only through `@v1`), PropTypes and `ant-` checks, then the styling policy (S1 to S8 above) |
+| `bun run tokens:v1` | Regenerates `styles/tokens.css` from `styles/tokens.json` (via `styles/tokens.ts`; runs under bun, which imports the TypeScript source directly) |
 | `bun run test:v1` | v1 unit tests (`vitest.v1.config.mts`, then cloud plugins with `vitest.v1-plugins.config.mts`) with v1's own coverage threshold, then the guardrail fixtures in `test-fixtures/v1-boundary/` and `test-fixtures/v1-harness/`. The harness is documented in `test/README.md` |
 
 Biome (`biome.json`) also reports the banned imports and the plain spellings of
@@ -68,4 +101,5 @@ the v0 ↔ v1 boundary, so `biome ci` and editors flag them too: `@/`, `../`,
 `./v1` / `../**/v1` in v0. The relative v0 patterns match any folder named
 `v1`, so no v0 folder may take that name. Everything else (the folder
 contract, templates, globs, `new URL`, CSS, symlinks) is checked only by
-`scripts/check-v1.mjs`, and types by `src/v1/tsconfig.json`.
+`scripts/check-v1.mjs`, the styling policy by `scripts/check-v1-styles.mjs`,
+and types by `src/v1/tsconfig.json`.
