@@ -3631,10 +3631,6 @@ sys.exit(int(os.environ["GATE_RC"]))
         )
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 @unittest.skipUnless(
     os.path.exists(os.path.join(HERE, "..", "workflows", "take-rc-build.yaml")),
     "the cloud repo's workflows",
@@ -3769,3 +3765,7 @@ elif a[:2] in (["release", "edit"], ["release", "create"]):
     def test_a_rerun_with_nothing_new_does_not_edit(self):
         self.prerelease("", view_body="| targets | cloud |\n\nbody", targets="cloud")
         self.assertEqual(self.read("calls"), "release view\n")
+
+
+if __name__ == "__main__":
+    unittest.main()
