@@ -275,6 +275,9 @@ export function PdfPageList({
         if (!highlight || !root || !page) {
           return false;
         }
+        // A highlight is not a page jump: drop any earlier jump, or a scroll
+        // clamped at the same end would still report the jumped-to page.
+        jumpRef.current = null;
         const centreY = (highlight.y + highlight.h / 2) * page.offsetHeight;
         // The page's own top, padding included: centred exactly, unlike a
         // page jump, which keeps the gap above the page.
