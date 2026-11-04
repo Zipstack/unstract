@@ -2,10 +2,12 @@
 /*
  * Icon guard for the v1 frontend (src/v1/). Run by `lint:v1`.
  *
- *   1. Lucide is the only icon library. Any package import whose name says it
- *      is an icon or flag set (`icon`, `lucide` or `flag` in the name) is
- *      rejected unless it is `lucide-react`. This is an allowlist, so a set
- *      nobody thought of (`@iconify/react`, `lucide-static`) still fails.
+ *   1. Lucide is the only icon library. A package import is rejected, unless
+ *      it is `lucide-react`, when its name contains `icon` or `lucide`
+ *      (`@iconify/react`, `lucide-static`, `flag-icons`) or it is one of the
+ *      known sets whose name does not say so (KNOWN_ICON_PACKAGES and
+ *      KNOWN_ICON_SCOPES). The rule goes by package name, so an icon set
+ *      outside both is not caught.
  *   2. Only canonical Lucide names. The deprecated aliases are read from the
  *      installed lucide-react's own export list, so they follow upgrades:
  *      `X as Y` is an alias unless Y is X, `XIcon` or `LucideX`.
@@ -26,7 +28,19 @@ const FRONTEND = path.join(import.meta.dirname, "..");
 const ROOT = path.join(FRONTEND, "src", "v1");
 const CODE = /\.(ts|tsx|mts|cts)$/;
 const LIBRARY = "Lucide is the only icon library under src/v1";
-const ICON_PACKAGE = /icon|lucide|flag/i;
+const ICON_NAME = /icon|lucide/i;
+/* Icon and flag sets whose package name has neither `icon` nor `lucide`. */
+const KNOWN_ICON_PACKAGES = new Set([
+  "react-feather",
+  "react-world-flags",
+  "react-flagkit",
+  "flagpack",
+]);
+const KNOWN_ICON_SCOPES = ["@mdi/", "@fortawesome/"];
+const isIconPackage = (pkg) =>
+  ICON_NAME.test(pkg) ||
+  KNOWN_ICON_PACKAGES.has(pkg) ||
+  KNOWN_ICON_SCOPES.some((scope) => pkg.startsWith(scope));
 
 /* alias -> canonical name, from the installed lucide-react's declarations. */
 function lucideAliases() {
@@ -170,7 +184,7 @@ function checkFile(file, aliases, report) {
     }
     const { spec, specifiers } = found;
     const pkg = spec && packageOf(spec);
-    if (!pkg || !ICON_PACKAGE.test(pkg)) {
+    if (!pkg || !isIconPackage(pkg)) {
       continue;
     }
     const line = node.loc.start.line;

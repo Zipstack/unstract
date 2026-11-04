@@ -33,9 +33,12 @@ is convention.
   where an asset file sits under v1 is convention, not checked.
 - **Lucide is the only icon library**, imported by canonical name
   (`LoaderCircle`, not the `Loader2` alias) from `lucide-react` itself.
-  `scripts/check-v1-icons.mjs` enforces it: any other icon or flag package,
-  every alias the installed lucide-react declares, and namespace, default,
-  subpath, `icons`-map and dynamic imports all fail lint:v1. Shared glyphs
+  `scripts/check-v1-icons.mjs` enforces it by package name: any other package
+  whose name contains `icon` or `lucide`, a listed set whose name does not
+  (`react-feather`, `@mdi/*`, `@fortawesome/*`, flag sets), every alias the
+  installed lucide-react declares, and namespace, default, subpath,
+  `icons`-map and dynamic imports all fail lint:v1. A set outside the name
+  rule and the list is not caught; add it to the script's list. Shared glyphs
   come by role from `lib/icons.ts`; provider logos, product marks and flags
   from `components/ui/BrandMark`.
 
