@@ -14,6 +14,7 @@ from unittest.mock import patch
 from django.conf import settings
 from django.contrib.sessions.models import Session
 from django.core.cache import cache
+from django.db import connection
 from django.test import SimpleTestCase, override_settings
 from django.urls import include, path
 from django.utils import timezone
@@ -54,6 +55,12 @@ _MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     settings.CUSTOM_AUTH_MIDDLEWARE,
 ]
+
+
+def _fail_a_query(*args, **kwargs) -> None:
+    """Raise a real database error, the kind that breaks an open transaction."""
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT * FROM no_such_table_for_this_test")
 
 
 def resolve_test_location(ip_address: str) -> str:
@@ -210,12 +217,14 @@ class SessionEndpointsTest(APITestCase):
         sweep.assert_not_called()
 
     def test_failing_sweep_does_not_lose_the_sign_in_record(self) -> None:
+        # A real database error, which breaks an enclosing transaction (the test
+        # case's, as ATOMIC_REQUESTS would wrap sign-in) unless it is isolated.
         cache.delete(_IDLE_SWEEP_CACHE_KEY)
         self.addCleanup(cache.delete, _IDLE_SWEEP_CACHE_KEY)
 
         with patch(
             "account_v2.session_tracking.SessionTracker._sweep_idle",
-            side_effect=RuntimeError("statement timeout"),
+            side_effect=_fail_a_query,
         ):
             client = self._sign_in(self.user)
 
@@ -454,7 +463,7 @@ class SessionEndpointsTest(APITestCase):
 
         def end_failing_for_others(cls, request, session_key):
             if session_key != laptop_key:
-                raise RuntimeError("delete failed")
+                _fail_a_query()
             real_end(cls, request, session_key)
 
         with patch.object(SessionTracker, "_end", classmethod(end_failing_for_others)):

@@ -163,7 +163,11 @@ class SessionTracker:
             True,
             timeout=int(IDLE_SWEEP_INTERVAL.total_seconds()),
         ):
-            cls._sweep_idle()
+            # Its own savepoint: callers swallow a failure, and under
+            # ATOMIC_REQUESTS a database error outside one would leave the
+            # request's transaction unusable.
+            with transaction.atomic():
+                cls._sweep_idle()
 
     @staticmethod
     def _sweep_idle() -> None:
@@ -313,7 +317,8 @@ class SessionTracker:
             # each one is cleanup, so one failure must not skip the rest or
             # leave the current session (and its cookie) in place.
             try:
-                cls._end(request, session_key)
+                with transaction.atomic():
+                    cls._end(request, session_key)
             except Exception:
                 logger.warning("Failed to end a revoked session", exc_info=True)
         cls._revoke_idp(request, session_id=None)
