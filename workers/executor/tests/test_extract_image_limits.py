@@ -117,27 +117,15 @@ class TestBuildExtractionImagePolicy:
         assert policy.page_budget.max_pages == 90
         assert policy.raw_byte_budget(page_count=10) == 14 * 1024 * 1024
 
-    def test_legacy_bound_holds_generous_models_at_90_during_rollout(self) -> None:
+    def test_generous_model_gets_its_own_limit(self) -> None:
         with patch.object(
             exec_limits.PlatformHelper,
             "get_adapter_config",
             side_effect=_resolver({"llm-a": OPENAI_CFG}),
         ):
             policy = exec_limits.build_extraction_image_policy(MagicMock(), ["llm-a"])
-        assert policy.page_budget.max_pages == 90
-        assert policy.bytes_ceiling == 14 * 1024 * 1024
-
-    def test_without_the_legacy_bound_generous_models_go_above_90(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setattr(policy_mod, "LEGACY_ANSWER_BOUNDS_ACTIVE", False)
-        with patch.object(
-            exec_limits.PlatformHelper,
-            "get_adapter_config",
-            side_effect=_resolver({"llm-a": OPENAI_CFG}),
-        ):
-            policy = exec_limits.build_extraction_image_policy(MagicMock(), ["llm-a"])
-        assert policy.page_budget.max_pages > 90
+        assert policy.page_budget.max_pages == 999
+        assert policy.bytes_ceiling is None
 
     def test_duplicate_ids_are_resolved_once(self) -> None:
         with patch.object(
@@ -148,15 +136,26 @@ class TestBuildExtractionImagePolicy:
             exec_limits.build_extraction_image_policy(MagicMock(), ["llm-a", "llm-a", ""])
         assert get.call_count == 1
 
-    def test_no_ids_means_ceiling_only_with_a_warning(
+    def test_no_ids_means_the_fixed_cap_with_a_warning(
         self, caplog: pytest.LogCaptureFixture
     ) -> None:
+        # No LLM to size the budget (a pre-upgrade payload): never 999 pages
+        # and no byte budget, which would be converted, billed, then rejected.
         with patch.object(exec_limits.PlatformHelper, "get_adapter_config") as get:
             policy = exec_limits.build_extraction_image_policy(MagicMock(), [])
         get.assert_not_called()
         assert policy.model_aware is False
-        assert policy.page_budget.max_pages == 90  # legacy bound during rollout
+        assert policy.switched_off is False
+        assert policy.page_budget.max_pages == 90
+        assert policy.raw_byte_budget(page_count=10) == 14 * 1024 * 1024
         assert any("LLM" in rec.message for rec in caplog.records)
+
+    def test_no_ids_fixed_cap_follows_a_lower_ceiling(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("VLM_IMAGE_ANSWER_PAGE_CAP", "7")
+        policy = exec_limits.build_extraction_image_policy(MagicMock(), [])
+        assert policy.page_budget.max_pages == 7
 
     @pytest.mark.parametrize(
         ("failure", "status", "advice"),

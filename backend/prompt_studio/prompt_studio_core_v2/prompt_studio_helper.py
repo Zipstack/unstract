@@ -88,7 +88,7 @@ from unstract.sdk1.adapters.x2text.llm_whisperer_v2.src.helper import (
 from unstract.sdk1.adapters.x2text.llm_whisperer_v2.src.page_range import (
     PageRangeError,
 )
-from unstract.sdk1.adapters.x2text.page_image_loader import configured_page_cap
+from unstract.sdk1.adapters.x2text.page_image_loader import get_fixed_page_cap
 from unstract.sdk1.constants import LogLevel
 from unstract.sdk1.exceptions import IndexingError, SdkError
 from unstract.sdk1.execution.context import ExecutionContext
@@ -1528,13 +1528,22 @@ class PromptStudioHelper:
             limits, tokens = LLM.image_input_limits_for(
                 str(llm.adapter_id), llm.metadata or {}
             )
-        except Exception as e:
+        except SdkError as e:
             # The error type only, no traceback: the adapter's validation
             # error quotes the stored metadata, credentials included.
             logger.warning(
                 "Could not resolve image limits for the default profile's LLM "
                 "(%s); using the fixed page cap for the upload check",
                 type(e).__name__,
+            )
+            return None
+        except Exception:
+            # Not the adapter's fault: a defect while resolving the limits.
+            # The upload still falls back to the fixed cap; extraction
+            # re-resolves and fails with a clear reason if this persists.
+            logger.exception(
+                "Internal error resolving image limits for the default "
+                "profile's LLM; using the fixed page cap for the upload check"
             )
             return None
         bounds = extraction_bound_kwargs()
@@ -1556,9 +1565,9 @@ class PromptStudioHelper:
         Bedrock Claude, 20 images) a cache hit would skip the page-budget
         check and the prompt would fail at the provider. Uses the page count
         recorded in the image-mode summary; no-op outside image mode or when
-        the count or the LLM's limits are unknown (answer time re-checks).
-        With ``VLM_IMAGE_LIMITS_ENFORCE=false`` the fixed page cap applies,
-        as at upload.
+        the count is unknown (answer time re-checks). Without a resolvable
+        LLM, or with ``VLM_IMAGE_LIMITS_ENFORCE=false``, the fixed page cap
+        applies, as at upload.
         """
         if not PromptStudioHelper.uploads_use_image_output_mode(profile_manager):
             return
@@ -1567,8 +1576,9 @@ class PromptStudioHelper:
         )
         if page_count is None:
             return
-        if not model_aware_limits_enabled():
-            page_cap = configured_page_cap()
+        budget = PromptStudioHelper._upload_page_budget(profile_manager)
+        if budget is None:
+            page_cap = get_fixed_page_cap()
             if page_count <= page_cap:
                 return
             raise ExtractionAPIError(
@@ -1580,8 +1590,7 @@ class PromptStudioHelper:
                     switch_to="switch this profile to a text output mode",
                 )
             )
-        budget = PromptStudioHelper._upload_page_budget(profile_manager)
-        if budget is None or page_count <= budget.max_pages:
+        if page_count <= budget.max_pages:
             return
         raise ExtractionAPIError(
             f"Failed to extract '{filename}'. "
@@ -1641,7 +1650,7 @@ class PromptStudioHelper:
                     "number of pages."
                 )
             )
-        page_cap = configured_page_cap()
+        page_cap = get_fixed_page_cap()
         if page_count <= page_cap:
             return
         raise ImageModePageLimitExceeded(
