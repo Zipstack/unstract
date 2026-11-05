@@ -210,6 +210,8 @@ cp sample.env .env
 
 Then edit `workers/.env` — change all Docker hostnames to `localhost`:
 
+> The runner's port 5002 is not published on the host by default. Uncomment the loopback `ports` entry for `runner` in `docker/docker-compose.yaml` and recreate it (`docker compose up -d runner` from `docker/`), or workers on the host cannot reach it.
+
 ```ini
 # === CRITICAL CHANGES FOR LOCAL DEV ===
 DJANGO_APP_BACKEND_URL=http://localhost:8000
@@ -374,7 +376,7 @@ cd workers && ./run-worker.sh all
 | Frontend | 3000 | http://frontend.unstract.localhost |
 | Platform Service | 3001 | http://localhost:3001 |
 | X2Text Service | 3004 | http://localhost:3004 |
-| Runner | 5002 | http://localhost:5002 |
+| Runner | 5002 | http://localhost:5002 (not published by default; uncomment the loopback `ports` entry for `runner` in `docker/docker-compose.yaml`) |
 | Celery Flower (optional) | 5555 | http://localhost:5555 |
 
 ### V2 Worker Health Ports

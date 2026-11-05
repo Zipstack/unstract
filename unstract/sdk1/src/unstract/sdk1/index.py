@@ -210,7 +210,7 @@ class Index:
                 else:
                     logger.warning("'process_text' is expected to return an 'str'")
             except Exception as e:
-                logger.error(
+                logger.exception(
                     f"Error occured inside callable 'process_text': {e}\n"
                     "continuing processing..."
                 )

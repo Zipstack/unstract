@@ -1,0 +1,55 @@
+name: Release state
+
+# The daily run fails on an overdue pick, an unclassifiable commit or a stale conflict PR.
+on:
+  schedule:
+    - cron: "30 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read # patch lines: the PR that merged each main fix
+
+jobs:
+  state:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Derive branch and target state
+        id: state
+        run: |
+          python3 .github/release/relstate.py > state.json
+          cat state.json
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: relstate
+          path: state.json
+
+      - name: Summary table
+        working-directory: .github/release
+        run: python3 -c 'import json, relstate; print(relstate.summary(json.load(open("../../state.json"))))' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Patch a released line
+        working-directory: .github/release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        # Into the summary from Python: held() prints its own progress to stdout.
+        run: python3 -c 'import json, os, backport; open(os.environ["GITHUB_STEP_SUMMARY"], "a").write(backport.patch_lines(json.load(open("../../state.json"))) + "\n")'
+
+      - name: Missed picks on stabilizing lines
+        working-directory: .github/release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        # Conflict PRs here and in the OSS repo (public, so this run's token reads it); once when they are the same.
+        run: python3 -c 'import json, os, backport, oss; open(os.environ["GITHUB_STEP_SUMMARY"], "a").write(backport.missed_picks(json.load(open("../../state.json")), [oss.OSS]) + "\n")'
+
+      - name: Check picks and conflict PRs
+        working-directory: .github/release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -c 'import json, sys, backport, oss; sys.exit(backport.state_check(json.load(open("../../state.json")), [oss.OSS]))'

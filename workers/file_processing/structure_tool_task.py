@@ -28,8 +28,13 @@ from queue_backend.pg_queue.executor_rpc import (
 )
 from shared.enums.task_enums import TaskName
 from shared.infrastructure.context import StateStore
+from shared.utils.manual_review_factory import (
+    AUTO_ENABLE_HIGHLIGHT,
+    HIGHLIGHT_AUTO_ENABLED_MESSAGE,
+    HIGHLIGHT_IMAGE_MODE_MESSAGE,
+)
 
-from unstract.sdk1.constants import ToolEnv, UsageKwargs
+from unstract.sdk1.constants import LogLevel, ToolEnv, UsageKwargs
 from unstract.sdk1.execution.context import ExecutionContext
 from unstract.sdk1.execution.result import ExecutionResult
 
@@ -107,6 +112,18 @@ class _SK:
 # -----------------------------------------------------------------------
 # Standalone helper functions (extracted from StructureTool methods)
 # -----------------------------------------------------------------------
+
+
+def _image_mode_llm_ids(outputs: list[dict[str, Any]]) -> list[str]:
+    """Distinct LLM adapter ids of the prompts run here.
+
+    Only these LLMs receive page images: each image-mode prompt is answered
+    by its own LLM. The tool-level LLM (``tool_settings["llm"]``) is not
+    included: in image mode it only summarizes text (single-pass is
+    rejected, challenge and evaluation are skipped), so its image limits
+    must not restrict the document.
+    """
+    return sorted({str(o.get(_SK.LLM)) for o in outputs if o.get(_SK.LLM)})
 
 
 def _apply_profile_overrides(tool_metadata: dict, profile_data: dict) -> list[str]:
@@ -318,6 +335,7 @@ def _execute_structure_tool_impl(params: dict) -> dict:
 
     # ---- Step 1: Setup ----
     from executor.executor_tool_shim import ExecutorToolShim
+    from executor.executors.constants import IndexingConstants as IKeys
 
     # Workflow IDs on the pre-dispatch shim let X2Text/platform helper logs
     # reach the workflow logs UI before the executor dispatch happens.
@@ -367,6 +385,29 @@ def _execute_structure_tool_impl(params: dict) -> dict:
 
     # ---- Step 3: Profile overrides ----
     _handle_profile_overrides(exec_metadata, platform_helper, tool_metadata)
+
+    # Confidence needs highlight. Override a copy to keep the saved setting.
+    if params.get(AUTO_ENABLE_HIGHLIGHT):
+        from executor.executors.vlm_image_answer import detect_image_mode_config
+
+        # LLMWhisperer rejects highlight in image output mode.
+        image_mode = detect_image_mode_config(
+            output={
+                _SK.X2TEXT_ADAPTER: tool_metadata[_SK.TOOL_SETTINGS].get(
+                    _SK.X2TEXT_ADAPTER
+                )
+            },
+            shim=shim,
+            usage_kwargs={"execution_id": execution_id},
+        )
+        if image_mode is None:
+            tool_instance_metadata = {
+                **tool_instance_metadata,
+                _SK.ENABLE_HIGHLIGHT: True,
+            }
+            shim.stream_log(HIGHLIGHT_AUTO_ENABLED_MESSAGE)
+        else:
+            shim.stream_log(HIGHLIGHT_IMAGE_MODE_MESSAGE, level=LogLevel.WARN)
 
     # ---- Extract settings from tool_metadata ----
     settings = tool_instance_metadata
@@ -465,6 +506,10 @@ def _execute_structure_tool_impl(params: dict) -> dict:
 
     extract_params = {
         "x2text_instance_id": tool_settings[_SK.X2TEXT_ADAPTER],
+        # Every LLM that will read an image-mode document's pages, so the
+        # extraction checks their image-request limits before the billed
+        # conversion.
+        IKeys.LLM_INSTANCE_IDS: _image_mode_llm_ids(outputs),
         "file_path": input_file_path,
         "enable_highlight": is_highlight_enabled,
         "output_file_path": str(execution_run_data_folder / _SK.EXTRACT),

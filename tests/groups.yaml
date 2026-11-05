@@ -57,10 +57,26 @@ groups:
     # `npx --no-install vitest` fails and turns the group red. A host with no
     # npx at all (cloud's self-hosted runner) still skips via the runner's
     # exit 5, which folds green for non-pytest groups.
+    #
+    # Excludes src/v1, which vitest.config.mjs leaves to `frontend-v1-unit`.
     tier: unit
     runner: vitest
     workdir: frontend
     paths: [src]
+    timeout_seconds: 900
+
+  frontend-v1-unit:
+    # The v1 frontend's unit tests (epic UN-4257, D10 prefix): src/v1 minus
+    # plugins/, under its own config (vitest.v1.config.mts), so a v1 result
+    # never changes the `frontend` group's and the reverse. The config also
+    # enforces v1's own coverage threshold, reported to frontend/coverage/v1.
+    # Cloud v1 plugins run in the cloud overlay's `frontend-v1-unit-cloud`.
+    # Same Node prerequisites as `frontend`.
+    tier: unit
+    runner: vitest
+    workdir: frontend
+    vitest_config: vitest.v1.config.mts
+    paths: [src/v1]
     timeout_seconds: 900
 
   unit-rig:
@@ -89,8 +105,10 @@ groups:
   unit-workers:
     tier: unit
     workdir: workers
+    # executor/tests: the executor's own unit tests (image-limit resolution,
+    # the vlm_image_answer bridge); no lane collected them before UN-4427.
     paths: [tests, shared/tests, shared/infrastructure/config/tests,
-            ide_callback/tests]
+            ide_callback/tests, executor/tests]
     # Negative filter: worker unit tests aren't tagged `unit` (~1100 of them),
     # so select by exclusion. `conftest.py` marks real-Postgres tests
     # `integration` (routed to the `integration-workers` group); `slow` tests are
