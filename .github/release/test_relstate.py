@@ -289,6 +289,21 @@ class Scenario(unittest.TestCase):
         )
         self.assertEqual(st["backport_targets"]["fix"], ["release/1.5"])
 
+    def test_ga_sharing_its_rc_registry_version_is_timed_by_its_tag(self):
+        # One repository for RC and stable: the GA tag lands on the RC's version and keeps its push time.
+        self.cut_with_rc()
+        self.push("cloud/backend", "v1.5.0", days=400)
+        os.environ["GIT_COMMITTER_DATE"] = ago(5)
+        try:
+            self.g("tag", "-a", "v1.5.0", "-m", "promote", "release/1.5")
+        finally:
+            del os.environ["GIT_COMMITTER_DATE"]
+        self.push("on-prem/backend", "v1.5.0-rc.3", days=10, git_ref="release/1.5")
+        b = self.branch(self.state(), "release/1.5")
+        self.assertEqual(
+            (b["state"], b["targets"]["on-prem"]["late"]), ("stabilizing", False)
+        )
+
     def test_late_cloud_with_no_ga_retires_with_force(self):
         # Shipped on-prem first, cloud enabled later: cloud is not production until its own GA.
         self.cut("1.5")

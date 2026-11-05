@@ -509,13 +509,25 @@ def _line_state(states):
     return "past-eos"
 
 
-def _late(row, t, reg):
+def _ga_time(repo, ga):
+    """When ga was promoted. The registry time alone is the RC's push when the RC and stable repositories are one, so
+    the later of it and Promote's annotated tag (a lightweight tag has no tagger date) counts.
+    """
+    tagged = rm.git(
+        repo,
+        "for-each-ref",
+        "--format=%(taggerdate:iso-strict)",
+        f"refs/tags/{ga['tag']}",
+    )
+    return max([_ts(ga["pushed_at"]), *([_ts(tagged)] if tagged else [])])
+
+
+def _late(repo, row, t, reg):
     """Whether t's first RC on the line came after another target's GA there (on-prem enabled after cloud GA)."""
     rcs = row["targets"][t]["rcs"]
     # t's own GA follows its RCs, so every GA on the line counts.
-    gas = [_ts(u["ga"]["pushed_at"]) for u in row["targets"].values() if u["ga"]]
-    # Push times, not git tags: a late target may build the tip's RC tag, made before that GA. A GA's push time is
-    # Promote's copy into the stable repository, so this needs RELSTATE_AR_<KIND>_RC set to a different repository.
+    gas = [_ga_time(repo, u["ga"]) for u in row["targets"].values() if u["ga"]]
+    # Push times, not git tags: a late target may build the tip's RC tag, made before that GA.
     return bool(rcs and gas) and _ts(reg[TARGETS[t][0]][rcs[0]]["pushed_at"]) > min(gas)
 
 
@@ -587,7 +599,7 @@ def derive(repo, now, registry=registry_tags, rc=None):
         _fill_ga(repo, t, builds, anchor, reg, refs, rows)
     for row in rows.values():
         for t, tt in row["targets"].items():
-            tt["late"] = _late(row, t, reg)
+            tt["late"] = _late(repo, row, t, reg)
 
     _set_states(rows, now)
 
