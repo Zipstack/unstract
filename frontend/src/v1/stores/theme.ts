@@ -16,8 +16,8 @@ export type ThemeState = {
   /** Sets the preference and persists it; a refused write is ignored. */
   setPreference: (preference: ThemePreference) => void;
   setSystemPrefersDark: (value: boolean) => void;
-  /** Replaces the preference with the one in storage ("system" if none). */
-  hydrate: (storage: Pick<Storage, "getItem"> | null | undefined) => void;
+  /** Replaces the preference with the one in storage ("system" if none); defaults to the store's own storage. */
+  hydrate: (storage?: Pick<Storage, "getItem"> | null) => void;
 };
 
 export type ThemeStoreOptions = {
@@ -47,7 +47,7 @@ function themeState({
         mode: resolveThemeMode(state.preference, value),
       }));
     },
-    hydrate: (source) => {
+    hydrate: (source = storage) => {
       const preference = readThemePreference(source);
       set((state) => ({
         preference,
