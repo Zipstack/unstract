@@ -52,7 +52,7 @@ export type DroppedMarker = Readonly<{ label: string; reason: string }>;
  * series is charted, the index is an integer row of `data`, the series has a
  * value on that row, and no earlier marker already labels that point.
  * Anything else is dropped, never drawn and never read out; the chart warns
- * about each drop once it is showing data.
+ * about each drop when it is showing data.
  */
 export function keptMarkers<Row extends ChartDatum>(
   data: readonly Row[],

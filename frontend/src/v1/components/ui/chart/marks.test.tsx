@@ -127,6 +127,13 @@ it("reads a line marker's label from wherever leaves least of it outside the plo
       { x: 20, y: 2 },
     ]),
   ).toBe("start");
+  // ...and so does the mirror: at x 17, read leftward from x 21, it spills 8.
+  expect(
+    anchor(17, "peak", [
+      { x: 0, y: 1 },
+      { x: 20, y: 2 },
+    ]),
+  ).toBe("end");
   // A single row sits mid-plot.
   expect(anchor(150, "peak", [{ x: 150, y: 1 }])).toBe("middle");
 });

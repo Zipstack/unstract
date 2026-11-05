@@ -752,8 +752,9 @@ describe("cartesian options", () => {
 
   it("measures bar marker labels against the plot area, which a right axis narrows", () => {
     // The last "pages" bar centres at about 315 without a right axis (plot
-    // ends at 392) and about 283 with one (plot ends at 352). A 140-wide
-    // label fits centred in the first case and not in the second.
+    // ends at 392) and about 283 with one (plot ends at 352). A 147-wide
+    // label fits centred in the first case (by about 4) and not in the
+    // second (over by about 5).
     const anchorWith = (axis: "left" | "right") => {
       const { container, unmount } = renderV1(
         <BarChart
@@ -762,7 +763,7 @@ describe("cartesian options", () => {
               { key: "pages", label: "Pages processed" },
               { key: "failed", label: "Failed pages", axis },
             ],
-            markers: [{ index: 2, series: "pages", label: "x".repeat(20) }],
+            markers: [{ index: 2, series: "pages", label: "x".repeat(21) }],
           })}
         />,
       );

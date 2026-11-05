@@ -79,9 +79,8 @@ const LABEL_NUDGE = 4;
  * Where a marker's label reads from, given the plot's left and right bounds:
  * whichever of `middle` (centred), `start` (rightward from the dot) or `end`
  * (leftward) leaves the least of the estimated label outside the bounds,
- * preferring `middle` on a tie. So a label reads inward only where that
- * keeps more of it in the plot, and stays centred when it fits or when it
- * is too wide for either side. Without bounds it stays centred.
+ * preferring `middle` on a tie, so a label that fits stays centred. Without
+ * bounds it stays centred.
  */
 function labelAnchor(
   cx: number,
