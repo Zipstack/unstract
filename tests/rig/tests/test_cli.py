@@ -897,6 +897,77 @@ def test_node_command_vitest_passes_the_group_config(
     assert "--config" not in cli_mod._node_command(plain, junit=junit)
 
 
+@pytest.mark.parametrize(
+    ("content", "expected"),
+    [
+        # vitest, no test files: counters on the root only.
+        ('<testsuites name="vitest tests" tests="0" failures="0" errors="0"/>', 0),
+        (
+            '<testsuites tests="3"><testsuite tests="2"/><testsuite tests="1"/>'
+            "</testsuites>",
+            3,
+        ),
+        ('<testsuite name="x" tests="4"/>', 4),
+        ("<testsuites/>", None),
+        ("<not xml", None),
+        ('<testsuite tests="many"/>', None),
+    ],
+)
+def test_junit_test_count(tmp_path: Path, content: str, expected: int | None) -> None:
+    import tests.rig.cli as cli_mod
+
+    junit = tmp_path / "junit.xml"
+    junit.write_text(content)
+    assert cli_mod._junit_test_count(junit) == expected
+
+
+def test_vitest_group_that_ran_nothing_reports_exit_5(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """vitest exits 0 under passWithNoTests; the rig records exit 5 ("nothing
+    collected") so the row is ⚪ and an empty plugins tree never reads as a
+    verified green run.
+    """
+    import tests.rig.cli as cli_mod
+    from tests.rig.groups import GroupDefinition
+
+    workdir = tmp_path / "frontend"
+    workdir.mkdir()
+    (workdir / "src").mkdir()
+
+    def fake_spawn(cmd, *, env, cwd, timeout):
+        out = next(c for c in cmd if c.startswith("--outputFile="))
+        Path(out.split("=", 1)[1]).write_text(
+            '<testsuites name="vitest tests" tests="0" failures="0" errors="0"/>'
+        )
+        return 0
+
+    monkeypatch.setattr(cli_mod, "_spawn", fake_spawn)
+    monkeypatch.setattr(cli_mod, "_prepare_group_env", lambda group, *, env: None)
+    monkeypatch.setattr(
+        cli_mod.shutil, "which", lambda name: "/usr/bin/npx" if name == "npx" else None
+    )
+    group = GroupDefinition(
+        name="frontend-v1-unit-cloud", tier="unit", paths=("src",), runner="vitest",
+        workdir=str(workdir),
+    )
+    result, exit_code = cli_mod._execute_group(
+        group,
+        reports_dir=tmp_path / "reports",
+        marker=None,
+        paths_override=None,
+        coverage=False,
+        parallel=False,
+        workers="1",
+        timeout=60,
+        endpoints=None,
+    )
+    assert exit_code == 5
+    assert result is not None
+    assert result.status == "empty"
+    assert (result.passed, result.failed, result.errors) == (0, 0, 0)
+
+
 def test_node_command_playwright_takes_junit_from_env_not_flag(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
