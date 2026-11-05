@@ -1,7 +1,11 @@
 from django.urls import path
 from rest_framework.urlpatterns import format_suffix_patterns
 
-from workflow_manager.execution.views import ExecutionViewSet
+from workflow_manager.execution.views import (
+    ExecutionAbortView,
+    ExecutionViewSet,
+    StuckExecutionCountView,
+)
 from workflow_manager.workflow_v2.execution_log_view import (
     WorkflowExecutionLogViewSet as ExecutionLogViewSet,
 )
@@ -26,4 +30,12 @@ urlpatterns = format_suffix_patterns(
             name="execution-log-export",
         ),
     ]
-)
+) + [
+    # Outside the suffix patterns: these views take no format argument.
+    path(
+        "stuck-count/",
+        StuckExecutionCountView.as_view(),
+        name="execution-stuck-count",
+    ),
+    path("abort/", ExecutionAbortView.as_view(), name="execution-abort"),
+]

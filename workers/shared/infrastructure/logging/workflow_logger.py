@@ -469,6 +469,7 @@ class WorkerWorkflowLogger:
         total_files: int,
         successful_files: int,
         failed_files: int,
+        stopped: bool = False,
     ) -> None:
         """Publish final workflow execution logs.
 
@@ -479,14 +480,20 @@ class WorkerWorkflowLogger:
             total_files: Total number of files processed
             successful_files: Number of successfully processed files
             failed_files: Number of files that failed processing
+            stopped: The run was aborted, so it did not execute successfully
         """
         # Publish workflow end status to UI status bar
         self.publish_update_log(LogState.END_WORKFLOW, "1", LogComponent.STATUS_BAR)
 
         # Publish workflow completion status
-        self.publish_update_log(
-            LogState.SUCCESS, "Executed successfully", LogComponent.WORKFLOW
-        )
+        if stopped:
+            self.publish_update_log(
+                LogState.ERROR, "Execution stopped", LogComponent.WORKFLOW
+            )
+        else:
+            self.publish_update_log(
+                LogState.SUCCESS, "Executed successfully", LogComponent.WORKFLOW
+            )
 
         # Publish detailed execution summary
         summary_message = (

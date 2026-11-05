@@ -1,12 +1,22 @@
-from api_v2.models import APIDeployment
-from django.db.models import Exists, OuterRef, QuerySet
+from typing import Any
+
+from django.db.models import QuerySet
 from django_filters import rest_framework as filters
-from pipeline_v2.models import Pipeline
+from django_filters.widgets import BooleanWidget
 from utils.date import DateRangePresets, DateTimeProcessor
 
+from workflow_manager.execution.entity import entity_condition
 from workflow_manager.execution.enum import ExecutionEntity
+from workflow_manager.execution.stuck import stuck_executions
 from workflow_manager.workflow_v2.enums import ExecutionStatus
 from workflow_manager.workflow_v2.models import WorkflowExecution
+
+STUCK_PARAM = "stuck"
+
+
+def stuck_requested(query_params: Any) -> bool:
+    """True when ``stuck`` parses as true, by the same rule as the filter."""
+    return BooleanWidget().value_from_datadict(query_params, None, STUCK_PARAM) is True
 
 
 class ExecutionFilter(filters.FilterSet):
@@ -29,6 +39,8 @@ class ExecutionFilter(filters.FilterSet):
         choices=DateRangePresets.choices(),
         method="filter_by_date_range",
     )
+    # Documented on ExecutionViewSet's schema.
+    stuck = filters.BooleanFilter(method="filter_stuck")
 
     class Meta:
         model = WorkflowExecution
@@ -40,38 +52,13 @@ class ExecutionFilter(filters.FilterSet):
         """Filter executions by entity type efficiently.
 
         The queryset is already filtered by user permissions via get_queryset(),
-        so we use EXISTS subqueries to check entity type without fetching all IDs.
-        This is more efficient than values_list() for large datasets.
+        so EXISTS subqueries check the entity type without fetching all IDs.
         """
-        if value == ExecutionEntity.API.value:
-            # Filter for API deployments using EXISTS for efficiency
-            return queryset.filter(
-                Exists(APIDeployment.objects.filter(id=OuterRef("pipeline_id")))
-            )
-        elif value == ExecutionEntity.ETL.value:
-            # Filter for ETL pipelines using EXISTS
-            return queryset.filter(
-                Exists(
-                    Pipeline.objects.filter(
-                        id=OuterRef("pipeline_id"),
-                        pipeline_type=Pipeline.PipelineType.ETL,
-                    )
-                )
-            )
-        elif value == ExecutionEntity.TASK.value:
-            # Filter for TASK pipelines using EXISTS
-            return queryset.filter(
-                Exists(
-                    Pipeline.objects.filter(
-                        id=OuterRef("pipeline_id"),
-                        pipeline_type=Pipeline.PipelineType.TASK,
-                    )
-                )
-            )
-        elif value == ExecutionEntity.WORKFLOW.value:
-            # Filter for workflow-level executions (no pipeline)
-            return queryset.filter(pipeline_id__isnull=True)
-        return queryset
+        return queryset.filter(entity_condition(ExecutionEntity(value)))
+
+    def filter_stuck(self, queryset: QuerySet, name: str, value: bool) -> QuerySet:
+        """Narrow to stuck executions when true; false leaves the queryset as is."""
+        return stuck_executions(queryset) if value else queryset
 
     def filter_by_date_range(self, queryset: QuerySet, name: str, value: str) -> QuerySet:
         """Filters Usages based on the provided date range."""
