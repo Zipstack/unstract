@@ -53,6 +53,6 @@ def connection_test_schema(profile: str) -> Callable[[Any], Any]:
                 "was deleted during the test.",
             ),
         },
-        description=f"Test the saved {profile} and store the result. "
+        description=f"Test the saved {profile} and return the result. "
         "See connection_check/README.md.",
     )

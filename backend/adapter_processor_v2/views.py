@@ -529,7 +529,7 @@ class AdapterInstanceViewSet(
     @connection_test_schema("adapter")
     @action(detail=True, methods=["post"])
     def test_and_record(self, request: Request, pk: str | None = None) -> Response:
-        """Test the saved adapter and store the result."""
+        """Test the saved adapter and return the result."""
         adapter = self.get_object()
         result = run_and_record(
             AdapterTestResult,

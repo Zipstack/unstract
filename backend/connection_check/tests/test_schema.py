@@ -40,6 +40,7 @@ class SchemaContractTests(SimpleTestCase):
         page_ref = list_op["responses"]["200"]["content"]["application/json"]["schema"]
         page = schema["components"]["schemas"][page_ref["$ref"].split("/")[-1]]
         self.assertIn("failing_count", page["properties"])
+        self.assertIn("failing_count", page["required"])
 
     def test_adapter_contract(self) -> None:
         self._assert_contract(adapter_urls, "adapter")

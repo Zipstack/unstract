@@ -110,6 +110,19 @@ class AdapterTestAndRecordTests(ConnectionCheckTestBase):
         stored = AdapterTestResult.objects.get(profile=self.adapter)
         self.assertEqual(stored.failure_reason, message)
 
+    def test_invalid_settings_keep_the_key_out_of_the_reason_and_the_log(
+        self, _ctx: Any
+    ) -> None:
+        # The fixture has no api_base, which the real SDK LLM requires.
+        with self.assertLogs("connection_check.services", level="WARNING") as logs:
+            response = self._test()
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
+        self.assertIn("api_base", response.data["failure_reason"])
+        self.assertNotIn("sk-test", response.data["failure_reason"])
+        self.assertIn("api_base", logs.output[0])
+        self.assertNotIn("sk-test", logs.output[0])
+
     def test_edit_after_test_is_flagged(self, _ctx: Any) -> None:
         with mock_llm(True):
             self._test()

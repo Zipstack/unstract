@@ -70,7 +70,7 @@ def _run(
     try:
         connected = run_test()
     except APIException as exc:
-        # The error text can echo connection settings, so it stays out of the log.
+        # Error text can echo settings, so only a 5xx logs it, through its traceback.
         logger.warning(
             "Connection test failed for %s %s: %s, status %s",
             type(profile).__name__,

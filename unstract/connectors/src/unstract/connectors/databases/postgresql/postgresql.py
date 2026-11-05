@@ -1,10 +1,11 @@
 import datetime
 import os
+import re
 from typing import Any
 
 import psycopg2
 from psycopg2 import sql as psycopg2_sql
-from psycopg2.extensions import connection
+from psycopg2.extensions import connection, parse_dsn
 
 from unstract.connectors.constants import DatabaseTypeConstants
 from unstract.connectors.databases.psycopg_handler import PsycoPgHandler
@@ -15,6 +16,8 @@ from unstract.connectors.databases.sql_safety import (
 )
 from unstract.connectors.databases.unstract_db import UnstractDB
 from unstract.connectors.exceptions import ConnectorError
+
+INVALID_URL_MESSAGE = "The connection URL is not valid."
 
 
 class PostgreSQL(UnstractDB, PsycoPgHandler):
@@ -111,12 +114,32 @@ class PostgreSQL(UnstractDB, PsycoPgHandler):
 
     @staticmethod
     def _connect(conn_params: dict[str, Any]) -> connection:
-        """Open a connection, keeping a URL that can't be parsed out of the error."""
+        """Open a connection, keeping a password in a bad URL out of the error."""
         try:
             return psycopg2.connect(**conn_params)
         except psycopg2.ProgrammingError:
             # psycopg2 echoes the URL here, password included.
-            raise ConnectorError("The connection URL is not valid.") from None
+            raise ConnectorError(INVALID_URL_MESSAGE) from None
+        except psycopg2.OperationalError:
+            if PostgreSQL._password_may_be_misread(conn_params.get("dsn", "")):
+                raise ConnectorError(INVALID_URL_MESSAGE) from None
+            raise
+
+    @staticmethod
+    def _password_may_be_misread(url: str) -> bool:
+        """Whether libpq may have read part of a password as another setting.
+
+        An unescaped ``@`` or ``/`` moves it into the host, port or database,
+        and libpq's errors echo those.
+        """
+        rest = url.partition("://")[2]
+        authority = re.split("[/?]", rest, maxsplit=1)[0]
+        at_signs = rest.count("@")
+        return (
+            at_signs > 1
+            or at_signs != authority.count("@")
+            or not re.fullmatch("[0-9,]*", parse_dsn(url).get("port", ""))
+        )
 
     def get_engine(self) -> connection:
         """Returns a connection to the PostgreSQL database.

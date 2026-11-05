@@ -278,7 +278,7 @@ class ConnectorInstanceViewSet(
     @connection_test_schema("connector")
     @action(detail=True, methods=["post"])
     def test_and_record(self, request: Request, pk: str | None = None) -> Response:
-        """Test the saved connector and store the result."""
+        """Test the saved connector and return the result."""
         connector = self.get_object()
         result = run_and_record(
             ConnectorTestResult,

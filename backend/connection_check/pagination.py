@@ -40,4 +40,5 @@ class FailingCountPagination(OptionalPagination):
             "failing and last_test_status filters.",
             "example": 2,
         }
+        paged["required"].append(ListParam.FAILING_COUNT)
         return paged

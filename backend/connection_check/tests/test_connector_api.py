@@ -17,6 +17,7 @@ from connection_check.tests.base import ConnectionCheckTestBase, mock_connector_
 from unstract.connectors.exceptions import ConnectorError
 
 
+GOOGLE_DRIVE_ID = "gdrive|3ac4b966-9136-4261-944a-bdbfc51cd21c"
 POSTGRESQL_ID = "postgresql|6db35f45-be11-4fd5-80c5-85c48183afbb"
 
 
@@ -170,9 +171,9 @@ class ConnectorStoredCredentialsTests(ConnectionCheckTestBase):
             user=self.owner, provider="google-oauth2", uid="uid-1", extra_data=login
         )
         connector = self.make_connector("drive", connector_auth=auth)
-        stored = {"access_token": "stored", "site_url": "https://example.com"}
+        stored = {"access_token": "stored", "refresh_token": "stored-refresh"}
         ConnectorInstance.objects.filter(pk=connector.pk).update(
-            connector_metadata=stored
+            connector_id=GOOGLE_DRIVE_ID, connector_metadata=stored
         )
 
         with (
@@ -188,16 +189,22 @@ class ConnectorStoredCredentialsTests(ConnectionCheckTestBase):
         self,
     ) -> None:
         connector = self.make_connector("db")
-        ConnectorInstance.objects.filter(pk=connector.pk).update(
-            connector_id=POSTGRESQL_ID,
-            connector_metadata={"connection_url": "postgres:/alice:STANDINPW@db/prod"},
-        )
-
-        with self.assertLogs("connection_check.services", level="WARNING") as logs:
-            response = self._test(connector)
-
         reason = "Error while connecting to DB: The connection URL is not valid."
-        self.assertEqual(response.data["failure_reason"], reason)
-        stored = ConnectorTestResult.objects.get(profile=connector)
-        self.assertEqual(stored.failure_reason, reason)
-        self.assertNotIn("STANDINPW", "\n".join(logs.output))
+        for url in (
+            "postgres:/alice:STANDINPW@db/prod",
+            "postgresql://alice:STANDINPW/STANDINPW@db/prod",
+        ):
+            with self.subTest(url=url):
+                ConnectorInstance.objects.filter(pk=connector.pk).update(
+                    connector_id=POSTGRESQL_ID,
+                    connector_metadata={"connection_url": url},
+                )
+                connector.refresh_from_db()
+
+                with self.assertLogs("connection_check.services", "WARNING") as logs:
+                    response = self._test(connector)
+
+                self.assertEqual(response.data["failure_reason"], reason)
+                stored = ConnectorTestResult.objects.get(profile=connector)
+                self.assertEqual(stored.failure_reason, reason)
+                self.assertNotIn("STANDINPW", "\n".join(logs.output))

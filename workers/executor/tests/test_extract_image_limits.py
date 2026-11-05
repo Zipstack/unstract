@@ -210,8 +210,7 @@ class TestBuildExtractionImagePolicy:
 
 
 CANARY = "leak-canary"
-# Missing ``api_base``: pydantic's error quotes the whole input dict
-# (``input_value={'api_key': ...}``), so the raw SdkError text holds the key.
+# Missing ``api_base``, so the SDK raises a validation error for this config.
 AZURE_CFG_LEAKY = {
     "adapter_id": "azureopenai|592d84b9-fe03-4102-a17e-6b391f32850b",
     "adapter_metadata": {"api_key": CANARY},

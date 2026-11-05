@@ -58,6 +58,7 @@ class RunAndRecordTests(ConnectionCheckTestBase):
 
         self.assertIn("APIException, status 500", logs.records[0].getMessage())
         self.assertNotIn("Key not found.", logs.records[0].getMessage())
+        self.assertIn("Key not found.", logs.output[0])
         self.assertTrue(logs.records[0].exc_info)
 
     def test_input_error_is_logged_without_a_traceback(self) -> None:

@@ -4,8 +4,10 @@ Stores the result of the latest connection test of each saved adapter and
 connector. It backs the connection status, the "failing" banner and the Status
 filter on the adapter and connector lists (Frontend v1 P2-T12).
 
-This README and the `@extend_schema` annotations in `schema.py` are the
-published contract (PB-T10, UN-4312). Changes to anything below are contract
+This README, the `@extend_schema` annotations in `schema.py` and the
+`failing_count` schema in `pagination.py` are the published contract (PB-T10,
+UN-4312). The four status keys on list and detail are defined in this README
+only, not in the generated schema. Changes to anything below are contract
 changes.
 
 - [Test and record](#test-and-record)
