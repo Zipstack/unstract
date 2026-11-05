@@ -197,7 +197,7 @@ Expected emitters outside this PR:
 | Task | Action | Notes |
 |---|---|---|
 | PB-T05 (UN-4360) | `key.expiry_set` | target per key type; cloud review keys may register their own `review_key.*` actions |
-| PB-T08 (UN-4318) | `execution.aborted` | target `execution`; actor is the owner or admin who aborted |
+| PB-T08 (UN-4318) | `execution.aborted` | target `execution` |
 
 ## Action vocabulary
 

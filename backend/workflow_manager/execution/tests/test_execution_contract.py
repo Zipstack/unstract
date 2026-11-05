@@ -4,8 +4,9 @@ and their published contract generates (UN-4318)."""
 import uuid
 from typing import Any
 
+from account_v2.models import Organization
 from django.test import SimpleTestCase
-from django.urls import resolve, reverse
+from django.urls import Resolver404, resolve, reverse
 from drf_spectacular.generators import SchemaGenerator
 from pipeline_v2.models import Pipeline
 from rest_framework.test import APIRequestFactory
@@ -15,6 +16,7 @@ from workflow_manager.execution.tests.stuck_abort_base import StuckAbortTestBase
 from workflow_manager.execution.views import ExecutionViewSet
 from workflow_manager.internal_views import WorkflowExecutionInternalViewSet
 from workflow_manager.workflow_v2.enums import ExecutionStatus
+from workflow_manager.workflow_v2.models.execution import WorkflowExecution
 
 _URLCONF = "workflow_manager.execution.urls"
 _list = ExecutionViewSet.as_view({"get": "list"})
@@ -58,6 +60,8 @@ class ExistingResponsesUnchangedTests(StuckAbortTestBase):
     def test_stuck_false_is_the_same_response_as_no_parameter(self) -> None:
         self.execution()
         self.execution(status=ExecutionStatus.COMPLETED)
+        # A zero time renders as seconds since creation, which would tick between calls.
+        WorkflowExecution.objects.update(execution_time=1)
         plain = self.call(_list, self.owner)
         for value in ("false", "0", ""):
             with self.subTest(stuck=value):
@@ -81,10 +85,17 @@ class ExistingResponsesUnchangedTests(StuckAbortTestBase):
 
     def test_stuck_rows_add_only_stuck_since(self) -> None:
         self.execution()
-        listed = self.call(_list, self.owner, data={"stuck": "true"})
-        self.assertEqual(
-            set(listed.data["results"][0]), _EXECUTION_KEYS | {"stuck_since"}
-        )
+        for value in ("true", "1", "TRUE"):
+            with self.subTest(stuck=value):
+                listed = self.call(_list, self.owner, data={"stuck": value})
+                self.assertEqual(
+                    set(listed.data["results"][0]), _EXECUTION_KEYS | {"stuck_since"}
+                )
+
+    def test_unrecognised_stuck_value_is_ignored(self) -> None:
+        self.execution(status=ExecutionStatus.COMPLETED)
+        listed = self.call(_list, self.owner, data={"stuck": "garbage"})
+        self.assertEqual(set(listed.data["results"][0]), _EXECUTION_KEYS)
 
 
 class InternalStatusActionTests(StuckAbortTestBase):
@@ -103,7 +114,11 @@ class InternalStatusActionTests(StuckAbortTestBase):
 
     def test_other_org_unknown_and_malformed_ids_are_404(self) -> None:
         execution = self.execution()
+        Organization.objects.create(
+            name="org-b", display_name="Org B", organization_id="org-b"
+        )
         cases = (
+            (execution.id, "org-b"),
             (execution.id, "some-other-org"),
             (execution.id, None),
             (uuid.uuid4(), self.org.organization_id),
@@ -113,6 +128,13 @@ class InternalStatusActionTests(StuckAbortTestBase):
             with self.subTest(execution_id=execution_id, org=organization_id):
                 response = self._get(execution_id, organization_id)
                 self.assertEqual(response.status_code, 404)
+
+
+class WorkerStatusRouteTests(StuckAbortTestBase):
+    def test_worker_status_url_reaches_the_status_action(self) -> None:
+        match = resolve(f"/internal/v1/workflow-execution/{uuid.uuid4()}/status/")
+        self.assertEqual(match.func.actions, {"get": "execution_status"})
+        self.assertIs(match.func.cls, WorkflowExecutionInternalViewSet)
 
 
 class RoutesUnchangedTests(SimpleTestCase):
@@ -130,6 +152,15 @@ class RoutesUnchangedTests(SimpleTestCase):
             kwargs = {"pk": key} if key else None
             with self.subTest(name=name):
                 self.assertEqual(reverse(name, urlconf=_URLCONF, kwargs=kwargs), path)
+
+    def test_new_paths_take_no_format_suffix(self) -> None:
+        for path in ("/abort.json", "/stuck-count.json"):
+            with self.subTest(path=path), self.assertRaises(Resolver404):
+                resolve(path, urlconf=_URLCONF)
+        self.assertEqual(
+            resolve(f"/{uuid.uuid4()}.json", urlconf=_URLCONF).url_name,
+            "execution-detail",
+        )
 
     def test_new_paths_do_not_shadow_detail(self) -> None:
         self.assertEqual(
@@ -152,16 +183,16 @@ class SchemaContractTests(SimpleTestCase):
         paths = schema["paths"]
         count = paths["/stuck-count/"]["get"]
         self.assertEqual(count["operationId"], "execution_stuck_count")
-        self.assertTrue({"200", "403"} <= set(count["responses"]))
+        self.assertTrue({"200", "401", "403"} <= set(count["responses"]))
 
         abort = paths["/abort/"]["post"]
         self.assertEqual(abort["operationId"], "execution_abort")
-        self.assertTrue({"200", "400", "403"} <= set(abort["responses"]))
+        self.assertTrue({"200", "400", "401", "403"} <= set(abort["responses"]))
         components = schema["components"]["schemas"]
         self.assertIn("ids", components["ExecutionAbortRequest"]["properties"])
         self.assertEqual(
             set(components["ExecutionAbortResponse"]["properties"]),
-            {"results", "aborted", "already_finished", "not_permitted"},
+            {"results", "aborted", "already_finished", "not_permitted", "failed"},
         )
         self.assertEqual(
             set(components["StuckExecutionCount"]["properties"]),

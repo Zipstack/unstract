@@ -29,11 +29,13 @@ urlpatterns = format_suffix_patterns(
             execution_log_export,
             name="execution-log-export",
         ),
-        path(
-            "stuck-count/",
-            StuckExecutionCountView.as_view(),
-            name="execution-stuck-count",
-        ),
-        path("abort/", ExecutionAbortView.as_view(), name="execution-abort"),
     ]
-)
+) + [
+    # Outside the suffix patterns: these views take no format argument.
+    path(
+        "stuck-count/",
+        StuckExecutionCountView.as_view(),
+        name="execution-stuck-count",
+    ),
+    path("abort/", ExecutionAbortView.as_view(), name="execution-abort"),
+]

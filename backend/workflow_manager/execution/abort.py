@@ -2,12 +2,14 @@
 
 import logging
 from dataclasses import dataclass
+from functools import partial
 from typing import Any
 from uuid import UUID
 
 from api_v2.models import APIDeployment
 from django.db import transaction
-from django.db.models import Q, QuerySet
+from django.db.models import Count, DurationField, ExpressionWrapper, F, Q, QuerySet
+from django.db.models.functions import Extract, Now
 from permissions.roles import ResourceRole
 from pipeline_v2.models import Pipeline
 from platform_audit.actions import Action, TargetType
@@ -18,6 +20,7 @@ from tenant_account_v2.sharing_helpers import resources_visible_via_memberships
 from workflow_manager.execution.entity import entity_annotation
 from workflow_manager.execution.enum import AbortOutcome
 from workflow_manager.file_execution.models import WorkflowFileExecution
+from workflow_manager.utils.pipeline_utils import PipelineUtils
 from workflow_manager.workflow_v2.enums import ExecutionStatus
 from workflow_manager.workflow_v2.models import Workflow, WorkflowExecution
 
@@ -29,7 +32,7 @@ MAX_ABORT_IDS = 100
 
 @dataclass(frozen=True)
 class AbortResult:
-    """Outcome for one id. ``status`` is ``None`` when not permitted."""
+    """Outcome for one id. ``status`` is ``None`` when not permitted or failed."""
 
     id: UUID
     outcome: AbortOutcome
@@ -57,13 +60,17 @@ class AbortReport:
     def not_permitted(self) -> int:
         return self._count(AbortOutcome.NOT_PERMITTED)
 
+    @property
+    def failed(self) -> int:
+        return self._count(AbortOutcome.FAILED)
+
 
 def abort_executions(request: Any, ids: list[UUID]) -> AbortReport:
     """Abort each id the caller may abort; one transaction per id."""
     unique_ids = list(dict.fromkeys(ids))
     permitted = _abortable_entities(request.user, unique_ids)
     results = [
-        _abort_one(request, execution_id, permitted[execution_id])
+        _abort_or_fail(request, execution_id, permitted[execution_id])
         if execution_id in permitted
         else AbortResult(execution_id, AbortOutcome.NOT_PERMITTED, None)
         for execution_id in unique_ids
@@ -108,6 +115,15 @@ def _owner_condition(user: Any) -> Q:
     )
 
 
+def _abort_or_fail(request: Any, execution_id: UUID, entity: str | None) -> AbortResult:
+    """Abort one id, so its failure cannot lose the other ids' outcomes."""
+    try:
+        return _abort_one(request, execution_id, entity)
+    except Exception:
+        logger.exception("Failed to abort execution %s", execution_id)
+        return AbortResult(execution_id, AbortOutcome.FAILED, None)
+
+
 def _abort_one(request: Any, execution_id: UUID, entity: str | None) -> AbortResult:
     """Stop one execution under its row lock, then record the audit event."""
     with transaction.atomic():
@@ -128,20 +144,45 @@ def _abort_one(request: Any, execution_id: UUID, entity: str | None) -> AbortRes
             status=ExecutionStatus.STOPPED, error=ABORT_ERROR_MESSAGE, row_locked=True
         )
         _stop_open_files(execution)
+        _write_file_counts(execution)
+        # Pipeline status and webhook; no callback sends them if the worker is dead.
+        transaction.on_commit(
+            partial(
+                PipelineUtils.update_pipeline_status, execution.pipeline_id, execution
+            ),
+            robust=True,
+        )
     _record_abort(request, execution, previous_status, entity)
     return AbortResult(execution_id, AbortOutcome.ABORTED, execution.status)
 
 
 def _stop_open_files(execution: WorkflowExecution) -> None:
     """Mark file rows not yet terminal STOPPED; finished rows keep their status."""
+    elapsed = ExpressionWrapper(Now() - F("created_at"), output_field=DurationField())
     stopped = (
         WorkflowFileExecution.objects.filter(workflow_execution=execution)
         .exclude(status__in=ExecutionStatus.terminal_values())
-        .update(status=ExecutionStatus.STOPPED.value, execution_error=ABORT_ERROR_MESSAGE)
+        .update(
+            status=ExecutionStatus.STOPPED.value,
+            execution_error=ABORT_ERROR_MESSAGE,
+            execution_time=Extract(elapsed, "epoch"),
+        )
     )
     logger.info(
         "Aborted execution %s; stopped %s open file execution(s)", execution.id, stopped
     )
+
+
+def _write_file_counts(execution: WorkflowExecution) -> None:
+    """Save the run's file counts; anything that did not finish counts as failed."""
+    counts = WorkflowFileExecution.objects.filter(workflow_execution=execution).aggregate(
+        total=Count("pk"),
+        completed=Count("pk", filter=Q(status=ExecutionStatus.COMPLETED.value)),
+    )
+    execution.total_files = max(execution.total_files, counts["total"])
+    execution.successful_files = counts["completed"]
+    execution.failed_files = execution.total_files - counts["completed"]
+    execution.save(update_fields=["total_files", "successful_files", "failed_files"])
 
 
 def _record_abort(

@@ -2,7 +2,7 @@
 
 Pins: the status is checked before each file; only STOPPED (abort) stops the
 batch, with the remaining files counted as failed and their rows marked
-STOPPED; any other status, or a failed check, processes the file (fail open).
+STOPPED; any other status, or a failed API call, processes the file (fail open).
 Also pins the client URL and the facade delegation.
 """
 
@@ -13,18 +13,35 @@ from typing import Any
 from unittest import mock
 
 import pytest
+from celery.exceptions import SoftTimeLimitExceeded
+from shared.api.internal_client import InternalAPIClient
+from shared.clients.base_client import APIRequestError, AuthenticationError
+from shared.data.models import APIResponse
 from unstract.core.data_models import ExecutionStatus, FileBatchResult
 
 from file_processing.tasks import _file_item_name, _process_individual_files
 
 _TASKS = "file_processing.tasks"
+FORMATS = ["list", "tuple", "dict"]
 
 
-def _context(api_client: Any, n_files: int = 3) -> Any:
-    files = {
-        f"file_{i}": {"file_name": f"f{i}.pdf", "file_path": f"/in/f{i}.pdf"}
-        for i in range(n_files)
+def _client() -> Any:
+    """A client that rejects a misnamed method or argument."""
+    return mock.create_autospec(InternalAPIClient, instance=True)
+
+
+def _item(index: int, file_format: str) -> Any:
+    name = f"f{index}.pdf"
+    data = {
+        "file_name": name,
+        "file_path": f"/in/{name}",
+        "provider_file_uuid": f"uuid-{index}",
     }
+    return {"list": [name, data], "tuple": (name, data), "dict": data}[file_format]
+
+
+def _context(api_client: Any, n_files: int = 3, file_format: str = "dict") -> Any:
+    files = {f"file_{i}": _item(i, file_format) for i in range(n_files)}
     pre_created = {
         f"f{i}.pdf": mock.Mock(
             id=f"fe-{i}",
@@ -50,9 +67,14 @@ def _context(api_client: Any, n_files: int = 3) -> Any:
     )
 
 
-def _run(api_client: Any, n_files: int = 3) -> tuple[FileBatchResult, Any]:
+def _run(
+    api_client: Any, n_files: int = 3, file_format: str = "dict"
+) -> tuple[FileBatchResult, Any]:
+    return _run_context(_context(api_client, n_files, file_format))
+
+
+def _run_context(context: Any) -> tuple[FileBatchResult, Any]:
     """Run the loop with file processing stubbed to succeed."""
-    context = _context(api_client, n_files)
 
     def _succeeded(
         _result: Any, _name: Any, _start: Any, result: Any, *args: Any, **kwargs: Any
@@ -79,14 +101,15 @@ def _stopped_ids(api_client: Any) -> list[str]:
     ]
 
 
-def test_stops_after_the_status_flips_to_stopped() -> None:
-    api_client = mock.Mock()
+@pytest.mark.parametrize("file_format", FORMATS)
+def test_stops_after_the_status_flips_to_stopped(file_format: str) -> None:
+    api_client = _client()
     api_client.get_workflow_execution_status.side_effect = [
         ExecutionStatus.EXECUTING.value,
         ExecutionStatus.STOPPED.value,
     ]
 
-    result, process_file = _run(api_client)
+    result, process_file = _run(api_client, file_format=file_format)
 
     assert process_file.call_count == 1
     assert api_client.get_workflow_execution_status.call_count == 2
@@ -95,7 +118,7 @@ def test_stops_after_the_status_flips_to_stopped() -> None:
 
 
 def test_stopped_before_the_first_file_processes_nothing() -> None:
-    api_client = mock.Mock()
+    api_client = _client()
     api_client.get_workflow_execution_status.return_value = (
         ExecutionStatus.STOPPED.value
     )
@@ -107,23 +130,61 @@ def test_stopped_before_the_first_file_processes_nothing() -> None:
     assert (result.successful_files, result.failed_files) == (0, 3)
 
 
-def test_a_failed_stopped_write_does_not_stop_the_rest() -> None:
-    api_client = mock.Mock()
+def test_a_failed_stopped_write_is_logged_and_the_rest_still_written() -> None:
+    api_client = _client()
     api_client.get_workflow_execution_status.return_value = (
         ExecutionStatus.STOPPED.value
     )
-    api_client.update_file_execution_status.side_effect = RuntimeError("500")
+    api_client.update_file_execution_status.return_value = APIResponse(
+        success=False, error="500"
+    )
 
-    result, process_file = _run(api_client)
+    with mock.patch(f"{_TASKS}.logger") as logger:
+        result, process_file = _run(api_client)
 
     process_file.assert_not_called()
     assert _stopped_ids(api_client) == ["fe-0", "fe-1", "fe-2"]
     assert (result.successful_files, result.failed_files) == (0, 3)
+    warned = [
+        c.args[1]
+        for c in logger.warning.call_args_list
+        if c.args[0].startswith("Failed to mark")
+    ]
+    assert warned == ["fe-0", "fe-1", "fe-2"]
+
+
+def test_a_file_without_a_row_is_counted_but_not_written() -> None:
+    api_client = _client()
+    api_client.get_workflow_execution_status.return_value = (
+        ExecutionStatus.STOPPED.value
+    )
+    context = _context(api_client, file_format="list")
+    del context.pre_created_file_executions["f1.pdf"]
+
+    result, _ = _run_context(context)
+
+    assert _stopped_ids(api_client) == ["fe-0", "fe-2"]
+    assert result.failed_files == 3
+
+
+@pytest.mark.parametrize("file_format", FORMATS)
+def test_a_file_already_completed_in_this_run_is_not_counted(file_format: str) -> None:
+    api_client = _client()
+    api_client.get_workflow_execution_status.return_value = (
+        ExecutionStatus.STOPPED.value
+    )
+    context = _context(api_client, file_format=file_format)
+    context.metadata["skipped_already_completed"] = ["uuid-1:/in/f1.pdf"]
+
+    result, _ = _run_context(context)
+
+    assert _stopped_ids(api_client) == ["fe-0", "fe-2"]
+    assert result.failed_files == 2
 
 
 def test_error_mid_batch_keeps_processing_the_files() -> None:
     """Only an abort stops a running batch; ERROR keeps today's behaviour."""
-    api_client = mock.Mock()
+    api_client = _client()
     api_client.get_workflow_execution_status.side_effect = [
         ExecutionStatus.EXECUTING.value,
         ExecutionStatus.ERROR.value,
@@ -148,7 +209,7 @@ def test_error_mid_batch_keeps_processing_the_files() -> None:
     ],
 )
 def test_any_other_status_processes_every_file(status: str | None) -> None:
-    api_client = mock.Mock()
+    api_client = _client()
     api_client.get_workflow_execution_status.return_value = status
 
     result, process_file = _run(api_client)
@@ -158,15 +219,39 @@ def test_any_other_status_processes_every_file(status: str | None) -> None:
     assert (result.successful_files, result.failed_files) == (3, 0)
 
 
-def test_a_failed_check_processes_the_file_anyway() -> None:
-    api_client = mock.Mock()
-    api_client.get_workflow_execution_status.side_effect = RuntimeError("404")
+def test_a_missing_status_is_logged_and_the_file_processed() -> None:
+    api_client = _client()
+    api_client.get_workflow_execution_status.return_value = None
+
+    with mock.patch(f"{_TASKS}.logger") as logger:
+        _, process_file = _run(api_client)
+
+    assert process_file.call_count == 3
+    warnings = [c.args[0] for c in logger.warning.call_args_list]
+    assert sum("returned no status" in w for w in warnings) == 3
+
+
+@pytest.mark.parametrize(
+    "error", [APIRequestError("404"), AuthenticationError("401")], ids=["404", "401"]
+)
+def test_a_failed_api_call_processes_the_file_anyway(error: Exception) -> None:
+    api_client = _client()
+    api_client.get_workflow_execution_status.side_effect = error
 
     result, process_file = _run(api_client)
 
     assert process_file.call_count == 3
     assert _stopped_ids(api_client) == []
     assert result.successful_files == 3
+
+
+@pytest.mark.parametrize("error", [AttributeError("bug"), SoftTimeLimitExceeded()])
+def test_other_errors_in_the_check_are_not_hidden(error: Exception) -> None:
+    api_client = _client()
+    api_client.get_workflow_execution_status.side_effect = error
+
+    with pytest.raises(type(error)):
+        _run(api_client)
 
 
 @pytest.mark.parametrize(

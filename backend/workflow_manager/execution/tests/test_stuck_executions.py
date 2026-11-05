@@ -62,6 +62,21 @@ class StuckExecutionTests(StuckAbortTestBase):
             execution.modified_at,
         )
 
+    def test_run_newer_than_its_files_is_stuck_since_its_own_last_write(self) -> None:
+        execution = self.execution(idle=OLD - timedelta(minutes=10))
+        self.file(execution, ExecutionStatus.EXECUTING, idle=OLD)
+        rows = self._stuck_rows(self.owner)
+        self.assertEqual(
+            parse_datetime(rows[str(execution.id)]["stuck_since"]),
+            execution.modified_at,
+        )
+
+    @override_settings(STUCK_EXECUTION_THRESHOLD_SECONDS=3600)
+    def test_cutoff_is_the_threshold(self) -> None:
+        just_over = self.execution(idle=timedelta(minutes=61))
+        self.execution(idle=timedelta(minutes=59))
+        self.assertEqual(list(self._stuck_rows(self.owner)), [str(just_over.id)])
+
     def test_recent_file_activity_is_not_stuck(self) -> None:
         execution = self.execution()
         self.file(execution, ExecutionStatus.EXECUTING, idle=RECENT)

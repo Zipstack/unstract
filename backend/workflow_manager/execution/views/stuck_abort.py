@@ -1,10 +1,7 @@
 """Stuck-execution count and abort. See ../README.md for the contract."""
 
-from drf_spectacular.utils import OpenApiExample, extend_schema
-from drf_standardized_errors.openapi_serializers import (
-    ErrorResponse403Serializer,
-    ValidationErrorResponseSerializer,
-)
+from drf_spectacular.utils import OpenApiExample, OpenApiResponse, extend_schema
+from drf_standardized_errors.openapi_serializers import ValidationErrorResponseSerializer
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.request import Request
 from rest_framework.response import Response
@@ -20,6 +17,13 @@ from workflow_manager.execution.stuck import count_stuck
 from workflow_manager.workflow_v2.models import WorkflowExecution
 
 _TAGS = ["execution"]
+# The auth middleware answers these before DRF runs, as {"message": ...}.
+_AUTH_ERRORS = {
+    401: OpenApiResponse(description='Not authenticated: {"message": ...}.'),
+    403: OpenApiResponse(
+        description='Authenticated but refused access: {"message": ...}.'
+    ),
+}
 
 
 class StuckExecutionCountView(APIView):
@@ -29,7 +33,7 @@ class StuckExecutionCountView(APIView):
         operation_id="execution_stuck_count",
         tags=_TAGS,
         description="Stuck executions visible to the caller, per entity.",
-        responses={200: StuckExecutionCountSerializer, 403: ErrorResponse403Serializer},
+        responses={200: StuckExecutionCountSerializer, **_AUTH_ERRORS},
         examples=[
             OpenApiExample(
                 "Counts",
@@ -53,15 +57,12 @@ class ExecutionAbortView(APIView):
     @extend_schema(
         operation_id="execution_abort",
         tags=_TAGS,
-        description=(
-            "Stop running executions. Only the owner or an org admin may abort; "
-            "every id gets its own outcome in a 200."
-        ),
+        description="Stop running executions; every id gets its own outcome in a 200.",
         request=ExecutionAbortRequestSerializer,
         responses={
             200: ExecutionAbortResponseSerializer,
             400: ValidationErrorResponseSerializer,
-            403: ErrorResponse403Serializer,
+            **_AUTH_ERRORS,
         },
     )
     def post(self, request: Request) -> Response:

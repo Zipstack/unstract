@@ -1,9 +1,10 @@
 # Executions: stuck runs and abort
 
 Finding executions that stopped making progress, and stopping running ones
-(PB-T08, UN-4318). This README and the `@extend_schema` annotations in
-`views/stuck_abort.py` and `views/execution.py` are the published contract.
-Changes to anything below are contract changes.
+(PB-T08, UN-4318). This README is the published contract, backed by the
+`@extend_schema` annotations in `views/stuck_abort.py` and `views/execution.py`.
+`stuck_since` is documented here only: the generated schema shows the plain list
+row. Changes to anything below are contract changes.
 
 - [Endpoints](#endpoints)
 - [What counts as stuck](#what-counts-as-stuck)
@@ -15,7 +16,7 @@ Changes to anything below are contract changes.
 
 ## Endpoints
 
-Mounted under the organisation path: `/api/v1/unstract/{org_id}/execution/`.
+Paths are relative to the organisation path: `/api/v1/unstract/{org_id}/`.
 
 | Method | Path | Returns |
 |---|---|---|
@@ -25,7 +26,9 @@ Mounted under the organisation path: `/api/v1/unstract/{org_id}/execution/`.
 
 Everything here is additive. The existing list, detail and log endpoints keep
 their paths, parameters, response fields and permissions. Without `stuck`, or
-with `stuck=false`, the list response is the same as before.
+with `stuck=false`, the list response is the same as before. Aborted runs are the
+one new case the existing endpoints see; see
+[How the work stops](#how-the-work-stops).
 
 ## What counts as stuck
 
@@ -87,7 +90,8 @@ is ignored, as if `stuck` were absent. Visibility is the same as the list's.
   ],
   "aborted": 1,
   "already_finished": 1,
-  "not_permitted": 1
+  "not_permitted": 1,
+  "failed": 0
 }
 ```
 
@@ -96,49 +100,69 @@ is ignored, as if `stuck` were absent. Visibility is the same as the list's.
 | `aborted` | The run was `PENDING` or `EXECUTING` and is now `STOPPED` | `STOPPED` |
 | `already_finished` | The run was already `COMPLETED`, `ERROR` or `STOPPED`; nothing changed | its status |
 | `not_permitted` | The caller may not abort it, or the id does not exist | `null` |
+| `failed` | The abort hit an unexpected error for this id; retry it | `null` |
 
 Unknown ids and ids the caller cannot abort get the same answer, so the
 endpoint does not reveal which ids exist.
 
 **Who may abort.** The owner of what started the run: an OWNER of its API
 deployment or pipeline, or of its workflow when the run has no pipeline. Org
-admins and service accounts (platform API keys) may abort any run in the
-organisation. Shared users who are not owners get `not_permitted`.
+admins and service accounts (platform API keys with write access) may abort any
+run in the organisation. Shared users who are not owners get `not_permitted`.
 
-**What abort does,** in one transaction per id:
+**What abort does.** In one transaction per id:
 
 1. Sets the execution to `STOPPED` with the error `Execution aborted`, which
    also frees an API deployment's rate-limit slot and sends the existing
-   "was stopped" inbox notice.
-2. Sets its `PENDING` and `EXECUTING` file rows to `STOPPED`. Finished file
-   rows, file history, destination writes and usage are kept.
-3. Records an `execution.aborted` event in the platform audit log, with
-   target `execution`, the workflow name, the summary `was <previous status>`
-   and `previous_status`, `pipeline_id` and `entity` in its metadata.
+   "was stopped" inbox notice, unless the inbox item already shows a newer run.
+2. Sets its `PENDING` and `EXECUTING` file rows to `STOPPED` with the same error,
+   and stamps their execution time. Finished file rows, file history, destination
+   writes and usage are kept.
+3. Writes the run's file counts: finished files are successful, and every other
+   file is failed.
 
-The pipeline's last-run status is not changed.
+Once that commits, it:
 
-**How the work stops.** Queued batches of a stopped run are skipped when a
-worker picks them up. A running batch checks the status before each file and
-stops once it is `STOPPED`: its remaining files are marked `STOPPED` and
-counted as failed. The file
-being processed when the abort lands finishes, and its own result replaces
-`STOPPED` on its row. Later status writes from workers cannot undo the abort on
-runs using the PG queue.
+1. Sets the pipeline's last-run status to failure and sends its notifications
+   with status `FAILURE`, or sends an API deployment's notifications with status
+   `STOPPED`. An inactive pipeline gets neither.
+2. Records an `execution.aborted` event in the platform audit log, with target
+   `execution`, the workflow name, the summary `was <previous status>` and
+   `previous_status`, `pipeline_id` and `entity` in its metadata. This is best
+   effort: a lost event does not fail the abort and is not retried.
+
+### How the work stops
+
+- Queued batches of a stopped run are skipped when a worker picks them up. They
+  clear their files' active-file markers and still count down on the barrier.
+- A running batch checks the status before each file and stops once it is
+  `STOPPED`: its remaining files are marked `STOPPED` and counted as failed.
+- The file being processed when the abort lands finishes, and its own result
+  replaces `STOPPED` on its row.
+- The last batch fires the aggregating callback. It keeps the status `STOPPED`,
+  saves the final file counts, commits usage for finished files, publishes the
+  final log and cleans up the execution directory. It does not send notifications
+  again.
+- A caller waiting on a synchronous API deployment `POST` gets 422 for an aborted
+  run, the same as polling with `GET`.
+- Later status writes from workers cannot undo the abort, unless the run's
+  `queue_message_id` is empty.
 
 ### Errors
 
-Errors use the project's standard envelope (drf-standardized-errors).
+400 uses the project's standard envelope (drf-standardized-errors). 401 and 403
+come from the auth middleware as `{"message": "..."}`.
 
 | Status | When |
 |---|---|
 | 400 | `ids` missing, empty, longer than 100, or holding a value that is not a UUID |
-| 401 / 403 | Not authenticated |
+| 401 | Not authenticated |
+| 403 | Authenticated but refused: a user outside the organisation, or a platform API key without write access |
 
-An unexpected failure part-way returns 500. Each id is aborted in its own
-transaction, so the aborts made before it are kept (unless `ATOMIC_REQUESTS` is
-on, which rolls the whole request back). Retrying is safe: ids already aborted
-answer `already_finished`.
+A failure on one id answers `failed` for that id, and the other ids still run.
+Each id is aborted in its own transaction, so the others are kept (unless
+`ATOMIC_REQUESTS` is on, which can roll the whole request back). Retrying is safe:
+ids already aborted answer `already_finished`.
 
 ## Deploying
 
@@ -147,14 +171,25 @@ internal `GET /internal/v1/workflow-execution/<id>/status/` endpoint. An older
 backend answers 404, and the worker then processes the file anyway (fail
 open), as it did before this change.
 
+Expose abort to users only once the workers are updated too. An older worker's
+callback reports an aborted run with a finished file as completed.
+
 ## Limits
 
-- The file being processed when the abort lands is not interrupted. A worker
-  that is alive but hung keeps its claim until the reaper cleans it up.
-- Runs from before the PG queue (`queue_message_id` empty) are not protected
-  from a late worker status write.
-- If the batch that was running was the last one, the aggregating callback
-  still runs. It can update the pipeline's last-run status and fire webhooks,
-  while the execution stays `STOPPED`.
+- The file being processed when the abort lands is not interrupted. A hung worker
+  is covered in [`pg_queue/README.md`](../../../workers/queue_backend/pg_queue/README.md).
+- **Re-running right after an abort can process a file twice.** The file still
+  being processed no longer counts as active, so a manual or scheduled re-run can
+  pick it up while the old worker finishes it: double LLM spend, and two writes to
+  a database destination. Wait for that file to finish before re-running.
+- **A dead worker's run never gets its callback.** The pipeline status,
+  notifications and file counts are still set by the abort, but usage for its
+  finished files is not committed and its execution directory, which can hold
+  uploaded documents, is not cleaned up. It stays in storage until something else
+  deletes it. The reaper's `ERROR` path has the same gap.
+- A run whose `queue_message_id` is empty (from before the PG queue, or whose
+  handle write failed) is not protected from a late worker status write.
+- An abort that lands while the callback is already running stays `STOPPED`, but
+  the callback can still report the status it worked out.
 - A running batch stops between files only for `STOPPED`. A run that becomes
   `ERROR` or `COMPLETED` mid-batch keeps processing its files, as before.

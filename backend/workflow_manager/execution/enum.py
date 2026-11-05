@@ -14,3 +14,4 @@ class AbortOutcome(StrEnum):
     ABORTED = "aborted"
     ALREADY_FINISHED = "already_finished"
     NOT_PERMITTED = "not_permitted"
+    FAILED = "failed"

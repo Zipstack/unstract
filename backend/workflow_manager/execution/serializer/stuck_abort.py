@@ -39,7 +39,7 @@ class ExecutionAbortResultSerializer(serializers.Serializer):
     id = serializers.UUIDField()
     outcome = serializers.ChoiceField(choices=[o.value for o in AbortOutcome])
     status = serializers.CharField(
-        allow_null=True, help_text="The run's status; null when not_permitted."
+        allow_null=True, help_text="The run's status; null when not_permitted or failed."
     )
 
 
@@ -48,3 +48,4 @@ class ExecutionAbortResponseSerializer(serializers.Serializer):
     aborted = serializers.IntegerField()
     already_finished = serializers.IntegerField()
     not_permitted = serializers.IntegerField()
+    failed = serializers.IntegerField()

@@ -255,6 +255,13 @@ def _get_performance_stats() -> dict:
     return stats
 
 
+def _was_stopped(execution_context: dict[str, Any] | None) -> bool:
+    """True when the run was already STOPPED (aborted) when this callback fetched it."""
+    execution = (execution_context or {}).get("execution") or {}
+    stopped: bool = execution.get("status") == ExecutionStatus.STOPPED.value
+    return stopped
+
+
 def _determine_execution_status_unified(
     file_batch_results: list[dict[str, Any]],
     api_client: InternalAPIClient,
@@ -323,6 +330,14 @@ def _determine_execution_status_unified(
     failed_files = aggregated_results.get("failed_files", 0)
     total_files = aggregated_results.get("total_files", 0)
     successful_files = aggregated_results.get("successful_files", 0)
+
+    # An abort ended this run, whatever its file counts say.
+    if _was_stopped(execution_context):
+        logger.warning(
+            f"Execution {execution_id} was stopped - {successful_files} of "
+            f"{total_files} files finished"
+        )
+        return aggregated_results, ExecutionStatus.STOPPED.value, expected_files
 
     # Step 5: Unified status determination with timeout failure detection
 
@@ -605,6 +620,15 @@ def _handle_notifications_unified(
     Returns:
         Notification result dictionary
     """
+    # The abort already sent these, so a run with a dead worker notifies too.
+    if status == ExecutionStatus.STOPPED.value:
+        logger.info(f"Execution {execution_id} was stopped - notifications already sent")
+        return {
+            "status": "skipped",
+            "reason": "sent_by_abort",
+            "message": "Notifications were sent when the execution was aborted",
+        }
+
     try:
         if not pipeline_id:
             logger.warning("No pipeline_id provided - skipping notifications")
@@ -1305,11 +1329,12 @@ def _track_subscription_usage_if_available(
     """Track subscription usage for successful file executions if plugin available.
 
     This is a non-blocking operation - errors are logged but do not fail the workflow.
-    Only tracks usage for completed workflows with successful file executions.
+    Only tracks usage for completed or stopped workflows with successful file
+    executions; files that finished before an abort are billed.
 
     Args:
         context: Callback execution context with organization and execution IDs
-        execution_status: Final execution status (should be COMPLETED for tracking)
+        execution_status: Final execution status (COMPLETED or STOPPED for tracking)
         successful_files: Successful file count from the aggregated batch results,
             used only to flag a fetch that came back without file-execution rows
 
@@ -1317,8 +1342,11 @@ def _track_subscription_usage_if_available(
         dict with status, committed_count, message if tracking attempted
         None if plugin not available or workflow not completed
     """
-    # Only track for completed workflows
-    if execution_status != ExecutionStatus.COMPLETED.value:
+    # Only track for workflows whose finished files stand
+    if execution_status not in (
+        ExecutionStatus.COMPLETED.value,
+        ExecutionStatus.STOPPED.value,
+    ):
         logger.debug(
             f"Skipping subscription tracking for execution {context.execution_id} "
             f"with status {execution_status}"
@@ -1954,6 +1982,7 @@ def _publish_final_workflow_ui_logs(
                 total_files=total_files,
                 successful_files=successful_files,
                 failed_files=failed_files,
+                stopped=execution_status == ExecutionStatus.STOPPED.value,
             )
 
             logger.info(
@@ -2028,6 +2057,7 @@ def _publish_final_workflow_ui_logs_api(
                 total_files=total_files,
                 successful_files=successful_files,
                 failed_files=failed_files,
+                stopped=execution_status == ExecutionStatus.STOPPED.value,
             )
 
             logger.info(

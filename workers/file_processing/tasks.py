@@ -19,6 +19,7 @@ from queue_backend.pg_barrier import (
 
 # Import shared worker infrastructure
 from shared.api import InternalAPIClient
+from shared.clients.base_client import InternalAPIClientError
 
 # Import from shared worker modules
 from shared.constants import Account
@@ -240,7 +241,8 @@ class _TerminalExecutionSkip(Exception):
 
     The resurrection this prevents exists because the **reaper** can mark an
     in-flight execution terminal (and tear its barrier down) while a batch for it
-    is still in flight or waiting to be redelivered.
+    is still in flight or waiting to be redelivered. An abort can mark it STOPPED
+    the same way, but leaves the barrier armed.
 
     This is a validate-first *narrowing*, not a transactional guarantee: the
     status read and the later ``EXECUTING`` write are not atomic, so a reaper
@@ -289,7 +291,9 @@ def _raise_if_execution_terminal(
         )
 
 
-def _terminal_skip_result(batch_data: FileBatchData) -> dict[str, Any]:
+def _terminal_skip_result(
+    batch_data: FileBatchData, status: str | None = None
+) -> dict[str, Any]:
     """Batch result for a batch skipped because its execution is already terminal.
 
     The files were never attempted; they are counted as failed (not left
@@ -297,8 +301,9 @@ def _terminal_skip_result(batch_data: FileBatchData) -> dict[str, Any]:
     so reporting ``failed=total`` keeps a consumer that ever aggregates this
     result from rendering the files as perpetually in-progress. The
     ``SKIPPED_TERMINAL_EXECUTION_KEY`` marker tells ``run_batch_with_barrier`` to
-    bypass the barrier decrement (a terminal execution's barrier is by definition
-    already torn down).
+    bypass the barrier decrement (the reaper already tore that barrier down). A
+    STOPPED run's barrier is still armed, so it gets no marker: the batch counts
+    down and the last one fires the callback, which cleans up.
     """
     n_files = len(batch_data.files)
     result = BatchExecutionResult(
@@ -308,8 +313,28 @@ def _terminal_skip_result(batch_data: FileBatchData) -> dict[str, Any]:
         execution_time=0.0,
         organization_id=batch_data.file_data.organization_id,
     ).to_dict()
-    result[SKIPPED_TERMINAL_EXECUTION_KEY] = True
+    if status != ExecutionStatus.STOPPED.value:
+        result[SKIPPED_TERMINAL_EXECUTION_KEY] = True
     return result
+
+
+def _clear_active_file_markers(batch_data: FileBatchData) -> None:
+    """Clear a skipped batch's active-file markers, which pre-create never reached.
+
+    Without this, a re-run leaves these files out until the markers expire.
+    """
+    from shared.workflow.execution.active_file_manager import cleanup_active_file_cache
+
+    uuids = [
+        uuid
+        for item in batch_data.files
+        if (uuid := _file_item_hash(item).get("provider_file_uuid"))
+    ]
+    cleanup_active_file_cache(
+        provider_file_uuids=uuids,
+        workflow_id=batch_data.file_data.workflow_id,
+        logger_instance=logger,
+    )
 
 
 def _run_batch_stages(
@@ -333,10 +358,11 @@ def _run_batch_stages(
         logger.warning(
             f"[exec:{skip.execution_id}] Skipping batch of "
             f"{len(batch_data.files)} file(s): execution already terminal "
-            f"({skip.status}) — stale/redelivered after reaper-recovery; not "
-            f"reprocessing."
+            f"({skip.status}); not processing."
         )
-        return _terminal_skip_result(batch_data)
+        if skip.status == ExecutionStatus.STOPPED.value:
+            _clear_active_file_markers(batch_data)
+        return _terminal_skip_result(batch_data, skip.status)
 
     # Step 3: Handle manual review logic
     # context = _handle_manual_review_logic(context)
@@ -685,14 +711,29 @@ def _file_item_name(file_item: Any) -> str | None:
     return name
 
 
+def _file_item_hash(file_item: Any) -> dict[str, Any]:
+    """Hash data from a batch file item in any of its formats; empty if none."""
+    data = file_item
+    if isinstance(file_item, (list, tuple)) and len(file_item) == 2:
+        data = file_item[1]
+    return data if isinstance(data, dict) else {}
+
+
+def _file_item_identifier(file_item: Any) -> str | None:
+    """The ``uuid:path`` id the duplicate skip lists use; None without both parts."""
+    data = _file_item_hash(file_item)
+    uuid, path = data.get("provider_file_uuid"), data.get("file_path")
+    return f"{uuid}:{path}" if uuid and path else None
+
+
 def _is_execution_stopped(api_client: InternalAPIClient, execution_id: str) -> bool:
     """True when the execution was stopped (aborted) while this batch runs.
 
-    Fails open: if the check itself fails, the next file is processed.
+    Fails open on an API failure: the next file is processed.
     """
     try:
         status = api_client.get_workflow_execution_status(execution_id)
-    except Exception as error:
+    except InternalAPIClientError as error:
         logger.warning(
             "[exec:%s] status check before the next file failed (%s); "
             "processing it anyway",
@@ -700,30 +741,44 @@ def _is_execution_stopped(api_client: InternalAPIClient, execution_id: str) -> b
             error,
         )
         return False
+    if not status:
+        logger.warning(
+            "[exec:%s] status check before the next file returned no status; "
+            "processing it anyway",
+            execution_id,
+        )
     stopped: bool = status == ExecutionStatus.STOPPED.value
     return stopped
 
 
 def _mark_file_stopped(api_client: InternalAPIClient, file_execution_id: str) -> None:
-    """Mark one unprocessed file row STOPPED; a failed write is logged, not raised."""
-    try:
-        api_client.update_file_execution_status(
-            file_execution_id=file_execution_id,
-            status=ExecutionStatus.STOPPED.value,
-            error_message="Not processed: execution was stopped",
-        )
-    except Exception as error:
+    """Mark one unprocessed file row STOPPED, logging a failed write."""
+    # An APIResponse, whatever the facade's annotation says.
+    response: Any = api_client.update_file_execution_status(
+        file_execution_id=file_execution_id,
+        status=ExecutionStatus.STOPPED.value,
+        error_message="Not processed: execution was stopped",
+    )
+    if not response.success:
         logger.warning(
-            "Failed to mark file execution %s STOPPED: %s", file_execution_id, error
+            "Failed to mark file execution %s STOPPED: %s",
+            file_execution_id,
+            response.error,
         )
 
 
 def _stop_remaining_files(
     context: WorkflowContextData, remaining: list[Any], result: FileBatchResult
 ) -> None:
-    """Count the batch's unprocessed files as failed and mark their rows STOPPED."""
+    """Count the batch's unprocessed files as failed and mark their rows STOPPED.
+
+    Files already completed in this execution stay uncounted, as in the main loop.
+    """
     api_client = context.organization_context.api_client
+    already_completed = (context.metadata or {}).get("skipped_already_completed", [])
     for file_item in remaining:
+        if _file_item_identifier(file_item) in already_completed:
+            continue
         result.increment_failure()
         name = _file_item_name(file_item)
         pre_created = context.pre_created_file_executions.get(name) if name else None

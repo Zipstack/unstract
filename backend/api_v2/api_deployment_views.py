@@ -29,6 +29,7 @@ from utils.enums import CeleryTaskState
 from utils.hubspot_notify import notify_hubspot_event
 from utils.pagination import CustomPagination
 from workflow_manager.workflow_v2.dto import ExecutionResponse
+from workflow_manager.workflow_v2.enums import ExecutionStatus
 from workflow_manager.workflow_v2.models.execution import WorkflowExecution
 
 from api_v2.api_deployment_dto_registry import ApiDeploymentDTORegistry
@@ -171,7 +172,10 @@ class DeploymentExecution(views.APIView):
 
         # Determine response status based on execution result
         execution_status = response.get("execution_status", "")
-        has_error = response.get("error") or execution_status == "ERROR"
+        has_error = response.get("error") or execution_status in (
+            ExecutionStatus.ERROR.value,
+            ExecutionStatus.STOPPED.value,
+        )
 
         if has_error:
             # Check for tool not found in registry error - return 500 Internal Server Error

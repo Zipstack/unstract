@@ -10,6 +10,7 @@ from typing import Any
 from unittest.mock import patch
 
 from api_v2.models import APIDeployment
+from django.test import override_settings
 from django.utils import timezone
 from permissions.roles import ResourceRole
 from pipeline_v2.models import Pipeline
@@ -24,11 +25,12 @@ ADMIN_PREDICATE = (
     "tenant_account_v2.organization_member_service."
     "OrganizationMemberService.is_user_organization_admin"
 )
-# Past the default 9000 s threshold, and well inside it.
+# Past the 9000 s threshold set below, and well inside it.
 OLD = timedelta(hours=3)
 RECENT = timedelta(minutes=1)
 
 
+@override_settings(STUCK_EXECUTION_THRESHOLD_SECONDS=9000)
 class StuckAbortTestBase(GroupSharingTestBase):
     def setUp(self) -> None:
         super().setUp()
