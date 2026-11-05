@@ -112,6 +112,28 @@ class SessionSocketsTest(SimpleTestCase):
         self.disconnect.assert_has_calls([call("sid-1"), call("sid-2")], any_order=True)
         self.assertEqual(self.redis.smembers(f"session_sockets:{SESSION}"), set())
 
+    def test_a_socket_whose_session_ends_while_joining_leaves_the_user_room(
+        self,
+    ) -> None:
+        with (
+            patch.object(log_events, "_get_user_id", side_effect=["5", None]),
+            patch.object(log_events.sio, "leave_room") as leave_room,
+        ):
+            self._connect("sid-1")
+
+        self.enter_room.assert_any_call("sid-1", "user:5")
+        leave_room.assert_called_once_with("sid-1", "user:5")
+
+    def test_a_socket_whose_session_stays_valid_keeps_the_user_room(self) -> None:
+        with (
+            patch.object(log_events, "_get_user_id", return_value="5"),
+            patch.object(log_events.sio, "leave_room") as leave_room,
+        ):
+            self._connect("sid-1")
+
+        self.enter_room.assert_any_call("sid-1", "user:5")
+        leave_room.assert_not_called()
+
     def test_a_socket_that_cannot_be_tracked_is_refused(self) -> None:
         # Ending its session could not reach it, so it must join no room.
         with patch.object(

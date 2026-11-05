@@ -100,7 +100,15 @@ def connect(sid: str, environ: Any, auth: Any) -> None:
         user_id = _get_user_id(sid, session_id)
         if user_id:
             # Per-user events, such as the inbox unread count.
-            sio.enter_room(sid, f"user:{user_id}")
+            user_room = f"user:{user_id}"
+            sio.enter_room(sid, user_room)
+            # Checked again after joining: a sign-out that commits between the
+            # check above and the join empties this room before the socket is in
+            # it. Either the socket joined first and that emptying evicts it, or
+            # it joined after and this check sees the session ended.
+            if _get_user_id(sid, session_id) != user_id:
+                logger.info(f"Session of socket {sid} ended while joining; left")
+                sio.leave_room(sid, user_room)
         else:
             logger.info(
                 f"No signed-in user for the session of socket {sid}; no user room"
