@@ -69,15 +69,30 @@ it("draws an isolated point only where neither plotted neighbour has a value", (
   expect(at([{ y: 5 }], 0)).not.toBeNull(); // a single row
 });
 
-it("anchors a line marker's label inward at the first and last point, centred elsewhere", () => {
+it("reads a line marker's label inward only where, centred, it would cross the plot's edge", () => {
   const Dot = markerDot("var(--chart-1)", "l");
-  const points = [{ y: 1 }, { y: 2 }, { y: 3 }];
-  const anchor = (index: number, of = points) =>
-    svg(<Dot cx={50} cy={20} index={index} points={of} payload={{ l: "x" }} />)
-      .querySelector("text")
-      ?.getAttribute("text-anchor");
-  expect(anchor(0)).toBe("start");
-  expect(anchor(1)).toBe("middle");
-  expect(anchor(2)).toBe("end");
-  expect(anchor(0, [{ y: 1 }])).toBe("middle");
+  // Plot edges at x 0 and 300; "peak" is about 28 wide, so 14 either side.
+  const points = [
+    { x: 0, y: 1 },
+    { x: 150, y: 2 },
+    { x: 300, y: 3 },
+  ];
+  const text = (cx: number, label = "peak", of = points) =>
+    svg(
+      <Dot cx={cx} cy={20} points={of} payload={{ l: label }} />,
+    ).querySelector("text");
+  expect(text(0)?.getAttribute("text-anchor")).toBe("start");
+  expect(text(0)?.getAttribute("x")).toBe("-4");
+  expect(text(150)?.getAttribute("text-anchor")).toBe("middle");
+  expect(text(150)?.getAttribute("x")).toBe("150");
+  expect(text(300)?.getAttribute("text-anchor")).toBe("end");
+  expect(text(300)?.getAttribute("x")).toBe("304");
+  // Near, not on, an edge: a long label still reads inward.
+  const long = "10 Aug · 2,981 pages"; // about 140 wide
+  expect(text(40, long)?.getAttribute("text-anchor")).toBe("start");
+  expect(text(260, long)?.getAttribute("text-anchor")).toBe("end");
+  // A single row sits mid-plot.
+  expect(
+    text(150, "peak", [{ x: 150, y: 1 }])?.getAttribute("text-anchor"),
+  ).toBe("middle");
 });

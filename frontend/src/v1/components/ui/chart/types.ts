@@ -64,7 +64,11 @@ export type ChartTone =
   | "muted";
 
 export type ChartSeries<Row extends ChartDatum> = Readonly<{
-  /** The field of each row that holds this series' value. */
+  /**
+   * The field of each row that holds this series' value. Must not start with
+   * `__marker`, which the chart reserves for markers (a chart with such a key
+   * draws no markers, and warns).
+   */
   key: NumericKey<Row>;
   /** Shown in the legend, the tooltip, the summary and the data table. */
   label: string;
@@ -78,9 +82,11 @@ export type ChartSeries<Row extends ChartDatum> = Readonly<{
 
 /**
  * A highlighted point on a series (peak day, spike). Drawn from the series,
- * never as a Recharts ReferenceLine or ReferenceDot: see `markers.ts`,
- * whose `keptMarkers` states which markers are drawn; the rest are neither
- * drawn nor read out in the summary.
+ * never as a Recharts ReferenceLine or ReferenceDot. A marker is drawn and
+ * read out in the summary only when its series is charted, its index is an
+ * integer row of `data`, the series has a value on that row, no earlier
+ * marker labels that point, and no series key starts with `__marker`;
+ * otherwise it is dropped with a console warning.
  */
 export type ChartMarker<Row extends ChartDatum> = Readonly<{
   /** Row index in `data`, so repeated category labels stay unambiguous. */

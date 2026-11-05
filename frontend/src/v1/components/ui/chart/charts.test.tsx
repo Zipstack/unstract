@@ -697,6 +697,30 @@ describe("cartesian options", () => {
     }
   });
 
+  it("reads edge marker labels inward on a real line and area chart", () => {
+    for (const Chart of [LineChart, AreaChart]) {
+      const { container, unmount } = renderV1(
+        <Chart
+          {...props({
+            markers: [
+              { index: 0, series: "pages", label: "first" },
+              { index: 1, series: "failed", label: "m" },
+              { index: 2, series: "pages", label: "last" },
+            ],
+          })}
+        />,
+      );
+      const anchors = Object.fromEntries(
+        [...container.querySelectorAll("[data-slot=chart-marker]")].map((m) => [
+          m.textContent,
+          m.querySelector("text")?.getAttribute("text-anchor"),
+        ]),
+      );
+      expect(anchors).toEqual({ first: "start", m: "middle", last: "end" });
+      unmount();
+    }
+  });
+
   it("separates stacked segments with a card-coloured stroke", () => {
     const { container } = renderV1(<StackedBarChart {...props()} />);
     const segments = container.querySelectorAll(".recharts-bar-rectangle path");

@@ -13,10 +13,10 @@ import type { ReactElement } from "react";
 type Anchor = "start" | "middle" | "end";
 
 /**
- * A marker: a dot ringed in the card colour, its label above. The label is
- * centred on the dot, except at the first and last point of a line or area,
- * which sit on the plot's edges: there it reads inward from the dot, so it
- * stays inside the chart instead of being cut off or covering the axis.
+ * A marker: a dot ringed in the card colour, its label above, centred on the
+ * dot. On a line or area, whose first and last rows sit on the plot's edges,
+ * a label that would cross an edge if centred reads inward from the dot
+ * instead (see `labelAnchor`), so it is not cut off or drawn over the axis.
  */
 function MarkerMark({
   x,
@@ -63,6 +63,42 @@ type PointProps = Readonly<{
   payload?: unknown;
 }>;
 
+// Caption type is 12px and averages about 0.6em a character. An estimate is
+// enough to tell whether a centred label would cross the plot's edge.
+const LABEL_CHAR_WIDTH = 7;
+
+/**
+ * Where a line or area marker's label reads from: `start` (rightward) when,
+ * centred, it would cross the plot's left edge, `end` when it would cross
+ * the right, else `middle`. The edges are the first and last row's x, which
+ * a category axis without bars puts on the plot's bounds. A single row sits
+ * in the middle of the plot, so it stays centred.
+ */
+export function labelAnchor(
+  cx: number,
+  label: string,
+  points: readonly Point[] | undefined,
+): Anchor {
+  const left = points?.[0]?.x;
+  const right = points?.[points.length - 1]?.x;
+  if (
+    points === undefined ||
+    points.length < 2 ||
+    typeof left !== "number" ||
+    typeof right !== "number"
+  ) {
+    return "middle";
+  }
+  const half = (label.length * LABEL_CHAR_WIDTH) / 2;
+  if (cx - left < half) {
+    return "start";
+  }
+  if (right - cx < half) {
+    return "end";
+  }
+  return "middle";
+}
+
 /**
  * `dot` for a line or area's marker series: a marker on each marked row,
  * labelled from the row's `labelKey` field. Unmarked rows hold null for the
@@ -72,7 +108,6 @@ export function markerDot(color: string, labelKey: string) {
   return function MarkerDot({
     cx,
     cy,
-    index,
     points,
     payload,
   }: PointProps): ReactElement {
@@ -83,15 +118,7 @@ export function markerDot(color: string, labelKey: string) {
     if (cx === undefined || cy === undefined || typeof label !== "string") {
       return <g />;
     }
-    const count = points?.length ?? 0;
-    const anchor: Anchor =
-      count < 2 || index === undefined
-        ? "middle"
-        : index === 0
-          ? "start"
-          : index === count - 1
-            ? "end"
-            : "middle";
+    const anchor = labelAnchor(cx, label, points);
     return (
       <MarkerMark x={cx} y={cy} color={color} label={label} anchor={anchor} />
     );
