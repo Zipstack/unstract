@@ -21,7 +21,7 @@ def server() -> Iterator[Server]:
     responses = []
 
     class Handler(BaseHTTPRequestHandler):
-        def do_POST(self) -> None:
+        def do_POST(self) -> None:  # noqa: N802 - required by BaseHTTPRequestHandler
             data = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
             requests.append((self.path, self.headers.get("Authorization"), data))
             status, body = (
@@ -44,7 +44,7 @@ def server() -> Iterator[Server]:
             self.end_headers()
             self.wfile.write(json.dumps(body).encode())
 
-        def do_GET(self) -> None:
+        def do_GET(self) -> None:  # noqa: N802 - required by BaseHTTPRequestHandler
             requests.append((self.path, self.headers.get("Authorization"), None))
             self.send_response(200)
             self.end_headers()
@@ -184,3 +184,22 @@ def test_http_failure_hides_query_credentials(server: Server) -> None:
             "image", fs=MemoryStorage(image_bytes())
         )
     assert token not in "".join(traceback.format_exception(exc.value))
+
+
+@pytest.mark.parametrize("mode", ["RGBA", "P"])
+def test_transparency_is_composited_on_white(server: Server, mode: str) -> None:
+    url, requests, _ = server
+    image = Image.new("RGBA", (2, 1), (0, 0, 0, 0))
+    image.putpixel((1, 0), (0, 0, 0, 255))
+    if mode == "P":
+        image = image.convert("P", palette=Image.Palette.ADAPTIVE)
+    data = io.BytesIO()
+    image.save(data, format="PNG")
+    MiniCPMOCR({"base_url": url}).process(
+        "transparent.png", fs=MemoryStorage(data.getvalue())
+    )
+    body = requests[0][2]
+    encoded = body["messages"][0]["content"][0]["image_url"]["url"].split(",")[1]
+    with Image.open(io.BytesIO(base64.b64decode(encoded))) as actual:
+        assert actual.convert("RGB").getpixel((0, 0)) == (255, 255, 255)
+        assert actual.convert("RGB").getpixel((1, 0)) == (0, 0, 0)

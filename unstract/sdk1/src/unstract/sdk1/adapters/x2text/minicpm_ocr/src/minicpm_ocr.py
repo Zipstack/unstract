@@ -185,7 +185,10 @@ class MiniCPMOCR(X2TextAdapter):
                         "Supported input formats are PDF, PNG, JPEG and WebP"
                     )
                 buffer = io.BytesIO()
-                image.convert("RGB").save(buffer, format="PNG")
+                rgba = image.convert("RGBA")
+                background = Image.new("RGB", rgba.size, "white")
+                background.paste(rgba, mask=rgba.getchannel("A"))
+                background.save(buffer, format="PNG")
                 return self._request(buffer.getvalue())
         except (UnidentifiedImageError, OSError, Image.DecompressionBombError) as exc:
             raise AdapterError("Unable to read input image") from exc
