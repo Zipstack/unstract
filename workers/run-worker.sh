@@ -248,6 +248,12 @@ unset _p
 declare -A OPTIN_WORKERS=(
     ["$PG_QUEUE_CONSUMER_TYPE"]=1
     ["$PG_QUEUE_REAPER_TYPE"]=1
+    # The CELERY sandbox worker. It is in WORKERS (so `run-worker.sh sandbox`
+    # works) but deliberately not in core_workers, because the shipped role is
+    # the PG consumer `pg-sandbox` and nothing launches the Celery form -- see
+    # workers/sample.env. Without this entry `--status` reported it STOPPED
+    # after every `all`, which is exactly what this map exists to prevent.
+    ["$SANDBOX_WORKER_TYPE"]=1
 )
 
 # Function to display usage
@@ -462,7 +468,7 @@ discover_pluggable_workers() {
                 # four pluggable workers and ships no run-worker.sh of its own,
                 # so the second one discovered was handed 8092 -- the sandbox's
                 # fixed slot, which the comment there calls reserved.
-                candidate=$((8091 + discovered_count))
+                local candidate=$((8091 + discovered_count))
                 while [[ -n "${_CLAIMED_HEALTH_PORTS[$candidate]:-}" ]]; do
                     candidate=$((candidate + 1))
                 done

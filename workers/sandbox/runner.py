@@ -10,9 +10,9 @@ Two independent kill mechanisms bound runaway children:
 - **Primary — wall-clock timeout.** ``proc.wait(timeout=timeout)`` is the
   deterministic path: at ``timeout`` wall-clock seconds we kill the child's
   whole process group (it is a session leader, so grandchildren die too) and
-  return a "timed out" ``RunResult``. The session is created by Popen's
-  ``start_new_session=True``, which is stated once where it is passed and
-  deliberately not restated here — see the NOTE in ``_limits._apply``.
+  return a "timed out" ``RunResult``. The session comes from Popen's
+  ``start_new_session=True``; ``_kill_group`` is where that dependency is
+  documented, because it is the function whose correctness needs it.
 - **Backstop — RLIMIT_CPU.** Set to ``timeout + grace`` (never less than
   ``timeout + 1``) CPU-seconds — strictly *above* the wall-clock timeout —
   so it only fires if the wall-clock path somehow fails to. Setting it equal
@@ -25,6 +25,7 @@ Two independent kill mechanisms bound runaway children:
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import os
@@ -77,17 +78,20 @@ class RunResult:
     #: branch that never fires, a write to the wrong path, a swallowed
     #: exception -- so the two need to be distinguishable.
     #:
-    #: This field supplies the DATA to tell them apart without taking the
-    #: POLICY decision, which belongs to the cloud `agentic_kv` engine: it is
-    #: what must choose whether an empty run is an error. Adding it is purely
-    #: additive, so a consumer that does not read it is unaffected -- which is
-    #: why the earlier note here, deferring the whole thing on the grounds
-    #: that "adding a field to RunResult ... is the contract the cloud engine
-    #: consumes", was wrong about its own premise and left the consumer with
-    #: nothing to decide from. Note `executor/tasks.py` already applies the
-    #: opposite default to BILLING for `kv_extract` ("a successful run
-    #: emitting nothing is unambiguously a broken chain"); this field is what
-    #: lets the engine reconcile the two rather than guess.
+    #: This field carries the DATA and takes no POLICY decision: whether an
+    #: empty run is an error is the cloud `agentic_kv` engine's to choose.
+    #: `tasks.py` forwards it in the task result dict, which is the only thing
+    #: that crosses to that engine -- a field set here and not forwarded there
+    #: is invisible to the consumer it exists for.
+    #:
+    #: **Meaningful when `success` is True.** Elsewhere it holds the `False`
+    #: default, which is not a claim that the child wrote nothing: the run did
+    #: not get far enough for the question to mean anything.
+    #:
+    #: `executor/tasks.py` applies the opposite default to BILLING for
+    #: `kv_extract` ("a successful run emitting nothing is unambiguously a
+    #: broken chain"). That asymmetry is unresolved and is the engine's to
+    #: resolve; this field is what it can resolve it with.
     wrote_output: bool = False
 
 
@@ -137,10 +141,35 @@ def _pgid_of(proc) -> int | None:
     have been reaped (where `os.getpgid` fails with ESRCH). Returns None when
     the child is already gone, which `_kill_group` treats as nothing to kill.
     """
-    try:
+    # Logged, not silent: `_kill_group` treats None as nothing to kill, so a
+    # failure here makes the whole timeout kill a no-op while the result still
+    # says `execution timed out` -- the identical outcome `_kill_group`'s
+    # docstring warns about for a lost `start_new_session=True`, and the one
+    # the previous bare `except` left no trace of.
+    with _swallowed(
+        "sandbox: could not read the child's pgid; a timeout kill would be a no-op"
+    ):
         return os.getpgid(proc.pid)
+    return None
+
+
+@contextlib.contextmanager
+def _swallowed(note: str):
+    """Swallow an exception, but never silently.
+
+    A convention rather than a handler per site, because the rule -- "a swallow
+    in this harness logs its cause" -- was stated in this file and then
+    forgotten at six of ten sites, each of which turned a harness fault into
+    either silence or a message blaming the submitted code. With this, the log
+    is what you get by default and silence is what you have to ask for.
+
+    Does NOT suppress the control-flow: callers still supply their own
+    substitute value after the block, exactly as they did with a bare `except`.
+    """
+    try:
+        yield
     except Exception:
-        return None
+        logger.warning(note, exc_info=True)
 
 
 def _kill_group(pgid: int | None, note: str) -> None:
@@ -215,11 +244,14 @@ def _result_from_output(
         # Correctness: `len(raw.encode())` measured the re-encoded decode, and
         # `errors="replace"` turns each undecodable byte into U+FFFD, which
         # costs 3 bytes back -- so a file of 3 invalid bytes measured as 9, up
-        # to 3x its real size. Since RLIMIT_FSIZE is set to this same value,
-        # a child that genuinely tries to exceed the cap dies on the write and
-        # is reported as `exit N` long before this branch, so the ONLY input
-        # that ever reached this return was a file WITHIN the cap that happened
-        # to be heavily non-UTF-8 -- told, wrongly, that it was too big.
+        # to 3x its real size. RLIMIT_FSIZE is set to this same value, so a
+        # child that tries to exceed the cap normally dies on the write and is
+        # reported as `exit N` before this branch -- which is why the input
+        # that reached this return in practice was a file WITHIN the cap that
+        # happened to be heavily non-UTF-8, told wrongly it was too big. The
+        # branch is NOT dead: `_limits` swallows a failed `setrlimit` per
+        # limit, so wherever RLIMIT_FSIZE is not honoured this check is the
+        # only thing left. Do not delete it as unreachable.
         #
         # Memory: reading first made the parent's peak scale with an operator
         # knob (`SANDBOX_MAX_OUTPUT_BYTES` has a floor but no ceiling), and at
@@ -237,6 +269,8 @@ def _result_from_output(
                 stdout=stdout,
                 stderr=stderr,
                 error="execution failed: output exceeds size cap",
+                # True here by definition: size > cap >= 1.
+                wrote_output=wrote_output,
             )
         raw = out.read_text(encoding="utf-8", errors="replace")
         rows = 0
@@ -273,6 +307,7 @@ def _result_from_output(
                     error=f"execution failed: output exceeds row cap of {max_rows} rows",
                 )
     except ValueError:
+        logger.warning("sandbox: output.jsonl is not valid JSONL", exc_info=True)
         return RunResult(
             success=False,
             stdout=stdout,
@@ -280,6 +315,10 @@ def _result_from_output(
             error="execution failed: invalid JSONL output",
         )
     except Exception:
+        # ENOSPC on the tmpfs, a vanished tempdir and an EIO all land here, and
+        # `out.stat()` routed a fourth cause in. Without this they were one
+        # unlogged string reported to the engine as a codegen failure.
+        logger.warning("sandbox: could not read back output.jsonl", exc_info=True)
         return RunResult(
             success=False,
             stdout=stdout,
@@ -375,6 +414,15 @@ def _run_code_unguarded(
     # nondeterministic error string for the same input.
     cpu_seconds = max(timeout + grace, timeout + 1)
 
+    # ACCEPTED, recorded here rather than in a PR thread: a failed rmtree leaks
+    # the per-job directory -- `script.py`, `input.json` with tenant data,
+    # `output.jsonl` -- onto a /tmp that `gate.py`'s layer-3 note says
+    # co-resident lanes of different tenants share, and `ignore_cleanup_errors`
+    # offers no hook to notice. Closing it needs `mkdtemp` plus an explicit
+    # try/finally with an `onerror` logger, which restructures this function's
+    # cleanup; left as-is so the RunResult promise below stays simple, and
+    # written down so the exposure is not rediscovered as new.
+    #
     # ignore_cleanup_errors: on 3.12 __exit__ defaults to raising, so an rmtree
     # failure (ENOSPC, a child still writing) would discard an already-computed
     # RunResult and propagate -- the contract break this function exists to avoid.
@@ -389,22 +437,8 @@ def _run_code_unguarded(
         inp.write_text(input_json)
         # Pre-created so `_result_from_output` always has a file to read.
         #
-        # KNOWN AMBIGUITY, recorded rather than fixed here: a child that exits 0
-        # without writing is indistinguishable from a transform that
-        # legitimately matched no rows -- both are
-        # `success=True, rows_jsonl="", rows_written=0`. For LLM-generated code
-        # the first is ordinary (a branch that never fires, a write to the wrong
-        # path, a swallowed exception), and the caller then sees an empty
-        # extraction reported as a clean success with empty stderr.
-        #
-        # Distinguishing them means adding a field to RunResult, which is the
-        # contract the cloud `agentic_kv` engine consumes -- so the decision
-        # belongs with that consumer, not here: it is what must choose whether
-        # "exited 0, wrote nothing" is an error. Tracked for that side rather
-        # than changed unilaterally. Note this diff applies the OPPOSITE
-        # reasoning to billing (`executor/tasks.py`: "a successful run emitting
-        # nothing is unambiguously a broken chain"), which is the asymmetry to
-        # resolve when it is picked up.
+        # Size 0 therefore means the child wrote nothing at all, which is
+        # what `RunResult.wrote_output` reports; the reasoning lives there.
         out.write_text("")
 
         # Child stdout/stderr go to FILES in the per-job tempdir, not pipes.

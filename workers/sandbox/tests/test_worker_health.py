@@ -3,7 +3,16 @@
 Every sibling worker (executor, ide_callback, ...) registers a custom health
 check via ``WorkerRegistry.register_health_check``; before this fix the
 sandbox worker registered none, so ``get_health_checks(WorkerType.SANDBOX)``
-returned ``[]`` and port 8092 reported bare liveness only.
+returned ``[]``.
+
+SCOPE: this covers the Celery worker-builder path, which is what consumes a
+registered check. The SHIPPED service is the PG consumer, whose ``LivenessServer``
+answers poll progress and never consults ``WorkerRegistry.get_health_checks`` --
+and ``sandbox/worker.py`` is imported by nothing but this test, since the root
+``worker.py`` loads only ``<dir>/tasks.py``. So port 8092 on the deployed service
+still reports bare liveness; an earlier version of this docstring claimed
+otherwise. Wiring the registry into the PG consumer's probe is a framework change
+affecting every worker and belongs in its own ticket.
 """
 
 from shared.enums.worker_enums import WorkerType

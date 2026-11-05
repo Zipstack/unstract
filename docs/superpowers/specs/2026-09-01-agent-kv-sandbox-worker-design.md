@@ -2,14 +2,17 @@
 
 > **SUPERSEDED IN PART — read `docs/agent-kv-architecture.md` first.** This is a
 > dated design record (approved 2026-09-01), not a description of what shipped.
-> Three of its statements are now known false and are corrected in the
-> architecture doc and in `workers/sandbox/runner.py`:
+> **Four** of its statements are now known false. Three are corrected in the
+> architecture doc; the fourth -- the CPU-rlimit / wall-clock-kill order,
+> annotated at §2 below -- is corrected by `workers/sandbox/runner.py`'s module
+> docstring, which is the only one of the four that file speaks to:
 > the **broker** egress rule and broker credential (the sandbox moved onto the
 > Postgres queue transport, so there is no broker rule and no broker credential
 > at all); the **"no secrets beyond"** posture (the pod mounts `[database]`,
 > because on the PG transport the queue IS Postgres — see R12); and the
 > **numeric `runAsUser`** listed below as outstanding, which the chart now sets
-> to 999. Each is annotated in place below. Do not copy a values block or an
+> to 999; and the **kill order**, where the approved text had the group kill and
+> the CPU backstop the wrong way round. Each is annotated in place below. Do not copy a values block or an
 > acceptance criterion out of this file without checking it against the chart.
 
 Date: 2026-09-01. Status: approved design (brainstormed with Arun; approach and all
@@ -62,7 +65,11 @@ what the caller sent:
 
 Reply: `{"success": bool, "rows_jsonl": "<inline, cap SANDBOX_MAX_OUTPUT_BYTES (1 MiB
 default)>", "rows_written": int, "stdout": "<4 KiB trunc>", "stderr": "<4 KiB trunc>",
-"error": "<user-safe>"}`.
+"error": "<user-safe>", "wrote_output": bool}`.
+**SUPERSEDED-CORRECTION:** `wrote_output` is not in the approved shape. It was
+added so the engine can tell "exited 0 and wrote nothing" from "matched no rows"
+(see `RunResult.wrote_output`), and it is additive -- a consumer that ignores it
+is unaffected.
 
 Inline payloads keep object storage entirely out of the sandbox's reach: it sees only
 record + code — never the document, the schema, or tenant identity. At-least-once

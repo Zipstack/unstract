@@ -42,9 +42,13 @@ OPERATION_TABLE_EXTRACT_API = "table_extract_api"
 #: reads this rather than hardcoding one pair, so adding an extractor is one
 #: entry here plus its options serializer, stage list and -- where the executor
 #: requires adapters -- its adapters serializer, AND its entry in the
-#: acceptance gate (see below -- an earlier version of this list omitted the
-#: gate, which is how a new extractor would inherit the 202-into-a-dead-queue
-#: shape this very comment warns about). `SUPPORTED_EXTRACTORS` is derived from
+#: acceptance gate (`_EXTRACTOR_ENABLE_FLAGS` in `execution_serializers.py` --
+#: a setting name to gate it, or `_UNGATED` to accept it everywhere, with
+#: `test_every_routed_extractor_has_a_gate_entry` deriving the requirement from
+#: this table so the step cannot be skipped). An earlier revision named this
+#: step while the gate was a single `if` on one hard-coded name, so there was
+#: nowhere to put the entry and a new extractor inherited the
+#: 202-into-a-dead-queue shape this very comment warns about. `SUPPORTED_EXTRACTORS` is derived from
 #: these keys (`execution_serializers.py`), so this table decides what is
 #: ROUTED -- NOT what `extractors[].name` accepts, which is
 #: `enabled_extractors()`'s. An earlier wording claimed "this table alone

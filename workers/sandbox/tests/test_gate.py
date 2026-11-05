@@ -4,6 +4,15 @@ from sandbox.gate import check_code_safe
 _SAFE = "import json\nrows=[{'x':1}]\nwith open('out','w') as f:\n    f.write('{}')\n"
 
 _HOSTILE = [
+    # Self-shadowing: `eval = eval` rebinds the name to the BUILTIN (the RHS
+    # falls through to builtins at module scope), so a "has this name been
+    # bound?" exemption lets every later Load through while it still refers
+    # to the real builtin. Reached without a call on a Name, so
+    # `_rule_denylisted_call` is no backstop. Executed end-to-end past a
+    # flat-set exemption and returned the host uid.
+    "eval = eval\nfs = [eval]\nfs[0]('1')\n",
+    "exec = exec\nd = {'e': exec}\nd['e']('x=1')\n",
+    "__import__ = __import__\nfs = [__import__]\nfs[0]('os')\n",
     "import os\nos.system('id')",
     "import subprocess",
     "from socket import socket",
@@ -234,20 +243,27 @@ def test_codegen_template_passes():
     assert reason == ""
 
 
-class TestShadowedBuiltinsAreLocals:
-    """A name the submitted code BINDS is its own, not the denylisted builtin.
+class TestBareNameExemptionIsNarrow:
+    """`_SAFE_AS_BARE_NAME` is the whole exemption, and these pin both halves.
 
-    These exist because an earlier fix gated `_rule_denylisted_name` on
-    `ast.Load` alone and claimed that made ordinary generated code pass. It
-    did not: a Load is exactly what reading your own binding produces, so only
-    a write-and-never-read binding was accepted and every realistic form was
-    still refused as `disallowed name`. The first three tests are the three
-    snippets that fix's own docstring named; each FAILS if the `not in bound`
-    condition is removed, which is what makes them a guard rather than a
-    restatement.
+    This class replaces one that tested a flat module-wide "is this name bound
+    anywhere" exemption. That exemption was an exploitable bypass: Python binds
+    per SCOPE and the set was also order-blind, so a binding that did not
+    shadow the builtin at the point of a Load exempted it anyway, and
+    `_rule_denylisted_call` only catches a DIRECT call, so an alias walked
+    past. Every shape in `test_the_alias_bypass_shapes_are_all_refused` below
+    was ACCEPTED by that version and reached real `eval`/`exec`/`__import__`.
+
+    The old class's own guard asserted the opposite and passed throughout,
+    because it pinned `g = globals` where `globals` is bound nowhere -- the one
+    spelling the defect did not touch. That is why the shapes below are
+    enumerated rather than represented by one example.
     """
 
     def test_a_local_named_input_may_be_read_after_it_is_bound(self):
+        # The motivating case, and the only one the exemption covers: the
+        # codegen contract is "read the input path from sys.argv[1]", so
+        # generated code names a local `input` plausibly often.
         ok, reason = check_code_safe(
             "import json\n"
             "import sys\n"
@@ -256,29 +272,64 @@ class TestShadowedBuiltinsAreLocals:
         )
         assert ok is True, reason
 
-    def test_a_local_named_vars_may_be_subscript_assigned(self):
-        ok, reason = check_code_safe('vars = {}\nvars["a"] = 1\n')
-        assert ok is True, reason
-
     def test_a_for_target_named_input_may_be_read_in_the_body(self):
         ok, reason = check_code_safe("rows = [1]\nfor input in rows:\n    print(input)\n")
         assert ok is True, reason
 
-    def test_shadowing_does_not_buy_an_alias_bypass(self):
-        # The aliasing shape is a Load of a name that is NOT bound, so the rule
-        # still fires -- this is the half that must not loosen. Without it the
-        # exemption would be a hole rather than a correction.
-        ok, reason = check_code_safe("g = globals\nx = g()\n")
+    def test_a_local_named_vars_is_still_refused_deliberately(self):
+        # `vars` is NOT exempt, and this is the trade rather than an oversight:
+        # `d = vars; d()["__buil" + "tins__"]` reaches `__builtins__` and then
+        # `__import__` with no import at all, and the concatenation evades
+        # `_rule_builtins_subscript`, which matches only an `ast.Constant`.
+        # Generated code that wants that identifier has to pick another one.
+        ok, reason = check_code_safe('vars = {}\nvars["a"] = 1\n')
         assert ok is False
-        assert reason == "safety gate: disallowed name 'globals'"
+        assert reason == "safety gate: disallowed name 'vars'"
+
+    @pytest.mark.parametrize(
+        "label,code",
+        [
+            # Each of these was accepted by the flat-set exemption. The first
+            # four are the distinct mechanisms; the rest are the same four
+            # reached through other binding forms.
+            (
+                "cross-scope local",
+                "def f():\n    eval = 1\n    return eval\n\ne = eval\nx = e('1')\n",
+            ),
+            ("alias precedes rebind", "e = eval\nx = e('1')\neval = 1\n"),
+            ("store in a dead branch", "if False:\n    eval = 1\ne = eval\nx = e('1')\n"),
+            # `eval = eval` resolves the RHS through globals to the BUILTIN, so
+            # "rebinding the name itself" did not make later Loads safe either.
+            ("self-rebind to the builtin", "eval = eval\nrun = eval\nx = run('1')\n"),
+            ("global declaration", "def f():\n    global eval\n\ne = eval\nx = e('1')\n"),
+            ("parameter name", "def f(eval):\n    return eval\n\ne = eval\nx = e('1')\n"),
+            ("lambda parameter", "f = lambda vars: 0\nx = vars\n"),
+            ("comprehension target", "ys = [0 for getattr in []]\ng = getattr\n"),
+            (
+                "except-as target",
+                "try:\n    pass\nexcept Exception as eval:\n    pass\ne = eval\n",
+            ),
+            ("import alias", "run = __import__\nrun('os')\n__import__ = 1\n"),
+        ],
+    )
+    def test_the_alias_bypass_shapes_are_all_refused(self, label, code):
+        ok, reason = check_code_safe(code)
+        assert ok is False, f"{label} passed the gate: {code!r}"
+        assert reason.startswith("safety gate: disallowed name "), reason
 
     def test_a_direct_call_of_a_denylisted_builtin_is_still_refused(self):
-        # Owned by `_rule_denylisted_call`, deliberately untouched by the
-        # shadowing exemption. Pinned here so a later widening of `bound`
-        # cannot quietly take the call rule with it.
+        # `_rule_denylisted_call`'s own job, pinned here so a later widening of
+        # `_SAFE_AS_BARE_NAME` cannot quietly take the call rule with it.
         ok, reason = check_code_safe('eval("1+1")\n')
         assert ok is False
         assert reason == "safety gate: disallowed call 'eval'"
+
+    def test_input_is_still_refused_as_a_call(self):
+        # The exemption is on the REFERENCE only. `input` stays in
+        # `_DENYLISTED_CALLS`, so the call form is unaffected.
+        ok, reason = check_code_safe("x = input()\n")
+        assert ok is False
+        assert reason == "safety gate: disallowed call 'input'"
 
 
 class TestEveryRuleIsRegistered:
@@ -287,28 +338,35 @@ class TestEveryRuleIsRegistered:
     A rule function that is defined but absent from the tuple is never
     consulted, so the gate silently ACCEPTS what it used to reject. Today that
     cannot slip through unnoticed: dropping any one of the nine rules fails
-    between 4 and 9 of this module's cases, because each existing rule has
-    hostile cases of its own.
+    between 4 and 17 of this module's cases.
+
+    **Two of every count are this class's own two tests**, which fail for a
+    structural reason -- the rule is no longer in `_RULES` -- and not because
+    they are hostile cases. So the behavioural kill count per rule is each
+    figure minus 2, and the FLOOR of the range is set by that pair rather than
+    by any rule's own coverage. An earlier wording attributed the whole of
+    each count to "hostile cases of its own", which overstated every rule's
+    behavioural coverage by two.
 
     **Method, because the figures below are a measurement and not an
     estimate**: write a pytest plugin that does
     `gate._RULES = tuple(r for r in gate._RULES if r.__name__ != "<rule>")`,
     run this module under it, and read the `N failed, M passed` summary;
     repeat once per rule. At the commit that added this paragraph that gives
-    **67 cases** and per-rule failures **7, 7, 5, 4, 6, 4, 5, 9, 7** in
+    **77 cases** and per-rule failures **7, 7, 6, 4, 6, 4, 5, 9, 17** in
     `_RULES` order. The measurement spans the WHOLE module, not only the
     classes above this one -- which is how `_rule_sys_reexport` scores 4 when
     nothing above here exercises an attribute named `sys`: its cases live in
     `TestModuleReexportEscapes`, below.
 
-    **Re-derive rather than trust the numbers.** The denominator and the
-    per-rule counts move with every case added to this module, and this
-    paragraph has already been wrong twice for that reason: once saying "eight
-    rules" and "between 3 and 10" (predating `_rule_sys_reexport`), and once
-    giving 61 cases scoped to "the behavioural tests above" (the per-rule
-    figures were right, the denominator and the scope were not, which made the
-    claim unreproducible from the text describing it). The range is the durable
-    part; the exact counts are a snapshot. These two tests are here
+    **Re-derive rather than trust the numbers.** They move with every case
+    added to this module, and this paragraph has already been wrong three
+    times for that reason: "eight rules / between 3 and 10" (predating
+    `_rule_sys_reexport`); "61 cases / the behavioural tests above" (the
+    per-rule figures were right, the denominator and the scope were not); and
+    "67 cases / 7,7,5,4,6,4,5,9,7", correct when written and stale one commit
+    later once `TestBareNameExemptionIsNarrow` replaced its predecessor. Treat
+    the method as the durable part and the figures as a dated snapshot. These two tests are here
     for the rules that do not exist yet -- a new rule added without a
     registry entry, or added with cases that overlap an earlier rule's -- where
     the behavioural tests would pass while the rule did nothing.

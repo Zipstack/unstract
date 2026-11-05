@@ -98,13 +98,17 @@ services:
       - AGENT_KV_WEBHOOK_INSECURE_ALLOW_HTTP_PRIVATE=${AGENT_KV_WEBHOOK_INSECURE_ALLOW_HTTP_PRIVATE:-}
 
   # Codegen sandbox worker (Task 5/12) -- consumes sandbox_codegen. Pinned to
-  # the test image like backend/platform-service/runner above; SANDBOX_* pass
-  # through with empty defaults (the task's own code-level defaults apply --
-  # see workers/sandbox/tasks.py). SANDBOX_HEALTH_PORT stays fixed at 8092
+  # the test image like backend/platform-service/runner above; SANDBOX_* are
+  # deliberately NOT set here (see the environment block); the task's own
+  # code-level defaults apply -- see workers/sandbox/tasks.py. SANDBOX_HEALTH_PORT stays fixed at 8092
   # (see docker/docker-compose.yaml's worker-sandbox and controller ruling R2)
   # since it is not part of the pass-through set.
   worker-sandbox:
     image: unstract/worker-unified:${UNSTRACT_TEST_VERSION:-latest}
+    # Mirrors docker/docker-compose.yaml's worker-sandbox: above
+    # SANDBOX_TIMEOUT_MAX + SANDBOX_TIMEOUT_GRACE, so an in-flight job is not
+    # SIGKILLed at Docker's 10s default and redelivered to run a second time.
+    stop_grace_period: 90s
     environment:
       # The health port moved with the transport: on the PG consumer path the
       # launcher reads WORKER_PG_QUEUE_CONSUMER_HEALTH_PORT, not the Celery
@@ -120,20 +124,12 @@ services:
       - WORKER_PG_QUEUE_CONSUMER_HEALTH_STALE_SECONDS=180
       # The SANDBOX_* caps below are read by workers/sandbox/tasks.py itself, so
       # they are transport-independent and keep their names.
-      # Bare pass-through, NOT `=${VAR:-}`: the `KEY=value` list form sets the
-      # EMPTY STRING when the host has not exported the variable, which is not
-      # the same as omitting it. `_int_env` now treats a blank as unset, but the
-      # bare form is what actually expresses the intent here -- and before that
-      # fix this block made every sandboxed job in this lane log eight
-      # "your cap was rejected" warnings on the entirely healthy path.
-      - SANDBOX_MAX_CODE_BYTES
-      - SANDBOX_MAX_INPUT_BYTES
-      - SANDBOX_MAX_OUTPUT_BYTES
-      - SANDBOX_MAX_ROWS
-      - SANDBOX_TIMEOUT_MAX
-      - SANDBOX_TIMEOUT_GRACE
-      - SANDBOX_MEMORY_MB
-      - SANDBOX_MAX_PIDS
+      # No SANDBOX_* entries here, deliberately. ANY form of them in this
+      # overlay -- `=${VAR:-}` or bare -- overrides the base service's
+      # `env_file: ../workers/.env`, so a cap an operator sets there would
+      # never reach the container in this lane. The base env_file plus the
+      # task's own code-level defaults already give the lane what it needs,
+      # so this block was subtracting and adding nothing.
 
   # The `ui` Playwright group drives a browser at the frontend's OWN origin, and
   # the app derives every API URL from window.location.origin. The production

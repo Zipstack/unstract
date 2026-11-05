@@ -125,3 +125,24 @@ class TestIntEnvGuards:
         with caplog.at_level("WARNING"):
             self._memory_mb_passed_to_run_code()
         assert "SANDBOX_MEMORY_MB" in caplog.text
+
+
+def test_wrote_output_crosses_the_task_boundary():
+    """`wrote_output` is only useful if it reaches the engine.
+
+    The field was added to `RunResult` and omitted from the dict this task
+    returns, which is the only thing that crosses to the cloud `agentic_kv`
+    engine -- so the field existed, read nowhere, while its docstring claimed
+    to supply the consumer's deciding data. Nothing caught that, because no
+    test asserted the key was present. This is that test.
+    """
+    out = _call()
+    assert "wrote_output" in out, sorted(out)
+    assert out["wrote_output"] is True
+
+
+def test_wrote_output_is_present_on_the_failure_shape_too():
+    # Both result shapes keyed alike, so a consumer reads one dict schema.
+    out = _call(timeout="not-a-number")
+    assert out["success"] is False
+    assert out["wrote_output"] is False

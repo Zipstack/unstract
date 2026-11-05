@@ -35,6 +35,30 @@ EXTRACTION_MODES = ("whole-doc", "per-page")
 SUPPORTED_EXTRACTORS = tuple(EXTRACTOR_ROUTES)
 
 
+#: Sentinel for an extractor that needs no deployment flag.
+_UNGATED = object()
+
+#: Which setting, if any, gates each ROUTED extractor's acceptance at submit.
+#:
+#: A TABLE rather than an `if`, for one reason: `constants.py`'s
+#: add-an-extractor checklist names "its entry in the acceptance gate" as a
+#: step, and an `if` on one hard-coded name gives that step nowhere to go. An
+#: earlier revision was exactly that `if`, subtracting `V1_EXTRACTOR_NAME` --
+#: so a third extractor was accepted by DEFAULT the moment it was routed,
+#: which is verbatim the 202-into-an-undrained-queue shape
+#: `settings/base.py` calls the worst available.
+#:
+#: `_UNGATED` is explicit, not an omission: `table` ships accepted everywhere
+#: and says so here. `test_every_routed_extractor_has_a_gate_entry` derives
+#: the requirement from `EXTRACTOR_ROUTES`, the way the queue wiring and the
+#: billing backstop already do, so adding a route without deciding its gate
+#: fails a test rather than silently defaulting to open.
+_EXTRACTOR_ENABLE_FLAGS: dict[str, object] = {
+    V1_EXTRACTOR_NAME: "AGENT_KV_KV_EXTRACTOR_ENABLED",
+    TABLE_EXTRACTOR_NAME: _UNGATED,
+}
+
+
 def enabled_extractors() -> tuple[str, ...]:
     """The routed extractors this deployment will ACCEPT at submit.
 
@@ -49,9 +73,12 @@ def enabled_extractors() -> tuple[str, ...]:
     test's `override_settings` -- is the thing that decides, not the order the
     module happened to be imported in.
     """
-    if getattr(settings, "AGENT_KV_KV_EXTRACTOR_ENABLED", False):
-        return SUPPORTED_EXTRACTORS
-    return tuple(n for n in SUPPORTED_EXTRACTORS if n != V1_EXTRACTOR_NAME)
+    return tuple(
+        name
+        for name in SUPPORTED_EXTRACTORS
+        if _EXTRACTOR_ENABLE_FLAGS.get(name, _UNGATED) is _UNGATED
+        or getattr(settings, _EXTRACTOR_ENABLE_FLAGS[name], False)
+    )
 
 
 class KVOptionsSerializer(serializers.Serializer):

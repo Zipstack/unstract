@@ -64,7 +64,7 @@ no worker consumes.
                               ┌─ OSS: sandbox worker (isolated, hardened) ────┐
                               │  AST gate · scrubbed-env subprocess · rlimits │
                               │  sees ONLY {record JSON + code}; no doc,      │
-                              │  no schema, no tenant id, no secrets, no net  │
+                              │  no schema, no tenant id                      │
                               │  → rows_jsonl (validated, capped)             │
                               └──────────────────────┬────────────────────────┘
                                                      │ reply
@@ -92,7 +92,7 @@ as internal endpoints driven by the PG scheduler (cloud: two CronJobs).
 | `backend/agent_kv/` | Django app: `AgentKVKey`/`AgentKVJob` models, public execution views + urls, serializers, dispatch, callbacks, results persistence + TTL, usage emission, internal + key-management APIs. |
 | `unstract/agent-kv-schema/` | The `keys.json` schema compiler (`unstract.agent_kv_schema`) — **single source of truth**, imported by the cloud engine so validation and execution cannot drift. Enforces structural caps and the depth ceiling. |
 | `workers/sandbox/` | `WorkerType.SANDBOX`: the `execute_sandboxed_code` task, the AST gate (normative copy), and `runner.py` (scrubbed-env subprocess + rlimits + output discipline). |
-| `docs/agent-kv-api.md` | The API/operator reference (auth, endpoints + curl, webhooks, retention, deploy checklist §12, env reference §13). |
+| `docs/agent-kv-api.md` | The API/operator reference (auth, endpoints + curl, webhooks, retention, deploy checklist §11, env reference §12). |
 
 ### Cloud (`UN-4044-agent-kv-cloud-executor`)
 | Path | Responsibility |
@@ -188,9 +188,11 @@ this pod until the credential is actually removed from it.
 Required mitigation (not deferred): a narrowly-scoped queue/result DB role, so the
 credential the pod carries cannot read beyond its own job — tracked as **UN-4218**,
 alongside `/proc` hardening and a distinct UID per child. A numeric `runAsUser` was
-also on this list and is **done**: the chart sets `runAsUser: 999` at both pod and
-container level (`workerPgSandbox.securityContext`), so `runAsNonRoot: true` no
-longer depends on the image keeping a `USER` line. Deferred mitigation:
+also on this list and is **done on the chart branch** -- a FORWARD REFERENCE, like the
+`AKV-Q5b` citation in `backend/agent_kv/constants.py`, and marked as one here:
+`workerPgSandbox.securityContext.runAsUser` is 999 at both pod and container level in
+unstract-cloud#1816, which is unmerged. True there, not yet true of any deployed chart,
+and not checkable from this repository. Deferred mitigation:
 `runtimeClass: gvisor`. Full analysis in
 [sandbox design §8a](superpowers/specs/2026-09-01-agent-kv-sandbox-worker-design.md).
 
@@ -215,7 +217,7 @@ key (cross-tenant reuse structurally impossible); fail-closed billing admission.
 - **Celery result backend (`CELERY_BACKEND_DB_*`):** required for the sandbox request-reply
   path. Cloud supplies it via the chart secret; dev must set it (the compose rig wires it
   to Postgres).
-- Full env matrix: [`docs/agent-kv-api.md` §13](agent-kv-api.md); deploy order and the
+- Full env matrix: [`docs/agent-kv-api.md` §12](agent-kv-api.md#12-environment-reference); deploy order and the
   chart's four hard-coded storage-secret sites: [§12](agent-kv-api.md).
 
 ## 7. Current status
@@ -285,7 +287,7 @@ subscription → **402**, nothing dispatched or billed.
 **Operator / integrator**
 - [`docs/agent-kv-api.md`](agent-kv-api.md) — API reference: auth, schema format, every
   endpoint with curl, webhooks, retention, 501 behavior, **deploy checklist (§12)**,
-  **environment reference (§13)**.
+  **environment reference (§12)**.
 
 **Architecture / design (one per sub-project)**
 - [`docs/superpowers/specs/2026-08-28-agent-kv-api-design.md`](superpowers/specs/2026-08-28-agent-kv-api-design.md)

@@ -129,6 +129,15 @@ services:
     #
     # No other service in this file sets a limit -- a deliberate exception for
     # the one service that executes code it did not write.
+    # Above SANDBOX_TIMEOUT_MAX (60) + SANDBOX_TIMEOUT_GRACE (5), with headroom.
+    # At CONCURRENCY=1 the consumer takes the single-process path, which never
+    # reaches `shutdown_grace_from_env()`: SIGTERM only sets `_running = False`
+    # and the loop returns after the CURRENT task. Docker's default grace is
+    # 10s, so without this the container is killed mid-job, the lease lapses,
+    # and the message is REDELIVERED -- the generated code runs a second time.
+    # This is the only service here whose task ceiling is an explicit 60s,
+    # which is why it needs the key and the sub-second siblings do not.
+    stop_grace_period: 90s
     mem_limit: 1g
     # NOTE: `./essentials.env` is deliberately NOT loaded here, unlike every
     # other worker service. Nothing under `workers/` reads any key in it

@@ -296,19 +296,22 @@ choice and LLM spend sit on your account**, per job.
 > false.** Where it is not set, a `kv` submit is refused with
 > `400 extractor 'kv' is not enabled on this deployment` — the deployment, not
 > the request, is what has to change, so do not debug the payload. Ask the
-> operator; see §12 item 11 and the env reference. `table` is unaffected.
+> operator; see §11 item 11 (deploy checklist) and §12 (environment
+> reference). `table` is unaffected.
 >
 > This paragraph previously explained why `kv` returned 400: the engine ran on
 > its own release track and nothing consumed `celery_executor_agentic_kv`, so
 > the API refused the submit rather than accepting it with a `202` for a job
 > that would never run. Both halves have changed — the engine ships, and every
-> executor fleet *declared in this repository* drains that queue (derived on
+> executor fleet **the derivation reads** drains that queue: the dev compose,
+> the e2e test compose, and `run-worker.sh`'s PG executor role (derived on
 > every test run from `EXTRACTOR_ROUTES` by
 > `backend/agent_kv/tests/test_queue_wiring_is_derived.py`, rather than
-> asserted from a list someone has to remember to update). That derivation
-> reads three plain-text fleet declarations — the two compose files and
-> `run-worker.sh` — and skips any that is absent, so it says nothing about a
-> Kubernetes fleet. It is precisely because nothing here can see a
+> asserted from a list someone has to remember to update; any declaration that
+> is absent is skipped). That is three declarations and not a universal —
+> `run-worker.sh`'s Celery-mode executor role and `run-worker-docker.sh`'s both
+> carry only `celery_executor_legacy` and are outside the derivation, and it
+> says nothing at all about a Kubernetes fleet. It is precisely because nothing here can see a
 > chart-deployed fleet that acceptance is gated on the flag above rather than
 > on the routing table.
 >
@@ -1705,19 +1708,26 @@ beyond `docker compose up`:
 
     **Read R12 in `docs/agent-kv-architecture.md` before signing this item off.**
     It is the authority for this residual, and it corrects four claims an earlier
-    revision of this paragraph made. All four were false, verified by execution,
-    and they are named here so nobody restores them from an older copy:
+    revision of this paragraph made. The first and fourth are false by execution;
+    the second and third are false against the chart manifests. They are named
+    here so nobody restores them from an older copy:
 
     - *"a single read of a known path, not an exfiltration path"* — `open()` needs
       no import, so the allowlist does not bound which paths it reads.
-    - *"no secrets in the pod (not even the platform `ENCRYPTION_KEY`)"* —
-      `workerPgSandbox.additionalConfigs` is `[database]`, because on the PG
-      transport the queue **is** Postgres, so the pod necessarily mounts
-      `DB_HOST/DB_USER/DB_PASSWORD/DB_NAME`.
+    - *"no secrets in the pod"* — `workerPgSandbox.additionalConfigs` is
+      `[database]`, because on the PG transport the queue **is** Postgres, so the
+      pod necessarily mounts `DB_HOST/DB_USER/DB_PASSWORD/DB_NAME`. **Only the
+      unqualified claim is false.** The parenthetical the old text carried —
+      "not even the platform `ENCRYPTION_KEY`" — is TRUE and R12 affirms it: no
+      *platform* secrets, and specifically not the master `ENCRYPTION_KEY`. Do
+      not read this bullet as licence to mount it.
     - *"per-job isolation"* — there is none. The child runs as the **same UID** as
       the worker, and the fleet runs `CONCURRENCY 2` sharing one PID namespace and
       one `/tmp`, so co-resident lanes are two jobs of possibly different tenants
-      with no boundary between them.
+      with no boundary between them. (`CONCURRENCY 2` is
+      `workerPgSandbox.env.WORKER_PG_QUEUE_CONSUMER_CONCURRENCY` on the chart
+      branch, unstract-cloud#1816 — a forward reference; the compose stacks here
+      pin 1.)
     - *"the worst case is disclosure of a non-sensitive container file"* — the true
       worst case is **credential disclosure plus database reach beyond the job's own
       input**.
@@ -1753,6 +1763,7 @@ with the default shown:
 | `AGENT_KV_STUCK_JOB_GRACE_SECONDS` | `21600` | Age (from `dispatched_at`) before a `DISPATCHED`/`RUNNING` job is eligible for the sweep's stuck-job phase — force-failed as `"Job timed out"` (6 hours). |
 | `AGENT_KV_CALCULATIONS_ENABLED` | `false` | Gates the submit `calculations` field; the engine cannot execute it yet, so submit 400s while this is off. |
 | `AGENT_KV_STRUCTURED_OUTPUT_ENABLED` | `false` | Gates the submit `structured_output` field; the engine cannot execute it yet, so submit 400s while this is off. |
+| `AGENT_KV_KV_EXTRACTOR_ENABLED` | `false` | Whether this deployment accepts `kv` submits at all. Set `true` only where the executor fleet drains `celery_executor_agentic_kv`; otherwise a `kv` submit 400s with `extractor 'kv' is not enabled on this deployment`. See §11 item 11. |
 | `AGENT_KV_STORAGE_DIR_PREFIX` | `unstract/agent_kv` | Bucket-rooted object-store root for staged inputs/results (`{prefix}/{org_id}/{job_id}/…`), mirroring `WORKFLOW_EXECUTION_DIR_PREFIX`/`API_EXECUTION_DIR_PREFIX`. The **first segment is the bucket** and must already exist. The cloud executor reads the same variable and keys its OCR cache under `{prefix}/{org_id}/cache/…`, so both fleets must agree. Trailing `/` is stripped. |
 | `AGENT_KV_FILE_STORAGE_CREDENTIALS` | *(none — must be set)* | JSON credentials for the `AGENT_KV` `FileStorageType` (`unstract/filesystem`), same shape as `WORKFLOW_EXECUTION_FILE_STORAGE_CREDENTIALS`: `{"provider": "minio", "credentials": {"endpoint_url": "...", "key": "...", "secret": "..."}}`. |
 

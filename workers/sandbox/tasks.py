@@ -32,23 +32,22 @@ def _int_env(name: str, default: int, *, minimum: int = 1) -> int:
     Validation belongs here, in the parent: `_limits()` runs in `preexec_fn`,
     post-fork in the child, where there is nowhere for a log to go.
 
-    Two corrections to an earlier version of this function, both about which
-    way it falls:
+    Three dispositions, and they differ:
 
-    A BLANK value is treated as unset, silently. Compose's `- KEY=${KEY:-}`
-    list form sets the empty string rather than omitting the variable, and
-    `tests/compose/docker-compose.test.yaml` uses that form for all eight
-    caps -- so `int("")` raised and every sandboxed job in the e2e lane logged
-    eight "your cap was rejected" warnings on the entirely healthy path. That
-    destroyed the signal this function exists to create. A genuinely malformed
-    value like `512m` is still loud.
+    - **unset or blank** -> the built-in default, silently. A blank is the
+      same operator intent as unset, and warning on it made the healthy path
+      noisy enough to drown the two cases below.
+    - **unparseable** (`512m`, `1e5`) -> the built-in default, loudly. There
+      is no numeric intent to clamp toward, so the default is the only option;
+      note this means a unit-suffix typo made while TIGHTENING still lands on
+      a default that may be looser than intended. That is a known limit of
+      this function, not something it fixes.
+    - **below the floor** -> `minimum`, loudly. Here there IS numeric intent
+      and it is unusable, so clamping beats substituting a value the operator
+      never chose.
 
-    A sub-minimum value now falls back to `minimum`, NOT to `default`. Falling
-    back to the default can be LOOSER than what the operator asked for:
-    `SANDBOX_MEMORY_MB=256m` is a typo while TIGHTENING, and returning 512
-    doubled the cap the operator was trying to halve. On a containment control
-    the safe direction is the tighter one, so a rejected value lands on the
-    floor rather than on a value the operator never chose.
+    `_log_effective_caps` is what gives an operator the one thing none of the
+    above does: the caps a job actually ran with.
     """
     raw = os.environ.get(name)
     # `not raw.strip()` and not just `raw is None`: see the blank-value note
@@ -63,12 +62,14 @@ def _int_env(name: str, default: int, *, minimum: int = 1) -> int:
         )
         return default
     if value < minimum:
+        # No rlimit semantics in this message: only four of the eight caps
+        # become rlimits, and for the others a negative value is the TIGHTEST
+        # setting rather than no cap at all (`SANDBOX_MAX_ROWS=-1` trips on the
+        # first row). The per-name mechanism is in the docstring above.
         logger.warning(
             "sandbox: %s=%d is below the minimum %d; clamping to %d "
-            "(a NEGATIVE rlimit reads as RLIM_INFINITY -- i.e. no cap at all -- "
-            "and 0 forbids the operation outright; neither is a usable limit). "
-            "Clamping up to the floor rather than back to the default %d, "
-            "because the default can be looser than what you asked for",
+            "(clamping to the floor rather than back to the default %d, which "
+            "can be looser than what you asked for)",
             name,
             value,
             minimum,
@@ -77,6 +78,30 @@ def _int_env(name: str, default: int, *, minimum: int = 1) -> int:
         )
         return minimum
     return value
+
+
+#: Guard so the cap dump below fires once per worker process, not once per job.
+_CAPS_LOGGED = False
+
+
+def _log_effective_caps(caps: dict[str, int]) -> None:
+    """Log the caps this process actually runs with, once.
+
+    The one thing `_int_env`'s per-call warnings cannot tell an operator is
+    what the caps ENDED UP as -- an unset variable and a blank one are both
+    silent by design, so a Helm value that rendered to nothing is otherwise
+    indistinguishable from a deployment that never configured caps. Logged
+    once at the first job rather than per job, because eight lines per
+    execution is what made the previous warning useless.
+    """
+    global _CAPS_LOGGED
+    if _CAPS_LOGGED:
+        return
+    _CAPS_LOGGED = True
+    logger.info(
+        "sandbox: effective caps %s",
+        ", ".join(f"{k}={v}" for k, v in sorted(caps.items())),
+    )
 
 
 def _execute_sandboxed_code_impl(
@@ -90,6 +115,18 @@ def _execute_sandboxed_code_impl(
     grace = _int_env("SANDBOX_TIMEOUT_GRACE", 5)
     memory_mb = _int_env("SANDBOX_MEMORY_MB", 512)
     max_pids = _int_env("SANDBOX_MAX_PIDS", 16)
+    _log_effective_caps(
+        {
+            "SANDBOX_MAX_CODE_BYTES": max_code,
+            "SANDBOX_MAX_INPUT_BYTES": max_input,
+            "SANDBOX_MAX_OUTPUT_BYTES": max_output,
+            "SANDBOX_MAX_ROWS": max_rows,
+            "SANDBOX_TIMEOUT_MAX": timeout_max,
+            "SANDBOX_TIMEOUT_GRACE": grace,
+            "SANDBOX_MEMORY_MB": memory_mb,
+            "SANDBOX_MAX_PIDS": max_pids,
+        }
+    )
 
     # A None/non-str code or input_json (or a non-numeric timeout) must
     # degrade to a structured failure like every other bad-input path here,
@@ -126,6 +163,9 @@ def _execute_sandboxed_code_impl(
         "stdout": r.stdout,
         "stderr": r.stderr,
         "error": r.error,
+        # Forwarded because this dict -- not `RunResult` -- is what crosses to
+        # the cloud `agentic_kv` engine. See `RunResult.wrote_output`.
+        "wrote_output": r.wrote_output,
     }
 
 
@@ -138,6 +178,9 @@ def _fail(request_id: str, msg: str) -> dict:
         "stdout": "",
         "stderr": "",
         "error": msg,
+        # Keyed alike with the success shape so a consumer can read one dict
+        # schema. False here means "never got far enough to look".
+        "wrote_output": False,
     }
 
 

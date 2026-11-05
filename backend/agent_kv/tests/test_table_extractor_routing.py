@@ -424,3 +424,26 @@ def test_enabled_extractors_tracks_the_flag_in_both_directions():
         # Routed set is unchanged -- only acceptance moves.
         assert V1_EXTRACTOR_NAME in SUPPORTED_EXTRACTORS
         assert TABLE_EXTRACTOR_NAME in enabled_extractors()
+
+
+def test_every_routed_extractor_has_a_gate_entry():
+    """Adding a route must force a decision about acceptance.
+
+    Derived from `EXTRACTOR_ROUTES`, the way `test_queue_wiring_is_derived.py`
+    derives the queue wiring and the billing backstop -- so the requirement is
+    not a list anyone has to remember. Before the gate was a table it was an
+    `if` subtracting one hard-coded name, which meant a third extractor was
+    ACCEPTED by default the moment it was routed: a 202, a staged file, a
+    concurrency slot, and a row in DISPATCHED until the sweep force-fails it.
+
+    `_UNGATED` is a valid answer and `table` gives it. Silence is not.
+    """
+    from agent_kv.constants import EXTRACTOR_ROUTES
+    from agent_kv.execution_serializers import _EXTRACTOR_ENABLE_FLAGS
+
+    missing = set(EXTRACTOR_ROUTES) - set(_EXTRACTOR_ENABLE_FLAGS)
+    assert not missing, (
+        f"routed with no acceptance-gate entry: {sorted(missing)}. Add each to "
+        "`_EXTRACTOR_ENABLE_FLAGS` -- a setting name to gate it, or `_UNGATED` "
+        "to accept it everywhere."
+    )
