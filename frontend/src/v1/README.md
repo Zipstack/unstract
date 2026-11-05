@@ -64,6 +64,27 @@ is convention.
     icon's `size` prop. Put icons in a `ui:flex`/`ui:inline-flex` parent
     that is not one of those tags, or size the parent's font.
 
+## Feedback
+
+- One notification entry point: `notify()` or `toast.success/error/warning/info`
+  from `@v1/lib/notify`, which `services/` can reach too. The `Toaster` in
+  `components/ui/feedback/` implements it; mount it once inside the v1 root.
+  With no `Toaster` mounted, `notify()` only logs to the console (with the
+  request id); nothing is shown or queued. `lint:v1` rejects sonner,
+  react-hot-toast, react-toastify and notistack outside
+  `components/ui/feedback/`, and there allows radix-ui only as a static named
+  import that does not name `Toast` (Biome already rejects antd in v1).
+- Errors are announced assertively, everything else politely. Toasts stack
+  bottom-right (at most three), pause while hovered or focused, and F8 moves
+  focus to them; pass `persistent` to keep one until it is dismissed. At the
+  limit, timed toasts go before persistent ones; if all three are persistent
+  the oldest goes. Reusing an `id` replaces a toast with a fresh one (new
+  timer, announced again). A `requestId` is shown on the toast.
+- Loading is a skeleton (`Skeleton` + `SkeletonText`, `SkeletonBlock`,
+  `SkeletonAvatar`, `SkeletonTableRows`), never a spinner inside a card.
+  `Spinner` sits only in buttons and running text. Errors on a screen are an
+  `InlineAlert` above the content, with `onRetry`.
+
 ## Folders and what each may import
 
 Every folder may import from itself. Test files (`*.test.ts(x)`,
@@ -86,27 +107,14 @@ Every folder may import from itself. Test files (`*.test.ts(x)`,
 | `plugins/` | Cloud overlay target; only a placeholder in the public repository | everything |
 | `test/` | Render helpers, fixtures, network mocks | everything |
 
-## Plugins
-
-`lib/plugins/` is the extension-point contract. Pages and the shell import `Slot` from `@v1/lib/plugins`; they never import a plugin. `plugins/index.ts` builds the registry from the manifests and exports `PluginSlot` and `pluginRoutes()`; `app/` passes `PluginSlot` to `PluginProvider` and the routes to the router. With no provider, every slot shows its fallback.
-
-- `types.ts` names every slot and its props. Adding a slot is one line there.
-- A plugin is `plugins/<id>/manifest.ts` exporting `manifest` (`satisfies PluginManifest`), with `distributions` (`cloud`, `onprem`) and lazy `slots` and `routes`. The folder name is the id. A manifest may only `import type`: the build check loads it without bundling.
-- `<Slot id props fallback />` shows the fallback when no plugin fills the slot, silently. A filler that fails to load or render shows the fallback and is reported; each slot has its own error boundary.
-- `VITE_DISTRIBUTION` (`oss`, the default, `cloud` or `onprem`) picks the plugins the build offers. The frontend Dockerfile takes it as a build arg.
-- Every build runs `scripts/v1-plugins.mjs`. It fails on a slot filled twice or a route defined twice in any distribution, or a plugin with no distribution, and writes `plugin-matrix.json` to the build output. `node scripts/v1-plugins.mjs` prints the matrix.
-- `plugin-matrix.json` lists, for `oss`, `cloud` and `onprem`, the plugin ids each build offers, and for every plugin its distributions, slots and routes. Release tooling reads it to see which plugins ship where.
-- The check also fails on a slot id or distribution the contract does not define, and on a `plugins/` folder with no `manifest.ts`.
-- v0's optional-plugin stub skips `src/v1`, so a missing module in v1 fails the build.
-
 ## Scripts
 
 | Script | Checks |
 | --- | --- |
 | `bun run typecheck:v1` | TypeScript-only files, styles only in `styles/`, allowed file types only, no symlinks, folder taxonomy; then `tsc` with `src/v1/tsconfig.json` |
-| `bun run lint:v1` | Biome on `src/v1/`, then imports in code and in `styles/` CSS (nothing outside v1, folder contract, and v0 reaching v1 only through `@v1`), PropTypes and `ant-` checks, then the styling policy (S1 to S8 above) |
+| `bun run lint:v1` | Biome on `src/v1/`, then imports in code and in `styles/` CSS (nothing outside v1, folder contract, and v0 reaching v1 only through `@v1`), PropTypes and `ant-` checks, the single notification entry point, then the styling policy (S1 to S8 above) |
 | `bun run tokens:v1` | Regenerates `styles/tokens.css` from `styles/tokens.json` (via `styles/tokens.ts`; runs under bun, which imports the TypeScript source directly) |
-| `bun run test:v1` | v1 unit tests, then the guardrail fixtures in `test-fixtures/v1-boundary/` |
+| `bun run test:v1` | v1 unit tests (`vitest.v1.config.mts`, then cloud plugins with `vitest.v1-plugins.config.mts`) with v1's own coverage threshold, then the guardrail fixtures in `test-fixtures/v1-boundary/` and `test-fixtures/v1-harness/`. The harness is documented in `test/README.md` |
 
 Biome (`biome.json`) also reports the banned imports and the plain spellings of
 the v0 ↔ v1 boundary, so `biome ci` and editors flag them too: `@/`, `../`,

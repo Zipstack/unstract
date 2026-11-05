@@ -28,8 +28,13 @@ from queue_backend.pg_queue.executor_rpc import (
 )
 from shared.enums.task_enums import TaskName
 from shared.infrastructure.context import StateStore
+from shared.utils.manual_review_factory import (
+    AUTO_ENABLE_HIGHLIGHT,
+    HIGHLIGHT_AUTO_ENABLED_MESSAGE,
+    HIGHLIGHT_IMAGE_MODE_MESSAGE,
+)
 
-from unstract.sdk1.constants import ToolEnv, UsageKwargs
+from unstract.sdk1.constants import LogLevel, ToolEnv, UsageKwargs
 from unstract.sdk1.execution.context import ExecutionContext
 from unstract.sdk1.execution.result import ExecutionResult
 
@@ -381,6 +386,29 @@ def _execute_structure_tool_impl(params: dict) -> dict:
     # ---- Step 3: Profile overrides ----
     _handle_profile_overrides(exec_metadata, platform_helper, tool_metadata)
 
+    # Confidence needs highlight. Override a copy to keep the saved setting.
+    if params.get(AUTO_ENABLE_HIGHLIGHT):
+        from executor.executors.vlm_image_answer import detect_image_mode_config
+
+        # LLMWhisperer rejects highlight in image output mode.
+        image_mode = detect_image_mode_config(
+            output={
+                _SK.X2TEXT_ADAPTER: tool_metadata[_SK.TOOL_SETTINGS].get(
+                    _SK.X2TEXT_ADAPTER
+                )
+            },
+            shim=shim,
+            usage_kwargs={"execution_id": execution_id},
+        )
+        if image_mode is None:
+            tool_instance_metadata = {
+                **tool_instance_metadata,
+                _SK.ENABLE_HIGHLIGHT: True,
+            }
+            shim.stream_log(HIGHLIGHT_AUTO_ENABLED_MESSAGE)
+        else:
+            shim.stream_log(HIGHLIGHT_IMAGE_MODE_MESSAGE, level=LogLevel.WARN)
+
     # ---- Extract settings from tool_metadata ----
     settings = tool_instance_metadata
     is_challenge_enabled = settings.get(_SK.ENABLE_CHALLENGE, False)
@@ -536,6 +564,7 @@ def _execute_structure_tool_impl(params: dict) -> dict:
     agentic_source_path = str(execution_run_data_folder / "SOURCE")
     agentic_results: dict[str, Any] = {}
     agentic_raw_data: dict[str, Any] = {}
+    agentic_highlight_data: dict[str, Any] = {}
     agentic_metrics: dict[str, Any] = {}
     for at_output in agentic_table_outputs:
         at_settings = at_output.get("agentic_table_settings") or {}
@@ -565,6 +594,10 @@ def _execute_structure_tool_impl(params: dict) -> dict:
             # Set on the output at export by prompt_studio_registry_helper.py
             # when a lookup is assigned; None otherwise.
             "lookup_config": at_output.get("lookup_config"),
+            # Gate 1: honour the same enable_highlight toggle as the legacy
+            # pipeline. Without this the executor defaults to True, wasting
+            # Agent 3.5 highlight-validation LLM calls when highlights are off.
+            "enable_highlight": is_highlight_enabled,
         }
         at_ctx = ExecutionContext(
             executor_name="agentic_table",
@@ -589,6 +622,9 @@ def _execute_structure_tool_impl(params: dict) -> dict:
         raw_data = at_output_data.get("_raw_data")
         if raw_data is not None:
             agentic_raw_data[at_output[_SK.NAME]] = raw_data
+        hl_data = at_output_data.get("_highlight_data")
+        if hl_data is not None:
+            agentic_highlight_data[at_output[_SK.NAME]] = hl_data
         # The executor runs its own X2Text, so its metrics carry an extraction
         # duration the legacy pipeline's timer never sees. Same result shape the
         # non-agentic table plugin uses (LegacyExecutor._run_table_extraction).
@@ -643,6 +679,10 @@ def _execute_structure_tool_impl(params: dict) -> dict:
             structured_output.setdefault("output", {}).update(agentic_results)
         if agentic_raw_data:
             structured_output.setdefault("output", {})["_raw_data"] = agentic_raw_data
+        if agentic_highlight_data:
+            structured_output.setdefault("metadata", {}).setdefault(
+                "highlight_data", {}
+            ).update(agentic_highlight_data)
         _merge_agentic_metrics(structured_output, agentic_metrics)
     else:
         # All-agentic case: skip the legacy pipeline entirely. The metrics
@@ -651,9 +691,12 @@ def _execute_structure_tool_impl(params: dict) -> dict:
         agentic_output: dict[str, Any] = dict(agentic_results)
         if agentic_raw_data:
             agentic_output["_raw_data"] = agentic_raw_data
+        metadata_dict: dict[str, Any] = {"agentic_only": True}
+        if agentic_highlight_data:
+            metadata_dict["highlight_data"] = agentic_highlight_data
         structured_output = {
             "output": agentic_output,
-            "metadata": {"agentic_only": True},
+            "metadata": metadata_dict,
         }
         _merge_agentic_metrics(structured_output, agentic_metrics)
         pipeline_elapsed = 0.0
