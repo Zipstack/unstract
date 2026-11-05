@@ -1,11 +1,13 @@
 import type { ReactElement } from "react";
 
 /*
- * Renderers Recharts calls per point or per bar. Each decides from what
- * Recharts hands it (the plotted `points`, the label's `value`), never from
- * the chart's own `data`: Recharts updates its data store after commit, so
- * for one frame after a data change the points still belong to the old rows,
- * and a decision taken from the new rows would land on the old geometry.
+ * Renderers Recharts calls per point or per bar. Each decides only from what
+ * Recharts hands it (the plotted `points`, the point's row as `payload`, the
+ * label's `value`), never from the chart's props: Recharts updates its data
+ * store after commit, so for one frame after a data change the points still
+ * belong to the old rows, and anything taken from the new props would land
+ * on the old geometry. Marker labels therefore travel in the rows
+ * (`chartRows`).
  */
 
 /** A marker: a dot ringed in the card colour, its label above. */
@@ -39,17 +41,21 @@ type PointProps = Readonly<{
   cy?: number;
   index?: number;
   points?: readonly Point[];
+  payload?: unknown;
 }>;
 
 /**
- * `dot` for a line or area's marker series: a marker on each labelled row.
- * The marker values live in the rows themselves (`markerRows`), so a point
- * exists only where its row is marked.
+ * `dot` for a line or area's marker series: a marker on each marked row,
+ * labelled from the row's `labelKey` field. Unmarked rows hold null for the
+ * marker value, so they have no point.
  */
-export function markerDot(color: string, labels: ReadonlyMap<number, string>) {
-  return function MarkerDot({ cx, cy, index }: PointProps): ReactElement {
-    const label = index === undefined ? undefined : labels.get(index);
-    if (cx === undefined || cy === undefined || label === undefined) {
+export function markerDot(color: string, labelKey: string) {
+  return function MarkerDot({ cx, cy, payload }: PointProps): ReactElement {
+    const label =
+      typeof payload === "object" && payload !== null
+        ? (payload as Record<string, unknown>)[labelKey]
+        : undefined;
+    if (cx === undefined || cy === undefined || typeof label !== "string") {
       return <g />;
     }
     return <MarkerMark x={cx} y={cy} color={color} label={label} />;
@@ -86,7 +92,6 @@ export function isolatedDot(color: string) {
 
 type BarMarkerProps = Readonly<{
   color: string;
-  labels: ReadonlyMap<number, string>;
   // Set by Recharts, which clones this element per bar.
   x?: number | string;
   y?: number | string;
@@ -96,28 +101,26 @@ type BarMarkerProps = Readonly<{
 
 /**
  * `LabelList` content for a bar's markers, passed as an element so Recharts
- * clones it rather than mounting a new component type each render. The
- * label's value is the row index (`dataKey={ROW_KEY}`, see `chartRows`), not LabelList's own
- * index: that counts drawn bars, and a gap draws none, so it drifts off the
- * row after the first gap. Centred over the bar it names, on top of its own
- * segment in a stack, since Recharts gives the bar's own geometry.
+ * clones it rather than mounting a new component type each render. Its
+ * `dataKey` is the series' `markerLabelKey`, so `value` is the label carried
+ * in that bar's own row (unmarked rows have none). Centred over the bar it
+ * names, on top of its own segment in a stack, since Recharts gives the
+ * bar's own geometry.
  */
 export function BarMarker({
   color,
-  labels,
   x,
   y,
   width,
   value,
 }: BarMarkerProps): ReactElement {
-  const label = typeof value === "number" ? labels.get(value) : undefined;
   if (
     typeof x !== "number" ||
     typeof y !== "number" ||
     typeof width !== "number" ||
-    label === undefined
+    typeof value !== "string"
   ) {
     return <g />;
   }
-  return <MarkerMark x={x + width / 2} y={y} color={color} label={label} />;
+  return <MarkerMark x={x + width / 2} y={y} color={color} label={value} />;
 }

@@ -564,6 +564,80 @@ describe("cartesian options", () => {
     expect(ticks(right).every((t) => t.startsWith("$"))).toBe(true);
   });
 
+  it("redraws markers and the summary when markers change, even with the same data and inline series", () => {
+    const view = (markers: CartesianChartProps<Row>["markers"]) => (
+      <LineChart
+        {...props({
+          series: [
+            { key: "pages", label: "Pages processed" },
+            { key: "failed", label: "Failed pages" },
+          ],
+          markers,
+        })}
+      />
+    );
+    const { container, rerender } = renderV1(
+      view([{ index: 1, series: "pages", label: "first" }]),
+    );
+    const marker = () =>
+      container.querySelector("[data-slot=chart-marker]")?.textContent;
+    expect(marker()).toBe("first");
+    rerender(view([{ index: 1, series: "pages", label: "renamed" }]));
+    expect(marker()).toBe("renamed");
+    expect(screen.getByText(/Marked: renamed\./)).toBeInTheDocument();
+    const cx = () =>
+      container
+        .querySelector("[data-slot=chart-marker] circle")
+        ?.getAttribute("cx");
+    const before = cx();
+    rerender(view([{ index: 2, series: "pages", label: "renamed" }]));
+    expect(cx()).not.toBe(before);
+    rerender(view([{ index: 2, series: "failed", label: "renamed" }]));
+    expect(
+      container.querySelector("[data-slot=chart-marker] circle"),
+    ).toHaveAttribute("fill", "var(--chart-2)");
+  });
+
+  it("warns once per dropped marker while showing data, and not while loading", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const view = (state: "loading" | "ready", rows: Row[]) => (
+      <LineChart
+        {...props({
+          state,
+          data: rows,
+          markers: [
+            { index: 1, series: "pages", label: "peak" },
+            { index: 1, series: "pages", label: "again" },
+          ],
+        })}
+      />
+    );
+    const { rerender } = renderV1(view("loading", []));
+    rerender(view("loading", []));
+    expect(warn).not.toHaveBeenCalled();
+    rerender(view("ready", [...data]));
+    rerender(view("ready", [...data]));
+    expect(warn.mock.calls.map(([message]) => message)).toEqual([
+      'Chart marker "again" not drawn: an earlier marker already labels that point.',
+    ]);
+  });
+
+  it("formats with the viewer's locale by default", () => {
+    const viewer = numberFormats();
+    const { container } = renderV1(
+      <LineChart
+        {...props({ valueFormat: undefined, axisFormat: undefined })}
+      />,
+    );
+    expect(
+      screen.getByRole("cell", { name: viewer.value(2981) }),
+    ).toBeInTheDocument();
+    const ticks = [
+      ...container.querySelectorAll(".recharts-yAxis-tick-labels text"),
+    ].map((t) => t.textContent);
+    expect(ticks).toContain(viewer.axis(3000));
+  });
+
   it("separates stacked segments with a card-coloured stroke", () => {
     const { container } = renderV1(<StackedBarChart {...props()} />);
     const segments = container.querySelectorAll(".recharts-bar-rectangle path");

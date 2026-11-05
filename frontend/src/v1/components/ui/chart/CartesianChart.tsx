@@ -1,4 +1,4 @@
-import { type JSX, useId, useMemo } from "react";
+import { type JSX, useEffect, useId, useMemo } from "react";
 import {
   Area,
   Bar,
@@ -31,7 +31,8 @@ import {
   keptLabels,
   keptMarkers,
   markerKey,
-  ROW_KEY,
+  markerLabelKey,
+  markerWarnings,
 } from "./markers";
 import { BarMarker, isolatedDot, markerDot } from "./marks";
 import { seriesColors } from "./palette";
@@ -87,7 +88,7 @@ export function CartesianChart<Row extends ChartDatum>({
     .map((m) => `${m.index}\t${m.series}\t${m.label}`)
     .join("\n");
   // biome-ignore lint/correctness/useExhaustiveDependencies: keyed on the content of series and markers (seriesKeys, markerSpec), not their identity.
-  const kept = useMemo(
+  const { kept, dropped } = useMemo(
     () => keptMarkers(data, series, markers),
     [data, seriesKeys, markerSpec],
   );
@@ -96,6 +97,15 @@ export function CartesianChart<Row extends ChartDatum>({
     () => chartRows(data, series, kept, bars),
     [data, kept, bars],
   );
+  // Warn once per distinct problem, and only while showing data: a marker
+  // computed for rows that are still loading is not a mistake.
+  const warnings =
+    resolved === "ready" ? markerWarnings(series, dropped).join("\n") : "";
+  useEffect(() => {
+    for (const warning of warnings === "" ? [] : warnings.split("\n")) {
+      console.warn(warning);
+    }
+  }, [warnings]);
   const hasRight = series.some((s) => s.axis === "right");
   const text =
     summary ??
@@ -170,13 +180,8 @@ export function CartesianChart<Row extends ChartDatum>({
           >
             {kept.has(i) ? (
               <LabelList
-                dataKey={ROW_KEY}
-                content={
-                  <BarMarker
-                    color={colors[i]}
-                    labels={kept.get(i) ?? new Map()}
-                  />
-                }
+                dataKey={markerLabelKey(i)}
+                content={<BarMarker color={colors[i]} />}
               />
             ) : null}
           </Bar>
@@ -186,7 +191,7 @@ export function CartesianChart<Row extends ChartDatum>({
 
   const markerMarks = bars
     ? []
-    : [...kept].map(([seriesIndex, labels]) => (
+    : [...kept.keys()].map((seriesIndex) => (
         <Line
           key={markerKey(seriesIndex)}
           dataKey={markerKey(seriesIndex)}
@@ -196,7 +201,7 @@ export function CartesianChart<Row extends ChartDatum>({
           tooltipType="none"
           isAnimationActive={false}
           activeDot={false}
-          dot={markerDot(colors[seriesIndex], labels)}
+          dot={markerDot(colors[seriesIndex], markerLabelKey(seriesIndex))}
         />
       ));
 

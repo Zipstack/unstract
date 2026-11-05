@@ -7,32 +7,48 @@ import type { ReactNode } from "react";
  */
 export type ChartDatum = object;
 
+/** The value type of `Row`'s string index signature, where it has one. */
+type IndexValue<Row> = Row[string & keyof Row];
+
 /**
  * Keys of `Row` holding a category: a string or a number. A row typed with a
  * string index signature (`Record<string, string | number>`, as pivoted rows
  * with one field per dynamic series are) cannot be checked per key, so any
- * string is accepted there.
+ * string is accepted there, provided the index can hold a string or number.
+ * `never` (what an untyped `[]` infers) accepts no key.
  */
-export type CategoryKey<Row> = string extends keyof Row
-  ? string
-  : {
-      [K in keyof Row]-?: Row[K] extends string | number ? K : never;
-    }[keyof Row] &
-      string;
+export type CategoryKey<Row> = [Row] extends [never]
+  ? never
+  : string extends keyof Row
+    ? [Extract<IndexValue<Row>, string | number>] extends [never]
+      ? never
+      : string
+    : {
+        [K in keyof Row]-?: Row[K] extends string | number ? K : never;
+      }[keyof Row] &
+        string;
 
 /**
  * Keys of `Row` holding a series value: a number, or null / undefined for a
  * gap. A numeric string ("12.5", as a DRF Decimal serialises) is rejected
  * here: parse it before charting, or Recharts would draw it while the
- * tooltip, table and summary treat it as a gap. As with `CategoryKey`, a row
- * with a string index signature accepts any string.
+ * tooltip, table and summary treat it as a gap. A row with a string index
+ * signature accepts any string when the index can hold a number (so
+ * `Record<string, string>` accepts none), and is otherwise checked as
+ * above; `never` accepts no key.
  */
-export type NumericKey<Row> = string extends keyof Row
-  ? string
-  : {
-      [K in keyof Row]-?: Row[K] extends number | null | undefined ? K : never;
-    }[keyof Row] &
-      string;
+export type NumericKey<Row> = [Row] extends [never]
+  ? never
+  : string extends keyof Row
+    ? number extends IndexValue<Row>
+      ? string
+      : never
+    : {
+        [K in keyof Row]-?: Row[K] extends number | null | undefined
+          ? K
+          : never;
+      }[keyof Row] &
+        string;
 
 /**
  * A meaning-carrying colour that takes a series out of the ordinal ramp, e.g.
@@ -62,8 +78,9 @@ export type ChartSeries<Row extends ChartDatum> = Readonly<{
 /**
  * A highlighted point on a series (peak day, spike). Drawn from the series,
  * never as a Recharts ReferenceLine or ReferenceDot: see `markers.ts`. A
- * marker on a series not in `series`, on a row outside `data` or on a gap is
- * neither drawn nor read out in the summary.
+ * marker on a series not in `series`, on a row outside `data`, on a gap, or
+ * on a point an earlier marker already labels is neither drawn nor read out
+ * in the summary.
  */
 export type ChartMarker<Row extends ChartDatum> = Readonly<{
   /** Row index in `data`, so repeated category labels stay unambiguous. */
@@ -79,9 +96,9 @@ export type ChartState = "ready" | "loading" | "empty";
 /** Props every chart shares. */
 export type BaseChartProps<Row extends ChartDatum> = Readonly<{
   /**
-   * `Row` is inferred from here. An inline empty literal (`data={[]}`) infers
-   * `never` and then rejects every key, so type it: `data={[] as Row[]}`, or
-   * pass the type argument (`<LineChart<Row> …>`).
+   * `Row` is inferred from here. An untyped empty literal (`data={[]}`)
+   * infers `never`, which accepts no key, so type it: `data={[] as Row[]}`,
+   * or pass the type argument (`<LineChart<Row> …>`).
    */
   data: readonly Row[];
   /** The field holding each row's category (a date, a mode). */

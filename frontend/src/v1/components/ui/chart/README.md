@@ -91,7 +91,7 @@ Every chart:
 
 | Prop | Type | Default | Notes |
 | --- | --- | --- | --- |
-| `markers` | `ChartMarker[]` | `[]` | `{ index, series, label }`: a labelled dot on row `index` of `series`. A marker on a series not charted, a row outside `data` or a gap is dropped, from the plot and the summary alike, with a console warning saying why. |
+| `markers` | `ChartMarker[]` | `[]` | `{ index, series, label }`: a labelled dot on row `index` of `series`. A marker on a series not charted, a row outside `data`, a gap, or a point an earlier marker already labels is dropped, from the plot and the summary alike, with a console warning saying why (only once the chart shows data, so markers computed ahead of loading rows do not warn). |
 | `legend` | `"top" \| "bottom" \| "none"` | `"bottom"` | |
 | `axisFormat` | `(n) => string` | `2.3K`, viewer's locale | Left Y axis ticks. |
 | `rightAxisFormat` | `(n) => string` | `axisFormat` | Right Y axis ticks. |
@@ -103,7 +103,10 @@ Every chart:
 `series` and `markers` may be inline literals: the chart keys its work on
 what they say, not on their identity. Rows typed with a string index
 signature (`Record<string, number>`, pivoted rows with one field per dynamic
-series) accept any key, since the type cannot check them per field. Wrappers
+series) accept any key whose field could hold a number, since the type
+cannot check them per field (`Record<string, string>` accepts none). Field
+names starting with `__marker` are reserved for markers; the chart warns
+if a series uses one. Wrappers
 that take a key generically can type it with the exported `NumericKey<Row>`
 and `CategoryKey<Row>`.
 

@@ -1,4 +1,4 @@
-import { expect, it, vi } from "vitest";
+import { expect, it } from "vitest";
 import {
   describeChart,
   type Formatters,
@@ -11,8 +11,8 @@ import {
   keptLabels,
   keptMarkers,
   markerKey,
-  markerRows,
-  ROW_KEY,
+  markerLabelKey,
+  markerWarnings,
 } from "./markers";
 import type {
   CategoryKey,
@@ -102,12 +102,12 @@ it("builds one table row per datum, a dash for a gap", () => {
   ]);
 });
 
-it("keeps only markers that will be drawn: a charted series, an integer row in range, a value there", () => {
+it("keeps only markers that will be drawn: a charted series, an integer row in range, a value there, the first per point", () => {
   const series = [
     { key: "pages", label: "Pages" },
     { key: "cost", label: "Cost" },
   ] as const;
-  const kept = keptMarkers<Row>(data, series, [
+  const { kept, dropped } = keptMarkers<Row>(data, series, [
     { index: 2, series: "pages", label: "late" },
     { index: 0, series: "pages", label: "early" },
     { index: 1, series: "cost", label: "gap" }, // cost is null on row 1
@@ -115,6 +115,7 @@ it("keeps only markers that will be drawn: a charted series, an integer row in r
     { index: -1, series: "pages", label: "negative" },
     { index: 3, series: "pages", label: "past the end" },
     { index: 1.5, series: "pages", label: "fractional" },
+    { index: 2, series: "pages", label: "second on row 2" },
   ]);
   expect([...kept].map(([s, byRow]) => [s, [...byRow]])).toEqual([
     [
@@ -126,8 +127,16 @@ it("keeps only markers that will be drawn: a charted series, an integer row in r
     ],
     [1, [[0, "cost"]]],
   ]);
-  // The summary reads the same set, in series then row order.
-  expect(keptLabels(kept)).toEqual(["early", "late", "cost"]);
+  expect(dropped).toEqual([
+    { label: "gap", reason: "the series has no value on that row" },
+    { label: "negative", reason: "row -1 is not a row of data (3 rows)" },
+    { label: "past the end", reason: "row 3 is not a row of data (3 rows)" },
+    { label: "fractional", reason: "row 1.5 is not a row of data (3 rows)" },
+    {
+      label: "second on row 2",
+      reason: "an earlier marker already labels that point",
+    },
+  ]);
 });
 
 it("drops a marker on a series that is not charted", () => {
@@ -136,28 +145,26 @@ it("drops a marker on a series that is not charted", () => {
       data,
       [{ key: "pages", label: "Pages" }],
       [{ index: 0, series: "cost", label: "not charted" }],
-    ).size,
-  ).toBe(0);
+    ),
+  ).toEqual({
+    kept: new Map(),
+    dropped: [{ label: "not charted", reason: "its series is not charted" }],
+  });
 });
 
-it("adds one marker field per marked series to line and area rows", () => {
-  const series = [
-    { key: "pages", label: "Pages" },
-    { key: "cost", label: "Cost" },
-  ] as const;
-  const kept = keptMarkers<Row>(data, series, [
-    { index: 1, series: "pages", label: "peak" },
+it("words a warning per dropped marker and per reserved series key", () => {
+  expect(
+    markerWarnings(
+      [
+        { key: "pages", label: "Pages" },
+        { key: "__marker_x", label: "Clash" },
+      ],
+      [{ label: "A", reason: "its series is not charted" }],
+    ),
+  ).toEqual([
+    'Chart series key "__marker_x" starts with "__marker", which the chart uses for markers; rename the field.',
+    'Chart marker "A" not drawn: its series is not charted.',
   ]);
-  const rows = markerRows(data, series, kept) as Record<string, unknown>[];
-  expect(rows.map((r) => r[markerKey(0)])).toEqual([null, 2981, null]);
-  expect(rows.map((r) => markerKey(1) in r)).toEqual([false, false, false]);
-  expect(rows[1]).toMatchObject(data[1]);
-});
-
-it("returns the data untouched when nothing is marked", () => {
-  expect(markerRows(data, [{ key: "pages", label: "P" }], new Map())).toBe(
-    data,
-  );
 });
 
 it("orders the summary's markers by series, then row, whatever order they were given in", () => {
@@ -165,7 +172,7 @@ it("orders the summary's markers by series, then row, whatever order they were g
     { key: "pages", label: "Pages" },
     { key: "cost", label: "Cost" },
   ] as const;
-  const kept = keptMarkers<Row>(data, series, [
+  const { kept } = keptMarkers<Row>(data, series, [
     { index: 0, series: "cost", label: "cost first given" },
     { index: 2, series: "pages", label: "pages late" },
     { index: 0, series: "pages", label: "pages early" },
@@ -177,43 +184,40 @@ it("orders the summary's markers by series, then row, whatever order they were g
   ]);
 });
 
-it("warns, naming the marker and the reason, for each marker it drops", () => {
-  const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
-  keptMarkers<Row>(
-    data,
-    [{ key: "pages", label: "Pages" }],
-    [
-      { index: 0, series: "cost", label: "A" },
-      { index: 7, series: "pages", label: "B" },
-      { index: 0, series: "pages", label: "kept" },
-    ],
-  );
-  expect(warn.mock.calls.map(([message]) => message)).toEqual([
-    'Chart marker "A" not drawn: its series is not charted.',
-    'Chart marker "B" not drawn: row 7 is not a row of data (3 rows).',
-  ]);
-  warn.mockClear();
-  keptMarkers<Row>(
-    data,
-    [{ key: "cost", label: "Cost" }],
-    [{ index: 1, series: "cost", label: "C" }],
-  );
-  expect(warn).toHaveBeenCalledWith(
-    'Chart marker "C" not drawn: the series has no value on that row.',
-  );
+it("returns the data itself when nothing is marked", () => {
+  const series = [{ key: "pages", label: "P" }] as const;
+  expect(chartRows(data, series, new Map(), false)).toBe(data);
+  expect(chartRows(data, series, new Map(), true)).toBe(data);
 });
 
-it("gives bar rows their own index only when something is marked", () => {
-  const series = [{ key: "pages", label: "Pages" }] as const;
-  expect(chartRows(data, series, new Map(), true)).toBe(data);
-  const kept = keptMarkers<Row>(data, series, [
+it("carries each marker's value (line and area) and label in its own row", () => {
+  const series = [
+    { key: "pages", label: "Pages" },
+    { key: "cost", label: "Cost" },
+  ] as const;
+  const { kept } = keptMarkers<Row>(data, series, [
     { index: 1, series: "pages", label: "peak" },
   ]);
-  expect(
-    (chartRows(data, series, kept, true) as Record<string, unknown>[]).map(
-      (r) => r[ROW_KEY],
-    ),
-  ).toEqual([0, 1, 2]);
+  const line = chartRows(data, series, kept, false) as Record<
+    string,
+    unknown
+  >[];
+  expect(line.map((r) => r[markerKey(0)])).toEqual([null, 2981, null]);
+  expect(line.map((r) => r[markerLabelKey(0)])).toEqual([
+    undefined,
+    "peak",
+    undefined,
+  ]);
+  expect(line.map((r) => markerKey(1) in r)).toEqual([false, false, false]);
+  expect(line[1]).toMatchObject(data[1]);
+  // Bars read only the label: the bar itself is the point.
+  const bars = chartRows(data, series, kept, true) as Record<string, unknown>[];
+  expect(bars.map((r) => r[markerLabelKey(0)])).toEqual([
+    undefined,
+    "peak",
+    undefined,
+  ]);
+  expect(bars.map((r) => markerKey(0) in r)).toEqual([false, false, false]);
 });
 
 /*
@@ -249,6 +253,16 @@ it("types series, marker and category keys by what their field holds", () => {
   const stringMarker: ChartMarker<ApiRow> = { ...marker, series: "day" };
   // Pivoted rows, one field per dynamic series, cannot be checked per key.
   const pivoted: NumericKey<Record<string, string | number>> = "model-a";
+  const pivotedCategory: CategoryKey<Record<string, string | number | null>> =
+    "day";
+  // @ts-expect-error an index that can never hold a number has no series key
+  const allStrings: NumericKey<Record<string, string>> = "cost";
+  // @ts-expect-error an index of objects has no category key
+  const objectCategory: CategoryKey<Record<string, { n: number }>> = "x";
+  // @ts-expect-error an untyped `[]` infers never, which accepts no key
+  const fromEmpty: NumericKey<never> = "pages";
+  // @ts-expect-error likewise for the category
+  const categoryFromEmpty: CategoryKey<never> = "day";
   expect([
     rows,
     ok,
@@ -257,5 +271,10 @@ it("types series, marker and category keys by what their field holds", () => {
     dateCategory,
     stringMarker,
     pivoted,
-  ]).toHaveLength(7);
+    pivotedCategory,
+    allStrings,
+    objectCategory,
+    fromEmpty,
+    categoryFromEmpty,
+  ]).toHaveLength(12);
 });
