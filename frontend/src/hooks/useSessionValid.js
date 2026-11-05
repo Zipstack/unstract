@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { listFlags } from "../helpers/FeatureFlagsData.js";
 import { getSessionData } from "../helpers/GetSessionData";
 import { usableAdapters } from "../helpers/GetStaticData";
+import { isOrgSwitchViaLogin } from "../helpers/orgSwitchLogin.js";
 import { useExceptionHandler } from "../hooks/useExceptionHandler.jsx";
 import { useAlertStore } from "../store/alert-store";
 import { useSessionStore } from "../store/session-store";
@@ -170,6 +171,8 @@ function useSessionValid() {
       userAndOrgDetails["provider"] = userSessionData.provider;
       userAndOrgDetails["disable_sso_idp_authorization"] =
         userSessionData.disable_sso_idp_authorization;
+      userAndOrgDetails["orgSwitchViaLogin"] =
+        isOrgSwitchViaLogin(userSessionData);
     } catch (err) {
       // TODO: Throw popup error message
       // REVIEW: Add condition to check for trial period status
