@@ -91,7 +91,7 @@ Every chart:
 
 | Prop | Type | Default | Notes |
 | --- | --- | --- | --- |
-| `markers` | `ChartMarker[]` | `[]` | `{ index, series, label }`: a labelled dot on row `index` of `series`. A marker on a series not charted, a row outside `data`, a gap, or a point an earlier marker already labels is dropped, from the plot and the summary alike, with a console warning saying why (only once the chart shows data, so markers computed ahead of loading rows do not warn). |
+| `markers` | `ChartMarker[]` | `[]` | `{ index, series, label }`: a labelled dot on row `index` of `series`. A marker on a series not charted, a row outside `data`, a gap, or a point an earlier marker already labels is dropped (and every marker, when a series key is reserved; see below), from the plot and the summary alike, with a console warning saying why (only once the chart shows data, so markers computed ahead of loading rows do not warn). |
 | `legend` | `"top" \| "bottom" \| "none"` | `"bottom"` | |
 | `axisFormat` | `(n) => string` | `2.3K`, viewer's locale | Left Y axis ticks. |
 | `rightAxisFormat` | `(n) => string` | `axisFormat` | Right Y axis ticks. |

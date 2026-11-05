@@ -10,13 +10,27 @@ import type { ReactElement } from "react";
  * (`chartRows`).
  */
 
-/** A marker: a dot ringed in the card colour, its label above. */
+type Anchor = "start" | "middle" | "end";
+
+/**
+ * A marker: a dot ringed in the card colour, its label above. The label is
+ * centred on the dot, except at the first and last point of a line or area,
+ * which sit on the plot's edges: there it reads inward from the dot, so it
+ * stays inside the chart instead of being cut off or covering the axis.
+ */
 function MarkerMark({
   x,
   y,
   color,
   label,
-}: Readonly<{ x: number; y: number; color: string; label: string }>) {
+  anchor = "middle",
+}: Readonly<{
+  x: number;
+  y: number;
+  color: string;
+  label: string;
+  anchor?: Anchor;
+}>) {
   return (
     <g data-slot="chart-marker">
       <circle
@@ -27,7 +41,12 @@ function MarkerMark({
         stroke="var(--card)"
         strokeWidth={2}
       />
-      <text x={x} y={y - 10} textAnchor="middle" className="ui:fill-foreground">
+      <text
+        x={anchor === "start" ? x - 4 : anchor === "end" ? x + 4 : x}
+        y={y - 10}
+        textAnchor={anchor}
+        className="ui:fill-foreground"
+      >
         {label}
       </text>
     </g>
@@ -50,7 +69,13 @@ type PointProps = Readonly<{
  * marker value, so they have no point.
  */
 export function markerDot(color: string, labelKey: string) {
-  return function MarkerDot({ cx, cy, payload }: PointProps): ReactElement {
+  return function MarkerDot({
+    cx,
+    cy,
+    index,
+    points,
+    payload,
+  }: PointProps): ReactElement {
     const label =
       typeof payload === "object" && payload !== null
         ? (payload as Record<string, unknown>)[labelKey]
@@ -58,7 +83,18 @@ export function markerDot(color: string, labelKey: string) {
     if (cx === undefined || cy === undefined || typeof label !== "string") {
       return <g />;
     }
-    return <MarkerMark x={cx} y={cy} color={color} label={label} />;
+    const count = points?.length ?? 0;
+    const anchor: Anchor =
+      count < 2 || index === undefined
+        ? "middle"
+        : index === 0
+          ? "start"
+          : index === count - 1
+            ? "end"
+            : "middle";
+    return (
+      <MarkerMark x={cx} y={cy} color={color} label={label} anchor={anchor} />
+    );
   };
 }
 

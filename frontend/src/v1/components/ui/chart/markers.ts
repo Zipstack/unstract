@@ -48,10 +48,11 @@ export type DroppedMarker = Readonly<{ label: string; reason: string }>;
 /**
  * The markers that will be drawn, by series index then row index, and the
  * ones that will not. The one rule for which markers count, used by the plot
- * and the summary alike: the series is charted, the index is an integer row
- * of `data`, the series has a value on that row, and no earlier marker
- * already labels that point. Anything else is dropped, never drawn and never
- * read out; the chart warns about each drop once it is showing data.
+ * and the summary alike: no series key is reserved (`isReservedKey`), the
+ * series is charted, the index is an integer row of `data`, the series has a
+ * value on that row, and no earlier marker already labels that point.
+ * Anything else is dropped, never drawn and never read out; the chart warns
+ * about each drop once it is showing data.
  */
 export function keptMarkers<Row extends ChartDatum>(
   data: readonly Row[],
@@ -60,7 +61,7 @@ export function keptMarkers<Row extends ChartDatum>(
 ): Readonly<{ kept: MarkerLabels; dropped: readonly DroppedMarker[] }> {
   const kept = new Map<number, Map<number, string>>();
   const dropped: DroppedMarker[] = [];
-  // A reserved series key would be overwritten by the marker fields, so a
+  // A reserved series key could be overwritten by the marker fields, so a
   // chart with one draws no markers at all (and warns about the key).
   const reserved = series.some((s) => isReservedKey(s.key));
   for (const marker of markers) {

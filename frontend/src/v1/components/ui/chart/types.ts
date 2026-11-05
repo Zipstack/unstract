@@ -78,10 +78,9 @@ export type ChartSeries<Row extends ChartDatum> = Readonly<{
 
 /**
  * A highlighted point on a series (peak day, spike). Drawn from the series,
- * never as a Recharts ReferenceLine or ReferenceDot: see `markers.ts`. A
- * marker on a series not in `series`, on a row outside `data`, on a gap, or
- * on a point an earlier marker already labels is neither drawn nor read out
- * in the summary.
+ * never as a Recharts ReferenceLine or ReferenceDot: see `markers.ts`,
+ * whose `keptMarkers` states which markers are drawn; the rest are neither
+ * drawn nor read out in the summary.
  */
 export type ChartMarker<Row extends ChartDatum> = Readonly<{
   /** Row index in `data`, so repeated category labels stay unambiguous. */

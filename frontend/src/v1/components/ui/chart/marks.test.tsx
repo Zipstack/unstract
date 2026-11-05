@@ -9,8 +9,7 @@ import { BarMarker, isolatedDot, markerDot } from "./marks";
  * when Recharts still plots the previous rows (it updates its store after
  * commit). happy-dom flushes that update inside act(), so the frame itself
  * cannot be observed here; these tests pin the mechanism instead: the label
- * comes from the plotted row (`payload`) or the label's `value`, and a
- * renderer is given nothing else to take it from.
+ * comes from the plotted row (`payload`) or the label's `value`.
  */
 
 function svg(element: ReactElement): SVGSVGElement {
@@ -68,4 +67,17 @@ it("draws an isolated point only where neither plotted neighbour has a value", (
   expect(at(gappy, 0)).not.toBeNull(); // nothing left, a gap right
   expect(at(gappy, 2)).toBeNull(); // joined to row 3
   expect(at([{ y: 5 }], 0)).not.toBeNull(); // a single row
+});
+
+it("anchors a line marker's label inward at the first and last point, centred elsewhere", () => {
+  const Dot = markerDot("var(--chart-1)", "l");
+  const points = [{ y: 1 }, { y: 2 }, { y: 3 }];
+  const anchor = (index: number, of = points) =>
+    svg(<Dot cx={50} cy={20} index={index} points={of} payload={{ l: "x" }} />)
+      .querySelector("text")
+      ?.getAttribute("text-anchor");
+  expect(anchor(0)).toBe("start");
+  expect(anchor(1)).toBe("middle");
+  expect(anchor(2)).toBe("end");
+  expect(anchor(0, [{ y: 1 }])).toBe("middle");
 });

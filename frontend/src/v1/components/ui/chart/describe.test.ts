@@ -167,7 +167,7 @@ it("words a warning per dropped marker and per reserved series key", () => {
   ).toEqual(['Chart marker "A" not drawn: its series is not charted.']);
 });
 
-it("draws no markers when a series key is reserved, since marker fields would overwrite it", () => {
+it("draws no markers when a series key is reserved, since marker fields could overwrite it", () => {
   type Pivot = Record<string, number>;
   const rows: Pivot[] = [{ a: 1, __marker_x: 2 }];
   expect(
