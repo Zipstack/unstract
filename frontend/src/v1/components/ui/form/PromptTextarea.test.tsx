@@ -121,9 +121,11 @@ it("re-fits an uncontrolled value after its form resets", async () => {
   measureByLength(textarea);
   fireEvent.input(textarea, { target: { value: "abcd" } });
   expect(textarea.style.getPropertyValue("--prompt-height")).toBe("108px");
-  textarea.form?.reset();
+  // A browser dispatches "reset" before it restores the values (happy-dom
+  // restores first), so dispatch the event while the old text is still there.
+  fireEvent.reset(textarea.form as HTMLFormElement);
+  textarea.value = "";
   await new Promise((resolve) => requestAnimationFrame(resolve));
-  expect(textarea.value).toBe("");
   expect(textarea.style.getPropertyValue("--prompt-height")).toBe("104px");
 });
 

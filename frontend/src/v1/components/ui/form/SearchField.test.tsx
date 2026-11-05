@@ -185,7 +185,13 @@ it("calls onValueChange when a controlled field's Clear button is used", async (
 
 it("lets Escape through from a controlled field that has no onValueChange", () => {
   const parentEscape = recordDocumentEscapes();
-  render(<SearchField aria-label="Search" value="fixed" readOnly />);
+  render(
+    <SearchField
+      aria-label="Search"
+      value="fixed"
+      onChange={() => undefined}
+    />,
+  );
   fireEvent.keyDown(screen.getByLabelText("Search"), { key: "Escape" });
   expect(parentEscape).toHaveBeenCalledOnce();
 });
