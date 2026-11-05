@@ -52,7 +52,7 @@ def create_organization(request: Request) -> Response:
             data={"message": "success", "tenant": response},
         )
     except Exception as error:
-        Logger.error(error)
+        Logger.exception(error)
         return Response(
             status=status.HTTP_500_INTERNAL_SERVER_ERROR, data="Unknown Error"
         )

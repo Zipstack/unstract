@@ -1,0 +1,5 @@
+@media (prefers-color-scheme: dark) {
+  .v1 {
+    color: var(--foreground);
+  }
+}

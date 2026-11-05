@@ -267,7 +267,7 @@ class ToolRegistryHelper:
                 tool_data = self.get_tool_data_by_image_url(image_url=tool)
                 tools_configs[tool_data.tool_uid] = tool_data.to_json()
             except Exception as error:
-                logger.error(f"loading tool {tool} error: {error}")
+                logger.exception(f"loading tool {tool} error: {error}")
                 continue
         ToolUtils.save_tools_in_to_disk(
             file_path=self.private_tools_file, data=tools_configs
