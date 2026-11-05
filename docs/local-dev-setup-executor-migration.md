@@ -210,6 +210,8 @@ cp sample.env .env
 
 Then edit `workers/.env` — change all Docker hostnames to `localhost`:
 
+> The runner's port 5002 is not published on the host by default. Uncomment the loopback `ports` entry for `runner` in `docker/docker-compose.yaml`, or workers on the host cannot reach it.
+
 ```ini
 # === CRITICAL CHANGES FOR LOCAL DEV ===
 DJANGO_APP_BACKEND_URL=http://localhost:8000
