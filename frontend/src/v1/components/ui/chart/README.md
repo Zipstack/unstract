@@ -72,7 +72,7 @@ Every chart:
 
 | Prop | Type | Default | Notes |
 | --- | --- | --- | --- |
-| `data` | `readonly Row[]` | required | One row per category. `Row` is any object type, an `interface` or an API type with extra fields included. |
+| `data` | `readonly Row[]` | required | One row per category. `Row` is any object type, an `interface` or an API type with extra fields included, and is inferred from here: type an inline empty literal (`data={[] as Row[]}`), or it infers `never` and rejects every key. |
 | `xKey` | key of `Row` holding a string or number | required | The category field. Categories may repeat. |
 | `series` | `ChartSeries[]` | required | `{ key, label, tone?, axis?, format? }`, drawn in this order. `key` must name a field typed `number \| null \| undefined`; null or undefined is a gap. Parse numeric strings (a DRF Decimal) first. |
 | `title` | `string` | required | The plot's accessible name and the table caption. The card shows the visible heading. |
@@ -83,7 +83,7 @@ Every chart:
 | `emptyMessage` | `string` | `"No data for this period"` | |
 | `height` | `number` | 240 (sparkline 40) | Plot height in pixels. |
 | `width` | `number` | fills the container | Fixed width in pixels. |
-| `valueFormat` | `(n) => string` | `2,981` | Tooltip, summary and table. A series' `format` overrides it. |
+| `valueFormat` | `(n) => string` | `2,981`, viewer's locale | Tooltip, summary and table. A series' `format` overrides it. |
 | `xFormat` | `(x) => string` | `String` | X ticks, tooltip heading, summary and table. |
 | `className` | `string` | — | On the outer element. |
 
@@ -91,14 +91,21 @@ Every chart:
 
 | Prop | Type | Default | Notes |
 | --- | --- | --- | --- |
-| `markers` | `ChartMarker[]` | `[]` | `{ index, series, label }`: a labelled dot on row `index` of `series`. A marker on a series not charted, a row outside `data` or a gap is dropped, from the plot and the summary alike. |
+| `markers` | `ChartMarker[]` | `[]` | `{ index, series, label }`: a labelled dot on row `index` of `series`. A marker on a series not charted, a row outside `data` or a gap is dropped, from the plot and the summary alike, with a console warning saying why. |
 | `legend` | `"top" \| "bottom" \| "none"` | `"bottom"` | |
-| `axisFormat` | `(n) => string` | `2.3K` | Left Y axis ticks. |
+| `axisFormat` | `(n) => string` | `2.3K`, viewer's locale | Left Y axis ticks. |
 | `rightAxisFormat` | `(n) => string` | `axisFormat` | Right Y axis ticks. |
 | `grid` | `boolean` | `true` | Horizontal grid lines. |
 
 `Sparkline` has no axes, grid, legend or markers, and takes `tooltip`
 (default `false`).
+
+`series` and `markers` may be inline literals: the chart keys its work on
+what they say, not on their identity. Rows typed with a string index
+signature (`Record<string, number>`, pivoted rows with one field per dynamic
+series) accept any key, since the type cannot check them per field. Wrappers
+that take a key generically can type it with the exported `NumericKey<Row>`
+and `CategoryKey<Row>`.
 
 A series with `axis: "right"` reads against a second Y axis, drawn only when
 some series asks for it. In a `StackedBarChart`, right-axis series form their
@@ -162,5 +169,8 @@ Pass `width` (and `height`), or call `installResizeObserver()` from
 `@v1/test` and `resize` the container. A hover needs
 `getBoundingClientRect`, `offsetWidth` and `offsetHeight` stubbed on
 `HTMLElement.prototype` and a `waitFor`, because Recharts reads the pointer on
-the next animation frame (see `stubLayout` in `charts.test.tsx`). The arrow
+the next animation frame (see `stubLayout` in `charts.test.tsx`). Default
+number formats follow the machine's locale, so pass
+`valueFormat={numberFormats("en-US").value}` (and `axisFormat`) where a test
+asserts formatted numbers. The arrow
 keys need no stubs. Recharts draws SVG; there is no canvas.

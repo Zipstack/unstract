@@ -5,10 +5,13 @@ import {
   AreaChart,
   BarChart,
   LineChart,
+  numberFormats,
   Sparkline,
   StackedBarChart,
 } from "./index";
 
+// A fixed locale, so the snapshot holds on any machine.
+const EN = numberFormats("en-US");
 const data = [
   { day: "9 Aug", pages: 10, failed: 1 },
   { day: "10 Aug", pages: 2981, failed: 600 },
@@ -28,26 +31,52 @@ const shared = {
   xKey: "day",
   width: 320,
   height: 160,
+  valueFormat: EN.value,
 } as const;
+const axes = { axisFormat: EN.axis } as const;
 const marker = [{ index: 1, series: "pages", label: "Peak" }] as const;
 
 // One snapshot per variant and state, so a markup or class change shows in review.
 const VARIANTS: [string, ReactElement][] = [
-  ["line", <LineChart key="v" {...shared} series={series} markers={marker} />],
-  ["area", <AreaChart key="v" {...shared} series={ramp} />],
-  ["bar", <BarChart key="v" {...shared} series={ramp} legend="top" />],
+  [
+    "line",
+    <LineChart
+      key="v"
+      {...shared}
+      {...axes}
+      series={series}
+      markers={marker}
+    />,
+  ],
+  ["area", <AreaChart key="v" {...shared} {...axes} series={ramp} />],
+  [
+    "bar",
+    <BarChart key="v" {...shared} {...axes} series={ramp} legend="top" />,
+  ],
   [
     "stacked bar",
-    <StackedBarChart key="v" {...shared} series={ramp} markers={marker} />,
+    <StackedBarChart
+      key="v"
+      {...shared}
+      {...axes}
+      series={ramp}
+      markers={marker}
+    />,
   ],
   ["sparkline", <Sparkline key="v" {...shared} series={[series[0]]} />],
   [
     "loading",
-    <LineChart key="v" {...shared} series={series} state="loading" />,
+    <LineChart key="v" {...shared} {...axes} series={series} state="loading" />,
   ],
   [
     "empty",
-    <BarChart key="v" {...shared} series={ramp} data={[] as typeof data} />,
+    <BarChart
+      key="v"
+      {...shared}
+      {...axes}
+      series={ramp}
+      data={[] as typeof data}
+    />,
   ],
 ];
 

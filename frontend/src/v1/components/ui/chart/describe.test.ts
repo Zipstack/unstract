@@ -1,15 +1,30 @@
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 import {
   describeChart,
   type Formatters,
-  formatAxisValue,
-  formatValue,
   numberAt,
+  numberFormats,
   tableRows,
 } from "./describe";
-import { keptLabels, keptMarkers, markerKey, markerRows } from "./markers";
+import {
+  chartRows,
+  keptLabels,
+  keptMarkers,
+  markerKey,
+  markerRows,
+  ROW_KEY,
+} from "./markers";
+import type {
+  CategoryKey,
+  ChartMarker,
+  ChartSeries,
+  NumericKey,
+} from "./types";
 
-const fmt: Formatters = { value: formatValue, x: String };
+// A fixed locale, so expectations hold on any machine; the components default
+// to the viewer's.
+const EN = numberFormats("en-US");
+const fmt: Formatters = { value: EN.value, x: String };
 type Row = { day: string; pages: number; cost: number | null };
 const data: Row[] = [
   { day: "9 Aug", pages: 10, cost: 0.5 },
@@ -17,10 +32,11 @@ const data: Row[] = [
   { day: "11 Aug", pages: 20, cost: 1.25 },
 ];
 
-it("formats values grouped and axis ticks compact", () => {
-  expect(formatValue(2981)).toBe("2,981");
-  expect(formatAxisValue(2300)).toBe("2.3K");
-  expect(formatAxisValue(750)).toBe("750");
+it("formats values grouped and axis ticks compact, in the locale given", () => {
+  expect(EN.value(2981)).toBe("2,981");
+  expect(EN.axis(2300)).toBe("2.3K");
+  expect(EN.axis(750)).toBe("750");
+  expect(numberFormats("de-DE").value(2981)).toBe("2.981");
 });
 
 it("reads only finite numbers; anything else is a gap", () => {
@@ -61,7 +77,7 @@ it("says so when there is one point, or a series has no values", () => {
       data: [{ day: "1 Sep", a: null }],
       xKey: "day",
       series: [{ key: "a", label: "Native" }],
-      fmt: { value: formatValue, x: (x) => `on ${x}` },
+      fmt: { value: EN.value, x: (x) => `on ${x}` },
     }),
   ).toBe(
     "Pages by mode. Stacked bar chart, 1 point, on 1 Sep. Native: no values.",
@@ -142,4 +158,104 @@ it("returns the data untouched when nothing is marked", () => {
   expect(markerRows(data, [{ key: "pages", label: "P" }], new Map())).toBe(
     data,
   );
+});
+
+it("orders the summary's markers by series, then row, whatever order they were given in", () => {
+  const series = [
+    { key: "pages", label: "Pages" },
+    { key: "cost", label: "Cost" },
+  ] as const;
+  const kept = keptMarkers<Row>(data, series, [
+    { index: 0, series: "cost", label: "cost first given" },
+    { index: 2, series: "pages", label: "pages late" },
+    { index: 0, series: "pages", label: "pages early" },
+  ]);
+  expect(keptLabels(kept)).toEqual([
+    "pages early",
+    "pages late",
+    "cost first given",
+  ]);
+});
+
+it("warns, naming the marker and the reason, for each marker it drops", () => {
+  const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+  keptMarkers<Row>(
+    data,
+    [{ key: "pages", label: "Pages" }],
+    [
+      { index: 0, series: "cost", label: "A" },
+      { index: 7, series: "pages", label: "B" },
+      { index: 0, series: "pages", label: "kept" },
+    ],
+  );
+  expect(warn.mock.calls.map(([message]) => message)).toEqual([
+    'Chart marker "A" not drawn: its series is not charted.',
+    'Chart marker "B" not drawn: row 7 is not a row of data (3 rows).',
+  ]);
+  warn.mockClear();
+  keptMarkers<Row>(
+    data,
+    [{ key: "cost", label: "Cost" }],
+    [{ index: 1, series: "cost", label: "C" }],
+  );
+  expect(warn).toHaveBeenCalledWith(
+    'Chart marker "C" not drawn: the series has no value on that row.',
+  );
+});
+
+it("gives bar rows their own index only when something is marked", () => {
+  const series = [{ key: "pages", label: "Pages" }] as const;
+  expect(chartRows(data, series, new Map(), true)).toBe(data);
+  const kept = keptMarkers<Row>(data, series, [
+    { index: 1, series: "pages", label: "peak" },
+  ]);
+  expect(
+    (chartRows(data, series, kept, true) as Record<string, unknown>[]).map(
+      (r) => r[ROW_KEY],
+    ),
+  ).toEqual([0, 1, 2]);
+});
+
+/*
+ * The key types are the contract other pages build against; these lines are
+ * checked by `typecheck:v1` (test files are in the v1 tsconfig), so loosening
+ * a key type fails the typecheck.
+ */
+it("types series, marker and category keys by what their field holds", () => {
+  interface ApiRow {
+    day: string;
+    pages: number;
+    failed?: number | null;
+    cost: string; // a DRF Decimal, still a string
+    at: Date;
+  }
+  const rows: ApiRow[] = [];
+  const ok: ChartSeries<ApiRow>[] = [
+    { key: "pages", label: "Pages" },
+    { key: "failed", label: "Failed" },
+  ];
+  // @ts-expect-error a numeric string must be parsed before charting
+  const stringSeries: ChartSeries<ApiRow> = { key: "cost", label: "Cost" };
+  // @ts-expect-error not a field of the row
+  const unknownSeries: ChartSeries<ApiRow> = { key: "nope", label: "Nope" };
+  // @ts-expect-error the category must be a string or a number
+  const dateCategory: CategoryKey<ApiRow> = "at";
+  const marker: ChartMarker<ApiRow> = {
+    index: 0,
+    series: "pages",
+    label: "peak",
+  };
+  // @ts-expect-error markers sit on numeric series only
+  const stringMarker: ChartMarker<ApiRow> = { ...marker, series: "day" };
+  // Pivoted rows, one field per dynamic series, cannot be checked per key.
+  const pivoted: NumericKey<Record<string, string | number>> = "model-a";
+  expect([
+    rows,
+    ok,
+    stringSeries,
+    unknownSeries,
+    dateCategory,
+    stringMarker,
+    pivoted,
+  ]).toHaveLength(7);
 });

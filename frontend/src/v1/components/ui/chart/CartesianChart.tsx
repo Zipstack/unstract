@@ -26,8 +26,14 @@ import {
   formatValue,
   tableRows,
 } from "./describe";
-import { keptLabels, keptMarkers, markerKey, markerRows } from "./markers";
-import { barMarker, isolatedDot, markerDot } from "./marks";
+import {
+  chartRows,
+  keptLabels,
+  keptMarkers,
+  markerKey,
+  ROW_KEY,
+} from "./markers";
+import { BarMarker, isolatedDot, markerDot } from "./marks";
 import { seriesColors } from "./palette";
 import type { CartesianChartProps, ChartDatum } from "./types";
 
@@ -72,15 +78,23 @@ export function CartesianChart<Row extends ChartDatum>({
   const stacked = kind === "stacked-bar";
   const bars = kind === "bar" || stacked;
   const resolved = data.length === 0 && state === "ready" ? "empty" : state;
-  // Memoised so the rows Recharts receives keep their identity while data,
-  // series and markers do; a fresh array resets its data store every render.
+  // Recharts resets its data store whenever the rows it gets change
+  // identity, so the rows are `data` itself unless something is marked, and
+  // are memoised on what the series and markers say rather than on their
+  // identity: pages pass both as inline literals, new on every render.
+  const seriesKeys = series.map((s) => s.key).join("\n");
+  const markerSpec = markers
+    .map((m) => `${m.index}\t${m.series}\t${m.label}`)
+    .join("\n");
+  // biome-ignore lint/correctness/useExhaustiveDependencies: keyed on the content of series and markers (seriesKeys, markerSpec), not their identity.
   const kept = useMemo(
     () => keptMarkers(data, series, markers),
-    [data, series, markers],
+    [data, seriesKeys, markerSpec],
   );
+  // biome-ignore lint/correctness/useExhaustiveDependencies: series only matters through its keys, and kept changes whenever they do.
   const rows = useMemo(
-    () => [...(bars ? data : markerRows(data, series, kept))],
-    [bars, data, series, kept],
+    () => chartRows(data, series, kept, bars),
+    [data, kept, bars],
   );
   const hasRight = series.some((s) => s.axis === "right");
   const text =
@@ -118,7 +132,7 @@ export function CartesianChart<Row extends ChartDatum>({
             type="linear"
             stroke={colors[i]}
             strokeWidth={2}
-            dot={isolatedDot(colors[i], data, s.key)}
+            dot={isolatedDot(colors[i])}
             activeDot={{ r: 4, stroke: "var(--card)", strokeWidth: 2 }}
             connectNulls={false}
           />
@@ -133,7 +147,7 @@ export function CartesianChart<Row extends ChartDatum>({
             strokeWidth={2}
             fill={colors[i]}
             fillOpacity={0.12}
-            dot={isolatedDot(colors[i], data, s.key)}
+            dot={isolatedDot(colors[i])}
             activeDot={{ r: 4, stroke: "var(--card)", strokeWidth: 2 }}
           />
         );
@@ -156,8 +170,13 @@ export function CartesianChart<Row extends ChartDatum>({
           >
             {kept.has(i) ? (
               <LabelList
-                dataKey={s.key}
-                content={barMarker(colors[i], kept.get(i) ?? new Map())}
+                dataKey={ROW_KEY}
+                content={
+                  <BarMarker
+                    color={colors[i]}
+                    labels={kept.get(i) ?? new Map()}
+                  />
+                }
               />
             ) : null}
           </Bar>
@@ -183,7 +202,7 @@ export function CartesianChart<Row extends ChartDatum>({
 
   const chart = (
     <ComposedChart
-      data={rows}
+      data={rows as ChartDatum[]}
       margin={MARGIN}
       width={width}
       height={width === undefined ? undefined : height}

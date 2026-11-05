@@ -28,7 +28,7 @@ export type MarkerLabels = ReadonlyMap<number, ReadonlyMap<number, string>>;
  * rule for which markers count, used by the plot and the summary alike: the
  * series is charted, the index is an integer row of `data`, and the series
  * has a value on that row. Anything else is dropped, never drawn and never
- * read out.
+ * read out, with a console warning naming the marker and why.
  */
 export function keptMarkers<Row extends ChartDatum>(
   data: readonly Row[],
@@ -38,13 +38,18 @@ export function keptMarkers<Row extends ChartDatum>(
   const kept = new Map<number, Map<number, string>>();
   for (const marker of markers) {
     const seriesIndex = series.findIndex((s) => s.key === marker.series);
-    if (
-      seriesIndex === -1 ||
-      !Number.isInteger(marker.index) ||
-      marker.index < 0 ||
-      marker.index >= data.length ||
-      numberAt(data[marker.index], marker.series) === null
-    ) {
+    const reason =
+      seriesIndex === -1
+        ? "its series is not charted"
+        : !Number.isInteger(marker.index) ||
+            marker.index < 0 ||
+            marker.index >= data.length
+          ? `row ${marker.index} is not a row of data (${data.length} rows)`
+          : numberAt(data[marker.index], marker.series) === null
+            ? "the series has no value on that row"
+            : null;
+    if (reason !== null) {
+      console.warn(`Chart marker "${marker.label}" not drawn: ${reason}.`);
       continue;
     }
     const forSeries = kept.get(seriesIndex) ?? new Map<number, string>();
@@ -56,9 +61,33 @@ export function keptMarkers<Row extends ChartDatum>(
 
 /** Every kept marker's label, in series then row order, for the summary. */
 export function keptLabels(kept: MarkerLabels): string[] {
-  return [...kept.values()].flatMap((byRow) =>
-    [...byRow].sort(([a], [b]) => a - b).map(([, label]) => label),
-  );
+  return [...kept]
+    .sort(([a], [b]) => a - b)
+    .flatMap(([, byRow]) =>
+      [...byRow].sort(([a], [b]) => a - b).map(([, label]) => label),
+    );
+}
+
+/** The field carrying each row's own index on a bar chart with markers. */
+export const ROW_KEY = "__row";
+
+/**
+ * The rows Recharts plots: `data` itself (same array) when nothing is
+ * marked; on a bar chart, each row plus its index under `ROW_KEY`, which the
+ * bar's marker label reads; on a line or area, `markerRows`.
+ */
+export function chartRows<Row extends ChartDatum>(
+  data: readonly Row[],
+  series: readonly ChartSeries<Row>[],
+  kept: MarkerLabels,
+  bars: boolean,
+): readonly ChartDatum[] {
+  if (kept.size === 0) {
+    return data;
+  }
+  return bars
+    ? data.map((row, rowIndex) => ({ ...row, [ROW_KEY]: rowIndex }))
+    : markerRows(data, series, kept);
 }
 
 /**

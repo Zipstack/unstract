@@ -7,22 +7,32 @@ import type { ReactNode } from "react";
  */
 export type ChartDatum = object;
 
-/** Keys of `Row` holding a category: a string or a number. */
-export type CategoryKey<Row> = {
-  [K in keyof Row]-?: Row[K] extends string | number ? K : never;
-}[keyof Row] &
-  string;
+/**
+ * Keys of `Row` holding a category: a string or a number. A row typed with a
+ * string index signature (`Record<string, string | number>`, as pivoted rows
+ * with one field per dynamic series are) cannot be checked per key, so any
+ * string is accepted there.
+ */
+export type CategoryKey<Row> = string extends keyof Row
+  ? string
+  : {
+      [K in keyof Row]-?: Row[K] extends string | number ? K : never;
+    }[keyof Row] &
+      string;
 
 /**
  * Keys of `Row` holding a series value: a number, or null / undefined for a
  * gap. A numeric string ("12.5", as a DRF Decimal serialises) is rejected
  * here: parse it before charting, or Recharts would draw it while the
- * tooltip, table and summary treat it as a gap.
+ * tooltip, table and summary treat it as a gap. As with `CategoryKey`, a row
+ * with a string index signature accepts any string.
  */
-export type NumericKey<Row> = {
-  [K in keyof Row]-?: Row[K] extends number | null | undefined ? K : never;
-}[keyof Row] &
-  string;
+export type NumericKey<Row> = string extends keyof Row
+  ? string
+  : {
+      [K in keyof Row]-?: Row[K] extends number | null | undefined ? K : never;
+    }[keyof Row] &
+      string;
 
 /**
  * A meaning-carrying colour that takes a series out of the ordinal ramp, e.g.
@@ -68,6 +78,11 @@ export type ChartState = "ready" | "loading" | "empty";
 
 /** Props every chart shares. */
 export type BaseChartProps<Row extends ChartDatum> = Readonly<{
+  /**
+   * `Row` is inferred from here. An inline empty literal (`data={[]}`) infers
+   * `never` and then rejects every key, so type it: `data={[] as Row[]}`, or
+   * pass the type argument (`<LineChart<Row> …>`).
+   */
   data: readonly Row[];
   /** The field holding each row's category (a date, a mode). */
   xKey: CategoryKey<Row>;

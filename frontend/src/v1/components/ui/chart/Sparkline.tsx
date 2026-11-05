@@ -1,4 +1,4 @@
-import { type JSX, useId, useMemo } from "react";
+import { type JSX, useId } from "react";
 import {
   Line,
   LineChart as RechartsLineChart,
@@ -59,15 +59,13 @@ export function Sparkline<Row extends ChartDatum>({
   const fmt: Formatters = { value: valueFormat, x: xFormat };
   const colors = seriesColors(series);
   const resolved = data.length === 0 && state === "ready" ? "empty" : state;
-  // A stable array while `data` is, so Recharts does not reset its data
-  // store on every parent render.
-  const rows = useMemo(() => [...data], [data]);
   const text =
     summary ??
     describeChart({ kind: "sparkline", title, data, xKey, series, fmt });
   const chart = (
     <RechartsLineChart
-      data={rows}
+      // The caller's array itself, so Recharts keeps its data store while it does.
+      data={data as readonly ChartDatum[] as ChartDatum[]}
       margin={MARGIN}
       width={width}
       height={width === undefined ? undefined : height}
@@ -111,7 +109,7 @@ export function Sparkline<Row extends ChartDatum>({
           type="linear"
           stroke={colors[i]}
           strokeWidth={1.5}
-          dot={isolatedDot(colors[i], data, s.key)}
+          dot={isolatedDot(colors[i])}
           activeDot={
             tooltip ? { r: 3, stroke: "var(--card)", strokeWidth: 2 } : false
           }

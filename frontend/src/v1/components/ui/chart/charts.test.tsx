@@ -8,9 +8,14 @@ import {
   BarChart,
   type CartesianChartProps,
   LineChart,
+  numberFormats,
   Sparkline,
   StackedBarChart,
 } from "./index";
+
+// A fixed locale, so "2,981" holds on any machine; the charts default to the
+// viewer's.
+const EN = numberFormats("en-US");
 
 const WIDTH = 400;
 const HEIGHT = 200;
@@ -45,6 +50,8 @@ function props(
     series: SERIES,
     width: WIDTH,
     height: HEIGHT,
+    valueFormat: EN.value,
+    axisFormat: EN.axis,
     ...overrides,
   };
 }
@@ -348,6 +355,51 @@ describe("cartesian options", () => {
     expect(markerAt(stacked.container).cy).toBeCloseTo(segment.y);
   });
 
+  it("keeps a bar marker on its row when earlier rows are gaps, which draw no bar", () => {
+    const gappy = [
+      { day: "1", pages: 10 as number | null },
+      { day: "2", pages: null },
+      { day: "3", pages: 30 },
+      { day: "4", pages: 40 },
+    ];
+    const { container } = renderV1(
+      <BarChart
+        title="T"
+        data={gappy}
+        xKey="day"
+        width={WIDTH}
+        height={HEIGHT}
+        series={[{ key: "pages", label: "Pages" }]}
+        markers={[
+          { index: 2, series: "pages", label: "third" },
+          { index: 3, series: "pages", label: "last" },
+        ]}
+      />,
+    );
+    // Bars drawn: rows 1, 3 and 4 (the gap draws none).
+    const bars = [...container.querySelectorAll(`path[name="Pages"]`)].map(
+      (el) => ({
+        centre:
+          Number(el.getAttribute("x")) + Number(el.getAttribute("width")) / 2,
+        top: Number(el.getAttribute("y")),
+      }),
+    );
+    expect(bars).toHaveLength(3);
+    const marks = [...container.querySelectorAll("[data-slot=chart-marker]")];
+    expect(marks.map((m) => m.textContent)).toEqual(["third", "last"]);
+    const at = (m: Element) => {
+      const circle = m.querySelector("circle");
+      return {
+        centre: Number(circle?.getAttribute("cx")),
+        top: Number(circle?.getAttribute("cy")),
+      };
+    };
+    expect(at(marks[0]).centre).toBeCloseTo(bars[1].centre);
+    expect(at(marks[0]).top).toBeCloseTo(bars[1].top);
+    expect(at(marks[1]).centre).toBeCloseTo(bars[2].centre);
+    expect(at(marks[1]).top).toBeCloseTo(bars[2].top);
+  });
+
   it("stacks right-axis series separately, beside the left stack and from their own baseline", () => {
     const { container } = renderV1(
       <StackedBarChart
@@ -549,6 +601,7 @@ describe("Sparkline", () => {
     xKey: "day",
     series: [{ key: "pages", label: "Pages" }],
     width: 120,
+    valueFormat: EN.value,
   } as const;
 
   it("draws one line with no axes, grid, legend or tooltip, as a static image", async () => {
@@ -582,6 +635,28 @@ describe("Sparkline", () => {
     expect(
       container.querySelector("[data-slot=chart-tooltip]"),
     ).toHaveTextContent("10 AugPages2,981");
+  });
+
+  it("still names the category in its tooltip on a gap", async () => {
+    const { container, user } = renderV1(
+      <Sparkline
+        {...sparkProps}
+        data={[
+          { day: "9 Aug", pages: 10, failed: 0 },
+          { day: "10 Aug", pages: null, failed: 0 },
+          { day: "11 Aug", pages: 20, failed: 0 },
+        ]}
+        tooltip
+      />,
+    );
+    await user.tab();
+    await user.keyboard("{ArrowRight}");
+    expect(
+      container.querySelector("[data-slot=chart-tooltip]"),
+    ).toHaveTextContent("10 AugPages–");
+    expect(container.querySelector(".recharts-tooltip-wrapper")).toHaveStyle({
+      visibility: "visible",
+    });
   });
 
   it("has loading and empty states", () => {

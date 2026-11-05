@@ -11,21 +11,33 @@ const KIND_NAMES: Readonly<Record<ChartKind, string>> = {
   sparkline: "Sparkline",
 };
 
-const grouped = new Intl.NumberFormat(undefined);
-const compact = new Intl.NumberFormat(undefined, {
-  notation: "compact",
-  maximumFractionDigits: 1,
-});
-
-/** 2,981 */
-export function formatValue(value: number): string {
-  return grouped.format(value);
+/**
+ * The default value and axis formatters for a locale; leave it out for the
+ * viewer's own. Tests pass a fixed one, so their expectations do not depend
+ * on the machine they run on.
+ */
+export function numberFormats(locale?: string): Readonly<{
+  value: (value: number) => string;
+  axis: (value: number) => string;
+}> {
+  const grouped = new Intl.NumberFormat(locale);
+  const compact = new Intl.NumberFormat(locale, {
+    notation: "compact",
+    maximumFractionDigits: 1,
+  });
+  return {
+    value: (value) => grouped.format(value),
+    axis: (value) => compact.format(value),
+  };
 }
 
-/** 3K, 2.3K: axis ticks. */
-export function formatAxisValue(value: number): string {
-  return compact.format(value);
-}
+const VIEWER = numberFormats();
+
+/** Grouped, in the viewer's locale: 2,981. */
+export const formatValue = VIEWER.value;
+
+/** Compact, in the viewer's locale, for axis ticks: 3K, 2.3K. */
+export const formatAxisValue = VIEWER.axis;
 
 export function formatCategory(value: string | number): string {
   return String(value);
