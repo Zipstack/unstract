@@ -38,14 +38,12 @@ What the config does for every test (`setup.ts`):
 
 ```tsx
 import { screen } from "@testing-library/react";
-import { makeSession, renderV1 } from "@v1/test";
+import { renderV1 } from "@v1/test";
 
-const { user, queryClient, portal, session } = renderV1(<AdapterList />, {
-  route: "/adapters/llm",          // MemoryRouter start; default "/"
-  path: "/adapters/:type",          // mount under a pattern so useParams works
-  session: makeSession({ role: "user" }), // null renders signed out
-  distribution: "cloud",            // "oss" (default) | "cloud" | "onprem"
-  theme: "dark",                    // "light" (default) | "dark" | "unstract"
+const { user, queryClient, portal } = renderV1(<AdapterList />, {
+  route: "/adapters/llm",   // MemoryRouter start; default "/"
+  path: "/adapters/:type",  // mount under a pattern so useParams works
+  theme: "dark",            // "light" (default) | "dark" | "unstract"
 });
 await user.click(screen.getByRole("button", { name: "Add" }));
 ```
@@ -57,9 +55,16 @@ await user.click(screen.getByRole("button", { name: "Add" }));
 - `queryClient`: a fresh client per render, with no retries, no refetch on
   focus and no garbage collection mid-test. Pass `queryClient` to share one.
 - `portal`: the `#v1-portal` container, themed like the root.
-- `session`, `distribution`, `theme`: what the test rendered with.
+- `theme`: what the test rendered with.
 
 `renderHookV1(hook, { initialProps, ...sameOptions })` does the same for hooks.
+
+**No `session` or `distribution` option yet.** No v1 code reads either, so an
+option that set one would reach nothing, and a test of an admin-only or
+cloud-only branch would pass without exercising it. `renderV1` throws if
+either is passed. Each comes back with the slot that reads it, when the
+session store or plugin registry lands (see the table below). `TestSession` /
+`makeSession` exist only as fixture data for network mocks (`apiPath`).
 
 ### Providers, and swapping in the real ones
 
@@ -71,15 +76,17 @@ the app's own provider once its task has landed, and a stand-in until then:
 | query | stand-in: `QueryClientProvider` over `createTestQueryClient()` | the data layer's provider (P0-T05, UN-4313) |
 | router | stand-in: `MemoryRouter` (+ `Routes` when `path` is set) | the app router in memory mode, with the route registry (P0-T03, UN-4271) |
 | theme | **real**: `app/theme/ThemeProvider` (P0-T04, #2399) | — |
+| session | none: no v1 code reads a session | the session store or provider, when it lands. Add `session` to `ProviderContext` and `RenderV1Options` with it |
+| distribution | none: no v1 code reads a distribution | the v1 plugin registry's distribution (UN-4285 / UN-4286). Add `distribution` the same way |
 
 To swap one, change its component in `PROVIDER_SLOTS`. It receives the
-resolved `ProviderContext` (query client, route, path, session, distribution,
-theme). Global state a provider reads goes in `prepareProviders` (set before
-render) and `resetProviders` (undone after each test). The theme slot shows
-the pattern: the preference is stored, then `ThemeProvider` hydrates it, and
-the store and its storage key are reset afterwards. Tests and `renderV1`'s
-options stay the same. When a real session store or plugin registry exists,
-seed it from `context.session` and `context.distribution` there too.
+resolved `ProviderContext` (query client, route, path, theme). Global state a
+provider reads goes in `prepareProviders` (set before render) and
+`resetProviders` (undone after each test). The theme slot shows the pattern:
+the preference is stored, then `ThemeProvider` hydrates it, and the store and
+its storage key are reset afterwards. A new option arrives with the slot that
+reads it, plus a test that changing it changes what renders. Remove it from
+`NOT_YET_CONSUMED` in `render.tsx` at the same time.
 
 ## Network
 

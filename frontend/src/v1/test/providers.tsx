@@ -5,7 +5,7 @@ import { THEME_STORAGE_KEY } from "@v1/lib/theme";
 import { useThemeStore } from "@v1/stores/theme";
 import type { JSX, ReactNode } from "react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import type { Distribution, TestSession, ThemeMode } from "./session";
+import type { ThemeMode } from "./session";
 
 /*
  * The v1 provider chain for tests: the ONLY file to edit when a real provider
@@ -19,6 +19,9 @@ import type { Distribution, TestSession, ThemeMode } from "./session";
  * Swap a slot by changing its entry in PROVIDER_SLOTS (and, if it holds
  * global state, prepareProviders / resetProviders); renderV1 and every test
  * stay as they are. See README.md in this folder.
+ *
+ * Every field here is read by a slot. A new one (a session, a distribution)
+ * arrives together with the slot that reads it, never ahead of it.
  */
 
 /** Everything a slot may need, resolved from renderV1's options. */
@@ -28,8 +31,6 @@ export type ProviderContext = Readonly<{
   route: string;
   /** A route pattern to mount the UI under, so `useParams` resolves. */
   path: string | undefined;
-  session: TestSession | null;
-  distribution: Distribution;
   theme: ThemeMode;
 }>;
 

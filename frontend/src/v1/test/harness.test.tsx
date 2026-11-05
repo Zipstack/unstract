@@ -70,15 +70,37 @@ describe("renderV1", () => {
     expect(screen.getByText("42 at /workflows/42")).toBeInTheDocument();
   });
 
-  it("returns the session and distribution it rendered with", () => {
+  it("refuses session and distribution, which no provider reads yet", () => {
+    // @ts-expect-error: not a render option until a slot consumes it.
+    expect(() => renderV1(<p>x</p>, { session: null })).toThrow(
+      /renderV1: session is not supported yet; no v1 provider reads it/,
+    );
+    // @ts-expect-error: not a render option until a slot consumes it.
+    expect(() => renderV1(<p>x</p>, { distribution: "cloud" })).toThrow(
+      /renderV1: distribution is not supported yet/,
+    );
+    const both = { session: DEFAULT_SESSION, distribution: "onprem" };
+    expect(() => renderHookV1(() => 1, both as object)).toThrow(
+      /session and distribution are not supported yet; no v1 provider reads them/,
+    );
+  });
+
+  it("changes what renders for each option it accepts", () => {
+    // One at a time: the theme is app-wide, so a second root re-stamps all.
+    for (const theme of ["light", "dark", "unstract"] as const) {
+      const { portal, unmount } = renderV1(<p>{theme}</p>, { theme });
+      expect(screen.getByText(theme).parentElement?.dataset.theme).toBe(theme);
+      expect(portal.dataset.theme).toBe(theme);
+      unmount();
+    }
+  });
+
+  it("builds org-scoped API paths from a session fixture", () => {
     const session = makeSession({ organization: { id: "org-9" } });
-    const harness = renderV1(<p>x</p>, { session, distribution: "cloud" });
-    expect(harness.session?.organization).toEqual({
-      id: "org-9",
-      name: DEFAULT_SESSION.organization.name,
-    });
-    expect(harness.distribution).toBe("cloud");
-    expect(renderV1(<p>y</p>, { session: null }).session).toBeNull();
+    expect(session.organization.name).toBe(DEFAULT_SESSION.organization.name);
+    expect(apiPath(session, "/adapter/")).toBe(
+      "/api/v1/unstract/org-9/adapter/",
+    );
   });
 
   it("gives each render a fresh query client with retries off", () => {

@@ -39,10 +39,8 @@ export {
   type V1Harness,
 } from "./render";
 export {
-  DEFAULT_DISTRIBUTION,
   DEFAULT_SESSION,
   DEFAULT_THEME,
-  type Distribution,
   makeSession,
   type TestOrganization,
   type TestSession,

@@ -3,9 +3,6 @@ import type { ThemeMode } from "@v1/lib/theme";
 /** A colour mode the v1 root can carry (#2399's ThemeMode). */
 export type { ThemeMode };
 
-/** The build a test renders under; cloud and on-prem builds carry v1 plugins. */
-export type Distribution = "oss" | "cloud" | "onprem";
-
 export type TestUser = Readonly<{
   id: string;
   email: string;
@@ -17,7 +14,11 @@ export type TestOrganization = Readonly<{
   name: string;
 }>;
 
-/** The signed-in user a test renders as. `null` in render options means signed out. */
+/**
+ * A signed-in user and organization, as fixture data for network mocks
+ * (`apiPath(session, …)` builds the org-scoped URL). Not a render option: no
+ * v1 provider reads a session yet.
+ */
 export type TestSession = Readonly<{
   user: TestUser;
   organization: TestOrganization;
@@ -35,8 +36,6 @@ export const DEFAULT_SESSION: TestSession = {
   organization: { id: "org-1", name: "Example Org" },
   role: "admin",
 };
-
-export const DEFAULT_DISTRIBUTION: Distribution = "oss";
 
 export const DEFAULT_THEME: ThemeMode = "light";
 
