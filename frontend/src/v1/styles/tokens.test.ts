@@ -46,7 +46,7 @@ it("covers the families the board defines", () => {
     "scrim",
   ]);
   expect(byFamily("type")).toHaveLength(25); // eight roles × (size, line-height, weight) + overline tracking
-  expect(byFamily("colour")).toHaveLength(30); // the Midnight Bloom collection minus its four palette entries
+  expect(byFamily("colour")).toHaveLength(35); // the Midnight Bloom collection minus its four palette entries, plus the five chart ramp steps
   for (const name of [
     "background",
     "foreground",

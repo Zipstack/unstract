@@ -30,6 +30,11 @@
 | colour | sidebar-muted-foreground | `--sidebar-muted-foreground` | `ui:text-sidebar-muted-foreground` | #737373 | #a1a1aa | #a9c3da |
 | colour | header | `--header` | `ui:bg-header` | #fcfcfc | #0a0a0a | #072b4d |
 | colour | header-foreground | `--header-foreground` | `ui:text-header-foreground` | #1a1a1a | #fafafa | #ffffff |
+| colour | chart-1 | `--chart-1` | `ui:fill-chart-1` | #4690e7 | #9ec5f4 | #4690e7 |
+| colour | chart-2 | `--chart-2` | `ui:fill-chart-2` | #1f75db | #6da7ec | #1f75db |
+| colour | chart-3 | `--chart-3` | `ui:fill-chart-3` | #2262af | #438de6 | #2262af |
+| colour | chart-4 | `--chart-4` | `ui:fill-chart-4` | #185095 | #2f7ad7 | #185095 |
+| colour | chart-5 | `--chart-5` | `ui:fill-chart-5` | #104281 | #1f68c3 | #104281 |
 | spacing | space-1 | `--space-1` | `ui:p-1` | 4px | 4px | 4px |
 | spacing | space-2 | `--space-2` | `ui:p-2` | 8px | 8px | 8px |
 | spacing | space-3 | `--space-3` | `ui:p-3` | 12px | 12px | 12px |
