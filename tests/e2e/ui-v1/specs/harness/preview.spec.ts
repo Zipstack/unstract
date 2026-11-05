@@ -4,12 +4,27 @@
  */
 
 import {
+  type PageKey,
   PREVIEW_PENDING_REASON,
   REGISTRY,
   V1_PREVIEW,
 } from "../../contract/registry.ts";
 import { V1_ROOT_SELECTOR } from "../../contract/v1-ui.ts";
 import { DIST, expect, test } from "../../fixtures/index.ts";
+import { previewValue } from "../../fixtures/preview.ts";
+
+test.describe("harness: v1 preview value", { tag: DIST.all }, () => {
+  test("a cookie holds a URI-encoded value, storage the plain JSON", () => {
+    const pages: PageKey[] = ["UN13", "UN14"];
+    const cookie = previewValue({ kind: "cookie", name: "v1" }, pages);
+    // RFC 6265 cookie-octets exclude DQUOTE, comma, semicolon and backslash.
+    expect(cookie).not.toMatch(/[",;\\\s]/);
+    expect(JSON.parse(decodeURIComponent(cookie))).toEqual(pages);
+    expect(previewValue({ kind: "localStorage", key: "v1" }, pages)).toBe(
+      '["UN13","UN14"]',
+    );
+  });
+});
 
 test.describe(
   "harness: v1 preview of an unregistered page",

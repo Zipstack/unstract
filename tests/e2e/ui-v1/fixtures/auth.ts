@@ -33,8 +33,9 @@ import {
 
 /**
  * A seeded user's role. `admin` is the stack's seeded user; any other role
- * needs UNSTRACT_E2E_<ROLE>_USER and UNSTRACT_E2E_<ROLE>_PASSWORD, and a test
- * asking for a role with no credentials skips with that reason.
+ * needs UNSTRACT_E2E_<ROLE>_USER and UNSTRACT_E2E_<ROLE>_PASSWORD (see
+ * `roleEnvKey`), and a test asking for a role with no credentials skips with
+ * that reason.
  */
 export type Role = "admin" | (string & {});
 
@@ -43,8 +44,13 @@ interface Credentials {
   password: string;
 }
 
+/** The `<ROLE>` in UNSTRACT_E2E_<ROLE>_USER / _PASSWORD. */
+export function roleEnvKey(role: Role): string {
+  return role.toUpperCase().replace(/[^A-Z0-9]/g, "_");
+}
+
 function credentialsFor(role: Role): Credentials | null {
-  const key = role.toUpperCase().replace(/[^A-Z0-9]/g, "_");
+  const key = roleEnvKey(role);
   const username = process.env[`UNSTRACT_E2E_${key}_USER`];
   const password = process.env[`UNSTRACT_E2E_${key}_PASSWORD`];
   if (username && password) {
@@ -69,7 +75,7 @@ function credentialsFor(role: Role): Credentials | null {
 export interface Session {
   role: Role;
   mode: AuthMode;
-  /** For API calls: `/api/v1/organization/<orgId>/...`. */
+  /** For API calls: `/api/v1/unstract/<orgId>/...`. */
   orgId: string;
   /** For browser routes: the app's URLs carry the org's name, not its id. */
   orgName: string;
@@ -278,7 +284,7 @@ export const test = base.extend<AuthFixtures>({
       const creds = credentialsFor(role);
       test.skip(
         !creds,
-        `no credentials for role "${role}": set UNSTRACT_E2E_${role.toUpperCase()}_USER and _PASSWORD`,
+        `no credentials for role "${role}": set UNSTRACT_E2E_${roleEnvKey(role)}_USER and _PASSWORD`,
       );
       if (!creds) {
         return;

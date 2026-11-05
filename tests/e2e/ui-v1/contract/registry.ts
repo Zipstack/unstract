@@ -61,7 +61,8 @@ export const OLD_VERSION_PREFERENCE = {
  * earlier task's spec needs this. P0-T03 has not defined it yet; `null` makes
  * every spec that asks for a preview skip. Expected shape once it exists: a
  * dev/test-only storage key or cookie holding the page keys to preview,
- * honoured only in non-production builds.
+ * honoured only in non-production builds. A cookie value is URI-encoded JSON
+ * (`previewValue` in fixtures/preview.ts), so the app must decode it.
  */
 export const V1_PREVIEW: PreviewMechanism | null = null;
 // ── end stub ────────────────────────────────────────────────────────────────

@@ -24,6 +24,18 @@ function writeStorage([storage, key, value]: [string, string, string]): void {
   store.setItem(key, value);
 }
 
+/**
+ * The stored value for `pages`. A cookie-value can't hold JSON's quotes or
+ * commas (RFC 6265), so the cookie kind is URI-encoded; the app decodes it.
+ */
+export function previewValue(
+  mechanism: PreviewMechanism,
+  pages: readonly PageKey[],
+): string {
+  const json = JSON.stringify(pages);
+  return mechanism.kind === "cookie" ? encodeURIComponent(json) : json;
+}
+
 /** Applies the preview override for `pages` to this page's later loads. */
 export async function enableV1Preview(
   page: Page,
@@ -34,7 +46,7 @@ export async function enableV1Preview(
   if (!mechanism) {
     throw new Error(PREVIEW_PENDING_REASON);
   }
-  const value = JSON.stringify(pages);
+  const value = previewValue(mechanism, pages);
   if (mechanism.kind === "cookie") {
     await context.addCookies([
       { name: mechanism.name, value, url: FRONTEND_URL },

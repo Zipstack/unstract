@@ -24,7 +24,7 @@ bun run lint && bun run typecheck
 | `UNSTRACT_FRONTEND_URL`, `UNSTRACT_BACKEND_URL` | Stack under test (the rig exports both) |
 | `UNSTRACT_AUTH_MODE` | `oss` or `auth0`; detected automatically otherwise |
 | `UNSTRACT_ADMIN_USER` / `_PASSWORD` | The `admin` role (defaults to the seeded `unstract` user) |
-| `UNSTRACT_E2E_<ROLE>_USER` / `_PASSWORD` | Any other role; a test asking for a role without them skips |
+| `UNSTRACT_E2E_<ROLE>_USER` / `_PASSWORD` | Any other role, upper-cased with non-alphanumerics as `_` (`org-admin` reads `UNSTRACT_E2E_ORG_ADMIN_USER`); a test asking for a role without them skips |
 | `UNSTRACT_E2E_ORG_ID` | The organisation to select; the first one by default |
 | `UNSTRACT_DISTRIBUTION` | `oss` (default), `cloud` or `onprem`: which tagged tests run |
 | `UNSTRACT_E2E_A11Y_IMPACT` | Lowest axe impact that fails a scan; default `serious` |
@@ -91,7 +91,10 @@ adapter, `contract/registry.ts`, and every assumed DOM marker sits in
    the real storage key.
 3. **v1 preview of unregistered pages** (P0-T03): set `V1_PREVIEW` to the
    dev/test-only override, and the key and route in
-   `specs/harness/preview.spec.ts`.
+   `specs/harness/preview.spec.ts`. A cookie override is written as
+   `encodeURIComponent(JSON.stringify(pageKeys))` (`previewValue` in
+   `fixtures/preview.ts`), so the app must URI-decode it before parsing;
+   storage overrides hold the plain JSON.
 4. **Demo route** (P0-T03): point part 2 of `specs/P0-T09.demo.spec.ts` at the
    real development-only demo route, and delete `support/demo-page.ts`.
 5. **v1 root marker** (P0-T01/P0-T03): set `V1_ROOT_SELECTOR` in
