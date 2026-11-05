@@ -11,10 +11,10 @@ import contextlib
 import logging
 import re
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from datetime import timedelta
-from functools import cache
+from functools import cache, partial
 from importlib import import_module
 from typing import Any
 
@@ -362,6 +362,12 @@ class SessionTracker:
             return []
         sessions = []
         for entry in entries:
+            if not isinstance(entry, Mapping):
+                logger.warning(
+                    "Dropped a malformed identity provider session: %s",
+                    type(entry).__name__,
+                )
+                continue
             entry = {
                 **{key: (None if value == "" else value) for key, value in entry.items()},
                 # Only the session making this request is current, and it is ours.
@@ -420,10 +426,17 @@ class SessionTracker:
                 _replace_with_empty_session(request)
         cls.forget(session_key)
 
+    @classmethod
+    def _after_end_on_commit(cls, request: HttpRequest, session_key: str) -> None:
+        # Socket cleanup must follow the commit: before it, a reconnecting socket
+        # still sees the session's row and the user's old generation, passes, and
+        # would join after the cleanup ran. Immediate without a transaction.
+        transaction.on_commit(partial(cls._after_end, request, session_key))
+
     @staticmethod
     def _after_end(request: HttpRequest, session_key: str) -> None:
-        # Best effort, and outside any transaction: the session is already over,
-        # and an unreachable cache or broker must not undo or fail that.
+        # Best effort: the session is already over, and an unreachable cache or
+        # broker must not undo or fail that.
         _disconnect_session_sockets(session_key)
         try:
             LogService.remove_logs_on_logout(session_id=session_key)
@@ -446,7 +459,7 @@ class SessionTracker:
         if record is None:
             return cls._revoke_idp(request, session_id)
         cls._end(request, record.session_key)
-        cls._after_end(request, record.session_key)
+        cls._after_end_on_commit(request, record.session_key)
         logger.info("Signed out one session of user %s", request.user.pk)
         return True
 
@@ -461,10 +474,11 @@ class SessionTracker:
         User.objects.filter(pk=user.pk).update(
             session_generation=F("session_generation") + 1
         )
-        # Every session of the user is refused from here on, including any with
-        # no record (whose sockets cannot be found by session), so empty the
-        # per-user room now; a session signed in after this point joins afresh.
-        _close_socket_room(f"user:{user.pk}")
+        # Every session of the user is refused once this commits, including any
+        # with no record (whose sockets cannot be found by session), so empty the
+        # per-user room then: a socket that connects earlier is evicted, and one
+        # that connects later is refused by the new generation.
+        transaction.on_commit(partial(_close_socket_room, f"user:{user.pk}"))
         session_keys = set(
             SessionRecord.objects.filter(user=user).values_list("session_key", flat=True)
         )
@@ -488,7 +502,7 @@ class SessionTracker:
                 with contextlib.suppress(Exception), transaction.atomic():
                     cls.forget(session_key)
         for session_key in ended:
-            cls._after_end(request, session_key)
+            cls._after_end_on_commit(request, session_key)
         try:
             cls._revoke_idp(request, session_id=None)
         except IdentityProviderError:
@@ -506,7 +520,7 @@ class SessionTracker:
                 with transaction.atomic():
                     cls._end(request, current_key)
                 ended.append(current_key)
-                cls._after_end(request, current_key)
+                cls._after_end_on_commit(request, current_key)
             except Exception:
                 # Already refused by the bump; report the sign-out as done.
                 logger.warning(

@@ -476,9 +476,12 @@ class SessionEndpointsTest(APITestCase):
         laptop = self._sign_in(self.user)
         desktop = self._sign_in(self.user)
 
-        with patch(
-            "account_v2.session_tracking.LogService.remove_logs_on_logout",
-            side_effect=ConnectionError("redis down"),
+        with (
+            patch(
+                "account_v2.session_tracking.LogService.remove_logs_on_logout",
+                side_effect=ConnectionError("redis down"),
+            ),
+            self.captureOnCommitCallbacks(execute=True),
         ):
             response = laptop.post(REVOKE_ALL_URL)
 
@@ -492,9 +495,12 @@ class SessionEndpointsTest(APITestCase):
         desktop = self._sign_in(self.user)
         desktop_id = SessionRecord.objects.get(session_key=self._key(desktop)).id
 
-        with patch(
-            "account_v2.session_tracking.LogService.remove_logs_on_logout",
-            side_effect=ConnectionError("redis down"),
+        with (
+            patch(
+                "account_v2.session_tracking.LogService.remove_logs_on_logout",
+                side_effect=ConnectionError("redis down"),
+            ),
+            self.captureOnCommitCallbacks(execute=True),
         ):
             response = laptop.delete(f"{SESSIONS_URL}{desktop_id}/")
 
@@ -799,7 +805,8 @@ class SessionEndpointsTest(APITestCase):
         desktop_key = self._key(desktop)
         desktop_id = SessionRecord.objects.get(session_key=desktop_key).id
 
-        laptop.delete(f"{SESSIONS_URL}{desktop_id}/")
+        with self.captureOnCommitCallbacks(execute=True):
+            laptop.delete(f"{SESSIONS_URL}{desktop_id}/")
 
         self.disconnected_sessions.assert_called_once_with(desktop_key)
         # The per-user room is shared with the sessions that remain.
@@ -812,11 +819,28 @@ class SessionEndpointsTest(APITestCase):
         desktop = self._sign_in(self.user)
         keys = {self._key(laptop), self._key(desktop)}
 
-        laptop.post(REVOKE_ALL_URL)
+        with self.captureOnCommitCallbacks(execute=True):
+            laptop.post(REVOKE_ALL_URL)
 
         disconnected = {c.args[0] for c in self.disconnected_sessions.call_args_list}
         self.assertEqual(disconnected, keys)
         self.closed_rooms.assert_called_once_with(f"user:{self.user.pk}")
+
+    def test_socket_cleanup_waits_for_the_commit(self) -> None:
+        # Before the commit a reconnecting socket would still pass, and would
+        # join after a cleanup that had already run.
+        laptop = self._sign_in(self.user)
+        self._sign_in(self.user)
+
+        with self.captureOnCommitCallbacks(execute=False) as callbacks:
+            laptop.post(REVOKE_ALL_URL)
+            self.closed_rooms.assert_not_called()
+            self.disconnected_sessions.assert_not_called()
+
+        for callback in callbacks:
+            callback()
+        self.closed_rooms.assert_called_once_with(f"user:{self.user.pk}")
+        self.assertEqual(self.disconnected_sessions.call_count, 2)
 
     def test_revoking_clears_the_sessions_logs(self) -> None:
         laptop = self._sign_in(self.user)
@@ -824,9 +848,12 @@ class SessionEndpointsTest(APITestCase):
         desktop_key = self._key(desktop)
         desktop_id = SessionRecord.objects.get(session_key=desktop_key).id
 
-        with patch(
-            "account_v2.session_tracking.LogService.remove_logs_on_logout"
-        ) as remove_logs:
+        with (
+            patch(
+                "account_v2.session_tracking.LogService.remove_logs_on_logout"
+            ) as remove_logs,
+            self.captureOnCommitCallbacks(execute=True),
+        ):
             laptop.delete(f"{SESSIONS_URL}{desktop_id}/")
 
         remove_logs.assert_called_once_with(session_id=desktop_key)
@@ -975,7 +1002,12 @@ class IdentityProviderSessionTest(APITestCase):
     def test_malformed_provider_entries_are_dropped(self) -> None:
         laptop = self._sign_in()
         good = self.plugin.list_idp_sessions(None)[0]
-        malformed = [{"id": "idp-2"}, {**good, "id": "idp-3", "last_active": "later"}]
+        malformed = [
+            {"id": "idp-2"},
+            {**good, "id": "idp-3", "last_active": "later"},
+            None,
+            "not-a-session",
+        ]
 
         with patch.object(
             self.plugin, "list_idp_sessions", return_value=[good, *malformed]
