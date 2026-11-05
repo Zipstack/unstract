@@ -11,7 +11,9 @@ from unittest.mock import patch
 from account_v2.models import Organization
 from django.core.management import call_command
 from django.core.management.base import CommandError
+from django.db import connection
 from django.test import TestCase
+from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 from workflow_manager.file_execution.models import WorkflowFileExecution
 from workflow_manager.workflow_v2.enums import ExecutionStatus
@@ -441,6 +443,21 @@ class TestTheRebuildNeverLowersAStoredValue(TestCase):
             **flags,
         )
         return out.getvalue()
+
+    def test_the_check_locks_the_rows_it_writes(self):
+        """The check and the write share one transaction holding row locks.
+
+        Otherwise the aggregator can write a higher value between the two, and the
+        upsert lowers it again.
+        """
+        self._store(EventMetricsDaily, self.day.date(), 1, date=None)
+        with CaptureQueriesContext(connection) as queries:
+            self._run(skip_hourly=True)
+        sql = [q["sql"] for q in queries.captured_queries]
+        check = next(i for i, q in enumerate(sql) if "FOR UPDATE" in q)
+        write = next(i for i, q in enumerate(sql) if "ON CONFLICT" in q)
+        opened = max(i for i, q in enumerate(sql[:check]) if q.startswith("SAVEPOINT"))
+        assert not any(q.startswith("RELEASE SAVEPOINT") for q in sql[opened:write])
 
     def test_a_higher_stored_daily_value_is_kept_and_reported(self):
         self._store(EventMetricsDaily, self.day.date(), 5, date=None)

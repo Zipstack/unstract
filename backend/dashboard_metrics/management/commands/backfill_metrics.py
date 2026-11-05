@@ -28,6 +28,7 @@ from typing import Any
 
 from account_v2.models import Organization
 from django.core.management.base import BaseCommand, CommandError
+from django.db import transaction
 from django.utils import timezone
 
 from dashboard_metrics.models import (
@@ -553,19 +554,24 @@ class Command(BaseCommand):
         reviews to EXPIRED, and deleting a workflow cascades to its executions. A
         recount below the stored value is history the sources lost, not an
         over-count, so the stored row stays, as the monthly rollup already does.
+
+        The rows read are locked until the caller's upsert commits, so the scheduled
+        aggregator cannot write a higher value between this check and that write.
         """
         if not aggregations:
             return aggregations
         periods = [parse(key[1]) for key in aggregations]
         stored = {
             (str(org), period, name, project, tag): value
-            for org, period, name, project, tag, value in model._base_manager.filter(
+            for org, period, name, project, tag, value in model._base_manager.select_for_update()
+            .filter(
                 organization_id__in={key[0] for key in aggregations},
                 **{
                     f"{period_field}__gte": min(periods),
                     f"{period_field}__lte": max(periods),
                 },
-            ).values_list(
+            )
+            .values_list(
                 "organization_id",
                 period_field,
                 "metric_name",
@@ -583,8 +589,12 @@ class Command(BaseCommand):
         dropped = len(aggregations) - len(kept)
         if dropped:
             self.stdout.write(f"  {tier}: kept {dropped} stored values above the recount")
+        # ponytail: a row absent here is not locked, so one the aggregator inserts
+        # before our write can still be overwritten. It only creates rows for recent
+        # days and the current and previous month, which already exist by then.
         return kept
 
+    @transaction.atomic
     def _bulk_upsert_hourly(self, aggregations: dict) -> int:
         """Bulk upsert hourly aggregations using INSERT ... ON CONFLICT."""
         aggregations = self._without_lowerings(
@@ -625,6 +635,7 @@ class Command(BaseCommand):
         )
         return len(objects)
 
+    @transaction.atomic
     def _bulk_upsert_daily(self, aggregations: dict) -> int:
         """Bulk upsert daily aggregations using INSERT ... ON CONFLICT."""
         aggregations = self._without_lowerings(
@@ -661,6 +672,7 @@ class Command(BaseCommand):
         )
         return len(objects)
 
+    @transaction.atomic
     def _bulk_upsert_monthly(self, aggregations: dict) -> int:
         """Bulk upsert monthly aggregations using INSERT ... ON CONFLICT."""
         aggregations = self._without_lowerings(
