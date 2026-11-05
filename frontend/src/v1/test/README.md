@@ -22,6 +22,13 @@ as text summary, `json-summary` and `lcov`. A miss fails the v1 group only.
 Raise the threshold in `vitest.v1.config.mts` as v1 grows. Never lower it to
 land a change.
 
+Coverage is measured on whole-suite runs only: in CI (anywhere `CI` is set,
+which includes the rig in CI) and by `bun run test:v1`, which passes
+`--coverage`. The threshold is global, so a focused run such as
+`npx vitest run --config vitest.v1.config.mts src/v1/lib/cn.test.ts` skips it
+and passes or fails on its tests alone. Add `--coverage` to measure one
+anyway.
+
 What the config does for every test (`setup.ts`):
 
 - `globals: false`. Import `it`, `expect` and `vi` from `vitest`.

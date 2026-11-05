@@ -82,7 +82,11 @@ export function defineV1Config(scope: Scope) {
       unstubEnvs: true,
       restoreMocks: true,
       coverage: {
-        enabled: true,
+        // The threshold is global, so a focused run (one file, one folder)
+        // would fail it however its tests do. Measured only for whole-suite
+        // runs: CI (the rig and every workflow set CI) and `bun run test:v1`,
+        // which passes --coverage. Locally, add --coverage to measure.
+        enabled: Boolean(process.env.CI),
         provider: "v8",
         reportsDirectory: reports,
         reporter: ["text-summary", "json-summary", "lcov"],
