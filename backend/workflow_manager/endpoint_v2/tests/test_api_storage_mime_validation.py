@@ -16,12 +16,14 @@ import zipfile
 from unittest import mock
 from unittest.mock import MagicMock
 
+import fsspec
 import pytest
-from django.core.files.uploadedfile import SimpleUploadedFile, TemporaryUploadedFile
-
 import workflow_manager.endpoint_v2.source as src_mod
+from django.core.files.uploadedfile import SimpleUploadedFile, TemporaryUploadedFile
 from workflow_manager.endpoint_v2.constants import ApiDeploymentResultStatus
 from workflow_manager.endpoint_v2.source import SourceConnector
+
+from unstract.core.mime_gate import SECOND_OPINION_MIME_TYPES, identify_zip_container
 
 # Bytes chosen from what libmagic actually reports (verified against the pinned
 # python-magic). A WAV header is the unsupported case: audio/x-wav is neither
@@ -36,8 +38,7 @@ HTML_BYTES = b"<!DOCTYPE html><html><body>hello</body></html>"
 # A package declares its main part and relates it from the root; an archive
 # carrying only the member names is what the extractor cannot open.
 _OOXML_MAIN = (
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-    ".main+xml"
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ".main+xml"
 )
 _OOXML_CONTENT_TYPES = (
     '<?xml version="1.0"?><Types>'
@@ -53,6 +54,9 @@ _OOXML_RELS = (
 )
 
 API_STORAGE_DIR = "/api-storage/exec-1"
+
+# Larger than any leading-bytes sample, so only a whole-file read can resolve it.
+OLE2_SIZE = 32768
 
 
 @pytest.fixture
@@ -387,16 +391,15 @@ def test_a_mimetype_member_cannot_nominate_a_format(
     assert result == {}, f"accepted an archive whose mimetype member {why}"
 
 
-@pytest.mark.parametrize(
-    "stored", [True, False], ids=["stored-entry", "deflated-entry"]
-)
-def test_a_zip_carrying_a_pdf_marker_is_still_a_zip(collaborators, stored: bool) -> None:
-    """A zip whose contents mention a PDF header must not be staged as a PDF.
+@pytest.mark.parametrize("stored", [True, False], ids=["stored-entry", "deflated-entry"])
+def test_a_zip_with_a_pdf_marker_in_its_head_is_a_pdf(
+    collaborators, stored: bool
+) -> None:
+    """LLMWhisperer's `%PDF-` scan runs on a zip too, so ours must as well.
 
-    An entry stored uncompressed puts `%PDF-1.7` in the archive's literal leading
-    bytes, so a scan of the head sees it exactly as it would in a real document.
-    Resolving the wrapper before the marker is consulted is what keeps that from
-    becoming a way past the gate.
+    An entry stored uncompressed puts the marker in the archive's first 1024
+    bytes and LLMWhisperer accepts the file as a PDF; a deflated one hides it and
+    the file stays a rejected zip.
     """
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w") as archive:
@@ -407,16 +410,18 @@ def test_a_zip_carrying_a_pdf_marker_is_still_a_zip(collaborators, stored: bool)
         )
         archive.writestr("b.bin", bytes(range(256)) * 4)
     data = buf.getvalue()
-    if stored:
-        assert b"%PDF-1.7" in data[:1024], "fixture must put the marker in the head"
+    assert (b"%PDF-" in data[:1024]) is stored
 
     result = _stage([_upload("archive.pdf", data, "application/pdf")])
 
-    assert result == {}
-    collaborators["storage"].write.assert_not_called()
+    if stored:
+        assert result["archive.pdf"].mime_type == "application/pdf"
+    else:
+        assert result == {}
+        collaborators["storage"].write.assert_not_called()
 
 
-def test_an_incomplete_ooxml_package_is_rejected(collaborators) -> None:
+def test_an_incomplete_ooxml_package_is_rejected(collaborators, tmp_path) -> None:
     """Marker directories alone are not a document.
 
     Scoped to the repackaged shape, which is the one resolved by reading the
@@ -438,7 +443,9 @@ def test_an_incomplete_ooxml_package_is_rejected(collaborators) -> None:
     # Which wrapper libmagic names here differs between builds - octet-stream on
     # some, application/zip on others - so assert only the property the test
     # depends on: it is not named a document, so the archive gets inspected.
-    assert src_mod.magic.from_buffer(data, mime=True) in src_mod.INCONCLUSIVE_MIME_TYPES
+    staged = tmp_path / "partial.zip"
+    staged.write_bytes(data)
+    assert src_mod.magic.from_file(str(staged), mime=True) in SECOND_OPINION_MIME_TYPES
 
     result = _stage([_upload("partial.pdf", data, "application/pdf")])
 
@@ -446,27 +453,31 @@ def test_an_incomplete_ooxml_package_is_rejected(collaborators) -> None:
 
 
 @pytest.mark.parametrize(
-    "wrapper", ["application/zip", "application/x-ole-storage"]
+    "verdict, staged_as",
+    [
+        ("application/zip", "application/pdf"),
+        ("application/octet-stream", "application/pdf"),
+        ("application/x-ole-storage", None),
+    ],
+    ids=["zip", "octet-stream", "ole2"],
 )
-def test_a_recognised_wrapper_is_not_promoted_by_its_contents(
-    collaborators, wrapper: str
+def test_the_pdf_scan_runs_only_where_llmwhisperer_runs_it(
+    collaborators, verdict: str, staged_as: str | None
 ) -> None:
-    """A wrapper libmagic named keeps its own answer.
+    """LLMWhisperer scans for `%PDF-` after a zip or octet-stream verdict only.
 
-    Both wrappers, because excluding only one leaves the other able to be
-    reclassified as a PDF by a marker sitting in its payload.
+    An OLE2 wrapper is a verdict it rejects outright, so a marker in its payload
+    must not rescue it here either.
     """
     payload = b"\x00" * 64 + b"%PDF-1.7 not a pdf" + b"\x00" * 512
 
-    # First call classifies the sample; a second would only happen if the rescue
-    # ran, and it answers application/pdf so a promotion would be visible as an
-    # accepted file rather than hidden behind the same wrapper verdict.
-    with mock.patch.object(
-        src_mod.magic, "from_buffer", side_effect=[wrapper, "application/pdf"]
-    ), mock.patch.object(src_mod.magic, "from_file", return_value=wrapper):
+    with mock.patch.object(src_mod.magic, "from_file", return_value=verdict):
         result = _stage([_upload("wrapped.pdf", payload, "application/pdf")])
 
-    assert result == {}
+    if staged_as is None:
+        assert result == {}
+    else:
+        assert result["wrapped.pdf"].mime_type == staged_as
 
 
 def _ooxml_archive(content_types: str, rels: str, part: str) -> bytes:
@@ -605,7 +616,7 @@ def test_odf_is_recognised_only_when_its_manifest_agrees(
     archive = tmp_path / "candidate.zip"
     archive.write_bytes(_odf_archive(_ODT, manifest))
 
-    assert src_mod.identify_zip_container(str(archive)) == expected, why
+    assert identify_zip_container(str(archive)) == expected, why
 
 
 @pytest.mark.parametrize(
@@ -661,9 +672,7 @@ def test_a_namespaced_declaration_is_still_recognised(collaborators) -> None:
 @pytest.mark.parametrize(
     "encoding", ["utf-8", "utf-16", "utf-32"], ids=["utf-8", "utf-16", "utf-32"]
 )
-def test_a_dtd_is_refused_whatever_it_is_encoded_in(
-    collaborators, encoding: str
-) -> None:
+def test_a_dtd_is_refused_whatever_it_is_encoded_in(collaborators, encoding: str) -> None:
     """The parser detects the encoding, so the guard has to as well.
 
     A DTD written in UTF-16 is invisible to a search for ASCII markers but is
@@ -707,45 +716,33 @@ def test_a_plain_zip_stays_rejected(collaborators) -> None:
     collaborators["storage"].write.assert_not_called()
 
 
-def test_container_prefix_triggers_a_full_file_sniff(collaborators) -> None:
-    """A container type seen in the sample must not decide the verdict alone.
+def test_an_upload_is_classified_from_the_whole_file(collaborators) -> None:
+    """Uploads are classified from a path, as LLMWhisperer classifies them.
 
-    Pins the regression directly: an OLE2 upload sniffs application/x-ole-storage
-    from its first bytes, which is absent from AllowedFileTypes, so resolving from
-    the sample alone rejects every legacy Office file bigger than the window.
-
-    The sniff results are stubbed because libmagic's container reporting differs
-    between builds; what must hold everywhere is that an inconclusive sample is
-    escalated to the full file instead of being treated as a verdict.
+    libmagic resolves OLE2 through the directory sector at the end of the file
+    and names a zip container only from a path, so a buffer is never asked.
     """
-    ole_bytes = _ole2_like(SourceConnector.MIME_DETECT_CHUNK_SIZE * 4)
+    ole_bytes = _ole2_like(OLE2_SIZE)
 
-    with mock.patch.object(
-        src_mod.magic, "from_buffer", return_value="application/x-ole-storage"
-    ) as sniff, mock.patch.object(
-        src_mod.magic, "from_file", return_value="application/msword"
-    ) as sniff_path:
+    with (
+        mock.patch.object(src_mod.magic, "from_buffer") as sniff,
+        mock.patch.object(
+            src_mod.magic, "from_file", return_value="application/msword"
+        ) as sniff_path,
+    ):
         result = _stage([_upload("legacy.doc", ole_bytes, "application/msword")])
 
-    # Only the cheap sample came from a buffer...
-    assert sniff.call_count == 1
-    assert len(sniff.call_args_list[0].args[0]) == SourceConnector.MIME_DETECT_CHUNK_SIZE
-    # ...and the verdict came from a path, which is the only way libmagic will
-    # name a container.
+    sniff.assert_not_called()
     assert sniff_path.call_count == 1
-    # ...and the answer from the full file is what decides.
-    assert set(result) == {"legacy.doc"}
     assert result["legacy.doc"].mime_type == "application/msword"
 
 
 def test_container_still_rejected_when_the_full_file_is_unsupported(
     collaborators,
 ) -> None:
-    """The full-file re-sniff widens the evidence, not the allow-list."""
-    ole_bytes = _ole2_like(SourceConnector.MIME_DETECT_CHUNK_SIZE * 4)
+    """The whole-file read widens the evidence, not the allow-list."""
+    ole_bytes = _ole2_like(OLE2_SIZE)
     with mock.patch.object(
-        src_mod.magic, "from_buffer", return_value="application/x-ole-storage"
-    ), mock.patch.object(
         src_mod.magic, "from_file", return_value="application/x-dosexec"
     ):
         result = _stage([_upload("legacy.doc", ole_bytes, "application/msword")])
@@ -756,12 +753,8 @@ def test_container_still_rejected_when_the_full_file_is_unsupported(
 
 def test_container_upload_is_not_consumed_by_detection(collaborators) -> None:
     """Reading the whole file to classify it must still leave it stageable."""
-    ole_bytes = _ole2_like(SourceConnector.MIME_DETECT_CHUNK_SIZE * 4)
-    with mock.patch.object(
-        src_mod.magic, "from_buffer", return_value="application/x-ole-storage"
-    ), mock.patch.object(
-        src_mod.magic, "from_file", return_value="application/msword"
-    ):
+    ole_bytes = _ole2_like(OLE2_SIZE)
+    with mock.patch.object(src_mod.magic, "from_file", return_value="application/msword"):
         _stage([_upload("legacy.doc", ole_bytes, "application/msword")])
 
     written = b"".join(
@@ -802,7 +795,7 @@ def test_disk_backed_upload_is_classified_from_its_temp_file(collaborators) -> N
     test here builds a SimpleUploadedFile, which has no temporary_file_path, so
     the in-memory branch is the only one they reach.
     """
-    ole_bytes = _ole2_like(SourceConnector.MIME_DETECT_CHUNK_SIZE * 4)
+    ole_bytes = _ole2_like(OLE2_SIZE)
     upload = TemporaryUploadedFile(
         "legacy.doc", "application/msword", len(ole_bytes), None
     )
@@ -811,8 +804,6 @@ def test_disk_backed_upload_is_classified_from_its_temp_file(collaborators) -> N
     assert upload.temporary_file_path()  # the branch under test
 
     with mock.patch.object(
-        src_mod.magic, "from_buffer", return_value="application/x-ole-storage"
-    ), mock.patch.object(
         src_mod.magic, "from_file", return_value="application/msword"
     ) as from_file:
         result = _stage([upload])
@@ -860,7 +851,7 @@ def test_systemic_detection_failure_is_not_reported_as_bad_files(
     uploads = [_upload("doc.pdf", PDF_BYTES, "application/pdf")]
 
     with mock.patch.object(
-        src_mod.magic, "from_buffer", side_effect=RuntimeError("magic db is broken")
+        src_mod.magic, "from_file", side_effect=RuntimeError("magic db is broken")
     ):
         with pytest.raises(RuntimeError, match="magic db is broken"):
             _stage(uploads)
@@ -892,7 +883,9 @@ def test_types_llmwhisperer_supports_are_accepted(collaborators) -> None:
     result = _stage(
         [
             _upload("page.html", HTML_BYTES, "text/html"),
-            _upload("data.xml", b'<?xml version="1.0"?><root><a>1</a></root>', "text/xml"),
+            _upload(
+                "data.xml", b'<?xml version="1.0"?><root><a>1</a></root>', "text/xml"
+            ),
         ]
     )
 
@@ -919,39 +912,28 @@ def test_pdf_behind_leading_bytes_is_accepted(collaborators) -> None:
     collaborators["ResultCacheUtils"].update_api_results.assert_not_called()
 
 
-def test_pdf_marker_inside_other_content_does_not_smuggle_a_file_through(
-    collaborators,
+@pytest.mark.parametrize(
+    "offset, accepted", [(120, True), (1024, False)], ids=["in-head", "past-head"]
+)
+def test_a_pdf_marker_counts_only_within_llmwhisperers_window(
+    collaborators, offset: int, accepted: bool
 ) -> None:
-    """The `%PDF-` rescue must not become a way past the gate.
+    """Any `%PDF-` in the first 1024 bytes of an unnamed file makes it a PDF.
 
-    Promoting on a bare substring would let any unidentifiable blob carrying
-    that text near its start be staged as a PDF, which is the opposite of what
-    this check exists for. Re-classifying from the marker's own offset is what
-    keeps the rescue narrow.
+    That is LLMWhisperer's rule, version or not, so a file it would extract as a
+    PDF is never refused here; one byte past its window, it refuses the file too.
     """
-    # These bytes must actually sniff as application/octet-stream, or the test
-    # would pass without ever reaching the rescue it is meant to constrain.
-    blob = b"\x00\x01\x02\x03" * 30 + b"%PDF- not really a pdf" + b"\x00\x01\x02\x03" * 100
+    filler = b"\x00\x01\x02\x03" * 512
+    blob = filler[:offset] + b"%PDF- not really a pdf" + filler
     assert src_mod.magic.from_buffer(blob, mime=True) == "application/octet-stream"
 
-    result = _stage([_upload("smuggled.pdf", blob, "application/pdf")])
+    result = _stage([_upload("blob.pdf", blob, "application/pdf")])
 
-    assert result == {}
-    collaborators["storage"].write.assert_not_called()
-
-
-def test_a_recognised_zip_is_never_promoted_to_pdf(collaborators) -> None:
-    """A zip is a zip, whatever its entries happen to contain."""
-    with mock.patch.object(
-        src_mod.magic, "from_buffer", return_value="application/zip"
-    ), mock.patch.object(
-        src_mod.magic, "from_file", return_value="application/zip"
-    ):
-        result = _stage(
-            [_upload("archive.pdf", b"PK\x03\x04" + b"%PDF-1.7" * 8, "application/pdf")]
-        )
-
-    assert result == {}
+    if accepted:
+        assert result["blob.pdf"].mime_type == "application/pdf"
+    else:
+        assert result == {}
+        collaborators["storage"].write.assert_not_called()
 
 
 def test_unidentifiable_binary_is_rejected(collaborators) -> None:
@@ -962,9 +944,177 @@ def test_unidentifiable_binary_is_rejected(collaborators) -> None:
     extractor and came back as a 415.
     """
     with mock.patch.object(
-        src_mod.magic, "from_buffer", return_value="application/octet-stream"
+        src_mod.magic, "from_file", return_value="application/octet-stream"
     ):
-        result = _stage([_upload("mystery.pdf", b"\x00\x01\x02\x03" * 64, "application/pdf")])
+        result = _stage(
+            [_upload("mystery.pdf", b"\x00\x01\x02\x03" * 64, "application/pdf")]
+        )
+
+    assert result == {}
+    collaborators["storage"].write.assert_not_called()
+
+
+def _erp_export_bytes() -> bytes:
+    """An xlsx shaped like the ERP export in UN-4574.
+
+    Parts deleted by the writer are left behind as `[trash]/*.dat` members ahead
+    of everything else, so libmagic describes the file as Microsoft OOXML yet
+    reports application/octet-stream for it - not application/zip.
+    """
+    content_types = _OOXML_CONTENT_TYPES.replace(
+        "/word/document.xml", "/xl/workbook.xml"
+    ).replace("wordprocessingml.document.main+xml", "spreadsheetml.sheet.main+xml")
+    rels = _OOXML_RELS.replace("word/document.xml", "xl/workbook.xml")
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as archive:
+        archive.writestr("[trash]/0000.dat", b"\x00" * 64)
+        archive.writestr("xl/workbook.xml", "<workbook/>")
+        archive.writestr("_rels/.rels", rels)
+        archive.writestr("[Content_Types].xml", content_types)
+    return buf.getvalue()
+
+
+def test_an_erp_export_libmagic_cannot_name_is_accepted(collaborators) -> None:
+    """An OOXML package libmagic reports as octet-stream is staged as xlsx."""
+    data = _erp_export_bytes()
+
+    result = _stage([_upload("ORDER.xlsx", data, "application/octet-stream")])
+
+    assert result["ORDER.xlsx"].mime_type == (
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+    collaborators["ResultCacheUtils"].update_api_results.assert_not_called()
+
+
+def test_a_full_temp_dir_fails_the_request_not_each_file(collaborators) -> None:
+    """Local disk that cannot take the copy is a platform fault, not a bad file."""
+    from utils.upload_mime_type import UploadSpillError
+
+    uploads = [_upload("doc.pdf", PDF_BYTES, "application/pdf")]
+    with mock.patch(
+        "utils.upload_mime_type.tempfile.NamedTemporaryFile",
+        side_effect=OSError(28, "No space left on device"),
+    ):
+        with pytest.raises(UploadSpillError):
+            _stage(uploads)
+
+
+def test_a_failed_flush_still_fails_the_request_when_closing_fails_too(
+    collaborators,
+) -> None:
+    """Closing the copy flushes again; that error must not pass as a bad file."""
+    from utils.upload_mime_type import UploadSpillError
+
+    spill = MagicMock()
+    spill.flush.side_effect = OSError(28, "No space left on device")
+    spill.close.side_effect = OSError(28, "No space left on device")
+    uploads = [_upload("doc.pdf", PDF_BYTES, "application/pdf")]
+    with mock.patch(
+        "utils.upload_mime_type.tempfile.NamedTemporaryFile", return_value=spill
+    ):
+        with pytest.raises(UploadSpillError):
+            _stage(uploads)
+
+    spill.close.assert_called_once()
+
+
+def _copy_from_connector(collaborators, data: bytes):
+    """Run the backend's connector copy on `data`; return (error, bytes written)."""
+    fs = fsspec.filesystem("memory", skip_instance_cache=True)
+    fs.store.clear()
+    fs.pipe("/in/ORDER.xlsx", data)
+    connector = SourceConnector.__new__(SourceConnector)
+    connector.endpoint = MagicMock()
+    error = None
+    with (
+        mock.patch.object(SourceConnector, "READ_CHUNK_SIZE", 64),
+        mock.patch.object(SourceConnector, "source_file", "exec/SOURCE", create=True),
+        mock.patch.object(SourceConnector, "infile", "exec/INFILE", create=True),
+        mock.patch.object(SourceConnector, "get_fsspec", return_value=fs),
+        mock.patch.object(SourceConnector, "publish_input_file_content"),
+    ):
+        try:
+            connector.add_input_from_connector_to_volume(
+                MagicMock(file_path="/in/ORDER.xlsx", file_name="ORDER.xlsx")
+            )
+        except src_mod.UnsupportedMimeTypeError as exc:
+            error = exc
+    written = b"".join(
+        call.kwargs["data"]
+        for call in collaborators["storage"].write.call_args_list
+        if call.kwargs["path"] == "exec/INFILE"
+    )
+    return error, written
+
+
+def test_a_connector_copy_accepts_an_erp_export(collaborators) -> None:
+    data = _erp_export_bytes()
+
+    error, written = _copy_from_connector(collaborators, data)
+
+    assert error is None
+    assert written == data
+
+
+def test_a_connector_copy_rejects_before_writing_anything(collaborators) -> None:
+    error, written = _copy_from_connector(collaborators, WAV_BYTES * 8)
+
+    assert error is not None
+    assert written == b""
+
+
+def _damage_content_types(data: bytes, how: str) -> bytes:
+    """Damage the `[Content_Types].xml` member of an archive in place.
+
+    Byte surgery on the member's local and central headers, because zipfile
+    cannot write an encrypted or unknown-method member itself.
+    """
+    out = bytearray(data)
+    info = zipfile.ZipFile(io.BytesIO(data)).getinfo("[Content_Types].xml")
+    local = info.header_offset
+    central = out.find(b"PK\x01\x02" + out[local + 4 : local + 6])
+    while out[central + 46 : central + 46 + len(info.filename)] != (
+        info.filename.encode()
+    ):
+        central = out.find(b"PK\x01\x02", central + 4)
+    if how == "encrypted":
+        out[local + 6] |= 0x01
+        out[central + 8] |= 0x01
+    elif how == "unknown-method":
+        out[local + 8 : local + 10] = (99).to_bytes(2, "little")
+        out[central + 10 : central + 12] = (99).to_bytes(2, "little")
+    else:  # corrupt-stream
+        name_len = int.from_bytes(out[local + 26 : local + 28], "little")
+        extra_len = int.from_bytes(out[local + 28 : local + 30], "little")
+        start = local + 30 + name_len + extra_len
+        for i in range(start, start + 8):
+            out[i] ^= 0xFF
+    return bytes(out)
+
+
+@pytest.mark.parametrize("how", ["encrypted", "unknown-method", "corrupt-stream"])
+def test_an_unreadable_package_member_is_rejected_not_raised(
+    collaborators, tmp_path, how: str
+) -> None:
+    """Zipfile raises RuntimeError, NotImplementedError or zlib.error here."""
+    xlsx_types = _OOXML_CONTENT_TYPES.replace(
+        "/word/document.xml", "/xl/workbook.xml"
+    ).replace("wordprocessingml.document.main+xml", "spreadsheetml.sheet.main+xml")
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("[trash]/0000.dat", b"\x00" * 64)
+        archive.writestr("xl/workbook.xml", "<workbook/>")
+        archive.writestr(
+            "_rels/.rels", _OOXML_RELS.replace("word/document.xml", "xl/workbook.xml")
+        )
+        archive.writestr("[Content_Types].xml", xlsx_types * 4)
+    data = _damage_content_types(buf.getvalue(), how)
+    # libmagic must leave this to the zip reader, or the reader is never tested.
+    staged = tmp_path / "ORDER.xlsx"
+    staged.write_bytes(data)
+    assert src_mod.magic.from_file(str(staged), mime=True) in SECOND_OPINION_MIME_TYPES
+
+    result = _stage([_upload("ORDER.xlsx", data, "application/octet-stream")])
 
     assert result == {}
     collaborators["storage"].write.assert_not_called()

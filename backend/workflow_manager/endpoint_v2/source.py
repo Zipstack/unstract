@@ -2,7 +2,6 @@ import fnmatch
 import logging
 import os
 import shutil
-import tempfile
 from collections.abc import Collection
 from hashlib import sha256
 from io import BytesIO
@@ -15,6 +14,7 @@ from connector_processor.constants import ConnectorKeys
 from connector_v2.models import ConnectorInstance
 from django.core.files.uploadedfile import UploadedFile
 from django.db.models import Q
+from utils.upload_mime_type import detect_upload_mime_type
 from utils.user_context import UserContext
 from workflow_manager.endpoint_v2.base_connector import BaseConnector
 from workflow_manager.endpoint_v2.constants import (
@@ -30,11 +30,7 @@ from workflow_manager.endpoint_v2.dto import (
     FileHash,
     SourceConfig,
 )
-from workflow_manager.endpoint_v2.enums import (
-    INCONCLUSIVE_MIME_TYPES,
-    AllowedFileTypes,
-    resolve_inconclusive_mime_type,
-)
+from workflow_manager.endpoint_v2.enums import AllowedFileTypes
 from workflow_manager.endpoint_v2.exceptions import (
     InvalidInputDirectory,
     InvalidSourceConnectionType,
@@ -55,7 +51,7 @@ from workflow_manager.workflow_v2.models.file_history import FileHistory
 from workflow_manager.workflow_v2.models.workflow import Workflow
 
 from unstract.connectors.filesystems.unstract_file_system import UnstractFileSystem
-from unstract.core.mime_gate import identify_zip_container
+from unstract.core.mime_gate import classify_stream
 from unstract.filesystem import FileStorageType, FileSystem
 from unstract.sdk1.file_storage import FileStorage
 from unstract.workflow_execution.enums import LogLevel, LogStage, LogState
@@ -79,10 +75,6 @@ class SourceConnector(BaseConnector):
     """
 
     READ_CHUNK_SIZE = 4194304  # Chunk size for reading files
-    # Most formats are identifiable from their leading bytes.
-    MIME_DETECT_CHUNK_SIZE = 8192
-    # Shared, so the API and connector paths agree on what counts as undecided.
-    CONTAINER_MIME_TYPES = INCONCLUSIVE_MIME_TYPES
 
     def __init__(
         self,
@@ -1006,28 +998,23 @@ class SourceConnector(BaseConnector):
         workflow_file_system = FileSystem(FileStorageType.WORKFLOW_EXECUTION)
         workflow_file_storage = workflow_file_system.get_file_storage()
 
-        first_iteration = True
         input_log = ""
         file_content_hash = sha256()
-        with source_fs.open(input_file_path, "rb") as remote_file:
-            while chunk := remote_file.read(self.READ_CHUNK_SIZE):
+        with (
+            source_fs.open(input_file_path, "rb") as remote_file,
+            classify_stream(remote_file, self.READ_CHUNK_SIZE) as (mime_type, chunks),
+        ):
+            logger.info(f"Detected MIME type: {mime_type} for file {input_file_path}")
+            if mime_type is not None and not AllowedFileTypes.is_allowed(mime_type):
+                raise UnsupportedMimeTypeError(
+                    f"Unsupported MIME type '{mime_type}' for file '{input_file_path}'"
+                )
+            for chunk in chunks:
                 file_content_hash.update(chunk)
-                if first_iteration:
-                    # Detect MIME type using first chunk
-                    mime_type = resolve_inconclusive_mime_type(
-                        magic.from_buffer(chunk, mime=True), chunk
-                    )
-                    logger.info(
-                        f"Detected MIME type: {mime_type} for file {input_file_path}"
-                    )
-                    if not AllowedFileTypes.is_allowed(mime_type):
-                        raise UnsupportedMimeTypeError(
-                            f"Unsupported MIME type '{mime_type}' for file '{input_file_path}'"
-                        )
+                if not input_log:
                     input_log = (
                         chunk[:500].decode("utf-8", errors="replace") + "...(truncated)"
                     )
-                    first_iteration = False
                 # write the chunk in to execution directory
                 workflow_file_storage.write(path=source_file_path, mode="ab", data=chunk)
                 workflow_file_storage.write(path=infile_path, mode="ab", data=chunk)
@@ -1205,50 +1192,10 @@ class SourceConnector(BaseConnector):
 
     @classmethod
     def _detect_uploaded_file_mime_type(cls, file: UploadedFile) -> str | None:
-        """Detect an uploaded file's MIME type from its own bytes.
-
-        The multipart Content-Type is supplied by the caller and never verified,
-        so it cannot be used to decide what is allowed into API storage.
-
-        Returns None for an empty upload, which has no type to judge.
-        """
-        sample = file.read(cls.MIME_DETECT_CHUNK_SIZE)
-        file.seek(0)
-        if not sample:
-            # An empty upload is its own failure downstream, not a type error.
+        """Classify an upload, or None for an empty one, which has no type to judge."""
+        if not file.size:
             return None
-
-        mime_type = magic.from_buffer(sample, mime=True)
-        if mime_type in cls.CONTAINER_MIME_TYPES:
-            mime_type = cls._detect_container_mime_type(file, fallback=mime_type)
-        return resolve_inconclusive_mime_type(mime_type, sample)
-
-    @classmethod
-    def _detect_container_mime_type(cls, file: UploadedFile, fallback: str) -> str:
-        """Resolve a wrapper by classifying the file from a path.
-
-        A path rather than a buffer, because libmagic will not name a zip
-        container from one; an in-memory upload is spilled to a temp file.
-        """
-        temporary_file_path = getattr(file, "temporary_file_path", None)
-        if temporary_file_path is not None:
-            return cls._classify_file_path(temporary_file_path(), fallback)
-
-        with tempfile.NamedTemporaryFile(suffix=".upload") as spill:
-            for chunk in file.chunks(chunk_size=cls.READ_CHUNK_SIZE):
-                spill.write(chunk)
-            spill.flush()
-            file.seek(0)
-            return cls._classify_file_path(spill.name, fallback)
-
-    @classmethod
-    def _classify_file_path(cls, path: str, fallback: str) -> str:
-        """Classify a staged path, looking inside a zip when that is all we get."""
-        mime_type = magic.from_file(path, mime=True)
-        if mime_type == "application/zip":
-            inside = identify_zip_container(path)
-            return inside or mime_type
-        return mime_type or fallback
+        return detect_upload_mime_type(file)
 
     @classmethod
     def _report_rejected_file(

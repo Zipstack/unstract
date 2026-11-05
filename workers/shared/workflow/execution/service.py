@@ -9,8 +9,7 @@ import os
 import time
 from typing import Any
 
-import magic
-from shared.enums.file_types import AllowedFileTypes, resolve_inconclusive_mime_type
+from shared.enums.file_types import AllowedFileTypes
 from shared.exceptions.execution_exceptions import (
     NotFoundDestinationConfiguration,
     NotFoundSourceConfiguration,
@@ -35,6 +34,7 @@ from unstract.core.file_execution_tracker import (
     FileExecutionStageStatus,
     FileExecutionStatusTracker,
 )
+from unstract.core.mime_gate import classify_stream
 from unstract.core.tool_execution_status import (
     ToolExecutionData,
     ToolExecutionTracker,
@@ -1248,25 +1248,19 @@ class WorkerWorkflowExecutionService:
         # Copy file in chunks
         file_content_hash = hashlib.sha256()
         total_bytes_copied = 0
-        first_chunk = True
 
         logger.info(f"Starting chunked file copy from {file_path} to execution directory")
 
-        with source_fs.open(file_path, "rb") as source_file:
-            while chunk := source_file.read(self.READ_CHUNK_SIZE):
-                # MIME type detection and validation on first chunk
-                if first_chunk:
-                    mime_type = resolve_inconclusive_mime_type(
-                        magic.from_buffer(chunk, mime=True), chunk
-                    )
-                    logger.info(f"Detected MIME type: {mime_type} for file {file_path}")
-
-                    if not AllowedFileTypes.is_allowed(mime_type):
-                        raise UnsupportedMimeTypeError(
-                            f"Unsupported MIME type '{mime_type}' for file '{file_path}'"
-                        )
-                    first_chunk = False
-
+        with (
+            source_fs.open(file_path, "rb") as source_file,
+            classify_stream(source_file, self.READ_CHUNK_SIZE) as (mime_type, chunks),
+        ):
+            logger.info(f"Detected MIME type: {mime_type} for file {file_path}")
+            if mime_type is not None and not AllowedFileTypes.is_allowed(mime_type):
+                raise UnsupportedMimeTypeError(
+                    f"Unsupported MIME type '{mime_type}' for file '{file_path}'"
+                )
+            for chunk in chunks:
                 file_content_hash.update(chunk)
                 total_bytes_copied += len(chunk)
 
