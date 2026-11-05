@@ -1658,12 +1658,13 @@ class OpenPR(unittest.TestCase):
         out = self.open_pr(create, lambda a: (0, "", ""))
         self.assertEqual(out, (self.URL, 2, 0, [4]))
 
-    def test_never_opened_deletes_the_head(self):
+    def test_never_listed_keeps_the_head(self):
+        # GitHub may have opened a PR the listing does not show yet: deleting the head would close it.
         out, creates, deletes, waits = self.open_pr(
             lambda a: (1, "", BAD_GATEWAY), lambda a: (0, "", "")
         )
         self.assertIn("502 Bad Gateway", str(out))
-        self.assertEqual((creates, deletes, waits), (5, 1, [4, 8, 16, 32]))
+        self.assertEqual((creates, deletes, waits), (5, 0, [4, 8, 16, 32]))
 
     def test_every_gh_call_retries_a_transient_failure(self):
         fake = FakeGh(queue((1, "", BAD_GATEWAY), (0, "ok\n", "")))
@@ -2035,7 +2036,7 @@ class MainLeftUndone(unittest.TestCase):
         self.owed = {"release/0.191": [(self.a, "fix", "#7", "UN-1 [FIX] x")]}
         self.rows = []
 
-    def main(self, owed=None, rows=(), heads=()):
+    def main(self, owed=None, rows=(), heads=(), old=True):
         def owed_now(slug, targets):
             if isinstance(owed, Exception):
                 raise owed
@@ -2050,6 +2051,7 @@ class MainLeftUndone(unittest.TestCase):
             mock.patch.object(bp, "owed_now", owed_now),
             mock.patch.object(bp, "backport_heads", lambda: set(heads)),
             mock.patch.object(bp, "conflict_prs", lambda slug: []),
+            mock.patch.object(bp, "overdue", lambda sha, now: old),
             mock.patch("sys.stdout", new_callable=io.StringIO) as out,
         ):
             code = bp.main()
@@ -2083,6 +2085,14 @@ class MainLeftUndone(unittest.TestCase):
             out,
         )
         self.assertIn(": owed before this run, not caused by it; dispatch Backport", out)
+
+    def test_untouched_within_grace_passes(self):
+        # merged while this dispatch ran: its own push's rescan picks it
+        self.assertEqual(self.main(old=False)[0], 0)
+
+    def test_named_within_grace_still_fails(self):
+        other = [(self.a, "#7", "fix", "release/0.190", "picked", "-")]
+        self.assertEqual(self.main(rows=other, old=False)[0], 1)
 
     def test_settled_passes(self):
         picked = [(self.a, "#7", "fix", "release/0.191", "picked", "-")]

@@ -26,10 +26,11 @@ permissions:
 jobs:
   # Path filtering at job level, not trigger paths-ignore: an untriggered
   # workflow reports no check run, so a required check waits forever; a job
-  # skipped via `if:` reports conclusion `skipped`, which passes. Two scopes:
+  # skipped via `if:` reports conclusion `skipped`, which passes. `release`
+  # gates the release tooling tests. Two product scopes:
   # `relevant` gates unit/integration; `e2e_relevant` gates e2e and skips only
-  # docs — the e2e image build is the sole CI check that compiles the frontend,
-  # and docker/** changes must be e2e-tested.
+  # docs, `.github/**` and `.claude/**` — the e2e image build is the sole CI
+  # check that compiles the frontend, and docker/** changes must be e2e-tested.
   changes:
     runs-on: ubuntu-latest
     permissions:
@@ -40,7 +41,7 @@ jobs:
       # Filtering is a PR-time saving only. On workflow_dispatch there is no
       # base to diff, so paths-filter resolves against the default branch and a
       # manual run on main diffs main against itself — every filter false, every
-      # tier skipped, gate green with nothing run. Force both true off-PR.
+      # tier skipped, gate green with nothing run. Force each true off-PR.
       relevant: ${{ github.event_name != 'pull_request' || steps.filter.outputs.relevant == 'true' || steps.filter.outputs.ci_self == 'true' }}
       e2e_relevant: ${{ github.event_name != 'pull_request' || steps.filter.outputs.e2e_relevant == 'true' || steps.filter.outputs.ci_self == 'true' }}
       release: ${{ github.event_name != 'pull_request' || steps.release_filter.outputs.release == 'true' }}

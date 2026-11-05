@@ -387,6 +387,12 @@ def record(slug, n, sender):
             "sha": (pr.get("mergeCommit") or {}).get("oid"),
             "reason": None,
         }
+    # The App never closes a PR to decline; a close by it comes from a head delete, e.g. a create whose PR was not
+    # listed yet. Recording it would settle the fix with no pick.
+    if sender == f"{os.environ['RELEASE_BOT_APP_SLUG']}[bot]":
+        raise RuntimeError(
+            f"#{n} was closed by the release App, not a person: no decline recorded; the next Backport run picks it again"
+        )
     cs = comments(slug, n)
     reason = (
         decline_reason(cs, sender, pr["closedAt"])

@@ -3433,7 +3433,9 @@ a = sys.argv[1:]
 tagged = subprocess.run(["git", "rev-parse", "-q", "--verify", "refs/tags/" + os.environ["TAG"]], capture_output=True).returncode == 0
 with open(a[a.index("--out") + 1], "a") as f:
     f.write(f"stub {a[a.index('--target') + 1]} annotate={a[a.index('--annotate') + 1]} tagged={tagged}\\n")
-sys.exit(int(os.environ["GATE_RC"]))
+codes = os.environ["GATE_RC"].split()  # one for every target, or one per target in BUILD order
+t = a[a.index("--target") + 1]
+sys.exit(int(codes[os.environ["BUILD"].split().index(t)] if len(codes) > 1 else codes[0]))
 """
 
     def setUp(self):
@@ -3529,6 +3531,15 @@ sys.exit(int(os.environ["GATE_RC"]))
         for force in ("false", "true"):
             r = self.gate(1, force=force)
             self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+            self.assertIn(
+                "::error::convergence gate did not run (see the run log)", r.stdout
+            )
+            self.assertEqual(self.read("notes.md"), "")
+
+    def test_a_gate_error_on_any_target_wins_over_missing_picks(self):
+        for codes in ("1 2", "2 1"):
+            r = self.gate(codes, force="true")
+            self.assertEqual(r.returncode, 1, codes + r.stdout + r.stderr)
             self.assertIn(
                 "::error::convergence gate did not run (see the run log)", r.stdout
             )

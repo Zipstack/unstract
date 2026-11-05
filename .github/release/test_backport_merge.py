@@ -287,6 +287,12 @@ class Close(unittest.TestCase):
             post,
         )
 
+    def test_close_by_the_app_is_not_a_decline(self):
+        bm.gh = Gh("CLOSED", labels=["backport-conflict"])
+        with self.assertRaisesRegex(RuntimeError, "closed by the release App"):
+            bm.record("o/r", 7, f"{APP}[bot]")
+        self.assertEqual(bm.gh.writes(), [])
+
     def test_rerun_writes_nothing(self):
         self.on_base = [
             (

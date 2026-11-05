@@ -540,6 +540,11 @@ def owed_now(slug, targets):
     return {b: held(slug, REPO, b, accept=a, cache=cache) for b, a in scan.items()}
 
 
+def overdue(sha, now):
+    """Merged past OWED_GRACE: younger, its own push's rescan may still be picking it."""
+    return now - rm.ts(rm.git(REPO, "log", "-1", "--format=%cI", sha)) > OWED_GRACE
+
+
 def state_check(state, others=(), slug=None, now=None):
     """Daily State run: 1 when a pick is overdue, a commit cannot be classed, or a conflict PR is stale."""
     slug = slug or os.environ["GITHUB_REPOSITORY"]
@@ -571,7 +576,7 @@ def state_check(state, others=(), slug=None, now=None):
                 print(held_line(sha, cls, pr, b, "notice"))
             elif backport_head(b, sha) in in_pr:
                 continue  # the conflict PR's own age decides
-            elif now - rm.ts(rm.git(REPO, "log", "-1", "--format=%cI", sha)) > OWED_GRACE:
+            elif overdue(sha, now):
                 errors.append(
                     f"{sha[:7]} ({cls}, PR {pr}) owed on stabilizing {b} and not picked: "
                     f"dispatch Backport with commits={sha[:12]}, or record a decline"
@@ -1027,7 +1032,8 @@ def _land(slug, branch, head, n, retried=False):
 
 def _open_pr(slug, branch, head, body, *opts, sleep=time.sleep):
     """A create GitHub failed transiently may have opened the PR: look before retrying. Still none after the retries:
-    delete the pushed head, so the next run picks the commit again instead of finding a head with no PR.
+    keep the head. Deleting it would close a PR the listing has not shown yet, and record() would take that close as a
+    decline; the next run's _no_open_pr deletes the head once it is past PICK_TIMEOUT and has no PR.
     """
     for n in range(bm.GH_TRIES):
         try:
@@ -1066,14 +1072,6 @@ def _open_pr(slug, branch, head, body, *opts, sleep=time.sleep):
             ):
                 return url
             if n == bm.GH_TRIES - 1:
-                soft(
-                    f"delete of {head}",
-                    "gh",
-                    "api",
-                    "-X",
-                    "DELETE",
-                    f"repos/{slug}/git/refs/heads/{head}",
-                )
                 raise
             wait = bm.gh_wait(n, str(e))
             print(f"{str(e).splitlines()[0]}; PR create retried in {wait} s")
@@ -1212,8 +1210,10 @@ def main():
     try:
         if not a.rescan:
             owed = owed_now(slug, targets)
+        ran, now = {r[0] for r in rows}, datetime.datetime.now(datetime.UTC)
+        left = unsettled(targets, owed, rows, backport_heads())
         undone = unsettled_lines(
-            unsettled(targets, owed, rows, backport_heads()), {r[0] for r in rows}
+            [u for u in left if u[0] in ran or overdue(u[0], now)], ran
         )
     except RuntimeError as e:
         print(f"::error::cannot check what this run left undone: {e}")
