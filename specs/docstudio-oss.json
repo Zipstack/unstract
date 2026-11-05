@@ -528,12 +528,47 @@
             }
           },
           {
+            "description": "When true, return only active rows whose last five finished runs all ended in error.",
+            "in": "query",
+            "name": "failing",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "description": "Return only rows whose last run is at or after this time.",
+            "in": "query",
+            "name": "last_run_after",
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Return only rows whose last run is at or before this time.",
+            "in": "query",
+            "name": "last_run_before",
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
             "description": "Which field to use when ordering the results.",
             "in": "query",
             "name": "ordering",
             "required": false,
             "schema": {
               "type": "string"
+            }
+          },
+          {
+            "description": "Return only rows this user owns or co-owns (user id).",
+            "in": "query",
+            "name": "owner",
+            "schema": {
+              "minimum": 1,
+              "type": "integer"
             }
           },
           {
@@ -559,6 +594,21 @@
             "in": "query",
             "name": "search",
             "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "description": "Return only rows in this status, which comes from the latest finished run; `inactive` wins over it.\n\n* `success` - success\n* `error` - error\n* `never_run` - never_run\n* `inactive` - inactive",
+            "in": "query",
+            "name": "status",
+            "schema": {
+              "enum": [
+                "success",
+                "error",
+                "never_run",
+                "inactive"
+              ],
+              "minLength": 1,
               "type": "string"
             }
           },

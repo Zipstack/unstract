@@ -51,12 +51,25 @@ def _finished_runs() -> QuerySet[WorkflowExecution]:
     ).order_by("-created_at")
 
 
+def failing_only(rows: QuerySet[Any]) -> QuerySet[Any]:
+    """``rows`` whose last five finished runs all ended in ERROR.
+
+    Annotates ``_last_failure``, the latest of those runs.
+    """
+    finished = _finished_runs()
+    return rows.annotate(
+        _recent_statuses=ArraySubquery(finished.values("status")[:FAILING_STREAK_RUNS]),
+        _last_failure=Subquery(finished.values("created_at")[:1]),
+    ).filter(_recent_statuses=[_FAILED] * FAILING_STREAK_RUNS)
+
+
 def failing_streaks(
     rows: QuerySet[Any],
     start_date: datetime | None = None,
     end_date: datetime | None = None,
+    limit: int | None = None,
 ) -> list[FailingStreak]:
-    """Return the failing rows of ``rows``, newest failure first.
+    """Return the failing rows of ``rows``, newest failure first, at most ``limit``.
 
     ``rows`` is a queryset of ``Pipeline`` or ``APIDeployment``; executions are
     matched on ``WorkflowExecution.pipeline_id``. Rows with fewer than five
@@ -64,15 +77,12 @@ def failing_streaks(
     given, bound the latest failure: the failing test always uses the row's
     latest runs, so a past ``end_date`` does not mean "failing as of then".
 
-    One query, whatever the number of rows. The failing test and the range run
-    in SQL first, so the streak lookups, which can read a row's whole history,
-    are computed only for rows that are failing.
+    One query, whatever the number of rows. The failing test, the range, the
+    order and the limit run in SQL first, so the streak lookups, which can read
+    a row's whole history, are computed only for the rows returned.
     """
     finished = _finished_runs()
-    rows = rows.annotate(
-        _recent_statuses=ArraySubquery(finished.values("status")[:FAILING_STREAK_RUNS]),
-        _last_failure=Subquery(finished.values("created_at")[:1]),
-    ).filter(_recent_statuses=[_FAILED] * FAILING_STREAK_RUNS)
+    rows = failing_only(rows)
     if start_date is not None:
         rows = rows.filter(_last_failure__gte=start_date)
     if end_date is not None:
@@ -101,7 +111,8 @@ def failing_streaks(
         ),
     )
 
-    streaks = [
+    newest_first = annotated.order_by("-_last_failure", "-pk")
+    return [
         FailingStreak(
             row=row,
             failures_in_a_row=row._failures_in_a_row,
@@ -109,7 +120,5 @@ def failing_streaks(
             last_failure=row._last_failure,
             last_success=row._last_success,
         )
-        for row in annotated
+        for row in newest_first[:limit]
     ]
-    streaks.sort(key=lambda s: (s.last_failure, str(s.row.pk)), reverse=True)
-    return streaks
