@@ -6,7 +6,8 @@ never ships a fix a newer one lacks.
   the RC still blocks.
 - A decline on the newer line counts as converged; one on the older line owes the newer line nothing.
 - RBO-ABSENT counts only after the newer line's latest promoted tag (else its cut), outside .github/.
-Exit 2 iff any MISSING or an older line is not GA yet, 1 on error (never a silent pass), else 0.
+Exit 2 iff any MISSING, 1 on error or bad usage (never a silent pass), else 0. Promote order (an older line not GA
+yet) is listed, not counted: Promote enforces it, and Take RC builds of a newer line while an older one stabilizes.
 """
 
 import argparse
@@ -15,10 +16,10 @@ import functools
 import json
 import os
 import re
-import subprocess
 import sys
 import traceback
 
+import backport_merge as bm
 import oss
 import relmgr as rm
 import relstate as rs
@@ -28,9 +29,8 @@ CLOSE_HOWTO = "resolve, get one approval and merge, or close the PR to decline (
 
 
 def conflict_pr(head):
-    r = subprocess.run(
+    r = bm.run_gh(
         [
-            "gh",
             "pr",
             "list",
             "-R",
@@ -42,8 +42,6 @@ def conflict_pr(head):
             "--json",
             "number,url",
         ],
-        capture_output=True,
-        text=True,
     )
     if r.returncode:  # never report "no PR found" when the lookup itself failed
         raise RuntimeError(f"gh pr list --head {head}: {r.stderr.strip()}")
@@ -52,17 +50,14 @@ def conflict_pr(head):
 
 
 def push_failure(number, branch):
-    r = subprocess.run(
+    r = bm.run_gh(
         [
-            "gh",
             "api",
             "--paginate",
             f"repos/{os.environ['GITHUB_REPOSITORY']}/issues/{number}/comments",
             "--jq",
             f'.[] | .body | split("\\n")[0] | select(startswith("Backport to {branch} failed:"))',
         ],
-        capture_output=True,
-        text=True,
     )
     if r.returncode:  # never read a failed lookup as "no failure comment"
         raise RuntimeError(f"gh api issues/{number}/comments: {r.stderr.strip()}")
@@ -150,7 +145,14 @@ def oss_pins(repo, oss_repo, branch, target, scope, ref, rows, annotate):
     main, oss_refs = "refs/remotes/origin/main", rs._branches(oss_repo)
     pins = _oss_pins_of(repo, oss_repo, [branch, *scope], ref)
     head = blocked(branch, target, annotate)
-    missing, lines, out = 0, [], [f"### OSS pins: `{branch}` pins `{pins[branch]}`", ""]
+    missing, lines, out = (
+        0,
+        [],
+        [
+            f"### OSS pins: {rm.branch_link(branch)} pins {rm.tag_link(pins[branch], oss.OSS)}",
+            "",
+        ],
+    )
     for s in scope:
         older, newer = rs.older_newer(s, branch)
         p_old, p_new, line_new = pins[older], pins[newer], oss.line_of(pins[newer])
@@ -164,7 +166,8 @@ def oss_pins(repo, oss_repo, branch, target, scope, ref, rows, annotate):
         line = _line_result(s, older, len(found), summary, state_s, oss=True)
         lines.append(line)
         out.append(
-            f"**{s}** ({line['side']}; `{older}` pins `{p_old}`, `{newer}` pins `{p_new}`): {summary}"
+            f"**{rm.branch_link(s)}** ({line['side']}; {rm.branch_link(older)} pins {rm.tag_link(p_old, oss.OSS)}, "
+            f"{rm.branch_link(newer)} pins {rm.tag_link(p_new, oss.OSS)}): {summary}"
         )
         for c, st in found:
             if st != "MISSING":
@@ -173,7 +176,9 @@ def oss_pins(repo, oss_repo, branch, target, scope, ref, rows, annotate):
                 fix, act = _oss_act(oss_repo, main, oss_refs, o, newer, line_new)
                 msg = f"{head}: {fix} is in {older}'s OSS pin {p_old} but not in {newer}'s pin {p_new}: {act}."
                 print(f"::{annotate}::{msg}")
-                out.append(f"- `{c[:12]}` MISSING original {o[:12]}")
+                out.append(
+                    f"- {rm.commit_link(c, 12, oss.OSS)} MISSING original {rm.commit_link(o, 12, oss.OSS)}"
+                )
                 out.append(f"  - {msg}")
                 line["todo"].append(act)
         out.append("")
@@ -318,15 +323,15 @@ def _row_out(
     if status == "DECLINED":
         d, why = decline
         out.append(
-            f"- `{c[:12]}` DECLINED on {newer} original {', '.join(o[:12] for o in origs)}: {why} ({d[:7]})"
+            f"- {rm.commit_link(c, 12)} DECLINED on {rm.branch_link(newer)} original {', '.join(o[:12] for o in origs)}: {why} ({rm.commit_link(d)})"
         )
     elif status == "RBO-ABSENT":
         what = _rbo_what(repo, c)
-        out.append(f"- `{c[:12]}` RBO-ABSENT {what}")
+        out.append(f"- {rm.commit_link(c, 12)} RBO-ABSENT {what}")
         line["rbo"].append(f"on `{older}`: {what}, not on `{newer}`")
     elif status != "CONVERGED":
         out.append(
-            f"- `{c[:12]}` {status} original {', '.join(o[:12] for o in origs) or '-'}"
+            f"- {rm.commit_link(c, 12)} {status} original {', '.join(o[:12] for o in origs) or '-'}"
         )
         if status == "MISSING":
             for o in origs:
@@ -359,7 +364,10 @@ def gate(
     # a promoted branch ships its latest stable tag for T, not its tip
     ref = functools.partial(_ref, repo, refs, rows, branch, target, promote_ref)
     scope = [s for s in state["supported"][target] if s != branch]
-    out = [f"### Convergence gate: `{branch}` for {target} at `{ref(branch)}`", ""]
+    out = [
+        f"### Convergence gate: {rm.branch_link(branch)} for {target} at {rm.ref_link(ref(branch))}",
+        "",
+    ]
     if not scope:
         out.append("scanned branches: none")
     missing, lines = 0, []
@@ -377,8 +385,8 @@ def gate(
         line = _line_result(s, older, n_picks, summary, state_s)
         lines.append(line)
         out.append(
-            f"**{s}** ({line['side']}, {state_s or 'not enabled'} for {target}; "
-            f"`{refs[older]}` into `{ref(newer)}`): {summary}"
+            f"**{rm.branch_link(s)}** ({line['side']}, {state_s or 'not enabled'} for {target}; "
+            f"{rm.ref_link(refs[older])} into {rm.ref_link(ref(newer))}): {summary}"
         )
         message = functools.partial(
             missing_message,
@@ -517,7 +525,10 @@ def main(argv=None):
         default=os.environ.get("GITHUB_STEP_SUMMARY"),
         help="file the checks table and gate detail are appended to; default: the step summary",
     )
-    a = p.parse_args(argv)
+    try:
+        a = p.parse_args(argv)
+    except SystemExit as e:  # argparse exits 2 on bad usage, which reads as MISSING picks
+        return 1 if e.code else 0
     try:
         out_file = a.out and rm.local_path(a.out)
         if rs.PINS and not a.oss_repo:
@@ -548,7 +559,7 @@ def main(argv=None):
         table, detail = checks(lines, order, out)
         with open(out_file, "a") as f:
             f.write("\n".join(table + [""] + detail) + "\n\n")
-    return 2 if code or order else 0
+    return 2 if code else 0
 
 
 if __name__ == "__main__":
