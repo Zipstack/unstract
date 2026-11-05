@@ -8,11 +8,12 @@ import {
 } from "./describe";
 import {
   chartRows,
+  droppedWarnings,
   keptLabels,
   keptMarkers,
   markerKey,
   markerLabelKey,
-  markerWarnings,
+  reservedKeyWarnings,
 } from "./markers";
 import type {
   CategoryKey,
@@ -154,17 +155,39 @@ it("drops a marker on a series that is not charted", () => {
 
 it("words a warning per dropped marker and per reserved series key", () => {
   expect(
-    markerWarnings(
-      [
-        { key: "pages", label: "Pages" },
-        { key: "__marker_x", label: "Clash" },
-      ],
-      [{ label: "A", reason: "its series is not charted" }],
-    ),
+    reservedKeyWarnings([
+      { key: "pages", label: "Pages" },
+      { key: "__marker_x", label: "Clash" },
+    ]),
   ).toEqual([
     'Chart series key "__marker_x" starts with "__marker", which the chart uses for markers; rename the field.',
-    'Chart marker "A" not drawn: its series is not charted.',
   ]);
+  expect(
+    droppedWarnings([{ label: "A", reason: "its series is not charted" }]),
+  ).toEqual(['Chart marker "A" not drawn: its series is not charted.']);
+});
+
+it("draws no markers when a series key is reserved, since marker fields would overwrite it", () => {
+  type Pivot = Record<string, number>;
+  const rows: Pivot[] = [{ a: 1, __marker_x: 2 }];
+  expect(
+    keptMarkers<Pivot>(
+      rows,
+      [
+        { key: "a", label: "A" },
+        { key: "__marker_x", label: "X" },
+      ],
+      [{ index: 0, series: "a", label: "peak" }],
+    ),
+  ).toEqual({
+    kept: new Map(),
+    dropped: [
+      {
+        label: "peak",
+        reason: 'a series key starts with "__marker", which markers reserve',
+      },
+    ],
+  });
 });
 
 it("orders the summary's markers by series, then row, whatever order they were given in", () => {
@@ -202,22 +225,35 @@ it("carries each marker's value (line and area) and label in its own row", () =>
     string,
     unknown
   >[];
-  expect(line.map((r) => r[markerKey(0)])).toEqual([null, 2981, null]);
-  expect(line.map((r) => r[markerLabelKey(0)])).toEqual([
+  expect(line.map((r) => r[markerKey("pages")])).toEqual([null, 2981, null]);
+  expect(line.map((r) => r[markerLabelKey("pages")])).toEqual([
     undefined,
     "peak",
     undefined,
   ]);
-  expect(line.map((r) => markerKey(1) in r)).toEqual([false, false, false]);
+  expect(line.map((r) => markerKey("cost") in r)).toEqual([
+    false,
+    false,
+    false,
+  ]);
   expect(line[1]).toMatchObject(data[1]);
+  // Named by series key, so a series keeps its own fields if another is
+  // removed or reordered.
+  expect(Object.keys(line[1])).toEqual(
+    expect.arrayContaining(["__marker:pages", "__marker_label:pages"]),
+  );
   // Bars read only the label: the bar itself is the point.
   const bars = chartRows(data, series, kept, true) as Record<string, unknown>[];
-  expect(bars.map((r) => r[markerLabelKey(0)])).toEqual([
+  expect(bars.map((r) => r[markerLabelKey("pages")])).toEqual([
     undefined,
     "peak",
     undefined,
   ]);
-  expect(bars.map((r) => markerKey(0) in r)).toEqual([false, false, false]);
+  expect(bars.map((r) => markerKey("pages") in r)).toEqual([
+    false,
+    false,
+    false,
+  ]);
 });
 
 /*
@@ -257,6 +293,12 @@ it("types series, marker and category keys by what their field holds", () => {
     "day";
   // @ts-expect-error an index that can never hold a number has no series key
   const allStrings: NumericKey<Record<string, string>> = "cost";
+  // An index that can only hold numbers, however narrowly, has any key.
+  const flags: NumericKey<Record<string, 0 | 1>> = "on";
+  // Loosely typed JSON rows: nothing is known, so nothing is refused.
+  const looseSeries: NumericKey<Record<string, unknown>> = "pages";
+  const looseCategory: CategoryKey<Record<string, unknown> & { day: string }> =
+    "day";
   // @ts-expect-error an index of objects has no category key
   const objectCategory: CategoryKey<Record<string, { n: number }>> = "x";
   // @ts-expect-error an untyped `[]` infers never, which accepts no key
@@ -276,5 +318,8 @@ it("types series, marker and category keys by what their field holds", () => {
     objectCategory,
     fromEmpty,
     categoryFromEmpty,
-  ]).toHaveLength(12);
+    flags,
+    looseSeries,
+    looseCategory,
+  ]).toHaveLength(15);
 });

@@ -18,14 +18,25 @@ import type { ChartDatum, ChartMarker, ChartSeries } from "./types";
 /** Fields the chart adds to marked rows start with this; series keys may not. */
 export const RESERVED_PREFIX = "__marker";
 
-/** The field holding series `seriesIndex`'s marker value on a marked row (line and area). */
-export function markerKey(seriesIndex: number): string {
-  return `${RESERVED_PREFIX}_${seriesIndex}`;
+/*
+ * The marker fields are named by series key, not position, so a chart that
+ * keeps a series across a change (another series removed or reordered)
+ * reads its own fields, in the previous rows as in the new ones.
+ */
+
+/** The field holding a series' marker value on a marked row (line and area). */
+export function markerKey(seriesKey: string): string {
+  return `${RESERVED_PREFIX}:${seriesKey}`;
 }
 
-/** The field holding series `seriesIndex`'s marker label on a marked row. */
-export function markerLabelKey(seriesIndex: number): string {
-  return `${RESERVED_PREFIX}_label_${seriesIndex}`;
+/** The field holding a series' marker label on a marked row. */
+export function markerLabelKey(seriesKey: string): string {
+  return `${RESERVED_PREFIX}_label:${seriesKey}`;
+}
+
+/** True when a series key could collide with the marker fields. */
+export function isReservedKey(seriesKey: string): boolean {
+  return seriesKey.startsWith(RESERVED_PREFIX);
 }
 
 /** Marker labels by row index, for each series that has at least one. */
@@ -49,10 +60,14 @@ export function keptMarkers<Row extends ChartDatum>(
 ): Readonly<{ kept: MarkerLabels; dropped: readonly DroppedMarker[] }> {
   const kept = new Map<number, Map<number, string>>();
   const dropped: DroppedMarker[] = [];
+  // A reserved series key would be overwritten by the marker fields, so a
+  // chart with one draws no markers at all (and warns about the key).
+  const reserved = series.some((s) => isReservedKey(s.key));
   for (const marker of markers) {
     const seriesIndex = series.findIndex((s) => s.key === marker.series);
-    const reason =
-      seriesIndex === -1
+    const reason = reserved
+      ? `a series key starts with "${RESERVED_PREFIX}", which markers reserve`
+      : seriesIndex === -1
         ? "its series is not charted"
         : !Number.isInteger(marker.index) ||
             marker.index < 0 ||
@@ -83,28 +98,31 @@ export function keptLabels(kept: MarkerLabels): string[] {
     );
 }
 
-/** The console warnings for dropped markers and for series keys the chart reserves. */
-export function markerWarnings<Row extends ChartDatum>(
+/** The console warning for each series key the chart reserves for markers. */
+export function reservedKeyWarnings<Row extends ChartDatum>(
   series: readonly ChartSeries<Row>[],
-  dropped: readonly DroppedMarker[],
 ): string[] {
-  return [
-    ...series
-      .filter((s) => s.key.startsWith(RESERVED_PREFIX))
-      .map(
-        (s) =>
-          `Chart series key "${s.key}" starts with "${RESERVED_PREFIX}", which the chart uses for markers; rename the field.`,
-      ),
-    ...dropped.map((d) => `Chart marker "${d.label}" not drawn: ${d.reason}.`),
-  ];
+  return series
+    .filter((s) => isReservedKey(s.key))
+    .map(
+      (s) =>
+        `Chart series key "${s.key}" starts with "${RESERVED_PREFIX}", which the chart uses for markers; rename the field.`,
+    );
+}
+
+/** The console warning for each dropped marker. */
+export function droppedWarnings(dropped: readonly DroppedMarker[]): string[] {
+  return dropped.map(
+    (d) => `Chart marker "${d.label}" not drawn: ${d.reason}.`,
+  );
 }
 
 /**
  * The rows Recharts plots: `data` itself (same array) when nothing is
- * marked; otherwise each row plus, for each series marked on it, the
- * marker's label (`markerLabelKey`) and, on a line or area, its value
- * (`markerKey`, null on unmarked rows so the marker series draws nothing
- * there). Carrying both in the row keeps a marker paired with its point in
+ * marked; otherwise each row plus, for each marked series, on a line or area
+ * its value field (`markerKey`: the series value on rows it marks, null on
+ * the rest, so the marker series draws nothing there) and, on rows it marks,
+ * its label (`markerLabelKey`). Carrying both in the row keeps a marker paired with its point in
  * every frame: Recharts updates its data store after commit, so anything
  * the renderers took from props instead could meet the previous rows.
  */
@@ -120,13 +138,13 @@ export function chartRows<Row extends ChartDatum>(
   return data.map((row, rowIndex) => {
     const extra: Record<string, number | string | null> = {};
     for (const [seriesIndex, byRow] of kept) {
+      const key = series[seriesIndex].key;
       const label = byRow.get(rowIndex);
       if (!bars) {
-        extra[markerKey(seriesIndex)] =
-          label === undefined ? null : numberAt(row, series[seriesIndex].key);
+        extra[markerKey(key)] = label === undefined ? null : numberAt(row, key);
       }
       if (label !== undefined) {
-        extra[markerLabelKey(seriesIndex)] = label;
+        extra[markerLabelKey(key)] = label;
       }
     }
     return { ...row, ...extra };

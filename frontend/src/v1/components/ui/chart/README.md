@@ -104,9 +104,10 @@ Every chart:
 what they say, not on their identity. Rows typed with a string index
 signature (`Record<string, number>`, pivoted rows with one field per dynamic
 series) accept any key whose field could hold a number, since the type
-cannot check them per field (`Record<string, string>` accepts none). Field
-names starting with `__marker` are reserved for markers; the chart warns
-if a series uses one. Wrappers
+cannot check them per field (`Record<string, string>` accepts none;
+`Record<string, unknown>` accepts any). Field
+names starting with `__marker` are reserved for markers: a chart with such
+a series key warns (in any state) and draws no markers. Wrappers
 that take a key generically can type it with the exported `NumericKey<Row>`
 and `CategoryKey<Row>`.
 

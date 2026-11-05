@@ -13,42 +13,43 @@ type IndexValue<Row> = Row[string & keyof Row];
 /**
  * Keys of `Row` holding a category: a string or a number. A row typed with a
  * string index signature (`Record<string, string | number>`, as pivoted rows
- * with one field per dynamic series are) cannot be checked per key, so any
- * string is accepted there, provided the index can hold a string or number.
- * `never` (what an untyped `[]` infers) accepts no key.
+ * with one field per dynamic series are) cannot be checked per key, so there
+ * any string is accepted when the index's value type includes a string or a
+ * number, or is `unknown` / `any` (nothing is known either way), and none
+ * otherwise (`Record<string, Date>`). An untyped `[]` infers `never`, whose
+ * index is `never`, so it accepts no key.
  */
-export type CategoryKey<Row> = [Row] extends [never]
-  ? never
-  : string extends keyof Row
-    ? [Extract<IndexValue<Row>, string | number>] extends [never]
+export type CategoryKey<Row> = string extends keyof Row
+  ? unknown extends IndexValue<Row>
+    ? string
+    : [Extract<IndexValue<Row>, string | number>] extends [never]
       ? never
       : string
-    : {
-        [K in keyof Row]-?: Row[K] extends string | number ? K : never;
-      }[keyof Row] &
-        string;
+  : {
+      [K in keyof Row]-?: Row[K] extends string | number ? K : never;
+    }[keyof Row] &
+      string;
 
 /**
  * Keys of `Row` holding a series value: a number, or null / undefined for a
  * gap. A numeric string ("12.5", as a DRF Decimal serialises) is rejected
  * here: parse it before charting, or Recharts would draw it while the
  * tooltip, table and summary treat it as a gap. A row with a string index
- * signature accepts any string when the index can hold a number (so
- * `Record<string, string>` accepts none), and is otherwise checked as
- * above; `never` accepts no key.
+ * signature accepts any string when the index's value type includes a number
+ * (`Record<string, string | number>`, `Record<string, 0 | 1>`) or is
+ * `unknown` / `any`, and none otherwise (`Record<string, string>`); `never`
+ * accepts none.
  */
-export type NumericKey<Row> = [Row] extends [never]
-  ? never
-  : string extends keyof Row
-    ? number extends IndexValue<Row>
-      ? string
-      : never
-    : {
-        [K in keyof Row]-?: Row[K] extends number | null | undefined
-          ? K
-          : never;
-      }[keyof Row] &
-        string;
+export type NumericKey<Row> = string extends keyof Row
+  ? unknown extends IndexValue<Row>
+    ? string
+    : [Extract<IndexValue<Row>, number>] extends [never]
+      ? never
+      : string
+  : {
+      [K in keyof Row]-?: Row[K] extends number | null | undefined ? K : never;
+    }[keyof Row] &
+      string;
 
 /**
  * A meaning-carrying colour that takes a series out of the ordinal ramp, e.g.

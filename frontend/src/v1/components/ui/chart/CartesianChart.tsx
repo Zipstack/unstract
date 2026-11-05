@@ -28,11 +28,12 @@ import {
 } from "./describe";
 import {
   chartRows,
+  droppedWarnings,
   keptLabels,
   keptMarkers,
   markerKey,
   markerLabelKey,
-  markerWarnings,
+  reservedKeyWarnings,
 } from "./markers";
 import { BarMarker, isolatedDot, markerDot } from "./marks";
 import { seriesColors } from "./palette";
@@ -97,12 +98,16 @@ export function CartesianChart<Row extends ChartDatum>({
     () => chartRows(data, series, kept, bars),
     [data, kept, bars],
   );
-  // Warn once per distinct problem, and only while showing data: a marker
-  // computed for rows that are still loading is not a mistake.
-  const warnings =
-    resolved === "ready" ? markerWarnings(series, dropped).join("\n") : "";
+  // Logged whenever the set of problems changes (and, as with every effect,
+  // twice on mount under StrictMode in development). A reserved series key
+  // is a mistake in any state; a dropped marker only while showing data,
+  // since a marker computed for rows that are still loading is not one.
+  const warnings = JSON.stringify([
+    ...reservedKeyWarnings(series),
+    ...(resolved === "ready" ? droppedWarnings(dropped) : []),
+  ]);
   useEffect(() => {
-    for (const warning of warnings === "" ? [] : warnings.split("\n")) {
+    for (const warning of JSON.parse(warnings) as string[]) {
       console.warn(warning);
     }
   }, [warnings]);
@@ -180,7 +185,7 @@ export function CartesianChart<Row extends ChartDatum>({
           >
             {kept.has(i) ? (
               <LabelList
-                dataKey={markerLabelKey(i)}
+                dataKey={markerLabelKey(s.key)}
                 content={<BarMarker color={colors[i]} />}
               />
             ) : null}
@@ -193,15 +198,18 @@ export function CartesianChart<Row extends ChartDatum>({
     ? []
     : [...kept.keys()].map((seriesIndex) => (
         <Line
-          key={markerKey(seriesIndex)}
-          dataKey={markerKey(seriesIndex)}
+          key={markerKey(series[seriesIndex].key)}
+          dataKey={markerKey(series[seriesIndex].key)}
           yAxisId={series[seriesIndex].axis ?? "left"}
           stroke="none"
           legendType="none"
           tooltipType="none"
           isAnimationActive={false}
           activeDot={false}
-          dot={markerDot(colors[seriesIndex], markerLabelKey(seriesIndex))}
+          dot={markerDot(
+            colors[seriesIndex],
+            markerLabelKey(series[seriesIndex].key),
+          )}
         />
       ));
 

@@ -622,7 +622,10 @@ describe("cartesian options", () => {
     ]);
   });
 
-  it("formats with the viewer's locale by default", () => {
+  // The default locale is the runtime's, which cannot be varied in-process
+  // (Intl reads it at start-up), so this pins the default formats, grouped and
+  // compact, not which locale they use.
+  it("formats grouped values and compact ticks by default", () => {
     const viewer = numberFormats();
     const { container } = renderV1(
       <LineChart
@@ -636,6 +639,62 @@ describe("cartesian options", () => {
       ...container.querySelectorAll(".recharts-yAxis-tick-labels text"),
     ].map((t) => t.textContent);
     expect(ticks).toContain(viewer.axis(3000));
+  });
+
+  it("warns about a reserved series key in any state, and draws no markers then", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    type Pivot = Record<string, string | number>;
+    const rows: Pivot[] = [{ day: "1", a: 1, __marker_b: 2 }];
+    const view = (state: "loading" | "ready") => (
+      <LineChart
+        title="T"
+        data={rows}
+        xKey="day"
+        width={WIDTH}
+        height={HEIGHT}
+        state={state}
+        series={[
+          { key: "a", label: "A" },
+          { key: "__marker_b", label: "B" },
+        ]}
+        markers={[{ index: 0, series: "a", label: "peak" }]}
+      />
+    );
+    const { container, rerender } = renderV1(view("loading"));
+    expect(warn).toHaveBeenCalledWith(
+      'Chart series key "__marker_b" starts with "__marker", which the chart uses for markers; rename the field.',
+    );
+    rerender(view("ready"));
+    expect(container.querySelector("[data-slot=chart-marker]")).toBeNull();
+    expect(warn).toHaveBeenLastCalledWith(
+      'Chart marker "peak" not drawn: a series key starts with "__marker", which markers reserve.',
+    );
+  });
+
+  it("labels each of two series marked on the same row with its own marker", () => {
+    const both = [
+      { index: 1, series: "pages", label: "pages peak" },
+      { index: 1, series: "failed", label: "failed peak" },
+    ] as const;
+    for (const Chart of [LineChart, BarChart]) {
+      const { container, unmount } = renderV1(
+        <Chart {...props({ markers: both })} />,
+      );
+      const marks = [
+        ...container.querySelectorAll("[data-slot=chart-marker]"),
+      ].map((m) => [
+        m.textContent,
+        m.querySelector("circle")?.getAttribute("fill"),
+      ]);
+      expect(marks).toEqual(
+        expect.arrayContaining([
+          ["pages peak", "var(--chart-1)"],
+          ["failed peak", "var(--chart-2)"],
+        ]),
+      );
+      expect(marks).toHaveLength(2);
+      unmount();
+    }
   });
 
   it("separates stacked segments with a card-coloured stroke", () => {
