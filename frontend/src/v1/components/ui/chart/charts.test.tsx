@@ -750,6 +750,32 @@ describe("cartesian options", () => {
     );
   });
 
+  it("measures bar marker labels against the plot area, which a right axis narrows", () => {
+    // The last "pages" bar centres at about 315 without a right axis (plot
+    // ends at 392) and about 283 with one (plot ends at 352). A 140-wide
+    // label fits centred in the first case and not in the second.
+    const anchorWith = (axis: "left" | "right") => {
+      const { container, unmount } = renderV1(
+        <BarChart
+          {...props({
+            series: [
+              { key: "pages", label: "Pages processed" },
+              { key: "failed", label: "Failed pages", axis },
+            ],
+            markers: [{ index: 2, series: "pages", label: "x".repeat(20) }],
+          })}
+        />,
+      );
+      const anchor = container
+        .querySelector("[data-slot=chart-marker] text")
+        ?.getAttribute("text-anchor");
+      unmount();
+      return anchor;
+    };
+    expect(anchorWith("left")).toBe("middle");
+    expect(anchorWith("right")).toBe("end");
+  });
+
   it("separates stacked segments with a card-coloured stroke", () => {
     const { container } = renderV1(<StackedBarChart {...props()} />);
     const segments = container.querySelectorAll(".recharts-bar-rectangle path");

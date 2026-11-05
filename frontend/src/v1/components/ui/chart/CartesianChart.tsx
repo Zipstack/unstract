@@ -187,15 +187,7 @@ export function CartesianChart<Row extends ChartDatum>({
             {kept.has(i) ? (
               <LabelList
                 dataKey={markerLabelKey(s.key)}
-                content={
-                  <BarMarker
-                    color={colors[i]}
-                    inset={{
-                      left: MARGIN.left + Y_AXIS_WIDTH,
-                      right: MARGIN.right + (hasRight ? Y_AXIS_WIDTH : 0),
-                    }}
-                  />
-                }
+                content={<BarMarker color={colors[i]} />}
               />
             ) : null}
           </Bar>

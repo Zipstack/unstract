@@ -40,14 +40,7 @@ it("draws a line marker from the label in the plotted row, nothing on rows witho
 
 it("draws a bar marker from the label value, centred over the bar", () => {
   const marked = svg(
-    <BarMarker
-      color="var(--chart-2)"
-      inset={{ left: 0, right: 0 }}
-      x={10}
-      y={5}
-      width={20}
-      value="spike"
-    />,
+    <BarMarker color="var(--chart-2)" x={10} y={5} width={20} value="spike" />,
   );
   expect(marked.querySelector("[data-slot=chart-marker]")).toHaveTextContent(
     "spike",
@@ -59,13 +52,7 @@ it("draws a bar marker from the label value, centred over the bar", () => {
   );
   expect(
     svg(
-      <BarMarker
-        color="var(--chart-2)"
-        inset={{ left: 0, right: 0 }}
-        x={10}
-        y={5}
-        width={20}
-      />,
+      <BarMarker color="var(--chart-2)" x={10} y={5} width={20} />,
     ).querySelector("[data-slot=chart-marker]"),
   ).toBeNull();
 });
@@ -82,9 +69,9 @@ it("draws an isolated point only where neither plotted neighbour has a value", (
   expect(at([{ y: 5 }], 0)).not.toBeNull(); // a single row
 });
 
-it("reads a line marker's label inward only where, centred, it would cross one plot edge", () => {
+it("reads a line marker's label from wherever leaves least of it outside the plot", () => {
   const Dot = markerDot("var(--chart-1)", "l");
-  // Plot edges at x 0 and 300; "peak" is about 28 wide, so 14 either side.
+  // Plot edges at x 0 and 300; "peak" is about 28 wide.
   const points = [
     { x: 0, y: 1 },
     { x: 150, y: 2 },
@@ -102,55 +89,54 @@ it("reads a line marker's label inward only where, centred, it would cross one p
   expect(text(150)?.getAttribute("x")).toBe("150");
   expect(anchor(300)).toBe("end");
   expect(text(300)?.getAttribute("x")).toBe("304");
-  // A long label, about 140 wide: inward within 70 of an edge, centred past it.
+  // A long label, about 140 wide: centred it fits from 70 to 230.
   const long = "10 Aug · 2,981 pages";
   expect(anchor(40, long)).toBe("start");
   expect(anchor(69, long)).toBe("start");
-  expect(anchor(70, long)).toBe("middle"); // exactly half: fits
+  expect(anchor(70, long)).toBe("middle"); // fits exactly: centred wins the tie
   expect(anchor(100, long)).toBe("middle");
+  expect(anchor(230, long)).toBe("middle");
+  expect(anchor(231, long)).toBe("end");
   expect(anchor(260, long)).toBe("end");
-  // Wider than the room on both sides: centring overflows least.
+  // On a narrow plot, reading inward would overflow the far edge more than
+  // centring: centred spills 1 on the left, rightward would spill 55.
+  const narrow = [
+    { x: 0, y: 1 },
+    { x: 150, y: 2 },
+  ];
+  expect(anchor(69, long, narrow)).toBe("middle");
+  // ...but close to an edge, reading inward still spills less.
+  expect(
+    anchor(10, long, [
+      { x: 0, y: 1 },
+      { x: 100, y: 2 },
+    ]),
+  ).toBe("start");
+  // Wider than the plot and dead centre: centring spills least.
   expect(
     anchor(50, long, [
       { x: 0, y: 1 },
       { x: 100, y: 2 },
     ]),
   ).toBe("middle");
+  // The 4 nudge counts: on a 20-wide plot at x 3, "peak" read rightward
+  // from x -1 spills 8, centred spills 11.
+  expect(anchor(3, "peak", [{ x: 0, y: 1 }, { x: 20, y: 2 }])).toBe("start");
   // A single row sits mid-plot.
   expect(anchor(150, "peak", [{ x: 150, y: 1 }])).toBe("middle");
 });
 
-it("reads a bar marker's label inward near the plot's edges, from the SVG box less the insets", () => {
-  // SVG 0..400; plot 40..392.
-  const label = (x: number, width = 10) =>
-    svg(
-      <BarMarker
-        color="var(--chart-1)"
-        inset={{ left: 40, right: 8 }}
-        parentViewBox={{ x: 0, width: 400 }}
-        x={x}
-        y={5}
-        width={width}
-        value="10 Aug · 2,981 pages"
-      />,
-    )
-      .querySelector("text")
-      ?.getAttribute("text-anchor");
-  expect(label(45)).toBe("start"); // centre 50, 10 from the plot's left
-  expect(label(195)).toBe("middle");
-  expect(label(375)).toBe("end"); // centre 380, 12 from the plot's right
-  // Centre 325: 67 from the plot's right (inward) but 75 from the SVG's.
-  expect(label(320)).toBe("end");
-  // Without Recharts' box it stays centred.
+it("centres a bar marker's label outside a chart, where there is no plot area", () => {
+  // Inside a chart the bounds come from Recharts' plot area; see the bar
+  // chart tests in charts.test.tsx.
   expect(
     svg(
       <BarMarker
         color="var(--chart-1)"
-        inset={{ left: 40, right: 8 }}
-        x={45}
+        x={0}
         y={5}
         width={10}
-        value="peak"
+        value="10 Aug · 2,981 pages"
       />,
     )
       .querySelector("text")

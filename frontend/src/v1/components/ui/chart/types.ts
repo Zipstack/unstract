@@ -87,7 +87,7 @@ export type ChartSeries<Row extends ChartDatum> = Readonly<{
  * read out in the summary only when its series is charted, its index is an
  * integer row of `data`, the series has a value on that row, no earlier
  * marker labels that point, and no series key starts with `__marker`;
- * otherwise it is dropped, with a console warning once the chart shows data.
+ * otherwise it is dropped, with a console warning when the chart shows data.
  */
 export type ChartMarker<Row extends ChartDatum> = Readonly<{
   /** Row index in `data`, so repeated category labels stay unambiguous. */

@@ -1,4 +1,5 @@
 import type { ReactElement } from "react";
+import { usePlotArea } from "recharts";
 
 /*
  * Renderers Recharts calls per point or per bar. Each decides only from what
@@ -13,8 +14,8 @@ import type { ReactElement } from "react";
 type Anchor = "start" | "middle" | "end";
 
 /**
- * A marker: a dot ringed in the card colour, its label above, centred on the
- * dot unless that would cross the plot's edge (see `labelAnchor`).
+ * A marker: a dot ringed in the card colour, its label above; where the
+ * label reads from is `labelAnchor`'s choice.
  */
 function MarkerMark({
   x,
@@ -40,7 +41,13 @@ function MarkerMark({
         strokeWidth={2}
       />
       <text
-        x={anchor === "start" ? x - 4 : anchor === "end" ? x + 4 : x}
+        x={
+          anchor === "start"
+            ? x - LABEL_NUDGE
+            : anchor === "end"
+              ? x + LABEL_NUDGE
+              : x
+        }
         y={y - 10}
         textAnchor={anchor}
         className="ui:fill-foreground"
@@ -65,32 +72,41 @@ type PointProps = Readonly<{
 // enough to tell whether a centred label would cross the plot's edge.
 const LABEL_CHAR_WIDTH = 7;
 
+/** How far `MarkerMark` shifts a label read from one side of its dot. */
+const LABEL_NUDGE = 4;
+
 /**
  * Where a marker's label reads from, given the plot's left and right bounds:
- * `start` (rightward from the dot) when, centred, it would cross only the
- * left bound, `end` when it would cross only the right, and `middle`
- * otherwise, including when it is wider than the room on both sides, where
- * centring overflows least. Bounds that are not numbers leave it centred.
+ * whichever of `middle` (centred), `start` (rightward from the dot) or `end`
+ * (leftward) leaves the least of the estimated label outside the bounds,
+ * preferring `middle` on a tie. So a label reads inward only where that
+ * keeps more of it in the plot, and stays centred when it fits or when it
+ * is too wide for either side. Without bounds it stays centred.
  */
 function labelAnchor(
   cx: number,
   label: string,
-  left: unknown,
-  right: unknown,
+  left: number | null | undefined,
+  right: number | null | undefined,
 ): Anchor {
   if (typeof left !== "number" || typeof right !== "number") {
     return "middle";
   }
-  const half = (label.length * LABEL_CHAR_WIDTH) / 2;
-  const crossesLeft = cx - left < half;
-  const crossesRight = right - cx < half;
-  if (crossesLeft && !crossesRight) {
-    return "start";
+  const width = label.length * LABEL_CHAR_WIDTH;
+  const overflow = (from: number) =>
+    Math.max(0, left - from) + Math.max(0, from + width - right);
+  const candidates: [Anchor, number][] = [
+    ["middle", overflow(cx - width / 2)],
+    ["start", overflow(cx - LABEL_NUDGE)],
+    ["end", overflow(cx + LABEL_NUDGE - width)],
+  ];
+  let best = candidates[0];
+  for (const candidate of candidates) {
+    if (candidate[1] < best[1]) {
+      best = candidate;
+    }
   }
-  if (crossesRight && !crossesLeft) {
-    return "end";
-  }
-  return "middle";
+  return best[0];
 }
 
 /**
@@ -159,10 +175,6 @@ type BarMarkerProps = Readonly<{
   y?: number | string;
   width?: number | string;
   value?: unknown;
-  /** How far the plot sits inside the SVG on each side (margins and Y axes). */
-  inset: Readonly<{ left: number; right: number }>;
-  // Set by Recharts: the whole SVG's box.
-  parentViewBox?: Readonly<{ x?: unknown; width?: unknown }>;
 }>;
 
 /**
@@ -171,8 +183,8 @@ type BarMarkerProps = Readonly<{
  * `dataKey` is the series' `markerLabelKey`, so `value` is the label carried
  * in that bar's own row (unmarked rows have none). Centred over the bar it
  * names, on top of its own segment in a stack, since Recharts gives the
- * bar's own geometry. Near the plot's edges (the SVG's box from Recharts,
- * less `inset`) the label reads inward as on a line.
+ * bar's own geometry; near the plot's edges (Recharts' own plot area, so no
+ * layout is restated here) the label reads inward as on a line.
  */
 export function BarMarker({
   color,
@@ -180,9 +192,8 @@ export function BarMarker({
   y,
   width,
   value,
-  inset,
-  parentViewBox,
 }: BarMarkerProps): ReactElement {
+  const plot = usePlotArea();
   if (
     typeof x !== "number" ||
     typeof y !== "number" ||
@@ -192,16 +203,12 @@ export function BarMarker({
     return <g />;
   }
   const cx = x + width / 2;
-  const box = parentViewBox;
-  const anchor =
-    typeof box?.x === "number" && typeof box.width === "number"
-      ? labelAnchor(
-          cx,
-          value,
-          box.x + inset.left,
-          box.x + box.width - inset.right,
-        )
-      : "middle";
+  const anchor = labelAnchor(
+    cx,
+    value,
+    plot?.x,
+    plot === undefined ? undefined : plot.x + plot.width,
+  );
   return (
     <MarkerMark x={cx} y={y} color={color} label={value} anchor={anchor} />
   );
