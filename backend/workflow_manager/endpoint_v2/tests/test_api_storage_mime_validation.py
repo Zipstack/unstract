@@ -1061,3 +1061,60 @@ def test_a_connector_copy_rejects_before_writing_anything(collaborators) -> None
 
     assert error is not None
     assert written == b""
+
+
+def _damage_content_types(data: bytes, how: str) -> bytes:
+    """Damage the `[Content_Types].xml` member of an archive in place.
+
+    Byte surgery on the member's local and central headers, because zipfile
+    cannot write an encrypted or unknown-method member itself.
+    """
+    out = bytearray(data)
+    info = zipfile.ZipFile(io.BytesIO(data)).getinfo("[Content_Types].xml")
+    local = info.header_offset
+    central = out.find(b"PK\x01\x02" + out[local + 4 : local + 6])
+    while out[central + 46 : central + 46 + len(info.filename)] != (
+        info.filename.encode()
+    ):
+        central = out.find(b"PK\x01\x02", central + 4)
+    if how == "encrypted":
+        out[local + 6] |= 0x01
+        out[central + 8] |= 0x01
+    elif how == "unknown-method":
+        out[local + 8 : local + 10] = (99).to_bytes(2, "little")
+        out[central + 10 : central + 12] = (99).to_bytes(2, "little")
+    else:  # corrupt-stream
+        name_len = int.from_bytes(out[local + 26 : local + 28], "little")
+        extra_len = int.from_bytes(out[local + 28 : local + 30], "little")
+        start = local + 30 + name_len + extra_len
+        for i in range(start, start + 8):
+            out[i] ^= 0xFF
+    return bytes(out)
+
+
+@pytest.mark.parametrize("how", ["encrypted", "unknown-method", "corrupt-stream"])
+def test_an_unreadable_package_member_is_rejected_not_raised(
+    collaborators, tmp_path, how: str
+) -> None:
+    """Zipfile raises RuntimeError, NotImplementedError or zlib.error here."""
+    xlsx_types = _OOXML_CONTENT_TYPES.replace(
+        "/word/document.xml", "/xl/workbook.xml"
+    ).replace("wordprocessingml.document.main+xml", "spreadsheetml.sheet.main+xml")
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("[trash]/0000.dat", b"\x00" * 64)
+        archive.writestr("xl/workbook.xml", "<workbook/>")
+        archive.writestr(
+            "_rels/.rels", _OOXML_RELS.replace("word/document.xml", "xl/workbook.xml")
+        )
+        archive.writestr("[Content_Types].xml", xlsx_types * 4)
+    data = _damage_content_types(buf.getvalue(), how)
+    # libmagic must leave this to the zip reader, or the reader is never tested.
+    staged = tmp_path / "ORDER.xlsx"
+    staged.write_bytes(data)
+    assert src_mod.magic.from_file(str(staged), mime=True) in SECOND_OPINION_MIME_TYPES
+
+    result = _stage([_upload("ORDER.xlsx", data, "application/octet-stream")])
+
+    assert result == {}
+    collaborators["storage"].write.assert_not_called()

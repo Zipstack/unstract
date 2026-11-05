@@ -9,6 +9,7 @@ unstract-llm-whisperer) step by step.
 import tempfile
 import xml.etree.ElementTree as ElementTree
 import zipfile
+import zlib
 from collections.abc import Iterator
 from contextlib import contextmanager
 from functools import partial
@@ -37,6 +38,20 @@ PDF_MIME_TYPE = "application/pdf"
 # LLMWhisperer's default MAX_FILE_SIZE. A larger file is refused there anyway,
 # so it is not worth spilling to local disk just to classify it.
 MAX_SPILL_BYTES = 300 * 1024 * 1024
+
+# What zipfile raises for an archive it cannot read: encrypted members raise
+# RuntimeError, unknown compression methods NotImplementedError, damaged streams
+# zlib.error or EOFError. Any of them means "not a package", never a crash.
+ZIP_READ_ERRORS = (
+    zipfile.BadZipFile,
+    OSError,
+    KeyError,
+    ValueError,
+    RuntimeError,
+    NotImplementedError,
+    EOFError,
+    zlib.error,
+)
 
 # A package's declaration members are small; anything larger is not one.
 PACKAGE_MEMBER_LIMIT = 65536
@@ -104,7 +119,7 @@ def _read_member(archive: zipfile.ZipFile, name: str) -> bytes | None:
             return None
         with archive.open(info) as member:
             return member.read(PACKAGE_MEMBER_LIMIT)
-    except (KeyError, OSError, zipfile.BadZipFile, ValueError):
+    except ZIP_READ_ERRORS:
         return None
 
 
@@ -224,7 +239,7 @@ def identify_zip_container(path: str) -> str | None:
                     return _identify_odf(archive, declared)
             if {"[Content_Types].xml", "_rels/.rels"} <= set(names):
                 return _identify_ooxml(archive, names)
-    except (zipfile.BadZipFile, OSError, KeyError, ValueError):
+    except ZIP_READ_ERRORS:
         return None
     return None
 
