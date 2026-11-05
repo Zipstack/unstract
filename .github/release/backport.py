@@ -148,7 +148,7 @@ def fix_class(slug, sha, token=None):
 
 
 def pr_class(pr):
-    return rm.pr_fix_class(pr["title"], _labels(pr)), f"#{pr['number']}", pr["title"]
+    return rm.main_fix_class(pr["title"], _labels(pr)), f"#{pr['number']}", pr["title"]
 
 
 def _subject_pr(slug, sha, token=None):
@@ -372,7 +372,9 @@ def push_summary(head, table, done, pending):
 
 HELD = {"security", "critical"}
 OWED = {"fix", "security", "critical"}
-UNCLASSIFIABLE = "UNCLASSIFIABLE"  # no PR found, or a title Lint PR should have refused: shown, never dropped
+UNCLASSIFIABLE = (
+    "UNCLASSIFIABLE"  # no PR found, or a PR main_fix_class rejects: shown, never dropped
+)
 
 
 def held_filter(commits, classes, trailers, accept=HELD):
@@ -391,10 +393,14 @@ def classes_from_listing(prs):
         if not pr.get("mergeCommit"):
             continue
         try:
-            cls = rm.pr_fix_class(pr["title"], _labels(pr))
+            cls = rm.main_fix_class(pr["title"], _labels(pr))
             out[pr["mergeCommit"]["oid"]] = (cls, f"#{pr['number']}", pr["title"])
         except ValueError as e:
-            out[pr["mergeCommit"]["oid"]] = (UNCLASSIFIABLE, str(e), pr["title"])
+            out[pr["mergeCommit"]["oid"]] = (
+                UNCLASSIFIABLE,
+                f"#{pr['number']}",
+                f"{pr['title']} ({e})",
+            )
     return out
 
 
@@ -460,7 +466,7 @@ def held(slug, repo, branch, accept=HELD, cache=None, token=None):
             classes[s] = (
                 (UNCLASSIFIABLE, pr, subject()) if pr == "no PR" else (cls, pr, title)
             )
-        except ValueError as e:  # a title Lint PR should have stopped
+        except ValueError as e:  # bad labels or title
             classes[s] = (UNCLASSIFIABLE, str(e), subject())
     print(
         f"held: {len(commits)} main commit(s) since the cut of {branch}, {looked} fix_class lookup(s)"
@@ -1159,7 +1165,7 @@ def push_title(slug, sha):
     # Known limit: a gh error past fix_class's retry ends the run before the summary.
     try:
         cls, pr, _ = fix_class(slug, sha)
-    except ValueError as e:  # a title Lint PR should have stopped: the picks are done, only this line is left
+    except ValueError as e:  # the picks are done, only this line is left
         print(f"::warning::{sha[:7]}: fix class: {e}")
         cls, pr = UNCLASSIFIABLE, "-"
     return f"Backport · push {rm.commit_link(sha)} ({link_pr(pr)}, {cls or 'not a fix'})"
@@ -1319,7 +1325,7 @@ def _dispatch_commit(slug, targets, sha, confirm, listed, awaiting, named_pr=Non
     """Appends its held picks to awaiting. named_pr: the PR the RM named, already fetched."""
     try:
         cls, pr, title = pr_class(named_pr) if named_pr else fix_class(slug, sha)
-    except ValueError as e:  # Lint PR should have stopped this PR
+    except ValueError as e:
         print(f"::error::{sha[:7]}: fix class: {e}")
         # A named commit nothing could pick fails the dispatch.
         return [(sha, "?", "error", "-", f"failed: {e}", "-")]

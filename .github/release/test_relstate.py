@@ -1424,7 +1424,7 @@ class PrFixClass(unittest.TestCase):
                 )
 
     def test_main_needs_one_routing_label(self):
-        c = rm.pr_fix_class
+        c = rm.main_fix_class
         for title in ("UN-1 [FIX] x", "UN-1 [HOT-FIX] x", "UN-1 [MISC] x"):
             for labels in ([], ["bug"]):
                 with self.assertRaisesRegex(
@@ -1432,23 +1432,27 @@ class PrFixClass(unittest.TestCase):
                     "no backport label: add fix/needs-backport .* or main-only",
                 ):
                     c(title, labels)
-            with self.assertRaisesRegex(ValueError, "no backport label"):
-                c(title, [], base="main")
+                self.assertIsNone(rm.pr_fix_class(title, labels))
+            self.assertIsNone(c(title, ["main-only"]))
+            self.assertEqual(c(title, ["fix/needs-backport"]), "fix")
         for fix in ("fix/needs-backport", "fix/security", "fix/critical"):
             with self.assertRaisesRegex(
                 ValueError, rf"conflicting labels: main-only with \['{fix}'\]"
             ):
                 c("UN-1 [MISC] x", ["main-only", fix])
+        with self.assertRaisesRegex(ValueError, "no recognised"):
+            c("no prefix", [])  # the title error wins over the missing label
 
     def test_a_release_pr_needs_no_routing_label(self):
-        c = rm.pr_fix_class
-        self.assertIsNone(c("UN-1 [FIX] x", [], base="release/0.186"))
-        self.assertIsNone(c("UN-1 [MISC] x", ["bug"], base="release/0.186"))
-        self.assertEqual(
-            c("UN-1 [MISC] x", ["fix/critical"], base="release/0.186"), "critical"
-        )
-        with self.assertRaises(ValueError):
-            c("no prefix", [], base="release/0.186")
+        f = rm.release_only_refusal
+        self.assertIsNone(f("release/0.186", []))
+        self.assertIsNone(f("release/0.186", ["bug"]))
+        for labels in ([], ["bug"], ["release-branch-only"]):
+            self.assertIsNone(rm.pr_fix_class("UN-1 [FIX] x", labels))
+        self.assertIn("no backport label", f("main", []))
+        self.assertIn("no backport label", f("main", ["bug"]))
+        for label in ("main-only", "fix/needs-backport", "fix/security", "fix/critical"):
+            self.assertIsNone(f("main", [label]), label)
 
     def test_revert_validates_the_inner_title(self):
         c = rm.pr_fix_class
@@ -1457,7 +1461,7 @@ class PrFixClass(unittest.TestCase):
         self.assertIsNone(c('Revert "UN-1 [FIX] x"', ["main-only"]))
         self.assertEqual(c('Revert "Revert "UN-1 [FIX] x""', nb), "fix")
         with self.assertRaisesRegex(ValueError, "no backport label"):
-            c('Revert "UN-1 [FIX] x"')  # GitHub's revert PR is unlabelled
+            rm.main_fix_class('Revert "UN-1 [FIX] x"')  # GitHub's revert PR is unlabelled
         for title in ('Revert "fix x"', "Revert UN-1 [FIX] x", 'revert "UN-1 [FIX] x"'):
             with self.assertRaisesRegex(ValueError, "no recognised", msg=title):
                 c(title, ["main-only"])

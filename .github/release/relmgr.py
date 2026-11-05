@@ -319,8 +319,8 @@ FIX_LABELS = ("fix/security", "fix/critical", "fix/needs-backport")
 MAIN_ONLY = "main-only"
 
 
-def pr_fix_class(title, labels=(), base="main"):
-    """The class comes from labels only: a PR into main must say whether it is backported."""
+def pr_fix_class(title, labels=()):
+    """The class comes from labels only; None without a fix/ label. A main merge also needs one: main_fix_class."""
     # Reject near-miss class labels (fix/<x>, fix-class/<x>, typos) so a typo cannot drop the class.
     bad = [
         l
@@ -336,8 +336,7 @@ def pr_fix_class(title, labels=(), base="main"):
     if len(classes) > 1:
         raise ValueError(f"conflicting fix labels: {sorted('fix/' + c for c in classes)}")
     fixes = sorted(set(labels) & set(FIX_LABELS))
-    # The title no longer routes, but changelogs read it. A revert's wraps the reverted PR's; strip: GitHub keeps a
-    # leading space.
+    # Validated for the changelogs, not for the class. Unwrap reverts; strip: GitHub keeps a leading space.
     inner = title.strip()
     while r := REVERT_RE.match(inner):
         inner = r.group(1).strip()
@@ -349,16 +348,19 @@ def pr_fix_class(title, labels=(), base="main"):
         raise ValueError(f"conflicting labels: {MAIN_ONLY} with {fixes}")
     if classes:
         return classes.pop()
-    if fixes:
-        return "fix"
-    if MAIN_ONLY in labels or base.startswith("release/"):
-        return None
-    raise ValueError(
-        f"no backport label: add fix/needs-backport to copy it to release lines, or {MAIN_ONLY} to keep it on main"
-    )
+    return "fix" if fixes else None
+
+
+def main_fix_class(title, labels=()):
+    """pr_fix_class for a PR merged into main, which must say whether it is backported."""
+    cls = pr_fix_class(title, labels)
+    if refusal := release_only_refusal("main", labels):
+        raise ValueError(refusal)
+    return cls
 
 
 def release_only_refusal(base, labels):
+    """Label errors that depend on the base. Lint PR on every branch calls this by name, old workflow copies included."""
     if "release-branch-only" in labels and not base.startswith("release/"):
         return (
             "label `release-branch-only` is for PRs into a release/X.Y branch; remove it here "
@@ -366,6 +368,8 @@ def release_only_refusal(base, labels):
         )
     if MAIN_ONLY in labels and base.startswith("release/"):
         return f"label `{MAIN_ONLY}` is for PRs into main; remove it here"
+    if not base.startswith("release/") and not set(labels) & {MAIN_ONLY, *FIX_LABELS}:
+        return f"no backport label: add fix/needs-backport to copy it to release lines, or {MAIN_ONLY} to keep it on main"
     return None
 
 

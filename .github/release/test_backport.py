@@ -241,9 +241,9 @@ class Listing(unittest.TestCase):
             self.assertEqual(classes[fix], ("fix", "#1", "UN-1 [FIX] a"))
             self.assertEqual(classes[sec], ("security", "#2", "UN-2 [FIX] b"))
             self.assertEqual(classes[misc], (None, "#3", "UN-3 [MISC] c"))
-            self.assertEqual(classes[bad][0], bp.UNCLASSIFIABLE)
+            self.assertEqual(classes[bad][:2], (bp.UNCLASSIFIABLE, "#4"))
             self.assertIn(
-                "no recognised '[TYPE]' or 'TICKET [TYPE]' prefix", classes[bad][1]
+                "no recognised '[TYPE]' or 'TICKET [TYPE]' prefix", classes[bad][2]
             )
             self.assertEqual(
                 len(classes), 4
@@ -548,7 +548,9 @@ SUBJECT = "UN-4160 [MISC] Log in to prod through Unstract ID (#1946)"
 PR_1946 = {
     "number": 1946,
     "title": "UN-4160 [MISC] Log in to prod through Unstract ID",
-    "labels": [{"name": "main-only"}],
+    "labels": [
+        {"name": "main-only"}
+    ],  # set for the not-a-fix path; the live PR carries fix/needs-backport
     "merged": True,
     "merge_commit_sha": MERGED,
 }
@@ -580,9 +582,14 @@ class ListingUnlabelled(unittest.TestCase):
             "labels": [],
             "mergeCommit": {"oid": "s"},
         }
-        cls, why, title = bp.classes_from_listing([pr])["s"]
-        self.assertEqual((cls, title), (bp.UNCLASSIFIABLE, "UN-8 [FIX] x"))
-        self.assertIn("no backport label", why)
+        cls, ref, title = bp.classes_from_listing([pr])["s"]
+        self.assertEqual((cls, ref), (bp.UNCLASSIFIABLE, "#8"))
+        self.assertRegex(title, r"^UN-8 \[FIX\] x \(no backport label: ")
+
+    def test_a_named_main_pr_without_a_routing_label_fails(self):
+        pr = {"number": 8, "title": "UN-8 [FIX] x", "labels": []}
+        with self.assertRaisesRegex(ValueError, "no backport label"):
+            bp.pr_class(pr)
 
 
 class FixClassSubject(unittest.TestCase):

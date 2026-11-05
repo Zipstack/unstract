@@ -3796,10 +3796,6 @@ elif a[:2] in (["release", "edit"], ["release", "create"]):
         self.assertEqual(self.read("calls"), "release view\n")
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class LintPrStep(unittest.TestCase):
     """The Classify PR step judges each PR against its own base."""
 
@@ -3830,6 +3826,17 @@ class LintPrStep(unittest.TestCase):
             self.classify("UN-1 [FIX] x", ["main-only"], "main"), (0, "class=none\n")
         )
 
+    def test_calls_only_what_every_relmgr_has(self):
+        # The rule is read from main, and release lines keep older copies of this step: both sides must accept these calls.
+        body = step("lint-pr.yaml", "Classify PR")
+        self.assertEqual(
+            re.findall(r"relmgr\.\w+\([^)]*\)", body),
+            [
+                "relmgr.pr_fix_class(title, labels)",
+                'relmgr.release_only_refusal(os.environ["BASE"], labels)',
+            ],
+        )
+
     def test_a_release_pr_needs_none_and_refuses_main_only(self):
         self.assertEqual(
             self.classify("UN-1 [FIX] x", [], "release/0.186"), (0, "class=none\n")
@@ -3837,3 +3844,7 @@ class LintPrStep(unittest.TestCase):
         rc, out = self.classify("UN-1 [FIX] x", ["main-only"], "release/0.186")
         self.assertEqual(rc, 1, out)
         self.assertIn("label `main-only` is for PRs into main", out)
+
+
+if __name__ == "__main__":
+    unittest.main()
