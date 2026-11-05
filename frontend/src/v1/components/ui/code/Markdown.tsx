@@ -69,41 +69,47 @@ const InsideLink = createContext(false);
  * @tailwindcss/typography's `prose` (whose v0 config would leak in).
  */
 const COMPONENTS = {
-  h1: (p: Props<"h1">) => (
+  h1: ({ children, ...p }: Props<"h1">) => (
     <h1
       {...dom(p)}
       className="ui:mt-4 ui:mb-2 ui:text-section-title ui:first:mt-0"
-    />
+    >
+      {children}
+    </h1>
   ),
-  h2: (p: Props<"h2">) => (
+  h2: ({ children, ...p }: Props<"h2">) => (
     <h2
       {...dom(p)}
       className="ui:mt-4 ui:mb-2 ui:text-section-title ui:first:mt-0"
-    />
+    >
+      {children}
+    </h2>
   ),
-  h3: (p: Props<"h3">) => (
-    <h3
-      {...dom(p)}
-      className="ui:mt-3 ui:mb-1.5 ui:text-body ui:font-semibold"
-    />
+  h3: ({ children, ...p }: Props<"h3">) => (
+    <h3 {...dom(p)} className="ui:mt-3 ui:mb-1.5 ui:text-body ui:font-semibold">
+      {children}
+    </h3>
   ),
-  h4: (p: Props<"h4">) => (
-    <h4
-      {...dom(p)}
-      className="ui:mt-3 ui:mb-1.5 ui:text-body ui:font-semibold"
-    />
+  h4: ({ children, ...p }: Props<"h4">) => (
+    <h4 {...dom(p)} className="ui:mt-3 ui:mb-1.5 ui:text-body ui:font-semibold">
+      {children}
+    </h4>
   ),
-  h5: (p: Props<"h5">) => (
+  h5: ({ children, ...p }: Props<"h5">) => (
     <h5
       {...dom(p)}
       className="ui:mt-3 ui:mb-1.5 ui:text-body-small ui:font-semibold"
-    />
+    >
+      {children}
+    </h5>
   ),
-  h6: (p: Props<"h6">) => (
+  h6: ({ children, ...p }: Props<"h6">) => (
     <h6
       {...dom(p)}
       className="ui:mt-3 ui:mb-1.5 ui:text-body-small ui:font-semibold"
-    />
+    >
+      {children}
+    </h6>
   ),
   p: (p: Props<"p">) => <p {...dom(p)} className="ui:my-2" />,
   a: ({ href, children, ...p }: Props<"a">) => (

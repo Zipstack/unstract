@@ -246,7 +246,7 @@ export function DiffView({
         <section
           aria-label={ariaLabel}
           // biome-ignore lint/a11y/noNoninteractiveTabindex: a scrollable region must be focusable (WCAG 2.1.1)
-          tabIndex={0}
+          tabIndex={0} // NOSONAR: a scrollable region must be focusable (WCAG 2.1.1)
           style={{
             "--code-gutter": gutterWidth(
               Math.max(diff.oldLines.length, diff.newLines.length),

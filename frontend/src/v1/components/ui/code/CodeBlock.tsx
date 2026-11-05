@@ -80,7 +80,7 @@ export function CodeBlock({
       <section
         aria-label={label}
         // biome-ignore lint/a11y/noNoninteractiveTabindex: a scrollable region must be focusable (WCAG 2.1.1)
-        tabIndex={0}
+        tabIndex={0} // NOSONAR: a scrollable region must be focusable (WCAG 2.1.1)
         className="ui:min-h-0 ui:flex-1 ui:overflow-auto ui:focus-visible:focus-ring"
       >
         <pre

@@ -334,12 +334,13 @@ export function visibleLines(
   collapsed: ReadonlySet<number>,
 ): JsonLine[] {
   const out: JsonLine[] = [];
-  for (let i = 0; i < lines.length; i++) {
+  let i = 0;
+  while (i < lines.length) {
     const line = lines[i];
     out.push(line);
-    if (line.kind === "open" && collapsed.has(line.index)) {
-      i = line.closeIndex ?? i;
-    }
+    // A folded container skips straight past its closing line.
+    const folded = line.kind === "open" && collapsed.has(line.index);
+    i = (folded ? (line.closeIndex ?? i) : i) + 1;
   }
   return out;
 }

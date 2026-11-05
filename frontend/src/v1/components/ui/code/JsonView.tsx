@@ -15,6 +15,7 @@ import {
   type ComponentProps,
   type JSX,
   type KeyboardEvent,
+  type MouseEvent,
   type ReactNode,
   type RefObject,
   useId,
@@ -307,6 +308,25 @@ export function JsonView({
     return -1;
   };
 
+  // Clicks are handled once, on the tree (rows are not separately
+  // interactive; the keyboard handler is here too): a row becomes active, and
+  // a click on a container's chevron folds or unfolds it.
+  const onTreeClick = (event: MouseEvent<HTMLDivElement>) => {
+    const target = event.target as Element;
+    const pos = Number(
+      target.closest("[data-pos]")?.getAttribute("data-pos") ?? Number.NaN,
+    );
+    const line = rows[pos];
+    if (!line) {
+      return;
+    }
+    setActive(line.index);
+    scrollRef.current?.focus({ preventScroll: true });
+    if (line.kind === "open" && target.closest("[data-slot=json-toggle]")) {
+      toggle(line);
+    }
+  };
+
   const onTreeKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (activePos < 0) {
       return;
@@ -384,11 +404,6 @@ export function JsonView({
           ? { "aria-hidden": true }
           : {};
     return (
-      // Tree rows are treeitems (set in treeAttrs, which the linter cannot see);
-      // the keyboard handler sits on the tree itself (aria-activedescendant).
-      // biome-ignore lint/a11y/useKeyWithClickEvents: keys are handled by the tree container
-      // biome-ignore lint/a11y/noStaticElementInteractions: a treeitem in tree mode; no handler in raw mode
-      // biome-ignore lint/a11y/noNoninteractiveElementInteractions: a treeitem in tree mode; no handler in raw mode
       <div
         key={line.index}
         data-slot="json-line"
@@ -396,20 +411,6 @@ export function JsonView({
         data-active={isActive || undefined}
         {...treeAttrs}
         style={{ "--json-row-y": virtual ? `${start}px` : undefined }}
-        onClick={
-          tree
-            ? (event) => {
-                setActive(line.index);
-                scrollRef.current?.focus({ preventScroll: true });
-                if (
-                  line.kind === "open" &&
-                  (event.target as Element).closest("[data-slot=json-toggle]")
-                ) {
-                  toggle(line);
-                }
-              }
-            : undefined
-        }
         className={cn(
           "ui:flex ui:min-h-lh ui:whitespace-pre ui:px-3",
           virtual &&
@@ -554,6 +555,7 @@ export function JsonView({
             }
             tabIndex={0}
             onKeyDown={onTreeKeyDown}
+            onClick={onTreeClick}
             onFocus={() => setFocused(true)}
             onBlur={() => setFocused(false)}
             style={{ "--code-gutter": gutterWidth(lines.length) }}
@@ -566,7 +568,7 @@ export function JsonView({
             ref={scrollRef}
             aria-label={ariaLabel}
             // biome-ignore lint/a11y/noNoninteractiveTabindex: a scrollable region must be focusable (WCAG 2.1.1)
-            tabIndex={0}
+            tabIndex={0} // NOSONAR: a scrollable region must be focusable (WCAG 2.1.1)
             style={{ "--code-gutter": gutterWidth(lines.length) }}
             className={SCROLL_AREA}
           >
