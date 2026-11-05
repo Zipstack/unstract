@@ -374,7 +374,7 @@ cd workers && ./run-worker.sh all
 | Frontend | 3000 | http://frontend.unstract.localhost |
 | Platform Service | 3001 | http://localhost:3001 |
 | X2Text Service | 3004 | http://localhost:3004 |
-| Runner | 5002 | http://localhost:5002 |
+| Runner | 5002 | http://localhost:5002 (not published by default; uncomment the loopback `ports` entry for `runner` in `docker/docker-compose.yaml`) |
 | Celery Flower (optional) | 5555 | http://localhost:5555 |
 
 ### V2 Worker Health Ports
