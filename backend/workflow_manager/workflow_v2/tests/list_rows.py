@@ -30,6 +30,10 @@ FIVE_ERRORS = [ERROR] * 5
 class ListRowsSeed(CoOwnerOrgTestMixin):
     """An org with members, a second org, and builders for rows and their runs."""
 
+    # The viewset and list URL that _list and _aggregate call.
+    view: Any = None
+    url = ""
+
     def setUp(self) -> None:
         self._seed_org()
         self.now = timezone.now().replace(microsecond=0)
@@ -119,3 +123,34 @@ class ListRowsSeed(CoOwnerOrgTestMixin):
         force_authenticate(request, user=user)
         response: Response = view.as_view({"get": action})(request)
         return response
+
+    def _list(self, user: User | None = None, **params: Any) -> Any:
+        response = self._call(self.view, "list", user or self.admin, self.url, **params)
+        return _ok(response)
+
+    def _aggregate(self, user: User | None = None, **params: Any) -> Any:
+        url = f"{self.url}aggregate/"
+        return _ok(self._call(self.view, "aggregate", user or self.admin, url, **params))
+
+    def _mismatches_with_the_list(self, cases: list[dict[str, Any]]) -> list[str]:
+        """Each caller and filter for which ``aggregate/`` disagrees with the list."""
+        found: list[str] = []
+        for user in (self.owner, self.coowner, self.viewer, self.outsider, self.admin):
+            for params in cases:
+                listed = self._list(user, **params)
+                summary = self._aggregate(user, **params)
+                failing = self._list(user, **{**params, "failing": "true"})
+                got = (
+                    summary["total"],
+                    sum(summary["by_status"].values()),
+                    summary["failing_count"],
+                )
+                want = (listed["count"], listed["count"], failing["count"])
+                if got != want:
+                    found.append(f"{user.email} {params}: {got} != {want}")
+        return found
+
+
+def _ok(response: Response) -> Any:
+    assert response.status_code == 200, response.data
+    return response.data

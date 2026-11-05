@@ -67,6 +67,9 @@ LIST_ROW_KEYS = {
 
 
 class _PipelineRows(ListRowsSeed):
+    view = PipelineViewSet
+    url = URL
+
     def setUp(self) -> None:
         super().setUp()
         self.ok = self._row("nightly", ETL, 9, cron_string="0 0 * * *")
@@ -92,18 +95,6 @@ class _PipelineRows(ListRowsSeed):
         if ran_hours_ago is not None:
             last_run = self.now - timedelta(hours=ran_hours_ago)
         return self._pipeline(name, pipeline_type, last_run_time=last_run, **fields)
-
-    def _list(self, user: Any = None, **params: Any) -> Any:
-        response = self._call(PipelineViewSet, "list", user or self.admin, URL, **params)
-        assert response.status_code == 200, response.data
-        return response.data
-
-    def _aggregate(self, user: Any = None, **params: Any) -> Any:
-        response = self._call(
-            PipelineViewSet, "aggregate", user or self.admin, f"{URL}aggregate/", **params
-        )
-        assert response.status_code == 200, response.data
-        return response.data
 
     def _names(self, **params: Any) -> set[str]:
         return {row["pipeline_name"] for row in self._list(**params)["results"]}
@@ -178,16 +169,7 @@ class PipelineAggregateTests(_PipelineRows, TestCase):
         ]
 
     def test_totals_equal_the_list_count_for_every_filter_and_caller(self) -> None:
-        callers = (self.owner, self.coowner, self.viewer, self.outsider, self.admin)
-        for user in callers:
-            for params in self._filter_cases():
-                with self.subTest(user=user.email, **params):
-                    listed = self._list(user, **params)
-                    summary = self._aggregate(user, **params)
-                    self.assertEqual(summary["total"], listed["count"])
-                    self.assertEqual(sum(summary["by_status"].values()), summary["total"])
-                    failing = self._list(user, **{**params, "failing": "true"})
-                    self.assertEqual(summary["failing_count"], failing["count"])
+        self.assertEqual(self._mismatches_with_the_list(self._filter_cases()), [])
 
     def test_the_counts_follow_the_status_rule(self) -> None:
         summary = self._aggregate()

@@ -33,6 +33,9 @@ URL = "/deployment/"
 
 
 class DeploymentAggregateTests(ListRowsSeed, TestCase):
+    view = APIDeploymentViewSet
+    url = URL
+
     def setUp(self) -> None:
         super().setUp()
         # Last run 9h ago, success.
@@ -52,20 +55,6 @@ class DeploymentAggregateTests(ListRowsSeed, TestCase):
         self._runs(self.paused, FIVE_ERRORS, hours_ago=40)
         # Another organisation's rows are never counted.
         self._runs(self._deployment("Elsewhere", org=self.org_b), FIVE_ERRORS)
-
-    def _list(self, user: Any = None, **params: Any) -> Any:
-        response = self._call(
-            APIDeploymentViewSet, "list", user or self.admin, URL, **params
-        )
-        self.assertEqual(response.status_code, 200, response.data)
-        return response.data
-
-    def _aggregate(self, user: Any = None, **params: Any) -> Any:
-        response = self._call(
-            APIDeploymentViewSet, "aggregate", user or self.admin, f"{URL}aggregate/", **params
-        )
-        self.assertEqual(response.status_code, 200, response.data)
-        return response.data
 
     def _names(self, **params: Any) -> set[str]:
         return {row["display_name"] for row in self._list(**params)["results"]}
@@ -91,16 +80,7 @@ class DeploymentAggregateTests(ListRowsSeed, TestCase):
         ]
 
     def test_totals_equal_the_list_count_for_every_filter_and_caller(self) -> None:
-        callers = (self.owner, self.coowner, self.viewer, self.outsider, self.admin)
-        for user in callers:
-            for params in self._filter_cases():
-                with self.subTest(user=user.email, **params):
-                    listed = self._list(user, **params)
-                    summary = self._aggregate(user, **params)
-                    self.assertEqual(summary["total"], listed["count"])
-                    self.assertEqual(sum(summary["by_status"].values()), summary["total"])
-                    failing = self._list(user, **{**params, "failing": "true"})
-                    self.assertEqual(summary["failing_count"], failing["count"])
+        self.assertEqual(self._mismatches_with_the_list(self._filter_cases()), [])
 
     def test_the_counts_follow_the_status_rule(self) -> None:
         summary = self._aggregate()
