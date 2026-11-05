@@ -49,8 +49,8 @@ before.
 | `page`, `page_size` | int | List only. |
 
 `last_run_time` is the pipeline's own field, as the list shows it: it is set
-when a run starts. A pipeline that has never run has none and is left out by
-either bound.
+when a run ends, whereas a deployment's is when its newest run started. A pipeline
+with no finished run has none and is left out by either bound.
 
 ## Aggregate response
 
@@ -81,19 +81,25 @@ either bound.
 - `not_scheduled` counts the active pipelines with no `cron_string`. It
   overlaps `by_status` rather than being one of its buckets.
 - `next_run_time` comes from `cron_string`, as on the list; `null` when the
-  pipeline has no schedule.
+  pipeline has no schedule or its schedule can never fire (`0 0 31 2 *`). Such a
+  pipeline still has a `cron_string`, so `not_scheduled` does not count it.
 - The other fields are as for
   [API deployments](../api_v2/README.md#aggregate-response). `name` is the
   pipeline name.
 
 The request takes a fixed number of queries, whatever the number of rows.
 
+The JSON Schema for this response is in
+[`contract/`](contract/pipeline-aggregate-response.schema.json); tests validate
+real responses against it.
+
 ## Errors
 
-Errors use the project's standard envelope (drf-standardized-errors), on both
-endpoints:
+Errors from the view use the project's standard envelope
+(drf-standardized-errors), on both endpoints. The auth middleware answers 401 and
+403 before the view runs, with a bare `{"message": ...}`.
 
 | Status | When |
 |---|---|
-| 400 | A malformed new filter: an unknown `status`, `owner` not a positive integer, an unparsable datetime, or `failing` not a boolean. `attr` names the parameter. |
-| 500 | `workflow` is not a UUID. The list has always answered this way, and the aggregate matches it. |
+| 400 | A malformed filter: `workflow` not a UUID, an unknown `type` or `status`, `owner` not a positive integer, an unparsable datetime, or `failing` not a boolean. `attr` names the parameter. |
+| 401, 403 | As for the list. |

@@ -1,15 +1,19 @@
 """Seed helpers for the deployment and pipeline list filter and aggregate tests."""
 
 import uuid
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Any
+from unittest import mock
 
 from account_v2.models import Organization, User
 from api_v2.models import APIDeployment
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 from permissions.roles import ResourceRole
 from permissions.tests.base import CoOwnerOrgTestMixin
 from pipeline_v2.models import Pipeline
+from rest_framework.generics import GenericAPIView
 from rest_framework.response import Response
 from rest_framework.test import APIRequestFactory, force_authenticate
 from utils.user_context import UserContext
@@ -131,6 +135,30 @@ class ListRowsSeed(CoOwnerOrgTestMixin):
     def _aggregate(self, user: User | None = None, **params: Any) -> Any:
         url = f"{self.url}aggregate/"
         return _ok(self._call(self.view, "aggregate", user or self.admin, url, **params))
+
+    def _retrieve(self, row: Any, **params: Any) -> Response:
+        request = APIRequestFactory().get(f"{self.url}{row.pk}/", params)
+        force_authenticate(request, user=self.owner)
+        response: Response = self.view.as_view({"get": "retrieve"})(request, pk=row.pk)
+        return response
+
+    def _hours_ago(self, timestamp: str) -> float:
+        return (self.now - datetime.fromisoformat(timestamp)) / timedelta(hours=1)
+
+    def _list_with_and_without_the_filter_step(self, **params: Any) -> tuple[Any, Any]:
+        """The list's body and SQL, then both with the viewset's filter step removed."""
+
+        def body_and_sql() -> tuple[Any, list[str]]:
+            with CaptureQueriesContext(connection) as queries:
+                body = self._list(**params)
+            return body, [query["sql"] for query in queries]
+
+        body_and_sql()  # Warm the per-process caches both runs read.
+        with mock.patch.object(
+            self.view, "filter_queryset", GenericAPIView.filter_queryset
+        ):
+            without_the_step = body_and_sql()
+        return body_and_sql(), without_the_step
 
     def _mismatches_with_the_list(self, cases: list[dict[str, Any]]) -> list[str]:
         """Each caller and filter for which ``aggregate/`` disagrees with the list."""

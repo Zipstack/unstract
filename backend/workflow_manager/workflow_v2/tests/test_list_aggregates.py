@@ -111,7 +111,7 @@ class FailingRuleTests(ListRowsSeed, TestCase):
     def test_a_stopped_run_breaks_the_streak(self) -> None:
         """The failing rule is the dashboard's: only ERROR counts."""
         row = self._pipeline("stopped")
-        self._runs(row, [ERROR, ERROR, STOPPED, ERROR, ERROR])
+        self._runs(row, [ERROR, ERROR, ERROR, STOPPED, ERROR, ERROR, ERROR])
 
         self.assertEqual(self._failing(), [])
 

@@ -2,10 +2,13 @@
 last-run and failing list filters (UN-4320).
 """
 
+import json
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Any
 from unittest import mock
 
+import jsonschema
 from django.db import connection
 from django.test import TestCase
 from django.test.utils import CaptureQueriesContext
@@ -26,6 +29,11 @@ URL = "/pipeline/"
 ETL = "ETL"
 TASK = "TASK"
 FilterCases = dict[str, tuple[dict[str, Any], set[str]]]
+CONTRACT = json.loads(
+    (
+        Path(__file__).parents[1] / "contract/pipeline-aggregate-response.schema.json"
+    ).read_text()
+)
 
 # What a pipeline list row carried before the aggregate existed.
 LIST_ROW_KEYS = {
@@ -110,6 +118,10 @@ class PipelineListBaselineTests(_PipelineRows, TestCase):
     def test_the_existing_filters_select_their_rows(self) -> None:
         cases: FilterCases = {
             "none": ({}, {"nightly", "hourly", "sorter", "nightly draft", "paused"}),
+            "blank type": (
+                {"type": ""},
+                {"nightly", "hourly", "sorter", "nightly draft", "paused"},
+            ),
             "type": ({"type": TASK}, {"sorter", "nightly draft"}),
             "search": ({"search": "NIGHTLY"}, {"nightly", "nightly draft"}),
             "workflow": ({"workflow": str(self.ok.workflow_id)}, {"nightly"}),
@@ -128,21 +140,11 @@ class PipelineListBaselineTests(_PipelineRows, TestCase):
         self.assertIsNone(rows["nightly draft"]["next_run_time"])
         self.assertIsNone(rows["paused"]["next_run_time"])
 
-    def test_without_the_new_parameters_the_list_is_unchanged(self) -> None:
-        """Same rows, same body and the same SQL as with the filtering removed."""
+    def test_the_filter_step_changes_nothing_without_its_parameters(self) -> None:
+        """Same body and SQL as with the viewset's filter step removed."""
+        with_the_step, without_it = self._list_with_and_without_the_filter_step(type=ETL)
 
-        def body_and_sql() -> tuple[Any, list[str]]:
-            with CaptureQueriesContext(connection) as queries:
-                body = self._list(type=ETL)
-            return body, [query["sql"] for query in queries]
-
-        body_and_sql()  # Warm the per-process caches both runs read.
-        with mock.patch(
-            "pipeline_v2.views.apply_list_filters", side_effect=lambda rows, *_: rows
-        ):
-            before = body_and_sql()
-
-        self.assertEqual(body_and_sql(), before)
+        self.assertEqual(with_the_step, without_it)
 
 
 class PipelineAggregateTests(_PipelineRows, TestCase):
@@ -196,9 +198,26 @@ class PipelineAggregateTests(_PipelineRows, TestCase):
         self.assertEqual(row["pipeline_type"], ETL)
         self.assertEqual(row["owner_email"], self.coowner.email)
         self.assertEqual(row["failures_in_a_row"], 5)
+        self.assertEqual(self._hours_ago(row["last_success"]), 10)
+        self.assertEqual(self._hours_ago(row["failing_since"]), 9)
+        self.assertEqual(self._hours_ago(row["last_failure"]), 5)
         self.assertGreater(
             datetime.fromisoformat(row["next_run_time"]), timezone.now()
         )
+
+    def test_the_response_matches_the_contract(self) -> None:
+        for params in ({}, {"search": "no such row"}):
+            with self.subTest(**params):
+                jsonschema.validate(
+                    self._aggregate(**params),
+                    CONTRACT,
+                    format_checker=jsonschema.FormatChecker(),
+                )
+
+    def test_detail_routes_ignore_the_list_filters(self) -> None:
+        for params in ({"status": "error"}, {"status": "bogus"}, {"failing": "true"}):
+            with self.subTest(**params):
+                self.assertEqual(self._retrieve(self.ok, **params).status_code, 200)
 
     def test_each_list_filter_selects_its_rows(self) -> None:
         cases: FilterCases = {
@@ -223,7 +242,14 @@ class PipelineAggregateTests(_PipelineRows, TestCase):
                 self.assertEqual(self._names(**params), expected)
 
     def test_a_malformed_parameter_is_a_bad_request(self) -> None:
-        for params in ({"status": "stopped"}, {"owner": "-1"}, {"failing": "maybe"}):
+        for params in (
+            {"status": "stopped"},
+            {"owner": "-1"},
+            {"failing": "maybe"},
+            {"workflow": "not-a-uuid"},
+            {"type": "etl"},
+            {"type": "BOGUS"},
+        ):
             for action in ("list", "aggregate"):
                 with self.subTest(action=action, **params):
                     response = self._call(
@@ -258,8 +284,17 @@ class NextRunTimeTests(ListRowsSeed, TestCase):
         idle = self._pipeline("idle", cron_string="0 0 * * *", active=False)
         self.assertIsNone(idle.next_run_time())
 
-    def test_an_unreadable_schedule_has_no_next_run(self) -> None:
-        row = self._pipeline("broken", cron_string="not a cron")
+    def test_a_schedule_that_cannot_fire_has_no_next_run(self) -> None:
+        for cron_string in ("not a cron", "0 0 31 2 *"):
+            with self.subTest(cron_string):
+                row = self._pipeline(cron_string, cron_string=cron_string)
 
-        with self.assertNoLogs("pipeline_v2.models", level="WARNING"):
-            self.assertIsNone(row.next_run_time())
+                with self.assertNoLogs("pipeline_v2.models", level="WARNING"):
+                    self.assertIsNone(row.next_run_time())
+
+    def test_only_a_schedule_error_is_swallowed(self) -> None:
+        row = self._pipeline("scheduled", cron_string="0 0 * * *")
+
+        with mock.patch("pipeline_v2.models.croniter", side_effect=RuntimeError):
+            with self.assertRaises(RuntimeError):
+                row.next_run_time()

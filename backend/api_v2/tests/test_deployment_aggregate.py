@@ -5,11 +5,13 @@ The aggregate reads the list's own filtered queryset, so for every filter and
 caller its ``total`` must equal the list's ``count``.
 """
 
+import json
 import secrets
 from datetime import timedelta
+from pathlib import Path
 from typing import Any
-from unittest import mock
 
+import jsonschema
 from django.conf import settings
 from django.db import connection
 from django.test import TestCase, override_settings
@@ -30,6 +32,11 @@ from api_v2.api_deployment_views import APIDeploymentViewSet
 from api_v2.tests.test_deployment_listing import _MIDDLEWARE
 
 URL = "/deployment/"
+CONTRACT = json.loads(
+    (
+        Path(__file__).parents[1] / "contract/deployment-aggregate-response.schema.json"
+    ).read_text()
+)
 
 
 class DeploymentAggregateTests(ListRowsSeed, TestCase):
@@ -106,8 +113,23 @@ class DeploymentAggregateTests(ListRowsSeed, TestCase):
         self.assertEqual(row["name"], "Receipts")
         self.assertEqual(row["owner_email"], self.coowner.email)
         self.assertEqual(row["failures_in_a_row"], 5)
-        self.assertIsNotNone(row["last_success"])
-        self.assertLess(row["failing_since"], row["last_failure"])
+        self.assertEqual(self._hours_ago(row["last_success"]), 10)
+        self.assertEqual(self._hours_ago(row["failing_since"]), 9)
+        self.assertEqual(self._hours_ago(row["last_failure"]), 5)
+
+    def test_the_response_matches_the_contract(self) -> None:
+        for params in ({}, {"search": "no such row"}):
+            with self.subTest(**params):
+                jsonschema.validate(
+                    self._aggregate(**params),
+                    CONTRACT,
+                    format_checker=jsonschema.FormatChecker(),
+                )
+
+    def test_detail_routes_ignore_the_list_filters(self) -> None:
+        for params in ({"status": "error"}, {"status": "bogus"}, {"failing": "true"}):
+            with self.subTest(**params):
+                self.assertEqual(self._retrieve(self.ok, **params).status_code, 200)
 
     def test_each_list_filter_selects_its_rows(self) -> None:
         cases = {
@@ -137,22 +159,13 @@ class DeploymentAggregateTests(ListRowsSeed, TestCase):
         self.assertEqual(self._names(search="invoices", status="success"), {"Invoices"})
         self.assertEqual(self._names(failing="false"), self._names())
 
-    def test_without_the_new_parameters_the_list_is_unchanged(self) -> None:
-        """Same rows, same body and the same SQL as with the filtering removed."""
+    def test_the_filter_step_changes_nothing_without_its_parameters(self) -> None:
+        """Same body and SQL as with the viewset's filter step removed."""
+        with_the_step, without_it = self._list_with_and_without_the_filter_step(
+            search="invoices"
+        )
 
-        def body_and_sql() -> tuple[Any, list[str]]:
-            with CaptureQueriesContext(connection) as queries:
-                body = self._list(search="invoices")
-            return body, [query["sql"] for query in queries]
-
-        body_and_sql()  # Warm the per-process caches both runs read.
-        with mock.patch(
-            "api_v2.api_deployment_views.apply_list_filters",
-            side_effect=lambda rows, *_: rows,
-        ):
-            before = body_and_sql()
-
-        self.assertEqual(body_and_sql(), before)
+        self.assertEqual(with_the_step, without_it)
         self.assertEqual(self._list(status="")["count"], self._list()["count"])
 
     def test_a_malformed_parameter_is_a_bad_request(self) -> None:

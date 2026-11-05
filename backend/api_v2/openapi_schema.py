@@ -407,6 +407,7 @@ API_DEPLOYMENT_AGGREGATE_SCHEMA = extend_schema(
     operation_id="aggregate_deployments",
     summary="Count API deployments by status",
     tags=["deployment"],
+    auth=[{"platformKey": []}],
     parameters=[*API_DEPLOYMENT_LIST_QUERY_PARAMETERS, ListFilterSerializer],
     responses={
         200: DeploymentAggregateSerializer,

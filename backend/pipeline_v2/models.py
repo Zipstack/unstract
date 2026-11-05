@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 
 from account_v2.models import User
-from croniter import croniter
+from croniter import CroniterError, croniter
 from django.conf import settings
 from django.contrib.contenttypes.fields import GenericRelation
 from django.db import models
@@ -186,14 +186,17 @@ class Pipeline(HasMembersMixin, DefaultOrganizationMixin, BaseModel):
         return bool(self.active)
 
     def next_run_time(self) -> datetime | None:
-        """Next run from ``cron_string``; ``None`` when inactive or unscheduled."""
+        """Next run from ``cron_string``.
+
+        ``None`` when inactive, unscheduled or the schedule can never fire.
+        """
         if not self.cron_string or not self.active:
             return None
         try:
             next_run: datetime = croniter(self.cron_string, timezone.now()).get_next(
                 datetime
             )
-        except Exception:
+        except CroniterError:
             # Silent on purpose: the list calls this for every row.
             return None
         return next_run

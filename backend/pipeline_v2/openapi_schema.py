@@ -1,6 +1,12 @@
 """OpenAPI annotations for the pipeline list and its aggregate. See README.md."""
 
-from drf_spectacular.utils import OpenApiParameter, extend_schema, extend_schema_view
+from api_v2.openapi_schema import ErrorResponse
+from drf_spectacular.utils import (
+    OpenApiParameter,
+    OpenApiResponse,
+    extend_schema,
+    extend_schema_view,
+)
 from workflow_manager.workflow_v2.list_aggregate_serializers import ListFilterSerializer
 from workflow_manager.workflow_v2.list_aggregates import FAILING_LIST_CAP
 
@@ -42,7 +48,12 @@ PIPELINE_SCHEMA = extend_schema_view(
         operation_id="aggregate_pipelines",
         summary="Count pipelines by status",
         parameters=PIPELINE_LIST_PARAMETERS,
-        responses={200: PipelineAggregateSerializer},
+        responses={
+            200: PipelineAggregateSerializer,
+            400: OpenApiResponse(
+                ErrorResponse, description="A query parameter was malformed."
+            ),
+        },
         description=(
             "Counts the pipelines the list returns for the same filters, so "
             f"`total` equals the list's `count`. `failing` holds at most "

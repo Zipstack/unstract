@@ -29,7 +29,11 @@ from utils.enums import CeleryTaskState
 from utils.hubspot_notify import notify_hubspot_event
 from utils.pagination import CustomPagination
 from workflow_manager.workflow_v2.dto import ExecutionResponse
-from workflow_manager.workflow_v2.list_aggregate_serializers import list_filters_from
+from workflow_manager.workflow_v2.list_aggregate_serializers import (
+    LIST_FILTER_ACTIONS,
+    list_filters_from,
+    workflow_filter_from,
+)
 from workflow_manager.workflow_v2.list_aggregates import (
     RowFields,
     aggregate_rows,
@@ -353,16 +357,8 @@ class APIDeploymentViewSet(
 
         # TODO: replace the hand-read params and their OpenApiParameter
         # restatements with a FilterSet so the spec cannot drift from the code
-        workflow_filter = self.request.query_params.get("workflow", None)
+        workflow_filter = workflow_filter_from(self.request.query_params)
         if workflow_filter:
-            try:
-                uuid.UUID(workflow_filter)
-            except ValueError:
-                # Django raises on evaluation, past the handler that turns a bad
-                # request into a 400.
-                raise serializers.ValidationError(
-                    {"workflow": "Must be a valid UUID."}
-                ) from None
             queryset = queryset.filter(workflow_id=workflow_filter)
 
         # Search by display name
@@ -379,6 +375,8 @@ class APIDeploymentViewSet(
 
     def filter_queryset(self, queryset: QuerySet) -> QuerySet:
         queryset = super().filter_queryset(queryset)
+        if self.action not in LIST_FILTER_ACTIONS:
+            return queryset
         filters = list_filters_from(self.request.query_params)
         return apply_list_filters(queryset, filters, DEPLOYMENT_ROW_FIELDS)
 

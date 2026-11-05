@@ -8,7 +8,7 @@ from api_v2.key_helper import KeyHelper
 from api_v2.postman_collection.dto import PostmanCollection
 from django.db import IntegrityError, transaction
 from django.db.models import F, QuerySet
-from django.http import HttpResponse
+from django.http import HttpResponse, QueryDict
 from permissions.membership_views import OwnerManagementMixin
 from permissions.permission import (
     IsOwner,
@@ -28,7 +28,11 @@ from scheduler.helper import SchedulerHelper
 from tenant_account_v2.capabilities import Capability, RequiresCapability
 from utils.filters.ordering_filter import DeterministicOrderingFilter
 from utils.pagination import CustomPagination
-from workflow_manager.workflow_v2.list_aggregate_serializers import list_filters_from
+from workflow_manager.workflow_v2.list_aggregate_serializers import (
+    LIST_FILTER_ACTIONS,
+    list_filters_from,
+    workflow_filter_from,
+)
 from workflow_manager.workflow_v2.list_aggregates import (
     RowFields,
     aggregate_rows,
@@ -59,6 +63,18 @@ logger = logging.getLogger(__name__)
 PIPELINE_ROW_FIELDS = RowFields(
     active="active", last_run="last_run_time", schedule="cron_string"
 )
+
+
+def _pipeline_type_from(params: QueryDict) -> str | None:
+    """The ``type`` param, ``None`` when blank; an unknown type is a 400."""
+    pipeline_type = params.get(PipelineConstants.TYPE)
+    if not pipeline_type:
+        return None
+    if pipeline_type not in Pipeline.PipelineType.values:
+        raise serializers.ValidationError(
+            {PipelineConstants.TYPE: "Unknown pipeline type."}
+        )
+    return pipeline_type
 
 
 @PIPELINE_SCHEMA
@@ -117,12 +133,12 @@ class PipelineViewSet(
         )
 
         # Apply type filter if specified
-        pipeline_type = self.request.query_params.get(PipelineConstants.TYPE)
-        if pipeline_type is not None:
+        pipeline_type = _pipeline_type_from(self.request.query_params)
+        if pipeline_type:
             queryset = queryset.filter(pipeline_type=pipeline_type)
 
         # Filter by workflow ID if provided
-        workflow_filter = self.request.query_params.get("workflow", None)
+        workflow_filter = workflow_filter_from(self.request.query_params)
         if workflow_filter:
             queryset = queryset.filter(workflow_id=workflow_filter)
 
@@ -147,6 +163,8 @@ class PipelineViewSet(
 
     def filter_queryset(self, queryset: QuerySet) -> QuerySet:
         queryset = super().filter_queryset(queryset)
+        if self.action not in LIST_FILTER_ACTIONS:
+            return queryset
         filters = list_filters_from(self.request.query_params)
         return apply_list_filters(queryset, filters, PIPELINE_ROW_FIELDS)
 

@@ -171,10 +171,12 @@ def aggregate_rows(rows: QuerySet[Any], fields: RowFields) -> ListAggregate:
     scoped = rows.model.objects.filter(pk__in=rows.values("pk"))
     owners_loaded = scoped.prefetch_related("memberships__user")
     # failing_streaks applies failing_only, so this is the failing_rows rule.
-    streaks = failing_streaks(owners_loaded.filter(**{fields.active: True}))
+    failing = failing_streaks(
+        owners_loaded.filter(**{fields.active: True}), limit=FAILING_LIST_CAP
+    )
     return ListAggregate(
         by_status=count_by_status(scoped, fields),
-        failing_count=len(streaks),
-        failing=streaks[:FAILING_LIST_CAP],
+        failing_count=failing_rows(scoped, fields).count(),
+        failing=failing,
         not_scheduled=_count_not_scheduled(scoped, fields),
     )

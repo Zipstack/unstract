@@ -5,10 +5,15 @@ Help text and docstrings here are published as the parameter and model
 descriptions, so they are written for the caller.
 """
 
+import uuid
+
 from django.http import QueryDict
 from rest_framework import serializers
 
 from workflow_manager.workflow_v2.list_aggregates import ListFilters, RowStatus
+
+# Detail and write routes keep their own lookups, so the filters skip them.
+LIST_FILTER_ACTIONS = ("list", "aggregate")
 
 
 class ListFilterSerializer(serializers.Serializer):
@@ -48,6 +53,19 @@ def list_filters_from(params: QueryDict) -> ListFilters:
     serializer = ListFilterSerializer(data={k: v for k, v in params.items() if v})
     serializer.is_valid(raise_exception=True)
     return ListFilters(**serializer.validated_data)
+
+
+def workflow_filter_from(params: QueryDict) -> str | None:
+    """The ``workflow`` param, ``None`` when blank; not a UUID is a 400."""
+    workflow = params.get("workflow")
+    if not workflow:
+        return None
+    try:
+        uuid.UUID(workflow)
+    except ValueError:
+        # Django raises on evaluation, past the handler that returns the 400.
+        raise serializers.ValidationError({"workflow": "Must be a valid UUID."}) from None
+    return workflow
 
 
 class StatusCountsSerializer(serializers.Serializer):

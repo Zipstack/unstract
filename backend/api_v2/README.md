@@ -50,8 +50,10 @@ before.
 | `failing` | boolean | New. `true` keeps only failing rows. See [Failing rule](#failing-rule). |
 | `page`, `page_size` | int | List only. |
 
-`last_run_time` is the row's newest run of any status, as the list shows it. A
-deployment that has never run has none and is left out by either bound.
+`last_run_time` is when the row's newest run of any status started, as the list
+shows it. A deployment with no runs of any status has none and is left out by
+either bound. One whose only runs are PENDING or EXECUTING has a `last_run_time`
+and is still `never_run`.
 
 ## Status rule
 
@@ -110,10 +112,15 @@ dashboard's "needs attention" feed uses
 
 The request takes a fixed number of queries, whatever the number of rows.
 
+The JSON Schema for this response is in
+[`contract/`](contract/deployment-aggregate-response.schema.json); tests validate
+real responses against it. It is not in the published client spec.
+
 ## Errors
 
-Errors use the project's standard envelope (drf-standardized-errors), on both
-endpoints:
+Errors from the view use the project's standard envelope
+(drf-standardized-errors), on both endpoints. The auth middleware answers 401 and
+403 before the view runs, with a bare `{"message": ...}`.
 
 | Status | When |
 |---|---|
