@@ -136,8 +136,8 @@ jobs:
         working-directory: frontend
         run: node scripts/check-v1-styles.mjs
 
-  # The v1 unit tests. P0-T08 (UN-4329) replaces this with the frontend-v1
-  # unit group.
+  # The v1 unit tests under v1's own configs and coverage threshold (P0-T08,
+  # UN-4329): core, then cloud plugins (none in this repository).
   unit:
     name: v1 · Unit tests
     needs: changes
@@ -159,7 +159,9 @@ jobs:
       - name: Run v1 unit tests
         working-directory: frontend
         # The lockfile's vitest, never a fetched one.
-        run: ./node_modules/.bin/vitest run --dir src/v1 --passWithNoTests
+        run: |
+          ./node_modules/.bin/vitest run --config vitest.v1.config.mts --coverage
+          ./node_modules/.bin/vitest run --config vitest.v1-plugins.config.mts --coverage
 
   # One production build, then the bundle guard (no v1 chunk loads v0 or
   # antd) and the separation guard (no enterprise plugin code in this repo).
@@ -221,4 +223,4 @@ jobs:
 
       - name: Run the guard fixtures
         working-directory: frontend
-        run: node --test test-fixtures/v1-boundary/boundary.fixtures.mjs
+        run: node --test test-fixtures/v1-boundary/boundary.fixtures.mjs test-fixtures/v1-harness/harness.fixtures.mjs
