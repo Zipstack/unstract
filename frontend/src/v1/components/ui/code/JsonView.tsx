@@ -144,7 +144,7 @@ const SCROLL_AREA = cn(
 );
 
 const TOOL_BUTTON =
-  "ui:inline-flex ui:h-7 ui:cursor-pointer ui:items-center ui:rounded-sm ui:px-2 ui:text-body-small ui:font-medium ui:text-muted-foreground ui:hover:bg-accent ui:hover:text-foreground ui:focus-visible:focus-ring";
+  "ui:border-0 ui:bg-transparent ui:font-sans ui:inline-flex ui:h-7 ui:cursor-pointer ui:items-center ui:rounded-sm ui:px-2 ui:text-body-small ui:font-medium ui:text-muted-foreground ui:hover:bg-accent ui:hover:text-foreground ui:focus-visible:focus-ring";
 
 /**
  * JSON as an expandable tree or as raw pretty-printed text, over one line
@@ -468,7 +468,7 @@ export function JsonView({
               ))}
             </div>
           ) : null}
-          {model.ok && tree ? (
+          {model.ok && tree && lines.length > 0 ? (
             <>
               <button
                 type="button"

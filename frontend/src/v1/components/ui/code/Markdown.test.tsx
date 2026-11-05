@@ -44,7 +44,7 @@ it("renders a fenced block as a highlighted CodeBlock in its language", () => {
     "'a'",
   );
   expect(container.querySelector("pre pre")).toBeNull();
-  expect(screen.getByRole("region", { name: "Python code" })).toBeTruthy();
+  expect(screen.getByRole("region", { name: "Python" })).toBeTruthy();
 });
 
 it("opens external links safely and leaves relative ones alone", () => {

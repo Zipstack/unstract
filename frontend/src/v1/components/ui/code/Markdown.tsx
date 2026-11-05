@@ -3,7 +3,7 @@ import { CODE_LANGUAGES, type CodeLanguage } from "@v1/lib/code/highlight";
 import type { ComponentProps, JSX, ReactNode } from "react";
 import ReactMarkdown, { uriTransformer } from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { CodeBlock } from "./CodeBlock";
+import { CodeBlock, LANGUAGE_NAME } from "./CodeBlock";
 import { InlineCode } from "./InlineCode";
 
 /** Fence names that mean one of our grammars ("```py"). */
@@ -177,7 +177,15 @@ const COMPONENTS = {
     }
     const code = String(children ?? "").replace(/\n$/, "");
     const language = fenceLanguage(className);
-    return <CodeBlock code={code} language={language} className="ui:my-2" />;
+    return (
+      <CodeBlock
+        code={code}
+        language={language}
+        // Names the header that holds the copy button; plain text has no name.
+        title={language === "text" ? undefined : LANGUAGE_NAME[language]}
+        className="ui:my-2"
+      />
+    );
   },
 };
 
