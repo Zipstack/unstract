@@ -24,7 +24,13 @@ BOT = {
 }
 import backport as bp
 import relmgr as rm
-from test_backport_merge import BAD_GATEWAY, NOT_FOUND, FakeGh, queue
+from test_backport_merge import (  # noqa: F401
+    BAD_GATEWAY,
+    NOT_FOUND,
+    FakeGh,
+    queue,
+    setUpModule,
+)
 
 
 def dev_git(repo, *a):
@@ -1616,11 +1622,13 @@ class OpenPR(unittest.TestCase):
     def open_pr(self, create, listing):
         fake, waits = (
             FakeGh(
-                lambda a: create(a)
-                if a[1:3] == ("pr", "create")
-                else listing(a)
-                if a[1:3] == ("pr", "list")
-                else (0, "", "")
+                lambda a: (
+                    create(a)
+                    if a[1:3] == ("pr", "create")
+                    else listing(a)
+                    if a[1:3] == ("pr", "list")
+                    else (0, "", "")
+                )
             ),
             [],
         )
@@ -1648,14 +1656,14 @@ class OpenPR(unittest.TestCase):
     def test_502_not_opened_is_retried(self):
         create = queue((1, "", BAD_GATEWAY), (0, self.URL + "\n", ""))
         out = self.open_pr(create, lambda a: (0, "", ""))
-        self.assertEqual(out, (self.URL, 2, 0, [5]))
+        self.assertEqual(out, (self.URL, 2, 0, [4]))
 
     def test_never_opened_deletes_the_head(self):
         out, creates, deletes, waits = self.open_pr(
             lambda a: (1, "", BAD_GATEWAY), lambda a: (0, "", "")
         )
         self.assertIn("502 Bad Gateway", str(out))
-        self.assertEqual((creates, deletes, waits), (3, 1, [5, 15]))
+        self.assertEqual((creates, deletes, waits), (5, 1, [4, 8, 16, 32]))
 
     def test_every_gh_call_retries_a_transient_failure(self):
         fake = FakeGh(queue((1, "", BAD_GATEWAY), (0, "ok\n", "")))

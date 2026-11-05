@@ -994,5 +994,25 @@ class OssPins(unittest.TestCase):
             self.run_gate("release/1.6")
 
 
+class GhReads(unittest.TestCase):
+    def test_lookups_retry_a_transient_failure(self):
+        from test_backport_merge import S502, FakeGh, queue
+
+        calls = (
+            (lambda: cg.conflict_pr("backport/1.0/abc1234"), "[]"),
+            (lambda: cg.push_failure(7, "release/1.0"), ""),
+        )
+        for call, ok in calls:
+            fake = FakeGh(queue((1, "", S502), (0, ok, "")))
+            with (
+                mock.patch.object(cg.bm.subprocess, "run", fake),
+                mock.patch.object(cg.bm.time, "sleep"),
+                mock.patch.dict(os.environ, {"GITHUB_REPOSITORY": "o/r"}),
+                mock.patch("sys.stdout", io.StringIO()),
+            ):
+                self.assertFalse(call())
+            self.assertEqual(len(fake.calls), 2)
+
+
 if __name__ == "__main__":
     unittest.main()

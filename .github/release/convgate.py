@@ -15,10 +15,10 @@ import functools
 import json
 import os
 import re
-import subprocess
 import sys
 import traceback
 
+import backport_merge as bm
 import oss
 import relmgr as rm
 import relstate as rs
@@ -28,9 +28,8 @@ CLOSE_HOWTO = "resolve, get one approval and merge, or close the PR to decline (
 
 
 def conflict_pr(head):
-    r = subprocess.run(
+    r = bm.run_gh(
         [
-            "gh",
             "pr",
             "list",
             "-R",
@@ -42,8 +41,6 @@ def conflict_pr(head):
             "--json",
             "number,url",
         ],
-        capture_output=True,
-        text=True,
     )
     if r.returncode:  # never report "no PR found" when the lookup itself failed
         raise RuntimeError(f"gh pr list --head {head}: {r.stderr.strip()}")
@@ -52,17 +49,14 @@ def conflict_pr(head):
 
 
 def push_failure(number, branch):
-    r = subprocess.run(
+    r = bm.run_gh(
         [
-            "gh",
             "api",
             "--paginate",
             f"repos/{os.environ['GITHUB_REPOSITORY']}/issues/{number}/comments",
             "--jq",
             f'.[] | .body | split("\\n")[0] | select(startswith("Backport to {branch} failed:"))',
         ],
-        capture_output=True,
-        text=True,
     )
     if r.returncode:  # never read a failed lookup as "no failure comment"
         raise RuntimeError(f"gh api issues/{number}/comments: {r.stderr.strip()}")

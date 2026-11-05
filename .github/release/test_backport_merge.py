@@ -7,6 +7,14 @@ from unittest import mock
 
 import backport_merge as bm
 
+
+def setUpModule():
+    """Jitter off: each wait is its upper bound, so the schedule is exact."""
+    p = mock.patch.object(bm.random, "uniform", lambda lo, hi: hi)
+    p.start()
+    unittest.addModuleCleanup(p.stop)
+
+
 O = "c" * 40  # the main original
 CLOSED = "2026-10-12T10:00:00Z"
 ME = "closer"
@@ -554,11 +562,11 @@ class SquashRetry(unittest.TestCase):
             )
 
     def test_base_modified_is_retried(self):
-        self.assertEqual(self.run_squash([self.MOVED, None]), (True, 2, [5]))
+        self.assertEqual(self.run_squash([self.MOVED, None]), (True, 2, [4]))
 
     def test_base_modified_three_times_raises(self):
         with self.assertRaisesRegex(RuntimeError, "Base branch was modified"):
-            self.run_squash([self.MOVED] * 3)
+            self.run_squash([self.MOVED] * 5)
 
     def test_pending_check_is_not_retried(self):
         with mock.patch("builtins.print") as out:
@@ -581,6 +589,11 @@ S502 = "gh: Server Error (HTTP 502)"
 BAD_GATEWAY = "pull request create failed: HTTP 502: 502 Bad Gateway (https://api.github.com/graphql)"
 CUT_SHORT = "unexpected end of JSON input"
 NOT_FOUND = "gh: Not Found (HTTP 404)"
+# Messages from GitHub's REST rate-limit docs, in gh's "gh: <message> (HTTP <code>)" form.
+PRIMARY_LIMIT = "gh: API rate limit exceeded for installation ID 1. (HTTP 403)"
+SECONDARY_LIMIT = "gh: You have exceeded a secondary rate limit. Please wait a few minutes before you try again. (HTTP 403)"
+TOO_MANY = "gh: Too Many Requests (HTTP 429)"
+FORBIDDEN = "gh: Resource not accessible by integration (HTTP 403)"
 MOVED_ERR = "gh: Base branch was modified. Review and try the merge again. (HTTP 405)"
 
 
@@ -622,24 +635,54 @@ class Transient(unittest.TestCase):
                 return e, fake
 
     def test_classification(self):
-        for err in (S502, BAD_GATEWAY, CUT_SHORT, "net/http: TLS handshake timeout"):
+        for err in (
+            S502,
+            BAD_GATEWAY,
+            CUT_SHORT,
+            "net/http: TLS handshake timeout",
+            "read: connection reset by peer",
+            PRIMARY_LIMIT,
+            SECONDARY_LIMIT,
+            TOO_MANY,
+        ):
             self.assertTrue(bm.transient(err), err)
         for err in (
             NOT_FOUND,
             MOVED_ERR,
             "Required status check is expected",
             "gh: Request Timeout (HTTP 408)",
+            FORBIDDEN,
         ):
             self.assertFalse(bm.transient(err), err)
 
     def test_transient_failure_is_retried(self):
         out, fake = self.gh(queue((1, "", S502), (0, "ok\n", "")), "api", "x")
-        self.assertEqual((out, len(fake.calls), self.waits), ("ok", 2, [5]))
+        self.assertEqual((out, len(fake.calls), self.waits), ("ok", 2, [4]))
 
-    def test_gives_up_after_three_tries(self):
+    def test_gives_up_after_five_tries(self):
         out, fake = self.gh(lambda a: (1, "", S502), "api", "x")
         self.assertIn("HTTP 502", str(out))
-        self.assertEqual((len(fake.calls), self.waits), (3, [5, 15]))
+        self.assertEqual((len(fake.calls), self.waits), (5, [4, 8, 16, 32]))
+
+    def test_rate_limit_is_retried_after_a_minute_or_more(self):
+        for err in (PRIMARY_LIMIT, SECONDARY_LIMIT, TOO_MANY):
+            self.waits.clear()
+            out, fake = self.gh(
+                queue((1, "", err), (1, "", err), (0, "ok\n", "")), "api", "x"
+            )
+            self.assertEqual(
+                (out, len(fake.calls), self.waits), ("ok", 3, [60, 120]), err
+            )
+
+    def test_forbidden_is_not_a_rate_limit(self):
+        out, fake = self.gh(lambda a: (1, "", FORBIDDEN), "api", "x")
+        self.assertEqual((len(fake.calls), self.waits), (1, []))
+
+    def test_waits_grow_and_are_jittered(self):
+        with mock.patch.object(bm.random, "uniform", lambda lo, hi: lo):
+            self.assertEqual([bm.gh_wait(n) for n in range(4)], [2, 4, 8, 16])
+            self.assertEqual([bm.gh_wait(n, TOO_MANY) for n in range(4)], [60] * 4)
+        self.assertEqual([bm.gh_wait(n, TOO_MANY) for n in range(4)], [60, 120, 120, 120])
 
     def test_client_error_is_never_retried(self):
         out, fake = self.gh(lambda a: (1, "", NOT_FOUND), "api", "x")
@@ -671,17 +714,17 @@ class Transient(unittest.TestCase):
     def test_squash_502_not_merged_is_retried(self):
         puts = queue((1, "", S502), (0, "{}", ""))
         answer = lambda a: puts(a) if "PUT" in a else (0, "false\n", "")
-        self.assertEqual(self.squash(answer), (True, 2, 1, [5]))
+        self.assertEqual(self.squash(answer), (True, 2, 1, [4]))
 
     def test_squash_502_every_time_fails_after_checking_each(self):
         answer = lambda a: (1, "", S502) if "PUT" in a else (0, "false\n", "")
         out, puts, checks, waits = self.squash(answer)
         self.assertIn("HTTP 502", str(out))
-        self.assertEqual((puts, checks, waits), (3, 3, [5, 20]))
+        self.assertEqual((puts, checks, waits), (5, 5, [4, 8, 16, 32]))
 
     def test_squash_base_modified_still_retried_without_a_merged_check(self):
         puts = queue((1, "", MOVED_ERR), (0, "{}", ""))
-        self.assertEqual(self.squash(puts), (True, 2, 0, [5]))
+        self.assertEqual(self.squash(puts), (True, 2, 0, [4]))
 
 
 if __name__ == "__main__":

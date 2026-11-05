@@ -141,10 +141,7 @@ def main_order(repo, shas):
 
 def fix_class(slug, sha, token=None):
     """(class, PR ref, PR title) of the PR that merged sha; same rule as Lint PR."""
-    try:
-        out = gh("api", f"repos/{slug}/commits/{sha}/pulls", token=token)
-    except RuntimeError:  # retry a transient read error once
-        out = gh("api", f"repos/{slug}/commits/{sha}/pulls", token=token)
+    out = gh("api", f"repos/{slug}/commits/{sha}/pulls", token=token)
     prs = json.loads(out)
     pr = prs[0] if prs else _subject_pr(slug, sha, token)
     return pr_class(pr) if pr else (None, "no PR", None)
@@ -1032,7 +1029,7 @@ def _open_pr(slug, branch, head, body, *opts, sleep=time.sleep):
     """A create GitHub failed transiently may have opened the PR: look before retrying. Still none after the retries:
     delete the pushed head, so the next run picks the commit again instead of finding a head with no PR.
     """
-    for wait in (*bm.GH_WAITS, None):
+    for n in range(bm.GH_TRIES):
         try:
             return gh(
                 "pr",
@@ -1068,7 +1065,7 @@ def _open_pr(slug, branch, head, body, *opts, sleep=time.sleep):
                 ".[0].url // empty",
             ):
                 return url
-            if wait is None:
+            if n == bm.GH_TRIES - 1:
                 soft(
                     f"delete of {head}",
                     "gh",
@@ -1078,6 +1075,7 @@ def _open_pr(slug, branch, head, body, *opts, sleep=time.sleep):
                     f"repos/{slug}/git/refs/heads/{head}",
                 )
                 raise
+            wait = bm.gh_wait(n, str(e))
             print(f"{str(e).splitlines()[0]}; PR create retried in {wait} s")
             sleep(wait)
 

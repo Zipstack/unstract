@@ -12,6 +12,7 @@ import argparse
 import datetime
 import json
 import os
+import random
 import re
 import subprocess
 import sys
@@ -31,28 +32,41 @@ def is_backport(head, base):
     )
 
 
-# Seconds before the 2nd and 3rd try of a gh call GitHub failed transiently.
-GH_WAITS = (5, 15)
-# A 5xx or a reply cut short (GitHub incidents) or a network timeout. A 4xx is GitHub's answer: never retried.
+GH_TRIES = 5  # a gh call is tried at most this often
+# A 5xx or a reply cut short (GitHub incidents) or a network fault. Another 4xx is GitHub's answer: never retried.
 TRANSIENT_RE = re.compile(
-    r"HTTP 5\d\d|unexpected end of JSON input|timeout|deadline exceeded", re.I
+    r"HTTP 5\d\d|unexpected end of JSON input|unexpected EOF|connection reset|timeout|deadline exceeded",
+    re.I,
 )
+# Primary and secondary rate limits (403 or 429). gh hides the Retry-After and reset headers, so GitHub's
+# fallback applies: wait at least a minute, longer on each try.
+RATE_LIMIT_RE = re.compile(r"rate limit|HTTP 429", re.I)
 
 
 def transient(err):
+    if RATE_LIMIT_RE.search(err):
+        return True
     return bool(TRANSIENT_RE.search(err)) and not re.search(r"HTTP 4\d\d", err)
+
+
+def gh_wait(n, err=""):
+    """Seconds before try n + 2: exponential backoff with jitter, so parallel jobs do not retry in step."""
+    top = min(120, 60 * 2**n) if RATE_LIMIT_RE.search(err) else 4 * 2**n
+    floor = 60 if RATE_LIMIT_RE.search(err) else top / 2
+    return round(random.uniform(floor, top), 1)
 
 
 def run_gh(args, env=None, retry=True, input=None):
     """Every gh call goes through here. retry=False: a write that may have landed although gh failed; its caller
     checks before retrying.
     """
-    for wait in (*GH_WAITS, None):
+    for n in range(GH_TRIES):
         r = subprocess.run(
             ["gh", *args], capture_output=True, text=True, env=env, input=input
         )
-        if not (r.returncode and retry and wait is not None and transient(r.stderr)):
+        if not (r.returncode and retry and n < GH_TRIES - 1 and transient(r.stderr)):
             return r
+        wait = gh_wait(n, r.stderr)
         # Safe: the call is retried, and a last failure is returned to the caller.
         print(
             f"::warning::gh {' '.join(args[:2])}: {r.stderr.strip()}; retried in {wait} s"
@@ -142,7 +156,6 @@ def base_tip(base):
 DECLINE_TRIES = (
     3  # a 422 on the base ref update: the base moved since base_tip, so re-read it
 )
-SQUASH_WAITS = (5, 20)  # seconds before the 2nd and 3rd merge attempt
 
 
 def merged(slug, n):
@@ -155,7 +168,7 @@ def squash(slug, pr, msg, sleep=time.sleep):
     that is checked before a retry or a failure.
     """
     title, _, body = msg.partition("\n")
-    for wait in (*SQUASH_WAITS, None):
+    for n in range(GH_TRIES):
         try:
             gh(
                 "api",
@@ -183,8 +196,9 @@ def squash(slug, pr, msg, sleep=time.sleep):
             if transient(str(e)) and merged(slug, pr["number"]):
                 print(f"#{pr['number']}: {str(e).splitlines()[0]}; merged all the same")
                 return True
-            if wait is None or not (moved or transient(str(e))):
+            if n == GH_TRIES - 1 or not (moved or transient(str(e))):
                 raise
+            wait = gh_wait(n, str(e))
             print(f"#{pr['number']}: {e}; merge retried in {wait} s")
             sleep(wait)
 
