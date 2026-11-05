@@ -1,5 +1,6 @@
+import { setOldVersion, VersionSwitch, v1DevRoutesEnabled } from "@v1";
 import { Suspense } from "react";
-import { Route, Routes, useLocation } from "react-router-dom";
+import { Route, Routes, useLocation, useParams } from "react-router-dom";
 
 import { GenericError } from "../components/error/GenericError/GenericError.jsx";
 import {
@@ -17,6 +18,7 @@ import { lazyNamed } from "../helpers/lazyNamed.js";
 import { isModuleMissing } from "../helpers/pluginLoader.js";
 import { lazyPlugin } from "../helpers/pluginRegistry.js";
 import { LandingPage } from "../pages/LandingPage.jsx";
+import { useSessionStore } from "../store/session-store.js";
 import { useMainAppRoutes } from "./useMainAppRoutes.jsx";
 
 // Heavy route pages are code-split so the unauthenticated /landing page does
@@ -145,115 +147,154 @@ try {
   }
 }
 
+// Stand-ins for the v0 side of the v1 demo pages (UN-4271), which prove the
+// version switch; routed only in a build with VITE_V1_DEV_ROUTES=true. The
+// demo page is always live there, so V0DemoPage renders only if the switch
+// fails to redirect: that is what the E2E check would catch, not dead code.
+function V0DemoPage() {
+  return <h1 data-testid="v0-demo">v0 demo page</h1>;
+}
+
+function V0DemoReviewPage() {
+  const { orgName } = useParams();
+  return (
+    <div data-testid="v0-demo-review">
+      <h1>v0 demo review</h1>
+      <p>{orgName}</p>
+      <button type="button" onClick={() => setOldVersion(false)}>
+        Switch to new version
+      </button>
+    </div>
+  );
+}
+
 function Router() {
   const location = useLocation();
   const MainAppRoute = useMainAppRoutes();
+  const userId = useSessionStore((state) => state.sessionDetails?.id);
   return (
-    // App-wide backstop: catches shell-level chunk failures and errors on
-    // routes that don't sit inside a LazyOutlet layout. Per-page load errors
-    // are handled by the scoped boundaries inside the layouts. resetKeys lets
-    // navigation clear the error without a full reload.
-    <ErrorBoundary
-      resetKeys={[location.pathname]}
-      onError={handleRouteError}
-      fallbackComponent={<RouteLoadError />}
-    >
-      <Suspense fallback={<GenericLoader />}>
-        <Routes>
-          <Route path="error" element={<GenericError />} />
-          <Route path="" element={<PersistentLogin />}>
-            {/* public routes */}
-            <Route path="">
-              {/* public routes accessible only to unauthenticated users */}
-              <Route path="" element={<RequireGuest />}>
-                <Route path="landing" element={<LandingPage />} />
-              </Route>
+    // Renders v1 for a URL whose page is registered in the v1 route
+    // registry, and these v0 routes for everything else (UN-4271).
+    <VersionSwitch userId={userId}>
+      {/* v0-wide backstop (the v1 tree has its own, in VersionSwitch):
+          catches shell-level chunk failures and errors on routes that don't
+          sit inside a LazyOutlet layout. Per-page load
+          errors are handled by the scoped boundaries inside the layouts.
+          resetKeys lets navigation clear the error without a full reload. */}
+      <ErrorBoundary
+        resetKeys={[location.pathname]}
+        onError={handleRouteError}
+        fallbackComponent={<RouteLoadError />}
+      >
+        <Suspense fallback={<GenericLoader />}>
+          <Routes>
+            <Route path="error" element={<GenericError />} />
+            <Route path="" element={<PersistentLogin />}>
+              {/* public routes */}
+              <Route path="">
+                {/* public routes accessible only to unauthenticated users */}
+                <Route path="" element={<RequireGuest />}>
+                  <Route path="landing" element={<LandingPage />} />
+                </Route>
 
-              {/* public routes accessible to both authenticated and unauthenticated users */}
-              {SimplePromptStudioHelper &&
-                SimplePromptStudio &&
-                SpsLanding &&
-                SpsUpload && (
+                {/* public routes accessible to both authenticated and unauthenticated users */}
+                {SimplePromptStudioHelper &&
+                  SimplePromptStudio &&
+                  SpsLanding &&
+                  SpsUpload && (
+                    <Route
+                      path="simple-prompt-studio"
+                      element={<SimplePromptStudioHelper />}
+                    >
+                      <Route path="" element={<SimplePromptStudio />} />
+                      <Route path="landing" element={<SpsLanding />} />
+                      <Route path="upload" element={<SpsUpload />} />
+                    </Route>
+                  )}
+                {PublicPromptStudioHelper && (
                   <Route
-                    path="simple-prompt-studio"
-                    element={<SimplePromptStudioHelper />}
+                    path="/promptStudio/share/:id"
+                    element={<PublicPromptStudioHelper />}
                   >
-                    <Route path="" element={<SimplePromptStudio />} />
-                    <Route path="landing" element={<SpsLanding />} />
-                    <Route path="upload" element={<SpsUpload />} />
+                    <Route path="" element={<ToolIdePage />} />
+                    <Route
+                      path="/promptStudio/share/:id/outputAnalyzer"
+                      element={<OutputAnalyzerPage />}
+                    />
                   </Route>
                 )}
-              {PublicPromptStudioHelper && (
-                <Route
-                  path="/promptStudio/share/:id"
-                  element={<PublicPromptStudioHelper />}
-                >
-                  <Route path="" element={<ToolIdePage />} />
-                  <Route
-                    path="/promptStudio/share/:id/outputAnalyzer"
-                    element={<OutputAnalyzerPage />}
-                  />
-                </Route>
-              )}
-            </Route>
+              </Route>
 
-            {/* protected routes */}
-            <Route path="setOrg" element={<SetOrgPage />} />
-            {SelectProduct && (
-              <Route path="selectProduct" element={<SelectProduct />} />
-            )}
-            {UnstractSubscriptionEndPage && (
-              <Route
-                path="/subscription-expired"
-                element={<UnstractSubscriptionEndPage />}
-              />
-            )}
-            {PaymentSuccessful && (
-              <Route path="/payment/success" element={<PaymentSuccessful />} />
-            )}
-            {MarketplaceLandingEntry && (
-              <Route
-                path="/marketplace-landing"
-                element={<MarketplaceLandingEntry />}
-              />
-            )}
-            {MarketplaceStripeConflictEntry && (
-              <Route
-                path="/marketplace-stripe-conflict"
-                element={<MarketplaceStripeConflictEntry />}
-              />
-            )}
-            {LlmWhispererMarketplaceLandingEntry && (
-              <Route
-                path="/llm-whisperer/marketplace-landing"
-                element={<LlmWhispererMarketplaceLandingEntry />}
-              />
-            )}
-            {CustomPlanCheckoutPage && (
-              <Route
-                path="/subscription/custom"
-                element={<CustomPlanCheckoutPage />}
-              />
-            )}
-            {LlmWhispererCustomCheckoutPage && (
-              <Route
-                path="/llm-whisperer/custom-checkout"
-                element={<LlmWhispererCustomCheckoutPage />}
-              />
-            )}
-            <Route path="" element={<RequireAuth />}>
-              {MainAppRoute}
-              {llmWhispererRouter && (
-                <Route path="llm-whisperer">{llmWhispererRouter()}</Route>
+              {/* protected routes */}
+              <Route path="setOrg" element={<SetOrgPage />} />
+              {SelectProduct && (
+                <Route path="selectProduct" element={<SelectProduct />} />
               )}
+              {UnstractSubscriptionEndPage && (
+                <Route
+                  path="/subscription-expired"
+                  element={<UnstractSubscriptionEndPage />}
+                />
+              )}
+              {PaymentSuccessful && (
+                <Route
+                  path="/payment/success"
+                  element={<PaymentSuccessful />}
+                />
+              )}
+              {MarketplaceLandingEntry && (
+                <Route
+                  path="/marketplace-landing"
+                  element={<MarketplaceLandingEntry />}
+                />
+              )}
+              {MarketplaceStripeConflictEntry && (
+                <Route
+                  path="/marketplace-stripe-conflict"
+                  element={<MarketplaceStripeConflictEntry />}
+                />
+              )}
+              {LlmWhispererMarketplaceLandingEntry && (
+                <Route
+                  path="/llm-whisperer/marketplace-landing"
+                  element={<LlmWhispererMarketplaceLandingEntry />}
+                />
+              )}
+              {CustomPlanCheckoutPage && (
+                <Route
+                  path="/subscription/custom"
+                  element={<CustomPlanCheckoutPage />}
+                />
+              )}
+              {LlmWhispererCustomCheckoutPage && (
+                <Route
+                  path="/llm-whisperer/custom-checkout"
+                  element={<LlmWhispererCustomCheckoutPage />}
+                />
+              )}
+              <Route path="" element={<RequireAuth />}>
+                {MainAppRoute}
+                {llmWhispererRouter && (
+                  <Route path="llm-whisperer">{llmWhispererRouter()}</Route>
+                )}
+                {v1DevRoutesEnabled && (
+                  <>
+                    <Route path=":orgName/v0-demo" element={<V0DemoPage />} />
+                    <Route
+                      path=":orgName/v0-demo-review"
+                      element={<V0DemoReviewPage />}
+                    />
+                  </>
+                )}
+              </Route>
+              {verticalsRouter && verticalsRouter()}
             </Route>
-            {verticalsRouter && verticalsRouter()}
-          </Route>
-          <Route path="*" element={<NotFound />} />
-          <Route path="oauth-status" element={<OAuthStatus />} />
-        </Routes>
-      </Suspense>
-    </ErrorBoundary>
+            <Route path="*" element={<NotFound />} />
+            <Route path="oauth-status" element={<OAuthStatus />} />
+          </Routes>
+        </Suspense>
+      </ErrorBoundary>
+    </VersionSwitch>
   );
 }
 

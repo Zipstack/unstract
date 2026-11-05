@@ -64,6 +64,38 @@ is convention.
     icon's `size` prop. Put icons in a `ui:flex`/`ui:inline-flex` parent
     that is not one of those tags, or size the parent's font.
 
+## Version switch and route registry
+
+v0's router (`routes/Router.jsx`) wraps its routes in `VersionSwitch`, which
+renders v1 for a URL whose page is live in the registry (`app/registry/`) and
+v0 for everything else. v1 renders as its own tree (`app/V1App.tsx`), loaded
+only when a v1 page first renders.
+
+- **Declare** a page in `app/registry/entries.ts` (`PAGES`) with its v1 routes,
+  the v0 routes it replaces and the mapping both ways, and add its component
+  to `app/pages.ts`. Declared pages stay v0 for users.
+- **Register** it, in its go-live task only (D9), by adding its key to
+  `REGISTERED_PAGES`. Its v0 URLs then redirect to v1; reverting is that line.
+- `app/registry/validate.test.ts` fails CI on an invalid entry: overlapping
+  patterns across pages, a v1 and a v0 route of one page that match the same
+  URL, a route without a mapping to the other version, a page without a
+  component, or `toggle`
+  on any page but Human Review (UN11, D14) and its demo stand-in.
+- Human Review's old-version preference is per user, per browser, in
+  localStorage (`unstract.v1.oldVersion.<userId>`). `setOldVersion(on)` sets
+  it, and the switch then moves the user to the mapped screen without a
+  reload. `unstract.v1.lastUser` lets a reload apply it before the session
+  loads; on a shared browser that is the previous user's choice until the
+  session says otherwise.
+- `VITE_V1_DEV_ROUTES=true` (the E2E image, or `.env` locally) registers the
+  demo pages (`/:orgName/v1-demo`, `/:orgName/v1-demo-review`, and their v0
+  stand-ins `/:orgName/v0-demo…`). It also renders declared pages as v1 before
+  they go live: set `localStorage["unstract.v1.preview"] = '["UN05"]'`, then
+  reload (it is read when the app loads).
+- `VITE_UNSTRACT_DISTRIBUTION` (`oss` by default, `cloud` or `onprem`) selects
+  the build's distribution; entries whose `distributions` omit it are ignored.
+  An unknown value fails `vite build`.
+
 ## Folders and what each may import
 
 Every folder may import from itself. Test files (`*.test.ts(x)`,
@@ -71,7 +103,7 @@ Every folder may import from itself. Test files (`*.test.ts(x)`,
 
 | Folder | Holds | May import from |
 | --- | --- | --- |
-| `index.ts` | Public entry; the version switch (UN-4271) will mount v1 through it | everything |
+| `index.ts` | Public entry: the version switch and its helpers | everything |
 | `app/` | Entry, providers, router, route registry | everything |
 | `components/ui/` | Core components | `lib/`, `styles/`, `assets/` |
 | `components/patterns/` | Composites built from core components | `components/ui/`, `lib/`, `services/`, `stores/`, `hooks/`, `assets/` |
