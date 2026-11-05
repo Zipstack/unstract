@@ -189,10 +189,16 @@ class ConnectorStoredCredentialsTests(ConnectionCheckTestBase):
         self,
     ) -> None:
         connector = self.make_connector("db")
-        reason = "Error while connecting to DB: The connection URL is not valid."
-        for url in (
-            "postgres:/alice:STANDINPW@db/prod",
-            "postgresql://alice:STANDINPW/STANDINPW@db/prod",
+        for url, reason in (
+            (
+                "postgres:/alice:STANDINPW@db/prod",
+                "Error while connecting to DB: The connection URL is not valid.",
+            ),
+            (
+                "postgresql://alice:STANDINPW/STANDINPW@db/prod",
+                "Error while connecting to DB: Could not connect. If the user name "
+                "or password has special characters, percent-encode them.",
+            ),
         ):
             with self.subTest(url=url):
                 ConnectorInstance.objects.filter(pk=connector.pk).update(

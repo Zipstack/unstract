@@ -15,6 +15,7 @@ changes.
 - [List filters](#list-filters)
 - [Paged envelope](#paged-envelope)
 - [What is not recorded](#what-is-not-recorded)
+- [Deploying and rolling back](#deploying-and-rolling-back)
 
 ## Test and record
 
@@ -112,3 +113,17 @@ A list fetched without `page` and `page_size` is still a bare array, without
 Only tests run through the two endpoints above are stored. Failures during
 real runs (workflows, API deployments, Prompt Studio) are not recorded, and
 nothing is backfilled, so every profile starts as `never_tested`.
+
+## Deploying and rolling back
+
+- The migration must apply before this code serves. Adapter and connector lists
+  read the new tables, so they return **500** until it does.
+- Older code doesn't know these tables, so it can't delete a tested profile: the
+  foreign key fails and the delete returns **500**. Profiles with no stored
+  result delete normally.
+- Before rolling back to an image without this app, run
+  `python manage.py migrate connection_check zero` on this image. It drops every
+  stored result.
+- If that image is already gone, run this instead:
+  `DROP TABLE adapter_test_result, connector_test_result;` and
+  `DELETE FROM django_migrations WHERE app = 'connection_check';`

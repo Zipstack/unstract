@@ -7,12 +7,41 @@ import psycopg2
 from unstract.connectors.databases.postgresql.postgresql import PostgreSQL
 from unstract.connectors.exceptions import ConnectorError
 
+CONNECT_FAILED = (
+    "Error while connecting to DB: Could not connect. If the user name or "
+    "password has special characters, percent-encode them."
+)
+
+
+def _connect_error(settings: dict[str, str], error: str) -> ConnectorError:
+    """The error of a test whose connection fails with ``error``."""
+    with patch("psycopg2.connect", side_effect=psycopg2.OperationalError(error)):
+        try:
+            PostgreSQL(settings).test_credentials()
+        except ConnectorError as exc:
+            return exc
+    raise AssertionError("The test did not raise ConnectorError")
+
 
 class TestMalformedConnectionUrl(unittest.TestCase):
-    def test_password_stays_out_of_the_error_and_its_traceback(self) -> None:
+    def _assert_hidden(self, url: str, reason: str) -> None:
+        with self.assertRaises(ConnectorError) as caught:
+            PostgreSQL({"connection_url": url}).test_credentials()
+
+        text = "".join(traceback.format_exception(caught.exception))
+        self.assertIn(reason, text)
+        self.assertNotIn("INPW", text)
+
+    def test_url_that_cannot_be_parsed_is_reported_as_invalid(self) -> None:
         for url in (
             "postgres:/alice:STANDINPW@db.invalid/prod",
             "postgresql://alice:STAND%ZZINPW@db.invalid/prod",
+        ):
+            with self.subTest(url=url):
+                self._assert_hidden(url, "The connection URL is not valid.")
+
+    def test_misread_password_stays_out_of_the_error_and_its_traceback(self) -> None:
+        for url in (
             "postgresql://alice:INPW/INPW@db.invalid/prod",
             "postgresql://alice:INPW@INPW@db.invalid/prod",
             "postgresql://alice:INPW@INPW?target_session_attrs=INPW@db.invalid/prod",
@@ -21,18 +50,23 @@ class TestMalformedConnectionUrl(unittest.TestCase):
             "postgresql://alice:INPW,db.invalid/prod",
         ):
             with self.subTest(url=url):
-                with self.assertRaises(ConnectorError) as caught:
-                    PostgreSQL({"connection_url": url}).test_credentials()
+                self._assert_hidden(url, CONNECT_FAILED)
 
-                text = "".join(traceback.format_exception(caught.exception))
-                self.assertIn("The connection URL is not valid.", text)
-                self.assertNotIn("INPW", text)
+    def test_port_libpq_rejects_stays_out_of_the_error(self) -> None:
+        for port in ("0", "65536", "123456"):
+            with self.subTest(port=port), self.assertRaises(ConnectorError) as caught:
+                PostgreSQL(
+                    {"connection_url": f"postgresql://alice.invalid:{port}/prod"}
+                ).test_credentials()
+
+            self.assertEqual(caught.exception.message, CONNECT_FAILED)
 
 
 class TestConnectionFailureReason(unittest.TestCase):
     def test_real_failure_keeps_its_reason(self) -> None:
         for settings in (
             {"connection_url": "postgresql://alice:pw@db.invalid:5432/prod"},
+            {"connection_url": "postgresql://alice:pw@db.invalid:65535/prod"},
             {"connection_url": "postgresql://alice:pa%40ss@db.invalid/prod"},
             {"connection_url": "postgresql://alice:pw@db1.invalid:5432,db2.invalid:5433/prod"},
             {"connection_url": "host=db.invalid user=alice password=pa@ss dbname=prod"},
@@ -44,17 +78,19 @@ class TestConnectionFailureReason(unittest.TestCase):
                 "database": "prod",
             },
         ):
-            with (
-                self.subTest(settings=settings),
-                patch(
-                    "psycopg2.connect",
-                    side_effect=psycopg2.OperationalError("connection refused"),
-                ),
-                self.assertRaises(ConnectorError) as caught,
-            ):
-                PostgreSQL(settings).test_credentials()
+            with self.subTest(settings=settings):
+                self.assertEqual(
+                    _connect_error(settings, "connection refused").message,
+                    "Error while connecting to DB: connection refused",
+                )
 
-            self.assertEqual(
-                caught.exception.message,
-                "Error while connecting to DB: connection refused",
-            )
+    def test_url_that_may_be_misread_does_not_claim_to_be_invalid(self) -> None:
+        for url in (
+            "postgresql://alice:pa?ss@db.invalid/prod",
+            "postgresql://alice:pw@db.invalid/my@db",
+            "postgresql://db.invalid/prod?user=sa@proj.iam&password=pw",
+            "postgresql://alice:12/INPW@db.invalid/prod",
+        ):
+            with self.subTest(url=url):
+                error = _connect_error({"connection_url": url}, "INPW echoed")
+                self.assertEqual(error.message, CONNECT_FAILED)

@@ -18,6 +18,10 @@ from unstract.connectors.databases.unstract_db import UnstractDB
 from unstract.connectors.exceptions import ConnectorError
 
 INVALID_URL_MESSAGE = "The connection URL is not valid."
+CONNECT_FAILED_MESSAGE = (
+    "Could not connect. If the user name or password has special characters, "
+    "percent-encode them."
+)
 
 
 class PostgreSQL(UnstractDB, PsycoPgHandler):
@@ -114,7 +118,7 @@ class PostgreSQL(UnstractDB, PsycoPgHandler):
 
     @staticmethod
     def _connect(conn_params: dict[str, Any]) -> connection:
-        """Open a connection, keeping a password in a bad URL out of the error."""
+        """Open a connection, hiding libpq's error when it may echo a password."""
         try:
             return psycopg2.connect(**conn_params)
         except psycopg2.ProgrammingError:
@@ -122,23 +126,32 @@ class PostgreSQL(UnstractDB, PsycoPgHandler):
             raise ConnectorError(INVALID_URL_MESSAGE) from None
         except psycopg2.OperationalError:
             if PostgreSQL._password_may_be_misread(conn_params.get("dsn", "")):
-                raise ConnectorError(INVALID_URL_MESSAGE) from None
+                raise ConnectorError(CONNECT_FAILED_MESSAGE) from None
             raise
 
     @staticmethod
     def _password_may_be_misread(url: str) -> bool:
-        """Whether libpq may have read part of a password as another setting.
+        """Best-effort check that libpq read part of a password as another setting.
 
         An unescaped ``@`` or ``/`` moves it into the host, port or database,
-        and libpq's errors echo those.
+        and libpq's errors echo those. Not caught: a URL with no ``@``, where
+        nothing marks a password, or a keyword inside a query password.
         """
         rest = url.partition("://")[2]
         authority = re.split("[/?]", rest, maxsplit=1)[0]
         at_signs = rest.count("@")
+        ports = parse_dsn(url).get("port", "").split(",")
         return (
             at_signs > 1
             or at_signs != authority.count("@")
-            or not re.fullmatch("[0-9,]*", parse_dsn(url).get("port", ""))
+            or not all(PostgreSQL._is_valid_port(port) for port in ports)
+        )
+
+    @staticmethod
+    def _is_valid_port(port: str) -> bool:
+        """Whether libpq accepts this port; it echoes any other."""
+        return not port or (
+            re.fullmatch("[0-9]{1,5}", port) is not None and 0 < int(port) <= 65535
         )
 
     def get_engine(self) -> connection:
