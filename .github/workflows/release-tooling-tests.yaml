@@ -1,4 +1,4 @@
-name: V2 Release tooling tests
+name: Release tooling tests
 
 # The suites use only temporary local git repos and mocks: no token, no network.
 on:
