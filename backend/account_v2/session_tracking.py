@@ -179,6 +179,21 @@ def _disconnect_session_sockets(session_key: str) -> None:
         logger.warning("Failed to disconnect sockets of an ended session", exc_info=True)
 
 
+def _renew_session_sockets(session_key: str) -> None:
+    try:
+        from utils.log_events import renew_session_sockets
+
+        # A refresh interval past the session's own lifetime: the session can be
+        # saved (and extended) up to one interval after the last refresh.
+        renew_session_sockets(
+            session_key,
+            ttl=settings.SESSION_COOKIE_AGE
+            + int(ACTIVITY_REFRESH_INTERVAL.total_seconds()),
+        )
+    except Exception:
+        logger.warning("Failed to renew socket tracking of a session", exc_info=True)
+
+
 def _close_socket_room(room: str) -> None:
     try:
         from utils.log_events import sio
@@ -287,6 +302,7 @@ class SessionTracker:
                 details = _session_details(request)
                 with transaction.atomic():
                     cls._upsert(request, user, details)
+            _renew_session_sockets(session_key)
             cls._sweep_idle_if_due()
         except Exception:
             logger.warning(

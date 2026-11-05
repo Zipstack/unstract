@@ -151,6 +151,23 @@ def _untrack_session_socket(sid: str) -> None:
         logger.warning(f"Could not untrack socket {sid}", exc_info=True)
 
 
+def renew_session_sockets(session_id: str, ttl: int) -> None:
+    """Extend a live session's socket tracking by `ttl` seconds.
+
+    Tracking is given the session's lifetime at connect, but activity can extend
+    the session while its sockets stay connected. Renewed from each activity
+    refresh, the tracking cannot lapse while the session is in use, so ending
+    the session always finds its sockets.
+    """
+    conn = _get_redis_conn()
+    key = _session_sockets_key(session_id)
+    if not conn.expire(key, ttl):
+        return
+    for sid in conn.smembers(key):
+        sid = sid.decode() if isinstance(sid, bytes) else sid
+        conn.expire(f"{_SOCKET_SESSION_PREFIX}{sid}", ttl)
+
+
 def disconnect_session_sockets(session_id: str) -> None:
     """Disconnect every socket of a session, on whichever worker holds it.
 

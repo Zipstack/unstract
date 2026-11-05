@@ -40,8 +40,11 @@ class _FakeRedis:
     def smembers(self, key: str) -> set[bytes]:
         return set(self.sets.get(key, set()))
 
-    def expire(self, key: str, seconds: int) -> None:
+    def expire(self, key: str, seconds: int) -> bool:
+        if key not in self.sets and key not in self.values:
+            return False
         self.ttls[key] = seconds
+        return True
 
     def delete(self, key: str) -> None:
         self.sets.pop(key, None)
@@ -77,6 +80,19 @@ class SessionSocketsTest(SimpleTestCase):
         self.assertEqual(
             self.redis.ttls["socket_session:sid-1"], settings.SESSION_COOKIE_AGE
         )
+
+    def test_renewal_extends_the_session_and_socket_tracking(self) -> None:
+        self._connect("sid-1")
+
+        log_events.renew_session_sockets(SESSION, ttl=999)
+
+        self.assertEqual(self.redis.ttls[f"session_sockets:{SESSION}"], 999)
+        self.assertEqual(self.redis.ttls["socket_session:sid-1"], 999)
+
+    def test_renewal_of_an_untracked_session_creates_nothing(self) -> None:
+        log_events.renew_session_sockets(SESSION, ttl=999)
+
+        self.assertEqual(self.redis.ttls, {})
 
     def test_a_disconnected_socket_is_untracked(self) -> None:
         self._connect("sid-1")

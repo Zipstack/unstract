@@ -80,6 +80,9 @@ def _isolate_side_effects(test) -> None:
     sockets = patch("account_v2.session_tracking._disconnect_session_sockets")
     test.disconnected_sessions = sockets.start()
     test.addCleanup(sockets.stop)
+    renew = patch("account_v2.session_tracking._renew_session_sockets")
+    test.renewed_sessions = renew.start()
+    test.addCleanup(renew.stop)
     room = patch("account_v2.session_tracking._close_socket_room")
     test.closed_rooms = room.start()
     test.addCleanup(room.stop)
@@ -589,6 +592,13 @@ class SessionEndpointsTest(APITestCase):
         self.assertGreater(
             SessionRecord.objects.get(session_key=key).last_active_at, an_hour_ago
         )
+
+    def test_activity_keeps_the_sessions_socket_tracking_alive(self) -> None:
+        laptop = self._sign_in(self.user)
+
+        laptop.get(SESSIONS_URL)
+
+        self.renewed_sessions.assert_called_once_with(self._key(laptop))
 
     def test_session_from_before_recording_is_recorded_on_first_use(self) -> None:
         laptop = self._sign_in(self.user, FIREFOX_WINDOWS)
