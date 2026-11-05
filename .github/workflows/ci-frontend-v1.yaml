@@ -19,6 +19,9 @@ on:
       - main
     paths:
       - "frontend/**"
+      # The guard fixtures also read these (the unit-gate drift check).
+      - ".github/workflows/ci-frontend-v1.yaml"
+      - "tests/groups.yaml"
   # No `paths` on pull_request: an untriggered workflow reports no check run,
   # so a required check would wait forever on non-frontend PRs. Filtering is
   # done by the `changes` job instead; a job skipped via `if:` reports
@@ -58,6 +61,8 @@ jobs:
           filters: |
             frontend:
               - "frontend/**"
+              - ".github/workflows/ci-frontend-v1.yaml"
+              - "tests/groups.yaml"
 
   # Biome's recommended rules and the accessibility rules as errors: biome.json
   # raises the a11y rules for src/v1, and --error-on-warnings turns every

@@ -109,7 +109,9 @@ function readAllowlist() {
 }
 
 function changedFromGit(base) {
-  const args = ["diff", "--name-only", "--no-renames", "--relative"];
+  // -z: paths NUL-separated and never quoted, so a non-ASCII path such as
+  // src/pages/Überblick.jsx is matched as written.
+  const args = ["diff", "--name-only", "-z", "--no-renames", "--relative"];
   args.push(`${base}...HEAD`, "--", ".");
   const options = { cwd: FRONTEND, encoding: "utf8" };
   // git from PATH on purpose: a developer/CI tool with no fixed location
@@ -121,7 +123,7 @@ function changedFromGit(base) {
     );
     process.exit(2);
   }
-  return result.stdout.split("\n");
+  return result.stdout.split("\0");
 }
 
 function changedFromFile(file) {
