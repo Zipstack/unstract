@@ -48,15 +48,15 @@ function runCase(name) {
 test("passing tests below the coverage threshold fail the gate", () => {
   const { status, output } = runCase("below-threshold");
   assert.notEqual(status, 0, output);
-  assert.match(output, /Tests\s+1 passed/);
+  assert.match(output, /Tests\s+3 passed/);
   assert.match(
     output,
     /Coverage for lines \([\d.]+%\) does not meet global threshold \(80%\)/,
   );
 });
 
-test("passing tests at the coverage threshold pass the gate", () => {
-  const { status, output } = runCase("at-threshold");
+test("passing tests just above the coverage threshold pass the gate", () => {
+  const { status, output } = runCase("above-threshold");
   assert.equal(status, 0, output);
 });
 
@@ -88,4 +88,46 @@ test("the CI unit check runs the rig group's vitest config", () => {
     run.includes(`--config ${config}`),
     `the \`unit\` job runs \`${run}\`, not the group's config ${config}`,
   );
+});
+
+// Each v1 job's commands, exactly: a job that runs something weaker (no
+// --error-on-warnings, `|| true`, a guard swapped for `true`) fails here.
+const JOB_COMMANDS = {
+  biome: ["biome ci --error-on-warnings src/v1/"],
+  typecheck: ["bun run typecheck:v1"],
+  purity: [
+    "node scripts/check-v1.mjs --code",
+    "node scripts/check-v1-styles.mjs",
+  ],
+  unit: ["./node_modules/.bin/vitest run --config vitest.v1.config.mts"],
+  build: [
+    "node scripts/check-v1-bundle.mjs",
+    "node scripts/check-v1-separation.mjs",
+  ],
+  "guard-fixtures": [
+    "node --test test-fixtures/v1-boundary/boundary.fixtures.mjs test-fixtures/v1-harness/harness.fixtures.mjs test-fixtures/v1-unit-gate/unit-gate.fixtures.mjs",
+  ],
+};
+
+// A job's block: from `  <name>:` to the next top-level job.
+function jobBlock(workflow, name) {
+  const start = workflow.indexOf(`\n  ${name}:\n`);
+  assert.notEqual(start, -1, `ci-frontend-v1.yaml has no \`${name}\` job`);
+  const rest = workflow.slice(start + name.length + 5);
+  const end = rest.search(/\n {2}[a-z0-9-]+:\n/);
+  return end === -1 ? rest : rest.slice(0, end);
+}
+
+test("each v1 CI job runs its guard's exact commands", () => {
+  const workflow = readFileSync(
+    path.join(REPO, ".github", "workflows", "ci-frontend-v1.yaml"),
+    "utf8",
+  );
+  assert.doesNotMatch(workflow, /continue-on-error/);
+  for (const [name, commands] of Object.entries(JOB_COMMANDS)) {
+    const runs = [...jobBlock(workflow, name).matchAll(/^\s+run: (.*)$/gm)]
+      .map((match) => match[1].trim())
+      .filter((run) => !run.startsWith("bun install"));
+    assert.deepEqual(runs, commands, `the \`${name}\` job's run steps`);
+  }
 });

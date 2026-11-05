@@ -10,8 +10,9 @@ name: Frontend v1 checks
 # re-running these jobs on every label change would cost minutes for nothing.
 #
 # This workflow runs on a clean checkout of the public repository, with no
-# cloud overlay, so a green Build job is the separation guard's "v1 builds
-# with no overlay" half.
+# cloud overlay, so green Typecheck, Biome, Purity and Unit tests jobs are the
+# separation guard's "v1 works with no overlay" half. The Build job covers v1
+# only once v0 imports it (the version switch, P0-T03).
 
 on:
   push:
@@ -145,7 +146,7 @@ jobs:
   # run with the same config so CI and the rig cannot disagree. The config
   # fails the run below v1's coverage threshold. Run here rather than through
   # ci-test.yaml because its tiers skip frontend-only PRs. Cloud v1 plugins
-  # (vitest.v1-plugins.config.mts) are gated by the cloud mirror, not here:
+  # (vitest.v1-plugins.config.mts) are for the cloud mirror (UN-4614), not here:
   # OSS has none.
   unit:
     name: v1 · Unit tests
@@ -181,7 +182,7 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-  # One production build, then the bundle guard (no v1 chunk loads v0 or
+  # One production build, then the bundle guard (no v1 module reaches v0 or
   # antd) and the separation guard (no enterprise plugin code in this repo).
   build:
     name: v1 · Build, bundle and separation

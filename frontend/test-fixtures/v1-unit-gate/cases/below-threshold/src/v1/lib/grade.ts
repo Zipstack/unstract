@@ -1,4 +1,4 @@
-// Half of this file is never run by its test, so line coverage is ~50%.
+// Two branches (D and F) are never run: ~67% of lines, just below 80%.
 export function grade(score: number): string {
   if (score >= 90) {
     return "A";

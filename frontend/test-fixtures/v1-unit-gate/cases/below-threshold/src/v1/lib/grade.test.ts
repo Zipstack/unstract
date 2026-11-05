@@ -1,6 +1,10 @@
 import { expect, it } from "vitest";
 import { grade } from "./grade";
 
-it("grades a top score", () => {
-  expect(grade(95)).toBe("A");
+it.each([
+  [95, "A"],
+  [85, "B"],
+  [75, "C"],
+])("grades %i as %s", (score, letter) => {
+  expect(grade(score)).toBe(letter);
 });

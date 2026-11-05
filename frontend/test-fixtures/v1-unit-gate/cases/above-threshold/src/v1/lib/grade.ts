@@ -1,4 +1,4 @@
-// Every branch is run by its test.
+// One branch (the F grade) is never run: ~87% of lines, just above 80%.
 export function grade(score: number): string {
   if (score >= 90) {
     return "A";

@@ -1,23 +1,26 @@
 #!/usr/bin/env node
 /*
- * Bundle guard for the frontend v1 epic (P0-T10): a v1 chunk never pulls in
- * a v0 module or antd.
+ * Bundle guard for the frontend v1 epic (P0-T10): no v1 module reaches a v0
+ * module or antd in the production module graph.
  *
  * Runs the production build (vite.config.js, unchanged) with one extra Rollup
- * plugin that records every output chunk: its entry module, the modules
- * bundled into it and the chunks it imports. Then, for every v1 chunk, it
- * walks the chunks that chunk loads (static and dynamic imports) and fails on
- * any module from src/ outside src/v1/ (v0, including the antd shims) or from
- * the antd packages.
+ * plugin that records the module graph Rollup resolved: for every module, the
+ * modules it imports statically and dynamically. Then, from every module
+ * under src/v1/, it walks that graph and fails on any module from src/
+ * outside src/v1/ (v0, including the antd shims) or from the antd packages.
  *
- * A v1 chunk is one whose entry module is under src/v1/, or whose own source
- * modules are all under src/v1/. A chunk that only shares vendor code
- * (node_modules) is neither v0 nor v1. Until v1 is loaded through its own
- * import (the version switch, P0-T03) the build has no v1 chunk and the guard
- * passes with nothing to check; the fixtures prove it fails on a bad tree.
+ * It judges imports, not chunk placement. Rollup may put a package v1 uses
+ * into a chunk that also holds v0 code, and v1 may be inlined into a v0
+ * chunk; neither changes what v1 code depends on. What the per-file import
+ * check (check-v1.mjs) cannot see, and this guard can, is a package that
+ * reaches antd or v0 code transitively.
  *
- *   (no flags)              Build, then check. The build is also the PR's
- *                           "v1 builds with no overlay" check.
+ * The graph covers only modules the build reaches. Until v1 is loaded through
+ * its own import (the version switch, P0-T03) the build reaches no v1 module
+ * and the guard passes with nothing to check; the fixtures prove it fails on
+ * a bad tree.
+ *
+ *   (no flags)              Build, then check.
  *   --report <file>         Check a saved report instead of building.
  *   --save-report <file>    Build, write the report there, then check.
  */
@@ -72,26 +75,22 @@ function moduleName(id) {
 
 const byName = (a, b) => a.localeCompare(b);
 
-function reporter(chunks) {
+/* Records { module: [modules it imports] } for every module in the build. */
+function reporter(graph) {
   return {
     name: "v1-bundle-report",
     apply: "build",
-    generateBundle(_options, bundle) {
-      for (const output of Object.values(bundle)) {
-        if (output.type !== "chunk") {
+    generateBundle() {
+      for (const id of this.getModuleIds()) {
+        const name = moduleName(id);
+        const info = this.getModuleInfo(id);
+        if (!name || !info) {
           continue;
         }
-        chunks.push({
-          fileName: output.fileName,
-          facade: output.facadeModuleId
-            ? moduleName(output.facadeModuleId)
-            : null,
-          modules: Object.keys(output.modules)
-            .map(moduleName)
-            .filter(Boolean)
-            .sort(byName),
-          imports: [...output.imports, ...output.dynamicImports].sort(byName),
-        });
+        const deps = [...info.importedIds, ...info.dynamicallyImportedIds]
+          .map(moduleName)
+          .filter(Boolean);
+        graph[name] = [...new Set(deps)].sort(byName);
       }
     },
   };
@@ -99,14 +98,14 @@ function reporter(chunks) {
 
 async function buildReport() {
   const { build } = await import("vite");
-  const chunks = [];
+  const modules = {};
   await build({
     root: FRONTEND,
     configFile: path.join(FRONTEND, "vite.config.js"),
     logLevel: "warn",
-    plugins: [reporter(chunks)],
+    plugins: [reporter(modules)],
   });
-  return { chunks };
+  return { modules };
 }
 
 const kind = (name) => {
@@ -122,55 +121,44 @@ const kind = (name) => {
   return "other";
 };
 
-function isV1Chunk(chunk) {
-  if (chunk.facade) {
-    return kind(chunk.facade) === "v1";
-  }
-  const own = chunk.modules.map(kind).filter((k) => k === "v1" || k === "v0");
-  return own.length > 0 && own.every((k) => k === "v1");
-}
-
-/* Every chunk a v1 chunk loads, itself included, with the chunks in between. */
-function reachable(root, chunksByName) {
-  const seen = new Map([[root.fileName, []]]);
+/* Every module reachable from root, with the modules in between. */
+function reachable(root, modules) {
+  const seen = new Map([[root, []]]);
   const queue = [root];
   while (queue.length > 0) {
-    const chunk = queue.shift();
-    const via = [...seen.get(chunk.fileName), chunk.fileName];
-    for (const next of chunk.imports) {
-      const target = chunksByName.get(next);
-      if (target && !seen.has(next)) {
+    const name = queue.shift();
+    const via = [...seen.get(name), name];
+    for (const next of modules[name] ?? []) {
+      if (!seen.has(next)) {
         seen.set(next, via);
-        queue.push(target);
+        queue.push(next);
       }
     }
   }
-  return [...seen].map(([fileName, via]) => ({
-    chunk: chunksByName.get(fileName),
-    via,
-  }));
+  return seen;
 }
 
-function describe(root, name, path) {
-  const what = kind(name) === "v0" ? "v0 module" : "antd module";
-  const from = root.facade ? `, from ${root.facade}` : "";
-  const where = path.length > 1 ? ` through ${path.join(" -> ")}` : "";
-  return `${root.fileName} (v1${from}) pulls in ${what} ${name}${where}.`;
+function describe(target, via) {
+  const what = kind(target) === "v0" ? "v0 module" : "antd module";
+  const where = via.length > 1 ? ` through ${via.slice(1).join(" -> ")}` : "";
+  return `${via[0]} (v1) reaches ${what} ${target}${where}.`;
 }
 
 function check(report) {
-  const chunksByName = new Map(
-    report.chunks.map((chunk) => [chunk.fileName, chunk]),
-  );
-  const v1Chunks = report.chunks.filter(isV1Chunk);
-  const problems = v1Chunks.flatMap((root) =>
-    reachable(root, chunksByName).flatMap(({ chunk, via }) =>
-      chunk.modules
-        .filter((name) => ["v0", "antd"].includes(kind(name)))
-        .map((name) => describe(root, name, [...via, chunk.fileName])),
-    ),
-  );
-  return { v1Chunks: v1Chunks.length, problems };
+  const modules = report.modules ?? {};
+  const v1Modules = Object.keys(modules)
+    .filter((name) => kind(name) === "v1")
+    .sort(byName);
+  // One line per forbidden module, from the first v1 module that reaches it.
+  const problems = new Map();
+  for (const root of v1Modules) {
+    for (const [target, via] of reachable(root, modules)) {
+      if (["v0", "antd"].includes(kind(target)) && !problems.has(target)) {
+        problems.set(target, describe(target, via));
+      }
+    }
+  }
+  return { v1Modules: v1Modules.length, problems: [...problems.values()] };
 }
 
 const opts = parseArgs(process.argv.slice(2));
@@ -191,14 +179,14 @@ if (opts.report) {
   }
 }
 
-const { v1Chunks, problems } = check(report);
+const { v1Modules, problems } = check(report);
 if (problems.length > 0) {
   console.error(problems.join("\n"));
   console.error(
-    `\ncheck-v1-bundle: ${problems.length} problem(s). v1 chunks may load only v1 code and packages other than antd.`,
+    `\ncheck-v1-bundle: ${problems.length} problem(s). v1 code may reach only v1 code and packages other than antd.`,
   );
   process.exit(1);
 }
 console.log(
-  `check-v1-bundle: ok (${report.chunks.length} chunk(s), ${v1Chunks} v1 chunk(s))`,
+  `check-v1-bundle: ok (${Object.keys(report.modules ?? {}).length} module(s), ${v1Modules} v1 module(s))`,
 );

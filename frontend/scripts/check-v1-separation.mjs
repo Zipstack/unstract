@@ -13,9 +13,11 @@
  * a plugin that was committed. Outside git (the fixtures) the folder itself
  * is read.
  *
- * The other half of the guard, that v1 builds, lints and passes its tests
- * with no overlay present, is the v1 CI jobs themselves: they run on a clean
- * checkout of this repository, which has no overlay.
+ * The other half of the guard, that v1 typechecks, lints and passes its
+ * tests with no overlay present, is the v1 CI jobs themselves: they run on a
+ * clean checkout of this repository, which has no overlay. The production
+ * build covers v1 only once v0 imports it (the version switch, P0-T03);
+ * until then a v1 file nothing imports is not built.
  */
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
@@ -33,13 +35,14 @@ function git(args) {
 }
 
 function trackedPluginPaths() {
-  // Paths come back relative to the working directory, i.e. frontend/.
-  const result = git(["ls-files", "--", PLUGINS_REL]);
+  // Paths come back relative to the working directory, i.e. frontend/, and
+  // with -z unquoted, so a non-ASCII name is read as written.
+  const result = git(["ls-files", "-z", "--", PLUGINS_REL]);
   if (result.error || result.status !== 0) {
     return null;
   }
   return result.stdout
-    .split("\n")
+    .split("\0")
     .filter(Boolean)
     .map((file) => file.slice(PLUGINS_REL.length + 1));
 }
