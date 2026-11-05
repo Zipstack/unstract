@@ -1,0 +1,219 @@
+import { cn } from "@v1/lib/cn";
+import { CODE_LANGUAGES, type CodeLanguage } from "@v1/lib/code/highlight";
+import type { ComponentProps, JSX, ReactNode } from "react";
+import ReactMarkdown, { uriTransformer } from "react-markdown";
+import remarkGfm from "remark-gfm";
+import { CodeBlock } from "./CodeBlock";
+import { InlineCode } from "./InlineCode";
+
+/** Fence names that mean one of our grammars ("```py"). */
+const LANGUAGE_ALIAS: Readonly<Record<string, CodeLanguage>> = {
+  js: "javascript",
+  jsx: "javascript",
+  ts: "typescript",
+  tsx: "typescript",
+  py: "python",
+  sh: "bash",
+  shell: "bash",
+  zsh: "bash",
+  curl: "bash",
+  yml: "yaml",
+  md: "markdown",
+  txt: "text",
+  plaintext: "text",
+};
+
+function fenceLanguage(className: string | undefined): CodeLanguage {
+  const name = /language-([\w-]+)/.exec(className ?? "")?.[1]?.toLowerCase();
+  if (!name) {
+    return "text";
+  }
+  if ((CODE_LANGUAGES as readonly string[]).includes(name)) {
+    return name as CodeLanguage;
+  }
+  return LANGUAGE_ALIAS[name] ?? "text";
+}
+
+/** An absolute http(s) link opens in a new tab; anything else stays in place. */
+function isExternal(href: string | undefined): boolean {
+  return /^https?:\/\//i.test(href ?? "");
+}
+
+type Props<T extends keyof JSX.IntrinsicElements> = ComponentProps<T> & {
+  node?: unknown;
+  level?: number;
+};
+type CodeProps = Props<"code"> & { inline?: boolean };
+
+// Strip react-markdown's own props (`node`, and `level` on headings) before
+// spreading onto DOM elements.
+function dom<T extends { node?: unknown; level?: number }>({
+  node: _node,
+  level: _level,
+  ...rest
+}: T) {
+  return rest;
+}
+
+/*
+ * One element per Markdown construct, styled with v1 type roles rather than
+ * @tailwindcss/typography's `prose` (whose v0 config would leak in).
+ */
+const COMPONENTS = {
+  h1: (p: Props<"h1">) => (
+    <h1
+      {...dom(p)}
+      className="ui:mt-4 ui:mb-2 ui:text-section-title ui:first:mt-0"
+    />
+  ),
+  h2: (p: Props<"h2">) => (
+    <h2
+      {...dom(p)}
+      className="ui:mt-4 ui:mb-2 ui:text-section-title ui:first:mt-0"
+    />
+  ),
+  h3: (p: Props<"h3">) => (
+    <h3
+      {...dom(p)}
+      className="ui:mt-3 ui:mb-1.5 ui:text-body ui:font-semibold"
+    />
+  ),
+  h4: (p: Props<"h4">) => (
+    <h4
+      {...dom(p)}
+      className="ui:mt-3 ui:mb-1.5 ui:text-body ui:font-semibold"
+    />
+  ),
+  h5: (p: Props<"h5">) => (
+    <h5
+      {...dom(p)}
+      className="ui:mt-3 ui:mb-1.5 ui:text-body-small ui:font-semibold"
+    />
+  ),
+  h6: (p: Props<"h6">) => (
+    <h6
+      {...dom(p)}
+      className="ui:mt-3 ui:mb-1.5 ui:text-body-small ui:font-semibold"
+    />
+  ),
+  p: (p: Props<"p">) => <p {...dom(p)} className="ui:my-2" />,
+  a: ({ href, children, ...p }: Props<"a">) => (
+    <a
+      {...dom(p)}
+      href={href}
+      {...(isExternal(href)
+        ? { target: "_blank", rel: "noopener noreferrer" }
+        : {})}
+      className="ui:rounded-sm ui:text-primary ui:underline ui:underline-offset-2 ui:focus-visible:focus-ring"
+    >
+      {children}
+    </a>
+  ),
+  ul: ({ ordered: _o, ...p }: Props<"ul"> & { ordered?: boolean }) => (
+    <ul {...dom(p)} className="ui:my-2 ui:list-disc ui:pl-5" />
+  ),
+  ol: ({ ordered: _o, ...p }: Props<"ol"> & { ordered?: boolean }) => (
+    <ol {...dom(p)} className="ui:my-2 ui:list-decimal ui:pl-5" />
+  ),
+  li: ({
+    ordered: _o,
+    index: _i,
+    checked: _c,
+    ...p
+  }: Props<"li"> & {
+    ordered?: boolean;
+    index?: number;
+    checked?: boolean | null;
+  }) => <li {...dom(p)} className="ui:my-0.5" />,
+  blockquote: (p: Props<"blockquote">) => (
+    <blockquote
+      {...dom(p)}
+      className="ui:my-2 ui:border-l-2 ui:border-border ui:pl-3 ui:text-muted-foreground"
+    />
+  ),
+  hr: (p: Props<"hr">) => (
+    <hr
+      {...dom(p)}
+      className="ui:my-4 ui:border-0 ui:border-t ui:border-border"
+    />
+  ),
+  table: (p: Props<"table">) => (
+    <div className="ui:my-2 ui:overflow-x-auto">
+      <table
+        {...dom(p)}
+        className="ui:w-full ui:border-collapse ui:text-body-small"
+      />
+    </div>
+  ),
+  th: ({ isHeader: _h, ...p }: Props<"th"> & { isHeader?: boolean }) => (
+    <th
+      {...dom(p)}
+      className="ui:border ui:border-border ui:bg-muted ui:px-2 ui:py-1 ui:text-left ui:font-semibold"
+    />
+  ),
+  td: ({ isHeader: _h, ...p }: Props<"td"> & { isHeader?: boolean }) => (
+    <td {...dom(p)} className="ui:border ui:border-border ui:px-2 ui:py-1" />
+  ),
+  img: ({ alt, ...p }: Props<"img">) => (
+    <img {...dom(p)} alt={alt ?? ""} className="ui:max-w-full" />
+  ),
+  // A GFM task-list box: read-only, and named, since its item text is not its label.
+  input: ({ checked, type, ...p }: Props<"input">) => (
+    <input
+      {...dom(p)}
+      type={type}
+      checked={checked}
+      disabled
+      readOnly
+      aria-label={checked ? "Done" : "Not done"}
+      className="ui:mr-1.5 ui:align-middle"
+    />
+  ),
+  // A fenced block arrives as <pre><code>; CodeBlock draws its own frame.
+  pre: ({ children }: Props<"pre">) => <>{children}</>,
+  code: ({ inline, className, children }: CodeProps) => {
+    if (inline) {
+      return <InlineCode>{children}</InlineCode>;
+    }
+    const code = String(children ?? "").replace(/\n$/, "");
+    const language = fenceLanguage(className);
+    return <CodeBlock code={code} language={language} className="ui:my-2" />;
+  },
+};
+
+export type MarkdownProps = Readonly<{
+  /** Markdown source, including GitHub extensions (tables, task lists, strikethrough). */
+  children: string;
+  className?: string;
+}>;
+
+/**
+ * Renders Markdown from models and API Hub descriptions. Raw HTML is dropped,
+ * never rendered (no rehype-raw), and link and image URLs go through
+ * react-markdown's safe-URL filter, so `javascript:` URLs render inert.
+ * External links open in a new tab with `rel="noopener noreferrer"`.
+ * Fenced code renders as a CodeBlock.
+ */
+export function Markdown({ children, className }: MarkdownProps): JSX.Element {
+  return (
+    <div
+      data-slot="markdown"
+      className={cn(
+        "ui:text-body ui:text-foreground ui:break-words",
+        className,
+      )}
+    >
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        skipHtml
+        // Links get the safe-URL filter by default; images only when asked.
+        transformLinkUri={uriTransformer}
+        transformImageUri={uriTransformer}
+        // react-markdown 8's types are written against React 18's global JSX.
+        components={COMPONENTS as unknown as Record<string, () => ReactNode>}
+      >
+        {children}
+      </ReactMarkdown>
+    </div>
+  );
+}
