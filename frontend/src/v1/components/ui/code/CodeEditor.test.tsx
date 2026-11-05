@@ -27,6 +27,11 @@ const monaco = vi.hoisted(() => ({
   loads: true,
   init: (): Promise<unknown> => Promise.resolve({}),
 }));
+// The loader too, so nothing can reach the real one, which would inject the
+// CDN script (happy-dom refuses it, leaving an unhandled rejection).
+vi.mock("@monaco-editor/loader", () => ({
+  default: { init: () => monaco.init() },
+}));
 vi.mock("@monaco-editor/react", () => ({
   loader: { init: () => monaco.init() },
   default: (props: MonacoProps) => {
@@ -170,17 +175,6 @@ it("says the editor could not load when the Monaco runtime fails to load", async
     expect(screen.getAllByRole("alert")).toHaveLength(1);
   } finally {
     monaco.loads = true;
-    monaco.init = () => Promise.resolve({});
-  }
-});
-
-it("ignores a cancelled load", async () => {
-  monaco.init = () => Promise.reject({ type: "cancelation" });
-  try {
-    renderV1(<CodeEditor aria-label="Fine" />);
-    await screen.findByRole("textbox", { name: "Fine" });
-    expect(screen.queryByRole("alert")).toBeNull();
-  } finally {
     monaco.init = () => Promise.resolve({});
   }
 });

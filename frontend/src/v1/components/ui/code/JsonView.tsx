@@ -5,6 +5,7 @@ import {
   containersFrom,
   flattenJson,
   flattenJsonText,
+  isTooDeep,
   type JsonLine,
   visibleLines,
 } from "@v1/lib/code/json-lines";
@@ -103,13 +104,13 @@ function buildModel(source: JsonSource): Model {
       // Valid JSON nested deeper than the reader and printer can recurse
       // (JSON.parse accepted it) shows as an error, not a crashed page.
       // Anything else is a bug, and is not hidden.
-      if (!(error instanceof RangeError)) {
+      if (!isTooDeep(error)) {
         throw error;
       }
       return {
         ok: false,
         error: "It is valid, but nested too deeply to show as a tree.",
-        title: "This JSON is nested too deeply to show",
+        title: "This JSON is nested too deeply for the tree",
         raw: source.text,
       };
     }

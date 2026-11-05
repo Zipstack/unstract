@@ -26,7 +26,13 @@ import {
  * singleton shared with v0's editors in the same bundle, so configuring it
  * here would change v0.
  */
-const MonacoEditor = lazy(() => import("@monaco-editor/react"));
+// One import shared by the lazy editor and the loader watch below.
+let monacoModule: Promise<typeof import("@monaco-editor/react")> | undefined;
+function importMonaco() {
+  monacoModule ??= import("@monaco-editor/react");
+  return monacoModule;
+}
+const MonacoEditor = lazy(importMonaco);
 
 /**
  * How long the editor may stay on its skeleton before it says it is taking a
@@ -125,14 +131,10 @@ export function CodeEditor({
     let live = true;
     // Joins the loader's one shared load (init, never config: see above) to
     // learn when the runtime cannot load at all.
-    import("@monaco-editor/react")
+    importMonaco()
       .then(({ loader }) => loader.init())
-      .catch((error: unknown) => {
-        const cancelled =
-          typeof error === "object" &&
-          error !== null &&
-          (error as { type?: unknown }).type === "cancelation";
-        if (live && !cancelled) {
+      .catch(() => {
+        if (live) {
           setLoad("failed");
         }
       });

@@ -5,6 +5,10 @@ import { CodeEditor } from "./CodeEditor";
 
 // The lazy chunk itself fails to load (a stale hash after a deploy, a network
 // error): the editor shows its own error instead of unmounting the page.
+// Never the real loader, which would inject the CDN script.
+vi.mock("@monaco-editor/loader", () => ({
+  default: { init: () => new Promise(() => undefined) },
+}));
 vi.mock("@monaco-editor/react", () => {
   throw new Error("Failed to fetch dynamically imported module");
 });

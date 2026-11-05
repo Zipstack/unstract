@@ -201,8 +201,10 @@ mono font token, and shows a skeleton while Monaco loads. Monaco keeps Tab
 inside the editor; its own "Toggle Tab Key Moves Focus" binding (Ctrl+M, or
 Ctrl+Shift+M on macOS) lets keyboard users leave.
 
-In tests, mock Monaco, whose loader would fetch from the CDN:
-`vi.mock("@monaco-editor/react", () => ({ default: (props) => <textarea … /> }))`
+In tests, mock Monaco, whose loader would fetch from the CDN. Mock its
+`loader` too: `CodeEditor` watches `loader.init()`, and without it the editor
+shows "could not load".
+`vi.mock("@monaco-editor/react", () => ({ default: (props) => <textarea … />, loader: { init: () => Promise.resolve() } }))`
 (see `CodeEditor.test.tsx`).
 
 ## InlineCode

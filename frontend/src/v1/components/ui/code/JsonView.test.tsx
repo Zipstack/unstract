@@ -312,7 +312,9 @@ it("shows JSON nested too deep to print as an error, not a crash", () => {
   const deep = `${"[".repeat(20000)}${"]".repeat(20000)}`;
   renderV1(<JsonView text={deep} />);
   const alert = screen.getByRole("alert");
-  expect(alert.textContent).toContain("This JSON is nested too deeply to show");
+  expect(alert.textContent).toContain(
+    "This JSON is nested too deeply for the tree",
+  );
   expect(alert.textContent).not.toContain("Invalid JSON");
 });
 

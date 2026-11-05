@@ -6,6 +6,7 @@ import {
   flattenJsonText,
   formatJson,
   formatJsonText,
+  isTooDeep,
   parseJson,
   visibleLines,
 } from "./json-lines";
@@ -215,4 +216,15 @@ it("formatJsonText re-indents without changing a character of any value", () => 
   );
   expect(formatJsonText("{bad")).toBeNull();
   expect(formatJsonText(`${"[".repeat(20000)}${"]".repeat(20000)}`)).toBeNull();
+});
+
+it("isTooDeep knows each engine's stack-overflow error, and nothing else", () => {
+  expect(isTooDeep(new RangeError("Maximum call stack size exceeded"))).toBe(
+    true,
+  );
+  const firefox = new Error("too much recursion");
+  firefox.name = "InternalError";
+  expect(isTooDeep(firefox)).toBe(true);
+  expect(isTooDeep(new TypeError("x is undefined"))).toBe(false);
+  expect(isTooDeep("RangeError")).toBe(false);
 });

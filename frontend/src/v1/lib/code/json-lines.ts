@@ -292,6 +292,17 @@ export function flattenJsonText(
 }
 
 /**
+ * Whether `error` is the engine running out of stack: a RangeError in V8 and
+ * JavaScriptCore, an InternalError ("too much recursion") in Firefox.
+ */
+export function isTooDeep(error: unknown): boolean {
+  return (
+    error instanceof RangeError ||
+    (error instanceof Error && error.name === "InternalError")
+  );
+}
+
+/**
  * Re-indents JSON text the way JsonView shows it, keeping every number,
  * string and key as written (`formatJson(JSON.parse(text))` would round a
  * 19-digit ID). Returns `null` for invalid text or nesting too deep to print.
@@ -306,7 +317,7 @@ export function formatJsonText(text: string): string | null {
       : null;
   } catch (error) {
     // Too deep to print; any other error is a bug and is not hidden.
-    if (error instanceof RangeError) {
+    if (isTooDeep(error)) {
       return null;
     }
     throw error;

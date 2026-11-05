@@ -67,6 +67,9 @@ it("gives up past its limits instead of freezing, and says so with null", () => 
 });
 
 it("by default gives up past DIFF_MAX_EDIT_LENGTH added plus removed lines", () => {
+  // A still clock, so only the edit limit decides (a busy runner can take a
+  // second over the larger cases).
+  vi.spyOn(Date, "now").mockReturnValue(0);
   const lines = (n: number, tag: string) =>
     Array.from({ length: n }, (_, i) => `${tag}${i}`).join("\n");
   const half = DIFF_MAX_EDIT_LENGTH / 2;
@@ -74,7 +77,8 @@ it("by default gives up past DIFF_MAX_EDIT_LENGTH added plus removed lines", () 
   expect(computeLineDiff(lines(half, "a"), lines(half, "b"))).not.toBeNull();
   expect(
     computeLineDiff(lines(half + 1, "a"), lines(half + 1, "b")),
-  ).toBeNull(); // An odd count pins the exact limit: one over is too many.
+  ).toBeNull();
+  // An odd count pins the exact limit: one over is too many.
   expect(computeLineDiff(lines(half, "a"), lines(half + 1, "b"))).toBeNull();
 });
 
