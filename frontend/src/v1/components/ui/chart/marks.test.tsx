@@ -121,7 +121,12 @@ it("reads a line marker's label from wherever leaves least of it outside the plo
   ).toBe("middle");
   // The 4 nudge counts: on a 20-wide plot at x 3, "peak" read rightward
   // from x -1 spills 8, centred spills 11.
-  expect(anchor(3, "peak", [{ x: 0, y: 1 }, { x: 20, y: 2 }])).toBe("start");
+  expect(
+    anchor(3, "peak", [
+      { x: 0, y: 1 },
+      { x: 20, y: 2 },
+    ]),
+  ).toBe("start");
   // A single row sits mid-plot.
   expect(anchor(150, "peak", [{ x: 150, y: 1 }])).toBe("middle");
 });
