@@ -16,6 +16,7 @@ from account_v2.custom_exceptions import Forbidden
 from account_v2.models import Organization
 from adapter_processor_v2.models import AdapterInstance
 from adapter_processor_v2.views import AdapterInstanceViewSet
+from api_key_usage.models import ApiKeyCallerDaily
 from api_v2.api_deployment_views import APIDeploymentViewSet
 from api_v2.exceptions import UnauthorizedKey
 from api_v2.key_helper import KeyHelper
@@ -23,6 +24,7 @@ from api_v2.models import APIDeployment
 from connector_v2.models import ConnectorInstance
 from connector_v2.views import ConnectorInstanceViewSet
 from django.test import SimpleTestCase
+from django.utils import timezone
 from drf_spectacular.generators import SchemaGenerator
 from global_api_deployment_key.models import GlobalApiDeploymentKey
 from global_api_deployment_key.serializers import (
@@ -35,6 +37,7 @@ from permissions.roles import ResourceRole
 from pipeline_v2.views import PipelineViewSet
 from platform_api.models import ApiKeyPermission, PlatformApiKey
 from platform_api.views import PlatformApiKeyViewSet
+from platform_audit.actions import TargetType
 from platform_audit.tests.base import AuditTestBase, make_user
 from rest_framework.exceptions import PermissionDenied
 from utils.tests.auth_seam import builtin_auth_service
@@ -1020,6 +1023,48 @@ class GlobalDeploymentKeyGuardrailTests(CapabilityTestBase):
         except UnauthorizedKey:
             return False
         return True
+
+    def test_a_members_callers_hide_deployments_they_no_longer_own(self) -> None:
+        lost = APIDeployment.objects.create(
+            api_name="lost",
+            workflow=self.mine.workflow,
+            organization=self.org,
+            created_by=self.member,
+        )
+        lost.grant_owner(self.member)
+        own = GlobalApiDeploymentKey.objects.create(
+            name="own",
+            organization=self.org,
+            created_by=self.member,
+            created_by_member=True,
+        )
+        own.api_deployments.add(self.mine)
+        now = timezone.now()
+        for deployment in (self.mine, lost):
+            ApiKeyCallerDaily.objects.create(
+                organization=self.org,
+                key_type=TargetType.GLOBAL_API_DEPLOYMENT_KEY,
+                key_id=own.pk,
+                api_deployment_id=deployment.pk,
+                day=now.date(),
+                calls=1,
+                last_call_at=now,
+            )
+        # The key used to cover ``lost``; the member no longer owns it.
+        lost.memberships.filter(user=self.member).update(role=ResourceRole.VIEWER)
+        callers = GlobalApiDeploymentKeyViewSet.as_view({"get": "callers"})
+
+        def names(user) -> dict[str, str | None]:
+            response = self.call(callers, "get", user=user, pk=str(own.pk))
+            self.assertEqual(response.status_code, 200, response.data)
+            return {row["api_deployment_id"]: row["api_name"] for row in response.data}
+
+        self.assertEqual(
+            names(self.member), {str(self.mine.pk): "mine", str(lost.pk): None}
+        )
+        self.assertEqual(
+            names(self.admin), {str(self.mine.pk): "mine", str(lost.pk): "lost"}
+        )
 
     def test_a_members_key_stops_working_when_they_stop_owning_it(self) -> None:
         key = self._member_key()
