@@ -1,4 +1,4 @@
-name: V2 Lint PR
+name: Lint PR
 
 # Every PR into main or a release branch needs a recognised `[TYPE]` title prefix, unless a fix/ label gives its class.
 # Release branches too: the release changelog is built from their PR titles.

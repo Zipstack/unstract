@@ -1,3 +1,3 @@
-:root {
-  --v1-accent: #000;
+.v1 {
+  --ui-entry-demo: var(--foreground);
 }

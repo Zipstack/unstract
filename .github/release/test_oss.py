@@ -1870,7 +1870,6 @@ esac
         self.assertEqual(
             {f: len(j) for f, j in found.items()},
             {
-                "_rc-build.yaml": 1,
                 "build-push.yaml": 11,
                 "cut.yaml": 1,
                 "dev-deploy.yaml": 2,
@@ -1879,11 +1878,6 @@ esac
         )
         for f, js in found.items():
             for j in js:
-                if f == "_rc-build.yaml":
-                    # disabled, kept for rollback: it must stay off, and say what re-enabling it needs
-                    self.assertIn("\n    if: false", j)
-                    self.assertIn("id-token: write", j)
-                    continue
                 self.assertRegex(
                     j,
                     r"\n    permissions:\n(?:      [\w-]+: \w+.*\n)*      id-token: write",
@@ -2161,28 +2155,6 @@ esac
         self.assertEqual(len(matrices), 2)
         for m in matrices:
             self.assertEqual(tuple(re.findall(r"[\w-]+", m)), rs.IMAGES)
-
-    def test_a_retired_workflow_fails_at_its_first_job(self):
-        wf = os.path.join(HERE, "..", "workflows")
-        for f in (
-            "create-rc-build.yaml",
-            "create-hotfix-rc-build.yaml",
-            "promote-rc-build-to-stable.yaml",
-        ):
-            with open(os.path.join(wf, f)) as fh:
-                jobs = re.split(r"\n(?=  [\w-]+:\n)", fh.read().split("\njobs:\n", 1)[1])
-            first = jobs[0]
-            self.assertTrue(first.startswith("  retired:\n"), f)
-            self.assertNotIn("\n    if:", first, f)
-            self.assertNotIn("needs:", first, f)
-            r = subprocess.run(
-                ["bash", "-e", "-c", step(f, "Retired")], capture_output=True, text=True
-            )
-            self.assertEqual(r.returncode, 1, f)
-            self.assertRegex(r.stdout, r"^::error::retired: use .*\.yaml", f)
-            for job in jobs[1:]:  # the old jobs never run
-                if not job.lstrip().startswith("#"):
-                    self.assertIn("\n    if: false", job, f"{f} {job.split(':')[0]}")
 
     def test_missing_images_reads_the_target_kind(self):
         built = {"on-prem/backend", "on-prem/frontend", "cloud/runner"}
@@ -2626,8 +2598,26 @@ class TakeRcVersion(Workflow):
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertEqual(
             self.read("output"),
-            "tag=v1.7.0-rc.2\nbump=true\ntargets=cloud\nreopen=true\nnewest=release/1.7\n",
+            "tag=v1.7.0-rc.2\nbump=true\ntargets=cloud\nreopen=true\nnewest=release/1.7\nchart=false\n",
         )
+
+    def test_allocates_past_a_kept_rc_chart(self):
+        # An abandon kept the on-prem RC chart 1.7.0-rc.1 and deleted its images: a re-cut must not reuse rc.1.
+        self.line("1.7")
+        dev_git(self.cloud, "checkout", "-q", "-b", "release/1.7", "origin/release/1.7")
+        self.write("reg-on-prem_backend.jsonl", "")
+        self.write(
+            "reg-on-prem_unstract-platform.jsonl",
+            '{"id": 1, "digest": "sha256:c", "pushed_at": "2026-09-01T00:00:00Z", "tags": ["1.7.0-rc.1"]}\n',
+        )
+        r = self.run_step(
+            inline("take-rc-build.yaml", "Plan version and targets"),
+            BRANCH="release/1.7",
+            TARGETS="on-prem",
+        )
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("tag=v1.7.0-rc.2\n", self.read("output"))
+        self.assertIn("\nchart=true\n", self.read("output"))
 
     def test_plan_names_the_newest_line(self):
         self.line("1.7", "v1.7.0")
@@ -2640,6 +2630,38 @@ class TakeRcVersion(Workflow):
         )
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertIn("\nnewest=release/1.8\n", self.read("output"))
+
+    def test_a_failed_rc_chart_fails_the_summary(self):
+        def summary(chart):
+            out = os.path.join(self.d, "summary")
+            with contextlib.suppress(FileNotFoundError):
+                os.remove(out)
+            r = subprocess.run(
+                ["bash", "-e", "-c", step("take-rc-build.yaml", "Summary")],
+                cwd=os.path.join(HERE, "..", ".."),
+                env={
+                    **os.environ,
+                    "TAG": "v1.7.1-rc.1",
+                    "BUILD": "on-prem",
+                    "RESULT": "success",
+                    "CHART": chart,
+                    "BRANCH": "release/1.7",
+                    "NEWEST": "release/1.7",
+                    "GITHUB_STEP_SUMMARY": out,
+                },
+                capture_output=True,
+                text=True,
+            )
+            return r.returncode, self.read("summary")
+
+        code, text = summary("success")
+        self.assertEqual(code, 0)
+        self.assertIn("On-prem RC chart `unstract-platform:1.7.1-rc.1`: success", text)
+        self.assertIn("QA tests", text)
+        code, text = summary("failure")
+        self.assertEqual(code, 1)
+        self.assertNotIn("QA tests", text)
+        self.assertEqual(summary("skipped")[0], 0)
 
     def test_staging_is_left_alone_for_an_older_line(self):
         def summary(build, newest):
@@ -2698,7 +2720,7 @@ class TakeRcVersion(Workflow):
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertEqual(
             self.read("output"),
-            "tag=v1.7.1-rc.1\nbump=true\ntargets=cloud\nreopen=false\nnewest=release/1.7\n",
+            "tag=v1.7.1-rc.1\nbump=true\ntargets=cloud\nreopen=false\nnewest=release/1.7\nchart=false\n",
         )
 
     def test_rerun_on_a_tagged_tip_reopens_for_a_target_already_built(self):
@@ -2730,7 +2752,7 @@ class TakeRcVersion(Workflow):
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertEqual(
             self.read("output"),
-            "tag=v1.7.1-rc.1\nbump=false\ntargets=cloud\nreopen=true\nnewest=release/1.7\n",
+            "tag=v1.7.1-rc.1\nbump=false\ntargets=cloud\nreopen=true\nnewest=release/1.7\nchart=true\n",  # on-prem built earlier: still push its chart
         )
 
 
