@@ -624,10 +624,16 @@ class Gate(unittest.TestCase):
             table[4].endswith("| promote or retire `release/1.5` |"), table[4]
         )
 
-    def test_main_blocks_on_promote_order(self):
+    def test_main_lists_promote_order_without_blocking(self):
+        self.assertEqual(self.main_code(), 2)  # MISSING: c is not on 1.6
         self.decline(
             self.c, "release/1.6"
         )  # no MISSING row: only 1.5, not GA yet, holds 1.6 back
+        self.assertEqual(
+            self.main_code(), 0
+        )  # Promote enforces the order; Take RC builds past it
+
+    def main_code(self):
         path, md = (
             os.path.join(self.repo, "state.json"),
             os.path.join(self.repo, "out.md"),
@@ -652,11 +658,15 @@ class Gate(unittest.TestCase):
                     md,
                 ]
             )
-        self.assertEqual(code, 2)
         with open(md) as f:
             self.assertIn(
                 "| ⛔ promote order | release/1.5 is not GA for cloud yet |", f.read()
             )
+        return code
+
+    def test_bad_usage_is_an_error_not_missing_picks(self):
+        with contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(cg.main(["--target", "cloud"]), 1)
 
     def test_scope_is_the_target(self):
         self.push("on-prem/backend", "v1.5.0-rc.2", "release/1.5")
@@ -802,12 +812,8 @@ class Gate(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("::error::convgate: Refused", out.getvalue())
         for opt in ("--branch=-x", "--promote-ref=-x"):
-            with (
-                self.subTest(opt=opt),
-                contextlib.redirect_stderr(io.StringIO()),
-                self.assertRaises(SystemExit),
-            ):
-                cg.main(args + ["--branch", "release/1.6", opt])
+            with self.subTest(opt=opt), contextlib.redirect_stderr(io.StringIO()):
+                self.assertEqual(cg.main(args + ["--branch", "release/1.6", opt]), 1)
 
 
 class OssPins(unittest.TestCase):

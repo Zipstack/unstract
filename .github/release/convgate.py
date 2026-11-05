@@ -6,7 +6,8 @@ never ships a fix a newer one lacks.
   the RC still blocks.
 - A decline on the newer line counts as converged; one on the older line owes the newer line nothing.
 - RBO-ABSENT counts only after the newer line's latest promoted tag (else its cut), outside .github/.
-Exit 2 iff any MISSING or an older line is not GA yet, 1 on error (never a silent pass), else 0.
+Exit 2 iff any MISSING, 1 on error or bad usage (never a silent pass), else 0. Promote order (an older line not GA
+yet) is listed, not counted: Promote enforces it, and Take RC builds of a newer line while an older one stabilizes.
 """
 
 import argparse
@@ -524,7 +525,10 @@ def main(argv=None):
         default=os.environ.get("GITHUB_STEP_SUMMARY"),
         help="file the checks table and gate detail are appended to; default: the step summary",
     )
-    a = p.parse_args(argv)
+    try:
+        a = p.parse_args(argv)
+    except SystemExit as e:  # argparse exits 2 on bad usage, which reads as MISSING picks
+        return 1 if e.code else 0
     try:
         out_file = a.out and rm.local_path(a.out)
         if rs.PINS and not a.oss_repo:
@@ -555,7 +559,7 @@ def main(argv=None):
         table, detail = checks(lines, order, out)
         with open(out_file, "a") as f:
             f.write("\n".join(table + [""] + detail) + "\n\n")
-    return 2 if code or order else 0
+    return 2 if code else 0
 
 
 if __name__ == "__main__":
