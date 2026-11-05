@@ -279,6 +279,28 @@ def _result_from_output(
                 error="execution failed: output exceeds size cap",
             )
         raw = out.read_text(encoding="utf-8", errors="replace")
+        # The file check above bounds what we READ; this bounds what we RETURN.
+        # Both are needed and they are different quantities: `errors="replace"`
+        # turns each undecodable byte into U+FFFD, which re-encodes to 3, so a
+        # 308-byte file of invalid bytes comes back as a 908-byte string
+        # (measured). Without this, `rows_jsonl` could carry ~3x the documented
+        # `SANDBOX_MAX_OUTPUT_BYTES` budget past a check that had just passed.
+        #
+        # A DISTINCT message, deliberately. An earlier revision used the
+        # inflated length as the only check, which told a caller whose file was
+        # comfortably inside the cap to shrink it. The two causes are now
+        # separable: the file is too big, or the file is within the cap and is
+        # not valid UTF-8.
+        if len(raw.encode()) > max_output_bytes:
+            return RunResult(
+                success=False,
+                stdout=stdout,
+                stderr=stderr,
+                error=(
+                    "execution failed: output is not valid UTF-8 and its "
+                    "replacement form exceeds the size cap"
+                ),
+            )
         rows = 0
         # `split("\n")`, NOT `splitlines()`. JSONL is newline-delimited, and
         # `splitlines()` also breaks on NEL (U+0085), LINE SEPARATOR (U+2028)

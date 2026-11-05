@@ -230,6 +230,34 @@ def _rule_import_from(node, parents) -> str | None:
     # below to see. Reject all from-sys forms outright.
     if (node.module or "").split(".")[0] == "sys":
         return "safety gate: 'from sys import ...' is not allowed"
+    # THE MEMBER, not just the module. `from X import Y` is semantically `X.Y`,
+    # so a member has to face the same checks an attribute access would -- and
+    # it was facing none of them, because a from-import binds a fresh local name
+    # with no `ast.Attribute` node for `_rule_private_attribute`,
+    # `_rule_dangerous_attribute` or `_rule_sys_reexport` to inspect.
+    #
+    # That was arbitrary code execution, not a hygiene gap. CPython's
+    # `collections/__init__.py` does `import sys as _sys`, so
+    # `from collections import _sys as s` handed the submitted code the REAL sys
+    # module, and `s.modules['posix'].system(...)` followed. Verified by
+    # execution before this check existed: `posix.getuid()` ran in the child and
+    # returned the worker's uid.
+    #
+    # Underscore-prefixed members are refused for the same reason
+    # `_rule_private_attribute` refuses underscore attributes: a module's
+    # privates are where its own imports live, and generated transformation code
+    # has no business reading them. `sys` by name and the denylisted attribute
+    # set are refused because `from json import codecs` style re-exports reach
+    # the same places `_rule_sys_reexport` and `_rule_dangerous_attribute` close
+    # on the attribute path.
+    for alias in node.names:
+        name = alias.name
+        if name.startswith("_"):
+            return f"safety gate: private from-import member '{name}'"
+        if name == "sys":
+            return f"safety gate: 'from {node.module} import sys' is not allowed"
+        if name in _DENYLISTED_ATTR_CALLS or name in _DENYLISTED_NAMES:
+            return f"safety gate: disallowed from-import member '{name}'"
     return None
 
 

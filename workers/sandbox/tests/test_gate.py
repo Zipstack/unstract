@@ -4,6 +4,18 @@ from sandbox.gate import check_code_safe
 _SAFE = "import json\nrows=[{'x':1}]\nwith open('out','w') as f:\n    f.write('{}')\n"
 
 _HOSTILE = [
+    # From-import members bypassed every attribute rule, because a
+    # from-import binds a fresh local name with no `ast.Attribute` node to
+    # inspect. CPython's `collections/__init__.py` does `import sys as _sys`,
+    # so this handed the submitted code the REAL sys module and
+    # `s.modules['posix'].system(...)` followed. Verified by execution:
+    # `posix.getuid()` ran in the child and returned the worker's uid.
+    # Reported by a review bot, not by the lens fan-out -- whose
+    # "exhaustive" attribute walk had the same blind spot the gate did.
+    "from collections import _sys as s\ns.modules['posix'].system('id')\n",
+    "from collections import _sys\nx = _sys.modules\n",
+    "from statistics import sys\nx = sys.modules\n",
+    "from statistics import _sum\n",
     # Self-shadowing: `eval = eval` rebinds the name to the BUILTIN (the RHS
     # falls through to builtins at module scope), so a "has this name been
     # bound?" exemption lets every later Load through while it still refers

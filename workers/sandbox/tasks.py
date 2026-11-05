@@ -13,6 +13,18 @@ from sandbox.runner import RunResult, run_code
 
 logger = logging.getLogger(__name__)
 
+# Celery's trace logger logs a task's RETURN VALUE at INFO ("Task ... succeeded
+# in Ns: <retval>"). This task returns `rows_jsonl`, `stdout` and `stderr` --
+# document-derived customer data -- so leaving it at INFO copies extracted rows
+# into the worker log, outside the job's own access and retention controls. The
+# PG consumer runs the body through `task.apply`, which fires the same signals,
+# so both transports are affected.
+#
+# Same line, same reason, as `workers/executor/tasks.py`. Found by a review bot:
+# this sink is the framework's, not ours, so a sweep that traces `logger.*` calls
+# in this package does not see it.
+logging.getLogger("celery.app.trace").setLevel(logging.WARNING)
+
 
 def _int_env(name: str, default: int, *, minimum: int = 1) -> int:
     """Read a positive integer cap from the environment, LOUDLY on refusal.

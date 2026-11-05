@@ -171,22 +171,42 @@ def test_the_output_byte_cap_is_enforced_on_the_file_size(tmp_path):
     assert "size cap" in r.error, r.error
 
 
-def test_the_byte_cap_does_not_refuse_a_compliant_but_non_utf8_file(tmp_path):
-    """The defect the `st_size` change fixes, pinned.
+def test_a_non_utf8_file_within_the_cap_is_accepted_when_it_does_not_inflate(tmp_path):
+    """Undecodable bytes alone are not a reason to refuse.
 
-    Three undecodable bytes become three U+FFFD, which re-encode to 9 -- so a
-    file comfortably inside the cap measured as over it and was reported to
-    the caller as `output exceeds size cap`, sending them to shrink an output
-    whose actual problem was its encoding. Fails under
-    `len(raw.encode()) > max_output_bytes`.
+    This is the half of the original defect that still stands: a file
+    comfortably inside the cap must not be refused just because it is not
+    valid UTF-8. Fails if the returned-payload check below is applied to the
+    file size, or if the file check is restored to the inflated length.
     """
     from sandbox.runner import _result_from_output
 
     out = tmp_path / "output.jsonl"
-    # 30 real bytes, of which 3 are undecodable -> 36 decoded-and-re-encoded.
-    out.write_bytes(b'{"k": "' + b"\xff\xfe\xfd" + b'aaaaaaaaaaaaaaa"}\n')
-    r = _result_from_output(out, max_output_bytes=32, max_rows=100, stdout="", stderr="")
-    assert "size cap" not in (r.error or ""), r.error
+    # 3 undecodable bytes -> 9 after replacement; well inside a 4096 cap either way.
+    out.write_bytes(b'{"k": "' + b"\xff\xfe\xfd" + b'aaa"}\n')
+    r = _result_from_output(
+        out, max_output_bytes=4096, max_rows=100, stdout="", stderr=""
+    )
+    assert r.success is True, r.error
+
+
+def test_a_non_utf8_file_that_inflates_past_the_cap_names_the_encoding(tmp_path):
+    """The two causes must be distinguishable by the caller.
+
+    An earlier revision measured the cap on the re-encoded decode ONLY, so a
+    compliant file was told to shrink. The fix measured the file ONLY, which
+    then let the RETURNED string carry ~3x the budget (measured: a 308-byte
+    file of invalid bytes comes back as 908). Both checks now exist, and this
+    pins that the inflation case names the encoding rather than reporting a
+    bare "too big" -- the complaint that started this.
+    """
+    from sandbox.runner import _result_from_output
+
+    out = tmp_path / "output.jsonl"
+    out.write_bytes(b'{"k": "' + b"\xff" * 300 + b'"}\n')
+    r = _result_from_output(out, max_output_bytes=320, max_rows=100, stdout="", stderr="")
+    assert r.success is False
+    assert "not valid UTF-8" in r.error, r.error
 
 
 def test_subprocess_env_is_scrubbed():
@@ -561,3 +581,24 @@ def test_a_failed_pgid_read_is_logged_because_the_kill_becomes_a_no_op(caplog):
     assert "a timeout kill would be a no-op" in caplog.text
     # The whole point: no kill was attempted, and the log is what says so.
     assert mock_killpg.call_count == 0
+
+
+def test_an_oversized_valid_utf8_file_is_refused_as_too_big_not_as_bad_encoding(tmp_path):
+    """Pins the FILE check, which the payload check would otherwise mask.
+
+    Both checks refuse an oversized file, so removing the file check leaves the
+    suite green on the outcome alone. They differ in the message, and for a
+    perfectly valid UTF-8 file the payload check's message ("not valid UTF-8")
+    would be a lie. Asserting the message is what distinguishes them.
+
+    The file check also bounds the READ, so the parent's peak memory does not
+    scale with an operator knob — a property no assertion here can reach, and
+    the reason the check is not redundant.
+    """
+    from sandbox.runner import _result_from_output
+
+    out = tmp_path / "output.jsonl"
+    out.write_text('{"k": "' + "a" * 4000 + '"}\n')  # valid UTF-8, over the cap
+    r = _result_from_output(out, max_output_bytes=512, max_rows=100, stdout="", stderr="")
+    assert r.success is False
+    assert r.error == "execution failed: output exceeds size cap", r.error
