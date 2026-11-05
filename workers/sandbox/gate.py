@@ -391,6 +391,10 @@ def _names_bound_by(stmt) -> list[tuple[str, int]]:
     if isinstance(stmt, (ast.Import, ast.ImportFrom)):
         return [(a.asname or a.name.split(".")[0], stmt.lineno) for a in stmt.names]
     out: list[tuple[str, int]] = []
+    if isinstance(stmt, ast.AnnAssign) and stmt.value is None:
+        # A bare annotation (`eval: int`) binds NOTHING -- the name stays
+        # unassigned, so a later Load still falls through to the builtin.
+        return []
     if isinstance(stmt, (ast.Assign, ast.AnnAssign, ast.AugAssign)):
         targets = stmt.targets if isinstance(stmt, ast.Assign) else [stmt.target]
         for t in targets:
@@ -448,6 +452,47 @@ def _function_scope_binds(scope, name: str) -> bool:
     return walk(scope, top=True)
 
 
+def _outer_evaluated(scope) -> set[int]:
+    """Sub-trees of `scope` that Python evaluates in the ENCLOSING scope.
+
+    A parameter default is the trap: `lambda eval=eval: eval` looks like a scope
+    that binds `eval`, and the default's own Load of `eval` is a child of the
+    Lambda node -- but defaults are evaluated at DEFINITION time, outside, where
+    `eval` is still the builtin. Verified executing before this check existed:
+    `f = (lambda eval=eval: eval)()` then `f("__import__('os').getuid()")`
+    returned the worker's uid.
+
+    Annotations, `returns`, decorators, class bases/keywords and a
+    comprehension's OUTERMOST iterable are all evaluated outside for the same
+    reason.
+    """
+    regions = []
+    if isinstance(scope, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+        a = scope.args
+        regions += [d for d in a.defaults if d is not None]
+        regions += [d for d in (a.kw_defaults or []) if d is not None]
+        for grp in (a.posonlyargs, a.args, a.kwonlyargs):
+            regions += [x.annotation for x in grp if x.annotation is not None]
+        for x in (a.vararg, a.kwarg):
+            if x is not None and x.annotation is not None:
+                regions.append(x.annotation)
+        if getattr(scope, "returns", None) is not None:
+            regions.append(scope.returns)
+        regions += list(getattr(scope, "decorator_list", []))
+    elif isinstance(scope, ast.ClassDef):
+        regions += list(scope.bases)
+        regions += [k.value for k in scope.keywords]
+        regions += list(scope.decorator_list)
+    elif isinstance(scope, (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)):
+        if scope.generators:
+            regions.append(scope.generators[0].iter)
+    out: set[int] = set()
+    for r in regions:
+        for n in ast.walk(r):
+            out.add(id(n))
+    return out
+
+
 def _binds_as_own_target(stmt, name: str) -> bool:
     """Does `stmt` bind `name` as the target its own body is guarded by?
 
@@ -495,6 +540,13 @@ def _shadows_builtin(node, parents) -> bool:
     """
     cur = parents.get(node)
     while cur is not None:
+        # Does THIS scope actually enclose the Load at runtime? A parameter
+        # default, annotation, decorator, class base or outermost comprehension
+        # iterable is evaluated in the ENCLOSING scope, so the scope it is
+        # written inside does not shadow anything for it.
+        if id(node) in _outer_evaluated(cur):
+            cur = parents.get(cur)
+            continue
         # An ENCLOSING compound statement that binds the name as its own target
         # exempts the Load, at any scope: a `for`/`with`/`except` body only runs
         # after the target is assigned, so inside it the name cannot be the

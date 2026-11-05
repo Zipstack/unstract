@@ -322,6 +322,11 @@ class TestShadowedBuiltinsAreScopeResolved:
                 "match capture in a function",
                 "def f(m):\n    match m:\n        case [input]:\n            return input\n",
             ),
+            ("annotation WITH a value binds", "vars: dict = {}\nvars['a'] = 1\n"),
+            (
+                "an ordinary default is unaffected",
+                "def f(x=1):\n    vars = {}\n    return vars\n",
+            ),
         ],
     )
     def test_a_shadowing_local_may_be_read(self, label, code):
@@ -371,6 +376,24 @@ class TestShadowedBuiltinsAreScopeResolved:
                 "the builtins chain this exists to stop",
                 "d = vars\nb = d()['__buil' + 'tins__']\n",
             ),
+            # Evaluated in the ENCLOSING scope, so the scope they are written
+            # inside shadows nothing for them. The lambda-default form was
+            # verified EXECUTING `__import__('os').getuid()` before this was
+            # handled -- reported by a review bot against the very commit that
+            # introduced scope resolution.
+            ("lambda parameter default", "f = (lambda eval=eval: eval)()\nx = f('1')\n"),
+            ("def parameter default", "def g(eval=eval):\n    return eval\nf = g()\n"),
+            ("keyword-only default", "def g(*, eval=eval):\n    return eval\n"),
+            ("parameter annotation", "def g(x: eval):\n    pass\n"),
+            ("return annotation", "def g() -> eval:\n    pass\n"),
+            (
+                "decorator expression",
+                "def d(fn):\n    return fn\n\n@d\ndef g(eval=eval):\n    return eval\n",
+            ),
+            ("class base", "class C(eval):\n    pass\n"),
+            ("outermost comprehension iterable", "ys = [0 for eval in (eval,)]\n"),
+            # A bare annotation binds NOTHING; the name stays unassigned.
+            ("annotation without a value", "eval: int\nf = eval\nx = f('1')\n"),
         ],
     )
     def test_the_alias_bypass_shapes_are_all_refused(self, label, code):
