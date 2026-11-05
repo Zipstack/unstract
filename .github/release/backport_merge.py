@@ -32,7 +32,7 @@ def is_backport(head, base):
     )
 
 
-GH_TRIES = 5  # a gh call is tried at most this often
+GH_TRIES = 5
 # A 5xx or a reply cut short (GitHub incidents) or a network fault. Another 4xx is GitHub's answer: never retried.
 TRANSIENT_RE = re.compile(
     r"HTTP 5\d\d|unexpected end of JSON input|unexpected EOF|connection reset|timeout|deadline exceeded",
