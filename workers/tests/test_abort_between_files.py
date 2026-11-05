@@ -219,16 +219,17 @@ def test_any_other_status_processes_every_file(status: str | None) -> None:
     assert (result.successful_files, result.failed_files) == (3, 0)
 
 
-def test_a_missing_status_is_logged_and_the_file_processed() -> None:
+@pytest.mark.parametrize(("status", "warnings"), [(None, 3), ("RENAMED", 3), ("ERROR", 0)])
+def test_a_missing_or_unknown_status_is_logged(status: Any, warnings: int) -> None:
     api_client = _client()
-    api_client.get_workflow_execution_status.return_value = None
+    api_client.get_workflow_execution_status.return_value = status
 
     with mock.patch(f"{_TASKS}.logger") as logger:
         _, process_file = _run(api_client)
 
     assert process_file.call_count == 3
-    warnings = [c.args[0] for c in logger.warning.call_args_list]
-    assert sum("returned no status" in w for w in warnings) == 3
+    logged = [c.args[0] for c in logger.warning.call_args_list]
+    assert sum("status check before the next file returned" in m for m in logged) == warnings
 
 
 @pytest.mark.parametrize(

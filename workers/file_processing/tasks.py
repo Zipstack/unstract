@@ -741,11 +741,12 @@ def _is_execution_stopped(api_client: InternalAPIClient, execution_id: str) -> b
             error,
         )
         return False
-    if not status:
+    if status not in {s.value for s in ExecutionStatus}:
         logger.warning(
-            "[exec:%s] status check before the next file returned no status; "
+            "[exec:%s] status check before the next file returned %r; "
             "processing it anyway",
             execution_id,
+            status,
         )
     stopped: bool = status == ExecutionStatus.STOPPED.value
     return stopped
