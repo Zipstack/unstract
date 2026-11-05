@@ -2509,7 +2509,16 @@ class PendingPicksWorkflow(Workflow):
         dev_git(self.cloud, "push", "-q", "origin", "pick:release/1.6")
         dev_git(self.cloud, "checkout", "-q", "main")
         self.write(
-            "pulls.json", json.dumps([{"number": 5, "title": "[FIX] y", "labels": []}])
+            "pulls.json",
+            json.dumps(
+                [
+                    {
+                        "number": 5,
+                        "title": "[FIX] y",
+                        "labels": [{"name": "fix/needs-backport"}],
+                    }
+                ]
+            ),
         )
         r = self.promote(GITHUB_SERVER_URL="")
         self.blocked(r, "::error::convergence gate: MISSING picks (summary above)")
@@ -2731,7 +2740,16 @@ class LateTargetWorkflow(Workflow):
         dev_git(self.cloud, "commit", "-q", "--allow-empty", "-m", "fix on main")
         dev_git(self.cloud, "push", "-q", "origin", "main")
         self.write(
-            "pulls.json", json.dumps([{"number": 5, "title": "[FIX] y", "labels": []}])
+            "pulls.json",
+            json.dumps(
+                [
+                    {
+                        "number": 5,
+                        "title": "[FIX] y",
+                        "labels": [{"name": "fix/needs-backport"}],
+                    }
+                ]
+            ),
         )
         dev_git(self.cloud, "checkout", "-q", "-b", "release/1.7", "origin/release/1.7")
 
@@ -3780,3 +3798,42 @@ elif a[:2] in (["release", "edit"], ["release", "create"]):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class LintPrStep(unittest.TestCase):
+    """The Classify PR step judges each PR against its own base."""
+
+    def classify(self, title, labels, base):
+        with tempfile.TemporaryDirectory() as d:
+            r = subprocess.run(
+                ["bash", "-e", "-c", step("lint-pr.yaml", "Classify PR")],
+                cwd=os.path.join(HERE, "..", ".."),
+                env={
+                    **os.environ,
+                    "TITLE": title,
+                    "LABELS": json.dumps(labels),
+                    "BASE": base,
+                    "GITHUB_STEP_SUMMARY": os.path.join(d, "summary"),
+                    "GITHUB_OUTPUT": os.path.join(d, "output"),
+                },
+                capture_output=True,
+                text=True,
+            )
+            return r.returncode, r.stdout
+
+    def test_a_main_pr_needs_a_backport_label(self):
+        rc, out = self.classify("UN-1 [FIX] x", [], "main")
+        self.assertEqual(rc, 1, out)
+        self.assertIn("::error title=Lint PR::no backport label", out)
+        self.assertIn("`main-only`: keep it on main", out)
+        self.assertEqual(
+            self.classify("UN-1 [FIX] x", ["main-only"], "main"), (0, "class=none\n")
+        )
+
+    def test_a_release_pr_needs_none_and_refuses_main_only(self):
+        self.assertEqual(
+            self.classify("UN-1 [FIX] x", [], "release/0.186"), (0, "class=none\n")
+        )
+        rc, out = self.classify("UN-1 [FIX] x", ["main-only"], "release/0.186")
+        self.assertEqual(rc, 1, out)
+        self.assertIn("label `main-only` is for PRs into main", out)

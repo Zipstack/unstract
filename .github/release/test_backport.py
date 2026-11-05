@@ -231,9 +231,9 @@ class Listing(unittest.TestCase):
                 "mergeCommit": {"oid": sha},
             }
             listing = [
-                pr(1, fix, "UN-1 [FIX] a"),
+                pr(1, fix, "UN-1 [FIX] a", ["fix/needs-backport"]),
                 pr(2, sec, "UN-2 [FIX] b", ["fix/security"]),
-                pr(3, misc, "UN-3 [MISC] c"),
+                pr(3, misc, "UN-3 [MISC] c", ["main-only"]),
                 pr(4, bad, "no prefix"),
                 {"number": 5, "title": "open", "labels": [], "mergeCommit": None},
             ]
@@ -533,7 +533,7 @@ class DispatchNonFix(unittest.TestCase):
                     "#250",
                     "none",
                     "-",
-                    "skipped: not a fix; label #250 fix/needs-backport (or the fix label it needs) and rerun",
+                    "skipped: not a fix; swap #250's main-only label for fix/needs-backport (or the fix label it needs) and rerun",
                     "-",
                 ),
                 (b, "no PR", "error", "-", "failed: no PR found", "-"),
@@ -548,7 +548,7 @@ SUBJECT = "UN-4160 [MISC] Log in to prod through Unstract ID (#1946)"
 PR_1946 = {
     "number": 1946,
     "title": "UN-4160 [MISC] Log in to prod through Unstract ID",
-    "labels": [],
+    "labels": [{"name": "main-only"}],
     "merged": True,
     "merge_commit_sha": MERGED,
 }
@@ -572,6 +572,19 @@ def api(pulls="[]", message=SUBJECT, pr=PR_1946):
     return gh, calls
 
 
+class ListingUnlabelled(unittest.TestCase):
+    def test_a_main_pr_without_a_routing_label_is_unclassifiable(self):
+        pr = {
+            "number": 8,
+            "title": "UN-8 [FIX] x",
+            "labels": [],
+            "mergeCommit": {"oid": "s"},
+        }
+        cls, why, title = bp.classes_from_listing([pr])["s"]
+        self.assertEqual((cls, title), (bp.UNCLASSIFIABLE, "UN-8 [FIX] x"))
+        self.assertIn("no backport label", why)
+
+
 class FixClassSubject(unittest.TestCase):
     """GitHub's commit-to-PR index can miss a squash merge; the subject's (#N) is checked against the PR."""
 
@@ -590,7 +603,14 @@ class FixClassSubject(unittest.TestCase):
         self.assertIn("::notice::6d49d9f: no PR indexed", self.out)
 
     def test_indexed_pr_wins(self):
-        listed = [{**PR_1946, "number": 7, "title": "UN-7 [FIX] x"}]
+        listed = [
+            {
+                **PR_1946,
+                "number": 7,
+                "title": "UN-7 [FIX] x",
+                "labels": [{"name": "fix/needs-backport"}],
+            }
+        ]
         self.assertEqual(
             self.fix_class(pulls=json.dumps(listed)), ("fix", "#7", "UN-7 [FIX] x")
         )
@@ -639,7 +659,7 @@ class DispatchNamedPr(unittest.TestCase):
                     "#1946",
                     "none",
                     "-",
-                    "skipped: not a fix; label #1946 fix/needs-backport (or the fix label it needs) and rerun",
+                    "skipped: not a fix; swap #1946's main-only label for fix/needs-backport (or the fix label it needs) and rerun",
                     "-",
                 )
             ],
