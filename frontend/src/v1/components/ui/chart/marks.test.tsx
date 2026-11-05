@@ -14,7 +14,7 @@ import { BarMarker, isolatedDot, markerDot } from "./marks";
  */
 
 function svg(element: ReactElement): SVGSVGElement {
-  const { container } = render(<svg>{element}</svg>);
+  const { container } = render(<svg aria-hidden="true">{element}</svg>);
   return container.querySelector("svg") as SVGSVGElement;
 }
 
