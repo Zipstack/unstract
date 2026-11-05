@@ -304,8 +304,12 @@ export function formatJsonText(text: string): string | null {
           .map((line) => line.tokens.map((t) => t.text).join(""))
           .join("\n")
       : null;
-  } catch {
-    return null;
+  } catch (error) {
+    // Too deep to print; any other error is a bug and is not hidden.
+    if (error instanceof RangeError) {
+      return null;
+    }
+    throw error;
   }
 }
 

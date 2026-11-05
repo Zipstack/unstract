@@ -80,8 +80,8 @@ export type JsonViewProps = JsonViewOptions & JsonSource;
 
 type Model =
   | Readonly<{ ok: true; lines: JsonLine[] }>
-  // `raw` is the invalid text as received; a value that cannot be serialised has none.
-  | Readonly<{ ok: false; error: string; raw?: string }>;
+  // `raw` is the text as received; a value that cannot be serialised has none.
+  | Readonly<{ ok: false; error: string; title: string; raw?: string }>;
 
 // One shared empty list: a fresh `[]` per render would never equal the last
 // one, and the fold reset below would re-render forever.
@@ -93,13 +93,23 @@ function buildModel(source: JsonSource): Model {
       const result = flattenJsonText(source.text);
       return result.ok
         ? result
-        : { ok: false, error: result.error, raw: source.text };
+        : {
+            ok: false,
+            error: result.error,
+            title: "Invalid JSON",
+            raw: source.text,
+          };
     } catch (error) {
-      // Valid JSON nested deeper than the printer's stack (JSON.parse is not
-      // recursive; the printer is) shows as an error, not a crashed page.
+      // Valid JSON nested deeper than the reader and printer can recurse
+      // (JSON.parse accepted it) shows as an error, not a crashed page.
+      // Anything else is a bug, and is not hidden.
+      if (!(error instanceof RangeError)) {
+        throw error;
+      }
       return {
         ok: false,
-        error: error instanceof Error ? error.message : String(error),
+        error: "It is valid, but nested too deeply to show as a tree.",
+        title: "This JSON is nested too deeply to show",
         raw: source.text,
       };
     }
@@ -110,6 +120,7 @@ function buildModel(source: JsonSource): Model {
     return {
       ok: false,
       error: error instanceof Error ? error.message : String(error),
+      title: "This value cannot be shown as JSON",
     };
   }
 }
@@ -563,15 +574,7 @@ export function JsonView({
         )
       ) : (
         <div className="ui:flex ui:min-h-0 ui:flex-col ui:gap-2 ui:p-2">
-          <InlineAlert
-            title={
-              model.raw === undefined
-                ? "This value cannot be shown as JSON"
-                : "Invalid JSON"
-            }
-          >
-            {model.error}
-          </InlineAlert>
+          <InlineAlert title={model.title}>{model.error}</InlineAlert>
           {model.raw === undefined ? null : (
             <CodeBlock
               code={model.raw}

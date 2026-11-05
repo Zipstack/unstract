@@ -21,9 +21,14 @@ type MonacoProps = {
   options?: Record<string, unknown>;
 };
 const seen: MonacoProps[] = [];
-// Whether the stand-in reports a mount, as Monaco does once its runtime loads.
-const monaco = vi.hoisted(() => ({ loads: true }));
+// Whether the stand-in reports a mount, as Monaco does once its runtime
+// loads, and what the loader's shared load does.
+const monaco = vi.hoisted(() => ({
+  loads: true,
+  init: (): Promise<unknown> => Promise.resolve({}),
+}));
 vi.mock("@monaco-editor/react", () => ({
+  loader: { init: () => monaco.init() },
   default: (props: MonacoProps) => {
     seen.push(props);
     useEffect(() => {
@@ -151,5 +156,31 @@ it("keeps a loaded editor when the timeout passes", async () => {
     expect(screen.getByRole("textbox", { name: "Quick" })).toBeTruthy();
   } finally {
     vi.useRealTimers();
+  }
+});
+
+it("says the editor could not load when the Monaco runtime fails to load", async () => {
+  monaco.loads = false;
+  monaco.init = () => Promise.reject(new Error("script failed"));
+  try {
+    renderV1(<CodeEditor aria-label="Blocked" />);
+    expect((await screen.findByRole("alert")).textContent).toContain(
+      "The editor could not load",
+    );
+    expect(screen.getAllByRole("alert")).toHaveLength(1);
+  } finally {
+    monaco.loads = true;
+    monaco.init = () => Promise.resolve({});
+  }
+});
+
+it("ignores a cancelled load", async () => {
+  monaco.init = () => Promise.reject({ type: "cancelation" });
+  try {
+    renderV1(<CodeEditor aria-label="Fine" />);
+    await screen.findByRole("textbox", { name: "Fine" });
+    expect(screen.queryByRole("alert")).toBeNull();
+  } finally {
+    monaco.init = () => Promise.resolve({});
   }
 });

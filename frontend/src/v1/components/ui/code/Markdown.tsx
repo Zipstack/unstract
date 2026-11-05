@@ -61,13 +61,13 @@ function dom<T extends { node?: unknown; level?: number }>({
   return rest;
 }
 
+/** True under a Markdown link, so a linked image renders as text there. */
+const InsideLink = createContext(false);
+
 /*
  * One element per Markdown construct, styled with v1 type roles rather than
  * @tailwindcss/typography's `prose` (whose v0 config would leak in).
  */
-/** True under a Markdown link, so an image there renders as text. */
-const InsideLink = createContext(false);
-
 const COMPONENTS = {
   h1: (p: Props<"h1">) => (
     <h1

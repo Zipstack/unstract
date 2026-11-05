@@ -30,9 +30,9 @@ const MonacoEditor = lazy(() => import("@monaco-editor/react"));
 
 /**
  * How long the editor may stay on its skeleton before it says it is taking a
- * while. @monaco-editor/react only logs a failed CDN load and keeps showing
- * its loading state, so without this a blocked CDN means a silent skeleton.
- * The editor stays mounted, so a slow load that finishes later still shows.
+ * while. The editor stays mounted, so a slow load that finishes later still
+ * shows. A load that fails outright (a blocked CDN) is caught separately, by
+ * watching the loader: @monaco-editor/react itself only logs it.
  */
 export const EDITOR_LOAD_TIMEOUT_MS = 15_000;
 
@@ -122,7 +122,24 @@ export function CodeEditor({
       () => setLoad((now) => (now === "loading" ? "slow" : now)),
       EDITOR_LOAD_TIMEOUT_MS,
     );
-    return () => clearTimeout(timer);
+    let live = true;
+    // Joins the loader's one shared load (init, never config: see above) to
+    // learn when the runtime cannot load at all.
+    import("@monaco-editor/react")
+      .then(({ loader }) => loader.init())
+      .catch((error: unknown) => {
+        const cancelled =
+          typeof error === "object" &&
+          error !== null &&
+          (error as { type?: unknown }).type === "cancelation";
+        if (live && !cancelled) {
+          setLoad("failed");
+        }
+      });
+    return () => {
+      live = false;
+      clearTimeout(timer);
+    };
   }, []);
 
   useLayoutEffect(() => {
@@ -170,7 +187,7 @@ export function CodeEditor({
           title="The editor is taking a while to load"
           className="ui:m-2"
         >
-          Check your connection. It appears here once it loads.
+          Check your connection. If it does not appear, reload the page.
         </InlineAlert>
       ) : null}
       {load === "failed" ? null : (

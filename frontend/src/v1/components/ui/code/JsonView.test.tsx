@@ -311,7 +311,9 @@ it("shows JSON nested too deep to print as an error, not a crash", () => {
   // JSON.parse accepts this; the recursive printer cannot.
   const deep = `${"[".repeat(20000)}${"]".repeat(20000)}`;
   renderV1(<JsonView text={deep} />);
-  expect(screen.getByRole("alert").textContent).toContain("Invalid JSON");
+  const alert = screen.getByRole("alert");
+  expect(alert.textContent).toContain("This JSON is nested too deeply to show");
+  expect(alert.textContent).not.toContain("Invalid JSON");
 });
 
 it("folds one of two containers that share a repeated key", async () => {
