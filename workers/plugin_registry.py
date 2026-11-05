@@ -79,7 +79,7 @@ class WorkersPluginRegistry:
         except ImportError as e:
             logger.warning(f"Could not import plugin '{name}' from {plugin_path}: {e}")
         except Exception as e:
-            logger.error(f"Error loading plugin '{name}': {e}")
+            logger.exception(f"Error loading plugin '{name}': {e}")
 
     def get_plugin(self, name: str) -> Any | None:
         """Get a plugin by name."""
