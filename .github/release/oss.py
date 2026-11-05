@@ -3,7 +3,8 @@ minor): `unstract-platform-version` in pyproject.toml names one OSS tag, ee-vX.Y
 
 Usage (OSS_REPO: a clone of the OSS repo with full history, tags and origin/release/* heads, that can push):
   oss.py cut --line X.Y [--slack-url URL]               cut OSS release/X.Y from OSS main; prints ee-vX.Y.0-rc.1
-  oss.py rc --branch release/X.Y [--slack-url URL]      the tag to pin for the next RC of a cloud line: the tag on
+  oss.py rc --branch release/X.Y [--slack-url URL] [--force --reason R --notes FILE]
+                                                        the tag to pin for the next RC of a cloud line: the tag on
                                                         its OSS line's tip, after a new OSS RC when the tip has none
   oss.py promote --rc vX.Y.Z-rc.N [--force --reason R] [--stabilized]
                                                         promote the OSS RC the cloud RC pins; prints the stable tag.
@@ -127,7 +128,9 @@ def gate(oss, branch, ref, annotate):
     """Run convgate on the OSS clone: 0 pass, 2 block, 1 error (an argparse usage exit 2 counts as an error)."""
     if summary := os.environ.get("GITHUB_STEP_SUMMARY"):
         with open(summary, "a") as f:
-            f.write(f"#### OSS line `{branch}` at `{ref}`\n\n")
+            f.write(
+                f"#### OSS line {rm.branch_link(branch, OSS)} at {rm.tag_link(ref, OSS)}\n\n"
+            )
     oss, branch, ref = rm.local_path(oss), rm.option_free(branch), rm.option_free(ref)
     env = {
         **os.environ,
@@ -200,8 +203,8 @@ def cut(oss, line, slack_url=""):
     return tag
 
 
-def rc(oss, branch, slack_url=""):
-    """Previews the OSS-line gate; never blocks."""
+def rc(oss, branch, slack_url="", force=False, reason="", notes=None):
+    """The OSS-line gate blocks on MISSING picks unless forced; notes: the RC notes file the override goes into."""
     sha = tip(oss, branch)
     if not sha:
         raise RuntimeError(f"OSS {branch} does not exist: cloud Cut makes it")
@@ -209,26 +212,25 @@ def rc(oss, branch, slack_url=""):
         tag = rm.rc_version(oss, f"refs/remotes/origin/{branch}", PREFIX)
         _bump(oss, branch, sha, tag, slack_url, sha)
         print(f"OSS {branch}: new RC {tag}", file=sys.stderr)
-    if "-rc." in tag and gate(oss, branch, tag, "warning") == 1:
-        print(
-            f"::warning::OSS convergence gate for {branch} did not run (see the log)",
-            file=sys.stderr,
+    if "-rc." not in tag:
+        return tag
+    code = gate(oss, branch, tag, "warning" if force else "error")
+    if code == 1 or code == 2 and not force:
+        raise RuntimeError(
+            f"OSS convergence gate for {branch} at {tag} "
+            + (
+                "did not run (see the log)"
+                if code == 1
+                else "blocks: MISSING picks (summary above); a release manager may override this with force and a reason"
+            )
         )
+    if code == 2:
+        msg = f"Forced past the OSS convergence gate for {branch} at {tag} (MISSING picks): {reason}"
+        print(f"::warning::{msg}", file=sys.stderr)
+        if notes:
+            with open(rm.local_path(notes), "a") as f:
+                f.write(msg + "\n\n")
     return tag
-
-
-def reopen(oss, branch):
-    """Its cloud line built a target with no GA yet, so the OSS line is stabilizing again and its next main push
-    catches up the plain fixes it skipped.
-    """
-    mark = rs.STABILIZED + branch.removeprefix(RELEASE)
-    if not rs._tag_commit(oss, mark):
-        return []
-    _push(oss, f":refs/tags/{mark}")
-    rm.git(oss, "tag", "-d", mark)
-    return [
-        f"- OSS `{branch}`: deleted `{mark}`, stabilizing until Promote's last GA tags it again"
-    ]
 
 
 # Known limit: force accepts an empty reason.
@@ -262,6 +264,7 @@ def _conflicts(branch, force):
     except RuntimeError as e:
         if not force:
             raise
+        # Only under force: the RM's override and reason are recorded on the tag.
         print(
             f"::warning::Could not list open backport conflict PRs on OSS {branch} (forced on): {e}",
             file=sys.stderr,
@@ -289,7 +292,7 @@ def _promote(repo, oss, cloud_rc, force, reason):
     if prs and not force:
         raise RuntimeError(
             f"OSS {branch} has open backport conflict PRs {', '.join(prs)}: resolve and merge or close "
-            "them, or force with a reason"
+            "them; a release manager may override this with force and a reason"
         )
     code = gate(oss, branch, pinned, "error")
     if code == 1 or code == 2 and not force:
@@ -298,7 +301,7 @@ def _promote(repo, oss, cloud_rc, force, reason):
             + (
                 "did not run (see the log)"
                 if code == 1
-                else "blocks: MISSING picks (summary above); force with a reason"
+                else "blocks: MISSING picks (summary above); a release manager may override this with force and a reason"
             )
         )
     forced = (
@@ -346,10 +349,10 @@ def retire(oss, branch, reason, dry_run=True):
         )
     )
     out = [
-        f"- OSS `{branch}` (tip `{sha[:12]}`; "
+        f"- OSS `{branch}` (tip {rm.commit_link(sha, 12, OSS)}; "
         + ("has GA, tags kept)" if stable else "no GA, RC tags deleted)"),
         *(f"- OSS git tag `{t}`" for t in rcs),
-        f"- OSS tag `{archive}`: {reason}",
+        f"- OSS tag {f'`{archive}`' if dry_run else rm.tag_link(archive, OSS)}: {reason}",
     ]
     if dry_run:
         return out
@@ -381,6 +384,9 @@ def main(argv=None):
     r = sub.add_parser("rc")
     r.add_argument("--branch", type=rm.option_free, required=True)
     r.add_argument("--slack-url", default="")
+    r.add_argument("--force", action="store_true")
+    r.add_argument("--reason", default="")
+    r.add_argument("--notes")
     m = sub.add_parser("promote")
     m.add_argument("--rc", type=rm.option_free, required=True)
     m.add_argument("--force", action="store_true")
@@ -393,7 +399,7 @@ def main(argv=None):
         if a.cmd == "cut":
             tag = cut(a.oss_repo, a.line, a.slack_url)
         elif a.cmd == "rc":
-            tag = rc(a.oss_repo, a.branch, a.slack_url)
+            tag = rc(a.oss_repo, a.branch, a.slack_url, a.force, a.reason, a.notes)
         else:
             tag = promote(".", a.oss_repo, a.rc, a.force, a.reason, a.stabilized)
     except RuntimeError as e:

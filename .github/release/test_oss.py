@@ -15,6 +15,9 @@ from unittest import mock
 os.environ["GITHUB_REPOSITORY"] = (
     "Zipstack/unstract-cloud"  # pin relstate to the cloud config
 )
+os.environ["GITHUB_SERVER_URL"] = (
+    "https://github.com"  # CI sets it, and summaries link only with it
+)
 import oss
 import relmgr as rm
 import relstate as rs
@@ -34,6 +37,29 @@ class Choose(unittest.TestCase):
             oss.choose(["ee-v1.7.0-rc.9", "ee-v1.7.0-rc.10"]), "ee-v1.7.0-rc.10"
         )
         self.assertIsNone(oss.choose([]))
+
+
+class GateHeading(unittest.TestCase):
+    def test_gate_heading_links_the_oss_line(self):
+        d = tempfile.TemporaryDirectory()
+        self.addCleanup(d.cleanup)
+        summary = os.path.join(d.name, "summary")
+        env = {"GITHUB_SERVER_URL": "https://github.com", "GITHUB_STEP_SUMMARY": summary}
+        done = subprocess.CompletedProcess([], 0, stderr="")
+        with (
+            mock.patch.dict(os.environ, env),
+            mock.patch.object(oss.subprocess, "run", return_value=done),
+        ):
+            self.assertEqual(
+                oss.gate(d.name, "release/1.7", "ee-v1.7.0-rc.1", "warning"), 0
+            )
+        u = f"https://github.com/{oss.OSS}"
+        with open(summary) as f:
+            self.assertEqual(
+                f.read(),
+                f"#### OSS line [`release/1.7`]({u}/tree/release/1.7) at "
+                f"[`ee-v1.7.0-rc.1`]({u}/releases/tag/ee-v1.7.0-rc.1)\n\n",
+            )
 
 
 class Lines(unittest.TestCase):
@@ -169,12 +195,69 @@ class Lines(unittest.TestCase):
         self.assertEqual(
             self.gates,
             [
-                ("release/1.7", "ee-v1.7.0-rc.1", "warning"),
-                ("release/1.7", "ee-v1.7.0-rc.2", "warning"),
+                ("release/1.7", "ee-v1.7.0-rc.1", "error"),
+                ("release/1.7", "ee-v1.7.0-rc.2", "error"),
             ],
         )
-        self.gate = 2  # the preview never blocks
-        self.assertEqual(self.quiet(oss.rc, self.oss, "release/1.7"), "ee-v1.7.0-rc.2")
+
+    def test_rc_blocks_on_missing_picks_unless_forced(self):
+        self.quiet(oss.cut, self.oss, "1.7")
+        self.gate = 2
+        with self.assertRaisesRegex(
+            RuntimeError,
+            "^OSS convergence gate for release/1.7 at ee-v1.7.0-rc.1 blocks: MISSING picks",
+        ):
+            self.quiet(oss.rc, self.oss, "release/1.7")
+        notes = os.path.join(os.path.dirname(self.dev), "notes.md")
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            tag = oss.rc(
+                self.oss, "release/1.7", force=True, reason="known gap", notes=notes
+            )
+        self.assertEqual(tag, "ee-v1.7.0-rc.1")
+        self.assertEqual(self.gates[-1], ("release/1.7", "ee-v1.7.0-rc.1", "warning"))
+        msg = "Forced past the OSS convergence gate for release/1.7 at ee-v1.7.0-rc.1 (MISSING picks): known gap"
+        self.assertIn(f"::warning::{msg}", err.getvalue())
+        with open(notes) as f:
+            self.assertEqual(f.read(), msg + "\n\n")
+        self.gate = 0
+        os.remove(notes)
+        self.assertEqual(
+            self.quiet(oss.rc, self.oss, "release/1.7", notes=notes), "ee-v1.7.0-rc.1"
+        )
+        self.assertFalse(os.path.exists(notes))  # a clean line adds no note
+        self.gate = 1
+        with self.assertRaisesRegex(RuntimeError, "did not run"):
+            self.quiet(
+                oss.rc, self.oss, "release/1.7", force=True, reason="x", notes=notes
+            )
+
+    def test_rc_cli_passes_force_reason_and_notes(self):
+        self.quiet(oss.cut, self.oss, "1.7")
+        self.gate = 2
+        notes = os.path.join(os.path.dirname(self.dev), "notes.md")
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            self.assertEqual(
+                oss.main(["--oss-repo", self.oss, "rc", "--branch", "release/1.7"]), 1
+            )
+            code = oss.main(
+                [
+                    "--oss-repo",
+                    self.oss,
+                    "rc",
+                    "--branch",
+                    "release/1.7",
+                    "--force",
+                    "--reason",
+                    "known gap",
+                    "--notes",
+                    notes,
+                ]
+            )
+        self.assertEqual((code, out.getvalue()), (0, "ee-v1.7.0-rc.1\n"))
+        with open(notes) as f:
+            self.assertIn("(MISSING picks): known gap", f.read())
 
     def pin(self, tag, rc):
         if not os.path.isdir(self.cloud):
@@ -211,9 +294,10 @@ class Lines(unittest.TestCase):
         self.assertEqual(len(self.gates), n)
         self.pin("ee-v1.7.0", "v1.7.1-rc.1")  # a stable pin needs no promote
         self.assertEqual(oss.promote(self.cloud, self.oss, "v1.7.1-rc.1"), "ee-v1.7.0")
-        self.gate = 1
+        self.gate = 0
         self.work("release/1.7", "oss fix")
         self.quiet(oss.rc, self.oss, "release/1.7")
+        self.gate = 1
         self.pin("ee-v1.7.1-rc.1", "v1.7.1-rc.2")
         with self.assertRaisesRegex(RuntimeError, "did not run"):
             oss.promote(self.cloud, self.oss, "v1.7.1-rc.2", force=True, reason="x")
@@ -237,22 +321,6 @@ class Lines(unittest.TestCase):
             oss.promote(self.cloud, self.oss, "v1.7.1-rc.1", stabilized=True), "ee-v1.7.1"
         )
         self.assertEqual(self.remote("rev-parse", "stabilized/1.7^{commit}"), ga)
-
-    def test_reopen_deletes_the_stabilized_tag(self):
-        self.quiet(oss.cut, self.oss, "1.7")
-        self.assertEqual(oss.reopen(self.oss, "release/1.7"), [])
-        self.pin("ee-v1.7.0-rc.1", "v1.7.0-rc.1")
-        oss.promote(self.cloud, self.oss, "v1.7.0-rc.1", stabilized=True)
-        self.clone()
-        self.assertEqual(
-            oss.reopen(self.oss, "release/1.7"),
-            [
-                "- OSS `release/1.7`: deleted `stabilized/1.7`, stabilizing until Promote's last GA tags it again"
-            ],
-        )
-        self.assertEqual(self.remote("tag", "-l", "stabilized/*"), "")
-        self.assertEqual(self.remote("tag", "-l", "ee-v1.7.0"), "ee-v1.7.0")
-        self.assertEqual(oss.reopen(self.oss, "release/1.7"), [])
 
     def test_cli_stabilized_flag(self):
         self.quiet(oss.cut, self.oss, "1.7")
@@ -287,7 +355,7 @@ class Lines(unittest.TestCase):
         ):
             oss.promote(self.cloud, self.oss, "v1.7.0-rc.1")
         self.assertEqual(
-            self.gates, [("release/1.7", "ee-v1.7.0-rc.2", "warning")]
+            self.gates, [("release/1.7", "ee-v1.7.0-rc.2", "error")]
         )  # refused before its gate
 
     @mock.patch.dict(os.environ, {"OSS_TOKEN": "oss-token"})
@@ -360,7 +428,8 @@ class Lines(unittest.TestCase):
         self.work("release/1.7", "oss fix")
         self.quiet(oss.rc, self.oss, "release/1.7")
         tip = self.remote("rev-parse", "release/1.7")
-        dry = oss.retire(self.oss, "release/1.7", "cut by mistake")
+        with mock.patch.dict(os.environ, {"GITHUB_SERVER_URL": ""}):
+            dry = oss.retire(self.oss, "release/1.7", "cut by mistake")
         self.assertEqual(
             dry,
             [
@@ -373,8 +442,20 @@ class Lines(unittest.TestCase):
         self.assertEqual(
             self.remote("tag", "-l", "ee-*").split(), ["ee-v1.7.0-rc.1", "ee-v1.7.0-rc.2"]
         )  # dry run
+        web = {"GITHUB_SERVER_URL": "https://github.com"}
+        u = f"https://github.com/{oss.OSS}"
+        with mock.patch.dict(os.environ, web):
+            linked = oss.retire(self.oss, "release/1.7", "cut by mistake")
+            self.assertEqual(
+                linked[0],
+                f"- OSS `release/1.7` (tip [`{tip[:12]}`]({u}/commit/{tip}); no GA, RC tags deleted)",
+            )
+            self.assertEqual(linked[-1], dry[-1])  # not pushed yet: no link
+            real = oss.retire(self.oss, "release/1.7", "cut by mistake", dry_run=False)
+        self.assertEqual(real[:-1], linked[:-1])
         self.assertEqual(
-            oss.retire(self.oss, "release/1.7", "cut by mistake", dry_run=False), dry
+            real[-1],
+            f"- OSS tag [`retired/1.7-{tip[:7]}`]({u}/releases/tag/retired/1.7-{tip[:7]}): cut by mistake",
         )
         self.assertEqual(self.remote("tag", "-l", "ee-*"), "")
         self.assertEqual(self.remote("tag", "-l", "v*"), "v1.7.3")
@@ -518,11 +599,12 @@ class Lines(unittest.TestCase):
         self.pin("ee-v1.7.0-rc.1", "v1.7.0-rc.1")
         oss.promote(self.cloud, self.oss, "v1.7.0-rc.1")
         tip = self.remote("rev-parse", "release/1.7")
+        u = f"https://github.com/{oss.OSS}"
         self.assertEqual(
             oss.retire(self.oss, "release/1.7", "past end of support", dry_run=False),
             [
-                f"- OSS `release/1.7` (tip `{tip[:12]}`; has GA, tags kept)",
-                f"- OSS tag `retired/1.7-{tip[:7]}`: past end of support",
+                f"- OSS `release/1.7` (tip [`{tip[:12]}`]({u}/commit/{tip}); has GA, tags kept)",
+                f"- OSS tag [`retired/1.7-{tip[:7]}`]({u}/releases/tag/retired/1.7-{tip[:7]}): past end of support",
             ],
         )
         self.assertEqual(
@@ -843,7 +925,7 @@ class RetireWorkflow(Workflow):
 
     def test_abandon(self):
         self.line("1.7")
-        self.retire(ABANDON="release/1.7", REASON="cut by mistake")
+        self.retire(ABANDON="1.7", REASON="cut by mistake")
         self.assert_gone("1.7")
 
     def test_abandon_deletes_one_rc_and_keeps_the_last(self):
@@ -1013,8 +1095,41 @@ class RetireWorkflow(Workflow):
 
     def test_retire_line_no_ga(self):
         self.line("1.7")
-        self.retire(RETIRE_LINE="release/1.7", REASON="not shipping")
+        self.retire(RETIRE_LINE="1.7", REASON="not shipping")
         self.assert_gone("1.7")
+
+    def test_retire_line_links_only_what_survives(self):
+        self.line("1.7")
+        tip = rm.git(self.repos["cloud"][0], "rev-parse", "release/1.7")
+        web = "https://github.com/Zipstack/unstract-cloud"
+        tag = f"retired/1.7-{tip[:7]}"
+        env = {
+            "RETIRE_LINE": "1.7",
+            "REASON": "x",
+            "GITHUB_SERVER_URL": "https://github.com",
+        }
+        self.retire(DRY_RUN="true", **env)
+        dry = self.read("summary")
+        self.assertIn(
+            f"- branch [`release/1.7`]({web}/tree/release/1.7) (tip [`{tip[:12]}`]({web}/commit/{tip});",
+            dry,
+        )
+        self.assertIn(f"- tag `{tag}`: x", dry)
+        self.retire(**env)
+        real = self.read("summary")[len(dry) :]
+        self.assertIn(
+            f"- branch `release/1.7` (tip [`{tip[:12]}`]({web}/commit/{tip});", real
+        )
+        self.assertIn(f"- tag [`{tag}`]({web}/releases/tag/{tag}): x", real)
+
+    def test_refuses_a_value_not_a_line(self):
+        self.line("1.7")
+        for key in ("ABANDON", "RETIRE_LINE"):
+            self.kept_line(
+                "1.7",
+                f"::error::{key.lower()} 1.7.0: not a release line X.Y (e.g. 0.186): '1.7.0'",
+                **{key: "1.7.0", "REASON": "x"},
+            )
 
     def test_derived_list(self):
         self.line("1.6", "v1.6.0-rc.1", "v1.6.0")
@@ -1870,7 +1985,6 @@ esac
         self.assertEqual(
             {f: len(j) for f, j in found.items()},
             {
-                "_rc-build.yaml": 1,
                 "build-push.yaml": 11,
                 "cut.yaml": 1,
                 "dev-deploy.yaml": 2,
@@ -1879,11 +1993,6 @@ esac
         )
         for f, js in found.items():
             for j in js:
-                if f == "_rc-build.yaml":
-                    # disabled, kept for rollback: it must stay off, and say what re-enabling it needs
-                    self.assertIn("\n    if: false", j)
-                    self.assertIn("id-token: write", j)
-                    continue
                 self.assertRegex(
                     j,
                     r"\n    permissions:\n(?:      [\w-]+: \w+.*\n)*      id-token: write",
@@ -2149,7 +2258,9 @@ esac
         with open(os.path.join(HERE, "..", "workflows", "take-rc-build.yaml")) as fh:
             head, jobs = fh.read().split("\njobs:\n", 1)
         self.assertIn(
-            "\nconcurrency:\n  group: take-rc-build-${{ inputs.branch }}\n", head
+            "\nconcurrency:\n  group: take-rc-build-${{ (startsWith(inputs.line, 'release/') "
+            "&& inputs.line || format('release/{0}', inputs.line)) }}\n",
+            head,
         )
         self.assertNotIn("concurrency:", jobs)
 
@@ -2161,28 +2272,6 @@ esac
         self.assertEqual(len(matrices), 2)
         for m in matrices:
             self.assertEqual(tuple(re.findall(r"[\w-]+", m)), rs.IMAGES)
-
-    def test_a_retired_workflow_fails_at_its_first_job(self):
-        wf = os.path.join(HERE, "..", "workflows")
-        for f in (
-            "create-rc-build.yaml",
-            "create-hotfix-rc-build.yaml",
-            "promote-rc-build-to-stable.yaml",
-        ):
-            with open(os.path.join(wf, f)) as fh:
-                jobs = re.split(r"\n(?=  [\w-]+:\n)", fh.read().split("\njobs:\n", 1)[1])
-            first = jobs[0]
-            self.assertTrue(first.startswith("  retired:\n"), f)
-            self.assertNotIn("\n    if:", first, f)
-            self.assertNotIn("needs:", first, f)
-            r = subprocess.run(
-                ["bash", "-e", "-c", step(f, "Retired")], capture_output=True, text=True
-            )
-            self.assertEqual(r.returncode, 1, f)
-            self.assertRegex(r.stdout, r"^::error::retired: use .*\.yaml", f)
-            for job in jobs[1:]:  # the old jobs never run
-                if not job.lstrip().startswith("#"):
-                    self.assertIn("\n    if: false", job, f"{f} {job.split(':')[0]}")
 
     def test_missing_images_reads_the_target_kind(self):
         built = {"on-prem/backend", "on-prem/frontend", "cloud/runner"}
@@ -2422,11 +2511,17 @@ class PendingPicksWorkflow(Workflow):
         self.write(
             "pulls.json", json.dumps([{"number": 5, "title": "[FIX] y", "labels": []}])
         )
-        r = self.promote()
+        r = self.promote(GITHUB_SERVER_URL="")
         self.blocked(r, "::error::convergence gate: MISSING picks (summary above)")
         self.assertIn(f"MISSING original {fix[:12]}", r.stdout)
         self.assertIn(
-            "### ⛔ Promote blocked · v1.7.0-rc.1 · cloud", self.read("summary")
+            "### ⛔ Promote blocked · `v1.7.0-rc.1` · cloud", self.read("summary")
+        )
+        self.promote(GITHUB_SERVER_URL="https://github.com")
+        self.assertIn(
+            "### ⛔ Promote blocked · [`v1.7.0-rc.1`](https://github.com/Zipstack/unstract-cloud/releases/tag/v1.7.0-rc.1)"
+            " · cloud",
+            self.read("summary"),
         )
         self.assertEqual(
             self.forced(self.promote(FORCE="true", REASON="ship  it\nnow")), "ship it now"
@@ -2537,12 +2632,9 @@ class PendingPicksWorkflow(Workflow):
             BRANCH="release/1.7",
             TARGETS="cloud",
         )  # Take RC lists the OSS-held fix too, and never blocks on it
-        self.assertIn(
-            f"Held for the RM on {oss.OSS} `release/1.7`",
-            self.read("notes.md"),
-            take.stdout + take.stderr,
-        )
-        self.assertIn(f"Held for the RM on {oss.OSS} `release/1.7`", self.read("summary"))
+        held = f"Held for the RM on {oss.OSS} [`release/1.7`](https://github.com/{oss.OSS}/tree/release/1.7)"
+        self.assertIn(held, self.read("notes.md"), take.stdout + take.stderr)
+        self.assertIn(held, self.read("summary"))
         self.assertIn(f"backport.yaml -R {oss.OSS} -f commits=#9", self.read("summary"))
         self.write(
             "pullsfail", ""
@@ -2563,23 +2655,172 @@ class PendingPicksWorkflow(Workflow):
         )
         self.assertIn("rerun Promote once GitHub answers", self.read("summary"))
 
-    def test_take_rc_only_warns(self):
+    def test_take_rc_blocks_on_a_conflict_pr_unless_forced(self):
         self.line("1.7")
         self.prs(oss.OSS, "release/1.7")
         script = inline("take-rc-build.yaml", "Plan checks")
         dev_git(self.cloud, "checkout", "-q", "-b", "release/1.7", "origin/release/1.7")
         r = self.run_step(script, BRANCH="release/1.7", TARGETS="cloud")
+        self.blocked(r, "::error::pending picks: open backport conflict PRs")
+        self.assertIn(
+            f"::error::Open backport conflict PR {oss.OSS}#40 on release/1.7", r.stdout
+        )
+        summary = self.read("summary")
+        self.assertIn(f"⚠ Open backport conflict PRs: [{oss.OSS}#40]", summary)
+        self.assertIn(
+            "**Next:** resolve and merge or close each conflict PR, then run Take RC build again",
+            summary,
+        )
+        self.assertFalse(os.path.exists(os.path.join(self.d, "notes.md")))
+        r = self.run_step(
+            script,
+            BRANCH="release/1.7",
+            TARGETS="cloud",
+            FORCE="true",
+            REASON="known gap",
+        )
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertIn(
             f"::warning::Open backport conflict PR {oss.OSS}#40 on release/1.7", r.stdout
         )
-        self.assertIn(
-            f"⚠ Open backport conflict PRs: [{oss.OSS}#40]", self.read("notes.md")
-        )
+        notes = self.read("notes.md")
+        self.assertIn(f"⚠ Open backport conflict PRs: [{oss.OSS}#40]", notes)
+        self.assertIn("Forced: known gap", notes)
         self.write("prfail", "")
         r = self.run_step(script, BRANCH="release/1.7", TARGETS="cloud")
+        self.blocked(r, "::error::cannot list open backport conflict PRs")
+        self.assertIn(
+            "**Next:** rerun Take RC build once GitHub answers", self.read("summary")
+        )
+        r = self.run_step(
+            script,
+            BRANCH="release/1.7",
+            TARGETS="cloud",
+            FORCE="true",
+            REASON="known gap",
+        )
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        self.assertIn("::warning::⚠ Could not list open backport conflict PRs", r.stdout)
+        self.assertIn(
+            "::warning::⚠ Open backport conflict PRs: unchecked, the listing failed",
+            r.stdout,
+        )
+
+    def test_take_rc_passes_a_line_without_conflict_prs(self):
+        self.line("1.7")
+        dev_git(self.cloud, "checkout", "-q", "-b", "release/1.7", "origin/release/1.7")
+        r = self.run_step(
+            inline("take-rc-build.yaml", "Plan checks"),
+            BRANCH="release/1.7",
+            TARGETS="cloud",
+        )
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertNotIn("conflict", r.stdout)
+
+
+class LateTargetWorkflow(Workflow):
+    """On-prem enabled after the cloud GA: built from the tip, and owed main fixes never block or reach the line."""
+
+    def setUp(self):
+        super().setUp()
+        with open(os.path.join(self.cloud, "pyproject.toml"), "w") as fh:
+            fh.write('unstract-platform-version = "ee-v1.7.0-rc.1"\n')
+        dev_git(self.cloud, "add", "pyproject.toml")
+        dev_git(self.cloud, "commit", "-q", "-m", "pin")
+        dev_git(self.cloud, "push", "-q", "origin", "main")
+        self.line("1.7", "v1.7.0-rc.3", "v1.7.0")  # cloud GA
+        dev_git(self.cloud, "commit", "-q", "--allow-empty", "-m", "fix on main")
+        dev_git(self.cloud, "push", "-q", "origin", "main")
+        self.write(
+            "pulls.json", json.dumps([{"number": 5, "title": "[FIX] y", "labels": []}])
+        )
+        dev_git(self.cloud, "checkout", "-q", "-b", "release/1.7", "origin/release/1.7")
+
+    def take_rc(self):
+        r = self.run_step(
+            inline("take-rc-build.yaml", "Plan checks"),
+            BRANCH="release/1.7",
+            TARGETS="on-prem",
+            FORCE="true",
+            REASON="customer ask",
+        )
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        notes = self.read("notes.md")
+        r = self.run_step(
+            inline("take-rc-build.yaml", "Plan version and targets"),
+            BRANCH="release/1.7",
+            TARGETS="on-prem",
+        )
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        return notes, self.read("output")
+
+    def built(self, tag):  # the on-prem images, pushed after the cloud GA
+        self.write(
+            "reg-on-prem_backend.jsonl",
+            json.dumps(
+                {"digest": "sha256:p", "pushed_at": "2026-09-02T00:00:00Z", "tags": [tag]}
+            )
+            + "\n",
+        )
+
+    def state(self):
+        r = self.run_step(
+            "import datetime as dt, json, relstate as rs\n"
+            "print(json.dumps(rs.derive('.', dt.datetime(2026, 9, 3, tzinfo=dt.UTC))))\n"
+        )
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return json.loads(r.stdout)
+
+    def test_unchanged_tip_reuses_its_rc_and_promotes_onto_the_cloud_ga(self):
+        notes, out = self.take_rc()
+        self.assertIn(
+            "| [#5](https://github.com/Zipstack/unstract-cloud/pull/5) | [FIX] y | fix |",
+            notes,
+        )  # owed, shown
+        self.assertIn(
+            "dispatch Backport with its commit, `confirm_stabilized=true` and `lines=1.7`",
+            notes,
+        )
+        self.assertEqual(
+            out,
+            "tag=v1.7.0-rc.3\nbump=false\ntargets=on-prem\nwant=on-prem\nnewest=release/1.7\nchart=true\n",
+        )
+        self.built("v1.7.0-rc.3")
+        st = self.state()
+        self.assertEqual(st["branches"][0]["state"], "stabilized")
+        self.assertEqual(st["backport_targets"]["fix"], [])
+        r = self.run_step(
+            inline("promote.yaml", "Plan"),
+            RC="v1.7.0-rc.3",
+            TARGET="on-prem",
+            PRODUCTS='["on-prem"]',
+        )
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        out = dict(line.split("=", 1) for line in self.read("output").splitlines())
+        ga = dev_git(self.cloud, "rev-parse", "v1.7.0^{commit}")
+        self.assertEqual(
+            (out["stable"], out["sha"], out["new_tag"], out["forced"], out["stabilized"]),
+            ("v1.7.0", ga, "false", "", "true"),
+        )
+
+    def test_after_a_patch_pick_builds_the_next_patch_rc(self):
+        dev_git(self.cloud, "commit", "-q", "--allow-empty", "-m", "pick")
+        dev_git(self.cloud, "push", "-q", "origin", "HEAD:refs/heads/release/1.7")
+        _, out = self.take_rc()
+        self.assertIn("tag=v1.7.1-rc.1\nbump=true\ntargets=on-prem\n", out)
+        self.built("v1.7.1-rc.1")
+        dev_git(self.cloud, "tag", "v1.7.1-rc.1")
+        dev_git(self.cloud, "push", "-q", "origin", "v1.7.1-rc.1")
+        st = self.state()
+        self.assertEqual(
+            (st["branches"][0]["state"], st["branches"][0]["targets"]["on-prem"]["late"]),
+            ("stabilized", True),
+        )
+
+    def test_take_rc_never_deletes_the_oss_stabilized_tag(self):
+        with open(os.path.join(HERE, "..", "workflows", "take-rc-build.yaml")) as fh:
+            self.assertNotIn("reopen", fh.read())
+        self.assertFalse(hasattr(oss, "reopen"))
+        self.assertFalse(hasattr(rs, "reopens"))
 
 
 class TakeRcVersion(Workflow):
@@ -2626,8 +2867,26 @@ class TakeRcVersion(Workflow):
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertEqual(
             self.read("output"),
-            "tag=v1.7.0-rc.2\nbump=true\ntargets=cloud\nreopen=true\nnewest=release/1.7\n",
+            "tag=v1.7.0-rc.2\nbump=true\ntargets=cloud\nwant=cloud\nnewest=release/1.7\nchart=false\n",
         )
+
+    def test_allocates_past_a_kept_rc_chart(self):
+        # An abandon kept the on-prem RC chart 1.7.0-rc.1 and deleted its images: a re-cut must not reuse rc.1.
+        self.line("1.7")
+        dev_git(self.cloud, "checkout", "-q", "-b", "release/1.7", "origin/release/1.7")
+        self.write("reg-on-prem_backend.jsonl", "")
+        self.write(
+            "reg-on-prem_unstract-platform.jsonl",
+            '{"id": 1, "digest": "sha256:c", "pushed_at": "2026-09-01T00:00:00Z", "tags": ["1.7.0-rc.1"]}\n',
+        )
+        r = self.run_step(
+            inline("take-rc-build.yaml", "Plan version and targets"),
+            BRANCH="release/1.7",
+            TARGETS="on-prem",
+        )
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("tag=v1.7.0-rc.2\n", self.read("output"))
+        self.assertIn("\nchart=true\n", self.read("output"))
 
     def test_plan_names_the_newest_line(self):
         self.line("1.7", "v1.7.0")
@@ -2641,8 +2900,40 @@ class TakeRcVersion(Workflow):
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertIn("\nnewest=release/1.8\n", self.read("output"))
 
+    def test_a_failed_rc_chart_fails_the_summary(self):
+        def summary(chart):
+            out = os.path.join(self.d, "summary")
+            with contextlib.suppress(FileNotFoundError):
+                os.remove(out)
+            r = subprocess.run(
+                ["bash", "-e", "-c", step("take-rc-build.yaml", "Summary")],
+                cwd=os.path.join(HERE, "..", ".."),
+                env={
+                    **os.environ,
+                    "TAG": "v1.7.1-rc.1",
+                    "BUILD": "on-prem",
+                    "RESULT": "success",
+                    "CHART": chart,
+                    "BRANCH": "release/1.7",
+                    "NEWEST": "release/1.7",
+                    "GITHUB_STEP_SUMMARY": out,
+                },
+                capture_output=True,
+                text=True,
+            )
+            return r.returncode, self.read("summary")
+
+        code, text = summary("success")
+        self.assertEqual(code, 0)
+        self.assertIn("On-prem RC chart `unstract-platform:1.7.1-rc.1`: success", text)
+        self.assertIn("QA tests", text)
+        code, text = summary("failure")
+        self.assertEqual(code, 1)
+        self.assertNotIn("QA tests", text)
+        self.assertEqual(summary("skipped")[0], 0)
+
     def test_staging_is_left_alone_for_an_older_line(self):
-        def summary(build, newest):
+        def summary(build, newest, **env):
             out = os.path.join(self.d, "summary")
             with contextlib.suppress(FileNotFoundError):
                 os.remove(out)
@@ -2657,6 +2948,7 @@ class TakeRcVersion(Workflow):
                     "BRANCH": "release/1.7",
                     "NEWEST": newest,
                     "GITHUB_STEP_SUMMARY": out,
+                    **env,
                 },
                 capture_output=True,
                 text=True,
@@ -2671,9 +2963,18 @@ class TakeRcVersion(Workflow):
         note = f"gh workflow run sync-argocd.yaml -f app_name={staging} -f target_revision=v1.7.1-rc.1"
         self.assertIn(
             "Staging not updated: it runs the newest line, `release/1.8`",
-            summary("cloud", "release/1.8"),
+            summary("cloud", "release/1.8", GITHUB_SERVER_URL=""),
         )
         self.assertIn(note, summary("cloud on-prem", "release/1.8"))
+        web = "https://github.com/Zipstack/unstract-cloud"
+        self.assertIn(
+            f"newest line, [`release/1.8`]({web}/tree/release/1.8). To deploy "
+            f"[`v1.7.1-rc.1`]({web}/releases/tag/v1.7.1-rc.1) there anyway:",
+            summary("cloud", "release/1.8", GITHUB_SERVER_URL="https://github.com"),
+        )
+        self.assertIn(
+            note, summary("cloud", "release/1.8", GITHUB_SERVER_URL="https://github.com")
+        )
         self.assertNotIn(note, summary("cloud", "release/1.7"))
         self.assertNotIn(note, summary("on-prem", "release/1.8"))
         with open(os.path.join(HERE, "..", "workflows", "take-rc-build.yaml")) as fh:
@@ -2681,13 +2982,14 @@ class TakeRcVersion(Workflow):
         for wire in (
             "\n      newest: ${{ steps.plan.outputs.newest }}\n",  # the job output both of these read
             "\n      skip_argocd_deployment: ${{ inputs.skip_argocd_deployment || "
-            "needs.take-rc.outputs.newest != inputs.branch }}\n",
+            "needs.take-rc.outputs.newest != needs.take-rc.outputs.branch }}\n",
             "\n      NEWEST: ${{ needs.take-rc.outputs.newest }}\n",
+            "\n      branch: ${{ needs.line.outputs.branch }}\n",  # release/X.Y, as newest is
+            "\n      BRANCH: ${{ needs.take-rc.outputs.branch }}\n",
         ):
             self.assertIn(wire, text)
 
-    def test_patch_rc_on_a_ga_line_does_not_reopen(self):
-        # Every enabled target (cloud) is GA: a cloud patch RC keeps the OSS line's stabilized tag.
+    def test_patch_rc_on_a_ga_line(self):
         self.line("1.7", "v1.7.0")
         dev_git(self.cloud, "checkout", "-q", "-b", "release/1.7", "origin/release/1.7")
         r = self.run_step(
@@ -2698,12 +3000,11 @@ class TakeRcVersion(Workflow):
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertEqual(
             self.read("output"),
-            "tag=v1.7.1-rc.1\nbump=true\ntargets=cloud\nreopen=false\nnewest=release/1.7\n",
+            "tag=v1.7.1-rc.1\nbump=true\ntargets=cloud\nwant=cloud\nnewest=release/1.7\nchart=false\n",
         )
 
-    def test_rerun_on_a_tagged_tip_reopens_for_a_target_already_built(self):
-        # Tip tagged v1.7.1-rc.1 for both targets, on-prem built, cloud failed; a cloud-only rerun still
-        # reopens (on-prem has no GA).
+    def test_rerun_on_a_tagged_tip_builds_only_the_missing_target(self):
+        # Tip tagged v1.7.1-rc.1 for both targets, on-prem built, cloud failed.
         self.line("1.7", "v1.7.0")
         dev_git(self.cloud, "checkout", "-q", "-b", "release/1.7", "origin/release/1.7")
         dev_git(
@@ -2730,8 +3031,141 @@ class TakeRcVersion(Workflow):
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertEqual(
             self.read("output"),
-            "tag=v1.7.1-rc.1\nbump=false\ntargets=cloud\nreopen=true\nnewest=release/1.7\n",
+            "tag=v1.7.1-rc.1\nbump=false\ntargets=cloud\nwant=cloud on-prem\nnewest=release/1.7\nchart=true\n",  # on-prem built earlier: still push its chart
         )
+
+
+@unittest.skipUnless(
+    os.path.exists(os.path.join(HERE, "..", "workflows", "take-rc-build.yaml")),
+    "take-rc-build.yaml is cloud-only",
+)
+class TakeRcPrerelease(unittest.TestCase):
+    def test_lists_every_ticked_target(self):
+        # A rerun builds only what an earlier run missed; the release it creates must still list every ticked target.
+        with open(os.path.join(HERE, "..", "workflows", "take-rc-build.yaml")) as fh:
+            wf = fh.read()
+        self.assertIn("      want: ${{ steps.plan.outputs.want }}\n", wf)
+        job = wf[wf.index("- name: Create the RC prerelease") :]
+        self.assertIn(
+            "TARGETS: ${{ needs.take-rc.outputs.want }}\n", job[: job.index("run: |")]
+        )
+
+
+@unittest.skipUnless(
+    os.path.exists(os.path.join(HERE, "..", "workflows", "take-rc-build.yaml")),
+    "the cloud repo's workflows",
+)
+class InputSteps(unittest.TestCase):
+    """Each dispatch input step normalises through relmgr: a line to release/X.Y, a version tag to its leading v."""
+
+    def run_step(self, workflow, name, **env):
+        with tempfile.TemporaryDirectory() as d:
+            out = os.path.join(d, "out")
+            r = subprocess.run(
+                ["bash", "-e", "-c", step(workflow, name)],
+                cwd=os.path.join(HERE, "..", ".."),
+                env={**os.environ, **env, "GITHUB_OUTPUT": out},
+                capture_output=True,
+                text=True,
+            )
+            with open(out, "a+") as fh:
+                fh.seek(0)
+                return r.returncode, fh.read(), r.stderr
+
+    def test_take_rc_line(self):
+        for line in ("1.7", "release/1.7"):
+            self.assertEqual(
+                self.run_step("take-rc-build.yaml", "Check line", LINE=line),
+                (0, "branch=release/1.7\n", ""),
+            )
+        # Padded: the concurrency group is keyed on the raw input, so " 1.7 " must not pass as 1.7.
+        for line in ("release/1.7.0", " 1.7 "):
+            code, out, err = self.run_step("take-rc-build.yaml", "Check line", LINE=line)
+            self.assertEqual((code, out), (1, ""))
+            self.assertIn("::error::not a release line X.Y", err)
+
+    def test_promote_rc(self):
+        for rc in ("v1.7.0-rc.2", "1.7.0-rc.2"):
+            self.assertEqual(
+                self.run_step("promote.yaml", "RC tag", RC=rc),
+                (0, "rc=v1.7.0-rc.2\n", ""),
+            )
+
+    def test_raw_input_feeds_only_its_check(self):
+        # Every job reads the normalised output; the raw input is left to the names a run shows.
+        for wf, raw, uses in (
+            ("take-rc-build.yaml", "inputs.line", ("run-name:", "group:", "LINE:")),
+            ("promote.yaml", "inputs.rc", ("run-name:", "RC:")),
+            ("publish.yaml", "inputs.version", ("run-name:", "VERSION:")),
+        ):
+            with open(os.path.join(HERE, "..", "workflows", wf)) as fh:
+                seen = sorted(
+                    line.split()[0]
+                    for line in fh
+                    if raw in line and not line.lstrip().startswith("#")
+                )
+            self.assertEqual(seen, sorted(uses), wf)
+
+    def test_publish_version(self):
+        for v in ("v1.7.0", "1.7.0"):
+            self.assertEqual(
+                self.run_step("publish.yaml", "Version", VERSION=v),
+                (0, "version=v1.7.0\n", ""),
+            )
+
+
+@unittest.skipUnless(
+    os.path.exists(os.path.join(HERE, "..", "workflows", "cut.yaml")),
+    "the cloud repo's workflows",
+)
+class CutPickLine(unittest.TestCase):
+    """Cut's line input: X.Y or release/X.Y; empty takes relstate's next minor."""
+
+    def pick(self, line):
+        with tempfile.TemporaryDirectory() as d:
+            work, bin_ = os.path.join(d, "work"), os.path.join(d, "bin")
+            rm.git(d, "init", "-q", "--bare", os.path.join(d, "origin.git"))
+            rm.git(d, "init", "-q", work)
+            rm.git(work, "remote", "add", "origin", os.path.join(d, "origin.git"))
+            os.makedirs(os.path.join(work, ".github"))
+            os.symlink(HERE, os.path.join(work, ".github", "release"))
+            os.makedirs(bin_)
+            with open(
+                os.path.join(bin_, "python3"), "w"
+            ) as fh:  # relstate reads registries: stub it
+                fh.write(
+                    "#!/bin/sh\n"
+                    'case "$1$2" in\n'
+                    """.github/release/relstate.py) echo '{"branches": [], "next_minor": "1.8"}' ;;\n"""
+                    "*used_tags*) echo ;;\n"
+                    f'*) exec {sys.executable} "$@" ;;\n'
+                    "esac\n"
+                )
+            os.chmod(os.path.join(bin_, "python3"), 0o755)
+            out = os.path.join(d, "out")
+            r = subprocess.run(
+                ["bash", "-e", "-c", step("cut.yaml", "Pick line")],
+                cwd=work,
+                env={
+                    **os.environ,
+                    "PATH": f"{bin_}:{os.environ['PATH']}",
+                    "LINE": line,
+                    "GITHUB_OUTPUT": out,
+                },
+                capture_output=True,
+                text=True,
+            )
+            with open(out, "a+") as fh:
+                fh.seek(0)
+                return r.returncode, fh.read(), r.stderr
+
+    def test_line(self):
+        self.assertEqual(self.pick("")[:2], (0, "line=1.8\n"))
+        for line in ("1.9", "release/1.9"):
+            self.assertEqual(self.pick(line)[:2], (0, "line=1.9\n"))
+        code, out, err = self.pick("1.9.0")
+        self.assertEqual((code, out), (1, ""))
+        self.assertIn("::error::not a release line X.Y", err)
 
 
 class TakeRcBump(Workflow):
@@ -2985,6 +3419,363 @@ def main():
                 "Zipstack/unstract-cloud token workflow-token",
             ],
         )
+
+
+@unittest.skipUnless(
+    os.path.exists(os.path.join(HERE, "..", "workflows", "take-rc-build.yaml")),
+    "the cloud repo's workflows",
+)
+class TakeRcGate(unittest.TestCase):
+    """The Convergence gate step, against a stub convgate that exits with GATE_RC."""
+
+    STUB = """import os, subprocess, sys
+a = sys.argv[1:]
+tagged = subprocess.run(["git", "rev-parse", "-q", "--verify", "refs/tags/" + os.environ["TAG"]], capture_output=True).returncode == 0
+with open(a[a.index("--out") + 1], "a") as f:
+    f.write(f"stub {a[a.index('--target') + 1]} annotate={a[a.index('--annotate') + 1]} tagged={tagged}\\n")
+codes = os.environ["GATE_RC"].split()  # one for every target, or one per target in BUILD order
+t = a[a.index("--target") + 1]
+sys.exit(int(codes[os.environ["BUILD"].split().index(t)] if len(codes) > 1 else codes[0]))
+"""
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.d = tmp.name
+        self.repo = os.path.join(self.d, "repo")
+        rm.git(self.d, "init", "-q", "-b", "main", self.repo)
+        dev_git(self.repo, "commit", "-q", "--allow-empty", "-m", "tip")
+        stub = os.path.join(self.repo, ".relmgr", ".github", "release")
+        os.makedirs(stub)
+        with open(os.path.join(stub, "convgate.py"), "w") as f:
+            f.write(self.STUB)
+
+    def gate(self, code, force="false", tags=""):
+        for name in ("summary", "output", "notes.md", "preview.md"):
+            with contextlib.suppress(FileNotFoundError):
+                os.remove(os.path.join(self.d, name))
+        r = subprocess.run(
+            ["bash", "-e", "-c", step("take-rc-build.yaml", "Convergence gate")],
+            cwd=self.repo,
+            env={
+                **os.environ,
+                "TAG": "v1.7.1-rc.1",
+                "BUILD": "cloud on-prem",
+                "BRANCH": "release/1.7",
+                "FORCE": force,
+                "REASON": "known gap",
+                "GATE_RC": str(code),
+                "RUNNER_TEMP": self.d,
+                "GITHUB_STEP_SUMMARY": os.path.join(self.d, "summary"),
+                "GITHUB_OUTPUT": os.path.join(self.d, "output"),
+            },
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(
+            rm.git(self.repo, "tag", "-l").strip(), tags
+        )  # the gate's own tag never stays
+        return r
+
+    def read(self, name):
+        try:
+            with open(os.path.join(self.d, name)) as f:
+                return f.read()
+        except FileNotFoundError:
+            return ""
+
+    def test_a_clean_line_passes(self):
+        r = self.gate(0)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self.read("output"), "result=ok\n")
+        self.assertEqual(
+            self.read("preview.md"),
+            "#### Promote preview · cloud\n\nstub cloud annotate=error tagged=True\n"
+            "#### Promote preview · on-prem\n\nstub on-prem annotate=error tagged=True\n",
+        )
+        self.assertEqual(self.read("notes.md") + self.read("summary"), "")
+
+    def test_missing_picks_fail(self):
+        r = self.gate(2)
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn(
+            "::error::convergence gate: MISSING picks; a release manager may override this with force and a reason",
+            r.stdout,
+        )
+        summary = self.read("summary")
+        self.assertTrue(summary.startswith("### ⛔ No RC built · release/1.7\n"), summary)
+        self.assertIn("stub cloud annotate=error tagged=True", summary)
+        self.assertTrue(
+            summary.endswith(
+                "**Next:** pick or decline each MISSING pick, then run Take RC build again\n"
+            ),
+            summary,
+        )
+        self.assertEqual(self.read("output") + self.read("notes.md"), "")
+
+    def test_force_passes_with_a_warning_and_a_notes_line(self):
+        r = self.gate(2, force="true")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn(
+            "::warning::convergence gate: MISSING picks, forced on: known gap", r.stdout
+        )
+        self.assertEqual(
+            self.read("notes.md"),
+            "Forced past the convergence gate (MISSING picks, see the Promote preview in the run summary): known gap\n\n",
+        )
+        self.assertIn("stub cloud annotate=warning", self.read("preview.md"))
+        self.assertEqual(self.read("output"), "result=block\n")
+        self.assertEqual(self.read("summary"), "")
+
+    def test_a_gate_error_fails_even_when_forced(self):
+        for force in ("false", "true"):
+            r = self.gate(1, force=force)
+            self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+            self.assertIn(
+                "::error::convergence gate did not run (see the run log)", r.stdout
+            )
+            self.assertEqual(self.read("notes.md"), "")
+
+    def test_a_gate_error_on_any_target_wins_over_missing_picks(self):
+        for codes in ("1 2", "2 1"):
+            r = self.gate(codes, force="true")
+            self.assertEqual(r.returncode, 1, codes + r.stdout + r.stderr)
+            self.assertIn(
+                "::error::convergence gate did not run (see the run log)", r.stdout
+            )
+            self.assertEqual(self.read("notes.md"), "")
+
+    def test_an_existing_tag_is_kept(self):
+        dev_git(self.repo, "tag", "v1.7.1-rc.1")  # a rerun on a tagged tip
+        r = self.gate(0, tags="v1.7.1-rc.1")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+
+    def test_the_gate_runs_before_the_tag_push(self):
+        with open(os.path.join(HERE, "..", "workflows", "take-rc-build.yaml")) as fh:
+            text = fh.read()
+        self.assertLess(
+            text.index("      - name: Convergence gate\n"),
+            text.index("      - name: Bump chart, push, tag\n"),
+        )
+        gate = text.split("      - name: Convergence gate\n", 1)[1].split("\n\n", 1)[0]
+        self.assertNotIn("continue-on-error", gate)
+        self.assertNotIn("if:", gate.split("run: |", 1)[0])
+
+    def test_a_forced_rc_says_promote_blocks_again(self):
+        def next_line(force):
+            with contextlib.suppress(FileNotFoundError):
+                os.remove(os.path.join(self.d, "summary"))
+            r = subprocess.run(
+                ["bash", "-e", "-c", step("take-rc-build.yaml", "Summary")],
+                cwd=os.path.join(HERE, "..", ".."),
+                env={
+                    **os.environ,
+                    "TAG": "v1.7.1-rc.1",
+                    "BUILD": "cloud",
+                    "RESULT": "success",
+                    "CHART": "skipped",
+                    "BRANCH": "release/1.7",
+                    "NEWEST": "release/1.7",
+                    "FORCE": force,
+                    "GITHUB_SERVER_URL": "",
+                    "GITHUB_STEP_SUMMARY": os.path.join(self.d, "summary"),
+                },
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            return next(
+                x for x in self.read("summary").splitlines() if x.startswith("**Next:**")
+            )
+
+        with open(os.path.join(HERE, "..", "workflows", "take-rc-build.yaml")) as fh:
+            job = fh.read().split("\n  summary:\n", 1)[1].split("\n    steps:\n", 1)[0]
+        self.assertIn("\n      FORCE: ${{ inputs.force }}\n", job)
+        self.assertEqual(
+            next_line("false"), "**Next:** QA tests `v1.7.1-rc.1`, then RM runs Promote."
+        )
+        self.assertEqual(
+            next_line("true"),
+            "**Next:** QA tests `v1.7.1-rc.1`, then RM runs Promote. A gate forced here blocks Promote "
+            "again unless forced there too; see the RC notes.",
+        )
+
+    def test_the_oss_pin_passes_force_and_fails_with_a_summary(self):
+        bin_ = os.path.join(self.d, "bin")
+        os.makedirs(bin_)
+        with open(os.path.join(bin_, "python3"), "w") as f:
+            f.write('#!/bin/sh\necho "$*" > "$RUNNER_TEMP/args"\nexit "$RC"\n')
+        os.chmod(os.path.join(bin_, "python3"), 0o755)
+
+        def pin(force, code):
+            for name in ("summary", "args"):
+                with contextlib.suppress(FileNotFoundError):
+                    os.remove(os.path.join(self.d, name))
+            return subprocess.run(
+                ["bash", "-e", "-c", step("take-rc-build.yaml", "OSS pin")],
+                cwd=self.repo,
+                env={
+                    **os.environ,
+                    "PATH": f"{bin_}:{os.environ['PATH']}",
+                    "BRANCH": "release/1.7",
+                    "SLACK_URL": "",
+                    "FORCE": force,
+                    "REASON": "known gap",
+                    "RC": str(code),
+                    "RUNNER_TEMP": self.d,
+                    "GITHUB_STEP_SUMMARY": os.path.join(self.d, "summary"),
+                },
+                capture_output=True,
+                text=True,
+            ).returncode
+
+        self.assertEqual(pin("false", 1), 1)
+        self.assertNotIn("--force", self.read("args"))
+        self.assertIn("### ⛔ No RC built · release/1.7", self.read("summary"))
+        self.assertIn(
+            "**Next:** pick or decline each MISSING pick on the OSS line",
+            self.read("summary"),
+        )
+        self.assertEqual(pin("true", 1), 1)
+        self.assertIn(
+            f"--force --reason known gap --notes {self.d}/notes.md", self.read("args")
+        )
+
+
+@unittest.skipUnless(
+    os.path.exists(os.path.join(HERE, "..", "workflows", "take-rc-build.yaml")),
+    "the cloud repo's workflows",
+)
+class TakeRcNotes(unittest.TestCase):
+    """Take RC's notes reach the prerelease, which another runner writes."""
+
+    GH = """#!/usr/bin/env python3
+import os, shutil, sys
+a = sys.argv[1:]
+d = os.environ["RUNNER_TEMP"]
+with open(os.path.join(d, "calls"), "a") as f:
+    f.write(" ".join(a[:2]) + "\\n")
+if a[:2] == ["release", "view"]:
+    if "VIEW_BODY" not in os.environ:
+        sys.exit("release not found")
+    print(os.environ["VIEW_BODY"])
+elif a[:2] in (["release", "edit"], ["release", "create"]):
+    shutil.copy(a[a.index("--notes-file") + 1], os.path.join(d, "sent"))
+"""
+
+    NOTES = "Forced past X: known gap\n\nConflict PRs: #7"
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.d = tmp.name
+        bin_ = os.path.join(self.d, "bin")
+        os.makedirs(bin_)
+        with open(os.path.join(bin_, "gh"), "w") as f:
+            f.write(self.GH)
+        os.chmod(os.path.join(bin_, "gh"), 0o755)
+        self.path = bin_ + os.pathsep + os.environ["PATH"]
+
+    def read(self, name):
+        try:
+            with open(os.path.join(self.d, name)) as f:
+                return f.read()
+        except FileNotFoundError:
+            return ""
+
+    def output(self, notes=None):
+        if notes is not None:
+            with open(os.path.join(self.d, "notes.md"), "w") as f:
+                f.write(notes)
+        out = os.path.join(self.d, "output")
+        r = subprocess.run(
+            ["bash", "-e", "-c", step("take-rc-build.yaml", "Notes output")],
+            env={**os.environ, "RUNNER_TEMP": self.d, "GITHUB_OUTPUT": out},
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(r.returncode, 0, r.stderr)
+        head, rest = self.read("output").split("\n", 1)
+        delim = head.removeprefix("notes<<")
+        self.assertRegex(delim, r"^[0-9a-f]{32}$")
+        self.assertTrue(rest.endswith(delim + "\n"), rest)
+        return rest[: -len(delim) - 1]
+
+    def prerelease(self, rc_notes, view_body=None, targets="cloud"):
+        env = {
+            **os.environ,
+            "PATH": self.path,
+            "TAG": "v1.7.1-rc.1",
+            "SHA": "a" * 40,
+            "OSS": "v0.9.0",
+            "BRANCH": "release/1.7",
+            "TARGETS": targets,
+            "RC_NOTES": rc_notes,
+            "RUNNER_TEMP": self.d,
+            "GITHUB_REPOSITORY": "Zipstack/unstract-cloud",
+            "GITHUB_SERVER_URL": "https://github.com",
+            "GITHUB_RUN_ID": "42",
+            "GITHUB_STEP_SUMMARY": os.path.join(self.d, "summary"),
+        }
+        env.pop("VIEW_BODY", None)
+        if view_body is not None:
+            env["VIEW_BODY"] = view_body
+        r = subprocess.run(
+            ["bash", "-e", "-c", step("take-rc-build.yaml", "Create the RC prerelease")],
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        return self.read("sent")
+
+    SECTION = (
+        "\n## Take RC notes\n\nFrom [Take RC run 42]"
+        "(https://github.com/Zipstack/unstract-cloud/actions/runs/42).\n\n"
+    )
+
+    def test_the_output_carries_every_line(self):
+        self.assertEqual(self.output("a: b\n\nc\n\n"), "a: b\n\nc\n")
+
+    def test_no_notes_give_an_empty_output(self):
+        self.assertEqual(self.output(), "")
+
+    def test_the_outputs_are_wired_to_the_prerelease(self):
+        with open(os.path.join(HERE, "..", "workflows", "take-rc-build.yaml")) as fh:
+            wf = fh.read()
+        self.assertIn("      notes: ${{ steps.notes.outputs.notes }}\n", wf)
+        job = wf[wf.index("- name: Create the RC prerelease") :]
+        self.assertIn(
+            "RC_NOTES: ${{ needs.take-rc.outputs.notes }}\n", job[: job.index("run: |")]
+        )
+
+    def test_create_appends_the_notes(self):
+        sent = self.prerelease(self.NOTES)
+        self.assertTrue(sent.endswith(self.SECTION + self.NOTES + "\n"), sent)
+        self.assertIn("release create", self.read("calls"))
+
+    def test_create_without_notes_adds_no_heading(self):
+        sent = self.prerelease("")
+        self.assertNotIn("Take RC notes", sent)
+        self.assertTrue(sent.endswith("> None: still v0.9.0.\n"), sent)
+
+    def test_a_rerun_adds_new_notes_once(self):
+        body = "| targets | cloud |\n\n## Enterprise changes"
+        sent = self.prerelease(self.NOTES, view_body=body, targets="on-prem")
+        self.assertEqual(
+            sent,
+            "| targets | cloud on-prem |\n\n## Enterprise changes"
+            + self.SECTION
+            + self.NOTES
+            + "\n",
+        )
+        os.remove(os.path.join(self.d, "calls"))
+        self.prerelease(self.NOTES, view_body=sent.rstrip("\n"), targets="on-prem")
+        self.assertEqual(self.read("calls"), "release view\n")
+
+    def test_a_rerun_with_nothing_new_does_not_edit(self):
+        self.prerelease("", view_body="| targets | cloud |\n\nbody", targets="cloud")
+        self.assertEqual(self.read("calls"), "release view\n")
 
 
 if __name__ == "__main__":
