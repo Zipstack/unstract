@@ -2,8 +2,10 @@
 
 Five charts on Recharts, imported from `@v1/components/ui/chart`:
 `LineChart`, `AreaChart`, `BarChart`, `StackedBarChart` and `Sparkline`. They
-share one props model, take their colours from tokens, and each carries a
-tooltip, a legend, loading and empty states, and a text alternative. Never
+share one props model, take their colours from tokens, and each has loading
+and empty states and a text alternative; the four axis charts also have a
+tooltip and a legend (the sparkline's tooltip is opt-in, and it has no
+legend). Never
 import `recharts` in a page for a chart these cover; add what you need here
 so every chart keeps the same colours, states and accessibility.
 
@@ -25,6 +27,18 @@ import { LineChart } from "@v1/components/ui/chart";
   state={query.isPending ? "loading" : "ready"}
   emptySlot={<EmptyState … />}
 />
+```
+
+A chart has no error state. When the request fails, render the page's
+`InlineAlert` with `onRetry` **instead of** the chart, so a failure never reads
+as "No data for this period":
+
+```tsx
+{query.isError ? (
+  <InlineAlert kind="error" title="Could not load throughput" onRetry={query.refetch} />
+) : (
+  <LineChart … />
+)}
 ```
 
 ```tsx
@@ -58,9 +72,9 @@ Every chart:
 
 | Prop | Type | Default | Notes |
 | --- | --- | --- | --- |
-| `data` | `readonly Row[]` | required | One row per category. A value that is not a finite number is a gap. |
-| `xKey` | `keyof Row` | required | The category field. Categories may repeat. |
-| `series` | `ChartSeries[]` | required | `{ key, label, tone?, axis?, format? }`, drawn in this order. |
+| `data` | `readonly Row[]` | required | One row per category. `Row` is any object type, an `interface` or an API type with extra fields included. |
+| `xKey` | key of `Row` holding a string or number | required | The category field. Categories may repeat. |
+| `series` | `ChartSeries[]` | required | `{ key, label, tone?, axis?, format? }`, drawn in this order. `key` must name a field typed `number \| null \| undefined`; null or undefined is a gap. Parse numeric strings (a DRF Decimal) first. |
 | `title` | `string` | required | The plot's accessible name and the table caption. The card shows the visible heading. |
 | `summary` | `string` | generated | The sentence screen readers hear. Pass one when the page knows the story ("10 Aug alone carries 49% of the month's pages"). |
 | `xLabel` | `string` | `"Category"` | First column header of the data table. |
@@ -77,9 +91,10 @@ Every chart:
 
 | Prop | Type | Default | Notes |
 | --- | --- | --- | --- |
-| `markers` | `ChartMarker[]` | `[]` | `{ index, series, label }`: a labelled dot on row `index` of `series`. |
+| `markers` | `ChartMarker[]` | `[]` | `{ index, series, label }`: a labelled dot on row `index` of `series`. A marker on a series not charted, a row outside `data` or a gap is dropped, from the plot and the summary alike. |
 | `legend` | `"top" \| "bottom" \| "none"` | `"bottom"` | |
-| `axisFormat` | `(n) => string` | `2.3K` | Y axis ticks (both axes). |
+| `axisFormat` | `(n) => string` | `2.3K` | Left Y axis ticks. |
+| `rightAxisFormat` | `(n) => string` | `axisFormat` | Right Y axis ticks. |
 | `grid` | `boolean` | `true` | Horizontal grid lines. |
 
 `Sparkline` has no axes, grid, legend or markers, and takes `tooltip`
@@ -109,8 +124,10 @@ own stack.
 
 ## Markers: drawn from the series, never a reference line
 
-Mark a point (a peak day, a spike) with `markers`, which become a dot-only
-series aligned to the row. Do not reach for Recharts' `ReferenceLine` or
+Mark a point (a peak day, a spike) with `markers`. On a line or area they
+become a dot-only series aligned to the row; on a bar they are drawn from the
+bar itself, so the dot sits over its own bar in a group and on top of its own
+segment in a stack. Do not reach for Recharts' `ReferenceLine` or
 `ReferenceDot` on a categorical axis: they address a point by its category
 label, and when a label repeats ("Mon" across two weeks) recharts 3.7.0
 silently draws nothing. A marker addresses a row by index, so it always
@@ -134,6 +151,10 @@ sparkline without a tooltip is a static `role="img"` outside the tab order.
 - `loading`: the shared `Skeleton` with one `SkeletonBlock` at the chart's
   height, announced as "Loading {title}". Never a spinner.
 - `empty`: a centred message at the chart's height, or `emptySlot`.
+- error: not a chart state. Render `InlineAlert` with `onRetry` in its place.
+
+A point with no defined neighbour (a single row, or a value between two gaps)
+is drawn as a dot, since a line through one point paints nothing.
 
 ## Testing a page that uses a chart
 

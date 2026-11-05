@@ -1,4 +1,4 @@
-import type { ChartDatum, ChartMarker, ChartSeries } from "./types";
+import type { ChartDatum, ChartSeries } from "./types";
 
 /** What the summary calls each chart. */
 export type ChartKind = "line" | "area" | "bar" | "stacked-bar" | "sparkline";
@@ -33,7 +33,7 @@ export function formatCategory(value: string | number): string {
 
 /** The row's value for `key` as a finite number, or null for a gap. */
 export function numberAt(row: ChartDatum, key: string): number | null {
-  const value = row[key];
+  const value: unknown = (row as Record<string, unknown>)[key];
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
@@ -47,7 +47,8 @@ function categoryAt(
   xKey: string,
   fmt: Formatters,
 ): string {
-  const value = row?.[xKey];
+  const value: unknown =
+    row === undefined ? undefined : (row as Record<string, unknown>)[xKey];
   return typeof value === "string" || typeof value === "number"
     ? fmt.x(value)
     : "";
@@ -55,8 +56,8 @@ function categoryAt(
 
 /**
  * The fallback text alternative: the chart kind, the category range, and each
- * series' highest and lowest point, then any markers. Pages with a better
- * sentence pass `summary`.
+ * series' highest and lowest point, then the labels of the markers that are
+ * drawn (`keptLabels`). Pages with a better sentence pass `summary`.
  */
 export function describeChart<Row extends ChartDatum>(
   input: Readonly<{
@@ -65,11 +66,11 @@ export function describeChart<Row extends ChartDatum>(
     data: readonly Row[];
     xKey: string;
     series: readonly ChartSeries<Row>[];
-    markers?: readonly ChartMarker<Row>[];
+    markerLabels?: readonly string[];
     fmt: Formatters;
   }>,
 ): string {
-  const { kind, title, data, xKey, series, markers = [], fmt } = input;
+  const { kind, title, data, xKey, series, markerLabels = [], fmt } = input;
   const first = categoryAt(data[0], xKey, fmt);
   const last = categoryAt(data[data.length - 1], xKey, fmt);
   const range =
@@ -100,9 +101,8 @@ export function describeChart<Row extends ChartDatum>(
         : `${s.label}: highest ${format(max.value)} at ${max.at}, lowest ${format(min.value)} at ${min.at}.`,
     );
   }
-  const marked = markers.filter((m) => m.index >= 0 && m.index < data.length);
-  if (marked.length > 0) {
-    parts.push(`Marked: ${marked.map((m) => m.label).join("; ")}.`);
+  if (markerLabels.length > 0) {
+    parts.push(`Marked: ${markerLabels.join("; ")}.`);
   }
   return parts.join(" ");
 }

@@ -1,4 +1,4 @@
-import { type JSX, useId } from "react";
+import { type JSX, useId, useMemo } from "react";
 import {
   Line,
   LineChart as RechartsLineChart,
@@ -11,7 +11,7 @@ import {
   DEFAULT_EMPTY_MESSAGE,
   DEFAULT_X_LABEL,
 } from "./ChartFrame";
-import { ChartTooltip, type TooltipEntry } from "./ChartTooltip";
+import { ChartTooltip } from "./ChartTooltip";
 import {
   describeChart,
   type Formatters,
@@ -19,6 +19,7 @@ import {
   formatValue,
   tableRows,
 } from "./describe";
+import { isolatedDot } from "./marks";
 import { seriesColors } from "./palette";
 import type { BaseChartProps, ChartDatum } from "./types";
 
@@ -58,12 +59,15 @@ export function Sparkline<Row extends ChartDatum>({
   const fmt: Formatters = { value: valueFormat, x: xFormat };
   const colors = seriesColors(series);
   const resolved = data.length === 0 && state === "ready" ? "empty" : state;
+  // A stable array while `data` is, so Recharts does not reset its data
+  // store on every parent render.
+  const rows = useMemo(() => [...data], [data]);
   const text =
     summary ??
     describeChart({ kind: "sparkline", title, data, xKey, series, fmt });
   const chart = (
     <RechartsLineChart
-      data={[...data]}
+      data={rows}
       margin={MARGIN}
       width={width}
       height={width === undefined ? undefined : height}
@@ -79,20 +83,15 @@ export function Sparkline<Row extends ChartDatum>({
         <Tooltip
           cursor={{ stroke: "var(--border)" }}
           isAnimationActive={false}
-          content={(props: {
-            active?: boolean;
-            label?: unknown;
-            payload?: readonly TooltipEntry[];
-          }) => (
+          filterNull={false}
+          content={
             <ChartTooltip
-              active={props.active}
-              label={
-                // The x key is not an axis here, so Recharts passes the index.
-                typeof props.label === "number"
-                  ? data[props.label]?.[xKey]
-                  : props.label
+              // The x key is not an axis here, so Recharts passes the index.
+              labelOf={(label) =>
+                typeof label === "number"
+                  ? (data[label] as Record<string, unknown> | undefined)?.[xKey]
+                  : label
               }
-              payload={props.payload}
               series={series.map((s, i) => ({
                 key: s.key,
                 label: s.label,
@@ -101,7 +100,7 @@ export function Sparkline<Row extends ChartDatum>({
               }))}
               fmt={fmt}
             />
-          )}
+          }
         />
       ) : null}
       {series.map((s, i) => (
@@ -112,7 +111,7 @@ export function Sparkline<Row extends ChartDatum>({
           type="linear"
           stroke={colors[i]}
           strokeWidth={1.5}
-          dot={false}
+          dot={isolatedDot(colors[i], data, s.key)}
           activeDot={
             tooltip ? { r: 3, stroke: "var(--card)", strokeWidth: 2 } : false
           }

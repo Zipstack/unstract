@@ -6,7 +6,11 @@ import type { ChartState } from "./types";
 export const DEFAULT_EMPTY_MESSAGE = "No data for this period";
 export const DEFAULT_X_LABEL = "Category";
 
-export type LegendItem = Readonly<{ label: string; color: string }>;
+export type LegendItem = Readonly<{
+  key: string;
+  label: string;
+  color: string;
+}>;
 
 type ChartFrameProps = Readonly<{
   slot: string;
@@ -102,7 +106,7 @@ export function ChartFrame({
       >
         {legend.items.map((item) => (
           <li
-            key={item.label}
+            key={item.key}
             className="ui:inline-flex ui:items-center ui:gap-1.5"
           >
             <span
@@ -139,8 +143,9 @@ export function ChartFrame({
         <caption>{title}</caption>
         <thead>
           <tr>
-            {table.head.map((cell) => (
-              <th key={cell} scope="col">
+            {table.head.map((cell, c) => (
+              // biome-ignore lint/suspicious/noArrayIndexKey: columns follow series order, and labels may repeat.
+              <th key={c} scope="col">
                 {cell}
               </th>
             ))}

@@ -309,6 +309,209 @@ describe("cartesian options", () => {
     ]).toEqual(last);
   });
 
+  it("puts a bar marker over its own bar in a group, and on top of its own segment in a stack", () => {
+    const geometry = (el: Element | null | undefined) => ({
+      x: Number(el?.getAttribute("x")),
+      y: Number(el?.getAttribute("y")),
+      width: Number(el?.getAttribute("width")),
+    });
+    const markerAt = (container: HTMLElement) => {
+      const circle = container.querySelector("[data-slot=chart-marker] circle");
+      return {
+        cx: Number(circle?.getAttribute("cx")),
+        cy: Number(circle?.getAttribute("cy")),
+      };
+    };
+    const marker = [{ index: 1, series: "pages", label: "peak" }] as const;
+    // Grouped: "pages" is the first of two bars in row 1.
+    const grouped = renderV1(<BarChart {...props({ markers: marker })} />);
+    const bar = geometry(
+      grouped.container.querySelectorAll(`path[name="Pages processed"]`)[1],
+    );
+    expect(markerAt(grouped.container).cx).toBeCloseTo(bar.x + bar.width / 2);
+    expect(markerAt(grouped.container).cy).toBeCloseTo(bar.y);
+    grouped.unmount();
+    // Stacked: "pages" is the bottom segment, with "failed" above it.
+    const stacked = renderV1(
+      <StackedBarChart {...props({ markers: marker })} />,
+    );
+    const segment = geometry(
+      stacked.container.querySelectorAll(`path[name="Pages processed"]`)[1],
+    );
+    const above = geometry(
+      stacked.container.querySelectorAll(`path[name="Failed pages"]`)[1],
+    );
+    expect(above.y).toBeLessThan(segment.y);
+    expect(markerAt(stacked.container).cx).toBeCloseTo(
+      segment.x + segment.width / 2,
+    );
+    expect(markerAt(stacked.container).cy).toBeCloseTo(segment.y);
+  });
+
+  it("stacks right-axis series separately, beside the left stack and from their own baseline", () => {
+    const { container } = renderV1(
+      <StackedBarChart
+        {...props({
+          series: [
+            { key: "pages", label: "Pages processed" },
+            { key: "failed", label: "Failed pages", axis: "right" },
+          ],
+        })}
+      />,
+    );
+    const bottom = (el: Element | undefined) =>
+      Number(el?.getAttribute("y")) + Number(el?.getAttribute("height"));
+    const left = container.querySelectorAll(`path[name="Pages processed"]`);
+    const right = container.querySelectorAll(`path[name="Failed pages"]`);
+    // Row 1: the right-axis bar starts at the plot's baseline, not on top of
+    // the left-axis bar.
+    expect(bottom(right[1])).toBeCloseTo(bottom(left[1]));
+    // ...and beside it, not drawn over it (one shared stack would overlap).
+    expect(Number(right[1]?.getAttribute("x"))).toBeGreaterThanOrEqual(
+      Number(left[1]?.getAttribute("x")) +
+        Number(left[1]?.getAttribute("width")),
+    );
+  });
+
+  it("colours a marker as its series, and keeps marker series out of the tooltip", async () => {
+    const { container, user } = renderV1(
+      <LineChart
+        {...props({
+          series: [
+            { key: "pages", label: "Pages processed" },
+            { key: "failed", label: "Failed pages", tone: "destructive" },
+          ],
+          markers: [{ index: 1, series: "failed", label: "spike" }],
+        })}
+      />,
+    );
+    expect(
+      container.querySelector("[data-slot=chart-marker] circle"),
+    ).toHaveAttribute("fill", "var(--destructive)");
+    await user.tab();
+    await user.keyboard("{ArrowRight}");
+    expect(
+      container.querySelector("[data-slot=chart-tooltip]"),
+    ).toHaveTextContent(/^10 AugPages processed2,981Failed pages600$/);
+  });
+
+  it("neither draws nor reads out a marker on a gap or an uncharted series", () => {
+    const gappy = [
+      { day: "9 Aug", pages: 10, failed: 1 },
+      { day: "10 Aug", pages: null, failed: 600 },
+    ];
+    const { container } = renderV1(
+      <LineChart
+        title="Throughput"
+        data={gappy}
+        xKey="day"
+        width={WIDTH}
+        height={HEIGHT}
+        series={[{ key: "pages", label: "Pages" }]}
+        markers={[
+          { index: 1, series: "pages", label: "on a gap" },
+          { index: 1, series: "failed", label: "not charted" },
+        ]}
+      />,
+    );
+    expect(container.querySelector("[data-slot=chart-marker]")).toBeNull();
+    expect(screen.queryByText(/Marked:/)).toBeNull();
+  });
+
+  it("draws a point with no neighbour as a dot, and leaves connected points to the line", () => {
+    const rows = [
+      { day: "1", pages: 5, failed: 1 },
+      { day: "2", pages: null, failed: 2 },
+      { day: "3", pages: 7, failed: 3 },
+      { day: "4", pages: 8, failed: null },
+    ];
+    for (const Chart of [LineChart, AreaChart]) {
+      const { container, unmount } = renderV1(
+        <Chart
+          title="T"
+          data={rows}
+          xKey="day"
+          width={WIDTH}
+          height={HEIGHT}
+          series={[
+            { key: "pages", label: "Pages" },
+            { key: "failed", label: "Failed" },
+          ]}
+        />,
+      );
+      // pages: row 1 stands alone; rows 3 and 4 join. failed: rows 1-3 join.
+      const points = container.querySelectorAll("[data-slot=chart-point]");
+      expect(points).toHaveLength(1);
+      expect(points[0]).toHaveAttribute("fill", "var(--chart-1)");
+      unmount();
+    }
+    const { container } = renderV1(
+      <Sparkline
+        title="One day"
+        data={[{ day: "1 Sep", pages: 5 }]}
+        xKey="day"
+        width={120}
+        series={[{ key: "pages", label: "Pages" }]}
+      />,
+    );
+    expect(container.querySelectorAll("[data-slot=chart-point]")).toHaveLength(
+      1,
+    );
+  });
+
+  it("still names the category in the tooltip when every series is a gap there", async () => {
+    const rows = [
+      { day: "9 Aug", pages: 10, failed: 1 },
+      { day: "10 Aug", pages: null, failed: null },
+      { day: "11 Aug", pages: 20, failed: 2 },
+    ];
+    const { container, user } = renderV1(
+      <BarChart
+        title="T"
+        data={rows}
+        xKey="day"
+        width={WIDTH}
+        height={HEIGHT}
+        series={SERIES}
+      />,
+    );
+    await user.tab();
+    await user.keyboard("{ArrowRight}");
+    expect(
+      container.querySelector("[data-slot=chart-tooltip]"),
+    ).toHaveTextContent("10 AugPages processed–Failed pages–");
+    // Recharts hides the wrapper of an empty payload; gap entries keep it shown.
+    expect(container.querySelector(".recharts-tooltip-wrapper")).toHaveStyle({
+      visibility: "visible",
+    });
+  });
+
+  it("formats the left axis with axisFormat and the right with rightAxisFormat", () => {
+    const { container } = renderV1(
+      <LineChart
+        {...props({
+          series: [
+            { key: "pages", label: "Pages" },
+            { key: "failed", label: "Cost", axis: "right" },
+          ],
+          axisFormat: (v) => `${v}p`,
+          rightAxisFormat: (v) => `$${v}`,
+        })}
+      />,
+    );
+    const ticks = (axis: Element | undefined) =>
+      [...(axis?.querySelectorAll("text") ?? [])].map(
+        (t) => t.textContent ?? "",
+      );
+    const [left, right] = [
+      ...container.querySelectorAll(".recharts-yAxis-tick-labels"),
+    ];
+    expect(ticks(left).length).toBeGreaterThan(0);
+    expect(ticks(left).every((t) => t.endsWith("p"))).toBe(true);
+    expect(ticks(right).length).toBeGreaterThan(0);
+    expect(ticks(right).every((t) => t.startsWith("$"))).toBe(true);
+  });
+
   it("separates stacked segments with a card-coloured stroke", () => {
     const { container } = renderV1(<StackedBarChart {...props()} />);
     const segments = container.querySelectorAll(".recharts-bar-rectangle path");
@@ -389,7 +592,11 @@ describe("Sparkline", () => {
       "Loading Pages processed, last 30 days",
     );
     rerender(
-      <Sparkline {...sparkProps} data={[]} emptyMessage="No pages yet" />,
+      <Sparkline
+        {...sparkProps}
+        data={[] as Row[]}
+        emptyMessage="No pages yet"
+      />,
     );
     expect(screen.getByText("No pages yet")).toBeInTheDocument();
   });

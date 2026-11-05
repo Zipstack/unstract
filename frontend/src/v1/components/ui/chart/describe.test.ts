@@ -7,10 +7,11 @@ import {
   numberAt,
   tableRows,
 } from "./describe";
-import { markerKey, planMarkers } from "./markers";
+import { keptLabels, keptMarkers, markerKey, markerRows } from "./markers";
 
 const fmt: Formatters = { value: formatValue, x: String };
-const data = [
+type Row = { day: string; pages: number; cost: number | null };
+const data: Row[] = [
   { day: "9 Aug", pages: 10, cost: 0.5 },
   { day: "10 Aug", pages: 2981, cost: null },
   { day: "11 Aug", pages: 20, cost: 1.25 },
@@ -41,10 +42,7 @@ it("summarises the range and each series' extremes, skipping gaps and using the 
         { key: "pages", label: "Pages" },
         { key: "cost", label: "Cost", format: (v) => `$${v.toFixed(2)}` },
       ],
-      markers: [
-        { index: 1, series: "pages", label: "10 Aug · 2,981 pages" },
-        { index: 9, series: "pages", label: "out of range" },
-      ],
+      markerLabels: ["10 Aug · 2,981 pages"],
       fmt,
     }),
   ).toBe(
@@ -88,49 +86,60 @@ it("builds one table row per datum, a dash for a gap", () => {
   ]);
 });
 
-it("plans markers by row index and ignores unknown series and rows", () => {
+it("keeps only markers that will be drawn: a charted series, an integer row in range, a value there", () => {
   const series = [
     { key: "pages", label: "Pages" },
     { key: "cost", label: "Cost" },
   ] as const;
-  const plan = planMarkers(
-    data,
-    series,
-    [
-      { index: 1, series: "pages", label: "peak" },
-      { index: 1, series: "cost", label: "gap" }, // no value: no dot
-      { index: -1, series: "pages", label: "neg" },
-      { index: 1.5, series: "pages", label: "frac" },
-      // @ts-expect-error an unknown series is ignored at runtime too
-      { index: 0, series: "nope", label: "unknown" },
-    ],
-    false,
-  );
-  expect(plan.rows.map((r) => r[markerKey(0)])).toEqual([null, 2981, null]);
-  expect(plan.rows.map((r) => r[markerKey(1)])).toEqual([null, null, null]);
-  expect(plan.series.map((s) => [s.seriesIndex, [...s.labels]])).toEqual([
-    [0, [[1, "peak"]]],
-    [1, [[1, "gap"]]],
+  const kept = keptMarkers<Row>(data, series, [
+    { index: 2, series: "pages", label: "late" },
+    { index: 0, series: "pages", label: "early" },
+    { index: 1, series: "cost", label: "gap" }, // cost is null on row 1
+    { index: 0, series: "cost", label: "cost" },
+    { index: -1, series: "pages", label: "negative" },
+    { index: 3, series: "pages", label: "past the end" },
+    { index: 1.5, series: "pages", label: "fractional" },
   ]);
+  expect([...kept].map(([s, byRow]) => [s, [...byRow]])).toEqual([
+    [
+      0,
+      [
+        [2, "late"],
+        [0, "early"],
+      ],
+    ],
+    [1, [[0, "cost"]]],
+  ]);
+  // The summary reads the same set, in series then row order.
+  expect(keptLabels(kept)).toEqual(["early", "late", "cost"]);
+});
+
+it("drops a marker on a series that is not charted", () => {
+  expect(
+    keptMarkers<Row>(
+      data,
+      [{ key: "pages", label: "Pages" }],
+      [{ index: 0, series: "cost", label: "not charted" }],
+    ).size,
+  ).toBe(0);
+});
+
+it("adds one marker field per marked series to line and area rows", () => {
+  const series = [
+    { key: "pages", label: "Pages" },
+    { key: "cost", label: "Cost" },
+  ] as const;
+  const kept = keptMarkers<Row>(data, series, [
+    { index: 1, series: "pages", label: "peak" },
+  ]);
+  const rows = markerRows(data, series, kept) as Record<string, unknown>[];
+  expect(rows.map((r) => r[markerKey(0)])).toEqual([null, 2981, null]);
+  expect(rows.map((r) => markerKey(1) in r)).toEqual([false, false, false]);
+  expect(rows[1]).toMatchObject(data[1]);
 });
 
 it("returns the data untouched when nothing is marked", () => {
-  const plan = planMarkers(data, [{ key: "pages", label: "P" }], [], false);
-  expect(plan.rows).toBe(data);
-  expect(plan.series).toEqual([]);
-});
-
-it("in a stacked chart puts a marker on top of its segment, counting only its own axis' stack", () => {
-  const rows = [{ x: "a", low: 2, high: 5, other: 100 }];
-  const plan = planMarkers(
-    rows,
-    [
-      { key: "low", label: "Low" },
-      { key: "other", label: "Other", axis: "right" },
-      { key: "high", label: "High" },
-    ],
-    [{ index: 0, series: "high", label: "top" }],
-    true,
+  expect(markerRows(data, [{ key: "pages", label: "P" }], new Map())).toBe(
+    data,
   );
-  expect(plan.rows[0][markerKey(2)]).toBe(7);
 });

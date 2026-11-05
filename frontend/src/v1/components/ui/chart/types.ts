@@ -1,9 +1,28 @@
 import type { ReactNode } from "react";
 
-/** One row of chart data: the category (`xKey`) plus one number per series. */
-export type ChartDatum = Readonly<
-  Record<string, string | number | null | undefined>
->;
+/**
+ * Any row object: an `interface`, an API response type with fields the chart
+ * never reads, or a plain object. Only the keys a chart reads are constrained
+ * (see `CategoryKey` and `NumericKey`).
+ */
+export type ChartDatum = object;
+
+/** Keys of `Row` holding a category: a string or a number. */
+export type CategoryKey<Row> = {
+  [K in keyof Row]-?: Row[K] extends string | number ? K : never;
+}[keyof Row] &
+  string;
+
+/**
+ * Keys of `Row` holding a series value: a number, or null / undefined for a
+ * gap. A numeric string ("12.5", as a DRF Decimal serialises) is rejected
+ * here: parse it before charting, or Recharts would draw it while the
+ * tooltip, table and summary treat it as a gap.
+ */
+export type NumericKey<Row> = {
+  [K in keyof Row]-?: Row[K] extends number | null | undefined ? K : never;
+}[keyof Row] &
+  string;
 
 /**
  * A meaning-carrying colour that takes a series out of the ordinal ramp, e.g.
@@ -19,7 +38,7 @@ export type ChartTone =
 
 export type ChartSeries<Row extends ChartDatum> = Readonly<{
   /** The field of each row that holds this series' value. */
-  key: keyof Row & string;
+  key: NumericKey<Row>;
   /** Shown in the legend, the tooltip, the summary and the data table. */
   label: string;
   /** Leave out to take the next step of the ordinal ramp. */
@@ -31,14 +50,16 @@ export type ChartSeries<Row extends ChartDatum> = Readonly<{
 }>;
 
 /**
- * A highlighted point on a series (peak day, spike). Drawn as a dot-only
- * series, never as a Recharts ReferenceLine or ReferenceDot: see `markers.ts`.
+ * A highlighted point on a series (peak day, spike). Drawn from the series,
+ * never as a Recharts ReferenceLine or ReferenceDot: see `markers.ts`. A
+ * marker on a series not in `series`, on a row outside `data` or on a gap is
+ * neither drawn nor read out in the summary.
  */
 export type ChartMarker<Row extends ChartDatum> = Readonly<{
   /** Row index in `data`, so repeated category labels stay unambiguous. */
   index: number;
   /** The series the marker sits on. */
-  series: keyof Row & string;
+  series: NumericKey<Row>;
   /** Drawn above the dot, and read out in the summary. */
   label: string;
 }>;
@@ -49,7 +70,7 @@ export type ChartState = "ready" | "loading" | "empty";
 export type BaseChartProps<Row extends ChartDatum> = Readonly<{
   data: readonly Row[];
   /** The field holding each row's category (a date, a mode). */
-  xKey: keyof Row & string;
+  xKey: CategoryKey<Row>;
   /** Names the category column of the data table, e.g. "Date". Default "Category". */
   xLabel?: string;
   series: readonly ChartSeries<Row>[];
@@ -60,7 +81,11 @@ export type BaseChartProps<Row extends ChartDatum> = Readonly<{
   title: string;
   /** A sentence describing what the chart shows; generated from the data when left out. */
   summary?: string;
-  /** Default `ready`. Data with no rows shows the empty state too. */
+  /**
+   * Default `ready`. Data with no rows shows the empty state too. There is no
+   * error state: on a failed request render the page's `InlineAlert` (with
+   * `onRetry`) instead of the chart, so a failure never reads as "no data".
+   */
   state?: ChartState;
   /** Replaces the default empty message, e.g. with a page's EmptyState. */
   emptySlot?: ReactNode;
@@ -83,8 +108,10 @@ export type CartesianChartProps<Row extends ChartDatum> = BaseChartProps<Row> &
     markers?: readonly ChartMarker<Row>[];
     /** Where the legend sits; `none` hides it. Default `bottom`. */
     legend?: "top" | "bottom" | "none";
-    /** Formats Y axis ticks. Default: compact number (2.3K). */
+    /** Formats left Y axis ticks. Default: compact number (2.3K). */
     axisFormat?: (value: number) => string;
+    /** Formats right Y axis ticks (series with `axis: "right"`). Default: `axisFormat`. */
+    rightAxisFormat?: (value: number) => string;
     /** Draws horizontal grid lines. Default true. */
     grid?: boolean;
   }>;

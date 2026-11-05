@@ -1,9 +1,10 @@
-import { type JSX, type ReactElement, useId } from "react";
+import { type JSX, useId, useMemo } from "react";
 import {
   Area,
   Bar,
   CartesianGrid,
   ComposedChart,
+  LabelList,
   Line,
   ResponsiveContainer,
   Tooltip,
@@ -15,7 +16,7 @@ import {
   DEFAULT_EMPTY_MESSAGE,
   DEFAULT_X_LABEL,
 } from "./ChartFrame";
-import { ChartTooltip, type TooltipEntry } from "./ChartTooltip";
+import { ChartTooltip } from "./ChartTooltip";
 import {
   type ChartKind,
   describeChart,
@@ -25,51 +26,18 @@ import {
   formatValue,
   tableRows,
 } from "./describe";
-import { markerKey, planMarkers } from "./markers";
+import { keptLabels, keptMarkers, markerKey, markerRows } from "./markers";
+import { barMarker, isolatedDot, markerDot } from "./marks";
 import { seriesColors } from "./palette";
 import type { CartesianChartProps, ChartDatum } from "./types";
 
 export const DEFAULT_CHART_HEIGHT = 240;
 
+const NO_MARKERS: readonly never[] = [];
+
 const AXIS_TICK = { fill: "var(--muted-foreground)" };
 // Room for a marker label above the highest point.
 const MARGIN = { top: 20, right: 8, bottom: 0, left: 0 };
-
-type MarkerDotProps = Readonly<{
-  cx?: number;
-  cy?: number;
-  index?: number;
-}>;
-
-/** A marker: a dot ringed in the card colour, its label above. */
-function markerDot(color: string, labels: ReadonlyMap<number, string>) {
-  return function MarkerDot({ cx, cy, index }: MarkerDotProps): ReactElement {
-    const label = index === undefined ? undefined : labels.get(index);
-    if (cx === undefined || cy === undefined || label === undefined) {
-      return <g key={`none-${index}`} />;
-    }
-    return (
-      <g key={`marker-${index}`} data-slot="chart-marker">
-        <circle
-          cx={cx}
-          cy={cy}
-          r={4}
-          fill={color}
-          stroke="var(--card)"
-          strokeWidth={2}
-        />
-        <text
-          x={cx}
-          y={cy - 10}
-          textAnchor="middle"
-          className="ui:fill-foreground"
-        >
-          {label}
-        </text>
-      </g>
-    );
-  };
-}
 
 type Props<Row extends ChartDatum> = CartesianChartProps<Row> &
   Readonly<{ kind: Exclude<ChartKind, "sparkline">; slot: string }>;
@@ -92,7 +60,8 @@ export function CartesianChart<Row extends ChartDatum>({
   valueFormat = formatValue,
   xFormat = formatCategory,
   axisFormat = formatAxisValue,
-  markers = [],
+  rightAxisFormat = axisFormat,
+  markers = NO_MARKERS,
   legend = "bottom",
   grid = true,
   className,
@@ -101,11 +70,30 @@ export function CartesianChart<Row extends ChartDatum>({
   const fmt: Formatters = { value: valueFormat, x: xFormat };
   const colors = seriesColors(series);
   const stacked = kind === "stacked-bar";
+  const bars = kind === "bar" || stacked;
   const resolved = data.length === 0 && state === "ready" ? "empty" : state;
-  const plan = planMarkers(data, series, markers, stacked);
+  // Memoised so the rows Recharts receives keep their identity while data,
+  // series and markers do; a fresh array resets its data store every render.
+  const kept = useMemo(
+    () => keptMarkers(data, series, markers),
+    [data, series, markers],
+  );
+  const rows = useMemo(
+    () => [...(bars ? data : markerRows(data, series, kept))],
+    [bars, data, series, kept],
+  );
   const hasRight = series.some((s) => s.axis === "right");
   const text =
-    summary ?? describeChart({ kind, title, data, xKey, series, markers, fmt });
+    summary ??
+    describeChart({
+      kind,
+      title,
+      data,
+      xKey,
+      series,
+      markerLabels: keptLabels(kept),
+      fmt,
+    });
   const tooltipSeries = series.map((s, i) => ({
     key: s.key,
     label: s.label,
@@ -130,7 +118,7 @@ export function CartesianChart<Row extends ChartDatum>({
             type="linear"
             stroke={colors[i]}
             strokeWidth={2}
-            dot={false}
+            dot={isolatedDot(colors[i], data, s.key)}
             activeDot={{ r: 4, stroke: "var(--card)", strokeWidth: 2 }}
             connectNulls={false}
           />
@@ -145,7 +133,7 @@ export function CartesianChart<Row extends ChartDatum>({
             strokeWidth={2}
             fill={colors[i]}
             fillOpacity={0.12}
-            dot={false}
+            dot={isolatedDot(colors[i], data, s.key)}
             activeDot={{ r: 4, stroke: "var(--card)", strokeWidth: 2 }}
           />
         );
@@ -165,28 +153,37 @@ export function CartesianChart<Row extends ChartDatum>({
                   strokeWidth: 1,
                 }
               : { radius: [2, 2, 0, 0] as [number, number, number, number] })}
-          />
+          >
+            {kept.has(i) ? (
+              <LabelList
+                dataKey={s.key}
+                content={barMarker(colors[i], kept.get(i) ?? new Map())}
+              />
+            ) : null}
+          </Bar>
         );
     }
   });
 
-  const markerMarks = plan.series.map(({ seriesIndex, labels }) => (
-    <Line
-      key={markerKey(seriesIndex)}
-      dataKey={markerKey(seriesIndex)}
-      yAxisId={series[seriesIndex].axis ?? "left"}
-      stroke="none"
-      legendType="none"
-      tooltipType="none"
-      isAnimationActive={false}
-      activeDot={false}
-      dot={markerDot(colors[seriesIndex], labels)}
-    />
-  ));
+  const markerMarks = bars
+    ? []
+    : [...kept].map(([seriesIndex, labels]) => (
+        <Line
+          key={markerKey(seriesIndex)}
+          dataKey={markerKey(seriesIndex)}
+          yAxisId={series[seriesIndex].axis ?? "left"}
+          stroke="none"
+          legendType="none"
+          tooltipType="none"
+          isAnimationActive={false}
+          activeDot={false}
+          dot={markerDot(colors[seriesIndex], labels)}
+        />
+      ));
 
   const chart = (
     <ComposedChart
-      data={[...plan.rows]}
+      data={rows}
       margin={MARGIN}
       width={width}
       height={width === undefined ? undefined : height}
@@ -217,7 +214,7 @@ export function CartesianChart<Row extends ChartDatum>({
         <YAxis
           yAxisId="right"
           orientation="right"
-          tickFormatter={(value: number) => axisFormat(value)}
+          tickFormatter={(value: number) => rightAxisFormat(value)}
           tick={AXIS_TICK}
           axisLine={false}
           tickLine={false}
@@ -231,19 +228,10 @@ export function CartesianChart<Row extends ChartDatum>({
             : { stroke: "var(--border)" }
         }
         isAnimationActive={false}
-        content={(props: {
-          active?: boolean;
-          label?: unknown;
-          payload?: readonly TooltipEntry[];
-        }) => (
-          <ChartTooltip
-            active={props.active}
-            label={props.label}
-            payload={props.payload}
-            series={tooltipSeries}
-            fmt={fmt}
-          />
-        )}
+        // Keep gap entries, so a category where every series is a gap still
+        // shows its tooltip (Recharts hides one with an empty payload).
+        filterNull={false}
+        content={<ChartTooltip series={tooltipSeries} fmt={fmt} />}
       />
       {marks}
       {markerMarks}
@@ -271,6 +259,7 @@ export function CartesianChart<Row extends ChartDatum>({
           : {
               position: legend,
               items: series.map((s, i) => ({
+                key: s.key,
                 label: s.label,
                 color: colors[i],
               })),

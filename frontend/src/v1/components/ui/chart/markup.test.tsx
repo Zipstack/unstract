@@ -45,7 +45,10 @@ const VARIANTS: [string, ReactElement][] = [
     "loading",
     <LineChart key="v" {...shared} series={series} state="loading" />,
   ],
-  ["empty", <BarChart key="v" {...shared} series={ramp} data={[]} />],
+  [
+    "empty",
+    <BarChart key="v" {...shared} series={ramp} data={[] as typeof data} />,
+  ],
 ];
 
 /** useId and Recharts' generated clip-path ids change with render order; pin them. */

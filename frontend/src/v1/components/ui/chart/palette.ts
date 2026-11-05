@@ -1,6 +1,6 @@
 import type { ChartDatum, ChartSeries, ChartTone } from "./types";
 
-/** Steps in the ordinal ramp (`--chart-1` lightest to `--chart-5` darkest in light mode). */
+/** Steps in the ordinal ramp (`--chart-1` lightest to `--chart-5` darkest, in every mode). */
 export const CHART_RAMP_SIZE = 5;
 
 /** The token each tone reads. */
