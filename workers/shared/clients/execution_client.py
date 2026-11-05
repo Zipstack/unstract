@@ -104,7 +104,7 @@ class ExecutionAPIClient(BaseAPIClient):
         execution_id: str | uuid.UUID,
         organization_id: str | None = None,
         include_cost: bool = False,
-        file_execution: bool = True,
+        file_execution: bool = False,
     ) -> ExecutionResponse:
         """Get workflow execution with context.
 
@@ -112,20 +112,24 @@ class ExecutionAPIClient(BaseAPIClient):
             execution_id: Workflow execution ID
             organization_id: Optional organization ID override
             include_cost: Whether to include aggregated usage cost (expensive operation)
+            file_execution: Whether to include every file-execution row of the
+                execution (expensive for large executions). Pass True only if
+                the caller reads ``file_executions``.
 
         Returns:
             ExecutionResponse containing workflow execution data
         """
         try:
-            # Build URL with optional cost parameter
             url = self._build_url("workflow_execution", f"{str(execution_id)}/")
+            # file_execution is always sent: the backend defaults it to true, so
+            # omitting it would load every file-execution row.
+            params = {"file_execution": "true" if file_execution else "false"}
             if include_cost:
-                url += "?include_cost=true"
-            if file_execution:
-                url += "?file_execution=true"
+                params["include_cost"] = "true"
 
             response = self.get(
                 url,
+                params=params,
                 organization_id=organization_id,
             )
             return ExecutionResponse.success_response(
@@ -181,7 +185,9 @@ class ExecutionAPIClient(BaseAPIClient):
                 message="Successfully retrieved workflow definition",
             )
         except Exception as e:
-            logger.error(f"Failed to get workflow definition for {workflow_id}: {str(e)}")
+            logger.exception(
+                f"Failed to get workflow definition for {workflow_id}: {str(e)}"
+            )
             return ExecutionResponse.error_response(
                 error=str(e),
                 execution_id=str(workflow_id),
@@ -545,7 +551,7 @@ class ExecutionAPIClient(BaseAPIClient):
             )
 
         except Exception as e:
-            logger.error(f"Failed to update pipeline {pipeline_id} status: {str(e)}")
+            logger.exception(f"Failed to update pipeline {pipeline_id} status: {str(e)}")
             return APIResponse(success=False, error=str(e))
 
     # Workflow execution finalization handled by status updates
@@ -574,7 +580,7 @@ class ExecutionAPIClient(BaseAPIClient):
             logger.debug(f"Incremented completed files for execution {execution_id}")
             return response
         except Exception as e:
-            logger.error(f"Failed to increment completed files: {str(e)}")
+            logger.exception(f"Failed to increment completed files: {str(e)}")
             return {"success": False, "error": str(e)}
 
     def increment_failed_files(
@@ -599,7 +605,7 @@ class ExecutionAPIClient(BaseAPIClient):
             logger.debug(f"Incremented failed files for execution {execution_id}")
             return response
         except Exception as e:
-            logger.error(f"Failed to increment failed files: {str(e)}")
+            logger.exception(f"Failed to increment failed files: {str(e)}")
             return {"success": False, "error": str(e)}
 
     def get_workflow_destination_config(
@@ -625,7 +631,7 @@ class ExecutionAPIClient(BaseAPIClient):
             logger.debug(f"Retrieved full response for workflow {workflow_id}")
             return response
         except Exception as e:
-            logger.error(f"Failed to get destination config: {str(e)}")
+            logger.exception(f"Failed to get destination config: {str(e)}")
             return {"type": "none", "error": str(e)}
 
     def check_file_history_batch(
@@ -781,7 +787,7 @@ class ExecutionAPIClient(BaseAPIClient):
                 return convert_dict_response(response, APIResponse)
 
         except Exception as e:
-            logger.error(f"Error parsing pipeline data for {pipeline_id}: {e}")
+            logger.exception(f"Error parsing pipeline data for {pipeline_id}: {e}")
             return APIResponse.error_response(
                 error=str(e),
                 message=f"Failed to parse pipeline data for {pipeline_id}",

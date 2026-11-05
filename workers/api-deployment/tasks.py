@@ -22,6 +22,11 @@ from shared.infrastructure.logging.helpers import log_file_info
 from shared.infrastructure.logging.workflow_logger import WorkerWorkflowLogger
 from shared.patterns.retry.utils import retry
 from shared.processing.files import FileProcessingUtils
+from shared.utils.manual_review_factory import (
+    AUTO_ENABLE_HIGHLIGHT,
+    get_manual_review_workflow_util,
+    has_confidence_rules,
+)
 from shared.workflow.execution import WorkerExecutionContext, WorkflowOrchestrationUtils
 from shared.workflow.execution.tool_validation import validate_workflow_tool_instances
 from worker import app
@@ -665,6 +670,15 @@ def _run_workflow_api(
         total_files=total_files,
     )
 
+    # A hitl_packet_id request skips rule evaluation, so highlight would go unused.
+    auto_enable_highlight = (
+        bool(kwargs.get("hitl_queue_name"))
+        and not kwargs.get("hitl_packet_id")
+        and has_confidence_rules(
+            get_manual_review_workflow_util(api_client, schema_name), workflow_id, "API"
+        )
+    )
+
     # Create batch tasks following the exact Django pattern
     batch_tasks = []
     execution_mode_str = (
@@ -687,6 +701,8 @@ def _run_workflow_api(
             total_files=total_files,
             **kwargs,
         )
+        if auto_enable_highlight:
+            file_data.manual_review_config[AUTO_ENABLE_HIGHLIGHT] = True
 
         # Calculate manual review decisions for this specific batch
         if file_data.manual_review_config.get("review_required", False):

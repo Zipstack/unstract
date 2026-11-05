@@ -149,7 +149,9 @@ def trigger_notification(
             _route_notification(api_client, notification, notification_payload)
 
     except Exception as e:
-        logger.error(f"Error triggering pipeline notifications for {pipeline_id}: {e}")
+        logger.exception(
+            f"Error triggering pipeline notifications for {pipeline_id}: {e}"
+        )
 
 
 def trigger_pipeline_notifications(
@@ -170,7 +172,9 @@ def trigger_pipeline_notifications(
     try:
         execution_status = ExecutionStatus(status)
     except Exception as e:
-        logger.error(f"Error triggering pipeline notifications for {pipeline_id}: {e}")
+        logger.exception(
+            f"Error triggering pipeline notifications for {pipeline_id}: {e}"
+        )
         return
 
     try:
@@ -231,7 +235,9 @@ def trigger_pipeline_notifications(
             _route_notification(api_client, notification, payload)
 
     except Exception as e:
-        logger.error(f"Error triggering pipeline notifications for {pipeline_id}: {e}")
+        logger.exception(
+            f"Error triggering pipeline notifications for {pipeline_id}: {e}"
+        )
 
 
 def trigger_api_notifications(
@@ -251,7 +257,7 @@ def trigger_api_notifications(
     try:
         execution_status = ExecutionStatus(status)
     except Exception as e:
-        logger.error(f"Error triggering API notifications for {api_id}: {e}")
+        logger.exception(f"Error triggering API notifications for {api_id}: {e}")
         return
 
     try:
@@ -299,7 +305,7 @@ def trigger_api_notifications(
             _route_notification(api_client, notification, payload)
 
     except Exception as e:
-        logger.error(f"Error triggering API notifications for {api_id}: {e}")
+        logger.exception(f"Error triggering API notifications for {api_id}: {e}")
 
 
 def handle_status_notifications(

@@ -1,7 +1,5 @@
 from backend.settings.base import *  # noqa: F403
 
-DEBUG = True
-
 X_FRAME_OPTIONS = "http://localhost:3000"
 X_FRAME_OPTIONS = "ALLOW-FROM http://localhost:3000"
 

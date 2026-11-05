@@ -105,7 +105,6 @@
 
 .prompt-studio-guide-btn {
   transition: all 0.2s ease-in-out !important;
-  margin-top: 8px !important;
   height: 32px !important;
   font-size: 13px !important;
   padding: 4px 0 !important;
@@ -123,7 +122,6 @@
 
 .prompt-studio-cancel-btn {
   transition: all 0.2s ease-in-out !important;
-  margin-top: 8px !important;
   height: 32px !important;
   font-size: 13px !important;
   padding: 4px 0 !important;
