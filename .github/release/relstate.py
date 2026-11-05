@@ -514,7 +514,8 @@ def _late(row, t, reg):
     rcs = row["targets"][t]["rcs"]
     # t's own GA follows its RCs, so every GA on the line counts.
     gas = [_ts(u["ga"]["pushed_at"]) for u in row["targets"].values() if u["ga"]]
-    # Push times, not git tags: a late target may build the tip's RC tag, made before that GA.
+    # Push times, not git tags: a late target may build the tip's RC tag, made before that GA. A GA's push time is
+    # Promote's copy into the stable repository, so this needs RELSTATE_AR_<KIND>_RC set to a different repository.
     return bool(rcs and gas) and _ts(reg[TARGETS[t][0]][rcs[0]]["pushed_at"]) > min(gas)
 
 
