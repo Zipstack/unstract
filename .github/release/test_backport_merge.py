@@ -629,7 +629,7 @@ class Transient(unittest.TestCase):
             mock.patch.object(bm.time, "sleep", self.waits.append),
             mock.patch("builtins.print"),
         ):
-            p.start()
+            self.print = p.start()
             self.addCleanup(p.stop)
 
     def gh(self, answer, *args, **kw):
@@ -664,6 +664,13 @@ class Transient(unittest.TestCase):
     def test_transient_failure_is_retried(self):
         out, fake = self.gh(queue((1, "", S502), (0, "ok\n", "")), "api", "x")
         self.assertEqual((out, len(fake.calls), self.waits), ("ok", 2, [4]))
+
+    def test_retry_warning_stays_off_stdout(self):
+        # oss.py's stdout is the tag promote.yaml captures.
+        self.gh(queue((1, "", S502), (0, "ok\n", "")), "api", "x")
+        (call,) = self.print.call_args_list
+        self.assertIn("retried in", call.args[0])
+        self.assertIs(call.kwargs.get("file"), bm.sys.stderr)
 
     def test_gives_up_after_five_tries(self):
         out, fake = self.gh(lambda a: (1, "", S502), "api", "x")
