@@ -78,9 +78,31 @@ def execute_query(query: str, params: tuple = ()) -> Any:
         return result_row[0]
 
 
+def _mask_token(token: str) -> str:
+    """Return a short prefix of a token that is safe to log."""
+    return f"{token[:4]}..."
+
+
+def _canonical_uuid(token: str) -> str | None:
+    """Return the token as a canonical UUID string, or None if it is not one.
+
+    Platform keys are stored in a UUID column. Querying with a non-UUID value
+    makes Postgres raise an error that quotes the value, and that error would
+    then be logged with the token in full.
+    """
+    try:
+        return str(uuid.UUID(token))
+    except ValueError:
+        return None
+
+
 def validate_bearer_token(token: str | None) -> bool:
     if token is None:
         app.logger.error("Authentication failed. Empty bearer token")
+        return False
+    key_param = _canonical_uuid(token)
+    if key_param is None:
+        app.logger.error("Authentication failed. Malformed bearer token")
         return False
 
     platform_key_table = DBTable.PLATFORM_KEY
@@ -90,20 +112,27 @@ def validate_bearer_token(token: str | None) -> bool:
     """
 
     try:
-        with safe_cursor(query, (token,)) as cursor:
+        with safe_cursor(query, (key_param,)) as cursor:
             result_row = cursor.fetchone()
             if not result_row or len(result_row) == 0:
-                app.logger.error(f"Authentication failed. bearer token not found {token}")
+                app.logger.error(
+                    "Authentication failed. bearer token not found %s",
+                    _mask_token(key_param),
+                )
                 return False
             platform_key = str(result_row[1])
             is_active = bool(result_row[2])
             if not is_active:
                 app.logger.error(
-                    f"Token is not active. Activate before using it. token {token}"
+                    "Token is not active. Activate before using it. token %s",
+                    _mask_token(key_param),
                 )
                 return False
             if platform_key != token:
-                app.logger.error(f"Authentication failed. Invalid bearer token: {token}")
+                app.logger.error(
+                    "Authentication failed. Invalid bearer token: %s",
+                    _mask_token(key_param),
+                )
                 return False
             return True
     except Exception as e:
