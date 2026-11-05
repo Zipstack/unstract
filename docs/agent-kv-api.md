@@ -285,23 +285,38 @@ choice and LLM spend sit on your account**, per job.
 > organization-level credential, so this is a deliberate decision rather than an
 > oversight — but treat key issuance accordingly.
 
-> **`kv` is accepted — same endpoint, same request, one parameter apart.**
+> **`kv` is accepted where the deployment enables it — same endpoint, same
+> request, one parameter apart.**
 > Switching engines means sending `"name": "kv"` with `keys` in the §4 schema
 > grammar and KV's own `options`; everything else is identical, including the
 > file part, `adapters`, the page range, staging, the page cap and the
 > concurrency limit. There is no separate KV endpoint.
 >
+> **Acceptance is gated on `AGENT_KV_KV_EXTRACTOR_ENABLED`, which defaults
+> false.** Where it is not set, a `kv` submit is refused with
+> `400 extractor 'kv' is not enabled on this deployment` — the deployment, not
+> the request, is what has to change, so do not debug the payload. Ask the
+> operator; see §12 item 11 and the env reference. `table` is unaffected.
+>
 > This paragraph previously explained why `kv` returned 400: the engine ran on
 > its own release track and nothing consumed `celery_executor_agentic_kv`, so
 > the API refused the submit rather than accepting it with a `202` for a job
-> that would never run. Both halves have changed — the engine ships and every
-> executor fleet drains that queue (derived on every test run from
-> `EXTRACTOR_ROUTES` by `backend/agent_kv/tests/test_queue_wiring_is_derived.py`,
-> rather than asserted from a list someone has to remember to update).
+> that would never run. Both halves have changed — the engine ships, and every
+> executor fleet *declared in this repository* drains that queue (derived on
+> every test run from `EXTRACTOR_ROUTES` by
+> `backend/agent_kv/tests/test_queue_wiring_is_derived.py`, rather than
+> asserted from a list someone has to remember to update). That derivation
+> reads three plain-text fleet declarations — the two compose files and
+> `run-worker.sh` — and skips any that is absent, so it says nothing about a
+> Kubernetes fleet. It is precisely because nothing here can see a
+> chart-deployed fleet that acceptance is gated on the flag above rather than
+> on the routing table.
 >
 > What stays true: adding an extractor to that table without a fleet draining
-> its queue is accepted with a `202` and sits in `DISPATCHED` forever, with no
-> error at the producer. That is the failure the derivation exists to catch.
+> its queue is accepted with a `202` and sits in `DISPATCHED` until the sweep
+> force-fails it as `FAILED "Job timed out"` — with no error at the producer
+> and nothing in any log naming the cause. That is the failure the derivation,
+> and the flag above, exist to catch.
 
 **`kv` options:**
 
@@ -522,8 +537,8 @@ internal stage-report endpoint rather than persisted (`backend/agent_kv/internal
 the caller chose them and is paying for them: naming the wrong `llm` id yields a
 correct-looking result at a different price, and the only other record of what
 was spent is in `usage_v2`, which the caller cannot read. **Ids only, never
-adapter metadata** — that is where provider credentials live. `{}` for an
-any job predating the field. (It was also `{}` for `kv` while that extractor
+adapter metadata** — that is where provider credentials live. `{}` for any
+job predating the field. (It was also `{}` for `kv` while that extractor
 was env-credentialed; it no longer is -- all three roles are required for both
 extractors, so a new job of either kind always carries them.)
 
@@ -1672,25 +1687,49 @@ beyond `docker compose up`:
     **best-effort** layer-1 control — a fail-closed denylist that closes the cheap,
     demonstrated bypasses and raises the cost of the rest, not a provably airtight
     sandbox by itself. The *enforced* containment is layers 2–5: the runner's
-    env-scrub + rlimits (layer 2) and the pod's non-root/read-only-rootfs/no-secrets/
-    deny-all-egress/per-job isolation (layers 3–5), with `runtimeClass: gvisor` as the
+    env-scrub + rlimits (layer 2) and the pod's non-root/read-only-rootfs/
+    deny-all-egress posture (layers 3–5), with `runtimeClass: gvisor` as the
     deferred syscall-sandbox mitigation (see the accepted v1 residual below). Do not
     treat an AST-gate pass alone as proof generated code is safe.
+
+    **This list no longer says "no-secrets" or "per-job isolation".** Both were in
+    an earlier revision of this item and both are false — see R12 in
+    `docs/agent-kv-architecture.md`, which establishes them by execution.
 
     **Accepted v1 residual (in-pod file reads):** because generated code
     legitimately needs the `open()` builtin for its input and output files, untrusted
     calculation code can read a world-readable file inside its own sandbox pod and
     return the contents to the submitter. The import allowlist is exactly `{json, math,
     statistics, decimal, datetime, re, collections, itertools, functools, sys}` —
-    `pathlib`, `os`, `io`, `socket` and `urllib` are all outside it, so this is a single
-    read of a known path, not directory traversal and not an exfiltration path. This is contained — not by the AST gate, but
-    by the pod's layers 2–5: no secrets in the pod (not even the platform
-    `ENCRYPTION_KEY`), non-root on a read-only rootfs, default-deny egress (no
-    exfiltration), per-job isolation, and results returned only to the submitting
-    key — so the worst case is disclosure of a non-sensitive container file to the
-    customer who submitted the job. The deferred hardening for this is a
-    `runtimeClass: gvisor` sandbox. Consequently the sandbox pod's default-deny egress
-    and no-secrets posture are load-bearing and must not be relaxed.
+    `pathlib`, `os`, `io`, `socket` and `urllib` are all outside it.
+
+    **Read R12 in `docs/agent-kv-architecture.md` before signing this item off.**
+    It is the authority for this residual, and it corrects four claims an earlier
+    revision of this paragraph made. All four were false, verified by execution,
+    and they are named here so nobody restores them from an older copy:
+
+    - *"a single read of a known path, not an exfiltration path"* — `open()` needs
+      no import, so the allowlist does not bound which paths it reads.
+    - *"no secrets in the pod (not even the platform `ENCRYPTION_KEY`)"* —
+      `workerPgSandbox.additionalConfigs` is `[database]`, because on the PG
+      transport the queue **is** Postgres, so the pod necessarily mounts
+      `DB_HOST/DB_USER/DB_PASSWORD/DB_NAME`.
+    - *"per-job isolation"* — there is none. The child runs as the **same UID** as
+      the worker, and the fleet runs `CONCURRENCY 2` sharing one PID namespace and
+      one `/tmp`, so co-resident lanes are two jobs of possibly different tenants
+      with no boundary between them.
+    - *"the worst case is disclosure of a non-sensitive container file"* — the true
+      worst case is **credential disclosure plus database reach beyond the job's own
+      input**.
+
+    What does contain it is narrower than that list claimed: read-only rootfs,
+    non-root, a per-job tempdir, default-deny egress *except* Postgres and DNS, and
+    results returned only to the submitting key. **Default-deny egress is
+    load-bearing and must not be relaxed**; "no secrets" must not be cited as an
+    invariant for this pod until the credential is actually removed from it. The
+    deferred hardening for this is a
+    `runtimeClass: gvisor` sandbox, together with a distinct UID per child, which is
+    what would actually close the two residuals above.
 
 ## 12. Environment reference
 

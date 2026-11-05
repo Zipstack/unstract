@@ -19,7 +19,7 @@ os.environ.setdefault("DJANGO_SETTINGS_MODULE", "backend.settings.test")
 if not apps.ready:
     django.setup()
 
-from django.test import override_settings
+from django.test import override_settings  # noqa: E402
 
 from agent_kv.constants import (  # noqa: E402
     EXTRACTOR_ROUTES,
@@ -160,9 +160,7 @@ def test_an_unknown_extractor_is_still_refused_by_name():
     The refusal has to name the offending value, so a typo reads as a typo
     rather than as a schema complaint about `keys`.
     """
-    s = ExtractorSerializer(
-        data={"name": "kvv", "keys": {"total": {"description": "d"}}}
-    )
+    s = ExtractorSerializer(data={"name": "kvv", "keys": {"total": {"description": "d"}}})
     assert not s.is_valid()
     assert "unknown extractor" in json.dumps(s.errors)
     assert "kvv" in json.dumps(s.errors)
@@ -399,7 +397,8 @@ def test_kv_is_refused_where_the_deployment_has_not_enabled_it():
 @override_settings(AGENT_KV_KV_EXTRACTOR_ENABLED=False)
 def test_table_is_unaffected_when_kv_is_disabled():
     """The gate is per-extractor. Disabling `kv` must not touch the extractor
-    that has shipped and does drain its queue."""
+    that has shipped and does drain its queue.
+    """
     from agent_kv.execution_serializers import ExtractorSerializer
 
     s = ExtractorSerializer(

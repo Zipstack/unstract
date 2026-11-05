@@ -7,11 +7,12 @@ and rlimits on CPU / address space / PIDs / open files / output size.
 
 Two independent kill mechanisms bound runaway children:
 
-- **Primary — wall-clock timeout.** ``Popen.communicate(timeout=timeout)``
-  is the deterministic path: at ``timeout`` wall-clock seconds we kill the
-  child's whole process group (it was made a session/group leader via
-  ``os.setsid()`` in ``preexec_fn``, so grandchildren die too) and return a
-  "timed out" ``RunResult``.
+- **Primary — wall-clock timeout.** ``proc.wait(timeout=timeout)`` is the
+  deterministic path: at ``timeout`` wall-clock seconds we kill the child's
+  whole process group (it is a session leader, so grandchildren die too) and
+  return a "timed out" ``RunResult``. The session is created by Popen's
+  ``start_new_session=True``, which is stated once where it is passed and
+  deliberately not restated here — see the NOTE in ``_limits._apply``.
 - **Backstop — RLIMIT_CPU.** Set to ``timeout + grace`` (never less than
   ``timeout + 1``) CPU-seconds — strictly *above* the wall-clock timeout —
   so it only fires if the wall-clock path somehow fails to. Setting it equal
@@ -67,14 +68,35 @@ class RunResult:
     stdout: str = ""
     stderr: str = ""
     error: str | None = None
+    #: Did the child actually write to output.jsonl?
+    #:
+    #: `output.jsonl` is pre-created empty so `_result_from_output` always has
+    #: a file to read, which makes "exited 0 and wrote nothing" byte-identical
+    #: to "matched no rows": both are `success=True, rows_jsonl="",
+    #: rows_written=0`. For LLM-generated code the first is ordinary -- a
+    #: branch that never fires, a write to the wrong path, a swallowed
+    #: exception -- so the two need to be distinguishable.
+    #:
+    #: This field supplies the DATA to tell them apart without taking the
+    #: POLICY decision, which belongs to the cloud `agentic_kv` engine: it is
+    #: what must choose whether an empty run is an error. Adding it is purely
+    #: additive, so a consumer that does not read it is unaffected -- which is
+    #: why the earlier note here, deferring the whole thing on the grounds
+    #: that "adding a field to RunResult ... is the contract the cloud engine
+    #: consumes", was wrong about its own premise and left the consumer with
+    #: nothing to decide from. Note `executor/tasks.py` already applies the
+    #: opposite default to BILLING for `kv_extract` ("a successful run
+    #: emitting nothing is unambiguously a broken chain"); this field is what
+    #: lets the engine reconcile the two rather than guess.
+    wrote_output: bool = False
 
 
 def _limits(cpu_seconds: int, memory_mb: int, max_pids: int, fsize: int):
-    """Build a ``preexec_fn`` that applies rlimits and detaches the child
-    into its own session so a group kill can reap any grandchildren it
-    spawns. Each rlimit is best-effort: a platform that lacks one (e.g.
-    RLIMIT_NPROC is not honoured the same way on every POSIX system) must
-    not prevent the harness from applying the rest.
+    """Build a ``preexec_fn`` that applies rlimits. It does NOT detach the
+    child -- session creation is Popen's ``start_new_session=True``; see the
+    NOTE in ``_apply``. Each rlimit is best-effort: a platform that lacks one
+    (e.g. RLIMIT_NPROC is not honoured the same way on every POSIX system)
+    must not prevent the harness from applying the rest.
     """
 
     def _apply():
@@ -124,10 +146,17 @@ def _pgid_of(proc) -> int | None:
 def _kill_group(pgid: int | None, note: str) -> None:
     """SIGKILL a whole process group, best effort.
 
-    The group (not just the pid) because _limits() makes the child a session
-    leader via os.setsid() before it execs, so any children/grandchildren the
-    script spawned die with it. Failures are logged, never raised: every caller
-    is already returning a failure RunResult.
+    The group (not just the pid) because the child is a session leader, so any
+    children/grandchildren the script spawned die with it. That property comes
+    from Popen's `start_new_session=True` at the spawn site -- NOT from
+    `_limits()`, whose `preexec_fn` deliberately calls no `os.setsid()`. This
+    function's correctness depends on it, so do not drop that keyword as
+    redundant: without it the child shares the worker's group and the
+    `pgid == os.getpgrp()` guard below refuses to fire at all, turning every
+    timeout kill into a silent no-op.
+
+    Failures are logged, never raised: every caller is already returning a
+    failure RunResult.
 
     ProcessLookupError is swallowed WITHOUT logging: the group being gone
     already is an ordinary race with the child exiting on its own, not a
@@ -147,15 +176,17 @@ def _kill_group(pgid: int | None, note: str) -> None:
         logger.warning(note, exc_info=True)
 
 
-def _reap(proc) -> None:
-    """Wait briefly for a SIGKILLed child so it does not linger as a zombie."""
+def _reap(proc, note: str = "sandbox: child did not exit after SIGKILL") -> None:
+    """Wait briefly for a SIGKILLed child so it does not linger as a zombie.
+
+    `note` is a parameter because this is called from two branches and only
+    one of them is a timeout; a fixed "timed-out child" message attributed a
+    spawn or wait failure to a timeout that never happened.
+    """
     try:
         proc.wait(timeout=5)
     except Exception:
-        logger.warning(
-            "sandbox: timed-out child did not exit after SIGKILL",
-            exc_info=True,
-        )
+        logger.warning(note, exc_info=True)
 
 
 def _result_from_output(
@@ -179,14 +210,35 @@ def _result_from_output(
     than raise.
     """
     try:
-        raw = out.read_text(encoding="utf-8", errors="replace")
-        if len(raw.encode()) > max_output_bytes:
+        # Measure the FILE, before reading it, and for two separate reasons.
+        #
+        # Correctness: `len(raw.encode())` measured the re-encoded decode, and
+        # `errors="replace"` turns each undecodable byte into U+FFFD, which
+        # costs 3 bytes back -- so a file of 3 invalid bytes measured as 9, up
+        # to 3x its real size. Since RLIMIT_FSIZE is set to this same value,
+        # a child that genuinely tries to exceed the cap dies on the write and
+        # is reported as `exit N` long before this branch, so the ONLY input
+        # that ever reached this return was a file WITHIN the cap that happened
+        # to be heavily non-UTF-8 -- told, wrongly, that it was too big.
+        #
+        # Memory: reading first made the parent's peak scale with an operator
+        # knob (`SANDBOX_MAX_OUTPUT_BYTES` has a floor but no ceiling), and at
+        # ~2x the cap once `.encode()` copied it. stdout/stderr were moved to
+        # files precisely so the parent is bounded by a constant; this path
+        # kept the unbounded read, leaning on an rlimit whose failure
+        # `_limits` swallows.
+        size = out.stat().st_size
+        # The file is pre-created empty, so size 0 means the child wrote
+        # nothing at all -- see `RunResult.wrote_output`.
+        wrote_output = size > 0
+        if size > max_output_bytes:
             return RunResult(
                 success=False,
                 stdout=stdout,
                 stderr=stderr,
                 error="execution failed: output exceeds size cap",
             )
+        raw = out.read_text(encoding="utf-8", errors="replace")
         rows = 0
         # `split("\n")`, NOT `splitlines()`. JSONL is newline-delimited, and
         # `splitlines()` also breaks on NEL (U+0085), LINE SEPARATOR (U+2028)
@@ -235,7 +287,12 @@ def _result_from_output(
             error="execution failed: unreadable output",
         )
     return RunResult(
-        success=True, rows_jsonl=raw, rows_written=rows, stdout=stdout, stderr=stderr
+        success=True,
+        rows_jsonl=raw,
+        rows_written=rows,
+        stdout=stdout,
+        stderr=stderr,
+        wrote_output=wrote_output,
     )
 
 
@@ -414,9 +471,9 @@ def _run_code_unguarded(
             returncode = proc.returncode
         except subprocess.TimeoutExpired:
             # Wall-clock deadline hit: kill the whole process group so any
-            # children/grandchildren the script spawned die too (this is
-            # why _limits() makes the child a session leader via
-            # os.setsid() before it execs the script).
+            # children/grandchildren the script spawned die too (the child is
+            # a session leader because of Popen's `start_new_session=True`
+            # above -- see `_kill_group`).
             _kill_group(
                 pgid, "sandbox: could not kill the timed-out child's process group"
             )
@@ -426,7 +483,7 @@ def _run_code_unguarded(
             # long-lived worker -- a zombie per timed-out job. The pre-review
             # code got this incidentally from `communicate(timeout=1)`; moving
             # to files dropped the wait with it.
-            _reap(proc)
+            _reap(proc, "sandbox: timed-out child did not exit after SIGKILL")
             stdout, stderr = _captured()
             return RunResult(
                 success=False,
@@ -435,8 +492,10 @@ def _run_code_unguarded(
                 error=f"execution timed out after {timeout}s",
             )
         except Exception as exc:
-            # rlimit / spawn failure, or a rare non-timeout failure during
-            # communicate(). Mirror the TimeoutExpired branch above: best-
+            # This `try` spans three things that fail for unrelated reasons:
+            # opening the capture files (ENOSPC on the tmpfs), `Popen` itself
+            # (fork EAGAIN, ENOMEM, ENOENT on the interpreter), and
+            # `proc.wait`. Mirror the TimeoutExpired branch above: best-
             # effort kill the child's process group so a partially-started
             # child doesn't run away unsupervised. `proc` can be None here
             # (Popen itself failed to spawn), unlike in the TimeoutExpired
@@ -445,7 +504,15 @@ def _run_code_unguarded(
             # swallow the cause entirely, so an OSError or a fork EAGAIN was
             # reported to the engine as an ordinary codegen failure with
             # nothing anywhere to say the harness itself had failed.
-            logger.warning("sandbox: harness failure running generated code: %s", exc)
+            # `exc_info`, like every sibling handler in this file: `str(exc)`
+            # on an OSError is `[Errno 11] Resource temporarily unavailable`,
+            # which names neither the syscall nor which of the three
+            # statements above raised it. This is the one path that exists so
+            # a fork EAGAIN is not lost, so it is the last place to log a
+            # bare errno.
+            logger.warning(
+                "sandbox: harness failure running generated code: %s", exc, exc_info=True
+            )
             if proc is not None:
                 _kill_group(pgid, "sandbox: could not kill the child's process group")
                 # Reap, for the same reason the timeout branch above does:

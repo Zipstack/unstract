@@ -31,9 +31,29 @@ def _int_env(name: str, default: int, *, minimum: int = 1) -> int:
 
     Validation belongs here, in the parent: `_limits()` runs in `preexec_fn`,
     post-fork in the child, where there is nowhere for a log to go.
+
+    Two corrections to an earlier version of this function, both about which
+    way it falls:
+
+    A BLANK value is treated as unset, silently. Compose's `- KEY=${KEY:-}`
+    list form sets the empty string rather than omitting the variable, and
+    `tests/compose/docker-compose.test.yaml` uses that form for all eight
+    caps -- so `int("")` raised and every sandboxed job in the e2e lane logged
+    eight "your cap was rejected" warnings on the entirely healthy path. That
+    destroyed the signal this function exists to create. A genuinely malformed
+    value like `512m` is still loud.
+
+    A sub-minimum value now falls back to `minimum`, NOT to `default`. Falling
+    back to the default can be LOOSER than what the operator asked for:
+    `SANDBOX_MEMORY_MB=256m` is a typo while TIGHTENING, and returning 512
+    doubled the cap the operator was trying to halve. On a containment control
+    the safe direction is the tighter one, so a rejected value lands on the
+    floor rather than on a value the operator never chose.
     """
     raw = os.environ.get(name)
-    if raw is None:
+    # `not raw.strip()` and not just `raw is None`: see the blank-value note
+    # above. An unset variable and `KEY=` are the same operator intent.
+    if raw is None or not raw.strip():
         return default
     try:
         value = int(raw)
@@ -44,14 +64,18 @@ def _int_env(name: str, default: int, *, minimum: int = 1) -> int:
         return default
     if value < minimum:
         logger.warning(
-            "sandbox: %s=%d is below the minimum %d; using the default %d "
-            "(a non-positive rlimit reads as RLIM_INFINITY -- i.e. no cap)",
+            "sandbox: %s=%d is below the minimum %d; clamping to %d "
+            "(a NEGATIVE rlimit reads as RLIM_INFINITY -- i.e. no cap at all -- "
+            "and 0 forbids the operation outright; neither is a usable limit). "
+            "Clamping up to the floor rather than back to the default %d, "
+            "because the default can be looser than what you asked for",
             name,
             value,
             minimum,
+            minimum,
             default,
         )
-        return default
+        return minimum
     return value
 
 

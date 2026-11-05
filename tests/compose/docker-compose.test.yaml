@@ -120,14 +120,20 @@ services:
       - WORKER_PG_QUEUE_CONSUMER_HEALTH_STALE_SECONDS=180
       # The SANDBOX_* caps below are read by workers/sandbox/tasks.py itself, so
       # they are transport-independent and keep their names.
-      - SANDBOX_MAX_CODE_BYTES=${SANDBOX_MAX_CODE_BYTES:-}
-      - SANDBOX_MAX_INPUT_BYTES=${SANDBOX_MAX_INPUT_BYTES:-}
-      - SANDBOX_MAX_OUTPUT_BYTES=${SANDBOX_MAX_OUTPUT_BYTES:-}
-      - SANDBOX_MAX_ROWS=${SANDBOX_MAX_ROWS:-}
-      - SANDBOX_TIMEOUT_MAX=${SANDBOX_TIMEOUT_MAX:-}
-      - SANDBOX_TIMEOUT_GRACE=${SANDBOX_TIMEOUT_GRACE:-}
-      - SANDBOX_MEMORY_MB=${SANDBOX_MEMORY_MB:-}
-      - SANDBOX_MAX_PIDS=${SANDBOX_MAX_PIDS:-}
+      # Bare pass-through, NOT `=${VAR:-}`: the `KEY=value` list form sets the
+      # EMPTY STRING when the host has not exported the variable, which is not
+      # the same as omitting it. `_int_env` now treats a blank as unset, but the
+      # bare form is what actually expresses the intent here -- and before that
+      # fix this block made every sandboxed job in this lane log eight
+      # "your cap was rejected" warnings on the entirely healthy path.
+      - SANDBOX_MAX_CODE_BYTES
+      - SANDBOX_MAX_INPUT_BYTES
+      - SANDBOX_MAX_OUTPUT_BYTES
+      - SANDBOX_MAX_ROWS
+      - SANDBOX_TIMEOUT_MAX
+      - SANDBOX_TIMEOUT_GRACE
+      - SANDBOX_MEMORY_MB
+      - SANDBOX_MAX_PIDS
 
   # The `ui` Playwright group drives a browser at the frontend's OWN origin, and
   # the app derives every API URL from window.location.origin. The production

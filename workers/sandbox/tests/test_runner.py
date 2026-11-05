@@ -1,5 +1,6 @@
 import json
 import os
+import resource
 import signal
 import subprocess
 import time
@@ -8,8 +9,12 @@ from unittest.mock import MagicMock, patch
 from sandbox.runner import _MINIMAL_PATH, run_code
 
 _DEFAULTS = dict(
-    timeout=10, max_output_bytes=1_048_576, max_rows=100_000,
-    memory_mb=512, max_pids=16, grace=5,
+    timeout=10,
+    max_output_bytes=1_048_576,
+    max_rows=100_000,
+    memory_mb=512,
+    max_pids=16,
+    grace=5,
 )
 
 # The runner contract: argv[1]=input json path, argv[2]=output jsonl path.
@@ -46,23 +51,142 @@ def test_infinite_loop_times_out():
 
 
 def test_infinite_loop_kill_is_prompt_not_backstop():
-    # Ruling R1: RLIMIT_CPU is a backstop set strictly above the wall-clock
-    # timeout (timeout + grace), so the wall-clock subprocess kill must be
-    # the one that fires — proving the process (and its group) is actually
-    # killed at ~timeout, not merely abandoned until the later CPU backstop
-    # or left to run to completion.
+    # A liveness smoke test, and named for what it actually proves: the child
+    # is killed rather than left to run, and it happens within the budget.
+    #
+    # It does NOT pin ruling R1 -- `elapsed < timeout + grace` holds whether
+    # RLIMIT_CPU is `timeout + grace` or `timeout`, so this test passed
+    # unchanged under the mutation `cpu_seconds = timeout`. The threshold
+    # itself is pinned by
+    # `test_rlimit_cpu_is_set_strictly_above_the_wall_clock_timeout` below.
     timeout, grace = 2, 5
     started = time.monotonic()
     r = run_code(
-        "while True:\n    pass\n", "{}",
+        "while True:\n    pass\n",
+        "{}",
         **{**_DEFAULTS, "timeout": timeout, "grace": grace},
     )
     elapsed = time.monotonic() - started
     assert r.success is False
-    # Generous upper bound so this doesn't flake under CI load, but tight
-    # enough to prove the wall-clock path fired rather than the backstop
-    # (timeout + grace = 7s) or an unbounded hang.
     assert elapsed < timeout + grace
+
+
+def test_rlimit_cpu_is_set_strictly_above_the_wall_clock_timeout():
+    """Ruling R1, asserted on the threshold rather than on elapsed time.
+
+    RLIMIT_CPU must be a BACKSTOP, strictly above the wall-clock timeout. Set
+    equal to it, the two mechanisms race at the same threshold and the same
+    hostile input yields a nondeterministic error string -- which is why
+    `test_infinite_loop_times_out` above has to tolerate three different error
+    shapes. That tolerance is the symptom; this is the guard.
+
+    Fails under `cpu_seconds = timeout`, which the elapsed-time test above
+    does not.
+    """
+    timeout, grace = 2, 5
+    calls = []
+
+    def _record(which, pair):
+        calls.append((which, pair))
+
+    mock_proc = MagicMock()
+    mock_proc.pid = 4321
+    mock_proc.returncode = 0
+    with (
+        patch("sandbox.runner.subprocess.Popen", return_value=mock_proc) as mock_popen,
+        patch("sandbox.runner.os.getpgid", return_value=4321),
+        patch("sandbox.runner.os.killpg"),
+    ):
+        run_code(
+            "import sys\nopen(sys.argv[2], 'w').close()\n",
+            json.dumps({"records": [{}]}),
+            **{**_DEFAULTS, "timeout": timeout, "grace": grace},
+        )
+        # `preexec_fn` is never executed by a mocked Popen, so call it here
+        # with setrlimit captured. That is the only way to read the pairs the
+        # child would have been given.
+        preexec = mock_popen.call_args.kwargs["preexec_fn"]
+        with patch("sandbox.runner.resource.setrlimit", side_effect=_record):
+            preexec()
+
+    cpu = dict(calls)[resource.RLIMIT_CPU]
+    assert cpu == (timeout + grace, timeout + grace), calls
+    assert cpu[0] > timeout, "RLIMIT_CPU must be strictly above the wall clock"
+
+
+def test_the_timed_out_child_is_reaped_before_the_tempdir_is_removed():
+    """The `_reap` on the timeout path, which nothing asserted.
+
+    SIGKILL is asynchronous. Without the wait, each timed-out job leaves a
+    zombie in a long-lived worker, and `TemporaryDirectory.__exit__` can
+    rmtree the per-job directory while a not-yet-dead child is still writing
+    into it. The comment at that call site records that this wait was already
+    lost once, when the harness moved off `communicate(timeout=...)` -- so it
+    needs a guard, or the same edit silently undoes it again.
+    """
+    mock_proc = MagicMock()
+    mock_proc.pid = 4321
+    mock_proc.returncode = -9
+    # First wait is the wall-clock deadline; the second is the reap.
+    mock_proc.wait.side_effect = [subprocess.TimeoutExpired("x", 2), 0]
+    with (
+        patch("sandbox.runner.subprocess.Popen", return_value=mock_proc),
+        patch("sandbox.runner.os.getpgid", return_value=4321),
+        patch("sandbox.runner.os.killpg") as mock_killpg,
+    ):
+        r = run_code(
+            "while True:\n    pass\n",
+            "{}",
+            **{**_DEFAULTS, "timeout": 2},
+        )
+    assert r.success is False
+    assert "timed out" in r.error
+    mock_killpg.assert_called_once_with(4321, signal.SIGKILL)
+    assert mock_proc.wait.call_count == 2, "the child was killed but never reaped"
+    assert mock_proc.wait.call_args.kwargs == {"timeout": 5}
+
+
+def test_the_output_byte_cap_is_enforced_on_the_file_size(tmp_path):
+    """The byte cap had no test at all; its row-cap sibling did.
+
+    A UNIT test of `_result_from_output`, deliberately, and the reason is the
+    finding itself: `max_output_bytes` is also the child's `RLIMIT_FSIZE`, so
+    a child that tries to exceed the cap dies on the write and is reported as
+    `exit N` with a truncated file -- an end-to-end attempt returns
+    `invalid JSONL output`, never `size cap`. The parent-side check is a
+    second line of defence against a file that is already too big, so the only
+    honest way to reach it is to hand it one.
+
+    Measured on `out.stat().st_size`, not on the re-encoded decode: with
+    `errors="replace"` each undecodable byte costs 3 bytes back, so the old
+    `len(raw.encode())` form measured up to 3x the file and refused files that
+    were within the cap.
+    """
+    from sandbox.runner import _result_from_output
+
+    out = tmp_path / "output.jsonl"
+    out.write_text(json.dumps({"k": "a" * 4000}) + "\n")
+    r = _result_from_output(out, max_output_bytes=512, max_rows=100, stdout="", stderr="")
+    assert r.success is False
+    assert "size cap" in r.error, r.error
+
+
+def test_the_byte_cap_does_not_refuse_a_compliant_but_non_utf8_file(tmp_path):
+    """The defect the `st_size` change fixes, pinned.
+
+    Three undecodable bytes become three U+FFFD, which re-encode to 9 -- so a
+    file comfortably inside the cap measured as over it and was reported to
+    the caller as `output exceeds size cap`, sending them to shrink an output
+    whose actual problem was its encoding. Fails under
+    `len(raw.encode()) > max_output_bytes`.
+    """
+    from sandbox.runner import _result_from_output
+
+    out = tmp_path / "output.jsonl"
+    # 30 real bytes, of which 3 are undecodable -> 36 decoded-and-re-encoded.
+    out.write_bytes(b'{"k": "' + b"\xff\xfe\xfd" + b'aaaaaaaaaaaaaaa"}\n')
+    r = _result_from_output(out, max_output_bytes=32, max_rows=100, stdout="", stderr="")
+    assert "size cap" not in (r.error or ""), r.error
 
 
 def test_subprocess_env_is_scrubbed():
@@ -105,14 +229,16 @@ def test_subprocess_popen_env_is_exactly_minimal_path():
     # PATH-only mapping — nothing from the parent's environment leaks in.
     mock_proc = MagicMock()
     mock_proc.pid = 4321
-    mock_proc.communicate.return_value = ("", "")
     mock_proc.returncode = 0
-    with patch("sandbox.runner.subprocess.Popen", return_value=mock_proc) as mock_popen, \
-         patch("sandbox.runner.os.getpgid", return_value=4321), \
-         patch("sandbox.runner.os.killpg"):
+    with (
+        patch("sandbox.runner.subprocess.Popen", return_value=mock_proc) as mock_popen,
+        patch("sandbox.runner.os.getpgid", return_value=4321),
+        patch("sandbox.runner.os.killpg"),
+    ):
         r = run_code(
             "import sys\nopen(sys.argv[2], 'w').close()\n",
-            json.dumps({"records": [{}]}), **_DEFAULTS,
+            json.dumps({"records": [{}]}),
+            **_DEFAULTS,
         )
     assert r.success is True, r.error
     assert mock_popen.call_args.kwargs["env"] == {"PATH": _MINIMAL_PATH}
@@ -129,12 +255,15 @@ def test_non_timeout_exception_kills_process_group():
     # per-job tempdir so RLIMIT_FSIZE (which does not apply to pipes) bounds
     # them, and the parent reads back at most _CAPTURE_LIMIT.
     mock_proc.wait.side_effect = OSError("boom")
-    with patch("sandbox.runner.subprocess.Popen", return_value=mock_proc), \
-         patch("sandbox.runner.os.getpgid", return_value=4321) as mock_getpgid, \
-         patch("sandbox.runner.os.killpg") as mock_killpg:
+    with (
+        patch("sandbox.runner.subprocess.Popen", return_value=mock_proc),
+        patch("sandbox.runner.os.getpgid", return_value=4321) as mock_getpgid,
+        patch("sandbox.runner.os.killpg") as mock_killpg,
+    ):
         r = run_code(
             "import sys\nopen(sys.argv[2], 'w').close()\n",
-            json.dumps({"records": [{}]}), **_DEFAULTS,
+            json.dumps({"records": [{}]}),
+            **_DEFAULTS,
         )
     assert r.success is False
     assert "OSError" in r.error
@@ -145,7 +274,8 @@ def test_non_timeout_exception_kills_process_group():
 def test_non_json_output_is_error():
     r = run_code(
         "import sys\nopen(sys.argv[2],'w').write('not json\\n')\n",
-        json.dumps({"records": [{}]}), **_DEFAULTS,
+        json.dumps({"records": [{}]}),
+        **_DEFAULTS,
     )
     assert r.success is False
     assert "invalid" in r.error.lower() or "json" in r.error.lower()
@@ -184,7 +314,7 @@ def test_unicode_line_separators_inside_a_json_string_do_not_split_the_row():
 
 
 def test_crlf_output_still_parses():
-    """The one regression risk in moving off `splitlines()`.
+    r"""The one regression risk in moving off `splitlines()`.
 
     `split("\n")` leaves a trailing "\r" on CRLF output where `splitlines()`
     would have stripped it. `json.loads` accepts it as trailing whitespace, so
@@ -193,7 +323,7 @@ def test_crlf_output_still_parses():
     code = (
         "import sys\n"
         "with open(sys.argv[2], 'w', newline='') as f:\n"
-        "    f.write('{\"a\": 1}\\r\\n{\"b\": 2}\\r\\n')\n"
+        '    f.write(\'{"a": 1}\\r\\n{"b": 2}\\r\\n\')\n'
     )
     r = run_code(code, "{}", **_DEFAULTS)
     assert r.success is True, r.error
@@ -233,7 +363,8 @@ def test_output_read_failure_is_user_safe_unreadable_output_error():
     with patch("sandbox.runner.Path.read_text", side_effect=OSError("boom")):
         r = run_code(
             "import sys\nopen(sys.argv[2], 'w').close()\n",
-            json.dumps({"records": [{}]}), **_DEFAULTS,
+            json.dumps({"records": [{}]}),
+            **_DEFAULTS,
         )
     assert r.success is False
     assert r.error == "execution failed: unreadable output"
@@ -302,17 +433,24 @@ def test_the_childs_stdout_is_a_file_not_a_pipe():
     mock_proc = MagicMock()
     mock_proc.pid = 4321
     mock_proc.returncode = 0
-    with patch("sandbox.runner.subprocess.Popen", return_value=mock_proc) as mock_popen, \
-         patch("sandbox.runner.os.getpgid", return_value=4321), \
-         patch("sandbox.runner.os.killpg"):
+    with (
+        patch("sandbox.runner.subprocess.Popen", return_value=mock_proc) as mock_popen,
+        patch("sandbox.runner.os.getpgid", return_value=4321),
+        patch("sandbox.runner.os.killpg"),
+    ):
         run_code(
             "import sys\nopen(sys.argv[2], 'w').close()\n",
-            json.dumps({"records": [{}]}), **_DEFAULTS,
+            json.dumps({"records": [{}]}),
+            **_DEFAULTS,
         )
     kw = mock_popen.call_args.kwargs
     for stream in ("stdout", "stderr"):
-        assert kw[stream] is not subprocess.PIPE, f"{stream} is a pipe: the parent buffers"
-        assert hasattr(kw[stream], "fileno"), f"{stream} is not a file object: {kw[stream]!r}"
+        assert (
+            kw[stream] is not subprocess.PIPE
+        ), f"{stream} is a pipe: the parent buffers"
+        assert hasattr(
+            kw[stream], "fileno"
+        ), f"{stream} is not a file object: {kw[stream]!r}"
 
 
 # ---------------------------------------------------------------------------
@@ -334,16 +472,22 @@ def test_a_gate_parse_failure_cpython_spells_memoryerror_is_a_result_not_a_raise
 def test_enospc_while_staging_the_script_is_a_result_not_a_raise():
     """`script.write_text` sits outside the inner try by construction. On the
     256 MB tmpfs this service runs with, ENOSPC is routine -- and once /tmp is
-    full EVERY subsequent job on the worker took this path."""
-    with patch("sandbox.runner.Path.write_text", side_effect=OSError(28, "No space left on device")):
+    full EVERY subsequent job on the worker took this path.
+    """
+    with patch(
+        "sandbox.runner.Path.write_text",
+        side_effect=OSError(28, "No space left on device"),
+    ):
         r = run_code("x = 1\n", json.dumps({"records": [{}]}), **_DEFAULTS)
     assert r.success is False
     assert r.error == "execution failed: OSError", r.error
 
 
 def test_enospc_opening_the_tempdir_is_a_result_not_a_raise():
-    with patch("sandbox.runner.tempfile.TemporaryDirectory",
-               side_effect=OSError(28, "No space left on device")):
+    with patch(
+        "sandbox.runner.tempfile.TemporaryDirectory",
+        side_effect=OSError(28, "No space left on device"),
+    ):
         r = run_code("x = 1\n", json.dumps({"records": [{}]}), **_DEFAULTS)
     assert r.success is False
     assert r.error == "execution failed: OSError", r.error
@@ -361,12 +505,15 @@ def test_the_child_is_detached_by_start_new_session_not_preexec_fn():
     mock_proc = MagicMock()
     mock_proc.pid = 4321
     mock_proc.returncode = 0
-    with patch("sandbox.runner.subprocess.Popen", return_value=mock_proc) as mock_popen, \
-         patch("sandbox.runner.os.getpgid", return_value=4321), \
-         patch("sandbox.runner.os.killpg"):
+    with (
+        patch("sandbox.runner.subprocess.Popen", return_value=mock_proc) as mock_popen,
+        patch("sandbox.runner.os.getpgid", return_value=4321),
+        patch("sandbox.runner.os.killpg"),
+    ):
         run_code(
             "import sys\nopen(sys.argv[2], 'w').close()\n",
-            json.dumps({"records": [{}]}), **_DEFAULTS,
+            json.dumps({"records": [{}]}),
+            **_DEFAULTS,
         )
     assert mock_popen.call_args.kwargs.get("start_new_session") is True
 

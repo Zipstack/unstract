@@ -21,7 +21,6 @@ import pathlib
 import re
 
 from django.core.files.uploadedfile import SimpleUploadedFile
-
 from django.test import override_settings
 
 from agent_kv.execution_serializers import SubmitSerializer

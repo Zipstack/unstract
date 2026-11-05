@@ -234,19 +234,81 @@ def test_codegen_template_passes():
     assert reason == ""
 
 
+class TestShadowedBuiltinsAreLocals:
+    """A name the submitted code BINDS is its own, not the denylisted builtin.
+
+    These exist because an earlier fix gated `_rule_denylisted_name` on
+    `ast.Load` alone and claimed that made ordinary generated code pass. It
+    did not: a Load is exactly what reading your own binding produces, so only
+    a write-and-never-read binding was accepted and every realistic form was
+    still refused as `disallowed name`. The first three tests are the three
+    snippets that fix's own docstring named; each FAILS if the `not in bound`
+    condition is removed, which is what makes them a guard rather than a
+    restatement.
+    """
+
+    def test_a_local_named_input_may_be_read_after_it_is_bound(self):
+        ok, reason = check_code_safe(
+            "import json\n"
+            "import sys\n"
+            "input = json.load(open(sys.argv[1]))\n"
+            'rows = input["records"]\n'
+        )
+        assert ok is True, reason
+
+    def test_a_local_named_vars_may_be_subscript_assigned(self):
+        ok, reason = check_code_safe('vars = {}\nvars["a"] = 1\n')
+        assert ok is True, reason
+
+    def test_a_for_target_named_input_may_be_read_in_the_body(self):
+        ok, reason = check_code_safe("rows = [1]\nfor input in rows:\n    print(input)\n")
+        assert ok is True, reason
+
+    def test_shadowing_does_not_buy_an_alias_bypass(self):
+        # The aliasing shape is a Load of a name that is NOT bound, so the rule
+        # still fires -- this is the half that must not loosen. Without it the
+        # exemption would be a hole rather than a correction.
+        ok, reason = check_code_safe("g = globals\nx = g()\n")
+        assert ok is False
+        assert reason == "safety gate: disallowed name 'globals'"
+
+    def test_a_direct_call_of_a_denylisted_builtin_is_still_refused(self):
+        # Owned by `_rule_denylisted_call`, deliberately untouched by the
+        # shadowing exemption. Pinned here so a later widening of `bound`
+        # cannot quietly take the call rule with it.
+        ok, reason = check_code_safe('eval("1+1")\n')
+        assert ok is False
+        assert reason == "safety gate: disallowed call 'eval'"
+
+
 class TestEveryRuleIsRegistered:
     """Structural backstop for the `_RULES` tuple `check_code_safe` iterates.
 
     A rule function that is defined but absent from the tuple is never
     consulted, so the gate silently ACCEPTS what it used to reject. Today that
-    cannot slip through unnoticed: dropping any one of the nine rules was
-    measured to fail between 4 and 9 of the behavioural tests above, because
-    each existing rule has hostile cases of its own. (Method: remove one entry
-    from `_RULES` and run this module; repeat per rule. Measured against 61
-    behavioural cases -- per-rule failures 7, 7, 4, 4, 6, 4, 5, 9, 6 in
-    registry order. The previous wording said "eight rules" and "between 3 and
-    10": the count predated `_rule_sys_reexport` and the range was never
-    re-derived after it.) These two tests are here
+    cannot slip through unnoticed: dropping any one of the nine rules fails
+    between 4 and 9 of this module's cases, because each existing rule has
+    hostile cases of its own.
+
+    **Method, because the figures below are a measurement and not an
+    estimate**: write a pytest plugin that does
+    `gate._RULES = tuple(r for r in gate._RULES if r.__name__ != "<rule>")`,
+    run this module under it, and read the `N failed, M passed` summary;
+    repeat once per rule. At the commit that added this paragraph that gives
+    **67 cases** and per-rule failures **7, 7, 5, 4, 6, 4, 5, 9, 7** in
+    `_RULES` order. The measurement spans the WHOLE module, not only the
+    classes above this one -- which is how `_rule_sys_reexport` scores 4 when
+    nothing above here exercises an attribute named `sys`: its cases live in
+    `TestModuleReexportEscapes`, below.
+
+    **Re-derive rather than trust the numbers.** The denominator and the
+    per-rule counts move with every case added to this module, and this
+    paragraph has already been wrong twice for that reason: once saying "eight
+    rules" and "between 3 and 10" (predating `_rule_sys_reexport`), and once
+    giving 61 cases scoped to "the behavioural tests above" (the per-rule
+    figures were right, the denominator and the scope were not, which made the
+    claim unreproducible from the text describing it). The range is the durable
+    part; the exact counts are a snapshot. These two tests are here
     for the rules that do not exist yet -- a new rule added without a
     registry entry, or added with cases that overlap an earlier rule's -- where
     the behavioural tests would pass while the rule did nothing.
@@ -324,7 +386,8 @@ class TestModuleReexportEscapes:
 
     def test_sys_argv_itself_still_works(self):
         """The restriction permits exactly this, and must keep permitting it --
-        the generated code's only way to find its input and output paths."""
+        the generated code's only way to find its input and output paths.
+        """
         ok, reason = check_code_safe(
             "import json\nimport sys\n"
             "with open(sys.argv[1]) as f:\n    d = json.load(f)\n"
@@ -343,8 +406,15 @@ class TestModuleReexportEscapes:
         from sandbox.gate import _ALLOWED_IMPORTS
 
         dangerous = {
-            "os", "subprocess", "socket", "shutil", "ctypes",
-            "pickle", "importlib", "urllib", "http",
+            "os",
+            "subprocess",
+            "socket",
+            "shutil",
+            "ctypes",
+            "pickle",
+            "importlib",
+            "urllib",
+            "http",
         }
         accepted = []
         for name in sorted(_ALLOWED_IMPORTS):

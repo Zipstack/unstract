@@ -5,6 +5,7 @@ check via ``WorkerRegistry.register_health_check``; before this fix the
 sandbox worker registered none, so ``get_health_checks(WorkerType.SANDBOX)``
 returned ``[]`` and port 8092 reported bare liveness only.
 """
+
 from shared.enums.worker_enums import WorkerType
 from shared.infrastructure.config.registry import WorkerRegistry
 from shared.infrastructure.monitoring.health import HealthStatus
@@ -26,7 +27,7 @@ def test_sandbox_health_check_returns_healthy():
     assert result.name == "sandbox_health"
 
 
-def test_sandbox_health_check_degrades_if_gate_misbehaves():
+def test_sandbox_health_check_degrades_when_the_gate_raises():
     from unittest.mock import patch
 
     with patch("sandbox.gate.check_code_safe", side_effect=RuntimeError("boom")):

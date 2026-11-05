@@ -369,7 +369,7 @@ class ExtractorSerializer(serializers.Serializer):
         and then failed at the executor.
 
         Branching on `data["name"]` in ``validate()`` means the name is trimmed
-        and already checked against ``SUPPORTED_EXTRACTORS`` exactly once.
+        and already checked against ``enabled_extractors()`` exactly once.
         """
         keys_cls = _KEYS_SERIALIZERS.get(name)
         if keys_cls is not None:

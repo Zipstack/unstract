@@ -41,15 +41,26 @@ OPERATION_TABLE_EXTRACT_API = "table_extract_api"
 #: Which executor and operation each extractor dispatches to. `dispatch_job`
 #: reads this rather than hardcoding one pair, so adding an extractor is one
 #: entry here plus its options serializer, stage list and -- where the executor
-#: requires adapters -- its adapters serializer. `SUPPORTED_EXTRACTORS` is
-#: derived from these keys (`execution_serializers.py`), so this table alone
-#: decides what `extractors[].name` accepts.
+#: requires adapters -- its adapters serializer, AND its entry in the
+#: acceptance gate (see below -- an earlier version of this list omitted the
+#: gate, which is how a new extractor would inherit the 202-into-a-dead-queue
+#: shape this very comment warns about). `SUPPORTED_EXTRACTORS` is derived from
+#: these keys (`execution_serializers.py`), so this table decides what is
+#: ROUTED -- NOT what `extractors[].name` accepts, which is
+#: `enabled_extractors()`'s. An earlier wording claimed "this table alone
+#: decides what accepts", contradicting the paragraph two below it.
 #:
 #: **This table is where work GOES, not proof anything collects it.** The queue
 #: is derived from the executor name, so an entry pointing at a plugin this
 #: deployment does not ship is accepted with a 202, dispatched to a queue with
-#: no consumer, and sits in DISPATCHED forever -- no error at the producer,
-#: nothing in any log to find.
+#: no consumer, and sits in DISPATCHED until the sweep force-fails it as
+#: `FAILED "Job timed out"` (`maintenance.py` phase 2, after
+#: `AGENT_KV_STUCK_JOB_GRACE_SECONDS`), releasing the slot and firing the
+#: terminal webhook. NOT "forever": the row is terminalized, which matters
+#: because an operator who reads "forever" goes looking for a stuck-row
+#: cleanup that already ran, and reads the resulting `Job timed out` as a
+#: different incident from the undrained queue. What is genuinely absent is any
+#: error at the producer and anything in a log naming the cause.
 #:
 #: Routing `kv` is therefore NOT what enables it. Acceptance is gated separately,
 #: on `AGENT_KV_KV_EXTRACTOR_ENABLED` (`enabled_extractors()` in

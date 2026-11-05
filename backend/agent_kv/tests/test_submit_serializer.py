@@ -29,12 +29,10 @@ if not apps.ready:
 
 from django.conf import settings  # noqa: E402
 from django.core.files.uploadedfile import SimpleUploadedFile  # noqa: E402
-from django.test import override_settings
-
+from django.test import override_settings  # noqa: E402
 from rest_framework import serializers  # noqa: E402
 
 from agent_kv.constants import TABLE_EXTRACTOR_NAME, V1_EXTRACTOR_NAME  # noqa: E402
-
 from agent_kv.execution_serializers import (  # noqa: E402
     ExtractorSerializer,
     KVOptionsSerializer,

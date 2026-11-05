@@ -114,8 +114,12 @@ the load-bearing control.
 trusting the client):
 1. Fail-closed **AST gate** (import allowlist + denylisted calls/attrs/dunders).
 2. **Scrubbed-env subprocess** — empty environment, minimal PATH, per-request tempdir,
-   `-I -S -E`, `start_new_session`, rlimits (CPU/mem/NPROC/NOFILE/FSIZE), process-group
-   kill at `timeout + grace`.
+   `-I -S -E`, `start_new_session`, rlimits (mem/NPROC/NOFILE/FSIZE, and
+   CPU = `timeout + grace`), process-group kill at wall-clock `timeout`. Note the
+   order: the group kill is the primary mechanism and fires FIRST; `RLIMIT_CPU` is
+   the backstop, set strictly above the wall clock so the two never race at the
+   same threshold (ruling R1 -- see `workers/sandbox/runner.py`'s module
+   docstring). An earlier revision of this line had the two the other way round.
 3. **Hardened pod** — non-root, read-only rootfs + `emptyDir` /tmp, all caps dropped,
    `seccompProfile: RuntimeDefault`, no service-account token, CPU/mem/PID limits.
 4. **NetworkPolicy** — default-deny ingress+egress; egress is exactly two rules:
@@ -183,7 +187,10 @@ this pod until the credential is actually removed from it.
 
 Required mitigation (not deferred): a narrowly-scoped queue/result DB role, so the
 credential the pod carries cannot read beyond its own job — tracked as **UN-4218**,
-alongside a numeric `runAsUser` and `/proc` hardening. Deferred mitigation:
+alongside `/proc` hardening and a distinct UID per child. A numeric `runAsUser` was
+also on this list and is **done**: the chart sets `runAsUser: 999` at both pod and
+container level (`workerPgSandbox.securityContext`), so `runAsNonRoot: true` no
+longer depends on the image keeping a `USER` line. Deferred mitigation:
 `runtimeClass: gvisor`. Full analysis in
 [sandbox design §8a](superpowers/specs/2026-09-01-agent-kv-sandbox-worker-design.md).
 

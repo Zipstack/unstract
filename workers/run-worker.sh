@@ -212,10 +212,13 @@ declare -A WORKER_HEALTH_PORTS=(
     ["${IDE_CALLBACK_WORKER_TYPE}"]="8089"
     # sandbox: 8092 — 8090/8091 are reserved below for pg_queue_consumer /
     # pluggable-worker auto-discovery; 8092 is the sandbox worker's fixed slot.
-    # This map is what EXPORTS SANDBOX_HEALTH_PORT; to_health_port() reads that
-    # variable first and now also carries WorkerType.SANDBOX: 8092 as the
-    # Python-side default, which it previously lacked (so an unset variable
-    # resolved to 8080 -- api-deployment's port).
+    # This map is what EXPORTS SANDBOX_HEALTH_PORT. `to_health_port()` reads no
+    # environment variable at all -- it is a pure lookup over `port_mapping`;
+    # the env-first precedence lives in `shared/infrastructure/config/builder.py`
+    # (`os.getenv(f"{name}_HEALTH_PORT", str(to_health_port()))`). What changed
+    # on the Python side is that `port_mapping` now carries
+    # WorkerType.SANDBOX: 8092, which it previously lacked, so an unset
+    # variable resolved to 8080 -- api-deployment's port.
     ["$SANDBOX_WORKER_TYPE"]="8092"
     # pg_queue_consumer: 8090 — reserved here, just past the 8080-8089 core
     # range and just below where pluggable-worker discovery starts allocating
@@ -229,6 +232,14 @@ declare -A WORKER_HEALTH_PORTS=(
     # `python -m pg_queue_reaper` binds nothing.
     ["$PG_QUEUE_REAPER_TYPE"]="8086"
 )
+
+# Reverse index of the map above, so the pluggable-worker allocator can skip a
+# port a fixed worker already owns rather than only a NAME it already knows.
+declare -A _CLAIMED_HEALTH_PORTS=()
+for _p in "${WORKER_HEALTH_PORTS[@]}"; do
+    _CLAIMED_HEALTH_PORTS["$_p"]=1
+done
+unset _p
 
 # Opt-in workers: experimental and NOT part of the default "all" fleet, so
 # they're started only on explicit request. Status shows them only when they
@@ -445,7 +456,18 @@ discover_pluggable_workers() {
             # reserved for pg_queue_consumer, so the first pluggable worker
             # doesn't collide with it).
             if [[ -z "${WORKER_HEALTH_PORTS[$worker_name]:-}" ]]; then
-                WORKER_HEALTH_PORTS["$worker_name"]=$((8091 + discovered_count))
+                # Skip ports already claimed by the static map above. The test
+                # was previously only on the NAME, so a dynamic allocation
+                # could land on a port a fixed worker already owns: cloud has
+                # four pluggable workers and ships no run-worker.sh of its own,
+                # so the second one discovered was handed 8092 -- the sandbox's
+                # fixed slot, which the comment there calls reserved.
+                candidate=$((8091 + discovered_count))
+                while [[ -n "${_CLAIMED_HEALTH_PORTS[$candidate]:-}" ]]; do
+                    candidate=$((candidate + 1))
+                done
+                WORKER_HEALTH_PORTS["$worker_name"]=$candidate
+                _CLAIMED_HEALTH_PORTS[$candidate]=1
             fi
 
             print_status $GREEN "Discovered pluggable worker: $worker_name"

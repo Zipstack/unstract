@@ -164,7 +164,7 @@ _DENYLISTED_NAMES = {"__builtins__", "__globals__", "__loader__", "__import__"}
 _SYS_ALLOWED_ATTR = "argv"
 
 
-def _rule_import(node, parents) -> str | None:
+def _rule_import(node, parents, bound) -> str | None:
     """Only allowlisted top-level modules, and `sys` only unaliased."""
     if not isinstance(node, ast.Import):
         return None
@@ -179,7 +179,7 @@ def _rule_import(node, parents) -> str | None:
     return None
 
 
-def _rule_import_from(node, parents) -> str | None:
+def _rule_import_from(node, parents, bound) -> str | None:
     """Allowlisted modules only, and no `from sys import ...` in any form."""
     if not isinstance(node, ast.ImportFrom):
         return None
@@ -193,7 +193,7 @@ def _rule_import_from(node, parents) -> str | None:
     return None
 
 
-def _rule_denylisted_call(node, parents) -> str | None:
+def _rule_denylisted_call(node, parents, bound) -> str | None:
     """A direct call to a denylisted builtin, e.g. `eval(...)`."""
     if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)):
         return None
@@ -202,7 +202,7 @@ def _rule_denylisted_call(node, parents) -> str | None:
     return None
 
 
-def _rule_dangerous_attribute(node, parents) -> str | None:
+def _rule_dangerous_attribute(node, parents, bound) -> str | None:
     """Reject an attribute REFERENCE to a dangerous name, not only an
     immediate call: `f = b.eval` binds eval under another name, then
     `f(...)` runs it with no attribute left to check -- the old
@@ -221,7 +221,7 @@ def _rule_dangerous_attribute(node, parents) -> str | None:
     return None
 
 
-def _rule_private_attribute(node, parents) -> str | None:
+def _rule_private_attribute(node, parents, bound) -> str | None:
     """Any underscore-prefixed attribute access, dunder or single.
 
     Widened from dunders only, because single-underscore attributes are how an
@@ -240,7 +240,7 @@ def _rule_private_attribute(node, parents) -> str | None:
     return None
 
 
-def _rule_sys_reexport(node, parents) -> str | None:
+def _rule_sys_reexport(node, parents, bound) -> str | None:
     """`anything.sys` -- the re-export that walks around the `sys.argv` rule.
 
     `_rule_sys_name` restricts the NAME `sys` to `sys.argv` and closes aliasing
@@ -255,7 +255,7 @@ def _rule_sys_reexport(node, parents) -> str | None:
     return None
 
 
-def _rule_builtins_subscript(node, parents) -> str | None:
+def _rule_builtins_subscript(node, parents, bound) -> str | None:
     """A string subscript like `x['__builtins__']` reaches the builtins
     / globals mapping without any ast.Attribute node for the dunder
     check to see. Reject a constant string slice that is a dunder or
@@ -274,7 +274,7 @@ def _rule_builtins_subscript(node, parents) -> str | None:
     return None
 
 
-def _rule_sys_name(node, parents) -> str | None:
+def _rule_sys_name(node, parents, bound) -> str | None:
     """The name `sys` may be used ONLY as the immediate value of a
     `sys.argv` attribute access. This subsumes a plain denylist of
     dangerous sys attributes (sys.modules, sys._getframe, ...)
@@ -298,27 +298,76 @@ def _rule_sys_name(node, parents) -> str | None:
     return None
 
 
-def _rule_denylisted_name(node, parents) -> str | None:
-    """A bare REFERENCE to a denylisted name, whether or not it is called.
+def _rule_denylisted_name(node, parents, bound) -> str | None:
+    """A bare REFERENCE to a denylisted BUILTIN, whether or not it is called.
 
-    `ast.Load` is the whole point of "reference". Without it this rule also
-    matched Store and the loop variable of a `for`, so ordinary generated code
-    -- `input = json.load(...)`, `vars = {}`, `for input in rows:` -- was
-    refused as a security violation. `input` in particular is a plausible name
-    in code whose contract is "read the input path from sys.argv[1]".
+    Two conditions, and the second is the one an earlier revision got wrong.
 
-    Rebinding a denylisted name is harmless on its own; a later Load of it is
-    still caught here, by this same rule. The two sibling rules that inspect
-    references (`_rule_dangerous_attribute`, `_rule_sys_name`) already gate on
-    Load, so this brings the third into line rather than loosening the chain.
+    `ast.Load` alone is not enough. Gating only on Load permits the *binding*
+    (`input = json.load(...)`) and then rejects the next line that reads it,
+    because the read is itself a Load of the same name -- so the rule still
+    refused every realistic form of the generated code it was narrowed to
+    allow, while permitting only a write-and-never-read binding. Measured
+    before this fix: `input = json.load(...)` passed, and
+    `input = json.load(...); rows = input["records"]` was refused as
+    `disallowed name 'input'`.
+
+    So the second condition is `node.id not in bound`: a name the submitted
+    code binds anywhere refers to the submitted code's own object, not to the
+    builtin, and reading your own local is not a bypass. `input` and `vars`
+    are plausible locals in code whose contract is "read the input path from
+    sys.argv[1]".
+
+    This does NOT loosen the chain, because shadowing does not buy a bypass:
+    - a direct call of a denylisted builtin is `_rule_denylisted_call`'s, and
+      that rule is untouched, so `eval(...)` is still refused;
+    - the aliasing shape is `g = globals` -- there `globals` is a Load of a
+      name that is NOT bound, so this rule still fires. Only rebinding the
+      denylisted name ITSELF exempts it, and at that point every later Load of
+      it resolves to the caller's own value.
+    `_rule_dangerous_attribute` and `_rule_sys_name` already gate on Load.
     """
     if (
         isinstance(node, ast.Name)
         and isinstance(node.ctx, ast.Load)
+        and node.id not in bound
         and (node.id in _DENYLISTED_NAMES or node.id in _DENYLISTED_CALLS)
     ):
         return f"safety gate: disallowed name '{node.id}'"
     return None
+
+
+#: Every node type that BINDS a name, and where the bound name lives on it.
+#: Used by `_rule_denylisted_name` to tell "the builtin `input`" from "a local
+#: the submitted code called `input`".
+#:
+#: Deliberately flat -- one set for the whole module, not one per scope. A
+#: per-scope map would be more precise (a name bound in one function would not
+#: exempt it in another), and it is not worth the complexity here: the gate is
+#: best-effort hygiene rather than containment (see the module header and R12),
+#: and the direction of the imprecision is safe, because a name bound NOWHERE
+#: is still refused and a direct call is still `_rule_denylisted_call`'s.
+def _bound_names(tree) -> frozenset[str]:
+    names: set[str] = set()
+    for node in ast.walk(tree):
+        # Assignment targets, `for` targets, comprehension targets, `with ...
+        # as`, and walrus all surface as a Name in a Store context.
+        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store):
+            names.add(node.id)
+        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            names.add(node.name)
+        elif isinstance(node, ast.arg):
+            names.add(node.arg)
+        elif isinstance(node, ast.ExceptHandler) and node.name:
+            names.add(node.name)
+        elif isinstance(node, (ast.Global, ast.Nonlocal)):
+            names.update(node.names)
+        elif isinstance(node, (ast.Import, ast.ImportFrom)):
+            # `import x as y` binds y; `import x.z` binds x. The import rules
+            # above have already vetted the module itself by this point.
+            for alias in node.names:
+                names.add(alias.asname or alias.name.split(".")[0])
+    return frozenset(names)
 
 
 # ORDER IS BEHAVIOUR. These were an if/elif chain, so at most one rule ever
@@ -369,9 +418,14 @@ def check_code_safe(code: str) -> tuple[bool, str]:
         for parent in ast.walk(tree)
         for child in ast.iter_child_nodes(parent)
     }
+    # Computed once, before the walk, because `_rule_denylisted_name` has to
+    # know whether a name is the builtin or one the code binds for itself --
+    # and a binding can appear AFTER the Load that reads it (a function body
+    # referring to a module-level name assigned further down).
+    bound = _bound_names(tree)
     for node in ast.walk(tree):
         for rule in _RULES:
-            reason = rule(node, parents)
+            reason = rule(node, parents, bound)
             if reason is not None:
                 return False, reason
     return True, ""

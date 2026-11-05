@@ -75,7 +75,6 @@ def test_the_sandbox_route_names_a_task_that_actually_exists():
     precedent, not a claim that this PR introduced it.)
     """
     import sandbox.tasks  # noqa: F401 -- importing registers the task
-
     from shared.infrastructure.config.registry import WorkerRegistry
 
     routed = {r.pattern for r in WorkerRegistry._TASK_ROUTES[WorkerType.SANDBOX].routes}

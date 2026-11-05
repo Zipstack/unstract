@@ -983,7 +983,7 @@ git commit -m "UN-4044 [FEAT] Executor wires codegen sandbox transport and folds
 - Test: `charts/unstract-platform/unittests/sandbox_wiring_test.yaml`
 
 **Interfaces:**
-- Produces: `workerSandbox` values block (image, command `["sandbox"]`, `SANDBOX_*` env, resources, replicas, `additionalConfigs: [database, redis, celeryBroker]` — **no** `storage`, **no** `apiKeys`, **no** `agentKv`); a Deployment with the strict securityContext; a default-deny NetworkPolicy allowing egress only to broker + Postgres + DNS.
+- Produces: `workerSandbox` values block (image, command `["sandbox"]`, `SANDBOX_*` env, resources, replicas, `additionalConfigs: [database]` — **no** `storage`, **no** `apiKeys`, **no** `agentKv`, and **no** `redis`/`celeryBroker`); a Deployment with the strict securityContext; a default-deny NetworkPolicy allowing egress only to Postgres + DNS. **SUPERSEDED-CORRECTION:** as approved this said `[database, redis, celeryBroker]` and "broker + Postgres + DNS". The sandbox rides the Postgres queue transport, so it holds no broker credential and has no broker egress rule. This line is generative -- SBX-P1 is an assertion someone writes a helm-unittest against and the values block is what a chart author copies -- so the stale version would have re-added a broker allowance and a `celeryBroker` group to the one pod whose egress posture is load-bearing.
 
 **Context:** Model the Deployment on `templates/worker-ide-callback-v2/deployment.yaml` but with `securityContext`: `runAsNonRoot: true`, `readOnlyRootFilesystem: true`, `allowPrivilegeEscalation: false`, `capabilities.drop: [ALL]`, `seccompProfile.type: RuntimeDefault`, `automountServiceAccountToken: false`, an `emptyDir` volume mounted at `/tmp` (sizeLimit 256Mi), CPU/memory/ephemeral-storage limits. The NetworkPolicy selects the sandbox pods and denies all egress except: broker service port, Postgres service port, and DNS (UDP/TCP 53).
 
@@ -991,7 +991,9 @@ git commit -m "UN-4044 [FEAT] Executor wires codegen sandbox transport and folds
   - **SBX-D1** Deployment renders with `command: ["sandbox"]` and `WORKER_TYPE=sandbox`.
   - **SBX-S1..S6** securityContext fields exactly as above (`runAsNonRoot`, `readOnlyRootFilesystem`, `allowPrivilegeEscalation: false`, `drop: [ALL]`, `seccompProfile: RuntimeDefault`, `automountServiceAccountToken: false`).
   - **SBX-N1** the pod attaches **no** `storage` / `apiKeys` / `agentKv` config group (negative: the rendered env/secret refs do not contain `AGENT_KV_LLM_API_KEY`, `AGENT_KV_FILE_STORAGE_CREDENTIALS`, `MINIO`).
-  - **SBX-P1** NetworkPolicy renders default-deny egress with exactly the broker/Postgres/DNS allowances.
+  - **SBX-P1** NetworkPolicy renders default-deny egress with exactly the Postgres/DNS
+    allowances. **SUPERSEDED-CORRECTION:** as approved this said
+    "broker/Postgres/DNS". There is no broker rule -- see the values-block note above.
   Use `documentIndex`/`contains`/`notContains`/`equal` assertions; make every negative a real `notContains`, mutation-checked.
 
 - [ ] **Step 2: Run to verify it fails.**

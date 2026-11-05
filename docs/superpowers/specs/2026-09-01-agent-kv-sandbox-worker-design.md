@@ -1,5 +1,17 @@
 # Agent-KV Codegen Sandbox Worker — Design (Sub-project #2)
 
+> **SUPERSEDED IN PART — read `docs/agent-kv-architecture.md` first.** This is a
+> dated design record (approved 2026-09-01), not a description of what shipped.
+> Three of its statements are now known false and are corrected in the
+> architecture doc and in `workers/sandbox/runner.py`:
+> the **broker** egress rule and broker credential (the sandbox moved onto the
+> Postgres queue transport, so there is no broker rule and no broker credential
+> at all); the **"no secrets beyond"** posture (the pod mounts `[database]`,
+> because on the PG transport the queue IS Postgres — see R12); and the
+> **numeric `runAsUser`** listed below as outstanding, which the chart now sets
+> to 999. Each is annotated in place below. Do not copy a values block or an
+> acceptance criterion out of this file without checking it against the chart.
+
 Date: 2026-09-01. Status: approved design (brainstormed with Arun; approach and all
 sections approved in chat). Parent: `2026-08-28-agent-kv-api-design.md` §6.3 (normative
 security model, D9) and the cloud executor design (`unstract-cloud`
@@ -68,9 +80,14 @@ redelivery is safe: the code is a pure transform (no side effects to duplicate).
    never trusts the client's check).
 2. **Scrubbed subprocess** — per-request tempdir; `sys.executable -I -S -E` with an
    **empty environment** (minimal PATH), cwd = tempdir, `start_new_session`;
-   `preexec_fn` sets rlimits: CPU (= timeout), address space
+   `preexec_fn` sets rlimits: CPU (= `timeout + grace`), address space
    (`SANDBOX_MEMORY_MB`, 512 default), NPROC (small), NOFILE, FSIZE (= output cap).
-   Process group killed at wall-clock `timeout + grace`. The runner stub is **the same
+   Process group killed at wall-clock `timeout`.
+   **SUPERSEDED-CORRECTION (this clause only):** as approved, this said CPU
+   `= timeout` and a group kill at `timeout + grace`. The shipped runner is the
+   reverse, deliberately: equal thresholds make the two mechanisms race and yield a
+   nondeterministic error string for the same hostile input (ruling R1). The
+   authority is `workers/sandbox/runner.py`'s module docstring. The runner stub is **the same
    stub contract the engine's `CodeExecutor` uses today** — codegen prompts do not
    change.
 3. **Output discipline** — JSONL validated line-by-line (`json.loads` each line),
@@ -89,7 +106,7 @@ v1 runs the sandbox worker from the **existing `worker-unified` image** (command
 `WorkerBuilder`) depends on SDK1/connectors/core, so a truly minimal image requires a
 disentangled standalone mini-worker — deferred. The guarantees that matter do not
 depend on image contents: the generated-code subprocess runs with a scrubbed empty
-env; the pod mounts **no secrets beyond the broker/DB credential** (no `agentKv`, no
+env; the pod mounts **no secrets beyond the DB credential** (no `agentKv`, no
 `storage` groups); egress is default-denied. A dedicated python-slim image (no SDK1,
 no LLM libraries, no platform clients) moves to the **upgrade path** alongside
 gVisor/`runtimeClass` and per-job K8s Jobs.
@@ -123,8 +140,10 @@ New `sandbox` Deployment: `runAsNonRoot`, `readOnlyRootFilesystem` + sized `empt
 at `/tmp` (256 Mi default), all capabilities dropped, `seccompProfile:
 RuntimeDefault`, `automountServiceAccountToken: false`, CPU/memory/ephemeral-storage
 limits, replicas/HPA values. Dedicated **NetworkPolicy**: default-deny ingress+egress;
-egress only to broker (RabbitMQ), Postgres (PG twin + result rows), DNS. No MinIO/GCS,
-no platform-service, no backend, no internet. Secrets: only the broker/DB credential
+egress only to Postgres (the queue itself + result rows) and DNS. **No broker rule**
+-- it was removed when the sandbox moved onto the Postgres queue transport, so the
+"egress only to broker, Postgres, DNS" wording this clause carried is superseded. No
+MinIO/GCS, no platform-service, no backend, no internet. Secrets: only the DB credential
 (own Secret) — none of the `agentKv` or `storage` groups (negative helm-unittest
 assertions, mutation-checked). Compose/dev mirrors what it can (`read_only`,
 `cap_drop: ALL`, `no-new-privileges`, tmpfs `/tmp`, internal network only).
@@ -174,7 +193,9 @@ both because, on the PG transport, the queue *is* Postgres. In cloud staging `DB
 `postgres`. So what actually contains this:
 
 - it runs **non-root** on a **read-only rootfs** (cannot write outside the `/tmp` emptyDir)
-  — though `runAsNonRoot: true` currently has **no numeric `runAsUser`**, so it holds only
+  — SUPERSEDED: `runAsNonRoot: true` now DOES carry a numeric `runAsUser` (999, set by
+  the chart at pod and container level). As approved this read "has no numeric
+  `runAsUser`", so it held only
   because the image sets `USER worker`,
 - **default-deny egress except Postgres and DNS** — not "no egress",
 - **per-job tempdir** isolation (no cross-tenant file access), and
@@ -186,7 +207,8 @@ not be cited as a layer-3 invariant for this pod until the credential is actuall
 narrowed. Egress default-deny remains load-bearing.
 
 **Required mitigation (no longer deferred):** a narrowly-scoped queue/result DB role, a
-numeric `runAsUser`, and `/proc` hardening — tracked as **UN-4218**. The **deferred**
+`/proc` hardening, and a distinct UID per child — tracked as **UN-4218**. (A numeric
+`runAsUser` was on this list and is now done; see above.) The **deferred**
 mitigation remains `runtimeClass: gvisor` (a filesystem/syscall sandbox), listed as a
 v1-out-of-scope upgrade in §1 and the parent design §6.3.
 

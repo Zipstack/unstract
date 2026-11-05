@@ -19,6 +19,28 @@ The engine is proven (QA pass, adversarial challenger, constraint checking, norm
 opt-in codegen post-processing). This design is about *hosting* it safely and metering it
 — not about changing how it extracts.
 
+> **SUPERSEDED IN PART — D1 and D6.** This is a dated design record
+> (2026-08-28). Two of its "locked, not open for re-litigation" decisions were
+> deliberately reversed, and the reversals shipped; the authority for both is
+> `docs/agent-kv-api.md` §3a.
+>
+> - **D1 ("v1 is KV only")** — the API now carries two extractors behind one
+>   selector. See the table-extractor carve-out
+>   (`docs/superpowers/plans/2026-10-06-table-extractor-api-carveout.md`).
+> - **D6 ("LLM selection is env-configured only ... No end-user model
+>   control")** — reversed. The caller names platform adapter ids by role
+>   (`llm`, `lite_llm`, `x2text`) and both extractors REQUIRE all three. The
+>   `AGENT_KV_LLM_*` / `AGENT_KV_LLMWHISPERER_*` variables this decision names
+>   have no reader, are not declared in the chart, and have no External Secrets
+>   mapping — so provisioning secrets from D6 provisions nothing. The §3 non-goal
+>   "user model selection" and the `:434` "Not exposed (D6): model choice" line
+>   are stale for the same reason.
+>
+> Rationale for the D6 reversal, recorded in `execution_serializers.py`'s
+> `TableAdaptersSerializer`: the consumers are existing customers who already
+> own adapters, and letting them choose puts model selection and LLM spend on
+> the account that benefits from it.
+
 ## 2. Locked decisions
 
 These were settled in the brainstorming discussion and are not open for re-litigation in
