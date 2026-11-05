@@ -121,8 +121,8 @@ class PostgreSQL(UnstractDB, PsycoPgHandler):
         """Open a connection, hiding libpq's error when it may echo a password."""
         try:
             return psycopg2.connect(**conn_params)
-        except psycopg2.ProgrammingError:
-            # psycopg2 echoes the URL here, password included.
+        except (psycopg2.ProgrammingError, UnicodeError):
+            # These echo the URL or its bytes, password included.
             raise ConnectorError(INVALID_URL_MESSAGE) from None
         except psycopg2.OperationalError:
             if PostgreSQL._password_may_be_misread(conn_params.get("dsn", "")):
@@ -133,23 +133,23 @@ class PostgreSQL(UnstractDB, PsycoPgHandler):
     def _password_may_be_misread(url: str) -> bool:
         """Best-effort check that libpq read part of a password as another setting.
 
-        An unescaped ``@`` or ``/`` moves it into the host, port or database,
-        and libpq's errors echo those. Not caught: a URL with no ``@``, where
-        nothing marks a password, or a keyword inside a query password.
+        An unescaped ``@`` or ``/`` moves it into the host, port or database, and
+        libpq's errors echo those. With no ``@``, only a port that isn't a number
+        gives it away. Not caught: any other URL with no ``@``, or a keyword
+        inside a query password.
         """
-        rest = url.partition("://")[2]
-        authority = re.split("[/?]", rest, maxsplit=1)[0]
+        # libpq stops reading at a NUL.
+        rest = url.partition("\0")[0].partition("://")[2]
         at_signs = rest.count("@")
-        ports = parse_dsn(url).get("port", "").split(",")
-        return (
-            at_signs > 1
-            or at_signs != authority.count("@")
-            or not all(PostgreSQL._is_valid_port(port) for port in ports)
-        )
+        if not at_signs:
+            ports = parse_dsn(url).get("port", "").split(",")
+            return not all(PostgreSQL._looks_like_port(port) for port in ports)
+        authority = re.split("[/?]", rest, maxsplit=1)[0]
+        return at_signs > 1 or at_signs != authority.count("@")
 
     @staticmethod
-    def _is_valid_port(port: str) -> bool:
-        """Whether libpq accepts this port; it echoes any other."""
+    def _looks_like_port(port: str) -> bool:
+        """Whether this reads as a port number; anything else may be a password."""
         return not port or (
             re.fullmatch("[0-9]{1,5}", port) is not None and 0 < int(port) <= 65535
         )

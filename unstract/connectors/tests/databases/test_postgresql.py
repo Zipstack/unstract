@@ -36,6 +36,8 @@ class TestMalformedConnectionUrl(unittest.TestCase):
         for url in (
             "postgres:/alice:STANDINPW@db.invalid/prod",
             "postgresql://alice:STAND%ZZINPW@db.invalid/prod",
+            "postgresql://alice:STAND%C3INPW@db.invalid/prod",
+            "postgresql://alice:STAND\ud800INPW@db.invalid/prod",
         ):
             with self.subTest(url=url):
                 self._assert_hidden(url, "The connection URL is not valid.")
@@ -48,11 +50,12 @@ class TestMalformedConnectionUrl(unittest.TestCase):
             "postgresql://db.invalid?user=alice&password=INPW@INPW",
             "postgresql://alice:INPW/prod",
             "postgresql://alice:INPW,db.invalid/prod",
+            "postgresql://alice:INPW\0INPW@db.invalid/prod",
         ):
             with self.subTest(url=url):
                 self._assert_hidden(url, CONNECT_FAILED)
 
-    def test_port_libpq_rejects_stays_out_of_the_error(self) -> None:
+    def test_bad_port_with_no_at_sign_stays_out_of_the_error(self) -> None:
         for port in ("0", "65536", "123456"):
             with self.subTest(port=port), self.assertRaises(ConnectorError) as caught:
                 PostgreSQL(
@@ -67,6 +70,7 @@ class TestConnectionFailureReason(unittest.TestCase):
         for settings in (
             {"connection_url": "postgresql://alice:pw@db.invalid:5432/prod"},
             {"connection_url": "postgresql://alice:pw@db.invalid:65535/prod"},
+            {"connection_url": "postgresql://alice:pw@db.invalid:000080/prod"},
             {"connection_url": "postgresql://alice:pa%40ss@db.invalid/prod"},
             {"connection_url": "postgresql://alice:pw@db1.invalid:5432,db2.invalid:5433/prod"},
             {"connection_url": "host=db.invalid user=alice password=pa@ss dbname=prod"},
@@ -83,6 +87,18 @@ class TestConnectionFailureReason(unittest.TestCase):
                     _connect_error(settings, "connection refused").message,
                     "Error while connecting to DB: connection refused",
                 )
+
+    def test_mistyped_port_after_the_at_sign_keeps_its_reason(self) -> None:
+        for port, reason in (
+            ("PORT", 'invalid integer value "PORT"'),
+            ("543200", 'invalid port number: "543200"'),
+        ):
+            url = f"postgresql://alice:pw@db.invalid:{port}/prod"
+            with self.subTest(port=port):
+                with self.assertRaises(ConnectorError) as caught:
+                    PostgreSQL({"connection_url": url}).test_credentials()
+
+                self.assertIn(reason, caught.exception.message)
 
     def test_url_that_may_be_misread_does_not_claim_to_be_invalid(self) -> None:
         for url in (

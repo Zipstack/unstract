@@ -116,14 +116,21 @@ nothing is backfilled, so every profile starts as `never_tested`.
 
 ## Deploying and rolling back
 
-- The migration must apply before this code serves. Adapter and connector lists
-  read the new tables, so they return **500** until it does.
+- The migration must apply before this code serves. Adapter and connector list,
+  create and per-profile endpoints read the new tables, so they return **500**
+  until it does. Create saves the row before it fails, so a retry hits the
+  duplicate-name error.
 - Older code doesn't know these tables, so it can't delete a tested profile: the
   foreign key fails and the delete returns **500**. Profiles with no stored
   result delete normally.
-- Before rolling back to an image without this app, run
-  `python manage.py migrate connection_check zero` on this image. It drops every
-  stored result.
+- To roll back to an image without this app, roll the image back first. This
+  code needs the tables until the last of its pods is gone. Then run
+  `.venv/bin/python manage.py migrate connection_check zero` as a one-off from
+  this image. It drops every stored result.
 - If that image is already gone, run this instead:
-  `DROP TABLE adapter_test_result, connector_test_result;` and
-  `DELETE FROM django_migrations WHERE app = 'connection_check';`
+
+  ```sql
+  SET search_path TO unstract;  -- or whatever DB_SCHEMA is set to
+  DROP TABLE adapter_test_result, connector_test_result;
+  DELETE FROM django_migrations WHERE app = 'connection_check';
+  ```
