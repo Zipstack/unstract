@@ -106,6 +106,11 @@ def parse_junit(group_name: str, tier: str, reports_dir: Path) -> GroupResult | 
 
     root = tree.getroot()
     suites = root.findall("testsuite") if root.tag == "testsuites" else [root]
+    if not suites and "tests" in root.attrib:
+        # vitest's report for a run with no test files: the counters sit on
+        # the <testsuites> root and there is no <testsuite> at all. That is a
+        # complete report of zero tests, not a truncated write.
+        suites = [root]
 
     passed = failed = errors = skipped = 0
     duration = 0.0
