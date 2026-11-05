@@ -121,3 +121,15 @@ it("passes axe in every mode", async () => {
     unmount();
   }
 });
+
+it("keeps a linked image as text inside its link, never a link in a link", () => {
+  const { container } = renderV1(
+    <Markdown>
+      {"[![build](https://x.example/b.svg)](https://ci.example/run)"}
+    </Markdown>,
+  );
+  expect(container.querySelectorAll("a")).toHaveLength(1);
+  expect(container.querySelector("a a")).toBeNull();
+  const link = screen.getByRole("link", { name: "Image: build" });
+  expect(link.getAttribute("href")).toBe("https://ci.example/run");
+});

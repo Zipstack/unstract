@@ -10,6 +10,7 @@ import {
   CopyButton,
   DiffView,
   formatJson,
+  formatJsonText,
   InlineCode,
   JsonView,
   Markdown,
@@ -100,8 +101,8 @@ props pass through to the root.
   parent), Enter or Space toggles. Expand all / Collapse all are in the
   toolbar. Folded containers show `{…} 3 keys`.
 - `value` is compared by identity: a new object re-flattens the
-  document and resets folding, so pass a stable or memoised value, not an
-  inline literal.
+  document and resets folding and the keyboard position, so pass a stable or
+  memoised value, not an inline literal.
 - `value` goes through `JSON.stringify` rules (`toJSON`, dropped `undefined`).
   A value it cannot serialise (a BigInt, a cycle) shows an error with nothing
   to copy; `undefined` shows "No data".
@@ -118,11 +119,13 @@ props pass through to the root.
 />
 <DiffView oldText={formatJson(before)} newText={formatJson(after)} language="json"
   oldLabel="BEFORE" newLabel="AFTER" />
+<DiffView oldText={formatJsonText(v1Text) ?? v1Text} newText={formatJsonText(v2Text) ?? v2Text}
+  language="json" />
 ```
 
 | Prop | Type | Default | |
 | --- | --- | --- | --- |
-| `oldText`, `newText` | `string` | required | for JSON, pass `formatJson(value)` |
+| `oldText`, `newText` | `string` | required | for JSON text, `formatJsonText(text)` (numbers kept as written, `null` if invalid); for a value, `formatJson(value)` |
 | `language` | as CodeBlock | `"text"` | highlights both sides |
 | `layout` | `"split" \| "unified"` | `"split"` | |
 | `oldLabel`, `newLabel` | `ReactNode` | — | column heads, split layout only |
@@ -208,8 +211,8 @@ In tests, mock Monaco, whose loader would fetch from the CDN:
 
 ## Gallery and tests
 
-`code.gallery.tsx` lists every variant and state (except `CodeEditor`, which needs the Monaco CDN). Until the component gallery
+`code.gallery.tsx` lists the main variants (not `CodeEditor`, which needs the Monaco CDN). Until the component gallery
 (P1-T01) lands, `markup.test.tsx` renders each entry, snapshots its markup in
-`__snapshots__/markup.md` and runs axe on it. The 5,000-line performance case
-is in `JsonView.test.tsx`; its fixture is `largeJson()` in
+`__snapshots__/markup.md` and runs axe on it. The 5,000-line case (only a
+window of rows rendered) is in `JsonView.test.tsx`; its fixture is `largeJson()` in
 `test/fixtures/json.ts`.

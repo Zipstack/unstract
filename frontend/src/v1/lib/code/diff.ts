@@ -55,15 +55,18 @@ export type DiffLimits = Readonly<{
 }>;
 
 /**
- * jsdiff runs on the main thread, and two large, very different texts take
- * O(N·D) time; past this it gives up rather than freeze the page.
+ * jsdiff runs on the main thread and takes O(N·D) time, where D is the number
+ * of changed lines. Past this many it gives up, the same way on every
+ * machine, rather than freeze the page.
  */
+export const DIFF_MAX_EDIT_LENGTH = 2000;
+/** A backstop on slow machines; DIFF_MAX_EDIT_LENGTH is the limit that normally applies. */
 export const DIFF_TIMEOUT_MS = 1000;
 
 /**
  * Diffs two texts line by line. Returns `null` when a limit is hit (by
- * default, DIFF_TIMEOUT_MS), so the caller can say the texts are too large to
- * compare.
+ * default DIFF_MAX_EDIT_LENGTH changed lines, or DIFF_TIMEOUT_MS), so the
+ * caller can say the texts are too large to compare.
  */
 export function computeLineDiff(
   oldText: string,
@@ -74,9 +77,7 @@ export function computeLineDiff(
   const newSource = normalise(newText);
   const result = diffLines(oldSource, newSource, {
     timeout: limits.timeoutMs ?? DIFF_TIMEOUT_MS,
-    ...(limits.maxEditLength === undefined
-      ? {}
-      : { maxEditLength: limits.maxEditLength }),
+    maxEditLength: limits.maxEditLength ?? DIFF_MAX_EDIT_LENGTH,
   });
   if (!result) {
     return null;

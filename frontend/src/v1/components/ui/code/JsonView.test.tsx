@@ -306,3 +306,23 @@ it("keeps 5,000 lines responsive by rendering only a window of rows, through eve
   // Line 4,999 is the last item; 5,000 is the closing bracket.
   await waitFor(() => expect(active()).toMatch(/^4999\s+5$/));
 });
+
+it("shows JSON nested too deep to print as an error, not a crash", () => {
+  // JSON.parse accepts this; the recursive printer cannot.
+  const deep = `${"[".repeat(20000)}${"]".repeat(20000)}`;
+  renderV1(<JsonView text={deep} />);
+  expect(screen.getByRole("alert").textContent).toContain("Invalid JSON");
+});
+
+it("folds one of two containers that share a repeated key", async () => {
+  const { user } = renderV1(<JsonView text={'{"a":{"x":1},"a":{"y":2}}'} />);
+  const [first, second] = items().filter((i) =>
+    i.textContent?.includes('"a": {'),
+  );
+  await user.click(first.querySelector("[data-slot=json-toggle]") as Element);
+  expect(first.getAttribute("aria-expanded")).toBe("false");
+  expect(second.getAttribute("aria-expanded")).toBe("true");
+  const shown = screen.getByRole("tree").textContent;
+  expect(shown).not.toContain('"x": 1');
+  expect(shown).toContain('"y": 2');
+});

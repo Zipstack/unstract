@@ -29,23 +29,27 @@ import {
 const MonacoEditor = lazy(() => import("@monaco-editor/react"));
 
 /**
- * How long the editor may stay on its skeleton before it says it could not
- * load. @monaco-editor/react only logs a failed CDN load and keeps showing
- * its loading state, so without this a blocked CDN means a skeleton forever.
+ * How long the editor may stay on its skeleton before it says it is taking a
+ * while. @monaco-editor/react only logs a failed CDN load and keeps showing
+ * its loading state, so without this a blocked CDN means a silent skeleton.
+ * The editor stays mounted, so a slow load that finishes later still shows.
  */
 export const EDITOR_LOAD_TIMEOUT_MS = 15_000;
 
-/** Turns a failed lazy chunk into the editor's own error state instead of unmounting the page. */
+/** Turns an error in the editor (such as a failed chunk) into the editor's own error state instead of unmounting the page. */
 class LoadBoundary extends Component<
-  Readonly<{ fallback: ReactNode; children: ReactNode }>,
+  Readonly<{ onError: () => void; children: ReactNode }>,
   { failed: boolean }
 > {
   state = { failed: false };
   static getDerivedStateFromError() {
     return { failed: true };
   }
+  componentDidCatch() {
+    this.props.onError();
+  }
   render() {
-    return this.state.failed ? this.props.fallback : this.props.children;
+    return this.state.failed ? null : this.props.children;
   }
 }
 
@@ -90,8 +94,10 @@ export type CodeEditorProps = Readonly<{
 
 /**
  * An editable code field. Engine-agnostic props over Monaco
- * (@monaco-editor/react), which loads on first render behind a skeleton,
- * and shows an error if it has not loaded within EDITOR_LOAD_TIMEOUT_MS.
+ * (@monaco-editor/react), which loads on first render behind a skeleton.
+ * After EDITOR_LOAD_TIMEOUT_MS without it a note says it is taking a while
+ * (the editor still appears if it loads), and an error in the editor shows
+ * an error in its place.
  * Follows the v1 theme (light or dark) and the mono font token.
  */
 export function CodeEditor({
@@ -107,11 +113,13 @@ export function CodeEditor({
 }: CodeEditorProps): JSX.Element {
   const ref = useRef<HTMLDivElement>(null);
   const [theme, setTheme] = useState({ dark: false, font: "" });
-  const [load, setLoad] = useState<"loading" | "ready" | "failed">("loading");
+  const [load, setLoad] = useState<"loading" | "slow" | "ready" | "failed">(
+    "loading",
+  );
 
   useEffect(() => {
     const timer = setTimeout(
-      () => setLoad((now) => (now === "loading" ? "failed" : now)),
+      () => setLoad((now) => (now === "loading" ? "slow" : now)),
       EDITOR_LOAD_TIMEOUT_MS,
     );
     return () => clearTimeout(timer);
@@ -141,11 +149,6 @@ export function CodeEditor({
       <SkeletonBlock />
     </Skeleton>
   );
-  const failed = (
-    <InlineAlert title="The editor could not load" className="ui:m-2">
-      Check your connection, then reload the page.
-    </InlineAlert>
-  );
 
   return (
     <div
@@ -157,9 +160,21 @@ export function CodeEditor({
       )}
     >
       {load === "failed" ? (
-        failed
-      ) : (
-        <LoadBoundary fallback={failed}>
+        <InlineAlert title="The editor could not load" className="ui:m-2">
+          Reload the page to try again.
+        </InlineAlert>
+      ) : null}
+      {load === "slow" ? (
+        <InlineAlert
+          kind="warning"
+          title="The editor is taking a while to load"
+          className="ui:m-2"
+        >
+          Check your connection. It appears here once it loads.
+        </InlineAlert>
+      ) : null}
+      {load === "failed" ? null : (
+        <LoadBoundary onError={() => setLoad("failed")}>
           <Suspense fallback={loading}>
             <MonacoEditor
               value={value}

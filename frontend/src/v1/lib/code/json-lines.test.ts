@@ -5,6 +5,7 @@ import {
   flattenJson,
   flattenJsonText,
   formatJson,
+  formatJsonText,
   parseJson,
   visibleLines,
 } from "./json-lines";
@@ -206,4 +207,12 @@ it("keys nested text containers like values, and reports invalid text", () => {
   expect(lines[3].tokens.at(-2)).toEqual({ text: "null", kind: "literal" });
   const bad = flattenJsonText("{a:1}");
   expect(bad.ok).toBe(false);
+});
+
+it("formatJsonText re-indents without changing a character of any value", () => {
+  expect(formatJsonText('{"id":4111111111111111111,"n":[1.10]}')).toBe(
+    '{\n  "id": 4111111111111111111,\n  "n": [\n    1.10\n  ]\n}',
+  );
+  expect(formatJsonText("{bad")).toBeNull();
+  expect(formatJsonText(`${"[".repeat(20000)}${"]".repeat(20000)}`)).toBeNull();
 });

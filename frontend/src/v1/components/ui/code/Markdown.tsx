@@ -1,6 +1,12 @@
 import { cn } from "@v1/lib/cn";
 import { CODE_LANGUAGES, type CodeLanguage } from "@v1/lib/code/highlight";
-import type { ComponentProps, JSX, ReactNode } from "react";
+import {
+  type ComponentProps,
+  createContext,
+  type JSX,
+  type ReactNode,
+  useContext,
+} from "react";
 import ReactMarkdown, { uriTransformer } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { CodeBlock, LANGUAGE_NAME } from "./CodeBlock";
@@ -59,6 +65,9 @@ function dom<T extends { node?: unknown; level?: number }>({
  * One element per Markdown construct, styled with v1 type roles rather than
  * @tailwindcss/typography's `prose` (whose v0 config would leak in).
  */
+/** True under a Markdown link, so an image there renders as text. */
+const InsideLink = createContext(false);
+
 const COMPONENTS = {
   h1: (p: Props<"h1">) => (
     <h1
@@ -106,7 +115,7 @@ const COMPONENTS = {
         : {})}
       className="ui:rounded-sm ui:text-primary ui:underline ui:underline-offset-2 ui:focus-visible:focus-ring"
     >
-      {children}
+      <InsideLink.Provider value={true}>{children}</InsideLink.Provider>
     </a>
   ),
   ul: ({ ordered: _o, ...p }: Props<"ul"> & { ordered?: boolean }) => (
@@ -189,20 +198,28 @@ const COMPONENTS = {
 // Off by default, an image is a link the reader can choose to follow:
 // fetching it on render would let text steered by a document (prompt
 // injection) send data to any host in its URL.
-const LINKED_IMAGE = ({ alt, src }: Props<"img">) => (
-  <a
-    href={src}
-    target="_blank"
-    rel="noopener noreferrer"
-    className="ui:rounded-sm ui:text-primary ui:underline ui:underline-offset-2 ui:focus-visible:focus-ring"
-  >
-    {alt ? `Image: ${alt}` : "Image"}
-  </a>
-);
+// Inside a link (`[![badge](img)](url)`) the image is just text: a second
+// anchor would nest `<a>` in `<a>` and hide the link's own target.
+function LinkedImage({ alt, src }: Props<"img">): JSX.Element {
+  const label = alt ? `Image: ${alt}` : "Image";
+  if (useContext(InsideLink)) {
+    return <span>{label}</span>;
+  }
+  return (
+    <a
+      href={src}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="ui:rounded-sm ui:text-primary ui:underline ui:underline-offset-2 ui:focus-visible:focus-ring"
+    >
+      {label}
+    </a>
+  );
+}
 const LOADED_IMAGE = ({ alt, ...p }: Props<"img">) => (
   <img {...dom(p)} alt={alt ?? ""} className="ui:max-w-full" />
 );
-const WITH_LINKED_IMAGES = { ...COMPONENTS, img: LINKED_IMAGE };
+const WITH_LINKED_IMAGES = { ...COMPONENTS, img: LinkedImage };
 const WITH_LOADED_IMAGES = { ...COMPONENTS, img: LOADED_IMAGE };
 
 export type MarkdownProps = Readonly<{

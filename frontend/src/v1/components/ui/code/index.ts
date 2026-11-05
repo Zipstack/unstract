@@ -12,6 +12,7 @@ export {
 export { CODE_LANGUAGES, type CodeLanguage } from "@v1/lib/code/highlight";
 export {
   formatJson,
+  formatJsonText,
   type JsonParseResult,
   parseJson,
 } from "@v1/lib/code/json-lines";

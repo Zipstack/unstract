@@ -1,6 +1,7 @@
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 import {
   computeLineDiff,
+  DIFF_MAX_EDIT_LENGTH,
   DIFF_TIMEOUT_MS,
   describeChanges,
   diffStats,
@@ -63,7 +64,27 @@ it("gives up past its limits instead of freezing, and says so with null", () => 
     computeLineDiff("a\nb\nc", "x\ny\nz", { maxEditLength: 1 }),
   ).toBeNull();
   expect(computeLineDiff("a\nb", "a\nB", { maxEditLength: 2 })).not.toBeNull();
-  expect(DIFF_TIMEOUT_MS).toBeGreaterThan(0);
+});
+
+it("by default gives up past DIFF_MAX_EDIT_LENGTH changed lines", () => {
+  const lines = (n: number, tag: string) =>
+    Array.from({ length: n }, (_, i) => `${tag}${i}`).join("\n");
+  const half = DIFF_MAX_EDIT_LENGTH / 2;
+  // Every line changed: 2 × n edits.
+  expect(computeLineDiff(lines(half, "a"), lines(half, "b"))).not.toBeNull();
+  expect(
+    computeLineDiff(lines(half + 1, "a"), lines(half + 1, "b")),
+  ).toBeNull();
+});
+
+it("by default gives up once DIFF_TIMEOUT_MS has passed", () => {
+  // Each read of the clock jumps past the deadline.
+  let now = 0;
+  vi.spyOn(Date, "now").mockImplementation(() => {
+    now += 2 * DIFF_TIMEOUT_MS;
+    return now;
+  });
+  expect(computeLineDiff("a\nb\nc", "x\ny\nz")).toBeNull();
 });
 
 it("diffStats gives the counts on their own", () => {

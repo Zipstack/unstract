@@ -292,6 +292,24 @@ export function flattenJsonText(
 }
 
 /**
+ * Re-indents JSON text the way JsonView shows it, keeping every number,
+ * string and key as written (`formatJson(JSON.parse(text))` would round a
+ * 19-digit ID). Returns `null` for invalid text or nesting too deep to print.
+ */
+export function formatJsonText(text: string): string | null {
+  try {
+    const result = flattenJsonText(text);
+    return result.ok
+      ? result.lines
+          .map((line) => line.tokens.map((t) => t.text).join(""))
+          .join("\n")
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * The lines left showing when the containers whose opening-line indexes are
  * in `collapsed` are folded. Folds are keyed by index, not path: JSON text may
  * repeat a key, so two containers can share a path.

@@ -89,10 +89,20 @@ const NO_LINES: JsonLine[] = [];
 
 function buildModel(source: JsonSource): Model {
   if (source.text !== undefined) {
-    const result = flattenJsonText(source.text);
-    return result.ok
-      ? result
-      : { ok: false, error: result.error, raw: source.text };
+    try {
+      const result = flattenJsonText(source.text);
+      return result.ok
+        ? result
+        : { ok: false, error: result.error, raw: source.text };
+    } catch (error) {
+      // Valid JSON nested deeper than the printer's stack (JSON.parse is not
+      // recursive; the printer is) shows as an error, not a crashed page.
+      return {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+        raw: source.text,
+      };
+    }
   }
   try {
     return { ok: true, lines: flattenJson(source.value) };
@@ -171,7 +181,7 @@ const TOOL_BUTTON =
  * collapses (or goes to the parent), Enter or Space toggles.
  *
  * `value` is compared by identity: a new object re-flattens and resets
- * folding, so pass a stable (memoised) value.
+ * folding and the keyboard position, so pass a stable (memoised) value.
  *
  * The view grows to 480px and then scrolls; set a height class to change
  * that (`className="ui:h-full ui:max-h-none"`).

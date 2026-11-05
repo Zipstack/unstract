@@ -113,18 +113,26 @@ it("uses the mono font token when the page defines it", async () => {
   );
 });
 
-it("says the editor could not load when Monaco never mounts", async () => {
+it("says the editor is slow when Monaco has not mounted, and shows it once it does", async () => {
   monaco.loads = false;
   vi.useFakeTimers({ shouldAdvanceTime: true });
   try {
-    renderV1(<CodeEditor aria-label="Late" />);
+    const { rerender } = renderV1(<CodeEditor aria-label="Late" />);
     expect(await screen.findByText("Loading editor")).toBeTruthy();
     act(() => {
       vi.advanceTimersByTime(EDITOR_LOAD_TIMEOUT_MS);
     });
-    expect(screen.getByRole("alert").textContent).toContain(
-      "The editor could not load",
-    );
+    expect(
+      screen.getByText("The editor is taking a while to load"),
+    ).toBeTruthy();
+    expect(screen.queryByRole("alert")).toBeNull();
+    // The runtime arrives late: the editor appears and the note goes.
+    monaco.loads = true;
+    rerender(<CodeEditor aria-label="Late" defaultValue="x" />);
+    expect(await screen.findByRole("textbox", { name: "Late" })).toBeTruthy();
+    expect(
+      screen.queryByText("The editor is taking a while to load"),
+    ).toBeNull();
   } finally {
     monaco.loads = true;
     vi.useRealTimers();

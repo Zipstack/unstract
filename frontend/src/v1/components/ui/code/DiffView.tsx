@@ -25,7 +25,10 @@ const NO_DIFF: LineDiff = {
 
 export type DiffViewProps = Omit<ComponentProps<"div">, "children"> &
   Readonly<{
-    /** The text before the change. For JSON, pass `formatJson(before)`. */
+    /**
+     * The text before the change. For JSON text, pass `formatJsonText(text)`
+     * (numbers kept as written); for a value, `formatJson(value)`.
+     */
     oldText: string;
     /** The text after the change. */
     newText: string;
@@ -228,7 +231,7 @@ export function DiffView({
           className="ui:border-b ui:border-border ui:bg-muted ui:px-3.5 ui:py-2"
         />
       ) : null}
-      {labels ? (
+      {labels && computed !== null ? (
         <div
           data-slot="diff-labels"
           className="ui:grid ui:grid-cols-2 ui:border-b ui:border-border ui:text-overline ui:text-muted-foreground"

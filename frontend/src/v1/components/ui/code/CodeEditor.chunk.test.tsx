@@ -21,4 +21,6 @@ it("shows its own error when the editor chunk fails to load", async () => {
     "The editor could not load",
   );
   expect(screen.getByText("Rest of the page")).toBeTruthy();
+  // One alert, not one from the boundary and another from the timeout.
+  expect(screen.getAllByRole("alert")).toHaveLength(1);
 });

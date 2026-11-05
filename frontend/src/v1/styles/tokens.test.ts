@@ -172,6 +172,8 @@ it("code and diff text colours meet WCAG AA (4.5:1) on every surface they sit on
     const surfaces = {
       muted: value("muted", mode),
       card,
+      // The active JsonView row.
+      accent: value("accent", mode),
       added: over(value("diff-added", mode), card),
       removed: over(value("diff-removed", mode), card),
     };
