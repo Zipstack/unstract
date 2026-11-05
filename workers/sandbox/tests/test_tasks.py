@@ -127,22 +127,21 @@ class TestIntEnvGuards:
         assert "SANDBOX_MEMORY_MB" in caplog.text
 
 
-def test_wrote_output_crosses_the_task_boundary():
-    """`wrote_output` is only useful if it reaches the engine.
+def test_the_configured_caps_are_logged_once_per_process(caplog):
+    """`_CAPS_LOGGED` guards the one line an operator needs.
 
-    The field was added to `RunResult` and omitted from the dict this task
-    returns, which is the only thing that crosses to the cloud `agentic_kv`
-    engine -- so the field existed, read nowhere, while its docstring claimed
-    to supply the consumer's deciding data. Nothing caught that, because no
-    test asserted the key was present. This is that test.
+    Both directions survived mutation before this test: deleting the guard made
+    the dump fire once per job (the noise the docstring says it exists to
+    avoid), and stubbing the body made it fire never (losing the only signal
+    that distinguishes a Helm value that rendered to nothing from a deployment
+    that never configured caps).
     """
-    out = _call()
-    assert "wrote_output" in out, sorted(out)
-    assert out["wrote_output"] is True
-
-
-def test_wrote_output_is_present_on_the_failure_shape_too():
-    # Both result shapes keyed alike, so a consumer reads one dict schema.
-    out = _call(timeout="not-a-number")
-    assert out["success"] is False
-    assert out["wrote_output"] is False
+    tasks._CAPS_LOGGED = False
+    try:
+        with mock.patch.object(tasks, "run_code") as m, caplog.at_level("INFO"):
+            m.return_value = tasks.RunResult(success=True)
+            _call()
+            _call()
+        assert caplog.text.count("configured caps") == 1, caplog.text
+    finally:
+        tasks._CAPS_LOGGED = False

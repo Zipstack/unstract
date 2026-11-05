@@ -52,11 +52,17 @@ The three rules are complementary, not duplicates, and none is redundant:
 `_rule_private_attribute` covers `_sys`/`_os`-style re-exports,
 `_rule_sys_reexport` covers the plain `.sys` attribute, and `_rule_sys_name`
 restricts the *name* `sys` to `sys.argv`.
-`test_no_allowlisted_module_still_reaches_a_dangerous_one` asserts the closure
-exhaustively — it walks every module-valued attribute of every module in
-`_ALLOWED_IMPORTS` two hops deep — rather than case by case, so a new allowlist
-entry that re-exports something dangerous is caught by the test rather than by
-inspection.
+`test_no_allowlisted_module_still_reaches_a_dangerous_one` walks every
+module-valued attribute of every module in `_ALLOWED_IMPORTS` two hops deep,
+rather than case by case, so a new allowlist entry that re-exports something
+dangerous is caught by the test rather than by inspection. It is NOT a closure
+proof, and an earlier version of this paragraph called it one: its `dangerous`
+set omits `builtins`, `types`, `codecs`, `marshal`, `gc`, `inspect` and
+`operator`, and `json.codecs.builtins` IS the builtins module and is accepted.
+Nothing reachable from there executes a code object — an exhaustive depth-3
+walk over every permitted attribute edge found only `compile`, `open`,
+`json.load(s)` and `itemgetter` — so this is not a bypass. Do not cite the test
+as exhaustive.
 
 **What is NOT fixed, and must not be read as fixed.** The dunder-subscript check
 still matches only *constant* strings, so `d['__imp' + 'ort__']` is still
@@ -178,8 +184,24 @@ _DENYLISTED_NAMES = {"__builtins__", "__globals__", "__loader__", "__import__"}
 #: here, deliberately -- `v = vars; v(obj)` reaches `obj.__dict__`. Generated
 #: code that wants that identifier has to pick another one.
 _SAFE_AS_BARE_NAME = {"input"}
-# The only sys attribute generated code legitimately needs.
-_SYS_ALLOWED_ATTR = "argv"
+#: The `sys` attributes generated code legitimately needs.
+#:
+#: A SET, not one name, and `exit`/`stderr`/`stdout` are here because the
+#: codegen prompt steers the model straight at them: it instructs "Include
+#: proper error handling", "Use standard library only (json, sys, datetime,
+#: re)" and "The script must accept two command line arguments". Error handling
+#: in a two-argv script is spelled `sys.exit(1)` or `sys.stderr.write(...)`, and
+#: refusing those cost a terminally FAILED job -- after three LLM stages had
+#: already been billed, because `executor/tasks.py` flushes `usage_records`
+#: before it branches on success -- with an error that reads as a security
+#: violation by the caller.
+#:
+#: This costs nothing in closure. `_rule_sys_name`'s load-bearing property is
+#: that a Load of `sys` must be the IMMEDIATE `.value` of a permitted attribute
+#: access, so `x = sys`, `g(sys)` and `f = [sys]` still fire however this set
+#: grows, `sys.modules`/`sys.settrace` stay refused, and `sys._getframe` is
+#: independently refused by `_rule_private_attribute`.
+_SYS_ALLOWED_ATTRS = frozenset({"argv", "exit", "stderr", "stdout"})
 
 
 def _rule_import(node, parents) -> str | None:
@@ -293,8 +315,8 @@ def _rule_builtins_subscript(node, parents) -> str | None:
 
 
 def _rule_sys_name(node, parents) -> str | None:
-    """The name `sys` may be used ONLY as the immediate value of a
-    `sys.argv` attribute access. This subsumes a plain denylist of
+    """The name `sys` may be used ONLY as the immediate value of one of
+    `_SYS_ALLOWED_ATTRS`. This subsumes a plain denylist of
     dangerous sys attributes (sys.modules, sys._getframe, ...)
     AND closes the aliasing bypass a denylist alone can't: once
     `sys` is bound to another name (`x = sys`, `f = [sys]`,
@@ -309,10 +331,14 @@ def _rule_sys_name(node, parents) -> str | None:
     parent = parents.get(node)
     if not (
         isinstance(parent, ast.Attribute)
-        and parent.attr == _SYS_ALLOWED_ATTR
+        and parent.attr in _SYS_ALLOWED_ATTRS
         and parent.value is node
     ):
-        return "safety gate: 'sys' may only be used as 'sys.argv'"
+        # Comma-separated, NOT "/" -- `test_hostile_code_rejected` asserts a
+        # reason carries no "/" so a filesystem path cannot leak through one.
+        return "safety gate: 'sys' may only be used as " + ", ".join(
+            f"sys.{a}" for a in sorted(_SYS_ALLOWED_ATTRS)
+        )
     return None
 
 

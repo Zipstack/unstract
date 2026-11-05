@@ -2,6 +2,18 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **SUPERSEDED IN PART — DO NOT IMPLEMENT THE INLINE SOURCE BELOW.** This is a
+> dated plan (2026-09-01). The shipped files diverged from it over six hardening
+> commits, and `workers/sandbox/gate.py:73` declares itself the authoritative
+> copy. Known-stale, each corrected in place: the inline `gate.py` sketch (an
+> import DENYLIST, dunder-only attribute check, no bare-name rule, no `sys`
+> rules, `except SyntaxError` only — every one of those is a bypass that was
+> closed); the `open()` restrictions it describes; the launch `command`; the
+> `additionalConfigs` and egress in the values block; and SBX-P1/SBX-D1, which
+> are acceptance criteria written against the stale shapes. Read
+> `workers/sandbox/{gate,runner,tasks}.py`, `docker/docker-compose.yaml` and
+> `docs/agent-kv-architecture.md` before acting on any step here.
+
 **Goal:** Ship a hardened OSS sandbox worker that executes engine-generated calculation code out-of-process, wire the `agentic_kv` cloud plugin to it, and take the API's `calculations` field to GA.
 
 **Architecture:** A new OSS Celery/PG-queue worker (`WorkerType.SANDBOX`) consumes a dedicated `sandbox_codegen` queue and runs generated Python in a scrubbed-env, rlimit-bounded subprocess. The cloud `agentic_kv` executor talks to it through the existing request-reply executor-RPC machinery via a `SandboxCodeTransport` that implements the engine's existing `CodeExecutionTransport` seam. A K8s Deployment + default-deny NetworkPolicy provide the pod-level hardening; flipping `AGENT_KV_CALCULATIONS_ENABLED=true` completes GA.
@@ -192,45 +204,20 @@ This is the authoritative copy: the sandbox NEVER trusts the client-side
 pre-flight check in the agentic_kv engine (``engine/code_executor._check_code_safe``,
 kept there as defense-in-depth). Fail-closed static allowlist — rejects dangerous
 imports, dynamic-exec calls, dunder attribute access and introspection-escape
-names; permits ``open()`` on the runner's two argv paths.
+names; permits ``open()`` (SUPERSEDED -- see above; the argv-path restriction was never implemented).
 """
 import ast
 
-_DENYLISTED_IMPORTS = {
-    "os", "subprocess", "socket", "shutil", "ctypes", "pickle", "marshal",
-    "importlib", "requests", "urllib", "urllib2", "urllib3", "http", "ftplib",
-    "smtplib", "telnetlib", "pty", "multiprocessing", "signal", "resource",
-    "fcntl", "mmap",
-}
-_DENYLISTED_CALLS = {
-    "eval", "exec", "compile", "__import__", "globals", "vars",
-    "getattr", "setattr", "delattr",
-}
-_DENYLISTED_NAMES = {"__builtins__", "__globals__", "__loader__", "__import__"}
-
-
-def check_code_safe(code: str) -> tuple[bool, str]:
-    """Return ``(ok, reason)``. ``reason`` is user-safe (no paths)."""
-    try:
-        tree = ast.parse(code)
-    except SyntaxError as e:
-        return False, f"safety gate: code does not parse ({e.msg})"
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            for a in node.names:
-                if a.name.split(".")[0] in _DENYLISTED_IMPORTS:
-                    return False, f"safety gate: disallowed import '{a.name}'"
-        elif isinstance(node, ast.ImportFrom):
-            if (node.module or "").split(".")[0] in _DENYLISTED_IMPORTS:
-                return False, f"safety gate: disallowed import from '{node.module}'"
-        elif isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
-            if node.func.id in _DENYLISTED_CALLS:
-                return False, f"safety gate: disallowed call '{node.func.id}'"
-        elif isinstance(node, ast.Attribute) and node.attr.startswith("__"):
-            return False, f"safety gate: dunder attribute access '{node.attr}'"
-        elif isinstance(node, ast.Name) and node.id in _DENYLISTED_NAMES:
-            return False, f"safety gate: disallowed name '{node.id}'"
-    return True, ""
+# SUPERSEDED — the sketch that was here is NOT what shipped, and
+# implementing it would reintroduce five closed bypasses (an import denylist
+# instead of an allowlist; no bare-name rule, so `e = eval` passes; no
+# `sys`/sys-reexport/subscript rules; `except SyntaxError` only, so a
+# MemoryError from the parser escapes). The shipped gate is nine rules over an
+# import ALLOWLIST and is the authoritative copy:
+#
+#     workers/sandbox/gate.py
+#
+# Read it there rather than from this plan.
 ```
 
 Note: `check_code_safe` uses `e.msg` (not `str(e)`) so no source-file path can appear in the reason.
@@ -695,7 +682,11 @@ git commit -m "feat(sandbox): execute_sandboxed_code task + worker entrypoint wi
     image: unstract/worker-unified:${VERSION}
     container_name: unstract-worker-sandbox
     restart: unless-stopped
-    command: ["sandbox"]
+    # SUPERSEDED: the shipped service is `command: ["pg-queue-consumer"]` with
+    # WORKER_PG_QUEUE_CONSUMER_WORKER_TYPE=sandbox. The broker was retired as a
+    # task transport (UN-4046), so this form accepts work and drains none,
+    # silently. See docker/docker-compose.yaml.
+    command: ["pg-queue-consumer"]
     read_only: true
     security_opt:
       - no-new-privileges:true
@@ -983,12 +974,16 @@ git commit -m "UN-4044 [FEAT] Executor wires codegen sandbox transport and folds
 - Test: `charts/unstract-platform/unittests/sandbox_wiring_test.yaml`
 
 **Interfaces:**
-- Produces: `workerSandbox` values block (image, command `["sandbox"]`, `SANDBOX_*` env, resources, replicas, `additionalConfigs: [database]` — **no** `storage`, **no** `apiKeys`, **no** `agentKv`, and **no** `redis`/`celeryBroker`); a Deployment with the strict securityContext; a default-deny NetworkPolicy allowing egress only to Postgres + DNS. **SUPERSEDED-CORRECTION:** as approved this said `[database, redis, celeryBroker]` and "broker + Postgres + DNS". The sandbox rides the Postgres queue transport, so it holds no broker credential and has no broker egress rule. This line is generative -- SBX-P1 is an assertion someone writes a helm-unittest against and the values block is what a chart author copies -- so the stale version would have re-added a broker allowance and a `celeryBroker` group to the one pod whose egress posture is load-bearing.
+- Produces: `workerSandbox` values block (image, command `["pg-queue-consumer"]` with `WORKER_PG_QUEUE_CONSUMER_WORKER_TYPE=sandbox` -- SUPERSEDED-CORRECTION, as approved this said `["sandbox"]`, the broker form that drains nothing -- `SANDBOX_*` env, resources, replicas, `additionalConfigs: [database]` — **no** `storage`, **no** `apiKeys`, **no** `agentKv`, and **no** `redis`/`celeryBroker`); a Deployment with the strict securityContext; a default-deny NetworkPolicy allowing egress only to Postgres + DNS. **SUPERSEDED-CORRECTION:** as approved this said `[database, redis, celeryBroker]` and "broker + Postgres + DNS". The sandbox rides the Postgres queue transport, so it holds no broker credential and has no broker egress rule. This line is generative -- SBX-P1 is an assertion someone writes a helm-unittest against and the values block is what a chart author copies -- so the stale version would have re-added a broker allowance and a `celeryBroker` group to the one pod whose egress posture is load-bearing.
 
 **Context:** Model the Deployment on `templates/worker-ide-callback-v2/deployment.yaml` but with `securityContext`: `runAsNonRoot: true`, `readOnlyRootFilesystem: true`, `allowPrivilegeEscalation: false`, `capabilities.drop: [ALL]`, `seccompProfile.type: RuntimeDefault`, `automountServiceAccountToken: false`, an `emptyDir` volume mounted at `/tmp` (sizeLimit 256Mi), CPU/memory/ephemeral-storage limits. The NetworkPolicy selects the sandbox pods and denies all egress except: Postgres service port and DNS (UDP/TCP 53). **SUPERSEDED-CORRECTION:** as approved this also listed a broker service port. The sandbox rides the Postgres queue transport, so it holds no broker credential and has no broker egress rule -- see the values-block note above. This is the implementation instruction a chart author reads, so it is as generative as the two lines already corrected around it.
 
 - [ ] **Step 1: Write the failing helm-unittest** — `charts/unstract-platform/unittests/sandbox_wiring_test.yaml`, suites:
-  - **SBX-D1** Deployment renders with `command: ["sandbox"]` and `WORKER_TYPE=sandbox`.
+  - **SBX-D1** Deployment renders with `command: ["pg-queue-consumer"]` and
+    `WORKER_PG_QUEUE_CONSUMER_WORKER_TYPE=sandbox`. **SUPERSEDED-CORRECTION:**
+    as approved this asserted `command: ["sandbox"]`. That is a test written to
+    pin the broker form, which drains nothing -- so the mistake would have
+    arrived green.
   - **SBX-S1..S6** securityContext fields exactly as above (`runAsNonRoot`, `readOnlyRootFilesystem`, `allowPrivilegeEscalation: false`, `drop: [ALL]`, `seccompProfile: RuntimeDefault`, `automountServiceAccountToken: false`).
   - **SBX-N1** the pod attaches **no** `storage` / `apiKeys` / `agentKv` config group (negative: the rendered env/secret refs do not contain `AGENT_KV_LLM_API_KEY`, `AGENT_KV_FILE_STORAGE_CREDENTIALS`, `MINIO`).
   - **SBX-P1** NetworkPolicy renders default-deny egress with exactly the Postgres/DNS

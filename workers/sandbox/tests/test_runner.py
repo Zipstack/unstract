@@ -537,3 +537,27 @@ def test_kill_group_refuses_to_signal_its_own_process_group():
         # and it does signal an ordinary foreign group
         _kill_group(4321, "x")
         assert killpg.call_count == 1
+
+
+def test_a_failed_pgid_read_is_logged_because_the_kill_becomes_a_no_op(caplog):
+    """The log IS the fix, so it needs a guard.
+
+    `_pgid_of` returning None makes `_kill_group` a no-op while the result
+    still says the job timed out, so a runaway child survives with the log as
+    the only trace. Reverting `_pgid_of` to a silent `except` left the whole
+    suite green, which is why this exists.
+    """
+    mock_proc = MagicMock()
+    mock_proc.pid = 4321
+    mock_proc.wait.side_effect = [subprocess.TimeoutExpired("x", 2), 0]
+    with (
+        patch("sandbox.runner.os.getpgid", side_effect=ProcessLookupError),
+        patch("sandbox.runner.subprocess.Popen", return_value=mock_proc),
+        patch("sandbox.runner.os.killpg") as mock_killpg,
+        caplog.at_level("WARNING"),
+    ):
+        r = run_code("while True:\n    pass\n", "{}", **{**_DEFAULTS, "timeout": 2})
+    assert r.success is False
+    assert "a timeout kill would be a no-op" in caplog.text
+    # The whole point: no kill was attempted, and the log is what says so.
+    assert mock_killpg.call_count == 0

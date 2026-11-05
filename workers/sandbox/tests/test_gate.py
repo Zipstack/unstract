@@ -338,35 +338,27 @@ class TestEveryRuleIsRegistered:
     A rule function that is defined but absent from the tuple is never
     consulted, so the gate silently ACCEPTS what it used to reject. Today that
     cannot slip through unnoticed: dropping any one of the nine rules fails
-    between 4 and 17 of this module's cases.
+    several of this module's cases, because each existing rule has hostile cases
+    of its own -- plus this class's own two tests, which fail structurally for
+    any single-rule removal.
 
-    **Two of every count are this class's own two tests**, which fail for a
-    structural reason -- the rule is no longer in `_RULES` -- and not because
-    they are hostile cases. So the behavioural kill count per rule is each
-    figure minus 2, and the FLOOR of the range is set by that pair rather than
-    by any rule's own coverage. An earlier wording attributed the whole of
-    each count to "hostile cases of its own", which overstated every rule's
-    behavioural coverage by two.
+    **No figures here, deliberately.** A denominator and a per-rule kill list
+    lived in this paragraph and were wrong four times running: "eight rules /
+    between 3 and 10" (predating `_rule_sys_reexport`), "61 cases / the
+    behavioural tests above" (right counts, wrong denominator and scope), "67 /
+    7,7,5,4,6,4,5,9,7" (correct when written, stale one commit later), and "77 /
+    ...,17" (short by the three `_HOSTILE` entries the same commit added). The
+    figures move with every case added to this module, so a snapshot here is a
+    claim that goes stale faster than anyone re-derives it.
 
-    **Method, because the figures below are a measurement and not an
-    estimate**: write a pytest plugin that does
-    `gate._RULES = tuple(r for r in gate._RULES if r.__name__ != "<rule>")`,
-    run this module under it, and read the `N failed, M passed` summary;
-    repeat once per rule. At the commit that added this paragraph that gives
-    **77 cases** and per-rule failures **7, 7, 6, 4, 6, 4, 5, 9, 17** in
-    `_RULES` order. The measurement spans the WHOLE module, not only the
-    classes above this one -- which is how `_rule_sys_reexport` scores 4 when
-    nothing above here exercises an attribute named `sys`: its cases live in
-    `TestModuleReexportEscapes`, below.
-
-    **Re-derive rather than trust the numbers.** They move with every case
-    added to this module, and this paragraph has already been wrong three
-    times for that reason: "eight rules / between 3 and 10" (predating
-    `_rule_sys_reexport`); "61 cases / the behavioural tests above" (the
-    per-rule figures were right, the denominator and the scope were not); and
-    "67 cases / 7,7,5,4,6,4,5,9,7", correct when written and stale one commit
-    later once `TestBareNameExemptionIsNarrow` replaced its predecessor. Treat
-    the method as the durable part and the figures as a dated snapshot. These two tests are here
+    **The method is the durable part, so re-derive rather than trust a number:**
+    write a pytest plugin that does
+    `gate._RULES = tuple(r for r in gate._RULES if r.__name__ != "<rule>")`, run
+    this module under it, and read the `N failed, M passed` summary; repeat once
+    per rule. The measurement spans the whole module, not only the classes above
+    this one -- which is how `_rule_sys_reexport` scores at all when nothing
+    above here exercises an attribute named `sys`: its cases are in
+    `TestModuleReexportEscapes`, below. These two tests are here
     for the rules that do not exist yet -- a new rule added without a
     registry entry, or added with cases that overlap an earlier rule's -- where
     the behavioural tests would pass while the rule did nothing.

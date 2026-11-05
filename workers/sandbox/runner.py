@@ -69,30 +69,6 @@ class RunResult:
     stdout: str = ""
     stderr: str = ""
     error: str | None = None
-    #: Did the child actually write to output.jsonl?
-    #:
-    #: `output.jsonl` is pre-created empty so `_result_from_output` always has
-    #: a file to read, which makes "exited 0 and wrote nothing" byte-identical
-    #: to "matched no rows": both are `success=True, rows_jsonl="",
-    #: rows_written=0`. For LLM-generated code the first is ordinary -- a
-    #: branch that never fires, a write to the wrong path, a swallowed
-    #: exception -- so the two need to be distinguishable.
-    #:
-    #: This field carries the DATA and takes no POLICY decision: whether an
-    #: empty run is an error is the cloud `agentic_kv` engine's to choose.
-    #: `tasks.py` forwards it in the task result dict, which is the only thing
-    #: that crosses to that engine -- a field set here and not forwarded there
-    #: is invisible to the consumer it exists for.
-    #:
-    #: **Meaningful when `success` is True.** Elsewhere it holds the `False`
-    #: default, which is not a claim that the child wrote nothing: the run did
-    #: not get far enough for the question to mean anything.
-    #:
-    #: `executor/tasks.py` applies the opposite default to BILLING for
-    #: `kv_extract` ("a successful run emitting nothing is unambiguously a
-    #: broken chain"). That asymmetry is unresolved and is the engine's to
-    #: resolve; this field is what it can resolve it with.
-    wrote_output: bool = False
 
 
 def _limits(cpu_seconds: int, memory_mb: int, max_pids: int, fsize: int):
@@ -127,7 +103,27 @@ def _limits(cpu_seconds: int, memory_mb: int, max_pids: int, fsize: int):
             try:
                 resource.setrlimit(limit, value)
             except (ValueError, OSError):
-                # Not honoured on this platform/kernel — skip, keep the rest.
+                # ACCEPTED, and the only swallow in this file that must stay
+                # silent: this runs in `preexec_fn`, post-fork, where there is
+                # nowhere for a log to go.
+                #
+                # "Not honoured on this platform/kernel" is what this comment
+                # used to say, and it had the mechanism backwards. `setrlimit`
+                # only FAILS when the request exceeds the current HARD limit --
+                # lowering always succeeds -- so a swallowed failure never leaves
+                # a cap ABSENT; it leaves the child under the TIGHTER inherited
+                # limit (measured: the child kept 256 MiB after a swallowed
+                # 512 MiB request). The reachable cause on Linux is an operator
+                # configuring a cap ABOVE a hard limit the pod already carries,
+                # which silently gives jobs a tighter child and surfaces as the
+                # submitted code's fault. A platform genuinely missing the
+                # constant raises AttributeError building the tuple above,
+                # OUTSIDE this `try`, so no child runs at all.
+                #
+                # Closing it needs a PARENT-side `resource.getrlimit` comparison
+                # logged once at startup -- not a handler here, and not something
+                # `_log_configured_caps` can do, since that reports what the
+                # parent decided rather than what the kernel accepted.
                 pass
 
     return _apply
@@ -195,7 +191,18 @@ def _kill_group(pgid: int | None, note: str) -> None:
     kill(-1, ...), which SIGKILLs every process this user owns (a MagicMock
     proc in tests has pid 1 via __index__), and our own group is the worker.
     """
-    if pgid is None or pgid <= 1 or pgid == os.getpgrp():
+    if pgid is None:
+        # Already logged by `_pgid_of`; no second line.
+        return
+    if pgid <= 1 or pgid == os.getpgrp():
+        # Logged, not silent: this is the arm the docstring above names -- the
+        # child sharing our group means the kill is a no-op while the result
+        # still says it timed out.
+        logger.warning(
+            "sandbox: refusing to signal process group %s (our own, or <= 1); "
+            "the timeout kill did not happen",
+            pgid,
+        )
         return
     try:
         os.killpg(pgid, signal.SIGKILL)
@@ -246,12 +253,16 @@ def _result_from_output(
         # costs 3 bytes back -- so a file of 3 invalid bytes measured as 9, up
         # to 3x its real size. RLIMIT_FSIZE is set to this same value, so a
         # child that tries to exceed the cap normally dies on the write and is
-        # reported as `exit N` before this branch -- which is why the input
-        # that reached this return in practice was a file WITHIN the cap that
-        # happened to be heavily non-UTF-8, told wrongly it was too big. The
-        # branch is NOT dead: `_limits` swallows a failed `setrlimit` per
-        # limit, so wherever RLIMIT_FSIZE is not honoured this check is the
-        # only thing left. Do not delete it as unreachable.
+        # reported as `exit N` before this branch -- which is why the input that
+        # reached this return in practice was a file WITHIN the cap that happened
+        # to be heavily non-UTF-8, told wrongly it was too big.
+        #
+        # Keep the check, but not for the reason an earlier comment gave: it
+        # claimed a swallowed `setrlimit` could leave FSIZE unset, and that is
+        # false -- see `_apply`, where a swallowed failure leaves the child
+        # TIGHTER, never uncapped. The honest reason is cheaper: one `stat`
+        # against a cap the parent must not exceed in memory, on a path where
+        # being wrong costs an unbounded read.
         #
         # Memory: reading first made the parent's peak scale with an operator
         # knob (`SANDBOX_MAX_OUTPUT_BYTES` has a floor but no ceiling), and at
@@ -260,17 +271,12 @@ def _result_from_output(
         # kept the unbounded read, leaning on an rlimit whose failure
         # `_limits` swallows.
         size = out.stat().st_size
-        # The file is pre-created empty, so size 0 means the child wrote
-        # nothing at all -- see `RunResult.wrote_output`.
-        wrote_output = size > 0
         if size > max_output_bytes:
             return RunResult(
                 success=False,
                 stdout=stdout,
                 stderr=stderr,
                 error="execution failed: output exceeds size cap",
-                # True here by definition: size > cap >= 1.
-                wrote_output=wrote_output,
             )
         raw = out.read_text(encoding="utf-8", errors="replace")
         rows = 0
@@ -331,7 +337,6 @@ def _result_from_output(
         rows_written=rows,
         stdout=stdout,
         stderr=stderr,
-        wrote_output=wrote_output,
     )
 
 
@@ -437,8 +442,21 @@ def _run_code_unguarded(
         inp.write_text(input_json)
         # Pre-created so `_result_from_output` always has a file to read.
         #
-        # Size 0 therefore means the child wrote nothing at all, which is
-        # what `RunResult.wrote_output` reports; the reasoning lives there.
+        # KNOWN AMBIGUITY, recorded rather than fixed: a child that exits 0
+        # without writing is indistinguishable from a transform that matched no
+        # rows -- both are `success=True, rows_jsonl="", rows_written=0`.
+        #
+        # A size-derived flag for this was tried and REMOVED, because it did not
+        # make the distinction. Measured: a legitimate zero-row match, a script
+        # that never opened the output path, and one that swallowed its own
+        # exception all give size 0. The only input that differed was
+        # whitespace-only output, so the flag was `rows_written > 0` under
+        # another name.
+        #
+        # The distinction needs the signal this line destroys -- file ABSENT vs
+        # present-and-empty. Recovering it means not pre-creating and handling
+        # `FileNotFoundError` as a success with no output, which changes this
+        # function's contract and belongs in its own change.
         out.write_text("")
 
         # Child stdout/stderr go to FILES in the per-job tempdir, not pipes.
@@ -468,10 +486,20 @@ def _run_code_unguarded(
             """Read back both streams, each capped, tolerant of a missing file."""
             texts = []
             for path in (stdout_path, stderr_path):
+                # Per stream, so one unreadable file does not mask the other.
+                # Logged because `""` here is indistinguishable from "the child
+                # printed nothing", and this is the only path that produces the
+                # diagnostics an operator reads.
                 try:
                     with open(path, encoding="utf-8", errors="replace") as fh:
                         texts.append(fh.read(_CAPTURE_LIMIT))
                 except OSError:
+                    logger.warning(
+                        "sandbox: could not read back %s; the job's diagnostics "
+                        "will be empty and that is NOT the child printing nothing",
+                        path.name,
+                        exc_info=True,
+                    )
                     texts.append("")
             return texts[0], texts[1]
 
@@ -486,6 +514,16 @@ def _run_code_unguarded(
                     [sys.executable, "-I", "-S", "-E", str(script), str(inp), str(out)],
                     cwd=tmp,
                     env={"PATH": _MINIMAL_PATH},
+                    # Explicit, not inherited. The gate exempts a bare
+                    # reference to `input`, and `_rule_denylisted_call` only
+                    # matches a Call on a Name, so `f = input; f()` reaches
+                    # the builtin. Measured before this line: the child read
+                    # the parent's stdin and returned it in the job output.
+                    # (The capability was already R12's -- `open('/dev/stdin')`
+                    # reaches the same place -- but this makes the gate's own
+                    # stated warrant true by construction rather than by
+                    # deployment accident.)
+                    stdin=subprocess.DEVNULL,
                     stdout=f_out,
                     stderr=f_err,
                     text=True,

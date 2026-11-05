@@ -105,10 +105,11 @@ services:
   # since it is not part of the pass-through set.
   worker-sandbox:
     image: unstract/worker-unified:${UNSTRACT_TEST_VERSION:-latest}
-    # Mirrors docker/docker-compose.yaml's worker-sandbox: above
-    # SANDBOX_TIMEOUT_MAX + SANDBOX_TIMEOUT_GRACE, so an in-flight job is not
-    # SIGKILLed at Docker's 10s default and redelivered to run a second time.
-    stop_grace_period: 90s
+    # Mirrors docker/docker-compose.yaml's worker-sandbox. 150s, derived there:
+    # above the single-process drain (~75s) AND above the supervised budget
+    # `max(30, VT_SECONDS)` = 120s, so an in-flight job is not SIGKILLed at
+    # Docker's 10s default and redelivered to run a second time.
+    stop_grace_period: 150s
     environment:
       # The health port moved with the transport: on the PG consumer path the
       # launcher reads WORKER_PG_QUEUE_CONSUMER_HEALTH_PORT, not the Celery

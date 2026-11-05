@@ -20,9 +20,10 @@ def _int_env(name: str, default: int, *, minimum: int = 1) -> int:
     Two silent degradations used to live here, both of them on the containment
     controls `gate.py` names as the real security boundary.
 
-    A parse failure (`SANDBOX_MEMORY_MB=512m`, `SANDBOX_MAX_ROWS=1e5`, an empty
-    value) returned the built-in default with nothing said, so an operator's
-    tightening was discarded invisibly.
+    A parse failure (`SANDBOX_MEMORY_MB=512m`, `SANDBOX_MAX_ROWS=1e5`) returned
+    the built-in default with nothing said, so an operator's tightening was
+    discarded invisibly. A BLANK value is deliberately NOT in that list: it is
+    treated as unset and stays silent, per the three dispositions below.
 
     Worse, nothing applied a floor. `resource.RLIM_INFINITY == -1`, so
     `SANDBOX_MAX_PIDS=-1` and `SANDBOX_MAX_OUTPUT_BYTES=-1` reached
@@ -30,7 +31,10 @@ def _int_env(name: str, default: int, *, minimum: int = 1) -> int:
     limit off is the one failure mode a limit must not have.
 
     Validation belongs here, in the parent: `_limits()` runs in `preexec_fn`,
-    post-fork in the child, where there is nowhere for a log to go.
+    post-fork in the child, where there is nowhere for a log to go. Note this
+    validates the SHAPE of the requested number, a different failure from the
+    kernel REFUSING it -- a value that passes here cleanly is exactly the one
+    `_apply` discards if it exceeds a hard limit.
 
     Three dispositions, and they differ:
 
@@ -46,7 +50,7 @@ def _int_env(name: str, default: int, *, minimum: int = 1) -> int:
       and it is unusable, so clamping beats substituting a value the operator
       never chose.
 
-    `_log_effective_caps` is what gives an operator the one thing none of the
+    `_log_configured_caps` is what gives an operator the one thing none of the
     above does: the caps a job actually ran with.
     """
     raw = os.environ.get(name)
@@ -84,8 +88,15 @@ def _int_env(name: str, default: int, *, minimum: int = 1) -> int:
 _CAPS_LOGGED = False
 
 
-def _log_effective_caps(caps: dict[str, int]) -> None:
-    """Log the caps this process actually runs with, once.
+def _log_configured_caps(caps: dict[str, int]) -> None:
+    """Log the caps this process was CONFIGURED with, once.
+
+    "Configured", not "effective": these are `_int_env`'s return values -- what
+    the parent decided -- and nothing here reads back what the kernel accepted.
+    Four of the eight become rlimits in `_limits._apply`, where a failed
+    `setrlimit` is swallowed per limit, so a cap named here can be absent in the
+    child. The dump also omits the two limits that are not env-derived at all:
+    the `RLIMIT_CPU` backstop and the hard-coded `RLIMIT_NOFILE`.
 
     The one thing `_int_env`'s per-call warnings cannot tell an operator is
     what the caps ENDED UP as -- an unset variable and a blank one are both
@@ -99,7 +110,7 @@ def _log_effective_caps(caps: dict[str, int]) -> None:
         return
     _CAPS_LOGGED = True
     logger.info(
-        "sandbox: effective caps %s",
+        "sandbox: configured caps %s",
         ", ".join(f"{k}={v}" for k, v in sorted(caps.items())),
     )
 
@@ -115,7 +126,7 @@ def _execute_sandboxed_code_impl(
     grace = _int_env("SANDBOX_TIMEOUT_GRACE", 5)
     memory_mb = _int_env("SANDBOX_MEMORY_MB", 512)
     max_pids = _int_env("SANDBOX_MAX_PIDS", 16)
-    _log_effective_caps(
+    _log_configured_caps(
         {
             "SANDBOX_MAX_CODE_BYTES": max_code,
             "SANDBOX_MAX_INPUT_BYTES": max_input,
@@ -163,9 +174,6 @@ def _execute_sandboxed_code_impl(
         "stdout": r.stdout,
         "stderr": r.stderr,
         "error": r.error,
-        # Forwarded because this dict -- not `RunResult` -- is what crosses to
-        # the cloud `agentic_kv` engine. See `RunResult.wrote_output`.
-        "wrote_output": r.wrote_output,
     }
 
 
@@ -178,9 +186,6 @@ def _fail(request_id: str, msg: str) -> dict:
         "stdout": "",
         "stderr": "",
         "error": msg,
-        # Keyed alike with the success shape so a consumer can read one dict
-        # schema. False here means "never got far enough to look".
-        "wrote_output": False,
     }
 
 

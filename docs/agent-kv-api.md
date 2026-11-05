@@ -240,14 +240,14 @@ The request is **extractor-scoped**: a per-extractor schema and its knobs live i
 
 ### 3a. `adapters` — you supply the models and the OCR credentials
 
-The `table` extractor runs on **your own platform adapters**, named by id. Create
+Both extractors run on **your own platform adapters**, named by id. Create
 them once in Unstract (Settings → Adapters, or the adapter API) and pass their ids
 on every submit:
 
 | Role | Adapter type | What it does |
 |---|---|---|
-| `llm` | `LLM` | Structure detection and extraction — the quality-critical model. |
-| `lite_llm` | `LLM` | Per-page table-presence detection. Runs once per page, so this is the cost-critical one; a cheap fast model belongs here. |
+| `llm` | `LLM` | The quality-critical model — structure detection and extraction for `table`; extraction and the challenger pass for `kv`. |
+| `lite_llm` | `LLM` | Per-page presence detection — table presence for `table`, key presence for `kv`. Runs once per page, so this is the cost-critical one; a cheap fast model belongs here. |
 | `x2text` | `X2TEXT` | OCR. An LLMWhisperer adapter, which also carries the endpoint — there is no separate base-URL field. |
 
 Each id is validated at submit, against **your organization** and against the
@@ -1674,10 +1674,14 @@ beyond `docker compose up`:
     without a healthy sandbox fleet**, as all jobs with `calculations` will eventually
     exceed their timeouts and return failures to callers.
 
-    **Security posture:** The sandbox pod carries no LLM, OCR, or storage secrets and
-    runs with default-deny egress — it only executes generated calculation code against
-    the extracted record in-memory. This no-secrets/deny-all-egress posture is the
-    **Kubernetes/chart deployment guarantee**. The reference `docker-compose.yaml`
+    **Security posture:** The sandbox pod carries no LLM, OCR or storage secret, and
+    not the platform `ENCRYPTION_KEY`, and runs with default-deny egress — it only
+    executes generated calculation code against the extracted record in-memory. The
+    **deny-all-egress** half is the Kubernetes/chart deployment guarantee.
+    **The pod is NOT secret-free**: `workerPgSandbox.additionalConfigs` is
+    `[database]`, so it necessarily mounts `DB_HOST/DB_USER/DB_PASSWORD/DB_NAME` —
+    on the PG transport the queue IS Postgres. An earlier revision called the whole
+    posture a guarantee; R12 in `docs/agent-kv-architecture.md` is the authority. The reference `docker-compose.yaml`
     included here is a best-effort dev mirror only, not that guarantee: its
     `worker-sandbox` service shares the same full worker env-file (`workers/.env`) as
     every other worker for operational simplicity, so on that stack the untrusted-code

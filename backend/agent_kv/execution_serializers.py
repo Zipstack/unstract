@@ -1,6 +1,7 @@
 """Submit-time validation: every §6.1 cap lives here, before any paid work."""
 
 import json
+import logging
 
 import pdfplumber
 from django.conf import settings
@@ -10,6 +11,8 @@ from agent_kv.constants import EXTRACTOR_ROUTES, TABLE_EXTRACTOR_NAME, V1_EXTRAC
 from unstract.agent_kv_schema import SchemaError, compile_schema
 from unstract.core.network.ssrf import webhook_url_refusal
 from unstract.sdk1.constants import AdapterTypes
+
+logger = logging.getLogger(__name__)
 
 # Images are deliberately ABSENT, and that is a cross-repo contract, not an
 # oversight. The cloud engine's `_build_agent_graph` (agentic_kv
@@ -37,6 +40,11 @@ SUPPORTED_EXTRACTORS = tuple(EXTRACTOR_ROUTES)
 
 #: Sentinel for an extractor that needs no deployment flag.
 _UNGATED = object()
+
+#: Distinct from `_UNGATED`: "nobody decided", which refuses. Keeping them
+#: separate is the whole point -- one sentinel for both made a forgotten entry
+#: indistinguishable from a deliberate no-gate decision.
+_NO_DECISION = object()
 
 #: Which setting, if any, gates each ROUTED extractor's acceptance at submit.
 #:
@@ -73,12 +81,26 @@ def enabled_extractors() -> tuple[str, ...]:
     test's `override_settings` -- is the thing that decides, not the order the
     module happened to be imported in.
     """
-    return tuple(
-        name
-        for name in SUPPORTED_EXTRACTORS
-        if _EXTRACTOR_ENABLE_FLAGS.get(name, _UNGATED) is _UNGATED
-        or getattr(settings, _EXTRACTOR_ENABLE_FLAGS[name], False)
-    )
+    enabled = []
+    for name in SUPPORTED_EXTRACTORS:
+        # One lookup, and a MISSING entry refuses. An earlier version used
+        # `.get(name, _UNGATED)`, which made the no-decision case accept
+        # everywhere -- and because `or` short-circuits, the `[name]` lookup
+        # that would have raised was unreachable. That is the
+        # 202-into-an-undrained-queue shape this table exists to prevent, so
+        # the structure has to carry it rather than the derived test alone.
+        gate = _EXTRACTOR_ENABLE_FLAGS.get(name, _NO_DECISION)
+        if gate is _NO_DECISION:
+            logger.error(
+                "agent_kv: extractor %r is routed but has no entry in "
+                "_EXTRACTOR_ENABLE_FLAGS; refusing it at submit. Add a setting "
+                "name to gate it, or _UNGATED to accept it everywhere.",
+                name,
+            )
+            continue
+        if gate is _UNGATED or getattr(settings, gate, False):
+            enabled.append(name)
+    return tuple(enabled)
 
 
 class KVOptionsSerializer(serializers.Serializer):

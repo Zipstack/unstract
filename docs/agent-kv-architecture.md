@@ -218,7 +218,8 @@ key (cross-tenant reuse structurally impossible); fail-closed billing admission.
   path. Cloud supplies it via the chart secret; dev must set it (the compose rig wires it
   to Postgres).
 - Full env matrix: [`docs/agent-kv-api.md` §12](agent-kv-api.md#12-environment-reference); deploy order and the
-  chart's four hard-coded storage-secret sites: [§12](agent-kv-api.md).
+  chart's four hard-coded storage-secret sites:
+  [§11](agent-kv-api.md#11-deploy-checklist).
 
 ## 7. Current status
 
@@ -286,7 +287,7 @@ subscription → **402**, nothing dispatched or billed.
 
 **Operator / integrator**
 - [`docs/agent-kv-api.md`](agent-kv-api.md) — API reference: auth, schema format, every
-  endpoint with curl, webhooks, retention, 501 behavior, **deploy checklist (§12)**,
+  endpoint with curl, webhooks, retention, 501 behavior, **deploy checklist (§11)**,
   **environment reference (§12)**.
 
 **Architecture / design (one per sub-project)**
