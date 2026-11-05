@@ -166,24 +166,6 @@ _DENYLISTED_CALLS = {
 # rejects a bare `compile(...)` builtin call unconditionally.
 _DENYLISTED_ATTR_CALLS = _DENYLISTED_CALLS - {"compile"}
 _DENYLISTED_NAMES = {"__builtins__", "__globals__", "__loader__", "__import__"}
-#: Denylisted names whose bare REFERENCE is harmless, so `_rule_denylisted_name`
-#: lets them through while `_rule_denylisted_call` still refuses the call form.
-#:
-#: The test for membership is: does `x = <name>` hand an attacker anything? For
-#: every other entry in `_DENYLISTED_CALLS` it does, because the alias is then
-#: callable under a name no rule denies -- `eval`/`exec`/`compile`/`__import__`
-#: execute, `globals`/`locals`/`vars` hand back a mapping or a `__dict__`,
-#: `getattr`/`setattr`/`delattr` reach arbitrary attributes, `breakpoint` enters
-#: pdb (which can exec), and `help` can spawn a pager. `input` reads a line from
-#: a stdin this child has nothing useful on, and the wall-clock timeout bounds a
-#: block, so a reference to it is inert.
-#:
-#: `input` is the name that actually matters: the codegen contract is "read the
-#: input path from sys.argv[1]", so generated code names a local `input`
-#: plausibly often. `vars` is the other name real output picks and it is NOT
-#: here, deliberately -- `v = vars; v(obj)` reaches `obj.__dict__`. Generated
-#: code that wants that identifier has to pick another one.
-_SAFE_AS_BARE_NAME = {"input"}
 #: The `sys` attributes generated code legitimately needs.
 #:
 #: A SET, not one name, and `exit`/`stderr`/`stdout` are here because the
@@ -370,46 +352,197 @@ def _rule_sys_name(node, parents) -> str | None:
     return None
 
 
+#: Scopes in which a bound name is local for the WHOLE scope, so a Load of it
+#: can never fall through to builtins -- Python raises UnboundLocalError
+#: instead. Order of binding vs. use is therefore irrelevant inside these.
+_FUNCTION_SCOPES = (
+    ast.FunctionDef,
+    ast.AsyncFunctionDef,
+    ast.Lambda,
+    ast.ListComp,
+    ast.SetComp,
+    ast.DictComp,
+    ast.GeneratorExp,
+)
+
+
+#: Module-level statements whose execution is UNCONDITIONAL given that control
+#: reached them, so a later Load in the same scope is guaranteed to see the
+#: binding. Deliberately excludes `If`/`For`/`While`/`Try`/`With`/`Match`:
+#: `if False: eval = 1` lexically precedes a Load and never runs, and
+#: `for vars in rows:` binds nothing when `rows` is empty -- in both cases the
+#: Load still falls through globals to the builtin.
+_UNCONDITIONAL_STMTS = (
+    ast.Assign,
+    ast.AnnAssign,
+    ast.AugAssign,
+    ast.Import,
+    ast.ImportFrom,
+    ast.FunctionDef,
+    ast.AsyncFunctionDef,
+    ast.ClassDef,
+)
+
+
+def _names_bound_by(stmt) -> list[tuple[str, int]]:
+    """Names one statement binds, without descending into nested scopes."""
+    if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+        return [(stmt.name, stmt.lineno)]
+    if isinstance(stmt, (ast.Import, ast.ImportFrom)):
+        return [(a.asname or a.name.split(".")[0], stmt.lineno) for a in stmt.names]
+    out: list[tuple[str, int]] = []
+    if isinstance(stmt, (ast.Assign, ast.AnnAssign, ast.AugAssign)):
+        targets = stmt.targets if isinstance(stmt, ast.Assign) else [stmt.target]
+        for t in targets:
+            for n in ast.walk(t):
+                if isinstance(n, ast.Name) and isinstance(n.ctx, (ast.Store, ast.Del)):
+                    out.append((n.id, n.lineno))
+    return out
+
+
+def _unconditional_module_bindings(module) -> dict[str, int]:
+    """Names bound by an unconditional direct statement of the module body."""
+    out: dict[str, int] = {}
+    for stmt in getattr(module, "body", []):
+        if not isinstance(stmt, _UNCONDITIONAL_STMTS):
+            continue
+        for name, lineno in _names_bound_by(stmt):
+            if name not in out or lineno < out[name]:
+                out[name] = lineno
+    return out
+
+
+def _function_scope_binds(scope, name: str) -> bool:
+    """Does `scope` bind `name` in its own body (not inside a nested scope)?
+
+    Order is irrelevant: Python makes a name bound anywhere in a function local
+    for the WHOLE function, so a read before the assignment raises
+    UnboundLocalError rather than reaching builtins.
+    """
+    nested = _FUNCTION_SCOPES + (ast.ClassDef,)
+
+    def walk(n, top=False):
+        if not top and isinstance(n, nested):
+            # A nested scope: only its NAME is bound out here.
+            return getattr(n, "name", None) == name
+        if isinstance(n, ast.Name) and isinstance(n.ctx, (ast.Store, ast.Del)):
+            if n.id == name:
+                return True
+        elif isinstance(n, ast.arg) and n.arg == name:
+            return True
+        elif isinstance(n, ast.ExceptHandler) and n.name == name:
+            return True
+        elif isinstance(n, (ast.Global, ast.Nonlocal)) and name in n.names:
+            # `global vars` makes it a MODULE binding, not a local, so it
+            # shadows nothing here -- fall through to the module rule.
+            return False
+        elif isinstance(n, (ast.Import, ast.ImportFrom)):
+            if any((a.asname or a.name.split(".")[0]) == name for a in n.names):
+                return True
+        elif isinstance(n, (ast.MatchAs, ast.MatchStar)) and n.name == name:
+            return True
+        elif isinstance(n, ast.MatchMapping) and n.rest == name:
+            return True
+        return any(walk(c) for c in ast.iter_child_nodes(n))
+
+    return walk(scope, top=True)
+
+
+def _binds_as_own_target(stmt, name: str) -> bool:
+    """Does `stmt` bind `name` as the target its own body is guarded by?
+
+    `for x in ...:`, `with ... as x:` and `except E as x:` all assign before
+    their body runs, so a Load of `x` inside that body is the binding, never
+    the builtin -- independently of scope or lexical order.
+    """
+    if isinstance(stmt, (ast.For, ast.AsyncFor)):
+        return any(
+            isinstance(n, ast.Name) and n.id == name for n in ast.walk(stmt.target)
+        )
+    if isinstance(stmt, (ast.With, ast.AsyncWith)):
+        for item in stmt.items:
+            if item.optional_vars is not None and any(
+                isinstance(n, ast.Name) and n.id == name
+                for n in ast.walk(item.optional_vars)
+            ):
+                return True
+        return False
+    if isinstance(stmt, ast.ExceptHandler):
+        return stmt.name == name
+    return False
+
+
+def _shadows_builtin(node, parents) -> bool:
+    """Is this Load a reference to a LOCAL of that name rather than the builtin?
+
+    A flat "is the name bound anywhere in the module" test got this wrong, and
+    wrong here was arbitrary code execution: a parameter named `eval` in one
+    function exempted `e = eval` at module level, where it still resolved to the
+    real builtin. Two rules, and the difference between them is the point:
+
+    * **A function scope that binds the name** exempts every Load of it in that
+      scope, in any order -- the name is local for the whole scope, so a read
+      before the assignment raises UnboundLocalError and cannot reach builtins.
+      Enclosing function scopes count, for closures.
+    * **Module scope** exempts a Load only when an UNCONDITIONAL direct
+      statement of the module body binds the name on an earlier line. Lexical
+      precedence alone is not enough -- see `_UNCONDITIONAL_STMTS`.
+
+    Where the Load sits in a function and only the module binds the name, this
+    refuses: the function may be called before the module-level assignment runs
+    and we cannot know. That over-refuses rather than under-refuses, which is
+    the correct direction for this layer to be wrong in.
+    """
+    cur = parents.get(node)
+    while cur is not None:
+        # An ENCLOSING compound statement that binds the name as its own target
+        # exempts the Load, at any scope: a `for`/`with`/`except` body only runs
+        # after the target is assigned, so inside it the name cannot be the
+        # builtin. This is what makes `for input in rows: print(input)` work at
+        # module level, where the `for` itself is not an unconditional binding
+        # (an empty `rows` binds nothing, so a Load AFTER the loop is refused).
+        if _binds_as_own_target(cur, node.id):
+            return True
+        if isinstance(cur, _FUNCTION_SCOPES):
+            if _function_scope_binds(cur, node.id):
+                return True
+        elif isinstance(cur, ast.Module):
+            pos = _unconditional_module_bindings(cur).get(node.id)
+            if pos is not None and pos < node.lineno:
+                return True
+        cur = parents.get(cur)
+    return False
+
+
 def _rule_denylisted_name(node, parents) -> str | None:
-    """A bare REFERENCE to a denylisted builtin, whether or not it is called.
+    """A REFERENCE to a denylisted builtin, whether or not it is called.
 
-    `ast.Load` is what makes this a "reference": without it the rule also
-    matched Store and `for` targets, so `input = json.load(...)` was refused as
-    a security violation.
+    Two conditions. `ast.Load` is what makes this a reference rather than a
+    binding -- without it `vars = {}` was refused as a security violation. And
+    `_shadows_builtin` is what distinguishes the submitted code's OWN local of
+    that name from the builtin: generated code plausibly names a local `input`
+    or `vars`, and reading your own local is not a bypass.
 
-    **Why there is no shadowing exemption here, having tried one.** A previous
-    revision exempted any name the submitted module binds ANYWHERE, on the
-    reasoning that reading your own local is not a bypass. The reasoning is
-    right and the implementation of it was not: Python binds per SCOPE and the
-    exemption was computed as one flat set over the module, so a binding in a
-    function body exempted the same name at module level, where it still
-    resolves to the builtin. That is directly exploitable, and the backstop
-    relied on -- `_rule_denylisted_call` -- only catches a DIRECT call:
+    The history is worth keeping, because two cheaper versions of this were
+    both wrong. Gating on `ast.Load` alone permitted only the binding, so the
+    very next line that read the name was refused again. Exempting any name
+    bound ANYWHERE in the module was an exploitable bypass -- Python binds per
+    scope, so a parameter named `eval` in one function exempted `e = eval` at
+    module level, where it still resolved to the real builtin; `eval = eval`
+    did the same, and so did a Store in a dead branch. A static allowlist of
+    `{"input"}` was safe but did not cover `vars`, and left `input` as the one
+    name where this rule and `_rule_denylisted_call` failed to compose
+    (`[input][0]()` called the builtin through a subscript).
 
-        def f():
-            eval = 1          # harmless local; puts "eval" in the flat set
-            return eval
-        e = eval              # module level: the real builtin, exempted
-        x = e("...")          # a call of `e`, which is not denylisted
-
-    That passed the gate. So did the same shape via `global eval`, a parameter
-    named `eval`, a comprehension target and an `except ... as eval` target,
-    and the same trick aliased `getattr`. Doing this correctly needs real
-    per-scope resolution (class scopes do not close over, comprehensions have
-    their own scope, `global` forces module scope), and a subtly wrong scope
-    analysis in a security control is a worse trade than a narrower rule --
-    especially as R12 records that this layer is best-effort hygiene rather
-    than containment, so it should fail toward refusing.
-
-    What is exempted instead is an explicit, auditable set of names whose bare
-    REFERENCE buys nothing, `_SAFE_AS_BARE_NAME`. That covers the motivating
-    case (`input`) and nothing else.
+    `_shadows_builtin` is scope- and reachability-aware, which is what the
+    problem actually requires; see its docstring for the two rules. A direct
+    call of a denylisted builtin remains `_rule_denylisted_call`'s, untouched.
     """
     if (
         isinstance(node, ast.Name)
         and isinstance(node.ctx, ast.Load)
-        and node.id not in _SAFE_AS_BARE_NAME
         and (node.id in _DENYLISTED_NAMES or node.id in _DENYLISTED_CALLS)
+        and not _shadows_builtin(node, parents)
     ):
         return f"safety gate: disallowed name '{node.id}'"
     return None

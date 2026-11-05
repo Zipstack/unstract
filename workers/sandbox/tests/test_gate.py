@@ -255,73 +255,122 @@ def test_codegen_template_passes():
     assert reason == ""
 
 
-class TestBareNameExemptionIsNarrow:
-    """`_SAFE_AS_BARE_NAME` is the whole exemption, and these pin both halves.
+class TestShadowedBuiltinsAreScopeResolved:
+    """A local that shadows a denylisted builtin is readable; an alias is not.
 
-    This class replaces one that tested a flat module-wide "is this name bound
-    anywhere" exemption. That exemption was an exploitable bypass: Python binds
-    per SCOPE and the set was also order-blind, so a binding that did not
-    shadow the builtin at the point of a Load exempted it anyway, and
-    `_rule_denylisted_call` only catches a DIRECT call, so an alias walked
-    past. Every shape in `test_the_alias_bypass_shapes_are_all_refused` below
-    was ACCEPTED by that version and reached real `eval`/`exec`/`__import__`.
+    `vars` is accepted now, by decision: real codegen names a local `vars`, and
+    refusing it gave ordinary generated code a security-flavoured error. What
+    makes that safe is that the exemption is scope- AND reachability-aware
+    rather than a name allowlist, so it distinguishes the two cases the simpler
+    versions could not:
 
-    The old class's own guard asserted the opposite and passed throughout,
-    because it pinned `g = globals` where `globals` is bound nowhere -- the one
-    spelling the defect did not touch. That is why the shapes below are
-    enumerated rather than represented by one example.
+      vars = {}; vars["a"] = 1        <- the code's own local, accepted
+      d = vars; d()["__buil"+"tins__"] <- the real builtin, refused
+
+    That second shape is why a flat `{"input", "vars"}` allowlist was rejected:
+    it reaches `__builtins__` then `__import__` with no import at all, and the
+    concatenation evades `_rule_builtins_subscript`, which matches only an
+    `ast.Constant`.
+
+    `test_the_alias_bypass_shapes_are_all_refused` is the load-bearing half.
+    Every shape in it was ACCEPTED by at least one earlier implementation, and
+    four of them reached real `eval`/`exec`/`__import__` under execution.
     """
-
-    def test_a_local_named_input_may_be_read_after_it_is_bound(self):
-        # The motivating case, and the only one the exemption covers: the
-        # codegen contract is "read the input path from sys.argv[1]", so
-        # generated code names a local `input` plausibly often.
-        ok, reason = check_code_safe(
-            "import json\n"
-            "import sys\n"
-            "input = json.load(open(sys.argv[1]))\n"
-            'rows = input["records"]\n'
-        )
-        assert ok is True, reason
-
-    def test_a_for_target_named_input_may_be_read_in_the_body(self):
-        ok, reason = check_code_safe("rows = [1]\nfor input in rows:\n    print(input)\n")
-        assert ok is True, reason
-
-    def test_a_local_named_vars_is_still_refused_deliberately(self):
-        # `vars` is NOT exempt, and this is the trade rather than an oversight:
-        # `d = vars; d()["__buil" + "tins__"]` reaches `__builtins__` and then
-        # `__import__` with no import at all, and the concatenation evades
-        # `_rule_builtins_subscript`, which matches only an `ast.Constant`.
-        # Generated code that wants that identifier has to pick another one.
-        ok, reason = check_code_safe('vars = {}\nvars["a"] = 1\n')
-        assert ok is False
-        assert reason == "safety gate: disallowed name 'vars'"
 
     @pytest.mark.parametrize(
         "label,code",
         [
-            # Each of these was accepted by the flat-set exemption. The first
-            # four are the distinct mechanisms; the rest are the same four
-            # reached through other binding forms.
+            ("module-level local", "vars = {}\nvars['a'] = 1\n"),
+            (
+                "local in a function",
+                "def f():\n    vars = {}\n    vars['a'] = 1\n    return vars\n",
+            ),
+            # Local for the WHOLE function, so order does not matter: a read
+            # before the assignment raises UnboundLocalError, never the builtin.
+            (
+                "read before assign, same function",
+                "def f():\n    x = vars\n    vars = {}\n    return x\n",
+            ),
+            (
+                "input shadowed at module scope",
+                "import json\nimport sys\ninput = json.load(open(sys.argv[1]))\nr = input['records']\n",
+            ),
+            (
+                "input shadowed in a function",
+                "import json\nimport sys\ndef f():\n    input = json.load(open(sys.argv[1]))\n    return input['records']\n",
+            ),
+            # The body only runs once the target is assigned, so a Load inside
+            # it cannot be the builtin even though the `for` itself binds
+            # nothing when the iterable is empty.
+            (
+                "for target, read inside the body",
+                "rows = [1]\nfor input in rows:\n    print(input)\n",
+            ),
+            (
+                "with ... as, read inside the body",
+                "with open('f') as vars:\n    x = vars.read()\n",
+            ),
+            (
+                "except ... as, read inside the body",
+                "try:\n    pass\nexcept Exception as input:\n    print(input)\n",
+            ),
+            (
+                "compile as a local",
+                "import re\ndef f():\n    compile = re.compile('x')\n    return compile.findall('x')\n",
+            ),
+            (
+                "match capture in a function",
+                "def f(m):\n    match m:\n        case [input]:\n            return input\n",
+            ),
+        ],
+    )
+    def test_a_shadowing_local_may_be_read(self, label, code):
+        ok, reason = check_code_safe(code)
+        assert ok is True, f"{label}: {reason}"
+
+    @pytest.mark.parametrize(
+        "label,code",
+        [
+            # Cross-scope: a function-local binding does not shadow the name at
+            # module level, where it still resolves to the builtin.
             (
                 "cross-scope local",
                 "def f():\n    eval = 1\n    return eval\n\ne = eval\nx = e('1')\n",
             ),
-            ("alias precedes rebind", "e = eval\nx = e('1')\neval = 1\n"),
-            ("store in a dead branch", "if False:\n    eval = 1\ne = eval\nx = e('1')\n"),
-            # `eval = eval` resolves the RHS through globals to the BUILTIN, so
-            # "rebinding the name itself" did not make later Loads safe either.
-            ("self-rebind to the builtin", "eval = eval\nrun = eval\nx = run('1')\n"),
-            ("global declaration", "def f():\n    global eval\n\ne = eval\nx = e('1')\n"),
             ("parameter name", "def f(eval):\n    return eval\n\ne = eval\nx = e('1')\n"),
             ("lambda parameter", "f = lambda vars: 0\nx = vars\n"),
             ("comprehension target", "ys = [0 for getattr in []]\ng = getattr\n"),
+            # Order: a module-level Load before the assignment falls through
+            # globals to builtins.
+            ("alias precedes rebind", "e = eval\nx = e('1')\neval = 1\n"),
             (
-                "except-as target",
-                "try:\n    pass\nexcept Exception as eval:\n    pass\ne = eval\n",
+                "module binds after a function reads it",
+                "def f():\n    return vars\nvars = {}\n",
             ),
+            # Reachability: these bindings lexically precede and never execute.
+            ("store in a dead branch", "if False:\n    eval = 1\ne = eval\nx = e('1')\n"),
+            (
+                "for target, read AFTER the loop",
+                "rows = []\nfor vars in rows:\n    pass\nd = vars\nx = d()\n",
+            ),
+            (
+                "try-body binding",
+                "try:\n    vars = {}\nexcept Exception:\n    pass\nd = vars\nx = d()\n",
+            ),
+            (
+                "except target, read AFTER the handler",
+                "try:\n    pass\nexcept Exception as eval:\n    pass\ne = eval\nx = e('1')\n",
+            ),
+            # `global` makes it a MODULE binding, so it shadows nothing locally.
+            ("global declaration", "def f():\n    global eval\n\ne = eval\nx = e('1')\n"),
+            # Self-rebinding resolves the RHS through globals TO the builtin.
+            ("self-rebind to the builtin", "eval = eval\nrun = eval\nx = run('1')\n"),
             ("import alias", "run = __import__\nrun('os')\n__import__ = 1\n"),
+            ("nothing bound at all", "d = vars\nx = d()\n"),
+            (
+                "the builtins chain this exists to stop",
+                "d = vars\nb = d()['__buil' + 'tins__']\n",
+            ),
         ],
     )
     def test_the_alias_bypass_shapes_are_all_refused(self, label, code):
@@ -331,17 +380,19 @@ class TestBareNameExemptionIsNarrow:
 
     def test_a_direct_call_of_a_denylisted_builtin_is_still_refused(self):
         # `_rule_denylisted_call`'s own job, pinned here so a later widening of
-        # `_SAFE_AS_BARE_NAME` cannot quietly take the call rule with it.
+        # the shadowing logic cannot quietly take the call rule with it.
         ok, reason = check_code_safe('eval("1+1")\n')
         assert ok is False
         assert reason == "safety gate: disallowed call 'eval'"
 
-    def test_input_is_still_refused_as_a_call(self):
-        # The exemption is on the REFERENCE only. `input` stays in
-        # `_DENYLISTED_CALLS`, so the call form is unaffected.
-        ok, reason = check_code_safe("x = input()\n")
+    def test_calling_a_shadowed_name_is_still_refused(self):
+        # The shadowing exemption is on the REFERENCE. A local that shadows a
+        # denylisted builtin and is then CALLED still trips the call rule --
+        # a false refusal for a caller who shadowed a callable, and the safe
+        # direction for a rule that cannot see what the local holds.
+        ok, reason = check_code_safe("def f():\n    vars = dict\n    return vars()\n")
         assert ok is False
-        assert reason == "safety gate: disallowed call 'input'"
+        assert reason == "safety gate: disallowed call 'vars'"
 
 
 class TestEveryRuleIsRegistered:
