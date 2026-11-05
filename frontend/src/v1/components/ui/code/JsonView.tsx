@@ -265,6 +265,20 @@ export function JsonView({
     initialRect: INITIAL_VIEWPORT,
   });
 
+  // A new document starts at the top, where its active row (the root) is:
+  // otherwise a scrolled view keeps its offset and the active row is off screen.
+  const shownLines = useRef(lines);
+  useLayoutEffect(() => {
+    if (shownLines.current === lines) {
+      return;
+    }
+    shownLines.current = lines;
+    // The scroll event this fires moves a virtualised window too.
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = 0;
+    }
+  }, [lines]);
+
   const [focused, setFocused] = useState(false);
   const activePos = rows.length === 0 ? -1 : showingPosition(rows, active);
   const id = useId();

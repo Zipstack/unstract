@@ -330,3 +330,17 @@ it("folds one of two containers that share a repeated key", async () => {
   expect(shown).not.toContain('"x": 1');
   expect(shown).toContain('"y": 2');
 });
+
+it("starts a new document at the top, with its active row in view", async () => {
+  stubLayout();
+  const { rerender } = renderV1(<JsonView value={largeJson(5000)} />);
+  const tree = screen.getByRole("tree");
+  act(() => {
+    tree.scrollTop = 40_000;
+    tree.dispatchEvent(new Event("scroll"));
+  });
+  rerender(<JsonView value={largeJson(4000)} />);
+  expect(screen.getByRole("tree").scrollTop).toBe(0);
+  act(() => screen.getByRole("tree").focus());
+  await waitFor(() => expect(active()).toMatch(/^1\s*\[/));
+});

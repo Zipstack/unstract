@@ -2,6 +2,7 @@ import { expect, it, vi } from "vitest";
 import {
   computeLineDiff,
   DIFF_MAX_EDIT_LENGTH,
+  DIFF_MAX_LINES,
   DIFF_TIMEOUT_MS,
   describeChanges,
   diffStats,
@@ -98,4 +99,15 @@ it("diffStats gives the counts on their own", () => {
     added: 2,
     removed: 1,
   });
+});
+
+it("gives up on long texts even when they barely differ", () => {
+  const lines = (n: number) =>
+    Array.from({ length: n }, (_, i) => `line ${i}`).join("\n");
+  const half = DIFF_MAX_LINES / 2;
+  // One edited line: well inside the edit limit either way.
+  expect(
+    computeLineDiff(lines(half), `${lines(half - 1)}\nedited`),
+  ).not.toBeNull();
+  expect(computeLineDiff(lines(half + 1), `${lines(half)}\nedited`)).toBeNull();
 });

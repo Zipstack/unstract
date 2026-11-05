@@ -137,9 +137,10 @@ props pass through to the root.
 Changed lines are tinted, marked `+` / `−`, and read as "Added:" / "Removed:"
 by screen readers. `DiffSummary` (with `diffStats(old, new)`) shows the
 summary on its own, for a row like H20's "what changed". Two texts that
-differ by more than 2,000 added plus removed lines (an edited line counts as
-both), or take longer than a second, show "Too large to compare" instead of
-freezing the page (`diffStats` returns `null` then).
+have more than 10,000 lines between them, differ by more than 2,000 added plus
+removed lines (an edited line counts as both), or take longer than a second,
+show "Too large to compare" instead of freezing the page (`diffStats` returns
+`null` then).
 
 ## Markdown
 

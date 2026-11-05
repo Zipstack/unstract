@@ -52,6 +52,8 @@ export type DiffLimits = Readonly<{
   timeoutMs?: number;
   /** Give up past this many inserted plus removed lines (jsdiff's `maxEditLength`). */
   maxEditLength?: number;
+  /** Give up when the two texts have more lines than this between them. */
+  maxLines?: number;
 }>;
 
 /**
@@ -60,12 +62,18 @@ export type DiffLimits = Readonly<{
  * it gives up, the same way on every machine, rather than freeze the page.
  */
 export const DIFF_MAX_EDIT_LENGTH = 2000;
+/**
+ * Two long texts with few changes pass the edit limit but still render (and
+ * highlight) every line; past this many lines between them, DiffView gives up.
+ */
+export const DIFF_MAX_LINES = 10_000;
 /** A backstop on slow machines; DIFF_MAX_EDIT_LENGTH is the limit that normally applies. */
 export const DIFF_TIMEOUT_MS = 1000;
 
 /**
  * Diffs two texts line by line. Returns `null` when a limit is hit (by
- * default DIFF_MAX_EDIT_LENGTH added plus removed lines, or DIFF_TIMEOUT_MS), so the
+ * default DIFF_MAX_LINES lines in all, DIFF_MAX_EDIT_LENGTH added plus removed
+ * lines, or DIFF_TIMEOUT_MS), so the
  * caller can say the texts are too large to compare.
  */
 export function computeLineDiff(
@@ -75,6 +83,12 @@ export function computeLineDiff(
 ): LineDiff | null {
   const oldSource = normalise(oldText);
   const newSource = normalise(newText);
+  if (
+    splitLines(oldSource).length + splitLines(newSource).length >
+    (limits.maxLines ?? DIFF_MAX_LINES)
+  ) {
+    return null;
+  }
   const result = diffLines(oldSource, newSource, {
     timeout: limits.timeoutMs ?? DIFF_TIMEOUT_MS,
     maxEditLength: limits.maxEditLength ?? DIFF_MAX_EDIT_LENGTH,

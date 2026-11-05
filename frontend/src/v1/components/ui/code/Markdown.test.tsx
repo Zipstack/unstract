@@ -133,3 +133,14 @@ it("keeps a linked image as text inside its link, never a link in a link", () =>
   const link = screen.getByRole("link", { name: "Image: build" });
   expect(link.getAttribute("href")).toBe("https://ci.example/run");
 });
+
+it("treats fence names that are Object's own keys as plain text", () => {
+  const { container } = renderV1(
+    <Markdown>{"```constructor\nx\n```\n\n```__proto__\ny\n```"}</Markdown>,
+  );
+  const blocks = container.querySelectorAll("[data-slot=code-block]");
+  expect([...blocks].map((b) => b.getAttribute("data-language"))).toEqual([
+    "text",
+    "text",
+  ]);
+});

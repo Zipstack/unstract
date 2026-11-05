@@ -37,7 +37,8 @@ function fenceLanguage(className: string | undefined): CodeLanguage {
   if ((CODE_LANGUAGES as readonly string[]).includes(name)) {
     return name as CodeLanguage;
   }
-  return LANGUAGE_ALIAS[name] ?? "text";
+  // Own keys only: a fence named `constructor` must not find Object's.
+  return Object.hasOwn(LANGUAGE_ALIAS, name) ? LANGUAGE_ALIAS[name] : "text";
 }
 
 /** An absolute http(s) link opens in a new tab; anything else stays in place. */
