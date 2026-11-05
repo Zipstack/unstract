@@ -3,6 +3,7 @@ import datetime as dt
 import io
 import json
 import os
+import subprocess
 import tempfile
 import unittest
 from unittest import mock
@@ -643,6 +644,9 @@ class Gate(unittest.TestCase):
         with (
             contextlib.redirect_stdout(io.StringIO()),
             mock.patch.object(rs, "PINS", None),
+            mock.patch.object(  # no network: no conflict PR, no failure comment
+                cg.bm, "run_gh", lambda *a, **k: subprocess.CompletedProcess(a, 0, "", "")
+            ),
         ):
             code = cg.main(
                 [
