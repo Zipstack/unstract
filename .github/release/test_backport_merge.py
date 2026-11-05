@@ -7,6 +7,14 @@ from unittest import mock
 
 import backport_merge as bm
 
+
+def setUpModule():
+    """Jitter off: each wait is its upper bound, so the schedule is exact."""
+    p = mock.patch.object(bm.random, "uniform", lambda lo, hi: hi)
+    p.start()
+    unittest.addModuleCleanup(p.stop)
+
+
 O = "c" * 40  # the main original
 CLOSED = "2026-10-12T10:00:00Z"
 ME = "closer"
@@ -279,6 +287,12 @@ class Close(unittest.TestCase):
             post,
         )
 
+    def test_close_by_the_app_is_not_a_decline(self):
+        bm.gh = Gh("CLOSED", labels=["backport-conflict"])
+        with self.assertRaisesRegex(RuntimeError, "closed by the release App"):
+            bm.record("o/r", 7, f"{APP}[bot]")
+        self.assertEqual(bm.gh.writes(), [])
+
     def test_rerun_writes_nothing(self):
         self.on_base = [
             (
@@ -506,6 +520,30 @@ class Summary(unittest.TestCase):
                 "Next: nothing here; its head no longer holds this PR's commit.",
             )
 
+    def test_links_under_actions(self):
+        web = "https://github.com/Zipstack/unstract-cloud"
+        env = {
+            "GITHUB_SERVER_URL": "https://github.com",
+            "GITHUB_REPOSITORY": "Zipstack/unstract-cloud",
+        }
+        rec = {
+            "result": "merged",
+            "base": "release/0.189",
+            "sha": "6" * 40,
+            "reason": None,
+        }
+        with mock.patch.dict(os.environ, env):
+            out = bm.summary(246, ME, rec)
+        base = f"[`release/0.189`]({web}/tree/release/0.189)"
+        squash = f"[`6666666`]({web}/commit/{'6' * 40})"
+        self.assertEqual(
+            out,
+            [
+                f"**Backport PR** [#246]({web}/pull/246) on {base}: **merged** as {squash} (@{ME})",
+                f"Undo: revert {squash} on {base}.",
+            ],
+        )
+
 
 class SquashRetry(unittest.TestCase):
     PR = {"number": 4, "headRefOid": "a" * 40}
@@ -530,11 +568,11 @@ class SquashRetry(unittest.TestCase):
             )
 
     def test_base_modified_is_retried(self):
-        self.assertEqual(self.run_squash([self.MOVED, None]), (True, 2, [5]))
+        self.assertEqual(self.run_squash([self.MOVED, None]), (True, 2, [4]))
 
     def test_base_modified_three_times_raises(self):
         with self.assertRaisesRegex(RuntimeError, "Base branch was modified"):
-            self.run_squash([self.MOVED] * 3)
+            self.run_squash([self.MOVED] * 5)
 
     def test_pending_check_is_not_retried(self):
         with mock.patch("builtins.print") as out:
@@ -550,6 +588,156 @@ class SquashRetry(unittest.TestCase):
         calls = [RuntimeError("Head branch was modified (HTTP 409)"), None]
         with self.assertRaisesRegex(RuntimeError, "HTTP 409"):
             self.run_squash(calls)
+
+
+# Verbatim from failed Backport runs during a GitHub incident; the 4xx ones in gh's "gh: <status> (HTTP <code>)" form.
+S502 = "gh: Server Error (HTTP 502)"
+BAD_GATEWAY = "pull request create failed: HTTP 502: 502 Bad Gateway (https://api.github.com/graphql)"
+CUT_SHORT = "unexpected end of JSON input"
+NOT_FOUND = "gh: Not Found (HTTP 404)"
+# Messages from GitHub's REST rate-limit docs, in gh's "gh: <message> (HTTP <code>)" form.
+PRIMARY_LIMIT = "gh: API rate limit exceeded for installation ID 1. (HTTP 403)"
+SECONDARY_LIMIT = "gh: You have exceeded a secondary rate limit. Please wait a few minutes before you try again. (HTTP 403)"
+TOO_MANY = "gh: Too Many Requests (HTTP 429)"
+FORBIDDEN = "gh: Resource not accessible by integration (HTTP 403)"
+MOVED_ERR = "gh: Base branch was modified. Review and try the merge again. (HTTP 405)"
+
+
+class FakeGh:
+    """subprocess.run for gh: answer(argv) gives (exit, stdout, stderr)."""
+
+    def __init__(self, answer):
+        self.answer, self.calls = answer, []
+
+    def __call__(self, argv, **kw):
+        self.calls.append(tuple(argv))
+        return subprocess.CompletedProcess(argv, *self.answer(tuple(argv)))
+
+    def count(self, *prefix):
+        return sum(c[1 : 1 + len(prefix)] == prefix for c in self.calls)
+
+
+def queue(*answers):
+    q = list(answers)
+    return lambda argv: q.pop(0)
+
+
+class Transient(unittest.TestCase):
+    def setUp(self):
+        self.waits = []
+        for p in (
+            mock.patch.object(bm.time, "sleep", self.waits.append),
+            mock.patch("builtins.print"),
+        ):
+            self.print = p.start()
+            self.addCleanup(p.stop)
+
+    def gh(self, answer, *args, **kw):
+        fake = FakeGh(answer)
+        with mock.patch.object(bm.subprocess, "run", fake):
+            try:
+                return bm.gh(*args, **kw), fake
+            except RuntimeError as e:
+                return e, fake
+
+    def test_classification(self):
+        for err in (
+            S502,
+            BAD_GATEWAY,
+            CUT_SHORT,
+            "net/http: TLS handshake timeout",
+            "read: connection reset by peer",
+            PRIMARY_LIMIT,
+            SECONDARY_LIMIT,
+            TOO_MANY,
+        ):
+            self.assertTrue(bm.transient(err), err)
+        for err in (
+            NOT_FOUND,
+            MOVED_ERR,
+            "Required status check is expected",
+            "gh: Request Timeout (HTTP 408)",
+            FORBIDDEN,
+        ):
+            self.assertFalse(bm.transient(err), err)
+
+    def test_transient_failure_is_retried(self):
+        out, fake = self.gh(queue((1, "", S502), (0, "ok\n", "")), "api", "x")
+        self.assertEqual((out, len(fake.calls), self.waits), ("ok", 2, [4]))
+
+    def test_retry_warning_stays_off_stdout(self):
+        # oss.py's stdout is the tag promote.yaml captures.
+        self.gh(queue((1, "", S502), (0, "ok\n", "")), "api", "x")
+        (call,) = self.print.call_args_list
+        self.assertIn("retried in", call.args[0])
+        self.assertIs(call.kwargs.get("file"), bm.sys.stderr)
+
+    def test_gives_up_after_five_tries(self):
+        out, fake = self.gh(lambda a: (1, "", S502), "api", "x")
+        self.assertIn("HTTP 502", str(out))
+        self.assertEqual((len(fake.calls), self.waits), (5, [4, 8, 16, 32]))
+
+    def test_rate_limit_is_retried_after_a_minute_or_more(self):
+        for err in (PRIMARY_LIMIT, SECONDARY_LIMIT, TOO_MANY):
+            self.waits.clear()
+            out, fake = self.gh(
+                queue((1, "", err), (1, "", err), (0, "ok\n", "")), "api", "x"
+            )
+            self.assertEqual(
+                (out, len(fake.calls), self.waits), ("ok", 3, [60, 120]), err
+            )
+
+    def test_forbidden_is_not_a_rate_limit(self):
+        out, fake = self.gh(lambda a: (1, "", FORBIDDEN), "api", "x")
+        self.assertEqual((len(fake.calls), self.waits), (1, []))
+
+    def test_waits_grow_and_are_jittered(self):
+        with mock.patch.object(bm.random, "uniform", lambda lo, hi: lo):
+            self.assertEqual([bm.gh_wait(n) for n in range(4)], [2, 4, 8, 16])
+            self.assertEqual([bm.gh_wait(n, TOO_MANY) for n in range(4)], [60] * 4)
+        self.assertEqual([bm.gh_wait(n, TOO_MANY) for n in range(4)], [60, 120, 120, 120])
+
+    def test_client_error_is_never_retried(self):
+        out, fake = self.gh(lambda a: (1, "", NOT_FOUND), "api", "x")
+        self.assertIsInstance(out, RuntimeError)
+        self.assertEqual(len(fake.calls), 1)
+
+    def test_write_that_may_have_landed_is_not_retried_blindly(self):
+        out, fake = self.gh(lambda a: (1, "", S502), "api", "x", retry=False)
+        self.assertEqual((len(fake.calls), self.waits), (1, []))
+
+    def squash(self, answer):
+        fake, waits = FakeGh(answer), []
+        with mock.patch.object(bm.subprocess, "run", fake):
+            try:
+                out = bm.squash("o/r", SquashRetry.PR, "t\n\nb", sleep=waits.append)
+            except RuntimeError as e:
+                out = e
+        return (
+            out,
+            fake.count("api", "-X", "PUT"),
+            fake.count("api", "repos/o/r/pulls/4"),
+            waits,
+        )
+
+    def test_squash_cut_short_but_merged_is_merged(self):
+        answer = lambda a: (1, "", CUT_SHORT) if "PUT" in a else (0, "true\n", "")
+        self.assertEqual(self.squash(answer), (True, 1, 1, []))
+
+    def test_squash_502_not_merged_is_retried(self):
+        puts = queue((1, "", S502), (0, "{}", ""))
+        answer = lambda a: puts(a) if "PUT" in a else (0, "false\n", "")
+        self.assertEqual(self.squash(answer), (True, 2, 1, [4]))
+
+    def test_squash_502_every_time_fails_after_checking_each(self):
+        answer = lambda a: (1, "", S502) if "PUT" in a else (0, "false\n", "")
+        out, puts, checks, waits = self.squash(answer)
+        self.assertIn("HTTP 502", str(out))
+        self.assertEqual((puts, checks, waits), (5, 5, [4, 8, 16, 32]))
+
+    def test_squash_base_modified_still_retried_without_a_merged_check(self):
+        puts = queue((1, "", MOVED_ERR), (0, "{}", ""))
+        self.assertEqual(self.squash(puts), (True, 2, 0, [4]))
 
 
 if __name__ == "__main__":
