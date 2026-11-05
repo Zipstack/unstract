@@ -285,7 +285,7 @@ class ConnectorInstanceViewSet(
             connector,
             lambda: ConnectorProcessor.test_connectors(
                 connector_id=connector.connector_id,
-                credentials=ConnectorProcessor.get_saved_credentials(connector),
+                credentials=connector.connector_metadata or {},
             ),
         )
         return Response(ConnectionCheckResultSerializer(result).data)

@@ -24,7 +24,8 @@ Mounted under the organisation path: `/api/v1/unstract/{org_id}/`.
 | POST | `connector/{id}/test/` | The saved connector, with its stored credentials |
 
 No request body. The test is the same one `test_adapters/` and
-`test_connectors/` run; the result is stored and returned.
+`test_connectors/` run; the result is returned, and stored unless a test that
+started later is already stored.
 
 ```json
 {
@@ -43,9 +44,8 @@ No request body. The test is the same one `test_adapters/` and
   stores a generic reason and is logged.
 - A new test replaces the stored result, unless a test that started later is
   already stored.
-- OAuth connectors have their tokens refreshed first when they have expired. If
-  the refresh fails, the connector is not tested and the stored result is failed,
-  with a reason asking the user to try again or re-authenticate.
+- OAuth connectors are tested with their stored tokens, the same ones a real run
+  reads. Nothing is refreshed first.
 
 **Who may call it.** Anyone who may edit the profile: its owners, organisation
 admins and service accounts. Others get **403**. Frictionless (Unstract
@@ -54,7 +54,7 @@ caller cannot see, including one in another organisation, is a **404**.
 
 | Status | When |
 |---|---|
-| 200 | Tested and stored, whether connected or failed |
+| 200 | Tested, whether connected or failed |
 | 403 | The caller may not edit the profile |
 | 404 | No such profile visible to the caller, or it was deleted during the test |
 
@@ -73,8 +73,7 @@ end with four keys, after every existing key:
 | `tested_before_last_change` | bool | The profile's `modified_at` is later than `last_tested_at`; `false` when never tested |
 
 `tested_before_last_change` follows `modified_at`, so anything that saves the
-profile sets it: an edit, but also turning org-wide sharing on or off, or an
-OAuth token refresh.
+profile sets it: an edit, but also turning org-wide sharing on or off.
 
 Other responses that embed a connector or adapter, such as workflow endpoints,
 do not carry these keys.

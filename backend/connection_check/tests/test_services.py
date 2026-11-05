@@ -56,7 +56,8 @@ class RunAndRecordTests(ConnectionCheckTestBase):
                 AdapterTestResult, self.adapter, _raise(APIException("Key not found."))
             )
 
-        self.assertIn("Key not found.", logs.output[0])
+        self.assertIn("APIException, status 500", logs.records[0].getMessage())
+        self.assertNotIn("Key not found.", logs.records[0].getMessage())
         self.assertTrue(logs.records[0].exc_info)
 
     def test_input_error_is_logged_without_a_traceback(self) -> None:
@@ -65,7 +66,8 @@ class RunAndRecordTests(ConnectionCheckTestBase):
                 AdapterTestResult, self.adapter, _raise(ValidationError("Bad API key."))
             )
 
-        self.assertIn("Bad API key.", logs.output[0])
+        self.assertIn("ValidationError, status 400", logs.output[0])
+        self.assertNotIn("Bad API key.", logs.output[0])
         self.assertFalse(logs.records[0].exc_info)
 
     def test_nested_error_detail_is_flattened(self) -> None:
@@ -109,6 +111,16 @@ class RunAndRecordTests(ConnectionCheckTestBase):
         self.assertEqual(stored[0].status, ConnectionStatus.CONNECTED)
         self.assertEqual(stored[0].tested_at, later.tested_at)
         self.assertIsNone(stored[0].failure_reason)
+
+    def test_storing_leaves_other_profiles_alone(self) -> None:
+        other = self.make_adapter("other")
+        run_and_record(AdapterTestResult, other, _raise(APIException("down")))
+
+        run_and_record(AdapterTestResult, self.adapter, lambda: True)
+
+        stored = AdapterTestResult.objects.get(profile=other)
+        self.assertEqual(stored.status, ConnectionStatus.FAILED)
+        self.assertEqual(stored.failure_reason, "down")
 
     def test_older_test_does_not_replace_a_newer_result(self) -> None:
         def older() -> bool:

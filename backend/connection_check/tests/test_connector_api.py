@@ -6,22 +6,18 @@ from typing import Any
 from unittest.mock import patch
 
 from connector_auth_v2.models import ConnectorAuth
-from connector_processor.exceptions import OAuthRefreshFailed
 from connector_processor.views import ConnectorViewSet
 from connector_v2.models import ConnectorInstance
 from connector_v2.views import ConnectorInstanceViewSet
-from requests.exceptions import HTTPError
 from rest_framework import status
-from social_core.exceptions import AuthFailed
 
-from connection_check.constants import (
-    NOT_CONNECTED_REASON,
-    UNEXPECTED_FAILURE_REASON,
-    ConnectionStatus,
-)
+from connection_check.constants import NOT_CONNECTED_REASON, ConnectionStatus
 from connection_check.models import ConnectorTestResult
 from connection_check.tests.base import ConnectionCheckTestBase, mock_connector_kit
 from unstract.connectors.exceptions import ConnectorError
+
+
+POSTGRESQL_ID = "postgresql|6db35f45-be11-4fd5-80c5-85c48183afbb"
 
 
 class ConnectorTestAndRecordTests(ConnectionCheckTestBase):
@@ -160,88 +156,48 @@ class ConnectorListFilterTests(ConnectionCheckTestBase):
         self.assertEqual(self._page("&search=connected")["failing_count"], 0)
 
 
-class ConnectorOAuthRefreshTests(ConnectionCheckTestBase):
-    def setUp(self) -> None:
-        super().setUp()
-        tokens = {"access_token": "old", "refresh_token": "r"}
-        self.auth = ConnectorAuth.objects.create(
-            user=self.owner,
-            provider="google-oauth2",
-            uid="uid-1",
-            extra_data={"provider": "google-oauth2", "uid": "uid-1", **tokens},
-        )
-        self.connector = self.make_connector("drive", connector_auth=self.auth)
-        ConnectorInstance.objects.filter(pk=self.connector.pk).update(
-            connector_metadata={**tokens, "site_url": "https://example.com"}
-        )
-
-    def _test(self) -> Any:
+class ConnectorStoredCredentialsTests(ConnectionCheckTestBase):
+    def _test(self, connector: ConnectorInstance) -> Any:
         response = self.call(
-            ConnectorInstanceViewSet, "post", "test_and_record", pk=self.connector.pk
+            ConnectorInstanceViewSet, "post", "test_and_record", pk=connector.pk
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
         return response
 
-    def test_tokens_are_refreshed_before_the_test(self) -> None:
-        def refresh(auth: ConnectorAuth, request: Any = None) -> Any:
-            auth.extra_data = {**auth.extra_data, "access_token": "new"}
-            return auth.extra_data, True
+    def test_oauth_connector_tests_its_stored_tokens_without_a_refresh(self) -> None:
+        login = {"provider": "google-oauth2", "uid": "uid-1", "access_token": "login"}
+        auth = ConnectorAuth.objects.create(
+            user=self.owner, provider="google-oauth2", uid="uid-1", extra_data=login
+        )
+        connector = self.make_connector("drive", connector_auth=auth)
+        stored = {"access_token": "stored", "site_url": "https://example.com"}
+        ConnectorInstance.objects.filter(pk=connector.pk).update(
+            connector_metadata=stored
+        )
 
         with (
-            patch.object(
-                ConnectorAuth, "get_and_refresh_tokens", autospec=True, side_effect=refresh
-            ),
+            patch.object(ConnectorAuth, "get_and_refresh_tokens") as refresh,
             mock_connector_kit(True) as kit,
         ):
-            self._test()
+            self._test(connector)
 
-        credentials = kit.call_args.args[1]
-        self.assertEqual(credentials["access_token"], "new")
-        self.assertEqual(credentials["site_url"], "https://example.com")
+        refresh.assert_not_called()
+        self.assertEqual(kit.call_args.args[1], stored)
 
-    def test_successful_refresh_is_not_logged_as_a_failure(self) -> None:
-        # The real get_and_refresh_tokens raises after this new token is saved.
-        def new_token(auth: ConnectorAuth, strategy: Any) -> str:
-            auth.extra_data = {**auth.extra_data, "access_token": "new"}
-            return "new"
+    def test_malformed_url_keeps_the_password_out_of_the_reason_and_the_log(
+        self,
+    ) -> None:
+        connector = self.make_connector("db")
+        ConnectorInstance.objects.filter(pk=connector.pk).update(
+            connector_id=POSTGRESQL_ID,
+            connector_metadata={"connection_url": "postgres:/alice:STANDINPW@db/prod"},
+        )
 
-        with (
-            patch.object(
-                ConnectorAuth, "get_access_token", autospec=True, side_effect=new_token
-            ),
-            mock_connector_kit(True) as kit,
-            self.assertLogs("connector_processor", level="WARNING") as logs,
-        ):
-            self._test()
+        with self.assertLogs("connection_check.services", level="WARNING") as logs:
+            response = self._test(connector)
 
-        self.assertEqual(kit.call_args.args[1]["access_token"], "new")
-        self.assertNotIn("Could not refresh", "\n".join(logs.output))
-
-    def test_failed_refresh_is_stored_without_testing(self) -> None:
-        for error in (HTTPError("invalid_grant"), AuthFailed(None, "unreachable")):
-            with (
-                self.subTest(error=type(error).__name__),
-                patch.object(ConnectorAuth, "get_and_refresh_tokens", side_effect=error),
-                mock_connector_kit(True) as kit,
-                self.assertLogs("connector_processor", level="WARNING"),
-            ):
-                response = self._test()
-
-                kit.assert_not_called()
-                self.assertEqual(response.data["status"], ConnectionStatus.FAILED)
-                self.assertEqual(
-                    response.data["failure_reason"], OAuthRefreshFailed.default_detail
-                )
-
-    def test_other_refresh_error_is_the_generic_reason(self) -> None:
-        with (
-            patch.object(
-                ConnectorAuth, "get_and_refresh_tokens", side_effect=AttributeError("boom")
-            ),
-            mock_connector_kit(True) as kit,
-            self.assertLogs("connection_check.services", level="ERROR"),
-        ):
-            response = self._test()
-
-        kit.assert_not_called()
-        self.assertEqual(response.data["failure_reason"], UNEXPECTED_FAILURE_REASON)
+        reason = "Error while connecting to DB: The connection URL is not valid."
+        self.assertEqual(response.data["failure_reason"], reason)
+        stored = ConnectorTestResult.objects.get(profile=connector)
+        self.assertEqual(stored.failure_reason, reason)
+        self.assertNotIn("STANDINPW", "\n".join(logs.output))

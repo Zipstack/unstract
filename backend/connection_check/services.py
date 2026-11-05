@@ -24,7 +24,8 @@ def run_and_record(
     profile: Profile,
     run_test: Callable[[], bool],
 ) -> ConnectionTestResult:
-    """Run ``run_test`` for a saved profile and store the outcome.
+    """Run ``run_test`` for a saved profile and return the outcome, storing it
+    unless a test that started later is already stored.
 
     ``tested_at`` is the start time, so an edit made while the test runs
     still reads as a change after the test.
@@ -40,7 +41,7 @@ def run_and_record(
     )
     _store(result_model, result)
     logger.info(
-        "Recorded connection test for %s %s: %s",
+        "Finished connection test for %s %s: %s",
         type(profile).__name__,
         profile.pk,
         status,
@@ -69,15 +70,16 @@ def _run(
     try:
         connected = run_test()
     except APIException as exc:
-        reason = _detail_text(exc.detail)
+        # The error text can echo connection settings, so it stays out of the log.
         logger.warning(
-            "Connection test failed for %s %s: %s",
+            "Connection test failed for %s %s: %s, status %s",
             type(profile).__name__,
             profile.pk,
-            reason,
+            type(exc).__name__,
+            exc.status_code,
             exc_info=exc.status_code >= 500,
         )
-        return ConnectionStatus.FAILED, _trim(reason)
+        return ConnectionStatus.FAILED, _trim(_detail_text(exc.detail))
     except Exception:
         logger.exception(
             "Connection test errored for %s %s", type(profile).__name__, profile.pk

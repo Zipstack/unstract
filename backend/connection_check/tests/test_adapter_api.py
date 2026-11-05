@@ -105,9 +105,10 @@ class AdapterTestAndRecordTests(ConnectionCheckTestBase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK, response.data)
         self.assertEqual(response.data["status"], ConnectionStatus.FAILED)
-        self.assertEqual(
-            response.data["failure_reason"], get_deprecation_message(LLMWHISPERER_V1_ID)
-        )
+        message = get_deprecation_message(LLMWHISPERER_V1_ID)
+        self.assertEqual(response.data["failure_reason"], message)
+        stored = AdapterTestResult.objects.get(profile=self.adapter)
+        self.assertEqual(stored.failure_reason, message)
 
     def test_edit_after_test_is_flagged(self, _ctx: Any) -> None:
         with mock_llm(True):

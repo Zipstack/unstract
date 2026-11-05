@@ -41,7 +41,7 @@ def connection_test_schema(profile: str) -> Callable[[Any], Any]:
         responses={
             200: OpenApiResponse(
                 ConnectionCheckResultSerializer,
-                description="Tested and stored; a failed test is also a 200.",
+                description="Tested; a failed test is also a 200.",
             ),
             403: OpenApiResponse(
                 ErrorResponse403Serializer,

@@ -14,6 +14,7 @@ from unstract.connectors.databases.sql_safety import (
     validate_identifier,
 )
 from unstract.connectors.databases.unstract_db import UnstractDB
+from unstract.connectors.exceptions import ConnectorError
 
 
 class PostgreSQL(UnstractDB, PsycoPgHandler):
@@ -108,6 +109,15 @@ class PostgreSQL(UnstractDB, PsycoPgHandler):
         }
         return str(mapping.get(data_type, DatabaseTypeConstants.POSTGRES_TEXT))
 
+    @staticmethod
+    def _connect(conn_params: dict[str, Any]) -> connection:
+        """Open a connection, keeping a URL that can't be parsed out of the error."""
+        try:
+            return psycopg2.connect(**conn_params)
+        except psycopg2.ProgrammingError:
+            # psycopg2 echoes the URL here, password included.
+            raise ConnectorError("The connection URL is not valid.") from None
+
     def get_engine(self) -> connection:
         """Returns a connection to the PostgreSQL database.
 
@@ -139,7 +149,7 @@ class PostgreSQL(UnstractDB, PsycoPgHandler):
                 }
             )
 
-        con = psycopg2.connect(**conn_params)
+        con = self._connect(conn_params)
 
         # Set schema explicitly only if schema is specified (avoids PgBouncer issues)
         if self.schema:

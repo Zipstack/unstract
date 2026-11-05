@@ -19,13 +19,6 @@ class OAuthTimeOut(APIException):
     default_detail = "Timed out. Please re-authenticate."
 
 
-class OAuthRefreshFailed(APIException):
-    status_code = 400
-    default_detail = (
-        "Could not refresh the OAuth login. Please try again or re-authenticate."
-    )
-
-
 class TestConnectorException(APIException):
     status_code = 500
     default_detail = "Error while testing connector."
