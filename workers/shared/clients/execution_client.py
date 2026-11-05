@@ -344,7 +344,10 @@ class ExecutionAPIClient(BaseAPIClient):
         )
 
         # Convert dict response to consistent APIResponse
-        return convert_dict_response(response, APIResponse)
+        api_response = convert_dict_response(response, APIResponse)
+        # The body is flat, and a refused write says why only there.
+        api_response.data = response
+        return api_response
 
     def recover_stuck_pg_executions(
         self,

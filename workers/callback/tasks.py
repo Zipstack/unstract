@@ -376,6 +376,15 @@ def _determine_execution_status_unified(
     return aggregated_results, final_status, expected_files
 
 
+def _stopped_meanwhile(response: Any) -> bool:
+    """True when the backend refused the write because an abort got there first."""
+    data = getattr(response, "data", None) or {}
+    return (
+        data.get("reason") == "already_final"
+        and data.get("new_status") == ExecutionStatus.STOPPED.value
+    )
+
+
 def _update_execution_status_unified(
     api_client: InternalAPIClient,
     execution_id: str,
@@ -410,16 +419,27 @@ def _update_execution_status_unified(
         successful_files = aggregated_results.get("successful_files", 0)
         failed_files = aggregated_results.get("failed_files", 0)
 
+        def post_status(status: str, error: str | None) -> Any:
+            return api_client.update_workflow_execution_status(
+                execution_id=execution_id,
+                status=status,
+                total_files=total_files,
+                successful_files=successful_files,
+                failed_files=failed_files,
+                organization_id=organization_id,
+                error_message=error,
+            )
+
         # Make the unified API call
-        api_client.update_workflow_execution_status(
-            execution_id=execution_id,
-            status=final_status,
-            total_files=total_files,
-            successful_files=successful_files,
-            failed_files=failed_files,
-            organization_id=organization_id,
-            error_message=error_message,
-        )
+        response = post_status(final_status, error_message)
+        if _stopped_meanwhile(response):
+            logger.warning(
+                f"Execution {execution_id} was stopped during this callback; "
+                f"reporting STOPPED instead of {final_status}"
+            )
+            final_status = ExecutionStatus.STOPPED.value
+            # The refused write saved no file counts.
+            post_status(final_status, None)
 
         # Return consistent result structure
         update_result = {
@@ -490,6 +510,15 @@ def _handle_pipeline_updates_unified(
             "status": "skipped",
             "reason": "api_deployment",
             "message": "Pipeline update skipped for API deployment",
+            "pipeline_id": context.pipeline_id,
+        }
+
+    # The abort wrote it, and only if this is the pipeline's newest run.
+    if final_status == ExecutionStatus.STOPPED.value:
+        return {
+            "status": "skipped",
+            "reason": "handled_by_abort",
+            "message": "The abort handles a stopped run's pipeline status",
             "pipeline_id": context.pipeline_id,
         }
 
@@ -620,13 +649,13 @@ def _handle_notifications_unified(
     Returns:
         Notification result dictionary
     """
-    # The abort already sent these, so a run with a dead worker notifies too.
+    # The abort handles these, so a run with a dead worker notifies too.
     if status == ExecutionStatus.STOPPED.value:
-        logger.info(f"Execution {execution_id} was stopped - notifications already sent")
+        logger.info(f"Execution {execution_id} was stopped - the abort handles notifying")
         return {
             "status": "skipped",
-            "reason": "sent_by_abort",
-            "message": "Notifications were sent when the execution was aborted",
+            "reason": "handled_by_abort",
+            "message": "The abort handles a stopped run's notifications",
         }
 
     try:
@@ -1537,6 +1566,7 @@ def _process_batch_callback_core(
                     organization_id=context.organization_id,
                     error_message=None,
                 )
+                execution_status = execution_update_result["final_status"]
                 # Handle pipeline updates using unified function (non-API deployment)
                 pipeline_result = _handle_pipeline_updates_unified(
                     context, execution_status, is_api_deployment=False
@@ -1803,6 +1833,7 @@ def process_batch_callback_api(
                     aggregated_results=aggregated_results,
                     organization_id=organization_id,
                 )
+                execution_status = execution_update_result["final_status"]
 
                 # Create minimal context for unified pipeline handling
                 context = CallbackContext()

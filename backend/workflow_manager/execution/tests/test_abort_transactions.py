@@ -5,6 +5,7 @@ from typing import Any
 from unittest.mock import patch
 
 from account_v2.models import Organization
+from api_v2.models import APIDeployment
 from django.db import transaction
 from django.test import TransactionTestCase
 from permissions.roles import ResourceRole
@@ -35,9 +36,10 @@ class AbortTransactionTests(TransactionTestCase):
         )
         self.workflow.memberships.create(user=self.owner, role=ResourceRole.OWNER)
 
-    def _execution(self) -> WorkflowExecution:
+    def _execution(self, pipeline_id: Any = None) -> WorkflowExecution:
         execution: WorkflowExecution = WorkflowExecution.objects.create(
             workflow=self.workflow,
+            pipeline_id=pipeline_id,
             execution_mode=WorkflowExecution.Mode.QUEUE,
             execution_method=WorkflowExecution.Method.DIRECT,
             execution_type=WorkflowExecution.Type.COMPLETE,
@@ -76,7 +78,7 @@ class AbortTransactionTests(TransactionTestCase):
 
         with (
             patch(f"{_ABORT}._stop_open_files", side_effect=stop),
-            patch(f"{_ABORT}.PipelineUtils.update_pipeline_status") as update,
+            patch(f"{_ABORT}._report_abort") as report,
         ):
             outcomes = self._post(first.id, bad.id, last.id)
 
@@ -92,7 +94,28 @@ class AbortTransactionTests(TransactionTestCase):
         self.assertEqual(self._status(bad), ExecutionStatus.EXECUTING.value)
         self.assertEqual(self._status(last), ExecutionStatus.STOPPED.value)
         self.assertEqual(PlatformAuditEvent.objects.count(), 2)
-        self.assertEqual(update.call_count, 2)
+        self.assertEqual(report.call_count, 2)
+
+    def test_a_failing_report_keeps_the_abort_and_its_audit_event(self) -> None:
+        deployment = APIDeployment.objects.create(
+            api_name="api-1",
+            workflow=self.workflow,
+            organization=self.org,
+            created_by=self.owner,
+        )
+        deployment.memberships.create(user=self.owner, role=ResourceRole.OWNER)
+        execution = self._execution(deployment.id)
+
+        with patch(
+            f"{_ABORT}.APIDeploymentUtils.send_notification",
+            side_effect=RuntimeError("boom"),
+        ) as send:
+            outcomes = self._post(execution.id)
+
+        send.assert_called_once()
+        self.assertEqual(outcomes, {str(execution.id): ("aborted", "STOPPED")})
+        self.assertEqual(self._status(execution), ExecutionStatus.STOPPED.value)
+        self.assertEqual(PlatformAuditEvent.objects.count(), 1)
 
     def test_a_run_finishing_during_the_abort_is_not_overwritten(self) -> None:
         execution = self._execution()

@@ -257,6 +257,10 @@ class DeploymentExecution(views.APIView):
         response_status = status.HTTP_422_UNPROCESSABLE_ENTITY
         if execution_status_value == CeleryTaskState.COMPLETED.value:
             response_status = status.HTTP_200_OK
+        if execution_status_value in (
+            CeleryTaskState.COMPLETED.value,
+            ExecutionStatus.STOPPED.value,
+        ):
             DeploymentHelper.process_completed_execution(
                 response=response,
                 deployment_execution_dto=deployment_execution_dto,

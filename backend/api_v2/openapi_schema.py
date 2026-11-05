@@ -246,7 +246,9 @@ STATUS_DESCRIPTION = (
     "later call for that execution answers 406. Keep the payload of the call "
     "that returns it — it cannot be fetched again.\n\n"
     "A still-running execution answers 422 carrying its current `status`, so a "
-    "polling loop should treat 422 as the normal reply and stop on 200."
+    "polling loop should treat 422 as the normal reply and stop on 200, or when "
+    "`status` is `ERROR` or `STOPPED`. Those also answer 422 but the run has ended, "
+    "and that read is the only one that carries its results."
 )
 
 
@@ -263,7 +265,9 @@ DEPLOYMENT_EXECUTION_SCHEMA = extend_schema_view(
         responses={
             200: ExecuteResponse,
             422: OpenApiResponse(
-                ExecuteResponse, description="The execution finished with an error."
+                ExecuteResponse,
+                description="The execution finished with an error, or was aborted "
+                "(`STOPPED`).",
             ),
             500: OpenApiResponse(
                 ExecuteResponse,
@@ -289,8 +293,8 @@ DEPLOYMENT_EXECUTION_SCHEMA = extend_schema_view(
             ),
             422: OpenApiResponse(
                 StatusResponse,
-                description="The execution is still running, or it finished with an "
-                "error; read `status` to tell them apart.",
+                description="The execution is still running, finished with an error, "
+                "or was aborted (`STOPPED`); read `status` to tell them apart.",
             ),
             500: OpenApiResponse(
                 StatusResponse,

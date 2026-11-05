@@ -2,16 +2,18 @@
 
 import logging
 from dataclasses import dataclass
-from functools import partial
 from typing import Any
 from uuid import UUID
 
 from api_v2.models import APIDeployment
+from api_v2.utils import APIDeploymentUtils
 from django.db import transaction
 from django.db.models import Count, DurationField, ExpressionWrapper, F, Q, QuerySet
 from django.db.models.functions import Extract, Now
+from django.utils import timezone
 from permissions.roles import ResourceRole
 from pipeline_v2.models import Pipeline
+from pipeline_v2.notification import PipelineNotification
 from platform_audit.actions import Action, TargetType
 from platform_audit.recorder import record_platform_event
 from tenant_account_v2.organization_member_service import OrganizationMemberService
@@ -20,7 +22,6 @@ from tenant_account_v2.sharing_helpers import resources_visible_via_memberships
 from workflow_manager.execution.entity import entity_annotation
 from workflow_manager.execution.enum import AbortOutcome
 from workflow_manager.file_execution.models import WorkflowFileExecution
-from workflow_manager.utils.pipeline_utils import PipelineUtils
 from workflow_manager.workflow_v2.enums import ExecutionStatus
 from workflow_manager.workflow_v2.models import Workflow, WorkflowExecution
 
@@ -145,13 +146,8 @@ def _abort_one(request: Any, execution_id: UUID, entity: str | None) -> AbortRes
         )
         _stop_open_files(execution)
         _write_file_counts(execution)
-        # Pipeline status and webhook; no callback sends them if the worker is dead.
-        transaction.on_commit(
-            partial(
-                PipelineUtils.update_pipeline_status, execution.pipeline_id, execution
-            ),
-            robust=True,
-        )
+        # After commit, so a rolled-back abort reports nothing.
+        transaction.on_commit(lambda: _report_abort(execution), robust=True)
     _record_abort(request, execution, previous_status, entity)
     return AbortResult(execution_id, AbortOutcome.ABORTED, execution.status)
 
@@ -183,6 +179,36 @@ def _write_file_counts(execution: WorkflowExecution) -> None:
     execution.successful_files = counts["completed"]
     execution.failed_files = execution.total_files - counts["completed"]
     execution.save(update_fields=["total_files", "successful_files", "failed_files"])
+
+
+def _report_abort(execution: WorkflowExecution) -> None:
+    """Report the ended run to its pipeline or API deployment.
+
+    The abort does this because a dead worker's run gets no callback.
+    """
+    pipeline = Pipeline.objects.filter(pk=execution.pipeline_id).first()
+    if pipeline is not None:
+        _report_to_pipeline(pipeline, execution)
+        return
+    deployment = APIDeployment.objects.filter(pk=execution.pipeline_id).first()
+    if deployment is not None:
+        APIDeploymentUtils.send_notification(api=deployment, workflow_execution=execution)
+
+
+def _report_to_pipeline(pipeline: Pipeline, execution: WorkflowExecution) -> None:
+    """Notify subscribers; the pipeline's own status follows only its newest run."""
+    pipeline.last_run_status = Pipeline.PipelineStatus.FAILURE
+    newer_runs = WorkflowExecution.objects.filter(
+        pipeline_id=execution.pipeline_id, created_at__gt=execution.created_at
+    )
+    if not newer_runs.exists():
+        pipeline.last_run_time = timezone.now()
+        pipeline.save(update_fields=["last_run_status", "last_run_time"])
+    PipelineNotification(
+        pipeline=pipeline,
+        execution_id=execution.id,
+        error_message=execution.error_message,
+    ).send()
 
 
 def _record_abort(

@@ -1,5 +1,6 @@
-"""An aborted run still finishes: skipped batches count down, and the callback
-keeps STOPPED, bills finished files and does not notify again (UN-4318).
+"""An aborted run still finishes: skipped and failed batches count down, and the
+callback keeps STOPPED, bills finished files and leaves the pipeline status and
+notifications to the abort. A re-run ignores the stopped run's markers (UN-4318).
 """
 
 from __future__ import annotations
@@ -10,12 +11,16 @@ from unittest import mock
 
 import callback.tasks as cb
 import pytest
+from shared.clients.base_client import APIRequestError
+from shared.clients.execution_client import ExecutionAPIClient
 from shared.infrastructure.logging.workflow_logger import WorkerWorkflowLogger
+from shared.processing.filter_pipeline import ActiveFileFilter
 from unstract.core.data_models import ExecutionStatus
 from unstract.workflow_execution.enums import LogState
 
 from file_processing.tasks import (
     _run_batch_stages,
+    _run_stages_under_barrier,
     _terminal_skip_result,
     _TerminalExecutionSkip,
 )
@@ -26,7 +31,7 @@ STOPPED = ExecutionStatus.STOPPED.value
 ERROR = ExecutionStatus.ERROR.value
 COMPLETED = ExecutionStatus.COMPLETED.value
 _TASKS = "file_processing.tasks"
-_CLEANUP = "shared.workflow.execution.active_file_manager.cleanup_active_file_cache"
+_REFUSAL = {"status": "skipped", "reason": "already_final", "new_status": STOPPED}
 
 
 def _batch_data() -> Any:
@@ -39,36 +44,27 @@ def _batch_data() -> Any:
     )
 
 
-def _skip_batch(status: str) -> tuple[dict[str, Any], Any]:
+def _skip_batch(status: str) -> dict[str, Any]:
     with (
         mock.patch(f"{_TASKS}._validate_and_parse_batch_data", return_value=_batch_data()),
         mock.patch(
             f"{_TASKS}._setup_execution_context",
             side_effect=_TerminalExecutionSkip("exec-1", status),
         ),
-        mock.patch(_CLEANUP) as cleanup,
     ):
-        return _run_batch_stages({"any": "payload"}, "task-1"), cleanup
+        return _run_batch_stages({"any": "payload"}, "task-1")
 
 
-def test_a_stopped_runs_skipped_batch_clears_its_markers_and_counts_down() -> None:
-    result, cleanup = _skip_batch(STOPPED)
+def test_a_stopped_runs_skipped_batch_counts_down() -> None:
+    result = _skip_batch(STOPPED)
 
     assert SKIPPED_TERMINAL_EXECUTION_KEY not in result
     assert result["failed_files"] == 4
-    cleanup.assert_called_once_with(
-        provider_file_uuids=["uuid-0", "uuid-1", "uuid-2"],
-        workflow_id="wf-1",
-        logger_instance=mock.ANY,
-    )
 
 
 @pytest.mark.parametrize("status", [ERROR, COMPLETED])
-def test_a_run_the_reaper_finished_keeps_the_marker(status: str) -> None:
-    result, cleanup = _skip_batch(status)
-
-    assert result[SKIPPED_TERMINAL_EXECUTION_KEY] is True
-    cleanup.assert_not_called()
+def test_other_terminal_statuses_keep_the_marker(status: str) -> None:
+    assert _skip_batch(status)[SKIPPED_TERMINAL_EXECUTION_KEY] is True
 
 
 @pytest.mark.parametrize(("status", "decrements"), [(STOPPED, 1), (ERROR, 0)])
@@ -84,6 +80,49 @@ def test_only_a_stopped_runs_batch_decrements(status: str, decrements: int) -> N
 
     assert decrement.call_count == decrements
     abort.assert_not_called()
+
+
+_PAYLOAD = {
+    "files": [["f0.pdf", {}], ["f1.pdf", {}]],
+    "file_data": {"execution_id": "e", "organization_id": "org-1"},
+}
+
+
+def _failing_batch(status: Any) -> Any:
+    client = mock.Mock()
+    client.get_workflow_execution_status.side_effect = [status]
+    return (
+        mock.patch(f"{_TASKS}._run_batch_stages", side_effect=RuntimeError("boom")),
+        mock.patch(f"{_TASKS}.create_api_client", return_value=client),
+    )
+
+
+def test_a_batch_failing_after_the_abort_counts_down() -> None:
+    stages, client = _failing_batch(STOPPED)
+    context: Any = {"execution_id": "e", "batch_index": 0, "callback_descriptor": {}}
+    with (
+        stages,
+        client,
+        mock.patch.object(pg_barrier, "claim_batch", return_value=True),
+        mock.patch.object(pg_barrier, "_barrier_pg_decrement") as decrement,
+        mock.patch.object(pg_barrier, "_abort_barrier_in_body") as abort,
+    ):
+        pg_barrier.run_batch_with_barrier(
+            context, lambda: _run_stages_under_barrier(_PAYLOAD, "task-1")
+        )
+
+    assert decrement.call_args.args[0]["failed_files"] == 2
+    assert SKIPPED_TERMINAL_EXECUTION_KEY not in decrement.call_args.args[0]
+    abort.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "status", [ExecutionStatus.EXECUTING.value, APIRequestError("500")], ids=["up", "down"]
+)
+def test_a_batch_failing_in_a_live_run_still_raises(status: Any) -> None:
+    stages, client = _failing_batch(status)
+    with stages, client, pytest.raises(RuntimeError, match="boom"):
+        _run_stages_under_barrier(_PAYLOAD, "task-1")
 
 
 def _status_for(run_status: str, successful: int, failed: int) -> str:
@@ -131,6 +170,60 @@ def test_a_missing_context_is_judged_by_its_counts() -> None:
     assert cb._was_stopped({}) is False
 
 
+def test_an_abort_after_the_callbacks_fetch_is_reported_as_stopped() -> None:
+    api_client = mock.Mock()
+    api_client.update_workflow_execution_status.side_effect = [
+        SimpleNamespace(data=_REFUSAL),
+        SimpleNamespace(data={"status": "updated"}),
+    ]
+
+    result = cb._update_execution_status_unified(
+        api_client, "e1", COMPLETED, {"total_files": 2, "successful_files": 2}, "org-1"
+    )
+
+    calls = api_client.update_workflow_execution_status.call_args_list
+    assert [c.kwargs["status"] for c in calls] == [COMPLETED, STOPPED]
+    assert calls[1].kwargs["successful_files"] == 2
+    assert calls[1].kwargs["error_message"] is None
+    assert result["final_status"] == STOPPED
+
+
+def test_an_accepted_write_keeps_its_status() -> None:
+    api_client = mock.Mock()
+    api_client.update_workflow_execution_status.return_value = SimpleNamespace(
+        data={"status": "updated"}
+    )
+
+    result = cb._update_execution_status_unified(api_client, "e1", COMPLETED, {}, "org-1")
+
+    assert api_client.update_workflow_execution_status.call_count == 1
+    assert result["final_status"] == COMPLETED
+
+
+def test_the_client_keeps_the_body_of_a_refused_write() -> None:
+    client = ExecutionAPIClient.__new__(ExecutionAPIClient)
+    with mock.patch.object(client, "post", return_value=dict(_REFUSAL)):
+        response = client.update_workflow_execution_status("e1", COMPLETED)
+
+    assert response.success is True
+    assert cb._stopped_meanwhile(response) is True
+
+
+@pytest.mark.parametrize(("status", "calls"), [(STOPPED, 0), (COMPLETED, 1)])
+def test_only_the_abort_writes_a_stopped_runs_pipeline_status(
+    status: str, calls: int
+) -> None:
+    context = cb.CallbackContext()
+    context.pipeline_id = "3f0d6c1e-5a0b-4a39-9a7e-0d6f3c2b1a90"
+    context.execution_id = "e1"
+    context.organization_id = "org-1"
+    context.api_client = mock.Mock()
+    with mock.patch.object(cb, "_update_pipeline_directly") as update:
+        cb._handle_pipeline_updates_unified(context, status, is_api_deployment=False)
+
+    assert update.call_count == calls
+
+
 @pytest.mark.parametrize(("status", "calls"), [(STOPPED, 0), (COMPLETED, 1)])
 def test_a_stopped_run_is_not_notified_twice(status: str, calls: int) -> None:
     with mock.patch.object(cb, "handle_status_notifications") as notify:
@@ -143,7 +236,10 @@ def test_a_stopped_run_is_not_notified_twice(status: str, calls: int) -> None:
         )
 
     assert notify.call_count == calls
-    assert result["status"] == ("skipped" if status == STOPPED else "completed")
+    if status == STOPPED:
+        assert result["reason"] == "handled_by_abort"
+    else:
+        assert result["status"] == "completed"
 
 
 @pytest.mark.parametrize(("status", "commits"), [(STOPPED, 1), (ERROR, 0)])
@@ -163,6 +259,73 @@ def test_a_stopped_run_bills_only_its_finished_files(status: str, commits: int) 
     assert commit.call_count == commits
     if commits:
         assert commit.call_args.kwargs["file_execution_ids"] == ["done"]
+
+
+@pytest.mark.parametrize(
+    ("publish", "creator"),
+    [
+        (cb._publish_final_workflow_ui_logs, "create_for_general_workflow"),
+        (cb._publish_final_workflow_ui_logs_api, "create_for_api_workflow"),
+    ],
+    ids=["general", "api"],
+)
+@pytest.mark.parametrize(("status", "stopped"), [(STOPPED, True), (COMPLETED, False)])
+def test_both_callbacks_pass_the_stop_to_the_final_log(
+    publish: Any, creator: str, status: str, stopped: bool
+) -> None:
+    context = cb.CallbackContext()
+    context.execution_id = "e1"
+    context.organization_id = "org-1"
+    context.pipeline_id = "p1"
+    context.api_client = mock.Mock()
+    context.api_client.get_workflow_execution.return_value = SimpleNamespace(
+        success=True, data={"aggregated_usage_cost": 0}
+    )
+    workflow_logger = mock.Mock()
+    with mock.patch.object(
+        cb.WorkerWorkflowLogger, creator, return_value=workflow_logger
+    ):
+        publish(context=context, aggregated_results={}, execution_status=status)
+
+    final = workflow_logger.publish_final_workflow_logs
+    assert final.call_args.kwargs["stopped"] is stopped
+
+
+def _active_files(status: Any) -> tuple[set[str], Any]:
+    api_client = mock.Mock()
+    api_client.get_workflow_execution_status.side_effect = [status]
+    api_client.check_files_active_processing.return_value = SimpleNamespace(
+        success=True, data={}
+    )
+    cache = mock.Mock()
+    cache.get.return_value = {"data": {"execution_id": "old-run"}}
+    files = {
+        "u1:/a": {"uuid": "u1", "path": "/a"},
+        "u2:/b": {"uuid": "u2", "path": "/b"},
+    }
+    with mock.patch(
+        "shared.processing.filter_pipeline.RedisCacheBackend", return_value=cache
+    ):
+        found = ActiveFileFilter()._check_active_files_batch(
+            files, "wf-1", "new-run", api_client
+        )
+    return found, api_client
+
+
+def test_a_rerun_ignores_a_stopped_runs_markers() -> None:
+    found, api_client = _active_files(STOPPED)
+
+    assert found == set()
+    api_client.get_workflow_execution_status.assert_called_once_with("old-run")
+
+
+@pytest.mark.parametrize(
+    "status", [ExecutionStatus.EXECUTING.value, APIRequestError("404")], ids=["live", "down"]
+)
+def test_other_runs_markers_stay_in_force(status: Any) -> None:
+    found, _ = _active_files(status)
+
+    assert found == {"u1:/a", "u2:/b"}
 
 
 @pytest.mark.parametrize(

@@ -123,9 +123,11 @@ run in the organisation. Shared users who are not owners get `not_permitted`.
 
 Once that commits, it:
 
-1. Sets the pipeline's last-run status to failure and sends its notifications
-   with status `FAILURE`, or sends an API deployment's notifications with status
-   `STOPPED`. An inactive pipeline gets neither.
+1. Sends the notifications of the run's pipeline (status `FAILURE`) or API
+   deployment (status `STOPPED`), paused pipelines included. A failure here is
+   logged and does not change the answer.
+1. Sets the pipeline's last-run status to failure, unless the pipeline has a newer
+   run.
 2. Records an `execution.aborted` event in the platform audit log, with target
    `execution`, the workflow name, the summary `was <previous status>` and
    `previous_status`, `pipeline_id` and `entity` in its metadata. This is best
@@ -133,18 +135,20 @@ Once that commits, it:
 
 ### How the work stops
 
-- Queued batches of a stopped run are skipped when a worker picks them up. They
-  clear their files' active-file markers and still count down on the barrier.
+- Queued batches of a stopped run are skipped when a worker picks them up, and
+  still count down on the barrier. So does a batch that fails after the abort.
+- A re-run ignores the active-file markers of a stopped run, so it keeps those
+  files even if no worker has picked up the queued batch yet.
 - A running batch checks the status before each file and stops once it is
   `STOPPED`: its remaining files are marked `STOPPED` and counted as failed.
 - The file being processed when the abort lands finishes, and its own result
   replaces `STOPPED` on its row.
 - The last batch fires the aggregating callback. It keeps the status `STOPPED`,
   saves the final file counts, commits usage for finished files, publishes the
-  final log and cleans up the execution directory. It does not send notifications
-  again.
+  final log and cleans up the execution directory. It leaves the pipeline status
+  and notifications to the abort.
 - A caller waiting on a synchronous API deployment `POST` gets 422 for an aborted
-  run, the same as polling with `GET`.
+  run, the same as polling with `GET`. Both apply the same result filters.
 - Later status writes from workers cannot undo the abort, unless the run's
   `queue_message_id` is empty.
 
@@ -189,7 +193,9 @@ callback reports an aborted run with a finished file as completed.
   deletes it. The reaper's `ERROR` path has the same gap.
 - A run whose `queue_message_id` is empty (from before the PG queue, or whose
   handle write failed) is not protected from a late worker status write.
-- An abort that lands while the callback is already running stays `STOPPED`, but
-  the callback can still report the status it worked out.
+- The file being processed when the abort lands is billed once it finishes, but an
+  API caller can't get its result: the first read after the abort returns the
+  results so far and discards them, and later reads answer 406. Its processing cost
+  was already spent, the same as for a caller who never collects a result.
 - A running batch stops between files only for `STOPPED`. A run that becomes
   `ERROR` or `COMPLETED` mid-batch keeps processing its files, as before.

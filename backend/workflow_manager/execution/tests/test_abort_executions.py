@@ -131,36 +131,47 @@ class AbortExecutionTests(StuckAbortTestBase):
         execution.refresh_from_db()
         self.assertAlmostEqual(execution.execution_time, 3600, delta=60)
 
-    def test_abort_marks_the_pipeline_failed_and_notifies(self) -> None:
-        pipeline = self.pipeline()
-        Pipeline.objects.filter(pk=pipeline.pk).update(active=True)
-        execution = self.execution(pipeline)
-        with patch(
-            "pipeline_v2.pipeline_processor.PipelineProcessor._send_notification"
-        ) as send:
-            outcome = self._outcomes(self._abort(self.owner, execution.id))
-        pipeline.refresh_from_db()
-        self.assertEqual(outcome[str(execution.id)][0], "aborted")
-        self.assertEqual(pipeline.last_run_status, Pipeline.PipelineStatus.FAILURE)
-        send.assert_called_once()
-        self.assertEqual(send.call_args.kwargs["execution_id"], execution.id)
+    def _abort_with_notification_patched(self, execution: WorkflowExecution) -> Any:
+        with patch("workflow_manager.execution.abort.PipelineNotification") as notify:
+            self._abort(self.owner, execution.id)
+        notify.return_value.send.assert_called_once()
+        return notify.call_args.kwargs
 
-    def test_abort_of_a_paused_pipeline_run_still_aborts(self) -> None:
+    def test_abort_marks_the_pipeline_failed_and_notifies(self) -> None:
+        for active in (True, False):
+            with self.subTest(active=active):
+                pipeline = self.pipeline()
+                Pipeline.objects.filter(pk=pipeline.pk).update(active=active)
+                execution = self.execution(pipeline)
+
+                sent = self._abort_with_notification_patched(execution)
+
+                pipeline.refresh_from_db()
+                self.assertEqual(
+                    pipeline.last_run_status, Pipeline.PipelineStatus.FAILURE
+                )
+                self.assertIsNotNone(pipeline.last_run_time)
+                self.assertEqual(sent["execution_id"], execution.id)
+
+    def test_abort_of_an_old_run_notifies_but_keeps_the_pipeline_status(self) -> None:
         pipeline = self.pipeline()
-        execution = self.execution(pipeline)
-        with patch(
-            "pipeline_v2.pipeline_processor.PipelineProcessor._send_notification"
-        ) as send:
-            outcome = self._outcomes(self._abort(self.owner, execution.id))
+        old_run = self.execution(pipeline)
+        self.execution(pipeline, status=ExecutionStatus.COMPLETED)
+        Pipeline.objects.filter(pk=pipeline.pk).update(
+            last_run_status=Pipeline.PipelineStatus.SUCCESS
+        )
+
+        sent = self._abort_with_notification_patched(old_run)
+
+        self.assertEqual(sent["pipeline"].last_run_status, Pipeline.PipelineStatus.FAILURE)
         pipeline.refresh_from_db()
-        self.assertEqual(outcome[str(execution.id)][0], "aborted")
-        self.assertNotEqual(pipeline.last_run_status, Pipeline.PipelineStatus.FAILURE)
-        send.assert_not_called()
+        self.assertEqual(pipeline.last_run_status, Pipeline.PipelineStatus.SUCCESS)
+        self.assertIsNone(pipeline.last_run_time)
 
     def test_abort_of_a_deployment_run_notifies_the_deployment(self) -> None:
         execution = self.execution(self.deployment())
         with patch(
-            "workflow_manager.utils.pipeline_utils.APIDeploymentUtils.send_notification"
+            "workflow_manager.execution.abort.APIDeploymentUtils.send_notification"
         ) as send:
             self._abort(self.owner, execution.id)
         send.assert_called_once()
@@ -168,11 +179,9 @@ class AbortExecutionTests(StuckAbortTestBase):
 
     def test_finished_run_announces_nothing(self) -> None:
         execution = self.execution(self.pipeline(), status=ExecutionStatus.COMPLETED)
-        with patch(
-            "workflow_manager.execution.abort.PipelineUtils.update_pipeline_status"
-        ) as update:
+        with patch("workflow_manager.execution.abort._report_abort") as report:
             self._abort(self.owner, execution.id)
-        update.assert_not_called()
+        report.assert_not_called()
 
     def test_abort_takes_one_row_lock(self) -> None:
         execution = self.execution()

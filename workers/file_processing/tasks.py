@@ -242,7 +242,7 @@ class _TerminalExecutionSkip(Exception):
     The resurrection this prevents exists because the **reaper** can mark an
     in-flight execution terminal (and tear its barrier down) while a batch for it
     is still in flight or waiting to be redelivered. An abort can mark it STOPPED
-    the same way, but leaves the barrier armed.
+    the same way.
 
     This is a validate-first *narrowing*, not a transactional guarantee: the
     status read and the later ``EXECUTING`` write are not atomic, so a reaper
@@ -301,40 +301,52 @@ def _terminal_skip_result(
     so reporting ``failed=total`` keeps a consumer that ever aggregates this
     result from rendering the files as perpetually in-progress. The
     ``SKIPPED_TERMINAL_EXECUTION_KEY`` marker tells ``run_batch_with_barrier`` to
-    bypass the barrier decrement (the reaper already tore that barrier down). A
-    STOPPED run's barrier is still armed, so it gets no marker: the batch counts
+    bypass the barrier decrement. A STOPPED run gets no marker: the batch counts
     down and the last one fires the callback, which cleans up.
     """
-    n_files = len(batch_data.files)
-    result = BatchExecutionResult(
-        total_files=n_files,
-        successful_files=0,
-        failed_files=n_files,
-        execution_time=0.0,
-        organization_id=batch_data.file_data.organization_id,
-    ).to_dict()
+    result = _all_failed_result(
+        len(batch_data.files), batch_data.file_data.organization_id
+    )
     if status != ExecutionStatus.STOPPED.value:
         result[SKIPPED_TERMINAL_EXECUTION_KEY] = True
     return result
 
 
-def _clear_active_file_markers(batch_data: FileBatchData) -> None:
-    """Clear a skipped batch's active-file markers, which pre-create never reached.
+def _all_failed_result(n_files: int, organization_id: str | None) -> dict[str, Any]:
+    """Batch result that counts every file as failed."""
+    result: dict[str, Any] = BatchExecutionResult(
+        total_files=n_files,
+        successful_files=0,
+        failed_files=n_files,
+        execution_time=0.0,
+        organization_id=organization_id,
+    ).to_dict()
+    return result
 
-    Without this, a re-run leaves these files out until the markers expire.
+
+def _run_stages_under_barrier(
+    file_batch_data: dict[str, Any], celery_task_id: str
+) -> dict[str, Any]:
+    """Run the batch stages; a stopped run's failed batch still counts down.
+
+    Otherwise the barrier is torn down and the run's callback never fires.
     """
-    from shared.workflow.execution.active_file_manager import cleanup_active_file_cache
-
-    uuids = [
-        uuid
-        for item in batch_data.files
-        if (uuid := _file_item_hash(item).get("provider_file_uuid"))
-    ]
-    cleanup_active_file_cache(
-        provider_file_uuids=uuids,
-        workflow_id=batch_data.file_data.workflow_id,
-        logger_instance=logger,
-    )
+    try:
+        return _run_batch_stages(file_batch_data, celery_task_id)
+    except Exception:
+        file_data = file_batch_data.get("file_data") or {}
+        execution_id = file_data.get("execution_id")
+        organization_id = file_data.get("organization_id")
+        api_client = create_api_client(organization_id)
+        if not _is_execution_stopped(api_client, execution_id):
+            raise
+        logger.exception(
+            "[exec:%s] Batch failed after the run was stopped; counting it down",
+            execution_id,
+        )
+        return _all_failed_result(
+            len(file_batch_data.get("files") or []), organization_id
+        )
 
 
 def _run_batch_stages(
@@ -360,8 +372,6 @@ def _run_batch_stages(
             f"{len(batch_data.files)} file(s): execution already terminal "
             f"({skip.status}); not processing."
         )
-        if skip.status == ExecutionStatus.STOPPED.value:
-            _clear_active_file_markers(batch_data)
         return _terminal_skip_result(batch_data, skip.status)
 
     # Step 3: Handle manual review logic
@@ -424,7 +434,7 @@ def _process_file_batch_core(
     # the barrier in-body / self-chain the callback.
     return run_batch_with_barrier(
         barrier_context,
-        lambda: _run_batch_stages(file_batch_data, celery_task_id),
+        lambda: _run_stages_under_barrier(file_batch_data, celery_task_id),
     )
 
 

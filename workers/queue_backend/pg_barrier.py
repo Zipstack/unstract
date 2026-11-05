@@ -1305,12 +1305,10 @@ def _mark_execution_error_on_abort(
     )
 
 
-# A batch skipped for a run the reaper already finished returns its result with
-# this marker set. run_batch_with_barrier bypasses the barrier decrement for it:
-# the reaper already tore the barrier down, so decrementing would only log a
-# spurious "decrement found no row" ERROR (false alert noise), and that run must
-# not have its aggregating callback fired. An aborted (STOPPED) run keeps its
-# barrier, so its batches do not set this.
+# A batch skipped because its execution is terminal returns its result with this
+# marker set, and run_batch_with_barrier bypasses the barrier decrement for it, so
+# that run's aggregating callback does not fire. Set for every terminal status
+# except STOPPED: an aborted run's batches count down so the callback can finish it.
 SKIPPED_TERMINAL_EXECUTION_KEY = "skipped_terminal_execution"
 
 
@@ -1381,11 +1379,8 @@ def run_batch_with_barrier(
     try:
         result = work_fn()
         if result.get(SKIPPED_TERMINAL_EXECUTION_KEY):
-            # The reaper already finished this run and tore its barrier down.
-            # Bypass the decrement — decrementing a gone barrier only logs a
-            # spurious "decrement found no row" ERROR (false alert noise) — and
-            # do NOT abort (nothing to tear down; and that run must not have its
-            # aggregating callback re-fired).
+            # Bypass the decrement and do NOT abort: this run's aggregating
+            # callback must not fire.
             logger.info(
                 f"[exec:{execution_id}] batch {batch_index} skipped — execution "
                 f"already terminal; barrier decrement bypassed."
